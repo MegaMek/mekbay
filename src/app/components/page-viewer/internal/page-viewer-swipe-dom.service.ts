@@ -5,9 +5,9 @@
 import { Injectable } from '@angular/core';
 
 import { PAGE_GAP, PAGE_HEIGHT, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
-import type { PageViewerSwipeSlotExtensionPlan } from './page-viewer-swipe-slot.service';
+import type { PageViewerSwipeSlotExtensionPlan } from './page-viewer-swipe-slot';
 import type { PageViewerMember, PageViewerOverlayMode } from './types';
-import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState, PageViewerSwipeRendererUpdate } from './page-viewer-swipe-renderer.service';
+import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState, PageViewerSwipeRendererUpdate } from './page-viewer-swipe-renderer';
 
 @Injectable()
 export class PageViewerSwipeDomService {

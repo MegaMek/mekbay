@@ -47,28 +47,10 @@ export function isEntityLoadIssueArray(value: unknown): value is readonly Entity
     && typeof issue.message === 'string' && issue.message.length > 0);
 }
 
-// ============================================================================
-// Equipment fallback hook
-// ============================================================================
-
-/**
- * A callback invoked when equipment cannot be found in the local DB.
- *
- * This is the extension point for future remote equipment retrieval
- * (e.g. fetching custom equipment from a remote server by UUID).
- *
- * Return the Equipment object on success, or `null` if the equipment
- * truly does not exist (which will be recorded as an error).
- */
-export type EquipmentFallbackFn = (
-  internalName: string,
-) => Equipment | null;
-
 export type SourcebookResolverFn = (abbrev: string) => Sourcebook | undefined;
 export type QuirkResolverFn = (key: string) => Quirk | undefined;
 
 export interface ParseContextOptions {
-  equipmentFallback?: EquipmentFallbackFn | null;
   sourcebookResolver?: SourcebookResolverFn | null;
   quirkResolver?: QuirkResolverFn | null;
 }
@@ -94,9 +76,6 @@ export class ParseContext {
   /** Canonical equipment collection and lookup index */
   readonly equipmentRegistry: EquipmentRegistry;
 
-  /** Optional fallback for custom/remote equipment lookup */
-  readonly equipmentFallback: EquipmentFallbackFn | null;
-
   readonly sourcebookResolver: SourcebookResolverFn | null;
 
   readonly quirkResolver: QuirkResolverFn | null;
@@ -111,7 +90,6 @@ export class ParseContext {
   ) {
     this.fileName = fileName;
     this.equipmentRegistry = equipmentRegistry;
-    this.equipmentFallback = options.equipmentFallback ?? null;
     this.sourcebookResolver = options.sourcebookResolver ?? null;
     this.quirkResolver = options.quirkResolver ?? null;
   }
@@ -215,8 +193,7 @@ export class ParseContext {
   // ── Equipment resolution with validation ──
 
   /**
-   * Resolve equipment by name, falling back to the optional hook, and recording
-   * an error if the equipment cannot be found at all.
+   * Resolve equipment by name and record an error if it is missing from the catalog.
    *
    * @param name       Internal name from the file
    * @param field      Diagnostic field label (e.g. "Front Equipment")
@@ -230,19 +207,11 @@ export class ParseContext {
   ): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
-    // 1. Try the local DB and its derived lookup index
     const local = techBase
       ? this.equipmentRegistry.findForTechBase(name, techBase)
       : this.equipmentRegistry.findEquipment(name);
     if (local) return local;
 
-    // 2. Try fallback (future: remote/UUID lookup)
-    if (this.equipmentFallback) {
-      const fallback = this.equipmentFallback(name);
-      if (fallback) return fallback;
-    }
-
-    // 3. Not found - record error
     this.error(field, `Equipment not found: "${name}"`, 'EQUIPMENT_NOT_FOUND');
     return null;
   }

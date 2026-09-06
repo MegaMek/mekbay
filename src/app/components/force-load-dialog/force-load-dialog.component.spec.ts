@@ -1,7 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import { ForceLoadDialogComponent } from './force-load-dialog.component';
 
 describe('ForceLoadDialogComponent', () => {
@@ -12,7 +13,7 @@ describe('ForceLoadDialogComponent', () => {
     });
 
     it('counts every unit across saved-force groups without counting reserve personnel', () => {
-        const force = new LoadForceEntry({
+        const force = createForcePreviewEntryData({
             reserveCount: 4,
             groups: [
                 { units: [{}, {}] },

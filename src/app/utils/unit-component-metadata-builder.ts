@@ -72,7 +72,7 @@ type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
 type ComponentType = ExportComponent['t'];
 
 /** Mirrors SVGMassPrinter.Components while using only canonical parser state. */
-export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] | undefined {
+export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] {
   const components = new Map<string, ExportComponent>();
   addConventionalInfantryWeapons(components, entity);
   addSyntheticStructure(components, entity);

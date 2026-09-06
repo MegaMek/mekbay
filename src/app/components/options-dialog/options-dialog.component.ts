@@ -50,7 +50,6 @@ interface OptionsViewDefinition {
     id: OptionsSectionId;
     title: string;
     description?: string;
-    parentId?: OptionsSectionId;
 }
 
 interface CBTAutomationOptionDefinition {
@@ -104,11 +103,6 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
     },
 ];
 
-const OPTIONS_VIEW_DEFINITIONS_BY_ID = new Map<OptionsSectionId, OptionsViewDefinition>(
-    OPTIONS_VIEW_DEFINITIONS.map(view => [view.id, view])
-);
-
-const TOP_LEVEL_OPTIONS_VIEWS = OPTIONS_VIEW_DEFINITIONS.filter(view => !view.parentId);
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS = 300;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS = 10_000;
 const FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS = 100;
@@ -189,16 +183,13 @@ export class OptionsDialogComponent {
     destroyRef = inject(DestroyRef);
     isIOS = isIOS();
     modalClass = 'wide options-dialog-modal';
-    topLevelViews = TOP_LEVEL_OPTIONS_VIEWS;
+    sections = OPTIONS_VIEW_DEFINITIONS;
     activeTab = signal<OptionsSectionId>('General');
-    navigationStack = signal<OptionsSectionId[]>([]);
+    mobileDetailOpen = signal(false);
     isWideLayout = signal(typeof window !== 'undefined' ? window.matchMedia(WIDE_LAYOUT_QUERY).matches : true);
-    canGoBack = computed(() => this.navigationStack().length > 0);
-    isAtRoot = computed(() => !this.canGoBack());
-    currentViewId = computed<OptionsSectionId>(() => this.navigationStack().at(-1) ?? this.activeTab());
-    currentViewDefinition = computed(() => this.getViewDefinition(this.currentViewId()));
+    currentViewDefinition = computed(() => this.sections.find(section => section.id === this.activeTab())!);
     currentViewDescription = computed(() => this.currentViewDefinition().description);
-    mobileHeaderTitle = computed(() => this.canGoBack() ? this.currentViewDefinition().title : 'Options');
+    mobileHeaderTitle = computed(() => this.mobileDetailOpen() ? this.currentViewDefinition().title : 'Options');
     forceGenFailureSearchWindowMinMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MIN_MS;
     forceGenFailureSearchWindowMaxMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_MAX_MS;
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
@@ -280,67 +271,21 @@ export class OptionsDialogComponent {
         this.destroyRef.onDestroy(() => mediaQuery.removeEventListener('change', onChange));
     }
 
-    private getViewDefinition(viewId: OptionsSectionId): OptionsViewDefinition {
-        return OPTIONS_VIEW_DEFINITIONS_BY_ID.get(viewId) ?? OPTIONS_VIEW_DEFINITIONS_BY_ID.get('General')!;
-    }
-
-    private buildViewPath(viewId: OptionsSectionId): OptionsSectionId[] {
-        const path: OptionsSectionId[] = [];
-        let currentViewId: OptionsSectionId | undefined = viewId;
-
-        while (currentViewId) {
-            path.unshift(currentViewId);
-            currentViewId = this.getViewDefinition(currentViewId).parentId;
-        }
-
-        return path;
-    }
-
-    private getTopLevelSectionId(viewId: OptionsSectionId): OptionsSectionId {
-        let currentView = this.getViewDefinition(viewId);
-
-        while (currentView.parentId) {
-            currentView = this.getViewDefinition(currentView.parentId);
-        }
-
-        return currentView.id;
-    }
-
-    isSectionActive(sectionId: OptionsSectionId): boolean {
-        return this.getTopLevelSectionId(this.currentViewId()) === sectionId;
-    }
-
     selectDesktopSection(sectionId: OptionsSectionId): void {
         this.activeTab.set(sectionId);
-        this.navigationStack.set([]);
+        this.mobileDetailOpen.set(false);
     }
 
     openMobileSection(sectionId: OptionsSectionId): void {
-        this.openView(sectionId);
-    }
-
-    openView(viewId: OptionsSectionId): void {
-        this.activeTab.set(this.getTopLevelSectionId(viewId));
-        this.navigationStack.set(this.buildViewPath(viewId));
-    }
-
-    pushView(viewId: OptionsSectionId): void {
-        this.openView(viewId);
+        this.activeTab.set(sectionId);
+        this.mobileDetailOpen.set(true);
     }
 
     onMobileBack(): void {
-        const stack = this.navigationStack();
-        if (stack.length === 0) {
+        if (this.mobileDetailOpen()) {
+            this.mobileDetailOpen.set(false);
+        } else {
             this.onClose();
-            return;
-        }
-
-        const nextStack = stack.slice(0, -1);
-        this.navigationStack.set(nextStack);
-
-        const nextViewId = nextStack.at(-1);
-        if (nextViewId) {
-            this.activeTab.set(this.getTopLevelSectionId(nextViewId));
         }
     }
 

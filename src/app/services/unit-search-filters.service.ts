@@ -30,7 +30,6 @@ import { DataService } from './data.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
 import type { DropdownOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import { getForcePacks } from '../models/forcepacks.model';
-import { BVCalculatorUtil } from '../utils/bv-calculator.util';
 import { matchesSearch, parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
 import { LoggerService } from './logger.service';
@@ -65,7 +64,7 @@ import {
 } from '../utils/unit-search-shared.util';
 import { executeUnitSearch, type UnitSearchExecutionResult } from '../utils/unit-search-executor.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import { getEffectivePilotingSkill } from '../utils/cbt-common.util';
+import { calculateAdjustedBV, getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
 import { isValidPvNormalizationSettings } from '../utils/pv-normalization.util';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -3782,7 +3781,7 @@ export class UnitSearchFiltersService {
             return unit.bv;
         }
 
-        return BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+        return calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     }
 
     getAdjustedPV(unit: UnitSummary): number {

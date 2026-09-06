@@ -58,9 +58,7 @@ type PendingEndTurnSettlement =
     }>;
 
 function turnCounter(snapshot: CBTUnitSnapshot | null): number | null {
-    if (snapshot && hasMekRuntime(snapshot)) return snapshot.state.turn.turnCounter;
-    if (snapshot && hasNonMekRuntime(snapshot)) return snapshot.state.turn.turnCounter;
-    return null;
+    return snapshot?.state.turn.turnCounter ?? null;
 }
 
 function stateRevision(snapshot: CBTUnitSnapshot | null): number | null {
@@ -1459,23 +1457,11 @@ export class CBTForceUnitCommandDispatcher {
     }
 
     private mekAutomation(): DirectMekAutomationService | null {
-        const candidate = this.injector.get(DirectMekAutomationService, null, { optional: true });
-        return candidate
-            && typeof candidate.prepareCommand === 'function'
-            && typeof candidate.settleBeforeCommand === 'function'
-            && typeof candidate.afterCommand === 'function'
-            ? candidate
-            : null;
+        return this.injector.get(DirectMekAutomationService, null, { optional: true });
     }
 
     private nonMekAutomation(): DirectNonMekAutomationService | null {
-        const candidate = this.injector.get(DirectNonMekAutomationService, null, { optional: true });
-        return candidate
-            && typeof candidate.prepareCommand === 'function'
-            && typeof candidate.settleBeforeCommand === 'function'
-            && typeof candidate.afterCommand === 'function'
-            ? candidate
-            : null;
+        return this.injector.get(DirectNonMekAutomationService, null, { optional: true });
     }
 
     private cancelledMek(instanceId: string): CBTMekUnitCommandResult {

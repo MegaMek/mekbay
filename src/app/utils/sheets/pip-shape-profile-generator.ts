@@ -1,6 +1,6 @@
 import type { PipShapeSpan } from './pip-renderer.types';
 import { SVG_NAMESPACE } from './pip-renderer.shared';
-import { PipShapeProfile } from './pip-shape-profile';
+import { createPipShapeProfile, type PipShapeProfile } from './pip-shape-profile';
 
 export const DEFAULT_PIP_ROW_HEIGHT = 6.1515198;
 export const MIN_PIP_SHAPE_SIZE = 2;
@@ -81,7 +81,7 @@ export class PipShapeProfileGenerator {
                 const spans = this.isPlainRectangle(samplingGeometry)
                     ? this.createRectangleRows(bounds, rowHeight)
                     : this.createGeometryRows(samplingGeometry, bounds, rowHeight);
-                const profile = PipShapeProfile.create(spans);
+                const profile = createPipShapeProfile(spans);
                 return profile ? { profile, transform } : null;
             } catch {
                 return null;

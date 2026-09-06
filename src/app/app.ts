@@ -44,7 +44,6 @@ import { projectBackgroundCatalogProgress } from './models/startup-progress.mode
 import { GameSystem } from './models/common.model';
 import { Router, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
-import { CBTUnitViewModeService } from './services/cbt-unit-view-mode.service';
 import { SeoService } from './services/seo.service';
 
 const ANDROID_PWA_BACK_EXIT_HISTORY_STATE_KEY = 'mekbayAndroidPwaBackExit';
@@ -112,7 +111,6 @@ export class App {
     private router = inject(Router);
     private urlService = inject(UrlService);
     private readonly seoService = inject(SeoService);
-    protected readonly cbtUnitViewMode = inject(CBTUnitViewModeService);
     private savedSearchesService = inject(SavedSearchesService);
     private destroyRef = inject(DestroyRef);
     private overlayContainer = inject(OverlayContainer);

@@ -63,7 +63,9 @@ const optionsService = {
 const injector = {
     get: (token: unknown) => token === OptionsService
         ? optionsService
-        : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
+        : token === LoggerService
+            ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+            : null,
 } as unknown as Injector;
 
 function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
@@ -212,7 +214,9 @@ async function readyCloneForce(): Promise<{
                 ? optionsService
             : token === ToastService
                 ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
-                : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
+                : token === LoggerService
+                    ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+                    : null,
     } as unknown as Injector;
     const record: SerializedCBTForce = {
         version: 2,
@@ -329,7 +333,9 @@ async function readyEntityForce(options: Readonly<{
                 ? optionsService
             : token === DialogsService
                 ? dialogs
-                : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
+                : token === LoggerService
+                    ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+                    : null,
     } as unknown as Injector;
     const record: SerializedCBTForce = {
         version: 2,
@@ -444,7 +450,9 @@ async function readyEntityC3Force(
                 ? dialogs
             : token === ToastService
                 ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
-                : jasmine.createSpyObj<LoggerService>('runtime service', ['error', 'warn']),
+                : token === LoggerService
+                    ? jasmine.createSpyObj<LoggerService>('runtime service', ['error', 'warn'])
+                    : null,
     } as unknown as Injector;
     const record: SerializedCBTForce = {
         version: 2,
@@ -606,7 +614,9 @@ async function readyC3Force(owned = true): Promise<{
                         ? equipmentInteractions
                         : token === ForceDialogsService
                             ? forceDialogs
-                            : jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn']),
+                            : token === LoggerService
+                                ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
+                                : null,
     } as unknown as Injector;
     const record: SerializedCBTForce = {
         version: 2,
@@ -1394,6 +1404,29 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(callsFor(secondMember.id)).toBe(secondCallsBefore);
     });
 
+    it('restores normal BV and C3 invalidation after a command publication throws', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0]!;
+        const baseProjection = spyOn(force, 'getUnitCurrentBaseBattleValue').and.returnValue(100);
+        const c3Projection = spyOn(force, 'getC3State').and.callThrough();
+        member.currentBaseBattleValue();
+        member.c3State();
+        const baseCalls = baseProjection.calls.count();
+        const c3Calls = c3Projection.calls.count();
+        const publication = spyOn(force, 'emitChanged').and.throwError('Publication failed');
+
+        await expectAsync(force.dispatchMekUnitCommand(member.id, {
+            type: 'set-heat', heat: 5,
+        })).toBeRejectedWithError('Publication failed');
+
+        publication.and.callThrough();
+        force.emitChanged([member.id]);
+        member.currentBaseBattleValue();
+        member.c3State();
+        expect(baseProjection.calls.count()).toBe(baseCalls + 1);
+        expect(c3Projection.calls.count()).toBe(c3Calls + 1);
+    });
+
     it('projects current damage and pristine Entity BV through the same force adjustments', async () => {
         const laser = new WeaponEquipment({
             id: 'DamagePolicyLaser',
@@ -1749,10 +1782,11 @@ describe('CBTForce V2 encounter persistence', () => {
         };
         const seam = force as unknown as {
             c3Encounter: {
-                replaceC3Configuration(networks: readonly EncounterNetwork[], positions: readonly []): void;
+                networks: readonly EncounterNetwork[];
+                c3Positions: readonly [];
             };
         };
-        seam.c3Encounter.replaceC3Configuration([invalid], []);
+        seam.c3Encounter = { networks: [invalid], c3Positions: [] };
 
         await expectAsync(force.serializeForPersistence())
             .toBeRejectedWithError(/Cannot persist non-canonical C3 networks/u);

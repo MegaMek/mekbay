@@ -2,23 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
+import { buildSwipeBindingPlan } from './page-viewer-swipe-binding';
 
-import { PageViewerSwipeBindingService } from './page-viewer-swipe-binding.service';
-
-describe('PageViewerSwipeBindingService', () => {
-    let service: PageViewerSwipeBindingService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [PageViewerSwipeBindingService]
-        });
-
-        service = TestBed.inject(PageViewerSwipeBindingService);
-    });
-
+describe('page-viewer swipe-binding', () => {
     it('builds attached-unit mapping and clear list for non-winning slots', () => {
-        const plan = service.buildPlan({
+        const plan = buildSwipeBindingPlan({
             slots: [
                 { slotIndex: 0, unitIndex: 1, hasAttachedSvg: true, isSvgAttachedToSlot: true },
                 { slotIndex: 1, unitIndex: 1, hasAttachedSvg: false, isSvgAttachedToSlot: false },
@@ -37,7 +25,7 @@ describe('PageViewerSwipeBindingService', () => {
     });
 
     it('uses visible slots directly in add-only mode', () => {
-        const plan = service.buildPlan({
+        const plan = buildSwipeBindingPlan({
             slots: [
                 { slotIndex: 0, unitIndex: 0, hasAttachedSvg: true, isSvgAttachedToSlot: true },
                 { slotIndex: 1, unitIndex: null, hasAttachedSvg: false, isSvgAttachedToSlot: false },

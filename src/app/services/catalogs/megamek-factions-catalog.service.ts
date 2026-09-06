@@ -32,11 +32,9 @@ export class MegaMekFactionsCatalogService extends CatalogBaseService<MegaMekFac
         return 'megamek_factions';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/generated/factions-lite.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getFactions(): MegaMekFactions {
         return Object.fromEntries(this.factions.entries());

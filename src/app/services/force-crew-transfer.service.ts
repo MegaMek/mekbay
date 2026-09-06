@@ -4,7 +4,7 @@
 import { Injectable } from '@angular/core';
 import { ASForceUnit } from '../models/as-force-unit.model';
 import { GameSystem } from '../models/common.model';
-import type { LoadForceUnit } from '../models/load-force-entry.model';
+import type { ForcePreviewUnit } from '../models/force-preview.model';
 import {
     isCBTForceMember,
     type CBTForceMember,
@@ -33,7 +33,7 @@ export class ForceCrewTransferService {
         }
     }
 
-    async applyGeneratedOverrides(created: ForceMember, input: LoadForceUnit): Promise<void> {
+    async applyGeneratedOverrides(created: ForceMember, input: ForcePreviewUnit): Promise<void> {
         if (created instanceof ASForceUnit) {
             if (input.alias) created.setPilotName(input.alias);
             if (input.commander) created.setFormationCommander(true, false);

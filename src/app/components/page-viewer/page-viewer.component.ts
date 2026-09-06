@@ -49,31 +49,22 @@ import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { PageViewerNavigationService } from './internal/page-viewer-navigation.service';
 import { PageViewerRenderModelService } from './internal/page-viewer-render-model.service';
 import { PageViewerViewStateService } from './internal/page-viewer-view-state.service';
-import { PageViewerActiveRenderService } from './internal/page-viewer-active-render.service';
-import { PageViewerActiveDisplayService } from './internal/page-viewer-active-display.service';
+import { clearActivePageElements, prepareActiveDisplay, prepareActiveInPlaceUpdate } from './internal/page-viewer-active-display';
 import { PageViewerOverlayService } from './internal/page-viewer-overlay.service';
-import { PageViewerShadowNavigationService } from './internal/page-viewer-shadow-navigation.service';
 import {
     pageViewerShadowKey,
     PageViewerShadowRenderService,
 } from './internal/page-viewer-shadow-render.service';
-import { PageViewerDisplayWindowService } from './internal/page-viewer-display-window.service';
-import { PageViewerForceChangeService } from './internal/page-viewer-force-change.service';
-import { PageViewerForceUnitsReactionService } from './internal/page-viewer-force-units-reaction.service';
-import { PageViewerOptionReactionService } from './internal/page-viewer-option-reaction.service';
+import { buildForceChangePlan } from './internal/page-viewer-display-window';
 import { PageViewerPresentationService } from './internal/page-viewer-presentation.service';
-import { PageViewerSelectionChangeService } from './internal/page-viewer-selection-change.service';
-import { PageViewerUiGlueService } from './internal/page-viewer-ui-glue.service';
-import { PageViewerSwipeSlotService } from './internal/page-viewer-swipe-slot.service';
+import { buildViewerResizePlan, resolvePageSelectionUnit } from './internal/page-viewer-ui-glue';
+import { resolveSwipeVisibleOffsets, buildSwipeInitialRangePlan, resolveSwipeVisibleOffsetRefresh, buildSwipeSlotExtensionPlan } from './internal/page-viewer-swipe-slot';
 import { PageViewerSwipeLoadService } from './internal/page-viewer-swipe-load.service';
 import { PageViewerSwipeFrameService } from './internal/page-viewer-swipe-frame.service';
 import { PageViewerSwipeAnimationService } from './internal/page-viewer-swipe-animation.service';
-import { PageViewerSwipeDecisionService } from './internal/page-viewer-swipe-decision.service';
-import { PageViewerSwipeSessionService } from './internal/page-viewer-swipe-session.service';
-import { PageViewerSwipeBindingService } from './internal/page-viewer-swipe-binding.service';
+import { resolveSwipeEndPlan, resolveShadowPagesToMove, resolveSwipeViewStartIndex, resolveSwipeReversePlan } from './internal/page-viewer-swipe-decision';
 import { PageViewerSwipeDomService } from './internal/page-viewer-swipe-dom.service';
-import { PageViewerSwipeRenderPlanService } from './internal/page-viewer-swipe-render-plan.service';
-import { PageViewerSwipeRendererService } from './internal/page-viewer-swipe-renderer.service';
+import { buildSwipeRenderUpdate } from './internal/page-viewer-swipe-renderer';
 import type { PageViewerMember, PageViewerPageDescriptor, PageViewerShadowDescriptor, ViewportTransform } from './internal/types';
 import { PageViewerSheetSourceService } from './internal/page-viewer-sheet-source.service';
 import { PageViewerMekRuntimeService } from './internal/page-viewer-mek-runtime.service';
@@ -108,28 +99,13 @@ type ShadowDirection = 'left' | 'right';
         PageViewerNavigationService,
         PageViewerRenderModelService,
         PageViewerViewStateService,
-        PageViewerActiveDisplayService,
-        PageViewerActiveRenderService,
         PageViewerOverlayService,
-        PageViewerShadowNavigationService,
         PageViewerShadowRenderService,
-        PageViewerDisplayWindowService,
-        PageViewerForceChangeService,
-        PageViewerForceUnitsReactionService,
-        PageViewerOptionReactionService,
         PageViewerPresentationService,
-        PageViewerSelectionChangeService,
-        PageViewerUiGlueService,
-        PageViewerSwipeSlotService,
         PageViewerSwipeLoadService,
         PageViewerSwipeFrameService,
         PageViewerSwipeAnimationService,
-        PageViewerSwipeDecisionService,
-        PageViewerSwipeSessionService,
-        PageViewerSwipeBindingService,
         PageViewerSwipeDomService,
-        PageViewerSwipeRenderPlanService,
-        PageViewerSwipeRendererService,
         PageViewerSheetSourceService,
         PageViewerMekInteractionService,
         PageViewerMekRuntimeService,
@@ -152,25 +128,13 @@ export class PageViewerComponent implements AfterViewInit {
     private pageViewerNavigation = inject(PageViewerNavigationService);
     private pageViewerRenderModel = inject(PageViewerRenderModelService);
     private pageViewerViewState = inject(PageViewerViewStateService);
-    private pageViewerActiveDisplay = inject(PageViewerActiveDisplayService);
-    private pageViewerActiveRender = inject(PageViewerActiveRenderService);
     private pageViewerOverlay = inject(PageViewerOverlayService);
-    private pageViewerShadowNavigation = inject(PageViewerShadowNavigationService);
     private pageViewerShadowRender = inject(PageViewerShadowRenderService);
-    private pageViewerForceChange = inject(PageViewerForceChangeService);
-    private pageViewerForceUnitsReaction = inject(PageViewerForceUnitsReactionService);
-    private pageViewerOptionReaction = inject(PageViewerOptionReactionService);
     private pageViewerPresentation = inject(PageViewerPresentationService);
-    private pageViewerSelectionChange = inject(PageViewerSelectionChangeService);
-    private pageViewerUiGlue = inject(PageViewerUiGlueService);
-    private pageViewerSwipeSlot = inject(PageViewerSwipeSlotService);
     private pageViewerSwipeLoad = inject(PageViewerSwipeLoadService);
     private pageViewerSwipeFrame = inject(PageViewerSwipeFrameService);
     private pageViewerSwipeAnimation = inject(PageViewerSwipeAnimationService);
-    private pageViewerSwipeDecision = inject(PageViewerSwipeDecisionService);
-    private pageViewerSwipeSession = inject(PageViewerSwipeSessionService);
     private pageViewerSwipeDom = inject(PageViewerSwipeDomService);
-    private pageViewerSwipeRenderer = inject(PageViewerSwipeRendererService);
     private pageViewerSheetSource = inject(PageViewerSheetSourceService);
     private pageViewerMekInteractions = inject(PageViewerMekInteractionService);
     private pageViewerMekRuntime = inject(PageViewerMekRuntimeService);
@@ -238,7 +202,7 @@ export class PageViewerComponent implements AfterViewInit {
         let anyPickerOpen = false;
 
         for (const unitId of displayedIds) {
-            if (this.pageViewerMekRuntime.isPickerOpen(unitId)
+            if (this.pageViewerMekInteractions.isPickerOpen(unitId)
                 || this.pageViewerEntityRuntime.isPickerOpen(unitId)) {
                 anyPickerOpen = true;
                 break;
@@ -413,7 +377,7 @@ export class PageViewerComponent implements AfterViewInit {
 
             // Only `unit` and `viewInitialized` belong to this effect's dependency
             // set.  When there is no current unit the async body reaches the
-            // selection-plan reads synchronously (there is no `await load()`), so
+            // selection reads synchronously (there is no `await load()`), so
             // `displayedUnits()` used to become an accidental dependency.  The
             // subsequent `displayUnit()` clears that signal and retriggered this
             // effect forever, starving mechanics loading on the ADD path.
@@ -435,49 +399,12 @@ export class PageViewerComponent implements AfterViewInit {
                     return;
                 }
 
-                const selectionPlan = this.pageViewerSelectionChange.buildPlan({
-                    previousUnit,
-                    currentUnit,
-                    displayedUnits: this.displayedUnits(),
-                    allUnits: this.forceUnits(),
-                    selectionRedisplaySuppressed: this.pageViewerNavigation.consumeSelectionRedisplaySuppression(previousUnit?.id ?? null, currentUnit?.id ?? null)
-                });
-
-                if (selectionPlan.unitToSave) {
-                    this.saveViewState(selectionPlan.unitToSave);
-                }
-
-                if (selectionPlan.shouldUpdateHighlight) {
-                    untracked(() => {
-                        this.pageViewerPresentation.updateSelectedPageHighlight(this.pageElements, selectionPlan.selectedUnitId);
-                    });
-                } else if (selectionPlan.shouldDisplay) {
-                    untracked(() => {
-                        if (selectionPlan.nextViewStartIndex !== null) {
-                            this.viewStartIndex.set(selectionPlan.nextViewStartIndex);
-                        }
-                        this.displayUnit({ fromSwipe: selectionPlan.fromSwipe });
-                    });
-                }
-
-                previousUnit = selectionPlan.nextPreviousUnit;
+                this.applySelectionChange(previousUnit, currentUnit);
+                previousUnit = currentUnit;
             })());
         }, { injector: this.injector });
 
-        // Watch for force units changes (additions, removals, reordering)
-        effect(() => {
-            const allUnits = this.forceUnits();
-            const currentUnitIds = allUnits.map(u => u.id);
-
-            const forceUnitsReaction = this.pageViewerForceUnitsReaction.evaluate({
-                currentUnitIds,
-                viewInitialized: this.viewInitialized()
-            });
-
-            if (forceUnitsReaction.shouldHandleChange) {
-                untracked(() => this.handleForceUnitsChanged(forceUnitsReaction.previousUnitCount));
-            }
-        }, { injector: this.injector });
+        this.watchForceUnits();
 
         effect(() => {
             this.pageViewerState.setForceUnits(this.forceUnits());
@@ -526,37 +453,43 @@ export class PageViewerComponent implements AfterViewInit {
             });
         }, { injector: this.injector });
 
-        // Watch for allowMultipleActiveSheets option changes
-        effect(() => {
-            const allowMultiple = this.optionsService.options().allowMultipleActiveSheets;
-
-            if (this.pageViewerOptionReaction.shouldRedisplayForAllowMultipleChange({
-                allowMultiple,
-                viewInitialized: this.viewInitialized(),
-                isSwiping: this.isSwiping
-            })) {
-                untracked(() => {
-                    this.displayUnit();
-                });
-            }
-        });
-
-        // Watch for readOnly changes (e.g., after cloning a shared force)
-        effect(() => {
-            const isReadOnly = this.readOnly();
-
-            if (this.pageViewerOptionReaction.shouldRedisplayForReadOnlyChange({
-                isReadOnly,
-                viewInitialized: this.viewInitialized(),
-                isSwiping: this.isSwiping
-            })) {
-                untracked(() => {
-                    this.displayUnit();
-                });
-            }
-        });
+        this.watchDisplayOptions();
 
         this.destroyRef.onDestroy(() => this.cleanup());
+    }
+
+    private watchForceUnits(): void {
+        let previousUnitIds: string[] = [];
+        effect(() => {
+            const currentUnitIds = this.forceUnits().map(unit => unit.id);
+            const initialized = this.viewInitialized();
+            const previousUnitCount = previousUnitIds.length;
+            const changed = currentUnitIds.length !== previousUnitCount
+                || currentUnitIds.some((id, index) => id !== previousUnitIds[index]);
+            previousUnitIds = currentUnitIds;
+
+            if (initialized && changed) {
+                untracked(() => this.handleForceUnitsChanged(previousUnitCount));
+            }
+        }, { injector: this.injector });
+    }
+
+    private watchDisplayOptions(): void {
+        let previousAllowMultiple: boolean | undefined;
+        let previousReadOnly: boolean | undefined;
+        effect(() => {
+            const allowMultiple = this.optionsService.options().allowMultipleActiveSheets;
+            const readOnly = this.readOnly();
+            const initialized = this.viewInitialized();
+            const changed = (previousAllowMultiple !== undefined && previousAllowMultiple !== allowMultiple)
+                || (previousReadOnly !== undefined && previousReadOnly !== readOnly);
+            previousAllowMultiple = allowMultiple;
+            previousReadOnly = readOnly;
+
+            if (changed && initialized && !this.isSwiping) {
+                untracked(() => this.displayUnit());
+            }
+        }, { injector: this.injector });
     }
 
     ngAfterViewInit(): void {
@@ -654,7 +587,7 @@ export class PageViewerComponent implements AfterViewInit {
         const allUnits = this.forceUnits();
         const totalUnits = allUnits.length;
         const effectiveVisible = this.effectiveVisiblePageCount();
-        const initialRangePlan = this.pageViewerSwipeSlot.buildInitialRangePlan({
+        const initialRangePlan = buildSwipeInitialRangePlan({
             totalUnits,
             effectiveVisible,
             baseDisplayStartIndex: this.baseDisplayStartIndex
@@ -664,7 +597,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Store base positions for visible pages
         this.swipeBasePositions = this.zoomPanService.getPagePositions(effectiveVisible);
-        const initialVisibleOffsets = this.pageViewerSwipeSlot.resolveVisibleOffsets({
+        const initialVisibleOffsets = resolveSwipeVisibleOffsets({
             containerWidth: this.containerRef().nativeElement.clientWidth,
             scale: this.zoomPanService.scale(),
             baseLeft: this.swipeBasePositions[0] ?? 0,
@@ -673,17 +606,11 @@ export class PageViewerComponent implements AfterViewInit {
             pageWidth: PAGE_WIDTH,
             pageGap: PAGE_GAP
         });
-        const sessionStartState = this.pageViewerSwipeSession.buildStartState({
-            viewStartIndex: this.viewStartIndex(),
-            units: allUnits,
-            initialRangePlan,
-            initialVisibleOffsets
-        });
-        this.baseDisplayStartIndex = sessionStartState.baseDisplayStartIndex;
-        this.swipeAllUnits = sessionStartState.swipeAllUnits;
-        this.swipeLeftmostOffset = sessionStartState.swipeLeftmostOffset;
-        this.swipeRightmostOffset = sessionStartState.swipeRightmostOffset;
-        this.lastSwipeVisibleOffsets = sessionStartState.lastSwipeVisibleOffsets;
+        this.baseDisplayStartIndex = this.viewStartIndex();
+        this.swipeAllUnits = allUnits;
+        this.swipeLeftmostOffset = initialRangePlan.leftmostOffset;
+        this.swipeRightmostOffset = initialRangePlan.rightmostOffset;
+        this.lastSwipeVisibleOffsets = initialVisibleOffsets;
 
         // Create initial slot-based swipe pages
         this.setupSwipeSlots();
@@ -703,7 +630,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         this.pageViewerSwipeFrame.setPendingTranslateX(totalDx);
 
-        const nextVisibleOffsets = this.pageViewerSwipeSlot.resolveVisibleOffsets({
+        const nextVisibleOffsets = resolveSwipeVisibleOffsets({
             containerWidth: this.containerRef().nativeElement.clientWidth,
             scale: this.zoomPanService.scale(),
             baseLeft: this.swipeBasePositions[0] ?? 0,
@@ -712,7 +639,7 @@ export class PageViewerComponent implements AfterViewInit {
             pageWidth: PAGE_WIDTH,
             pageGap: PAGE_GAP
         });
-        const refreshState = this.pageViewerSwipeSlot.resolveVisibleOffsetRefresh({
+        const refreshState = resolveSwipeVisibleOffsetRefresh({
             currentVisibleOffsets: this.lastSwipeVisibleOffsets,
             nextVisibleOffsets
         });
@@ -738,7 +665,7 @@ export class PageViewerComponent implements AfterViewInit {
         const scale = this.zoomPanService.scale();
         const scaledPageStep = PAGE_WIDTH * scale + PAGE_GAP * scale;
         const totalUnits = this.forceUnits().length;
-        const swipeEndPlan = this.pageViewerSwipeDecision.resolveSwipeEndPlan({
+        const swipeEndPlan = resolveSwipeEndPlan({
             totalDx,
             velocity,
             scaledPageStep,
@@ -777,7 +704,7 @@ export class PageViewerComponent implements AfterViewInit {
                 }
                 
                 // Calculate new view start index
-                const newStartIndex = this.pageViewerSwipeDecision.resolveViewStartIndex({
+                const newStartIndex = resolveSwipeViewStartIndex({
                     baseDisplayStartIndex: this.baseDisplayStartIndex,
                     pagesToMove,
                     totalUnits
@@ -963,7 +890,7 @@ export class PageViewerComponent implements AfterViewInit {
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         const currentTranslateX = this.getCurrentSwipeWrapperTranslateX();
         const scale = this.zoomPanService.scale();
-        const reversePlan = this.pageViewerSwipeDecision.resolveReversePlan({
+        const reversePlan = resolveSwipeReversePlan({
             currentTranslateX,
             fullPageDistance: (PAGE_WIDTH + PAGE_GAP) * scale
         });
@@ -1224,7 +1151,7 @@ export class PageViewerComponent implements AfterViewInit {
         const effectiveVisible = this.effectiveVisiblePageCount();
         const scale = this.zoomPanService.scale();
         const totalUnits = this.swipeAllUnits.length;
-        const { left: leftmostVisibleOffset, right: rightmostVisibleOffset } = this.pageViewerSwipeSlot.resolveVisibleOffsets({
+        const { left: leftmostVisibleOffset, right: rightmostVisibleOffset } = resolveSwipeVisibleOffsets({
             containerWidth: this.containerRef().nativeElement.clientWidth,
             scale,
             baseLeft: this.swipeBasePositions[0] ?? 0,
@@ -1237,7 +1164,7 @@ export class PageViewerComponent implements AfterViewInit {
         const content = this.contentRef().nativeElement;
         const baseLeft = this.swipeBasePositions[0] ?? 0;
 
-        const extensionPlan = this.pageViewerSwipeSlot.buildExtensionPlan({
+        const extensionPlan = buildSwipeSlotExtensionPlan({
             totalUnits,
             effectiveVisible,
             baseDisplayStartIndex: this.baseDisplayStartIndex,
@@ -1454,7 +1381,7 @@ export class PageViewerComponent implements AfterViewInit {
             swipeSlotSvgs: this.swipeSlotSvgs,
             scaledPageWidth
         });
-        const renderUpdate = this.pageViewerSwipeRenderer.buildUpdate({
+        const renderUpdate = buildSwipeRenderUpdate({
             slots: slotStates,
             units: allUnits.map((unit) => ({
                 unitId: unit.id,
@@ -1528,14 +1455,13 @@ export class PageViewerComponent implements AfterViewInit {
         this.swipeSlotSvgs = slotState.swipeSlotSvgs;
         this.swipeTotalSlots = slotState.swipeTotalSlots;
         this.swipeBasePositions = [];
-        const resetState = this.pageViewerSwipeSession.buildResetState();
-        this.baseDisplayStartIndex = resetState.baseDisplayStartIndex;
-        this.swipeDirection = resetState.swipeDirection;
-        this.lastSwipeTranslateX = resetState.lastSwipeTranslateX;
-        this.lastSwipeVisibleOffsets = resetState.lastSwipeVisibleOffsets;
-        this.swipeLeftmostOffset = resetState.swipeLeftmostOffset;
-        this.swipeRightmostOffset = resetState.swipeRightmostOffset;
-        this.swipeAllUnits = resetState.swipeAllUnits;
+        this.baseDisplayStartIndex = 0;
+        this.swipeDirection = 'none';
+        this.lastSwipeTranslateX = 0;
+        this.lastSwipeVisibleOffsets = null;
+        this.swipeLeftmostOffset = 0;
+        this.swipeRightmostOffset = 0;
+        this.swipeAllUnits = [];
     }
 
     /**
@@ -1653,7 +1579,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.pageViewerViewState.saveSharedViewState(this.captureCurrentViewState());
 
         const newVisibleCount = this.effectiveVisiblePageCount();
-        const resizePlan = this.pageViewerUiGlue.buildResizePlan({
+        const resizePlan = buildViewerResizePlan({
             previousVisibleCount,
             nextVisibleCount: newVisibleCount,
             hasCurrentUnit: !!this.unit(),
@@ -1662,10 +1588,6 @@ export class PageViewerComponent implements AfterViewInit {
             totalUnits: this.forceUnits().length,
             renderedShadowCount: this.shadowPageComponentRefs().length
         });
-
-        if (resizePlan.shouldCloseInteractionOverlays) {
-            this.closeInteractionOverlays();
-        }
 
         if (resizePlan.shouldRedisplay) {
             this.displayUnit({ fromSwipe: true });
@@ -1898,13 +1820,13 @@ export class PageViewerComponent implements AfterViewInit {
         // Note: Shadow pages are cleaned up smartly in renderPages() to avoid flicker
 
         // Clear existing page DOM elements
-        this.pageElements = this.pageViewerActiveDisplay.clearActivePageElements(content, this.pageElements);
+        this.pageElements = clearActivePageElements(content, this.pageElements);
         this.displayedUnits.set([]);
 
         this.loadError.set(null);
         this.currentSvg.set(null);
 
-        const displayPreparation = this.pageViewerActiveDisplay.prepareDisplay({
+        const displayPreparation = prepareActiveDisplay({
             currentUnit,
             allUnits: this.forceUnits(),
             visiblePages: this.effectiveVisiblePageCount(),
@@ -1961,7 +1883,7 @@ export class PageViewerComponent implements AfterViewInit {
             this.clearPages();
             return;
         }
-        const inPlacePreparation = this.pageViewerActiveDisplay.prepareInPlaceUpdate({
+        const inPlacePreparation = prepareActiveInPlaceUpdate({
             allUnits,
             visiblePages,
             viewStartIndex: this.viewStartIndex(),
@@ -2016,6 +1938,27 @@ export class PageViewerComponent implements AfterViewInit {
         });
     }
 
+    private applySelectionChange(previousUnit: PageViewerMember | null, currentUnit: PageViewerMember | null): void {
+        const suppressed = this.pageViewerNavigation.consumeSelectionRedisplaySuppression(previousUnit?.id ?? null, currentUnit?.id ?? null);
+        if (previousUnit && previousUnit !== currentUnit) {
+            this.saveViewState(previousUnit);
+        }
+        if (suppressed) {
+            return;
+        }
+
+        if (currentUnit && this.displayedUnits().some(unit => unit.id === currentUnit.id)) {
+            this.pageViewerPresentation.updateSelectedPageHighlight(this.pageElements, currentUnit.id);
+            return;
+        }
+
+        const index = currentUnit ? this.forceUnits().indexOf(currentUnit) : -1;
+        if (index >= 0) {
+            this.viewStartIndex.set(index);
+        }
+        this.displayUnit({ fromSwipe: previousUnit === null });
+    }
+
     private renderPages(options: { fromSwipe?: boolean } = {}): void {
         const fromSwipe = options.fromSwipe ?? false;
         const renderVersion = this.displayVersion;
@@ -2030,11 +1973,7 @@ export class PageViewerComponent implements AfterViewInit {
             // Smart cleanup: remove only shadows that will overlap with active sheets
             // This prevents the "blink" effect when transitioning
             const activeUnitIds = new Set(this.displayedUnits().map(u => u.id));
-            this.shadowPageElements = this.pageViewerActiveRender.pruneOverlappingShadows({
-                shadowPageElements: this.shadowPageElements,
-                activeUnitIds,
-                removeShadowPageElement: (element) => this.removeShadowPageElement(element)
-            });
+            this.pruneOverlappingShadows(activeUnitIds);
 
             const displayedUnitIds = new Set<string>();
             const activeDescriptors = this.rewriteActivePages();
@@ -2064,12 +2003,28 @@ export class PageViewerComponent implements AfterViewInit {
         slotIndex: number;
         descriptor: PageViewerPageDescriptor | undefined;
     }): void {
-        this.pageViewerActiveRender.bindActivePageWrapper({
-            ...options,
-            setWrapperSelectedState: (wrapper, isSelected) => this.setWrapperSelectedState(wrapper, isSelected),
-            applyWrapperLayout: (wrapper, layoutOptions) => this.applyWrapperLayout(wrapper, layoutOptions),
-            attachSvgToWrapper: (attachOptions) => this.attachSvgToWrapper(attachOptions),
-            bindWrapperInteractiveLayers: (wrapper, unit, svg, overlayMode) => this.bindWrapperInteractiveLayers(wrapper, unit, svg, overlayMode)
+        const { unit, wrapper, slotIndex, descriptor } = options;
+        const svg = unit.recordSheet();
+        if (!svg || !descriptor) {
+            return;
+        }
+
+        wrapper.dataset['unitId'] = unit.id;
+        wrapper.dataset['unitIndex'] = String(descriptor.unitIndex);
+        this.setWrapperSelectedState(wrapper, descriptor.isSelected);
+        this.applyWrapperLayout(wrapper, { originalLeft: descriptor.originalLeft });
+        this.attachSvgToWrapper({ wrapper, svg, setAsCurrent: slotIndex === 0 });
+        this.bindWrapperInteractiveLayers(wrapper, unit, svg, descriptor.overlayMode);
+    }
+
+    private pruneOverlappingShadows(activeUnitIds: ReadonlySet<string>): void {
+        this.shadowPageElements = this.shadowPageElements.filter(element => {
+            const unitId = element.dataset['unitId'];
+            if (unitId && activeUnitIds.has(unitId) && element.dataset['renderMode'] !== 'declarative-shadow') {
+                this.removeShadowPageElement(element);
+                return false;
+            }
+            return true;
         });
     }
 
@@ -2087,30 +2042,22 @@ export class PageViewerComponent implements AfterViewInit {
         this.zoomPanService.setDisplayedPages(this.pageElements.length);
         this.syncZoomPanTransformTargets();
 
-        const finalizePlan = this.pageViewerActiveRender.buildFinalizePlan({
-            applyCurrentTransform: options.applyCurrentTransform ?? false,
-            initialRenderComplete: this.initialRenderComplete,
-            fromSwipe: options.fromSwipe ?? false
-        });
-
-        if (finalizePlan.shouldApplyCurrentTransform) {
+        if (options.applyCurrentTransform) {
             this.zoomPanService.applyCurrentTransform();
-        } else if (finalizePlan.shouldResetView) {
+        } else {
             this.updateDimensions();
-            this.zoomPanService.resetView();
-        } else if (finalizePlan.shouldRestoreViewState) {
-            this.updateDimensions();
-            this.restoreViewState({ fromSwipe: finalizePlan.fromSwipe });
+            if (this.initialRenderComplete) {
+                this.restoreViewState({ fromSwipe: options.fromSwipe ?? false });
+            } else {
+                this.zoomPanService.resetView();
+            }
         }
 
         this.setFluffImageVisibility();
         this.scheduleRenderShadowPages();
 
-        if (finalizePlan.shouldFlushQueuedDirectionalNavigation) {
+        if (!options.applyCurrentTransform) {
             this.flushQueuedDirectionalNavigation();
-        }
-
-        if (finalizePlan.shouldMarkInitialRenderComplete) {
             this.initialRenderComplete = true;
         }
     }
@@ -2234,27 +2181,27 @@ export class PageViewerComponent implements AfterViewInit {
         const effectiveVisible = this.effectiveVisiblePageCount();
         const rawDirection = clickedShadow.dataset['shadowDirection'];
         const scale = this.zoomPanService.scale();
-        const shadowNavigationPlan = this.pageViewerShadowNavigation.buildPlan({
-            rawDirection,
-            source,
-            unitId: unit.id,
+        const direction = rawDirection === 'right' ? 'right' : 'left';
+        const pagesToMove = resolveShadowPagesToMove({
+            direction,
             currentStartIndex,
             effectiveVisible,
             targetIndex,
-            totalUnits,
-            scale
+            totalUnits
+        });
+        const targetOffset = -pagesToMove * ((PAGE_WIDTH + PAGE_GAP) * scale);
+        const nextViewStartIndex = resolveSwipeViewStartIndex({
+            baseDisplayStartIndex: currentStartIndex,
+            pagesToMove,
+            totalUnits
         });
         
         // Remove any stale 'leaving-page' classes from previous interrupted animations
         this.pageElements.forEach(el => this.renderer.removeClass(el, 'leaving-page'));
 
-        if (shadowNavigationPlan.shouldStartTransition) {
+        if (rawDirection === 'left' || rawDirection === 'right') {
             this.pageViewerViewState.saveSharedViewState(this.captureCurrentViewState());
-            this.pageViewerShadowNavigation.startTransitionIfNeeded({
-                plan: shadowNavigationPlan,
-                source,
-                unitId: unit.id
-            });
+            this.pageViewerNavigation.startTransition(this.pageViewerNavigation.buildRequest(direction, source), unit.id);
         }
         
         // Replace the cloned SVG with the real SVG in the shadow wrapper
@@ -2288,7 +2235,7 @@ export class PageViewerComponent implements AfterViewInit {
         
         // Store state for animation
         this.swipeVersion++;
-        this.pageViewerSwipeAnimation.setPendingPagesToMove(shadowNavigationPlan.pagesToMove);
+        this.pageViewerSwipeAnimation.setPendingPagesToMove(pagesToMove);
         this.baseDisplayStartIndex = currentStartIndex;
         
         const animationVersion = this.swipeVersion;
@@ -2296,13 +2243,13 @@ export class PageViewerComponent implements AfterViewInit {
         // Create incoming shadow pages that will slide into view during animation
         // These are the pages beyond the clicked shadow in the direction of movement
         if (rawDirection) {
-            this.createIncomingShadowPages(clickedShadow, targetIndex, shadowNavigationPlan.direction, shadowNavigationPlan.pagesToMove, scale, showFluff, allUnits, animationVersion);
+            this.createIncomingShadowPages(clickedShadow, targetIndex, direction, pagesToMove, scale, showFluff, allUnits, animationVersion);
         }
 
         this.startSwipeAnimation({
             durationMs: 300,
             easing: 'ease-out',
-            transform: `translate3d(${shadowNavigationPlan.targetOffset}px, 0, 0)`,
+            transform: `translate3d(${targetOffset}px, 0, 0)`,
             onComplete: () => {
                 this.pageViewerSwipeAnimation.clearPendingPagesToMove();
                 
@@ -2311,7 +2258,7 @@ export class PageViewerComponent implements AfterViewInit {
                 }
                 
                 // Update view start index
-                this.pageViewerNavigation.finishTransition(shadowNavigationPlan.nextViewStartIndex, unit.id);
+                this.pageViewerNavigation.finishTransition(nextViewStartIndex, unit.id);
 
                 // Reset wrapper transform before re-rendering the steady-state layout.
                 swipeWrapper.style.transition = 'none';
@@ -2448,7 +2395,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         const handlePageSelection = (event: Event) => {
             if (this.readOnly()) return;
-            const clickedUnit = this.pageViewerUiGlue.resolvePageSelectionUnit({
+            const clickedUnit = resolvePageSelectionUnit({
                 eventTarget: event.target,
                 pointerMoved: this.zoomPanService.pointerMoved,
                 isPanning: this.zoomPanService.isPanning,
@@ -2527,43 +2474,31 @@ export class PageViewerComponent implements AfterViewInit {
      */
     private handleForceUnitsChanged(previousUnitCount: number): void {
         const allUnits = this.forceUnits();
-
-        const forceChangePlan = this.pageViewerForceChange.buildActionPlan({
-            allUnits,
-            displayedUnits: this.displayedUnits(),
-            selectedUnitId: this.unit()?.id ?? null,
-            visibleCount: this.effectiveVisiblePageCount(),
-            previousUnitCount,
-            currentViewStartIndex: this.viewStartIndex(),
-            hasPageElements: this.pageElements.length > 0
-        });
-
-        if (forceChangePlan.shouldClearPages) {
+        if (allUnits.length === 0) {
             this.clearPages();
-        }
-        if (forceChangePlan.shouldClearShadows) {
-            this.clearShadowPages();
-        }
-
-        if (forceChangePlan.shouldClearPages || forceChangePlan.shouldClearShadows) {
             return;
         }
 
-        if (forceChangePlan.shouldUpdateDimensions) {
-            this.updateDimensions();
-        }
+        const selectedUnitId = this.unit()?.id ?? null;
+        const plan = buildForceChangePlan({
+            allUnits,
+            displayedUnits: this.displayedUnits(),
+            selectedUnitId,
+            visibleCount: this.effectiveVisiblePageCount(),
+            previousUnitCount,
+            currentViewStartIndex: this.viewStartIndex()
+        });
 
-        if (forceChangePlan.nextViewStartIndex !== null) {
-            this.viewStartIndex.set(forceChangePlan.nextViewStartIndex);
+        this.updateDimensions();
+        if (plan.nextViewStartIndex !== this.viewStartIndex()) {
+            this.viewStartIndex.set(plan.nextViewStartIndex);
         }
+        if (!plan.needsRedisplay) return;
 
-        if (forceChangePlan.shouldCloseInteractionOverlays) {
-            this.closeInteractionOverlays();
-        }
-
-        if (forceChangePlan.renderStrategy === 'in-place' && forceChangePlan.preserveSelectedUnitId) {
-            this.updateDisplayedPagesInPlace({ preserveSelectedUnitId: forceChangePlan.preserveSelectedUnitId });
-        } else if (forceChangePlan.renderStrategy === 'full') {
+        this.closeInteractionOverlays();
+        if (selectedUnitId && plan.preserveSelectedSlot && this.pageElements.length > 0 && !plan.modeChanged) {
+            this.updateDisplayedPagesInPlace({ preserveSelectedUnitId: selectedUnitId });
+        } else {
             this.displayUnit();
         }
     }

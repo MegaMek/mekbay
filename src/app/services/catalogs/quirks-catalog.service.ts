@@ -33,11 +33,6 @@ export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
         return this.quirksByKey;
     }
 
-    public async prepareCachedCatalog(): Promise<PreparedQuirksCatalog | undefined> {
-        const transport = await this.prepareCachedTransport();
-        return transport ? this.prepareCatalog(transport) : undefined;
-    }
-
     public async prepareRemoteCatalog(
         previous?: PreparedQuirksCatalog,
         signal?: AbortSignal,
@@ -63,11 +58,9 @@ export class QuirksCatalogService extends CatalogBaseService<Quirks, Quirks> {
         return 'quirks';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/static/quirks.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getQuirkByKey(key: string): Quirk | undefined {
         return this.quirksByKey.get(key);

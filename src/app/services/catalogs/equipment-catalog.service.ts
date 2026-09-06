@@ -37,11 +37,9 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
         return 'equipment';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/static/equipment.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getEquipmentRegistry(): EquipmentRegistry {
         return this.equipmentRegistry;
@@ -49,11 +47,6 @@ export class EquipmentCatalogService extends CatalogBaseService<RawEquipmentData
 
     public override getCatalogRevision(): string {
         return this.contentRevision;
-    }
-
-    public async prepareCachedCatalog(): Promise<PreparedEquipmentCatalog | undefined> {
-        const transport = await this.prepareCachedTransport();
-        return transport ? this.prepareCatalog(transport) : undefined;
     }
 
     public async prepareRemoteCatalog(

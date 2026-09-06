@@ -228,37 +228,8 @@ export function reduceTargetRegistry(
     }
 }
 
-/** Per-force owner of the durable C3 graph and editor layout. */
-export class CBTEncounterC3State {
-    #snapshot: CBTEncounterC3Snapshot;
-
-    public constructor(initial: CBTEncounterC3Snapshot = emptyCBTEncounterC3Snapshot()) {
-        this.#snapshot = freezeC3Snapshot(initial);
-    }
-
-    public snapshot(): CBTEncounterC3Snapshot {
-        return this.#snapshot;
-    }
-
-    public serializedState(): SerializedCBTEncounterStateV2 {
-        return encodeCBTEncounterStateV2(this.#snapshot);
-    }
-
-    /** Stores an already-canonical graph and its visual layout as one encounter edit. */
-    public replaceC3Configuration(
-        networks: readonly EncounterNetwork[],
-        c3Positions: readonly C3UnitPosition[],
-    ): void {
-        this.#snapshot = freezeC3Snapshot({ networks, c3Positions });
-    }
-
-    public restoreSerialized(state: SerializedCBTEncounterStateV2): void {
-        this.#snapshot = decodeCBTEncounterStateV2(state);
-    }
-}
-
 export function emptyCBTEncounterC3Snapshot(): CBTEncounterC3Snapshot {
-    return freezeC3Snapshot({ networks: [], c3Positions: [] });
+    return freezeCBTEncounterC3Snapshot({ networks: [], c3Positions: [] });
 }
 
 export function asEncounterNetworkId(value: string): EncounterNetworkId {
@@ -294,7 +265,7 @@ export function asEncounterTargetId(value: string): EncounterTargetId {
 export function decodeCBTEncounterStateV2(
     state: SerializedCBTEncounterStateV2,
 ): CBTEncounterC3Snapshot {
-    return freezeC3Snapshot({
+    return freezeCBTEncounterC3Snapshot({
         networks: state.networks.map(encounterNetworkFromSerialized),
         c3Positions: state.c3Positions ?? [],
     });
@@ -303,7 +274,7 @@ export function decodeCBTEncounterStateV2(
 export function encodeCBTEncounterStateV2(
     snapshot: CBTEncounterC3Snapshot,
 ): SerializedCBTEncounterStateV2 {
-    const canonical = freezeC3Snapshot(snapshot);
+    const canonical = freezeCBTEncounterC3Snapshot(snapshot);
     return Object.freeze({
         networks: Object.freeze(canonical.networks.map(serializedEncounterNetwork)),
         ...(canonical.c3Positions.length === 0 ? {} : { c3Positions: canonical.c3Positions }),
@@ -562,7 +533,8 @@ function hasExactKeys(value: object, allowed: readonly string[]): boolean {
     return Object.keys(value).every(key => allowedKeys.has(key));
 }
 
-function freezeC3Snapshot(snapshot: CBTEncounterC3Snapshot): CBTEncounterC3Snapshot {
+/** Detaches one graph/layout snapshot; network rules remain with the C3 editor. */
+export function freezeCBTEncounterC3Snapshot(snapshot: CBTEncounterC3Snapshot): CBTEncounterC3Snapshot {
     return Object.freeze({
         networks: Object.freeze(snapshot.networks.map(freezeNetwork)
             .sort((left, right) => compareText(left.id, right.id))),

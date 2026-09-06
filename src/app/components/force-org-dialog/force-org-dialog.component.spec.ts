@@ -7,7 +7,8 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import { ForceListSession, type ForceListCursor } from '../../models/force-list-session';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
@@ -149,7 +150,7 @@ describe('ForceOrgDialogComponent', () => {
         units: UnitSummary[],
         overrides: { bv?: number; pv?: number; type?: GameSystem } = {},
     ): LoadForceEntry {
-        return new LoadForceEntry({
+        return createForcePreviewEntryData({
             instanceId,
             name: `Force ${instanceId}`,
             type: overrides.type ?? GameSystem.CBT,

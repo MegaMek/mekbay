@@ -2,23 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
+import { buildViewerResizePlan, resolvePageSelectionUnit } from './page-viewer-ui-glue';
 
-import { PageViewerUiGlueService } from './page-viewer-ui-glue.service';
-
-describe('PageViewerUiGlueService', () => {
-    let service: PageViewerUiGlueService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [PageViewerUiGlueService]
-        });
-
-        service = TestBed.inject(PageViewerUiGlueService);
-    });
-
+describe('page-viewer ui-glue', () => {
     it('requests a redisplay when the effective visible count changes', () => {
-        expect(service.buildResizePlan({
+        expect(buildViewerResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 2,
             hasCurrentUnit: true,
@@ -28,13 +16,12 @@ describe('PageViewerUiGlueService', () => {
             renderedShadowCount: 2
         })).toEqual({
             shouldRedisplay: true,
-            shouldCloseInteractionOverlays: false,
             shouldScheduleShadowRender: false
         });
     });
 
     it('schedules shadow rendering without redisplaying the active page when shadows are missing', () => {
-        expect(service.buildResizePlan({
+        expect(buildViewerResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 1,
             hasCurrentUnit: true,
@@ -44,13 +31,12 @@ describe('PageViewerUiGlueService', () => {
             renderedShadowCount: 0
         })).toEqual({
             shouldRedisplay: false,
-            shouldCloseInteractionOverlays: false,
             shouldScheduleShadowRender: true
         });
     });
 
     it('schedules shadow rendering when only a steady-state resize refresh is needed', () => {
-        expect(service.buildResizePlan({
+        expect(buildViewerResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 1,
             hasCurrentUnit: true,
@@ -60,13 +46,12 @@ describe('PageViewerUiGlueService', () => {
             renderedShadowCount: 2
         })).toEqual({
             shouldRedisplay: false,
-            shouldCloseInteractionOverlays: false,
             shouldScheduleShadowRender: true
         });
     });
 
     it('does not schedule impossible shadow work for an empty viewer', () => {
-        expect(service.buildResizePlan({
+        expect(buildViewerResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 1,
             hasCurrentUnit: false,
@@ -76,13 +61,12 @@ describe('PageViewerUiGlueService', () => {
             renderedShadowCount: 0
         })).toEqual({
             shouldRedisplay: false,
-            shouldCloseInteractionOverlays: false,
             shouldScheduleShadowRender: false
         });
     });
 
     it('schedules one cleanup when stale shadows remain without a current unit', () => {
-        expect(service.buildResizePlan({
+        expect(buildViewerResizePlan({
             previousVisibleCount: 1,
             nextVisibleCount: 1,
             hasCurrentUnit: false,
@@ -101,7 +85,7 @@ describe('PageViewerUiGlueService', () => {
         wrapper.appendChild(child);
         const units = [{ id: 'unit-a' }, { id: 'unit-b' }] as never[];
 
-        expect(service.resolvePageSelectionUnit({
+        expect(resolvePageSelectionUnit({
             eventTarget: child,
             pointerMoved: false,
             isPanning: false,
@@ -110,7 +94,7 @@ describe('PageViewerUiGlueService', () => {
             currentUnitId: 'unit-a'
         })).toEqual(units[1]);
 
-        expect(service.resolvePageSelectionUnit({
+        expect(resolvePageSelectionUnit({
             eventTarget: child,
             pointerMoved: true,
             isPanning: false,
@@ -131,7 +115,7 @@ describe('PageViewerUiGlueService', () => {
         wrapper.appendChild(svg);
         const units = [{ id: 'unit-a' }, { id: 'unit-b' }] as never[];
 
-        expect(service.resolvePageSelectionUnit({
+        expect(resolvePageSelectionUnit({
             eventTarget: armorLocation,
             pointerMoved: false,
             isPanning: false,

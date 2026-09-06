@@ -18,7 +18,7 @@ import { type Faction } from './factions.model';
 import type { Era } from './eras.model';
 import { type FormationTypeDefinition, type FormationMatch, formationNameMatchesGroupName, isNoFormation, NO_FORMATION } from '../utils/formation-type.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
-import { FormationNamerUtil } from '../utils/formation-namer.util';
+import { composeFormationDisplayName } from '../utils/formation-namer.util';
 import type { OrgSizeResult } from '../utils/org/org-types';
 import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-namer.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
@@ -494,7 +494,7 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     formationDisplayName = computed<string | null>(() => {
         const formation = this.activeFormation();
         if (!formation) return null;
-        return FormationNamerUtil.composeFormationDisplayName(
+        return composeFormationDisplayName(
             formation,
             this,
             this.isFormationRequirementsFiltered()

@@ -6,7 +6,6 @@ import {
     EntityRepository,
     type LoadedEntity,
     type NativeEntitySource,
-    type NativeEntitySourceRepository,
 } from '../models/entity/entity-repository';
 import type { NativeUnitSourceHandle } from '../models/native-unit-source-handle';
 import { sourceHashCanary } from '../models/source-hash-canary';
@@ -24,42 +23,11 @@ interface PreparedEntityRepository {
     readonly generation: NonNullable<ReturnType<CoreUnitCatalogService['getPublishedGeneration']>>;
 }
 
-export type NativeEntityLoadErrorCode = 'CATALOG_NOT_READY';
-
-export class NativeEntityLoadError extends Error {
-    public constructor(
-        public readonly code: NativeEntityLoadErrorCode,
-        message: string,
-    ) {
-        super(message);
-        this.name = 'NativeEntityLoadError';
-    }
-}
-
-@Injectable({ providedIn: 'root' })
-export class CoreCatalogNativeEntitySourceRepository implements NativeEntitySourceRepository {
-    private readonly data = inject(DataService);
-    private readonly catalog = inject(UnitsCatalogService);
-
-    public async read(uuid: UnitUuid): Promise<NativeEntitySource | undefined> {
-        await this.data.requireApplicationCatalogReady();
-        const stored = await this.catalog.readNativeUnitSource(uuid);
-        if (!stored) return undefined;
-        return Object.freeze({
-            uuid,
-            format: stored.format,
-            sourceHash: stored.hash,
-            bytes: stored.bytes,
-            file: stored.file,
-        });
-    }
-}
-
 /** One catalog-backed native Entity loading boundary for every CBT family. */
 @Injectable({ providedIn: 'root' })
 export class NativeEntityService {
     private readonly coreCatalog = inject(CoreUnitCatalogService);
-    private readonly nativeSources = inject(CoreCatalogNativeEntitySourceRepository);
+    private readonly catalog = inject(UnitsCatalogService);
     private readonly equipment = inject(EquipmentCatalogService);
     private readonly sourcebooks = inject(SourcebooksCatalogService);
     private readonly quirks = inject(QuirksCatalogService);
@@ -84,17 +52,14 @@ export class NativeEntityService {
         try {
             await this.data.requireApplicationCatalogReady();
         } catch (error) {
-            throw new NativeEntityLoadError(
-                'CATALOG_NOT_READY',
+            throw new Error(
                 `The complete application catalog is not ready: ${error instanceof Error ? error.message : String(error)}`,
+                { cause: error },
             );
         }
         const generation = this.coreCatalog.getPublishedGeneration();
         if (!generation) {
-            throw new NativeEntityLoadError(
-                'CATALOG_NOT_READY',
-                'The native unit catalog has no active generation',
-            );
+            throw new Error('The native unit catalog has no active generation');
         }
         const inputsKey = [
             generation.activationId,
@@ -107,7 +72,7 @@ export class NativeEntityService {
         const sourcebooks = this.sourcebooks.getSourcebooks();
         const quirks = this.quirks.getQuirksByKey();
         const repository = new EntityRepository(
-            this.nativeSources,
+            { read: uuid => this.readSource(uuid) },
             this.equipment.getEquipmentRegistry(),
             {
                 sourcebookResolver: abbreviation => sourcebooks.get(abbreviation),
@@ -116,6 +81,19 @@ export class NativeEntityService {
         );
         this.cachedRepository = Object.freeze({ inputsKey, repository, generation });
         return this.cachedRepository;
+    }
+
+    private async readSource(uuid: UnitUuid): Promise<NativeEntitySource | undefined> {
+        await this.data.requireApplicationCatalogReady();
+        const stored = await this.catalog.readNativeUnitSource(uuid);
+        if (!stored) return undefined;
+        return {
+            uuid,
+            format: stored.format,
+            sourceHash: stored.hash,
+            bytes: stored.bytes,
+            file: stored.file,
+        };
     }
 }
 

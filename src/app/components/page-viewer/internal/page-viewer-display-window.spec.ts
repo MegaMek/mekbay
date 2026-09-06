@@ -2,28 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
+import { resolveDisplayStartIndex, resolveDisplayedUnits, buildForceChangePlan } from './page-viewer-display-window';
 
-import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
-
-describe('PageViewerDisplayWindowService', () => {
-    let service: PageViewerDisplayWindowService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [PageViewerDisplayWindowService]
-        });
-
-        service = TestBed.inject(PageViewerDisplayWindowService);
-    });
-
+describe('page-viewer display-window', () => {
     it('resets the view start when all units fit', () => {
-        expect(service.resolveViewStartIndex(2, 3, 1)).toBe(0);
-        expect(service.resolveViewStartIndex(4, 2, 1)).toBe(1);
+        expect(resolveDisplayStartIndex(2, 3, 1)).toBe(0);
+        expect(resolveDisplayStartIndex(4, 2, 1)).toBe(1);
     });
 
     it('resolves the displayed unit window from the current start index', () => {
-        const result = service.resolveDisplayedUnits([
+        const result = resolveDisplayedUnits([
             { id: 'a' },
             { id: 'b' },
             { id: 'c' }
@@ -37,7 +25,7 @@ describe('PageViewerDisplayWindowService', () => {
     });
 
     it('builds a force-change plan that follows the selected slot across reorder', () => {
-        const plan = service.buildForceChangePlan({
+        const plan = buildForceChangePlan({
             allUnits: [{ id: 'a' }, { id: 'c' }, { id: 'b' }, { id: 'd' }] as never[],
             displayedUnits: [{ id: 'a' }, { id: 'b' }] as never[],
             selectedUnitId: 'b',

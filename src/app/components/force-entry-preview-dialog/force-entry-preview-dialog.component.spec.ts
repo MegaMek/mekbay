@@ -10,7 +10,8 @@ import { of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
 import type { Force } from '../../models/force.model';
 import type { ForceSlot } from '../../models/force-slot.model';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import type { Options } from '../../models/options.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -33,7 +34,7 @@ describe('ForceEntryPreviewDialogComponent', () => {
     }
 
     function createForceEntry(overrides: Partial<LoadForceEntry> = {}): LoadForceEntry {
-        return new LoadForceEntry({
+        return createForcePreviewEntryData({
             instanceId: 'force-1',
             name: 'Shared Force',
             type: GameSystem.CBT,

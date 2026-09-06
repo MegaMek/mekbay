@@ -15,7 +15,7 @@ import { FilterAmmoPipe } from '../../../pipes/filter-ammo.pipe';
 import { UnitComponentItemComponent } from '../../unit-component-item/unit-component-item.component';
 import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { TooltipDirective } from '../../../directives/tooltip.directive';
-import { BVCalculatorUtil } from '../../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../../utils/cbt-common.util';
 import { getUnitSourceFilterValues } from '../../../utils/unit-search-shared.util';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
@@ -400,7 +400,7 @@ export class UnitDetailsGeneralTabComponent {
         }
         return this.gameService.isAlphaStrike()
             ? adjustPointValueForSkill(unit.as.PV, gunnery)
-            : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
+            : calculateAdjustedBV(unit, unit.bv, gunnery, piloting);
     });
 
     readonly isAlphaStrike = computed(() => this.forceMember()

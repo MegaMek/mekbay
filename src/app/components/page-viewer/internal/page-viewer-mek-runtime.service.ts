@@ -59,10 +59,6 @@ export class PageViewerMekRuntimeService {
         return true;
     }
 
-    isPickerOpen(unitId: string): boolean {
-        return this.interactions.isPickerOpen(unitId);
-    }
-
     cleanupUnused(keepUnitIds: ReadonlySet<string>): void {
         for (const unitId of [...this.bound.keys()]) {
             if (!keepUnitIds.has(unitId)) this.destroyBinding(unitId);

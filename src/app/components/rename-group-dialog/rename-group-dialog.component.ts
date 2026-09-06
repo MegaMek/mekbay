@@ -13,7 +13,8 @@ import { formationHasTargetCopyEffect, formationInheritsParentEffects, type Form
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AUTOMATIC_FORMATION_KEY, FormationDropdownPanelComponent, type FormationDisplayItem, type FormationDropdownActiveOption, type FormationDropdownActiveTarget, type FormationDropdownPointerHoverEvent } from './formation-dropdown-panel.component';
-import { FormationNamerUtil } from '../../utils/formation-namer.util';
+import { composeFormationDisplayName } from '../../utils/formation-namer.util';
+import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { getFormationDefinition, getFormationDefinitions } from '../../utils/formation-blueprints';
 import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
 import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
@@ -391,7 +392,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
 
   /** All formation definitions with validity flag. */
   formationDisplayList: FormationDisplayItem[] = (() => {
-    const validMatches = FormationNamerUtil.getAvailableFormationDefinitions(this.data.group);
+    const validMatches = LanceTypeIdentifierUtil.identifyFormationsForGroup(this.data.group);
     const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
     return getFormationDefinitions(this.data.group.force.gameSystem)
       .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
@@ -399,7 +400,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
         const match = validMap.get(def.id);
         return {
           definition: def,
-          displayName: FormationNamerUtil.composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
+          displayName: composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
           isValid: !!match,
           requirementsFiltered: match?.requirementsFiltered ?? false,
           requirementsFilterCompositionName: match?.requirementsFilterCompositionName,
@@ -438,7 +439,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
   placeholderName = computed<string>(() => {
     const sel = this.selectedFormation();
     if (sel && !isNoFormation(sel)) {
-      return FormationNamerUtil.composeFormationDisplayName(
+      return composeFormationDisplayName(
         sel,
         this.data.group,
         this.isSelectedFormationRequirementsFiltered(),
@@ -505,7 +506,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
 
   /** Compose a display name for a formation definition */
   getDisplayName(definition: FormationTypeDefinition): string {
-    return FormationNamerUtil.composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
+    return composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
   }
 
   submit(): void {

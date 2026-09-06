@@ -8,7 +8,7 @@ import { GameSystem } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
 import { Force, type UnitGroup } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
-import { LoadForceEntry } from '../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../models/force-preview.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { FormationTypeDefinition } from '../utils/formation-type.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
@@ -273,7 +273,7 @@ describe('ForceBuilderService formation filter integration', () => {
             reconcileASFormationAssignments: jasmine.createSpy('reconcileASFormationAssignments'),
         };
 
-        const entry = new LoadForceEntry({
+        const entry = createForcePreviewEntryData({
             name: 'Generated Test Force',
             type: GameSystem.AS,
             faction,
@@ -1302,7 +1302,7 @@ describe('ForceImportService load dialog', () => {
 
     it('resolves a saved entry once before adding the loaded force', async () => {
         const service = Object.create(ForceImportService.prototype) as any;
-        const entry = new LoadForceEntry({ instanceId: 'saved-force' });
+        const entry = createForcePreviewEntryData({ instanceId: 'saved-force' });
         const loadedForce = Object.create(Force.prototype) as Force;
 
         service.dialogs = {

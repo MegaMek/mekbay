@@ -48,7 +48,6 @@ import {
     type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
 import { projectRuntimeUnitNotifications } from '../../unit-notification-badges/unit-notification-runtime.util';
-import { CBTUnitViewModeService } from '../../../services/cbt-unit-view-mode.service';
 import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
@@ -76,7 +75,7 @@ export class PageInteractionOverlayComponent {
     private destroyRef = inject(DestroyRef);
     private dialogsService = inject(DialogsService);
     private overlayManager = inject(OverlayManagerService);
-    private optionsService = inject(OptionsService);
+    protected readonly optionsService = inject(OptionsService);
     private overlay = inject(Overlay);
     private host = inject(ElementRef<HTMLElement>);
     private pageViewerState = inject(PageViewerStateService);
@@ -84,7 +83,6 @@ export class PageInteractionOverlayComponent {
     private toastService = inject(ToastService);
     private readonly automationToasts = inject(CBTAutomationToastService);
     private readonly automationToastVisibilityOwner = {};
-    protected readonly unitViewMode = inject(CBTUnitViewModeService);
     private targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,
@@ -292,7 +290,8 @@ export class PageInteractionOverlayComponent {
     toggleUnitView(event: Event): void {
         event.stopPropagation();
         this.closeAllOverlays();
-        this.unitViewMode.toggle();
+        const mode = this.optionsService.options().cbtUnitViewMode;
+        void this.optionsService.setOption('cbtUnitViewMode', mode === 'sheet' ? 'tactical' : 'sheet');
     }
 
     openTargets(event: MouseEvent): void {

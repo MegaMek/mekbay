@@ -93,7 +93,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary 
         name: 'Test Unit',
         id: -1,
         chassis: 'Test',
-        baseChassis: 'Test',
+        baseChassis: unitOverrides.chassis ?? 'Test',
         model: 'TST-1',
         year: 3151,
         weightClass: 'Medium',

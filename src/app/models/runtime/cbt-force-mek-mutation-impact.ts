@@ -3,42 +3,7 @@
 
 import type { CBTUnitCommand } from './unit-instance';
 
-type DependencyRefresh = readonly [
-    baseBattleValueChangedUnitIds: readonly string[] | null,
-    battleValueInputsChanged: boolean,
-    operationalC3InputsChanged: boolean,
-];
-
-/** Classifies one synchronous Mek publication without retaining runtime results. */
-export class CBTForceMekMutationImpact {
-    private active: DependencyRefresh | undefined;
-
-    public publish(
-        instanceId: string,
-        command: CBTUnitCommand,
-        changedUnitIds: readonly string[],
-        emit: (changedUnitIds: readonly string[]) => void,
-    ): void {
-        const previous = this.active;
-        const baseChanged = commandMayChangeBaseBattleValue(command);
-        this.active = Object.freeze([
-            baseChanged ? Object.freeze([instanceId]) : Object.freeze([]),
-            baseChanged,
-            commandMayChangeOperationalC3(command),
-        ]);
-        try {
-            emit(changedUnitIds);
-        } finally {
-            this.active = previous;
-        }
-    }
-
-    public dependencyRefresh(changedUnitIds: readonly string[] | null): DependencyRefresh {
-        return this.active ?? Object.freeze([changedUnitIds, true, true]);
-    }
-}
-
-function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean {
+export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean {
     switch (command.type) {
         case 'damage-internal':
         case 'repair-internal':

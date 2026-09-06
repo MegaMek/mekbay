@@ -32,11 +32,6 @@ export class SourcebooksCatalogService extends CatalogBaseService<Sourcebooks | 
         return this.sourcebooks;
     }
 
-    public async prepareCachedCatalog(): Promise<PreparedSourcebooksCatalog | undefined> {
-        const transport = await this.prepareCachedTransport();
-        return transport ? this.prepareCatalog(transport) : undefined;
-    }
-
     public async prepareRemoteCatalog(
         previous?: PreparedSourcebooksCatalog,
         signal?: AbortSignal,
@@ -61,11 +56,9 @@ export class SourcebooksCatalogService extends CatalogBaseService<Sourcebooks | 
         return 'sourcebooks';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/generated/sourcebooks.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getSourcebookByAbbrev(abbrev: string): Sourcebook | undefined {
         return this.sourcebooks.get(abbrev);
@@ -95,10 +88,6 @@ export class SourcebooksCatalogService extends CatalogBaseService<Sourcebooks | 
     protected override afterInitialize(): Promise<void> {
         this.contentRevision = this.transportRevision || 'unversioned';
         return Promise.resolve();
-    }
-
-    protected override normalizeCachedData(data: Sourcebooks | Sourcebook[]): Sourcebooks {
-        return this.wrapData(data, (data as Partial<Sourcebooks>).assetHash || '');
     }
 
     private prepareCatalog(

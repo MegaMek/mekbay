@@ -47,7 +47,7 @@ import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card
 import type { MegaMekUnitAvailabilityDetail } from '../../services/unit-availability-source.service';
 import { OptionsService } from '../../services/options.service';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DataService } from '../../services/data.service';
 import { getProperty } from '../../utils/unit-search-shared.util';
@@ -196,7 +196,7 @@ export class UnitCardExpandedComponent {
         const base = this.isAlphaStrike() ? unit.as.PV : unit.bv;
         const adjusted = this.searchResultContext()?.adjustedValue ?? (this.isAlphaStrike()
             ? adjustPointValueForSkill(base, this.gunnery())
-            : BVCalculatorUtil.calculateAdjustedBV(unit, base, this.gunnery(), this.piloting()));
+            : calculateAdjustedBV(unit, base, this.gunnery(), this.piloting()));
         return formatBvPv(adjusted, base, 'both');
     });
 

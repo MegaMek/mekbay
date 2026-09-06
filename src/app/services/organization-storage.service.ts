@@ -5,7 +5,7 @@
 import { inject, Injectable } from '@angular/core';
 import {
     type LoadedOrganization,
-    LoadOrganizationEntry,
+    type LoadOrganizationEntry,
     type SerializedOrganization,
 } from '../models/organization.model';
 import { DbService } from './db.service';
@@ -124,7 +124,7 @@ export class OrganizationStorageService {
         const serialized = await this.dbService.listOrganizations();
         return serialized
             .filter(org => org.forces.some(f => f.instanceId === instanceId))
-            .map(org => new LoadOrganizationEntry({
+            .map(org => ({
                 organizationId: org.organizationId,
                 name: org.name,
                 timestamp: org.timestamp,
@@ -132,12 +132,14 @@ export class OrganizationStorageService {
                 forceCount: org.forces.length,
                 groupCount: org.groups.length,
                 local: true,
+                cloud: false,
+                owned: true,
             }));
     }
 
     private async listOrganizationsLocal(): Promise<LoadOrganizationEntry[]> {
         const serialized = await this.dbService.listOrganizations();
-        return serialized.map(org => new LoadOrganizationEntry({
+        return serialized.map(org => ({
             organizationId: org.organizationId,
             name: org.name,
             timestamp: org.timestamp,
@@ -145,6 +147,8 @@ export class OrganizationStorageService {
             forceCount: org.forces.length,
             groupCount: org.groups.length,
             local: true,
+            cloud: false,
+            owned: true,
         }));
     }
 
@@ -156,7 +160,7 @@ export class OrganizationStorageService {
             action: 'listOrganizations',
             forcePersistenceRevision: FORCE_PERSISTENCE_REVISION,
         });
-        return (response?.data ?? []).map(raw => new LoadOrganizationEntry({
+        return (response?.data ?? []).map(raw => ({
             organizationId: raw.organizationId,
             name: raw.name,
             timestamp: raw.timestamp,
@@ -164,6 +168,7 @@ export class OrganizationStorageService {
             forceCount: raw.forceCount,
             groupCount: raw.groupCount,
             cloud: true,
+            local: false,
             owned: raw.owned ?? true,
         }));
     }

@@ -14,6 +14,7 @@ import {
     type WeightedValue,
 } from '../../models/pilot-name-catalog.model';
 import { CatalogBaseService } from './catalog-base.service';
+import { generatePilotName, pickWeighted, type PilotNameGenerationOptions } from '../../utils/pilot-name-generator.util';
 
 type PilotNameRemoteBody = PilotNameCatalogData | CompactPilotNameCatalog;
 
@@ -103,11 +104,21 @@ export class PilotNameCatalogService extends CatalogBaseService<PilotNameRemoteB
     private hydrated = false;
 
     protected override get catalogKey(): string { return 'pilot_names'; }
-    protected override get remoteUrl(): string { return 'online-assets/generated/pilot-names.json'; }
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
+    protected override get repositoryAssetPath(): string { return 'online-assets/generated/pilot-names.json'; }
 
     public getCatalog(): PilotNameCatalog {
         return this.catalog;
+    }
+
+    async generateName(options: PilotNameGenerationOptions = {}): Promise<string | null> {
+        await this.initialize();
+        return generatePilotName(this.getCatalog(), options);
+    }
+
+    async generateCallsign(maxLength = Number.POSITIVE_INFINITY): Promise<string | null> {
+        await this.initialize();
+        const candidates = this.getCatalog().callsigns.filter(entry => entry.value.length <= maxLength);
+        return pickWeighted(candidates) ?? null;
     }
 
     protected override hasHydratedData(): boolean {

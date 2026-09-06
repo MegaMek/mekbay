@@ -104,7 +104,7 @@ function createForcePreviewGroups(
     }));
 }
 
-function createForcePreviewEntryData(data: Partial<ForcePreviewEntry>): ForcePreviewEntry {
+export function createForcePreviewEntryData(data: Partial<ForcePreviewEntry>): ForcePreviewEntry {
     const previewEntry: ForcePreviewEntry = {
         persistenceVersion: data.persistenceVersion ?? 2,
         instanceId: data.instanceId ?? '',

@@ -5,7 +5,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerSwipeDomService } from './page-viewer-swipe-dom.service';
-import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState } from './page-viewer-swipe-renderer.service';
+import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState } from './page-viewer-swipe-renderer';
 
 function createSvg(): SVGSVGElement {
     return document.createElementNS('http://www.w3.org/2000/svg', 'svg');

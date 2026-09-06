@@ -225,7 +225,8 @@ async function createClassicUnit(profiles?: readonly Omit<ForcePerson, 'id'>[]):
     }) };
     const injector = { get: (token: unknown) => token === CBTUnitService ? units
         : token === OptionsService ? { options: () => ({ CBTRules: CORE_2026_RULESET, CBTOptionalRules: {} }) }
-        : jasmine.createSpyObj<LoggerService>('Logger', ['error', 'warn']) } as unknown as Injector;
+        : token === LoggerService ? jasmine.createSpyObj<LoggerService>('Logger', ['error', 'warn'])
+        : null } as unknown as Injector;
     const force = await CBTForce.deserialize(record, data, injector);
     if (profiles) {
         const stations = force.getUnitCrewProfile(instanceId)!.positions;

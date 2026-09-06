@@ -6,7 +6,7 @@ import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/sk
 import type { CBTUnit } from './runtime/cbt-unit';
 import { createDirectMekRuntimeFixture } from './runtime/testing/direct-mek-runtime-fixture';
 import type { UnitSummary } from './unit-summary.model';
-import { BVCalculatorUtil } from '../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../utils/cbt-common.util';
 
 describe('CBT force battle value authority', () => {
   it('uses Entity family facts when a presentation summary disagrees', () => {
@@ -37,7 +37,7 @@ describe('CBT force battle value authority', () => {
     }).get(unit.instanceId)!;
 
     expect(result.adjusted).toBe(adjustEntityBattleValueForSkills(fixture.entity, base, 4, 2));
-    expect(result.adjusted).not.toBe(BVCalculatorUtil.calculateAdjustedBV(lyingSummary, base, 4, 2));
+    expect(result.adjusted).not.toBe(calculateAdjustedBV(lyingSummary, base, 4, 2));
   });
 
   it('keeps the skill adjustment fractional and rounds only the final BV', () => {

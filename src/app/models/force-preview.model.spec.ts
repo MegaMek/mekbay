@@ -3,8 +3,8 @@
 // Author: Drake
 
 import { GameSystem } from './common.model';
-import { LoadForceEntry } from './load-force-entry.model';
 import {
+    createForcePreviewEntryData,
     createForcePreviewEntryFromForce,
     createForcePreviewEntryFromSerializedForce,
     createForcePreviewUnitFromSerializedUnit,
@@ -96,7 +96,6 @@ describe('createForcePreviewEntryFromForce', () => {
         const result = createForcePreviewEntryFromForce(force, [liveUnit]);
 
         expect(force.serialize).not.toHaveBeenCalled();
-        expect(result instanceof LoadForceEntry).toBe(false);
         expect(result.instanceId).toBe('');
         expect(result.note).toBe('Forward recon screen.');
         expect(result.tags).toEqual(['Recon', 'Priority']);
@@ -194,7 +193,7 @@ describe('force preview helpers', () => {
 
     it('treats saved load entries as compatible preview entries', () => {
         const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
-        const entry = new LoadForceEntry({
+        const entry = createForcePreviewEntryData({
             type: GameSystem.CBT,
             groups: [{
                 units: [

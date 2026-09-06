@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
-import { compareText } from '../../utils/string.util';
 import type { JsonValue } from '../persisted-unit-state';
 import type { MotiveModes } from '../motiveModes.model';
 import { createSavedTargetRef, parseSavedTargetRef, type SerializedCBTUnitV2 } from './persistence-v2';
@@ -676,10 +675,6 @@ export function preserveEquipmentRowOrder<T extends Readonly<{
             ? {}
             : { equipmentRowOrder: current.equipmentRowOrder }),
     }) as T;
-}
-
-export function compareUnitInstanceIds(left: string, right: string): number {
-    return compareText(left, right);
 }
 
 export function sameCBTUnitGameplayState(left: CBTUnit, right: CBTUnit): boolean {

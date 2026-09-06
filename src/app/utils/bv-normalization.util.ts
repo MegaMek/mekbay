@@ -10,8 +10,7 @@ import {
     type UnitSearchNumericRange,
 } from '../models/unit-search-result.model';
 import type { UnitSummary } from '../models/unit-summary.model';
-import { BVCalculatorUtil } from './bv-calculator.util';
-import { getEffectivePilotingSkill, getFixedPilotingSkill } from './cbt-common.util';
+import { calculateAdjustedBV, getEffectivePilotingSkill, getFixedPilotingSkill } from './cbt-common.util';
 import {
     isValidNormalizationSkillRange,
     isWithinNumericRange,
@@ -102,7 +101,7 @@ export function findBvNormalizationMatch(
 function createMatch(unit: BvNormalizationUnit, gunnery: number, piloting: number): BvNormalizationMatch {
     return {
         kind: 'bv',
-        adjustedValue: BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
+        adjustedValue: calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
         gunnery,
         piloting,
     };

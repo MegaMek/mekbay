@@ -4,7 +4,7 @@
 import { asComponentId } from './entity/entity-identifiers';
 import {
     asEncounterNetworkId,
-    CBTEncounterC3State,
+    freezeCBTEncounterC3Snapshot,
     type EncounterNetwork,
 } from './runtime/encounter-runtime';
 import { C3NetworkType, C3Role, type C3Component } from './c3-network.model';
@@ -178,11 +178,10 @@ describe('C3 encounter/editor presentation', () => {
         }];
 
         const networks = projectC3EditorNetworksToEncounter(visual, units);
-        const runtime = new CBTEncounterC3State();
+        const snapshot = freezeCBTEncounterC3Snapshot({ networks, c3Positions: [] });
 
         expect(validateEncounterNetworks(networks, units)).toBeTrue();
-        runtime.replaceC3Configuration(networks, []);
-        expect(projectEncounterNetworksToC3Editor(runtime.snapshot().networks, units)).toEqual(visual);
+        expect(projectEncounterNetworksToC3Editor(snapshot.networks, units)).toEqual(visual);
     });
 
     it('fails closed when a visual endpoint is missing or ambiguous', () => {

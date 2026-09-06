@@ -3,11 +3,12 @@
 // Author: Drake
 
 import { GameSystem } from './common.model';
-import { createLoadForceEntry, createLoadForceEntryFromSerializedForce, LoadForceEntry, type RemoteLoadForceEntry } from './load-force-entry.model';
+import { createForcePreviewEntry, createForcePreviewEntryFromSerializedForce } from './force-preview.model';
+import type { RemoteLoadForceEntry } from './remote-load-force-entry.model';
 import type { SerializedForce } from './force-serialization';
 import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
-describe('createLoadForceEntry', () => {
+describe('createForcePreviewEntry', () => {
     const resolvedUnit = { name: 'Atlas AS7-D', type: 'Mek' } as any;
     const resolvedFaction = { id: 1, name: 'Mercenary' } as any;
     const resolvedEra = { id: 3025, name: 'Succession Wars' } as any;
@@ -19,7 +20,7 @@ describe('createLoadForceEntry', () => {
         getEraById: (id: number) => id === 3025 ? resolvedEra : undefined,
     };
 
-    it('wraps remote preview data in a saved entry and links groups back to the entry', () => {
+    it('builds saved preview data and links groups back to the entry', () => {
         const raw: RemoteLoadForceEntry = {
             owned: true,
             instanceId: 'force-1',
@@ -50,9 +51,8 @@ describe('createLoadForceEntry', () => {
         Object.freeze(raw.groups![0].units);
         Object.freeze(raw.groups![0]);
 
-        const result = createLoadForceEntry(raw, resolver, { cloud: true });
+        const result = createForcePreviewEntry(raw, resolver, { cloud: true });
 
-        expect(result instanceof LoadForceEntry).toBe(true);
         expect(result.cloud).toBe(true);
         expect(result.local).toBe(false);
         expect(result.note).toBe('Fast cavalry reserve.');
@@ -71,7 +71,7 @@ describe('createLoadForceEntry', () => {
             skill: 3,
             commander: true,
         }));
-        const another = createLoadForceEntry(raw, resolver);
+        const another = createForcePreviewEntry(raw, resolver);
         result.groups[0].units[0].alias = 'Edited preview';
         expect(another.groups[0].units[0].alias).toBe('Ace');
         expect(raw.groups![0].units[0].alias).toBe('Ace');
@@ -91,8 +91,8 @@ describe('createLoadForceEntry', () => {
         Object.freeze(raw.groups![0].units);
         Object.freeze(raw.groups![0]);
 
-        const first = createLoadForceEntryFromSerializedForce(raw, resolver);
-        const second = createLoadForceEntryFromSerializedForce(raw, resolver);
+        const first = createForcePreviewEntryFromSerializedForce(raw, resolver);
+        const second = createForcePreviewEntryFromSerializedForce(raw, resolver);
         first.groups[0].name = 'Edited lance';
         first.groups[0].units[0].alias = 'Edited pilot';
 

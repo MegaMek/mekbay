@@ -48,7 +48,7 @@ import { ForceReservesPreviewComponent } from '../force-reserves-preview/force-r
 import { GameSystem } from '../../models/common.model';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../../models/crew-member.model';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 
 const UNIT_TILE_MIN_WIDTH = 86;
 const UNIT_TILE_MAX_WIDTH = 114;
@@ -972,7 +972,7 @@ export class ForcePreviewPanelComponent {
             const adjustedPV = adjustPointValueForSkill(loadForceUnit.unit.as.PV, loadForceUnit.skill ?? DEFAULT_GUNNERY_SKILL);
             return `PV: ${adjustedPV}`;
         }
-        const adjustedBV = BVCalculatorUtil.calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);
+        const adjustedBV = calculateAdjustedBV(loadForceUnit.unit, loadForceUnit.unit.bv, loadForceUnit.gunnery ?? DEFAULT_GUNNERY_SKILL, loadForceUnit.piloting ?? DEFAULT_PILOTING_SKILL);
         return `BV: ${adjustedBV}`;
     }
 

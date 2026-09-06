@@ -4,7 +4,7 @@ import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { PipRendererShared } from './pip-renderer.shared';
 import { MIN_PIP_SHAPE_SIZE, PipShapeProfileGenerator } from './pip-shape-profile-generator';
-import { PipShapeProfile } from './pip-shape-profile';
+import { createPipShapeProfile, type PipShapeProfile } from './pip-shape-profile';
 import type { PipShapeSpan } from './pip-renderer.types';
 import { RailPipRenderer } from './rail-pip-renderer';
 import {
@@ -17,7 +17,7 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 describe('Pip renderers', () => {
     const svgRoots: SVGSVGElement[] = [];
     const createProfile = (spans: readonly PipShapeSpan[]): PipShapeProfile =>
-        PipShapeProfile.create(spans) as PipShapeProfile;
+        createPipShapeProfile(spans) as PipShapeProfile;
 
     afterEach(() => {
         svgRoots.forEach(root => root.remove());
@@ -205,7 +205,7 @@ describe('Pip renderers', () => {
     });
 
     it('precomputes validated shape profile bounds and normalized spans', () => {
-        const profile = PipShapeProfile.create([
+        const profile = createPipShapeProfile([
             { x: 14, y: 20, width: 8, height: 4 },
             { x: 10, y: 12, width: 5, height: 3 },
             { x: 0, y: 0, width: 0, height: 1 },

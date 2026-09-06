@@ -9,10 +9,8 @@ import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
 import { DataService } from './data.service';
-import {
-    CoreCatalogNativeEntitySourceRepository,
-    NativeEntityService,
-} from './native-entity.service';
+import { NativeEntityService } from './native-entity.service';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { CoreUnitCatalogService } from './unit-catalog/core-unit-catalog.service';
 import { asSourceHash, asUnitUuid } from './unit-catalog/unit-catalog.types';
 
@@ -35,7 +33,7 @@ describe('NativeEntityService persisted identity resolution', () => {
                         }),
                     },
                 },
-                { provide: CoreCatalogNativeEntitySourceRepository, useValue: {} },
+                { provide: UnitsCatalogService, useValue: {} },
                 {
                     provide: EquipmentCatalogService,
                     useValue: {

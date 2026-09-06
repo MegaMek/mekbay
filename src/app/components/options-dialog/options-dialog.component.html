@@ -19,8 +19,8 @@
         } @else {
         <div class="settings-header settings-header-mobile">
             <button type="button" class="header-icon-button" (click)="onMobileBack()"
-                [attr.aria-label]="canGoBack() ? 'Go back' : 'Close options'"
-                [title]="canGoBack() ? 'Back' : 'Close options'">
+                [attr.aria-label]="mobileDetailOpen() ? 'Go back' : 'Close options'"
+                [title]="mobileDetailOpen() ? 'Back' : 'Close options'">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
                     stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
                     <path d="M15 18L9 12L15 6" />
@@ -33,7 +33,7 @@
     </div>
     <div dialog-body class="options-shell">
         <ng-template #viewContent>
-            @switch (currentViewId()) {
+            @switch (activeTab()) {
             @case ('General') {
             <div class="settings-view-content">
                 <div class="option-row">
@@ -849,9 +849,9 @@
                 </div>
                 }
                 <div class="options-nav-heading">Sections</div>
-                @for (section of topLevelViews; track section.id) {
-                <button type="button" class="options-nav-item" [class.active]="isSectionActive(section.id)"
-                    [attr.aria-current]="isSectionActive(section.id) ? 'page' : null"
+                @for (section of sections; track section.id) {
+                <button type="button" class="options-nav-item" [class.active]="activeTab() === section.id"
+                    [attr.aria-current]="activeTab() === section.id ? 'page' : null"
                     (click)="selectDesktopSection(section.id)">
                     <span class="options-nav-label">{{ section.title }}</span>
                     <span class="options-nav-description">{{ section.description }}</span>
@@ -874,7 +874,7 @@
         </div>
         } @else {
         <div class="options-mobile-shell">
-            @if (isAtRoot()) {
+            @if (!mobileDetailOpen()) {
             <div class="mobile-settings-list" role="list">
                 @if (appUpdateService.updatePending()) {
                 <div class="mobile-settings-item update-entry">
@@ -883,7 +883,7 @@
                     </button>
                 </div>
                 }
-                @for (section of topLevelViews; track section.id) {
+                @for (section of sections; track section.id) {
                 <button type="button" class="mobile-settings-item" role="listitem"
                     (click)="openMobileSection(section.id)">
                     <span class="mobile-settings-copy">

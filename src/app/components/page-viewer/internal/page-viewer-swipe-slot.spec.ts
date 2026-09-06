@@ -2,23 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
+import { resolveSwipeVisibleOffsets, buildSwipeInitialRangePlan, resolveSwipeVisibleOffsetRefresh, buildSwipeSlotExtensionPlan, resolveSwipeSlotVisibilityPlan } from './page-viewer-swipe-slot';
 
-import { PageViewerSwipeSlotService } from './page-viewer-swipe-slot.service';
-
-describe('PageViewerSwipeSlotService', () => {
-    let service: PageViewerSwipeSlotService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [PageViewerSwipeSlotService]
-        });
-
-        service = TestBed.inject(PageViewerSwipeSlotService);
-    });
-
+describe('page-viewer swipe-slot', () => {
     it('resolves visible offsets from swipe geometry inputs', () => {
-        expect(service.resolveVisibleOffsets({
+        expect(resolveSwipeVisibleOffsets({
             containerWidth: 1000,
             scale: 1,
             baseLeft: 0,
@@ -30,7 +18,7 @@ describe('PageViewerSwipeSlotService', () => {
     });
 
     it('builds the initial swipe range and preload unit indices', () => {
-        const plan = service.buildInitialRangePlan({
+        const plan = buildSwipeInitialRangePlan({
             totalUnits: 6,
             effectiveVisible: 2,
             baseDisplayStartIndex: 1
@@ -42,7 +30,7 @@ describe('PageViewerSwipeSlotService', () => {
     });
 
     it('only refreshes tracked visible offsets when the window changes', () => {
-        expect(service.resolveVisibleOffsetRefresh({
+        expect(resolveSwipeVisibleOffsetRefresh({
             currentVisibleOffsets: { left: -1, right: 1 },
             nextVisibleOffsets: { left: -1, right: 1 }
         })).toEqual({
@@ -50,7 +38,7 @@ describe('PageViewerSwipeSlotService', () => {
             nextTrackedOffsets: { left: -1, right: 1 }
         });
 
-        expect(service.resolveVisibleOffsetRefresh({
+        expect(resolveSwipeVisibleOffsetRefresh({
             currentVisibleOffsets: { left: -1, right: 1 },
             nextVisibleOffsets: { left: 0, right: 2 }
         })).toEqual({
@@ -60,7 +48,7 @@ describe('PageViewerSwipeSlotService', () => {
     });
 
     it('plans left and right slot extension without duplicating wrapped units', () => {
-        const plan = service.buildExtensionPlan({
+        const plan = buildSwipeSlotExtensionPlan({
             totalUnits: 5,
             effectiveVisible: 2,
             baseDisplayStartIndex: 1,
@@ -78,7 +66,7 @@ describe('PageViewerSwipeSlotService', () => {
     });
 
     it('plans trimming when slots move well outside the buffered range', () => {
-        const plan = service.buildExtensionPlan({
+        const plan = buildSwipeSlotExtensionPlan({
             totalUnits: 8,
             effectiveVisible: 2,
             baseDisplayStartIndex: 0,
@@ -96,7 +84,7 @@ describe('PageViewerSwipeSlotService', () => {
     });
 
     it('prefers the center slot when duplicate unit assignments are visible', () => {
-        const plan = service.resolveVisibilityPlan({
+        const plan = resolveSwipeSlotVisibilityPlan({
             slots: [
                 { slotIndex: 0, slotOffset: -1, slotLeft: -200, slotRight: 800, unitIndex: 0 },
                 { slotIndex: 1, slotOffset: 0, slotLeft: 0, slotRight: 1000, unitIndex: 0 },

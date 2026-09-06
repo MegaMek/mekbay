@@ -138,4 +138,4 @@ export { encodeNativeEntity } from './write-entity';
 
 // ── Parse Context ──
 export { ParseContext, isEntityLoadIssueArray } from './parsers/parse-context';
-export type { EntityLoadIssue, ParseSeverity, EquipmentFallbackFn } from './parsers/parse-context';
+export type { EntityLoadIssue, ParseSeverity } from './parsers/parse-context';

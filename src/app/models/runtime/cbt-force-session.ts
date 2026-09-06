@@ -123,21 +123,11 @@ export class CBTForceSession {
         return Object.freeze({
             ...checkpoint,
             units: Object.freeze(checkpoint.units.map(row => {
-                const current = this.units.cbtUnit(row.instanceId)?.serialize();
-                const targeting = this.units.cbtUnit(row.instanceId)
-                    ?.captureRuntime().query.attackerTargetingState();
+                const unit = this.units.cbtUnit(row.instanceId);
+                const current = unit?.serialize();
+                const targeting = unit?.captureRuntime().query.attackerTargetingState();
                 if (current === undefined || targeting === undefined) return row;
-                if (isSerializedNonMekUnit(row.unit)) {
-                    if (!isSerializedNonMekUnit(current)) {
-                        throw new Error(`Runtime family changed for ${row.instanceId}`);
-                    }
-                    return Object.freeze({
-                        ...row,
-                        unit: preserveEquipmentRowOrder(row.unit, current),
-                        attackerTargeting: targeting,
-                    });
-                }
-                if (isSerializedNonMekUnit(current)) {
+                if (isSerializedNonMekUnit(row.unit) !== isSerializedNonMekUnit(current)) {
                     throw new Error(`Runtime family changed for ${row.instanceId}`);
                 }
                 return Object.freeze({

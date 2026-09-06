@@ -5,7 +5,7 @@ import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { PipRendererShared } from './pip-renderer.shared';
 import { PipShapeProfileGenerator } from './pip-shape-profile-generator';
-import { PipShapeProfile } from './pip-shape-profile';
+import { createPipShapeProfile, type PipShapeProfile } from './pip-shape-profile';
 import { RailPipRenderer } from './rail-pip-renderer';
 import type { PipRenderOptions, PipShapeSpan } from './pip-renderer.types';
 
@@ -600,7 +600,7 @@ export class BipedPaperdollUtil {
         rows: PipShapeSpan[],
         groups: ShieldPlaceholderGroup[],
     ): void {
-        const addedProfile = PipShapeProfile.create(rows);
+        const addedProfile = createPipShapeProfile(rows);
         if (!addedProfile) {
             return;
         }
@@ -617,7 +617,7 @@ export class BipedPaperdollUtil {
             groups.push(createdGroup);
             group = createdGroup;
         } else {
-            group.profile = PipShapeProfile.create([
+            group.profile = createPipShapeProfile([
                 ...group.profile.spans,
                 ...addedProfile.spans,
             ]) ?? group.profile;
@@ -866,7 +866,7 @@ export class BipedPaperdollUtil {
                 return this.createDistributedRectanglePips(
                     width, height, count, pipOptions, group.type, group.location);
             case 'classic': {
-                const profile = PipShapeProfile.rectangle(0, 0, width, height);
+                const profile = createPipShapeProfile([{ x: 0, y: 0, width, height }]);
                 return profile
                     ? CBTPipRenderer.createPips(profile, count, pipOptions, group.type, group.location)
                     : null;
@@ -914,7 +914,7 @@ export class BipedPaperdollUtil {
         type: PaperdollPlaceholderType,
         location: string,
     ): SVGGElement | null {
-        const profile = PipShapeProfile.rectangle(0, 0, width, height);
+        const profile = createPipShapeProfile([{ x: 0, y: 0, width, height }]);
         return profile
             ? DistributedPipRenderer.createPips(profile, count, options, type, location)
             : null;
@@ -1108,7 +1108,7 @@ export class BipedPaperdollUtil {
             || area.geometry.hasAttribute('transform'))) {
             return null;
         }
-        return PipShapeProfile.create(areas.map(area => {
+        return createPipShapeProfile(areas.map(area => {
             const bounds = this.readRectBounds(area.geometry);
             const styleGap = area.geometry.getAttribute('style')
                 ?.match(/(?:^|;)\s*mml-gap\s*:\s*([^;]+)/u)?.[1];
@@ -1159,12 +1159,12 @@ export class BipedPaperdollUtil {
 
         switch (layout) {
             case 'classic': {
-                const profile = generated?.profile ?? PipShapeProfile.rectangle(
-                    bounds.minX,
-                    bounds.minY,
-                    bounds.maxX - bounds.minX,
-                    bounds.maxY - bounds.minY,
-                );
+                const profile = generated?.profile ?? createPipShapeProfile([{
+                    x: bounds.minX,
+                    y: bounds.minY,
+                    width: bounds.maxX - bounds.minX,
+                    height: bounds.maxY - bounds.minY,
+                }]);
                 const pips = profile
                     ? CBTPipRenderer.createPips(profile, count, options, type, location)
                     : null;
@@ -1172,12 +1172,12 @@ export class BipedPaperdollUtil {
                 return pips;
             }
             case 'distributed': {
-                const profile = generated?.profile ?? PipShapeProfile.rectangle(
-                    bounds.minX,
-                    bounds.minY,
-                    bounds.maxX - bounds.minX,
-                    bounds.maxY - bounds.minY,
-                );
+                const profile = generated?.profile ?? createPipShapeProfile([{
+                    x: bounds.minX,
+                    y: bounds.minY,
+                    width: bounds.maxX - bounds.minX,
+                    height: bounds.maxY - bounds.minY,
+                }]);
                 const pips = profile
                     ? DistributedPipRenderer.createPips(profile, count, options, type, location)
                     : null;

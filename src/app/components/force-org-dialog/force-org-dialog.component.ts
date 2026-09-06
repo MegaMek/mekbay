@@ -16,7 +16,8 @@ import {
     type WritableSignal,
 } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import { sanitizeForceTags } from '../../models/force-serialization';
 import { DataService } from '../../services/data.service';
 import { ForcePersistenceService } from '../../services/force-persistence.service';
@@ -206,49 +207,38 @@ interface PlacedForce {
 }
 
 /** An organizational group containing forces or other groups */
-class OrgGroup {
-    readonly id: string;
-    readonly name: WritableSignal<string>;
-    readonly x: WritableSignal<number>;
-    readonly y: WritableSignal<number>;
-    readonly width: WritableSignal<number>;
-    readonly height: WritableSignal<number>;
-    readonly zIndex: WritableSignal<number>;
-    parentGroupId: string | null;
+type OrgGroup = ReturnType<typeof createOrgGroupState>;
 
-    /** Descendant forces — set externally, drives totals computation. */
-    readonly descendants = signal<LoadForceEntry[]>([]);
-    /** Computed org size name (not serialized). */
-    readonly orgName = signal('');
-    /** Computed dominant faction ID (not serialized). */
-    readonly factionId = signal<FactionId | undefined>(undefined);
-    /** Computed dominant faction (not serialized). */
-    readonly faction = signal<Faction | undefined>(undefined);
-    /** Computed BV/PV totals string (not serialized). */
-    readonly totals = computed(() => {
-        const desc = this.descendants();
-        return desc.length > 0 ? formatTotals(desc) : '';
-    });
-
-    constructor(params: {
-        id?: string;
-        name?: string;
-        x?: number;
-        y?: number;
-        width?: number;
-        height?: number;
-        zIndex: number;
-        parentGroupId?: string | null;
-    }) {
-        this.id = params.id ?? uuidv4();
-        this.name = signal(params.name ?? '');
-        this.x = signal(params.x ?? 0);
-        this.y = signal(params.y ?? 0);
-        this.width = signal(params.width ?? 0);
-        this.height = signal(params.height ?? 0);
-        this.zIndex = signal(params.zIndex);
-        this.parentGroupId = params.parentGroupId ?? null;
-    }
+function createOrgGroupState(params: {
+    id?: string;
+    name?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    zIndex: number;
+    parentGroupId?: string | null;
+}) {
+    const descendants = signal<LoadForceEntry[]>([]);
+    return {
+        id: params.id ?? uuidv4(),
+        name: signal(params.name ?? ''),
+        x: signal(params.x ?? 0),
+        y: signal(params.y ?? 0),
+        width: signal(params.width ?? 0),
+        height: signal(params.height ?? 0),
+        zIndex: signal(params.zIndex),
+        parentGroupId: params.parentGroupId ?? null,
+        // Runtime metadata is derived from descendants and is not serialized.
+        descendants,
+        orgName: signal(''),
+        factionId: signal<FactionId | undefined>(undefined),
+        faction: signal<Faction | undefined>(undefined),
+        totals: computed(() => {
+            const entries = descendants();
+            return entries.length > 0 ? formatTotals(entries) : '';
+        }),
+    };
 }
 
 /** Dialog input data for loading a saved organization */
@@ -264,7 +254,7 @@ interface ForceMetadata {
 }
 
 function createMissingForceEntry(instanceId: string): LoadForceEntry {
-    return new LoadForceEntry({
+    return createForcePreviewEntryData({
         instanceId,
         name: 'Missing Force',
         missing: true,
@@ -1076,7 +1066,7 @@ export class ForceOrgDialogComponent {
     }
 
     private buildGroups(groupData: readonly OrgGroupData[]): OrgGroup[] {
-        return groupData.map((group) => new OrgGroup({
+        return groupData.map((group) => createOrgGroupState({
             id: group.id,
             name: group.name,
             x: snapGroupXToGrid(group.x),
@@ -2434,7 +2424,7 @@ export class ForceOrgDialogComponent {
             }
             case 'new-group': {
                 const oldGroup = this.getGroupById(draggedPf.groupId);
-                const group = new OrgGroup({
+                const group = createOrgGroupState({
                     zIndex: this.nextGroupZIndex++,
                 });
                 draggedPf.groupId = group.id;
@@ -2572,7 +2562,7 @@ export class ForceOrgDialogComponent {
             case 'create-parent': {
                 const oldParent = this.getParentGroup(draggedGrp);
                 const targetParent = this.getParentGroup(action.other);
-                const parentGroup = new OrgGroup({
+                const parentGroup = createOrgGroupState({
                     zIndex: this.nextGroupZIndex++,
                     parentGroupId: action.other.parentGroupId,
                 });

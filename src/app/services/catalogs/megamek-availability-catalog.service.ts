@@ -29,11 +29,9 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
         return 'megamek_availability';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/generated/mulized_availability_weighted.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.recordsByUnitName.get(unit.name);

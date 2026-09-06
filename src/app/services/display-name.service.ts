@@ -4,7 +4,7 @@
 
 import { inject, Injectable } from '@angular/core';
 import { MAX_DISPLAY_NAME_LENGTH, normalizeDisplayName } from '../utils/display-name.util';
-import { PilotNameGeneratorService } from './pilot-name-generator.service';
+import { PilotNameCatalogService } from './catalogs/pilot-name-catalog.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 
@@ -12,7 +12,7 @@ export const DISPLAY_NAME_SAVE_DEBOUNCE_MS = 300;
 
 @Injectable({ providedIn: 'root' })
 export class DisplayNameService {
-    private readonly pilotNameGenerator = inject(PilotNameGeneratorService);
+    private readonly pilotNames = inject(PilotNameCatalogService);
     private readonly userStateService = inject(UserStateService);
     private readonly wsService = inject(WsService);
     private pendingValue: string | null = null;
@@ -34,7 +34,7 @@ export class DisplayNameService {
 
     async generate(): Promise<string> {
         try {
-            return normalizeDisplayName(await this.pilotNameGenerator.generateCallsign(MAX_DISPLAY_NAME_LENGTH)) ?? 'Commander';
+            return normalizeDisplayName(await this.pilotNames.generateCallsign(MAX_DISPLAY_NAME_LENGTH)) ?? 'Commander';
         } catch {
             return 'Commander';
         }

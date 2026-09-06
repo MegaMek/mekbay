@@ -28,7 +28,7 @@ import {
     type FormationWideAbilityDescriptor,
 } from '../../utils/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
-import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
+import { PilotNameCatalogService } from '../../services/catalogs/pilot-name-catalog.service';
 import { LoggerService } from '../../services/logger.service';
 import type { Era } from '../../models/eras.model';
 import type { UnitSubtype, UnitType } from '../../models/entity/types/classification';
@@ -112,7 +112,7 @@ export class EditASPilotDialogComponent {
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
     private readonly optionsService = inject(OptionsService);
-    private readonly pilotNameGenerator = inject(PilotNameGeneratorService);
+    private readonly pilotNames = inject(PilotNameCatalogService);
     private readonly logger = inject(LoggerService);
     readonly formatRuleReference = formatRulesReference;
 
@@ -1150,7 +1150,7 @@ export class EditASPilotDialogComponent {
         if (this.generatingName()) return;
         this.generatingName.set(true);
         try {
-            const name = await this.pilotNameGenerator.generate({
+            const name = await this.pilotNames.generateName({
                 factionId: this.data.factionId ?? this.data.group?.force.faction()?.id,
                 isAerospace: !!this.data.isAerospace,
                 isCommander: this.selectedFormationCommander(),

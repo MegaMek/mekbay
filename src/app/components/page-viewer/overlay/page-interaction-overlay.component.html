@@ -19,10 +19,10 @@
             [interactive]="true"
             (activated)="openNotification($event)" />
         <button role="button" class="overlay-button overlay-round-button preventZoomReset" tabindex="0"
-            [attr.aria-label]="unitViewMode.mode() === 'sheet' ? 'Open tactical view' : 'Open sheet view'"
-            [title]="unitViewMode.mode() === 'sheet' ? 'Tactical View' : 'Sheet View'"
+            [attr.aria-label]="optionsService.options().cbtUnitViewMode === 'sheet' ? 'Open tactical view' : 'Open sheet view'"
+            [title]="optionsService.options().cbtUnitViewMode === 'sheet' ? 'Tactical View' : 'Sheet View'"
             (click)="toggleUnitView($event)">
-            @if (unitViewMode.mode() === 'sheet') {
+            @if (optionsService.options().cbtUnitViewMode === 'sheet') {
             <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                 <path d="M4 5h7v6H4zM13 5h7v4h-7zM4 13h7v6H4zM13 11h7v8h-7z" />
             </svg>

@@ -69,11 +69,9 @@ export class ForceNameWordsCatalogService extends CatalogBaseService<ForceNameWo
         return 'force_name_words';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/generated/force-name-words.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getWords(): ForceNameWords {
         return this.words;

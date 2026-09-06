@@ -29,12 +29,16 @@ export class Sanitizer {
             if (strict) {
                 throw new SanitizationError('Input must be a plain object');
             }
-            return schema._createDefault();
+            const defaults: Partial<T> = {};
+            for (const [key, rule] of Object.entries(schema) as Array<[keyof T, Rule]>) {
+                if (rule.default !== undefined) defaults[key] = rule.default as T[keyof T];
+            }
+            return defaults as T;
         }
 
         const result: Partial<T> = {};
 
-        for (const [key, rule] of Object.entries(schema._rules) as Array<[keyof T, Rule]>) {
+        for (const [key, rule] of Object.entries(schema) as Array<[keyof T, Rule]>) {
             const rawValue = (input as Record<string, unknown>)[key as string];
 
             try {
@@ -275,27 +279,11 @@ export class SchemaBuilder<T extends object> {
     }
 
     build(): Schema<T> {
-        return new Schema(this._rules as Record<keyof T, Rule>);
+        return this._rules as Schema<T>;
     }
 }
 
-export class Schema<T extends object> {
-    _rules: Record<keyof T, Rule>;
-
-    constructor(rules: Record<keyof T, Rule>) {
-        this._rules = rules;
-    }
-
-    _createDefault(): T {
-        const result: Partial<T> = {};
-        for (const [key, rule] of Object.entries(this._rules) as Array<[keyof T, Rule]>) {
-            if (rule.default !== undefined) {
-                result[key] = rule.default as T[keyof T];
-            }
-        }
-        return result as T;
-    }
-}
+export type Schema<T extends object> = Record<keyof T, Rule>;
 
 // Type definitions
 export interface SanitizeOptions {

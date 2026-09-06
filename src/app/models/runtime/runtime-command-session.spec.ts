@@ -233,6 +233,13 @@ describe('runtime command session', () => {
 
         const undone = prepareRuntimeCommandUndo(session)!.session;
         expect(serializeRuntimeHistory({ u: [], t: [] }, undone).t.map(turn => turn.n)).toEqual([18, 19]);
+        expect(runtimeHistoryRows({ u: [], t: [] }, undone).map(row => ({
+            turn: row.event.turn,
+            applied: row.applied,
+        }))).toEqual([
+            { turn: 19, applied: true },
+            { turn: 20, applied: false },
+        ]);
     });
 
     it('keeps undo checkpoints for silent edits and accepts multiple semantic rows for one edit', () => {

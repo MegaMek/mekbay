@@ -126,14 +126,12 @@ export class CalculationReportBuilder implements CalculationReportSink {
 }
 
 /** No-op sink used when callers do not request a report. */
-class NullCalculationReport implements CalculationReportSink {
-  addLine(): this { return this; }
-  addNumericLine(): this { return this; }
-  addResultLine(): this { return this; }
-  addNumericResultLine(): this { return this; }
-  addHeader(): this { return this; }
-  addSubHeader(): this { return this; }
-  addEmptyLine(): this { return this; }
-}
-
-export const NULL_CALCULATION_REPORT: CalculationReportSink = new NullCalculationReport();
+export const NULL_CALCULATION_REPORT: CalculationReportSink = {
+  addLine() { return this; },
+  addNumericLine() { return this; },
+  addResultLine() { return this; },
+  addNumericResultLine() { return this; },
+  addHeader() { return this; },
+  addSubHeader() { return this; },
+  addEmptyLine() { return this; },
+};

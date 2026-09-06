@@ -21,13 +21,11 @@ import {
     type SerializedCBTForce,
     type SerializedForce,
 } from '../models/force-serialization';
-import {
-    createLoadForceEntry,
-    LoadForceEntry,
-    type RemoteLoadForceEntry,
-} from '../models/load-force-entry.model';
+import type { LoadForceEntry } from '../models/load-force-entry.model';
+import { createForcePreviewEntry } from '../models/force-preview.model';
 import {
     decodeRemoteLoadForceEntry,
+    type RemoteLoadForceEntry,
     type RemoteLoadForceWireEntry,
 } from '../models/remote-load-force-entry.model';
 import {
@@ -1428,7 +1426,7 @@ export class ForcePersistenceService {
         const localForces: LoadForceEntry[] = [];
         for (const raw of await this.dbService.listForces()) {
             try {
-                localForces.push(createLoadForceEntry(
+                localForces.push(createForcePreviewEntry(
                     raw,
                     this.dataService,
                     { local: true },
@@ -1472,7 +1470,7 @@ export class ForcePersistenceService {
             const entries: LoadForceEntry[] = [];
             for (const wire of response.data) {
                 try {
-                    entries.push(createLoadForceEntry(decodeRemoteLoadForceEntry(wire), this.dataService, { cloud: true }));
+                    entries.push(createForcePreviewEntry(decodeRemoteLoadForceEntry(wire), this.dataService, { cloud: true }));
                 } catch (error) {
                     this.logger.warn(`Skipping unreadable cloud force: ${error}`);
                 }
@@ -1518,14 +1516,14 @@ export class ForcePersistenceService {
             if (!preview?.instanceId) continue;
             entryMap.set(
                 preview.instanceId,
-                createLoadForceEntry(preview, this.dataService, { local: true }),
+                createForcePreviewEntry(preview, this.dataService, { local: true }),
             );
         }
 
         const cloudForces = await this.getForcesBulkSummaries(orderedIds);
         for (const raw of cloudForces) {
             if (!raw?.instanceId) continue;
-            const cloudEntry = createLoadForceEntry(raw, this.dataService, { cloud: true });
+            const cloudEntry = createForcePreviewEntry(raw, this.dataService, { cloud: true });
             const existing = entryMap.get(raw.instanceId);
             if (!existing || this.getComparableTimestamp(raw.timestamp) >= this.getComparableTimestamp(existing.timestamp)) {
                 if (existing?.local) cloudEntry.local = true;

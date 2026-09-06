@@ -2,40 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
-
-import { PageViewerSwipeBindingService } from './page-viewer-swipe-binding.service';
-import { PageViewerSwipeRenderPlanService } from './page-viewer-swipe-render-plan.service';
-import { PageViewerSwipeRendererService } from './page-viewer-swipe-renderer.service';
-import { PageViewerSwipeSlotService } from './page-viewer-swipe-slot.service';
+import { buildSwipeRenderUpdate } from './page-viewer-swipe-renderer';
 
 function createSvg(): SVGSVGElement {
     return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 }
 
-describe('PageViewerSwipeRendererService', () => {
-    let service: PageViewerSwipeRendererService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [
-                PageViewerSwipeSlotService,
-                PageViewerSwipeBindingService,
-                PageViewerSwipeRenderPlanService,
-                PageViewerSwipeRendererService
-            ]
-        });
-
-        service = TestBed.inject(PageViewerSwipeRendererService);
-    });
-
+describe('page-viewer swipe-renderer', () => {
     it('turns a losing attachment into a winning attach instruction after virtual clears', () => {
         const offscreenSlot = document.createElement('div');
         const visibleSlot = document.createElement('div');
         const desiredSvg = createSvg();
         offscreenSlot.appendChild(desiredSvg);
 
-        const update = service.buildUpdate({
+        const update = buildSwipeRenderUpdate({
             slots: [
                 {
                     slotIndex: 0,
@@ -88,7 +68,7 @@ describe('PageViewerSwipeRendererService', () => {
         const desiredSvg = createSvg();
         slot.appendChild(desiredSvg);
 
-        const update = service.buildUpdate({
+        const update = buildSwipeRenderUpdate({
             slots: [{
                 slotIndex: 0,
                 slotOffset: 0,

@@ -18,12 +18,10 @@ import { defaultRecordSheetWeaponDamageText } from '../record-sheet-weapon-info.
 import type { BipedPaperdollPipLayout } from './biped-paperdoll.util';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
-import { PipShapeProfile } from './pip-shape-profile';
+import { createPipShapeProfile } from './pip-shape-profile';
 import {
     RECORD_SHEET_CONTENT_HEIGHT,
     RECORD_SHEET_CONTENT_WIDTH,
-    type CompactRecordSheetKind,
-    type RecordSheetPageFormat,
     type RecordSheetPageProfile,
 } from './record-sheet-layout';
 import { createBattleTechLogo, createCatalystGameLabsLogo } from './record-sheet-brand';
@@ -1254,7 +1252,7 @@ export function makeDistributedPips(
     location: string,
     rear = false,
 ): SVGGElement | null {
-    const profile = PipShapeProfile.rectangle(0, 0, width, height);
+    const profile = createPipShapeProfile([{ x: 0, y: 0, width, height }]);
     if (!profile) return null;
     const pips = DistributedPipRenderer.createPips(profile, count, {
         pipRadius: 2.45,

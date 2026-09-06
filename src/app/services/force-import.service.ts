@@ -14,7 +14,8 @@ import {
     MAX_UNITS,
     type UnitGroup,
 } from '../models/force.model';
-import { LoadForceEntry } from '../models/load-force-entry.model';
+import type { LoadForceEntry } from '../models/load-force-entry.model';
+import { isForcePreviewEntry } from '../models/force-preview.model';
 import {
     forceMemberCommander,
     isCBTForceMember,
@@ -168,7 +169,7 @@ export class ForceImportService {
         if (mode === 'insert') {
             const targetForce = this.getEditableInsertTarget();
             if (!targetForce) return;
-            if (result instanceof Force || result instanceof LoadForceEntry) {
+            if (result instanceof Force || isForcePreviewEntry(result)) {
                 const forceToInsert = await this.resolveForceSource(result);
                 if (forceToInsert) await this.insertForceInto(forceToInsert, targetForce);
             } else {
@@ -180,7 +181,7 @@ export class ForceImportService {
 
         const isAdd = mode === 'add';
         const addAlignment: ForceAlignment = alignment ?? 'friendly';
-        if (result instanceof Force || result instanceof LoadForceEntry) {
+        if (result instanceof Force || isForcePreviewEntry(result)) {
             const requestedForce = await this.resolveForceSource(result);
             if (requestedForce) {
                 await this.applyForceToWorkspace(

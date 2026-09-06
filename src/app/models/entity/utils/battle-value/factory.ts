@@ -14,7 +14,7 @@ import {
   DropShipBVCalculator,
   HandheldWeaponBVCalculator,
   InfantryBVCalculator,
-  JumpShipBVCalculator,
+  LargeAeroBVCalculator,
   MekBVCalculator,
   ProtoMekBVCalculator,
   WarShipBVCalculator,
@@ -34,7 +34,7 @@ export function getBVCalculator(
     case 'Infantry': return new InfantryBVCalculator(entity as never, state, rules);
     case 'WarShip': return new WarShipBVCalculator(entity as never, state, rules);
     case 'JumpShip':
-    case 'SpaceStation': return new JumpShipBVCalculator(entity as never, state, rules);
+    case 'SpaceStation': return new LargeAeroBVCalculator(entity as never, state, rules);
     case 'DropShip': return new DropShipBVCalculator(entity as never, state, rules);
     case 'Aero':
     case 'ConvFighter':

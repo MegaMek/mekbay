@@ -2,23 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
+import { resolveSwipeEndPlan, resolveShadowPagesToMove, resolveSwipeViewStartIndex, resolveSwipeReversePlan } from './page-viewer-swipe-decision';
 
-import { PageViewerSwipeDecisionService } from './page-viewer-swipe-decision.service';
-
-describe('PageViewerSwipeDecisionService', () => {
-    let service: PageViewerSwipeDecisionService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [PageViewerSwipeDecisionService]
-        });
-
-        service = TestBed.inject(PageViewerSwipeDecisionService);
-    });
-
+describe('page-viewer swipe-decision', () => {
     it('resolves a committed swipe movement and target offset', () => {
-        const plan = service.resolveSwipeEndPlan({
+        const plan = resolveSwipeEndPlan({
             totalDx: -1200,
             velocity: 0,
             scaledPageStep: 1000,
@@ -34,7 +22,7 @@ describe('PageViewerSwipeDecisionService', () => {
     });
 
     it('falls back to flick velocity when distance stays below threshold', () => {
-        const plan = service.resolveSwipeEndPlan({
+        const plan = resolveSwipeEndPlan({
             totalDx: 50,
             velocity: 350,
             scaledPageStep: 1000,
@@ -47,7 +35,7 @@ describe('PageViewerSwipeDecisionService', () => {
     });
 
     it('resolves shadow navigation movement and wrapped start indices', () => {
-        expect(service.resolveShadowPagesToMove({
+        expect(resolveShadowPagesToMove({
             direction: 'right',
             currentStartIndex: 4,
             effectiveVisible: 2,
@@ -55,7 +43,7 @@ describe('PageViewerSwipeDecisionService', () => {
             totalUnits: 6
         })).toBe(2);
 
-        expect(service.resolveViewStartIndex({
+        expect(resolveSwipeViewStartIndex({
             baseDisplayStartIndex: 5,
             pagesToMove: 2,
             totalUnits: 6
@@ -63,12 +51,12 @@ describe('PageViewerSwipeDecisionService', () => {
     });
 
     it('builds reverse animation plans', () => {
-        expect(service.resolveReversePlan({ currentTranslateX: 0.5, fullPageDistance: 1000 })).toEqual({
+        expect(resolveSwipeReversePlan({ currentTranslateX: 0.5, fullPageDistance: 1000 })).toEqual({
             shouldSnapImmediately: true,
             durationMs: 0
         });
 
-        expect(service.resolveReversePlan({ currentTranslateX: 500, fullPageDistance: 1000 })).toEqual({
+        expect(resolveSwipeReversePlan({ currentTranslateX: 500, fullPageDistance: 1000 })).toEqual({
             shouldSnapImmediately: false,
             durationMs: 110
         });

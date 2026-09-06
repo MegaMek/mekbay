@@ -21,26 +21,23 @@ import {
 } from './unit-summary-display-facts';
 import { buildUnitRulesRefs } from './unit-rules-ref-builder';
 
-/**
- * Builds a `Partial<Unit>` metadata object from a parsed entity.
- *
- * Fields are added incrementally — the builder starts with trivial identity
- * fields and grows as more entity computeds are implemented and validated
- * against the Java-generated `units.json` oracle.
- *
- * This is an external utility, NOT on the entity class, because the `Unit`
- * interface is a metadata/export concern, not a game-mechanics concern.
- */
+/** Entity-derived export fields, before catalog identity and presentation enrichment. */
+export type UnitMetadata = Omit<UnitSummary,
+  | 'provider' | 'origin' | 'hash' | 'summaryVersion' | 'loadIssues'
+  | 'baseChassis' | 'clanName' | 'entityType' | 'pv' | 'dpt'
+  | `_${string}`
+>;
+
+/** Projects canonical entity data into the metadata fields compared with MegaMek's export. */
 export class UnitMetadataBuilder {
   constructor(private readonly resolveIcon: UnitIconResolver = () => '') {}
 
   /**
    * Build metadata for a single entity.
    *
-   * Returns only the fields that are currently implemented.
    * Use the compare-unit-output script to validate against units.json.
    */
-  build(entity: BaseEntity, unitFile?: string): Partial<UnitSummary> {
+  build(entity: BaseEntity, unitFile?: string): UnitMetadata {
     const me = entity.mountedEngine();
     const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {

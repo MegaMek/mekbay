@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTUnit } from './cbt-unit';
+import { compareText } from '../../utils/string.util';
 import type { ForcePersonnelSnapshot } from '../force-personnel';
 import { emptyRuntimeHistory } from './persistence-v2';
 import {
@@ -18,7 +19,6 @@ import {
     type SerializedRuntimeHistory,
 } from './runtime-history';
 import {
-    compareUnitInstanceIds,
     serializedUnitTurnCounter,
     unitHistory,
     type RuntimeHistoryInput,
@@ -47,7 +47,7 @@ export function captureRuntimeCommandMutation(
     instanceIds: readonly string[],
     personnel?: ForcePersonnelSnapshot,
 ): CapturedRuntimeCommandMutation {
-    const ids = [...new Set(instanceIds)].sort(compareUnitInstanceIds);
+    const ids = [...new Set(instanceIds)].sort(compareText);
     const openingWitnesses = new Map<string, Readonly<{
         unit: CBTUnit;
         revision: number;

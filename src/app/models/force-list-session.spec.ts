@@ -1,11 +1,12 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { LoadForceEntry } from './load-force-entry.model';
+import type { LoadForceEntry } from './load-force-entry.model';
+import { createForcePreviewEntryData } from './force-preview.model';
 import { ForceListSession, type ForceListPage } from './force-list-session';
 
 function entry(id: string, time: number, local = false): LoadForceEntry {
-    return new LoadForceEntry({ instanceId: id, timestamp: new Date(time).toISOString(),
+    return createForcePreviewEntryData({ instanceId: id, timestamp: new Date(time).toISOString(),
         local, cloud: !local, tags: [id], groups: [] });
 }
 

@@ -3,11 +3,10 @@
 // Author: Drake
 
 import { TestBed } from '@angular/core/testing';
-import type { PilotNameCatalog } from '../models/pilot-name-catalog.model';
-import { PilotNameCatalogService } from './catalogs/pilot-name-catalog.service';
-import { PilotNameGeneratorService } from './pilot-name-generator.service';
+import type { PilotNameCatalog } from '../../models/pilot-name-catalog.model';
+import { PilotNameCatalogService } from './pilot-name-catalog.service';
 
-describe('PilotNameGeneratorService', () => {
+describe('PilotNameCatalogService generation', () => {
     const catalog: PilotNameCatalog = {
         maleGivenNames: { 1: [{ value: 'John', weight: 1 }] },
         femaleGivenNames: { 1: [{ value: 'Jane', weight: 1 }] },
@@ -26,13 +25,15 @@ describe('PilotNameGeneratorService', () => {
 
     beforeEach(() => TestBed.resetTestingModule());
 
-    function configure(catalogService: object): void {
+    function configure(catalogService: { initialize: jasmine.Spy; getCatalog: jasmine.Spy }): void {
         TestBed.configureTestingModule({
             providers: [
-                PilotNameGeneratorService,
-                { provide: PilotNameCatalogService, useValue: catalogService },
+                PilotNameCatalogService,
             ],
         });
+        const service = TestBed.inject(PilotNameCatalogService);
+        spyOn(service, 'initialize').and.callFake(catalogService.initialize);
+        spyOn(service, 'getCatalog').and.callFake(catalogService.getCatalog);
     }
 
     it('initializes the lazy catalog before generating', async () => {
@@ -42,7 +43,7 @@ describe('PilotNameGeneratorService', () => {
         };
         configure(catalogService);
 
-        const result = await TestBed.inject(PilotNameGeneratorService).generate({ includeCallsign: false });
+        const result = await TestBed.inject(PilotNameCatalogService).generateName({ includeCallsign: false });
 
         expect(catalogService.initialize).toHaveBeenCalledTimes(1);
         expect(catalogService.getCatalog).toHaveBeenCalledTimes(1);
@@ -62,11 +63,11 @@ describe('PilotNameGeneratorService', () => {
             getCatalog: jasmine.createSpy('getCatalog').and.returnValue(profiledCatalog),
         };
         configure(catalogService);
-        const service = TestBed.inject(PilotNameGeneratorService);
+        const service = TestBed.inject(PilotNameCatalogService);
 
-        expect(await service.generate({ factionId: 10, includeCallsign: false })).toMatch(/^(John|Jane)$/);
-        expect(await service.generate({ factionId: 12, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
-        expect(await service.generate({ factionId: 404, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
+        expect(await service.generateName({ factionId: 10, includeCallsign: false })).toMatch(/^(John|Jane)$/);
+        expect(await service.generateName({ factionId: 12, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
+        expect(await service.generateName({ factionId: 404, includeCallsign: false })).toMatch(/^(John|Jane) Smith$/);
     });
 
     it('generates a callsign within the requested display-name limit', async () => {
@@ -82,7 +83,7 @@ describe('PilotNameGeneratorService', () => {
         };
         configure(catalogService);
 
-        await expectAsync(TestBed.inject(PilotNameGeneratorService).generateCallsign(16)).toBeResolvedTo('Ace');
+        await expectAsync(TestBed.inject(PilotNameCatalogService).generateCallsign(16)).toBeResolvedTo('Ace');
     });
 
     it('propagates catalog initialization failures', async () => {
@@ -92,7 +93,7 @@ describe('PilotNameGeneratorService', () => {
         };
         configure(catalogService);
 
-        await expectAsync(TestBed.inject(PilotNameGeneratorService).generate()).toBeRejectedWithError('offline');
+        await expectAsync(TestBed.inject(PilotNameCatalogService).generateName()).toBeRejectedWithError('offline');
         expect(catalogService.getCatalog).not.toHaveBeenCalled();
     });
 });

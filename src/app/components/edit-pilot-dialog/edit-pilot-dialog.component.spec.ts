@@ -19,7 +19,7 @@ import { LayoutService } from '../../services/layout.service';
 import { LoggerService } from '../../services/logger.service';
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
+import { PilotNameCatalogService } from '../../services/catalogs/pilot-name-catalog.service';
 import { UnitNameService } from '../../services/unit-name.service';
 import { EditASPilotDialogComponent } from '../edit-as-pilot-dialog/edit-as-pilot-dialog.component';
 
@@ -170,7 +170,7 @@ describe('CBT multi-crew pilot dialog logic', () => {
                 { nativeElement: firstInput },
                 { nativeElement: secondInput },
             ],
-            pilotNameGenerator: { generate },
+            pilotNames: { generateName: generate },
             logger: { warn: jasmine.createSpy('warn') },
             data: { factionId: null },
             selectedGroupCommander: () => false,
@@ -223,7 +223,7 @@ describe('Pilot dialog skill previews and reserve controls', () => {
             { provide: DIALOG_DATA, useValue: data },
             { provide: DialogRef, useValue: { close } },
             { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation') } },
-            { provide: PilotNameGeneratorService, useValue: { generate: jasmine.createSpy('generate') } },
+            { provide: PilotNameCatalogService, useValue: { generateName: jasmine.createSpy('generate') } },
             { provide: LoggerService, useValue: { warn: jasmine.createSpy('warn') } },
             { provide: LayoutService, useValue: { isPhone: signal(false), windowWidth: signal(1024), windowHeight: signal(768) } },
             { provide: OptionsService, useValue: { options: () => ({ ASUseHex: false }) } },

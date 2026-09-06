@@ -20,7 +20,8 @@ import { ToastService } from '../../services/toast.service';
 import { Pipe, type PipeTransform } from "@angular/core";
 import type { Force } from '../../models/force.model';
 import { getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
-import { type LoadForceEntry, type LoadForceGroup } from '../../models/load-force-entry.model';
+import type { LoadForceEntry } from '../../models/load-force-entry.model';
+import type { ForcePreviewGroup } from '../../models/force-preview.model';
 import type { LoadOperationEntry } from '../../models/operation.model';
 import type { SerializedOperation } from '../../models/operation.model';
 import type { LoadOrganizationEntry } from '../../models/organization.model';
@@ -1398,14 +1399,14 @@ export class ForceLoadDialogComponent {
         return (type || GameSystem.CBT) === GameSystem.AS ? 'AS' : 'CBT';
     }
 
-    getGroupName(group: LoadForceGroup): string {
+    getGroupName(group: ForcePreviewGroup): string {
         if (!group.name) {
             return LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
         }
         return group.name;
     }
 
-    getGroupFormationName(group: LoadForceGroup): string | null {
+    getGroupFormationName(group: ForcePreviewGroup): string | null {
         if (!group.formationId) return null;
         if (group.formationId === NO_FORMATION_ID) return null;
         if (!group.name) return null; // We handle it in getGroupName

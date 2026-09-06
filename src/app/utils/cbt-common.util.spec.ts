@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary, UnitSubtype, UnitType } from '../models/unit-summary.model';
-import { getEffectivePilotingSkill, getFixedPilotingSkill } from './cbt-common.util';
+import { calculateAdjustedBV, getEffectivePilotingSkill, getFixedPilotingSkill } from './cbt-common.util';
 
 function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
     return {
@@ -15,6 +15,17 @@ function createUnit(overrides: Partial<UnitSummary> = {}): UnitSummary {
 }
 
 describe('CBT common rules', () => {
+    describe('calculateAdjustedBV', () => {
+        it('keeps the pre-skill value unrounded and rounds only the adjusted result', () => {
+            expect(calculateAdjustedBV(createUnit(), 1112.375, 4, 3)).toBe(1335);
+        });
+
+        it('rounds the final value even when the skill multiplier is one', () => {
+            expect(calculateAdjustedBV(createUnit(), 2000.49, 4, 5)).toBe(2000);
+            expect(calculateAdjustedBV(createUnit(), 2000.5, 4, 5)).toBe(2001);
+        });
+    });
+
     describe('getFixedPilotingSkill', () => {
         it('returns null for units with variable Piloting', () => {
             expect(getFixedPilotingSkill(createUnit())).toBeNull();

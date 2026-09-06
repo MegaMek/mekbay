@@ -60,6 +60,40 @@ describe('OptionsDialogComponent', () => {
         return TestBed.runInInjectionContext(() => new OptionsDialogComponent());
     }
 
+    it('returns from mobile details before closing the dialog', () => {
+        const component = configureComponent({ options: () => ({}) });
+        const close = spyOn(component.dialogRef, 'close');
+
+        component.openMobileSection('Search');
+        expect(component.mobileHeaderTitle()).toBe('Search');
+
+        component.onMobileBack();
+        expect(component.mobileDetailOpen()).toBeFalse();
+        expect(component.mobileHeaderTitle()).toBe('Options');
+        expect(component.activeTab()).toBe('Search');
+        expect(close).not.toHaveBeenCalled();
+
+        component.onMobileBack();
+        expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the selected section when resizing and resets mobile navigation on a desktop selection', () => {
+        const component = configureComponent({ options: () => ({}) });
+        component.isWideLayout.set(false);
+        component.openMobileSection('Tags');
+
+        component.isWideLayout.set(true);
+        expect(component.currentViewDefinition().id).toBe('Tags');
+        component.isWideLayout.set(false);
+        expect(component.mobileDetailOpen()).toBeTrue();
+
+        component.isWideLayout.set(true);
+        component.selectDesktopSection('Account');
+        component.isWideLayout.set(false);
+        expect(component.mobileDetailOpen()).toBeFalse();
+        expect(component.currentViewDefinition().id).toBe('Account');
+    });
+
     it('persists the selected unit name order', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({ options: () => ({}), setOption });

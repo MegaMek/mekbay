@@ -23,8 +23,7 @@ export class PortraitService extends CatalogBaseService<StoredPortraitCatalog, S
     readonly manifest = this.catalog.asReadonly();
 
     protected override get catalogKey(): string { return 'portraits'; }
-    protected override get remoteUrl(): string { return 'online-assets/generated/portraits/portraits.json'; }
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
+    protected override get repositoryAssetPath(): string { return 'online-assets/generated/portraits/portraits.json'; }
     protected override hasHydratedData(): boolean { return this.catalog() !== null; }
     protected override getDatasetSize(data: StoredPortraitCatalog): number { return Object.keys(data.manifest.portraits).length; }
 

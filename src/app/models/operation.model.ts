@@ -97,15 +97,6 @@ export class LoadOperationEntry {
         this.cloudTimestamp = data.cloudTimestamp ?? 0;
     }
 
-    /** Force infos grouped by alignment */
-    get friendlyForces(): OperationForceInfo[] {
-        return this.forces.filter(f => f.alignment === 'friendly');
-    }
-
-    get enemyForces(): OperationForceInfo[] {
-        return this.forces.filter(f => f.alignment === 'enemy');
-    }
-
     /** Unique game system types across all forces */
     get gameTypes(): GameSystem[] {
         const types = new Set<GameSystem>();
@@ -113,19 +104,5 @@ export class LoadOperationEntry {
             if (f.type) types.add(f.type);
         }
         return Array.from(types);
-    }
-
-    /** Sum of BV for a given alignment */
-    bvForAlignment(alignment: ForceAlignment): number {
-        return this.forces
-            .filter(f => f.alignment === alignment)
-            .reduce((sum, f) => sum + (f.bv ?? 0), 0);
-    }
-
-    /** Sum of PV for a given alignment */
-    pvForAlignment(alignment: ForceAlignment): number {
-        return this.forces
-            .filter(f => f.alignment === alignment)
-            .reduce((sum, f) => sum + (f.pv ?? 0), 0);
     }
 }

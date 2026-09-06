@@ -5,7 +5,8 @@ import { asComponentId } from '../entity/entity-identifiers';
 import {
     asEncounterNetworkId,
     asEncounterTargetId,
-    CBTEncounterC3State,
+    emptyCBTEncounterC3Snapshot,
+    freezeCBTEncounterC3Snapshot,
     createEncounterTargetId,
     decodeCBTEncounterStateV2,
     encodeCBTEncounterStateV2,
@@ -71,7 +72,6 @@ describe('CBT force session and durable encounter C3 state', () => {
     });
 
     it('stores detached networks without reimplementing C3 rule validation', () => {
-        const c3 = new CBTEncounterC3State();
         const network = {
             id: asEncounterNetworkId('network:c3:internal-master'),
             networkType: 'c3' as const,
@@ -89,29 +89,35 @@ describe('CBT force session and durable encounter C3 state', () => {
                 },
             ],
         };
-        c3.replaceC3Configuration([network], [{ unitId: 'instance-1', x: 203, y: 392 }]);
+        let c3 = freezeCBTEncounterC3Snapshot({
+            networks: [network],
+            c3Positions: [{ unitId: 'instance-1', x: 203, y: 392 }],
+        });
         network.color = '#abcdef';
         network.endpoints[0].componentId = asComponentId('caller-mutation');
 
-        expect(c3.snapshot().networks[0]).toEqual(jasmine.objectContaining({
+        expect(c3.networks[0]).toEqual(jasmine.objectContaining({
             color: '#123456',
             endpoints: [
                 jasmine.objectContaining({ componentId: asComponentId('component:c3-master-a') }),
                 jasmine.objectContaining({ componentId: asComponentId('component:c3-master-b') }),
             ],
         }));
-        expect(c3.snapshot().c3Positions).toEqual([{ unitId: 'instance-1', x: 203, y: 392 }]);
+        expect(c3.c3Positions).toEqual([{ unitId: 'instance-1', x: 203, y: 392 }]);
 
         // Domain-invalid topology is deliberately not rejected here. Admission
         // belongs to C3NetworkEditor/projectC3EditorNetworksToEncounter.
-        c3.replaceC3Configuration([...c3.snapshot().networks, {
-            id: asEncounterNetworkId('network:opaque-fact'),
-            networkType: 'c3',
-            color: '#123456',
-            endpoints: [],
-        }], c3.snapshot().c3Positions);
+        c3 = freezeCBTEncounterC3Snapshot({
+            networks: [...c3.networks, {
+                id: asEncounterNetworkId('network:opaque-fact'),
+                networkType: 'c3',
+                color: '#123456',
+                endpoints: [],
+            }],
+            c3Positions: c3.c3Positions,
+        });
 
-        const restored = decodeCBTEncounterStateV2(encodeCBTEncounterStateV2(c3.snapshot()));
+        const restored = decodeCBTEncounterStateV2(encodeCBTEncounterStateV2(c3));
         expect(restored.networks
             .find(candidate => candidate.id === asEncounterNetworkId('network:c3:internal-master'))
             ?.endpoints.map(endpoint => endpoint.componentId)).toEqual([
@@ -123,15 +129,14 @@ describe('CBT force session and durable encounter C3 state', () => {
 
     it('keeps targets session-only while round-tripping durable C3 state', () => {
         const session = forceSession();
-        const c3 = new CBTEncounterC3State();
+        const c3 = emptyCBTEncounterC3Snapshot();
         const created = { ...registryTarget('A'), id: createEncounterTargetId() };
         session.dispatchTargetRegistry({
             kind: 'create-target', target: created,
         });
-        const encoded = encodeCBTEncounterStateV2(c3.snapshot());
-        const restoredC3 = new CBTEncounterC3State();
+        const encoded = encodeCBTEncounterStateV2(c3);
+        const restoredC3 = decodeCBTEncounterStateV2(encoded);
         const restoredSession = forceSession();
-        restoredC3.restoreSerialized(encoded);
 
         expect(encoded).toEqual({ networks: [] });
         expect(session.targetRegistry()).toEqual({
@@ -139,7 +144,7 @@ describe('CBT force session and durable encounter C3 state', () => {
             targets: [jasmine.objectContaining({ id: created.id })],
         });
         expect(restoredSession.targetRegistry()).toEqual({ revision: 0, targets: [] });
-        expect(restoredC3.snapshot()).toEqual({ networks: [], c3Positions: [] });
+        expect(restoredC3).toEqual({ networks: [], c3Positions: [] });
     });
 
 });

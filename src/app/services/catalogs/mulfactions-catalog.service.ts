@@ -33,11 +33,9 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
         return 'factions';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/static/factions.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getFactions(): MULFaction[] {
         return this.factions;
@@ -50,11 +48,6 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
 
     public getFactionById(id: number): MULFaction | undefined {
         return this.factionIdMap.get(id);
-    }
-
-    public async prepareCachedCatalog(): Promise<PreparedFactionsCatalog | undefined> {
-        const transport = await this.prepareCachedTransport();
-        return transport ? this.prepareCatalog(transport) : undefined;
     }
 
     public async prepareRemoteCatalog(
@@ -88,10 +81,6 @@ export class FactionsCatalogService extends CatalogBaseService<MULFactions | Raw
         this.normalizedFactionNameMap = new Map(prepared.normalizedFactionNameMap);
         this.factionIdMap = new Map(prepared.factionIdMap);
         this.transportRevision = data.assetHash || '';
-    }
-
-    protected override normalizeCachedData(data: MULFactions | RawMULFactions): RawMULFactions {
-        return this.normalizeRawFactions(data);
     }
 
     private prepareCatalog(transport: PreparedCatalogTransport<RawMULFactions>): PreparedFactionsCatalog {

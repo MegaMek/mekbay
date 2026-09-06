@@ -4,7 +4,7 @@
 
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
-import { LoadForceEntry } from '../../models/load-force-entry.model';
+import { createForcePreviewEntryData } from '../../models/force-preview.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { UnitSearchIndexService } from '../../services/unit-search-index.service';
 import { createEmptyUnit } from '../../testing/unit-test-helpers';
@@ -21,7 +21,7 @@ describe('ForceRadarPanelComponent', () => {
 
     function render(units: UnitSummary[], type = GameSystem.CBT) {
         const fixture = TestBed.createComponent(ForceRadarPanelComponent);
-        fixture.componentRef.setInput('force', new LoadForceEntry({ type,
+        fixture.componentRef.setInput('force', createForcePreviewEntryData({ type,
             groups: [{ units: units.map(unit => ({ unit, destroyed: false })) }] }));
         fixture.detectChanges();
         return fixture;

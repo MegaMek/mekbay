@@ -54,7 +54,7 @@ import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expan
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { formatMovement } from '../../utils/as-common.util';
 import type { UnitType } from '../../models/unit-summary.model';
-import { BVCalculatorUtil } from '../../utils/bv-calculator.util';
+import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 import { updateNumericRangeBound } from '../../utils/unit-search-normalization-range.util';
 import { DataTableComponent, type DataTableCellContext, type DataTableColumn, type DataTableRowClickEvent, type DataTableRowLongPressEvent, type DataTableRowPointerEnterEvent, type DataTableRowPointerMoveEvent, type DataTableSortEvent } from '../data-table/data-table.component';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
@@ -476,7 +476,7 @@ export class UnitSearchComponent {
                 : adjustPointValueForSkill(unit.as.PV, gunnery)
             : this.filtersService.activeBvNormalization()
                 ? this.getSearchResultContext(unit).adjustedValue
-                : BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
+                : calculateAdjustedBV(unit, unit.bv, gunnery, piloting));
         const formatRange = (values: number[]) => {
             const min = Math.min(...values);
             const max = Math.max(...values);
@@ -2215,7 +2215,7 @@ export class UnitSearchComponent {
             );
         }
         return formatBvPv(
-            BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
+            calculateAdjustedBV(unit, unit.bv, gunnery, piloting),
             unit.bv,
             'both',
         );

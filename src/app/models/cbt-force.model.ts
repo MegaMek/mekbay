@@ -24,7 +24,10 @@ import {
     type RestoredCBTForce,
 } from './force.model';
 import {
-    CBTEncounterC3State,
+    decodeCBTEncounterStateV2,
+    emptyCBTEncounterC3Snapshot,
+    encodeCBTEncounterStateV2,
+    freezeCBTEncounterC3Snapshot,
     reduceTargetRegistry,
     type CBTEncounterSnapshot,
     type EncounterNetwork,
@@ -119,7 +122,7 @@ import {
 import { CBTForceSession, type CapturedRuntimeCommandMutation } from './runtime/cbt-force-session';
 import { projectMekTurnPanel, type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
 import { CBTForceMemberRegistry } from './runtime/cbt-force-member-registry';
-import { CBTForceMekMutationImpact } from './runtime/cbt-force-mek-mutation-impact';
+import { commandMayChangeBaseBattleValue, commandMayChangeOperationalC3 } from './runtime/cbt-force-mek-mutation-impact';
 import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
 import {
     nextForceRevision,
@@ -178,7 +181,7 @@ export class CBTForce extends Force<never> {
     });
     private readonly unitStore = new CBTUnitStore();
     private readonly session = new CBTForceSession(this.unitStore);
-    private readonly c3Encounter = new CBTEncounterC3State();
+    private c3Encounter = emptyCBTEncounterC3Snapshot();
     /** Reactive invalidation token for force-owned target queries. */
     readonly targetRegistryVersion = this.session.targetRegistryVersion;
     readonly inventoryControlOpforEnabled = this.session.opforEnabled;
@@ -187,19 +190,20 @@ export class CBTForce extends Force<never> {
         this,
         instanceId => this.unitStore.cbtUnit(instanceId),
     );
-    private readonly mekMutationImpact = new CBTForceMekMutationImpact();
+    /** Synchronous publication scope, restored when nested emissions return. */
+    private publishingMekCommand: Readonly<{ instanceId: string; command: CBTUnitCommand }> | undefined;
     private readonly unitCommandDispatcher: CBTForceUnitCommandDispatcher;
     private readonly adjustedBattleValues = computed(() => {
         this.memberRegistry.dependOnBattleValueInputs();
         return this.calculateAdjustedBattleValues(
-            this.c3Encounter.snapshot().networks,
+            this.c3Encounter.networks,
             'damaged',
         );
     });
     private readonly pristineAdjustedBattleValues = computed(() => {
         this.memberRegistry.dependOnBattleValueInputs();
         return this.calculateAdjustedBattleValues(
-            this.c3Encounter.snapshot().networks,
+            this.c3Encounter.networks,
             'pristine',
         );
     });
@@ -293,7 +297,7 @@ export class CBTForce extends Force<never> {
     ): void {
         this.memberRegistry.refresh(
             this.getSupportedCBTForceV2Envelope(),
-            this.c3Encounter.snapshot().networks,
+            this.c3Encounter.networks,
             this.unitStore.scenarioRules(),
             changedUnitIds,
             baseBattleValueChangedUnitIds,
@@ -1032,10 +1036,10 @@ export class CBTForce extends Force<never> {
     }
 
     protected override getCBTEncounterStateForPersistence(): SerializedCBTEncounterStateV2 {
-        if (!this.unitStore.c3.validateConfiguredNetworks(this.c3Encounter.snapshot().networks)) {
+        if (!this.unitStore.c3.validateConfiguredNetworks(this.c3Encounter.networks)) {
             throw new Error('Cannot persist non-canonical C3 networks');
         }
-        return this.c3Encounter.serializedState();
+        return encodeCBTEncounterStateV2(this.c3Encounter);
     }
 
     /** Read-only evidence; no runtime object or mutation API escapes this owner. */
@@ -1427,7 +1431,7 @@ export class CBTForce extends Force<never> {
                 : this.captureRuntimeCommandMutation(
                     this.c3RuntimeMutationScope(instanceId, emergencyMasterUnitIds),
                 );
-            const configuredNetworks = this.c3Encounter.snapshot().networks;
+            const configuredNetworks = this.c3Encounter.networks;
             const c3EndTurn = command.type === 'end-turn'
                 ? this.unitStore.c3.planEmergencyMasterEndTurn(instanceId, configuredNetworks)
                 : null;
@@ -1470,12 +1474,13 @@ export class CBTForce extends Force<never> {
                     mekCommandBoundary(command, ready.getInstance().snapshot()),
                 );
                 this.reserveForceOwnerMutationIntent();
-                this.mekMutationImpact.publish(
-                    instanceId,
-                    command,
-                    changedUnitIds.length > 0 ? changedUnitIds : [instanceId],
-                    changed => this.emitChangedFromReservedIntent(changed),
-                );
+                const previousPublication = this.publishingMekCommand;
+                this.publishingMekCommand = { instanceId, command };
+                try {
+                    this.emitChangedFromReservedIntent(changedUnitIds.length > 0 ? changedUnitIds : [instanceId]);
+                } finally {
+                    this.publishingMekCommand = previousPublication;
+                }
             }
             const runtime = this.unitStore.mekUnit(instanceId)?.getInstance();
             return runtime
@@ -1633,7 +1638,7 @@ export class CBTForce extends Force<never> {
 
     public getC3State(instanceId: string): C3State {
         this.memberRegistry.dependOnOperationalC3Inputs();
-        return this.unitStore.c3.state(instanceId, this.c3Encounter.snapshot().networks);
+        return this.unitStore.c3.state(instanceId, this.c3Encounter.networks);
     }
 
     public isC3EndpointOperational(instanceId: string, componentId: ComponentId): boolean {
@@ -1651,7 +1656,7 @@ export class CBTForce extends Force<never> {
                 capturedInstanceId,
                 capturedCommand,
                 this.queryInventoryControlTargetRegistry(),
-                this.c3Encounter.snapshot().networks,
+                this.c3Encounter.networks,
                 this.readOnly(),
             );
             if (result.accepted && result.changed) this.session.publish([capturedInstanceId]);
@@ -1717,7 +1722,7 @@ export class CBTForce extends Force<never> {
                 capturedInstanceId,
                 capturedCommand,
                 this.queryInventoryControlTargetRegistry(),
-                this.c3Encounter.snapshot().networks,
+                this.c3Encounter.networks,
                 this.readOnly(),
             );
             if (result.accepted && result.changed) {
@@ -1824,7 +1829,7 @@ export class CBTForce extends Force<never> {
             return this.unitStore.endTurnForAll(
                 () => this.readOnly(),
                 () => this.currentHeatPolicy(),
-                this.c3Encounter.snapshot().networks,
+                this.c3Encounter.networks,
                 this.injector.get(ToastService),
                 () => {
                     const changedUnitIds = this.recordRuntimeCommandMutation(
@@ -1876,9 +1881,13 @@ export class CBTForce extends Force<never> {
     protected override onForceChanged(changedUnitIds: readonly string[] | null): void {
         // Runtime edits publish only the changed members and the dependency domains
         // their command can affect. Unrelated base BV and C3 projections stay cold.
+        const publication = this.publishingMekCommand;
+        const baseChanged = publication ? commandMayChangeBaseBattleValue(publication.command) : true;
         this.refreshForceMemberDependencies(
             changedUnitIds,
-            ...this.mekMutationImpact.dependencyRefresh(changedUnitIds),
+            publication ? (baseChanged ? [publication.instanceId] : []) : changedUnitIds,
+            baseChanged,
+            publication ? commandMayChangeOperationalC3(publication.command) : true,
         );
     }
 
@@ -1995,16 +2004,13 @@ export class CBTForce extends Force<never> {
     }
 
     protected override clearLoadedCBTForceV2Authority(): boolean {
-        const encounter = this.c3Encounter.serializedState();
         const changed = this.unitStore.instanceIds().length > 0
-            || encounter.networks.length > 0
-            || (encounter.c3Positions?.length ?? 0) > 0;
+            || this.c3Encounter.networks.length > 0
+            || this.c3Encounter.c3Positions.length > 0;
         this.unitStore.clear();
         this.session.resetRuntime();
         this.session.resetTargets();
-        this.c3Encounter.restoreSerialized(Object.freeze({
-            networks: Object.freeze([]),
-        }));
+        this.c3Encounter = emptyCBTEncounterC3Snapshot();
         return changed;
     }
 
@@ -2073,21 +2079,21 @@ export class CBTForce extends Force<never> {
     }
 
     protected override restoreCBTEncounterPersistence(state: SerializedCBTEncounterStateV2): void {
-        this.c3Encounter.restoreSerialized(state);
+        this.c3Encounter = decodeCBTEncounterStateV2(state);
         this.session.resetTargets();
     }
 
     protected override installCBTEncounterPersistence(state: SerializedCBTEncounterStateV2): void {
-        this.c3Encounter.restoreSerialized(state);
+        this.c3Encounter = decodeCBTEncounterStateV2(state);
     }
 
     /** Encounter-owned C3 graph; component-index arrays are never mechanics authority. */
     public c3EncounterNetworks(): readonly EncounterNetwork[] {
-        return this.c3Encounter.snapshot().networks;
+        return this.c3Encounter.networks;
     }
 
     public c3EncounterPosition(instanceId: string): Readonly<{ x: number; y: number }> | null {
-        return this.c3Encounter.snapshot().c3Positions
+        return this.c3Encounter.c3Positions
             .find(position => position.unitId === instanceId) ?? null;
     }
 
@@ -2120,7 +2126,7 @@ export class CBTForce extends Force<never> {
             || detachedPositions.some(position => !unitIds.has(position.unitId)
                 || !Number.isFinite(position.x)
                 || !Number.isFinite(position.y))) return false;
-        const current = this.c3Encounter.snapshot();
+        const current = this.c3Encounter;
         if ((jsonValuesEqual(current.networks, detached)
             && jsonValuesEqual(current.c3Positions, detachedPositions))
             || !this.unitStore.c3.validateConfiguredNetworks(detached)) return false;
@@ -2137,9 +2143,9 @@ export class CBTForce extends Force<never> {
             this.unitStore.cbtUnit(instanceId)?.revision() ?? null,
         ] as const));
         this.reserveForceOwnerMutationIntent();
-        this.c3Encounter.replaceC3Configuration(detached, detachedPositions);
+        this.c3Encounter = freezeCBTEncounterC3Snapshot({ networks: detached, c3Positions: detachedPositions });
         const c3 = this.unitStore.c3.reconcileEmergencyMasters(
-            this.c3Encounter.snapshot().networks,
+            this.c3Encounter.networks,
             c3UnitIds,
         );
         publishC3EmergencyMasterNotices(c3.notices, this.injector.get(ToastService));
@@ -2203,7 +2209,7 @@ export class CBTForce extends Force<never> {
 
     private encounterSnapshot(): CBTEncounterSnapshot {
         const registry = this.session.targetRegistry();
-        const c3 = this.c3Encounter.snapshot();
+        const c3 = this.c3Encounter;
         return Object.freeze({
             revision: registry.revision,
             targets: registry.targets,

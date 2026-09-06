@@ -147,18 +147,23 @@ export function prepareRuntimeCommandRedo(session: RuntimeCommandSession): Runti
     });
 }
 
-export function appliedRuntimeHistoryEvents(
-    session: RuntimeCommandSession,
-): readonly RuntimeHistoryEvent[] {
-    return Object.freeze(session.entries.slice(0, session.cursor).flatMap(entry => entry.events));
-}
-
 export function runtimeHistoryRows(
     durable: SerializedRuntimeHistory,
     session: RuntimeCommandSession,
     includePhaseBoundaries = false,
-): readonly Readonly<{ readonly event: RuntimeHistoryEvent; readonly applied: boolean }>[] {
-    const rows: Readonly<{ readonly event: RuntimeHistoryEvent; readonly applied: boolean }>[] = [];
+): readonly RuntimeHistoryRow[] {
+    const rows = collectRuntimeHistoryRows(durable, session, true);
+    return includePhaseBoundaries ? rows : Object.freeze(rows.filter(row =>
+        row.event.message[0] !== RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED));
+}
+
+/** Share expansion, settlement, and retention between the log and persistence. */
+function collectRuntimeHistoryRows(
+    durable: SerializedRuntimeHistory,
+    session: RuntimeCommandSession,
+    includeUndone: boolean,
+): readonly RuntimeHistoryRow[] {
+    const rows: RuntimeHistoryRow[] = [];
     durable[CBT_HISTORY_FIELD.turns].forEach(turn => {
         turn[CBT_HISTORY_TURN_FIELD.phases].forEach((phase, phaseIndex) => {
             phase.forEach(message => rows.push(Object.freeze({
@@ -172,15 +177,14 @@ export function runtimeHistoryRows(
         });
     });
     session.entries.forEach((entry, index) => {
+        if (!includeUndone && index >= session.cursor) return;
         entry.events.forEach(event => rows.push(Object.freeze({ event, applied: index < session.cursor })));
     });
     const coalesced = settleCommittedPendingRows(coalesceRuntimeHistoryRows(rows));
     const retainedTurns = new Set([...new Set(coalesced.map(row => row.event.turn))]
         .sort((left, right) => left - right)
         .slice(-2));
-    return Object.freeze(coalesced.filter(row => retainedTurns.has(row.event.turn)
-        && (includePhaseBoundaries
-            || row.event.message[0] !== RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED)));
+    return Object.freeze(coalesced.filter(row => retainedTurns.has(row.event.turn)));
 }
 
 /** Saves applied semantic events only, retaining the current and previous numbered turns. */
@@ -188,31 +192,9 @@ export function serializeRuntimeHistory(
     durable: SerializedRuntimeHistory,
     session: RuntimeCommandSession,
 ): SerializedRuntimeHistory {
-    const events: RuntimeHistoryEvent[] = [];
-    durable[CBT_HISTORY_FIELD.turns].forEach(turn => {
-        turn[CBT_HISTORY_TURN_FIELD.phases].forEach((phase, phaseIndex) => {
-            phase.forEach(message => {
-                events.push(Object.freeze({
-                    turn: turn[CBT_HISTORY_TURN_FIELD.turnNumber],
-                    phase: phaseIndex + 1,
-                    message: expandSerializedRuntimeHistoryMessage(durable, message),
-                }));
-            });
-        });
-    });
-    events.push(...appliedRuntimeHistoryEvents(session));
-    const effectiveEvents = settleCommittedPendingRows(coalesceRuntimeHistoryRows(events.map(event => Object.freeze({
-        event,
-        applied: true,
-    })))).map(row => row.event);
-
-    const retainedTurns = [...new Set(effectiveEvents.map(event => event.turn))]
-        .sort((left, right) => left - right)
-        .slice(-2);
-    const retained = new Set(retainedTurns);
+    const rows = collectRuntimeHistoryRows(durable, session, false);
     const grouped = new Map<number, Map<number, SerializedRuntimeHistoryMessage[]>>();
-    for (const event of effectiveEvents) {
-        if (!retained.has(event.turn)) continue;
+    for (const { event } of rows) {
         let phases = grouped.get(event.turn);
         if (!phases) {
             phases = new Map();
@@ -227,9 +209,7 @@ export function serializeRuntimeHistory(
         [CBT_HISTORY_FIELD.unitIds]: Object.freeze([]),
         [CBT_HISTORY_FIELD.turns]: Object.freeze([]),
     });
-    for (const turn of retainedTurns) {
-        const phases = grouped.get(turn);
-        if (!phases) continue;
+    for (const [turn, phases] of [...grouped].sort(([left], [right]) => left - right)) {
         serialized = appendSerializedRuntimeHistoryTurn(serialized, Object.freeze({
             [CBT_HISTORY_TURN_FIELD.turnNumber]: turn,
             [CBT_HISTORY_TURN_FIELD.phases]: Object.freeze([...phases]

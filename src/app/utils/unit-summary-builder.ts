@@ -31,20 +31,6 @@ export interface UnitSummaryBuildContext {
   readonly format?: NativeUnitFormat;
 }
 
-const REQUIRED_METADATA_FIELDS = [
-  'name', 'id', 'chassis', 'model', 'year', 'weightClass', 'tons', 'loadoutTons',
-  'offSpeedFactor', 'bv', 'cost', 'level', 'techBase', 'mixed', 'techRating',
-  'type', 'subtype', 'omni', 'engine', 'engineRating', 'engineHS', 'engineHSType',
-  'source', 'published', 'canon', 'canAntiMech', 'role', 'armorType',
-  'rulesRefs',
-  'structureType', 'armor', 'armorPer', 'internal', 'squads', 'squadSize', 'heat',
-  'dissipation', 'moveType', 'walk', 'walk2', 'run', 'run2', 'jump', 'jump2',
-  'umu', 'c3', 'comp', 'su', 'crewSize', 'quirks', 'features', 'icon', 'as',
-] as const satisfies readonly (keyof UnitSummary)[];
-
-type RequiredMetadataField = typeof REQUIRED_METADATA_FIELDS[number];
-type CompleteMetadata = Partial<UnitSummary> & Required<Pick<UnitSummary, RequiredMetadataField>>;
-
 /** Total, versioned-catalog-ready projection from one parsed entity. */
 export class UnitSummaryBuilder {
   private readonly metadataBuilder: UnitMetadataBuilder;
@@ -62,7 +48,6 @@ export class UnitSummaryBuilder {
     }
 
     const metadata = this.metadataBuilder.build(entity);
-    assertCompleteMetadata(metadata);
     const components = cloneComponents(metadata.comp);
 
     return {
@@ -150,7 +135,7 @@ export class UnitSummaryBuilder {
     uuid: UnitUuid,
   ): UnitSummary {
     const loadIssues = entity.loadIssues().map(issue => ({ ...issue }));
-    const components = cloneComponents(buildUnitComponentMetadata(entity) ?? []);
+    const components = cloneComponents(buildUnitComponentMetadata(entity));
     const armor = entity.totalArmorPoints();
     const maximumArmor = entity.maximumArmorPoints();
     const alphaStrike = unavailableAlphaStrike();
@@ -240,14 +225,6 @@ function validateIdentityAndSource(
     }
   }
   return uuid;
-}
-
-function assertCompleteMetadata(metadata: Partial<UnitSummary>): asserts metadata is CompleteMetadata {
-  for (const field of REQUIRED_METADATA_FIELDS) {
-    if (metadata[field] === undefined) {
-      throw new Error(`Unit metadata projection omitted required field: ${field}`);
-    }
-  }
 }
 
 function cloneComponents(components: readonly UnitComponent[]): UnitSummaryComponent[] {

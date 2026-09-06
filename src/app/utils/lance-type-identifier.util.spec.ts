@@ -10,7 +10,6 @@ import type { UnitGroup } from '../models/force.model';
 import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
 import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
 import type { FormationTypeDefinition } from './formation-type.model';
-import { FormationNamerUtil } from './formation-namer.util';
 import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
 import type { GroupSizeResult } from './org/org-types';
 
@@ -147,7 +146,7 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const matches = FormationNamerUtil.getAvailableFormationDefinitions(group);
+        const matches = LanceTypeIdentifierUtil.identifyFormationsForGroup(group);
         const match = matches.find(candidate => candidate.definition.id === 'ranger-lance');
 
         expect(match).toEqual(jasmine.objectContaining({

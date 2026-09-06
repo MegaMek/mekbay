@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { TestBed } from '@angular/core/testing';
-
-import { PageViewerActiveDisplayService } from './page-viewer-active-display.service';
-import { PageViewerDisplayWindowService } from './page-viewer-display-window.service';
+import { clearActivePageElements, prepareActiveDisplay, prepareActiveInPlaceUpdate } from './page-viewer-active-display';
 
 function createUnit(id: string, hasSvg: boolean = true) {
     return {
@@ -14,20 +11,7 @@ function createUnit(id: string, hasSvg: boolean = true) {
     } as never;
 }
 
-describe('PageViewerActiveDisplayService', () => {
-    let service: PageViewerActiveDisplayService;
-
-    beforeEach(() => {
-        TestBed.configureTestingModule({
-            providers: [
-                PageViewerDisplayWindowService,
-                PageViewerActiveDisplayService,
-            ]
-        });
-
-        service = TestBed.inject(PageViewerActiveDisplayService);
-    });
-
+describe('page-viewer active-display', () => {
     it('clears active page content and removes transient wrappers', () => {
         const content = document.createElement('div');
         const declarative = document.createElement('div');
@@ -38,7 +22,7 @@ describe('PageViewerActiveDisplayService', () => {
         content.appendChild(declarative);
         content.appendChild(transient);
 
-        const nextPageElements = service.clearActivePageElements(content, [declarative, transient]);
+        const nextPageElements = clearActivePageElements(content, [declarative, transient]);
 
         expect(nextPageElements).toEqual([]);
         expect(declarative.innerHTML).toBe('');
@@ -50,7 +34,7 @@ describe('PageViewerActiveDisplayService', () => {
     it('prepares the displayed unit window when the current unit svg is ready', () => {
         const units = [createUnit('a'), createUnit('b'), createUnit('c')];
 
-        const preparation = service.prepareDisplay({
+        const preparation = prepareActiveDisplay({
             currentUnit: units[0],
             allUnits: units,
             visiblePages: 2,
@@ -67,7 +51,7 @@ describe('PageViewerActiveDisplayService', () => {
     it('returns a loading state when the current unit svg is not ready', () => {
         const unit = createUnit('a', false);
 
-        const preparation = service.prepareDisplay({
+        const preparation = prepareActiveDisplay({
             currentUnit: unit,
             allUnits: [unit],
             visiblePages: 1,
@@ -84,7 +68,7 @@ describe('PageViewerActiveDisplayService', () => {
     it('builds the in-place patch plan for the current wrapper ids', () => {
         const units = [createUnit('a'), createUnit('b')];
 
-        const preparation = service.prepareInPlaceUpdate({
+        const preparation = prepareActiveInPlaceUpdate({
             allUnits: units,
             visiblePages: 2,
             viewStartIndex: 0,
@@ -100,7 +84,7 @@ describe('PageViewerActiveDisplayService', () => {
     it('refuses in-place patching when wrapper and unit counts differ', () => {
         const unit = createUnit('a');
 
-        const preparation = service.prepareInPlaceUpdate({
+        const preparation = prepareActiveInPlaceUpdate({
             allUnits: [unit],
             visiblePages: 1,
             viewStartIndex: 0,
@@ -114,7 +98,7 @@ describe('PageViewerActiveDisplayService', () => {
     it('replaces every slot when the selected unit moved to another wrapper', () => {
         const units = [createUnit('b'), createUnit('a')];
 
-        const preparation = service.prepareInPlaceUpdate({
+        const preparation = prepareActiveInPlaceUpdate({
             allUnits: units,
             visiblePages: 2,
             viewStartIndex: 0,

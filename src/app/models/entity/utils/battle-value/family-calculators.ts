@@ -752,9 +752,7 @@ export class DropShipBVCalculator extends LargeAeroBVCalculator {
   }
 }
 
-export class JumpShipBVCalculator extends LargeAeroBVCalculator {}
-
-export class WarShipBVCalculator extends JumpShipBVCalculator {
+export class WarShipBVCalculator extends LargeAeroBVCalculator {
   private static readonly CW = [5, 0, 6, 2, 3, 7, 1, 4] as const;
   private static readonly CCW = [1, 6, 3, 4, 7, 0, 2, 5] as const;
   private static readonly OPPOSITE = [3, 4, 5, 0, 1, 2, 7, 6] as const;

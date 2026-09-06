@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed } from '@angular/core';
-import { SupportVehicleData, type SupportVehicle } from '../support-vehicle';
+import { computed, signal } from '@angular/core';
+import type { SupportVehicle } from '../support-vehicle';
 import {
   AERO_LOCATIONS,
   EntityType,
   FIXED_WING_EQUIP_LOCATIONS,
   type EntityFeature,
   WeightClass,
+  resolveSupportVehicleWeightClass,
 } from '../../types';
 import { isExternalStoresHardpointEquipment } from '../../../aerospace-support-equipment.model';
 import { AeroEntity } from './aero-entity';
@@ -34,10 +35,9 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     return this.withOmniSubtype('Fixed Wing Support Vehicle');
   }
 
-  readonly supportVehicle = new SupportVehicleData(10);
-  readonly barRating = this.supportVehicle.barRating;
-  readonly structuralTechRating = this.supportVehicle.structuralTechRating;
-  readonly engineTechRating = this.supportVehicle.engineTechRating;
+  readonly barRating = signal(10);
+  readonly structuralTechRating = signal(0);
+  readonly engineTechRating = signal(0);
 
   protected override computeAeroFeatures(): readonly EntityFeature[] {
     const features = [...super.computeAeroFeatures()];
@@ -76,7 +76,7 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   }
 
   protected override computeWeightClass(): WeightClass {
-    return this.supportVehicle.resolveWeightClass(this.tonnage(), 'Aerodyne');
+    return resolveSupportVehicleWeightClass(this.tonnage(), 'Aerodyne');
   }
 
   override autoSetStructuralIntegrity(): void {

@@ -5,13 +5,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DISPLAY_NAME_SAVE_DEBOUNCE_MS, DisplayNameService } from './display-name.service';
-import { PilotNameGeneratorService } from './pilot-name-generator.service';
+import { PilotNameCatalogService } from './catalogs/pilot-name-catalog.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 
 describe('DisplayNameService', () => {
     const displayName = signal<string | undefined>(undefined);
-    const pilotNameGenerator = {
+    const pilotNames = {
         generateCallsign: jasmine.createSpy('generateCallsign'),
     };
     const userStateService = {
@@ -27,8 +27,8 @@ describe('DisplayNameService', () => {
     beforeEach(() => {
         jasmine.clock().install();
         displayName.set(undefined);
-        pilotNameGenerator.generateCallsign.calls.reset();
-        pilotNameGenerator.generateCallsign.and.resolveTo('Specter');
+        pilotNames.generateCallsign.calls.reset();
+        pilotNames.generateCallsign.and.resolveTo('Specter');
         userStateService.whenReady.calls.reset();
         userStateService.whenReady.and.resolveTo();
         userStateService.setDisplayName.calls.reset();
@@ -43,7 +43,7 @@ describe('DisplayNameService', () => {
         TestBed.configureTestingModule({
             providers: [
                 DisplayNameService,
-                { provide: PilotNameGeneratorService, useValue: pilotNameGenerator },
+                { provide: PilotNameCatalogService, useValue: pilotNames },
                 { provide: UserStateService, useValue: userStateService },
                 { provide: WsService, useValue: wsService },
             ],
@@ -57,12 +57,12 @@ describe('DisplayNameService', () => {
 
         await expectAsync(service.current()).toBeResolvedTo(null);
         await expectAsync(service.currentOrGenerated()).toBeResolvedTo('Specter');
-        expect(pilotNameGenerator.generateCallsign).toHaveBeenCalledOnceWith(16);
+        expect(pilotNames.generateCallsign).toHaveBeenCalledOnceWith(16);
 
         displayName.set('Atlas');
         await expectAsync(service.current()).toBeResolvedTo('Atlas');
         await expectAsync(service.currentOrGenerated()).toBeResolvedTo('Atlas');
-        expect(pilotNameGenerator.generateCallsign).toHaveBeenCalledTimes(1);
+        expect(pilotNames.generateCallsign).toHaveBeenCalledTimes(1);
     });
 
     it('debounces rapid saves and persists only the latest display name', async () => {

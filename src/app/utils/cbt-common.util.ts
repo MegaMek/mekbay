@@ -4,10 +4,21 @@
 
 import type { UnitSummary } from "../models/unit-summary.model";
 import {
+    adjustCBTBattleValueForSkills,
     effectiveCBTPilotingSkill,
     fixedCBTPilotingSkill,
     type CBTSkillUnitFacts,
 } from '../models/entity/utils/battle-value/rules';
+
+/** Adjust a catalog unit's BV for crew skills, rounding only the final result. */
+export function calculateAdjustedBV(
+    unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
+    baseBv: number,
+    gunnerySkill: number,
+    pilotingSkill: number,
+): number {
+    return adjustCBTBattleValueForSkills(baseBv, gunnerySkill, pilotingSkill, summarySkillFacts(unit));
+}
 
 /**
  * Returns the fixed Piloting value for units whose Piloting cannot be changed.

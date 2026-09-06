@@ -8,7 +8,7 @@ import { Injectable, OnDestroy, inject } from '@angular/core';
 import { GameSystem } from '../models/common.model';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
-import type { ForcePreviewEntry, ForcePreviewGroup } from '../models/force-preview.model';
+import { createForcePreviewEntryData, type ForcePreviewEntry, type ForcePreviewGroup } from '../models/force-preview.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type {
     MegaMekRulesetAssign,
@@ -21,7 +21,7 @@ import type {
     MegaMekRulesetSubforceNode,
     MegaMekRulesetWhen,
 } from '../models/megamek/rulesets.model';
-import { LoadForceEntry } from '../models/load-force-entry.model';
+import type { LoadForceEntry } from '../models/load-force-entry.model';
 import { MAX_UNITS as FORCE_MAX_UNITS } from '../models/force.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_NONE } from '../models/mulfactions.model';
 import type { ForceGeneratorOptions } from '../models/options.model';
@@ -38,8 +38,7 @@ import { compileFormationUnitFacts, type FormationUnitLike } from '../utils/form
 import { evaluateFormationPredicate } from '../utils/formation-predicates.util';
 import { collectGroupUnits } from '../utils/org/org-facts.util';
 import type { GroupSizeResult, OrgDefinition, OrgRuleDefinition, OrgType, OrgUnit } from '../utils/org/org-types';
-import { BVCalculatorUtil } from '../utils/bv-calculator.util';
-import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
+import { calculateAdjustedBV, getEffectivePilotingSkill, getFixedPilotingSkill } from '../utils/cbt-common.util';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, type CrewMemberDetails } from '../models/crew-member.model';
 import { getPositiveDropdownNamesFromFilter, resolveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
 import { ForceNamerUtil } from '../utils/force-namer.util';
@@ -1502,7 +1501,7 @@ function getBudgetMetric(unit: UnitSummary, gameSystem: GameSystem, gunnery: num
         return Math.max(0, adjustPointValueForSkill(unit.as.PV, gunnery));
     }
 
-    return Math.max(0, BVCalculatorUtil.calculateAdjustedBV(unit, unit.bv, gunnery, getEffectivePilotingSkill(unit, piloting)));
+    return Math.max(0, calculateAdjustedBV(unit, unit.bv, gunnery, getEffectivePilotingSkill(unit, piloting)));
 }
 
 function setHasAny<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
@@ -2870,7 +2869,7 @@ export class ForceGeneratorService implements OnDestroy {
             return null;
         }
 
-        return new LoadForceEntry({
+        return createForcePreviewEntryData({
             ...previewEntry,
             instanceId: `generated-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`,
             timestamp: new Date().toISOString(),

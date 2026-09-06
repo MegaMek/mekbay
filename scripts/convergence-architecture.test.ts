@@ -250,7 +250,7 @@ assert.match(
 );
 assert.doesNotMatch(
     forceBv,
-    /BVCalculatorUtil|calculateAdjustedBV\(\s*row\.summary/u,
+    /calculateAdjustedBV\(/u,
     'admitted-unit BV skill rules must use the loaded Entity, never UnitSummary',
 );
 
@@ -448,8 +448,11 @@ assert.deepEqual(
 );
 assert.deepEqual(
     importersOf('legacy-mek-turn-state-v1'),
-    ['src/app/models/runtime/mek-movement-psr-restoration-v1.ts'],
-    'the V1 turn decoder must stay inside the V1 movement converter',
+    [
+        'src/app/models/runtime/mek-movement-psr-restoration-v1.ts',
+        'src/app/models/runtime/state-restorer.ts',
+    ],
+    'the V1 turn decoder must stay inside legacy state and movement restoration',
 );
 
 const directV1ForceSurface = production
@@ -459,11 +462,12 @@ const directV1ForceSurface = production
 assert.deepEqual(
     directV1ForceSurface,
     [
+        'src/app/models/remote-load-force-entry.model.ts',
         'src/app/models/runtime/force-storage-codec.ts',
         'src/app/models/runtime/legacy-force-v1-converter.ts',
         'src/app/services/force-persistence.service.ts',
     ],
-    'V1 force handling must stay inside storage ingress, conversion, and force persistence',
+    'V1 force handling must stay inside preview decoding, storage ingress, conversion, and force persistence',
 );
 
 const storageCodec = source(join(app, 'models', 'runtime', 'force-storage-codec.ts'));
@@ -504,6 +508,10 @@ assert.doesNotMatch(
     'catalog data must not own force persistence or migration',
 );
 assert.match(forcePersistence, /normalizePersistedForce[\s\S]*convertPersistedForceV1/u);
-assert.match(database, /if \(force\.version !== 2\)[\s\S]*Only V2 force records may be saved/u);
+assert.match(
+    database,
+    /const stored = encodeForceForStorage\(force\);/u,
+    'database writes must use the storage codec, which also preserves downloaded V1 sources until explicit conversion',
+);
 
 console.log('Convergence architecture guard passed: Entity + rules + sparse runtime is the only live Classic authority.');

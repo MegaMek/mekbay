@@ -67,7 +67,6 @@ import { ToastService } from '../../services/toast.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { CBTUnitViewModeService } from '../../services/cbt-unit-view-mode.service';
 import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
@@ -171,7 +170,6 @@ export class TacticalViewComponent {
     private readonly injector = inject(Injector);
     private readonly overlay = inject(Overlay);
     private readonly overlayManager = inject(OverlayManagerService);
-    private readonly unitViewMode = inject(CBTUnitViewModeService);
     private readonly automationToasts = inject(CBTAutomationToastService);
     private readonly automationToastVisibilityOwner = {};
     private readonly mekInteractions = inject(PageViewerMekInteractionService);
@@ -460,7 +458,9 @@ export class TacticalViewComponent {
 
     protected showSheetView(): void {
         this.overlayManager.closeAllManagedOverlays();
-        this.unitViewMode.showSheet();
+        if (this.options.options().cbtUnitViewMode !== 'sheet') {
+            void this.options.setOption('cbtUnitViewMode', 'sheet');
+        }
     }
 
     protected openTargets(event: MouseEvent): void {

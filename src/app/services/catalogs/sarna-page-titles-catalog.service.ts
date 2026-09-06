@@ -188,11 +188,9 @@ export class SarnaPageTitlesCatalogService extends CatalogBaseService<SarnaPageT
         return 'sarna_page_titles';
     }
 
-    protected override get remoteUrl(): string {
+    protected override get repositoryAssetPath(): string {
         return 'online-assets/generated/sarna-page-titles.json';
     }
-
-    protected override get repositoryAssetPath(): string { return this.remoteUrl; }
 
     public getPageTitleForUnit(unit: SarnaLookupUnit | null | undefined): string | undefined {
         if (!unit) return undefined;

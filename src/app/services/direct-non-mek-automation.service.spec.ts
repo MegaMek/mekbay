@@ -66,7 +66,10 @@ describe('DirectNonMekAutomationService', () => {
                 { provide: CBTAutomationToastService, useValue: { show: showAutomationToast } },
                 {
                     provide: OptionsService,
-                    useValue: { cbtAutomationMode: (key: string) => automationModes[key] ?? 'ask' },
+                    useValue: {
+                        cbtAutomationMode: (key: string) => automationModes[key] ?? 'ask',
+                        options: () => ({ displayUnitNameFormat: 'innerSphereClan' }),
+                    },
                 },
             ],
         });

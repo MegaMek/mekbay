@@ -20,7 +20,7 @@
             }
             } @else if (hasForceUnits()) {
             @defer (when hasForceUnits()) {
-                @if (cbtUnitViewMode.mode() === 'tactical') {
+                @if (optionsService.options().cbtUnitViewMode === 'tactical') {
                 <tactical-view></tactical-view>
                 } @else {
                 <page-viewer></page-viewer>

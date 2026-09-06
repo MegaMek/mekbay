@@ -14,7 +14,7 @@ import { SkillMatrixPanelComponent, type SkillMatrixCell } from '../skill-dropdo
 import { adjustCBTBattleValueForSkills, type CBTSkillUnitFacts } from '../../models/entity/utils/battle-value/rules';
 import type { Era } from '../../models/eras.model';
 import type { CrewPositionId } from '../../models/entity/entity-identifiers';
-import { PilotNameGeneratorService } from '../../services/pilot-name-generator.service';
+import { PilotNameCatalogService } from '../../services/catalogs/pilot-name-catalog.service';
 import { LoggerService } from '../../services/logger.service';
 import { LayoutService } from '../../services/layout.service';
 import { PilotNotesFieldComponent } from '../pilot-notes-field/pilot-notes-field.component';
@@ -158,7 +158,7 @@ export class EditPilotDialogComponent {
     private dialogsService = inject(DialogsService);
     private injector = inject(Injector);
     private destroyRef = inject(DestroyRef);
-    private pilotNameGenerator = inject(PilotNameGeneratorService);
+    private pilotNames = inject(PilotNameCatalogService);
     private logger = inject(LoggerService);
 
     readonly crew = this.data.crew.map<EditableCrewMember>((member) => ({
@@ -410,7 +410,7 @@ export class EditPilotDialogComponent {
         if (member.generatingName()) return;
         member.generatingName.set(true);
         try {
-            const name = await this.pilotNameGenerator.generate({
+            const name = await this.pilotNames.generateName({
                 factionId: this.data.factionId,
                 isAerospace: !!this.data.isAerospace,
                 isCommander: this.selectedGroupCommander(),

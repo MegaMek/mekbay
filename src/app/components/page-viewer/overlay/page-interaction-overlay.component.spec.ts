@@ -5,6 +5,33 @@ import type { CBTForceMember, CBTMekForceMember } from '../../../models/force-me
 import { TestBipedMekEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
+import { signal } from '@angular/core';
+import type { CBTUnitViewMode } from '../../../models/options.model';
+
+describe('PageInteractionOverlay view selection', () => {
+    it('writes toolbar changes to the persisted view option and closes overlays', () => {
+        const options = signal({ cbtUnitViewMode: 'tactical' as CBTUnitViewMode });
+        const setOption = jasmine.createSpy('setOption').and.callFake(
+            (_key: string, cbtUnitViewMode: CBTUnitViewMode) => options.set({ cbtUnitViewMode }),
+        );
+        const closeAllOverlays = jasmine.createSpy('closeAllOverlays');
+        const component = Object.create(PageInteractionOverlayComponent.prototype) as PageInteractionOverlayComponent;
+        Object.assign(component, { optionsService: { options, setOption }, closeAllOverlays });
+        const event = { stopPropagation: jasmine.createSpy('stopPropagation') } as unknown as Event;
+
+        component.toggleUnitView(event);
+
+        expect(setOption).toHaveBeenCalledOnceWith('cbtUnitViewMode', 'sheet');
+        expect(options().cbtUnitViewMode).toBe('sheet');
+        expect(closeAllOverlays).toHaveBeenCalledTimes(1);
+        expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+
+        component.toggleUnitView(event);
+
+        expect(setOption).toHaveBeenCalledWith('cbtUnitViewMode', 'tactical');
+        expect(options().cbtUnitViewMode).toBe('tactical');
+    });
+});
 
 describe('PageInteractionOverlay turn boundaries', () => {
     it('resumes a notification chain without committing a phase or turn', async () => {
