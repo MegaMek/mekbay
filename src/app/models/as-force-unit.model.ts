@@ -118,6 +118,8 @@ export class ASForceUnit extends ForceUnit {
 
     public getPreSkillBv = computed<number>(() => this.getBaseBv());
 
+    public readonly baseAdjustedBv = computed<number>(() => this.getPreSkillBv());
+
     getBv = computed<number>(() => {
         const adjustedPv = this.adjustedPv();
         if (adjustedPv !== null) {

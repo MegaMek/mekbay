@@ -166,8 +166,11 @@ export abstract class ForceUnit {
 
     abstract getBaseBv: Signal<number>;
 
-    /** BV/PV after force modifiers, but before the final skill adjustment. */
+    /** BV/PV after force modifiers, retaining precision for the final skill adjustment. */
     abstract getPreSkillBv: Signal<number>;
+
+    /** Display BV/PV including force modifiers and final rounding, without pilot skills. */
+    abstract readonly baseAdjustedBv: Signal<number>;
 
     abstract getBv: Signal<number>;
 
