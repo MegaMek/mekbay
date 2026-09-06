@@ -1011,6 +1011,36 @@ describe('CBTForceUnit direct inventory ammo bins', () => {
         expect(forceUnit.getBaseBv()).toBe(1001);
     });
 
+    it('rounds the base display separately from the full skill-adjusted BV', () => {
+        const unit = createMekUnit();
+        unit.bv = 1000.4;
+        const forceUnit = createForceUnit(unit);
+        const c3Tax = signal(100.25);
+        forceUnit.customAmmoBvVariation = signal(0.2);
+        forceUnit.tagBV = signal(10.125);
+        forceUnit.c3Tax = c3Tax;
+        forceUnit.externalStoresBv = signal(1);
+        forceUnit.getCrewMember(0).setSkill('piloting', 3);
+
+        expect(forceUnit.getBaseBv()).toBe(1001);
+        expect(forceUnit.getPreSkillBv()).toBe(1112.375);
+        expect(forceUnit.baseAdjustedBv()).toBe(1112);
+        // Rounding before the 1.2 skill multiplier would incorrectly produce 1334.
+        expect(forceUnit.getBv()).toBe(1335);
+        expect(forceUnit.pilotBV()).toBeCloseTo(222.475, 10);
+
+        c3Tax.set(100.5);
+
+        expect(forceUnit.baseAdjustedBv()).toBe(1113);
+        expect(forceUnit.getBv()).toBe(1335);
+
+        forceUnit.getCrewMember(0).setSkill('piloting', 5);
+
+        expect(forceUnit.baseAdjustedBv()).toBe(1113);
+        expect(forceUnit.getBv()).toBe(1113);
+        expect(forceUnit.pilotBV()).toBe(0);
+    });
+
     it('exposes live Extreme Range option state', () => {
         const forceUnit = createForceUnit();
 

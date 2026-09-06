@@ -308,7 +308,7 @@ export class ForcePreviewComponent {
         const units = this.force().units();
         return formatBvPv(
             units.reduce((total, unit) => total + unit.getBv(), 0),
-            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            units.reduce((total, unit) => total + unit.baseAdjustedBv(), 0),
             this.optionsService.options().forceViewerBVPVDisplay,
         );
     });

@@ -6,6 +6,7 @@ import { CommonModule } from '@angular/common';
 import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../../models/common.model';
+import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -162,6 +163,29 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
 
         expect(fixture.componentInstance.resolvedCompactBv()).toBe('16,632 (12,600)');
         expect(fixture.componentInstance.resolvedBv()).toBe('16,632 (12,600)');
+    });
+
+    it('uses rounded pre-skill BV for live force units in compact and expanded cards', () => {
+        const adjustedBv = signal(2_251);
+        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
+        Object.assign(forceUnit, {
+            getBv: adjustedBv,
+            getPreSkillBv: signal(2_250.6),
+            baseAdjustedBv: signal(2_251),
+        });
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+        fixture.componentRef.setInput('unit', forceUnit);
+
+        expect(fixture.componentInstance.resolvedBv()).toBe('2,251');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,251');
+
+        adjustedBv.set(2_971);
+        expect(fixture.componentInstance.resolvedBv()).toBe('2,971 (2,251)');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,971 (2,251)');
+
+        optionsServiceStub.options.set({ forceViewerBVPVDisplay: 'base' });
+        expect(fixture.componentInstance.resolvedBv()).toBe('2,251');
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('2,251');
     });
 
     it('always displays adjusted and base PV for Alpha Strike search results', () => {

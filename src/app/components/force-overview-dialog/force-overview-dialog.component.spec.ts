@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import type { Force, UnitGroup } from '../../models/force.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { GameSystem } from '../../models/common.model';
+import type { ForceViewerBVPVDisplay } from '../../models/options.model';
 import { AsAbilityLookupService } from '../../services/as-ability-lookup.service';
 import { DataService } from '../../services/data.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -29,12 +30,13 @@ describe('ForceOverviewDialogComponent', () => {
     } as unknown as Force;
     const options = signal({
         forceOverviewViewMode: 'table' as const,
-        forceViewerBVPVDisplay: 'both' as const,
+        forceViewerBVPVDisplay: 'both' as ForceViewerBVPVDisplay,
         ASUseHex: false,
     });
 
     beforeEach(async () => {
         forceUnits.set([]);
+        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'both' }));
         await TestBed.configureTestingModule({
             imports: [ForceOverviewDialogComponent],
             providers: [
@@ -71,6 +73,38 @@ describe('ForceOverviewDialogComponent', () => {
                 },
             })
             .compileComponents();
+    });
+
+    it('sums rounded unit values for base totals and collapses equal totals', () => {
+        const firstAdjustedBv = signal(2_251);
+        const first = {
+            getBv: firstAdjustedBv,
+            getPreSkillBv: signal(2_250.6),
+            baseAdjustedBv: signal(2_251),
+        } as unknown as ForceUnit;
+        const second = {
+            getBv: signal(1_745),
+            getPreSkillBv: signal(1_744.6),
+            baseAdjustedBv: signal(1_745),
+        } as unknown as ForceUnit;
+        forceUnits.set([first, second]);
+        const fixture = TestBed.createComponent(ForceOverviewDialogComponent);
+        const component = fixture.componentInstance;
+
+        expect(component.totalBv()).toBe('3,996');
+        expect(component.displayedUnitBvPv(first)).toBe('2,251');
+
+        firstAdjustedBv.set(2_971);
+        expect(component.totalBv()).toBe('4,716 (3,996)');
+        expect(component.displayedUnitBvPv(first)).toBe('2,971 (2,251)');
+
+        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'base' }));
+        expect(component.totalBv()).toBe('3,996');
+        expect(component.displayedUnitBvPv(first)).toBe('2,251');
+
+        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'adjusted' }));
+        expect(component.totalBv()).toBe('4,716');
+        expect(component.displayedUnitBvPv(first)).toBe('2,971');
     });
 
     it('keeps persisted table mode and builds Classic unit columns', () => {

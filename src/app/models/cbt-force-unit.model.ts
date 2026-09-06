@@ -1934,6 +1934,9 @@ export class CBTForceUnit extends ForceUnit {
         return this.getBaseBv() + this.tagBV() + this.c3Tax() + this.externalStoresBv();
     });
 
+    /** Rounded BV for the force viewer's base display; skill calculations retain full precision. */
+    public readonly baseAdjustedBv = computed<number>(() => Math.round(this.getPreSkillBv()));
+
     public pilotBV = computed<number>(() => {
         return BVCalculatorUtil.calculatePilotBV(
             this.getUnit(),

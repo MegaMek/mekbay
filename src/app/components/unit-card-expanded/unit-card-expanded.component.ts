@@ -211,7 +211,7 @@ export class UnitCardExpandedComponent {
         if (this.isForceUnit(unit)) {
             return formatBvPv(
                 unit.getBv(),
-                unit.getPreSkillBv(),
+                unit.baseAdjustedBv(),
                 this.optionsService.options().forceViewerBVPVDisplay,
             );
         }

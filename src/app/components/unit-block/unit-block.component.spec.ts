@@ -7,6 +7,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CBTForceUnit } from '../../models/cbt-force-unit.model';
 import type { CrewMemberState } from '../../models/crew-member.model';
+import type { ForceViewerBVPVDisplay } from '../../models/options.model';
 import type { CrewStateDefinition } from '../../models/rules/unit-type-rules';
 import { VEHICLE_CREW_STATE_DISPLAYS } from '../../models/rules/vehicle-rules';
 import { OptionsService } from '../../services/options.service';
@@ -14,14 +15,21 @@ import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { UnitBlockComponent } from './unit-block.component';
 
 describe('UnitBlockComponent', () => {
+    const options = signal({
+        trackPhaseAndTurn: true,
+        unitDisplayName: 'chassisModel',
+        forceViewerBVPVDisplay: 'both' as ForceViewerBVPVDisplay,
+    });
+
     beforeEach(() => {
+        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'both' }));
         TestBed.configureTestingModule({
             imports: [UnitBlockComponent],
             providers: [
                 provideZonelessChangeDetection(),
                 {
                     provide: OptionsService,
-                    useValue: { options: () => ({ trackPhaseAndTurn: true, unitDisplayName: 'chassisModel' }) },
+                    useValue: { options },
                 },
                 { provide: Overlay, useValue: {} },
                 {
@@ -30,6 +38,29 @@ describe('UnitBlockComponent', () => {
                 },
             ],
         });
+    });
+
+    it('displays rounded pre-skill BV and collapses matching adjusted and base values', () => {
+        const adjustedBv = signal(2_251);
+        const forceUnit = Object.create(CBTForceUnit.prototype) as CBTForceUnit;
+        Object.assign(forceUnit, {
+            getBv: adjustedBv,
+            getPreSkillBv: signal(2_250.6),
+            baseAdjustedBv: signal(2_251),
+        });
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', forceUnit);
+
+        expect(fixture.componentInstance.displayedBvPv()).toBe('2,251');
+
+        adjustedBv.set(2_971);
+        expect(fixture.componentInstance.displayedBvPv()).toBe('2,971 (2,251)');
+
+        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'base' }));
+        expect(fixture.componentInstance.displayedBvPv()).toBe('2,251');
+
+        options.update(current => ({ ...current, forceViewerBVPVDisplay: 'adjusted' }));
+        expect(fixture.componentInstance.displayedBvPv()).toBe('2,971');
     });
 
     it('tracks phase-dirty state independently from assigned movement', () => {

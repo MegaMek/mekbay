@@ -67,6 +67,7 @@ describe('ASForceUnit ability effects', () => {
 
         expect(forceUnit.getBaseBv()).toBe(30);
         expect(forceUnit.getPreSkillBv()).toBe(30);
+        expect(forceUnit.baseAdjustedBv()).toBe(30);
         expect(forceUnit.getBv()).toBeGreaterThan(30);
     });
 

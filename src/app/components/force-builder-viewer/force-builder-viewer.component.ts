@@ -124,7 +124,7 @@ export class ForceBuilderViewerComponent {
     ): string {
         return formatBvPv(
             units.reduce((total, unit) => total + unit.getBv(), 0),
-            units.reduce((total, unit) => total + unit.getPreSkillBv(), 0),
+            units.reduce((total, unit) => total + unit.baseAdjustedBv(), 0),
             mode,
         );
     }

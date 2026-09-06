@@ -75,7 +75,7 @@ export class UnitBlockComponent {
         if (!unit) return '';
         return formatBvPv(
             unit.getBv(),
-            unit.getPreSkillBv(),
+            unit.baseAdjustedBv(),
             this.optionsService.options().forceViewerBVPVDisplay,
         );
     });
