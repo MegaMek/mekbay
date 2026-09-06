@@ -69,9 +69,9 @@ export interface EquipmentAdvancementTimeline {
                                     [class.is-extinction]="isExtinctionCell(cell)"
                                     [class.has-extinction-line]="hasExtinctionLineSegment(timeline.cells, cellIndex)"
                                 >
-                                    @for (item of cell.items; track item.label) {
+                                    @for (value of getTimelineCellValues(cell); track value) {
                                         <span class="advancement-timeline-event">
-                                            <span class="advancement-timeline-value">{{ item.value }}</span>
+                                            <span class="advancement-timeline-value">{{ value }}</span>
                                         </span>
                                     }
                                 </div>
@@ -318,6 +318,10 @@ export class AdvancementTimelineComponent {
 
     formatTimelineSlotLabels(labels: readonly AdvancementTimelineSlotLabel[], key: keyof AdvancementTimelineSlotLabel): string {
         return labels.map(label => label[key]).join(' / ');
+    }
+
+    getTimelineCellValues(cell: AdvancementTimelineCell): string[] {
+        return Array.from(new Set(cell.items.map(item => item.value)));
     }
 
     isExtinctionCell(cell: AdvancementTimelineCell): boolean {
