@@ -13,7 +13,7 @@ import { ForcePilotEditorService } from '../../../services/force-pilot-editor.se
 import { LoggerService } from '../../../services/logger.service';
 import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { PickerFactoryService } from '../../../services/picker-factory.service';
+import { PickerFactoryService,type DirectionalPickerConfig } from '../../../services/picker-factory.service';
 import { ToastService } from '../../../services/toast.service';
 import { UnitNameService } from '../../../services/unit-name.service';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
@@ -43,6 +43,56 @@ describe('PageViewerNonMekRuntimeService ammo loadout navigation', () => {
         expect(overlays.openEquipment).toHaveBeenCalledOnceWith('tank-1', event, 'ammo');
         service.handle(member, { kind: 'open-equipment', tab: 'ammo', context: { ...context, owner: {} } }, event);
         expect(overlays.openEquipment).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('PageViewerNonMekRuntimeService random hits', () => {
+    it('rolls a current vehicle hit, highlights its location, and discards stale picker results', () => {
+        const entity = new TestTankEntity();
+        const originalContext = { owner: {}, state: createPristineNonMekUnitState(entity) };
+        let context = originalContext;
+        let config: DirectionalPickerConfig | undefined;
+        const destroy = jasmine.createSpy('destroy');
+        TestBed.configureTestingModule({ providers: [
+            PageViewerNonMekRuntimeService,
+            { provide: OptionsService, useValue: { options: () => ({ colorScheme: 'day' }) } },
+            { provide: PickerFactoryService, useValue: {
+                createDirectionalPicker: (value: DirectionalPickerConfig) => {
+                    config = value;
+                    return { destroy };
+                },
+            } },
+            { provide: PageViewerZoomPanService, useValue: { cancelGesture: () => undefined } },
+            ...[
+                DialogsService, ForcePilotEditorService, LoggerService, PageViewerOverlayService,
+                OverlayManagerService, ToastService, UnitNameService,
+            ].map(provide => ({ provide, useValue: {} })),
+        ] });
+        const service = TestBed.inject(PageViewerNonMekRuntimeService);
+        const member = { id: 'tank', entity, nonMekRecordSheetSnapshot: () => ({
+            editContext: context, locations: [{ code: 'Front', sheetCode: 'FR' }],
+        }) } as unknown as CBTForceMember;
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g>'
+            + '<path class="unitLocation armor" data-loc="FR"></path>';
+        const button = svg.querySelector<SVGElement>('[data-mekbay-random-hit]')!;
+        spyOn(Math, 'random').and.returnValue(0.4);
+        service.handle(member, { kind: 'random-hit', element: button, context }, new PointerEvent('pointerdown'));
+        expect(service.isPickerOpen('tank')).toBeTrue();
+        config!.onPick({ label: 'Front', value: 'front' });
+        expect(destroy).toHaveBeenCalledTimes(1);
+        expect(service.isPickerOpen('tank')).toBeFalse();
+        expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeTrue();
+        expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('FR');
+        service.cleanupUnused(new Set());
+        expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
+
+        service.handle(member, { kind: 'random-hit', element: button, context }, new PointerEvent('pointerdown'));
+        context = { ...originalContext, owner: {} };
+        config!.onPick({ label: 'Front', value: 'front' });
+        expect(svg.querySelector('.random-hit-location-highlight')).toBeNull();
+        expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
+        service.clear();
     });
 });
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
+import type { PaperdollPipLayout } from '../paperdoll-generator';
 import type {
     CompactRecordSheetKind,
     RecordSheetLayoutProfile,
@@ -27,6 +28,7 @@ export interface RecordSheetLayoutRequest {
     readonly format: RecordSheetSvgFormat;
     readonly page: RecordSheetPageProfile;
     readonly profile: RecordSheetLayoutProfile;
+    readonly pipLayout: PaperdollPipLayout;
 }
 
 /** Owns page composition for one record-sheet family. */
@@ -61,7 +63,7 @@ export abstract class CompactRecordSheetLayout implements RecordSheetLayout {
 
     public abstract matches(entity: BaseEntity): boolean;
 
-    protected abstract drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> | void;
+    protected abstract drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> | void;
 
     public profile(
         entity: BaseEntity,
@@ -136,7 +138,7 @@ export abstract class CompactRecordSheetLayout implements RecordSheetLayout {
         if (request.profile.stride !== undefined) {
             compact.setAttribute('data-mekbay-compact-stride', formatNumber(request.profile.stride));
         }
-        await this.drawCompact(compact, entity);
+        await this.drawCompact(compact, entity, request);
         return request.format === 'compact' || request.format === 'auto'
             ? compact
             : this.composePage([compact], request.page, entity);

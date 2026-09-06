@@ -12,6 +12,7 @@ import { NativeEntityService } from '../../services/native-entity.service';
 import type { LoadedEntity } from '../../models/entity/entity-repository';
 import { TestTankEntity } from '../../models/entity/testing/test-entities';
 import { RecordSheetSourceService } from '../../services/record-sheet-source.service';
+import type { RecordSheetPipLayout } from '../../models/options.model';
 import { SvgViewerLiteComponent } from './svg-viewer-lite.component';
 
 function loadedEntity(entity: TestTankEntity): LoadedEntity {
@@ -48,7 +49,8 @@ describe('SvgViewerLiteComponent', () => {
     let recordSheets: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
-    const options = signal({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
+    const options = signal({ recordSheetPipLayout: 'classic' as RecordSheetPipLayout,
+        printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
         logger = jasmine.createSpyObj<Pick<LoggerService, 'error'>>('LoggerService', ['error']);
@@ -66,7 +68,7 @@ describe('SvgViewerLiteComponent', () => {
             svg.setAttribute('viewBox', '0 0 612 792');
             return { svgs: [svg] };
         });
-        options.set({ printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
+        options.set({ recordSheetPipLayout: 'classic', printAllOptions: { recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {
@@ -228,6 +230,20 @@ describe('SvgViewerLiteComponent', () => {
 
         expect(pages.map(page => page.dataset['mekbayPageRole'])).toEqual(['primary', 'reverse']);
         expect(pages.every(page => page.style.width === '100%')).toBeTrue();
+    });
+
+    it('regenerates on pip layout changes while unrelated presentation options keep the sheet', async () => {
+        const { fixture, svg } = await createViewer();
+        options.update(current => ({ ...current,
+            printAllOptions: { recordSheetCenterPanelContent: 'fluffImage' } }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(1);
+        options.update(current => ({ ...current, recordSheetPipLayout: 'rail' }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(2);
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail' });
+        expect(nativeEntities.load).toHaveBeenCalledTimes(2);
+        expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
     });
 
     it('ignores stale sheet loads when the unit changes before a previous request resolves', async () => {

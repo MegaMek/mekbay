@@ -46,13 +46,13 @@ describe('InfantryEntity anti-Mek capability', () => {
   it('reacts to anti-Mek gear installation and removal', () => {
     const infantry = new InfantryEntity();
 
-    expect(infantry.canAntiMech()).toBeFalse();
+    expect(infantry.hasAntiMekGear()).toBeFalse();
 
     const antiMekGear = addTestEquipmentWithFlags(infantry, 'F_ANTI_MEK_GEAR');
-    expect(infantry.canAntiMech()).toBeTrue();
+    expect(infantry.hasAntiMekGear()).toBeTrue();
 
     infantry.removeEquipment(antiMekGear);
-    expect(infantry.canAntiMech()).toBeFalse();
+    expect(infantry.hasAntiMekGear()).toBeFalse();
   });
 });
 

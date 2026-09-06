@@ -654,10 +654,11 @@ describe('PageViewerMekInteractionService', () => {
 
     it('rolls and highlights a through-armor hit selected from the directional picker', () => {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.innerHTML = '<g data-type="armor" data-art-x="10" data-art-y="20" '
+        svg.innerHTML = '<g data-mekbay-paperdoll="1" data-mekbay-paperdoll-view="front" '
+            + 'data-type="armor" data-art-x="10" data-art-y="20" '
             + 'data-art-width="200" data-art-height="300">'
             + '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g></g>'
-            + '<path class="unitLocation armor" loc="CT"></path>';
+            + '<path class="unitLocation armor" data-loc="CT"></path>';
         const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
         const event = new PointerEvent('pointerdown', { button: 0 });
         spyOn(Math, 'random').and.returnValues(0, 0);
@@ -711,7 +712,7 @@ describe('PageViewerMekInteractionService', () => {
             },
         });
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><path class="unitLocation armor" loc="LT"></path>';
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><path class="unitLocation armor" data-loc="LT"></path>';
         const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
         spyOn(Math, 'random').and.returnValues(0.8, 0.8);
 
@@ -722,7 +723,7 @@ describe('PageViewerMekInteractionService', () => {
 
         expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
         expect(svg.querySelector('.mek-random-hit-result-transferred-from')?.textContent).toBe('from LA');
-        expect(svg.querySelector('[loc="LT"]')?.classList).toContain('random-hit-location-highlight');
+        expect(svg.querySelector('[data-loc="LT"]')?.classList).toContain('random-hit-location-highlight');
     });
 });
 

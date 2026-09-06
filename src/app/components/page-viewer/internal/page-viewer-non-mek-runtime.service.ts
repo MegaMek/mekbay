@@ -44,7 +44,7 @@ import { ToastService } from '../../../services/toast.service';
 import { UnitNameService } from '../../../services/unit-name.service';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
-import type { PickerInstance } from '../../picker/picker.interface';
+import type { PickerChoice,PickerInstance } from '../../picker/picker.interface';
 import {
 recordSheetDamageChoices,
 recordSheetEventPosition,
@@ -55,6 +55,8 @@ bindNonMekRecordSheet,
 type NonMekRecordSheetBinding,
 } from '../non-mek-record-sheet-binder';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
+import { nonMekHitArcs,resolveNonMekHitLocation,type NonMekHitArc } from '../non-mek-hit-location';
+import { RecordSheetRandomHitResult } from '../record-sheet-random-hit-result';
 import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
@@ -95,6 +97,7 @@ export class PageViewerNonMekRuntimeService {
     private readonly zoomPan = inject(PageViewerZoomPanService);
     private readonly bound = new Map<string, BoundEntitySheets>();
     private picker: OpenEntityPicker | null = null;
+    private readonly randomHitResult = new RecordSheetRandomHitResult();
 
     isPickerOpen(unitId: string): boolean {
         return this.picker?.unitId === unitId;
@@ -138,6 +141,7 @@ export class PageViewerNonMekRuntimeService {
 
     cleanupUnused(keepUnitIds: ReadonlySet<string>): void {
         if (this.picker && !keepUnitIds.has(this.picker.unitId)) this.closePicker();
+        if (this.randomHitResult.unitId && !keepUnitIds.has(this.randomHitResult.unitId)) this.randomHitResult.clear();
         for (const unitId of [...this.bound.keys()]) {
             if (!keepUnitIds.has(unitId)) this.destroyBinding(unitId);
         }
@@ -145,6 +149,7 @@ export class PageViewerNonMekRuntimeService {
 
     clear(): void {
         this.closePicker();
+        this.randomHitResult.clear();
         for (const unitId of [...this.bound.keys()]) this.destroyBinding(unitId);
     }
 
@@ -179,6 +184,10 @@ export class PageViewerNonMekRuntimeService {
         if (!snapshot || !isUnitEditContextCurrent(interaction.context, snapshot.editContext)) return;
         if (interaction.kind === 'open-equipment') {
             this.overlays.openEquipment(member.id, event, interaction.tab);
+            return;
+        }
+        if (interaction.kind === 'random-hit') {
+            this.openRandomHitPicker(member, interaction, event);
             return;
         }
         if (interaction.kind === 'heat') {
@@ -232,6 +241,45 @@ export class PageViewerNonMekRuntimeService {
         if (interaction.kind === 'armor' || interaction.kind === 'internal') {
             this.openDamagePicker(member, interaction, snapshot, event);
         }
+    }
+
+    private openRandomHitPicker(
+        member: CBTForceMember,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'random-hit' }>,
+        event: Event,
+    ): void {
+        this.randomHitResult.clear();
+        this.closePicker();
+        this.zoomPan.cancelGesture();
+        interaction.element.classList.add('picker-active');
+        const rect = interaction.element.getBoundingClientRect();
+        const config = {
+            position: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+            lightTheme: this.options.options().colorScheme === 'night',
+            initialEvent: event instanceof PointerEvent ? event : undefined,
+            onPick: (choice: PickerChoice): void => {
+                this.closePicker();
+                const snapshot = this.snapshot(member, interaction.context);
+                const svg = interaction.element.ownerSVGElement;
+                if (!snapshot || !svg) return;
+                const d6 = (): number => Math.floor(Math.random() * 6) + 1;
+                const hit = resolveNonMekHitLocation(member.entity, snapshot, choice.value as NonMekHitArc,
+                    d6() + d6(), d6);
+                if (hit) this.randomHitResult.show(member.id, svg, interaction.element, hit.locationCode,
+                    false, false, hit.transferredFrom);
+            },
+            onCancel: () => this.closePicker(),
+        };
+        const arcs = nonMekHitArcs(member.entity);
+        const instance = arcs.length === 4
+            ? this.pickerFactory.createDirectionalPicker(config)
+            : this.pickerFactory.createChoicePicker({
+                ...config,
+                title: 'Attack direction',
+                values: arcs.map(arc => ({ label: arc.split('-').map(word =>
+                    word[0].toUpperCase() + word.slice(1)).join(' '), value: arc })),
+            });
+        this.picker = { unitId: member.id, instance, target: interaction.element };
     }
 
     private async selectInventory(
@@ -916,6 +964,7 @@ export class PageViewerNonMekRuntimeService {
     }
 
     private destroyBinding(unitId: string): void {
+        if (this.randomHitResult.unitId === unitId) this.randomHitResult.clear();
         const current = this.bound.get(unitId);
         if (!current) return;
         current.subscription.unsubscribe();

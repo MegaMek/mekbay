@@ -3,6 +3,7 @@
 
 import type { BaseEntity } from '../../base-entity';
 import { InfantryBaseEntity } from '../../entities/infantry/infantry-base-entity';
+import { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import {
   adjustCBTBattleValueForSkills,
   effectiveCBTPilotingSkill,
@@ -16,7 +17,8 @@ export function classicSkillFactsForEntity(entity: BaseEntity): CBTSkillUnitFact
   return Object.freeze({
     unitType: entity.unitType(),
     unitSubtype: entity.unitSubtype(),
-    canAntiMech: entity instanceof InfantryBaseEntity && entity.canAntiMech(),
+    canMakeAntiMekAttacks: entity instanceof InfantryBaseEntity && entity.canMakeAntiMekAttacks(),
+    hasAntiMekGear: entity instanceof InfantryEntity && entity.hasAntiMekGear(),
   });
 }
 

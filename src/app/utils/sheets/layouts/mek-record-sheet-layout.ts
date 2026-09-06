@@ -8,9 +8,10 @@ type EntityMountedEquipment,
 type IntrinsicWeapon,
 } from '../../../models/entity/types';
 import { getMekLocationLabel } from '../../../models/entity/types/mek';
+import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../../../models/entity/types/move';
 import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
-import { isTargetingComputerEquipment } from '../../../models/entity/utils/targeting-computer';
+import { resolveShieldProfile } from '../../../models/entity/utils/physical-weapon';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
@@ -19,12 +20,12 @@ import { formatEquipmentLocationCodes } from '../../equipment-location-display.u
 import { mekCriticalCaseLabel,mekCriticalSlotLabel } from '../../mek-critical-display.util';
 import { mekCriticalLocationCells,mekCriticalTableRowCount } from '../../mek-location-layout.util';
 import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,recordSheetPhysicalLocationRows,referenceTableNotes } from '../../record-sheet-reference-table';
-import { BipedPaperdollUtil,type BipedArmorValues,type BipedPaperdollPipLayout,type BipedStructureTonnage } from '../biped-paperdoll.util';
-import { CanonPipRenderer } from '../canon-pip-renderer';
+import { MekPaperdollGenerator, type MekStructureTonnage } from '../mek-paperdoll-generator';
+import type { PaperdollOptions, PaperdollPipLayout } from '../paperdoll-generator';
 import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
 import { appendRecordSheetAmmoProfile,measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
-import { isMekRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import { isMekRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 import {
 fullRecordSheetLayoutProfile,
 type RecordSheetLayoutProfile,
@@ -42,7 +43,6 @@ constructionMaterialSubtitle,
 createRoot,
 decoratePaperdollPips,
 drawCrewHitGrid,
-drawDamagePanelIntoGroup,
 drawGeneratedFooter,
 drawHeatScale,
 drawPageChrome,
@@ -136,7 +136,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
                 page,
             );
         }
-        await drawMekPaperdolls(svg, entity, at({ x: 402.966, y: 18, width: 173, height: 543 }));
+        await drawMekPaperdolls(svg, entity, at({ x: 402.966, y: 18, width: 173, height: 543 }), request.pipLayout);
         await drawMekCriticalPanel(svg, entity, at({ x: 18.966, y: 389, width: 377.7, height: 363 }));
         drawHeatPanel(svg, entity, at({ x: 402.966, y: 571.5, width: 159.5, height: 180.5 }));
         drawHeatScale(svg, at({ x: 574.546, y: 386, width: 19.454, height: 366 }));
@@ -195,13 +195,13 @@ function mekRecordSheetTitle(entity: MekEntity): string {
     if (entity.chassisConfig === 'QuadVee') {
         return `${entity.omni() ? 'OMNI' : ''}QUADVEE RECORD SHEET`;
     }
-    const weight = entity.isSuperHeavy() ? 'SUPERHEAVY ' : '';
+    const weight = entity.isSuperHeavy() ? 'SUPERHEAVY ' : entity.mountedCockpit().isPrimitive ? 'PRIMITIVE ' : '';
     const configuration = entity.chassisConfig === 'Quad'
         ? 'FOUR-LEGGED '
         : entity.chassisConfig === 'Tripod'
             ? 'THREE-LEGGED '
             : '';
-    return `${weight}${configuration}${entity.omni() ? 'OMNIMECH' : 'BATTLEMECH'} RECORD SHEET`;
+    return `${weight}${configuration}${entity.isIndustrial() ? 'INDUSTRIALMECH' : entity.omni() ? 'OMNIMECH' : 'BATTLEMECH'} RECORD SHEET`;
 }
 
 function drawMekCrewPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): void {
@@ -287,8 +287,8 @@ export async function drawMekDataPanel(
     } else {
         addText(group, 'Movement Points:', x(6), y(38), { size: font(7.7), weight: 700 });
         const leftRows: readonly [string, string, string, string][] = [
-            ['Walking:', String(entity.walkMP()), 'mpWalk', 'walk'],
-            ['Running:', String(entity.runMP()), 'mpRun', 'run'],
+            ['Walking:', mekMovementText(entity.walkMP(), entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, forceTSM: true })), 'mpWalk', 'walk'],
+            ['Running:', mekMovementText(entity.computeRunMP(RUN_WITHOUT_MASC_CALCULATION), entity.computeRunMP({ ...STANDARD_MOVEMENT_CALCULATION, forceTSM: true })), 'mpRun', 'run'],
             ['Jumping:', String(entity.jumpMP()), 'mpJump', 'jump'],
         ];
         leftRows.forEach(([label, value, id, field], index) => {
@@ -635,7 +635,7 @@ function appendMekInventoryRows(
         if (rowData) {
             alternativeModes.forEach((mode, modeIndex) => {
                 const alternative = svgElement('g');
-                alternative.setAttribute('class', 'alternativeMode');
+                alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
                 alternative.setAttribute('data-mekbay-mode', mode.name);
                 alternative.setAttribute('data-mekbay-static-mode-profile', '1');
                 alternative.setAttribute('data-mekbay-mode-label-only', '1');
@@ -656,7 +656,7 @@ function appendMekInventoryRows(
                 addText(alternative, '', x(89.56), modeBaseline, {
                     class: 'location', size: rowFont, anchor: 'middle', maxWidth: x(22),
                 });
-                addText(alternative, '', x(103.626), modeBaseline, {
+                addText(alternative, mode.heat ?? '', x(103.626), modeBaseline, {
                     class: 'heat', size: rowFont, anchor: 'middle', maxWidth: x(12),
                 });
                 const modeDamage = svgElement('g');
@@ -735,18 +735,14 @@ function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheet
         const mount = firstId === undefined ? undefined : mountsById.get(firstId);
         return Object.freeze({
             ...row,
-            name: mount ? mekInventoryMountName(entity, mount) : row.name,
+            name: mount ? recordSheetInventoryMountName(entity, mount) : row.name,
         });
     });
     const rangedMounts = new Set<EntityMountedEquipment>(entity.rangedWeapons());
     const equipmentRows: MekRecordSheetInventoryRow[] = entity.equipment()
-        .filter(mount => !rangedMounts.has(mount) && isPrintableMekInventoryMount(mount))
-        .sort((left, right) => {
-            const name = left.displayName().localeCompare(right.displayName());
-            return name !== 0 ? name : left.location.localeCompare(right.location);
-        })
+        .filter(mount => !rangedMounts.has(mount) && isPrintableMekInventoryMount(entity, mount))
         .map(mount => Object.freeze({
-            name: mekInventoryMountName(entity, mount),
+            name: recordSheetInventoryMountName(entity, mount),
             location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
             heat: '—',
             damage: mekMiscInventoryDamage(mount),
@@ -759,42 +755,21 @@ function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheet
     return Object.freeze([...weaponRows, ...equipmentRows]);
 }
 
-function isPrintableMekInventoryMount(mount: EntityMountedEquipment): boolean {
+function isPrintableMekInventoryMount(entity: MekEntity, mount: EntityMountedEquipment): boolean {
     const equipment = mount.equipment;
     if (!equipment || equipment.type !== 'misc' || !equipment.hittable) return false;
     if (mount.location === 'Engine' || mount.location === 'Unallocated') return false;
     if (isHeatSinkEquipment(equipment) || isJumpJetEquipment(equipment)) return false;
+    if (entity.chassisConfig === 'QuadVee' && equipment.hasFlag('F_TRACKS')) return false;
     return !isMekRecordSheetInventorySupport(equipment);
-}
-
-function mekInventoryMountName(entity: MekEntity, mount: EntityMountedEquipment): string {
-    const equipment = mount.equipment;
-    if (!equipment || !entity.mixedTech() || equipment.techBase === 'All') return mount.displayName();
-    const ambiguous = Object.values(entity.getEquipmentRegistry().equipment).some(candidate =>
-        candidate !== equipment
-        && candidate.name === equipment.name
-        && candidate.techBase !== equipment.techBase);
-    if (!ambiguous) return mount.displayName();
-    return insertEquipmentTechSuffix(
-        mount.displayName(),
-        equipment.techBase === 'Clan' ? '(C)' : '(IS)',
-    );
-}
-
-function insertEquipmentTechSuffix(name: string, suffix: string): string {
-    const modifierIndex = name.indexOf(' (');
-    return modifierIndex < 0
-        ? `${name} ${suffix}`
-        : `${name.slice(0, modifierIndex)} ${suffix}${name.slice(modifierIndex)}`;
 }
 
 function mekMiscInventoryDamage(mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
     if (!equipment) return '—';
     if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
-    if (isTargetingComputerEquipment(equipment)) return '[E]';
     const physicalDamage = mount.getPhysicalWeaponDamage();
-    return physicalDamage === undefined ? '—' : String(physicalDamage.value);
+    return physicalDamage === undefined ? '[E]' : String(physicalDamage.value);
 }
 
 function mekInventoryMetrics(
@@ -865,11 +840,18 @@ function mekPhysicalInventoryRows(entity: MekEntity): readonly {
 }
 
 function mekPhysicalDamageText(attack: IntrinsicWeapon): string {
+    if (attack.damage.kind === 'fixed' && attack.damage.boostedValue !== undefined) {
+        return `${intrinsicActionBaseDamageText(attack)} [${attack.damage.boostedValue}]`;
+    }
     if (attack.kind !== 'charge' || attack.damage.kind !== 'per-hex') {
         return intrinsicActionBaseDamageText(attack);
     }
     const coefficient = formatNumber(attack.damage.coefficient * 2);
     return `${coefficient}×(TMM+1)${attack.damage.bonus === 0 ? '' : `+${attack.damage.bonus}`}`;
+}
+
+function mekMovementText(base: number, boosted: number): string {
+    return boosted === base ? String(base) : `${base} [${boosted}]`;
 }
 
 function drawMekCrewPanelContents(group: SVGGElement, entity: BaseEntity, box: Box): void {
@@ -1115,7 +1097,7 @@ function mekCrewRoleLabels(entity: MekEntity, count: number): readonly string[] 
     return Array.from({ length: count }, (_, index) => index === 0 ? 'Pilot' : `Crew ${index + 1}`);
 }
 
-function bipedStructureTonnage(entity: MekEntity): Exclude<BipedStructureTonnage, number> {
+function bipedStructureTonnage(entity: MekEntity): Exclude<MekStructureTonnage, number> {
     const tonnages = entity.structureTonnages();
     const fallback = entity.tonnage();
     return {
@@ -1130,517 +1112,154 @@ function bipedStructureTonnage(entity: MekEntity): Exclude<BipedStructureTonnage
     };
 }
 
-async function drawMekDamagePanel(svg: SVGSVGElement, entity: MekEntity, box: Box): Promise<void> {
-    const group = addFrame(svg, 'ARMOR / INTERNAL', box);
-    const pipLayout = mekPaperdollPipLayout(entity);
-    group.setAttribute('data-mekbay-pip-layout', pipLayout);
-    if (entity.chassisConfig !== 'Biped') {
-        drawDamagePanelIntoGroup(group, entity, box.width, box.height);
-        return;
-    }
-    const armor: Record<string, number> = {};
-    for (const location of entity.damageLocations()) {
-        armor[location.code] = location.armor.front;
-        if (location.armor.rear > 0) armor[`${location.code}_R`] = location.armor.rear;
-    }
-    const structureTonnage = bipedStructureTonnage(entity);
-    try {
-        const front = await BipedPaperdollUtil.createArmorPaperdoll(126, 278, armor as BipedArmorValues, {
-            centeredHorizontally: true,
-            centeredVertically: true,
-            pipLayout,
-            fallbackPipLayout: 'generic',
-            pipOptions: paperdollPipOptions(pipLayout, 2.1, 0.9),
-        });
-        front.setAttribute('transform', 'translate(5 29)');
-        decoratePaperdollPips(front);
-        group.appendChild(front);
-        const structure = await BipedPaperdollUtil.createStructurePaperdoll(71, 132, structureTonnage, {
-            centeredHorizontally: true,
-            centeredVertically: true,
-            pipLayout,
-            fallbackPipLayout: 'generic',
-            pipOptions: paperdollPipOptions(pipLayout, 1.55, 0.75),
-        });
-        structure.setAttribute('transform', 'translate(130 29)');
-        decoratePaperdollPips(structure);
-        group.appendChild(structure);
-        const rear = await BipedPaperdollUtil.createArmorRearPaperdoll(71, 132, armor as BipedArmorValues, {
-            centeredHorizontally: true,
-            centeredVertically: true,
-            pipLayout,
-            fallbackPipLayout: 'generic',
-            pipOptions: paperdollPipOptions(pipLayout, 1.55, 0.75),
-        });
-        rear.setAttribute('transform', 'translate(130 166)');
-        decoratePaperdollPips(rear, true);
-        group.appendChild(rear);
-    } catch {
-        drawDamagePanelIntoGroup(group, entity, box.width, box.height);
-    }
+/** Each view owns an independent box in the canonical 173 by 543 diagram area. */
+export const BIPED_MEK_PAPERDOLL_BOXES = Object.freeze({
+    front: Object.freeze({ x: 6, y: 7.667, width: 176.347, height: 272.325 }),
+    rear: Object.freeze({ x: 46.726, y: 252.479, width: 98.94, height: 87.3 }),
+    structure: Object.freeze({ x: 30.2, y: 383.11, width: 117, height: 171 }),
+});
+
+function mekArmorSubtitle(entity: MekEntity): string {
+    const armor = entity.uniformArmor()?.armor;
+    const name = constructionMaterialSubtitle(armor?.name, 'Armor', 'Patchwork');
+    return armor && armor.bar < 10 ? `${name}, BAR: ${armor.bar}` : name;
 }
 
-export async function drawMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, box: Box): Promise<void> {
-    if (entity.chassisConfig !== 'Biped' && entity.chassisConfig !== 'LAM') {
-        await drawProfiledMekPaperdolls(svg, entity, box);
+export async function drawMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, box: Box, pipLayout: PaperdollPipLayout): Promise<void> {
+    const shieldValues = Object.fromEntries(entity.equipment().flatMap(mount => {
+        const shield = resolveShieldProfile(mount.equipment);
+        const arm = mount.getOccupiedLocations().find(location => location === 'LA' || location === 'RA');
+        return shield && arm ? [[arm, { da: shield.damageAbsorption, dc: shield.damageCapacity }]] : [];
+    }));
+    if (entity.chassisConfig !== 'Biped') {
+        await drawProfiledMekPaperdolls(svg, entity, box, pipLayout, shieldValues);
         return;
     }
-
     const group = svgElement('g');
     group.setAttribute('class', 'mek-paperdolls');
-    group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
-    const paperdollScaleX = box.width / 173;
-    const paperdollScaleY = box.height / 543;
-    const pipLayout = mekPaperdollPipLayout(entity);
+    group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)}) scale(${formatGeometryNumber(box.width / 173)} ${formatGeometryNumber(box.height / 543)})`);
     group.setAttribute('data-mekbay-pip-layout', pipLayout);
     const armor: Record<string, number> = {};
+    const structurePipCounts: Record<string, number> = {};
     for (const location of entity.damageLocations()) {
         armor[location.code] = location.armor.front;
-        if (location.armor.rear > 0) armor[`${location.code}_R`] = location.armor.rear;
+        armor[`${location.code}_R`] = location.armor.rear;
+        structurePipCounts[location.code] = location.internalPoints;
     }
-    const structureTonnage = bipedStructureTonnage(entity);
-
-    addDiagramHeading(
-        group,
-        'ARMOR DIAGRAM',
-        constructionMaterialSubtitle(entity.uniformArmor()?.armor.name, 'Armor', 'Patchwork Armor'),
-        box.width,
-        0,
-        {
-            titleWidth: 84,
-            titleX: 54.004,
-            titleY: -0.197,
-            titleTextLength: 69.539,
-            ribbonX: 36.004,
-            ribbonY: 0,
-            ribbonWidth: 123.749,
-            ribbonCut: 3.749,
-            subtitleX: 96,
-            subtitleY: 21.5,
-            subtitleId: 'armorType',
-        },
-    );
-    // The classic Biped asset contains both the front and rear armor diagrams,
-    // matching the MegaMekLab record-sheet drawing.  It is shared with the LAM
-    // sheet, but is not LAM-specific artwork.
-    const front = await BipedPaperdollUtil.createArmorPaperdoll(box.width, box.height * 0.62, armor as BipedArmorValues, {
-        assetUrl: '/images/paperdolls/lam-armor.svg',
-        centeredHorizontally: false,
-        centeredVertically: false,
-        scale: false,
-        pipLayout,
-        fallbackPipLayout: 'generic',
-        pipOptions: paperdollPipOptions(pipLayout, 2.15, 0.9),
-    });
-    // The lightweight asset retains its authored viewBox translation.  This
-    // outer transform reproduces MML's .97/10/29 Biped and .97/9/30 LAM
-    // matrices exactly, while the page factors keep the drawing reusable on A4.
-    const armorOffset = entity.chassisConfig === 'LAM'
-        ? { x: 5, y: 30 }
-        : { x: 6, y: 29 };
-    front.setAttribute(
-        'transform',
-        `translate(${formatGeometryNumber(armorOffset.x * paperdollScaleX)} `
-        + `${formatGeometryNumber(armorOffset.y * paperdollScaleY)}) `
-        + `scale(${formatGeometryNumber(paperdollScaleX)} ${formatGeometryNumber(paperdollScaleY)})`,
-    );
-    decoratePaperdollPips(front);
-    if (entity.chassisConfig === 'LAM') {
-        front.querySelectorAll('.pip.armor').forEach(pip => pip.remove());
-    }
-    group.appendChild(front);
-    if (entity.chassisConfig === 'LAM') {
-        drawLamDistributedArmorPips(group, entity, box);
-    } else {
-        relocateCanonicalBipedPips(front, group, BIPED_CANON_ARMOR_PIP_PLACEMENTS, box);
-    }
-
-    const structureHeadingY = box.height * (370 / 543);
-    addDiagramHeading(
-        group,
-        'INTERNAL STRUCTURE DIAGRAM',
+    addDiagramHeading(group, 'ARMOR DIAGRAM',
+        mekArmorSubtitle(entity),
+        173, 0, {
+            titleWidth: 84, titleX: 54.004, titleY: -0.197, titleTextLength: 69.539,
+            ribbonX: 36.004, ribbonY: 0, ribbonWidth: 123.749, ribbonCut: 3.749,
+            subtitleX: 96, subtitleY: 21.5, subtitleId: 'armorType',
+        });
+    addDiagramHeading(group, 'INTERNAL STRUCTURE DIAGRAM',
         constructionMaterialSubtitle(entity.uniformStructureMaterial()?.structure.name, 'Structure', 'Hybrid Structure'),
-        box.width,
-        structureHeadingY,
-        {
-            titleWidth: 142.791,
-            titleX: 13.745,
-            titleY: 352.888,
-            titleTextLength: 126.662,
-            ribbonX: 25.723,
-            ribbonY: 354.03,
-            ribbonWidth: 122.512,
-            ribbonCut: 3.712,
-            subtitleX: 86.034,
-            subtitleY: 375.445,
-            subtitleId: 'structureType',
+        173, 370, {
+            titleWidth: 142.791, titleX: 13.745, titleY: 352.888, titleTextLength: 126.662,
+            ribbonX: 25.723, ribbonY: 354.03, ribbonWidth: 122.512, ribbonCut: 3.712,
+            subtitleX: 86.034, subtitleY: 375.445, subtitleId: 'structureType',
             subtitleHorizontalScale: 0.990245,
-        },
-    );
-    const structureWidth = box.width * 0.74;
-    const structure = await BipedPaperdollUtil.createStructurePaperdoll(
-        structureWidth,
-        box.height * 0.3,
-        structureTonnage,
-        {
-            assetUrl: '/images/paperdolls/lam-structure.svg',
-            centeredHorizontally: false,
-            centeredVertically: false,
-            scale: false,
-            pipLayout,
-            fallbackPipLayout: 'generic',
-            pipOptions: paperdollPipOptions(pipLayout, 1.55, 0.7),
-        },
-    );
-    if (pipLayout === 'canon' && !structure.querySelector('[data-pip-location="HD"]')) {
-        const headTonnage = entity.structureTonnages().get('HD') ?? entity.tonnage();
-        const headPips = CanonPipRenderer.createStructurePips(
-            headTonnage,
-            'HD',
-            1,
-            0.939,
-            paperdollPipOptions('canon', 1.55, 0.7),
-        );
-        if (headPips) structure.appendChild(headPips);
+        });
+    const boxes = BIPED_MEK_PAPERDOLL_BOXES;
+    const options = { pipLayout, fallbackPipLayout: 'distributed' as const, shieldValues,
+        scale: false, preserveAuthoredCoordinates: true,
+        pipOptions: paperdollPipOptions(pipLayout, 2.15, 0.9) };
+    const [front, rear, structure] = await Promise.all([
+        MekPaperdollGenerator.createArmorPaperdoll(boxes.front.width, boxes.front.height, armor, options),
+        MekPaperdollGenerator.createArmorRearPaperdoll(boxes.rear.width, boxes.rear.height, armor, options),
+        MekPaperdollGenerator.createStructurePaperdoll(boxes.structure.width, boxes.structure.height,
+            bipedStructureTonnage(entity), { ...options, structurePipCounts,
+                pipOptions: paperdollPipOptions(pipLayout, 1.55, 0.7) }),
+    ]);
+    const layers = { front, rear, structure };
+    for (const view of ['front', 'rear', 'structure'] as const) {
+        const placement = boxes[view];
+        const layer = layers[view];
+        // The biped labels use sheet coordinates. Keep their authored alignment
+        // as source viewBoxes tighten or optional shields extend the artwork.
+        const scale = view === 'structure' ? 1 : 0.97;
+        const offsetX = view === 'front' ? -1.112 * scale : 0;
+        const offsetY = view === 'front' ? -0.725 * scale : 0;
+        const art = svgElement('g');
+        art.setAttribute('transform', `matrix(${scale} 0 0 ${scale} ${offsetX} ${offsetY})`);
+        art.append(...Array.from(layer.childNodes));
+        layer.appendChild(art);
+        layer.setAttribute('data-art-x', String(Number(layer.getAttribute('data-art-x')) * scale + offsetX));
+        layer.setAttribute('data-art-y', String(Number(layer.getAttribute('data-art-y')) * scale + offsetY));
+        layer.setAttribute('data-art-width', String(Number(layer.getAttribute('data-art-width')) * scale));
+        layer.setAttribute('data-art-height', String(Number(layer.getAttribute('data-art-height')) * scale));
+        layer.classList.add('mek-paperdoll-view', `mek-paperdoll-${view}`);
+        layer.setAttribute('data-mekbay-paperdoll-view', view);
+        layer.setAttribute('transform', `translate(${placement.x} ${placement.y})`);
+        decoratePaperdollPips(layer, view === 'rear');
+        group.appendChild(layer);
     }
-    const structurePlacement = entity.chassisConfig === 'LAM'
-        ? { x: 25, y: 376, scale: 1 }
-        : { x: 22.080155, y: 375.782156, scale: 1.015255102 };
-    structure.setAttribute(
-        'transform',
-        `translate(${formatGeometryNumber(structurePlacement.x * paperdollScaleX)} `
-        + `${formatGeometryNumber(structurePlacement.y * paperdollScaleY)}) `
-        + `scale(${formatGeometryNumber(structurePlacement.scale * paperdollScaleX)} `
-        + `${formatGeometryNumber(structurePlacement.scale * paperdollScaleY)})`,
-    );
-    decoratePaperdollPips(structure);
-    if (entity.chassisConfig === 'LAM') {
-        structure.querySelectorAll('.pip.structure').forEach(pip => pip.remove());
-    }
-    group.appendChild(structure);
-    if (entity.chassisConfig === 'LAM') {
-        drawLamDistributedStructurePips(group, entity, box);
-    } else {
-        relocateCanonicalBipedPips(structure, group, BIPED_CANON_STRUCTURE_PIP_PLACEMENTS, box);
-    }
-    if (group.querySelector('[data-mekbay-paperdoll-overlay]')) {
-        initializeMekDiagramCounters(group, entity);
-    } else {
-        drawBipedDiagramValues(group, entity, box);
-    }
+    drawBipedDiagramValues(layers, entity);
     svg.appendChild(group);
 }
 
-interface LamPipPoint {
-    readonly x: number;
-    readonly y: number;
-}
-
-const LAM_ARMOR_PIP_RAILS: Readonly<Record<string, readonly LamPipPoint[]>> = Object.freeze({
-    HD: Object.freeze([
-        { x: 94.908, y: 58.432 }, { x: 91.863, y: 62.582 }, { x: 97.915, y: 62.618 },
-        { x: 89.352, y: 66.881 }, { x: 94.908, y: 66.844 }, { x: 100.464, y: 66.881 },
-        { x: 89.352, y: 72.132 }, { x: 94.908, y: 72.095 }, { x: 100.464, y: 72.132 },
-    ]),
-    CT: Object.freeze([
-        { x: 84.705, y: 94.36 }, { x: 94.906, y: 94.362 }, { x: 105.108, y: 94.362 },
-        { x: 84.67, y: 113.773 }, { x: 94.871, y: 113.774 }, { x: 105.072, y: 113.774 },
-        { x: 84.67, y: 133.22 }, { x: 94.871, y: 133.222 }, { x: 105.072, y: 133.222 },
-        { x: 84.67, y: 152.701 }, { x: 94.871, y: 152.703 }, { x: 105.072, y: 152.703 },
-    ]),
-    RT: Object.freeze([
-        { x: 122.637, y: 73.153 }, { x: 132.838, y: 73.153 }, { x: 127.738, y: 85.188 },
-        { x: 122.637, y: 97.219 }, { x: 132.838, y: 97.219 }, { x: 122.637, y: 109.253 },
-        { x: 120.669, y: 121.284 }, { x: 115.853, y: 133.283 }, { x: 128.711, y: 145.317 },
-    ]),
-    LT: Object.freeze([
-        { x: 57.194, y: 73.153 }, { x: 67.395, y: 73.154 }, { x: 62.295, y: 85.188 },
-        { x: 57.194, y: 97.219 }, { x: 67.395, y: 97.22 }, { x: 67.395, y: 109.253 },
-        { x: 69.363, y: 121.284 }, { x: 74.179, y: 133.283 }, { x: 61.32, y: 145.316 },
-    ]),
-    RA: Object.freeze([
-        { x: 157.281, y: 60.554 }, { x: 165.192, y: 89.466 }, { x: 154.507, y: 90.4 },
-        { x: 162.42, y: 119.311 }, { x: 170.33, y: 148.221 }, { x: 159.647, y: 149.158 },
-    ]),
-    LA: Object.freeze([
-        { x: 33.028, y: 60.554 }, { x: 25.117, y: 89.466 }, { x: 35.801, y: 90.4 },
-        { x: 27.889, y: 119.309 }, { x: 19.977, y: 148.222 }, { x: 30.662, y: 149.158 },
-    ]),
-    RL: Object.freeze([
-        { x: 121.349, y: 163.904 }, { x: 130.708, y: 179.824 }, { x: 119.915, y: 182.313 },
-        { x: 129.272, y: 198.226 }, { x: 138.63, y: 214.148 }, { x: 127.838, y: 216.635 },
-        { x: 137.194, y: 232.549 }, { x: 146.558, y: 248.466 }, { x: 135.763, y: 250.957 },
-        { x: 145.117, y: 266.87 },
-    ]),
-    LL: Object.freeze([
-        { x: 68.337, y: 163.904 }, { x: 58.979, y: 179.824 }, { x: 69.772, y: 182.313 },
-        { x: 60.414, y: 198.226 }, { x: 51.057, y: 214.148 }, { x: 61.849, y: 216.635 },
-        { x: 52.492, y: 232.549 }, { x: 43.129, y: 248.466 }, { x: 53.924, y: 250.957 },
-        { x: 44.569, y: 266.87 },
-    ]),
-    CT_R: Object.freeze([
-        { x: 94.714, y: 288.108 }, { x: 94.714, y: 309.259 }, { x: 94.714, y: 330.408 },
-    ]),
-    RT_R: Object.freeze([
-        { x: 125.294, y: 295.003 }, { x: 125.294, y: 305.193 }, { x: 125.295, y: 315.382 },
-    ]),
-    LT_R: Object.freeze([
-        { x: 64.975, y: 295.003 }, { x: 64.975, y: 305.193 }, { x: 64.975, y: 315.383 },
-    ]),
-});
-
-const LAM_ARMOR_PIP_RADIUS: Readonly<Record<string, number>> = Object.freeze({
-    HD: 2.17,
-    CT: 2.283,
-    RT: 2.283,
-    LT: 2.283,
-    RA: 2.924,
-    LA: 2.924,
-    RL: 2.805,
-    LL: 2.805,
-    CT_R: 1.919,
-    RT_R: 1.919,
-    LT_R: 1.919,
-});
-
-const LAM_STRUCTURE_PIP_RAILS: Readonly<Record<string, readonly LamPipPoint[]>> = Object.freeze({
-    HD: Object.freeze([
-        { x: 85.8, y: 393.009 }, { x: 81.817, y: 400.455 }, { x: 89.977, y: 400.455 },
-    ]),
-    CT: Object.freeze([
-        { x: 81.541, y: 415.028 }, { x: 90.387, y: 415.028 },
-        { x: 81.541, y: 425.26 }, { x: 90.387, y: 425.26 },
-        { x: 81.541, y: 435.492 }, { x: 90.387, y: 435.492 },
-        { x: 81.541, y: 445.725 }, { x: 90.387, y: 445.725 },
-        { x: 81.541, y: 455.956 }, { x: 90.387, y: 455.956 },
-    ]),
-    RT: Object.freeze([
-        { x: 108.279, y: 405.461 }, { x: 102.605, y: 415.026 }, { x: 113.778, y: 415.027 },
-        { x: 102.605, y: 425.258 }, { x: 101.071, y: 435.491 }, { x: 99.219, y: 445.723 },
-        { x: 107.587, y: 455.956 },
-    ]),
-    LT: Object.freeze([
-        { x: 63.514, y: 405.46 }, { x: 58.016, y: 415.026 }, { x: 69.188, y: 415.027 },
-        { x: 69.188, y: 425.259 }, { x: 70.724, y: 435.49 }, { x: 72.578, y: 445.723 },
-        { x: 63.823, y: 455.956 },
-    ]),
-    RA: Object.freeze([
-        { x: 131.677, y: 411.303 }, { x: 132.861, y: 424.856 }, { x: 134.048, y: 438.411 },
-        { x: 135.233, y: 451.964 }, { x: 136.419, y: 465.519 },
-    ]),
-    LA: Object.freeze([
-        { x: 40.25, y: 411.304 }, { x: 39.065, y: 424.856 }, { x: 37.879, y: 438.411 },
-        { x: 36.692, y: 451.964 }, { x: 35.508, y: 465.517 },
-    ]),
-    RL: Object.freeze([
-        { x: 103.795, y: 465.011 }, { x: 106.378, y: 478.295 }, { x: 108.96, y: 491.582 },
-        { x: 111.543, y: 504.864 }, { x: 114.125, y: 518.148 }, { x: 116.707, y: 531.434 },
-        { x: 119.29, y: 544.718 },
-    ]),
-    LL: Object.freeze([
-        { x: 66.994, y: 465.011 }, { x: 64.412, y: 478.295 }, { x: 61.829, y: 491.582 },
-        { x: 59.246, y: 504.864 }, { x: 56.664, y: 518.149 }, { x: 54.081, y: 531.433 },
-        { x: 51.499, y: 544.717 },
-    ]),
-});
-
-function drawLamDistributedArmorPips(group: SVGGElement, entity: MekEntity, box: Box): void {
-    const sx = box.width / 173;
-    const sy = box.height / 543;
-    const fontScale = Math.min(sx, sy);
-    const locations = new Map(entity.damageLocations().map(location => [location.code, location] as const));
-    const pips = svgElement('g');
-    pips.setAttribute('class', 'lam-distributed-armor-pips');
-    pips.setAttribute('data-pip-layout', 'distributed');
-    for (const [location, rail] of Object.entries(LAM_ARMOR_PIP_RAILS)) {
-        const rear = location.endsWith('_R');
-        const baseLocation = rear ? location.slice(0, -2) : location;
-        const damageLocation = locations.get(baseLocation);
-        const count = Math.max(0, rear ? damageLocation?.armor.rear ?? 0 : damageLocation?.armor.front ?? 0);
-        const gridColumns = location === 'CT' || location === 'HD' ? 3 : undefined;
-        const points = lamDistributedPipPoints(rail, count, gridColumns);
-        points.forEach((point, index) => {
-            const pip = circle(
-                point.x * sx,
-                point.y * sy,
-                (LAM_ARMOR_PIP_RADIUS[location] ?? 2.414) * fontScale,
-                'pip armor',
-            );
-            setAttributes(pip, {
-                fill: '#fff', stroke: '#000', 'stroke-width': 0.5 * fontScale,
-                loc: baseLocation, rear: rear ? 1 : undefined,
-            });
-            pip.id = `armor_pip_${location.toLowerCase()}_${index + 1}`;
-            pips.appendChild(pip);
-        });
-    }
-    group.appendChild(pips);
-}
-
-function drawLamDistributedStructurePips(group: SVGGElement, entity: MekEntity, box: Box): void {
-    const sx = box.width / 173;
-    const sy = box.height / 543;
-    const fontScale = Math.min(sx, sy);
-    const locations = new Map(entity.damageLocations().map(location => [location.code, location] as const));
-    const pips = svgElement('g');
-    pips.setAttribute('class', 'lam-distributed-structure-pips');
-    pips.setAttribute('data-pip-layout', 'distributed');
-    for (const [location, rail] of Object.entries(LAM_STRUCTURE_PIP_RAILS)) {
-        const count = Math.max(0, locations.get(location)?.internalPoints ?? 0);
-        const points = lamDistributedPipPoints(rail, count, location === 'CT' ? 2 : undefined);
-        points.forEach((point, index) => {
-            const pip = circle(point.x * sx, point.y * sy, 2.034 * fontScale, 'pip structure');
-            setAttributes(pip, { fill: '#fff', stroke: '#000', 'stroke-width': 0.5 * fontScale, loc: location });
-            pip.id = `is_pip_${location.toLowerCase()}_${index + 1}`;
-            pips.appendChild(pip);
-        });
-    }
-    group.appendChild(pips);
-}
-
-function lamDistributedPipPoints(
-    rail: readonly LamPipPoint[],
-    count: number,
-    gridColumns?: number,
-): readonly LamPipPoint[] {
-    if (count <= 0) return [];
-    if (count === rail.length) return rail;
-    if (gridColumns !== undefined) {
-        const minX = Math.min(...rail.map(point => point.x));
-        const maxX = Math.max(...rail.map(point => point.x));
-        const minY = Math.min(...rail.map(point => point.y));
-        const maxY = Math.max(...rail.map(point => point.y));
-        const rows = Math.ceil(count / gridColumns);
-        const step = rows <= 1 ? 0 : (maxY - minY) / (rows - 1);
-        return Array.from({ length: count }, (_, index) => {
-            const row = Math.floor(index / gridColumns);
-            const column = index % gridColumns;
-            const rowCount = Math.min(gridColumns, count - row * gridColumns);
-            const rowWidth = maxX - minX;
-            const rowMinX = rowCount === gridColumns
-                ? minX
-                : minX + rowWidth * (gridColumns - rowCount) / (2 * Math.max(1, gridColumns - 1));
-            return {
-                x: rowCount <= 1 ? (minX + maxX) / 2 : rowMinX + column * rowWidth / (gridColumns - 1),
-                y: minY + row * step,
-            };
-        });
-    }
-    if (count === 1) return [rail[Math.floor(rail.length / 2)]!];
-    const distances = [0];
-    for (let index = 1; index < rail.length; index++) {
-        distances.push(distances[index - 1]!
-            + Math.hypot(rail[index]!.x - rail[index - 1]!.x, rail[index]!.y - rail[index - 1]!.y));
-    }
-    const total = distances[distances.length - 1] ?? 0;
-    return Array.from({ length: count }, (_, index) => {
-        const target = total * index / (count - 1);
-        const upperIndex = Math.max(1, distances.findIndex(distance => distance >= target));
-        const lowerIndex = upperIndex - 1;
-        const lower = rail[lowerIndex]!;
-        const upper = rail[upperIndex] ?? lower;
-        const segment = (distances[upperIndex] ?? target) - (distances[lowerIndex] ?? 0);
-        const ratio = segment <= 0 ? 0 : (target - (distances[lowerIndex] ?? 0)) / segment;
-        return {
-            x: lower.x + (upper.x - lower.x) * ratio,
-            y: lower.y + (upper.y - lower.y) * ratio,
-        };
-    });
-}
-
-interface CanonicalBipedPipPlacement {
-    readonly x: number;
-    readonly y: number;
-    readonly scaleX: number;
-    readonly scaleY: number;
-    readonly radiusScale: number;
-}
-
-// Canon data is normalized per location.  These transforms place that data in
-// the classic MegaMekLab biped drawing while leaving the silhouette asset and
-// its interaction polygons independent from the pip geometry.
-const BIPED_CANON_ARMOR_PIP_PLACEMENTS: Readonly<Record<string, CanonicalBipedPipPlacement>> = Object.freeze({
-    HD: Object.freeze({ x: 88.180915, y: 55.269784, scaleX: 18.067359, scaleY: 18.019118, radiusScale: 1.01045 }),
-    CT: Object.freeze({ x: 83.394165, y: 84.458806, scaleX: 83.615432, scaleY: 83.595253, radiusScale: 1.011392 }),
-    RT: Object.freeze({ x: 114.404288, y: 68.396258, scaleX: 80.94084, scaleY: 80.902082, radiusScale: 1.00761 }),
-    LT: Object.freeze({ x: 50.652055, y: 68.396365, scaleX: 80.995667, scaleY: 80.90129, radiusScale: 1.007276 }),
-    RA: Object.freeze({ x: 145.481976, y: 61.20449, scaleX: 89.811656, scaleY: 89.732955, radiusScale: 0.958066 }),
-    LA: Object.freeze({ x: 18.410256, y: 61.20449, scaleX: 89.681315, scaleY: 89.732955, radiusScale: 0.958763 }),
-    RL: Object.freeze({ x: 113.956952, y: 159.495109, scaleX: 114.548812, scaleY: 114.538225, radiusScale: 0.906701 }),
-    LL: Object.freeze({ x: 38.00339, y: 159.495109, scaleX: 114.503351, scaleY: 114.538225, radiusScale: 0.906885 }),
-    CT_R: Object.freeze({ x: 85.632712, y: 272.857929, scaleX: 62.813954, scaleY: 62.634925, radiusScale: 0.98687 }),
-    RT_R: Object.freeze({ x: 117.685628, y: 292.088476, scaleX: 24.19548, scaleY: 24.209937, radiusScale: 1.003624 }),
-    LT_R: Object.freeze({ x: 54.685624, y: 292.088476, scaleX: 24.195553, scaleY: 24.209937, radiusScale: 1.003612 }),
-});
-
-const BIPED_CANON_STRUCTURE_PIP_PLACEMENTS: Readonly<Record<string, CanonicalBipedPipPlacement>> = Object.freeze({
-    HD: Object.freeze({ x: 79.252421, y: 392.999878, scaleX: 11.571335, scaleY: 11.592865, radiusScale: 1.150995 }),
-    CT: Object.freeze({ x: 77.783636, y: 412.837486, scaleX: 56.905862, scaleY: 56.804438, radiusScale: 1.142637 }),
-    RT: Object.freeze({ x: 96.472978, y: 404.829187, scaleX: 54.986021, scaleY: 54.900922, radiusScale: 1.145443 }),
-    LT: Object.freeze({ x: 55.679217, y: 404.816455, scaleX: 54.990826, scaleY: 54.98456, radiusScale: 1.144509 }),
-    RA: Object.freeze({ x: 125.496637, y: 403.238208, scaleX: 70.020204, scaleY: 69.94912, radiusScale: 1.106789 }),
-    LA: Object.freeze({ x: 32.045121, y: 403.23449, scaleX: 69.837709, scaleY: 69.965596, radiusScale: 1.108096 }),
-    RL: Object.freeze({ x: 99.567068, y: 463.570193, scaleX: 84.397965, scaleY: 84.379242, radiusScale: 1.037103 }),
-    LL: Object.freeze({ x: 46.431812, y: 463.570193, scaleX: 84.465538, scaleY: 84.379242, radiusScale: 1.036684 }),
-});
-
-function relocateCanonicalBipedPips(
-    layer: SVGGElement,
-    destination: SVGGElement,
-    placements: Readonly<Record<string, CanonicalBipedPipPlacement>>,
-    box: Box,
-): void {
-    const sx = box.width / 173;
-    const sy = box.height / 543;
-    Array.from(layer.querySelectorAll<SVGGElement>('[data-pip-layout="canon"]')).forEach(pips => {
-        const location = pips.dataset['pipLocation'] ?? '';
-        const placement = placements[location];
-        if (!placement) return;
-        pips.querySelectorAll<SVGCircleElement>('circle').forEach(pip => {
-            const radius = Number(pip.getAttribute('r'));
-            if (Number.isFinite(radius)) {
-                pip.setAttribute('r', formatGeometryNumber(radius * placement.radiusScale));
-            }
-        });
-        pips.setAttribute(
-            'transform',
-            `translate(${formatGeometryNumber(placement.x * sx)} ${formatGeometryNumber(placement.y * sy)}) `
-            + `scale(${formatGeometryNumber(placement.scaleX * sx)} ${formatGeometryNumber(placement.scaleY * sy)})`,
-        );
-        pips.classList.add('canonical-biped-pips');
-        destination.appendChild(pips);
-    });
-}
-
+// Coordinates are local to each view, so layout placement changes carry all labels with the art.
 const BIPED_ARMOR_VALUE_LABELS: Readonly<Record<string, readonly [number, number]>> = {
-    HD: [103.641, 33.943], CT: [96.262, 199.066], CT_R: [96.262, 255.918],
-    RT: [129.423, 47.029], RT_R: [163.697, 338.426],
-    LT: [62.367, 47.029], LT_R: [28.712, 338.426],
-    RA: [167.601, 197.146], LA: [26.156, 197.146],
-    RL: [173.581, 247.954], LL: [18.454, 247.954],
+    HD: [97.641, 26.276], CT: [90.262, 191.399], CT_R: [49.536, 3.439],
+    RT: [123.423, 39.362], RT_R: [116.971, 85.947],
+    LT: [56.367, 39.362], LT_R: [-18.014, 85.947],
+    RA: [161.601, 189.479], LA: [20.156, 189.479],
+    RL: [167.581, 240.287], LL: [12.454, 240.287],
 };
 
 const BIPED_STRUCTURE_VALUE_LABELS: Readonly<Record<string, readonly [number, number]>> = {
-    CT: [85.34, 502.594], RT: [151.054, 397.11], LT: [51.28, 397.11],
-    RA: [152.88, 473.393], LA: [15.72, 473.393],
-    RL: [142.308, 531.189], LL: [28.186, 531.189],
+    CT: [55.14, 119.484], RT: [120.854, 14], LT: [21.08, 14],
+    RA: [122.68, 90.283], LA: [-14.48, 90.283],
+    RL: [112.108, 148.079], LL: [-2.014, 148.079],
 };
 
-function drawBipedDiagramValues(group: SVGGElement, entity: MekEntity, box: Box): void {
-    const sx = box.width / 173;
-    const sy = box.height / 543;
-    const fontScale = Math.min(sx, sy);
+const BIPED_ARMOR_NAME_LINES: Readonly<Record<string, readonly string[]>> = {
+    HD: ['Head'], CT: ['Center', 'Torso'], CT_R: ['Center', 'Torso'],
+    RT: ['Right Torso'], LT: ['Left Torso'], RA: ['Right Arm'], LA: ['Left Arm'],
+    RT_R: ['Right', 'Torso Rear'], LT_R: ['Left', 'Torso Rear'],
+    RL: ['Right', 'Leg'], LL: ['Left', 'Leg'],
+};
+
+const BIPED_STRUCTURE_NAME_LINES: Readonly<Record<string, readonly string[]>> = {
+    CT: ['Center', 'Torso'], RT: ['Right Torso'], LT: ['Left Torso'],
+    RA: ['Right', 'Arm'], LA: ['Left', 'Arm'], RL: ['Right', 'Leg'], LL: ['Left', 'Leg'],
+};
+
+function drawBipedDiagramValues(
+    views: Readonly<Record<'front' | 'rear' | 'structure', SVGGElement>>,
+    entity: MekEntity,
+): void {
+    const labels = { front: svgElement('g'), rear: svgElement('g'), structure: svgElement('g') };
+    for (const view of ['front', 'rear', 'structure'] as const) {
+        labels[view].setAttribute('class', 'mek-paperdoll-labels');
+        views[view].appendChild(labels[view]);
+    }
     const locations = new Map(entity.damageLocations().map(location => [location.code, location] as const));
     const addValue = (
+        group: SVGGElement,
         id: string,
         value: number,
         position: readonly [number, number],
         horizontalScale: number,
         xCorrection: number,
+        nameLines: readonly string[],
     ): void => {
-        const anchorX = (position[0] - xCorrection) * sx;
-        const label = addText(group, `( ${Math.max(0, value)} )`, anchorX, (position[1] - 0.85) * sy, {
-            size: 5.7955 * fontScale,
+        const anchorX = position[0] - xCorrection;
+        const head = id === 'textArmor_HD';
+        const structure = id.startsWith('textIS_');
+        const inlineTorso = id === 'textIS_LT' || id === 'textIS_RT';
+        const lineHeight = structure ? 8.47 : 6.746;
+        nameLines.forEach((line, index) => {
+            const name = addText(group, line, inlineTorso ? anchorX - 10 : head ? anchorX - 7 : anchorX,
+                position[1] - 0.85 - (head || inlineTorso ? 0 : (nameLines.length - index) * lineHeight), {
+                    size: structure ? 5.7662 : 5.6216, weight: 700, anchor: head || inlineTorso ? 'end' : 'middle',
+                    class: 'diagram-value diagram-location-name',
+                });
+            name.setAttribute('data-counter-id', id);
+        });
+        const label = addText(group, `( ${Math.max(0, value)} )`, anchorX, (position[1] - 0.85), {
+            size: 5.7955,
             weight: 700,
             anchor: 'middle',
             class: 'diagram-value',
@@ -1658,16 +1277,29 @@ function drawBipedDiagramValues(group: SVGGElement, entity: MekEntity, box: Box)
         const location = locations.get(rear ? code.slice(0, -2) : code);
         if (!location) return;
         addValue(
+            labels[rear ? 'rear' : 'front'],
             `textArmor_${rear ? `${location.code}R` : location.code}`,
             rear ? location.armor.rear : location.armor.front,
             position,
             0.971555,
             0.1034,
+            BIPED_ARMOR_NAME_LINES[code],
         );
+        const material = !rear && !entity.uniformArmor() ? entity.armorAt(location.code).armor : undefined;
+        if (material && !['STANDARD', 'STEALTH', 'STEALTH_VEHICLE'].includes(material.armorType)) {
+            const name = addText(labels.front, material.name, position[0] - 0.1034, position[1] + 5.9, {
+                size: 5.6216, anchor: 'middle', maxWidth: 45, class: 'diagram-material-name',
+            });
+            name.setAttribute('data-loc', location.code);
+        }
     });
     Object.entries(BIPED_STRUCTURE_VALUE_LABELS).forEach(([code, position]) => {
         const location = locations.get(code);
-        if (location) addValue(`textIS_${code}`, location.internalPoints, position, 0.99483, 0.0877);
+        if (location) addValue(labels.structure, `textIS_${code}`, location.internalPoints, position,
+            0.99483, 0.0877, BIPED_STRUCTURE_NAME_LINES[code]);
+    });
+    addText(labels.structure, 'Head', 32.126, 2.965, {
+        size: 5.7662, weight: 700, class: 'diagram-value diagram-location-name',
     });
 }
 
@@ -1681,6 +1313,7 @@ interface MekSchematicRegion {
 
 interface NonBipedPaperdollAssets {
     readonly armor: string;
+    readonly rear: string;
     readonly structure: string;
 }
 
@@ -1701,13 +1334,11 @@ interface ProfiledMekArtPlacement {
     /** Position of the original MML diagram group inside the 173 x 543 page area. */
     readonly x: number;
     readonly y: number;
-    /** The lightweight asset's authored viewBox origin, cancelled at composition time. */
-    readonly viewBoxMinX: number;
-    readonly viewBoxMinY: number;
 }
 
 interface ProfiledMekPaperdollProfile {
     readonly armor: ProfiledMekArtPlacement;
+    readonly rear: ProfiledMekArtPlacement;
     readonly structure: ProfiledMekArtPlacement;
     readonly armorHeading: ProfiledMekDiagramHeading;
     readonly structureHeading: ProfiledMekDiagramHeading;
@@ -1716,18 +1347,22 @@ interface ProfiledMekPaperdollProfile {
 const NON_BIPED_PAPERDOLL_ASSETS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | 'LAM', NonBipedPaperdollAssets>> = {
     Quad: {
         armor: '/images/paperdolls/quad-armor.svg',
+        rear: '/images/paperdolls/quad-armor-back.svg',
         structure: '/images/paperdolls/quad-structure.svg',
     },
     Tripod: {
         armor: '/images/paperdolls/tripod-armor.svg',
+        rear: '/images/paperdolls/tripod-armor-back.svg',
         structure: '/images/paperdolls/tripod-structure.svg',
     },
     QuadVee: {
         armor: '/images/paperdolls/quadvee-armor.svg',
+        rear: '/images/paperdolls/quadvee-armor-back.svg',
         structure: '/images/paperdolls/quadvee-structure.svg',
     },
     LAM: {
         armor: '/images/paperdolls/lam-armor.svg',
+        rear: '/images/paperdolls/lam-armor-back.svg',
         structure: '/images/paperdolls/lam-structure.svg',
     },
 };
@@ -1760,26 +1395,30 @@ const STANDARD_PROFILED_STRUCTURE_HEADING: ProfiledMekDiagramHeading = Object.fr
 
 const PROFILED_MEK_PAPERDOLLS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | 'LAM', ProfiledMekPaperdollProfile>> = Object.freeze({
     Quad: Object.freeze({
-        armor: Object.freeze({ x: 0, y: 0, viewBoxMinX: 5, viewBoxMinY: 20 }),
-        structure: Object.freeze({ x: 0, y: 368, viewBoxMinX: -2, viewBoxMinY: 8 }),
+        armor: Object.freeze({ x: 0, y: 0 }),
+        rear: Object.freeze({ x: 0, y: 0 }),
+        structure: Object.freeze({ x: 0, y: 368 }),
         armorHeading: STANDARD_PROFILED_ARMOR_HEADING,
         structureHeading: STANDARD_PROFILED_STRUCTURE_HEADING,
     }),
     QuadVee: Object.freeze({
-        armor: Object.freeze({ x: 0, y: 0, viewBoxMinX: 5, viewBoxMinY: 20 }),
-        structure: Object.freeze({ x: 0, y: 368, viewBoxMinX: -2, viewBoxMinY: 8 }),
+        armor: Object.freeze({ x: 0, y: 0 }),
+        rear: Object.freeze({ x: 0, y: 0 }),
+        structure: Object.freeze({ x: 0, y: 368 }),
         armorHeading: STANDARD_PROFILED_ARMOR_HEADING,
         structureHeading: STANDARD_PROFILED_STRUCTURE_HEADING,
     }),
     LAM: Object.freeze({
-        armor: Object.freeze({ x: 0, y: 0, viewBoxMinX: 5, viewBoxMinY: 30 }),
-        structure: Object.freeze({ x: 0, y: 368, viewBoxMinX: 25, viewBoxMinY: 8 }),
+        armor: Object.freeze({ x: 0, y: 0 }),
+        rear: Object.freeze({ x: 0, y: 0 }),
+        structure: Object.freeze({ x: 0, y: 368 }),
         armorHeading: STANDARD_PROFILED_ARMOR_HEADING,
         structureHeading: STANDARD_PROFILED_STRUCTURE_HEADING,
     }),
     Tripod: Object.freeze({
-        armor: Object.freeze({ x: -0.88073, y: 2.473206, viewBoxMinX: 5, viewBoxMinY: 25 }),
-        structure: Object.freeze({ x: 0, y: 372, viewBoxMinX: 5, viewBoxMinY: 5 }),
+        armor: Object.freeze({ x: -0.88073, y: 2.473206 }),
+        rear: Object.freeze({ x: -0.88073, y: 2.473206 }),
+        structure: Object.freeze({ x: 0, y: 372 }),
         armorHeading: Object.freeze({
             titleWidth: 83.991,
             titleX: 53.123571,
@@ -1807,11 +1446,14 @@ const PROFILED_MEK_PAPERDOLLS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | '
     }),
 });
 
-async function drawProfiledMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, box: Box): Promise<void> {
+async function drawProfiledMekPaperdolls(
+    svg: SVGSVGElement, entity: MekEntity, box: Box, pipLayout: PaperdollPipLayout,
+    shieldValues: PaperdollOptions['shieldValues'],
+): Promise<void> {
     const group = svgElement('g');
     group.setAttribute('class', 'mek-paperdolls mek-paperdolls-schematic');
     group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
-    group.setAttribute('data-mekbay-pip-layout', mekPaperdollPipLayout(entity));
+    group.setAttribute('data-mekbay-pip-layout', pipLayout);
     const chassis = entity.chassisConfig as keyof typeof NON_BIPED_PAPERDOLL_ASSETS;
     const assets = NON_BIPED_PAPERDOLL_ASSETS[chassis];
     const profile = PROFILED_MEK_PAPERDOLLS[chassis];
@@ -1825,7 +1467,7 @@ async function drawProfiledMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, 
     addDiagramHeading(
         content,
         'ARMOR DIAGRAM',
-        constructionMaterialSubtitle(entity.uniformArmor()?.armor.name, 'Armor', 'Patchwork Armor'),
+        mekArmorSubtitle(entity),
         173,
         0,
         profile.armorHeading,
@@ -1862,47 +1504,62 @@ async function drawProfiledMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, 
     try {
         const exactLayers = svgElement('g');
         exactLayers.setAttribute('class', 'mek-paperdoll-exact-layers');
-        const armorArt = await BipedPaperdollUtil.createArmorPaperdoll(
+        const armorArt = await MekPaperdollGenerator.createArmorPaperdoll(
             armorArea.width,
             armorArea.height,
-            armorValues as BipedArmorValues,
+            armorValues,
             {
                 assetUrl: assets.armor,
-                className: 'mek-paperdoll-art mek-paperdoll-art-armor',
+                shieldValues,
+                preserveAuthoredCoordinates: true,
+                className: 'mek-paperdoll-art mek-paperdoll-art-armor mek-paperdoll-view mek-paperdoll-front',
                 centeredHorizontally: false,
                 centeredVertically: false,
                 scale: false,
-                pipLayout: 'distributed',
-                pipOptions: paperdollPipOptions('distributed', 2.45, 0.72),
+                pipLayout,
+                pipOptions: paperdollPipOptions(pipLayout, 2.45, 0.72),
             },
         );
         armorArt.setAttribute(
             'transform',
-            `translate(${formatGeometryNumber(profile.armor.x + profile.armor.viewBoxMinX)} `
-            + `${formatGeometryNumber(profile.armor.y + profile.armor.viewBoxMinY)})`,
+            `translate(${formatGeometryNumber(profile.armor.x)} ${formatGeometryNumber(profile.armor.y)})`,
         );
+        armorArt.setAttribute('data-mekbay-paperdoll-view', 'front');
         decoratePaperdollPips(armorArt);
         exactLayers.appendChild(armorArt);
-        const structureArt = await BipedPaperdollUtil.createStructurePaperdoll(
+        const rearArt = await MekPaperdollGenerator.createArmorRearPaperdoll(185, 85, armorValues, {
+            assetUrl: assets.rear,
+            preserveAuthoredCoordinates: true,
+            className: 'mek-paperdoll-art mek-paperdoll-art-rear mek-paperdoll-view mek-paperdoll-rear',
+            centeredHorizontally: false, centeredVertically: false, scale: false,
+            pipLayout, pipOptions: paperdollPipOptions(pipLayout, 2.45, 0.72),
+        });
+        rearArt.setAttribute('data-mekbay-paperdoll-view', 'rear');
+        rearArt.setAttribute('transform', `translate(${formatGeometryNumber(profile.rear.x)} ${formatGeometryNumber(profile.rear.y)})`);
+        decoratePaperdollPips(rearArt, true);
+        exactLayers.appendChild(rearArt);
+
+        const structureArt = await MekPaperdollGenerator.createStructurePaperdoll(
             structureArea.width,
             structureArea.height,
             0,
             {
                 assetUrl: assets.structure,
-                className: 'mek-paperdoll-art mek-paperdoll-art-structure',
+                preserveAuthoredCoordinates: true,
+                className: 'mek-paperdoll-art mek-paperdoll-art-structure mek-paperdoll-view mek-paperdoll-structure',
                 centeredHorizontally: false,
                 centeredVertically: false,
                 scale: false,
-                pipLayout: 'distributed',
-                pipOptions: paperdollPipOptions('distributed', 2.45, 0.72),
+                pipLayout,
+                pipOptions: paperdollPipOptions(pipLayout, 2.45, 0.72),
                 structurePipCounts,
             },
         );
         structureArt.setAttribute(
             'transform',
-            `translate(${formatGeometryNumber(profile.structure.x + profile.structure.viewBoxMinX)} `
-            + `${formatGeometryNumber(profile.structure.y + profile.structure.viewBoxMinY)})`,
+            `translate(${formatGeometryNumber(profile.structure.x)} ${formatGeometryNumber(profile.structure.y)})`,
         );
+        structureArt.setAttribute('data-mekbay-paperdoll-view', 'structure');
         decoratePaperdollPips(structureArt);
         exactLayers.appendChild(structureArt);
         content.appendChild(exactLayers);
@@ -2057,15 +1714,9 @@ function drawMekSchematicRegion(
         group.appendChild(pips);
     }
     const target = transparentRect(box.x, box.y, box.width, box.height, `unitLocation ${kind === 'structure' ? 'structure' : 'armor'}`);
-    target.setAttribute('loc', location);
-    if (kind === 'rear') target.setAttribute('rear', '');
+    target.setAttribute('data-loc', location);
+    if (kind === 'rear') target.setAttribute('data-rear', '');
     group.appendChild(target);
-}
-
-function mekPaperdollPipLayout(entity: MekEntity): BipedPaperdollPipLayout {
-    return entity.chassisConfig === 'Biped' && !entity.isSuperHeavy()
-        ? 'canon'
-        : 'distributed';
 }
 
 export async function drawMekCriticalPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): Promise<void> {
@@ -2172,7 +1823,7 @@ async function drawCanonicalMekCriticalContents(
         if (!locationLayout) return;
         const criticalGroup = svgElement('g');
         criticalGroup.setAttribute('class', 'critGroup');
-        criticalGroup.setAttribute('loc', location);
+        criticalGroup.setAttribute('data-loc', location);
         const heading = addText(
             criticalGroup,
             getMekLocationLabel(location) ?? entity.componentLocationLabel(location),
@@ -2228,7 +1879,7 @@ async function drawCanonicalMekCriticalContents(
             const slotTop = baseline - locationLayout.step;
             const slotGroup = svgElement('g');
             slotGroup.setAttribute('class', 'critSlot');
-            slotGroup.setAttribute('loc', location);
+            slotGroup.setAttribute('data-loc', location);
             slotGroup.setAttribute('slot', String(slotIndex));
             if (!slot || slot.type === 'empty') slotGroup.setAttribute('data-mekbay-empty-slot', '1');
             setInventoryComponentIds(
@@ -2404,7 +2055,7 @@ function drawCanonicalLamSystemDamage(
             'pip structure structuralIntegrityPip',
         );
         setAttributes(pip, {
-            fill: '#fff', stroke: '#000', 'stroke-width': font(1.72), loc: 'SI',
+            fill: '#fff', stroke: '#000', 'stroke-width': font(1.72), 'data-loc': 'SI',
         });
         pip.id = `si_pip_${index + 1}`;
         systemGroup.appendChild(pip);
@@ -2425,7 +2076,7 @@ async function drawCanonicalDamageTransferDiagram(
     const artX = lamLayout ? 188.552 : 177.596;
     const artY = lamLayout ? 305.425 : 258.024;
     const centerX = x(lamLayout ? 149.497 : 205.695);
-    const diagram = await BipedPaperdollUtil.createArmorPaperdoll(
+    const diagram = await MekPaperdollGenerator.createArmorPaperdoll(
         x(60 * artScale),
         y(83 * artScale),
         {},
@@ -2484,7 +2135,7 @@ async function drawVariantDamageTransferDiagram(
     const profile = profiles[entity.chassisConfig === 'Tripod'
         ? 'Tripod'
         : entity.chassisConfig === 'QuadVee' ? 'QuadVee' : 'Quad'];
-    const diagram = await BipedPaperdollUtil.createArmorPaperdoll(
+    const diagram = await MekPaperdollGenerator.createArmorPaperdoll(
         x(60 * profile.artScale),
         y(83 * profile.artScale),
         {},
@@ -2709,7 +2360,7 @@ function appendMekHeatSinkData(
         const column = Math.floor(index / 10);
         const row = index % 10;
         const pip = circle(x(131.478 + column * 9.66), y(45.478 + row * 9.66), 3.478 * fontScale, 'pip hsPip');
-        pip.setAttribute('loc', 'hs');
+        pip.setAttribute('data-loc', 'hs');
         pips.appendChild(pip);
     }
     group.appendChild(pips);

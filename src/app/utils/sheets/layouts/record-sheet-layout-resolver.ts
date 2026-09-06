@@ -11,7 +11,11 @@ import { BattleArmorRecordSheetLayout } from './battle-armor-record-sheet-layout
 import { CombatVehicleRecordSheetLayout } from './combat-vehicle-record-sheet-layout';
 import { ConventionalInfantryRecordSheetLayout } from './conventional-infantry-record-sheet-layout';
 import { GenericRecordSheetLayout } from './generic-record-sheet-layout';
-import { LargeAeroRecordSheetLayout } from './large-aero-record-sheet-layout';
+import { HandheldWeaponRecordSheetLayout } from './handheld-weapon-record-sheet-layout';
+import { CapitalShipRecordSheetLayout } from './capital-ship-record-sheet-layout';
+import { DropShipRecordSheetLayout } from './dropship-record-sheet-layout';
+import { SmallCraftRecordSheetLayout } from './small-craft-record-sheet-layout';
+import { StaticEmplacementRecordSheetLayout } from './static-emplacement-record-sheet-layout';
 import { MekRecordSheetLayout } from './mek-record-sheet-layout';
 import { NavalRecordSheetLayout } from './naval-record-sheet-layout';
 import { ProtoMekRecordSheetLayout } from './protomek-record-sheet-layout';
@@ -28,8 +32,12 @@ const SPECIALIZED_LAYOUTS: readonly RecordSheetLayout[] = Object.freeze([
     new ProtoMekRecordSheetLayout(),
     new BattleArmorRecordSheetLayout(),
     new ConventionalInfantryRecordSheetLayout(),
+    new HandheldWeaponRecordSheetLayout(),
+    new StaticEmplacementRecordSheetLayout(),
     new AeroFighterRecordSheetLayout(),
-    new LargeAeroRecordSheetLayout(),
+    new SmallCraftRecordSheetLayout(),
+    new DropShipRecordSheetLayout(),
+    new CapitalShipRecordSheetLayout(),
 ]);
 const GENERIC_LAYOUT = new GenericRecordSheetLayout();
 

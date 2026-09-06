@@ -18,6 +18,7 @@ export const OPTION_VALUES = {
     forceViewerBVPVDisplay: ['adjustedPostSkill', 'adjustedPreSkill', 'both'],
     forceViewerBVPVDisplayDamage: ['damaged', 'pristine'],
     recordSheetDoubleTapZoomReset: ['disabled', 'fit-to-screen', 'full-width', 'contextual'],
+    recordSheetPipLayout: ['classic', 'distributed', 'rail'],
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
     forceOverviewViewMode: ['expanded', 'compact', 'table'],
@@ -30,6 +31,7 @@ type OptionValue<K extends keyof typeof OPTION_VALUES> = (typeof OPTION_VALUES)[
 
 export type AvailabilitySource = OptionValue<'availabilitySource'>;
 export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTapZoomReset'>;
+export type RecordSheetPipLayout = OptionValue<'recordSheetPipLayout'>;
 export type ColorScheme = OptionValue<'colorScheme'>;
 export type UnitSearchViewMode = OptionValue<'unitSearchViewMode'>;
 export type AutomationMode = OptionValue<'automationMode'>;
@@ -106,6 +108,7 @@ export interface Options {
     forceViewerBVPVDisplayDamage: ForceViewerBVPVDisplayDamage;
     printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
+    recordSheetPipLayout: RecordSheetPipLayout;
     lastCanvasState?: {
         brushSize: number;
         eraserSize: number;

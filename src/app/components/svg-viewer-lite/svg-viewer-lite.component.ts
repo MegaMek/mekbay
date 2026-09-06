@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { UnitNameService } from '../../services/unit-name.service';
-import { Component, ChangeDetectionStrategy, DestroyRef, signal, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, signal, computed, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
 
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { OptionsService } from '../../services/options.service';
@@ -32,6 +32,7 @@ export class SvgViewerLiteComponent {
     logger = inject(LoggerService);
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
+    private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
     private fluffImages = inject(UnitFluffImageService);
     private nativeEntities = inject(NativeEntityService);
     private recordSheets = inject(RecordSheetSourceService);
@@ -80,6 +81,7 @@ export class SvgViewerLiteComponent {
             });
 
             const u = this.unit();
+            const pipLayout = this.pipLayout();
             this.svgs.set([]);
             this.svgsAttached.set(false);
             this.cleanContainer();
@@ -91,7 +93,7 @@ export class SvgViewerLiteComponent {
                 try {
                     const loaded = await this.nativeEntities.load(u.uuid);
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
-                    const sheets = await this.recordSheets.load(loaded.entity, {}, {
+                    const sheets = await this.recordSheets.load(loaded.entity, { pipLayout }, {
                         design: { provider: u.provider, uuid: u.uuid },
                     });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;

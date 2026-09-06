@@ -1,39 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 26 193 328">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2.25 30.75 184.375 325.125">
+  <defs><clipPath id="pd-ex1"><path clip-rule="evenodd" d="M395 30H583V358H395zm80.69 164.75h.9268293l2.481-2.497h17.1213903l2.1897975 2.2026962 1.7719829 .2543209v54.5013083L497.6172972 251.274H478.2294998L475.69 249.7416386zz"/></clipPath><clipPath id="pd-ex2"><path clip-rule="evenodd" d="M395 30H583V358H395zm4.279 151.755V194.13h77.0042767l2.482-2.495H496.397188l2.231 2.495H575.872V181.755H498.3525815l-2.482 1.994H478.7988632l-2.979-1.994zz"/></clipPath><clipPath id="pd-ex3"><path clip-rule="evenodd" d="M395 30H583V358H395zm82.0426814 221.874h20.3747492l-.578002 26.681H478.4871973zz"/></clipPath><clipPath id="pd-ex4"><path clip-rule="evenodd" d="M395 30H583V358H395zM509.821158 68.1507123L503.5416357 93.327H471.2673465l-6.281682-25.1770367L475.2430778 50.613H479.011V45.9579885l8.186-3.637V41.515h.8273531l.9538906-2.8669244 1.0709039-1.0697258-.9899989-.9921771L489.8412528 34.239h3.2064944l.7821041 2.3471727-.9899989 .9921771 1.0709779 1.0697996 .955967 2.8668506H495.693v4.548h.909v4.55h2.8587872zz"/></clipPath><clipPath id="pd-ex5"><path clip-rule="evenodd" d="M395 30H583V358H395zM503.5416362 93.327l3.7493454-15.032H467.5180184l3.7493454 15.032zz"/></clipPath><clipPath id="pd-ex6"><path clip-rule="evenodd" d="M395 30H583V358H395zm81.0750192 151.203783L478.9811748 183.15h16.679136l2.4570927-1.9765725L499.683 180.889511V152.803H475.716v28.1723162zz"/></clipPath><clipPath id="pd-ex7"><path clip-rule="evenodd" d="M395 30H583V358H395zm4.279 151.755h20v12.376h-20zzm156.596 0h19.998v12.376H555.875zz"/></clipPath></defs>
   <g transform="matrix(1.006 0 0 1.006 3.363 11.250)" id="g302" xmlns="http://www.w3.org/2000/svg">
     <g id="armor_diagram_superheavy_vtol_chinturret" transform="translate(-398.4775,-13.05)">
-      <polyline fill="#C7C8CA" points="452.202,210.75 446.632,210.75 446.632,206.257 450.686,206.257 " id="polyline30" />
-      <polyline fill="none" id="polyline32" stroke-width="1.003" points="452.202,210.75 446.632,210.75 446.632,206.257   450.686,206.257 " stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M440.669,197.273v40.43c0,1.656,1.337,3,2.984,3s2.981-1.344,2.981-3v-40.43" />
-      <path fill="none" stroke-width="1.504" d="M440.669,197.273v40.43c0,1.656,1.337,3,2.984,3s2.981-1.344,2.981-3  v-40.43" stroke="#C7C8CA" />
-      <polyline fill="#C7C8CA" points="531.381,206.257 533.365,206.257 533.365,210.75 530.638,210.75 " id="polyline38" />
-      <polyline fill="none" id="polyline40" stroke-width="1.003" points="531.381,206.257 533.365,206.257 533.365,210.75   530.638,210.75 " stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M533.891,197.273l-0.529,40.43c0,1.656,1.335,3,2.982,3c1.648,0,2.985-1.344,2.985-3l0.528-40.43" />
-      <path fill="none" stroke-width="1.504" d="M533.891,197.273l-0.529,40.43c0,1.656,1.335,3,2.982,3  c1.648,0,2.985-1.344,2.985-3l0.528-40.43" stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" />
-      <path fill="none" stroke-width="1.504" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M539.858,184.913v-40.431c0-1.657-1.336-3-2.984-3c-1.647,0-2.983,1.343-2.983,3v40.431" />
-      <path fill="none" stroke-width="1.504" d="M539.858,184.913v-40.431c0-1.657-1.336-3-2.984-3  c-1.647,0-2.983,1.343-2.983,3v40.431" stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M446.637,184.913v-40.431c0-1.657-1.336-3-2.983-3c-1.649,0-2.983,1.343-2.983,3v40.431" />
-      <path fill="none" stroke-width="1.504" d="M446.637,184.913v-40.431c0-1.657-1.336-3-2.983-3  c-1.649,0-2.983,1.343-2.983,3v40.431" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" id="polyline30"  d="M452.202 210.75h-5.57v-4.493h4.054z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <path fill="#C7C8CA" d="M440.669 197.273v40.43c0 1.656 1.337 3 2.984 3s2.981-1.344 2.981-3v-40.43"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
+      <path fill="#C7C8CA" id="polyline38"  d="M531.381 206.257h1.984v4.493h-2.727z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <path fill="#C7C8CA" d="M533.891 197.273l-.529 40.43c0 1.656 1.335 3 2.982 3 1.648 0 2.985-1.344 2.985-3l.528-40.43"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
+      <path fill="#C7C8CA" d="M446.19 193.109s7.444 48.016 14.642 60.992l16.83-2.725 2.729 2.725 1.931 92.993c0 3.702 4.401 6.704 8.473 6.704 4.07 0 8.475-3.002 8.475-6.704l2.04-92.993 2.73-2.725 15.953 2.725c11.417-31.945 14.18-60.992 14.18-60.992"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
+      <path fill="#C7C8CA" d="M539.858 184.913V144.482c0-1.657-1.336-3-2.984-3-1.647 0-2.983 1.343-2.983 3v40.431"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
+      <path fill="#C7C8CA" d="M446.637 184.913V144.482c0-1.657-1.336-3-2.983-3-1.649 0-2.983 1.343-2.983 3v40.431"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
       <polyline fill="#C7C8CA" points="479.658,254.416 500.658,254.416 500.066,281.698 481.138,281.698 479.658,254.416 " id="polyline58" />
       <polyline fill="none" id="polyline60" stroke-width="1.003" points="479.658,254.416 500.657,254.416 500.065,281.696   481.138,281.696 479.658,254.416 " stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M445.32,184.546c-3.475-33.193,0-44.922,0-44.922c2.481-5.99,7.197-4.992,7.197-4.992h-0.026  c0-15.106,17.909-75.097,37.804-75.097c19.897,0,38.37,59.991,38.37,75.097h-0.15c0,0,4.715-0.999,7.196,4.992  c0,0,2.979,12.977-0.496,46.169" />
-      <path fill="none" stroke-width="1.504" d="M445.32,184.546c-3.475-33.193,0-44.922,0-44.922  c2.481-5.99,7.197-4.992,7.197-4.992h-0.026c0-15.106,17.909-75.097,37.804-75.097c19.897,0,38.37,59.991,38.37,75.097h-0.15  c0,0,4.715-0.999,7.196,4.992c0,0,2.979,12.977-0.496,46.169" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M445.32 184.546c-3.475-33.193 0-44.922 0-44.922 2.481-5.99 7.197-4.992 7.197-4.992h-.026c0-15.106 17.909-75.097 37.804-75.097 19.897 0 38.37 59.991 38.37 75.097h-.15s4.715-.999 7.196 4.992c0 0 2.979 12.977-.496 46.169"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
       <polyline fill="#C7C8CA" points="478.322,197.293 479.427,197.293 481.907,194.796 499.279,194.796 501.484,197.015   503.414,197.293 503.414,252.198 500.657,254.416 481.08,254.416 478.322,252.752 478.322,197.293 " id="polyline66" />
       <polyline fill="none" id="polyline68" stroke-width="1.003" points="478.322,197.293 479.425,197.293 481.907,194.796   499.278,194.796 501.484,197.015 503.414,197.293 503.414,252.198 500.657,254.417 481.08,254.417 478.322,252.753 478.322,197.293   " stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M490.51,194.778v59.646 M478.35,197.273v54.906l2.73,2.245h19.604l2.606-2.621v-54.53" />
-      <path fill="none" stroke-width="1.003" d="M490.51,194.778v59.646 M478.35,197.273v54.906l2.73,2.245h19.604  l2.606-2.621v-54.53" stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M502.916,155.471l25.42-20.839 M452.339,134.632l26.011,20.714" />
-      <path fill="none" stroke-width="1.003" d="M502.916,155.471l25.42-20.839 M452.339,134.632l26.011,20.714" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" d="M490.51 194.778v59.646m-12.16-57.151v54.906l2.73 2.245h19.604l2.606-2.621v-54.53"  style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <path fill="#C7C8CA" d="M502.916 155.471l25.42-20.839m-75.997 0l26.011 20.714"  style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
       <line fill="none" x1="480.169" x2="501.486" y1="281.22" y2="281.22" id="line78" stroke="#C7C8CA" stroke-miterlimit="10" />
       <polyline fill="#C7C8CA" points="480.169,281.22 501.486,281.22 480.169,281.22 " id="polyline80" />
       <line fill="none" x1="480.169" x2="501.486" y1="281.22" y2="281.22" id="line82" stroke="#C7C8CA" stroke-width="1.003" />
-      <polyline fill="#C7C8CA" points="478.846,184.296 481.824,186.292 498.699,186.292 501.18,184.296 502.918,183.981 502.918,155.345   478.35,155.345 478.35,183.981 " id="polyline84" />
-      <polyline fill="none" id="polyline86" stroke-width="1.003" points="478.846,184.296 481.824,186.292 498.699,186.292   501.18,184.296 502.918,183.981 502.918,155.345 478.35,155.345 478.35,183.981 " stroke="#C7C8CA" />
-      <polyline fill="#C7C8CA" points="478.846,184.296 481.824,186.292 498.699,186.292 501.18,184.296 502.918,183.981 502.918,155.345   478.35,155.345 478.35,183.981 " id="polyline88" />
-      <polyline fill="none" id="polyline90" stroke-width="1.003" points="478.846,184.296 481.824,186.292 498.699,186.292   501.18,184.296 502.918,183.981 502.918,155.345 478.35,155.345 478.35,183.981 " stroke="#C7C8CA" />
-      <path fill="#C7C8CA" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" />
-      <path fill="none" stroke-width="1.504" d="M446.19,193.109c0,0,7.444,48.016,14.642,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.702,4.401,6.704,8.473,6.704c4.07,0,8.475-3.002,8.475-6.704l2.04-92.993l2.73-2.725l15.953,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#C7C8CA" />
+      <path fill="#C7C8CA" id="polyline84"  d="M478.846 184.296l2.978 1.996h16.875l2.481-1.996 1.738-.315V155.345H478.35v28.636z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <path fill="#C7C8CA" id="polyline88"  d="M478.846 184.296l2.978 1.996h16.875l2.481-1.996 1.738-.315V155.345H478.35v28.636z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <path fill="#C7C8CA" d="M446.19 193.109s7.444 48.016 14.642 60.992l16.83-2.725 2.729 2.725 1.931 92.993c0 3.702 4.401 6.704 8.473 6.704 4.07 0 8.475-3.002 8.475-6.704l2.04-92.993 2.73-2.725 15.953 2.725c11.417-31.945 14.18-60.992 14.18-60.992"  style=";stroke:#C7C8CA;stroke-width:1.504"/>
+
       <polyline fill="#C7C8CA" points="401.914,184.296 401.914,197.273 479.343,197.273 481.824,194.777 499.195,194.777   501.429,197.273 579.105,197.273 579.105,184.296 501.182,184.296 498.698,186.292 481.824,186.292 478.846,184.296   401.914,184.296 " id="polyline96" />
       <polyline fill="none" id="polyline98" stroke-width="1.003" points="401.914,184.296 401.914,197.271 479.343,197.271   481.824,194.777 499.195,194.777 501.429,197.271 579.105,197.271 579.105,184.296 501.18,184.296 498.698,186.292 481.824,186.292   478.846,184.296 401.914,184.296 " stroke="#C7C8CA" />
       <polyline fill="#C7C8CA" points="401.914,184.296 401.914,197.273 479.343,197.273 481.824,194.777 499.195,194.777   501.429,197.273 579.105,197.273 579.105,184.296 501.182,184.296 498.698,186.292 481.824,186.292 478.846,184.296   401.914,184.296 " id="polyline108" />
@@ -48,44 +49,58 @@
       <line fill="none" x1="481.646" x2="489.832" y1="48.605" y2="48.605" id="line146" stroke="#C7C8CA" stroke-width="1.003" />
       <polyline fill="#C7C8CA" points="506.711,96.469 510.608,80.838 470.066,80.838 473.967,96.469 506.711,96.469 " id="polyline184" />
       <polygon fill="none" stroke-width="1.003" points="506.711,96.469 510.607,80.838 470.066,80.838 473.967,96.469   " stroke="#C7C8CA" />
-      <polyline fill="#FFFFFF" points="449.268,207.908 443.697,207.908 443.697,203.416 447.751,203.416 " id="polyline188" />
+      <polyline fill="#FFFFFF" points="449.268,207.908 443.697,207.908 443.697,203.416 447.751,203.416 " id="polyline188" class="armor unitLocation" data-loc="LS" />
       <polyline fill="none" id="polyline190" stroke-width="1.003" points="449.268,207.908 443.697,207.908 443.697,203.416   447.751,203.416 " stroke="#000000" />
-      <path fill="#FFFFFF" d="M437.734,194.431v40.431c0,1.656,1.336,3,2.984,3c1.646,0,2.983-1.344,2.983-3v-40.431" />
-      <path fill="none" stroke-width="1.504" d="M437.734,194.431v40.431c0,1.656,1.336,3,2.984,3  c1.646,0,2.983-1.344,2.983-3v-40.431" stroke="#000000" />
-      <polyline fill="#FFFFFF" points="528.446,203.415 530.432,203.415 530.432,207.907 527.703,207.907 " id="polyline196" />
+      <path fill="#FFFFFF" d="M437.734 194.431v40.431c0 1.656 1.336 3 2.984 3 1.646 0 2.983-1.344 2.983-3V194.431" class="armor unitLocation" data-loc="LS"  style=";stroke:#000000;stroke-width:1.504"/>
+
+      <polyline fill="#FFFFFF" points="528.446,203.415 530.432,203.415 530.432,207.907 527.703,207.907 " id="polyline196" class="armor unitLocation" data-loc="RS" />
       <polyline fill="none" id="polyline198" stroke-width="1.003" points="528.446,203.415 530.432,203.415 530.432,207.907   527.703,207.907 " stroke="#000000" />
-      <path fill="#FFFFFF" d="M530.957,194.431l-0.53,40.431c0,1.656,1.336,3,2.982,3c1.649,0,2.986-1.344,2.986-3l0.527-40.431" />
-      <path fill="none" stroke-width="1.504" d="M530.957,194.431l-0.53,40.431c0,1.656,1.336,3,2.982,3  c1.649,0,2.986-1.344,2.986-3l0.527-40.431" stroke="#000000" />
-      <path fill="#FFFFFF" d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" />
-      <path fill="none" stroke-width="1.504" d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#000000" />
-      <path fill="#FFFFFF" d="M536.925,182.071v-40.431c0-1.656-1.337-3-2.985-3c-1.646,0-2.982,1.344-2.982,3v40.431" />
-      <path fill="none" stroke-width="1.504" d="M536.925,182.071v-40.431c0-1.656-1.337-3-2.985-3  c-1.646,0-2.982,1.344-2.982,3v40.431" stroke="#000000" />
-      <path fill="#FFFFFF" d="M443.702,182.071v-40.431c0-1.656-1.335-3-2.983-3s-2.984,1.344-2.984,3v40.431" />
-      <path fill="none" stroke-width="1.504" d="M443.702,182.071v-40.431c0-1.656-1.335-3-2.983-3s-2.984,1.344-2.984,3  v40.431" stroke="#000000" />
-      <polyline fill="#C7C8CA" points="476.726,251.574 497.724,251.574 497.133,278.855 478.203,278.855 476.726,251.574 " id="polyline216" />
-      <path fill="#FFFFFF" d="M442.386,181.704c-3.474-33.193,0-44.922,0-44.922c2.481-5.991,7.196-4.992,7.196-4.992h-0.024  c0-15.105,17.908-75.097,37.803-75.097c19.897,0,38.37,59.992,38.37,75.097h-0.149c0,0,4.715-0.999,7.196,4.992  c0,0,2.979,12.977-0.497,46.168" />
-      <path fill="none" stroke-width="1.504" d="M442.386,181.704c-3.474-33.193,0-44.922,0-44.922  c2.481-5.991,7.196-4.992,7.196-4.992h-0.024c0-15.105,17.908-75.097,37.803-75.097c19.897,0,38.37,59.992,38.37,75.097h-0.149  c0,0,4.715-0.999,7.196,4.992c0,0,2.979,12.977-0.497,46.168" stroke="#000000" />
-      <polyline fill="#C7C8CA" points="475.39,194.45 476.492,194.45 478.973,191.953 496.344,191.953 498.551,194.173 500.481,194.45   500.481,249.355 497.723,251.574 478.146,251.574 475.39,249.911 475.39,194.45 " id="polyline222" />
-      <path fill="none" stroke-width="1.003" d="M487.577,191.937v59.646 M475.417,194.431v54.906l2.73,2.245h19.603  l2.606-2.621v-54.531" stroke="#000000" />
-      <path fill="none" stroke-width="1.003" d="M499.982,152.629l25.421-20.839 M449.404,131.79l26.012,20.714" stroke="#000000" />
+      <path fill="#FFFFFF" d="M530.957 194.431l-.53 40.431c0 1.656 1.336 3 2.982 3 1.649 0 2.986-1.344 2.986-3l.527-40.431" class="armor unitLocation" data-loc="RS"  style=";stroke:#000000;stroke-width:1.504"/>
+
+      <defs><clipPath id="vtol-turret-armor-outline-2" clipPathUnits="userSpaceOnUse"><path d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725l2.729,2.725l1.931,92.993  c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" /></clipPath></defs>
+      <g clip-path="url(#vtol-turret-armor-outline-2)">
+        <g clip-path="url(#pd-ex1)"><path class="armor unitLocation" data-loc="LS" fill="#FFFFFF" stroke="none" d="M300 0H487.977V251.574H300z"  clip-path="url(#pd-ex2)"/></g>
+        <g clip-path="url(#pd-ex1)"><path class="armor unitLocation" data-loc="RS" fill="#FFFFFF" stroke="none" d="M487.577 0H650V251.574H487.577z"  clip-path="url(#pd-ex2)"/></g>
+        <path class="armor unitLocation" data-loc="RR" fill="#FFFFFF" stroke="none" d="M300 251.574H650V400H300z"  clip-path="url(#pd-ex3)"/>
+      </g>
+      <path fill="none" stroke-width="1.504" d="M443.257 190.266s7.445 48.016 14.643 60.992l16.83-2.725 2.729 2.725 1.931 92.993c0 3.704 4.402 6.705 8.474 6.705 4.069 0 8.475-3.001 8.475-6.705l2.04-92.993 2.729-2.725 15.954 2.725c11.417-31.945 14.18-60.992 14.18-60.992" stroke="#000000" />
+      <path fill="#FFFFFF" d="M536.925 182.071V141.64c0-1.656-1.337-3-2.985-3-1.646 0-2.982 1.344-2.982 3v40.431" class="armor unitLocation" data-loc="RS"  style=";stroke:#000000;stroke-width:1.504" clip-path="url(#pd-ex2)"/>
+
+      <path fill="#FFFFFF" d="M443.702 182.071V141.64c0-1.656-1.335-3-2.983-3s-2.984 1.344-2.984 3v40.431" class="armor unitLocation" data-loc="LS"  style=";stroke:#000000;stroke-width:1.504" clip-path="url(#pd-ex2)"/>
+
+      <polyline fill="#C7C8CA" points="476.726,251.574 497.724,251.574 497.133,278.855 478.203,278.855 476.726,251.574 " id="polyline216" class="structure unitLocation" data-loc="RR" />
+      <defs><clipPath id="vtol-turret-armor-outline-1" clipPathUnits="userSpaceOnUse"><path d="M442.386,181.704c-3.474-33.193,0-44.922,0-44.922c2.481-5.991,7.196-4.992,7.196-4.992h-0.024  c0-15.105,17.908-75.097,37.803-75.097c19.897,0,38.37,59.992,38.37,75.097h-0.149c0,0,4.715-0.999,7.196,4.992  c0,0,2.979,12.977-0.497,46.168" /></clipPath></defs>
+      <g clip-path="url(#vtol-turret-armor-outline-1)">
+        <g clip-path="url(#pd-ex4)"><path class="armor unitLocation" data-loc="FR" fill="#FFFFFF" stroke="none" d="M300 0H650L525.403 131.79l-25.42 20.713H475.416L449.404 131.79z"  clip-path="url(#pd-ex5)"/></g>
+        <g clip-path="url(#pd-ex6)"><path class="armor unitLocation" data-loc="LS" fill="#FFFFFF" stroke="none" d="M300 0L449.404 131.79l26.012 20.713h12.561V400H300z"  clip-path="url(#pd-ex2)"/></g>
+        <g clip-path="url(#pd-ex6)"><path class="armor unitLocation" data-loc="RS" fill="#FFFFFF" stroke="none" d="M525.403 131.79L650 0V400H487.577V152.503h12.406z"  clip-path="url(#pd-ex2)"/></g>
+      </g>
+      <path fill="none" stroke-width="1.504" d="M442.386 181.704c-3.474-33.193 0-44.922 0-44.922 2.481-5.991 7.196-4.992 7.196-4.992h-.024c0-15.105 17.908-75.097 37.803-75.097 19.897 0 38.37 59.992 38.37 75.097h-.149s4.715-.999 7.196 4.992c0 0 2.979 12.977-.497 46.168" stroke="#000000" />
+      <defs><clipPath id="vtol-turret-structure-outline-3" clipPathUnits="userSpaceOnUse"><polyline points="475.39,194.45 476.492,194.45 478.973,191.953 496.344,191.953 498.551,194.173 500.481,194.45   500.481,249.355 497.723,251.574 478.146,251.574 475.39,249.911 475.39,194.45 " /></clipPath></defs>
+      <g clip-path="url(#vtol-turret-structure-outline-3)">
+        <path class="structure unitLocation" data-loc="LS" fill="#C7C8CA" stroke="none" d="M300 0H487.577V400H300z" />
+        <path class="structure unitLocation" data-loc="RS" fill="#C7C8CA" stroke="none" d="M487.577 0H650V400H487.577z" />
+      </g>
+      <path fill="none" stroke-width="1.003" d="M487.577 191.937v59.646m-12.16-57.152v54.906l2.73 2.245H497.75l2.606-2.621V194.43" stroke="#000000" />
+      <path fill="none" stroke-width="1.003" d="M499.982 152.629l25.421-20.839m-75.999 0l26.012 20.714" stroke="#000000" />
       <line fill="none" x1="477.235" x2="498.552" y1="278.378" y2="278.378" id="line228" stroke="#000000" stroke-width="1.003" />
-      <polyline fill="#C7C8CA" points="475.911,181.455 478.89,183.45 495.766,183.45 498.246,181.455 499.983,181.14 499.983,152.503   475.416,152.503 475.416,181.14 " id="polyline230" />
+      <polyline fill="#C7C8CA" points="475.911,181.455 478.89,183.45 495.766,183.45 498.246,181.455 499.983,181.14 499.983,152.503   475.416,152.503 475.416,181.14 " id="polyline230" class="structure unitLocation" data-loc="FR" />
       <polyline fill="none" id="polyline232" stroke-width="1.003" points="475.911,181.455 478.89,183.45 495.766,183.45   498.246,181.455 499.983,181.14 499.983,152.503 475.416,152.503 475.416,181.14 " stroke="#000000" />
-      <path fill="none" stroke-width="1.504" d="M443.257,190.266c0,0,7.445,48.016,14.643,60.992l16.83-2.725  l2.729,2.725l1.931,92.993c0,3.704,4.402,6.705,8.474,6.705c4.069,0,8.475-3.001,8.475-6.705l2.04-92.993l2.729-2.725l15.954,2.725  c11.417-31.945,14.18-60.992,14.18-60.992" stroke="#000000" />
-      <polyline fill="#C7C8CA" points="398.979,181.455 398.979,194.43 476.408,194.43 478.89,191.935 496.263,191.935 498.494,194.43   576.172,194.43 576.172,181.455 498.247,181.455 495.765,183.449 478.89,183.449 475.911,181.455 398.979,181.455 " id="polyline236" />
+      <path fill="none" stroke-width="1.504" d="M443.257 190.266s7.445 48.016 14.643 60.992l16.83-2.725 2.729 2.725 1.931 92.993c0 3.704 4.402 6.705 8.474 6.705 4.069 0 8.475-3.001 8.475-6.705l2.04-92.993 2.729-2.725 15.954 2.725c11.417-31.945 14.18-60.992 14.18-60.992" stroke="#000000" />
+      <polyline fill="#C7C8CA" points="398.979,181.455 398.979,194.43 476.408,194.43 478.89,191.935 496.263,191.935 498.494,194.43   576.172,194.43 576.172,181.455 498.247,181.455 495.765,183.449 478.89,183.449 475.911,181.455 398.979,181.455 " id="polyline236" class="structure unitLocation" data-loc="RO"  clip-path="url(#pd-ex7)"/>
       <polyline fill="none" id="polyline238" stroke-width="1.003" points="398.979,181.455 398.979,194.43 476.408,194.43   478.89,191.935 496.261,191.935 498.494,194.43 576.172,194.43 576.172,181.455 498.246,181.455 495.765,183.45 478.89,183.45   475.911,181.455 398.979,181.455 " stroke="#000000" />
       <polygon fill="none" stroke-width="1.003" points="398.979,181.455 398.979,194.43 476.408,194.43 478.89,191.935   496.261,191.935 498.494,194.43 576.172,194.43 576.172,181.455 498.246,181.455 495.765,183.45 478.89,183.45 475.911,181.455 " stroke="#000000" />
-      <polyline fill="#FFFFFF" points="510.142,68.104 503.776,93.627 471.033,93.627 464.665,68.104 475.071,50.313 478.711,50.313   478.711,45.763 486.897,42.126 486.897,41.215 487.808,41.215 488.716,38.486 489.625,37.578 488.716,36.667 489.625,33.939   493.264,33.939 494.173,36.667 493.264,37.578 494.173,38.486 495.083,41.215 495.993,41.215 495.993,45.763 496.902,45.763   496.902,50.313 499.632,50.313 510.142,68.104 " id="polyline254" />
+      <polyline fill="#FFFFFF" points="510.142,68.104 503.776,93.627 471.033,93.627 464.665,68.104 475.071,50.313 478.711,50.313   478.711,45.763 486.897,42.126 486.897,41.215 487.808,41.215 488.716,38.486 489.625,37.578 488.716,36.667 489.625,33.939   493.264,33.939 494.173,36.667 493.264,37.578 494.173,38.486 495.083,41.215 495.993,41.215 495.993,45.763 496.902,45.763   496.902,50.313 499.632,50.313 510.142,68.104 " id="polyline254" class="armor unitLocation" data-loc="TU"  clip-path="url(#pd-ex5)"/>
       <polygon fill="none" stroke-width="1.003" points="510.142,68.104 503.776,93.627 471.032,93.627 464.664,68.104   475.071,50.313 478.71,50.313 478.71,45.763 486.896,42.126 486.896,41.215 487.806,41.215 488.716,38.486 489.624,37.578   488.716,36.668 489.624,33.939 493.264,33.939 494.173,36.668 493.264,37.578 494.173,38.486 495.083,41.215 495.992,41.215   495.993,45.763 496.902,45.763 496.902,50.313 499.632,50.313 " stroke="#000000" />
       <line fill="none" x1="489.625" x2="493.265" y1="37.577" y2="37.577" id="line270" stroke="#FFFFFF" stroke-miterlimit="10" />
-      <polyline fill="#FFFFFF" points="489.625,37.577 493.265,37.577 489.625,37.577 " id="polyline272" />
+      <polyline fill="#FFFFFF" points="489.625,37.577 493.265,37.577 489.625,37.577 " id="polyline272" class="armor unitLocation" data-loc="TU" />
       <line fill="none" x1="489.625" x2="493.265" y1="37.577" y2="37.577" id="line274" stroke="#000000" stroke-width="1.003" />
       <line fill="none" x1="478.712" x2="486.897" y1="45.763" y2="45.763" id="line276" stroke="#FFFFFF" stroke-miterlimit="10" />
-      <polyline fill="#FFFFFF" points="478.712,45.763 486.897,45.763 478.712,45.763 " id="polyline278" />
+      <polyline fill="#FFFFFF" points="478.712,45.763 486.897,45.763 478.712,45.763 " id="polyline278" class="armor unitLocation" data-loc="TU" />
       <line fill="none" x1="478.712" x2="486.897" y1="45.763" y2="45.763" id="line280" stroke="#000000" stroke-width="1.003" />
-      <polyline fill="#C7C8CA" points="503.776,93.627 507.675,77.995 467.134,77.995 471.033,93.627 503.776,93.627 " id="polyline318" />
+      <polyline fill="#C7C8CA" points="503.776,93.627 507.675,77.995 467.134,77.995 471.033,93.627 503.776,93.627 " id="polyline318" class="structure unitLocation" data-loc="TU" />
       <polygon fill="none" stroke-width="1.003" points="503.776,93.627 507.673,77.995 467.133,77.995 471.032,93.627   " stroke="#000000" />
-      <path fill="#FFFFFF" d="M409.31,190.282c1.411,0,2.552-1.143,2.552-2.552c0-1.41-1.141-2.554-2.552-2.554  c-1.41,0-2.554,1.144-2.554,2.554C406.756,189.139,407.899,190.282,409.31,190.282" />
+      <path fill="#FFFFFF" d="M409.31 190.282c1.411 0 2.552-1.143 2.552-2.552 0-1.41-1.141-2.554-2.552-2.554-1.41 0-2.554 1.144-2.554 2.554 0 1.409 1.143 2.552 2.554 2.552" class="armor unitLocation" data-loc="RO" />
       <g fill="none" id="armorPips">
         <g transform="translate(487.3355,94.98)" class="paperdoll-pip-profile">
           <rect x="-27.77" width="55.54" y="0" height="6.8" data-fill="armor" data-location="FR" />
@@ -100,7 +115,7 @@
           <rect x="-23" width="46" y="40.8" height="6.8" data-fill="armor" data-location="FR" />
           <rect x="-14.93" width="29.86" y="47.6" height="6.8" data-fill="armor" data-location="FR" />
         </g>
-        <g style="mml-multisection:true" transform="translate(501.3005,135.434)" class="paperdoll-pip-profile">
+        <g  transform="translate(501.3005,135.434)" class="paperdoll-pip-profile" data-multisection="true">
           <g id="armorPipsRS_section01">
             <rect x="21.19" width="8.75" y="0" height="6.8" data-fill="armor" data-location="RS" />
             <rect x="12.65" width="18.2" y="6.8" height="6.8" data-fill="armor" data-location="RS" />
@@ -120,7 +135,7 @@
             <rect x="0" width="16.5" y="102" height="6.8" data-fill="armor" data-location="RS" />
           </g>
         </g>
-        <g style="mml-multisection:true" transform="matrix(-1,0,0,1,473.6595,135.434)" class="paperdoll-pip-profile">
+        <g  transform="matrix(-1,0,0,1,473.6595,135.434)" class="paperdoll-pip-profile" data-multisection="true">
           <g id="armorPipsLS_section01">
             <rect x="21.19" width="8.75" y="0" height="6.8" data-fill="armor" data-location="LS" />
             <rect x="12.65" width="18.2" y="6.8" height="6.8" data-fill="armor" data-location="LS" />
@@ -153,7 +168,7 @@
           <rect x="-5.56" width="11.12" y="56.7" height="6.3" data-fill="armor" data-location="RR" />
         </g>
         <g transform="translate(487.3295,184.18)" class="paperdoll-pip-profile">
-          <rect x="-87.3" width="174.6" y="0" height="6.8" style="mml-gap:-71,71" data-fill="armor" data-location="RO" />
+          <rect x="-87.3" width="174.6" y="0" height="6.8"  data-fill="armor" data-location="RO" data-gap="-71,71" />
         </g>
         <g transform="translate(487.3355,51.18)" class="paperdoll-pip-profile">
           <rect x="-11.63" width="23.26" y="0" height="6.44" data-fill="armor" data-location="TU" />
@@ -201,6 +216,70 @@
           <rect x="-15.92" width="31.84" y="6.8" height="6.8" data-fill="structure" data-location="TU" />
         </g>
       </g>
+
+      <!-- Fixed artwork rectangles; pip areas are marked separately with data-fill. -->
+      <rect x="401.914" fill="#C7C8CA" width="20.598" y="184.297" height="12.976" id="rect100"/>
+      <rect x="401.914" y="184.297" fill="none" width="20.599" id="rect102" height="12.976" stroke="#C7C8CA" stroke-width="1.003"/>
+      <path fill="#C7C8CA" id="rect104" d="M558.508 184.297h20.598v12.976h-20.598Z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <rect x="401.914" fill="#C7C8CA" width="20.598" y="184.297" height="12.976" id="rect112"/>
+      <rect x="401.914" y="184.297" fill="none" width="20.599" id="rect114" height="12.976" stroke="#C7C8CA" stroke-width="1.003"/>
+      <path fill="#C7C8CA" id="rect116" d="M558.508 184.297h20.598v12.976h-20.598Z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <rect x="489.832" fill="#C7C8CA" width="2.728" y="44.058" height="4.547" id="rect124"/>
+      <rect x="489.832" y="44.058" fill="none" width="2.727" id="rect126" height="4.547" stroke="#C7C8CA" stroke-width="1.003"/>
+      <rect x="496.197" fill="#C7C8CA" width="2.729" y="44.058" height="4.547" id="rect128"/>
+      <rect x="496.199" y="44.058" fill="none" width="2.728" id="rect130" height="4.547" stroke="#C7C8CA" stroke-width="1.003"/>
+      <rect x="493.014" fill="#C7C8CA" width="2.728" y="44.058" height="4.547" id="rect132"/>
+      <rect x="493.016" y="44.058" fill="none" width="2.728" id="rect134" height="4.547" stroke="#C7C8CA" stroke-width="1.003"/>
+      <rect x="497.447" fill="#C7C8CA" width="1.48" y="49.515" height="3.638" id="rect148"/>
+      <rect x="497.447" y="49.515" fill="none" width="1.479" id="rect150" height="3.638" stroke="#C7C8CA" stroke-width="1.003"/>
+      <rect x="487.101" fill="#C7C8CA" width="1.479" y="49.515" height="3.638" id="rect152"/>
+      <rect x="487.102" y="49.515" fill="none" width="1.479" id="rect154" height="3.638" stroke="#C7C8CA" stroke-width="1.003"/>
+      <path fill="#C7C8CA" id="rect156" d="M495.969 49.515h1.479v3.638h-1.479Z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <rect x="494.493" fill="#C7C8CA" width="1.478" y="49.515" height="3.638" id="rect160"/>
+      <rect x="494.492" y="49.515" fill="none" width="1.479" id="rect162" height="3.638" stroke="#C7C8CA" stroke-width="1.003"/>
+      <path fill="#C7C8CA" id="rect164" d="M493.014 49.515h1.48v3.638h-1.48Z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <rect x="491.535" fill="#C7C8CA" width="1.481" y="49.515" height="3.638" id="rect168"/>
+      <rect x="491.537" y="49.515" fill="none" width="1.479" id="rect170" height="3.638" stroke="#C7C8CA" stroke-width="1.003"/>
+      <rect x="490.056" fill="#C7C8CA" width="1.479" y="49.515" height="3.638" id="rect172"/>
+      <rect x="490.056" y="49.515" fill="none" width="1.48" id="rect174" height="3.638" stroke="#C7C8CA" stroke-width="1.003"/>
+      <path fill="#C7C8CA" id="rect176" d="M488.58 49.515h1.479v3.638h-1.479Z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <path fill="#C7C8CA" id="rect180" d="M483.805 49.515h1.478v3.638h-1.478Z" style=";stroke:#C7C8CA;stroke-width:1.003"/>
+
+      <rect x="398.979" fill="#FFFFFF" width="20.6" y="181.455" height="12.976" id="rect240" class="armor unitLocation" data-loc="RO" />
+      <rect x="398.98" y="181.454" fill="none" width="20.6" id="rect242" height="12.976" stroke="#000000" stroke-width="1.003"/>
+      <rect x="555.575" fill="#FFFFFF" width="20.598" y="181.455" height="12.976" id="rect244" class="armor unitLocation" data-loc="RO" />
+      <rect x="555.575" y="181.454" fill="none" width="20.598" id="rect246" height="12.976" stroke="#000000" stroke-width="1.003"/>
+      <rect x="398.98" y="181.454" fill="none" width="20.6" id="rect250" height="12.976" stroke="#000000" stroke-width="1.003"/>
+      <rect x="555.575" y="181.454" fill="none" width="20.598" id="rect252" height="12.976" stroke="#000000" stroke-width="1.003"/>
+      <path fill="#FFFFFF" id="rect258" class="armor unitLocation" data-loc="TU"  d="M486.897 41.216h2.728v4.547h-2.728Z" style=";stroke:#000000;stroke-width:1.003"/>
+
+      <path fill="#FFFFFF" id="rect262" class="armor unitLocation" data-loc="TU"  d="M493.265 41.216h2.729v4.547h-2.729Z" style=";stroke:#000000;stroke-width:1.003"/>
+
+      <rect x="490.08" fill="#FFFFFF" width="2.728" y="41.216" height="4.547" id="rect266" class="armor unitLocation" data-loc="TU" />
+      <rect x="490.081" y="41.216" fill="none" width="2.728" id="rect268" height="4.547" stroke="#000000" stroke-width="1.003"/>
+      <rect x="494.514" fill="#FFFFFF" width="1.48" y="46.674" height="3.638" id="rect282" class="armor unitLocation" data-loc="TU" />
+      <rect x="494.514" y="46.673" fill="none" width="1.48" id="rect284" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="484.168" fill="#FFFFFF" width="1.479" y="46.674" height="3.638" id="rect286" class="armor unitLocation" data-loc="TU" />
+      <rect x="484.168" y="46.673" fill="none" width="1.479" id="rect288" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="493.035" fill="#FFFFFF" width="1.479" y="46.674" height="3.638" id="rect290" class="armor unitLocation" data-loc="TU" />
+      <rect x="493.035" y="46.673" fill="none" width="1.479" id="rect292" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="491.559" fill="#FFFFFF" width="1.479" y="46.674" height="3.638" id="rect294" class="armor unitLocation" data-loc="TU" />
+      <rect x="491.559" y="46.673" fill="none" width="1.478" id="rect296" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="490.08" fill="#FFFFFF" width="1.479" y="46.674" height="3.638" id="rect298" class="armor unitLocation" data-loc="TU" />
+      <rect x="490.08" y="46.673" fill="none" width="1.479" id="rect300" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="488.602" fill="#FFFFFF" width="1.48" y="46.674" height="3.638" id="rect302" class="armor unitLocation" data-loc="TU" />
+      <rect x="488.603" y="46.673" fill="none" width="1.48" id="rect304" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="487.123" fill="#FFFFFF" width="1.479" y="46.674" height="3.638" id="rect306" class="armor unitLocation" data-loc="TU" />
+      <rect x="487.123" y="46.673" fill="none" width="1.48" id="rect308" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="485.646" fill="#FFFFFF" width="1.479" y="46.674" height="3.638" id="rect310" class="armor unitLocation" data-loc="TU" />
+      <rect x="485.645" y="46.673" fill="none" width="1.479" id="rect312" height="3.638" stroke="#000000" stroke-width="1.003"/>
+      <rect x="480.871" fill="#FFFFFF" width="1.478" y="46.674" height="3.638" id="rect314" class="armor unitLocation" data-loc="TU" />
+      <rect x="480.871" y="46.673" fill="none" width="1.478" id="rect316" height="3.638" stroke="#000000" stroke-width="1.003"/>
     </g>
   </g>
 </svg>

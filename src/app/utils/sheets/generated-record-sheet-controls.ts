@@ -26,6 +26,7 @@ import {
     svgElement,
     transparentRect,
 } from './record-sheet-svg-rendering';
+import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
 
 export interface GeneratedRecordSheetControlOptions {
     readonly ruleset?: CBTRuleset;
@@ -49,8 +50,9 @@ export function renderGeneratedRecordSheetControls(
     appendUnitConditionPresentation(svg, generatedUnitConditionControls(entity, ruleset));
     appendMovementPresentation(svg, isMekEntity(entity) && entity.chassisConfig === 'LAM');
     appendCrewStateMenuIndicators(svg, entity);
-    applyConstructionPipPresentation(svg, entity);
+    applyRecordSheetPipMaterials(svg, entity);
     appendPipHitAreas(svg);
+    appendPaperdollRandomHitButtons(svg, entity);
     appendGeneratedFluffImage(svg, entity, options.fluffImageUrl);
 }
 
@@ -148,6 +150,7 @@ function appendConditionBanners(svg: SVGSVGElement): void {
     const bannerY = viewBox.y + 7;
     const defs = directDefs(svg);
     const fadeMaskSequence = ++unitConditionBannerFadeMaskSequence;
+    const fadeMasks = new Map<boolean, string>();
     const wrapper = svgElement('g');
     wrapper.id = 'condition_banner_wrapper';
     wrapper.setAttribute('class', 'screen-only unitConditionBannerWrapper');
@@ -156,8 +159,13 @@ function appendConditionBanners(svg: SVGSVGElement): void {
         const width = condition.important ? 270 : 200;
         const height = condition.important ? 32 : 24;
         const fontSize = (condition.important ? 32 : 24) * (condition.bannerFontScaling || 1);
-        const maskId = `generated_condition_banner_fade_${fadeMaskSequence}_${condition.key}`;
-        appendConditionFadeMask(defs, maskId, bannerX, bannerY, width, height);
+        const important = condition.important === true;
+        let maskId = fadeMasks.get(important);
+        if (maskId === undefined) {
+            maskId = `generated_condition_banner_fade_${fadeMaskSequence}_${important ? 'important' : 'normal'}`;
+            appendConditionFadeMask(defs, maskId, bannerX, bannerY, width, height);
+            fadeMasks.set(important, maskId);
+        }
         const banner = svgElement('g');
         banner.id = `unit_condition_banner_${condition.key}`;
         banner.setAttribute('class', 'unitConditionBanner no-autocolor');
@@ -384,49 +392,80 @@ function ensureGeneratedCrewStateBanners(
     }
 }
 
-function applyConstructionPipPresentation(svg: SVGSVGElement, entity: BaseEntity): void {
-    const uniformArmorName = entity.uniformArmor()?.armor.name ?? '';
-    const armorNames = new Map([...entity.armorByLocation()]
-        .map(([location, armor]) => [location, armor.armor.name] as const));
-    doubleConstructionPips(svg, '.pip.armor', location =>
-        (armorNames.get(location) ?? uniformArmorName).toLowerCase().includes('hardened'));
-
-    const uniformStructureName = entity.uniformStructure()?.structure.name ?? '';
-    const structureNames = new Map([...entity.structureByLocation()]
-        .map(([location, structure]) => [location, structure.structure.name] as const));
-    doubleConstructionPips(svg, '.pip.structure', location =>
-        (structureNames.get(location) ?? uniformStructureName).toLowerCase().includes('reinforced'));
-}
-
-function doubleConstructionPips(
-    svg: SVGSVGElement,
-    selector: string,
-    appliesAt: (location: string) => boolean,
-): void {
-    svg.querySelectorAll<SVGElement>(`${selector}:not(.half)`).forEach(pip => {
-        const location = pip.getAttribute('loc');
-        if (!location || pip.classList.contains('hardened') || !appliesAt(location)) return;
-        pip.classList.add('hardened');
-        const half = pip.cloneNode(true) as SVGElement;
-        half.removeAttribute('id');
-        half.classList.add('half');
-        pip.after(half);
-    });
-}
-
 function appendPipHitAreas(svg: SVGSVGElement): void {
-    if (svg.querySelector('.unitLocation.armor, .unitLocation.structure')) return;
-    svg.querySelectorAll<SVGElement>('.pip.armor:not(.half), .pip.structure:not(.half)').forEach(pip => {
-        const hitArea = pip.cloneNode(false) as SVGElement;
+    const key = (element: SVGElement): string =>
+        `${element.classList.contains('armor') ? 'armor' : 'structure'}:${element.getAttribute('data-loc')}:${element.hasAttribute('data-rear')}`;
+    const contours = new Set([...svg.querySelectorAll<SVGElement>('.unitLocation.armor, .unitLocation.structure')].map(key));
+    const groups = new Map<Element, Map<string, { pips: SVGElement[]; outlines: string[] }>>();
+    svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure').forEach(pip => {
+        if (pip.closest('[data-mekbay-paperdoll]')) {
+            pip.setAttribute('pointer-events', 'none');
+            return;
+        }
+        if (contours.has(key(pip))) return;
+        const outline = pip instanceof SVGCircleElement
+            ? `M ${pip.cx.baseVal.value - pip.r.baseVal.value} ${pip.cy.baseVal.value}`
+                + `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${pip.r.baseVal.value * 2} 0`
+                + `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${-pip.r.baseVal.value * 2} 0z`
+            : pip instanceof SVGPolygonElement ? `M ${pip.getAttribute('points')} Z` : null;
+        if (outline === null) {
+            // Preserve the existing target geometry for an uncommon custom pip shape.
+            appendHitArea(pip.cloneNode(false) as SVGElement, pip);
+            return;
+        }
+        const parent = pip.parentElement!;
+        const byLocation = groups.get(parent) ?? new Map();
+        groups.set(parent, byLocation);
+        const location = `${key(pip)}:${pip.getAttribute('transform') ?? ''}`;
+        const group = byLocation.get(location) ?? { pips: [], outlines: [] };
+        byLocation.set(location, group);
+        group.pips.push(pip);
+        group.outlines.push(outline);
+    });
+    groups.forEach(byLocation => byLocation.forEach(({ pips, outlines }) => {
+        const first = pips[0];
+        const hitArea = svgElement('path');
+        hitArea.setAttribute('class', first.getAttribute('class') ?? '');
+        hitArea.setAttribute('data-loc', first.getAttribute('data-loc')!);
+        if (first.hasAttribute('data-rear')) hitArea.setAttribute('data-rear', first.getAttribute('data-rear')!);
+        if (first.hasAttribute('transform')) hitArea.setAttribute('transform', first.getAttribute('transform')!);
+        hitArea.setAttribute('d', outlines.join(' '));
+        appendHitArea(hitArea, pips[pips.length - 1]);
+    }));
+
+    function appendHitArea(hitArea: SVGElement, after: SVGElement): void {
         hitArea.removeAttribute('id');
         hitArea.removeAttribute('style');
-        hitArea.classList.remove('pip', 'damaged', 'pending', 'fresh', 'hidden', 'hardened');
+        hitArea.classList.remove('pip', 'damaged', 'pending', 'fresh', 'hidden');
         hitArea.classList.add('pip-hit-area', 'screen-only');
         hitArea.setAttribute('fill', 'transparent');
         hitArea.setAttribute('stroke', 'transparent');
         hitArea.setAttribute('stroke-width', '15');
         hitArea.setAttribute('pointer-events', 'all');
-        pip.after(hitArea);
+        after.after(hitArea);
+    }
+}
+
+function appendPaperdollRandomHitButtons(svg: SVGSVGElement, entity: BaseEntity): void {
+    if (!isMekEntity(entity) && !isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return;
+    svg.querySelectorAll<SVGGElement>('[data-mekbay-paperdoll][data-random-hit-transform]').forEach(layer => {
+        if (layer.querySelector('[data-mekbay-random-hit]')
+            || !layer.querySelector('.unitLocation.armor:not([data-rear])')) return;
+        const button = svgElement('g');
+        setAttributes(button, {
+            class: 'mek-random-hit-button screen-only',
+            'data-mekbay-random-hit': '1',
+            role: 'button',
+            'aria-label': 'Roll random hit location',
+            'pointer-events': 'all',
+            transform: layer.getAttribute('data-random-hit-transform')!,
+        });
+        const hitArea = svgElement('circle');
+        setAttributes(hitArea, { class: 'mek-random-hit-area', cx: 14, cy: 14, r: 15, fill: 'transparent' });
+        const icon = svgElement('image');
+        setAttributes(icon, { x: 3, y: 3, width: 22, height: 22, 'pointer-events': 'none', href: '/images/random-black.svg' });
+        button.append(hitArea, icon);
+        layer.appendChild(button);
     });
 }
 
@@ -435,12 +474,35 @@ function appendGeneratedFluffImage(
     entity: BaseEntity,
     resolvedUrl: string | null | undefined,
 ): void {
-    if (svg.getElementById('fluff-image-injected')) return;
+    if (svg.getElementById('fluff-image-injected') || svg.querySelector('.fixed-fluff-image')) return;
     const encoded = entity.fluffImageEncoded().trim();
     const source = resolvedUrl ?? (encoded
         ? encoded.startsWith('data:') ? encoded : `data:image/png;base64,${encoded}`
         : null);
     if (!source) return;
+
+    const artwork = svg.querySelector<SVGGElement>('[data-mekbay-fluff-art]');
+    if (artwork) {
+        const fallbackIds = [...artwork.querySelectorAll('use')]
+            .map(use => use.getAttribute('href')?.slice(1)).filter((id): id is string => !!id);
+        const image = svgElement('image');
+        setAttributes(image, {
+            class: artwork.hasAttribute('data-mekbay-masthead-art')
+                ? 'fixed-fluff-image masthead-fluff-image' : 'fixed-fluff-image',
+            x: artwork.getAttribute('data-image-x')!,
+            y: artwork.getAttribute('data-image-y')!,
+            width: artwork.getAttribute('data-image-width')!,
+            height: artwork.getAttribute('data-image-height')!,
+            preserveAspectRatio: 'xMidYMid meet',
+            href: source,
+        });
+        artwork.replaceChildren(image);
+        const remainingReferences = new Set([...svg.querySelectorAll('use')].map(use => use.getAttribute('href')));
+        for (const id of fallbackIds) {
+            if (!remainingReferences.has(`#${id}`)) svg.getElementById(id)?.remove();
+        }
+        return;
+    }
 
     const boxes = Array.from(svg.querySelectorAll<SVGGElement>('.referenceTable[data-mekbay-region="center-panel"]'))
         .map(frameBox)
@@ -491,10 +553,10 @@ export function appendGeneratedMekCriticalHeadingControls(
     box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
 ): SVGGElement {
     heading.classList.add('locationConditionText');
-    heading.setAttribute('loc', location);
+    heading.setAttribute('data-loc', location);
     const control = svgElement('g');
     control.setAttribute('class', 'locationConditionControl');
-    control.setAttribute('loc', location);
+    control.setAttribute('data-loc', location);
     control.setAttribute('pointer-events', 'all');
     const hitArea = transparentRect(box.x, box.y, box.width, box.height, 'locationConditionHitArea');
     criticalGroup.insertBefore(control, heading);
@@ -502,7 +564,7 @@ export function appendGeneratedMekCriticalHeadingControls(
 
     const narc = svgElement('g');
     narc.setAttribute('class', 'locationNarcBanner screen-only');
-    narc.setAttribute('loc', location);
+    narc.setAttribute('data-loc', location);
     narc.setAttribute('display', 'none');
     const background = svgElement('rect');
     setAttributes(background, {

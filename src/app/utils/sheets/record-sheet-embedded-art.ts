@@ -15,6 +15,19 @@ export interface EmbeddedRecordSheetRaster {
     readonly height: number;
 }
 
+/** Embeds hand-editable artwork once; callers place it with local symbol uses. */
+export async function appendEmbeddedSvgDefinition(svg: SVGSVGElement, assetUrl: string, id: string): Promise<void> {
+    if (svg.getElementById(id)) return;
+    const response = await fetch(assetUrl);
+    if (!response.ok) throw new Error(`Unable to load record-sheet artwork (${response.status}): ${assetUrl}`);
+    const source = new DOMParser().parseFromString(await response.text(), 'image/svg+xml').documentElement;
+    const symbol = svgElement('symbol');
+    symbol.id = id;
+    symbol.setAttribute('viewBox', source.getAttribute('viewBox')!);
+    for (const child of Array.from(source.children)) symbol.appendChild(document.importNode(child, true));
+    svg.querySelector('defs')!.appendChild(symbol);
+}
+
 // MegaMekLab template artwork, stored once per generated SVG and reused with <use>.
 export const INFANTRY_TROOPER_ART: EmbeddedRecordSheetRaster = Object.freeze({
     id: 'mekbay-infantry-trooper-art',

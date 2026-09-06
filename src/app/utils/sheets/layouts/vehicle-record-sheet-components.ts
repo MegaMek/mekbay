@@ -3,10 +3,13 @@
 import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
 import { isBapEquipment } from '../../../models/bap-equipment.model';
+import { artemisKind } from '../../../models/artemis-equipment.model';
 import { isNovaC3Equipment } from '../../../models/c3-network.model';
 import { isCaseEquipment } from '../../../models/case-equipment.model';
 import { isAngelEcmEquipment,isEcmEquipment,isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
+import { getBayTransporterType } from '../../../models/entity/bays/bay-definitions';
+import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { isEquipmentForPlatform } from '../../../models/equipment-platform.model';
@@ -15,10 +18,10 @@ import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment,isUmuEquipment } from '../../../models/jump-equipment.model';
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
 import { sensorEquipmentKind } from '../../../models/sensor-equipment.model';
-import { type BipedArmorValues,BipedPaperdollUtil } from '../biped-paperdoll.util';
+import { PaperdollGenerator, type PaperdollPipLayout } from '../paperdoll-generator';
 import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { createBattleTechLogo,createCatalystGameLabsLogo } from '../record-sheet-brand';
-import { isRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import { isRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 import {
 type Box,
 addDiagramHeading,
@@ -32,6 +35,8 @@ constructionMaterialSubtitle,
 decoratePaperdollPips,
 drawDamagePanelIntoGroup,
 formatNumber,
+formatRecordSheetTonnage,
+formatWholeNumber,
 formatTechBase,
 paperdollPipOptions,
 readViewBox,
@@ -56,11 +61,26 @@ export interface CompactVehicleCrewPresentation {
 }
 
 export interface CompactVehicleDiagramPresentation {
+    readonly pipLayout: PaperdollPipLayout;
     readonly assetUrl: string;
     readonly motiveArtId?: 'tracks' | 'wheels' | 'hovercraft';
     /** Replaces the source artwork's authored root transform for a template variant. */
     readonly authoredRootTransform?: string;
     readonly catalystY?: number;
+}
+
+/** MML's vehicle title uses the support size, motive family and vessel designation. */
+export function compactVehicleSheetTitle(entity: BaseEntity, naval = false): string {
+    if (!isVehicleEntity(entity)) return 'COMBAT VEHICLE RECORD SHEET';
+    const motive = naval ? 'NAVAL' : (entity.getMotiveTypeAsString() || 'Combat').trim().toUpperCase();
+    const title: string[] = [];
+    if (entity.isSupportVehicle()) title.push(entity.weightClass().replace(/\s.*$/u, '').toUpperCase());
+    else if (entity.isSuperHeavy()) title.push('SUPER-HEAVY');
+    if (motive !== 'VTOL') title.push(motive);
+    if (entity.isSupportVehicle()) title.push('SUPPORT');
+    if (motive === 'VTOL') title.push('V.T.O.L.');
+    title.push(`${entity.omni() ? 'OMNI' : ''}${naval ? 'VESSEL' : 'VEHICLE'}`, 'RECORD', 'SHEET');
+    return title.join(' ');
 }
 
 /** Unit-local branding from MML's 576x375 vehicle template. */
@@ -133,19 +153,21 @@ export function drawCompactVehicleDataPanel(
         node.setAttribute('data-mekbay-field', field);
     });
     const engine = entity.mountedEngine();
+    const weightInKilograms = entity.weightClass() === 'Small Support';
     const facts: readonly [string, string, number, string?, string?][] = [
-        ['Tonnage:', formatNumber(entity.tonnage()), 38, 'tonnage', 'tonnage'],
+        ['Tonnage:', formatRecordSheetTonnage(entity.tonnage(), weightInKilograms), 38, 'tonnage', 'tonnage'],
         ['Tech Base:', formatTechBase(entity.techBase(), entity.mixedTech()), 47, 'techBase', 'tech-base'],
         ['Role:', entity.role() || '—', 56, 'role', 'role'],
-        ['Engine Type:', `${engine.rating} ${engine.type()}`, 65, 'engineType', undefined],
+        ['Engine Type:', entity.isSupportVehicle() ? engine.type() : `${engine.rating} ${engine.type()}`, 65, 'engineType', undefined],
     ];
     facts.forEach(([label, value, baseline, id, field]) => {
-        addText(content, label, x(115.7), y(baseline), { size: font(7.7), weight: 700 });
+        addText(content, label, x(115.7), y(baseline), { size: font(7.7), weight: 700, maxWidth: x(40.5) });
         const node = addText(content, value, x(158.24), y(baseline), { size: font(7.7), maxWidth: x(58) });
         if (id) node.id = id;
         if (field) node.setAttribute('data-mekbay-field', field);
+        if (id === 'tonnage' && weightInKilograms) node.setAttribute('data-mekbay-weight-unit', 'kg');
     });
-    addText(content, 'Movement Type:', x(6), y(65), { size: font(7.7), weight: 700 });
+    addText(content, 'Movement Type:', x(6), y(65), { size: font(7.7), weight: 700, maxWidth: x(56) });
     const motive = addText(content, entity.getMotiveTypeAsString() ?? entity.entityType, x(64.129), y(65), {
         size: font(7.7), maxWidth: x(47),
     });
@@ -277,10 +299,21 @@ function appendCompactVehicleInventory(
             class: 'targetTn-text', size: font(5), weight: 700, anchor: 'middle',
         });
         targetTn.setAttribute('display', 'none');
+        if (row.linkedEquipment) {
+            const linked = svgElement('g');
+            setAttributes(linked, { class: 'inventoryEntry linked', id: `generated-vehicle-linked-row@${index}` });
+            setInventoryComponentIds(linked, [row.linkedEquipment.componentId]);
+            const linkedBaseline = baseline + weaponStep;
+            linked.appendChild(transparentRect(x(6), linkedBaseline - weaponStep, x(160), weaponStep,
+                'inventoryEntryButton mainButton'));
+            addText(linked, row.linkedEquipment.name, x(12.738), linkedBaseline,
+                { class: 'name', size: font(6.76), maxWidth: x(150) });
+            entry.appendChild(linked);
+        }
         row.alternativeModes.forEach((mode, modeIndex) => {
-            const modeBaseline = baseline + (modeIndex + 1) * weaponStep;
+            const modeBaseline = baseline + (modeIndex + 1 + (row.linkedEquipment ? 1 : 0)) * weaponStep;
             const alternative = svgElement('g');
-            alternative.setAttribute('class', 'alternativeMode');
+            alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
             alternative.appendChild(transparentRect(x(6), modeBaseline - weaponStep, x(160), weaponStep,
                 'inventoryEntryButton alternativeModeButton'));
@@ -298,8 +331,22 @@ function appendCompactVehicleInventory(
             entry.appendChild(alternative);
         });
         inventory.appendChild(entry);
-        displayLine += 1 + row.alternativeModes.length;
+        displayLine += 1 + row.alternativeModes.length + (row.linkedEquipment ? 1 : 0);
     });
+    const cargoBays = projectRecordSheetBays(entity.transporters());
+    if (cargoBays.length > 0) {
+        const cargo = svgElement('g');
+        cargo.setAttribute('class', 'vehicle-cargo');
+        const cargoBaseline = () => y(101.162) + displayLine++ * weaponStep;
+        addText(cargo, 'Cargo:', x(7.328), cargoBaseline(), { size: font(6.76), weight: 700 });
+        for (const bay of cargoBays) {
+            const names = bay.members.map(member => member.typeName).join('/');
+            const capacities = bay.members.map(member => formatWholeNumber(member.capacity)).join('/');
+            addText(cargo, `Bay ${bay.bayNumber}: ${names} (${capacities}) (${bay.doors} ${bay.doors === 1 ? 'Door' : 'Doors'})`,
+                x(7.328), cargoBaseline(), { size: font(6.76), maxWidth: box.width - x(15) });
+        }
+        inventory.appendChild(cargo);
+    }
     inventory.setAttribute('data-content-bottom', String(y(101.162) + Math.max(0, displayLine - 1) * weaponStep));
     const physicalRows = svgElement('g');
     physicalRows.setAttribute('data-ammo-before', '');
@@ -383,6 +430,13 @@ function drawCompactVehicleInventoryFields(
 
 function compactVehicleFeatureText(entity: BaseEntity): string {
     const features: string[] = [];
+    for (const seatType of ['standard-seats', 'pillion-seats', 'ejection-seats'] as const) {
+        const seats = entity.transporters().reduce((sum, transporter) => sum + (transporter.kind === 'bay'
+            && transporter.configuration.type === seatType ? Math.trunc(transporter.capacity) : 0), 0);
+        if (seats === 0) continue;
+        const name = getBayTransporterType({ type: seatType });
+        features.push(`${formatWholeNumber(seats)} ${seats === 1 ? name.replace('Seats', 'Seat') : name}`);
+    }
     const troopSpace = entity.transporters()
         .filter(transporter => transporter.kind === 'troop-space')
         .reduce((sum, transporter) => sum + transporter.totalSpace, 0);
@@ -400,11 +454,21 @@ function compactVehicleFeatureText(entity: BaseEntity): string {
 
 /** MML prints usable misc equipment in the same interactive inventory as weapons. */
 function compactVehicleInventoryRows(entity: BaseEntity) {
-    const weaponRows = recordSheetInventoryWeapons(entity).map(row => Object.freeze({
-        ...row,
-        name: compactVehicleWeaponName(row.name),
-        location: compactVehicleLocation(row.location),
-    }));
+    const mountsById = new Map(entity.equipment().map(mount => [String(mount.mountId), mount]));
+    const weaponRows = recordSheetInventoryWeapons(entity).map(row => {
+        const mount = mountsById.get(row.componentIds[0]);
+        const linkingMount = mount && entity.getLinkingMount(mount);
+        const artemis = artemisKind(linkingMount?.equipment);
+        return Object.freeze({
+            ...row,
+            name: compactVehicleWeaponName(mount ? recordSheetInventoryMountName(entity, mount) : row.name),
+            location: compactVehicleLocation(row.location),
+            linkedEquipment: linkingMount && artemis ? {
+                componentId: linkingMount.mountId,
+                name: artemis === 'v' ? 'w/Artemis V' : artemis === 'iv' ? 'w/Artemis IV' : 'w/Prototype Artemis IV',
+            } : null,
+        });
+    });
     const weaponMountIds = new Set(entity.rangedWeapons().map(mount => mount.mountId));
     const miscRows = entity.equipment().flatMap(mount => {
             const equipment = mount.equipment;
@@ -418,15 +482,16 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 || isUmuEquipment(equipment)) return [];
             const range = compactElectronicWarfareRange(equipment);
             return Object.freeze({
-                name: compactVehicleWeaponName(mount.displayName()),
+                name: compactVehicleWeaponName(recordSheetInventoryMountName(entity, mount)),
                 location: compactVehicleLocation(mount.getOccupiedLocations().join('/')),
                 heat: '—',
-                damage: equipment.hasFlag('F_AP_POD') ? '[PB,OS,AI]' : '[E]',
+                damage: equipment.hasFlag('F_AP_POD') ? '[PB,OS,AI]' : String(mount.getPhysicalWeaponDamage()?.value ?? '[E]'),
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([mount.mountId]),
                 quantity: 1,
                 alternativeModes: Object.freeze([]),
+                linkedEquipment: null,
             });
         });
     return Object.freeze([...weaponRows, ...miscRows]);
@@ -454,7 +519,9 @@ function compactVehicleWeaponName(value: string): string {
 function compactVehicleLocation(value: string): string {
     const locations: Readonly<Record<string, string>> = {
         Front: 'FR', Rear: 'RR', Left: 'LS', Right: 'RS',
-        'Left Side': 'LS', 'Right Side': 'RS', Turret: 'TU', Rotor: 'RO',
+        'Left Side': 'LS', 'Right Side': 'RS', Turret: 'TU', Rotor: 'RO', Body: 'BD',
+        'Front Turret': 'FT', 'Rear Turret': 'RT',
+        'Front Left': 'FRLS', 'Front Right': 'FRRS', 'Rear Left': 'RRLS', 'Rear Right': 'RRRS',
     };
     return value.split('/').map(location => locations[location] ?? location).join('/');
 }
@@ -527,7 +594,7 @@ export function drawCompactVehicleCriticalPanel(
 
     const isVtol = airborne;
     const hasTurret = isVehicleEntity(entity) && (entity.hasTurret() || entity.hasDualTurret());
-    const firstRowY = isVtol ? 23.754 : 22.932;
+    const firstRowY = isVtol && !hasTurret ? 23.754 : 22.932;
     if (isVtol || hasTurret) {
         addText(group, isVtol ? 'Flight Stabilizer*' : 'Turret Locked', 6, firstRowY + 6.4, {
             size: 6.76,
@@ -548,7 +615,13 @@ export function drawCompactVehicleCriticalPanel(
         drawVehicleDamageCheckbox(group, 'engine_hit_1', 45.96, firstRowY);
     }
 
-    const sensorRowY = isVtol ? 35.262 : 32.796;
+    if (isVtol && hasTurret) {
+        addText(group, 'Turret Locked', 6, 39.196, { size: 6.76, maxWidth: 39.254 });
+        for (const control of systemDamageLocationControls(entity, 'turret-lock')) {
+            drawVehicleDamageCheckbox(group, control.id, 75.08, 32.796);
+        }
+    }
+    const sensorRowY = isVtol ? hasTurret ? 42.66 : 35.262 : 32.796;
     addText(group, 'Sensor Hits', 6, sensorRowY + 6.4, { size: 6.76, maxWidth: 32.801 });
     drawVehicleDamageTrackRow(group, 'sensor_hit_', 97.32, sensorRowY, systemDamageControls(entity, 'sensors').modifiers);
     if (!isVtol) {
@@ -556,14 +629,15 @@ export function drawCompactVehicleCriticalPanel(
         drawVehicleDamageTrackRow(group, 'motive_system_hit_', 97.32, 42.66, systemDamageControls(entity, 'motive').modifiers);
     }
 
-    const stabilizerTitleY = isVtol ? 52.524 : 57.456;
-    const stabilizerFirstRowY = isVtol ? 58.278 : 62.388;
-    const stabilizerSecondRowY = isVtol ? 69.786 : 72.252;
+    const stabilizerTitleY = isVtol && !hasTurret ? 52.524 : 57.456;
+    const stabilizerFirstRowY = isVtol && !hasTurret ? 58.278 : 62.388;
+    const stabilizerSecondRowY = isVtol && !hasTurret ? 69.786 : 72.252;
     const stabilizers = systemDamageLocationControls(entity, 'stabilizer');
-    const stabilizerColumns = Math.ceil(stabilizers.length / 2);
+    const stabilizerColumns = Math.max(3, Math.ceil(stabilizers.length / 2));
     stabilizers.forEach((control, index) => drawVehicleLabeledDamageCheckbox(group,
         control.label, control.id, 6 + (index % stabilizerColumns) * 138 / stabilizerColumns,
-        index < stabilizerColumns ? stabilizerFirstRowY : stabilizerSecondRowY));
+        index < stabilizerColumns ? stabilizerFirstRowY : stabilizerSecondRowY,
+        138 / stabilizerColumns));
     addText(group, 'Stabilizers', 75.8, stabilizerTitleY, { size: 6.76, weight: 700, anchor: 'middle' });
     if (isVtol) addText(group, '*Move at Cruising speed only', 6, 84.294, { size: 4.83, maxWidth: 58.681 });
 
@@ -576,9 +650,11 @@ function drawVehicleLabeledDamageCheckbox(
     sheetId: string,
     x: number,
     y: number,
+    columnWidth: number,
 ): void {
-    addText(group, label, x, y + 6.4, { size: 6.76, maxWidth: 20 });
-    drawVehicleDamageCheckbox(group, sheetId, x + 31.224, y);
+    const checkboxOffset = Math.min(31.224, columnWidth - 12);
+    addText(group, label, x, y + 6.4, { size: 6.76, maxWidth: Math.min(20, checkboxOffset - 2) });
+    drawVehicleDamageCheckbox(group, sheetId, x + checkboxOffset, y);
 }
 
 function drawVehicleDamageTrackRow(
@@ -650,6 +726,11 @@ export function appendHiddenVehicleDamageTracks(svg: SVGSVGElement, entity: Base
     }
 }
 
+/** Large support vehicles retain six hull facings even when their motive class is not superheavy. */
+export function usesSixSideVehicleHull(entity: BaseEntity): boolean {
+    return isVehicleEntity(entity) && (entity.entityType === 'LargeSupportTank' || entity.isSuperHeavy());
+}
+
 export async function drawCompactVehicleDiagram(
     svg: SVGSVGElement,
     entity: BaseEntity,
@@ -659,12 +740,16 @@ export async function drawCompactVehicleDiagram(
     const group = svgElement('g');
     group.setAttribute('class', 'vehicle-paperdoll');
     group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
+    const armor = entity.uniformArmor()?.armor;
+    const armorName = entity.isSupportVehicle() && armor?.armorType.startsWith('SV_BAR_')
+        ? `BAR: ${armor.bar}` : armor?.name;
     addDiagramHeading(
         group,
         'ARMOR DIAGRAM',
-        constructionMaterialSubtitle(entity.uniformArmor()?.armor.name, 'Armor', 'Patchwork Armor'),
+        constructionMaterialSubtitle(armorName, 'Armor', 'Patchwork Armor'),
         box.width,
         0,
+        { subtitleId: 'armorType' },
     );
     const armorValues: Record<string, number> = {};
     const structureValues: Record<string, number> = {};
@@ -673,42 +758,50 @@ export async function drawCompactVehicleDiagram(
         armorValues[code] = location.armor.front;
         structureValues[code] = location.internalPoints;
     }
-    if (isVehicleEntity(entity) && entity.hasDualTurret()) {
-        // MegaMekLab's dual-turret paperdolls retain TU as the authored rear
-        // turret placeholder while the runtime model exposes that location as RT.
-        armorValues['TU'] = armorValues['RT'] ?? armorValues['TU'] ?? 0;
-        structureValues['TU'] = structureValues['RT'] ?? structureValues['TU'] ?? 0;
-    }
     try {
-        const paperdoll = await BipedPaperdollUtil.createDamagePaperdoll(
+        const paperdoll = await PaperdollGenerator.createPaperdoll(
             presentation.assetUrl,
             box.width,
             box.height - 27,
-            armorValues as BipedArmorValues,
-            structureValues,
+            { armor: armorValues, structure: structureValues },
             {
                 className: 'vehicle-paperdoll-layer',
                 centeredHorizontally: false,
                 centeredVertically: false,
                 preserveAuthoredCoordinates: true,
                 scale: false,
-                pipLayout: 'classic',
+                pipLayout: presentation.pipLayout,
                 pipOptions: {
-                    ...paperdollPipOptions('classic', 4, 0.72),
+                    ...paperdollPipOptions(presentation.pipLayout, 4, 0.72),
                     strokeWidth: 0.5,
-                    shape: entity.uniformArmor()?.armor.name.toLowerCase().includes('hardened')
-                        ? 'diamond'
-                        : 'circle',
                 },
-                structurePipOptions: { shape: 'circle' },
             },
         );
         if (presentation.authoredRootTransform !== undefined) {
-            paperdoll.querySelector<SVGGElement>('.naval-paperdoll-root')?.setAttribute(
-                'transform',
-                presentation.authoredRootTransform,
-            );
+            const root = paperdoll.querySelector<SVGGElement>('.naval-paperdoll-root');
+            if (root) {
+                const previousInverse = (root.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix()).inverse();
+                root.setAttribute('transform', presentation.authoredRootTransform);
+                // Keep controls and hit-result anchors aligned with the submarine's transformed art.
+                const change = (root.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix()).multiply(previousInverse);
+                const x = Number(paperdoll.dataset['artX']);
+                const y = Number(paperdoll.dataset['artY']);
+                const width = Number(paperdoll.dataset['artWidth']);
+                const height = Number(paperdoll.dataset['artHeight']);
+                const corners = [[x, y], [x + width, y], [x, y + height], [x + width, y + height]]
+                    .map(([px, py]) => new DOMPoint(px, py).matrixTransform(change));
+                const left = Math.min(...corners.map(point => point.x));
+                const top = Math.min(...corners.map(point => point.y));
+                setAttributes(paperdoll, {
+                    'data-art-x': left,
+                    'data-art-y': top,
+                    'data-art-width': Math.max(...corners.map(point => point.x)) - left,
+                    'data-art-height': Math.max(...corners.map(point => point.y)) - top,
+                });
+            }
         }
+        // The heading's right margin stays clear of the ribbon and every vehicle silhouette.
+        paperdoll.setAttribute('data-random-hit-transform', `translate(${formatNumber(box.width - 28)} 1) scale(0.9)`);
         decoratePaperdollPips(paperdoll);
         revealVehicleMotiveArt(paperdoll, presentation.motiveArtId);
         group.appendChild(paperdoll);

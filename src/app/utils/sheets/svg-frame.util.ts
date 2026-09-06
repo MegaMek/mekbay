@@ -260,7 +260,7 @@ export class SvgFrameUtil {
         // that tip y-position rather than only the top edge.
         const headerMiddleY = Math.max(headerCuts.left.y, headerCuts.right.y);
         const headerMinWidth = this.createHeaderMinWidth(headerCuts);
-        const headerTextLength = this.measureHeaderTextLength(title, headerFontSize);
+        const headerTextLength = showHeader ? this.measureHeaderTextLength(title, headerFontSize) : 0;
         // Move the header right far enough that its left tip is headerBorderInset
         // away from the sloped frame border.
         const headerOffsetX = this.createHeaderSideInsetX(cornerCuts.topLeft, headerMiddleY, this.headerBorderInset);

@@ -51,12 +51,16 @@ export function getEffectivePilotingSkill(
     return effectiveCBTPilotingSkill(summarySkillFacts(unit), pilotingSkill);
 }
 
-function summarySkillFacts(
+export function summarySkillFacts(
     unit: Pick<UnitSummary, 'type' | 'subtype' | 'canAntiMech'>,
 ): CBTSkillUnitFacts {
     return Object.freeze({
         unitType: unit.type,
         unitSubtype: unit.subtype,
-        canAntiMech: unit.canAntiMech === true,
+        // Catalog exports carry gear for conventional infantry and implicit Leg/Swarm attacks for BA.
+        // Loaded entities supply full construction restrictions through classicSkillFactsForEntity.
+        canMakeAntiMekAttacks: unit.type === 'Infantry' && (unit.subtype.endsWith('Conventional Infantry')
+            ? !unit.subtype.startsWith('Mechanized') : unit.canAntiMech),
+        hasAntiMekGear: unit.type === 'Infantry' && unit.subtype.endsWith('Conventional Infantry') && unit.canAntiMech,
     });
 }

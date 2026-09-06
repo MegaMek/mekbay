@@ -17,7 +17,7 @@ scaleCompactBox,
 setAttributes,
 svgElement,
 } from '../record-sheet-svg-rendering';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
 addExactReferenceText,
 addReferenceShade,
@@ -25,10 +25,12 @@ canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 import {
 appendHiddenVehicleDamageTracks,
+compactVehicleSheetTitle,
 drawCompactVehicleChrome,
 drawCompactVehicleCrewPanel,
 drawCompactVehicleDataPanel,
 drawCompactVehicleDiagram,
+usesSixSideVehicleHull,
 } from './vehicle-record-sheet-components';
 
 const NAVAL_MOTIVE_TYPES = new Set(['hydrofoil', 'naval', 'submarine']);
@@ -76,10 +78,10 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
         drawGeneratedFooter(page, profile);
     }
 
-    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
         if (!this.matches(entity)) throw new Error('Naval layout received a non-naval entity');
         const at = (box: Box): Box => scaleCompactBox(svg, box, 756);
-        drawCompactVehicleChrome(svg, 'NAVAL VESSEL RECORD SHEET', 756);
+        drawCompactVehicleChrome(svg, compactVehicleSheetTitle(entity, true), 756);
         const dataBox = at({ x: 0.966, y: 69.857, width: 220.4, height: 283 });
         const dataGroup = drawCompactVehicleDataPanel(
             svg,
@@ -99,11 +101,9 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
         );
         drawNavalCriticalPanel(svg, entity, at({ x: 231.366, y: 165.905, width: 150.1, height: 88.548 }));
         const clusterRacks = clusterTableForEntity(entity).clusterSizes;
-        drawClusterHitsReference(
-            svg,
-            at({ x: 230.4, y: 261.952, width: 154.6, height: 96.048 }),
-            clusterRacks.length > 0 ? clusterRacks : [2],
-        );
+        const referenceBox = at({ x: 230.4, y: 261.952, width: 154.6, height: 96.048 });
+        if (clusterRacks.length > 0) drawClusterHitsReference(svg, referenceBox, clusterRacks);
+        else addFrame(svg, 'NOTES', referenceBox);
         drawNavalHitLocationReference(
             svg,
             at({ x: 0.965, y: 360.988, width: 222.46, height: 214.6 }),
@@ -130,6 +130,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             entity,
             diagramBox,
             {
+                pipLayout: request.pipLayout,
                 assetUrl: this.paperdollAsset(entity),
                 ...(submarine ? {
                     authoredRootTransform: 'matrix(0.95 0 0 0.95 9 35)',
@@ -147,7 +148,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
         const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
         const turret = dualTurret || isVehicleEntity(entity) && entity.hasTurret();
         const turretKind = dualTurret ? 'dualturret' : turret ? 'turret' : 'noturret';
-        const superheavy = isVehicleEntity(entity) && entity.isSuperHeavy();
+        const superheavy = usesSixSideVehicleHull(entity);
         return `/images/paperdolls/naval-${superheavy ? 'superheavy-' : ''}${turretKind}.svg`;
     }
 
@@ -207,14 +208,69 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
         };
         twoLine('Front Armor', armor('FR', 'F'), points.centerX, points.frontY,
             submarine ? 8.811 : 9.525);
-        vertical('Left Side Armor', armor('LS', 'L'), points.leftX, points.leftY, -90);
-        vertical('Right Side Armor', armor('RS', 'R'), points.rightX, points.rightY, 90);
-        if (armor('TU', 'T1', 'T') > 0) {
+        if (usesSixSideVehicleHull(entity)) {
+            this.drawSuperheavySideLabels(labels, armor, submarine);
+        } else {
+            vertical('Left Side Armor', armor('LS', 'L'), points.leftX, points.leftY, -90);
+            vertical('Right Side Armor', armor('RS', 'R'), points.rightX, points.rightY, 90);
+        }
+        if (isVehicleEntity(entity) && entity.hasDualTurret()) {
+            const scale = submarine ? 0.95 : 1.027;
+            const offsetX = submarine ? 9 : 0;
+            const offsetY = submarine ? 35 : 50.47;
+            for (const [label, code, x, y] of [
+                ['Front Turret Armor', 'FT', 448.578, 390.26],
+                ['Rear Turret Armor', 'RT', 529.978, 390.26],
+            ] as const) {
+                const turret = svgElement('g');
+                turret.setAttribute('transform', `matrix(${scale} 0 0 ${scale} ${offsetX} ${offsetY}) translate(-399.18801 -40.430276)`);
+                addText(turret, label, x, y, { size: 7.74, weight: 700, anchor: 'middle' });
+                addText(turret, `( ${armor(code)} )`, x, y + 8.116,
+                    { size: 7.74, weight: 700, anchor: 'middle' }).id = `textArmor_${code}`;
+                labels.appendChild(turret);
+            }
+        } else if (armor('TU', 'T1', 'T') > 0) {
             twoLine('Turret Armor', armor('TU', 'T1', 'T'), points.centerX, points.turretY, points.turretGap);
         }
         twoLine('Rear Armor', armor('RR', 'R'), points.centerX, points.rearY,
             submarine ? 8.811 : 9.525);
         group.appendChild(labels);
+    }
+
+    private drawSuperheavySideLabels(
+        parent: SVGElement,
+        armor: (...codes: readonly string[]) => number,
+        submarine: boolean,
+    ): void {
+        const scale = submarine ? 0.95 : 1.027;
+        const offsetX = submarine ? 9 : 0;
+        const offsetY = submarine ? 35 : 50.47;
+        for (const [rotation, parts] of [
+            ['rotate(90 179.7 398.25)', [
+                ['Front Right Side Armor', 'FRRS', 0, 82.485324],
+                ['Rear Right Side Armor', 'RRRS', 144, 226.485324],
+            ]],
+            ['rotate(-90 426.7 22.4)', [
+                ['Rear Left Side Armor', 'RRLS', 0, 77.28263],
+                ['Front Left Side Armor', 'FRLS', 144, 221.28263],
+            ]],
+        ] as const) {
+            const text = svgElement('text');
+            setAttributes(text, {
+                transform: `matrix(${scale} 0 0 ${scale} ${offsetX} ${offsetY}) translate(-399.18801 -40.430276) ${rotation}`,
+                'font-family': 'Roboto', 'font-size': 7.74, 'font-weight': 700,
+            });
+            for (const [label, location, labelX, counterX] of parts) {
+                const name = svgElement('tspan');
+                setAttributes(name, { x: labelX, y: 0 });
+                name.textContent = label;
+                const counter = svgElement('tspan');
+                setAttributes(counter, { x: counterX, y: 0, id: `textArmor_${location}` });
+                counter.textContent = `( ${armor(location)} )`;
+                text.append(name, counter);
+            }
+            parent.appendChild(text);
+        }
     }
 }
 

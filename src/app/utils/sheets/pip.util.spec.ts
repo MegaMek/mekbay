@@ -1,5 +1,6 @@
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { CapitalShipPipRenderer } from './capital-ship-pip-renderer';
+import { RecordSheetDamageHighlights } from './record-sheet-damage-highlights';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { PipRendererShared } from './pip-renderer.shared';
@@ -15,11 +16,14 @@ import {
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 describe('Pip renderers', () => {
+    let highlights: RecordSheetDamageHighlights;
+    beforeEach(() => { highlights = new RecordSheetDamageHighlights(); });
     const svgRoots: SVGSVGElement[] = [];
     const createProfile = (spans: readonly PipShapeSpan[]): PipShapeProfile =>
         createPipShapeProfile(spans) as PipShapeProfile;
 
     afterEach(() => {
+        highlights.destroy();
         svgRoots.forEach(root => root.remove());
         svgRoots.length = 0;
     });
@@ -89,20 +93,23 @@ describe('Pip renderers', () => {
         const statePath = (className: string): string =>
             pips.querySelector(`.${className}`)?.getAttribute('d') ?? '';
 
-        CapitalShipPipRenderer.renderDamage([pips], 100, 98, 96);
+        CapitalShipPipRenderer.renderDamage(highlights, [pips], 100, 98, 96);
         expect(statePath('capital-pip-state-damaged')).not.toBe('');
         expect(statePath('capital-pip-state-pending-damage')).not.toBe('');
         expect(statePath('capital-pip-state-fresh-damage')).toBe('');
 
-        CapitalShipPipRenderer.renderDamage([pips], 100, 98, 94, true);
+        CapitalShipPipRenderer.renderDamage(highlights, [pips], 100, 98, 94, true);
         expect(statePath('capital-pip-state-pending-damage')).not.toBe('');
         expect(statePath('capital-pip-state-fresh-damage')).not.toBe('');
 
-        CapitalShipPipRenderer.renderDamage([pips], 100, 94, 98, true);
+        CapitalShipPipRenderer.renderDamage(highlights, [pips], 100, 94, 98, true);
         expect(statePath('capital-pip-state-fresh-repair')).not.toBe('');
         expect(statePath('capital-pip-state-pending-repair')).toBe('');
 
-        CapitalShipPipRenderer.renderDamage([pips], 100, 94, 98, true);
+        CapitalShipPipRenderer.renderDamage(highlights, [pips], 100, 94, 98, true);
+        expect(statePath('capital-pip-state-fresh-repair')).not.toBe('');
+        expect(statePath('capital-pip-state-pending-repair')).toBe('');
+        CapitalShipPipRenderer.renderDamage(highlights, [pips], 100, 94, 98, false);
         expect(statePath('capital-pip-state-fresh-repair')).toBe('');
         expect(statePath('capital-pip-state-pending-repair')).not.toBe('');
     });

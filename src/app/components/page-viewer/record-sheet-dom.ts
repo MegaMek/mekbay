@@ -5,29 +5,31 @@ import type {
     CrewStateDefinition,
     UnitConditionDefinition,
 } from '../../models/unit-status-presentation';
+import type { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 
 export function renderRecordSheetPips(
+    highlights: RecordSheetDamageHighlights,
     pips: readonly SVGElement[],
     maximum: number,
     committedRemaining: number,
     previewRemaining: number,
     markChanges = false,
 ): void {
-    const committedDamage = maximum - committedRemaining;
-    const previewDamage = maximum - previewRemaining;
-    pips.forEach((pip, index) => {
-        const ordinal = index + 1;
-        pip.style.display = ordinal <= maximum ? '' : 'none';
-        const damaged = ordinal <= previewDamage;
-        if (pip.classList.contains('damaged') !== damaged) {
+    if (pips.length === 0) return;
+    highlights.render(pips[0], { maximum, committedRemaining, previewRemaining }, markChanges, previousPreview => {
+        const committedDamage = maximum - committedRemaining;
+        const previewDamage = maximum - previewRemaining;
+        pips.forEach((pip, index) => {
+            const ordinal = index + 1;
+            pip.style.display = ordinal <= maximum ? '' : 'none';
+            const damaged = ordinal <= previewDamage;
             pip.classList.toggle('damaged', damaged);
-            pip.classList.toggle('fresh', markChanges);
-        } else {
-            pip.classList.remove('fresh');
-        }
-        pip.classList.toggle('pending',
-            ordinal > Math.min(committedDamage, previewDamage)
-            && ordinal <= Math.max(committedDamage, previewDamage));
+            pip.classList.toggle('fresh', previousPreview !== undefined
+                && damaged !== (ordinal <= maximum - previousPreview));
+            pip.classList.toggle('pending',
+                ordinal > Math.min(committedDamage, previewDamage)
+                && ordinal <= Math.max(committedDamage, previewDamage));
+        });
     });
 }
 

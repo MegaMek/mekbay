@@ -36,6 +36,7 @@ resolveCenterPanelCursorElements,
 } from '../../utils/record-sheet-center-panel.util';
 import { formatRecordSheetWeaponDamageText } from '../../utils/record-sheet-weapon-info.util';
 import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
+import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 import { isMekRecordSheetInventorySupport } from '../../utils/sheets/record-sheet-inventory-equipment';
 import { getSvgTextLines,measureSvgTextCanvas,writeSvgTextLines } from '../../utils/svg-text.util';
 import {
@@ -82,6 +83,7 @@ export function bindMekRecordSheet(
 ): MekRecordSheetBinding {
     assertReviewedBinding(manifest, initial);
     const abort = new AbortController();
+    const highlights = new RecordSheetDamageHighlights();
     const entityUuid = initial.entityUuid;
     let current = initial;
     let firstRender = true;
@@ -226,6 +228,7 @@ export function bindMekRecordSheet(
 
         for (const location of snapshot.locations) {
             renderLocation(
+                highlights,
                 svg,
                 location,
                 issues,
@@ -238,6 +241,7 @@ export function bindMekRecordSheet(
             );
         }
         renderShields(
+            highlights,
             svg,
             snapshot,
             issues,
@@ -247,7 +251,7 @@ export function bindMekRecordSheet(
             markChanges,
         );
         for (const slot of snapshot.criticalSlots) {
-            const selector = `${manifest.selectors.criticalSlot}[loc="${attributeValue(slot.locationCode)}"][slot="${slot.slotIndex}"]`;
+            const selector = `${manifest.selectors.criticalSlot}[data-loc="${attributeValue(slot.locationCode)}"][slot="${slot.slotIndex}"]`;
             const element = svg.querySelector<SVGElement>(selector);
             if (!element) {
                 issues.push(`Missing critical-slot layout ${slot.locationCode}:${slot.slotIndex}`);
@@ -286,7 +290,8 @@ export function bindMekRecordSheet(
             element.classList.toggle('armored', slot.armored);
             element.classList.toggle('disabled', slot.components.some(component => component.status !== 'available'));
             element.querySelectorAll<SVGElement>('.armoredLocPip').forEach(pip => {
-                updateCriticalSlotPip(pip, slot.committedHits > 0, slot.previewHits > 0, markChanges);
+                updateCriticalSlotPip(highlights, pip, slot.committedHits > 0, slot.previewHits > 0,
+                    markChanges && !committedWholeSlotHit);
                 if (committedWholeSlotHit) pip.classList.remove('fresh');
             });
             element.querySelectorAll<SVGElement>('.extraHitPip').forEach(pip => {
@@ -297,10 +302,11 @@ export function bindMekRecordSheet(
                 }
                 pip.removeAttribute('display');
                 updateCriticalSlotPip(
+                    highlights,
                     pip,
                     slot.committedHits > armoredHitCapacity,
                     slot.previewHits > armoredHitCapacity,
-                    markChanges,
+                    markChanges && !committedWholeSlotHit,
                 );
                 if (committedWholeSlotHit) pip.classList.remove('fresh');
             });
@@ -360,6 +366,7 @@ export function bindMekRecordSheet(
         render,
         destroy: () => {
             abort.abort();
+            highlights.destroy();
             const ammoProfile = svg.querySelector<SVGElement>('#ammoProfile');
             ammoProfile?.classList.remove('interactive');
             ammoProfile?.removeAttribute('tabindex');
@@ -605,6 +612,7 @@ function renderHeatSinks(
 }
 
 function renderLocation(
+    highlights: RecordSheetDamageHighlights,
     svg: SVGSVGElement,
     location: MekRecordSheetLocation,
     issues: string[],
@@ -629,24 +637,24 @@ function renderLocation(
         || disabled !== location.committedDisabled
         || structurallyDestroyed !== location.committedStructurallyDestroyed;
     const narc = condition.get('narc');
-    const locationNodes = svg.querySelectorAll<SVGElement>(`[loc="${code}"]`);
+    const locationNodes = svg.querySelectorAll<SVGElement>(`[data-loc="${code}"]`);
     locationNodes.forEach(element => {
         element.classList.toggle('flooded', flooded);
         element.classList.toggle('detached', detached);
         element.classList.toggle('disabledLocation', disabled);
         element.classList.toggle('pending', pending);
     });
-    const criticalGroup = svg.querySelector<SVGElement>(`.critGroup[loc="${code}"]`);
+    const criticalGroup = svg.querySelector<SVGElement>(`.critGroup[data-loc="${code}"]`);
     criticalGroup?.classList.toggle('flooded', flooded);
     criticalGroup?.classList.toggle('detached', detached);
     criticalGroup?.classList.toggle('disabledLocation', disabled);
     criticalGroup?.classList.toggle('locationDestroyed', structurallyDestroyed);
     criticalGroup?.classList.toggle('pending', pending);
-    svg.querySelectorAll<SVGElement>(`.unitLocation[loc="${code}"]`).forEach(element => {
+    svg.querySelectorAll<SVGElement>(`.unitLocation[data-loc="${code}"]`).forEach(element => {
         if (!element.classList.contains('armor') && !element.classList.contains('structure')) return;
         element.classList.toggle('damaged', structurallyDestroyed);
     });
-    svg.querySelectorAll<SVGElement>(`.locationNarcBanner[loc="${code}"]`).forEach(banner => {
+    svg.querySelectorAll<SVGElement>(`.locationNarcBanner[data-loc="${code}"]`).forEach(banner => {
         const count = narc?.committed ?? 0;
         const preview = narc?.preview ?? count;
         banner.setAttribute('display', count > 0 || preview > 0 ? '' : 'none');
@@ -655,7 +663,7 @@ function renderLocation(
         if (text) text.textContent = count > 0 || preview > 0 ? `NARC: ${preview}` : '';
     });
     if (interactive) {
-        svg.querySelectorAll<SVGElement>(`.locationConditionControl[loc="${code}"]`)
+        svg.querySelectorAll<SVGElement>(`.locationConditionControl[data-loc="${code}"]`)
             .forEach(control => bindActivation(control, signal, event => emit(Object.freeze({
                 kind: 'location-condition-menu',
                 locationId: location.locationId,
@@ -663,9 +671,10 @@ function renderLocation(
             }), event)));
     }
 
-    const internalSelector = `.structure.pip[loc="${code}"]`;
+    const internalSelector = `.structure.pip[data-loc="${code}"]`;
     const internalPips = [...svg.querySelectorAll<SVGElement>(internalSelector)];
     renderRecordSheetPips(
+        highlights,
         internalPips,
         location.maximumInternal,
         location.committedRemainingInternal,
@@ -682,15 +691,17 @@ function renderLocation(
         issues.push(`Missing structure pips for ${location.code}: ${internalPips.length}/${location.maximumInternal}`);
     }
     const internalTargets = recordSheetDamageTargets(
-        svg.querySelector<SVGElement>(`.unitLocation.structure[loc="${code}"]`),
-        [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.structure[loc="${code}"]`)],
+        [...svg.querySelectorAll<SVGElement>(`.unitLocation.structure[data-loc="${code}"]`)],
+        [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.structure[data-loc="${code}"]`)],
         internalPips,
     );
     internalTargets.forEach(target => {
-        target.classList.toggle(
-            'damaged',
-            location.previewStructurallyDestroyed || location.previewRemainingInternal === 0,
-        );
+        if (!target.classList.contains('pip')) {
+            target.classList.toggle(
+                'damaged',
+                location.previewStructurallyDestroyed || location.previewRemainingInternal === 0,
+            );
+        }
         target.classList.toggle('selectable', interactive);
         bindButton(target, button => Object.freeze({
             kind: 'internal',
@@ -702,6 +713,7 @@ function renderLocation(
 
     for (const face of location.armor) {
         renderArmorFace(
+            highlights,
             svg,
             face,
             issues,
@@ -715,6 +727,7 @@ function renderLocation(
 }
 
 function renderShields(
+    highlights: RecordSheetDamageHighlights,
     svg: SVGSVGElement,
     snapshot: MekRecordSheetSnapshot,
     issues: string[],
@@ -729,35 +742,38 @@ function renderShields(
     for (const shield of snapshot.shields) {
         const prefix = shield.track === 'absorption' ? 'DA' : 'DC';
         const code = `${prefix}${shield.locationCode}`;
-        const target = svg.querySelector<SVGElement>(
-            `.unitLocation.shield[loc="${attributeValue(code)}"]`,
-        );
-        if (!target) {
+        const targets = [...svg.querySelectorAll<SVGElement>(
+            `.unitLocation.shield[data-loc="${attributeValue(code)}"]`,
+        )];
+        if (targets.length === 0) {
             issues.push(`Missing shield layout ${code}`);
             continue;
         }
-        target.style.display = '';
-        const pips = [...target.querySelectorAll<SVGElement>('.pip.shield')];
+        const pips = [...svg.querySelectorAll<SVGElement>(`.pip.shield[data-loc="${attributeValue(code)}"]`)];
         renderRecordSheetPips(
+            highlights,
             pips,
             shield.maximum,
             shield.committedRemaining,
             shield.previewRemaining,
             markChanges,
         );
-        target.classList.toggle('damaged', shield.previewRemaining === 0);
-        target.classList.toggle('pending', shield.previewRemaining !== shield.committedRemaining);
-        target.classList.toggle('selectable', interactive);
         if (pips.length < shield.maximum) {
             issues.push(`Missing shield pips for ${code}: ${pips.length}/${shield.maximum}`);
         }
-        bindButton(target, button => Object.freeze({
-            kind: 'shield',
-            componentId: shield.componentId,
-            track: shield.track,
-            button,
-            context: context(),
-        }));
+        for (const target of targets) {
+            target.style.display = '';
+            target.classList.toggle('damaged', shield.previewRemaining === 0);
+            target.classList.toggle('pending', shield.previewRemaining !== shield.committedRemaining);
+            target.classList.toggle('selectable', interactive);
+            bindButton(target, button => Object.freeze({
+                kind: 'shield',
+                componentId: shield.componentId,
+                track: shield.track,
+                button,
+                context: context(),
+            }));
+        }
     }
 }
 
@@ -803,6 +819,7 @@ function renderSystemDamage(
 }
 
 function renderArmorFace(
+    highlights: RecordSheetDamageHighlights,
     svg: SVGSVGElement,
     face: MekRecordSheetArmorFace,
     issues: string[],
@@ -817,9 +834,10 @@ function renderArmorFace(
 ): void {
     const code = attributeValue(face.locationCode);
     const rear = face.face === 'rear';
-    const rearSelector = rear ? '[rear]' : ':not([rear])';
-    const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip${rearSelector}[loc="${code}"]`)];
+    const rearSelector = rear ? '[data-rear]' : ':not([data-rear])';
+    const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip${rearSelector}[data-loc="${code}"]`)];
     renderRecordSheetPips(
+        highlights,
         pips,
         face.maximum,
         face.committedRemaining,
@@ -836,12 +854,14 @@ function renderArmorFace(
         issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${face.locationCode}: ${pips.length}/${face.maximum}`);
     }
     const targets = recordSheetDamageTargets(
-        svg.querySelector<SVGElement>(`.unitLocation.armor${rearSelector}[loc="${code}"]`),
-        [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.armor${rearSelector}[loc="${code}"]`)],
+        [...svg.querySelectorAll<SVGElement>(`.unitLocation.armor${rearSelector}[data-loc="${code}"]`)],
+        [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.armor${rearSelector}[data-loc="${code}"]`)],
         pips,
     );
     targets.forEach(target => {
-        target.classList.toggle('damaged', locationDestroyed || face.previewRemaining === 0);
+        if (!target.classList.contains('pip')) {
+            target.classList.toggle('damaged', locationDestroyed || face.previewRemaining === 0);
+        }
         target.classList.toggle('selectable', interactive);
         bindButton(target, button => Object.freeze({
             kind: 'armor',
@@ -865,29 +885,31 @@ function renderDiagramCounter(
 }
 
 function updateCriticalSlotPip(
+    highlights: RecordSheetDamageHighlights,
     pip: SVGElement,
     committedHit: boolean,
     previewHit: boolean,
     markChanges: boolean,
 ): void {
-    if (pip.classList.contains('damaged') !== previewHit) {
-        pip.classList.toggle('damaged', previewHit);
-        pip.classList.toggle('fresh', markChanges);
-    } else {
-        pip.classList.remove('fresh');
-    }
-    pip.classList.toggle('pending', previewHit !== committedHit);
+    renderRecordSheetPips(highlights, [pip], 1, committedHit ? 0 : 1, previewHit ? 0 : 1, markChanges);
 }
 
 function recordSheetDamageTargets(
-    location: SVGElement | null,
+    locations: readonly SVGElement[],
     hitAreas: readonly SVGElement[],
     pips: readonly SVGElement[],
 ): readonly SVGElement[] {
-    if (location) {
+    if (locations.length > 0) {
         hitAreas.forEach(hitArea => { hitArea.style.pointerEvents = 'none'; });
         pips.forEach(pip => { pip.style.pointerEvents = 'none'; });
-        return [location];
+        return locations;
+    }
+    // Paperdoll geometry owns damage interaction even if a location is omitted.
+    if (pips.some(pip => pip.closest('[data-mekbay-paperdoll="1"]'))
+        || hitAreas.some(area => area.closest('[data-mekbay-paperdoll="1"]'))) {
+        hitAreas.forEach(element => { element.style.pointerEvents = 'none'; });
+        pips.forEach(element => { element.style.pointerEvents = 'none'; });
+        return [];
     }
     if (hitAreas.length > 0) {
         hitAreas.forEach(hitArea => { hitArea.style.pointerEvents = ''; });

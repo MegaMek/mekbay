@@ -13,14 +13,14 @@ import { SmallCraftEntity } from '../../../models/entity/entities/aero/small-cra
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import type { EntityMountedEquipment,EntityMountedWeapon,EquipmentBay } from '../../../models/entity/types';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
-import { AmmoEquipment,ammoMatchesWeapon } from '../../../models/equipment.model';
+import { AmmoEquipment, MiscEquipment, ammoMatchesWeapon } from '../../../models/equipment.model';
+import { isPrintableLargeCraftMisc, largeCraftMiscFeatureName } from '../../../models/entity/utils/large-craft-features';
 import {
 isPpcCapacitorEquipment,
 PPC_CAPACITOR_DAMAGE_BONUS,
 PPC_CAPACITOR_HEAT_BONUS,
 } from '../../../models/ppc-capacitor.model';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
-import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import {
 fullRecordSheetLayoutProfile,
@@ -49,13 +49,8 @@ transparentRect,
 type Box,
 } from '../record-sheet-svg-rendering';
 import {
-drawFighterCriticalPanel,
-drawFighterPilotPanel,
-} from './aero-fighter-record-sheet-controls';
-import {
 drawAeroArtworkRegion,
 drawAeroDataPanel,
-drawAeroHeatDataPanel,
 drawAeroMovementCompass,
 drawAeroPaperdoll,
 drawAeroVelocityPanel,
@@ -79,19 +74,13 @@ function isCapitalAeroVessel(entity: AeroEntity): boolean {
         || entity.entityType === 'SpaceStation';
 }
 
-/** Small craft, DropShips, JumpShips, WarShips, and space stations. */
-export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
-    public readonly id = 'large-aero';
-
-    public matches(entity: BaseEntity): boolean {
-        return isAeroEntity(entity) && (
-            entity.entityType === 'SmallCraft'
-            || entity.entityType === 'DropShip'
-            || entity.entityType === 'JumpShip'
-            || entity.entityType === 'WarShip'
-            || entity.entityType === 'SpaceStation'
-        );
-    }
+/** Shared bay tables, reverse-page planning and vessel composition for DropShips and capital ships. */
+export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
+    public abstract readonly id: string;
+    public abstract matches(entity: BaseEntity): boolean;
+    protected abstract sheetTitle(entity: AeroEntity): string;
+    protected abstract dataPanelTitle(entity: AeroEntity): string;
+    protected abstract paperdollAsset(entity: AeroEntity): string;
 
     public profile(
         entity: BaseEntity,
@@ -136,11 +125,10 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         const svg = createRoot(page.width, page.height, entity.entityType.toLowerCase());
         const at = (box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }) =>
             scalePageBox(page, box);
-        const smallCraft = entity.entityType === 'SmallCraft';
         const capital = isCapitalAeroVessel(entity);
 
         drawPageChrome(svg, this.sheetTitle(entity), page, false);
-        const dataPanelHeight = smallCraft ? 310.143 : 420.257;
+        const dataPanelHeight = 420.257;
         const dataPanelBox = at({
             x: 18.966,
             y: 87.857,
@@ -151,15 +139,14 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             ? drawCapitalAeroDataPanel(svg, entity, dataPanelBox, content)
             : drawAeroDataPanel(svg, entity, dataPanelBox, dataPanelHeight, {
                 panelTitle: this.dataPanelTitle(entity),
-                identity: smallCraft ? 'small-craft' : 'large-vessel',
-                inventoryRows: smallCraft
-                    ? this.smallCraftInventoryRows(entity)
-                    : this.standardBayInventoryRows(entity),
+                identity: 'large-vessel',
+                inventoryRows: this.standardBayInventoryRows(entity),
                 flowCargoAfterInventory: true,
-                showAmmoSummary: smallCraft,
+                showAmmoSummary: false,
                 stationary: false,
+                featureText: capitalAeroFeatures(entity),
             });
-        const eraY = smallCraft ? 285.25 : 395.65;
+        const eraY = 395.65;
         await appendRecordSheetEraIcon(svg, dataGroup, entity.year(), {
             x: 158.563 * dataPanelBox.width / 222.4,
             y: eraY * dataPanelBox.height / dataPanelHeight,
@@ -170,32 +157,24 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             x: 249.651,
             y: 18,
             width: 344,
-            height: smallCraft ? 440 : 450,
-        }), smallCraft ? 440 : 450, {
+            height: 450,
+        }), 450, {
             assetUrl: this.paperdollAsset(entity),
             capitalFallback: capital,
-            pipLayout: capital ? 'capital-grid' : 'classic',
+            pipLayout: request.pipLayout,
         });
         drawLargeAeroDiagramHeader(svg, capital, page);
         drawAeroMovementCompass(svg, at({ x: 249.651, y: 456.4, width: 90, height: 50 }));
-        if (smallCraft) {
-            drawAeroArtworkRegion(svg, entity, at({ x: 43, y: 404, width: 193, height: 96 }));
-            drawFighterPilotPanel(svg, at({ x: 251.4, y: 509.4, width: 142.6, height: 93.934 }));
-            drawFighterCriticalPanel(svg, entity, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
-            drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
-            drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
+        if (entity.entityType === 'SpaceStation') {
+            drawNotesPanel(svg, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
+            drawNotesPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
         } else {
-            if (entity.entityType === 'SpaceStation') {
-                drawNotesPanel(svg, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
-                drawNotesPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
-            } else {
-                drawAeroArtworkRegion(svg, entity, at({ x: 43, y: 510, width: 193, height: 84.72 }));
-                drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
-            }
-            drawLargeAeroPilotPanel(svg, entity, at({ x: 252.366, y: 509.4, width: 142.6, height: 93.934 }));
-            drawLargeAeroCriticalPanel(svg, entity, at({ x: 405.966, y: 509.4, width: 180.5, height: 166.104 }));
-            drawLargeAeroHeatPanel(svg, entity, at({ x: 405.966, y: 675.29, width: 180.5, height: 79.71 }));
+            drawAeroArtworkRegion(svg, at({ x: 43, y: 510, width: 193, height: 84.72 }));
+            drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
         }
+        drawLargeAeroPilotPanel(svg, entity, at({ x: 252.366, y: 509.4, width: 142.6, height: 93.934 }));
+        drawLargeAeroCriticalPanel(svg, entity, at({ x: 405.966, y: 509.4, width: 180.5, height: 166.104 }));
+        drawLargeAeroHeatPanel(svg, entity, at({ x: 405.966, y: 675.29, width: 180.5, height: 79.71 }));
         if (entity.tracksHeat()) {
             drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
         }
@@ -244,111 +223,6 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         return svg;
     }
 
-    private sheetTitle(entity: AeroEntity): string {
-        switch (entity.entityType) {
-            case 'SmallCraft':
-                return `${entity.getMotiveTypeAsString()?.toUpperCase() ?? 'AERODYNE'} SMALL CRAFT RECORD SHEET`;
-            case 'DropShip':
-                return `${entity.getMotiveTypeAsString()?.toUpperCase() ?? 'AERODYNE'} DROPSHIP RECORD SHEET`;
-            case 'JumpShip': return 'JUMPSHIP RECORD SHEET';
-            case 'WarShip': return 'WARSHIP RECORD SHEET';
-            case 'SpaceStation': return 'SPACE STATION RECORD SHEET';
-            default: throw new Error(`Unsupported large-aero sheet type: ${entity.entityType}`);
-        }
-    }
-
-    private dataPanelTitle(entity: AeroEntity): string {
-        switch (entity.entityType) {
-            case 'SmallCraft': return 'CRAFT DATA';
-            case 'DropShip': return 'DROPSHIP DATA';
-            case 'JumpShip': return 'JUMPSHIP DATA';
-            case 'WarShip': return 'WARSHIP DATA';
-            case 'SpaceStation': return 'SPACE STATION DATA';
-            default: throw new Error(`Unsupported large-aero data panel: ${entity.entityType}`);
-        }
-    }
-
-    private paperdollAsset(entity: AeroEntity): string {
-        const spheroid = (entity.getMotiveTypeAsString() ?? '').toLowerCase().includes('spheroid');
-        switch (entity.entityType) {
-            case 'SmallCraft':
-                return `/images/paperdolls/smallcraft-${spheroid ? 'spheroid' : 'aerodyne'}.svg`;
-            case 'DropShip':
-                return `/images/paperdolls/dropship-${spheroid ? 'spheroid' : 'aerodyne'}.svg`;
-            case 'JumpShip': return '/images/paperdolls/jumpship.svg';
-            case 'WarShip': return '/images/paperdolls/warship.svg';
-            case 'SpaceStation': return '/images/paperdolls/spacestation.svg';
-            default: throw new Error(`Unsupported large-aero paperdoll: ${entity.entityType}`);
-        }
-    }
-
-    /** Small Craft use one standard-scale record-sheet row per mounted weapon. */
-    private smallCraftInventoryRows(entity: AeroEntity): readonly AeroDataInventoryRow[] {
-        interface ProjectedMount {
-            readonly mount: ReturnType<AeroEntity['rangedWeapons']>[number];
-            readonly row: AeroDataInventoryRow;
-            readonly ranges: readonly number[];
-            readonly locationOrder: number;
-        }
-        const locationOrder = new Map(entity.componentLocationOrder().map((location, index) => [location, index]));
-        const projected = entity.rangedWeapons().map((mount, index): ProjectedMount => {
-            const ranges = aerospaceAttackValues(mount.equipment, null);
-            const notation = formatRecordSheetWeaponDamageText(mount.equipment, '').trim();
-            const displayName = mount.displayName();
-            const name = notation && !displayName.includes(notation)
-                ? `${displayName} ${notation}`
-                : displayName;
-            const occupied = mount.getOccupiedLocations();
-            const sourceLocation = occupied[0] ?? mount.location;
-            const code = entity.componentLocationLabel(sourceLocation).toUpperCase();
-            return {
-                mount,
-                ranges,
-                locationOrder: locationOrder.get(sourceLocation) ?? Number.MAX_SAFE_INTEGER,
-                row: {
-                    id: `generated-small-craft-inventory-row@${index}`,
-                    kind: 'equipment',
-                    quantity: 1,
-                    nameLines: [name],
-                    location: ({ LS: 'LWG', RS: 'RWG' } as Readonly<Record<string, string>>)[code]
-                        ?? (code || '—'),
-                    heat: String(mount.equipment.heat),
-                    damageByRange: ranges.map(value => value > 0 ? String(value) : '—') as
-                        [string, string, string, string],
-                    componentIds: [mount.mountId],
-                },
-            };
-        });
-        projected.sort((left, right) => {
-            const lastRange = (values: readonly number[]): number => {
-                for (let index = values.length - 1; index >= 0; index--) {
-                    if ((values[index] ?? 0) > 0) return index;
-                }
-                return -1;
-            };
-            const rangeDelta = lastRange(right.ranges) - lastRange(left.ranges);
-            if (rangeDelta !== 0) return rangeDelta;
-            for (let index = 0; index < 4; index++) {
-                const damageDelta = (right.ranges[index] ?? 0) - (left.ranges[index] ?? 0);
-                if (damageDelta !== 0) return damageDelta;
-            }
-            if (left.mount.rearMounted !== right.mount.rearMounted) return left.mount.rearMounted ? 1 : -1;
-            return left.locationOrder - right.locationOrder;
-        });
-
-        const implicit = entity.implicitSystemEquipment().map((equipment, index): AeroDataInventoryRow => ({
-            id: `generated-small-craft-system-row@${index}`,
-            kind: 'equipment',
-            quantity: 1,
-            nameLines: [`${equipment.name}${/\bECM\b/iu.test(equipment.name) ? ' [E]' : ''}`],
-            location: 'NOS',
-            heat: '—',
-            damageByRange: ['—', '—', '—', '—'],
-            componentIds: [],
-        }));
-        return [...projected.map(entry => entry.row), ...implicit];
-    }
-
     /**
      * Standard-scale large-craft rows are weapon bays, not fighter-style mount rows.
      * This deliberately mirrors MegaMekLab's per-weapon-type rounding and symmetric
@@ -357,6 +231,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
     private standardBayInventoryRows(entity: AeroEntity): readonly AeroDataInventoryRow[] {
         interface ProjectedBay {
             row: AeroDataInventoryRow;
+            configurationKey: string;
             sortOrder: number;
             locationCode: string;
             rearMounted: boolean;
@@ -371,6 +246,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             ).toUpperCase();
             projected.push({
                 row,
+                configurationKey: largeAeroBayConfigurationKey(entity, bay, weapons),
                 sortOrder: this.largeAeroBaySortOrder(locationCode, weapons[0].rearMounted),
                 locationCode,
                 rearMounted: weapons[0].rearMounted,
@@ -378,57 +254,9 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         }
         const sorted = projected.sort((left, right) => left.sortOrder - right.sortOrder);
         const rows = entity.entityType === 'DropShip'
-            ? this.condenseDropShipSideBays(sorted)
+            ? condenseSymmetricAeroBays(sorted)
             : sorted;
         return rows.map((projection, index) => ({ ...projection.row, id: `bay_${index + 1}` }));
-    }
-
-    private condenseDropShipSideBays<T extends Readonly<{
-        row: AeroDataInventoryRow;
-        sortOrder: number;
-        locationCode: string;
-        rearMounted: boolean;
-    }>>(bays: readonly T[]): readonly T[] {
-        const consumed = new Set<number>();
-        const result: T[] = [];
-        const signature = (bay: T): string => JSON.stringify({
-            nameLines: bay.row.nameLines,
-            heat: bay.row.heat,
-            damageByRange: bay.row.damageByRange,
-            rearMounted: bay.rearMounted,
-        });
-        for (let index = 0; index < bays.length; index++) {
-            if (consumed.has(index)) continue;
-            const bay = bays[index];
-            if (bay.locationCode !== 'LS' && bay.locationCode !== 'RS') {
-                result.push(bay);
-                continue;
-            }
-            const opposite = bay.locationCode === 'LS' ? 'RS' : 'LS';
-            const match = bays.findIndex((candidate, candidateIndex) =>
-                candidateIndex > index
-                && !consumed.has(candidateIndex)
-                && candidate.locationCode === opposite
-                && signature(candidate) === signature(bay));
-            if (match < 0) {
-                result.push(bay);
-                continue;
-            }
-            consumed.add(match);
-            const counterpart = bays[match];
-            const left = bay.locationCode === 'LS' ? bay : counterpart;
-            const right = bay.locationCode === 'RS' ? bay : counterpart;
-            result.push({
-                ...left,
-                row: {
-                    ...left.row,
-                    location: `${left.row.location}/${right.row.location}`,
-                    componentIds: [...left.row.componentIds, ...right.row.componentIds],
-                },
-                sortOrder: Math.min(left.sortOrder, right.sortOrder),
-            });
-        }
-        return result.sort((left, right) => left.sortOrder - right.sortOrder);
     }
 
     private standardBayRow(
@@ -546,6 +374,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
 }
 
 interface CapitalAeroInventoryRow {
+    readonly configurationKey: string;
     readonly nameLines: readonly string[];
     readonly location: string;
     readonly heat: number;
@@ -553,6 +382,63 @@ interface CapitalAeroInventoryRow {
     readonly componentIds: readonly string[];
     readonly sortOrder: number;
     readonly footnote?: string;
+}
+
+/** One printed row represents equal opposite bays, retaining both sets of mount controls. */
+function condenseSymmetricAeroBays<T extends Readonly<{
+    row: Readonly<{
+        nameLines: readonly string[];
+        location: string;
+        heat: string | number;
+        damageByRange: readonly string[];
+        componentIds: readonly string[];
+        footnote?: string;
+    }>;
+    sortOrder: number;
+    locationCode: string;
+    rearMounted: boolean;
+    configurationKey: string;
+}>>(bays: readonly T[]): readonly T[] {
+    const opposites: Readonly<Record<string, string>> = {
+        LS: 'RS', RS: 'LS', FLS: 'FRS', FRS: 'FLS',
+        LBS: 'RBS', RBS: 'LBS', ALS: 'ARS', ARS: 'ALS',
+    };
+    const signature = (bay: T): string => JSON.stringify({
+        nameLines: bay.row.nameLines,
+        heat: bay.row.heat,
+        damageByRange: bay.row.damageByRange,
+        rearMounted: bay.rearMounted,
+        footnote: bay.row.footnote,
+        configurationKey: bay.configurationKey,
+    });
+    const consumed = new Set<number>();
+    const result: T[] = [];
+    for (let index = 0; index < bays.length; index++) {
+        if (consumed.has(index)) continue;
+        const bay = bays[index];
+        const opposite = opposites[bay.locationCode];
+        const match = opposite ? bays.findIndex((candidate, candidateIndex) =>
+            candidateIndex > index && !consumed.has(candidateIndex)
+            && candidate.locationCode === opposite && signature(candidate) === signature(bay)) : -1;
+        if (match < 0) {
+            result.push(bay);
+            continue;
+        }
+        consumed.add(match);
+        const counterpart = bays[match];
+        const left = bay.locationCode.includes('L') ? bay : counterpart;
+        const right = left === bay ? counterpart : bay;
+        result.push({
+            ...left,
+            row: {
+                ...left.row,
+                location: `${left.row.location}/${right.row.location}`,
+                componentIds: [...left.row.componentIds, ...right.row.componentIds],
+            },
+            sortOrder: Math.min(left.sortOrder, right.sortOrder),
+        });
+    }
+    return result.sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 interface LargeAeroPageContent {
@@ -564,21 +450,6 @@ interface LargeAeroPageContent {
 }
 
 function largeAeroPageContent(entity: AeroEntity): LargeAeroPageContent {
-    if (entity.entityType === 'SmallCraft') {
-        return Object.freeze({
-            capitalRows: Object.freeze([]),
-            standardRows: Object.freeze([]),
-            gravDecks: Object.freeze([]),
-            cargoLines: Object.freeze([]),
-            plan: planLargeAeroRecordSheetPages({
-                capitalWeaponLines: 0,
-                standardWeaponLines: 0,
-                hasAr10: false,
-                gravDeckCount: 0,
-                transportBayLines: 0,
-            }),
-        });
-    }
     const capitalRows = capitalAeroInventoryRows(entity, 'capital');
     const standardRows = capitalAeroInventoryRows(entity, 'standard');
     const gravDecks = entity instanceof JumpShipEntity ? entity.gravDecks() : [];
@@ -649,9 +520,7 @@ function drawCapitalAeroDataPanel(
     const facts: readonly [string, string, number, string, string?][] = [
         ['Tonnage:', formatWholeNumber(entity.tonnage()), 38, 'tonnage', 'tonnage'],
         ['Tech Base:', formatTechBase(entity.techBase(), entity.mixedTech()), 47, 'techBase', 'tech-base'],
-        ...stationary ? [] : [[
-            'Role:', entity.role() || 'None', 56, 'role', 'role',
-        ] as [string, string, number, string, string]],
+        ['Role:', entity.role() || 'None', 56, 'role', 'role'],
     ];
     facts.forEach(([label, value, baseline, id, field]) => {
         addText(group, label, x(115.7), y(baseline), { size: font(7.7), weight: 700 });
@@ -1221,6 +1090,7 @@ function capitalAeroInventoryRows(
                 : `${formatWholeNumber(bayDamage[rangeIndex])} (${formatWholeNumber(value)})`;
         }) as [string, string, string, string];
         const row: CapitalAeroInventoryRow = {
+            configurationKey: largeAeroBayConfigurationKey(entity, bay, weapons),
             nameLines,
             location: location.label,
             heat: weapons.reduce((total, mount) => total + mount.equipment.heat
@@ -1233,7 +1103,30 @@ function capitalAeroInventoryRows(
         };
         rows.push(row);
     }
-    return rows.sort((left, right) => left.sortOrder - right.sortOrder);
+    return condenseSymmetricAeroBays(rows.map(row => ({
+        row,
+        locationCode: row.location,
+        sortOrder: row.sortOrder,
+        rearMounted: false,
+        configurationKey: row.configurationKey,
+    }))).map(({ row }) => row);
+}
+
+/** Printed rounds omit munition identity; symmetric bays must still carry equal loads. */
+function largeAeroBayConfigurationKey(
+    entity: AeroEntity,
+    bay: EquipmentBay,
+    weapons: readonly EntityMountedWeapon[],
+): string {
+    const weaponTypes = [...new Set(weapons.map(mount => mount.equipment))];
+    return JSON.stringify(weaponTypes.map(weapon => ({
+        weapon: weapon.id,
+        enhancements: weapons.filter(mount => mount.equipment === weapon)
+            .map(mount => entity.getLinkingMount(mount)?.equipment?.id ?? '').sort(),
+        ammo: bay.ammo.filter(mount => mount.equipment instanceof AmmoEquipment
+            && ammoMatchesWeapon(weapon, mount.equipment) && (mount.getAmmoShots() ?? 0) > 0)
+            .map(mount => JSON.stringify([mount.equipment!.id, mount.getAmmoShots()])).sort(),
+    })).sort((left, right) => left.weapon.localeCompare(right.weapon)));
 }
 
 function capitalAeroEnhancementBonus(
@@ -1264,16 +1157,11 @@ function capitalAeroInventoryLocation(
     locations: readonly string[],
 ): { readonly label: string; readonly sortOrder: number } {
     const code = entity.componentLocationLabel(locations[0] ?? '').toUpperCase();
-    const paired = ({
-        FLS: 'FLS/FRS', FRS: 'FLS/FRS',
-        LBS: 'LBS/RBS', RBS: 'LBS/RBS',
-        ALS: 'ALS/ARS', ARS: 'ALS/ARS',
-    } as Readonly<Record<string, string>>)[code] ?? (code || '—');
     const orderByLocation: Readonly<Record<string, number>> = {
-        NOS: 0, NOSE: 0, 'FLS/FRS': 1, 'LBS/RBS': 2, 'ALS/ARS': 3, AFT: 4,
+        NOS: 0, NOSE: 0, FLS: 1, FRS: 1, LBS: 2, RBS: 2, ALS: 3, ARS: 3, AFT: 4,
     };
-    const order = orderByLocation[paired] ?? 5;
-    return { label: paired, sortOrder: order };
+    const order = orderByLocation[code] ?? 5;
+    return { label: code || '—', sortOrder: order };
 }
 
 function capitalAeroCargoLines(entity: AeroEntity): readonly string[] {
@@ -1288,14 +1176,21 @@ function capitalAeroCargoLines(entity: AeroEntity): readonly string[] {
 function capitalAeroFeatures(entity: AeroEntity): string {
     const features: string[] = [];
     if (entity instanceof JumpShipEntity && entity.lithiumFusion()) features.push('LF Battery');
-    if ((entity instanceof JumpShipEntity && entity.hpg())
-        || entity.equipment().some(mount => isMobileHpgEquipment(mount.equipment))) {
+    const counts = new Map<string, number>();
+    for (const mount of entity.equipment()) {
+        if (!(mount.equipment instanceof MiscEquipment) || !isPrintableLargeCraftMisc(mount.equipment)) continue;
+        const label = largeCraftMiscFeatureName(mount.equipment, mount.size ?? 1);
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    for (const [label, count] of counts) features.push(count > 1 ? `${count}x${label}` : label);
+    if (entity instanceof JumpShipEntity && entity.hpg()
+        && !entity.equipment().some(mount => isMobileHpgEquipment(mount.equipment))) {
         features.push('Mobile HPG');
     }
     return features.join(', ');
 }
 
-function drawLargeAeroDiagramHeader(
+export function drawLargeAeroDiagramHeader(
     svg: SVGSVGElement,
     capital: boolean,
     page: RecordSheetLayoutRequest['page'],
@@ -1315,6 +1210,7 @@ function drawLargeAeroDiagramHeader(
         83.991,
         0,
         {
+            showSubtitleRibbon: false,
             titleWidth: 83.991,
             titleX: 0,
             titleY: 0,
@@ -1485,7 +1381,9 @@ function drawLargeAeroPilotPanel(svg: SVGSVGElement, entity: AeroEntity, box: Bo
     facts.forEach(([label, value, left, baseline, id]) => {
         addText(group, label, x(left), y(baseline), { size: font(6.76), weight: 700 });
         const valueX = left < 70 ? 61.84 : 128.64;
-        const node = addText(group, String(value), x(valueX), y(baseline), { size: font(6.76) });
+        const node = addText(group, String(value), x(valueX), y(baseline), {
+            size: font(6.76), anchor: 'end', maxWidth: x(17),
+        });
         node.id = id;
     });
     const boats = addText(
@@ -1493,7 +1391,7 @@ function drawLargeAeroPilotPanel(svg: SVGSVGElement, entity: AeroEntity, box: Bo
         `Life Boats/Escape Pods: ${personnel.lifeboats}/${personnel.escapePods}`,
         x(72.8),
         y(89.539),
-        { size: font(6.76), weight: 700, maxWidth: x(66) },
+        { size: font(6.76), weight: 700, anchor: 'middle', maxWidth: x(130) },
     );
     boats.id = 'lifeBoatsEscapePods';
     const state = transparentRect(x(2), y(17), x(138), y(74), 'crewStateButton');
@@ -1618,9 +1516,13 @@ function largeAeroHeatByArc(entity: AeroEntity): {
     entity.rangedWeapons().forEach(mount => {
         const locations = mount.getOccupiedLocations();
         const divisor = Math.max(1, locations.length);
+        const enhancement = entity.getLinkingMount(mount)?.equipment;
+        const heat = mount.equipment.heat * (mount.equipment.getRapidFireCount() || 1)
+            + (isPpcCapacitorEquipment(enhancement) ? PPC_CAPACITOR_HEAT_BONUS : 0);
         locations.forEach(location => {
-            const code = entity.componentLocationLabel(location).toUpperCase().replaceAll(/[^A-Z]/gu, '');
-            byCode.set(code, (byCode.get(code) ?? 0) + mount.equipment.heat / divisor);
+            let code = entity.componentLocationLabel(location).toUpperCase().replaceAll(/[^A-Z]/gu, '');
+            if (mount.rearMounted && ['LS', 'LW', 'LWG', 'RS', 'RW', 'RWG'].includes(code)) code += 'R';
+            byCode.set(code, (byCode.get(code) ?? 0) + heat / divisor);
         });
     });
     const sum = (...codes: readonly string[]): number => Math.round(codes.reduce(
@@ -1633,8 +1535,8 @@ function largeAeroHeatByArc(entity: AeroEntity): {
         rightFore: sum('RS', 'RW', 'RWG', 'FRS'),
         leftBroadside: sum('LBS'),
         rightBroadside: sum('RBS'),
-        leftAft: sum('LWR', 'LSR', 'ALS'),
-        rightAft: sum('RWR', 'RSR', 'ARS'),
+        leftAft: sum('LWR', 'LWGR', 'LSR', 'ALS'),
+        rightAft: sum('RWR', 'RWGR', 'RSR', 'ARS'),
         aft: sum('AFT', 'REAR'),
     };
 }

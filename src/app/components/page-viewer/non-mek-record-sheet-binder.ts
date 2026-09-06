@@ -27,12 +27,15 @@ unitConditionControls,
 } from '../../models/unit-status-presentation';
 import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
+import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 import {
 createInfantryStrengthDisplay,
 INFANTRY_STRENGTH_DISPLAY_ID,
 type InfantryStrengthDisplay,
 } from '../../utils/sheets/infantry-strength-display';
 import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
+import { renderHandheldWeaponAmmoPips } from '../../utils/sheets/layouts/handheld-weapon-record-sheet-layout';
+import { formatRecordSheetTonnage } from '../../utils/sheets/record-sheet-svg-rendering';
 import {
 renderRecordSheetConditions,
 renderRecordSheetCrewState,
@@ -54,6 +57,7 @@ export function bindNonMekRecordSheet(
     initialEquipmentPanel?: EquipmentPanelSnapshot | null,
 ): NonMekRecordSheetBinding {
     const abort = new AbortController();
+    const highlights = new RecordSheetDamageHighlights();
     const entityUuid = initial.entityUuid;
     let current = initial;
     let currentEquipmentPanel = initialEquipmentPanel ?? null;
@@ -95,25 +99,45 @@ export function bindNonMekRecordSheet(
         const issues: string[] = [];
         const markChanges = !firstRender;
         renderIdentity(svg, snapshot);
+        if (onInteraction) {
+            svg.querySelectorAll<SVGElement>('[data-mekbay-random-hit="1"]').forEach(element => {
+                if (element.dataset['mekbayEntityBound'] === '1') return;
+                element.dataset['mekbayEntityBound'] = '1';
+                element.classList.add('interactive');
+                element.setAttribute('tabindex', '0');
+                const activate = (event: Event): void => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onInteraction(Object.freeze({ kind: 'random-hit', element, context: current.editContext }), event);
+                };
+                element.addEventListener('pointerdown', event => {
+                    if (event instanceof PointerEvent && event.button === 0) activate(event);
+                }, { signal: abort.signal });
+                element.addEventListener('keydown', event => {
+                    if (event instanceof KeyboardEvent && (event.key === 'Enter' || event.key === ' ')) activate(event);
+                }, { signal: abort.signal });
+            });
+        }
         renderConditions(svg, snapshot, bind, () => current);
         renderCrew(svg, snapshot, bind, () => current);
         for (const location of snapshot.locations) {
             if (location.soldierPips === true) {
-                infantryDisplay = renderInfantryStrength(svg, location, snapshot, infantryDisplay, issues, bind,
+                infantryDisplay = renderInfantryStrength(highlights, svg, location, snapshot, infantryDisplay, issues, bind,
                     () => current.editContext, markChanges);
                 continue;
             }
             if (!location.sheetCode) continue;
             if (location.combinedPips === true) {
-                renderCombinedLocation(svg, location, issues, bind, () => current.editContext, markChanges);
+                renderCombinedLocation(highlights, svg, location, issues, bind, () => current.editContext, markChanges);
                 continue;
             }
             const code = attributeValue(location.sheetCode);
-            const internalPips = [...svg.querySelectorAll<SVGElement>(`.structure.pip[loc="${code}"]`)];
+            const internalPips = [...svg.querySelectorAll<SVGElement>(`.structure.pip[data-loc="${code}"]`)];
             const internalGrids = [
-                ...svg.querySelectorAll<SVGElement>(`.capital-pip-grid.structure[loc="${code}"]`),
+                ...svg.querySelectorAll<SVGElement>(`.capital-pip-grid.structure[data-loc="${code}"]`),
             ];
             renderRecordSheetPips(
+                highlights,
                 internalPips,
                 location.maximumInternal,
                 location.remainingInternal,
@@ -121,6 +145,7 @@ export function bindNonMekRecordSheet(
                 markChanges,
             );
             CapitalShipPipRenderer.renderDamage(
+                highlights,
                 internalGrids,
                 location.maximumInternal,
                 location.remainingInternal,
@@ -132,12 +157,14 @@ export function bindNonMekRecordSheet(
                 issues.push(`Missing structure pips for ${location.sheetCode}: ${internalCapacity}/${location.maximumInternal}`);
             }
             const internalTargets = interactionTargets(
-                svg.querySelector<SVGElement>(`.unitLocation.structure[loc="${code}"]`),
-                [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.structure[loc="${code}"]`)],
+                [...svg.querySelectorAll<SVGElement>(`.unitLocation.structure[data-loc="${code}"]`)],
+                [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.structure[data-loc="${code}"]`)],
                 internalPips,
             );
             internalTargets.forEach(target => {
-                target.classList.toggle('damaged', location.previewRemainingInternal === 0);
+                if (!target.classList.contains('pip')) {
+                    target.classList.toggle('damaged', location.previewRemainingInternal === 0);
+                }
                 bind(target, () => Object.freeze({
                     kind: 'internal',
                     locationId: location.locationId,
@@ -147,6 +174,7 @@ export function bindNonMekRecordSheet(
 
             for (const face of location.armor) {
                 renderArmorFace(
+                    highlights,
                     svg,
                     location.sheetCode,
                     face,
@@ -186,6 +214,7 @@ export function bindNonMekRecordSheet(
         render,
         destroy: () => {
             abort.abort();
+            highlights.destroy();
             svg.querySelector('#ammoProfile > .inventoryEntryButton')?.remove();
             svg.querySelectorAll<SVGElement>('[data-mekbay-entity-bound="1"]').forEach(element => {
                 delete element.dataset['mekbayEntityBound'];
@@ -368,6 +397,7 @@ function damageTrackElement(svg: SVGSVGElement, sheetId: string): SVGElement | n
 }
 
 function renderInfantryStrength(
+    highlights: RecordSheetDamageHighlights,
     svg: SVGSVGElement,
     location: NonMekRecordSheetLocation,
     snapshot: NonMekRecordSheetSnapshot,
@@ -385,7 +415,7 @@ function renderInfantryStrength(
         issues.push('Missing generated infantry strength display');
         return existing;
     }
-    const display = existing ?? createInfantryStrengthDisplay(svg, host);
+    const display = existing ?? createInfantryStrengthDisplay(svg, host, highlights);
     display.render(snapshot.infantry, {
         maximum: location.maximumInternal,
         committedRemaining: location.remainingInternal,
@@ -411,6 +441,7 @@ function renderInfantryStrength(
 }
 
 function renderCombinedLocation(
+    highlights: RecordSheetDamageHighlights,
     svg: SVGSVGElement,
     location: NonMekRecordSheetLocation,
     issues: string[],
@@ -424,10 +455,11 @@ function renderCombinedLocation(
     const face = location.armor.find(candidate => candidate.face === 'front');
     if (!face) return;
     const code = attributeValue(location.sheetCode);
-    const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip:not([rear])[loc="${code}"]`)];
+    const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip:not([data-rear])[data-loc="${code}"]`)];
     const internalPips = pips.slice(0, location.maximumInternal);
     const armorPips = pips.slice(location.maximumInternal);
     renderRecordSheetPips(
+        highlights,
         internalPips,
         location.maximumInternal,
         location.remainingInternal,
@@ -435,6 +467,7 @@ function renderCombinedLocation(
         markChanges,
     );
     renderRecordSheetPips(
+        highlights,
         armorPips,
         face.maximum,
         location.remainingInternal === 0 ? 0 : face.remaining,
@@ -455,15 +488,17 @@ function renderCombinedLocation(
         }));
     });
     const armorTargets = interactionTargets(
-        svg.querySelector<SVGElement>(`.unitLocation.armor:not([rear])[loc="${code}"]`),
+        [...svg.querySelectorAll<SVGElement>(`.unitLocation.armor:not([data-rear])[data-loc="${code}"]`)],
         [],
         armorPips,
     );
     armorTargets.forEach(target => {
-        target.classList.toggle(
-            'damaged',
-            location.previewRemainingInternal === 0 || face.previewRemaining === 0,
-        );
+        if (!target.classList.contains('pip')) {
+            target.classList.toggle(
+                'damaged',
+                location.previewRemainingInternal === 0 || face.previewRemaining === 0,
+            );
+        }
         bind(target, () => Object.freeze({
             kind: 'armor',
             faceId: face.faceId,
@@ -474,6 +509,7 @@ function renderCombinedLocation(
 }
 
 function renderArmorFace(
+    highlights: RecordSheetDamageHighlights,
     svg: SVGSVGElement,
     sheetCode: string,
     face: NonMekRecordSheetArmorFace,
@@ -487,13 +523,14 @@ function renderArmorFace(
 ): void {
     const code = attributeValue(sheetCode);
     const rear = face.face === 'rear';
-    const rearSelector = rear ? '[rear]' : ':not([rear])';
-    const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip${rearSelector}[loc="${code}"]`)];
+    const rearSelector = rear ? '[data-rear]' : ':not([data-rear])';
+    const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip${rearSelector}[data-loc="${code}"]`)];
     const grids = [
-        ...svg.querySelectorAll<SVGElement>(`.capital-pip-grid.armor${rearSelector}[loc="${code}"]`),
+        ...svg.querySelectorAll<SVGElement>(`.capital-pip-grid.armor${rearSelector}[data-loc="${code}"]`),
     ];
-    renderRecordSheetPips(pips, face.maximum, face.remaining, face.previewRemaining, markChanges);
+    renderRecordSheetPips(highlights, pips, face.maximum, face.remaining, face.previewRemaining, markChanges);
     CapitalShipPipRenderer.renderDamage(
+        highlights,
         grids,
         face.maximum,
         face.remaining,
@@ -505,12 +542,14 @@ function renderArmorFace(
         issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${sheetCode}: ${capacity}/${face.maximum}`);
     }
     const targets = interactionTargets(
-        svg.querySelector<SVGElement>(`.unitLocation.armor${rearSelector}[loc="${code}"]`),
-        [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.armor${rearSelector}[loc="${code}"]`)],
+        [...svg.querySelectorAll<SVGElement>(`.unitLocation.armor${rearSelector}[data-loc="${code}"]`)],
+        [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.armor${rearSelector}[data-loc="${code}"]`)],
         pips,
     );
     targets.forEach(target => {
-        target.classList.toggle('damaged', face.previewRemaining === 0);
+        if (!target.classList.contains('pip')) {
+            target.classList.toggle('damaged', face.previewRemaining === 0);
+        }
         bind(target, () => Object.freeze({
             kind: 'armor',
             faceId: face.faceId,
@@ -521,24 +560,21 @@ function renderArmorFace(
 }
 
 function interactionTargets(
-    unitLocation: SVGElement | null,
+    unitLocations: readonly SVGElement[],
     hitAreas: readonly SVGElement[],
     pips: readonly SVGElement[],
 ): readonly SVGElement[] {
-    const capitalBlockTargets = hitAreas.filter(element =>
-        element.classList.contains('capital-pip-interaction'));
-    if (capitalBlockTargets.length > 0) {
-        unitLocation?.style.setProperty('cursor', 'default');
-        hitAreas.forEach(element => {
-            element.style.pointerEvents = capitalBlockTargets.includes(element) ? '' : 'none';
-        });
-        pips.forEach(element => { element.style.pointerEvents = 'none'; });
-        return capitalBlockTargets;
-    }
-    if (unitLocation) {
+    if (unitLocations.length > 0) {
         hitAreas.forEach(element => { element.style.pointerEvents = 'none'; });
         pips.forEach(element => { element.style.pointerEvents = 'none'; });
-        return [unitLocation];
+        return unitLocations;
+    }
+    // Paperdoll geometry owns damage interaction even if a location is omitted.
+    if (pips.some(pip => pip.closest('[data-mekbay-paperdoll="1"]'))
+        || hitAreas.some(area => area.closest('[data-mekbay-paperdoll="1"]'))) {
+        hitAreas.forEach(element => { element.style.pointerEvents = 'none'; });
+        pips.forEach(element => { element.style.pointerEvents = 'none'; });
+        return [];
     }
     if (hitAreas.length > 0) {
         hitAreas.forEach(element => { element.style.pointerEvents = ''; });
@@ -555,11 +591,13 @@ function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot)
         : `${snapshot.currentBattleValue} (${snapshot.pristineBattleValue})`;
     const battleValueSuffix = svg.getElementById('bv')?.getAttribute('data-mekbay-bv-suffix') ?? '';
     const jump = snapshot.movement.umu > 0 ? snapshot.movement.umu : snapshot.movement.jump;
+    const tonnage = formatRecordSheetTonnage(snapshot.tonnage,
+        svg.querySelector('[data-mekbay-weight-unit="kg"]') !== null);
     const fields: Readonly<Record<string, string | number>> = Object.freeze({
         type: snapshot.displayName,
         unitName: snapshot.displayName,
         'unit-name': snapshot.displayName,
-        tonnage: snapshot.tonnage,
+        tonnage,
         year: snapshot.year,
         techBase: formatTechBase(snapshot.techBase, snapshot.mixedTech),
         role: snapshot.role,
@@ -576,7 +614,7 @@ function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot)
     }
     const semanticFields: Readonly<Record<string, string | number>> = Object.freeze({
         'display-name': snapshot.displayName,
-        tonnage: snapshot.tonnage,
+        tonnage,
         year: snapshot.year,
         'tech-base': formatTechBase(snapshot.techBase, snapshot.mixedTech),
         role: snapshot.role,
@@ -677,6 +715,7 @@ function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
 }
 
 function renderAmmoProfile(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, interactive: boolean): void {
+    if (renderHandheldWeaponAmmoPips(svg, snapshot.components)) return;
     const profile = svg.querySelector<SVGElement>('#ammoProfile');
     if (!profile) return;
     const totals = new Map<string, number>();

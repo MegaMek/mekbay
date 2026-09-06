@@ -1,3 +1,5 @@
+export type PipShape = 'circle' | 'diamond' | 'circle-dashed' | 'pentagon';
+
 export interface PipRenderOptions {
     className?: string;
     fill?: string;
@@ -10,7 +12,7 @@ export interface PipRenderOptions {
     /** Fixed authored stroke width. Layouts that derive stroke from radius leave this unset. */
     strokeWidth?: number;
     strokeWidthRatio?: number;
-    shape?: 'circle' | 'diamond';
+    shape?: PipShape;
     rowHeight?: number;
 }
 

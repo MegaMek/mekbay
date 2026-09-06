@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { SVG_NAMESPACE } from './pip-renderer.shared';
+import type { RecordSheetDamageHighlights } from './record-sheet-damage-highlights';
 
 export type CapitalPipType = 'armor' | 'structure';
 
@@ -81,7 +82,7 @@ export function appendCapitalPipBlock(
         fillPath(geometry, all),
         'transparent',
     );
-    target.setAttribute('loc', location);
+    target.setAttribute('data-loc', location);
     target.setAttribute('stroke', 'transparent');
     target.setAttribute('pointer-events', 'all');
     target.style.setProperty('fill', 'transparent', 'important');
@@ -96,8 +97,9 @@ export function capitalPipGridCapacity(grids: readonly SVGElement[]): number {
     return grids.reduce((sum, grid) => sum + readInteger(grid.getAttribute('data-pip-capacity')), 0);
 }
 
-/** Updates aggregate state paths while retaining classic one-render freshness. */
+/** Updates aggregate state paths using the same highlight lifetime as ordinary pips. */
 export function renderCapitalPipGridDamage(
+    highlights: RecordSheetDamageHighlights,
     grids: readonly SVGElement[],
     maximum: number,
     committedRemaining: number,
@@ -113,21 +115,23 @@ export function renderCapitalPipGridDamage(
         const visible = clamp(safeMaximum - gridStart, 0, capacity);
         const committed = clamp(committedDamage - gridStart, 0, visible);
         const preview = clamp(previewDamage - gridStart, 0, visible);
-        const previous = markChanges
-            ? clamp(readInteger(grid.getAttribute('data-rendered-preview-damage')), 0, visible)
-            : preview;
         const previousVisible = grid.getAttribute('data-rendered-visible-pips');
-        renderGrid(
-            grid,
-            visible,
-            committed,
-            preview,
-            previous,
-            markChanges,
-            previousVisible === null || readInteger(previousVisible) !== visible,
-        );
-        grid.setAttribute('data-rendered-preview-damage', String(preview));
-        grid.setAttribute('data-rendered-visible-pips', String(visible));
+        highlights.render(grid, {
+            maximum: visible,
+            committedRemaining: visible - committed,
+            previewRemaining: visible - preview,
+        }, markChanges, previousPreview => {
+            renderGrid(
+                grid,
+                visible,
+                committed,
+                preview,
+                previousPreview === undefined ? preview : visible - previousPreview,
+                previousPreview !== undefined,
+                previousVisible === null || readInteger(previousVisible) !== visible,
+            );
+            grid.setAttribute('data-rendered-visible-pips', String(visible));
+        });
         gridStart += capacity;
     });
 }

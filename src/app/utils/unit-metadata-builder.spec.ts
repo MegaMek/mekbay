@@ -62,7 +62,7 @@ describe('UnitMetadataBuilder', () => {
     expect(builder.build(entity).canAntiMech).toBeFalse();
 
     addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR');
-    expect(entity.canAntiMech()).toBeTrue();
+    expect(entity.hasAntiMekGear()).toBeTrue();
     expect(builder.build(entity).canAntiMech).toBeTrue();
   });
 

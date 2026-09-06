@@ -215,7 +215,7 @@ describe('Pilot dialog skill previews and reserve controls', () => {
             crew: [{ id: 0, name: 'Alex', gunnery: 4, piloting: 5 }],
             personnelActions: { canUnassign: false, canDelete: true },
             preSkillBv: 1200,
-            skillFacts: { unitType: 'Mek', unitSubtype: 'BattleMek', canAntiMech: false },
+            skillFacts: { unitType: 'Mek', unitSubtype: 'BattleMek', canMakeAntiMekAttacks: false, hasAntiMekGear: false },
         };
         close = jasmine.createSpy('close');
         TestBed.configureTestingModule({ providers: [

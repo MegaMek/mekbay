@@ -71,6 +71,7 @@ recordSheetDamagePickerRange,
 recordSheetEventPosition,
 type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
+import { RecordSheetRandomHitResult } from '../record-sheet-random-hit-result';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { UnitStateDropdownComponent,type UnitStateDropdownChoice } from '../unit-state-dropdown.component';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
@@ -81,7 +82,6 @@ const CREW_STATE_OVERLAY = 'mek-sheet-crew-state';
 const TARGET_OVERLAY = 'mek-sheet-target';
 const CRITICAL_CHANCE_ACTION = 'critical-chance';
 const CRITICAL_ROLL_ACTION = 'critical-roll';
-const RANDOM_HIT_RESULT_DURATION_MS = 4000;
 
 interface OpenPicker {
     readonly unitId: string;
@@ -111,7 +111,7 @@ export class PageViewerMekInteractionService {
     private readonly toast = inject(ToastService);
     private readonly zoomPan = inject(PageViewerZoomPanService);
     private picker: OpenPicker | null = null;
-    private randomHitResult: Readonly<{ unitId: string; svg: SVGSVGElement; timeout: number }> | null = null;
+    private readonly randomHitResult = new RecordSheetRandomHitResult();
     private readonly heatPreviews = signal<ReadonlyMap<string, MekHeatPreview>>(new Map());
 
     isPickerOpen(unitId: string): boolean {
@@ -124,14 +124,14 @@ export class PageViewerMekInteractionService {
 
     cleanup(unitId: string): void {
         if (this.picker?.unitId === unitId) this.closePicker();
-        if (this.randomHitResult?.unitId === unitId) this.clearRandomHitResult();
+        if (this.randomHitResult.unitId === unitId) this.randomHitResult.clear();
         this.clearHeatPreview(unitId);
         this.closeSheetOverlays();
     }
 
     clear(): void {
         this.closePicker();
-        this.clearRandomHitResult();
+        this.randomHitResult.clear();
         this.heatPreviews.set(new Map());
         this.closeSheetOverlays();
     }
@@ -208,7 +208,7 @@ export class PageViewerMekInteractionService {
         event: Event,
     ): void {
         if (!this.currentMekUnit(member, interaction.context)) return;
-        this.clearRandomHitResult();
+        this.randomHitResult.clear();
         this.closePicker();
         this.zoomPan.cancelGesture();
         interaction.element.classList.add('picker-active');
@@ -251,7 +251,7 @@ export class PageViewerMekInteractionService {
             location = unit.index.locations.get(nextId) ?? null;
         }
         const locationCode = location?.code ?? sourceCode;
-        this.showRandomHitResult(
+        this.randomHitResult.show(
             member.id,
             svg,
             interaction.element,
@@ -260,111 +260,6 @@ export class PageViewerMekInteractionService {
             result.throughArmorCritical,
             locationCode === sourceCode ? undefined : sourceCode,
         );
-    }
-
-    private showRandomHitResult(
-        unitId: string,
-        svg: SVGSVGElement,
-        button: SVGElement,
-        locationCode: string,
-        rear: boolean,
-        throughArmorCritical: boolean,
-        transferredFrom?: string,
-    ): void {
-        this.clearRandomHitResult();
-        const locationElements = [...svg.querySelectorAll<SVGElement>(`[loc="${locationCode}"]`)]
-            .filter(element => element.classList.contains('armor'));
-        const armorZones = locationElements.filter(element => element.classList.contains('unitLocation'));
-        const matchingZone = rear
-            ? armorZones.find(element => element.getAttribute('rear') === '1') ?? armorZones[0]
-            : armorZones.find(element => element.getAttribute('rear') !== '1') ?? armorZones[0];
-        const highlighted = matchingZone
-            ? [matchingZone]
-            : locationElements.filter(element => element.classList.contains('pip'))
-                .filter(element => rear ? element.getAttribute('rear') === '1' : element.getAttribute('rear') !== '1');
-        highlighted.forEach(element => element.classList.add('random-hit-location-highlight'));
-
-        const result = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        result.setAttribute('class', 'mek-random-hit-result');
-        result.setAttribute('role', 'status');
-        const badge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        badge.setAttribute('class', 'mek-random-hit-result-badge');
-        const background = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        background.setAttribute('class', 'mek-random-hit-result-background');
-        background.setAttribute('cx', '11');
-        background.setAttribute('cy', '11');
-        background.setAttribute('r', '17');
-        badge.appendChild(background);
-        const locationText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        locationText.setAttribute('class', 'mek-random-hit-result-location');
-        locationText.setAttribute('x', '11');
-        locationText.setAttribute('y', transferredFrom ? '7' : '11');
-        locationText.setAttribute('dy', '.35em');
-        locationText.textContent = locationCode;
-        badge.appendChild(locationText);
-        if (transferredFrom) {
-            const transferText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            transferText.setAttribute('class', 'mek-random-hit-result-transferred-from');
-            transferText.setAttribute('x', '11');
-            transferText.setAttribute('y', '18');
-            transferText.textContent = `from ${transferredFrom}`;
-            badge.appendChild(transferText);
-        }
-        const buttonMatrix = button instanceof SVGGraphicsElement ? button.getCTM() : null;
-        const svgMatrix = svg.getCTM();
-        if (buttonMatrix && svgMatrix) {
-            badge.setAttribute('transform', this.rootRelativeTransform(svgMatrix, buttonMatrix));
-        }
-        result.appendChild(badge);
-        if (throughArmorCritical) {
-            const criticalText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            criticalText.setAttribute('class', 'mek-random-hit-result-through-armor');
-            const armorLayer = button.closest<SVGGraphicsElement>('[data-type="armor"]');
-            const artX = Number(armorLayer?.dataset['artX']);
-            const artY = Number(armorLayer?.dataset['artY']);
-            const artWidth = Number(armorLayer?.dataset['artWidth']);
-            const artHeight = Number(armorLayer?.dataset['artHeight']);
-            criticalText.setAttribute('x', String(
-                Number.isFinite(artX) && Number.isFinite(artWidth) ? artX + artWidth / 2 : 0,
-            ));
-            criticalText.setAttribute('y', String(
-                Number.isFinite(artY) && Number.isFinite(artHeight) ? artY + artHeight * 0.4 : 0,
-            ));
-            const armorMatrix = armorLayer?.getCTM();
-            if (armorMatrix && svgMatrix) {
-                criticalText.setAttribute('transform', this.rootRelativeTransform(svgMatrix, armorMatrix));
-            }
-            criticalText.setAttribute('role', 'button');
-            criticalText.setAttribute('tabindex', '0');
-            criticalText.textContent = 'THROUGH ARMOR';
-            const dismissResult = (event: Event): void => {
-                event.preventDefault();
-                event.stopPropagation();
-                this.clearRandomHitResult();
-            };
-            criticalText.addEventListener('pointerdown', dismissResult, { passive: false });
-            criticalText.addEventListener('keydown', event => {
-                if (event.key === 'Enter' || event.key === ' ') dismissResult(event);
-            });
-            result.appendChild(criticalText);
-        }
-        svg.appendChild(result);
-        const timeout = window.setTimeout(() => this.clearRandomHitResult(), RANDOM_HIT_RESULT_DURATION_MS);
-        this.randomHitResult = Object.freeze({ unitId, svg, timeout });
-    }
-
-    private rootRelativeTransform(svgMatrix: DOMMatrix, elementMatrix: DOMMatrix): string {
-        const matrix = svgMatrix.inverse().multiply(elementMatrix);
-        return `matrix(${matrix.a} ${matrix.b} ${matrix.c} ${matrix.d} ${matrix.e} ${matrix.f})`;
-    }
-
-    private clearRandomHitResult(): void {
-        if (!this.randomHitResult) return;
-        window.clearTimeout(this.randomHitResult.timeout);
-        this.randomHitResult.svg.querySelectorAll('.random-hit-location-highlight')
-            .forEach(element => element.classList.remove('random-hit-location-highlight'));
-        this.randomHitResult.svg.querySelector('.mek-random-hit-result')?.remove();
-        this.randomHitResult = null;
     }
 
     private async toggleSystemCritical(

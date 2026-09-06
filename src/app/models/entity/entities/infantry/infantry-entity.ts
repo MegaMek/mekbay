@@ -211,8 +211,15 @@ export class InfantryEntity extends InfantryBaseEntity {
     );
   }
 
-  override readonly canAntiMech = computed(() =>
+  readonly hasAntiMekGear = computed(() =>
     this.equipment().some(mounted => isAntiMekGearEquipment(mounted.equipment)),
+  );
+
+  /** Physical capability is independent of the gear that enables improved anti-Mek skill. */
+  override readonly canMakeAntiMekAttacks = computed(() =>
+    !MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType())
+    && !this.effectiveEncumberingArmor()
+    && !this.equipment().some(mount => mount.location === 'Field Guns'),
   );
 
   /**

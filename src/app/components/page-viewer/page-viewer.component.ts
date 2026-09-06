@@ -123,6 +123,7 @@ export class PageViewerComponent implements AfterViewInit {
     private zoomPanService = inject(PageViewerZoomPanService);
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private optionsService = inject(OptionsService);
+    private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
     private dbService = inject(DbService);
     private pageViewerState = inject(PageViewerStateService);
     private pageViewerNavigation = inject(PageViewerNavigationService);
@@ -358,6 +359,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         // Watch for unit changes
         let previousUnit: PageViewerMember | null = null;
+        let previousPipLayout = this.optionsService.options().recordSheetPipLayout;
         let unitEffectRunId = 0;
 
         effect((onCleanup) => {
@@ -369,13 +371,14 @@ export class PageViewerComponent implements AfterViewInit {
             });
 
             const currentUnit = this.unit();
+            const pipLayout = this.pipLayout();
 
             // Skip if view isn't ready yet
             if (!this.viewInitialized()) {
                 return;
             }
 
-            // Only `unit` and `viewInitialized` belong to this effect's dependency
+            // Only the selected unit, pip layout and view readiness belong to this effect's dependency
             // set.  When there is no current unit the async body reaches the
             // selection reads synchronously (there is no `await load()`), so
             // `displayedUnits()` used to become an accidental dependency.  The
@@ -399,7 +402,9 @@ export class PageViewerComponent implements AfterViewInit {
                     return;
                 }
 
-                this.applySelectionChange(previousUnit, currentUnit);
+                if (pipLayout !== previousPipLayout) this.displayUnit({ fromSwipe: true });
+                else this.applySelectionChange(previousUnit, currentUnit);
+                previousPipLayout = pipLayout;
                 previousUnit = currentUnit;
             })());
         }, { injector: this.injector });

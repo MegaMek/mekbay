@@ -7,10 +7,10 @@ import { type ProtoMekEntity } from '../../../models/entity/entities/protomek/pr
 import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
-import { protoMekCriticalReferences,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
+import { PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE,protoMekCriticalReferences,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
-import { type BipedArmorValues,BipedPaperdollUtil } from '../biped-paperdoll.util';
+import { PaperdollGenerator, type PaperdollPipLayout } from '../paperdoll-generator';
 import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import {
 PROTOMEK_DEFAULT_ART,
@@ -47,7 +47,7 @@ svgElement,
 transparentRect,
 } from '../record-sheet-svg-rendering';
 import { SvgFrameUtil } from '../svg-frame.util';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     public constructor() {
         super(
@@ -102,7 +102,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         });
     }
 
-    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
         if (!isProtoMekEntity(entity)) throw new Error('ProtoMek layout requires a ProtoMek entity');
         svg.setAttribute(
             'data-mekbay-cluster-racks',
@@ -160,7 +160,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
 
     drawCompactProtoMekInventory(svg, entity, at({ x: 97.667, y: 11.786, width: 194.833, height: 77.405 }));
     drawCompactProtoMekCriticals(svg, entity, at({ x: 292.5, y: 11.786, width: 183.833, height: 113.414 }));
-    await drawCompactProtoMekDiagram(svg, entity, at({ x: 476.333, y: 11.786, width: 99.667, height: 113.414 }));
+    await drawCompactProtoMekDiagram(svg, entity, at({ x: 476.333, y: 11.786, width: 99.667, height: 113.414 }), request.pipLayout);
     drawCompactProtoMekPilot(svg, at({ x: 5, y: 88.191, width: 287.5, height: 36.009 }));
 
     const footerY = at({ x: 0, y: 130.2, width: 576, height: 1 }).y;
@@ -376,7 +376,21 @@ function drawCompactProtoMekCriticals(
 
     const baselines = entity.isQuad()
         ? { 'main-gun': 34.113, legs: 45.575, torso: 57.038, head: 68.501 }
-        : { 'main-gun': 32.029, 'right-arm': 41.407, legs: 50.786, torso: 60.164, 'left-arm': 69.543, head: 78.921 };
+        : entity.isGlider()
+            ? { 'main-gun': 31.247, 'right-arm': 48.441, legs: 57.038, torso: 65.635, 'left-arm': 74.232, head: 82.829 }
+            : { 'main-gun': 32.029, 'right-arm': 41.407, legs: 50.786, torso: 60.164, 'left-arm': 69.543, head: 78.921 };
+    if (entity.isGlider()) {
+        const wings = PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE;
+        addText(group, wings.rolls.join(','), x(13.88), y(39.844), {
+            size: font(5.7), weight: 700, anchor: 'middle',
+        });
+        addText(group, wings.location, x(24.76), y(39.844), {
+            size: font(5.7), weight: 700,
+        }).id = 'wings_hit_label';
+        addText(group, wings.effect, x(57.4), y(39.844), {
+            size: font(5.7), weight: 700,
+        }).id = 'wings_hit_text';
+    }
     const rows = protoMekCriticalReferences(entity).map(row => ({
         ...row,
         rolls: row.rolls.length > 3 ? [row.rolls.slice(0, 2).join(','), row.rolls.slice(2).join(',')] : [row.rolls.join(',')],
@@ -422,8 +436,11 @@ function drawCompactProtoMekCriticals(
     compactProtoMekTorsoCriticalResults(entity).forEach((result, index) => {
         const column = index % 3;
         const resultRow = Math.floor(index / 3);
-        addText(group, result, x([6, 65.84, 125.68][column]), y(noteY + 7 + resultRow * 7), {
-            size: font(5.7), weight: 700, maxWidth: x(56),
+        const columnX = x([6, 65.84, 125.68][column]);
+        // The last baseline sits beside the frame's clipped bottom-right corner.
+        const width = Math.min(x(56), box.width - columnX - x(10));
+        addText(group, result, columnX, y(noteY + 7 + resultRow * 7), {
+            size: font(5.7), weight: 700, maxWidth: width,
         }).id = `torsoWeapon_${index}`;
     });
 }
@@ -438,20 +455,26 @@ async function drawCompactProtoMekDiagram(
     svg: SVGSVGElement,
     entity: ProtoMekEntity,
     box: Box,
+    pipLayout: PaperdollPipLayout,
 ): Promise<void> {
     const group = svgElement('g');
     group.setAttribute('class', 'protomek-paperdoll');
     group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
-    const heading = SvgFrameUtil.createSVGFrameHeader('ARMOR DIAGRAM', box.width, {
-        headerWidth: box.width,
-        headerFontSize: Math.max(6.4, box.width * 0.086),
+    const heading = SvgFrameUtil.createSVGFrameHeader('ARMOR DIAGRAM', 83.991, {
+        headerWidth: 83.991,
+        headerHeight: 6.25,
+        headerFontSize: 8.6,
         cornerAngleDegrees: 45,
     });
     heading.setAttribute('class', 'diagram-heading');
+    heading.setAttribute('transform', 'translate(5.338 0)');
     group.appendChild(heading);
     const armorValues: Record<string, number> = {};
+    const structureValues: Record<string, number> = {};
     for (const location of entity.damageLocations()) {
-        armorValues[location.sheetCode ?? entity.componentLocationLabel(location.code)] = location.armor.front;
+        const code = location.sheetCode ?? entity.componentLocationLabel(location.code);
+        armorValues[code] = location.armor.front;
+        structureValues[code] = location.internalPoints;
     }
     const asset = entity.isQuad()
         ? '/images/paperdolls/protomek-quad.svg'
@@ -459,22 +482,28 @@ async function drawCompactProtoMekDiagram(
             ? '/images/paperdolls/protomek-glider.svg'
             : '/images/paperdolls/protomek-biped.svg';
     try {
-        const paperdoll = await BipedPaperdollUtil.createDamagePaperdoll(
+        const paperdoll = await PaperdollGenerator.createPaperdoll(
             asset,
             100,
             112,
-            armorValues as BipedArmorValues,
-            {},
+            { armor: armorValues, structure: structureValues },
             {
                 className: 'protomek-paperdoll-layer',
                 scale: false,
-                pipLayout: 'classic',
+                pipLayout,
                 pipOptions: {
-                    ...paperdollPipOptions('classic', 3, 0.62),
+                    ...paperdollPipOptions(pipLayout, 3, 0.62),
                     strokeWidth: 0.5,
                 },
+                structurePipOptions: { pipRadius: 1, minPipRadius: 1, fill: '#c7c7c7' },
             },
         );
+        if (!entity.hasMainGun()) {
+            paperdoll.querySelectorAll('[data-protomek-main-gun]').forEach(element => element.remove());
+            paperdoll.querySelectorAll('[data-protomek-main-gun-clip]').forEach(element => element.removeAttribute('clip-path'));
+        }
+        // Use the narrow clear margin below the heading, beside the right shoulder.
+        paperdoll.setAttribute('data-random-hit-transform', 'translate(83 13) scale(0.5)');
         decoratePaperdollPips(paperdoll);
         group.appendChild(paperdoll);
     } catch {

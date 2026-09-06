@@ -16,6 +16,13 @@ export interface ConventionalInfantryCombatProfile {
 
 const PRIMARY_DAMAGE_CAP = 0.6;
 
+/** TAG is a targeting aid, not the weapon used for infantry combat ranges or notes. */
+export function conventionalInfantryRangeWeapon(entity: InfantryEntity): InfantryWeaponEquipment | null {
+    const secondary = entity.secondaryWeapon();
+    return entity.secondaryCount() > 1 && secondary !== null && !secondary.hasFlag('F_TAG')
+        ? secondary : entity.primaryWeapon();
+}
+
 // TW/TechManual infantry range categories, also used by MegaMek Compute.getInfantryRangeMods.
 const RANGE_MODIFIERS: readonly (readonly number[])[] = Object.freeze([
     [0],
@@ -43,8 +50,7 @@ export function projectConventionalInfantryCombat(
     // PrintInfantry.writeTextFields uses rounded per-strength damage, not ceil or AS damage.
     const damageByStrength = Array.from({ length: maximumStrength + 1 }, (_, strength) =>
         Math.round(damagePerTrooper * strength));
-    const rangeWeapon = secondaryCount > 1 && secondary !== null && !secondary.hasFlag('F_TAG')
-        ? secondary : primary;
+    const rangeWeapon = conventionalInfantryRangeWeapon(entity);
     const otherWeapon = secondaryCount === 1 ? secondary : null;
     const underwater = entity.motiveType() === 'UMU' || entity.motiveType() === 'Submarine';
     return Object.freeze({

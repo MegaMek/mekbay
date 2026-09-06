@@ -27,14 +27,14 @@ export class PipShapeProfileGenerator {
         }
 
         const group = document.createElementNS(SVG_NAMESPACE, 'g');
-        group.setAttribute('class', 'biped-paperdoll-fill-placeholder');
+        group.setAttribute('class', 'paperdoll-fill-placeholder');
         group.setAttribute('data-fill-placeholder', 'true');
         if (generated.transform) {
             group.setAttribute('transform', generated.transform);
         }
         for (const span of generated.profile.spans) {
             const rectangle = document.createElementNS(SVG_NAMESPACE, 'rect');
-            rectangle.setAttribute('class', 'biped-paperdoll-fill-placeholder-row');
+            rectangle.setAttribute('class', 'paperdoll-fill-placeholder-row');
             rectangle.setAttribute('data-fill-placeholder-row', 'true');
             rectangle.setAttribute('x', span.x.toString());
             rectangle.setAttribute('y', span.y.toString());

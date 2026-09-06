@@ -1815,10 +1815,6 @@ hr.divider {
         &.damaged {
             fill: var(--damage-color) !important;
         }
-
-        &.half {
-            clip-path: polygon(50% -50%, 150% -50%, 150% 150%, 50% 150%)
-        }
     }
 
     .capital-pip-state-damaged {
@@ -2033,6 +2029,16 @@ hr.divider {
         }
 
         /* Armor and structure highlight */
+        .unitLocation.selectable:is(:focus-visible, .picker-active),
+        .unitLocation.selectable:is(:focus-visible, .picker-active)>path {
+            fill: var(--undamaged-highlight-color) !important;
+        }
+
+        .unitLocation.selectable.damaged:is(:focus-visible, .picker-active),
+        .unitLocation.selectable.damaged:is(:focus-visible, .picker-active)>path {
+            fill: var(--damaged-highlight-color) !important;
+        }
+
         .selectable,
         .selectable>path {
             cursor: pointer;

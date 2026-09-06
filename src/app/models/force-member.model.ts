@@ -7,7 +7,7 @@ import type { ASForceUnit } from './as-force-unit.model';
 import type { BaseEntity } from './entity/base-entity';
 import type { UnitSummary } from './unit-summary.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
-import type { ForceViewerBVPVDisplayDamage } from './options.model';
+import type { ForceViewerBVPVDisplayDamage, RecordSheetPipLayout } from './options.model';
 import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 import { effectiveEntityPilotingSkill } from './entity/utils/battle-value/skill-facts';
 
@@ -21,6 +21,7 @@ export class CBTForceMember {
     readonly entity: BaseEntity;
     #recordSheets: readonly SVGSVGElement[] = [];
     #recordSheetLoad: Promise<readonly SVGSVGElement[]> | null = null;
+    #recordSheetPipLayout: RecordSheetPipLayout = 'classic';
     readonly #recordSheetIndex = signal(0);
     readonly #runtime = signal<Readonly<{
         owner: object | null;
@@ -92,19 +93,28 @@ export class CBTForceMember {
 
     public loadRecordSheets(
         create: () => Promise<readonly SVGSVGElement[]>,
+        pipLayout: RecordSheetPipLayout = 'classic',
     ): Promise<readonly SVGSVGElement[]> {
+        if (this.#recordSheetPipLayout !== pipLayout) {
+            this.#recordSheetPipLayout = pipLayout;
+            this.#recordSheets = [];
+            this.#recordSheetLoad = null;
+        }
         if (this.#recordSheets.length > 0) return Promise.resolve(this.#recordSheets);
         if (this.#recordSheetLoad) return this.#recordSheetLoad;
 
         const pending = create()
             .then(svgs => {
                 if (svgs.length === 0) throw new Error('A record-sheet set cannot be empty');
-                this.#recordSheets = Object.freeze(svgs.slice(0, MAX_RECORD_SHEET_PAGES));
-                this.#recordSheetIndex.set(0);
-                return this.#recordSheets;
+                const pages = Object.freeze(svgs.slice(0, MAX_RECORD_SHEET_PAGES));
+                if (this.#recordSheetLoad === pending) {
+                    this.#recordSheets = pages;
+                    this.#recordSheetIndex.set(0);
+                }
+                return pages;
             })
             .finally(() => {
-                this.#recordSheetLoad = null;
+                if (this.#recordSheetLoad === pending) this.#recordSheetLoad = null;
             });
         this.#recordSheetLoad = pending;
         return pending;

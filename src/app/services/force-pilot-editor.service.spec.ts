@@ -81,7 +81,7 @@ describe('ForcePilotEditorService personnel editing', () => {
 
         const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
         expect(data.preSkillBv).toBe(1325.75);
-        expect(data.skillFacts).toEqual({ unitType: 'Mek', unitSubtype: 'BattleMek', canAntiMech: false });
+        expect(data.skillFacts).toEqual({ unitType: 'Mek', unitSubtype: 'BattleMek', canMakeAntiMekAttacks: false, hasAntiMekGear: false });
         expect(source.update).not.toHaveBeenCalled();
     });
 

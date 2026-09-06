@@ -10,6 +10,7 @@ type InfantryStrengthCell,
 type InfantryStrengthFacts,
 } from './infantry-strength-projection';
 import { appendEmbeddedRasterUse } from './record-sheet-embedded-art';
+import { RecordSheetDamageHighlights } from './record-sheet-damage-highlights';
 import { addText,formatNumber,setAttributes,svgElement } from './record-sheet-svg-rendering';
 
 export const INFANTRY_STRENGTH_DISPLAY_ID = 'infantryStrengthDisplay';
@@ -32,11 +33,10 @@ export interface InfantryStrengthDisplay {
 export function createInfantryStrengthDisplay(
     svg: SVGSVGElement,
     host: SVGGElement,
+    highlights = new RecordSheetDamageHighlights(),
 ): InfantryStrengthDisplay {
     host.replaceChildren();
     let current: readonly InfantryStrengthCell[] = [];
-    let previousFacts: InfantryStrengthFacts | undefined;
-    let freshFrom: number | undefined;
     const cells = Array.from({ length: INFANTRY_STRENGTH_CELL_COUNT }, (_, index) => {
         const element = svgElement('g');
         setAttributes(element, { class: 'infantry-strength-cell', transform: `translate(${formatNumber(index * CELL_WIDTH)} 0)` });
@@ -65,7 +65,7 @@ export function createInfantryStrengthDisplay(
         cells.forEach((cell, index) => {
             const projected = current[index]!;
             cell.label.textContent = String(projected.strength);
-            cell.element.setAttribute('opacity', projected.available ? '1' : '0.18');
+            cell.glyph.setAttribute('opacity', projected.available ? '1' : '0.18');
             cell.element.setAttribute('aria-disabled', String(!projected.available));
             cell.element.setAttribute('aria-label', projected.available
                 ? `Infantry strength ${projected.strength} of ${facts.maximum}` : 'Unused strength cell');
@@ -90,15 +90,7 @@ export function createInfantryStrengthDisplay(
     return {
         cells: Object.freeze(cells.map(({ element, selection }) => Object.freeze({ element, selection }))),
         render(profile, facts, markChanges): void {
-            // Unchanged redraws must preserve the highlight from the latest strength change.
-            if (!markChanges
-                || facts.maximum !== previousFacts?.maximum
-                || facts.committedRemaining !== previousFacts?.committedRemaining
-                || facts.previewRemaining !== previousFacts?.previewRemaining) {
-                freshFrom = markChanges ? previousFacts?.previewRemaining : undefined;
-            }
-            paint(profile, facts, freshFrom);
-            previousFacts = facts;
+            highlights.render(host, facts, markChanges, before => paint(profile, facts, before));
         },
     };
 }

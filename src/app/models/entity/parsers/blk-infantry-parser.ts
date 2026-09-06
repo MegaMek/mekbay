@@ -203,7 +203,7 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('sneakecm'))        entity.sneakECM.set(true);
 
   // ── Anti-mek ──
-  if (bb.exists('antimek') && bb.getFirstInt('antimek') !== 8 && !entity.canAntiMech()) {
+  if (bb.exists('antimek') && bb.getFirstInt('antimek') !== 8 && !entity.hasAntiMekGear()) {
     entity.addEquipment({
       equipmentId: 'AntiMekGear',
       equipment: ctx.resolveEquipment('AntiMekGear', 'antimek', entity.techBase()) ?? undefined,

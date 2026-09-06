@@ -16,6 +16,19 @@ describe('BLK vehicle parser', () => {
   });
   const registry = new EquipmentRegistry({ [standardArmor.id]: standardArmor });
 
+  for (const motive of ['Rail', 'MagLev']) {
+    it(`accepts ${motive} support vehicles without an unknown-motive warning`, () => {
+      const context = new ParseContext('rail-support.blk', registry);
+      const source = vehicleBlk('').replace('<UnitType>\nTank\n', '<UnitType>\nSupportTank\n')
+        .replace('<motion_type>\nTracked\n', `<motion_type>\n${motive}\n`);
+      const entity = parseBlkVehicle(new BuildingBlock(source), context);
+
+      expect(entity.motiveType()).toBe(motive);
+      expect(context.diagnostics.filter(issue => issue.field === 'motion_type')).toEqual([]);
+      expect(writeBlkVehicle(entity)).toContain(`<motion_type>\n${motive}\n</motion_type>`);
+    });
+  }
+
   it('reads and writes MegaMek\'s canonical extra_seats key', () => {
     const entity = parseBlkVehicle(
       new BuildingBlock(vehicleBlk('<extra_seats>\n3\n</extra_seats>')),

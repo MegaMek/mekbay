@@ -3,6 +3,7 @@
 
 import type { PipRenderOptions } from './pip-renderer.types';
 import { PipRendererShared } from './pip-renderer.shared';
+import type { RecordSheetDamageHighlights } from './record-sheet-damage-highlights';
 import {
     appendCapitalPipBlock,
     capitalPipGridCapacity,
@@ -48,7 +49,7 @@ export class CapitalShipPipRenderer {
             'capital-grid',
         );
         group.classList.add('capital-pip-grid', type);
-        group.setAttribute('loc', location);
+        group.setAttribute('data-loc', location);
         group.setAttribute('data-pip-capacity', String(pipCount));
         group.setAttribute('data-rendered-visible-pips', String(pipCount));
         if (type === 'armor') {
@@ -64,6 +65,7 @@ export class CapitalShipPipRenderer {
     }
 
     public static renderDamage(
+        highlights: RecordSheetDamageHighlights,
         grids: readonly SVGElement[],
         maximum: number,
         committedRemaining: number,
@@ -71,6 +73,7 @@ export class CapitalShipPipRenderer {
         markChanges = false,
     ): void {
         renderCapitalPipGridDamage(
+            highlights,
             grids,
             maximum,
             committedRemaining,

@@ -15,13 +15,15 @@ import {
     setAttributes,
     svgElement,
 } from '../record-sheet-svg-rendering';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
+    compactVehicleSheetTitle,
     drawCompactVehicleChrome,
     drawCompactVehicleCrewPanel,
     drawCompactVehicleCriticalPanel,
     drawCompactVehicleDataPanel,
     drawCompactVehicleDiagram,
+    usesSixSideVehicleHull,
 } from './vehicle-record-sheet-components';
 import { drawVehicleReferenceTables } from './vehicle-record-sheet-reference-tables';
 import { drawVtolReferenceTables } from './vtol-record-sheet-reference-tables';
@@ -68,13 +70,13 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         drawGeneratedFooter(page, profile);
     }
 
-    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
         if (!this.matches(entity)) throw new Error('Combat-vehicle layout received an unsupported entity');
         const at = (box: Box): Box => scaleCompactBox(svg, box, 375);
         const family = this.paperdollFamily(entity);
         const airborne = family === 'vtol';
         svg.setAttribute('data-mekbay-vehicle-family', family);
-        drawCompactVehicleChrome(svg, this.sheetTitle(entity));
+        drawCompactVehicleChrome(svg, compactVehicleSheetTitle(entity));
         const dataBox = at({ x: 0.966, y: 69.857, width: 220.4, height: 283 });
         const dataGroup = drawCompactVehicleDataPanel(
             svg,
@@ -116,6 +118,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             entity,
             diagramBox,
             {
+                pipLayout: request.pipLayout,
                 assetUrl: this.paperdollAsset(entity, family),
                 motiveArtId: this.motiveArtId(entity, family),
             },
@@ -126,32 +129,15 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
     private paperdollFamily(entity: BaseEntity): CombatVehiclePaperdollFamily {
         const motive = `${entity.entityType} ${entity.getMotiveTypeAsString() ?? ''}`.toLowerCase();
         if (motive.includes('vtol')) return 'vtol';
-        if (motive.includes('wige')) return 'wige';
+        if (motive.includes('wige') && !usesSixSideVehicleHull(entity)) return 'wige';
         return 'vehicle';
-    }
-
-    private sheetTitle(entity: BaseEntity): string {
-        if (!isVehicleEntity(entity)) return 'COMBAT VEHICLE RECORD SHEET';
-        const motive = (entity.getMotiveTypeAsString() || 'Combat').trim().toUpperCase();
-        const title: string[] = [];
-        if (entity.isSupportVehicle()) {
-            title.push(entity.weightClass().replace(/\s.*$/u, '').toUpperCase());
-        } else if (entity.isSuperHeavy()) {
-            title.push('SUPER-HEAVY');
-        }
-        if (motive !== 'VTOL') title.push(motive);
-        if (entity.isSupportVehicle()) title.push('SUPPORT');
-        if (motive === 'VTOL') title.push('V.T.O.L.');
-        title.push(`${entity.omni() ? 'OMNI' : ''}VEHICLE`, 'RECORD', 'SHEET');
-        return title.join(' ');
     }
 
     private paperdollAsset(entity: BaseEntity, family: CombatVehiclePaperdollFamily): string {
         const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
         const turret = dualTurret || isVehicleEntity(entity) && entity.hasTurret();
         const turretKind = dualTurret && family !== 'vtol' ? 'dualturret' : turret ? 'turret' : 'noturret';
-        const superheavy = isVehicleEntity(entity)
-            && entity.isSuperHeavy()
+        const superheavy = usesSixSideVehicleHull(entity)
             && family !== 'vtol'
             && family !== 'wige';
         return `/images/paperdolls/${family}-${superheavy ? 'superheavy-' : ''}${turretKind}.svg`;
@@ -199,85 +185,144 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
         );
         const armor = this.armorValueReader(entity);
+        const superheavy = usesSixSideVehicleHull(entity);
+        const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
+        const hasTurret = isVehicleEntity(entity) && entity.hasTurret();
+        const turret = armor('TU', 'T1', 'T');
+        const noTurret = !hasTurret && !dualTurret;
 
         const frontRear = svgElement('text');
         setAttributes(frontRear, {
-            transform: 'matrix(1.126742 0 0 1.129 90.697086 25.067548)',
+            transform: superheavy
+                ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(485.9 61)'
+                : dualTurret
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(.998 0 0 -1 489.135 744.945)'
+                    : `matrix(1.126742 0 0 1.129 90.697086 ${noTurret ? 24.010548 : 25.067548})`,
             'font-family': 'Roboto',
-            'font-size': 7.74,
-            'font-weight': 600,
+            'font-size': superheavy || dualTurret ? 8.0431 : 7.74,
+            'font-weight': superheavy || dualTurret ? 700 : 600,
             'text-anchor': 'middle',
         });
-        this.appendLabelTspan(frontRear, 'Front Armor', 0, 12);
-        this.appendLabelTspan(frontRear, `( ${armor('FR', 'F')} )`, 0, 21.275);
-        this.appendLabelTspan(frontRear, 'Rear Armor', 0, 269.91);
-        this.appendLabelTspan(frontRear, `( ${armor('RR', 'R')} )`, 0, 279.185);
+        const frontY = superheavy || dualTurret ? 0 : noTurret ? 13 : 12;
+        const rearY = superheavy ? dualTurret ? 280.91 : 282.91 : dualTurret ? 301.512 : noTurret ? 273.91 : 269.91;
+        const valueGap = superheavy || dualTurret ? 9.636 : 9.275;
+        this.appendLabelTspan(frontRear, 'Front Armor', 0, frontY);
+        this.appendLabelTspan(frontRear, `( ${armor('FR', 'F')} )`, 0, frontY + valueGap).id = 'textArmor_FR';
+        this.appendLabelTspan(frontRear, 'Rear Armor', 0, rearY);
+        this.appendLabelTspan(frontRear, `( ${armor('RR', 'R')} )`, 0, rearY + valueGap).id = 'textArmor_RR';
         labels.appendChild(frontRear);
 
-        this.appendVerticalArmorLabel(
-            labels,
-            'Left Side Armor',
-            armor('LS', 'L'),
-            'matrix(0 -1.126742 1.129 0 6.926415 235.705078)',
-            63.083,
-            60.388,
-        );
-        this.appendVerticalArmorLabel(
-            labels,
-            'Right Side Armor',
-            armor('RS', 'R'),
-            'matrix(0 1.126742 -1.129 0 183.127187 137.968677)',
-            68.285,
-            65.591,
-        );
+        if (superheavy) {
+            this.appendSuperheavySideArmorLabels(labels, armor);
+        } else {
+            this.appendVerticalArmorLabel(
+                labels,
+                'Left Side Armor',
+                armor('LS', 'L'),
+                dualTurret
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 .998 1 0 412.894 529.791)'
+                    : `matrix(0 -1.126742 1.129 0 6.926415 ${noTurret ? 234.648078 : 235.705078})`,
+                dualTurret ? 65.6 : 63.083,
+                dualTurret ? 62.801 : 60.388,
+                dualTurret ? 8.0431 : 7.74,
+            );
+            this.appendVerticalArmorLabel(
+                labels,
+                'Right Side Armor',
+                armor('RS', 'R'),
+                dualTurret
+                    ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 -.998 -1 0 575.029 619.724)'
+                    : `matrix(0 1.126742 -1.129 0 183.127187 ${noTurret ? 136.911677 : 137.968677})`,
+                dualTurret ? 68.214 : 68.285,
+                dualTurret ? 68.214 : 65.591,
+                dualTurret ? 8.0431 : 7.74,
+            );
+        }
 
-        const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
-        const turret = armor('TU', 'T1', 'T');
-        if (!dualTurret && turret > 0) {
+        if (!dualTurret && hasTurret) {
             const turretText = svgElement('text');
             setAttributes(turretText, {
-                transform: 'matrix(1.126742 0 0 1.129 68.751584 158.858564)',
+                transform: superheavy
+                    ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(404.3 351.437)'
+                    : 'matrix(1.126742 0 0 1.129 68.751584 158.858564)',
                 'font-family': 'Roboto',
-                'font-size': 6.77,
-                'font-weight': 600,
+                'font-size': superheavy ? 8.0431 : 6.77,
+                'font-weight': superheavy ? 700 : 600,
             });
-            this.appendLabelTspan(turretText, 'Turret Armor', 0, 0);
-            this.appendLabelTspan(turretText, `( ${turret} )`, 0, 8.116);
+            this.appendLabelTspan(turretText, 'Turret Armor', 0, superheavy ? 8.431 : 0);
+            this.appendLabelTspan(turretText, `( ${turret} )`, superheavy ? 50.58 : 0,
+                superheavy ? 8.431 : 8.116).id = 'textArmor_TU';
             labels.appendChild(turretText);
         }
-        if (dualTurret) this.appendDualTurretArmorLabels(labels, armor('FT'), armor('RT'));
+        if (dualTurret) this.appendDualTurretArmorLabels(labels, armor('FT'), armor('RT'), superheavy);
         group.appendChild(labels);
     }
 
-    /** MML's superheavy dual-turret template places these outside the hull. */
+    /** The six-location hull has separate fore and aft side counters. */
+    private appendSuperheavySideArmorLabels(
+        parent: SVGElement,
+        armor: (...codes: readonly string[]) => number,
+    ): void {
+        const sides = [
+            { transform: 'rotate(-90 353.48801 -52.72973)', parts: [
+                ['Rear Left Side Armor', 'RRLS', 0, 77.2],
+                ['Front Left Side Armor', 'FRLS', 116.3, 194.8],
+            ] },
+            { transform: 'rotate(90 237.58794 330.37009)', parts: [
+                ['Front Right Side Armor', 'FRRS', 0, 84.152],
+                ['Rear Right Side Armor', 'RRRS', 121.6, 203.5],
+            ] },
+        ] as const;
+        for (const side of sides) {
+            const text = svgElement('text');
+            setAttributes(text, {
+                transform: `matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) ${side.transform}`,
+                'font-family': 'Roboto', 'font-size': 8.0431, 'font-weight': 700,
+            });
+            for (const [label, location, labelX, valueX] of side.parts) {
+                this.appendLabelTspan(text, label, labelX, 0);
+                this.appendLabelTspan(text, `( ${armor(location)} )`, valueX, 0).id = `textArmor_${location}`;
+            }
+            parent.appendChild(text);
+        }
+    }
+
+    /** Standard turrets carry labels inside the hull; superheavy labels sit outside it. */
     private appendDualTurretArmorLabels(
         parent: SVGElement,
         frontArmor: number,
         rearArmor: number,
+        superheavy: boolean,
     ): void {
         const rear = svgElement('text');
         setAttributes(rear, {
-            transform: 'translate(17.3 348.437)',
+            transform: superheavy
+                ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(404.3 351.437)'
+                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(.998 0 0 -1 469.784 599.879)',
             'font-family': 'Roboto',
-            'font-size': 8.0431,
+            'font-size': superheavy ? 8.0431 : 7.0377,
             'font-weight': 700,
         });
-        this.appendLabelTspan(rear, 'Rear', 0, 0);
-        this.appendLabelTspan(rear, 'Turret Armor', 0, 8.431);
-        this.appendLabelTspan(rear, `( ${rearArmor} )`, 50.58, 8.431).id = 'textArmor_RT';
+        this.appendLabelTspan(rear, superheavy ? 'Rear' : 'Rear Turret', 0, 0);
+        if (superheavy) this.appendLabelTspan(rear, 'Turret Armor', 0, 8.431);
+        this.appendLabelTspan(rear, `( ${rearArmor} )`, superheavy ? 50.58 : 0, 8.431).id = 'textArmor_RT';
         parent.appendChild(rear);
 
         const front = svgElement('text');
         setAttributes(front, {
-            transform: 'translate(183.964 48.3)',
+            transform: superheavy
+                ? 'matrix(1.038 0 0 1.038 4.955 11.25) translate(-400.802 -35.489748) translate(570.964 51.3)'
+                : 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(.998 0 0 -1 454.732 695.167)',
             'font-family': 'Roboto',
-            'font-size': 8.0431,
+            'font-size': superheavy ? 8.0431 : 7.0377,
             'font-weight': 700,
-            'text-anchor': 'end',
+            'text-anchor': superheavy ? 'end' : 'start',
         });
-        this.appendLabelTspan(front, 'Front', 0, 2);
-        this.appendLabelTspan(front, 'Turret Armor', 0, 10.431);
-        this.appendLabelTspan(front, `( ${frontArmor} )`, 0, 18.862).id = 'textArmor_FT';
+        this.appendLabelTspan(front, 'Front', 0, superheavy ? 2 : 0);
+        this.appendLabelTspan(front, superheavy ? 'Turret Armor' : 'Turret', superheavy ? 0 : -1.422,
+            superheavy ? 10.431 : 8.431);
+        this.appendLabelTspan(front, `( ${frontArmor} )`, superheavy ? 0 : -1.738,
+            superheavy ? 18.862 : 16.862).id = 'textArmor_FT';
         parent.appendChild(front);
     }
 
@@ -289,6 +334,36 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
         );
         const armor = this.armorValueReader(entity);
+        if (isVehicleEntity(entity) && entity.hasTurret()) {
+            const authored = svgElement('g');
+            authored.setAttribute('transform', 'matrix(1.006 0 0 1.006 3.363 11.25) translate(-398.478 -13.05)');
+            setAttributes(authored, { 'font-family': 'Roboto', 'font-size': 7.74, 'font-weight': 700 });
+            for (const [name, code, transform, counterX] of [
+                ['Left Side Armor', 'LS', 'rotate(-90 353.25 -71.55)', 57.383],
+                ['Right Side Armor', 'RS', 'rotate(90 166.494 380.753)', 62.585],
+            ] as const) {
+                const text = svgElement('text');
+                text.setAttribute('transform', transform);
+                this.appendLabelTspan(text, name, 0, 0);
+                this.appendLabelTspan(text, `( ${armor(code)} )`, counterX, 0).id = `textArmor_${code}`;
+                authored.appendChild(text);
+            }
+            for (const [names, code, x, y, gap] of [
+                [['Front Armor'], 'FR', 551.878, 94.209, 9.275],
+                [['Rear Armor'], 'RR', 448.778, 341.214, 9.275],
+                [['Rotor', 'Armor'], 'RO', 559.589, 155.86, 8.116],
+                [['Turret', 'Armor'], 'TU', 440.689, 60.26, 8.116],
+            ] as const) {
+                const text = svgElement('text');
+                setAttributes(text, { transform: `translate(${x} ${y})`, 'text-anchor': 'middle' });
+                names.forEach((name, index) => this.appendLabelTspan(text, name, 0, index * gap));
+                this.appendLabelTspan(text, `( ${armor(code)} )`, 0, names.length * gap).id = `textArmor_${code}`;
+                authored.appendChild(text);
+            }
+            labels.appendChild(authored);
+            group.appendChild(labels);
+            return;
+        }
         const frontRear = svgElement('text');
         setAttributes(frontRear, {
             transform: 'matrix(1.063 0 0 1.063 96.571424 41.321677)',
@@ -391,13 +466,14 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         transform: string,
         valueX: number,
         labelWidth?: number,
+        fontSize = 7.74,
     ): void {
         const text = svgElement('text');
         setAttributes(text, {
             transform,
             'font-family': 'Roboto',
-            'font-size': 7.74,
-            'font-weight': 600,
+            'font-size': fontSize,
+            'font-weight': fontSize === 7.74 ? 600 : 700,
         });
         const name = this.appendLabelTspan(text, label, 0, 0);
         if (labelWidth !== undefined) {

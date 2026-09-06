@@ -3,15 +3,19 @@
 
 import { createInfantryStrengthDisplay,INFANTRY_STRENGTH_DISPLAY_ID } from './infantry-strength-display';
 import { svgElement } from './record-sheet-svg-rendering';
+import { RecordSheetDamageHighlights } from './record-sheet-damage-highlights';
 
 describe('generated infantry strength display', () => {
+    let highlights: RecordSheetDamageHighlights;
+    beforeEach(() => { highlights = new RecordSheetDamageHighlights(); });
+    afterEach(() => highlights.destroy());
     it('renders every artwork state from typed counts, ignoring mutated DOM classes and hrefs', () => {
         jasmine.clock().install();
         try {
             const svg = svgElement('svg');
             const host = svgElement('g');
             svg.appendChild(host);
-            const display = createInfantryStrengthDisplay(svg, host);
+            const display = createInfantryStrengthDisplay(svg, host, highlights);
             display.render(undefined, { maximum: 4, committedRemaining: 3, previewRemaining: 3 }, false);
             const cell = display.cells[27]!.element;
             expect(cell.querySelector('use')?.getAttribute('href')).toBe('#mekbay-infantry-trooper-art');
@@ -22,7 +26,7 @@ describe('generated infantry strength display', () => {
             display.render(undefined, { maximum: 4, committedRemaining: 3, previewRemaining: 2 }, true);
             expect(cell.querySelector('use')?.getAttribute('href')).toBe('#mekbay-infantry-fresh-art');
             jasmine.clock().tick(5000);
-            expect(cell.querySelector('use')?.getAttribute('href')).toBe('#mekbay-infantry-fresh-art');
+            expect(cell.querySelector('use')?.getAttribute('href')).toBe('#mekbay-infantry-damaged-art');
             display.render(undefined, { maximum: 4, committedRemaining: 2, previewRemaining: 2 }, true);
             expect(cell.querySelector('use')?.getAttribute('href')).toBe('#mekbay-infantry-committed-art');
             display.render(undefined, { maximum: 4, committedRemaining: 2, previewRemaining: 3 }, true);
@@ -34,7 +38,7 @@ describe('generated infantry strength display', () => {
         const svg = svgElement('svg');
         const host = svgElement('g');
         svg.appendChild(host);
-        const display = createInfantryStrengthDisplay(svg, host);
+        const display = createInfantryStrengthDisplay(svg, host, highlights);
         const original = { maximum: 4, committedRemaining: 4, previewRemaining: 4 };
         const damaged = { ...original, previewRemaining: 3 };
         display.render(undefined, original, false);
@@ -63,7 +67,7 @@ describe('generated infantry strength display', () => {
         const host = svgElement('g');
         host.id = INFANTRY_STRENGTH_DISPLAY_ID;
         svg.appendChild(host);
-        const display = createInfantryStrengthDisplay(svg, host);
+        const display = createInfantryStrengthDisplay(svg, host, highlights);
         const facts = { maximum: 30, committedRemaining: 25, previewRemaining: 25 };
         display.render(undefined, facts, false);
         const selected = display.cells[12]!;
@@ -88,5 +92,18 @@ describe('generated infantry strength display', () => {
         expect(display.cells.map(cell => cell.selection())).toEqual(Array.from({ length: 30 }, (_, index) => 30 - index));
         display.render(undefined, { maximum: 4, committedRemaining: 4, previewRemaining: 4 }, false);
         expect(display.cells.filter(cell => cell.selection() !== null).map(cell => cell.selection())).toEqual([4, 3, 2, 1]);
+    });
+
+    it('keeps unused strength labels and damage dashes readable while fading only the soldier artwork', () => {
+        const svg = svgElement('svg');
+        const host = svgElement('g');
+        svg.appendChild(host);
+        const display = createInfantryStrengthDisplay(svg, host, highlights);
+        display.render(undefined, { maximum: 5, committedRemaining: 5, previewRemaining: 5 }, false);
+        const unused = display.cells[0];
+        expect(unused.selection()).toBeNull();
+        expect([...unused.element.querySelectorAll('text')].map(text => text.textContent)).toEqual(['30', '—']);
+        expect(unused.element.hasAttribute('opacity')).toBeFalse();
+        expect(unused.element.querySelector('.infantry-strength-art')?.getAttribute('opacity')).toBe('0.18');
     });
 });

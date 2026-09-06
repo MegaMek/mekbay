@@ -5,6 +5,8 @@ import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { BattleArmorEntity } from '../../../models/entity/entities/infantry/battle-armor-entity';
 import { isBattleArmorEntity } from '../../../models/entity/utils/entity-type-guards';
 import { BattleArmorBVCalculator } from '../../../models/entity/utils/battle-value';
+import { adjustEntityBattleValueForSkills, effectiveEntityPilotingSkill } from '../../../models/entity/utils/battle-value/skill-facts';
+import { isAntiPersonnelMountEquipment } from '../../../models/battle-armor-equipment.model';
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';
 import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
 import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
@@ -30,6 +32,7 @@ import {
 } from '../record-sheet-svg-rendering';
 import {
     BATTLE_ARMOR_DEFAULT_ART,
+    appendEmbeddedSvgDefinition,
     appendEmbeddedRasterUse,
     appendRecordSheetEraIcon,
 } from '../record-sheet-embedded-art';
@@ -38,6 +41,8 @@ import {
     addReferenceShade,
     canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
+
+const MASTHEAD_ART_ID = 'mekbay-battle-armor-masthead-art';
 
 export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     public constructor() {
@@ -48,7 +53,6 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
             page => page.format === 'a4'
                 ? { height: 146.2, stride: 147.428 }
                 : { height: 136.2, stride: 137.129 },
-            'BATTLE ARMOR: SQUAD ',
         );
     }
 
@@ -63,9 +67,8 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     protected override drawCompactMastheadIcon(
         parent: SVGGElement,
         box: Box,
-        svg: SVGSVGElement,
     ): void {
-        drawBattleArmorMastheadIcon(svg, parent, box);
+        drawBattleArmorMastheadIcon(parent, box);
     }
 
     public override drawCompactPageSupplement(
@@ -93,10 +96,12 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
 
     protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
         if (!isBattleArmorEntity(entity)) throw new Error('Battle Armor layout requires a Battle Armor entity');
+        await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/battle-armor.svg', MASTHEAD_ART_ID);
         svg.setAttribute('data-mekbay-cluster-racks', battleArmorClusterRacks(entity).join(','));
         const at = (box: Box): Box => scaleCompactBox(svg, box, 136.2);
         const frameBox = at({ x: 0, y: 0, width: 384, height: 136.2 });
-        const formation = entity.techBase().toLowerCase().includes('clan') ? 'POINT' : 'SQUAD';
+        const formation = ({ 1: 'SUIT', 3: 'UN', 5: 'POINT', 6: 'LEVEL I' } as Record<number, string>)[entity.trooperCount()] ?? 'SQUAD';
+        svg.setAttribute('data-mekbay-numbered-title-prefix', `BATTLE ARMOR: ${formation} `);
         const group = addFrame(svg, `BATTLE ARMOR: ${formation} 1`, frameBox, {
         bottomLeftNotchWidth: 145,
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
@@ -119,7 +124,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     const gunnery = addText(group, '4', x(49.513), y(37.966), { size: font(6.76) });
     gunnery.id = 'gunnerySkill0';
     addText(group, "Anti-'Mech Skill:", x(99.466), y(37.966), { size: font(6.76), weight: 700 });
-    const piloting = addText(group, '5', x(148.855), y(37.966), { size: font(6.76) });
+    const piloting = addText(group, String(effectiveEntityPilotingSkill(entity, 5)), x(148.855), y(37.966), { size: font(6.76) });
     piloting.id = 'pilotingSkill0';
     addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(6.76), weight: 700 });
     const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(6.76) });
@@ -142,11 +147,15 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         ['Mechanized:', entity.mechanizedCapable(), 6.966, 46.563],
         ['Swarm:', entity.swarmAttackCapable(), 71.716, 97.239],
         ['Leg:', entity.legAttackCapable(), 123.516, 138.694],
-        ['AP:', entity.apMounts() > 0, 162.366, 175.586],
+        ['AP:', entity.equipment().some(mount => isAntiPersonnelMountEquipment(mount.equipment)), 162.366, 175.586],
     ];
     flags.forEach(([label, checked, labelX, checkboxX]) => {
         addText(group, label, x(labelX), y(115.952), { size: font(6.76), weight: 700 });
-        drawCheckbox(group, x(checkboxX), y(109.552), x(8), checked);
+        const capability = svgElement('g');
+        capability.setAttribute('class', 'battle-armor-capability');
+        capability.setAttribute('data-capability', label.slice(0, -1).toLowerCase());
+        drawCheckbox(capability, x(checkboxX), y(109.552), x(8), checked);
+        group.appendChild(capability);
     });
     addText(group, 'Armor:', x(158.966), y(129.166), { size: font(6.76), weight: 700 });
     addText(group, compactArmorDisplayName(entity.uniformArmor()?.armor.name, 'Standard'), x(182.752), y(129.166), {
@@ -156,7 +165,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     addText(group, entity.role() || '—', x(272.5), y(129.166), { size: font(6.76), maxWidth: x(55) });
     addText(group, 'BV:', x(332.966), y(129.166), { size: font(6.76), weight: 700 });
     const singleTrooperBv = new BattleArmorBVCalculator(entity).singleTrooperBattleValue();
-    const bv = addText(group, `${formatNumber(entity.battleValue())}/${formatNumber(singleTrooperBv)}`,
+    const bv = addText(group, `${formatNumber(adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5))}/${formatNumber(singleTrooperBv)}`,
         x(346.209), y(129.166), { size: font(6.76), maxWidth: x(31) });
     bv.id = 'bv';
     bv.setAttribute('data-mekbay-bv-suffix', `/${formatNumber(singleTrooperBv)}`);
@@ -507,7 +516,7 @@ function drawCompactBattleArmorInventory(
             const modeDamageLines = splitDamage(mode.damage);
             const modeBaselineValue = firstBaseline + modeLine * lineStep;
             const alternative = svgElement('g');
-            alternative.setAttribute('class', 'alternativeMode');
+            alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
             alternative.appendChild(transparentRect(x(3.966), y(modeBaselineValue - lineStep), x(182),
                 y(lineStep * modeDamageLines.length), 'inventoryEntryButton alternativeModeButton'));
@@ -586,7 +595,7 @@ function drawCompactBattleArmorTroopers(
             fill: '#fff', stroke: '#000', 'stroke-width': 0.966,
             class: 'unitLocation armor',
         });
-        outline.setAttribute('loc', locationCode);
+        outline.setAttribute('data-loc', locationCode);
         row.appendChild(outline);
         addText(row, String(index + 1), 9, 11.457, {
             size: 10.6, weight: 700, anchor: 'end',
@@ -610,12 +619,12 @@ function drawCompactBattleArmorTroopers(
                 cx: 24 + cellSize * pipIndex + radius,
                 cy: 8,
                 r: radius,
-                fill: pipIndex === 0 ? '#c7c7c7' : '#fff',
+                fill: pipIndex === 0 ? '#3f3f3f' : '#fff',
                 stroke: '#000',
                 'stroke-width': 0.9,
-                class: 'pip armor',
+                class: pipIndex === 0 ? 'pip armor trooperStatusPip' : 'pip armor',
             });
-            pip.setAttribute('loc', locationCode);
+            pip.setAttribute('data-loc', locationCode);
             row.appendChild(pip);
         }
         group.appendChild(row);
@@ -623,17 +632,13 @@ function drawCompactBattleArmorTroopers(
 }
 
 function drawBattleArmorMastheadIcon(
-    svg: SVGSVGElement,
     parent: SVGGElement,
     box: Box,
 ): void {
     const sx = box.width / 31.018;
     const sy = box.height / 41.357;
-    appendEmbeddedRasterUse(
-        svg,
-        parent,
-        BATTLE_ARMOR_DEFAULT_ART,
-        { x: 9.45 * sx, y: 2 * sy, width: 37.8 * sx, height: 41.357 * sy },
-        'battle-armor-masthead-icon',
-    );
+    const use = svgElement('use');
+    setAttributes(use, { href: `#${MASTHEAD_ART_ID}`, class: 'battle-armor-masthead-icon',
+        width: 56.7 * sx, height: 45.357 * sy });
+    parent.appendChild(use);
 }

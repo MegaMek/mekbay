@@ -12,10 +12,10 @@ import { OptionsService } from './options.service';
 import { RecordSheetSourceService } from './record-sheet-source.service';
 
 describe('RecordSheetSourceService', () => {
-    const options = signal({ CBTRules: 'core-2026' } as Options);
+    const options = signal({ CBTRules: 'core-2026', recordSheetPipLayout: 'classic' } as Options);
 
     beforeEach(() => {
-        options.set({ CBTRules: 'core-2026' } as Options);
+        options.set({ CBTRules: 'core-2026', recordSheetPipLayout: 'classic' } as Options);
         TestBed.configureTestingModule({
             providers: [
                 RecordSheetSourceService,
@@ -38,6 +38,7 @@ describe('RecordSheetSourceService', () => {
 
         expect(generate).toHaveBeenCalledOnceWith(entity, jasmine.objectContaining({
             ruleset: 'core-2026',
+            pipLayout: 'classic',
             fluffImageUrl: 'https://art.example/tank.png',
         }));
         expect(result.svgs).toEqual([generated]);

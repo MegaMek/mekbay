@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { Equipment } from '../../models/equipment.model';
+import type { BaseEntity } from '../../models/entity/base-entity';
+import type { EntityMountedEquipment } from '../../models/entity/types/equipment';
+import { isCargoEquipment } from '../../models/support-equipment.model';
 import { isApolloEquipment } from '../../models/apollo-mode.model';
 import { isArtemisEquipment } from '../../models/artemis-equipment.model';
 import { isExternalStoresHardpointEquipment } from '../../models/aerospace-support-equipment.model';
@@ -39,4 +42,25 @@ export function isMekRecordSheetInventorySupport(
     equipment: Equipment | null | undefined,
 ): boolean {
     return isRecordSheetInventorySupport(equipment) || isMascEquipment(equipment);
+}
+
+/** Inventory names share construction sizes and MML's mixed-tech disambiguation. */
+export function recordSheetInventoryMountName(entity: BaseEntity, mount: EntityMountedEquipment): string {
+    const equipment = mount.equipment;
+    let name = mount.displayName();
+    if (isCargoEquipment(equipment) && mount.size !== undefined) {
+        const size = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(mount.size);
+        name = insertInventoryNameSuffix(name, `(${size} ${mount.size === 1 ? 'ton' : 'tons'})`);
+    }
+    if (!equipment || !entity.mixedTech() || equipment.techBase === 'All') return name;
+    const ambiguous = Object.values(entity.getEquipmentRegistry().equipment).some(candidate =>
+        candidate !== equipment && candidate.name === equipment.name && candidate.techBase !== equipment.techBase);
+    if (!ambiguous) return name;
+    return insertInventoryNameSuffix(name, equipment.techBase === 'Clan' ? '(C)' : '(IS)');
+}
+
+function insertInventoryNameSuffix(name: string, suffix: string): string {
+    const modifierIndex = name.indexOf(' (');
+    return modifierIndex < 0 ? `${name} ${suffix}`
+        : `${name.slice(0, modifierIndex)} ${suffix}${name.slice(modifierIndex)}`;
 }

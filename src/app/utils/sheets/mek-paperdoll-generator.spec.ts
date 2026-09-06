@@ -1,9 +1,10 @@
-import { BipedPaperdollUtil } from './biped-paperdoll.util';
+import { PaperdollGenerator } from './paperdoll-generator';
+import { MekPaperdollGenerator } from './mek-paperdoll-generator';
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { PipShapeProfileGenerator } from './pip-shape-profile-generator';
 import { RailPipRenderer } from './rail-pip-renderer';
 
-describe('BipedPaperdollUtil', () => {
+describe('MekPaperdollGenerator', () => {
     it('shares failures and retries a rejected paperdoll asset', async () => {
         const assetUrl = 'https://example.test/retry-paperdoll.svg';
         const source = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g id="paperdoll-art-armor" /></svg>';
@@ -15,12 +16,12 @@ describe('BipedPaperdollUtil', () => {
                 : new Response(source, { status: 200 });
         });
 
-        const first = BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
-        const second = BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+        const first = MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl });
+        const second = MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl });
         await expectAsync(Promise.all([first, second])).toBeRejectedWithError(/503/u);
         expect(fetcher).toHaveBeenCalledTimes(1);
 
-        await expectAsync(BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl })).toBeResolved();
+        await expectAsync(MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl })).toBeResolved();
         expect(fetcher).toHaveBeenCalledTimes(2);
     });
 
@@ -34,12 +35,12 @@ describe('BipedPaperdollUtil', () => {
         );
 
         for (const assetUrl of urls) {
-            await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+            await MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl });
         }
-        await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl: urls.at(-1)! });
+        await MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl: urls.at(-1)! });
         expect(fetcher).toHaveBeenCalledTimes(urls.length);
 
-        await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl: urls[0] });
+        await MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl: urls[0] });
         expect(fetcher).toHaveBeenCalledTimes(urls.length + 1);
     });
 
@@ -52,7 +53,7 @@ describe('BipedPaperdollUtil', () => {
         </svg>`;
         spyOn(window, 'fetch').and.resolveTo(new Response(source));
 
-        const layer = await BipedPaperdollUtil.createArmorPaperdoll(10, 10, {}, { assetUrl });
+        const layer = await MekPaperdollGenerator.createArmorPaperdoll(10, 10, {}, { assetUrl });
 
         expect(layer.textContent).toContain('Center Torso');
         expect(layer.textContent).not.toContain('Legacy');
@@ -60,7 +61,7 @@ describe('BipedPaperdollUtil', () => {
     });
 
     it('renders armor and structure silhouettes with location pip layers', async () => {
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(84.68, 238, {
             HD: 5,
             CT: 15,
             LT: 12,
@@ -80,14 +81,14 @@ describe('BipedPaperdollUtil', () => {
             pipLayout: 'canon',
             pipOptions: { inset: 1.8, stroke: '#b4492f' },
         });
-        const rearArmorLayer = await BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, {
+        const rearArmorLayer = await MekPaperdollGenerator.createArmorRearPaperdoll(84.68, 238, {
             CT_R: 10,
             LT_R: 8,
             RT_R: 8,
         }, {
             pipOptions: { inset: 1.8, stroke: '#b4492f' },
         });
-        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, 50, {
+        const structureLayer = await MekPaperdollGenerator.createStructurePaperdoll(55.32, 238, 50, {
             pipOptions: { inset: 1.8, stroke: '#356a8a' },
         });
         armorLayer.setAttribute('transform', 'translate(2 2)');
@@ -105,7 +106,7 @@ describe('BipedPaperdollUtil', () => {
         expect(armorLayer.querySelector('[data-location="CT_R"]')).toBeNull();
         expect(armorLayer.querySelector('[data-location="LT_R"]')).toBeNull();
         expect(armorLayer.querySelector('[data-location="RT_R"]')).toBeNull();
-        expect(paperdoll.querySelectorAll('.biped-paperdoll-zone').length).toBe(23);
+        expect(paperdoll.querySelectorAll('.paperdoll-zone').length).toBe(23);
         expect(paperdoll.querySelectorAll('[data-location="CT_R"]').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('[data-pip-type="shield-dc"] circle').length).toBe(16);
         expect(paperdoll.querySelectorAll('[data-pip-type="shield-da"] polygon').length).toBe(2);
@@ -118,7 +119,12 @@ describe('BipedPaperdollUtil', () => {
     });
 
     it('fits a standalone paperdoll into the requested dimensions', async () => {
-        const paperdoll = await BipedPaperdollUtil.createStructurePaperdoll(80, 120, 50);
+        const source = new DOMParser().parseFromString(
+            await (await fetch('/images/paperdolls/biped-structure.svg')).text(), 'image/svg+xml',
+        ).documentElement;
+        const [, , sourceWidth, sourceHeight] = source.getAttribute('viewBox')!.split(/\s+/u).map(Number);
+        const expectedScale = Math.min(80 / sourceWidth, 120 / sourceHeight);
+        const paperdoll = await MekPaperdollGenerator.createStructurePaperdoll(80, 120, 50);
         const fitGroup = paperdoll.firstElementChild as SVGGElement;
         const scaleGroup = fitGroup.firstElementChild as SVGGElement;
 
@@ -126,8 +132,8 @@ describe('BipedPaperdollUtil', () => {
         expect(paperdoll.getAttribute('data-height')).toBe('120');
         expect(paperdoll.getAttribute('data-art-x')).toBe('0');
         expect(paperdoll.getAttribute('data-art-y')).toBe('0');
-        expect(Number(paperdoll.getAttribute('data-art-width'))).toBeCloseTo(80, 8);
-        expect(Number(paperdoll.getAttribute('data-art-height'))).toBeCloseTo(116.923077, 6);
+        expect(Number(paperdoll.getAttribute('data-art-width'))).toBeCloseTo(sourceWidth * expectedScale, 8);
+        expect(Number(paperdoll.getAttribute('data-art-height'))).toBeCloseTo(sourceHeight * expectedScale, 8);
         expect(fitGroup.getAttribute('transform')).toContain('translate(');
         expect(scaleGroup.getAttribute('transform')).toContain('scale(');
     });
@@ -140,10 +146,10 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const scaledLayer = await BipedPaperdollUtil.createArmorPaperdoll(50, 40, {}, {
+        const scaledLayer = await MekPaperdollGenerator.createArmorPaperdoll(50, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
         });
-        const nativeLayer = await BipedPaperdollUtil.createArmorPaperdoll(50, 40, {}, {
+        const nativeLayer = await MekPaperdollGenerator.createArmorPaperdoll(50, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
             scale: false,
         });
@@ -162,10 +168,10 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const topLeftLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+        const topLeftLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
         });
-        const verticallyCenteredLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+        const verticallyCenteredLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
             centeredVertically: true,
         });
@@ -180,7 +186,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const horizontallyCenteredLayer = await BipedPaperdollUtil.createArmorPaperdoll(40, 100, {}, {
+        const horizontallyCenteredLayer = await MekPaperdollGenerator.createArmorPaperdoll(40, 100, {}, {
             assetUrl: `data:image/svg+xml,${horizontalSource}`,
             centeredHorizontally: true,
         });
@@ -196,16 +202,16 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const unframedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+        const unframedLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
         });
-        const framedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, {}, {
+        const framedLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, {}, {
             assetUrl: `data:image/svg+xml,${source}`,
             outline: true,
         });
 
-        expect(unframedLayer.querySelector('.biped-paperdoll-frame')).toBeNull();
-        const frame = framedLayer.querySelector<SVGRectElement>('.biped-paperdoll-frame');
+        expect(unframedLayer.querySelector('.paperdoll-frame')).toBeNull();
+        const frame = framedLayer.querySelector<SVGRectElement>('.paperdoll-frame');
         expect(frame).not.toBeNull();
         expect(frame?.getAttribute('x')).toBe('0');
         expect(frame?.getAttribute('y')).toBe('0');
@@ -215,7 +221,7 @@ describe('BipedPaperdollUtil', () => {
     });
 
     it('renders rear armor from the dedicated rear asset', async () => {
-        const paperdoll = await BipedPaperdollUtil.createArmorRearPaperdoll(84.68, 238, {
+        const paperdoll = await MekPaperdollGenerator.createArmorRearPaperdoll(84.68, 238, {
             CT_R: 10,
             LT_R: 8,
             RT_R: 8,
@@ -223,7 +229,7 @@ describe('BipedPaperdollUtil', () => {
 
         expect(paperdoll.getAttribute('data-source')).toBe('/images/paperdolls/biped-armor-back.svg');
         expect(paperdoll.querySelector('svg#paperdoll-art-armor')).toBeNull();
-        expect(paperdoll.querySelector('g#paperdoll-art-armor')).not.toBeNull();
+        expect(paperdoll.querySelector('#paperdoll-art-armor-CT_R-armorCTR')).not.toBeNull();
         expect(paperdoll.querySelector('[data-location="CT_R"][data-zone-type="armor"]')).not.toBeNull();
         expect(paperdoll.querySelector('[data-location="LT_R"][data-zone-type="armor"]')).not.toBeNull();
         expect(paperdoll.querySelector('[data-location="RT_R"][data-zone-type="armor"]')).not.toBeNull();
@@ -242,7 +248,7 @@ describe('BipedPaperdollUtil', () => {
             LL: 70,
             RL: 80,
         } as const;
-        const structureLayer = await BipedPaperdollUtil.createStructurePaperdoll(55.32, 238, structureTonnage);
+        const structureLayer = await MekPaperdollGenerator.createStructurePaperdoll(55.32, 238, structureTonnage);
 
         const headZone = structureLayer.querySelector('[data-location="HD"][data-zone-type="structure"]');
         const centerTorsoZone = structureLayer.querySelector('[data-location="CT"][data-zone-type="structure"]');
@@ -259,12 +265,11 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const paperdoll = await BipedPaperdollUtil.createDamagePaperdoll(
+        const paperdoll = await PaperdollGenerator.createPaperdoll(
             `data:image/svg+xml,${source}`,
             100,
             80,
-            { CT: 4 },
-            { CT: 3 },
+            { armor: { CT: 4 }, structure: { CT: 3 } },
             {
                 pipLayout: 'distributed',
                 pipOptions: { shape: 'diamond' },
@@ -280,7 +285,7 @@ describe('BipedPaperdollUtil', () => {
         expect(structure?.querySelectorAll('polygon').length).toBe(0);
     });
 
-    it('does not fall back when a canon amount is unavailable by default', async () => {
+    it('distributes pips when a canon amount is unavailable', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
@@ -288,11 +293,12 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 10 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { HD: 10 }, {
             assetUrl: `data:image/svg+xml,${source}`,
         });
 
-        expect(armorLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
+        expect(armorLayer.querySelector('[data-pip-layout="canon"]')).toBeNull();
+        expect(armorLayer.querySelectorAll('[data-pip-layout="distributed"] circle')).toHaveSize(10);
     });
 
     it('uses the explicitly selected fallback when a canon amount is unavailable', async () => {
@@ -303,7 +309,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 10 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { HD: 10 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             fallbackPipLayout: 'distributed',
         });
@@ -322,17 +328,18 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const railLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+        const railLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { HD: 1 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'rail',
         });
-        const fallbackLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+        const fallbackLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { HD: 1 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'rail',
             fallbackPipLayout: 'canon',
         });
 
-        expect(railLayer.querySelector('[data-location="HD"][data-zone-type="armor"]')).toBeNull();
+        expect(railLayer.querySelector('[data-pip-layout="canon"]')).toBeNull();
+        expect(railLayer.querySelectorAll('[data-pip-layout="distributed"] circle')).toHaveSize(1);
         expect(fallbackLayer.querySelector('[data-pip-layout="canon"]')).not.toBeNull();
     });
 
@@ -344,7 +351,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { HD: 1 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { HD: 1 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'distributed',
         });
@@ -363,7 +370,7 @@ describe('BipedPaperdollUtil', () => {
         `);
 
         for (const pipLayout of ['distributed', 'generic'] as const) {
-            const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, {
+            const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 60, {
                 LT: 4,
             }, {
                 assetUrl: `data:image/svg+xml,${source}`,
@@ -385,7 +392,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 40, { HD: 1 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, { HD: 1 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'canon',
         });
@@ -406,7 +413,7 @@ describe('BipedPaperdollUtil', () => {
         `);
 
         for (const pipLayout of ['distributed', 'generic'] as const) {
-            const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(120, 50, {
+            const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(120, 50, {
                 CT: 6,
             }, {
                 assetUrl: `data:image/svg+xml,${source}`,
@@ -423,7 +430,7 @@ describe('BipedPaperdollUtil', () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 50">
                 <g id="paperdoll-art-armor">
-                    <g class="paperdoll-pip-profile" style="mml-multisection:true">
+                    <g class="paperdoll-pip-profile" data-multisection="true">
                         <g>
                             <rect data-fill="armor" data-location="RA"
                                 x="0" y="0" width="10" height="10" />
@@ -436,7 +443,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(60, 50, { RA: 8 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(60, 50, { RA: 8 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'classic',
             scale: false,
@@ -455,7 +462,7 @@ describe('BipedPaperdollUtil', () => {
         const values = Object.fromEntries(locations.map(location => [location, 12]));
 
         for (const pipLayout of ['distributed', 'generic'] as const) {
-            const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(84.68, 238, values, {
+            const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(84.68, 238, values, {
                 pipLayout,
             });
 
@@ -480,7 +487,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const canonLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, {
+        const canonLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 60, {
             HD: 2,
             CT: 4,
         }, {
@@ -488,7 +495,7 @@ describe('BipedPaperdollUtil', () => {
             shieldValues: { RA: { dc: 2 } },
             pipLayout: 'canon',
         });
-        const distributedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, {
+        const distributedLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 60, {
             HD: 2,
             CT: 4,
         }, {
@@ -518,12 +525,12 @@ describe('BipedPaperdollUtil', () => {
             pipOptions: { inset: 1, minPipRadius: 0, pipGap: 0 },
         };
 
-        const generatedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, options);
+        const generatedLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 80, { CT: 8 }, options);
         expect(generatedLayer.querySelector('[data-pip-layout="distributed"]')).not.toBeNull();
         expect(createProfile).toHaveBeenCalled();
 
         createProfile.calls.reset();
-        const directLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 80, { CT: 8 }, {
+        const directLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 80, { CT: 8 }, {
             ...options,
             generateFillRows: false,
         });
@@ -542,7 +549,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { CT: 4 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { CT: 4 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'rail',
         });
@@ -564,7 +571,7 @@ describe('BipedPaperdollUtil', () => {
                 </g>
             </svg>
         `);
-        const armorLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 20, { CT: 5 }, {
+        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { CT: 5 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'rail',
         });
@@ -590,7 +597,7 @@ describe('BipedPaperdollUtil', () => {
             pipOptions: { rowHeight: 5 },
             showFillPlaceholders: true,
         };
-        const debugLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, options);
+        const debugLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 60, { CT: 4 }, options);
         const rows = Array.from(debugLayer.querySelectorAll<SVGRectElement>('[data-fill-placeholder-row="true"]'));
         const placeholderGroup = debugLayer.querySelector('[data-fill-placeholder="true"]');
 
@@ -603,7 +610,7 @@ describe('BipedPaperdollUtil', () => {
         expect(rows.every(row => row.getAttribute('fill') === 'none')).toBeTrue();
         expect(rows.every(row => row.getAttribute('stroke'))).toBeTrue();
 
-        const noGeneratedRowsLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 60, { CT: 4 }, {
+        const noGeneratedRowsLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 60, { CT: 4 }, {
             assetUrl: `data:image/svg+xml,${source}`,
             pipLayout: 'distributed',
             generateFillRows: false,
@@ -635,11 +642,11 @@ describe('BipedPaperdollUtil', () => {
                 pipLayout,
                 scale: false,
             };
-            const generatedLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 160, { LL: 8 }, {
+            const generatedLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 160, { LL: 8 }, {
                 ...baseOptions,
                 generateFillRows: true,
             });
-            const directLayer = await BipedPaperdollUtil.createArmorPaperdoll(100, 160, { LL: 8 }, {
+            const directLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 160, { LL: 8 }, {
                 ...baseOptions,
                 generateFillRows: false,
             });

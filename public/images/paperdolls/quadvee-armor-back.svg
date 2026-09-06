@@ -1,0 +1,69 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="12.375 280.375 164.375 67.25"><defs><clipPath id="quadvee-armor-back-visible-1" clipPathUnits="userSpaceOnUse"><path clip-rule="evenodd" transform="matrix(1 0 0 1 498.9482 464.08840000000004)" d="M-100000 -100000H100000V100000H-100000Z M0 0L-10.718 4.115H-21.53L-32.572 0l1.187-32.416-1.683-18.87H.556l-1.681 18.87z Z"/></clipPath></defs>
+  <g transform="translate(9 20)">
+    <g id="armor_diagram_quadvee-rear" transform="matrix(0.98,0,0,-0.98,-390.38017,718.24098)" xmlns="http://www.w3.org/2000/svg">
+      <g id="armorDiagram-rear" transform="translate(4.33,-2.75)">
+        <g id="rearArmor">
+          <path style="fill:#c7c8ca;fill-opacity:1;fill-rule:nonzero;stroke:none" d="M0 0L-.562 8.218l-12.28 .087-5.185 3.607H-29.819l-5.187-3.607V-12.557l5.187-3.607 14.966-15.208 .268-5.967 2.63-2.477H9.221z" transform="translate(469.837,451.7686)"/>
+          <path style="fill:#c7c8ca;fill-opacity:1;fill-rule:nonzero;stroke:none" d="M0 0L.561 8.218l12.28 .087 5.185 3.607H29.819l5.187-3.607V-12.557l-5.187-3.607L14.852-31.372l-.268-5.967-2.63-2.477H-9.221z" transform="translate(501.4367,451.7686)"/>
+          <path style="fill:#c7c8ca;fill-opacity:1;fill-rule:nonzero;stroke:none" d="M0 0L-10.718 4.115H-21.53L-32.572 0l1.187-32.416-1.683-18.87H.556l-1.681 18.87z" transform="translate(501.8462,461.1904)"/>
+          <g clip-path="url(#quadvee-armor-back-visible-1)"><path style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-opacity:1;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none" d="M0 0L-.562 8.218l-12.28 .087-4.219 2.641H-28.853L-34.04 7.339V-13.523l4.221-2.641 14.966-15.208 .268-5.967 2.63-2.477H9.221z" id="armorLTR" data-loc="LT" class="armor unitLocation" data-rear="1" transform="translate(466.939,454.6666)"/></g><path style="fill:none;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-opacity:1;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none" d="M0 0L-.562 8.218l-12.28 .087-4.219 2.641H-28.853L-34.04 7.339V-13.523l4.221-2.641 14.966-15.208 .268-5.967 2.63-2.477H9.221z" transform="translate(466.939,454.6666)"/>
+
+          <g clip-path="url(#quadvee-armor-back-visible-1)"><path style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-opacity:1;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none" d="M0 0L.561 8.218l12.28 .087 4.219 2.641H28.853L34.04 7.339V-13.523l-4.221-2.641L14.852-31.372l-.268-5.967-2.63-2.477H-9.221z" id="armorRTR" class="armor unitLocation" data-loc="RT" data-rear="1" transform="translate(498.5387,454.6666)"/></g><path style="fill:none;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-opacity:1;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none" d="M0 0L.561 8.218l12.28 .087 4.219 2.641H28.853L34.04 7.339V-13.523l-4.221-2.641L14.852-31.372l-.268-5.967-2.63-2.477H-9.221z" transform="translate(498.5387,454.6666)"/>
+
+          <path style="fill:#ffffff;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-opacity:1;stroke-width:1.449;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none" d="M0 0L-10.718 4.115H-21.53L-32.572 0l1.187-32.416-1.683-18.87H.556l-1.681 18.87z" id="armorCTR" data-loc="CT" class="armor unitLocation" data-rear="1" transform="translate(498.9482,464.0884)"/>
+
+        </g>
+      </g>
+      <g transform="matrix(1,0,0,-1,0,765)">
+        <g id="armorPips-rear">
+          <g fill="none" transform="translate(472.71,304.57)" class="paperdoll-pip-profile">
+            <rect x="0" width="28.4" y="0" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="5.3271999" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="10.6544" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="15.9816" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="21.3088" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="26.636" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="31.9632" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="37.290501" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+            <rect x="0" width="28.4" y="42.617699" height="6.1515198" data-fill="armor" data-location="CT_R"/>
+          </g>
+          <g fill="none" transform="translate(504.48,306.08)" class="paperdoll-pip-profile">
+            <rect x="0" width="31.889999" y="0" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="31.889999" y="5.3271999" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="31.889999" y="10.6544" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="28.27" y="15.9816" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="22.48" y="21.3088" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="17.129999" y="26.636" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="12.5" y="31.9632" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+            <rect x="0" width="12.5" y="37.290501" height="6.1515198" data-fill="armor" data-location="RT_R"/>
+          </g>
+          <g fill="none" transform="matrix(-1,0,0,1,469.34,306.08)" class="paperdoll-pip-profile">
+            <rect x="0" width="31.889999" y="0" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="31.889999" y="5.3271999" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="31.889999" y="10.6544" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="28.27" y="15.9816" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="22.48" y="21.3088" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="17.129999" y="26.636" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="12.5" y="31.9632" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+            <rect x="0" width="12.5" y="37.290501" height="6.1515198" data-fill="armor" data-location="LT_R"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+  <g data-mekbay-paperdoll-overlay="armor" font-family="Roboto, Arial, sans-serif" font-weight="700" pointer-events="none">
+    <g class="diagram-location-label">
+      <text x="59.212 63.61 67.347 71.182 73.602 77.338 80.262 82.542 85.749 89.519 92.442 95.993 99.763 102.045 106.68 110.417 114.186" y="346.485" font-size="6.626">Center Torso Rear</text>
+      <text x="143.494 146.701 150.47 153.394 156.945 160.714 162.995 167.631 171.367 175.136" y="327.534" font-size="6.626">Torso Rear</text>
+      <text x="152.805" y="318.609" font-size="6.626">Right</text>
+      <text x="25.163" y="318.609" font-size="6.626">Left</text>
+      <text x="13.259 16.466 20.235 23.159 26.71 30.479 32.76 37.396 41.132 44.902" y="326.984" font-size="6.626">Torso Rear</text>
+    </g>
+    <g class="diagram-value">
+      <text id="textArmor_CTR" x="119.968" y="346.849" font-size="6.758"></text>
+      <text id="textArmor_RTR" x="160.824" y="336.059" font-size="6.758" text-anchor="middle"></text>
+      <text id="textArmor_LTR" x="30.905" y="336.059" font-size="6.758" text-anchor="middle"></text>
+    </g>
+  </g>
+</svg>

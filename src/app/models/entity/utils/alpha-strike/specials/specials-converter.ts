@@ -11,7 +11,6 @@ import { alphaStrikeEntitySpecials } from './entity-specials';
 import { alphaStrikeTurretSpecial } from './turret-specials';
 import { collectAlphaStrikeWeaponSpecials } from './weapon-specials';
 import { BattleArmorEntity, InfantryEntity } from '../../../entities';
-import { canMakeAntiMekAttacks } from '../../battle-value/infantry-rules';
 
 export interface AlphaStrikeSpecialsContext {
   readonly type: ASUnitTypeCode;
@@ -60,7 +59,7 @@ export function alphaStrikeSpecialsForEntity(
 }
 
 function hasAlphaStrikeAntiMek(entity: BaseEntity): boolean {
-  if (entity instanceof InfantryEntity) return canMakeAntiMekAttacks(entity);
+  if (entity instanceof InfantryEntity) return entity.canMakeAntiMekAttacks();
   return entity instanceof BattleArmorEntity
     && (entity.legAttackCapable() || entity.swarmAttackCapable());
 }

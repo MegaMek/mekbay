@@ -4,6 +4,7 @@
 
 import { BaseEntity } from '../models/entity/base-entity';
 import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
+import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { JumpShipEntity } from '../models/entity/entities/largecraft/jumpship-entity';
@@ -126,7 +127,9 @@ export class UnitMetadataBuilder {
   }
 
   private buildCanAntiMech(entity: BaseEntity): boolean {
-    return entity instanceof InfantryBaseEntity ? entity.canAntiMech() : false;
+    // Preserve the exported catalog contract: gear for CI and installed attack capability for BA.
+    if (entity instanceof InfantryEntity) return entity.hasAntiMekGear();
+    return entity instanceof BattleArmorEntity && (entity.legAttackCapable() || entity.swarmAttackCapable());
   }
 
   // ═══════════════════════════════════════════════════════════════════════

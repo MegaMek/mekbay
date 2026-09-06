@@ -31,7 +31,6 @@ import {
 } from '../../../ppc-capacitor.model';
 
 import {
-  canMakeAntiMekAttacks,
   hasDermalCamoStealth,
   hasInfantryAugmentation,
   hasProstheticAntiMekBonus,
@@ -45,14 +44,10 @@ import {
 import { structureBattleValueMultiplier } from '../../../construction-equipment.model';
 import { hasEquipmentVariant } from '../../../equipment-variant.model';
 import {
-  isArmoredGloveEquipment,
-  isBasicManipulatorEquipment,
-  isBattleClawEquipment,
   isMagnetClawEquipment,
 } from '../../../battle-armor-equipment.model';
 import {
   chassisDefensiveBattleValueBonus,
-  isMagneticClampEquipment,
 } from '../../../chassis-equipment.model';
 import { isAdvancedFireControlEquipment } from '../fire-control';
 import { isClubOrHandWeaponEquipment, isShieldEquipment } from '../physical-weapon';
@@ -838,7 +833,7 @@ export class InfantryBVCalculator extends BVCalculator {
     const secondaryBV = this.entity.secondaryWeapon()?.bv;
     if (typeof primaryBV === 'number') this.offensiveValue += primaryBV * primary;
     if (typeof secondaryBV === 'number') this.offensiveValue += secondaryBV * secondary;
-    if (canMakeAntiMekAttacks(this.entity)) {
+    if (this.entity.canMakeAntiMekAttacks()) {
       const beforeAntiMek = this.offensiveValue;
       if (typeof primaryBV === 'number' && !this.entity.primaryWeapon()?.hasFlag('F_INF_ARCHAIC')) this.offensiveValue += primaryBV * primary;
       if (typeof secondaryBV === 'number' && !this.entity.secondaryWeapon()?.hasFlag('F_INF_ARCHAIC')) this.offensiveValue += secondaryBV * secondary;
@@ -1016,7 +1011,7 @@ export class BattleArmorBVCalculator extends BVCalculator {
       }
     }
 
-    if (!this.canMakeAntiMekAttacks()) return;
+    if (!this.entity.canMakeAntiMekAttacks()) return;
     for (const mount of this.entity.equipment()) {
       if (!this.countsAsOffensiveWeapon(mount)) continue;
       const inTrooperSection = mount.location === 'Squad' || mount.location === trooper;
@@ -1042,18 +1037,6 @@ export class BattleArmorBVCalculator extends BVCalculator {
         || this.countsAsOffensiveWeapon(mount)) continue;
       this.offensiveValue += mount.getBV(this.entity);
     }
-  }
-
-  private canMakeAntiMekAttacks(): boolean {
-    if (this.entity.chassisType().toLowerCase().includes('quad') || this.entity.motiveType() === 'UMU') return false;
-    if (this.entity.weightClass() === 'Assault' || this.entity.weightClass() === 'Heavy') return false;
-    const equipment = this.entity.equipment().map(mount => mount.equipment).filter(item => item != null);
-    if (equipment.some(isMagneticClampEquipment)) return true;
-    const gloves = equipment.filter(isArmoredGloveEquipment).length;
-    const lightEnoughForGloves = this.entity.weightClass() === 'Ultra Light'
-      || this.entity.weightClass() === 'Light';
-    return (lightEnoughForGloves && gloves >= 2)
-      || equipment.some(item => isBasicManipulatorEquipment(item) || isBattleClawEquipment(item));
   }
 
   private hasEquipmentId(id: string): boolean {

@@ -136,6 +136,11 @@ export abstract class AeroEntity extends BaseEntity {
     ));
   }
 
+  /** Construction armor threshold shown on the record sheet. */
+  armorDamageThreshold(location: string): number {
+    return Math.ceil(this.getArmorValue(location) / 10);
+  }
+
   override tracksHeat(): boolean {
     return this.entityType === 'Aero' || this.entityType === 'SmallCraft';
   }

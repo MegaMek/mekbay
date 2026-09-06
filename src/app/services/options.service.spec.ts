@@ -73,6 +73,36 @@ describe('OptionsService theme migration', () => {
         expect(service.options().cbtUnitViewMode).toBe('sheet');
     });
 
+    it('defaults record sheets to the Canon pip layout', async () => {
+        savedOptions = null;
+
+        const service = await createService();
+
+        expect(service.options().recordSheetPipLayout).toBe('classic');
+    });
+
+    for (const value of ['classic', 'distributed', 'rail'] as const) {
+        it(`restores and persists the ${value} record-sheet pip layout`, async () => {
+            savedOptions = { recordSheetPipLayout: value };
+            const service = await createService();
+
+            expect(service.options().recordSheetPipLayout).toBe(value);
+            await service.setOption('recordSheetPipLayout', value);
+            expect(dbService.saveOptions).toHaveBeenCalledWith(jasmine.objectContaining({
+                recordSheetPipLayout: value,
+            }));
+        });
+    }
+
+    for (const value of ['generic', 'canon', 'invalid']) {
+        it(`defaults unsupported ${value} record-sheet pip layouts to Canon`, async () => {
+            savedOptions = { recordSheetPipLayout: value };
+            const service = await createService();
+
+            expect(service.options().recordSheetPipLayout).toBe('classic');
+        });
+    }
+
     it('disables the force sync conflict dialog by default', async () => {
         savedOptions = null;
 

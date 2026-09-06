@@ -8,6 +8,9 @@ import {
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { CBTForceMember } from '../../../models/force-member.model';
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
+import { OptionsService } from '../../../services/options.service';
+import type { RecordSheetPipLayout } from '../../../models/options.model';
 import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import { RecordSheetSvgGenerator } from '../../../utils/sheets/record-sheet-svg-generator';
 import type { PageViewerMember } from './types';
@@ -16,8 +19,10 @@ import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service
 describe('PageViewerSheetSourceService', () => {
     let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let service: PageViewerSheetSourceService;
+    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout }>({ recordSheetPipLayout: 'classic' });
 
     beforeEach(() => {
+        options.set({ recordSheetPipLayout: 'classic' });
         source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
         source.load.and.callFake(async (entity, options) => ({
             svgs: [await RecordSheetSvgGenerator.generate(entity, options)],
@@ -26,6 +31,7 @@ describe('PageViewerSheetSourceService', () => {
             providers: [
                 PageViewerSheetSourceService,
                 { provide: RecordSheetSourceService, useValue: source },
+                { provide: OptionsService, useValue: { options } },
             ],
         });
         service = TestBed.inject(PageViewerSheetSourceService);
@@ -101,6 +107,16 @@ describe('PageViewerSheetSourceService', () => {
         await Promise.all([service.load(member), service.load(member), service.load(member)]);
 
         expect(source.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('regenerates cached pages using the changed pip layout preference', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        await service.load(member);
+        const first = member.recordSheet();
+        options.set({ recordSheetPipLayout: 'rail' });
+        await service.load(member);
+        expect(member.recordSheet()).not.toBe(first);
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail' });
     });
 
     it('allows the member to retry after generation fails', async () => {

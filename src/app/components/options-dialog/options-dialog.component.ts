@@ -25,6 +25,7 @@ import type {
     ForceViewerBVPVDisplay,
     ForceViewerBVPVDisplayDamage,
     RecordSheetDoubleTapZoomResetMode,
+    RecordSheetPipLayout,
 } from '../../models/options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
@@ -404,6 +405,11 @@ export class OptionsDialogComponent {
     onRecordSheetDoubleTapZoomResetChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as RecordSheetDoubleTapZoomResetMode;
         this.optionsService.setOption('recordSheetDoubleTapZoomReset', value);
+    }
+
+    onRecordSheetPipLayoutChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as RecordSheetPipLayout;
+        this.optionsService.setOption('recordSheetPipLayout', value);
     }
 
     onSyncZoomBetweenSheetsChange(event: Event) {

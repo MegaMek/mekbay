@@ -4,6 +4,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
+import { OptionsService } from '../../../services/options.service';
 import type { PageViewerMember } from './types';
 import { addRecordSheetPageFlipControls } from './record-sheet-page-flip';
 
@@ -11,12 +12,14 @@ import { addRecordSheetPageFlipControls } from './record-sheet-page-flip';
 @Injectable()
 export class PageViewerSheetSourceService {
     private readonly source = inject(RecordSheetSourceService);
+    private readonly options = inject(OptionsService);
 
     async load(member: PageViewerMember): Promise<void> {
+        const pipLayout = this.options.options().recordSheetPipLayout;
         const pages = await member.loadRecordSheets(async () => {
             const unit = member.force.getUnitSnapshot(member.id);
             if (!unit) throw new Error('The selected CBT unit is no longer admitted');
-            const result = await this.source.load(unit.entity);
+            const result = await this.source.load(unit.entity, { pipLayout });
             if (result.svgs.length === 0) {
                 throw new Error(`No record sheet is available for ${member.entity.displayName()}`);
             }
@@ -26,7 +29,7 @@ export class PageViewerSheetSourceService {
                 return svg;
             });
             return svgs;
-        });
+        }, pipLayout);
         addRecordSheetPageFlipControls(pages);
     }
 }

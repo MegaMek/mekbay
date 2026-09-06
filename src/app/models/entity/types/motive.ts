@@ -97,11 +97,11 @@ export const ALL_MOTIVE_TYPES: readonly MotiveType[] = [
 // motive types valid for that entity family.
 // ============================================================================
 
-/** Valid motive types for combat vehicles */
+/** Valid motive types for combat and support vehicles */
 export const VALID_VEHICLE_MOTIVE_TYPES: ReadonlySet<MotiveType> = new Set<MotiveType>([
   'Tracked', 'Wheeled', 'Hover', 'WiGE',
   'Naval', 'Submarine', 'Hydrofoil',
-  'VTOL',
+  'VTOL', 'Rail', 'MagLev',
 ]);
 
 /** Valid motive types for conventional infantry */

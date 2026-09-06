@@ -1,4 +1,3 @@
-import { CanonPipRenderer } from './canon-pip-renderer';
 import { CapitalShipPipRenderer } from './capital-ship-pip-renderer';
 import { CBTPipRenderer } from './cbt-pip-renderer';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
@@ -10,51 +9,49 @@ import { RailPipRenderer } from './rail-pip-renderer';
 import type { PipRenderOptions, PipShapeSpan } from './pip-renderer.types';
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
-const ARMOR_ASSET_URL = '/images/paperdolls/biped-armor.svg';
-const ARMOR_REAR_ASSET_URL = '/images/paperdolls/biped-armor-back.svg';
-const STRUCTURE_ASSET_URL = '/images/paperdolls/biped-structure.svg';
-const ARMOR_LOCATIONS = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL', 'CT_R', 'LT_R', 'RT_R'] as const;
-const STRUCTURE_LOCATIONS = ['HD', 'CT', 'LT', 'RT', 'LA', 'RA', 'LL', 'RL'] as const;
-const SHIELD_LOCATIONS = ['LA', 'RA'] as const;
-type PaperdollPlaceholderType = 'armor' | 'structure' | 'shield-dc' | 'shield-da';
+export type PaperdollPlaceholderType = 'armor' | 'structure' | 'shield-dc' | 'shield-da';
+export type PaperdollPipCounts = Readonly<Record<string, number>>;
+export type PaperdollPipLayout = 'canon' | 'capital-grid' | 'classic' | 'distributed' | 'rail' | 'generic';
 
-export type BipedArmorLocation = typeof ARMOR_LOCATIONS[number];
-export type BipedStructureLocation = typeof STRUCTURE_LOCATIONS[number];
-export type BipedShieldLocation = typeof SHIELD_LOCATIONS[number];
-export type BipedArmorValues = Readonly<Partial<Record<BipedArmorLocation, number>>>;
-export type BipedStructureTonnage = number | Readonly<Record<BipedStructureLocation, number>>;
-export type BipedPaperdollPipLayout = 'canon' | 'capital-grid' | 'classic' | 'distributed' | 'rail' | 'generic';
+export interface PaperdollValues {
+    readonly armor?: PaperdollPipCounts;
+    readonly structure?: PaperdollPipCounts;
+}
 
-export interface BipedShieldLocationValues {
+export interface PaperdollShieldValues {
     readonly dc?: number;
     readonly da?: number;
 }
 
-export type BipedShieldValues = Readonly<Partial<Record<BipedShieldLocation, BipedShieldLocationValues>>>;
-
-export interface BipedPaperdollLayerOptions {
-    assetUrl?: string;
+/** Placement belongs to the sheet; this generator fills editable SVG artwork. */
+export interface PaperdollOptions {
+    type?: 'armor' | 'structure';
     className?: string;
     centeredHorizontally?: boolean;
     centeredVertically?: boolean;
-    /** Keep extracted artwork in its original MML page coordinates. */
+    /** Keep extracted artwork in its original page coordinates. */
     preserveAuthoredCoordinates?: boolean;
     outline?: boolean;
     scale?: boolean;
-    pipLayout?: BipedPaperdollPipLayout;
-    fallbackPipLayout?: BipedPaperdollPipLayout;
+    pipLayout?: PaperdollPipLayout;
+    fallbackPipLayout?: PaperdollPipLayout;
     pipOptions?: PipRenderOptions;
-    /** Overrides for internal-structure pips in a combined damage paperdoll. */
     structurePipOptions?: PipRenderOptions;
     generateFillRows?: boolean;
     showFillPlaceholders?: boolean;
     railPipsPerPath?: number;
-    shieldValues?: BipedShieldValues;
-    /** Direct structure pip counts for non-Biped silhouettes using distributed/generic profiles. */
-    structurePipCounts?: Readonly<Record<string, number>>;
+    shieldValues?: Readonly<Record<string, PaperdollShieldValues>>;
     silhouetteFill?: string;
     silhouetteStroke?: string;
     silhouetteStrokeWidth?: string;
+    /** A family's authored pip map; omitted for automatically distributed profiles. */
+    canonicalPips?: (
+        type: PaperdollPlaceholderType,
+        location: string,
+        width: number,
+        height: number,
+        options: PipRenderOptions,
+    ) => SVGGElement | null;
 }
 
 interface ViewBox {
@@ -136,9 +133,9 @@ interface FillPlaceholderGroup {
 }
 
 interface PlaceholderRenderContext {
-    armor: BipedArmorValues | undefined;
-    structureTonnage: BipedStructureTonnage | undefined;
-    options: BipedPaperdollLayerOptions;
+    armor: PaperdollPipCounts | undefined;
+    structureCounts: PaperdollPipCounts | undefined;
+    options: PaperdollOptions;
 }
 
 interface PaperdollAssetCacheEntry {
@@ -148,66 +145,34 @@ interface PaperdollAssetCacheEntry {
 
 const MAX_PAPERDOLL_ASSET_CACHE_ENTRIES = 32;
 
-export class BipedPaperdollUtil {
+export class PaperdollGenerator {
     private static readonly assetCache = new Map<string, PaperdollAssetCacheEntry>();
 
-    public static createArmorPaperdoll(
-        width: number,
-        height: number,
-        armor: BipedArmorValues,
-        options: BipedPaperdollLayerOptions = {},
-    ): Promise<SVGGElement> {
-        return this.createLayer(options.assetUrl ?? ARMOR_ASSET_URL, 'armor', width, height, armor, undefined, options);
-    }
-
-    public static createArmorRearPaperdoll(
-        width: number,
-        height: number,
-        armor: BipedArmorValues,
-        options: BipedPaperdollLayerOptions = {},
-    ): Promise<SVGGElement> {
-        return this.createLayer(options.assetUrl ?? ARMOR_REAR_ASSET_URL, 'armor', width, height, armor, undefined, options);
-    }
-
-    public static createStructurePaperdoll(
-        width: number,
-        height: number,
-        tonnage: BipedStructureTonnage,
-        options: BipedPaperdollLayerOptions = {},
-    ): Promise<SVGGElement> {
-        return this.createLayer(options.assetUrl ?? STRUCTURE_ASSET_URL, 'structure', width, height, undefined, tonnage, options);
-    }
-
-    /** Renders armor and direct internal-point profiles over one shared silhouette. */
-    public static createDamagePaperdoll(
+    public static async createPaperdoll(
         assetUrl: string,
         width: number,
         height: number,
-        armor: BipedArmorValues,
-        structurePipCounts: Readonly<Record<string, number>>,
-        options: BipedPaperdollLayerOptions = {},
+        values: PaperdollValues = {},
+        options: PaperdollOptions = {},
     ): Promise<SVGGElement> {
-        return this.createLayer(assetUrl, 'armor', width, height, armor, 0, {
-            ...options,
-            structurePipCounts,
-        });
-    }
-
-    private static async createLayer(
-        assetUrl: string,
-        type: 'armor' | 'structure',
-        width: number,
-        height: number,
-        armor: BipedArmorValues | undefined,
-        structureTonnage: BipedStructureTonnage | undefined,
-        options: BipedPaperdollLayerOptions,
-    ): Promise<SVGGElement> {
+        const type = options.type ?? 'armor';
         const source = await this.loadAsset(assetUrl);
         const viewBox = this.readViewBox(source);
+        for (const arm of Object.keys(options.shieldValues ?? {})) {
+            const bounds = source.getAttribute(`data-shield-bounds-${arm.toLowerCase()}`)?.split(/[\s,]+/u).map(Number);
+            if (!bounds || bounds.length !== 4 || !bounds.every(Number.isFinite)) continue;
+            const maxX = Math.max(viewBox.minX + viewBox.width, bounds[0] + bounds[2]);
+            const maxY = Math.max(viewBox.minY + viewBox.height, bounds[1] + bounds[3]);
+            viewBox.minX = Math.min(viewBox.minX, bounds[0]);
+            viewBox.minY = Math.min(viewBox.minY, bounds[1]);
+            viewBox.width = maxX - viewBox.minX;
+            viewBox.height = maxY - viewBox.minY;
+        }
         const layer = document.createElementNS(SVG_NAMESPACE, 'g');
-        layer.setAttribute('class', options.className ?? `biped-paperdoll-${type}`);
+        layer.setAttribute('class', options.className ?? `paperdoll-${type}`);
         layer.setAttribute('data-type', type);
         layer.setAttribute('data-source', assetUrl);
+        layer.setAttribute('data-mekbay-paperdoll', '1');
         layer.setAttribute('data-width', width.toString());
         layer.setAttribute('data-height', height.toString());
 
@@ -222,8 +187,8 @@ export class BipedPaperdollUtil {
         const renderedHeight = viewBox.height * scale;
         const offsetX = inset + (options.centeredHorizontally ? (availableWidth - renderedWidth) / 2 : 0);
         const offsetY = inset + (options.centeredVertically ? (availableHeight - renderedHeight) / 2 : 0);
-        layer.setAttribute('data-art-x', offsetX.toString());
-        layer.setAttribute('data-art-y', offsetY.toString());
+        layer.setAttribute('data-art-x', (offsetX + (options.preserveAuthoredCoordinates ? viewBox.minX * scale : 0)).toString());
+        layer.setAttribute('data-art-y', (offsetY + (options.preserveAuthoredCoordinates ? viewBox.minY * scale : 0)).toString());
         layer.setAttribute('data-art-width', renderedWidth.toString());
         layer.setAttribute('data-art-height', renderedHeight.toString());
 
@@ -245,7 +210,6 @@ export class BipedPaperdollUtil {
         let importedArt: SVGElement;
         if (art === source) {
             const importedGroup = document.createElementNS(SVG_NAMESPACE, 'g');
-            importedGroup.setAttribute('id', `paperdoll-art-${type}`);
             const sourceStyle = source.getAttribute('style');
             if (sourceStyle) {
                 importedGroup.setAttribute('style', sourceStyle);
@@ -256,9 +220,6 @@ export class BipedPaperdollUtil {
             importedArt = importedGroup;
         } else {
             importedArt = document.importNode(art, true) as SVGElement;
-        }
-        if (!importedArt.getAttribute('id')) {
-            importedArt.setAttribute('id', `paperdoll-art-${type}`);
         }
         const ancestorTransforms: string[] = [];
         let ancestor = art.parentNode;
@@ -285,12 +246,37 @@ export class BipedPaperdollUtil {
         }
         scaleGroup.appendChild(sourceGroup);
 
+        sourceGroup.querySelectorAll<SVGElement>('[data-mekbay-shield]').forEach(element => {
+            if (options.shieldValues?.[element.getAttribute('data-mekbay-shield')!]) {
+                element.removeAttribute('visibility');
+            } else {
+                element.remove();
+            }
+        });
+
+        // Legacy editable artwork names Eurostile, which is not bundled with the app.
+        // Use the same installed font as the surrounding generated sheet.
+        sourceGroup.querySelectorAll<SVGElement>('[style*="Eurostile"], [font-family="Eurostile"]').forEach(element => {
+            if (element.style.fontFamily === 'Eurostile') {
+                element.style.fontFamily = 'Roboto, Arial, sans-serif';
+            }
+            if (element.getAttribute('font-family') === 'Eurostile') {
+                element.setAttribute('font-family', 'Roboto, Arial, sans-serif');
+            }
+        });
         this.removeSupersededAssetText(sourceGroup);
         this.applySilhouetteStyles(sourceGroup, type, options);
-        this.replacePlaceholders(sourceGroup, armor, structureTonnage, options);
+        this.replacePlaceholders(sourceGroup, values.armor, values.structure, options);
+        sourceGroup.querySelectorAll('.pip-hit-area').forEach(element => element.remove());
+        // The painted location contours own interaction; labels, details and pips
+        // must let pointer events reach those contours below them.
+        sourceGroup.setAttribute('pointer-events', 'none');
+        sourceGroup.querySelectorAll<SVGElement>('.unitLocation, [data-mekbay-random-hit]').forEach(element => {
+            element.setAttribute('pointer-events', 'all');
+        });
         if (options.outline) {
             const frame = document.createElementNS(SVG_NAMESPACE, 'rect');
-            frame.setAttribute('class', 'biped-paperdoll-frame');
+            frame.setAttribute('class', 'paperdoll-frame');
             frame.setAttribute('x', '0');
             frame.setAttribute('y', '0');
             frame.setAttribute('width', width.toString());
@@ -314,16 +300,16 @@ export class BipedPaperdollUtil {
 
         const load = fetch(url).then(async response => {
             if (!response.ok) {
-                throw new Error(`Unable to load biped paperdoll SVG: ${url} (${response.status})`);
+                throw new Error(`Unable to load paperdoll SVG: ${url} (${response.status})`);
             }
             const source = await response.text();
             const parsed = new DOMParser().parseFromString(source, 'image/svg+xml');
             if (parsed.querySelector('parsererror')) {
-                throw new Error(`Unable to parse biped paperdoll SVG: ${url}`);
+                throw new Error(`Unable to parse paperdoll SVG: ${url}`);
             }
             const asset = parsed.documentElement;
             if (!(asset instanceof SVGSVGElement)) {
-                throw new Error(`Biped paperdoll asset is not an SVG document: ${url}`);
+                throw new Error(`Paperdoll asset is not an SVG document: ${url}`);
             }
             return asset;
         });
@@ -361,7 +347,7 @@ export class BipedPaperdollUtil {
         if (width > 0 && height > 0) {
             return { minX: 0, minY: 0, width, height };
         }
-        throw new Error('Biped paperdoll SVG must define a positive viewBox or width and height');
+        throw new Error('Paperdoll SVG must define a positive viewBox or width and height');
     }
 
     private static readSvgLength(value: string | null): number {
@@ -369,7 +355,7 @@ export class BipedPaperdollUtil {
         return match ? Number(match[1]) : Number.NaN;
     }
 
-    private static applySilhouetteStyles(sourceGroup: SVGGElement, type: 'armor' | 'structure', options: BipedPaperdollLayerOptions): void {
+    private static applySilhouetteStyles(sourceGroup: SVGGElement, type: 'armor' | 'structure', options: PaperdollOptions): void {
         if (!options.silhouetteFill && !options.silhouetteStroke && !options.silhouetteStrokeWidth) {
             return;
         }
@@ -396,13 +382,13 @@ export class BipedPaperdollUtil {
 
     private static replacePlaceholders(
         sourceGroup: SVGGElement,
-        armor: BipedArmorValues | undefined,
-        structureTonnage: BipedStructureTonnage | undefined,
-        options: BipedPaperdollLayerOptions,
+        armor: PaperdollPipCounts | undefined,
+        structureCounts: PaperdollPipCounts | undefined,
+        options: PaperdollOptions,
     ): void {
         const collection = this.collectPlaceholderGroups(sourceGroup);
-        const context: PlaceholderRenderContext = { armor, structureTonnage, options };
-        const requestedLayout = options.pipLayout ?? 'canon';
+        const context: PlaceholderRenderContext = { armor, structureCounts, options };
+        const requestedLayout = options.pipLayout ?? 'distributed';
         const blockedKeys = new Set<string>();
 
         this.renderRailGroups(collection.rails, requestedLayout, context, blockedKeys);
@@ -496,7 +482,7 @@ export class BipedPaperdollUtil {
             return;
         }
 
-        // ArmorPipLayout treats the element carrying mml-multisection as the
+        // ArmorPipLayout treats the element carrying data-multisection as the
         // owner of all of its child section profiles. Keep that same owner so
         // the generated section groups share one count instead of each acting
         // like an independent location.
@@ -537,8 +523,7 @@ export class BipedPaperdollUtil {
     }
 
     private static isMultiSectionParent(element: SVGElement): boolean {
-        return /(?:^|;)\s*mml-multisection\s*:\s*true\s*(?:;|$)/iu
-            .test(element.getAttribute('style') ?? '');
+        return element.getAttribute('data-multisection') === 'true';
     }
 
     private static addRailPlaceholder(
@@ -680,7 +665,7 @@ export class BipedPaperdollUtil {
 
     private static renderRailGroups(
         groups: readonly RailGroup[],
-        requestedLayout: BipedPaperdollPipLayout,
+        requestedLayout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
         blockedKeys: Set<string>,
     ): void {
@@ -696,7 +681,7 @@ export class BipedPaperdollUtil {
                 group.type,
                 group.location,
                 context.armor,
-                context.structureTonnage,
+                context.structureCounts,
                 context.options,
             );
             if (typeof count === 'number' && this.appendRailPips(group, count, context.options)) {
@@ -707,11 +692,13 @@ export class BipedPaperdollUtil {
 
     private static renderFillGroups(
         groups: readonly FillPlaceholderGroup[],
-        requestedLayout: BipedPaperdollPipLayout,
+        requestedLayout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
         blockedKeys: Set<string>,
     ): void {
-        if (requestedLayout !== 'classic' && requestedLayout !== 'distributed' && requestedLayout !== 'generic') {
+        // Authored rails win above; uncovered locations still use their editable fill areas.
+        const fillLayout = requestedLayout === 'rail' ? 'distributed' : requestedLayout;
+        if (fillLayout !== 'classic' && fillLayout !== 'distributed' && fillLayout !== 'generic') {
             return;
         }
         for (const group of groups) {
@@ -723,11 +710,11 @@ export class BipedPaperdollUtil {
                 group.type,
                 group.location,
                 context.armor,
-                context.structureTonnage,
+                context.structureCounts,
                 context.options,
             );
             const pips = typeof count === 'number'
-                ? this.createFillPlaceholderPips(group, count, requestedLayout, context.options)
+                ? this.createFillPlaceholderPips(group, count, fillLayout, context.options)
                 : null;
             if (!pips) {
                 continue;
@@ -739,7 +726,7 @@ export class BipedPaperdollUtil {
 
     private static renderFillPlaceholderRows(
         groups: readonly FillPlaceholderGroup[],
-        options: BipedPaperdollLayerOptions,
+        options: PaperdollOptions,
     ): void {
         for (const group of groups) {
             for (const area of group.areas) {
@@ -756,11 +743,12 @@ export class BipedPaperdollUtil {
 
     private static renderShieldGroups(
         groups: readonly ShieldPlaceholderGroup[],
-        requestedLayout: BipedPaperdollPipLayout,
+        requestedLayout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
         blockedKeys: Set<string>,
     ): void {
-        const shieldLayout = requestedLayout === 'canon' ? 'distributed' : requestedLayout;
+        const shieldLayout = requestedLayout === 'canon' || requestedLayout === 'rail' || requestedLayout === 'capital-grid'
+            ? 'distributed' : requestedLayout;
         for (const group of groups) {
             const key = this.getPlaceholderKey(group.type, group.location);
             if (blockedKeys.has(key)) {
@@ -786,7 +774,7 @@ export class BipedPaperdollUtil {
 
     private static renderBoundsGroups(
         groups: readonly PlaceholderGroup[],
-        requestedLayout: BipedPaperdollPipLayout,
+        requestedLayout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
         blockedKeys: Set<string>,
     ): void {
@@ -812,7 +800,7 @@ export class BipedPaperdollUtil {
 
     private static createBoundsPlaceholderPips(
         group: PlaceholderGroup,
-        requestedLayout: BipedPaperdollPipLayout,
+        requestedLayout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
     ): SVGGElement | null {
         // CBT paperdoll assets describe their usable location bounds with
@@ -821,7 +809,8 @@ export class BipedPaperdollUtil {
         const primaryPips = (requestedLayout === 'canon' ? group.canon || group.fill : group.fill)
             ? this.createBoundsPlaceholderPipsForLayout(group, requestedLayout, context)
             : null;
-        const fallbackLayout = context.options.fallbackPipLayout;
+        const fallbackLayout = context.options.fallbackPipLayout
+            ?? (requestedLayout === 'rail' || requestedLayout === 'canon' ? 'distributed' : undefined);
         if (primaryPips || !fallbackLayout || fallbackLayout === requestedLayout) {
             return primaryPips;
         }
@@ -830,7 +819,7 @@ export class BipedPaperdollUtil {
 
     private static createBoundsPlaceholderPipsForLayout(
         group: PlaceholderGroup,
-        layout: BipedPaperdollPipLayout,
+        layout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
     ): SVGGElement | null {
         const width = group.bounds.maxX - group.bounds.minX;
@@ -843,7 +832,7 @@ export class BipedPaperdollUtil {
             group.type,
             group.location,
             context.armor,
-            context.structureTonnage,
+            context.structureCounts,
             context.options,
         );
         if (typeof count !== 'number') {
@@ -891,19 +880,10 @@ export class BipedPaperdollUtil {
         height: number,
         context: PlaceholderRenderContext,
     ): SVGGElement | null {
-        if (group.type === 'armor') {
-            const count = context.armor?.[group.location as BipedArmorLocation];
-            return typeof count === 'number'
-                ? CanonPipRenderer.createArmorPips(group.location, count, width, height, context.options.pipOptions)
-                : null;
-        }
-        if (group.type === 'structure') {
-            const tonnage = this.getStructureTonnage(context.structureTonnage, group.location);
-            return typeof tonnage === 'number'
-                ? CanonPipRenderer.createStructurePips(tonnage, group.location, width, height, context.options.pipOptions)
-                : null;
-        }
-        return null;
+        return context.options.canonicalPips?.(
+            group.type, group.location, width, height,
+            this.getPlaceholderPipOptions(group.type, context.options),
+        ) ?? null;
     }
 
     private static createDistributedRectanglePips(
@@ -923,8 +903,8 @@ export class BipedPaperdollUtil {
     private static createFillPlaceholderPips(
         group: FillPlaceholderGroup,
         count: number,
-        layout: BipedPaperdollPipLayout,
-        options: BipedPaperdollLayerOptions,
+        layout: PaperdollPipLayout,
+        options: PaperdollOptions,
     ): SVGGElement | null {
         const pipOptions = this.getPlaceholderPipOptions(group.type, options);
         const multiSectionPips = this.createMultiSectionFillPips(
@@ -990,7 +970,7 @@ export class BipedPaperdollUtil {
     private static createProfiledFillPips(
         group: FillPlaceholderGroup,
         count: number,
-        layout: BipedPaperdollPipLayout,
+        layout: PaperdollPipLayout,
         options: PipRenderOptions,
     ): SVGGElement | null {
         if (layout !== 'classic' && layout !== 'distributed'
@@ -1024,7 +1004,7 @@ export class BipedPaperdollUtil {
     private static createMultiSectionFillPips(
         group: FillPlaceholderGroup,
         count: number,
-        layout: BipedPaperdollPipLayout,
+        layout: PaperdollPipLayout,
         options: PipRenderOptions,
     ): SVGGElement | null {
         if ((layout !== 'classic' && layout !== 'distributed')
@@ -1110,9 +1090,7 @@ export class BipedPaperdollUtil {
         }
         return createPipShapeProfile(areas.map(area => {
             const bounds = this.readRectBounds(area.geometry);
-            const styleGap = area.geometry.getAttribute('style')
-                ?.match(/(?:^|;)\s*mml-gap\s*:\s*([^;]+)/u)?.[1];
-            const gapValues = (area.geometry.getAttribute('data-gap') ?? styleGap)
+            const gapValues = area.geometry.getAttribute('data-gap')
                 ?.split(',')
                 .map(value => Number(value.trim()));
             const gap = gapValues?.length === 2
@@ -1133,8 +1111,8 @@ export class BipedPaperdollUtil {
     private static createActiveFillPlaceholderPips(
         geometry: SVGGeometryElement,
         count: number,
-        layout: BipedPaperdollPipLayout,
-        layerOptions: BipedPaperdollLayerOptions,
+        layout: PaperdollPipLayout,
+        layerOptions: PaperdollOptions,
         type: PaperdollPlaceholderType,
         location: string,
     ): SVGGElement | null {
@@ -1247,14 +1225,14 @@ export class BipedPaperdollUtil {
 
     private static createShieldPlaceholderPips(
         group: ShieldPlaceholderGroup,
-        layout: BipedPaperdollPipLayout,
+        layout: PaperdollPipLayout,
         context: PlaceholderRenderContext,
     ): SVGGElement | null {
         const count = this.readPlaceholderPipCount(
             group.type,
             group.location,
             context.armor,
-            context.structureTonnage,
+            context.structureCounts,
             context.options,
         );
         if (typeof count !== 'number') {
@@ -1294,9 +1272,10 @@ export class BipedPaperdollUtil {
         layout: string | null,
     ): void {
         const zone = document.createElementNS(SVG_NAMESPACE, 'g');
-        zone.setAttribute('class', `biped-paperdoll-zone biped-paperdoll-zone-${location} biped-paperdoll-zone-${type}`);
+        zone.setAttribute('class', `paperdoll-zone paperdoll-zone-${location} paperdoll-zone-${type}`);
         zone.setAttribute('data-location', location);
         zone.setAttribute('data-zone-type', type);
+        zone.setAttribute('pointer-events', 'none');
         if (transform) {
             zone.setAttribute('transform', transform);
         }
@@ -1350,7 +1329,8 @@ export class BipedPaperdollUtil {
     }
 
     private static containsImportedAssetContent(element: Element): boolean {
-        return element.matches('[data-canon], [data-fill], [data-rail]')
+        return element.tagName.toLowerCase() === 'defs'
+            || element.matches('[data-canon], [data-fill], [data-rail]')
             || element.querySelector('[data-canon], [data-fill], [data-rail]') !== null
             || element.matches('[data-mekbay-paperdoll-overlay], [data-mekbay-random-hit]')
             || element.querySelector('[data-mekbay-paperdoll-overlay], [data-mekbay-random-hit]') !== null;
@@ -1371,7 +1351,7 @@ export class BipedPaperdollUtil {
 
     private static getPlaceholderPipOptions(
         type: PaperdollPlaceholderType,
-        options: BipedPaperdollLayerOptions,
+        options: PaperdollOptions,
     ): PipRenderOptions {
         const pipOptions = type === 'structure'
             ? { ...options.pipOptions, ...options.structurePipOptions }
@@ -1389,7 +1369,7 @@ export class BipedPaperdollUtil {
     private static appendRailPips(
         group: RailGroup,
         count: number,
-        options: BipedPaperdollLayerOptions,
+        options: PaperdollOptions,
     ): boolean {
         const defaultCapacity = Number.isFinite(options.railPipsPerPath)
             ? Math.max(1, Math.floor(options.railPipsPerPath ?? 5))
@@ -1481,35 +1461,14 @@ export class BipedPaperdollUtil {
     private static readPlaceholderPipCount(
         placeholderType: PaperdollPlaceholderType,
         location: string,
-        armor: BipedArmorValues | undefined,
-        structureTonnage: BipedStructureTonnage | undefined,
-        options: BipedPaperdollLayerOptions,
+        armor: PaperdollPipCounts | undefined,
+        structureCounts: PaperdollPipCounts | undefined,
+        options: PaperdollOptions,
     ): number | undefined {
-        if (placeholderType === 'armor') {
-            const value = armor?.[location as BipedArmorLocation];
-            return typeof value === 'number' ? value : undefined;
-        }
-        if (placeholderType === 'structure') {
-            const directCount = options.structurePipCounts?.[location];
-            if (typeof directCount === 'number') {
-                return directCount;
-            }
-            const locationTonnage = this.getStructureTonnage(structureTonnage, location);
-            return typeof locationTonnage === 'number'
-                ? CanonPipRenderer.getStructurePipCount(locationTonnage, location)
-                : undefined;
-        }
-        const shieldValues = options.shieldValues?.[location as BipedShieldLocation];
+        if (placeholderType === 'armor') return armor?.[location];
+        if (placeholderType === 'structure') return structureCounts?.[location];
+        const shieldValues = options.shieldValues?.[location];
         return placeholderType === 'shield-dc' ? shieldValues?.dc : shieldValues?.da;
-    }
-
-    private static getStructureTonnage(
-        structureTonnage: BipedStructureTonnage | undefined,
-        location: string,
-    ): number | undefined {
-        return typeof structureTonnage === 'number'
-            ? structureTonnage
-            : structureTonnage?.[location as BipedStructureLocation];
     }
 
     private static getPlaceholderKey(type: PaperdollPlaceholderType, location: string): string {

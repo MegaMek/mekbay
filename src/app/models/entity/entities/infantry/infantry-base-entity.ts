@@ -18,7 +18,7 @@ export abstract class InfantryBaseEntity extends BaseEntity {
   }
 
   abstract override unitSubtype(): UnitSubtype;
-  abstract readonly canAntiMech: Signal<boolean>;
+  abstract readonly canMakeAntiMekAttacks: Signal<boolean>;
   readonly squadSize = signal<number>(1);
   readonly squadCount = signal<number>(1);
 

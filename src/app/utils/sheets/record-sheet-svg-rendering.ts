@@ -8,15 +8,19 @@ type AmmoWeaponProfile,
 } from '../../models/ammo-weapon-profile.model';
 import { heatLevels } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
-import type { EntityDamageLocation,EntityTechBase } from '../../models/entity/types';
+import { asComponentId } from '../../models/entity/entity-identifiers';
+import type { EntityDamageLocation, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
 import type { WeaponEquipment } from '../../models/equipment.model';
+import { isPpcCapacitorEquipment, PPC_CAPACITOR_HEAT_BONUS } from '../../models/ppc-capacitor.model';
+import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/runtime/component-ppc-capacitor';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
 import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
 import { clusterHits } from '../cluster-hit-table';
 import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
+import { resolveInventoryControlDamageText } from '../inventory-control-damage.util';
 import { recordSheetAmmoName } from '../record-sheet-ammo.util';
-import { defaultRecordSheetWeaponDamageText } from '../record-sheet-weapon-info.util';
-import type { BipedPaperdollPipLayout } from './biped-paperdoll.util';
+import { defaultRecordSheetWeaponDamageText, formatRecordSheetWeaponDamageText } from '../record-sheet-weapon-info.util';
+import type { PaperdollPipLayout } from './paperdoll-generator';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { createPipShapeProfile } from './pip-shape-profile';
@@ -121,12 +125,25 @@ export function drawPageChrome(
             anchor: 'middle',
             maxWidth: 124 * page.horizontalScale,
         }));
-        compactOptions?.drawIcon?.(callout, {
+        const icon = svgElement('g');
+        compactOptions?.drawIcon?.(icon, {
             x: 12.841 * page.horizontalScale,
             y: 2 * page.verticalScale,
             width: 31.018 * page.horizontalScale,
             height: 41.357 * page.verticalScale,
         }, svg);
+        if (icon.childElementCount > 0) {
+            // PrintSmallUnitSheet uses the same editable-art box for unit fluff.
+            setAttributes(icon, {
+                'data-mekbay-masthead-art': '1',
+                'data-mekbay-fluff-art': '1',
+                'data-image-x': formatNumber(9.45 * page.horizontalScale),
+                'data-image-y': formatNumber(2 * page.verticalScale),
+                'data-image-width': formatNumber(37.8 * page.horizontalScale),
+                'data-image-height': formatNumber(41.357 * page.verticalScale),
+            });
+            callout.appendChild(icon);
+        }
         brand.appendChild(callout);
     } else {
         addText(
@@ -205,18 +222,9 @@ export function drawCheckbox(
     return box;
 }
 
-export function recordSheetInventoryWeapons(entity: BaseEntity, mergeIdentical = false): readonly {
-    readonly name: string;
-    readonly location: string;
-    readonly heat: string;
-    readonly damage: string;
-    readonly minimumRange: string;
-    readonly ranges: readonly string[];
-    readonly componentIds: readonly string[];
-    readonly quantity: number;
-    readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
-}[] {
-    const sortedMounts = [...entity.rangedWeapons()].sort((left, right) => {
+/** The reference inventory sorts ground ranges descending, including aerospace units. */
+export function recordSheetInventoryWeaponMounts(entity: BaseEntity): readonly EntityMountedWeapon[] {
+    return [...entity.rangedWeapons()].sort((left, right) => {
         if (left.equipment.id === right.equipment.id) {
             if (left.rearMounted !== right.rearMounted) return left.rearMounted ? 1 : -1;
             return 0;
@@ -230,27 +238,53 @@ export function recordSheetInventoryWeapons(entity: BaseEntity, mergeIdentical =
         }
         return right.equipment.heat - left.equipment.heat;
     });
-    const unmerged = sortedMounts.map(mount => {
-        const alternativeModes = recordSheetAlternativeModes(mount.equipment);
+}
+
+export function recordSheetInventoryWeapons(entity: BaseEntity, mergeIdentical = false): readonly {
+    readonly name: string;
+    readonly location: string;
+    readonly heat: string;
+    readonly damage: string;
+    readonly minimumRange: string;
+    readonly ranges: readonly string[];
+    readonly componentIds: readonly string[];
+    readonly quantity: number;
+    readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
+}[] {
+    const unmerged = recordSheetInventoryWeaponMounts(entity).map(mount => {
+        const ammoModes = recordSheetAlternativeModes(mount.equipment);
+        const alternativeModes = [...ammoModes];
         const semanticDamage = defaultRecordSheetWeaponDamageText(mount.equipment, entity.getEquipmentRegistry());
+        if (isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)) {
+            const damage = resolveInventoryControlDamageText({ componentId: asComponentId(mount.mountId), physical: false, weapon: mount.equipment }, {
+                selectedRange: null, selectedAmmo: null, equipmentCatalog: entity.getEquipmentRegistry(),
+                damageOverride: ppcCapacitorWeaponDamage(mount.equipment.damage, true),
+            }, { applyWeaponTypes: (_id, types) => ppcCapacitorWeaponTypes(types, true) });
+            alternativeModes.push({
+                displayOnly: true,
+                name: 'w/Capacitor', heat: String(mount.equipment.heat + PPC_CAPACITOR_HEAT_BONUS),
+                damage: formatRecordSheetWeaponDamageText(mount.equipment, damage ?? semanticDamage),
+                minimumRange: '', ranges: ['', '', ''],
+            });
+        }
         return {
             name: mount.displayName(),
             location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
             heat: String(mount.equipment.heat),
-            damage: alternativeModes.length > 0
+            damage: ammoModes.length > 0
                 ? semanticDamage.match(/\[[^\]]+\]\s*$/u)?.[0] ?? ''
                 : semanticDamage,
-            minimumRange: alternativeModes.length > 0
+            minimumRange: ammoModes.length > 0
                 ? ''
                 : mount.equipment.minimumRange > 0 ? String(mount.equipment.minimumRange) : '—',
-            ranges: alternativeModes.length > 0
+            ranges: ammoModes.length > 0
                 ? Object.freeze(['', '', ''])
                 : Object.freeze(recordSheetWeaponRanges(mount.equipment)
                     .slice(0, 3)
                     .map(value => value > 0 ? String(value) : '—')),
             componentIds: Object.freeze([mount.mountId]),
             quantity: 1,
-            alternativeModes,
+            alternativeModes: Object.freeze(alternativeModes),
         };
     });
     if (!mergeIdentical) return Object.freeze(unmerged.map(row => Object.freeze(row)));
@@ -284,6 +318,9 @@ export function recordSheetInventoryWeapons(entity: BaseEntity, mergeIdentical =
 
 export interface RecordSheetInventoryAlternativeMode {
     readonly name: string;
+    /** Printed equipment profile, not an ammunition/firing mode the binder may select. */
+    readonly displayOnly?: boolean;
+    readonly heat?: string;
     readonly damage: string;
     readonly minimumRange: string;
     readonly ranges: readonly [string, string, string];
@@ -600,7 +637,7 @@ export function drawDamageLocation(
             group.appendChild(pips);
         }
         const hit = transparentRect(x + 2, y + 10, width - 4, height - 12, 'unitLocation armor');
-        hit.setAttribute('loc', code);
+        hit.setAttribute('data-loc', code);
         group.appendChild(hit);
         return;
     }
@@ -625,15 +662,15 @@ export function drawDamageLocation(
         }
     }
     const structureTarget = transparentRect(x + 2, y + 11, width - 4, internalHeight + 3, 'unitLocation structure');
-    structureTarget.setAttribute('loc', code);
+    structureTarget.setAttribute('data-loc', code);
     group.appendChild(structureTarget);
     const armorTarget = transparentRect(x + 2, y + 13 + internalHeight, width - 4, armorHeight, 'unitLocation armor');
-    armorTarget.setAttribute('loc', code);
+    armorTarget.setAttribute('data-loc', code);
     group.appendChild(armorTarget);
 }
 
 export function paperdollPipOptions(
-    pipLayout: BipedPaperdollPipLayout,
+    pipLayout: PaperdollPipLayout,
     pipRadius: number,
     minPipRadius: number,
 ) {
@@ -660,6 +697,7 @@ export function constructionMaterialSubtitle(
 }
 
 interface DiagramHeadingOptions {
+    readonly showSubtitleRibbon?: boolean;
     readonly titleWidth?: number;
     readonly titleX?: number;
     readonly titleY?: number;
@@ -717,7 +755,7 @@ export function addDiagramHeading(
         + `${formatNumber(ribbonX - ribbonCut)},${formatNumber(ribbonY + 18.625)}`,
     );
     ribbon.setAttribute('fill', '#c7c7c7');
-    group.appendChild(ribbon);
+    if (options.showSubtitleRibbon !== false) group.appendChild(ribbon);
     const subtitleText = addText(group, subtitle, options.subtitleX ?? width / 2, options.subtitleY ?? y + 21.5, {
         size: options.subtitleFontSize ?? 8.6,
         weight: 700,
@@ -758,6 +796,13 @@ export function decoratePaperdollPips(layer: SVGGElement, forceRear = false): vo
     layer.querySelectorAll<SVGGElement>('[data-pip-type][data-pip-location]').forEach(pipGroup => {
         const typeValue = pipGroup.dataset['pipType'] ?? 'armor';
         const rawLocation = pipGroup.dataset['pipLocation'] ?? '';
+        if (typeValue === 'shield-dc' || typeValue === 'shield-da') {
+            const code = `${typeValue === 'shield-dc' ? 'DC' : 'DA'}${rawLocation}`;
+            pipGroup.classList.add('shield');
+            pipGroup.setAttribute('data-loc', code);
+            decoratePips(pipGroup, 'shield', code);
+            return;
+        }
         const rear = forceRear || rawLocation.endsWith('_R');
         const location = rawLocation.replace(/_R$/u, '');
         decoratePips(pipGroup, typeValue === 'structure' ? 'structure' : 'armor', location, rear);
@@ -1187,6 +1232,7 @@ const RECORD_SHEET_HEADER_PROFILES: Readonly<Record<string, RecordSheetHeaderPro
     'WARRIOR DATA': Object.freeze({ width: 93.635, textLength: 76.034 }),
     'CRITICAL TABLE': Object.freeze({ width: 93.055, textLength: 75.506 }),
     'HEAT DATA': Object.freeze({ width: 69.498, textLength: 54.091 }),
+    'GROUND MAP STRAIGHT MOVEMENT': Object.freeze({ width: 178.308, textLength: 150.488 }),
 });
 
 export function addFrame(
@@ -1267,14 +1313,15 @@ export function makeDistributedPips(
 
 function decoratePips(
     group: SVGGElement,
-    type: 'armor' | 'structure',
+    type: 'armor' | 'structure' | 'shield',
     location: string,
     rear = false,
 ): void {
     group.querySelectorAll<SVGElement>('circle, polygon, rect:not([data-pip-shadow])').forEach(pip => {
         pip.classList.add('pip', type);
-        pip.setAttribute('loc', location);
-        if (rear) pip.setAttribute('rear', '');
+        pip.setAttribute('data-loc', location);
+        if (rear) pip.setAttribute('data-rear', '');
+        if (group.closest('[data-mekbay-paperdoll]')) pip.setAttribute('pointer-events', 'none');
     });
 }
 
@@ -1462,6 +1509,11 @@ export function formatNumber(value: number): string {
     return Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
 }
 
+/** Small support vehicle record sheets express their construction weight in kg. */
+export function formatRecordSheetTonnage(tons: number, kilograms = false): string {
+    return kilograms ? `${formatWholeNumber(Math.trunc(tons * 1000))} kg` : formatNumber(tons);
+}
+
 export function formatGeometryNumber(value: number): string {
     return Number.isInteger(value) ? String(value) : String(Math.round(value * 1_000_000) / 1_000_000);
 }
@@ -1527,6 +1579,8 @@ function normalizePaperdollPathStyle(path: SVGPathElement): void {
 const RECORD_SHEET_STYLE = `
 text { font-family: Roboto, Arial, sans-serif; }
 .pip { fill: #fff; stroke: #000; stroke-width: .5; vector-effect: non-scaling-stroke; }
+.battle-armor-trooper .pip { stroke-width: .9; }
+.pip.trooperStatusPip:not(.damaged):not(.pending):not(.fresh) { fill: #3f3f3f; }
 .capital-pip-state-damaged { fill: #111; }
 .capital-pip-state-pending-damage { fill: orange; }
 .capital-pip-state-fresh-damage { fill: #ff0; }

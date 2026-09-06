@@ -9,6 +9,11 @@ asLocationId,
 asSystemDamageTrackId,
 } from '../../models/entity/entity-identifiers';
 import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
+import { MountedArmor } from '../../models/entity/components/armor';
+import { MountedStructure } from '../../models/entity/components/structure';
+import { TestTankEntity } from '../../models/entity/testing/test-entities';
+import { ArmorEquipment,StructureEquipment } from '../../models/equipment.model';
+import { applyRecordSheetPipMaterials } from '../../utils/sheets/record-sheet-pip-materials';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -18,11 +23,29 @@ import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-render
 import {
 bindNonMekRecordSheet,
 } from './non-mek-record-sheet-binder';
+import { RECORD_SHEET_FRESH_DAMAGE_DURATION_MS } from '../../utils/sheets/record-sheet-damage-highlights';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
 
 const editContext = createUnitEditContextFixture();
 
 describe('bindNonMekRecordSheet', () => {
+    it('preserves generated kilogram units during initial and subsequent identity rendering', () => {
+        const svg = sheet();
+        const weight = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        weight.id = 'tonnage';
+        weight.setAttribute('data-mekbay-field', 'tonnage');
+        weight.setAttribute('data-mekbay-weight-unit', 'kg');
+        svg.appendChild(weight);
+        const initial = { ...snapshot(3), tonnage: 2.5 };
+        const binding = bindNonMekRecordSheet(svg, initial);
+
+        expect(weight.textContent).toBe('2,500 kg');
+        binding.render({ ...initial, tonnage: 3.25 });
+        expect(weight.textContent).toBe('3,250 kg');
+        expect(initial.tonnage).toBe(2.5);
+        binding.destroy();
+    });
+
     it('opens ammo loadout through the whole profile after rows change and leaves printed profiles inert', () => {
         const svg = sheet();
         const profile = appendRecordSheetAmmoProfile(svg, [], {
@@ -203,6 +226,72 @@ describe('bindNonMekRecordSheet', () => {
             .every(zone => zone.dataset['mekbayEntityBound'] === '1')).toBeTrue();
     });
 
+    it('binds every paperdoll fragment and leaves pips inert even when a location path is missing', () => {
+        const svg = sheet();
+        svg.setAttribute('data-mekbay-paperdoll', '1');
+        svg.querySelector('.unitLocation.structure')?.remove();
+        svg.appendChild(svg.querySelector('.unitLocation.armor')!.cloneNode(true));
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, snapshot(3), interaction => interactions.push(interaction));
+        const fragments = [...svg.querySelectorAll<SVGElement>('.unitLocation.armor')];
+        expect(fragments).toHaveSize(2);
+        fragments.forEach(fragment => fragment.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })));
+        expect(interactions.map(interaction => interaction.kind)).toEqual(['armor', 'armor']);
+        const pips = [...svg.querySelectorAll<SVGElement>('.pip')];
+        expect(pips.every(pip => pip.style.pointerEvents === 'none'
+            && pip.dataset['mekbayEntityBound'] === undefined)).toBeTrue();
+        pips.forEach(pip => pip.dispatchEvent(new MouseEvent('click')));
+        expect(interactions).toHaveSize(2);
+        binding.destroy();
+        fragments[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(interactions).toHaveSize(2);
+    });
+
+    it('activates non-Mek random hits by pointer or keyboard using the current edit context', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, snapshot(3), interaction => interactions.push(interaction));
+        const button = svg.querySelector<SVGElement>('[data-mekbay-random-hit]')!;
+        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0 }));
+        button.dispatchEvent(new PointerEvent('pointerdown', { button: 2 }));
+        const current = { ...snapshot(3), editContext: editContext(8) };
+        binding.render(current);
+        button.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+        expect(interactions).toEqual([
+            { kind: 'random-hit', element: button, context: snapshot(3).editContext },
+            { kind: 'random-hit', element: button, context: current.editContext },
+        ]);
+        binding.destroy();
+        button.dispatchEvent(new PointerEvent('pointerdown', { button: 0 }));
+        expect(interactions).toHaveSize(2);
+        expect(button.hasAttribute('tabindex')).toBeFalse();
+    });
+
+    it('binds front and rear vehicle turret contours to their separate armor faces', () => {
+        const svg = sheet();
+        svg.innerHTML = '<path class="unitLocation armor" data-loc="FT"></path>'
+            + '<path class="unitLocation armor" data-loc="RT"></path>';
+        const initial = snapshot(3);
+        const locations = ['FT', 'RT'].map(code => ({
+            ...initial.locations[0],
+            code: code === 'FT' ? 'Front Turret' : 'Rear Turret',
+            sheetCode: code,
+            locationId: asLocationId(code),
+            armor: [{ ...initial.locations[0].armor[0], faceId: asArmorFaceId(`${code}-armor`),
+                locationId: asLocationId(code) }],
+        }));
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, { ...initial, locations }, interaction => interactions.push(interaction));
+        svg.querySelector('[data-loc="RT"]')!.dispatchEvent(new MouseEvent('click'));
+        svg.querySelector('[data-loc="FT"]')!.dispatchEvent(new MouseEvent('click'));
+        expect(interactions).toEqual([
+            jasmine.objectContaining({ kind: 'armor', locationId: 'RT', faceId: 'RT-armor' }),
+            jasmine.objectContaining({ kind: 'armor', locationId: 'FT', faceId: 'FT-armor' }),
+        ]);
+        binding.destroy();
+    });
+
     it('binds every pip when an authored sheet has no location zone or hit area', () => {
         const svg = pipOnlySheet();
         const interactions: RecordSheetInteraction[] = [];
@@ -220,7 +309,71 @@ describe('bindNonMekRecordSheet', () => {
         ]);
     });
 
-    it('binds and updates one aggregate target per capital-grid block', () => {
+    it('preserves Fancy material capacities and fallback damage before and after fresh damage expires', () => {
+        jasmine.clock().install();
+        const svg = pipOnlySheet();
+        const entity = new TestTankEntity();
+        entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+            id: 'Hardened', name: 'Hardened', type: 'armor', armor: { type: 'HARDENED' },
+        }) }));
+        entity.setUniformStructure(new MountedStructure({ tonnage: 50, structure: new StructureEquipment({
+            id: 'Reinforced', name: 'Reinforced', type: 'structure', structure: { typeId: 4 },
+        }) }));
+        applyRecordSheetPipMaterials(svg, entity);
+        const base = snapshot(2);
+        const binding = bindNonMekRecordSheet(svg, base, () => undefined);
+        try {
+            const pips = [...svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure')];
+            expect(pips.length).toBe(5);
+            expect(pips.every(pip => pip.tagName === 'polygon' && pip.style.display !== 'none')).toBeTrue();
+            expect(svg.querySelector('.half')).toBeNull();
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(1);
+            const pending: NonMekRecordSheetSnapshot = {
+                ...base,
+                locations: base.locations.map(location => ({
+                    ...location,
+                    previewRemainingInternal: 1,
+                    armor: location.armor.map(face => ({ ...face, previewRemaining: 1 })),
+                })),
+            };
+            binding.render(pending);
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
+            expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+            expect(svg.querySelectorAll('.pip.pending').length).toBe(2);
+            expect(svg.querySelectorAll('.pip.fresh').length).toBe(2);
+
+            jasmine.clock().tick(RECORD_SHEET_FRESH_DAMAGE_DURATION_MS);
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
+            expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+            expect(svg.querySelectorAll('.pip.pending').length).toBe(2);
+            expect(svg.querySelectorAll('.pip.fresh').length).toBe(0);
+            expect(pips.every(pip => pip.style.display !== 'none')).toBeTrue();
+
+            binding.render(pending);
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
+            expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+        } finally {
+            binding.destroy();
+            jasmine.clock().uninstall();
+        }
+    });
+
+    it('keeps dense capital paperdoll blocks inert when a location contour is missing', () => {
+        const svg = capitalGridSheet();
+        svg.setAttribute('data-mekbay-paperdoll', '1');
+        svg.querySelector('.unitLocation')!.classList.remove('unitLocation');
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, capitalSnapshot(5_999), interaction => interactions.push(interaction));
+        const targets = [...svg.querySelectorAll<SVGElement>('.capital-pip-interaction')];
+        expect(targets).not.toHaveSize(0);
+        expect(targets.every(target => target.style.pointerEvents === 'none'
+            && target.dataset['mekbayEntityBound'] === undefined)).toBeTrue();
+        targets[0].dispatchEvent(new MouseEvent('click'));
+        expect(interactions).toEqual([]);
+        binding.destroy();
+    });
+
+    it('binds the capital location while rendering its dense pip blocks without listeners', () => {
         const svg = capitalGridSheet();
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(
@@ -236,12 +389,12 @@ describe('bindNonMekRecordSheet', () => {
             svg.querySelector(`.${className}`)?.getAttribute('d') ?? '';
 
         expect(targets.length).toBe(60);
-        expect(targets.every(target => target.dataset['mekbayEntityBound'] === '1')).toBeTrue();
+        expect(targets.every(target => target.dataset['mekbayEntityBound'] === undefined
+            && target.style.pointerEvents === 'none')).toBeTrue();
         expect(targets.every(target => target.style.fill === 'transparent'
             && target.style.getPropertyPriority('fill') === 'important')).toBeTrue();
         expect(grid.dataset['mekbayEntityBound']).toBeUndefined();
-        expect(region.dataset['mekbayEntityBound']).toBeUndefined();
-        expect(region.style.cursor).toBe('default');
+        expect(region.dataset['mekbayEntityBound']).toBe('1');
         expect(svg.querySelectorAll('.pip').length).toBe(0);
         expect(path('capital-pip-state-damaged')).not.toBe('');
 
@@ -250,16 +403,14 @@ describe('bindNonMekRecordSheet', () => {
         expect(path('capital-pip-state-pending-damage')).toBe('');
 
         expect(binding.render(capitalSnapshot(5_999, 5_997))).toEqual([]);
-        expect(path('capital-pip-state-fresh-damage')).toBe('');
-        expect(path('capital-pip-state-pending-damage')).not.toBe('');
+        expect(path('capital-pip-state-fresh-damage')).not.toBe('');
+        expect(path('capital-pip-state-pending-damage')).toBe('');
 
         expect(binding.render(capitalSnapshot(5_997, 5_999))).toEqual([]);
         expect(path('capital-pip-state-fresh-repair')).not.toBe('');
         expect(path('capital-pip-state-pending-repair')).toBe('');
 
         backing.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        expect(interactions).toEqual([]);
-        targets[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([
             jasmine.objectContaining({ kind: 'armor', faceId: FACE_ID, locationId: LOCATION_ID }),
         ]);
@@ -809,13 +960,13 @@ function sheet(): SVGSVGElement {
     const host = document.createElement('div');
     host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
         <text id="type"></text><text id="bv"></text>
-        <g class="unitLocation armor" loc="FR"></g>
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip armor" loc="FR"></circle>
-        <g class="unitLocation structure" loc="FR"></g>
-        <circle class="pip structure" loc="FR"></circle>
-        <circle class="pip structure" loc="FR"></circle>
+        <g class="unitLocation armor" data-loc="FR"></g>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <g class="unitLocation structure" data-loc="FR"></g>
+        <circle class="pip structure" data-loc="FR"></circle>
+        <circle class="pip structure" data-loc="FR"></circle>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
 }
@@ -823,11 +974,11 @@ function sheet(): SVGSVGElement {
 function combinedSheet(): SVGSVGElement {
     const host = document.createElement('div');
     host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
-        <g class="unitLocation armor" loc="T1"></g>
-        <circle class="pip armor" loc="T1"></circle>
-        <circle class="pip armor" loc="T1"></circle>
-        <circle class="pip armor" loc="T1"></circle>
-        <circle class="pip armor" loc="T1"></circle>
+        <g class="unitLocation armor" data-loc="T1"></g>
+        <circle class="pip armor" data-loc="T1"></circle>
+        <circle class="pip armor" data-loc="T1"></circle>
+        <circle class="pip armor" data-loc="T1"></circle>
+        <circle class="pip armor" data-loc="T1"></circle>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
 }
@@ -835,15 +986,15 @@ function combinedSheet(): SVGSVGElement {
 function hitAreaSheet(): SVGSVGElement {
     const host = document.createElement('div');
     host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip-hit-area armor" loc="FR"></circle>
-        <circle class="pip-hit-area armor" loc="FR"></circle>
-        <circle class="pip structure" loc="FR"></circle>
-        <circle class="pip structure" loc="FR"></circle>
-        <circle class="pip-hit-area structure" loc="FR"></circle>
-        <circle class="pip-hit-area structure" loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip-hit-area armor" data-loc="FR"></circle>
+        <circle class="pip-hit-area armor" data-loc="FR"></circle>
+        <circle class="pip structure" data-loc="FR"></circle>
+        <circle class="pip structure" data-loc="FR"></circle>
+        <circle class="pip-hit-area structure" data-loc="FR"></circle>
+        <circle class="pip-hit-area structure" data-loc="FR"></circle>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
 }
@@ -851,11 +1002,11 @@ function hitAreaSheet(): SVGSVGElement {
 function pipOnlySheet(): SVGSVGElement {
     const host = document.createElement('div');
     host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip armor" loc="FR"></circle>
-        <circle class="pip structure" loc="FR"></circle>
-        <circle class="pip structure" loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip armor" data-loc="FR"></circle>
+        <circle class="pip structure" data-loc="FR"></circle>
+        <circle class="pip structure" data-loc="FR"></circle>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
 }
@@ -864,7 +1015,7 @@ function capitalGridSheet(): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const region = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     region.setAttribute('class', 'unitLocation armor');
-    region.setAttribute('loc', 'FR');
+    region.setAttribute('data-loc', 'FR');
     const backing = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     backing.setAttribute('class', 'capital-grid-backing');
     backing.setAttribute('width', '1000');

@@ -3,6 +3,9 @@
 
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
+import type { RecordSheetPipLayout } from '../../models/options.model';
+import { isMekEntity } from '../../models/entity/utils/entity-type-guards';
+import type { PaperdollPipLayout } from './paperdoll-generator';
 import {
     recordSheetPageProfile,
     type RecordSheetPageFormat,
@@ -25,6 +28,7 @@ export interface RecordSheetSvgGeneratorOptions {
     readonly pageFormat?: RecordSheetPageFormat;
     readonly ruleset?: CBTRuleset;
     readonly fluffImageUrl?: string | null;
+    readonly pipLayout?: RecordSheetPipLayout;
 }
 
 /** Thin entry point: family layout classes own all sheet composition. */
@@ -48,7 +52,12 @@ export class RecordSheetSvgGenerator {
         const page = recordSheetPageProfile(pageFormat);
         const layout = resolveRecordSheetLayout(entity);
         const profile = layout.profile(entity, pageFormat);
-        const request = { format, page, profile } as const;
+        const requestedPipLayout = options.pipLayout ?? 'classic';
+        const pipLayout: PaperdollPipLayout = requestedPipLayout === 'classic'
+            ? isMekEntity(entity) && entity.chassisConfig === 'Biped' && entity.tonnage() <= 100
+                ? 'canon' : 'distributed'
+            : requestedPipLayout;
+        const request = { format, page, profile, pipLayout } as const;
         const pages = layout.generatePages
             ? [...await layout.generatePages(entity, request)]
             : [await layout.generate(entity, request)];
@@ -57,6 +66,7 @@ export class RecordSheetSvgGenerator {
         renderGeneratedRecordSheetControls(primary, entity, options);
         return Object.freeze(pages.map((svg, index) => {
             svg.setAttribute('data-mekbay-layout', layout.id);
+            svg.setAttribute('data-mekbay-pip-layout', pipLayout);
             svg.setAttribute('data-mekbay-page-format', page.format);
             svg.setAttribute('data-mekbay-page-index', String(index));
             svg.setAttribute('data-mekbay-page-count', String(pages.length));

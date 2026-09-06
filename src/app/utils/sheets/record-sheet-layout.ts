@@ -77,7 +77,7 @@ export const RECORD_SHEET_COMPACT_GAP = LETTER_COMPACT_GAP;
 export const RECORD_SHEET_COMPACT_CONTENT_Y = LETTER_COMPACT_CONTENT_Y;
 export const RECORD_SHEET_COMPACT_AVAILABLE_HEIGHT = PAGE_PROFILES.letter.compactAvailableHeight;
 
-export type CompactRecordSheetKind = 'battle-armor' | 'infantry' | 'protomek' | 'vehicle';
+export type CompactRecordSheetKind = 'battle-armor' | 'infantry' | 'protomek' | 'vehicle' | 'handheld-weapon';
 
 export interface RecordSheetLayoutProfile {
     readonly kind: CompactRecordSheetKind | 'full';

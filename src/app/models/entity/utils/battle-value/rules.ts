@@ -73,7 +73,8 @@ const MEK_SKILL_MULTIPLIERS = Object.freeze([
 export interface CBTSkillUnitFacts {
   readonly unitType: UnitType;
   readonly unitSubtype: UnitSubtype;
-  readonly canAntiMech: boolean;
+  readonly canMakeAntiMekAttacks: boolean;
+  readonly hasAntiMekGear: boolean;
 }
 
 const DEFAULT_PILOTING_SKILL = 5;
@@ -82,10 +83,10 @@ const NO_ANTIMEK_SKILL = 8;
 /** Fixed piloting column for unit families that do not use the requested value. */
 export function fixedCBTPilotingSkill(facts: CBTSkillUnitFacts): number | null {
   if (facts.unitType === 'ProtoMek') return DEFAULT_PILOTING_SKILL;
-  if (facts.unitType !== 'Infantry' || facts.canAntiMech) return null;
-  if (facts.unitSubtype === 'Conventional Infantry'
-    || facts.unitSubtype === 'Motorized Conventional Infantry') return NO_ANTIMEK_SKILL;
-  return DEFAULT_PILOTING_SKILL;
+  if (facts.unitType !== 'Infantry') return null;
+  if (!facts.canMakeAntiMekAttacks) return DEFAULT_PILOTING_SKILL;
+  if (facts.unitSubtype.endsWith('Conventional Infantry') && !facts.hasAntiMekGear) return NO_ANTIMEK_SKILL;
+  return null;
 }
 
 export function effectiveCBTPilotingSkill(

@@ -6,6 +6,10 @@ import {
     TestBattleArmorEntity,
     TestBipedMekEntity,
     TestDropShipEntity,
+    TestSmallCraftEntity,
+    TestJumpShipEntity,
+    TestWarShipEntity,
+    TestSpaceStationEntity,
     TestHandheldWeaponEntity,
     TestInfantryEntity,
     TestProtoMekEntity,
@@ -17,7 +21,11 @@ import { AeroFighterRecordSheetLayout } from './aero-fighter-record-sheet-layout
 import { BattleArmorRecordSheetLayout } from './battle-armor-record-sheet-layout';
 import { CombatVehicleRecordSheetLayout } from './combat-vehicle-record-sheet-layout';
 import { ConventionalInfantryRecordSheetLayout } from './conventional-infantry-record-sheet-layout';
+import { HandheldWeaponRecordSheetLayout } from './handheld-weapon-record-sheet-layout';
 import { LargeAeroRecordSheetLayout } from './large-aero-record-sheet-layout';
+import { SmallCraftRecordSheetLayout } from './small-craft-record-sheet-layout';
+import { DropShipRecordSheetLayout } from './dropship-record-sheet-layout';
+import { CapitalShipRecordSheetLayout } from './capital-ship-record-sheet-layout';
 import { MekRecordSheetLayout } from './mek-record-sheet-layout';
 import { NavalRecordSheetLayout } from './naval-record-sheet-layout';
 import { ProtoMekRecordSheetLayout } from './protomek-record-sheet-layout';
@@ -33,7 +41,11 @@ describe('record-sheet layout resolver', () => {
         expect(resolveRecordSheetLayout(new TestBattleArmorEntity()).id).toBe('battle-armor');
         expect(resolveRecordSheetLayout(new TestInfantryEntity()).id).toBe('conventional-infantry');
         expect(resolveRecordSheetLayout(new TestAeroSpaceFighterEntity()).id).toBe('aero-fighter');
-        expect(resolveRecordSheetLayout(new TestDropShipEntity()).id).toBe('large-aero');
+        expect(resolveRecordSheetLayout(new TestSmallCraftEntity()).id).toBe('small-craft');
+        expect(resolveRecordSheetLayout(new TestDropShipEntity()).id).toBe('dropship');
+        expect(resolveRecordSheetLayout(new TestJumpShipEntity()).id).toBe('capital-ship');
+        expect(resolveRecordSheetLayout(new TestWarShipEntity()).id).toBe('capital-ship');
+        expect(resolveRecordSheetLayout(new TestSpaceStationEntity()).id).toBe('capital-ship');
     });
 
     it('routes marine motive types to the naval owner even when parsed as Tanks', () => {
@@ -44,8 +56,17 @@ describe('record-sheet layout resolver', () => {
         }
     });
 
-    it('retains a safe generic fallback for unsupported entity families', () => {
-        expect(resolveRecordSheetLayout(new TestHandheldWeaponEntity()).id).toBe('generic');
+    it('gives handheld weapons their own compact owner', () => {
+        expect(resolveRecordSheetLayout(new TestHandheldWeaponEntity()).id).toBe('handheld-weapon');
+    });
+
+    it('keeps aerospace design families disjoint', () => {
+        const owners = [new SmallCraftRecordSheetLayout(), new DropShipRecordSheetLayout(),
+            new CapitalShipRecordSheetLayout()];
+        for (const entity of [new TestSmallCraftEntity(), new TestDropShipEntity(),
+            new TestJumpShipEntity(), new TestWarShipEntity(), new TestSpaceStationEntity()]) {
+            expect(owners.filter(owner => owner.matches(entity)).length).withContext(entity.entityType).toBe(1);
+        }
     });
 
     it('keeps a concrete rendering hook in every supported family owner', () => {
@@ -53,6 +74,7 @@ describe('record-sheet layout resolver', () => {
             MekRecordSheetLayout,
             AeroFighterRecordSheetLayout,
             LargeAeroRecordSheetLayout,
+            SmallCraftRecordSheetLayout,
         ];
         const compactOwners = [
             CombatVehicleRecordSheetLayout,
@@ -60,6 +82,7 @@ describe('record-sheet layout resolver', () => {
             ProtoMekRecordSheetLayout,
             BattleArmorRecordSheetLayout,
             ConventionalInfantryRecordSheetLayout,
+            HandheldWeaponRecordSheetLayout,
         ];
 
         for (const owner of fullPageOwners) {

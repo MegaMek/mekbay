@@ -3,24 +3,25 @@
 
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
+import { FixedWingSupportEntity } from '../../../models/entity/entities/aero/fixed-wing-support-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import { type EntityDamageLocation } from '../../../models/entity/types';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import {
-type BipedArmorValues,
-type BipedPaperdollPipLayout,
-BipedPaperdollUtil,
-} from '../biped-paperdoll.util';
+type PaperdollPipLayout,
+PaperdollGenerator,
+} from '../paperdoll-generator';
 import {
 type Box,
-XLINK_NS,
 addFrame,
 addLine,
 addText,
+addWrappedText,
 appendLegacyIdentityAnchors,
 circle,
 decoratePaperdollPips,
 formatNumber,
+formatRecordSheetTonnage,
 formatTechBase,
 formatWholeNumber,
 makePips,
@@ -50,12 +51,14 @@ export interface AeroDataPanelContent {
     readonly flowCargoAfterInventory: boolean;
     readonly showAmmoSummary: boolean;
     readonly stationary: boolean;
+    readonly featureText?: string;
+    readonly cargoInFeatures?: boolean;
 }
 
 export interface AeroPaperdollPresentation {
     readonly assetUrl: string;
     readonly capitalFallback: boolean;
-    readonly pipLayout?: BipedPaperdollPipLayout;
+    readonly pipLayout: PaperdollPipLayout;
 }
 
 /** Reusable drawing components. Family layouts supply all presentation policy. */
@@ -102,7 +105,7 @@ export function drawAeroDataPanel(
             ['Thrust:', stationary ? 'Station Keeping Only' : '', thrustBaseline],
             ['Safe Thrust:', stationary ? '' : String(entity.safeThrust()), safeBaseline, 'mpWalk'],
             ['Maximum Thrust:', stationary ? '' : String(entity.maxThrust()), maximumBaseline, 'mpRun'],
-            ['Engine Type:', stationary ? '—' : `${engine.rating} ${engine.type()}`, 65, 'engineType'],
+            ['Engine Type:', stationary ? '—' : entity.isSupportVehicle() ? engine.type() : `${engine.rating} ${engine.type()}`, 65, 'engineType'],
         ]
         : [
             ['Thrust:', stationary ? 'Station Keeping Only' : '', thrustBaseline],
@@ -118,8 +121,9 @@ export function drawAeroDataPanel(
         });
         if (id) node.id = id;
     });
+    const weightInKilograms = entity.weightClass() === 'Small Support';
     const rightFacts: readonly [string, string, number, string, string?][] = [
-        ['Tonnage:', formatWholeNumber(entity.tonnage()), 38, 'tonnage', 'tonnage'],
+        ['Tonnage:', weightInKilograms ? formatRecordSheetTonnage(entity.tonnage(), true) : formatWholeNumber(entity.tonnage()), 38, 'tonnage', 'tonnage'],
         ['Tech Base:', formatTechBase(entity.techBase(), entity.mixedTech()), 47, 'techBase', 'tech-base'],
         ['Role:', entity.role() || '—', 56, 'role', 'role'],
     ];
@@ -128,8 +132,10 @@ export function drawAeroDataPanel(
         const node = addText(group, value, x(158.24), y(baseline), { size: font(7.7), maxWidth: x(58) });
         node.id = id;
         if (field) node.setAttribute('data-mekbay-field', field);
+        if (id === 'tonnage' && weightInKilograms) node.setAttribute('data-mekbay-weight-unit', 'kg');
     });
 
+    const inventoryStart = group.childElementCount;
     addLine(group, x(3), y(69), x(219.4), y(69), '#000', 1.932 * fontScale);
     addText(group, 'Weapons & Equipment Inventory', x(3), y(79), {
         size: font(8.6), weight: 700, maxWidth: x(155),
@@ -149,9 +155,15 @@ export function drawAeroDataPanel(
         size: font(6.76), weight: 700, anchor,
     }));
 
-    const cargoLines = aeroCargoLines(entity);
-    const footerReserve = 46.466 + cargoLines.length * 8.5;
     const rowStep = 9.126;
+    const features = svgElement('g');
+    features.setAttribute('class', 'aero-features');
+    if (content.featureText) addWrappedText(features, `Features ${content.featureText}`, x(8.41), 0, x(204), {
+        size: font(6.76), lineHeight: y(rowStep), maxLines: Number.POSITIVE_INFINITY,
+    });
+    const featureHeight = features.querySelectorAll('text').length * rowStep;
+    const cargoLines = content.cargoInFeatures ? [] : aeroCargoLines(entity);
+    const footerReserve = 46.466 + cargoLines.length * 8.5 + featureHeight;
     const maxRows = Math.max(1, Math.floor((referenceHeight - 105.937 - footerReserve) / rowStep));
     const rows = takeAeroInventoryRows(content.inventoryRows, maxRows);
     let displayLine = 0;
@@ -220,13 +232,6 @@ export function drawAeroDataPanel(
     });
 
     let detailY = 110.5 + displayLine * rowStep + 4.563;
-    if (entity.tracksHeat() && detailY < referenceHeight - footerReserve - 5) {
-        const heatProfile = addText(group,
-            `Maximum Heat (Dissipation): ${Math.max(0, entity.heatGeneration())} (${Math.max(0, entity.heatDissipation())})`,
-            x(8.41), y(detailY), { size: font(6.76), maxWidth: x(204) });
-        heatProfile.id = 'heatProfile';
-        detailY += 10;
-    }
     const gravDecks = entity instanceof JumpShipEntity ? entity.gravDecks() : [];
     if (gravDecks.length > 0 && detailY < referenceHeight - footerReserve) {
         addText(group, 'Grav Decks:', x(8), y(detailY), { size: font(6.2), weight: 700 });
@@ -236,11 +241,12 @@ export function drawAeroDataPanel(
     }
     if (cargoLines.length > 0) {
         if (content.flowCargoAfterInventory) {
-            detailY = 110.5 + displayLine * rowStep + rowStep;
+            detailY = Math.max(detailY, 110.5 + displayLine * rowStep + rowStep);
             addText(group, 'Cargo:', x(7.328), y(detailY), { size: font(6.76), weight: 700 });
             cargoLines.forEach((line, index) => addText(group, line, x(7.328), y(detailY + (index + 1) * rowStep), {
                 size: font(6.76), maxWidth: x(205),
             }));
+            detailY += (cargoLines.length + 1) * rowStep + 4.563;
         } else {
             const cargoStart = referenceHeight - 48 - cargoLines.length * 8.5;
             addText(group, 'Cargo:', x(8), y(cargoStart - 2), { size: font(6.4), weight: 700 });
@@ -249,21 +255,37 @@ export function drawAeroDataPanel(
             }));
         }
     }
+    if (entity.tracksHeat() && detailY < referenceHeight - footerReserve - 5) {
+        const heatProfile = addText(group,
+            `Maximum Heat (Dissipation): ${Math.max(0, entity.heatGeneration())} (${Math.max(0, entity.heatDissipation())})`,
+            x(8.41), y(detailY), { size: font(6.76), maxWidth: x(204) });
+        heatProfile.id = 'heatProfile';
+    }
+    if (content.identity === 'small-craft') {
+        const inventory = svgElement('g');
+        inventory.setAttribute('transform', `translate(0 ${formatNumber(y(-7.339))})`);
+        [...group.children].slice(inventoryStart).forEach(child => inventory.appendChild(child));
+        group.appendChild(inventory);
+    }
     const ammo = aeroAmmoSummary(entity);
     const largeVesselFooterShift = content.identity === 'fighter' ? 0 : 1.5;
     if (content.showAmmoSummary && ammo) addText(
         group,
         `Ammo: ${ammo}`,
         x(8.41),
-        box.height - y(41.903 + largeVesselFooterShift),
+        box.height - y(41.903 + largeVesselFooterShift + featureHeight),
         {
         size: font(6.76), maxWidth: x(204),
         },
     );
     addText(group, `Fuel Points: ${formatWholeNumber(entity.fuel())}`, x(8.41),
-        box.height - y(32.777 + largeVesselFooterShift), {
+        box.height - y(32.777 + largeVesselFooterShift + featureHeight), {
         size: font(6.76), maxWidth: x(204),
     });
+    if (featureHeight > 0) {
+        features.setAttribute('transform', `translate(0 ${formatNumber(box.height - y(32.777 + largeVesselFooterShift + featureHeight - rowStep))})`);
+        group.appendChild(features);
+    }
     addLine(group, x(3), box.height - y(26.214 + largeVesselFooterShift), x(219.4),
         box.height - y(26.214 + largeVesselFooterShift), '#000', 1.932 * fontScale);
     addText(group, 'BV:', x(13.845), box.height - y(14.214 + largeVesselFooterShift), {
@@ -328,7 +350,7 @@ export async function drawAeroPaperdoll(
     authoredHeight: number,
     presentation: AeroPaperdollPresentation,
 ): Promise<void> {
-    const pipLayout = presentation.pipLayout ?? 'classic';
+    const pipLayout = presentation.pipLayout;
     const armorValues: Record<string, number> = {};
     const structureValues: Record<string, number> = {};
     const locations = entity.damageLocations();
@@ -339,12 +361,11 @@ export async function drawAeroPaperdoll(
         if (location.internalPoints > 0) structureValues[code] = location.internalPoints;
     }
     try {
-        const paperdoll = await BipedPaperdollUtil.createDamagePaperdoll(
+        const paperdoll = await PaperdollGenerator.createPaperdoll(
             presentation.assetUrl,
             box.width,
             box.height,
-            armorValues as BipedArmorValues,
-            structureValues,
+            { armor: armorValues, structure: structureValues },
             {
                 className: 'aero-paperdoll-layer',
                 centeredHorizontally: false,
@@ -364,19 +385,21 @@ export async function drawAeroPaperdoll(
             + `scale(${formatNumber(box.width / 344)} ${formatNumber(box.height / authoredHeight)})`,
         );
         paperdoll.setAttribute('data-mekbay-aero-asset', presentation.assetUrl);
+        // Keep the control above the art, clear of headings and external stores on the right.
+        paperdoll.setAttribute('data-random-hit-transform', 'translate(4 1) scale(0.75)');
         decoratePaperdollPips(paperdoll);
-        updateAeroPaperdollLabels(paperdoll, locations);
+        updateAeroPaperdollLabels(paperdoll, entity, locations);
         svg.appendChild(paperdoll);
     } catch {
         drawAeroDamagePanel(svg, entity, box, presentation.capitalFallback);
     }
 }
 
-function updateAeroPaperdollLabels(layer: SVGGElement, locations: readonly EntityDamageLocation[]): void {
+function updateAeroPaperdollLabels(layer: SVGGElement, entity: AeroEntity, locations: readonly EntityDamageLocation[]): void {
     const values = new Map(locations.map(location => [location.sheetCode ?? location.code, location]));
     values.forEach((location, code) => {
         const total = location.armor.front + location.armor.rear;
-        if (total > 0) setAeroPaperdollText(layer, `textArmor_${code}`, `${Math.ceil(total / 10)} ( ${total} )`);
+        setAeroPaperdollText(layer, `textArmor_${code}`, `${entity.armorDamageThreshold(location.code)} ( ${total} )`);
     });
     const structural = (code: string): number => values.get(code)?.internalPoints ?? 0;
     if (!setAeroPaperdollText(layer, 'textSI', String(structural('SI')))) {
@@ -385,7 +408,10 @@ function updateAeroPaperdollLabels(layer: SVGGElement, locations: readonly Entit
     if (!setAeroPaperdollText(layer, 'textKFIntegrity', String(structural('KF')))) {
         setAeroLabeledValue(layer, 'K-F Drive', structural('KF'));
     }
-    if (!setAeroPaperdollText(layer, 'textSailIntegrity', String(structural('SAIL')))) {
+    if (!values.has('SAIL')) {
+        layer.querySelector('#textSailIntegrity')?.remove();
+        setAeroLabeledValue(layer, 'Sail Integrity:', null);
+    } else if (!setAeroPaperdollText(layer, 'textSailIntegrity', String(structural('SAIL')))) {
         setAeroLabeledValue(layer, 'Sail Integrity:', structural('SAIL'));
     }
     if (!setAeroPaperdollText(layer, 'textDockingCollars', String(structural('DC')))) {
@@ -403,15 +429,17 @@ function setAeroPaperdollText(layer: SVGGElement, id: string, value: string): bo
     return true;
 }
 
-function setAeroLabeledValue(layer: SVGGElement, label: string, value: number): void {
+function setAeroLabeledValue(layer: SVGGElement, label: string, value: number | null): void {
     for (const text of Array.from(layer.querySelectorAll<SVGTextElement>('text'))) {
         const spans = Array.from(text.querySelectorAll<SVGTSpanElement>('tspan'));
         const labelIndex = spans.findIndex(span => span.textContent?.trim() === label);
         if (labelIndex < 0) continue;
+        if (value === null) spans[labelIndex].remove();
         for (let index = labelIndex + 1; index < spans.length; index++) {
             const content = spans[index].textContent?.trim() ?? '';
             if (/^-?\d+(?:\.\d+)?$/u.test(content)) {
-                spans[index].textContent = String(value);
+                if (value === null) spans[index].remove();
+                else spans[index].textContent = String(value);
                 return;
             }
         }
@@ -419,6 +447,9 @@ function setAeroLabeledValue(layer: SVGGElement, label: string, value: number): 
 }
 
 export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
+    const count = entity instanceof FixedWingSupportEntity ? entity.maxBombPoints()
+        : Math.min(20, Math.floor(entity.tonnage() / 5));
+    if (count <= 0) return;
     const group = svgElement('g');
     group.setAttribute('class', 'aero-external-stores');
     group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
@@ -434,7 +465,6 @@ export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, b
     });
     heading.setAttribute('transform', 'translate(1 -1.372)');
     group.appendChild(heading);
-    const count = Math.max(1, Math.min(20, Math.floor(entity.tonnage() / 5)));
     const columns = 5;
     for (let index = 0; index < count; index++) {
         const row = Math.floor(index / columns);
@@ -506,28 +536,22 @@ export function drawAeroMovementCompass(svg: SVGSVGElement, box: Box): void {
     svg.appendChild(group);
 }
 
-export function drawAeroArtworkRegion(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
+export function drawAeroArtworkRegion(svg: SVGSVGElement, box: Box): void {
     const group = svgElement('g');
-    group.setAttribute('class', 'referenceTable aero-artwork-region');
-    group.setAttribute('data-mekbay-region', 'center-panel');
-    group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
-    const bounds = svgElement('rect');
-    setAttributes(bounds, { x: 0, y: 0, width: box.width, height: box.height, fill: 'transparent', stroke: 'none' });
-    group.appendChild(bounds);
-    const encoded = entity.fluffImageEncoded().trim();
-    if (encoded) {
-        const image = svgElement('image');
-        setAttributes(image, { x: 0, y: 0, width: box.width, height: box.height, preserveAspectRatio: 'xMidYMid meet' });
-        image.setAttributeNS(XLINK_NS, 'href', encoded.startsWith('data:') ? encoded : `data:image/png;base64,${encoded}`);
-        image.id = 'fluff-image';
-        group.appendChild(image);
-    }
+    setAttributes(group, {
+        class: 'aero-artwork-region',
+        'data-mekbay-fluff-art': '1',
+        'data-image-x': 0,
+        'data-image-y': 0,
+        'data-image-width': formatNumber(box.width),
+        'data-image-height': formatNumber(box.height),
+        transform: `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`,
+    });
     svg.appendChild(group);
 }
 
 export function drawAeroVelocityPanel(svg: SVGSVGElement, box: Box): void {
     const group = addFrame(svg, 'VELOCITY RECORD', box, {
-        fullWidthHeader: true,
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     group.setAttribute('data-mekbay-region', 'velocity-record');
@@ -675,7 +699,7 @@ export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, bo
             'pip hsPip',
         );
         pip.setAttribute('stroke-width', formatNumber(detailedFont(0.9)));
-        pip.setAttribute('loc', 'hs');
+        pip.setAttribute('data-loc', 'hs');
         if (index >= heatSinkCount) pip.style.display = 'none';
         pips.appendChild(pip);
     }
@@ -781,7 +805,7 @@ function drawAeroDamageRegion(
         : location.internalPoints;
     const region = svgElement('g');
     region.setAttribute('class', `aero-damage-region unitLocation ${kind}`);
-    region.setAttribute('loc', code);
+    region.setAttribute('data-loc', code);
     const backing = svgElement('rect');
     setAttributes(backing, {
         x: box.x,

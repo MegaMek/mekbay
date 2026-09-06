@@ -41,6 +41,26 @@ describe('CBTForceMember tactical presentation memory', () => {
 });
 
 describe('CBTForceMember record-sheet ownership', () => {
+    it('regenerates sheets when the selected pip layout changes', async () => {
+        const member = createMember('unit');
+        const canon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const grouped = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        await member.loadRecordSheets(async () => [canon], 'classic');
+        await member.loadRecordSheets(async () => [grouped], 'rail');
+        expect(member.recordSheet()).toBe(grouped);
+    });
+
+    it('does not replace a newer pip layout when an older generation finishes last', async () => {
+        const member = createMember('unit');
+        let finishOld!: (pages: readonly SVGSVGElement[]) => void;
+        const older = member.loadRecordSheets(() => new Promise(resolve => finishOld = resolve), 'classic');
+        const current = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        await member.loadRecordSheets(async () => [current], 'distributed');
+        finishOld([document.createElementNS('http://www.w3.org/2000/svg', 'svg')]);
+        await older;
+        expect(member.recordSheet()).toBe(current);
+    });
+
     it('retains every generated page and cycles presentation without regenerating', async () => {
         const member = createMember('unit');
         const front = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { asComponentId,asCriticalSlotId,asLocationId } from '../../models/entity/entity-identifiers';
-import { MiscEquipment,WeaponEquipment } from '../../models/equipment.model';
+import { ArmorEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from '../../models/equipment.model';
+import { MountedArmor } from '../../models/entity/components/armor';
+import { MountedStructure } from '../../models/entity/components/structure';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import { applyRecordSheetPipMaterials } from '../../utils/sheets/record-sheet-pip-materials';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { bindMekRecordSheet } from './mek-record-sheet-binder';
+import { RECORD_SHEET_FRESH_DAMAGE_DURATION_MS } from '../../utils/sheets/record-sheet-damage-highlights';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
 
 const editContext = createUnitEditContextFixture();
@@ -125,14 +130,14 @@ describe('Mek record-sheet binder', () => {
         expect(svg.querySelectorAll('.hsPips .pip.damaged').length).toBe(1);
         expect(svg.querySelectorAll('.hsPips .pip.disabled').length).toBe(1);
         expect(svg.querySelector('.unitConditionBanner[condition="prone"]')?.getAttribute('display')).toBe('');
-        const armor = [...svg.querySelectorAll('.armor.pip[loc="CT"]')];
+        const armor = [...svg.querySelectorAll('.armor.pip[data-loc="CT"]')];
         expect(armor.length).toBe(6);
         expect(armor.every(element => (element as SVGElement).style.pointerEvents === 'none')).toBeTrue();
         expect(armor.filter(element => (element as SVGElement).style.display !== 'none').length).toBe(4);
         expect(armor.filter(element => element.classList.contains('damaged')).length).toBe(2);
         expect(armor.filter(element => element.classList.contains('pending')).length).toBe(1);
         expect(armor.filter(element => element.classList.contains('fresh')).length).toBe(0);
-        const structure = [...svg.querySelectorAll('.structure.pip[loc="CT"]')];
+        const structure = [...svg.querySelectorAll('.structure.pip[data-loc="CT"]')];
         expect(structure.every(element => (element as SVGElement).style.pointerEvents === 'none')).toBeTrue();
         expect(structure.filter(element => (element as SVGElement).style.display !== 'none').length).toBe(3);
         expect(structure.filter(element => element.classList.contains('damaged')).length).toBe(1);
@@ -219,6 +224,23 @@ describe('Mek record-sheet binder', () => {
         }
     });
 
+    it('binds every Mek paperdoll fragment without pip listeners, including omitted locations', () => {
+        const svg = sheet();
+        svg.setAttribute('data-mekbay-paperdoll', '1');
+        svg.querySelectorAll('.unitLocation.structure').forEach(zone => zone.remove());
+        svg.appendChild(svg.querySelector('.unitLocation.armor[data-loc="CT"]')!.cloneNode(true));
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot(),
+            interaction => interactions.push(interaction));
+        const fragments = [...svg.querySelectorAll<SVGElement>('.unitLocation.armor[data-loc="CT"]')];
+        expect(fragments).toHaveSize(2);
+        fragments.forEach(fragment => fragment.dispatchEvent(new MouseEvent('click')));
+        expect(interactions.map(interaction => interaction.kind)).toEqual(['armor', 'armor']);
+        expect([...svg.querySelectorAll<SVGElement>('.armor.pip, .structure.pip')].every(pip =>
+            pip.style.pointerEvents === 'none' && pip.dataset['mekbayBound'] === undefined)).toBeTrue();
+        binding.destroy();
+    });
+
     it('binds every armor and internal pip only when the sheet has no authored location zone', () => {
         const svg = sheet();
         svg.querySelectorAll('.unitLocation.armor, .unitLocation.structure').forEach(zone => zone.remove());
@@ -229,8 +251,8 @@ describe('Mek record-sheet binder', () => {
             snapshot(),
             interaction => interactions.push(interaction),
         );
-        const armor = [...svg.querySelectorAll<SVGElement>('.armor.pip[loc="CT"]')];
-        const structure = [...svg.querySelectorAll<SVGElement>('.structure.pip[loc="CT"]')];
+        const armor = [...svg.querySelectorAll<SVGElement>('.armor.pip[data-loc="CT"]')];
+        const structure = [...svg.querySelectorAll<SVGElement>('.structure.pip[data-loc="CT"]')];
 
         expect([...armor, ...structure].every(pip =>
             pip.style.pointerEvents === '' && pip.dataset['mekbayBound'] === '1')).toBeTrue();
@@ -251,10 +273,10 @@ describe('Mek record-sheet binder', () => {
         const svg = sheet();
         svg.querySelectorAll('.unitLocation.armor, .unitLocation.structure').forEach(zone => zone.remove());
         svg.insertAdjacentHTML('beforeend', `
-            <circle class="pip-hit-area armor" loc="CT"></circle>
-            <circle class="pip-hit-area armor" loc="CT"></circle>
-            <circle class="pip-hit-area structure" loc="CT"></circle>
-            <circle class="pip-hit-area structure" loc="CT"></circle>`);
+            <circle class="pip-hit-area armor" data-loc="CT"></circle>
+            <circle class="pip-hit-area armor" data-loc="CT"></circle>
+            <circle class="pip-hit-area structure" data-loc="CT"></circle>
+            <circle class="pip-hit-area structure" data-loc="CT"></circle>`);
         const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
@@ -262,10 +284,10 @@ describe('Mek record-sheet binder', () => {
             snapshot(),
             interaction => interactions.push(interaction),
         );
-        const armorPips = [...svg.querySelectorAll<SVGElement>('.armor.pip[loc="CT"]')];
-        const structurePips = [...svg.querySelectorAll<SVGElement>('.structure.pip[loc="CT"]')];
-        const armorTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.armor[loc="CT"]')];
-        const structureTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.structure[loc="CT"]')];
+        const armorPips = [...svg.querySelectorAll<SVGElement>('.armor.pip[data-loc="CT"]')];
+        const structurePips = [...svg.querySelectorAll<SVGElement>('.structure.pip[data-loc="CT"]')];
+        const armorTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.armor[data-loc="CT"]')];
+        const structureTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.structure[data-loc="CT"]')];
 
         expect([...armorPips, ...structurePips].every(pip =>
             pip.style.pointerEvents === 'none' && pip.dataset['mekbayBound'] !== '1')).toBeTrue();
@@ -329,12 +351,12 @@ describe('Mek record-sheet binder', () => {
     it('renders a destroyed torso and its dependent arm from derived runtime location state', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', `
-            <g class="unitLocation armor" loc="LT"></g>
-            <g class="unitLocation structure" loc="LT"></g>
-            <g class="critGroup" loc="LT"><g class="critSlot" loc="LT" slot="0"><text>LT GEAR</text></g></g>
-            <g class="unitLocation armor" loc="LA"></g>
-            <g class="unitLocation structure" loc="LA"></g>
-            <g class="critGroup" loc="LA"><g class="critSlot" loc="LA" slot="0"><text>LA GEAR</text></g></g>`);
+            <g class="unitLocation armor" data-loc="LT"></g>
+            <g class="unitLocation structure" data-loc="LT"></g>
+            <g class="critGroup" data-loc="LT"><g class="critSlot" data-loc="LT" slot="0"><text>LT GEAR</text></g></g>
+            <g class="unitLocation armor" data-loc="LA"></g>
+            <g class="unitLocation structure" data-loc="LA"></g>
+            <g class="critGroup" data-loc="LA"><g class="critSlot" data-loc="LA" slot="0"><text>LA GEAR</text></g></g>`);
         const current = snapshot();
         const torso = {
             ...current.locations[0],
@@ -377,12 +399,12 @@ describe('Mek record-sheet binder', () => {
             }],
         });
 
-        expect(svg.querySelector('.critGroup[loc="LT"]')?.classList).toContain('locationDestroyed');
-        expect(svg.querySelector('.critSlot[loc="LT"]')?.classList).toContain('disabled');
-        expect(svg.querySelectorAll('[loc="LA"]')).toHaveSize(4);
-        expect([...svg.querySelectorAll('[loc="LA"]')]
+        expect(svg.querySelector('.critGroup[data-loc="LT"]')?.classList).toContain('locationDestroyed');
+        expect(svg.querySelector('.critSlot[data-loc="LT"]')?.classList).toContain('disabled');
+        expect(svg.querySelectorAll('[data-loc="LA"]')).toHaveSize(4);
+        expect([...svg.querySelectorAll('[data-loc="LA"]')]
             .every(element => element.classList.contains('detached'))).toBeTrue();
-        expect(svg.querySelector('.critGroup[loc="LA"]')?.classList).not.toContain('locationDestroyed');
+        expect(svg.querySelector('.critGroup[data-loc="LA"]')?.classList).not.toContain('locationDestroyed');
     });
 
     it('renders pending location loss without treating it as committed sheet state', () => {
@@ -399,7 +421,7 @@ describe('Mek record-sheet binder', () => {
             locations: [location],
         });
 
-        const locations = [...svg.querySelectorAll('.unitLocation[loc="CT"]')];
+        const locations = [...svg.querySelectorAll('.unitLocation[data-loc="CT"]')];
         expect(locations.length).toBeGreaterThan(0);
         expect(locations.every(element => element.classList.contains('detached'))).toBeTrue();
         expect(locations.every(element => element.classList.contains('pending'))).toBeTrue();
@@ -602,6 +624,12 @@ describe('Mek record-sheet binder', () => {
 
     it('renders and binds shield DA/DC tracks from the runtime projection', () => {
         const svg = sheet();
+        const shieldPips = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        shieldPips.setAttribute('pointer-events', 'none');
+        shieldPips.append(...svg.querySelectorAll('.pip.shield'));
+        svg.appendChild(shieldPips);
+        const secondCapacity = svg.querySelector('.unitLocation.shield[data-loc="DCLA"]')!.cloneNode(false) as SVGElement;
+        svg.appendChild(secondCapacity);
         const interactions: RecordSheetInteraction[] = [];
         const current = snapshot();
         bindMekRecordSheet(
@@ -634,12 +662,12 @@ describe('Mek record-sheet binder', () => {
             interaction => interactions.push(interaction),
         );
 
-        const absorption = svg.querySelector<SVGElement>('.unitLocation.shield[loc="DALA"]')!;
-        const capacity = svg.querySelector<SVGElement>('.unitLocation.shield[loc="DCLA"]')!;
+        const absorption = svg.querySelector<SVGElement>('.unitLocation.shield[data-loc="DALA"]')!;
+        const capacity = svg.querySelector<SVGElement>('.unitLocation.shield[data-loc="DCLA"]')!;
         expect(absorption.style.display).toBe('');
-        expect(absorption.querySelectorAll('.pip.damaged').length).toBe(2);
-        expect(absorption.querySelectorAll('.pip.pending').length).toBe(1);
-        expect(capacity.querySelectorAll('.pip.damaged').length).toBe(5);
+        expect(svg.querySelectorAll('.pip.shield[data-loc="DALA"].damaged').length).toBe(2);
+        expect(svg.querySelectorAll('.pip.shield[data-loc="DALA"].pending').length).toBe(1);
+        expect(svg.querySelectorAll('.pip.shield[data-loc="DCLA"].damaged').length).toBe(5);
 
         absorption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions[0]).toEqual(jasmine.objectContaining({
@@ -647,6 +675,8 @@ describe('Mek record-sheet binder', () => {
             componentId: 'shield-la',
             track: 'absorption',
         }));
+        secondCapacity.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions[1]).toEqual(jasmine.objectContaining({ kind: 'shield', track: 'capacity' }));
     });
 
     it('renders a read-only projection without attaching mutation handlers', () => {
@@ -710,9 +740,9 @@ describe('Mek record-sheet binder', () => {
     it('cross-highlights exact system IDs without conflating location-scoped actuators', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', `
-            <g class="critSlot" loc="LA" slot="0"><text></text></g>
-            <g class="critSlot" loc="RA" slot="0"><text></text></g>
-            <g class="critSlot" loc="RT" slot="0"><text></text></g>`);
+            <g class="critSlot" data-loc="LA" slot="0"><text></text></g>
+            <g class="critSlot" data-loc="RA" slot="0"><text></text></g>
+            <g class="critSlot" data-loc="RT" slot="0"><text></text></g>`);
         const base = snapshot();
         const systemSlot = (
             locationCode: MekRecordSheetSnapshot['criticalSlots'][number]['locationCode'],
@@ -739,10 +769,10 @@ describe('Mek record-sheet binder', () => {
                 systemSlot('RT', 'system:engine', 'Engine'),
             ],
         });
-        const leftActuator = svg.querySelector<SVGElement>('.critSlot[loc="LA"]')!;
-        const rightActuator = svg.querySelector<SVGElement>('.critSlot[loc="RA"]')!;
-        const centerEngine = svg.querySelector<SVGElement>('.critSlot[loc="CT"]')!;
-        const rightEngine = svg.querySelector<SVGElement>('.critSlot[loc="RT"]')!;
+        const leftActuator = svg.querySelector<SVGElement>('.critSlot[data-loc="LA"]')!;
+        const rightActuator = svg.querySelector<SVGElement>('.critSlot[data-loc="RA"]')!;
+        const centerEngine = svg.querySelector<SVGElement>('.critSlot[data-loc="CT"]')!;
+        const rightEngine = svg.querySelector<SVGElement>('.critSlot[data-loc="RT"]')!;
 
         leftActuator.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
         expect(rightActuator.classList).not.toContain('equipment-hover-secondary');
@@ -873,7 +903,7 @@ describe('Mek record-sheet binder', () => {
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
             withArmor(4, 4),
         );
-        const pips = [...svg.querySelectorAll<SVGElement>('.armor.pip[loc="CT"]')];
+        const pips = [...svg.querySelectorAll<SVGElement>('.armor.pip[data-loc="CT"]')];
         expect(svg.getElementById('textArmor_CT')?.textContent).toBe('(4)');
         expect(svg.getElementById('textIS_CT')?.textContent).toBe('(2/3)');
 
@@ -884,7 +914,7 @@ describe('Mek record-sheet binder', () => {
         expect(pips.filter(pip => pip.classList.contains('fresh')).length).toBe(1);
 
         binding.render(withArmor(4, 3));
-        expect(pips.filter(pip => pip.classList.contains('fresh')).length).toBe(0);
+        expect(pips.filter(pip => pip.classList.contains('fresh')).length).toBe(1);
 
         binding.render(withArmor(3, 3));
         expect(pips.filter(pip => pip.classList.contains('pending')).length).toBe(0);
@@ -904,6 +934,69 @@ describe('Mek record-sheet binder', () => {
             }],
         });
         expect(svg.getElementById('textIS_CT')?.textContent).toBe('(3)');
+    });
+
+    it('preserves Fancy material capacities and fallback damage before and after fresh damage expires', () => {
+        jasmine.clock().install();
+        const svg = sheet();
+        svg.querySelectorAll('.unitLocation.armor, .unitLocation.structure').forEach(zone => zone.remove());
+        [...svg.querySelectorAll('.pip.armor')].slice(4).forEach(pip => pip.remove());
+        [...svg.querySelectorAll('.pip.structure')].slice(3).forEach(pip => pip.remove());
+        const entity = new TestBipedMekEntity();
+        entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
+            id: 'Hardened', name: 'Hardened', type: 'armor', armor: { type: 'HARDENED' },
+        }) }));
+        entity.setUniformStructure(new MountedStructure({ tonnage: 50, structure: new StructureEquipment({
+            id: 'Reinforced', name: 'Reinforced', type: 'structure', structure: { typeId: 4 },
+        }) }));
+        applyRecordSheetPipMaterials(svg, entity);
+        const base = snapshot();
+        const initial: MekRecordSheetSnapshot = {
+            ...base,
+            locations: base.locations.map(location => ({
+                ...location,
+                committedRemainingInternal: 3,
+                previewRemainingInternal: 3,
+                armor: location.armor.map(face => ({
+                    ...face, committedRemaining: 3, previewRemaining: 3,
+                })),
+            })),
+        };
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, initial, () => undefined);
+        try {
+            const pips = [...svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure')];
+            expect(pips.length).toBe(7);
+            expect(pips.every(pip => pip.tagName === 'polygon' && pip.style.display !== 'none')).toBeTrue();
+            expect(svg.querySelector('.half')).toBeNull();
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(1);
+            const pending: MekRecordSheetSnapshot = {
+                ...initial,
+                locations: initial.locations.map(location => ({
+                    ...location,
+                    previewRemainingInternal: 2,
+                    armor: location.armor.map(face => ({ ...face, previewRemaining: 2 })),
+                })),
+            };
+            binding.render(pending);
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
+            expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+            expect(svg.querySelectorAll('.armor.pip.pending, .structure.pip.pending').length).toBe(2);
+            expect(svg.querySelectorAll('.armor.pip.fresh, .structure.pip.fresh').length).toBe(2);
+
+            jasmine.clock().tick(RECORD_SHEET_FRESH_DAMAGE_DURATION_MS);
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
+            expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+            expect(svg.querySelectorAll('.armor.pip.pending, .structure.pip.pending').length).toBe(2);
+            expect(svg.querySelectorAll('.armor.pip.fresh, .structure.pip.fresh').length).toBe(0);
+            expect(pips.every(pip => pip.style.display !== 'none')).toBeTrue();
+
+            binding.render(pending);
+            expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
+            expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+        } finally {
+            binding.destroy();
+            jasmine.clock().uninstall();
+        }
     });
 
     it('uses armor, extra-hit, then whole-slot marks for an armored Core autocannon', () => {
@@ -1216,6 +1309,23 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
+    it('preserves printed equipment profiles independently of selectable weapon modes', () => {
+        const svg = sheet();
+        svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
+            <g class="equipmentProfile"><text class="name">w/Capacitor</text>
+                <text class="heat">20</text><g class="damage"><text>15 [DE,X]</text></g></g>
+        `);
+        const base = snapshot();
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, base);
+        binding.render(base);
+        const profile = svg.querySelector<SVGGElement>('.equipmentProfile')!;
+        expect(profile.style.display).not.toBe('none');
+        expect(profile.querySelector('.name')?.textContent).toBe('w/Capacitor');
+        expect(profile.querySelector('.heat')?.textContent).toBe('20');
+        expect(profile.querySelector('.damage')?.textContent).toBe('15 [DE,X]');
+        binding.destroy();
+    });
+
     it('renders target color, target number, out-of-range state, and hit modifier from Entity plus runtime facts', () => {
         const svg = sheet();
         svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
@@ -1408,7 +1518,7 @@ describe('Mek record-sheet binder', () => {
         svg.insertAdjacentHTML('beforeend', `
             <g class="unitConditionButton" condition="menu"><rect></rect><text></text></g>
             <g class="unitConditionButton" condition="shutdown"><rect></rect><text></text></g>
-            <g class="locationConditionControl" loc="CT"><rect></rect></g>
+            <g class="locationConditionControl" data-loc="CT"><rect></rect></g>
             <rect id="applyHeatButton"></rect>
             <rect data-mekbay-open-equipment="weapons"></rect>
             <g class="referenceTable"><rect></rect></g>
@@ -1443,7 +1553,7 @@ describe('Mek record-sheet binder', () => {
         activate('.crewNameButton');
         activate('.unitConditionButton[condition="menu"]');
         activate('.unitConditionButton[condition="shutdown"]');
-        activate('.locationConditionControl[loc="CT"]');
+        activate('.locationConditionControl[data-loc="CT"]');
         activate('.inventoryEntryButton.mainButton');
         activate('.inventoryEntryButton.shrButton');
         activate('.alternativeModeButton');
@@ -1511,31 +1621,31 @@ function sheet(): SVGSVGElement {
             <rect class="unitConditionBannerRect" height="15"></rect>
             <text class="unitConditionBannerText">FORGED CONDITION</text>
         </g>
-        <g class="unitLocation armor" loc="CT"></g>
-        <g class="unitLocation structure" loc="CT"></g>
-        <g class="unitLocation shield" loc="DALA">
-            ${Array(5).fill('<circle class="pip shield"></circle>').join('')}
+        <g class="unitLocation armor" data-loc="CT"></g>
+        <g class="unitLocation structure" data-loc="CT"></g>
+        <g class="unitLocation shield" data-loc="DALA">
+            ${Array(5).fill('<circle class="pip shield" data-loc="DALA"></circle>').join('')}
         </g>
-        <g class="unitLocation shield" loc="DCLA">
-            ${Array(18).fill('<circle class="pip shield"></circle>').join('')}
+        <g class="unitLocation shield" data-loc="DCLA">
+            ${Array(18).fill('<circle class="pip shield" data-loc="DCLA"></circle>').join('')}
         </g>
-        <circle class="armor pip" loc="CT"></circle>
-        <circle class="armor pip" loc="CT"></circle>
-        <circle class="armor pip" loc="CT"></circle>
-        <circle class="armor pip damaged pending" loc="CT"></circle>
-        <circle class="armor pip damaged pending" loc="CT"></circle>
-        <circle class="armor pip damaged pending" loc="CT"></circle>
-        <circle class="structure pip" loc="CT"></circle>
-        <circle class="structure pip" loc="CT"></circle>
-        <circle class="structure pip" loc="CT"></circle>
-        <circle class="structure pip damaged pending" loc="CT"></circle>
-        <g class="critSlot" loc="CT" slot="0" uid="forged-component" totalAmmo="999">
+        <circle class="armor pip" data-loc="CT"></circle>
+        <circle class="armor pip" data-loc="CT"></circle>
+        <circle class="armor pip" data-loc="CT"></circle>
+        <circle class="armor pip damaged pending" data-loc="CT"></circle>
+        <circle class="armor pip damaged pending" data-loc="CT"></circle>
+        <circle class="armor pip damaged pending" data-loc="CT"></circle>
+        <circle class="structure pip" data-loc="CT"></circle>
+        <circle class="structure pip" data-loc="CT"></circle>
+        <circle class="structure pip" data-loc="CT"></circle>
+        <circle class="structure pip damaged pending" data-loc="CT"></circle>
+        <g class="critSlot" data-loc="CT" slot="0" uid="forged-component" totalAmmo="999">
             <circle class="pip armoredLocPip"></circle>
             <circle class="pip extraHitPip" display="none"></circle>
             <text>FORGED LABEL</text>
         </g>
-        <g class="critSlot damaged" loc="CT" slot="1" uid="forged-extra"><text>FORGED EXTRA CRITICAL</text></g>
-        <g class="critSlot" loc="CT" slot="2" data-mekbay-empty-slot="1"><text>FORGED EMPTY</text></g>
+        <g class="critSlot damaged" data-loc="CT" slot="1" uid="forged-extra"><text>FORGED EXTRA CRITICAL</text></g>
+        <g class="critSlot" data-loc="CT" slot="2" data-mekbay-empty-slot="1"><text>FORGED EMPTY</text></g>
         <g class="inventoryEntry damaged eq-Kick@—" id="forged-inventory" baseHitMod="99">
             <text class="quantity">99</text><text class="name">FORGED WEAPON</text>
             <text class="location">XX</text><text class="heat">99</text><text class="damage">999</text>

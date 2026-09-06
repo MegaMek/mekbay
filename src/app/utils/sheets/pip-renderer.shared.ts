@@ -2,6 +2,7 @@ import type {
     PipBounds,
     PipPoint,
     PipRenderOptions,
+    PipShape,
 } from './pip-renderer.types';
 
 export const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
@@ -40,16 +41,33 @@ export class PipRendererShared {
         strokeWidth: number,
         transform?: string,
     ): SVGCircleElement | SVGPolygonElement {
-        const pip = options.shape === 'diamond'
+        const shape = options.shape ?? 'circle';
+        const pip = shape === 'diamond' || shape === 'pentagon'
             ? document.createElementNS(SVG_NAMESPACE, 'polygon')
             : document.createElementNS(SVG_NAMESPACE, 'circle');
         if (pip instanceof SVGCircleElement) {
             pip.setAttribute('cx', point.x.toString());
             pip.setAttribute('cy', point.y.toString());
             pip.setAttribute('r', radius.toString());
+        } else if (shape === 'diamond') {
+            pip.setAttribute('points', [
+                { x: point.x, y: point.y - radius },
+                { x: point.x + radius, y: point.y },
+                { x: point.x, y: point.y + radius },
+                { x: point.x - radius, y: point.y },
+            ].map(formatPolygonPoint).join(' '));
         } else {
-            pip.setAttribute('points', `${point.x},${point.y - radius} ${point.x + radius},${point.y} ${point.x},${point.y + radius} ${point.x - radius},${point.y}`);
+            // Same top-facing regular pentagon as MegaMekLab's Fancy Pips.
+            pip.setAttribute('points', Array.from({ length: 5 }, (_, index) => {
+                const angle = (-90 + index * 72) * Math.PI / 180;
+                return formatPolygonPoint({
+                    x: point.x + radius * Math.cos(angle),
+                    y: point.y + radius * Math.sin(angle),
+                });
+            }).join(' '));
         }
+        if (shape !== 'circle') pip.setAttribute('data-pip-shape', shape);
+        if (shape === 'circle-dashed') pip.setAttribute('stroke-dasharray', '1.8 .85');
         pip.setAttribute('fill', options.fill ?? 'none');
         pip.setAttribute('stroke', options.stroke ?? '#000');
         pip.setAttribute('stroke-width', strokeWidth.toString());
@@ -57,6 +75,33 @@ export class PipRendererShared {
             pip.setAttribute('transform', transform);
         }
         return pip;
+    }
+
+    /** Changes only the material symbol; pip centers, size and runtime attributes stay intact. */
+    public static applyPipShape(pip: SVGElement, shape: PipShape): SVGElement {
+        if (shape === 'circle' || pip.getAttribute('data-pip-shape') === shape
+            || !(pip instanceof SVGCircleElement)) return pip;
+        if (shape === 'circle-dashed') {
+            pip.setAttribute('data-pip-shape', shape);
+            pip.setAttribute('stroke-dasharray', '1.8 .85');
+            return pip;
+        }
+        const replacement = this.createPipElement(
+            { x: pip.cx.baseVal.value, y: pip.cy.baseVal.value },
+            pip.r.baseVal.value,
+            { shape },
+            Number(pip.getAttribute('stroke-width') ?? 0),
+        );
+        for (const name of ['fill', 'stroke', 'stroke-width']) {
+            if (!pip.hasAttribute(name)) replacement.removeAttribute(name);
+        }
+        for (const attribute of Array.from(pip.attributes)) {
+            if (!['cx', 'cy', 'r', 'data-pip-shape', 'stroke-dasharray'].includes(attribute.name)) {
+                replacement.setAttribute(attribute.name, attribute.value);
+            }
+        }
+        pip.replaceWith(replacement);
+        return replacement;
     }
 
     public static getPipRadiusWithinBounds(
@@ -176,3 +221,6 @@ export class PipRendererShared {
     }
 }
 
+function formatPolygonPoint(point: PipPoint): string {
+    return `${Math.round(point.x * 10_000) / 10_000},${Math.round(point.y * 10_000) / 10_000}`;
+}

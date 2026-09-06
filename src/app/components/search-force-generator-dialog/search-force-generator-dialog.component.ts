@@ -65,7 +65,7 @@ import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expan
 import { uuidv7 } from '../../utils/uuid.util';
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 import { isAerospace } from '../../utils/as-common.util';
-import { getEffectivePilotingSkill, getFixedPilotingSkill } from '../../utils/cbt-common.util';
+import { getEffectivePilotingSkill, getFixedPilotingSkill, summarySkillFacts } from '../../utils/cbt-common.util';
 
 export interface SearchForceGeneratorDialogConfig {
     gameSystem: GameSystem;
@@ -2088,7 +2088,7 @@ export class SearchForceGeneratorDialogComponent {
                     isAerospace: unit.type === 'Aero',
                     era: this.preview().era,
                     preSkillBv: unit.bv,
-                    skillFacts: { unitType: unit.type, unitSubtype: unit.subtype, canAntiMech: unit.canAntiMech === true },
+                    skillFacts: summarySkillFacts(unit),
                 },
             },
         );

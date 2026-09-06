@@ -37,6 +37,7 @@ export class RecordSheetSourceService {
         const svgs = await RecordSheetSvgGenerator.generatePages(entity, {
             ...generatorOptions,
             ruleset: generatorOptions.ruleset ?? currentOptions.CBTRules,
+            pipLayout: generatorOptions.pipLayout ?? currentOptions.recordSheetPipLayout,
             fluffImageUrl: generatorOptions.fluffImageUrl
                 ?? this.fluffImages.resolveEntityUrl(entity, context.design),
         });

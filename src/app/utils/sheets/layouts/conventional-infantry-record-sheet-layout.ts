@@ -4,7 +4,12 @@
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { InfantryEntity } from '../../../models/entity/entities/infantry/infantry-entity';
 import { isInfantryEntity } from '../../../models/entity/utils/entity-type-guards';
-import { projectConventionalInfantryCombat } from '../../../models/rules/conventional-infantry-combat-rules';
+import { infantryDamageDivisor } from '../../../models/entity/utils/battle-value/infantry-rules';
+import { adjustEntityBattleValueForSkills, effectiveEntityPilotingSkill } from '../../../models/entity/utils/battle-value/skill-facts';
+import { AmmoEquipment, WeaponEquipment } from '../../../models/equipment.model';
+import { PILOT_ABILITIES } from '../../../models/pilot-abilities.model';
+import { conventionalInfantryRangeWeapon, projectConventionalInfantryCombat } from '../../../models/rules/conventional-infantry-combat-rules';
+import { measureSvgTextCanvas } from '../../svg-text.util';
 import { createInfantryStrengthDisplay,INFANTRY_STRENGTH_DISPLAY_ID } from '../infantry-strength-display';
 import { INFANTRY_STRENGTH_CELL_COUNT } from '../infantry-strength-projection';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
@@ -22,6 +27,7 @@ scalePageBox,
 setAttributes,
 svgElement,
 } from '../record-sheet-svg-rendering';
+import { appendEmbeddedSvgDefinition } from '../record-sheet-embedded-art';
 import { CompactRecordSheetLayout } from './record-sheet-layout';
 import {
 addExactReferenceText,
@@ -49,6 +55,13 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
         return ['CONVENTIONAL', 'INFANTRY RECORD', 'SHEET'];
     }
 
+    protected override drawCompactMastheadIcon(parent: SVGGElement, box: Box, svg: SVGSVGElement): void {
+        const use = svgElement('use');
+        setAttributes(use, { href: '#mekbay-infantry-masthead-art', class: 'infantry-masthead-icon',
+            width: 56.7 * box.width / 31.018, height: 45.357 * box.height / 41.357 });
+        parent.appendChild(use);
+    }
+
     public override drawCompactPageSupplement(
         page: SVGSVGElement,
         profile: RecordSheetPageProfile,
@@ -66,14 +79,15 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
         }
         if (blocks.length <= 3) drawInfantryReferenceTables(page, profile);
         drawGeneratedFooter(page, profile, {
-            catalystX: 535,
-            catalystY: 704,
-            catalystScale: 0.898,
+            catalystX: 533.966,
+            catalystY: 719.587,
+            catalystScale: 1.015,
         });
     }
 
-    protected drawCompact(svg: SVGSVGElement, entity: BaseEntity): void {
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
         if (!isInfantryEntity(entity)) throw new Error('Infantry layout requires a conventional Infantry entity');
+        await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/infantry.svg', 'mekbay-infantry-masthead-art');
         const at = (box: Box): Box => scaleCompactBox(svg, box, 174);
         const frameBox = at({ x: 0, y: 0, width: 576, height: 174 });
         const group = addFrame(svg, entity.displayName(), frameBox, {
@@ -92,12 +106,13 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     addText(group, 'Armor Type:', x(287), y(18), { size: font(8.6), weight: 700 });
     addText(group, armorName, x(336.657), y(18), { size: font(8.6), maxWidth: x(139) });
     addText(group, 'Damage Divisor:', x(479), y(18), { size: font(8.6), weight: 700 });
-    addText(group, entity.armorDivisor().toFixed(1), x(543.987), y(18), { size: font(8.6), maxWidth: x(26) });
+    addText(group, infantryDamageDivisor(entity).toFixed(1) + (entity.effectiveEncumberingArmor() ? 'E' : ''),
+        x(543.987), y(18), { size: font(8.6), maxWidth: x(26) });
 
     const facts: readonly [string, string, number, string?][] = [
         ['Commander:', '', 29.777, undefined],
         ['Gunnery Skill:', '4', 41.555, 'gunnerySkill0'],
-        ["Anti-'Mech Skill:", entity.canAntiMech() ? '5' : '—', 53.332, 'pilotingSkill0'],
+        ["Anti-'Mech Skill:", entity.canMakeAntiMekAttacks() ? String(effectiveEntityPilotingSkill(entity, 5)) : '—', 53.332, 'pilotingSkill0'],
         ['Role:', entity.role() || '—', 65.109, undefined],
         ['Max Weapon Damage*', '', 76.887, undefined],
         ['Notes:', '', 88.664, undefined],
@@ -114,32 +129,25 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     const commander = addText(group, '', x(46.03), y(29.777), { size: font(7.2), maxWidth: x(68.047) });
     commander.id = 'pilotName0';
     addLine(group, x(46.03), y(30.777), x(114.077), y(30.777), '#111', 0.735 * fontScale);
-    addText(group, infantrySpecializationSummary(entity), x(3.46), y(100.441), {
-        size: font(7.2), maxWidth: x(108),
-    });
+    drawInfantryNotes(group, infantryNotes(entity), { x: x(3.46), y: y(100.441),
+        width: x(108), height: y(64) }, fontScale, sy);
 
     drawCompactInfantryTrack(svg, group, entity, { x, y, font });
     addText(group, 'BV:', x(116.6), y(154.786), { size: font(7.2), weight: 700 });
-    const bv = addText(group, formatNumber(entity.battleValue()), x(130.701), y(154.786), { size: font(7.2) });
+    const bv = addText(group, formatNumber(adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5)),
+        x(130.701), y(154.786), { size: font(7.2) });
     bv.id = 'bv';
     addText(group, 'Transport Wt:', x(173.4), y(154.786), { size: font(7.2), weight: 700 });
     addText(group, `${entity.tonnage().toFixed(1)} tons`, x(221.502), y(154.786), { size: font(7.2) });
     addText(group, 'Movement MP:', x(315.4), y(154.786), { size: font(7.2), weight: 700 });
-    const walk = addText(group, String(entity.walkMP()), x(366.183), y(154.786), { size: font(7.2) });
-    walk.id = 'mpWalk';
-    addText(group, 'Type:', x(429), y(154.786), { size: font(7.2), weight: 700 });
-    addText(group, infantryMovementLabel(entity), x(448.523), y(154.786), { size: font(7.2), maxWidth: x(120) });
-    if (entity.jumpMP() > 0 || entity.umuMP() > 0) {
-        const secondaryLabel = entity.jumpMP() > 0 ? 'Jumping MP:' : 'Underwater MP:';
-        const secondaryValue = entity.jumpMP() > 0 ? entity.jumpMP() : entity.umuMP();
-        addText(group, secondaryLabel, x(315.4), y(164.2), { size: font(7.7), weight: 700, maxWidth: x(50) });
-        const jump = addText(group, String(secondaryValue), x(366.2), y(164.2), { size: font(7.7) });
-        jump.id = 'mpJump';
-        addText(group, 'Type:', x(429), y(164.2), { size: font(7.7), weight: 700 });
-        addText(group, entity.jumpMP() > 0 ? 'Jump' : 'Underwater', x(448.5), y(164.2), {
-            size: font(7.7), maxWidth: x(120),
-        });
-    }
+    infantryMovementRows(entity).forEach((movement, index) => {
+        const baseline = 154.786 + index * 11.777;
+        if (index > 0) addText(group, 'Movement MP:', x(315.4), y(baseline), { size: font(7.2), weight: 700 });
+        const mp = addText(group, String(movement.value), x(366.183), y(baseline), { size: font(7.2) });
+        mp.id = movement.id;
+        addText(group, 'Type:', x(429), y(baseline), { size: font(7.2), weight: 700 });
+        addText(group, movement.label, x(448.523), y(baseline), { size: font(7.2), maxWidth: x(120) });
+    });
         appendLegacyIdentityAnchors(group, entity, frameBox);
     }
 }
@@ -253,17 +261,125 @@ function addInfantryReferenceText(
     addText(parent, value, x, y, { size: 5.7, weight: weight ? 700 : undefined, anchor });
 }
 
-function infantrySpecializationSummary(entity: InfantryEntity): string {
-    const specializations = [...entity.specializations()];
-    if (specializations.length === 0) return 'None';
-    return specializations.map(value => value.split('-')
-        .map(word => word === 'xct' ? 'XCT' : `${word[0]?.toUpperCase() ?? ''}${word.slice(1)}`)
-        .join(' ')).join(', ');
+function drawInfantryNotes(parent: SVGGElement, value: string, box: Box, fontScale: number, verticalScale: number): void {
+    const group = svgElement('g');
+    group.setAttribute('class', 'infantry-notes');
+    parent.appendChild(group);
+    const probe = svgElement('text');
+    const words = value.split(/\s+/u);
+    let size = 7.2;
+    let lines: string[];
+    do {
+        probe.setAttribute('font-size', formatNumber(size * fontScale));
+        lines = [];
+        for (const word of words) {
+            const previous = lines.at(-1);
+            if (previous === undefined || measureSvgTextCanvas(probe, `${previous} ${word}`) > box.width) {
+                lines.push(word);
+            } else {
+                lines[lines.length - 1] = `${previous} ${word}`;
+            }
+        }
+        if (lines.length * (size + 1) * verticalScale <= box.height || size <= 5) break;
+        size = Math.max(5, size - 1);
+    } while (true);
+    lines.forEach((line, index) => addText(group, line, box.x, box.y + index * (size + 1) * verticalScale,
+        { size: size * fontScale }));
 }
 
-function infantryMovementLabel(entity: InfantryEntity): string {
-    const motive = entity.getMotiveTypeAsString() ?? 'Ground';
-    return motive === 'Leg' ? 'Ground' : motive;
+// MegaMek PilotOptions display names for infantry augmentations missing from PILOT_ABILITIES.
+const INFANTRY_AUGMENTATION_NAMES: Readonly<Record<string, string>> = {
+    artificial_pain_shunt: 'Artificial Pain Shunt',
+    comm_implant: 'Cybernetic Comm Implant',
+    boost_comm_implant: 'Boosted Cybernetic Comm Implant',
+    cyber_imp_audio: 'Sensory Implants (Enhanced Audio)',
+    cyber_imp_visual: 'Sensory Implants (IR/EM Optical)',
+    cyber_imp_laser: 'Sensory Implants (Laser-sight Optical)',
+    cyber_imp_tele: 'Sensory Implants (Telescopic Optical)',
+    mm_implants: 'Multi-Modal Sensory Implant',
+    enh_mm_implants: 'Enhanced Multi-Modal Sensory Implants',
+    filtration_implants: 'Filtration Implants',
+    gas_effuser_pheromone: 'Cybernetic Gas Effuser (Pheromone)',
+    gas_effuser_toxin: 'Cybernetic Gas Effuser (Toxin)',
+    dermal_armor: 'Myomer Implants (Dermal Armor)',
+    dermal_camo_armor: 'Myomer Implants (Dermal Armor Camouflage)',
+    tsm_implant: 'Myomer Implants (Triple Strength)',
+    triple_core_processor: 'Triple-Core Processor',
+    vdni: 'VDNI',
+    bvdni: 'Buffered VDNI',
+    proto_dni: 'Prototype Direct Neural Interface',
+    suicide_implants: 'Explosive Suicide Implants',
+    pl_masc: 'Prosthetic leg MASC',
+    pl_enhanced: 'Prosthetic Limbs, Enhanced',
+    pl_ienhanced: 'Prosthetic Limbs, Improved Enhanced',
+    pl_extra_limbs: 'Prosthetic Limbs, Extraneous (Enhanced)',
+    pl_tail: 'Prosthetic Tail, Enhanced',
+    pl_glider: 'Prosthetic Wings, Glider',
+    pl_flight: 'Prosthetic Wings, Powered Flight',
+};
+
+function infantryNotes(entity: InfantryEntity): string {
+    const notes: string[] = [];
+    const primary = entity.primaryWeapon();
+    const secondary = entity.secondaryWeapon();
+    const rangeWeapon = conventionalInfantryRangeWeapon(entity);
+    const mount = entity.mount();
+    if (entity.effectiveSpaceSuit()) notes.push('Can operate in vacuum.');
+    if (mount && mount.uwEndurance > 0) notes.push(`Must surface every ${mount.uwEndurance} turns.`);
+    const burst = (rangeWeapon?.hasFlag('F_INF_BURST') || (primary?.infantry.damage ?? 0) > 0.6 ? 1 : 0)
+        + (mount?.burstDamage ?? 0);
+    if (burst > 0) notes.push(`+${burst}D6 damage vs. conventional infantry.`);
+    if (mount && mount.vehicleDamage > 0) notes.push(`+${mount.vehicleDamage} damage vs. vehicles and 'Meks`);
+    if (mount?.size === 'Very Large') notes.push('-1 attacker to-hit');
+    if (mount?.size === 'Monstrous') notes.push('-2 attacker to-hit');
+    if (rangeWeapon?.hasFlag('F_INF_NONPENETRATING')) notes.push('Can only damage conventional infantry units.');
+    if ([primary, secondary].some(weapon => (['F_PLASMA', 'F_INCENDIARY_NEEDLES', 'F_INFERNO', 'F_FLAMER'] as const)
+        .some(flag => weapon?.hasFlag(flag)))) notes.push('Flame-based weapon.');
+    if ([primary, secondary].some(weapon => weapon?.hasFlag('F_INF_AA'))) {
+        notes.push('May attack airborne targets that attack their hex.');
+    }
+    const specializationNotes = {
+        'bridge-engineers': 'Bridge-building equipment',
+        'demo-engineers': 'Equipped with demolition gear.',
+        'fire-engineers': 'Firefighting equipment.',
+        'mine-engineers': 'Minesweeper equipment',
+        'trench-engineers': 'Trench/Fieldwork equipment',
+        'marines': 'No penalties for vacuum or zero-G',
+        'mountain-troops': 'Mountain climbing equipment. Unit can traverse 3 levels per hex. Unit is immune to the effects of Thin Atmosphere.',
+        'paramedics': 'Paramedic equipment.',
+        'paratroops': 'May use Atmospheric Drops rules.',
+        'sensor-engineers': 'Surveillance and communication equipment',
+        'tag-troops': 'Equipped with TAG (Range 3/6/9)',
+        'xct': 'Xenoplanetary Condition-Trained',
+        'scuba': '',
+    };
+    for (const specialization of entity.specializations()) {
+        const note = specializationNotes[specialization];
+        if (note) notes.push(note);
+    }
+    if (entity.effectiveSneakECM()) notes.push('Invisible to standard/light active probes.');
+    const augmentations = entity.augmentations().map(id =>
+        PILOT_ABILITIES.find(ability => ability.id === id)?.name ?? INFANTRY_AUGMENTATION_NAMES[id] ?? id);
+    if (augmentations.length > 0) notes.push(`Cybernetically enhanced: ${augmentations.join(', ')}`);
+    return notes.join(' ') || 'None';
+}
+
+function infantryMovementRows(entity: InfantryEntity): readonly { id: string; value: number; label: string }[] {
+    const mount = entity.mount();
+    const motive = mount?.movementMode ?? entity.motiveType();
+    const ground = { id: 'mpWalk', value: entity.walkMP(), label: 'Ground' };
+    let rows: { id: string; value: number; label: string }[];
+    if (motive === 'Jump') rows = [{ id: 'mpJump', value: entity.jumpMP(), label: 'Jump' }, ground];
+    else if (motive === 'VTOL') rows = [{ id: 'mpJump', value: entity.jumpMP(),
+        label: entity.isMicrolite() ? 'VTOL (Microlite)' : 'VTOL (Micro-copter)' }];
+    else if (motive === 'UMU' || motive === 'Submarine') {
+        rows = [{ id: 'mpJump', value: entity.umuMP(), label: motive === 'Submarine' ? 'Mechanized SCUBA'
+            : entity.isMotorizedScuba() ? 'SCUBA (Motorized)' : 'SCUBA' }];
+        if (motive === 'Submarine' && entity.originalWalkMP() > 0) rows.push(ground);
+    } else rows = [{ ...ground, label: ['Tracked', 'Wheeled', 'Hover'].includes(motive)
+        ? `Mechanized ${motive}` : motive === 'Motorized' ? 'Motorized' : 'Ground' }];
+    if (mount) rows[0].label += ` [beast: ${mount.name}]`;
+    return rows;
 }
 
 function drawCompactInfantryTrack(
@@ -321,7 +437,52 @@ function drawCompactInfantryTrack(
         committedRemaining: combat.maximumStrength,
         previewRemaining: combat.maximumStrength,
     }, false);
+    drawInfantryFieldGuns(track, entity);
     group.appendChild(track);
+}
+
+function drawInfantryFieldGuns(track: SVGGElement, entity: InfantryEntity): void {
+    const mounts = entity.equipment().filter(mount => mount.location === 'Field Guns');
+    const guns = mounts.filter(mount => mount.equipment instanceof WeaponEquipment);
+    const gun = guns[0];
+    if (!gun || !(gun.equipment instanceof WeaponEquipment)) return;
+    const weapon = gun.equipment;
+    const ammo = mounts.reduce((sum, mount) => sum + (mount.equipment instanceof AmmoEquipment ? mount.equipment.shots : 0), 0);
+    const group = svgElement('g');
+    group.id = 'field_gun_columns';
+    // Field guns omit Gauss explosion labels and have their own switchable-ammo notation.
+    let damage = `${weapon.damage} [DB]`;
+    let damageNotes = '';
+    if (weapon.hasFlag('F_ARTILLERY')) {
+        damage = `${weapon.rackSize} ${weapon.ammoType.endsWith('_CANNON') ? '[DB,AE]' : '[AE,S,F]'}`;
+    } else if (['AC_ULTRA', 'AC_ULTRA_THB', 'AC_ROTARY'].includes(weapon.ammoType)) {
+        damage = `${weapon.damage}/Sht, R${weapon.ammoType === 'AC_ROTARY' ? 6 : 2}`;
+        damageNotes = '[DB,R/S/C]';
+    } else if (['AC', 'AC_PRIMITIVE', 'LAC', 'AC_LBX', 'AC_LBX_THB'].includes(weapon.ammoType)) {
+        damage = String(weapon.damage);
+        damageNotes = ['AC_LBX', 'AC_LBX_THB'].includes(weapon.ammoType) ? '[DB,C/F]' : '[DB,C/S/F]';
+    }
+    const columns: readonly [string, string, string, number, number][] = [
+        ['qty', 'Qty', String(guns.length), 6, 12],
+        ['type', 'Field Gun Type', weapon.name, 20.816, 64],
+        ['dmg', 'Dmg', damage, 87.626, 33],
+        ['min_range', 'Min', weapon.minimumRange > 0 ? String(weapon.minimumRange) : '—', 123.258, 12],
+        ['short', 'S', String(weapon.ranges[0]), 136.62, 12],
+        ['med', 'M', String(weapon.ranges[1]), 149.982, 12],
+        ['long', 'L', String(weapon.ranges[2]), 163.344, 12],
+        ['ammo', 'Ammo', String(ammo), 181.16, 20],
+        ['crew', 'Crew', String(Math.ceil(gun.getTonnage(entity) ?? 0)), 203.43, 20],
+    ];
+    for (const [id, label, value, x, width] of columns) {
+        addText(group, label, x, 92.811, { size: 6.2, weight: 700, maxWidth: width });
+        const text = addText(group, value, x, 99.95, { size: 6.2, maxWidth: width });
+        text.id = `field_gun_${id}`;
+    }
+    if (damageNotes) {
+        const notes = addText(group, damageNotes, 87.626, 107.09, { size: 6.2, maxWidth: 33 });
+        notes.id = 'field_gun_dmg_2';
+    }
+    track.appendChild(group);
 }
 
 function setExactInfantryFrameTitle(

@@ -26,6 +26,7 @@ import {
 } from '../../components';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { EquipmentRegistry } from '../../../equipment-lookup';
+import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../../equipment.model';
 import { isMagneticClampEquipment } from '../../../chassis-equipment.model';
 import {
   isArmoredGloveEquipment,
@@ -116,9 +117,20 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly swarmAttackCapable = computed(() =>
     this.motiveType() !== 'UMU' && this.hasAntiMekManipulators());
 
-  override readonly canAntiMech = computed(() =>
-    this.legAttackCapable() || this.swarmAttackCapable(),
-  );
+  /** MML's general anti-Mek/BV rule; individual Leg and Swarm attacks have their own restrictions. */
+  override readonly canMakeAntiMekAttacks = computed(() => this.mechanizedCapable()
+    && this.weightClass() !== 'Heavy' && this.weightClass() !== 'Assault'
+    && this.motiveType() !== 'UMU' && !this.isBurdened());
+
+  readonly isBurdened = computed(() => {
+    if (this.techBase() === 'Clan') return false;
+    return this.equipment().some(mount => {
+      const weapon = mount.equipment;
+      if (mount.baMountLocation !== 'Body' || !(weapon instanceof WeaponEquipment) || !weapon.hasFlag('F_MISSILE')) return false;
+      return this.equipment().some(ammo => ammo.equipment instanceof AmmoEquipment && (ammo.getAmmoShots() ?? 0) > 0
+        && ammoMatchesWeapon(weapon, ammo.equipment));
+    });
+  });
 
   private hasAntiMekManipulators(): boolean {
     if (this.chassisType().toLowerCase().includes('quad')) return false;

@@ -135,6 +135,19 @@ describe('OptionsDialogComponent', () => {
         expect(setOption).toHaveBeenCalledOnceWith('cbtUnitViewMode', 'tactical');
     });
 
+    for (const value of ['classic', 'distributed', 'rail']) {
+        it(`persists the selected ${value} record-sheet pip layout`, () => {
+            const setOption = jasmine.createSpy('setOption');
+            const component = configureComponent({ options: () => ({}), setOption });
+            const select = document.createElement('select');
+            select.add(new Option(value, value));
+
+            component.onRecordSheetPipLayoutChange({ target: select } as unknown as Event);
+
+            expect(setOption).toHaveBeenCalledOnceWith('recordSheetPipLayout', value);
+        });
+    }
+
     it('persists each CBT automation mode independently', () => {
         const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
         const component = configureComponent({ options: () => ({}), setCbtAutomationMode });

@@ -12,6 +12,12 @@ export interface ProtoMekCriticalReference {
     readonly effects: readonly Readonly<{ text: string; detail?: string }>[];
 }
 
+export const PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE = Object.freeze({
+    rolls: Object.freeze([3, 11]),
+    location: 'Wings',
+    effect: '-1 Cruise MP (Each Hit)',
+});
+
 /** Hit locations and system consequences, independent of record-sheet geometry. */
 export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly ProtoMekCriticalReference[] {
     const supported = new Set(systemDamageDefinitions(entity).map(track => track.system));
@@ -24,7 +30,9 @@ export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly Pro
             { text: '-1 Walk MP' }, { text: '1/2 Walk MP' }, { text: 'No Move' },
         ] },
         { system: 'torso', location: 'Torso', rolls: [6, 7, 8], effects: [
-            { text: '-1 Jump MP*' }, { text: '1/2 Jump MP*' }, { text: 'Proto', detail: 'Destroyed' },
+            { text: entity.isGlider() ? '-1 Cruise MP' : '-1 Jump MP*' },
+            { text: entity.isGlider() ? '1/2 Cruise MP' : '1/2 Jump MP*' },
+            { text: 'Proto', detail: 'Destroyed' },
         ] },
         { system: 'left-arm', location: 'Left Arm', rolls: [10], effects: [
             { text: '+1 to Hit' }, { text: 'Left Arm Destroyed' },

@@ -83,6 +83,11 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     this.structuralIntegrity.set(this.originalWalkMP());
   }
 
+  override armorDamageThreshold(location: string): number {
+    const bar = this.barRating();
+    return bar === 10 ? super.armorDamageThreshold(location) : bar >= 2 ? 1 : 0;
+  }
+
   get locationOrder(): readonly string[] {
     return AERO_LOCATIONS;
   }
