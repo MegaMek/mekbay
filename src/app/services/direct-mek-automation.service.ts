@@ -1,86 +1,87 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { inject, Injectable } from '@angular/core';
+import { inject,Injectable } from '@angular/core';
+import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
-import type { AutomationCheck, AutomationCheckResolution } from '../models/automation-check.model';
+import type { AutomationCheck,AutomationCheckResolution } from '../models/automation-check.model';
 import { orderedAutomationChecks } from '../models/automation-check.model';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
-import {
-    cbtUnitCheckAutomaticMessage,
-    cbtUnitCheckPresentation,
-    cbtUnitCheckReviewDescription,
-} from '../models/cbt-unit-check-presentation';
 import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTMekUnitCommandResult } from '../models/cbt-force.types';
-import { hasMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
+import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
+import {
+cbtUnitCheckAutomaticMessage,
+cbtUnitCheckPresentation,
+cbtUnitCheckReviewDescription,
+} from '../models/cbt-unit-check-presentation';
+import { hasMekRuntime,type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { structureConstructionKind } from '../models/construction-equipment.model';
-import { AmmoEquipment } from '../models/equipment.model';
-import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
-import type { ComponentId, CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
 import { MAX_CREW_WOUNDS } from '../models/crew-member.model';
-import { getMekLocationLabel, getTopologyFor, MEK_TORSO_LOCATIONS } from '../models/entity/types';
-import { gameRulesFor, type MekExplosionProtection } from '../models/rules/game-rules';
+import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
+import type { ComponentId,CrewPositionId,LocationId } from '../models/entity/entity-identifiers';
+import { getMekLocationLabel,getTopologyFor,MEK_TORSO_LOCATIONS } from '../models/entity/types';
+import { AmmoEquipment } from '../models/equipment.model';
+import { isModularArmorEquipment } from '../models/modular-armor.model';
+import { gameRulesFor,type MekExplosionProtection } from '../models/rules/game-rules';
+import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import {
-    ammoExplosionDamagePerShot,
-    ammoRackSize,
-    mekExplosionProtection,
-    resolveMekCriticalChance,
-    type MekCriticalChanceModifier,
-    type MekCriticalChanceResult,
-    type MekCriticalRollPlanV2,
-} from '../models/runtime/mek-critical-hit-v2';
-import {
-    mekConsciousnessTarget,
-    mekHeatAutomationChecks,
-    roll2D6,
-    twoD6Total,
-    type MekHeatAutomationCheck,
+mekConsciousnessTarget,
+mekHeatAutomationChecks,
+roll2D6,
+twoD6Total,
+type MekHeatAutomationCheck,
 } from '../models/runtime/mek-automation-rules';
 import {
-    resolveMekFallArmorDamage,
-    resolveMekFallDamage,
-    resolveMekHitLocation,
-    resolveMekFallOrientation,
-    resolveMekStructureDamage,
-} from '../models/runtime/mek-fall-rules';
+ammoExplosionDamagePerShot,
+ammoRackSize,
+mekExplosionProtection,
+resolveMekCriticalChance,
+type MekCriticalChanceModifier,
+type MekCriticalChanceResult,
+type MekCriticalRollPlanV2,
+} from '../models/runtime/mek-critical-hit-v2';
 import {
-    MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
-    type MekRuleCheckTokenV2,
+MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
+type MekRuleCheckTokenV2,
 } from '../models/runtime/mek-destruction-state-v2';
+import {
+resolveMekFallArmorDamage,
+resolveMekFallDamage,
+resolveMekFallOrientation,
+resolveMekHitLocation,
+resolveMekStructureDamage,
+} from '../models/runtime/mek-fall-rules';
 import { projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
 import type { MekRuntimeIndex } from '../models/runtime/mek-runtime-index';
 import { resolveMekUnitWaterState } from '../models/runtime/mek-targeting-rules';
-import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
-import { uuidv4 } from '../utils/uuid.util';
-import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import type {
-    MekPendingCriticalChanceResultV2,
-    MekPendingCriticalChanceV2,
-    MekPendingCriticalEventV2,
-    MekPendingCriticalHitV2,
-    MekPendingFallConsequencesV2,
+MekPendingCriticalChanceResultV2,
+MekPendingCriticalChanceV2,
+MekPendingCriticalEventV2,
+MekPendingCriticalHitV2,
+MekPendingFallConsequencesV2,
 } from '../models/runtime/mek-turn-state-v2';
-import type { CBTUnitCommand, MekHitArcV2, MekUnitQueryPort } from '../models/runtime/unit-instance';
-import { isModularArmorEquipment } from '../models/modular-armor.model';
-import type { MekHitLocationTable } from '../utils/record-sheet-reference-table';
+import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
+import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { buildHeatSummaryRows } from '../utils/heat-summary.util';
-import { CBTAutomationService } from './cbt-automation.service';
+import type { MekHitLocationTable } from '../utils/record-sheet-reference-table';
+import { uuidv4 } from '../utils/uuid.util';
 import {
-    automationCheckEvidenceDice,
-    CBTAutomationCheckService,
-    resolveAutomationChecksAutomatically,
+automationCheckEvidenceDice,
+CBTAutomationCheckService,
+resolveAutomationChecksAutomatically,
 } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
+import { CBTAutomationService } from './cbt-automation.service';
 import {
-    automaticConsciousnessNotifications,
-    automaticConsciousnessRecoveryNotification,
-    CBTCrewHitAutomationService,
-    type ResolvedCrewHits,
+automaticConsciousnessNotifications,
+automaticConsciousnessRecoveryNotification,
+CBTCrewHitAutomationService,
+type ResolvedCrewHits,
 } from './cbt-crew-hit-automation.service';
-import { OptionsService } from './options.service';
 import { directAutomationSubject } from './direct-automation-subject';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
+import { OptionsService } from './options.service';
 import type { Toast } from './toast.service';
 
 type MekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state' | 'query'> & Readonly<{
@@ -93,7 +94,7 @@ type MekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state' | 'query'>
 export type DirectMekAutomationDispatch = (
     command: CBTUnitCommand,
     automate?: boolean,
-) => Promise<CBTMekUnitCommandResult>;
+) => Promise<CBTForceUnitCommandResult>;
 
 export interface PreparedDirectMekAutomationCommand {
     readonly command: CBTUnitCommand;
@@ -691,7 +692,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         before: CBTUnitSnapshot | null,
         prepared: PreparedDirectMekAutomationCommand,
-        result: CBTMekUnitCommandResult,
+        result: CBTForceUnitCommandResult,
         dispatch: DirectMekAutomationDispatch,
     ): Promise<boolean> {
         if (!result.accepted || !result.changed) return true;

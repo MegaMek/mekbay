@@ -2,21 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
+import {
+MachineGunArrayHandler,
+MGA_LINKED_MODE,
+MGA_LINKING_MODE,
+MGA_OFF_MODE,
+MGA_UNLINKING_MODE,
+} from './component-machine-gun-array';
 import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
 } from './equipment-interaction';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import {
-    MachineGunArrayHandler,
-    MGA_LINKED_MODE,
-    MGA_LINKING_MODE,
-    MGA_OFF_MODE,
-    MGA_UNLINKING_MODE,
-} from './component-machine-gun-array';
-import {
-    createDirectMachineGunArrayRuntimeFixture,
-    emptyCBTEncounterSnapshot,
+createDirectMachineGunArrayRuntimeFixture,
+emptyCBTEncounterSnapshot,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct machine-gun-array runtime', () => {
@@ -39,15 +39,13 @@ describe('direct machine-gun-array runtime', () => {
         const topologyBefore = fixture.entity.equipmentBays()[0];
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: indexedBay.controllerId!,
             mode: MGA_UNLINKING_MODE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
 
         expect(fixture.entity.equipmentBays()[0]).toBe(topologyBefore);
@@ -79,7 +77,7 @@ describe('direct machine-gun-array runtime', () => {
         const controllerId = machineGunArrayBay(fixture).controllerId!;
         const registry = new EquipmentInteractionRegistry();
         registry.register(new MachineGunArrayHandler());
-        const owner = { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot };
+        const owner = { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot };
         const queryContext = {};
         const commandContext = {
             toastService: toastService(),
@@ -142,8 +140,7 @@ describe('direct machine-gun-array runtime', () => {
         )).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         expect(fixture.instance.snapshot().components.get(controllerId)?.mode).toBe(MGA_OFF_MODE);
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_OFF_MODE);
@@ -162,8 +159,7 @@ describe('direct machine-gun-array runtime', () => {
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_OFF_MODE);
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(controllerId)).toBe(MGA_LINKED_MODE);
         expect(fixture.instance.snapshot().components.get(controllerId)?.mode).toBeUndefined();
@@ -178,8 +174,7 @@ describe('direct machine-gun-array runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            
-            
+
             heatPolicy: 'manual',
             selections: [{
                 weaponId: controllerId,
@@ -191,8 +186,7 @@ describe('direct machine-gun-array runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'configure-ammo-source',
-            
-            
+
             componentId: ammo.id,
             munitionKey,
             remaining: 2,
@@ -200,8 +194,7 @@ describe('direct machine-gun-array runtime', () => {
         const beforeRevision = fixture.instance.revision();
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            
-            
+
             heatPolicy: 'manual',
             selections: [{
                 weaponId: controllerId,
@@ -214,15 +207,13 @@ describe('direct machine-gun-array runtime', () => {
 
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: controllerId,
             mode: MGA_UNLINKING_MODE,
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         const panel = projectMekEquipmentPanel(
             fixture.entity,

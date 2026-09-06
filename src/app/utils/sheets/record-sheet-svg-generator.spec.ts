@@ -654,7 +654,8 @@ describe('RecordSheetSvgGenerator', () => {
         expect(systemDamage?.querySelector('#avionics_hit_3')).not.toBeNull();
         expect(systemDamage?.querySelector('#landing_gear_hit_1')).not.toBeNull();
         expect(transfer).not.toBeNull();
-        expect(movementHeat?.getAttribute('h-move')).toBe('-5');
+        expect(movementHeat?.hasAttribute('h-move')).toBeFalse();
+        expect(movementHeat?.querySelector('#minus5MP')?.textContent).toBe('-5 Movement Points');
         expect(movementHeat?.textContent).toContain('/Rand. Movement 10+');
         expect(svg.querySelector('#heatDataPanel')?.textContent).toContain('(AirMech +3)');
     });

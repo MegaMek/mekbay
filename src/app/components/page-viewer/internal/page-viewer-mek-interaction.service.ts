@@ -1,77 +1,79 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injectable, Injector, inject, signal } from '@angular/core';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { inject,Injectable,Injector,signal } from '@angular/core';
 import { outputToObservable } from '@angular/core/rxjs-interop';
-import { firstValueFrom, takeUntil } from 'rxjs';
+import { firstValueFrom,takeUntil } from 'rxjs';
+import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
+import { isUnitEditContextCurrent,type UnitEditContext } from '../../../models/runtime/unit-edit-context';
+import type { DirectRecordSheetInteraction,RecordSheetInteraction } from '../record-sheet-interaction';
 
-import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type {
-    CBTEquipmentChoice,
-    CBTEquipmentChoiceCommand,
-    CBTEquipmentInteraction,
+CBTEquipmentChoice,
+CBTEquipmentChoiceCommand,
+CBTEquipmentInteraction,
 } from '../../../models/cbt-force.types';
-import type { ComponentId, LocationId } from '../../../models/entity/entity-identifiers';
-import { getMekLocationLabel, MEK_TORSO_LOCATIONS } from '../../../models/entity/types';
-import { resolveMekHitLocation } from '../../../models/runtime/mek-fall-rules';
-import { gameRulesFor } from '../../../models/rules/game-rules';
+import type { ComponentId,LocationId } from '../../../models/entity/entity-identifiers';
+import { getMekLocationLabel,MEK_TORSO_LOCATIONS } from '../../../models/entity/types';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
 import {
-    MEK_CREW_STATE_CONTROLS,
-    MEK_LOCATION_CONDITION_CONTROLS,
-    MEK_UNIT_CONDITION_CONTROLS,
+MEK_CREW_STATE_CONTROLS,
+MEK_LOCATION_CONDITION_CONTROLS,
+MEK_UNIT_CONDITION_CONTROLS,
 } from '../../../models/mek-record-sheet-controls';
+import { gameRulesFor } from '../../../models/rules/game-rules';
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import {
-    projectWeaponTargetPresentation,
-    projectTargetingTarget,
+projectTargetingTarget,
+projectWeaponTargetPresentation,
 } from '../../../models/runtime/equipment-panel';
+import { resolveMekHitLocation } from '../../../models/runtime/mek-fall-rules';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
-import type { CBTUnitCommand } from '../../../models/runtime/unit-instance';
-import type {
-    MekCriticalChanceResult,
-    MekCriticalMutationTarget,
-} from '../../../models/runtime/mek-critical-hit-v2';
-import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
-import { isUnitConditionKey } from '../../../models/unit-condition.model';
+
+import { hasMekRuntime } from '../../../models/cbt-unit-snapshot';
 import {
-    attackerActionSelection,
-    attackerActionTargetKey,
-    type AttackerActionSelection,
+attackerActionSelection,
+attackerActionTargetKey,
+type AttackerActionSelection,
 } from '../../../models/runtime/attacker-targeting-state';
+import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
+import type {
+MekCriticalChanceResult,
+MekCriticalMutationTarget,
+} from '../../../models/runtime/mek-critical-hit-v2';
+import { isUnitConditionKey } from '../../../models/unit-condition.model';
 import { DialogsService } from '../../../services/dialogs.service';
+import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
 import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PickerFactoryService } from '../../../services/picker-factory.service';
-import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
 import { ToastService } from '../../../services/toast.service';
-import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
-import { hasMekRuntime } from '../../../models/cbt-unit-snapshot';
 import { recordSheetAmmoName } from '../../../utils/record-sheet-ammo.util';
-import { clusterTableForMekEntity, type MekHitArc } from '../../../utils/record-sheet-reference-table';
+import { clusterTableForMekEntity,type MekHitArc } from '../../../utils/record-sheet-reference-table';
+import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
+import type { PickerChoice,PickerInstance,PickerTargetType } from '../../picker/picker.interface';
+import { isChoicePickerInstance } from '../../picker/picker.interface';
 import {
-    MekCriticalChanceDialogComponent,
-    type MekCriticalChanceDialogData,
+MekCriticalChanceDialogComponent,
+type MekCriticalChanceDialogData,
 } from '../mek-critical-chance-dialog.component';
 import {
-    MekCriticalRollDialogComponent,
-    type MekCriticalRollDialogData,
+MekCriticalRollDialogComponent,
+type MekCriticalRollDialogData,
 } from '../mek-critical-roll-dialog.component';
-import type { PickerChoice, PickerInstance, PickerTargetType } from '../../picker/picker.interface';
-import { isChoicePickerInstance } from '../../picker/picker.interface';
-import { UnitStateDropdownComponent, type UnitStateDropdownChoice } from '../unit-state-dropdown.component';
-import type { MekRecordSheetInteraction } from '../mek-record-sheet-binder';
 import {
-    recordSheetCommand,
-    recordSheetDamageChoices,
-    recordSheetDamagePickerRange,
-    recordSheetEventPosition,
-    type MekRecordSheetCommandSource,
+recordSheetCommand,
+recordSheetDamageChoices,
+recordSheetDamagePickerRange,
+recordSheetEventPosition,
+type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
-import { PageViewerOverlayService } from './page-viewer-overlay.service';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
+import { UnitStateDropdownComponent,type UnitStateDropdownChoice } from '../unit-state-dropdown.component';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
 const UNIT_CONDITION_OVERLAY = 'mek-sheet-unit-condition';
 const LOCATION_CONDITION_OVERLAY = 'mek-sheet-location-condition';
@@ -134,7 +136,7 @@ export class PageViewerMekInteractionService {
         this.closeSheetOverlays();
     }
 
-    handle(member: CBTMekForceMember, interaction: MekRecordSheetInteraction, event: Event): void {
+    handle(member: CBTMekForceMember, interaction: RecordSheetInteraction, event: Event): void {
         switch (interaction.kind) {
             case 'open-equipment':
                 this.overlays.openEquipment(member.id, event, interaction.tab);
@@ -202,10 +204,10 @@ export class PageViewerMekInteractionService {
 
     private openRandomHitPicker(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'random-hit' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'random-hit' }>,
         event: Event,
     ): void {
-        if (!this.currentMekUnit(member, interaction.expectedRevision)) return;
+        if (!this.currentMekUnit(member, interaction.context)) return;
         this.clearRandomHitResult();
         this.closePicker();
         this.zoomPan.cancelGesture();
@@ -226,10 +228,10 @@ export class PageViewerMekInteractionService {
 
     private rollRandomHit(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'random-hit' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'random-hit' }>,
         arc: MekHitArc,
     ): void {
-        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        const unit = this.currentMekUnit(member, interaction.context);
         const svg = interaction.element.ownerSVGElement;
         if (!unit || !svg) return;
         const table = clusterTableForMekEntity(unit.entity).hitLocationTable ?? 'biped';
@@ -367,9 +369,9 @@ export class PageViewerMekInteractionService {
 
     private async toggleSystemCritical(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'system-critical' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'system-critical' }>,
     ): Promise<void> {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         if (!snapshot) return;
         const slot = snapshot.criticalSlots.find(candidate => candidate.slotId === interaction.slotId);
         if (!slot) return;
@@ -391,7 +393,7 @@ export class PageViewerMekInteractionService {
                 system: interaction.system,
                 level: desiredLevel,
                 target: this.options.options().trackPhaseAndTurn ? 'pending' : 'committed',
-            });
+            }, interaction.context);
             return;
         }
         await this.dispatchDirect(member, interaction, hits > 0 ? -1 : 1);
@@ -399,7 +401,7 @@ export class PageViewerMekInteractionService {
 
     private setHeatPreview(
         unitId: string,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'heat-preview' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'heat-preview' }>,
     ): void {
         this.heatPreviews.update(current => {
             const next = new Map(current);
@@ -423,10 +425,10 @@ export class PageViewerMekInteractionService {
 
     private openDamagePicker(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'shield' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'shield' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         if (!snapshot) return;
         const range = recordSheetDamagePickerRange(
             interaction,
@@ -459,12 +461,12 @@ export class PageViewerMekInteractionService {
 
     private async dispatchDamage(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'shield' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'shield' }>,
         delta: number,
         snapshot: MekRecordSheetSnapshot,
     ): Promise<void> {
         if (interaction.kind !== 'armor' || delta <= 0) {
-            await this.dispatchDirect(member, { ...interaction, expectedRevision: snapshot.stateRevision }, delta);
+            await this.dispatchDirect(member, interaction, delta);
             return;
         }
         const face = snapshot.locations.flatMap(location => location.armor)
@@ -490,17 +492,19 @@ export class PageViewerMekInteractionService {
             modifier.label === 'Hardened armor in damaged facing') === true
             && (pending ? face.previewRemaining : face.committedRemaining) > 0;
         const armorDamage = Math.min(delta, armorRemaining);
+        let context = interaction.context;
         if (armorDamage > 0) {
             const accepted = await this.dispatchDirect(
                 member,
-                { ...interaction, expectedRevision: snapshot.stateRevision },
+                interaction,
                 armorDamage,
             );
             if (!accepted) return;
+            context = accepted;
         }
         const internalDamage = delta - armorDamage;
         if (internalDamage <= 0) return;
-        const current = this.currentMekUnit(member);
+        const current = this.currentMekUnit(member, context);
         if (!current) return;
         await this.dispatchCommand(member, {
             type: 'damage-internal',
@@ -509,16 +513,17 @@ export class PageViewerMekInteractionService {
             target: pending ? 'pending' : 'committed',
             hardenedArmorApplies,
             armorDamagedBySameHit: armorDamage > 0,
-        });
+        }, context);
     }
 
     private openCriticalPicker(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'critical' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'critical' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         if (!snapshot) return;
+        let context = interaction.context;
         const handlers = new Map<string, CBTEquipmentChoiceCommand>();
         const values = this.criticalChoices(member, interaction, snapshot, handlers);
         if (values.length === 0) return;
@@ -538,13 +543,16 @@ export class PageViewerMekInteractionService {
                 ).title,
             style: 'linear',
             targetType: 'crit',
-            onPick: choice => void this.applyCriticalChoice(member, interaction, choice, handlers),
+            onPick: async choice => {
+                const next = await this.applyCriticalChoice(member, { ...interaction, context }, choice, handlers);
+                if (next) context = next;
+            },
         });
     }
 
     private criticalChoices(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'critical' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'critical' }>,
         snapshot: MekRecordSheetSnapshot,
         handlers: Map<string, CBTEquipmentChoiceCommand>,
     ): PickerChoice[] {
@@ -581,24 +589,26 @@ export class PageViewerMekInteractionService {
 
     private async applyCriticalChoice(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'critical' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'critical' }>,
         choice: PickerChoice,
         handlers: Map<string, CBTEquipmentChoiceCommand>,
-    ): Promise<void> {
+    ): Promise<UnitEditContext | null> {
+        if (!this.currentMekUnit(member, interaction.context)) return null;
+        let accepted: UnitEditContext | null = null;
         if (!choice.keepOpen) this.closePicker();
         const value = String(choice.value);
         if (value === 'hit' || value === 'repair') {
-            const current = this.currentMekUnit(member);
-            if (current) await this.dispatchDirect(
+            const current = this.currentMekUnit(member, interaction.context);
+            if (current) accepted = await this.dispatchDirect(
                 member,
-                { ...interaction, expectedRevision: current.state.stateRevision },
+                interaction,
                 value === 'hit' ? 1 : -1,
             );
         } else if (value === 'open-ammo') {
             this.overlays.openEquipment(member.id, new Event('click'), 'ammo');
         } else if (value.startsWith('ammo-add:') || value.startsWith('ammo-spend:')) {
             const componentId = value.slice(value.indexOf(':') + 1) as ComponentId;
-            const current = this.currentMekUnit(member);
+            const current = this.currentMekUnit(member, interaction.context);
             if (current) {
                 let munitionKey: string;
                 let capacity: number;
@@ -609,7 +619,7 @@ export class PageViewerMekInteractionService {
                     capacity = current.query.ammoCapacity(componentId);
                     remaining = current.query.remainingAmmo(componentId);
                 } catch {
-                    return;
+                    return null;
                 }
                 const command: CBTUnitCommand = value.startsWith('ammo-add:')
                     ? {
@@ -623,30 +633,32 @@ export class PageViewerMekInteractionService {
                         componentId,
                         amount: 1,
                     };
-                await this.dispatchCommand(member, command);
+                accepted = await this.dispatchCommand(member, command, interaction.context);
             }
         } else {
             const command = handlers.get(value);
             if (command) {
-                const result = await member.force.dispatchEquipmentChoice(command);
+                const result = await member.force.dispatchEquipmentChoice(command, interaction.context);
+                accepted = result.accepted ? result.context : null;
                 if (!result.accepted) this.rejected(`Equipment action rejected: ${result.reason}`);
             }
         }
-        if (choice.keepOpen && this.picker?.unitId === member.id && isChoicePickerInstance(this.picker.instance)) {
+        if (accepted && choice.keepOpen && this.picker?.unitId === member.id && isChoicePickerInstance(this.picker.instance)) {
             const current = member.mekRecordSheetSnapshot();
             if (current) {
                 handlers.clear();
                 this.picker.instance.component.values.set(this.criticalChoices(member, interaction, current, handlers));
             }
         }
+        return accepted;
     }
 
     private openHeatSinksPicker(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'heat-sinks-off' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'heat-sinks-off' }>,
         event: Event,
     ): void {
-        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        const unit = this.currentMekUnit(member, interaction.context);
         if (!unit) return;
         const heatSinkCount = unit.entity.totalHeatSinks();
         const heatsinksOff = Math.max(0, Math.min(heatSinkCount, unit.query.heatState().heatsinksOff));
@@ -654,11 +666,11 @@ export class PageViewerMekInteractionService {
         const max = heatsinksOff;
         const apply = (delta: number): void => {
             this.closePicker();
-            const current = this.currentMekUnit(member);
+            const current = this.currentMekUnit(member, interaction.context);
             if (!current) return;
             void this.dispatchDirect(
                 member,
-                { ...interaction, expectedRevision: current.state.stateRevision },
+                interaction,
                 current.query.heatState().heatsinksOff - delta,
             );
         };
@@ -686,9 +698,9 @@ export class PageViewerMekInteractionService {
 
     private async promptHeat(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'heat-overflow' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'heat-overflow' }>,
     ): Promise<void> {
-        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        const unit = this.currentMekUnit(member, interaction.context);
         if (!unit) return;
         const heat = unit.query.heatState();
         const current = this.options.options().trackPhaseAndTurn
@@ -707,21 +719,21 @@ export class PageViewerMekInteractionService {
         });
         const value = await firstValueFrom(ref.closed);
         if (value === null || value === undefined || !Number.isFinite(Number(value))) return;
-        const latest = this.currentMekUnit(member);
+        const latest = this.currentMekUnit(member, interaction.context);
         if (!latest) return;
         await this.dispatchDirect(member, {
             kind: 'heat',
             heat: Math.max(0, Number(value)),
-            expectedRevision: latest.state.stateRevision,
+            context: interaction.context,
         });
     }
 
     private openUnitConditionMenu(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'condition-menu' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'condition-menu' }>,
         event: Event,
     ): void {
-        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        const unit = this.currentMekUnit(member, interaction.context);
         const anchor = event.currentTarget;
         if (!unit || !(anchor instanceof Element)) return;
         const { componentRef, closed } = this.openStateDropdown(UNIT_CONDITION_OVERLAY, anchor, event, true);
@@ -735,11 +747,11 @@ export class PageViewerMekInteractionService {
             })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(condition => {
             if (!isUnitConditionKey(condition)) return;
-            const current = this.currentMekUnit(member);
+            const current = this.currentMekUnit(member, interaction.context);
             if (current) void this.dispatchDirect(member, {
                 kind: 'condition',
                 condition,
-                expectedRevision: current.state.stateRevision,
+                context: interaction.context,
             });
             this.overlayManager.closeManagedOverlay(UNIT_CONDITION_OVERLAY);
         });
@@ -748,16 +760,17 @@ export class PageViewerMekInteractionService {
 
     private openLocationConditionMenu(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'location-condition-menu' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'location-condition-menu' }>,
         event: Event,
     ): void {
-        const unit = this.currentMekUnit(member, interaction.expectedRevision);
+        let context = interaction.context;
+        const unit = this.currentMekUnit(member, interaction.context);
         const anchor = event.currentTarget;
         const location = unit?.index.locations.get(interaction.locationId);
         if (!unit || !location || !(anchor instanceof Element)) return;
         const { componentRef, closed } = this.openStateDropdown(LOCATION_CONDITION_OVERLAY, anchor, event, false);
         const update = (): void => {
-            const current = this.currentMekUnit(member);
+            const current = this.currentMekUnit(member, context);
             const currentLocation = current?.index.locations.get(interaction.locationId);
             if (!current || !currentLocation) return;
             const perspective = this.options.options().trackPhaseAndTurn ? 'preview' : 'committed';
@@ -787,7 +800,7 @@ export class PageViewerMekInteractionService {
             componentRef.changeDetectorRef.detectChanges();
         };
         const set = async (selectedKey: string, operation: 'toggle' | 'increment' | 'decrement'): Promise<void> => {
-            const current = this.currentMekUnit(member);
+            const current = this.currentMekUnit(member, context);
             const currentLocation = current?.index.locations.get(interaction.locationId);
             const control = MEK_LOCATION_CONDITION_CONTROLS.find(row => row.key === selectedKey);
             if (!current || !currentLocation || !control) return;
@@ -801,13 +814,15 @@ export class PageViewerMekInteractionService {
             const next = operation === 'increment' ? value + 1
                 : operation === 'decrement' ? Math.max(0, value - 1)
                     : control.counted ? (value > 0 ? 0 : 1) : (value > 0 ? 0 : 1);
-            await this.dispatchCommand(member, {
+            const accepted = await this.dispatchCommand(member, {
                 type: 'set-location-condition',
                 locationId: interaction.locationId,
                 condition: conditionKey,
                 value: next,
                 target: pending ? 'pending' : 'committed',
-            });
+            }, context);
+            if (!accepted) return;
+            context = accepted;
             update();
         };
         update();
@@ -816,9 +831,9 @@ export class PageViewerMekInteractionService {
                 if (condition === CRITICAL_CHANCE_ACTION || condition === CRITICAL_ROLL_ACTION) {
                     this.overlayManager.closeManagedOverlay(LOCATION_CONDITION_OVERLAY);
                     if (condition === CRITICAL_CHANCE_ACTION) {
-                        this.openMekCriticalChanceDialog(member, interaction.locationId);
+                        this.openMekCriticalChanceDialog(member, interaction.locationId, context);
                     } else {
-                        this.openMekCriticalRollDialog(member, interaction.locationId);
+                        this.openMekCriticalRollDialog(member, interaction.locationId, context);
                     }
                     return;
                 }
@@ -833,8 +848,8 @@ export class PageViewerMekInteractionService {
         this.bindDropdownClose(componentRef.instance, closed, LOCATION_CONDITION_OVERLAY);
     }
 
-    private openMekCriticalChanceDialog(member: CBTMekForceMember, locationId: LocationId): void {
-        const unit = member.force.getUnitSnapshot(member.id);
+    private openMekCriticalChanceDialog(member: CBTMekForceMember, locationId: LocationId, context: UnitEditContext): void {
+        const unit = this.currentMekUnit(member, context);
         if (!unit || !hasMekRuntime(unit)) return;
         const target = this.criticalMutationTarget();
         const profile = unit.query.mekCriticalChance(locationId, target);
@@ -852,10 +867,10 @@ export class PageViewerMekInteractionService {
         ref.closed.subscribe(result => {
             if (!result || result.kind === 'none') return;
             if (result.kind === 'blown-off') {
-                void this.applyMekBlowOff(member, locationId, target);
+                void this.applyMekBlowOff(member, locationId, target, context);
                 return;
             }
-            this.openMekCriticalRollDialog(member, locationId, result.count, target);
+            this.openMekCriticalRollDialog(member, locationId, context, result.count, target);
         });
     }
 
@@ -863,15 +878,16 @@ export class PageViewerMekInteractionService {
         member: CBTMekForceMember,
         locationId: LocationId,
         target: MekCriticalMutationTarget,
+        context: UnitEditContext,
     ): Promise<void> {
-        const unit = member.force.getUnitSnapshot(member.id);
+        const unit = this.currentMekUnit(member, context);
         if (!unit || !hasMekRuntime(unit)) return;
         const plan = unit.query.mekBlowOff(locationId, target);
         const applied = await this.dispatchCommand(member, {
             type: 'apply-mek-blow-off',
             locationId,
             target,
-        });
+        }, context);
         if (!applied) return;
         if (plan.kind === 'absorbed') {
             this.toast.showToast(`Armored ${plan.equipment} absorbs the blow-off result`, 'info');
@@ -885,13 +901,16 @@ export class PageViewerMekInteractionService {
     private openMekCriticalRollDialog(
         member: CBTMekForceMember,
         locationId: LocationId,
+        context: UnitEditContext,
         requiredHits?: number,
         target = this.criticalMutationTarget(),
     ): void {
+        if (!this.currentMekUnit(member, context)) return;
         this.dialogs.createDialog(MekCriticalRollDialogComponent, {
             data: {
                 member,
                 locationId,
+                context,
                 ...(requiredHits === undefined ? {} : { requiredHits }),
                 target,
             } satisfies MekCriticalRollDialogData,
@@ -904,10 +923,10 @@ export class PageViewerMekInteractionService {
 
     private openCrewSkillPicker(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'crew-skill' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'crew-skill' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         const position = snapshot?.crew.find(row => row.positionId === interaction.positionId);
         if (!snapshot || !position) return;
         this.openChoicePicker(member.id, event, {
@@ -918,16 +937,16 @@ export class PageViewerMekInteractionService {
             targetType: 'skill',
             onPick: choice => {
                 this.closePicker();
-                void this.replaceCrewField(member, interaction.positionId, interaction.skill, Number(choice.value));
+                void this.replaceCrewField(member, interaction.positionId, interaction.skill, Number(choice.value), interaction.context);
             },
         });
     }
 
     private async promptCrewName(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'crew-name' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'crew-name' }>,
     ): Promise<void> {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         const position = snapshot?.crew.find(row => row.positionId === interaction.positionId);
         if (!position) return;
         await this.pilotEditor.editCBTMember(member.force, member.id);
@@ -935,10 +954,10 @@ export class PageViewerMekInteractionService {
 
     private openCrewStateMenu(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'crew-state-menu' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'crew-state-menu' }>,
         event: Event,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         const position = snapshot?.crew.find(row => row.positionId === interaction.positionId);
         const anchor = event.currentTarget;
         if (!snapshot || !position || !(anchor instanceof Element)) return;
@@ -967,11 +986,11 @@ export class PageViewerMekInteractionService {
         }
         componentRef.setInput('choices', choices);
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(choice => {
-            const current = member.mekRecordSheetSnapshot();
+            const current = this.currentSnapshot(member, interaction.context);
             const row = current?.crew.find(candidate => candidate.positionId === interaction.positionId);
             if (current && row) {
                 if (choice === 'swap') {
-                    void this.swapCrewPositions(member, row.occurrence);
+                    void this.swapCrewPositions(member, row.occurrence, interaction.context);
                 } else if (choice === 'unconscious' || choice === 'ejected') {
                     const active = choice === 'unconscious' ? row.state.unconscious : row.state.ejected;
                     void this.dispatchCommand(member, {
@@ -980,7 +999,7 @@ export class PageViewerMekInteractionService {
                         wounds: row.state.wounds,
                         unconscious: choice === 'unconscious' ? !active : row.state.unconscious,
                         ejected: choice === 'ejected' ? !active : row.state.ejected,
-                    });
+                    }, interaction.context);
                 }
             }
             this.overlayManager.closeManagedOverlay(CREW_STATE_OVERLAY);
@@ -993,18 +1012,20 @@ export class PageViewerMekInteractionService {
         positionId: MekRecordSheetSnapshot['crew'][number]['positionId'],
         field: 'gunnery' | 'piloting' | 'name',
         value: string | number,
+        context: UnitEditContext,
     ): Promise<void> {
+        if (!this.currentMekUnit(member, context)) return;
         const profile = member.force.getUnitCrewProfile(member.id);
         if (!profile) return;
         const positions = profile.positions.map(position => position.positionId === positionId
             ? { ...position, [field]: value }
             : position);
-        const result = await member.force.replaceUnitCrewProfile(member.id, positions);
+        const result = await member.force.replaceUnitCrewProfile(member.id, positions, context);
         if (!result) this.rejected('The crew profile could not be saved.');
     }
 
-    private async swapCrewPositions(member: CBTMekForceMember, occurrence: number): Promise<void> {
-        const snapshot = member.mekRecordSheetSnapshot();
+    private async swapCrewPositions(member: CBTMekForceMember, occurrence: number, context: UnitEditContext): Promise<void> {
+        const snapshot = this.currentSnapshot(member, context);
         const source = snapshot?.crew.find(position => position.occurrence === occurrence);
         const target = snapshot?.crew.find(position => position.occurrence === (occurrence === 0 ? 1 : 0));
         if (!source || !target) return;
@@ -1016,11 +1037,14 @@ export class PageViewerMekInteractionService {
 
     private async selectInventory(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'inventory-selection' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'inventory-selection' }>,
         event: Event,
     ): Promise<void> {
+        let context = interaction.context;
+        const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
+        if (registryRevision === undefined) return;
         let panel = member.force.getEquipmentPanelSnapshot(member.id);
-        if (!panel || panel.stateRevision !== interaction.expectedRevision) return;
+        if (!panel || !this.currentMekUnit(member, context)) return;
         const rows = interaction.componentIds
             .map(componentId => panel?.components.find(row => row.componentId === componentId))
             .filter((row): row is NonNullable<typeof row> => row !== undefined);
@@ -1028,25 +1052,29 @@ export class PageViewerMekInteractionService {
         if (interaction.mode !== undefined) {
             for (const row of rows) {
                 if (!row.modes.includes(interaction.mode) || row.mode === interaction.mode) continue;
-                const snapshot = member.mekRecordSheetSnapshot();
-                if (!snapshot || !await this.dispatchCommand(member, {
+                const snapshot = this.currentSnapshot(member, context);
+                if (!snapshot) return;
+                const next = await this.dispatchCommand(member, {
                     type: 'set-component-mode',
                     componentId: row.componentId,
                     mode: interaction.mode,
-                })) return;
+                }, context);
+                if (!next) return;
+                context = next;
             }
             panel = member.force.getEquipmentPanelSnapshot(member.id);
             if (!panel) return;
         }
+        if (member.force.getAttackerTargeting(member.id)?.registryRevision !== registryRevision) return;
         const weapons = interaction.componentIds
             .map(componentId => panel?.components.find(row => row.componentId === componentId))
             .filter((row): row is NonNullable<typeof row> => row?.weapon !== undefined);
         if (weapons.length === 0) {
-            this.openEquipmentChoices(member, interaction.componentIds, event);
+            this.openEquipmentChoices(member, interaction.componentIds, event, context);
             return;
         }
         if (panel.targets.length > 1) {
-            this.openTargetMenu(member, interaction.componentIds, panel, event);
+            this.openTargetMenu(member, interaction.componentIds, panel, event, context, registryRevision);
             return;
         }
         const desired = panel.targets.length === 1
@@ -1059,22 +1087,24 @@ export class PageViewerMekInteractionService {
             member,
             weapons.map(row => row.componentId),
             !forceSelected && allSelected ? null : desired,
+            context,
+            registryRevision,
         );
     }
 
     private async selectAction(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'action-selection' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'action-selection' }>,
         event: Event,
     ): Promise<void> {
         const panel = member.force.getEquipmentPanelSnapshot(member.id);
-        if (!panel || panel.stateRevision !== interaction.expectedRevision) return;
+        if (!panel || !this.currentMekUnit(member, interaction.context)) return;
         const actionKey = attackerActionTargetKey(interaction.target);
         const attack = panel.physicalAttacks.find(candidate =>
             attackerActionTargetKey(candidate.target) === actionKey);
         if (!attack?.available || !attack.selectable) return;
         if (panel.targets.length > 1) {
-            this.openActionTargetMenu(member, interaction.target, panel, event);
+            this.openActionTargetMenu(member, interaction.target, panel, event, interaction.context);
             return;
         }
         const desired: AttackerActionSelection = panel.targets.length === 1
@@ -1084,6 +1114,7 @@ export class PageViewerMekInteractionService {
             member,
             interaction.target,
             sameSelection(attack.selection, desired) ? null : desired,
+            interaction.context,
         );
     }
 
@@ -1092,6 +1123,8 @@ export class PageViewerMekInteractionService {
         componentIds: readonly ComponentId[],
         panel: EquipmentPanelSnapshot,
         event: Event,
+        context: UnitEditContext,
+        registryRevision: number,
     ): void {
         const targetIds = componentIds.map(componentId => panel.components.find(row => row.componentId === componentId)?.weapon?.selection)
             .filter((selection): selection is { readonly kind: 'target'; readonly targetId: EncounterTargetId } => selection?.kind === 'target')
@@ -1122,16 +1155,20 @@ export class PageViewerMekInteractionService {
                 member,
                 componentIds,
                 targetId === null ? null : { kind: 'target', targetId },
+                context,
+                registryRevision,
             );
         });
     }
 
     private openActionTargetMenu(
         member: CBTMekForceMember,
-        target: Extract<MekRecordSheetInteraction, { readonly kind: 'action-selection' }>['target'],
+        target: Extract<RecordSheetInteraction, { readonly kind: 'action-selection' }>['target'],
         panel: EquipmentPanelSnapshot,
         event: Event,
+        context: UnitEditContext,
     ): void {
+        const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
         const targeting = member.force.getAttackerTargeting(member.id);
         if (!targeting) return;
         const selection = attackerActionSelection(targeting.state, target);
@@ -1144,6 +1181,8 @@ export class PageViewerMekInteractionService {
                 member,
                 target,
                 targetId === null ? null : { kind: 'target', targetId },
+                context,
+                registryRevision,
             ),
         );
     }
@@ -1191,7 +1230,7 @@ export class PageViewerMekInteractionService {
         });
     }
 
-    private openEquipmentChoices(member: CBTMekForceMember, componentIds: readonly ComponentId[], event: Event): void {
+    private openEquipmentChoices(member: CBTMekForceMember, componentIds: readonly ComponentId[], event: Event, context: UnitEditContext): void {
         const commandByValue = new Map<string, CBTEquipmentChoiceCommand>();
         const values = this.equipmentPickerChoices(member, componentIds, commandByValue);
         if (values.length === 0) return;
@@ -1203,10 +1242,12 @@ export class PageViewerMekInteractionService {
             style: 'linear',
             onPick: choice => {
                 if (!choice.keepOpen) this.closePicker();
+                if (!this.currentMekUnit(member, context)) return;
                 const command = commandByValue.get(String(choice.value));
-                if (command) void member.force.dispatchEquipmentChoice(command).then(result => {
+                if (command) void member.force.dispatchEquipmentChoice(command, context).then(result => {
                     if (!result.accepted) this.rejected(`Equipment action rejected: ${result.reason}`);
-                    if (choice.keepOpen && this.picker?.unitId === member.id
+                    if (result.accepted) context = result.context;
+                    if (result.accepted && choice.keepOpen && this.picker?.unitId === member.id
                         && isChoicePickerInstance(this.picker.instance)) {
                         commandByValue.clear();
                         this.picker.instance.component.values.set(
@@ -1302,40 +1343,43 @@ export class PageViewerMekInteractionService {
             | { readonly kind: 'target'; readonly targetId: EncounterTargetId }
             | { readonly kind: 'manual-range'; readonly range: 'short' | 'medium' | 'long' | 'extreme' }
             | null,
+        context: UnitEditContext,
+        registryRevision?: number,
     ): Promise<void> {
-        for (const componentId of componentIds) {
-            const targeting = member.force.getAttackerTargeting(member.id);
-            if (!targeting) return;
-            const result = await member.force.dispatchAttackerTargeting(member.id, {
-                type: 'edit-attacker-targeting',
-                edit: { kind: 'set-component-selection', componentId, selection },
-            });
-            if (!result.accepted) {
-                this.rejected('This force is read-only.');
-                return;
-            }
-        }
+        if (!this.currentMekUnit(member, context)) return;
+        const uniqueIds = [...new Set(componentIds)];
+        if (uniqueIds.length === 0) return;
+        const result = await member.force.dispatchAttackerTargeting(member.id, {
+            type: 'edit-attacker-targeting',
+            edit: uniqueIds.length === 1
+                ? { kind: 'set-component-selection', componentId: uniqueIds[0], selection }
+                : { kind: 'set-component-selections', componentIds: uniqueIds, selection },
+        }, context, registryRevision);
+        if (!result.accepted) this.rejected('This edit is no longer current, or the force is read-only.');
     }
 
     private async setActionSelection(
         member: CBTMekForceMember,
-        target: Extract<MekRecordSheetInteraction, { readonly kind: 'action-selection' }>['target'],
+        target: Extract<RecordSheetInteraction, { readonly kind: 'action-selection' }>['target'],
         selection: AttackerActionSelection | null,
+        context: UnitEditContext,
+        registryRevision?: number,
     ): Promise<void> {
+        if (!this.currentMekUnit(member, context)) return;
         const targeting = member.force.getAttackerTargeting(member.id);
         if (!targeting) return;
         const result = await member.force.dispatchAttackerTargeting(member.id, {
             type: 'edit-attacker-targeting',
             edit: { kind: 'set-action-selection', target, selection },
-        });
-        if (!result.accepted) this.rejected('This force is read-only.');
+        }, context, registryRevision);
+        if (!result.accepted) this.rejected('This edit is no longer current, or the force is read-only.');
     }
 
     private openReferenceTable(
         member: CBTMekForceMember,
-        interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'reference-table' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'reference-table' }>,
     ): void {
-        const snapshot = this.currentSnapshot(member, interaction.expectedRevision);
+        const snapshot = this.currentSnapshot(member, interaction.context);
         if (!snapshot) return;
         this.dialogs.createDialog(ClusterTableDialogComponent, {
             data: {
@@ -1454,39 +1498,39 @@ export class PageViewerMekInteractionService {
 
     private async dispatchDirect(
         member: CBTMekForceMember,
-        interaction: MekRecordSheetInteraction,
+        interaction: DirectRecordSheetInteraction,
         delta?: number,
-    ): Promise<boolean> {
-        const source = this.currentCommandSource(member, interaction.expectedRevision);
-        if (!source) return false;
+    ): Promise<UnitEditContext | null> {
+        const source = this.currentCommandSource(member, interaction.context);
+        if (!source) return null;
         const command = recordSheetCommand(
             interaction,
             source,
             this.options.options().trackPhaseAndTurn,
             delta,
         );
-        return this.dispatchCommand(member, command);
+        return this.dispatchCommand(member, command, interaction.context);
     }
 
-    private async dispatchCommand(member: CBTMekForceMember, command: CBTUnitCommand): Promise<boolean> {
-        const result = await member.force.dispatchMekUnitCommand(member.id, command);
+    private async dispatchCommand(member: CBTMekForceMember, command: CBTUnitCommand, context: UnitEditContext): Promise<UnitEditContext | null> {
+        const result = await member.force.dispatchUnitCommand(member.id, command, context);
         if (!result.accepted) {
-            this.rejected('This force is read-only.');
-            return false;
+            this.rejected('This edit is no longer current, or the force is read-only.');
+            return null;
         }
-        return true;
+        return result.state ? { owner: context.owner, state: result.state } : null;
     }
 
-    private currentSnapshot(member: CBTMekForceMember, expectedRevision: number): MekRecordSheetSnapshot | null {
+    private currentSnapshot(member: CBTMekForceMember, context: UnitEditContext): MekRecordSheetSnapshot | null {
         const snapshot = member.mekRecordSheetSnapshot();
-        return snapshot?.stateRevision === expectedRevision ? snapshot : null;
+        return snapshot && isUnitEditContextCurrent(context, snapshot.editContext) ? snapshot : null;
     }
 
     private currentCommandSource(
         member: CBTMekForceMember,
-        expectedRevision: number,
+        context: UnitEditContext,
     ): MekRecordSheetCommandSource | null {
-        const unit = this.currentMekUnit(member, expectedRevision);
+        const unit = this.currentMekUnit(member, context);
         if (!unit) return null;
         return Object.freeze({
             query: unit.query,
@@ -1497,10 +1541,10 @@ export class PageViewerMekInteractionService {
         });
     }
 
-    private currentMekUnit(member: CBTMekForceMember, expectedRevision?: number) {
+    private currentMekUnit(member: CBTMekForceMember, context?: UnitEditContext) {
         const unit = member.force.getUnitSnapshot(member.id);
         if (!unit || !hasMekRuntime(unit)) return null;
-        return expectedRevision === undefined || unit.state.stateRevision === expectedRevision
+        return context === undefined || isUnitEditContextCurrent(context, unit.editContext)
             ? unit
             : null;
     }

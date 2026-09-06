@@ -1,60 +1,55 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { inject, Injectable } from '@angular/core';
+import { inject,Injectable } from '@angular/core';
+import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
 import {
-    orderedAutomationChecks,
-    type AutomationCheck,
-    type AutomationCheckResolution,
+orderedAutomationChecks,
+type AutomationCheck,
+type AutomationCheckResolution,
 } from '../models/automation-check.model';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
-import {
-    cbtUnitCheckAutomaticMessage,
-    cbtUnitCheckPresentation,
-    cbtUnitCheckReviewDescription,
-} from '../models/cbt-unit-check-presentation';
-import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTNonMekUnitCommandResult } from '../models/cbt-force.types';
-import { hasNonMekRuntime, type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { isCaseEquipment } from '../models/case-equipment.model';
-import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
-import { AmmoEquipment } from '../models/equipment.model';
-import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
-import type { BaseEntity } from '../models/entity/base-entity';
-import type { ComponentId, CrewPositionId } from '../models/entity/entity-identifiers';
+import type { CBTForce } from '../models/cbt-force.model';
+import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
+import {
+cbtUnitCheckAutomaticMessage,
+cbtUnitCheckPresentation,
+cbtUnitCheckReviewDescription,
+} from '../models/cbt-unit-check-presentation';
+import { hasNonMekRuntime,type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { MAX_CREW_WOUNDS } from '../models/crew-member.model';
-import type { UnitConditionKey } from '../models/unit-condition.model';
+import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
+import type { BaseEntity } from '../models/entity/base-entity';
+import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
+import type { ComponentId,CrewPositionId } from '../models/entity/entity-identifiers';
 import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
+import { AmmoEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
-import { ammoExplosionDamagePerShot, ammoRackSize } from '../models/runtime/mek-critical-hit-v2';
-import { mekConsciousnessTarget, twoD6Total } from '../models/runtime/mek-automation-rules';
 import {
-    projectAeroHeatAutomationChecks,
-    type AeroHeatAutomationCheck,
+projectAeroHeatAutomationChecks,
+type AeroHeatAutomationCheck,
 } from '../models/runtime/aero-heat-automation-rules';
-import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
-import {
-    projectNonMekEndTurnHeat,
-    type NonMekControlRecoveryCause,
-    type NonMekControlRecoveryWorkflow,
-    type NonMekUnitCommand,
-    type NonMekUnitRuntimeState,
-} from '../models/runtime/non-mek-unit-instance';
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
-import { CBTAutomationService } from './cbt-automation.service';
-import { automationCheckEvidenceDice, CBTAutomationCheckService } from './cbt-automation-check.service';
-import { CBTAutomationToastService } from './cbt-automation-toast.service';
-import {
-    automaticConsciousnessNotifications,
-    automaticConsciousnessRecoveryNotification,
-    CBTCrewHitAutomationService,
-    type ResolvedCrewHits,
-} from './cbt-crew-hit-automation.service';
-import { OptionsService } from './options.service';
-import { directAutomationSubject } from './direct-automation-subject';
-import type { Toast } from './toast.service';
+import { mekConsciousnessTarget,twoD6Total } from '../models/runtime/mek-automation-rules';
+import { ammoExplosionDamagePerShot,ammoRackSize } from '../models/runtime/mek-critical-hit-v2';
+import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
+import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
+import type { UnitConditionKey } from '../models/unit-condition.model';
 import { buildHeatSummaryRows } from '../utils/heat-summary.util';
+import { automationCheckEvidenceDice,CBTAutomationCheckService } from './cbt-automation-check.service';
+import { CBTAutomationToastService } from './cbt-automation-toast.service';
+import { CBTAutomationService } from './cbt-automation.service';
+import {
+automaticConsciousnessNotifications,
+automaticConsciousnessRecoveryNotification,
+CBTCrewHitAutomationService,
+type ResolvedCrewHits,
+} from './cbt-crew-hit-automation.service';
+import { directAutomationSubject } from './direct-automation-subject';
+import { OptionsService } from './options.service';
+import type { Toast } from './toast.service';
 
 type AeroSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readonly<{
     entity: AeroEntity;
@@ -69,12 +64,12 @@ type NonMekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Read
 }>;
 
 export type DirectNonMekAutomationDispatch = (
-    command: NonMekUnitCommand,
+    command: CBTUnitCommand,
     automate?: boolean,
-) => Promise<CBTNonMekUnitCommandResult>;
+) => Promise<CBTForceUnitCommandResult>;
 
 export interface PreparedDirectNonMekAutomationCommand {
-    readonly command: NonMekUnitCommand;
+    readonly command: CBTUnitCommand;
     readonly cancelled?: true;
     readonly heatEffects?: PreparedAeroHeatEffects;
     readonly phaseBoundary?: PreparedNonMekPhaseBoundary;
@@ -82,7 +77,7 @@ export interface PreparedDirectNonMekAutomationCommand {
 
 export interface DirectNonMekEndTurnAutomationRequest {
     readonly instanceId: string;
-    readonly command: Extract<NonMekUnitCommand, { readonly kind: 'end-turn' }>;
+    readonly command: Extract<CBTUnitCommand, { readonly type: 'end-turn' }>;
 }
 
 export interface PreparedDirectNonMekEndTurnAutomation {
@@ -92,7 +87,7 @@ export interface PreparedDirectNonMekEndTurnAutomation {
 
 export interface DirectNonMekEndPhaseAutomationRequest {
     readonly instanceId: string;
-    readonly command: Extract<NonMekUnitCommand, { readonly kind: 'end-phase' }>;
+    readonly command: Extract<CBTUnitCommand, { readonly type: 'end-phase' }>;
 }
 
 export interface PreparedDirectNonMekEndPhaseAutomation {
@@ -201,9 +196,9 @@ export class DirectNonMekAutomationService {
     async prepareCommand(
         force: CBTForce,
         instanceId: string,
-        command: NonMekUnitCommand,
+        command: CBTUnitCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand> {
-        if (command.kind === 'set-crew-state') {
+        if (command.type === 'set-crew-state') {
             const snapshot = this.nonMekSnapshot(force, instanceId);
             if (snapshot
                 && command.unconscious
@@ -220,11 +215,11 @@ export class DirectNonMekAutomationService {
                 });
             }
         }
-        if (command.kind === 'end-phase') {
+        if (command.type === 'end-phase') {
             const batch = await this.prepareEndPhaseCommands(force, [{ instanceId, command }]);
             return batch?.[0]?.prepared ?? Object.freeze({ command, cancelled: true });
         }
-        if (command.kind !== 'end-turn') return Object.freeze({ command });
+        if (command.type !== 'end-turn') return Object.freeze({ command });
         const batch = await this.prepareEndTurnCommands(force, [{ instanceId, command }]);
         return batch?.[0]?.prepared ?? Object.freeze({ command, cancelled: true });
     }
@@ -464,7 +459,7 @@ export class DirectNonMekAutomationService {
         prepared: PreparedDirectNonMekAutomationCommand,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<PreparedDirectNonMekAutomationCommand | null> {
-        if (prepared.command.kind === 'end-phase' && prepared.phaseBoundary) {
+        if (prepared.command.type === 'end-phase' && prepared.phaseBoundary) {
             if (!await this.applyPhaseBoundary(
                 force,
                 instanceId,
@@ -481,11 +476,11 @@ export class DirectNonMekAutomationService {
                 phaseBoundary: undefined,
             });
         }
-        if (prepared.command.kind !== 'end-turn') return prepared;
+        if (prepared.command.type !== 'end-turn') return prepared;
         const initial = this.snapshot(force, instanceId);
         if (!initial) return null;
-        const automaticHeat = prepared.command.heatPolicy === 'automatic';
-        const finalHeat = prepared.command.heatPolicy === 'automatic'
+        const automaticHeat = prepared.command.policy === 'automatic';
+        const finalHeat = prepared.command.policy === 'automatic'
             ? prepared.heatEffects?.staged.heat ?? initial.state.heat.current
             : selectedManualEndTurnHeat(
                 this.options.cbtAutomationMode('heatAndDissipationResolution'),
@@ -493,9 +488,9 @@ export class DirectNonMekAutomationService {
                 initial.state.heat.pendingOverride,
             );
         const heat = await dispatch({
-            kind: 'set-heat',
+            type: 'set-heat',
             heat: finalHeat,
-            target: 'committed',
+
         }, false);
         if (!heat.accepted) return null;
         if (automaticHeat
@@ -520,7 +515,7 @@ export class DirectNonMekAutomationService {
             ...prepared,
             command: Object.freeze({
                 ...prepared.command,
-                heatPolicy: 'manual' as const,
+                policy: 'manual' as const,
             }),
         });
     }
@@ -530,13 +525,13 @@ export class DirectNonMekAutomationService {
         instanceId: string,
         before: CBTUnitSnapshot | null,
         prepared: PreparedDirectNonMekAutomationCommand,
-        result: CBTNonMekUnitCommandResult,
+        result: CBTForceUnitCommandResult,
         dispatch: DirectNonMekAutomationDispatch,
     ): Promise<boolean> {
         if (!result.accepted || !result.changed) return true;
         const command = prepared.command;
         const after = this.nonMekSnapshot(force, instanceId);
-        if (command.kind === 'set-crew-state'
+        if (command.type === 'set-crew-state'
             && before && hasNonMekRuntime(before) && after
             && !await this.recordCrewRecoveryTransition(
                 before as NonMekSnapshot,
@@ -764,7 +759,7 @@ export class DirectNonMekAutomationService {
             if (!snapshot || !state || state.ejected || !state.unconscious
                 || state.isDeathCommitted()) continue;
             const result = await dispatch({
-                kind: 'set-crew-state',
+                type: 'set-crew-state',
                 positionId: recovery.positionId,
                 wounds: state.wounds,
                 unconscious: false,
@@ -901,7 +896,7 @@ export class DirectNonMekAutomationService {
             prepared: Object.freeze({
                 command: Object.freeze({
                     ...request.command,
-                    heatPolicy: heatAccepted ? 'automatic' as const : 'manual' as const,
+                    policy: heatAccepted ? 'automatic' as const : 'manual' as const,
                 }),
                 ...(staged === null ? {} : {
                     heatEffects: Object.freeze({
@@ -1019,7 +1014,7 @@ export class DirectNonMekAutomationService {
                 case 'shutdown':
                     if (row.outcome === 'failed') {
                         const result = await dispatch({
-                            kind: 'set-condition', condition: 'shutdown', active: true,
+                            type: 'set-condition', condition: 'shutdown', active: true,
                         }, false);
                         if (!result.accepted) return false;
                     }
@@ -1027,7 +1022,7 @@ export class DirectNonMekAutomationService {
                 case 'startup':
                     if (row.outcome === 'success') {
                         const result = await dispatch({
-                            kind: 'set-condition', condition: 'shutdown', active: false,
+                            type: 'set-condition', condition: 'shutdown', active: false,
                         }, false);
                         if (!result.accepted) return false;
                     }
@@ -1111,7 +1106,7 @@ export class DirectNonMekAutomationService {
         const siDamage = Math.max(1, Math.floor(ammo.rawDamage / (caseProtected ? 20 : 10)));
 
         const destroyed = await dispatch({
-            kind: 'set-component-status',
+            type: 'set-component-status',
             componentId: ammo.componentId,
             status: 'destroyed',
             target: 'committed',
@@ -1124,7 +1119,7 @@ export class DirectNonMekAutomationService {
             const damage = Math.min(siDamage, snapshot.query.remainingInternal(si.id, 'committed'));
             if (damage > 0) {
                 const damaged = await dispatch({
-                    kind: 'damage-internal',
+                    type: 'damage-internal',
                     locationId: si.id,
                     amount: damage,
                     target: 'committed',
@@ -1185,7 +1180,7 @@ export class DirectNonMekAutomationService {
                 || (plan.wounds === state.wounds
                     && plan.unconscious === state.unconscious)) continue;
             const result = await dispatch({
-                kind: 'set-crew-state',
+                type: 'set-crew-state',
                 positionId: position.id,
                 wounds: plan.wounds,
                 unconscious: plan.unconscious,
@@ -1233,7 +1228,7 @@ export class DirectNonMekAutomationService {
         if (!snapshot || !state || !state.unconscious || state.ejected
             || state.isDeathCommitted() || state.wounds >= MAX_CREW_WOUNDS) return true;
         const result = await dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: state.wounds,
             unconscious: true,
@@ -1258,7 +1253,7 @@ export class DirectNonMekAutomationService {
         ) === 'no' ? null : before.state.turn.turnCounter + 1;
         if (current.recoveryReadyTurn === recoveryReadyTurn) return true;
         const result = await dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: current.wounds,
             unconscious: true,
@@ -1382,8 +1377,7 @@ export class DirectNonMekAutomationService {
             : 5;
         const wounds = controller?.state.wounds ?? 0;
         const systemDamage = [...snapshot.index.damageTracks.values()].filter(track =>
-            (track.sheetId.startsWith('avionics_hit_')
-                || track.sheetId.startsWith('life_support_hit_'))
+            (track.system === 'avionics' || track.system === 'life-support')
             && (snapshot.state.damageTracks.get(track.id)?.hits ?? 0) > 0).length;
         return base + wounds + systemDamage;
     }
@@ -1414,7 +1408,7 @@ export class DirectNonMekAutomationService {
         if (!snapshot) return false;
         if (snapshot.query.hasCondition(condition) === active) return true;
         const result = await dispatch({
-            kind: 'set-condition', condition, active,
+            type: 'set-condition', condition, active,
         }, false);
         return result.accepted;
     }
@@ -1433,7 +1427,7 @@ export class DirectNonMekAutomationService {
         }
         if (current === undefined && workflow === null) return true;
         const result = await dispatch({
-            kind: 'set-control-recovery', workflow,
+            type: 'set-control-recovery', workflow,
         }, false);
         return result.accepted;
     }

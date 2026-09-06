@@ -2,35 +2,36 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    bombastLaserProfile,
-    BOMBAST_LASER_FLAG,
-    bombastLaserModes,
-    isBombastLaserMode,
-    isBombastLaserEquipment,
-    type BombastLaserMode,
+BOMBAST_LASER_FLAG,
+bombastLaserModes,
+bombastLaserProfile,
+isBombastLaserEquipment,
+isBombastLaserMode,
+type BombastLaserMode,
 } from '../bombast-laser-mode.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { WeaponEquipment } from '../equipment.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    componentStateChangeFromReduction,
-    type ComponentStateChangeResult,
-    unchangedComponentState,
+componentStateChangeFromReduction,
+unchangedComponentState,
+type ComponentStateChangeResult,
 } from './component-state-change';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
 import {
-    type BombastLaserChargeState,
-    type BombastLaserRuntimeState,
+type BombastLaserChargeState,
+type BombastLaserRuntimeState,
 } from './runtime-state';
-import type { CBTUnitInstance } from './unit-instance';
+
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
 export const BOMBAST_LASER_CHARGING_STATE = 'charging';
@@ -84,7 +85,7 @@ export function isCoreBombastLaserComponent(
 }
 
 export function componentBombastLaserMode(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentBombastLaserDefinition,
 ): BombastLaserMode {
     const mode = runtime.query().componentMode(definition.componentId);
@@ -95,7 +96,7 @@ export function componentBombastLaserMode(
 }
 
 export function setComponentBombastLaserMode(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentBombastLaserDefinition,
     mode: BombastLaserMode,
 ): ComponentStateChangeResult {
@@ -111,7 +112,7 @@ export function setComponentBombastLaserMode(
 }
 
 export function componentBombastLaserLifecycle(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentBombastLaserDefinition,
 ): BombastLaserLifecycleFacts {
     if (definition.ruleset !== 'core-2026') {
@@ -128,7 +129,7 @@ export function componentBombastLaserLifecycle(
 }
 
 export function setComponentBombastLaserCharge(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentBombastLaserDefinition,
     state: typeof BOMBAST_LASER_CHARGING_STATE | null,
 ): ComponentStateChangeResult {
@@ -182,7 +183,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
     }
 
     getComponentBombastLaserChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentBombastLaserDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -210,7 +211,7 @@ export class BombastLaserHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentBombastLaserSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentBombastLaserDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,
@@ -267,7 +268,7 @@ export class TwBombastLaserHandler extends EquipmentInteractionHandler {
     }
 
     getComponentBombastLaserChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentBombastLaserDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -275,7 +276,7 @@ export class TwBombastLaserHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentBombastLaserSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentBombastLaserDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,
@@ -286,7 +287,7 @@ export class TwBombastLaserHandler extends EquipmentInteractionHandler {
 }
 
 export function bombastModeChoice(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentBombastLaserDefinition,
 ): EquipmentInteractionChoice {
     return {

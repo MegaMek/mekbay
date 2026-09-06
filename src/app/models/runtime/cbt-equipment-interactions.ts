@@ -1,14 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CBTEquipmentChoice, CBTEquipmentChoiceCommand, CBTEquipmentInteraction } from '../cbt-force.types';
-import type { CBTMekUnit } from './cbt-mek-unit';
-import type { CBTNonMekUnit } from './cbt-non-mek-unit';
+import type { CBTEquipmentChoice,CBTEquipmentChoiceCommand,CBTEquipmentInteraction } from '../cbt-force.types';
+import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
+
 import { ESCALATING_FAILURE_HANDLER_ID } from './component-escalating-failure';
 import type {
-    EquipmentInteractionChoice,
-    EquipmentInteractionChoiceBinding,
-    EquipmentInteractionQueryContext,
+EquipmentInteractionChoice,
+EquipmentInteractionChoiceBinding,
+EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import { canPerformMekAction } from './mek-action-availability';
 import { projectNonMekEscalatingFailureInteractions } from './non-mek-unit-instance';
@@ -23,7 +23,7 @@ export function canSelectMekEquipmentInteraction(
     interaction: EquipmentInteractionChoiceBinding,
 ): boolean {
     const choice = interaction.choice;
-    const runtime = unit.getInstance();
+    const runtime = unit;
     return choice.stateEdit !== undefined
         || choice.skipActionGate === true
         || choice.action === 'configure-network'
@@ -88,12 +88,12 @@ export function projectNonMekEquipmentInteractions(
     readOnly: boolean,
 ): readonly CBTEquipmentInteraction[] {
     const entity = unit.getUnit();
-    const runtime = unit.getInstance();
+    const runtime = unit;
     return Object.freeze(projectNonMekEscalatingFailureInteractions(
         entity,
         unit.getIndex(),
         runtime.snapshot(),
-        runtime.ruleset,
+        runtime.ruleset(),
         context.choiceSurface,
     ).map(interaction => Object.freeze({
         componentId: interaction.componentId,

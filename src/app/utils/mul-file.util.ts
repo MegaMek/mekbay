@@ -4,33 +4,31 @@
 
 import type { Injector } from '@angular/core';
 import { APP_VERSION_STRING } from '../build-meta';
-import { GameSystem } from '../models/common.model';
 import { CBTForce } from '../models/cbt-force.model';
 import {
-    hasNonMekRuntime,
-    hasMekRuntime,
-    type CBTNonMekUnitSnapshot,
+hasMekRuntime,
+hasNonMekRuntime,
+type CBTNonMekUnitSnapshot,
 } from '../models/cbt-unit-snapshot';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
-import type { UnitSummary } from '../models/unit-summary.model';
-import type { ArmorFaceId, LocationId } from '../models/entity/entity-identifiers';
-import type { DataService } from '../services/data.service';
-import { ForceUnitAdmissionService } from '../services/force-unit-admission.service';
+import { GameSystem } from '../models/common.model';
+import { DEFAULT_GUNNERY_SKILL,DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
+import type { ArmorFaceId,LocationId } from '../models/entity/entity-identifiers';
 import {
-    isCBTForceMember,
-    isCBTMekForceMember,
-    type CBTForceMember,
-    type CBTMekForceMember,
+isCBTForceMember,
+isCBTMekForceMember,
+type CBTForceMember,
+type CBTMekForceMember,
 } from '../models/force-member.model';
 import type {
-    MekRecordSheetCriticalSlot,
-    MekRecordSheetLocation,
-    MekRecordSheetSnapshot,
+MekRecordSheetCriticalSlot,
+MekRecordSheetLocation,
+MekRecordSheetSnapshot,
 } from '../models/runtime/mek-record-sheet';
-import type {
-    NonMekUnitCommand,
-} from '../models/runtime/non-mek-unit-instance';
-import type { CBTUnitCommand } from '../models/runtime/unit-instance';
+import type { CBTUnitCommand } from '../models/runtime/unit-command';
+import type { UnitSummary } from '../models/unit-summary.model';
+import type { DataService } from '../services/data.service';
+import { ForceUnitAdmissionService } from '../services/force-unit-admission.service';
+
 import { uuidv7 } from './uuid.util';
 
 const DEFAULT_ENTITY_ATTRIBUTES: Readonly<Record<string, string>> = Object.freeze({
@@ -496,7 +494,7 @@ async function applyMulCrew(
         const value = byOccurrence.get(position.occurrence);
         if (!value || (value.hits === 0 && !value.ejected)) continue;
         await dispatchEntity(force, member, {
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId: position.id,
             wounds: Math.max(0, Math.min(6, value.hits)),
             unconscious: false,
@@ -633,7 +631,7 @@ async function applyEntityRemainingArmor(
     if (remaining === undefined) return;
     const desired = remaining === 'Destroyed' ? 0 : Math.max(0, Math.min(maximum, remaining));
     await dispatchEntity(force, member, {
-        kind: 'set-armor-damage',
+        type: 'set-armor-damage',
         faceId,
         damage: maximum - desired,
     });
@@ -649,7 +647,7 @@ async function applyEntityRemainingInternal(
     if (remaining === undefined) return;
     const desired = remaining === 'Destroyed' ? 0 : Math.max(0, Math.min(maximum, remaining));
     await dispatchEntity(force, member, {
-        kind: 'set-internal-damage',
+        type: 'set-internal-damage',
         locationId,
         damage: maximum - desired,
     });
@@ -691,7 +689,7 @@ async function dispatchMek(
     if (!snapshot || !hasMekRuntime(snapshot)) {
         throw new Error(`Missing canonical runtime ${member.id}`);
     }
-    const result = await force.dispatchMekUnitCommand(member.id, {
+    const result = await force.dispatchUnitCommand(member.id, {
         ...command,
     } as CBTUnitCommand);
     if (!result.accepted) throw new Error('Cannot import MUL state into a read-only force');
@@ -700,12 +698,12 @@ async function dispatchMek(
 async function dispatchEntity(
     force: CBTForce,
     member: CBTForceMember,
-    command: NonMekUnitCommand,
+    command: CBTUnitCommand,
 ): Promise<void> {
     requiredEntitySnapshot(force, member);
-    const result = await force.dispatchNonMekUnitCommand(member.id, {
+    const result = await force.dispatchUnitCommand(member.id, {
         ...command,
-    } as NonMekUnitCommand);
+    } as CBTUnitCommand);
     if (!result.accepted) throw new Error('Cannot import MUL state into a read-only force');
 }
 

@@ -1,22 +1,23 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injector, provideZonelessChangeDetection } from '@angular/core';
+import { Injector,provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { CBTUnitService } from '../../services/cbt-unit.service';
+import type { DataService } from '../../services/data.service';
+import { OptionsService } from '../../services/options.service';
+import { createEmptyUnit } from '../../testing/unit-test-helpers';
 import { ASForce } from '../as-force.model';
 import { CBTForce } from '../cbt-force.model';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import { GameSystem } from '../common.model';
-import type { ASSerializedForce, SerializedCBTForce, SerializedForce } from '../force-serialization';
+import type { ASSerializedForce,SerializedCBTForce,SerializedForce } from '../force-serialization';
 import type { JsonObject } from '../persisted-unit-state';
-import type { DataService } from '../../services/data.service';
-import { CBTUnitService } from '../../services/cbt-unit.service';
-import { OptionsService } from '../../services/options.service';
-import { createEmptyUnit } from '../../testing/unit-test-helpers';
-import { CBTMekUnit } from './cbt-mek-unit';
-import { convertPersistedForceV1, type PersistedForceV1ConversionWarning } from './legacy-force-v1-converter';
-import { decodeForceFromStorage, encodeForceForStorage } from './force-storage-codec';
+import { createMekUnit,restoreMekUnit } from './cbt-mek-unit';
+
+import { decodeForceFromStorage,encodeForceForStorage } from './force-storage-codec';
 import type { StoredForceV2 } from './force-storage.model';
+import { convertPersistedForceV1,type PersistedForceV1ConversionWarning } from './legacy-force-v1-converter';
 import type { SerializedCBTUnitV2 } from './persistence-v2';
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
@@ -77,7 +78,7 @@ describe('V1 personnel admission through current force storage', () => {
         const data = { getUnitByUuid: () => summary, getFactionById: () => null, getEraById: () => null } as unknown as DataService;
         const cbtUnits = {
             restore: async (saved: SerializedCBTUnitV2) => ({
-                unit: await CBTMekUnit.restoreFromEntity(saved, fixture.entity, fixture.identity, initialize),
+                unit: await restoreMekUnit(saved, fixture.entity, fixture.identity, initialize),
                 warnings: [],
             }),
         };
@@ -95,7 +96,7 @@ describe('V1 personnel admission through current force storage', () => {
         const converted = await convertPersistedForceV1(source, {
             scenario,
             resolveIdentity: () => ({ kind: 'resolved', uuid: fixture.identity }),
-            materializeUnit: request => CBTMekUnit.createFromEntity({ uuid: fixture.identity, instanceId: request.instanceId },
+            materializeUnit: request => createMekUnit({ uuid: fixture.identity, instanceId: request.instanceId },
                 fixture.entity, fixture.identity, { ...initialize, deployment: request.deployment }),
             onWarning: warning => warnings.push(warning),
         });

@@ -1,62 +1,63 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { computed,signal,type Signal,type WritableSignal } from '@angular/core';
+import { merge,type Subscription } from 'rxjs';
+import type { CBTUnitCommand } from '../../models/runtime/unit-command';
+import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
 import { formatUnitName } from '../../utils/unit-display-name.util';
-import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
-import { merge, type Subscription } from 'rxjs';
 
-import {
-    isCBTMekForceMember,
-    type CBTForceMember,
-} from '../../models/force-member.model';
 import type {
-    CBTEquipmentChoice,
-    CBTEquipmentInteraction,
+CBTEquipmentChoice,
+CBTEquipmentInteraction,
 } from '../../models/cbt-force.types';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
+import {
+isCBTMekForceMember,
+type CBTForceMember,
+} from '../../models/force-member.model';
 import type {
-    EquipmentPanelComponent,
-    EquipmentPanelSnapshot,
-    MekPhysicalAttackRow,
-} from '../../models/runtime/equipment-panel';
-import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
+AttackerAmmoSelection,
+AttackerSelection,
+} from '../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
 import type {
-    AttackerAmmoSelection,
-    AttackerSelection,
-} from '../../models/runtime/attacker-targeting-state';
-import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
-import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
-import { canSwitchNonMekAirGroundState } from '../../models/runtime/non-mek-airborne-state';
-import type { OptionsService } from '../../services/options.service';
-import type { ToastService } from '../../services/toast.service';
-import type { DialogsService } from '../../services/dialogs.service';
-import {
-    canChangeAirborneGround,
-    getMotiveModeLabel,
-    getMotiveModesByUnit,
-    motiveModeFactsForEntity,
-    type MotiveModes,
-} from '../../models/motiveModes.model';
-import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
+EquipmentPanelComponent,
+EquipmentPanelSnapshot,
+MekPhysicalAttackRow,
+} from '../../models/runtime/equipment-panel';
+import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
+
+import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
+import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import type { UnitModifierBreakdownEntry } from '../../models/combat-modifier';
 import {
-    ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
-    type C3DegradationSource,
-} from '../../models/rules/game-rules';
-import { getDefaultAttackerMovementModifier } from '../../models/target-number-calculator.model';
-import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
-import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
+canChangeAirborneGround,
+getMotiveModeLabel,
+getMotiveModesByUnit,
+motiveModeFactsForEntity,
+type MotiveModes,
+} from '../../models/motiveModes.model';
 import {
-    prototypeLaserMaximumExtraHeat,
-    type PrototypeLaserHeatResult,
-    type PrototypeLaserHeatRoll,
+prototypeLaserMaximumExtraHeat,
+type PrototypeLaserHeatResult,
+type PrototypeLaserHeatRoll,
 } from '../../models/prototype-laser-heat.model';
-import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
 import {
-    BOOBY_TRAP_DETONATED_MODE,
-    isBoobyTrapDetonated,
+ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
+type C3DegradationSource,
+} from '../../models/rules/game-rules';
+import {
+BOOBY_TRAP_DETONATED_MODE,
+isBoobyTrapDetonated,
 } from '../../models/runtime/component-booby-trap';
+import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
+import { canSwitchNonMekAirGroundState } from '../../models/runtime/non-mek-airborne-state';
+import { getDefaultAttackerMovementModifier } from '../../models/target-number-calculator.model';
+import type { DialogsService } from '../../services/dialogs.service';
+import type { OptionsService } from '../../services/options.service';
+import type { ToastService } from '../../services/toast.service';
+import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 
 /**
  * Runtime adapter for the established equipment-dialog panels. It owns no
@@ -341,23 +342,16 @@ export class EquipmentDialogRuntimeController {
     public async changeStatus(row: EquipmentPanelComponent): Promise<void> {
         const status = row.previewStatus === 'destroyed' ? 'available' : 'destroyed';
         const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
-        if (isCBTMekForceMember(this.member)) {
-            await this.dispatchMekUnit({
+        if (isCBTMekForceMember(this.member) || row.attack === undefined) {
+            await this.dispatchUnit({
                 type: 'set-component-status',
                 componentId: row.componentId,
                 status,
                 target,
             });
-        } else if (row.attack === undefined) {
-            await this.dispatchEntityUnit({
-                kind: 'set-component-status',
-                componentId: row.componentId,
-                status,
-                target,
-            });
         } else {
-            await this.dispatchEntityUnit({
-                kind: 'set-component-statuses',
+            await this.dispatchUnit({
+                type: 'set-component-statuses',
                 componentIds: row.attack.members.map(member => member.componentId),
                 status,
                 target,
@@ -371,42 +365,34 @@ export class EquipmentDialogRuntimeController {
             await this.detonateBoobyTrap(row);
             return;
         }
-        if (isCBTMekForceMember(this.member)) {
-            await this.dispatchMekUnit({
-                type: 'set-component-mode',
-                componentId: row.componentId,
-                mode,
-            });
-        } else {
-            await this.dispatchEntityUnit({
-                kind: 'set-component-mode',
-                componentId: row.componentId,
-                mode,
-            });
-        }
+        await this.dispatchUnit({ type: 'set-component-mode', componentId: row.componentId, mode });
     }
 
     private async detonateBoobyTrap(row: EquipmentPanelComponent): Promise<void> {
         if (!this.dialogs
+            || this.busy() || this.member.force.readOnly()
             || !isBoobyTrapEquipment(row.equipment)
             || isBoobyTrapDetonated(row.mode)
             || row.status !== 'available') return;
-        const confirmed = await this.dialogs.requestConfirmation(
-            `Detonate ${formatUnitName(this.member.entity, this.options.options().displayUnitNameFormat)}'s Booby Trap? `
-                + 'The unit will be completely destroyed. Ejection and blast damage must be resolved on the battlefield.',
-            'Detonate Booby Trap',
-            'danger',
-        );
+        const context = this.member.force.getUnitSnapshot(this.member.id)?.editContext;
+        if (!context) return;
+        this.busy.set(true);
+        let confirmed: boolean;
+        try {
+            confirmed = await this.dialogs.requestConfirmation(
+                `Detonate ${formatUnitName(this.member.entity, this.options.options().displayUnitNameFormat)}'s Booby Trap? `
+                    + 'The unit will be completely destroyed. Ejection and blast damage must be resolved on the battlefield.',
+                'Detonate Booby Trap',
+                'danger',
+            );
+        } finally {
+            this.busy.set(false);
+        }
         if (!confirmed) return;
-        const accepted = isCBTMekForceMember(this.member)
-            ? await this.dispatchMekUnit({
-                type: 'detonate-booby-trap',
-                componentId: row.componentId,
-            })
-            : await this.dispatchEntityUnit({
-                kind: 'detonate-booby-trap',
-                componentId: row.componentId,
-            });
+        const accepted = await this.dispatchUnit({
+            type: 'detonate-booby-trap',
+            componentId: row.componentId,
+        }, context);
         if (!accepted) return;
         await this.dialogs.showNoticeHtml(
             '<p>The unit has been destroyed.</p>'
@@ -525,6 +511,8 @@ export class EquipmentDialogRuntimeController {
     public async resetAmmoLoadout(): Promise<void> {
         if (!this.dialogs || this.busy() || this.member.force.readOnly()
             || !this.hasAmmoLoadoutChanges()) return;
+        const context = this.member.force.getUnitSnapshot(this.member.id)?.editContext;
+        if (!context) return;
         this.busy.set(true);
         let confirmed: boolean;
         try {
@@ -538,11 +526,7 @@ export class EquipmentDialogRuntimeController {
             this.busy.set(false);
         }
         if (!confirmed || this.member.force.readOnly()) return;
-        if (isCBTMekForceMember(this.member)) {
-            await this.dispatchMekUnit({ type: 'reset-ammo-loadout' });
-        } else {
-            await this.dispatchEntityUnit({ kind: 'reset-ammo-loadout' });
-        }
+        await this.dispatchUnit({ type: 'reset-ammo-loadout' }, context);
     }
 
     public async configureAmmo(
@@ -553,21 +537,12 @@ export class EquipmentDialogRuntimeController {
         const loadout = row.ammo?.loadouts.find(candidate => candidate.munitionKey === munitionKey);
         if (!row.ammo || !loadout || this.busy()) return;
         const boundedRemaining = Math.max(0, Math.min(loadout.capacity, remaining));
-        if (isCBTMekForceMember(this.member)) {
-            await this.dispatchMekUnit({
-                type: 'configure-ammo-source',
-                componentId: row.componentId,
-                munitionKey,
-                remaining: boundedRemaining,
-            });
-        } else {
-            await this.dispatchEntityUnit({
-                kind: 'configure-ammo-source',
-                componentId: row.componentId,
-                munitionKey,
-                remaining: boundedRemaining,
-            });
-        }
+        await this.dispatchUnit({
+            type: 'configure-ammo-source',
+            componentId: row.componentId,
+            munitionKey,
+            remaining: boundedRemaining,
+        });
     }
 
     public attackerMovementMode(): MotiveModes | null {
@@ -687,28 +662,11 @@ export class EquipmentDialogRuntimeController {
             : { kind: 'set-component-ammos', updates });
     }
 
-    private async dispatchMekUnit(command: CBTUnitCommand): Promise<boolean> {
+    private async dispatchUnit(command: CBTUnitCommand, context?: UnitEditContext): Promise<boolean> {
         if (this.busy()) return false;
         this.busy.set(true);
         try {
-            const result = await this.member.force.dispatchMekUnitCommand(this.member.id, {
-                ...command,
-            } as CBTUnitCommand);
-            if (!result.accepted) this.rejectCommand();
-            return result.accepted;
-        } finally {
-            this.busy.set(false);
-            this.refresh();
-        }
-    }
-
-    private async dispatchEntityUnit(command: NonMekUnitCommand): Promise<boolean> {
-        if (this.busy()) return false;
-        this.busy.set(true);
-        try {
-            const result = await this.member.force.dispatchNonMekUnitCommand(this.member.id, {
-                ...command,
-            } as NonMekUnitCommand);
+            const result = await this.member.force.dispatchUnitCommand(this.member.id, command, context);
             if (!result.accepted) this.rejectCommand();
             return result.accepted;
         } finally {
@@ -732,7 +690,7 @@ export class EquipmentDialogRuntimeController {
     }
 
     private rejectCommand(): void {
-        this.toast.showToast('This force is read-only.', 'error');
+        this.toast.showToast('Equipment action rejected: the unit changed or this force is read-only.', 'error');
     }
 }
 

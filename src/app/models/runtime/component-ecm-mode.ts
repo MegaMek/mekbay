@@ -1,27 +1,28 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { PickerChoice } from '../../components/picker/picker.interface';
 import { ECMMode } from '../common.model';
 import {
-    ANGEL_ECM_FLAG,
-    ECM_FLAG,
-    ecmModeLabel,
-    ecmModes,
-    isECMMode,
+ANGEL_ECM_FLAG,
+ECM_FLAG,
+ecmModeLabel,
+ecmModes,
+isECMMode,
 } from '../ecm-mode.model';
-import type { EquipmentFlag } from '../equipment-flags.type';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { ImmutableSet } from '../entity/immutable-collections';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import type { PickerChoice } from '../../components/picker/picker.interface';
+import type { EquipmentFlag } from '../equipment-flags.type';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
-import { effectiveEcmMode, isNovaCewsFlags } from './component-electronic-suite';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
+
+import { effectiveEcmMode,isNovaCewsFlags } from './component-electronic-suite';
 import { electronicFacts } from './component-equipment-power';
 
 export interface ComponentEcmModeDefinition {
@@ -76,7 +77,7 @@ export function componentEcmModeDefinition(
     });
 }
 
-export { ecmEquipmentModes, isEcmEquipment } from '../ecm-mode.model';
+export { ecmEquipmentModes,isEcmEquipment } from '../ecm-mode.model';
 
 function sameModes(actual: readonly string[], expected: readonly ECMMode[]): boolean {
     return actual.length === expected.length
@@ -127,7 +128,7 @@ export class ECMHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentEcmModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentEcmModeDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,

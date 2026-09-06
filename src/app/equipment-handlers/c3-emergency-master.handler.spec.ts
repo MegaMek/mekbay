@@ -2,29 +2,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    componentC3EmergencyMasterDefinition,
-    componentC3EmergencyMasterFacts,
-    selectComponentC3EmergencyMasterOperatingTurns,
-    settleComponentC3EmergencyMasterEndTurn,
-    syncComponentC3EmergencyMasterEncounter,
+C3EM_TOGGLE_CHOICE_VALUE,
+C3EmergencyMasterHandler,
+componentC3EmergencyMasterDefinition,
+componentC3EmergencyMasterFacts,
+selectComponentC3EmergencyMasterOperatingTurns,
+settleComponentC3EmergencyMasterEndTurn,
+syncComponentC3EmergencyMasterEncounter,
 } from '../models/runtime/component-c3-emergency-master';
 import {
-    asEncounterNetworkId,
-    type CBTEncounterSnapshot,
-    type EncounterNetworkEndpoint,
+asEncounterNetworkId,
+type CBTEncounterSnapshot,
+type EncounterNetworkEndpoint,
 } from '../models/runtime/encounter-runtime';
-import {
-    createDirectMekRuntimeFixture,
-    emptyCBTEncounterSnapshot,
-} from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
 } from '../models/runtime/equipment-interaction';
 import {
-    C3EM_TOGGLE_CHOICE_VALUE,
-    C3EmergencyMasterHandler,
-} from '../models/runtime/component-c3-emergency-master';
+createDirectMekRuntimeFixture,
+emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
 
 describe('C3EmergencyMasterHandler direct V2 runtime', () => {
     it('renders the production track from direct sparse operating-turn state', () => {
@@ -216,8 +214,7 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
         setup.setRole('master');
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            
-            
+
             componentId: setup.component.id,
             status: 'destroyed',
             target: 'committed',
@@ -229,8 +226,7 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
 
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            
-            
+
             componentId: setup.component.id,
             status: 'available',
             target: 'committed',
@@ -315,8 +311,7 @@ describe('C3EmergencyMasterHandler direct V2 runtime', () => {
         const setup = directC3Setup('master');
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            
-            
+
             componentId: setup.component.id,
             status: 'destroyed',
             target: 'committed',
@@ -371,7 +366,7 @@ function directC3Setup(initialRole: C3EndpointRole | null) {
                 networkType: 'c3' as const,
                 color: '#123456',
                 endpoints: Object.freeze([Object.freeze({
-                    instanceId: fixture.instance.id,
+                    instanceId: fixture.instance.instanceId,
                     componentId: component.id,
                     role,
                 })]),
@@ -384,7 +379,7 @@ function directC3Setup(initialRole: C3EndpointRole | null) {
         runtime,
         definition,
         runtimeContext: Object.freeze({
-            instanceId: fixture.instance.id,
+            instanceId: fixture.instance.instanceId,
             encounter,
         }),
         setRole: (nextRole: C3EndpointRole | null) => { role = nextRole; },

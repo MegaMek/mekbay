@@ -3,11 +3,12 @@
 
 import { calculateCBTForceBattleValues } from './cbt-force-battle-value';
 import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
-import { CBTMekUnit } from './runtime/cbt-mek-unit';
-import type { CBTUnit } from './runtime/cbt-unit';
-import { createDirectElectronicSuiteRuntimeFixture, createDirectMekRuntimeFixture } from './runtime/testing/direct-mek-runtime-fixture';
-import type { UnitSummary } from './unit-summary.model';
+import { createMekUnit } from './runtime/cbt-mek-unit';
+
 import { calculateAdjustedBV } from '../utils/cbt-common.util';
+import type { CBTUnit } from './runtime/cbt-unit';
+import { createDirectElectronicSuiteRuntimeFixture,createDirectMekRuntimeFixture } from './runtime/testing/direct-mek-runtime-fixture';
+import type { UnitSummary } from './unit-summary.model';
 
 describe('CBT force battle value authority', () => {
   it('uses Entity family facts when a presentation summary disagrees', () => {
@@ -18,7 +19,8 @@ describe('CBT force battle value authority', () => {
     const unit = {
       instanceId,
       getUnit: () => fixture.entity,
-      captureRuntime: () => ({ query: fixture.instance.query() }),
+      query: () => fixture.instance.query(),
+      captureRuntime: () => fixture.instance.captureRuntime(),
       getCrewAssignment: () => ({
         schemaVersion: 1,
         positions: [{ positionId, name: '', gunnery: 4, piloting: 2 }],
@@ -48,7 +50,8 @@ describe('CBT force battle value authority', () => {
     const unit = {
       instanceId,
       getUnit: () => fixture.entity,
-      captureRuntime: () => ({ query: fixture.instance.query() }),
+      query: () => fixture.instance.query(),
+      captureRuntime: () => fixture.instance.captureRuntime(),
       getCrewAssignment: () => ({
         schemaVersion: 1,
         positions: [{ positionId, name: '', gunnery: 4, piloting: 4 }],
@@ -73,7 +76,7 @@ describe('CBT force battle value authority', () => {
   it('rounds the BV without skills while preserving fractional C3 for the skill adjustment', async () => {
     const fixture = createDirectElectronicSuiteRuntimeFixture();
     const units = await Promise.all(['unit:bv-nova:first', 'unit:bv-nova:second'].map(instanceId =>
-      CBTMekUnit.createFromEntity({
+      createMekUnit({
         uuid: fixture.identity,
         instanceId,
         crewSkills: { gunnery: 4, piloting: 4 },

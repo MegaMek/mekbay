@@ -2,22 +2,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    asArmorFaceId,
-    asComponentId,
-    asSystemDamageTrackId,
-    asCrewPositionId,
-    asLocationId,
+asArmorFaceId,
+asComponentId,
+asCrewPositionId,
+asLocationId,
+asSystemDamageTrackId,
 } from '../../models/entity/entity-identifiers';
 import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
-import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
-import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
-import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
-import {
-    bindNonMekRecordSheet,
-    type NonMekRecordSheetInteraction,
-} from './non-mek-record-sheet-binder';
+import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
+import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
+import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
+import {
+bindNonMekRecordSheet,
+} from './non-mek-record-sheet-binder';
+import type { RecordSheetInteraction } from './record-sheet-interaction';
+
+const editContext = createUnitEditContextFixture();
 
 describe('bindNonMekRecordSheet', () => {
     it('opens ammo loadout through the whole profile after rows change and leaves printed profiles inert', () => {
@@ -25,29 +28,29 @@ describe('bindNonMekRecordSheet', () => {
         const profile = appendRecordSheetAmmoProfile(svg, [], {
             x: 0, y: 60, width: 110, fontSize: 8, lineHeight: 10,
         });
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const base = ammoSnapshot([['AC/10 Ammo', 20]]);
         const binding = bindNonMekRecordSheet(svg, ammoSnapshot([]), interaction => interactions.push(interaction));
         binding.render(base);
         profile.querySelector('rect')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision }]);
+        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', context: editContext(base.stateRevision)}]);
 
-        const next = { ...ammoSnapshot([['Arrow IV ADA Ammo', 5], ['Arrow IV Fuel-Air Ammo', 5]]), stateRevision: 8 };
+        const next = { ...ammoSnapshot([['Arrow IV ADA Ammo', 5], ['Arrow IV Fuel-Air Ammo', 5]]), stateRevision: 8, editContext: editContext(8) };
         binding.render(next);
         expect(profile.querySelectorAll('text').length).toBe(2);
         expect(profile.querySelector('rect')!.getAttribute('height')).toBe('20');
         profile.querySelectorAll('text')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         profile.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
         expect(interactions.slice(1)).toEqual([
-            { kind: 'open-equipment', tab: 'ammo', expectedRevision: 8 },
-            { kind: 'open-equipment', tab: 'ammo', expectedRevision: 8 },
+            { kind: 'open-equipment', tab: 'ammo', context: editContext(8)},
+            { kind: 'open-equipment', tab: 'ammo', context: editContext(8)},
         ]);
 
         binding.render(ammoSnapshot([]));
         expect(profile.childElementCount).toBe(0);
         binding.render(base);
         profile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-        expect(interactions.at(-1)).toEqual({ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision });
+        expect(interactions.at(-1)).toEqual({ kind: 'open-equipment', tab: 'ammo', context: editContext(base.stateRevision)});
         binding.destroy();
         profile.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions.length).toBe(4);
@@ -99,7 +102,7 @@ describe('bindNonMekRecordSheet', () => {
     it('renders an empty station without stale names, ratings or injury controls', () => {
         const svg = stateSheet();
         const original = stateSnapshot(1);
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, {
             ...original,
             crew: original.crew.map(position => ({ ...position, name: '', effectiveState: 'vacant' })),
@@ -121,7 +124,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('renders entity damage and emits stable runtime identifiers', () => {
         const svg = sheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, snapshot(2), interaction => interactions.push(interaction));
 
         expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(1);
@@ -154,7 +157,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds the first Battle Armor pip to the trooper and the remaining pips to armor', () => {
         const svg = combinedSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, combinedSnapshot(2), interaction => interactions.push(interaction));
         const pips = [...svg.querySelectorAll<SVGElement>('.armor.pip')];
 
@@ -173,7 +176,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds every overlapping aerospace pip hit area to the same Entity location', () => {
         const svg = hitAreaSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindNonMekRecordSheet(svg, snapshot(3), interaction => interactions.push(interaction));
         const armorTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.armor')];
         const structureTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.structure')];
@@ -202,7 +205,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds every pip when an authored sheet has no location zone or hit area', () => {
         const svg = pipOnlySheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindNonMekRecordSheet(svg, snapshot(3), interaction => interactions.push(interaction));
         const armor = [...svg.querySelectorAll<SVGElement>('.armor.pip')];
         const structure = [...svg.querySelectorAll<SVGElement>('.structure.pip')];
@@ -219,7 +222,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds and updates one aggregate target per capital-grid block', () => {
         const svg = capitalGridSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(
             svg,
             capitalSnapshot(5_999),
@@ -264,7 +267,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('renders toggle, counted motive, and VTOL rotor damage-track previews exactly', () => {
         const svg = criticalSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(
             svg,
             criticalSnapshot(0, 1, 2, 3, 2, 3),
@@ -310,29 +313,31 @@ describe('bindNonMekRecordSheet', () => {
         }));
     });
 
-    it('renders and binds conventional-infantry casualties on the soldier grid', () => {
+    it('renders conventional infantry with 30 generated aggregate-strength controls', () => {
         const svg = soldierSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, soldierSnapshot(3), interaction => interactions.push(interaction));
 
-        expect(svg.querySelector('#soldier_4')?.classList.contains('damaged')).toBeTrue();
-        expect(svg.querySelector('#soldier_3')?.classList.contains('damaged')).toBeFalse();
-        expect(svg.querySelector('#damage_4')?.classList.contains('disabled-text')).toBeTrue();
-        svg.querySelector('#soldier_2')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        const cells = [...svg.querySelectorAll('.infantry-strength-cell')];
+        expect(cells.length).toBe(30);
+        expect(cells[26]!.querySelector('.infantry-strength-committed')).not.toBeNull();
+        expect(cells[27]!.querySelector('.infantry-strength-alive')).not.toBeNull();
+        expect(cells[26]!.querySelector('.disabled-text')).not.toBeNull();
+        cells[28]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([
-            jasmine.objectContaining({ kind: 'soldier', locationId: INFANTRY_ID, soldierNumber: 2 }),
+            jasmine.objectContaining({ kind: 'infantry-strength', locationId: INFANTRY_ID, strength: 2 }),
         ]);
-        expect(svg.querySelector('#soldier_2')?.classList.contains('soldierPip')).toBeTrue();
-        expect(svg.querySelector('#soldier_2')?.getAttribute('soldier-id')).toBe('2');
+        expect(svg.querySelector('[soldier-id]')).toBeNull();
 
         binding.render(soldierSnapshot(2));
-        expect(svg.querySelector('#soldier_3')?.classList.contains('damaged')).toBeTrue();
+        expect(cells[27]!.querySelector('.infantry-strength-fresh')).not.toBeNull();
         expect(binding.render(soldierSnapshot(2))).not.toContain('Missing crew layout');
+        binding.destroy();
     });
 
     it('renders and binds the shared vehicle condition and crew controls', () => {
         const svg = stateSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, stateSnapshot(1), interaction => interactions.push(interaction));
 
         expect(svg.querySelector('.unitConditionBanner[condition="tagged"]')?.getAttribute('display')).toBe('');
@@ -368,7 +373,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('renders and binds aerospace heat and active heat sinks', () => {
         const svg = heatSheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindNonMekRecordSheet(svg, heatSnapshot(), interaction => interactions.push(interaction));
 
         expect(svg.querySelectorAll('#heatScale .heat.hot').length).toBe(3);
@@ -391,7 +396,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds generated non-Mek weapon rows to stable component IDs', () => {
         const svg = inventorySheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const componentId = asComponentId('weapon-1');
         const recordSheet = Object.freeze({
             ...snapshot(3),
@@ -405,7 +410,7 @@ describe('bindNonMekRecordSheet', () => {
             })]),
         });
         const equipmentPanel = {
-            stateRevision: 4,
+            stateRevision: 4, editContext: editContext(4),
             targetRegistryRevision: 1,
             crew: { gunnery: 4, piloting: 5 },
             targets: [],
@@ -433,8 +438,16 @@ describe('bindNonMekRecordSheet', () => {
         expect(interactions).toEqual([jasmine.objectContaining({
             kind: 'inventory-selection',
             componentIds: [componentId],
-            expectedRevision: 4,
+            context: editContext(4),
         })]);
+
+        const unboundSvg = inventorySheet();
+        const unboundRow = unboundSvg.querySelector('.inventoryEntry')!;
+        unboundRow.removeAttribute('data-mekbay-component-ids');
+        unboundRow.id = 'weapon@0';
+        bindNonMekRecordSheet(unboundSvg, recordSheet, interaction => interactions.push(interaction), equipmentPanel);
+        unboundSvg.querySelector('.mainButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions.length).toBe(1);
     });
 
     it('aggregates generated bay-row status directly from its stable component IDs', () => {
@@ -477,7 +490,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds a derived weapon bay only once when legacy rows name separate members', () => {
         const svg = duplicateInventorySheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const firstId = asComponentId('weapon-1');
         const secondId = asComponentId('weapon-2');
         const recordSheet = Object.freeze({
@@ -492,7 +505,7 @@ describe('bindNonMekRecordSheet', () => {
             }))),
         });
         const equipmentPanel = {
-            stateRevision: 4,
+            stateRevision: 4, editContext: editContext(4),
             targetRegistryRevision: 1,
             crew: { gunnery: 4, piloting: 5 },
             targets: [],
@@ -532,7 +545,7 @@ describe('bindNonMekRecordSheet', () => {
 
     it('binds generated alternative-mode rows with the authoritative component mode', () => {
         const svg = modeInventorySheet();
-        const interactions: NonMekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const componentId = asComponentId('weapon-1');
         const recordSheet = Object.freeze({
             ...snapshot(3),
@@ -546,7 +559,7 @@ describe('bindNonMekRecordSheet', () => {
             })]),
         });
         const equipmentPanel = {
-            stateRevision: 4,
+            stateRevision: 4, editContext: editContext(4),
             targetRegistryRevision: 1,
             crew: { gunnery: 4, piloting: 5 },
             targets: [],
@@ -572,7 +585,7 @@ describe('bindNonMekRecordSheet', () => {
             kind: 'inventory-selection',
             componentIds: [componentId],
             mode: 'SRM',
-            expectedRevision: 4,
+            context: editContext(4),
         })]);
     });
 });
@@ -605,7 +618,7 @@ function ammoSnapshot(ammunition: readonly (readonly [string, number])[]): NonMe
 function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapshot {
     return Object.freeze({
         entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
-        stateRevision: 4,
+        stateRevision: 4, editContext: editContext(4),
         displayName: 'Test Tank T-1',
         unitType: 'Tank',
         subtype: 'Combat Vehicle',
@@ -706,12 +719,13 @@ function criticalSnapshot(
 ): NonMekRecordSheetSnapshot {
     const damageTrack = (
         damageTrackId: ReturnType<typeof asSystemDamageTrackId>,
-        sheetId: string,
+        sheetId: 'engine' | 'motive' | 'rotor',
         committedHits: number,
         previewHits: number,
         visibleHitPips?: number,
     ) => Object.freeze({
         damageTrackId,
+        system: sheetId,
         sheetId,
         label: sheetId,
         maximumHits: visibleHitPips ?? 1,
@@ -948,10 +962,7 @@ function modeInventorySheet(): SVGSVGElement {
 function soldierSheet(): SVGSVGElement {
     const host = document.createElement('div');
     host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
-        <image id="soldier_1"></image><text id="damage_1"></text>
-        <image id="soldier_2"></image><text id="damage_2"></text>
-        <image id="soldier_3"></image><text id="damage_3"></text>
-        <image id="soldier_4"></image><text id="damage_4"></text>
+        <g id="infantryStrengthDisplay"></g>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
 }

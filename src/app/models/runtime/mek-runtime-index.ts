@@ -1,53 +1,43 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { crewPositionCountForMekCockpit } from '../entity/components/cockpit-data';
-import type { MountedArmor, MountedStructure } from '../entity/components';
+import type { MountedArmor,MountedStructure } from '../entity/components';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import {
-    getMekLocationParent,
-    getTopologyFor,
-    isMekLocation,
-    type EntityMountedEquipment,
-    type IntrinsicWeapon,
-    type MekLocation,
-    type MekSystemType,
-} from '../entity/types';
-import type { Equipment } from '../equipment.model';
+asCriticalSlotId,
+type ArmorFaceId,
+type ComponentId,
+type CrewPositionId,
+type CriticalSlotId,
+type LocationId
+} from '../entity/entity-identifiers';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import {
-    asArmorFaceId,
-    asCrewPositionId,
-    asCriticalSlotId,
-    type ArmorFaceId,
-    type ComponentId,
-    type CrewPositionId,
-    type CriticalSlotId,
-    type LocationId,
-} from '../entity/entity-identifiers';
-import { componentIdForMount } from './non-mek-runtime-index';
-import {
-    mekLocationId,
-    mekSystemComponentId,
+mekLocationId,
+mekSystemComponentId,
 } from '../entity/mek-entity-conventions';
+import {
+getMekLocationParent,
+getTopologyFor,
+isMekLocation,
+type EntityMountedEquipment,
+type IntrinsicWeapon,
+type MekLocation,
+type MekSystemType,
+} from '../entity/types';
+import type { Equipment } from '../equipment.model';
 import type {
-    CBTRuntimeArmorFace,
-    CBTRuntimeComponent,
-    CBTRuntimeCrewPosition,
-    CBTRuntimeLocation,
-    CBTUnitRuntimeIndex,
+CBTRuntimeArmorFace,
+CBTRuntimeComponent,
+CBTRuntimeCrewPosition,CBTRuntimeEquipment,CBTRuntimeLocation,
+CBTUnitRuntimeIndex
 } from './cbt-unit-runtime';
+import { buildUnitRuntimeIndex,componentIdForMount } from './unit-runtime-index';
 
 export interface MekIndexedLocation extends CBTRuntimeLocation {
     readonly code: MekLocation;
     readonly armor: MountedArmor;
     readonly structure: MountedStructure;
-}
-
-
-export interface MekIndexedEquipment extends CBTRuntimeComponent {
-    readonly kind: 'equipment';
-    readonly mount: EntityMountedEquipment;
 }
 
 export interface MekIndexedSystem extends CBTRuntimeComponent {
@@ -60,7 +50,7 @@ export interface MekIndexedSystem extends CBTRuntimeComponent {
     }>[];
 }
 
-export type MekIndexedComponent = MekIndexedEquipment | MekIndexedSystem;
+export type MekIndexedComponent = CBTRuntimeEquipment | MekIndexedSystem;
 
 export interface MekIndexedCriticalSlot {
     readonly id: CriticalSlotId;
@@ -69,7 +59,6 @@ export interface MekIndexedCriticalSlot {
     readonly componentIds: readonly ComponentId[];
     readonly armored: boolean;
 }
-
 
 export interface MekIndexedBay {
     readonly kind: 'weapon-bay' | 'machine-gun-array';
@@ -102,8 +91,6 @@ export interface MekRuntimeIndex extends CBTUnitRuntimeIndex {
     readonly relationships: MekIndexedRelationships;
 }
 
-export { componentIdForMount } from './non-mek-runtime-index';
-
 const EMPTY_LOCATION_IDS: readonly LocationId[] = Object.freeze([]);
 
 export function mountedEquipmentForComponent(
@@ -130,52 +117,17 @@ export function componentLocationIds(
 }
 
 export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
+    const base = buildUnitRuntimeIndex(entity);
     const locationIdByCode = new Map<MekLocation, LocationId>();
     const locations = new Map<LocationId, MekIndexedLocation>();
-    const armorFaces = new Map<ArmorFaceId, CBTRuntimeArmorFace>();
-
     for (const code of entity.locationOrder) {
         const id = mekLocationId(code);
         if (id === null) throw new Error(`Unknown Mek location ${code}`);
         locationIdByCode.set(code, id);
-
-        const values = entity.armorValues().get(code);
-        const faceIds: ArmorFaceId[] = [];
-        const frontId = asArmorFaceId(`armor:${id}:front`);
-        faceIds.push(frontId);
-        armorFaces.set(frontId, Object.freeze({
-            id: frontId,
-            locationId: id,
-            face: 'front',
-            maximumPoints: values?.front ?? 0,
-        }));
-        if (entity.hasRearArmor(code)) {
-            const rearId = asArmorFaceId(`armor:${id}:rear`);
-            faceIds.push(rearId);
-            armorFaces.set(rearId, Object.freeze({
-                id: rearId,
-                locationId: id,
-                face: 'rear',
-                maximumPoints: values?.rear ?? 0,
-            }));
-        }
-        locations.set(id, Object.freeze({
-            id,
-            code,
-            internalPoints: entity.structureValues().get(code) ?? 0,
-            armorFaceIds: Object.freeze(faceIds),
-            armor: entity.armorAt(code),
-            structure: entity.structureAt(code),
-        }));
+        locations.set(id, Object.freeze({ ...base.locations.get(id)!, code,
+            armor: entity.armorAt(code), structure: entity.structureAt(code) }));
     }
-
-    const components = new Map<ComponentId, MekIndexedComponent>();
-    for (const mount of entity.equipment()) {
-        const id = componentIdForMount(mount);
-        if (components.has(id)) throw new Error(`Duplicate Mek mount ID ${mount.mountId}`);
-        components.set(id, Object.freeze({ kind: 'equipment', id, mount }));
-    }
-
+    const components = new Map<ComponentId, MekIndexedComponent>(base.components);
     const systemPlacements = new Map<ComponentId, {
         readonly systemType: MekSystemType;
         readonly placements: Array<Readonly<{
@@ -279,21 +231,15 @@ export function buildMekRuntimeIndex(entity: MekEntity): MekRuntimeIndex {
         memberIds: Object.freeze(bay.mounts.map(componentIdForMount)),
     }));
 
-    const crewPositions = new Map<CrewPositionId, CBTRuntimeCrewPosition>();
-    for (let occurrence = 0; occurrence < crewPositionCountForMekCockpit(entity.cockpitType()); occurrence += 1) {
-        const id = asCrewPositionId(`crew:${occurrence}`);
-        crewPositions.set(id, Object.freeze({ id, occurrence }));
-    }
-
     return Object.freeze({
         locations: new ImmutableIndex(locations),
         damageTransferLocationIdByLocation: new ImmutableIndex(damageTransferLocationIdByLocation),
         destructionParentLocationIdByLocation: new ImmutableIndex(destructionParentLocationIdByLocation),
-        armorFaces: new ImmutableIndex(armorFaces),
+        armorFaces: base.armorFaces,
         components: new ImmutableIndex(components),
         locationIdsByComponent: new ImmutableIndex(locationIdsByComponent),
         slots: new ImmutableIndex(slots),
-        crewPositions: new ImmutableIndex(crewPositions),
+        crewPositions: base.crewPositions,
         intrinsicActions: Object.freeze([...entity.intrinsicWeapons()]),
         relationships: Object.freeze({
             linkedTargetBySource: new ImmutableIndex(linkedTargetBySource),

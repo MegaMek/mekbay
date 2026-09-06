@@ -4,17 +4,17 @@
 import type { DestroyRef } from '@angular/core';
 import { Subject } from 'rxjs';
 
-import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
 import type { ComponentId } from '../../../models/entity/entity-identifiers';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
 import { createPristineMekHeatStateV2 } from '../../../models/runtime/mek-heat-state-v2';
 import { createPristineMekMovementPsrStateV2 } from '../../../models/runtime/mek-movement-psr-v2';
-import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
+import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import type { OptionsService } from '../../../services/options.service';
 import type { ToastService } from '../../../services/toast.service';
-import { MekTurnSummaryRuntimeController } from './mek-turn-summary-runtime.controller';
 import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import { MekTurnSummaryRuntimeController } from './mek-turn-summary-runtime.controller';
 
 function snapshot(revision: number): MekTurnPanelSnapshot {
     return {
@@ -91,7 +91,7 @@ describe('MekTurnSummaryRuntimeController', () => {
             },
             movementState,
         } as unknown as MekTurnPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             revision: 5,
@@ -100,7 +100,7 @@ describe('MekTurnSummaryRuntimeController', () => {
             changed,
             sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
-            dispatchMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
         const controller = new MekTurnSummaryRuntimeController(
@@ -184,14 +184,14 @@ describe('MekTurnSummaryRuntimeController', () => {
                 }],
             },
         } as unknown as MekTurnPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true, changed: true, revision: 3,
         });
         const force = {
             changed,
             sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
-            dispatchMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const controller = new MekTurnSummaryRuntimeController(
             { id: 'mek-1', force } as unknown as CBTMekForceMember,
@@ -238,14 +238,14 @@ describe('MekTurnSummaryRuntimeController', () => {
                 },
             },
         } as unknown as MekTurnPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true, changed: true, revision: 10,
         });
         const force = {
             changed,
             sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
-            dispatchMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const controller = new MekTurnSummaryRuntimeController(
             { id: 'mek-1', force } as unknown as CBTMekForceMember,
@@ -268,7 +268,7 @@ describe('MekTurnSummaryRuntimeController', () => {
     it('dispatches cover and typed equipment choices through the CBT force', async () => {
         const changed = new Subject<void>();
         let current = snapshot(7);
-        const dispatchUnit = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatchUnit = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true, changed: true, revision: 8,
         });
         const dispatchEquipment = jasmine.createSpy('dispatchEquipmentChoice').and.resolveTo({
@@ -294,7 +294,7 @@ describe('MekTurnSummaryRuntimeController', () => {
             changed,
             sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
-            dispatchMekUnitCommand: dispatchUnit,
+            dispatchUnitCommand: dispatchUnit,
             dispatchEquipmentChoice: dispatchEquipment,
         };
         const member = { id: 'mek-1', force } as unknown as CBTMekForceMember;
@@ -319,7 +319,7 @@ describe('MekTurnSummaryRuntimeController', () => {
     it('does not dispatch spotting when the Entity runtime has no active controller', async () => {
         const changed = new Subject<void>();
         let current = { ...snapshot(3), canTakeActiveActions: false } as MekTurnPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             revision: 4,
@@ -328,7 +328,7 @@ describe('MekTurnSummaryRuntimeController', () => {
             changed,
             sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => current,
-            dispatchMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const controller = new MekTurnSummaryRuntimeController(
             { id: 'mek-1', force } as unknown as CBTMekForceMember,

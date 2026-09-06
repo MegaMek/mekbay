@@ -1,16 +1,17 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { CrewMember,type CrewMemberRuntimeState } from '../crew-member.model';
+import type { ArmorFaceId,ComponentId,CrewPositionId,LocationId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import type { EntityMountedEquipment } from '../entity/types';
-import type { ArmorFaceId, ComponentId, CrewPositionId, LocationId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
-import { CrewMember, type CrewMemberRuntimeState } from '../crew-member.model';
 import type { UnitConditionKey } from '../unit-condition.model';
-import type { AttackerTargetingState } from './attacker-targeting-state';
-import type { EquipmentRowOrderState } from './equipment-row-order';
+import { freezeAttackerTargetingState,type AttackerTargetingState } from './attacker-targeting-state';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
-import type { AmmoRuntimeState, ComponentRuntimeState } from './runtime-state';
+import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
+import type { AmmoRuntimeState,ComponentRuntimeState } from './runtime-state';
 
 export type RuntimeStatePerspective = 'committed' | 'preview';
 
@@ -18,11 +19,8 @@ export type RuntimeStatePerspective = 'committed' | 'preview';
 export interface CBTRuntimeLocation {
     readonly id: LocationId;
     readonly code: string;
-    readonly sheetCode?: string;
     readonly internalPoints: number;
     readonly armorFaceIds: readonly ArmorFaceId[];
-    readonly combinedPips?: boolean;
-    readonly soldierPips?: boolean;
 }
 
 /** Shared immutable armor topology for every CBT BaseEntity runtime. */
@@ -38,6 +36,11 @@ export interface CBTRuntimeComponent {
     readonly id: ComponentId;
     readonly kind: 'equipment' | 'system';
     readonly mount?: EntityMountedEquipment;
+}
+
+export interface CBTRuntimeEquipment extends CBTRuntimeComponent {
+    readonly kind: 'equipment';
+    readonly mount: EntityMountedEquipment;
 }
 
 export interface CBTRuntimeCrewPosition {
@@ -61,6 +64,22 @@ export interface CBTLocationRuntimeState {
     readonly armorDamage: readonly { readonly faceId: ArmorFaceId; readonly damage: number }[];
 }
 
+export type HeatAutomationPolicy = 'automatic' | 'manual';
+
+/** Durable heat facts; source calculation and settlement order belong to the mechanics. */
+export interface CBTUnitHeatState {
+    readonly current: number;
+    readonly previous: number;
+    readonly pendingOverride?: number;
+    readonly heatsinksOff: number;
+}
+
+export interface CBTUnitPendingCombatState {
+    readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
+    readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
+    readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
+}
+
 /** Boundary facts shared by every CBT family runtime. */
 export interface CBTTurnRuntimeState {
     readonly turnCounter: number;
@@ -75,18 +94,50 @@ export interface CBTTurnRuntimeState {
  */
 export interface CBTUnitRuntimeState {
     readonly stateRevision: number;
+    readonly explicitlyDestroyed: boolean;
     readonly locations: ReadonlyMap<LocationId, CBTLocationRuntimeState>;
     readonly components: ReadonlyMap<ComponentId, ComponentRuntimeState>;
     readonly ammo: ReadonlyMap<ComponentId, AmmoRuntimeState>;
     readonly crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>;
     readonly conditions: ReadonlySet<UnitConditionKey>;
+    readonly heat: CBTUnitHeatState;
+    readonly pendingCombat: CBTUnitPendingCombatState;
     readonly turn: CBTTurnRuntimeState;
     readonly attackerTargeting: AttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
 }
 
+/** Captures shared sparse facts once; specialized canonicalizers add only their own mechanics. */
+export function freezeCommonUnitRuntimeState<State extends CBTUnitRuntimeState>(state: State): State {
+    const { equipmentRowOrder: rawOrder, ...values } = state;
+    const equipmentRowOrder = freezeEquipmentRowOrder(rawOrder);
+    return Object.freeze({
+        ...values,
+        locations: new ImmutableIndex([...state.locations].map(([id, value]) => [id, Object.freeze({
+            ...value, armorDamage: Object.freeze(value.armorDamage.map(entry => Object.freeze({ ...entry }))),
+        })] as const)),
+        components: new ImmutableIndex([...state.components].map(([id, value]) => [id,
+            Object.freeze(Object.fromEntries(Object.entries(value).map(([key, fact]) => [key,
+                fact !== null && typeof fact === 'object' ? Object.freeze({ ...fact }) : fact,
+            ]))) as ComponentRuntimeState,
+        ] as const)),
+        ammo: new ImmutableIndex([...state.ammo].map(([id, value]) => [id, Object.freeze({ ...value })] as const)),
+        crew: new ImmutableIndex([...state.crew].map(([id, value]) => [id, Object.freeze({ ...value })] as const)),
+        conditions: new ImmutableSet(state.conditions),
+        heat: Object.freeze({ ...state.heat }),
+        attackerTargeting: freezeAttackerTargetingState(state.attackerTargeting),
+        ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
+        pendingCombat: Object.freeze({ ...state.pendingCombat,
+            locationInternalDamage: new ImmutableIndex(state.pendingCombat.locationInternalDamage),
+            armorDamage: new ImmutableIndex(state.pendingCombat.armorDamage),
+            componentStatus: new ImmutableIndex(state.pendingCombat.componentStatus),
+        }),
+    // Every specialized field is retained; only readonly collection implementations change.
+    }) as unknown as State;
+}
+
 export interface CBTUnitCommandResult<State extends CBTUnitRuntimeState | null> {
-    /** False only when the owning force is read-only. */
+    /** False when the owning force is read-only or the edit authority has expired. */
     readonly accepted: boolean;
     readonly changed: boolean;
     readonly state: State;

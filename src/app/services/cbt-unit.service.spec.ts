@@ -1,21 +1,21 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { OptionsService } from './options.service';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { OptionsService } from './options.service';
 
 import { TestTankEntity } from '../models/entity/testing/test-entities';
+import { isCBTMekUnit } from '../models/runtime/cbt-unit';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { ScenarioRules } from '../models/runtime/unit-state-initializer';
 import { asSourceHashCanary } from '../models/source-hash-canary';
-import { NativeEntityService } from './native-entity.service';
 import { CBTUnitService } from './cbt-unit.service';
-import { isCBTMekUnit } from '../models/runtime/cbt-unit';
+import { NativeEntityService } from './native-entity.service';
 import {
-    asSourceHash,
-    asUnitUuid,
-    makeUnitFileName,
+asSourceHash,
+asUnitUuid,
+makeUnitFileName,
 } from './unit-catalog/unit-catalog.types';
 
 describe('CBTUnitService restore warnings', () => {
@@ -120,7 +120,7 @@ describe('CBTUnitService restore warnings', () => {
         expect('ruleset' in restored.unit.serialize().baselineRefAtSave).toBeFalse();
         expect(isCBTMekUnit(restored.unit)).toBeTrue();
         if (isCBTMekUnit(restored.unit)) {
-            expect(restored.unit.getInstance().ruleset()).toBe('total-warfare');
+            expect(restored.unit.ruleset()).toBe('total-warfare');
         }
     });
 });

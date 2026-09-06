@@ -1,11 +1,11 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { combineEquipmentStatuses, type EquipmentStatus } from '../equipment-status.model';
-import type { EquipmentFlag } from '../equipment-flags.type';
-import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
+import { isCBTRuleset,type CBTRuleset } from '../cbt-ruleset.model';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import { isShieldFlags } from '../entity/utils/physical-weapon-kernel';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
+import type { EquipmentFlag } from '../equipment-flags.type';
+import { combineEquipmentStatuses,type EquipmentStatus } from '../equipment-status.model';
 
 export type EquipmentStatusUnitFamily = 'mek' | 'vehicle' | 'other';
 
@@ -86,10 +86,9 @@ export interface EquipmentStatusResolution {
     readonly diagnostics: readonly EquipmentStatusDiagnostic[];
 }
 
-export interface RuntimeEquipmentStatusKernelOptions {
-    readonly rules: CBTRuleset;
-    readonly family: EquipmentStatusUnitFamily;
-}
+export type RuntimeEquipmentStatusKernelOptions =
+    | Readonly<{ rules: CBTRuleset; family: 'mek' }>
+    | Readonly<{ rules?: CBTRuleset; family: 'vehicle' | 'other' }>;
 
 const AVAILABLE: EquipmentStatusResolution = Object.freeze({
     status: 'available',
@@ -111,7 +110,7 @@ export class RuntimeEquipmentStatusKernel {
         private readonly committed: RuntimeEquipmentCommittedState,
         private readonly options: RuntimeEquipmentStatusKernelOptions,
     ) {
-        if (!isCBTRuleset(options.rules)) {
+        if (options.rules !== undefined && !isCBTRuleset(options.rules)) {
             throw new Error(`Unsupported CBT ruleset ${String(options.rules)}`);
         }
         validateCommittedState(committed);

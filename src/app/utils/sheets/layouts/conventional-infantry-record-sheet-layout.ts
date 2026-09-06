@@ -4,30 +4,29 @@
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { InfantryEntity } from '../../../models/entity/entities/infantry/infantry-entity';
 import { isInfantryEntity } from '../../../models/entity/utils/entity-type-guards';
+import { projectConventionalInfantryCombat } from '../../../models/rules/conventional-infantry-combat-rules';
+import { createInfantryStrengthDisplay,INFANTRY_STRENGTH_DISPLAY_ID } from '../infantry-strength-display';
+import { INFANTRY_STRENGTH_CELL_COUNT } from '../infantry-strength-projection';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
-    type Box,
-    addFrame,
-    addLine,
-    addText,
-    appendLegacyIdentityAnchors,
-    drawClusterHitsReference,
-    drawGeneratedFooter,
-    formatNumber,
-    scaleCompactBox,
-    scalePageBox,
-    setAttributes,
-    svgElement,
+type Box,
+addFrame,
+addLine,
+addText,
+appendLegacyIdentityAnchors,
+drawClusterHitsReference,
+drawGeneratedFooter,
+formatNumber,
+scaleCompactBox,
+scalePageBox,
+setAttributes,
+svgElement,
 } from '../record-sheet-svg-rendering';
-import {
-    INFANTRY_TROOPER_ART,
-    appendEmbeddedRasterUse,
-} from '../record-sheet-embedded-art';
 import { CompactRecordSheetLayout } from './record-sheet-layout';
 import {
-    addExactReferenceText,
-    addReferenceShade,
-    canonicalReferenceContent,
+addExactReferenceText,
+addReferenceShade,
+canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 
 export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLayout {
@@ -60,7 +59,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
         if (blocks.length === 1) {
             const strength = entity !== undefined && isInfantryEntity(entity)
                 ? infantryShootingStrength(entity)
-                : Number(blocks[0]?.getAttribute('data-mekbay-shooting-strength')) || 28;
+                : INFANTRY_STRENGTH_CELL_COUNT;
             drawClusterHitsReference(page, scalePageBox(profile, {
                 x: 18.9, y: 255.768, width: 576.149, height: 148.504,
             }), Array.from({ length: Math.max(0, strength - 1) }, (_, index) => index + 2));
@@ -75,7 +74,6 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
 
     protected drawCompact(svg: SVGSVGElement, entity: BaseEntity): void {
         if (!isInfantryEntity(entity)) throw new Error('Infantry layout requires a conventional Infantry entity');
-        svg.setAttribute('data-mekbay-shooting-strength', String(infantryShootingStrength(entity)));
         const at = (box: Box): Box => scaleCompactBox(svg, box, 174);
         const frameBox = at({ x: 0, y: 0, width: 576, height: 174 });
         const group = addFrame(svg, entity.displayName(), frameBox, {
@@ -149,7 +147,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
 function infantryShootingStrength(entity: InfantryEntity): number {
     return Math.max(
         1,
-        entity.damageLocations().find(location => location.soldierPips)?.internalPoints
+        entity.damageLocations().find(location => location.code === 'Infantry')?.internalPoints
             ?? entity.squadSize() * entity.squadCount(),
     );
 }
@@ -279,17 +277,12 @@ function drawCompactInfantryTrack(
     },
 ): void {
     const { x, y, font } = scale;
-    const count = Math.max(1, entity.damageLocations()[0]?.internalPoints ?? 1);
-    const columns = 30;
+    const combat = projectConventionalInfantryCombat(entity);
+    const columns = INFANTRY_STRENGTH_CELL_COUNT;
     const left = 116.6;
     const top = 25.139;
     const width = 451.4;
     const cellWidth = width / columns;
-    const primaryDamage = entity.primaryWeapon()?.infantry.damage ?? 0;
-    const secondaryDamage = entity.secondaryWeapon()?.infantry.damage ?? primaryDamage;
-    const squadSize = Math.max(1, entity.squadSize());
-    const secondaryCount = Math.min(entity.secondaryCount(), squadSize);
-    const damagePerTrooper = ((squadSize - secondaryCount) * primaryDamage + secondaryCount * secondaryDamage) / squadSize;
     const track = svgElement('g');
     track.setAttribute('class', 'infantry-strength-track');
     track.setAttribute(
@@ -308,33 +301,6 @@ function drawCompactInfantryTrack(
     for (let index = 0; index <= columns; index++) {
         addLine(track, index * cellWidth, 0, index * cellWidth, 57.114, '#000', 0.966);
     }
-    for (let index = 0; index < columns; index++) {
-        const number = columns - index;
-        const cellX = index * cellWidth;
-        const available = number <= count;
-        addText(track, String(number), cellX + 3, 8.4, { size: 6.2 });
-        const soldier = svgElement('g');
-        soldier.setAttribute('class', 'soldierPip pip');
-        soldier.id = `soldier_${number}`;
-        soldier.setAttribute('loc', 'Infantry');
-        const glyphWidth = 13.047;
-        const glyphHeight = 29.58;
-        soldier.setAttribute('transform', `translate(${formatNumber(cellX + 1)} 9.4)`);
-        soldier.setAttribute('opacity', available ? '1' : '0.18');
-        appendEmbeddedRasterUse(
-            svg,
-            soldier,
-            INFANTRY_TROOPER_ART,
-            { x: 0, y: 0, width: glyphWidth, height: glyphHeight },
-            'record-sheet-infantry-trooper',
-        );
-        track.appendChild(soldier);
-        const damage = Math.max(0, Math.ceil(number * damagePerTrooper));
-        const damageText = addText(track, available ? String(damage) : '—', cellX + 7.523, 51.747, {
-            size: 7.2, anchor: 'middle',
-        });
-        damageText.id = `damage_${number}`;
-    }
     addText(track, '*Damage is always applied in 2-point Damage Value groupings', 3, 64.254, {
         size: 5.7, maxWidth: 220,
     });
@@ -343,16 +309,18 @@ function drawCompactInfantryTrack(
     });
     addText(track, 'Range:', 3, 71.393, { size: 6.2, weight: 700 });
     addText(track, 'Range Modifier:', 3, 78.532, { size: 6.2, weight: 700 });
-    const weaponRange = Math.max(1, entity.rangeWeapon()?.infantry.range ?? 1);
     for (let range = 0; range <= 21; range++) {
         const columnX = 65.356 + range * 17.816;
         addText(track, String(range), columnX, 71.393, { size: 6.2, weight: 700, anchor: 'middle' });
-        const modifier = range === 0 ? '-2'
-            : range <= weaponRange ? '0'
-                : range <= weaponRange * 2 ? '+2'
-                    : range <= weaponRange * 3 ? '+4' : '—';
-        addText(track, modifier, columnX, 78.532, { size: 6.2, anchor: 'middle' });
     }
+    const displayHost = svgElement('g');
+    displayHost.id = INFANTRY_STRENGTH_DISPLAY_ID;
+    track.appendChild(displayHost);
+    createInfantryStrengthDisplay(svg, displayHost).render(combat, {
+        maximum: combat.maximumStrength,
+        committedRemaining: combat.maximumStrength,
+        previewRemaining: combat.maximumStrength,
+    }, false);
     group.appendChild(track);
 }
 

@@ -1,19 +1,21 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
+import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import {
-    type Box,
-    addFrame,
-    addLine,
-    addText,
-    formatNumber,
-    setAttributes,
-    svgElement,
-    transparentRect,
+type Box,
+addFrame,
+addLine,
+addText,
+formatNumber,
+setAttributes,
+svgElement,
+transparentRect,
 } from '../record-sheet-svg-rendering';
 
 /** Critical and pilot controls shared by fighter and small-craft templates. */
-export function drawFighterCriticalPanel(svg: SVGSVGElement, box: Box): void {
+export function drawFighterCriticalPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
     const group = addFrame(svg, 'CRITICAL DAMAGE', box, {
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
@@ -22,37 +24,33 @@ export function drawFighterCriticalPanel(svg: SVGSVGElement, box: Box): void {
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * Math.min(sx, sy);
-    const rows: readonly {
-        readonly label: string;
-        readonly x: number;
-        readonly y: number;
-        readonly ids: readonly string[];
-        readonly modifiers: readonly string[];
-    }[] = [
-        { label: 'Avionics', x: 6, y: 26.465, ids: ['avionics_hit_1', 'avionics_hit_2', 'avionics_hit_3'], modifiers: ['+1', '+2', '+5'] },
-        { label: 'FCS', x: 6, y: 43.395, ids: ['fcs_hit_1', 'fcs_hit_2', 'fcs_hit_3'], modifiers: ['+2', '+4', 'D'] },
-        { label: 'Sensors', x: 6, y: 60.325, ids: ['sensor_hit_1', 'sensor_hit_2', 'sensor_hit_3'], modifiers: ['+1', '+2', '+5'] },
-        { label: 'Engine', x: 112.7, y: 26.465, ids: ['engine_hit_1', 'engine_hit_2', 'engine_hit_3'], modifiers: ['2', '4', 'D'] },
-        { label: 'Landing Gear', x: 112.7, y: 43.395, ids: ['landing_gear_hit_1'], modifiers: ['+5'] },
-        { label: 'Life Support', x: 112.7, y: 60.325, ids: ['life_support_hit_1'], modifiers: ['+2'] },
+    const rows = [
+        { label: 'Avionics', x: 6, y: 26.465, ...systemDamageControls(entity, 'avionics') },
+        { label: 'FCS', x: 6, y: 43.395, ...systemDamageControls(entity, 'fire-control') },
+        { label: 'Sensors', x: 6, y: 60.325, ...systemDamageControls(entity, 'sensors') },
+        { label: 'Engine', x: 112.7, y: 26.465, ...systemDamageControls(entity, 'engine') },
+        { label: 'Landing Gear', x: 112.7, y: 43.395, ...systemDamageControls(entity, 'landing-gear') },
+        { label: 'Life Support', x: 112.7, y: 60.325, ...systemDamageControls(entity, 'life-support') },
     ];
     rows.forEach(row => {
         addText(group, row.label, x(row.x), y(row.y + 9.6), {
             size: font(6.76), maxWidth: x(48),
         });
         row.ids.forEach((id, index) => {
-            const controlX = row.x + 53.73 + (row.ids.length === 1 ? 30 : index * 15);
+            const cellWidth = Math.min(15, 45 / Math.max(1, row.ids.length));
+            const controlWidth = Math.min(12, cellWidth - 1);
+            const controlX = row.x + 53.73 + (row.ids.length === 1 ? 30 : index * cellWidth);
             const control = svgElement('rect');
             control.id = id;
             control.setAttribute('critId', id);
             setAttributes(control, {
-                x: x(controlX), y: y(row.y), width: x(12), height: y(12), rx: x(1.315),
+                x: x(controlX), y: y(row.y), width: x(controlWidth), height: y(12), rx: x(1.315),
                 fill: 'none', stroke: '#000', 'stroke-width': 0.96,
                 class: 'critLoc criticalPip',
             });
             group.appendChild(control);
-            const modifier = addText(group, row.modifiers[index], x(controlX + 6), y(row.y + 7.6), {
-                size: font(5.7), anchor: 'middle', maxWidth: x(9),
+            const modifier = addText(group, row.modifiers[index], x(controlX + controlWidth / 2), y(row.y + 7.6), {
+                size: font(row.ids.length > 3 ? 4.8 : 5.7), anchor: 'middle', maxWidth: x(controlWidth - 1),
             });
             modifier.style.pointerEvents = 'none';
         });

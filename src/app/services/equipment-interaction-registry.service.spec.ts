@@ -1,27 +1,27 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
+import { EscalatingFailureHandler } from '../models/runtime/component-escalating-failure';
 import { InventoryModeHandler } from '../models/runtime/component-inventory-mode';
 import { MobileHpgHandler } from '../models/runtime/component-mobile-hpg';
 import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
 import { VibrobladeHandler } from '../models/runtime/component-vibroblade';
-import { EscalatingFailureHandler } from '../models/runtime/component-escalating-failure';
-import {
-    createDirectEscalatingFailureRuntimeFixture,
-    createDirectMekRuntimeFixture,
-    createDirectMobileHpgRuntimeFixture,
-    createDirectSpotWelderRuntimeFixture,
-    createDirectVibrobladeRuntimeFixture,
-    emptyCBTEncounterSnapshot,
-} from '../models/runtime/testing/direct-mek-runtime-fixture';
-import { TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
 import { registerAllEquipmentBehaviors } from '../models/runtime/equipment-behaviors';
-import { EquipmentInteractionRegistry } from './equipment-interaction-registry.service';
 import type {
-    EquipmentInteractionChoiceBinding,
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+EquipmentInteractionChoiceBinding,
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
 } from '../models/runtime/equipment-interaction';
+import {
+createDirectEscalatingFailureRuntimeFixture,
+createDirectMekRuntimeFixture,
+createDirectMobileHpgRuntimeFixture,
+createDirectSpotWelderRuntimeFixture,
+createDirectVibrobladeRuntimeFixture,
+emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { EquipmentInteractionRegistry } from './equipment-interaction-registry.service';
 
 describe('EquipmentInteractionRegistry direct V2 boundary', () => {
     it('enumerates and applies real handler choices against one parsed entity runtime', async () => {
@@ -36,7 +36,7 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
             dialogsService: dialogsService(),
         };
         const owner = {
-            instanceId: fixture.instance.id,
+            instanceId: fixture.instance.instanceId,
             encounter: emptyCBTEncounterSnapshot,
         };
         const choices = registry.choices(
@@ -87,7 +87,7 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
             fixture.entity,
             fixture.index,
             fixture.instance.ruleset(),
-            { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot },
+            { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot },
             {},
         );
 
@@ -130,7 +130,7 @@ describe('EquipmentInteractionRegistry direct V2 boundary', () => {
             fixture.entity,
             fixture.index,
             fixture.instance.ruleset(),
-            { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot },
+            { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot },
             {},
         );
 
@@ -163,7 +163,7 @@ function collectChoices(
         fixture.entity,
         fixture.index,
         fixture.instance.ruleset(),
-        { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot },
+        { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot },
         {},
     );
 }

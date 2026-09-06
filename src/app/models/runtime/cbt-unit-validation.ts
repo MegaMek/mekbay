@@ -3,18 +3,13 @@
 
 import type { BaseEntity } from '../entity/base-entity';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTMekUnit,type CBTUnit } from './cbt-unit';
 import {
-    evaluateMekRuntimeCapability,
-    requireSupportedMekHeatContext,
-    requireSupportedMekMechanicsContext,
-    type MekRuntimeCapabilityDecision,
+evaluateMekRuntimeCapability,
+requireSupportedMekHeatContext,
+requireSupportedMekMechanicsContext,
+type MekRuntimeCapabilityDecision,
 } from './mek-runtime-capability';
-import {
-    isCBTNonMekUnit,
-    isCBTMekUnit,
-    type CBTUnit,
-} from './cbt-unit';
-import type { CBTMekUnit } from './cbt-mek-unit';
 
 export function cbtUnitMatchesEntity(unit: CBTUnit, entity: BaseEntity): boolean {
     if (isCBTMekUnit(unit)) {
@@ -28,10 +23,10 @@ export function evaluateCBTMekRuntimeCapability(unit: CBTMekUnit): MekRuntimeCap
     if (decision.readiness === 'deferred') return decision;
     const heat = requireSupportedMekHeatContext(
         decision,
-        unit.getInstance().query().heatCapability(),
+        unit.query().heatCapability(),
     );
     return requireSupportedMekMechanicsContext(
         heat,
-        unit.getInstance().query().mekDestruction(),
+        unit.query().mekDestruction(),
     );
 }

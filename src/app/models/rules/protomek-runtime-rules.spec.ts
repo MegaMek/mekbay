@@ -1,20 +1,21 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import type { CBTNonMekUnit } from '../runtime/cbt-unit';
 
 import {
-    CORE_2026_RULESET,
-    TOTAL_WARFARE_RULESET,
-    type CBTRuleset,
+asUnitUuid,
+} from '../../services/unit-catalog/unit-catalog.types';
+import {
+CORE_2026_RULESET,
+TOTAL_WARFARE_RULESET,
+type CBTRuleset,
 } from '../cbt-ruleset.model';
-import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
 import { TestProtoMekEntity } from '../entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
-import {
-    asUnitUuid,
-} from '../../services/unit-catalog/unit-catalog.types';
-import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
-import { type InstanceBaselineRef } from '../runtime/runtime-state';
+import { systemDamageId } from './system-damage-rules';
+
 import { isProtoMekEntity } from '../entity/utils/entity-type-guards';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { projectProtoMekRuntimeRules } from './protomek-runtime-rules';
 
 describe('ProtoMek runtime rules', () => {
@@ -29,7 +30,7 @@ describe('ProtoMek runtime rules', () => {
         ] as const;
         for (const [mode, distance, modifier] of expected) {
             expect(runtime.dispatch({
-                kind: 'set-movement',
+                type: 'set-movement',
                 
                 movement: { mode, distance, boosterComponentIds: [] },
             }).accepted).toBeTrue();
@@ -41,20 +42,20 @@ describe('ProtoMek runtime rules', () => {
         const dead = harness();
         const deadCrew = [...dead.runtime.getIndex().crewPositions.keys()][0]!;
         expect(dead.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             
             positionId: deadCrew,
             wounds: 6,
             unconscious: false,
             ejected: false,
         }).accepted).toBeTrue();
-        dead.runtime.dispatch({ kind: 'end-phase' });
+        dead.runtime.dispatch({ type: 'end-phase' });
         expect(project(dead.runtime).computedConditions).toEqual(['abandoned', 'immobile']);
 
         const ejected = harness();
         const ejectedCrew = [...ejected.runtime.getIndex().crewPositions.keys()][0]!;
         ejected.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             
             positionId: ejectedCrew,
             wounds: 0,
@@ -66,7 +67,7 @@ describe('ProtoMek runtime rules', () => {
         const crippled = harness();
         const crippledCrew = [...crippled.runtime.getIndex().crewPositions.keys()][0]!;
         crippled.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             
             positionId: crippledCrew,
             wounds: 4,
@@ -80,7 +81,7 @@ describe('ProtoMek runtime rules', () => {
         const disabled = harness(CORE_2026_RULESET, false);
         const crew = [...disabled.runtime.getIndex().crewPositions.keys()][0]!;
         expect(disabled.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId: crew,
             wounds: 4,
             unconscious: false,
@@ -90,7 +91,7 @@ describe('ProtoMek runtime rules', () => {
         expect(disabled.runtime.query().hasCondition('crippled')).toBeFalse();
         expect(project(disabled.runtime).computedConditions).not.toContain('crippled');
         expect(disabled.runtime.dispatch({
-            kind: 'set-condition',
+            type: 'set-condition',
             condition: 'crippled',
             active: true,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -103,7 +104,7 @@ describe('ProtoMek runtime rules', () => {
             const location = [...limbs.runtime.getIndex().locations.values()]
                 .find(row => row.code === code)!;
             limbs.runtime.dispatch({
-                kind: 'set-internal-damage',
+                type: 'set-internal-damage',
                 
                 locationId: location.id,
                 damage: location.internalPoints,
@@ -115,7 +116,7 @@ describe('ProtoMek runtime rules', () => {
         const torsoLocation = [...torso.runtime.getIndex().locations.values()]
             .find(row => row.code === 'Torso')!;
         torso.runtime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
             
             locationId: torsoLocation.id,
             damage: torsoLocation.internalPoints,
@@ -124,9 +125,9 @@ describe('ProtoMek runtime rules', () => {
 
         const critical = harness();
         critical.runtime.dispatch({
-            kind: 'damage-track',
+            type: 'damage-track',
             
-            damageTrackId: nonMekDamageTrackId('torso_hit_3'),
+            damageTrackId: systemDamageId('torso', 3),
             amount: 1,
             target: 'committed',
             timestamp: 1,
@@ -152,14 +153,14 @@ function harness(
     forcedWithdrawal = true,
 ): Readonly<{
     entity: TestProtoMekEntity;
-    runtime: NonMekUnitInstance;
+    runtime: CBTNonMekUnit;
 }> {
     const entity = new TestProtoMekEntity();
     entity.uuid.set(UUID);
     entity.setTonnage(6);
     entity.originalWalkMP.set(6);
     addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Torso' });
-    const runtime = new NonMekUnitInstance(
+    const runtime = createNonMekRuntimeForTest(
         `unit:proto:${ruleset}`,
         baseline(ruleset),
         entity,
@@ -170,15 +171,15 @@ function harness(
     return Object.freeze({ entity, runtime });
 }
 
-function project(runtime: NonMekUnitInstance) {
+function project(runtime: CBTNonMekUnit) {
     const entity = runtime.getUnit();
     if (!isProtoMekEntity(entity)) throw new Error('Expected ProtoMek fixture');
     return projectProtoMekRuntimeRules(
         entity,
         runtime.getIndex(),
         runtime.snapshot(),
-        runtime.ruleset,
-        runtime.forcedWithdrawal,
+        runtime.ruleset(),
+        runtime.mechanics().forcedWithdrawal,
     );
 }
 
@@ -195,3 +196,5 @@ function baseline(ruleset: CBTRuleset): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest } from '../runtime/testing/unit-runtime-owner-fixture';

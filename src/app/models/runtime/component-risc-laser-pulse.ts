@@ -1,34 +1,34 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { Equipment } from '../equipment.model';
-import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
 import {
-    RISC_LASER_PULSE_MODE,
-    RISC_LASER_STANDARD_MODE,
-    RISC_LASER_MODES,
-    RISC_LASER_PULSE_EXPLOSION_DAMAGE,
-    RISC_LASER_PULSE_MODULE_FLAG,
-    isRiscLaserPulseEnhancement,
-    isRiscLaserPulseLink,
-    isRiscLaserMode,
+RISC_LASER_MODES,
+RISC_LASER_PULSE_EXPLOSION_DAMAGE,
+RISC_LASER_PULSE_MODE,
+RISC_LASER_PULSE_MODULE_FLAG,
+RISC_LASER_STANDARD_MODE,
+isRiscLaserMode,
+isRiscLaserPulseEnhancement,
+isRiscLaserPulseLink,
 } from '../risc-laser-mode.model';
+import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    componentStatusDefinition,
-    type ComponentStatusDefinition,
+componentStatusDefinition,
+type ComponentStatusDefinition,
 } from './component-status';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
 
 export interface MekRiscLaserPulseLink {
     readonly moduleId: ComponentId;
@@ -185,7 +185,7 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
     }
 
     getComponentRiscLaserPulseChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentRiscLaserPulseDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -207,7 +207,7 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentRiscLaserPulseSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentRiscLaserPulseDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,
@@ -229,4 +229,4 @@ export class RiscLaserPulseModuleHandler extends EquipmentInteractionHandler {
     }
 }
 
-export { RISC_LASER_PULSE_MODE, RISC_LASER_STANDARD_MODE };
+export { RISC_LASER_PULSE_MODE,RISC_LASER_STANDARD_MODE };

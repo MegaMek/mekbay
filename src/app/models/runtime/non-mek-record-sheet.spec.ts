@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    TestAeroSpaceFighterEntity,
-    TestBattleArmorEntity,
-    TestInfantryEntity,
-    TestJumpShipEntity,
-    TestProtoMekEntity,
-    TestTankEntity,
-} from '../entity/testing/test-entities';
-import {
-    asUnitUuid,
+asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
-import { AmmoEquipment } from '../equipment.model';
+import {
+TestAeroSpaceFighterEntity,
+TestBattleArmorEntity,
+TestInfantryEntity,
+TestJumpShipEntity,
+TestProtoMekEntity,
+TestTankEntity,
+} from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import { AmmoEquipment } from '../equipment.model';
 import { type InstanceBaselineRef } from './runtime-state';
-import { NonMekUnitInstance } from './non-mek-unit-instance';
+
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 
 describe('projectNonMekRecordSheet', () => {
@@ -41,10 +41,10 @@ describe('projectNonMekRecordSheet', () => {
         }));
         entity.uuid.set(UUID);
         addTestEquipment(entity, standard, { location: entity.locationOrder[0], shotsCount: 10 });
-        const runtime = new NonMekUnitInstance('unit:tank-ammo-sheet', baseline(), entity, CORE_2026_RULESET);
+        const runtime = createNonMekRuntimeForTest('unit:tank-ammo-sheet', baseline(), entity, CORE_2026_RULESET);
         const componentId = [...runtime.getIndex().components.keys()][0]!;
         expect(runtime.dispatch({
-            kind: 'configure-ammo-source',
+            type: 'configure-ammo-source',
             componentId,
             munitionKey: precision.id,
             remaining: 3,
@@ -64,7 +64,7 @@ describe('projectNonMekRecordSheet', () => {
     it('retains a vacant physical station and derives fixed piloting without changing the personal rating', () => {
         const entity = new TestProtoMekEntity();
         entity.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance('unit:proto-crew-sheet', baseline(), entity, CORE_2026_RULESET);
+        const runtime = createNonMekRuntimeForTest('unit:proto-crew-sheet', baseline(), entity, CORE_2026_RULESET);
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
         const assignment = Object.freeze({ schemaVersion: 1 as const, positions: Object.freeze([
             Object.freeze({ positionId, name: 'Pilot', gunnery: 2, piloting: 2 }),
@@ -84,14 +84,14 @@ describe('projectNonMekRecordSheet', () => {
     it('carries selectable air-ground state into presentation but suppresses space-only invariants', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
-        const fighterRuntime = new NonMekUnitInstance(
+        const fighterRuntime = createNonMekRuntimeForTest(
             'unit:aero-condition-sheet',
             baseline(),
             fighter,
             CORE_2026_RULESET,
         );
         fighterRuntime.dispatch({
-            kind: 'set-airborne',
+            type: 'set-airborne',
 
             airborne: false,
         });
@@ -108,7 +108,7 @@ describe('projectNonMekRecordSheet', () => {
 
         const jumpShip = new TestJumpShipEntity();
         jumpShip.uuid.set(UUID);
-        const jumpShipRuntime = new NonMekUnitInstance(
+        const jumpShipRuntime = createNonMekRuntimeForTest(
             'unit:space-only-condition-sheet',
             baseline(),
             jumpShip,
@@ -134,7 +134,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.setTonnage(20);
         entity.originalWalkMP.set(8);
         entity.setArmorValue('Front', 'front', 3);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-sheet',
             baseline(),
             entity,
@@ -144,7 +144,7 @@ describe('projectNonMekRecordSheet', () => {
             .find(location => location.code === 'Front')!;
         const face = runtime.getIndex().armorFaces.get(front.armorFaceIds[0])!;
         runtime.dispatch({
-            kind: 'set-armor-damage',
+            type: 'set-armor-damage',
 
             faceId: face.id,
             damage: 1,
@@ -160,7 +160,7 @@ describe('projectNonMekRecordSheet', () => {
             })]),
         });
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: crewPositionId,
             wounds: 0,
@@ -204,7 +204,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.uuid.set(UUID);
         entity.trooperCount.set(4);
         entity.setArmorValue('Squad', 'front', 6);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:battle-armor-sheet',
             baseline(),
             entity,
@@ -234,7 +234,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.propulsionMP.set(3);
         entity.motiveType.set('Jump');
         entity.setArmorValue('Squad', 'front', 2);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:battle-armor-destroyed-sheet',
             baseline(),
             entity,
@@ -243,13 +243,13 @@ describe('projectNonMekRecordSheet', () => {
         const location = [...runtime.getIndex().locations.values()][0]!;
         const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0]!)!;
         runtime.dispatch({
-            kind: 'set-armor-damage',
+            type: 'set-armor-damage',
 
             faceId: face.id,
             damage: face.maximumPoints,
         });
         runtime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
 
             locationId: location.id,
             damage: location.internalPoints,
@@ -273,7 +273,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.uuid.set(UUID);
         entity.squadSize.set(7);
         entity.squadCount.set(4);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:infantry-sheet',
             baseline(),
             entity,
@@ -301,7 +301,7 @@ describe('projectNonMekRecordSheet', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(6);
         entity.originalWalkMP.set(6);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:protomek-sheet',
             baseline(),
             entity,
@@ -309,7 +309,7 @@ describe('projectNonMekRecordSheet', () => {
         );
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: crewId,
             wounds: 0,
@@ -342,20 +342,20 @@ describe('projectNonMekRecordSheet', () => {
         entity.structuralIntegrity.set(8);
         entity.heatSinkCount.set(10);
         entity.heatSinkType.set('Double');
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:aero-sheet',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-pending-heat',
 
             heat: 19,
-            target: 'pending',
+
         });
         runtime.dispatch({
-            kind: 'set-heatsinks-off',
+            type: 'set-heatsinks-off',
 
             heatsinksOff: 2,
         });
@@ -393,3 +393,5 @@ function baseline(): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';

@@ -3,18 +3,18 @@
 
 import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
 import type { ComponentId } from '../entity/entity-identifiers';
+import {
+SHIELD_ACTIVE_MODE,
+SHIELD_INACTIVE_MODE,
+SHIELD_PASSIVE_MODE,
+ShieldModeHandler,
+} from './component-shield-mode';
 import { projectMekEquipmentPanel } from './equipment-panel';
 import {
-    ShieldModeHandler,
-    SHIELD_ACTIVE_MODE,
-    SHIELD_INACTIVE_MODE,
-    SHIELD_PASSIVE_MODE,
-} from './component-shield-mode';
-import {
-    createDirectDualShieldRuntimeFixture,
-    createDirectShieldRuntimeFixture,
-    emptyCBTEncounterSnapshot,
-    type DirectMekRuntimeFixture,
+createDirectDualShieldRuntimeFixture,
+createDirectShieldRuntimeFixture,
+emptyCBTEncounterSnapshot,
+type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct shield modes', () => {
@@ -47,8 +47,7 @@ describe('direct shield modes', () => {
 
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(shield.id)).toBe(SHIELD_INACTIVE_MODE);
         expect(equipmentPanel(fixture).components
@@ -86,8 +85,7 @@ describe('direct shield modes', () => {
         expect(weaponRow(fixture, leftTorsoRear.id).weapon?.selectable).toBeFalse();
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(shield.id)).toBe(SHIELD_ACTIVE_MODE);
     });
@@ -119,8 +117,7 @@ describe('direct shield modes', () => {
         const maximum = projection.shields.find(row => row.componentId === shield.id)!.maximumCapacity;
         expect(fixture.instance.dispatch({
             type: 'damage-shield',
-            
-            
+
             componentId: shield.id,
             track: 'capacity',
             amount: maximum,
@@ -139,7 +136,7 @@ function interactionOptions(fixture: DirectMekRuntimeFixture, componentId: strin
         fixture.entity,
         fixture.index,
         fixture.instance.ruleset(),
-        { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot },
+        { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot },
         {},
     ).find(choice => choice.componentId === componentId)?.choice.choices;
 }
@@ -152,8 +149,7 @@ function setMode(
 ): boolean {
     return fixture.instance.dispatch({
         type: 'set-component-mode',
-        
-        
+
         componentId,
         mode,
     }).accepted;

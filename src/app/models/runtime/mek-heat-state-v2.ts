@@ -1,43 +1,28 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { compareText } from '../../utils/string.util';
+import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+
 import { isObjectLiteralRecord } from '../../utils/json-value.util';
-import type { ComponentId, CriticalSlotId } from '../entity/entity-identifiers';
+import { compareText } from '../../utils/string.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId,CriticalSlotId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import type { UnitWaterState } from '../unit-cover.model';
-import {
-    compileMekHeatProfile,
-    evaluateMekHeatScenarioSupport,
-    type MekHeatProfile,
-    type MekHeatScenarioInput,
-} from './mek-heat-profile';
+import type { CBTUnitHeatState } from './cbt-unit-runtime';
+import { compileMekHeatProfile,evaluateMekHeatScenarioSupport,type MekHeatProfile,type MekHeatScenarioInput } from './mek-heat-profile';
+import { MAX_MEK_MOVEMENT_MP_V2,type MekMovementHeatInputV2 } from './mek-movement-psr-v2';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import {
-    canonicalizeMekTurnStateV2,
-    type MekTurnStateV2,
-} from './mek-turn-state-v2';
-import {
-    MAX_MEK_MOVEMENT_MP_V2,
-    type MekMovementHeatInputV2,
-} from './mek-movement-psr-v2';
+import { canonicalizeMekTurnStateV2,type MekTurnStateV2 } from './mek-turn-state-v2';
 
 export const MAX_MEK_HEAT_VALUE_V2 = 1_000_000;
 export const MAX_MEK_HEATSINKS_OFF_V2 = 1_000;
 export const MAX_MEK_HEAT_CONTEXT_BLOCKERS_V2 = 64;
 export const EQUIPMENT_HEAT_SOURCE_GROUP = 'Equipment';
 
-export type MekHeatAutomationPolicyV2 = 'automatic' | 'manual';
-
 /** Durable heat track. Turn-scoped source acknowledgements remain in MekTurnStateV2. */
-export interface MekHeatStateV2 {
-    readonly current: number;
-    readonly previous: number;
-    readonly pendingOverride?: number;
-    readonly heatsinksOff: number;
-}
+export type MekHeatStateV2 = CBTUnitHeatState;
 
 export interface MekHeatSourceV2 {
     readonly id: string;
@@ -276,7 +261,7 @@ export function projectMekHeatContextV2(
     context: MekHeatRuntimeContextV2,
     entity: MekEntity,
     input: MekHeatKernelInputV2,
-    policy: MekHeatAutomationPolicyV2,
+    policy: HeatAutomationPolicy,
 ): MekHeatProjectionResultV2 {
     const binding = requireHeatContextBinding(context);
     const mismatch = heatContextMismatchBlockers(binding, entity);
@@ -296,7 +281,7 @@ export function applyPendingMekHeatContextV2(
     context: MekHeatRuntimeContextV2,
     entity: MekEntity,
     input: MekHeatKernelInputV2,
-    policy: MekHeatAutomationPolicyV2,
+    policy: HeatAutomationPolicy,
 ): MekHeatApplicationResultV2 {
     const binding = requireHeatContextBinding(context);
     const mismatch = heatContextMismatchBlockers(binding, entity);
@@ -312,7 +297,7 @@ export function resolveEndTurnMekHeatContextV2(
     context: MekHeatRuntimeContextV2,
     entity: MekEntity,
     input: MekHeatKernelInputV2,
-    policy: MekHeatAutomationPolicyV2,
+    policy: HeatAutomationPolicy,
 ): MekHeatApplicationResultV2 {
     const binding = requireHeatContextBinding(context);
     const mismatch = heatContextMismatchBlockers(binding, entity);
@@ -428,7 +413,7 @@ function heatContextMismatchBlockers(
 export function projectMekHeatV2(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
-    policy: MekHeatAutomationPolicyV2,
+    policy: HeatAutomationPolicy,
 ): MekHeatProjectionV2 {
     const heat = canonicalizeMekHeatStateV2(input.heat);
     const turn = canonicalizeMekTurnStateV2(input.turn);
@@ -473,7 +458,7 @@ export function projectMekHeatV2(
 export function applyPendingMekHeatV2(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
-    policy: MekHeatAutomationPolicyV2,
+    policy: HeatAutomationPolicy,
 ): MekHeatApplicationV2 {
     const projection = projectMekHeatV2(profile, input, policy);
     const heat = canonicalizeMekHeatStateV2(input.heat);
@@ -499,7 +484,7 @@ export function applyPendingMekHeatV2(
 export function resolveEndTurnMekHeatV2(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
-    policy: MekHeatAutomationPolicyV2,
+    policy: HeatAutomationPolicy,
 ): MekHeatApplicationV2 {
     if (policy === 'manual') return applyPendingMekHeatV2(profile, input, policy);
 

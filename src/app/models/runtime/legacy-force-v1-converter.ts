@@ -4,80 +4,81 @@
 import { compareText } from '../../utils/string.util';
 import { uuidv7 } from '../../utils/uuid.util';
 import { GameSystem } from '../common.model';
-import { DEFAULT_GUNNERY_SKILL, MAX_CREW_WOUNDS } from '../crew-member.model';
+import type { CrewMemberRuntimeState } from '../crew-member.model';
+import { DEFAULT_GUNNERY_SKILL,MAX_CREW_WOUNDS } from '../crew-member.model';
 import type {
-    ASSerializedForce,
-    ASSerializedGroup,
-    ASSerializedState,
-    ASSerializedUnit,
-    SerializedC3NetworkGroup,
-    ConditionData,
-    SerializedCondition,
-    SerializedForce,
+ASSerializedForce,
+ASSerializedGroup,
+ASSerializedState,
+ASSerializedUnit,
+ConditionData,
+SerializedC3NetworkGroup,
+SerializedCondition,
+SerializedForce,
 } from '../force-serialization';
 import { C3_NETWORK_GROUP_SCHEMA } from '../force-serialization';
-import type { ASCustomPilotAbility } from '../pilot-abilities.model';
 import {
-    cloneAsJson,
-    readLegacyUnitStateV1,
-    type LegacyUnitSourceV1,
-    type JsonObject,
-    type JsonValue,
-    type PersistedUnitIdentity,
-    type UnitIdentityResolver,
+cloneAsJson,
+readLegacyUnitStateV1,
+type JsonObject,
+type JsonValue,
+type LegacyUnitSourceV1,
+type PersistedUnitIdentity,
+type UnitIdentityResolver,
 } from '../persisted-unit-state';
-import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
+import type { ASCustomPilotAbility } from '../pilot-abilities.model';
+import { isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-    emptyRuntimeHistory,
-    asForceId,
-    validateSerializedCBTForceV2,
-    type SerializedCBTForceV2,
-    type SerializedForceUnitEntryV2,
-    type SerializedCBTUnitV2,
-} from './persistence-v2';
-import {
-    CBT_FORCE_ROSTER_SCHEMA_VERSION,
-    CBT_FORCE_UNASSIGNED_GROUP_ID,
-    MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
-    type SerializedCBTForceRosterGroupV1,
+CBT_FORCE_ROSTER_SCHEMA_VERSION,
+CBT_FORCE_UNASSIGNED_GROUP_ID,
+MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
+type SerializedCBTForceRosterGroupV1,
 } from './cbt-force-roster';
-import { freezeRuntimeState, type MekUnitRuntimeState } from './runtime-state';
-import type { CrewMemberRuntimeState } from '../crew-member.model';
-import type { CBTMekUnit } from './cbt-mek-unit';
-import type { CBTNonMekUnit } from './cbt-non-mek-unit';
-import { isCBTMekUnit, isCBTNonMekUnit, type CBTUnit } from './cbt-unit';
-import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
-import type { NonMekRuntimeComponent, NonMekRuntimeIndex } from './non-mek-runtime-index';
-import type { NonMekDamageTrackDefinition } from '../rules/non-mek-damage-track-rules';
-import type { CrewAssignment, CrewTopology } from './crew-assignment';
-import { createDefaultCrewAssignment } from './crew-assignment';
-import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    LocationId,
-    SystemDamageTrackId,
-} from '../entity/entity-identifiers';
-import { restoreLegacyUnitState } from './state-restorer';
-import { serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
-import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
-import { createMekHeatContextV2, mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
-import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
-import { CBTUnitInstance } from './unit-instance';
+import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
+import { type CBTRuntimeEquipment } from './cbt-unit-runtime';
 import {
-    DEFAULT_FORCE_DEPLOYMENT_ID,
-    type ScenarioRules,
-} from './unit-state-initializer';
-import { C3NetworkEditor } from '../c3-network-editor';
-import { projectC3EditorNetworksToEncounter, type C3EncounterPresentationUnit } from '../c3-network-presentation';
-import { projectReadyC3Components } from '../cbt-force-c3';
-import { encodeCBTEncounterStateV2 } from './encounter-runtime';
+asForceId,
+CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+emptyRuntimeHistory,
+validateSerializedCBTForceV2,
+type SerializedCBTForceV2,
+type SerializedCBTUnitV2,
+type SerializedForceUnitEntryV2,
+} from './persistence-v2';
+import { freezeRuntimeState,type MekUnitRuntimeState } from './runtime-state';
+
+import { isRecord,jsonValuesEqual } from '../../utils/json-value.util';
 import { Sanitizer } from '../../utils/sanitizer.util';
-import { isRecord, jsonValuesEqual } from '../../utils/json-value.util';
-import type { BaseEntity } from '../entity/base-entity';
-import { canonicalNonMekAirborneState } from './non-mek-airborne-state';
+import { C3NetworkEditor } from '../c3-network-editor';
+import { projectC3EditorNetworksToEncounter,type C3EncounterPresentationUnit } from '../c3-network-presentation';
 import type { C3UnitPosition } from '../c3-network.model';
+import { projectReadyC3Components } from '../cbt-force-c3';
+import type { BaseEntity } from '../entity/base-entity';
+import type {
+ArmorFaceId,
+ComponentId,
+CrewPositionId,
+LocationId,
+SystemDamageTrackId,
+} from '../entity/entity-identifiers';
+import type { SystemDamageDefinition,SystemDamageKind } from '../rules/system-damage-rules';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTUnit } from './cbt-unit';
+import type { CrewAssignment,CrewTopology } from './crew-assignment';
+import { createDefaultCrewAssignment } from './crew-assignment';
+import { encodeCBTEncounterStateV2 } from './encounter-runtime';
+import { createMekHeatContextV2,mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
+import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
+import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
+import { canonicalNonMekAirborneState } from './non-mek-airborne-state';
+import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
+import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
+import { serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
+import { restoreLegacyUnitState } from './state-restorer';
+import { createMekRuntimeBinding,queryMekRuntime } from './unit-instance';
+import {
+DEFAULT_FORCE_DEPLOYMENT_ID,
+type ScenarioRules,
+} from './unit-state-initializer';
 
 const V1_CONVERSION_DEPLOYMENT = Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID });
 
@@ -290,13 +291,13 @@ export async function convertPersistedMekUnitV1(
     onIssue?: (message: string) => void,
 ): Promise<SerializedCBTUnitV2> {
     const baseline = fresh.serialize();
-    const runtimeBaseline = fresh.getInstance().baselineRef;
+    const runtimeBaseline = fresh.baselineRef;
     if (baseline.stateRevision !== 0) {
         throw new Error('V1 conversion requires a pristine current Mek baseline');
     }
     const restored = await restoreLegacyUnitState(source, fresh.getUnit(), {
         baselineRef: runtimeBaseline,
-        state: fresh.getInstance().snapshot(),
+        state: fresh.snapshot(),
     });
     const issues = [...restored.warnings];
     const crewRows = readLegacyCrewRows(source, fresh.getIndex().crewPositions, issues);
@@ -384,7 +385,11 @@ export function convertPersistedNonMekUnitV1(
             issues,
         );
     }
-    for (const raw of Array.isArray(rawState['crits']) ? rawState['crits'] : []) {
+    const criticalRows = Array.isArray(rawState['crits']) ? rawState['crits'] : [];
+    const groupedStabilizers = restoreLegacyGroupedStabilizers(
+        criticalRows, index, damageTrackState, pendingDamageTrackHits, issues);
+    for (const raw of criticalRows) {
+        if (groupedStabilizers.has(raw)) continue;
         if (restoreLegacyNonMekDamageTrack(
             raw,
             index,
@@ -815,6 +820,74 @@ function restoreLegacyNonMekDamageTrack(
     const track = matchLegacyNonMekDamageTrack(value, index);
     if (!track) return false;
 
+    restoreLegacyDamageTrackValue(value, track, committed, pending, issues);
+    return true;
+}
+
+type LegacySystemDamage = Readonly<{ hits: number; hitTimestamps: readonly number[] }>;
+type LegacyPendingSystemDamage = Readonly<{ hitDelta: number; hitTimestamps: readonly number[] }>;
+
+/** V1 facings overlap; repairs clear a current facing only after every contributing group is repaired. */
+function restoreLegacyGroupedStabilizers(
+    rows: readonly JsonValue[],
+    index: NonMekRuntimeIndex,
+    committed: Map<SystemDamageTrackId, LegacySystemDamage>,
+    pending: Map<SystemDamageTrackId, LegacyPendingSystemDamage>,
+    issues: string[],
+): ReadonlySet<JsonValue> {
+    const scopes: Readonly<Record<string, readonly string[]>> = {
+        stabilizer_hit_front: ['Front', 'Front Left', 'Front Right'],
+        stabilizer_hit_rear: ['Rear', 'Rear Left', 'Rear Right'],
+        stabilizer_hit_left: ['Left', 'Front Left', 'Rear Left'],
+        stabilizer_hit_right: ['Right', 'Front Right', 'Rear Right'],
+    };
+    const handled = new Set<JsonValue>();
+    const facings = new Map<SystemDamageTrackId, {
+        committedTimestamps: number[]; previewHit: boolean; pendingTimestamps: number[];
+    }>();
+    for (const row of rows) {
+        if (!isRecord(row) || typeof row['id'] !== 'string') continue;
+        const groupedScopes = scopes[row['id']];
+        if (!groupedScopes) continue;
+        const targets = [...index.damageTracks.values()].filter(track => track.system === 'stabilizer'
+            && track.scope !== undefined && groupedScopes.includes(track.scope));
+        if (targets.length === 0) continue;
+        handled.add(row);
+        const rowCommitted = new Map<SystemDamageTrackId, LegacySystemDamage>();
+        const rowPending = new Map<SystemDamageTrackId, LegacyPendingSystemDamage>();
+        restoreLegacyDamageTrackValue(row, targets[0]!, rowCommitted, rowPending, issues);
+        const current = rowCommitted.get(targets[0]!.id);
+        const preview = rowPending.get(targets[0]!.id);
+        for (const target of targets) {
+            const facing = facings.get(target.id) ?? {
+                committedTimestamps: [], previewHit: false, pendingTimestamps: [],
+            };
+            facing.committedTimestamps.push(...(current?.hitTimestamps ?? []));
+            facing.previewHit ||= (current?.hits ?? 0) + (preview?.hitDelta ?? 0) > 0;
+            facing.pendingTimestamps.push(...(preview?.hitTimestamps ?? []));
+            facings.set(target.id, facing);
+        }
+    }
+    for (const [id, facing] of facings) {
+        const committedHit = facing.committedTimestamps.length > 0;
+        if (committedHit) committed.set(id, Object.freeze({ hits: 1,
+            hitTimestamps: Object.freeze([Math.min(...facing.committedTimestamps)]) }));
+        if (committedHit !== facing.previewHit) pending.set(id, Object.freeze({
+            hitDelta: facing.previewHit ? 1 : -1,
+            hitTimestamps: Object.freeze(facing.previewHit ? [Math.min(...facing.pendingTimestamps)] : []),
+        }));
+    }
+    return handled;
+}
+
+function restoreLegacyDamageTrackValue(
+    value: Readonly<Record<string, JsonValue>>,
+    track: SystemDamageDefinition,
+    committed: Map<SystemDamageTrackId, LegacySystemDamage>,
+    pending: Map<SystemDamageTrackId, LegacyPendingSystemDamage>,
+    issues: string[],
+): void {
+
     const label = legacyRowLabel(value);
     const parsedHits = value['hits'] === undefined ? 0 : nonnegativeInteger(value['hits']);
     if (parsedHits === null) {
@@ -896,18 +969,40 @@ function restoreLegacyNonMekDamageTrack(
         if (nextDelta === 0) pending.delete(track.id);
         else pending.set(track.id, Object.freeze({ hitDelta: nextDelta, hitTimestamps }));
     }
-    return true;
 }
 
 function matchLegacyNonMekDamageTrack(
     raw: Readonly<Record<string, JsonValue>>,
     index: NonMekRuntimeIndex,
-): NonMekDamageTrackDefinition | null {
+): SystemDamageDefinition | null {
     if (typeof raw['id'] !== 'string') return null;
     const id = raw['id'];
     const matches = [...index.damageTracks.values()].filter(track =>
-        track.id === id || track.sheetId === id);
+        track.id === id || legacySystemDamageToken(track) === id
+            || (track.system === 'life-support' && id === 'life_support_hit'));
     return matches.length === 1 ? matches[0] : null;
+}
+
+/** V1 wire tokens are decoded here; neither rules nor current state interpret them. */
+function legacySystemDamageToken(track: SystemDamageDefinition): string {
+    const tokens: Readonly<Record<SystemDamageKind, string>> = {
+        commander: 'commander_hit', driver: 'driver_hit', pilot: 'pilot_hit', copilot: 'copilot_hit',
+        engine: 'engine_hit', sensors: 'sensor_hit', avionics: 'avionics_hit', 'fire-control': 'fcs_hit',
+        'combat-information': 'cic_hit', 'fuel-tank': 'fuel_tank_hit', 'docking-collar': 'docking_collar_hit',
+        'kf-boom': 'kf_boom_hit', 'left-thruster': 'thruster_left_hit', 'right-thruster': 'thruster_right_hit',
+        'landing-gear': 'landing_gear_hit', 'life-support': 'life_support_hit', motive: 'motive_system_hit',
+        'turret-lock': 'turret_locked', stabilizer: 'stabilizer_hit', 'flight-stabilizer': 'flight_stabilizer_hit',
+        rotor: 'rotor', head: 'head_hit', torso: 'torso_hit', 'left-arm': 'la_hit', 'right-arm': 'ra_hit',
+        legs: 'legs_hit', 'main-gun': 'gun_hit',
+    };
+    const scopes: Readonly<Record<string, string>> = {
+        Front: 'front', Rear: 'rear', Left: 'left', Right: 'right', Turret: 'turret',
+        'Front Turret': 'turret_f', 'Rear Turret': 'turret_r',
+    };
+    const scope = track.scope === undefined ? '' : track.system === 'turret-lock'
+        ? track.scope === 'Front Turret' ? '_f' : track.scope === 'Rear Turret' ? '_r' : ''
+        : `_${scopes[track.scope]}`;
+    return `${tokens[track.system]}${scope}${track.stage === undefined ? '' : `_${track.stage}`}`;
 }
 
 function legacyDamageTrackTimestamps(
@@ -943,7 +1038,7 @@ function legacyDamageTrackTimestamps(
 function matchLegacyNonMekComponent(
     raw: Readonly<Record<string, JsonValue>>,
     index: NonMekRuntimeIndex,
-): NonMekRuntimeComponent | null {
+): CBTRuntimeEquipment | null {
     const id = typeof raw['id'] === 'string' ? raw['id'] : '';
     const exact = index.components.get(id as ComponentId);
     if (exact) return exact;
@@ -1219,12 +1314,10 @@ function convertLegacyMovementHeatAcknowledgement(
         }),
     });
     const entity = fresh.getUnit();
-    const runtime = fresh.getInstance();
+    const runtime = fresh;
     const ruleset = runtime.ruleset();
     const index = fresh.getIndex();
-    const projectionRuntime = new CBTUnitInstance(
-        fresh.instanceId,
-        runtime.baselineRef,
+    const projectionRuntime = createMekRuntimeBinding(
         entity,
         index,
         ruleset,
@@ -1233,7 +1326,7 @@ function convertLegacyMovementHeatAcknowledgement(
         createMekHeatContextV2(entity, index, ruleset, scenario),
         createMekMechanicsContextV2(entity, index, ruleset, scenario),
     );
-    const projected = projectionRuntime.query().heatProjection('manual');
+    const projected = queryMekRuntime(projectionRuntime.binding, projectionRuntime.state).heatProjection('manual');
     const movement = projected.kind === 'supported'
         ? projected.projection.committedSources.find(source => source.id === 'movement')
         : undefined;

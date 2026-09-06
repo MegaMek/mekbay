@@ -1,33 +1,35 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { compareText } from '../../utils/string.util';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { calculateModifierTotal, type UnitModifierBreakdownEntry, type UnitModifierTotal } from '../combat-modifier';
+import { compareText } from '../../utils/string.util';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { calculateModifierTotal,type UnitModifierBreakdownEntry,type UnitModifierTotal } from '../combat-modifier';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { getMekLocationLabel } from '../entity/types';
 import { gameRulesFor } from '../rules/game-rules';
 import {
-    getDefaultAttackerMovementModifier,
-    getTargetMovementBracketForDistance,
-    TN_AIRBORNE_MOVE_TYPE_MODIFIER,
-    TN_IMMOBILE,
-    TN_PRONE,
-    TN_PRONE_ADJACENT,
-    TN_SKIDDING_MODIFIER,
+getDefaultAttackerMovementModifier,
+getTargetMovementBracketForDistance,
+TN_AIRBORNE_MOVE_TYPE_MODIFIER,
+TN_IMMOBILE,
+TN_PRONE,
+TN_PRONE_ADJACENT,
+TN_SKIDDING_MODIFIER,
 } from '../target-number-calculator.model';
-import type { MekRuntimeIndex } from './mek-runtime-index';
-import type { MekHeatAutomationPolicyV2, MekHeatProjectionResultV2, MekHeatStateV2 } from './mek-heat-state-v2';
-import { movementBoosterUsableWhile } from './component-escalating-failure';
-import type { MekMovementModeV2, MekMovementPsrProjectionResultV2, MekMovementPsrStateV2 } from './mek-movement-psr-v2';
-import type { MekUnitQueryPort } from './unit-instance';
-import type { MekTurnStateV2 } from './mek-turn-state-v2';
-import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY, type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
-import { isUnitBuildingLevel, resolveUnitBuildingCoverState, type UnitBuildingCoverState } from '../unit-cover.model';
-import { mekUnitHeight, resolveMekUnitWaterState } from './mek-targeting-rules';
-import { getMekLocationLabel } from '../entity/types';
 import type { UnitConditionKey } from '../unit-condition.model';
+import { isUnitBuildingLevel,resolveUnitBuildingCoverState,type UnitBuildingCoverState } from '../unit-cover.model';
+import { movementBoosterUsableWhile } from './component-escalating-failure';
+import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
+import type { MekHeatProjectionResultV2,MekHeatStateV2 } from './mek-heat-state-v2';
+import type { MekMovementModeV2,MekMovementPsrProjectionResultV2,MekMovementPsrStateV2 } from './mek-movement-psr-v2';
+import type { MekRuntimeIndex } from './mek-runtime-index';
+import { mekUnitHeight,resolveMekUnitWaterState } from './mek-targeting-rules';
+import type { MekTurnStateV2 } from './mek-turn-state-v2';
+import type { MekUnitQueryPort } from './unit-instance';
 
 export type MekAttackMovementModifiers = Readonly<Record<MekMovementModeV2, number>>;
 
@@ -73,7 +75,7 @@ export function projectMekTurnPanel(
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
-    heatPolicy: MekHeatAutomationPolicyV2,
+    heatPolicy: HeatAutomationPolicy,
 ): MekTurnPanelSnapshot {
     const turn = query.turnState();
     const activeBoosterComponentIds = [...index.components]

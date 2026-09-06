@@ -1,22 +1,23 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import type { AeroEntity } from '../entity/entities/aero/aero-entity';
 import {
-    TestAeroSpaceFighterEntity,
-    TestDropShipEntity,
-    TestJumpShipEntity,
-    TestSmallCraftEntity,
-    TestSpaceStationEntity,
-    TestWarShipEntity,
+TestAeroSpaceFighterEntity,
+TestDropShipEntity,
+TestJumpShipEntity,
+TestSmallCraftEntity,
+TestSpaceStationEntity,
+TestWarShipEntity,
 } from '../entity/testing/test-entities';
-import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { NonMekUnitInstance } from '../runtime/non-mek-unit-instance';
-import { type InstanceBaselineRef } from '../runtime/runtime-state';
-import { nonMekDamageTrackId } from './non-mek-damage-track-rules';
-import { aeroHeatEffects, projectAeroRuntimeRules } from './aero-runtime-rules';
+import type { CBTNonMekUnit } from '../runtime/cbt-unit';
+
 import { isAeroEntity } from '../entity/utils/entity-type-guards';
+import { type InstanceBaselineRef } from '../runtime/runtime-state';
+import { aeroHeatEffects,projectAeroRuntimeRules } from './aero-runtime-rules';
+import { systemDamageId } from './system-damage-rules';
 
 describe('Aero runtime rules', () => {
     it('ports the production aerospace heat scale', () => {
@@ -41,10 +42,10 @@ describe('Aero runtime rules', () => {
     it('commits preview heat and applies the named fire modifier and disabled sinks', () => {
         const runtime = fighter('unit:aero-heat');
         expect(runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-pending-heat',
             
             heat: 24,
-            target: 'pending',
+
         }).accepted).toBeTrue();
         expect(runtime.snapshot().heat).toEqual({
             current: 0,
@@ -55,12 +56,12 @@ describe('Aero runtime rules', () => {
         expect(project(runtime).heat.effects.fireModifier).toBe(0);
 
         expect(runtime.dispatch({
-            kind: 'set-heatsinks-off',
+            type: 'set-heatsinks-off',
             
             heatsinksOff: 2,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-phase',
+            type: 'end-phase',
             
         }).accepted).toBeTrue();
 
@@ -84,24 +85,35 @@ describe('Aero runtime rules', () => {
         const bySi = fighter('unit:aero-si');
         const si = [...bySi.getIndex().locations.values()].find(location => location.code === 'SI')!;
         bySi.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
             
             locationId: si.id,
             damage: si.internalPoints,
         });
-        expect(bySi.destroyed()).toBeTrue();
+        expect(bySi.query().destroyed()).toBeTrue();
 
-        for (const sheetId of ['engine_hit_3', 'fcs_hit_3']) {
-            const runtime = fighter(`unit:aero-${sheetId}`);
+        for (const damageTrackId of [systemDamageId('engine', 3), systemDamageId('fire-control', 3)]) {
+            const runtime = fighter(`unit:aero-${damageTrackId}`);
             runtime.dispatch({
-                kind: 'damage-track',
+                type: 'damage-track',
                 
-                damageTrackId: nonMekDamageTrackId(sheetId),
+                damageTrackId,
                 amount: 1,
                 target: 'committed',
                 timestamp: 1,
             });
-            expect(runtime.destroyed()).withContext(sheetId).toBeTrue();
+            expect(runtime.query().destroyed()).withContext(damageTrackId).toBeTrue();
+        }
+    });
+
+    it('keeps a large craft operational at three engine hits and destroys it at six', () => {
+        const entity = new TestDropShipEntity();
+        entity.structuralIntegrity.set(8);
+        const runtime = aero(entity, 'unit:large-engine');
+        for (const stage of [3, 6]) {
+            expect(runtime.dispatch({ type: 'damage-track', damageTrackId: systemDamageId('engine', stage),
+                amount: 1, target: 'committed', timestamp: stage }).accepted).toBeTrue();
+            expect(runtime.query().destroyed()).withContext(`Engine stage ${stage}`).toBe(stage === 6);
         }
     });
 
@@ -124,19 +136,19 @@ describe('Aero runtime rules', () => {
             const si = [...runtime.getIndex().locations.values()]
                 .find(location => location.code === 'SI')!;
             expect(runtime.dispatch({
-                kind: 'set-internal-damage',
+                type: 'set-internal-damage',
                 
                 locationId: si.id,
                 damage: si.internalPoints,
             }).accepted).withContext(entity.entityType).toBeTrue();
-            expect(runtime.destroyed()).withContext(entity.entityType).toBeTrue();
+            expect(runtime.query().destroyed()).withContext(entity.entityType).toBeTrue();
         }
     });
 });
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');
 
-function fighter(id: string): NonMekUnitInstance {
+function fighter(id: string): CBTNonMekUnit {
     const entity = new TestAeroSpaceFighterEntity();
     entity.structuralIntegrity.set(8);
     entity.heatSinkCount.set(10);
@@ -144,9 +156,9 @@ function fighter(id: string): NonMekUnitInstance {
     return aero(entity, id);
 }
 
-function aero(entity: AeroEntity, id: string): NonMekUnitInstance {
+function aero(entity: AeroEntity, id: string): CBTNonMekUnit {
     entity.uuid.set(UUID);
-    return new NonMekUnitInstance(
+    return createNonMekRuntimeForTest(
         id,
         baseline(),
         entity,
@@ -154,10 +166,10 @@ function aero(entity: AeroEntity, id: string): NonMekUnitInstance {
     );
 }
 
-function project(runtime: NonMekUnitInstance) {
+function project(runtime: CBTNonMekUnit) {
     const entity = runtime.getUnit();
     if (!isAeroEntity(entity)) throw new Error('Expected aerospace fixture');
-    return projectAeroRuntimeRules(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset);
+    return projectAeroRuntimeRules(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset());
 }
 
 function baseline(): InstanceBaselineRef {
@@ -171,3 +183,5 @@ function baseline(): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest } from '../runtime/testing/unit-runtime-owner-fixture';

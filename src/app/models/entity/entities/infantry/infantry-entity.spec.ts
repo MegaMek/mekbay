@@ -7,6 +7,41 @@ import { InfantryWeaponEquipment, WeaponEquipment } from '../../../equipment.mod
 import { TestInfantryEntity as InfantryEntity } from '../../testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 
+describe('InfantryEntity strength limit', () => {
+  it('validates the thirty-troop construction limit as squad size or count changes', () => {
+    const infantry = new InfantryEntity();
+    infantry.primaryWeapon.set(infantryWeapon('InfantryStrengthTest'));
+    infantry.squadSize.set(6);
+    infantry.squadCount.set(5);
+    expect(infantry.validationResult().messages.some(message => message.code === 'INF_TOO_MANY_TROOPERS')).toBeFalse();
+    expect(infantry.damageLocations()[0]!.internalPoints).toBe(30);
+
+    infantry.squadSize.set(7);
+    expect(infantry.validationResult().valid).toBeFalse();
+    expect(infantry.validationResult().messages).toContain(jasmine.objectContaining({
+      severity: 'error', code: 'INF_TOO_MANY_TROOPERS',
+    }));
+    // Invalid imported definitions remain recognizable; gameplay never exceeds the rule limit.
+    expect(infantry.squadSize()).toBe(7);
+    expect(infantry.squadCount()).toBe(5);
+    expect(infantry.damageLocations()[0]!.internalPoints).toBe(30);
+
+    infantry.squadCount.set(4);
+    expect(infantry.validationResult().messages.some(message => message.code === 'INF_TOO_MANY_TROOPERS')).toBeFalse();
+    expect(infantry.damageLocations()[0]!.internalPoints).toBe(28);
+  });
+
+  it('rejects fractional and non-finite squad definitions', () => {
+    const infantry = new InfantryEntity();
+    infantry.squadSize.set(1.5);
+    expect(infantry.validationResult().messages).toContain(jasmine.objectContaining({ code: 'INF_NO_SQUAD_SIZE' }));
+    infantry.squadSize.set(1);
+    infantry.squadCount.set(Number.NaN);
+    expect(infantry.validationResult().messages).toContain(jasmine.objectContaining({ code: 'INF_NO_SQUAD_COUNT' }));
+    expect(infantry.damageLocations()[0]!.internalPoints).toBe(0);
+  });
+});
+
 describe('InfantryEntity anti-Mek capability', () => {
   it('reacts to anti-Mek gear installation and removal', () => {
     const infantry = new InfantryEntity();

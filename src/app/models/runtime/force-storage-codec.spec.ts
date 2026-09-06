@@ -2,42 +2,44 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
-import { canonicalizeForcePersonnel, type ForcePersonnelSnapshot } from '../force-personnel';
-import type { ASSerializedForce, SerializedCBTForce, SerializedForce } from '../force-serialization';
+import { canonicalizeForcePersonnel,type ForcePersonnelSnapshot } from '../force-personnel';
+import type { ASSerializedForce,SerializedCBTForce,SerializedForce } from '../force-serialization';
+import { createMekUnit,restoreMekUnit } from './cbt-mek-unit';
+import { createNonMekUnit,restoreNonMekUnit } from './cbt-non-mek-unit';
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-    asForceId,
-    emptyRuntimeHistory,
-    type SerializedCBTForceV2,
-    type SerializedCBTUnitV2,
-    validateSerializedCBTForceV2,
+CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+asForceId,
+emptyRuntimeHistory,
+validateSerializedCBTForceV2,
+type SerializedCBTForceV2,
+type SerializedCBTUnitV2,
 } from './persistence-v2';
-import { CBTMekUnit } from './cbt-mek-unit';
-import { CBTNonMekUnit } from './cbt-non-mek-unit';
-import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
-import {
-    createDirectMekRuntimeFixture,
-    createDirectModularArmorRuntimeFixture,
-} from './testing/direct-mek-runtime-fixture';
-import { TestAeroSpaceFighterEntity, TestTankEntity } from '../entity/testing/test-entities';
+import { componentIdForMount } from './unit-runtime-index';
+
+import { TestAeroSpaceFighterEntity,TestTankEntity } from '../entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
-import { componentIdForMount } from './non-mek-runtime-index';
-import { asComponentId, asCrewPositionId } from '../entity/entity-identifiers';
+import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './non-mek-unit-persistence';
+import {
+createDirectMekRuntimeFixture,
+createDirectModularArmorRuntimeFixture,
+} from './testing/direct-mek-runtime-fixture';
+
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { asComponentId,asCrewPositionId } from '../entity/entity-identifiers';
 import { asSourceHashCanary } from '../source-hash-canary';
 import {
-    decodeForceFromStorage as decodeStorageRecord,
-    encodeForceForStorage as encodeStorageRecord,
+decodeForceFromStorage as decodeStorageRecord,
+encodeForceForStorage as encodeStorageRecord,
 } from './force-storage-codec';
-import { RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 import {
-    CBT_HISTORY_MUTATION_TARGET_CODE,
+CBT_HISTORY_MUTATION_TARGET_CODE,
 } from './force-storage-vocabulary';
 import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
+import { RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 import {
-    DEFAULT_FORCE_DEPLOYMENT_ID,
-    DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
-    UNIT_STATE_INITIALIZER_REVISION,
+DEFAULT_FORCE_DEPLOYMENT_ID,
+DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+UNIT_STATE_INITIALIZER_REVISION,
 } from './unit-state-initializer';
 
 describe('force storage codec', () => {
@@ -157,7 +159,7 @@ describe('force storage codec', () => {
         await expectAsync(validateSerializedCBTForceV2(decoded.cbt)).toBeResolved();
 
         const fixture = createDirectMekRuntimeFixture();
-        const restored = await CBTMekUnit.restoreFromEntity(
+        const restored = await restoreMekUnit(
             decodedUnit,
             fixture.entity,
             fixture.identity,
@@ -254,12 +256,7 @@ describe('force storage codec', () => {
                 }],
             },
         }).accepted).toBeTrue();
-        const unit = new CBTMekUnit(
-            fixture.entity,
-            fixture.identity,
-            fixture.instance,
-            { schemaVersion: 2, values: fixture.initialized.deployment },
-        ).serialize();
+        const unit = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined }).serialize();
         const force = forceWithUnit(unit, 'force:critical-storage', 'Critical storage');
 
         const stored = encodeForceForStorage(force);
@@ -269,7 +266,7 @@ describe('force storage codec', () => {
         const decodedUnit = decoded.cbt!.units[0]!.unit as SerializedCBTUnitV2;
 
         expect(decodedUnit.turn.pendingCriticalEvents).toEqual(unit.turn.pendingCriticalEvents);
-        const restored = await CBTMekUnit.restoreFromEntity(
+        const restored = await restoreMekUnit(
             decodedUnit,
             fixture.entity,
             fixture.identity,
@@ -303,12 +300,7 @@ describe('force storage codec', () => {
 
             faceId: face.id, amount: 3, target: 'pending',
         }).accepted).toBeTrue();
-        const ready = new CBTMekUnit(
-            fixture.entity,
-            fixture.identity,
-            fixture.instance,
-            { schemaVersion: 2, values: fixture.initialized.deployment },
-        );
+        const ready = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
         const unit = ready.serialize();
         const force = forceWithUnit(unit, 'force:compact-modular', 'Compact Modular Armor');
         const stored = encodeForceForStorage(force);
@@ -431,12 +423,7 @@ describe('force storage codec', () => {
             jasmine.objectContaining({ reason: 'Leg Actuator hit', status: 'pending' }),
         ]);
 
-        const unit = new CBTMekUnit(
-            fixture.entity,
-            fixture.identity,
-            fixture.instance,
-            { schemaVersion: 2, values: fixture.initialized.deployment },
-        ).serialize();
+        const unit = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined }).serialize();
         const stored = encodeForceForStorage(forceWithUnit(
             unit,
             'force:movement-psr',
@@ -453,7 +440,7 @@ describe('force storage codec', () => {
             throw new Error('Movement/PSR fixture did not decode as a Mek');
         }
         expect(entry.unit.movementPsr).toEqual(unit.movementPsr);
-        const restored = await CBTMekUnit.restoreFromEntity(
+        const restored = await restoreMekUnit(
             entry.unit,
             fixture.entity,
             fixture.identity,
@@ -464,7 +451,7 @@ describe('force storage codec', () => {
                 scenario: { id: 'megamek', ruleset: 'total-warfare' },
             },
         );
-        expect(restored.getInstance().query().mekPilotChecks()).toEqual(
+        expect(restored.query().mekPilotChecks()).toEqual(
             fixture.instance.query().mekPilotChecks(),
         );
     });
@@ -502,7 +489,7 @@ describe('force storage codec', () => {
 
     it('stores production defaults implicitly and roster membership by unit index', async () => {
         const fixture = createDirectMekRuntimeFixture();
-        const ready = await CBTMekUnit.createFromEntity({
+        const ready = await createMekUnit({
             uuid: fixture.identity,
             instanceId: 'unit:implicit-defaults',
         }, fixture.entity, fixture.identity, {
@@ -533,7 +520,7 @@ describe('force storage codec', () => {
             throw new Error('Implicit-default fixture did not decode as a ready Mek');
         }
         expect(entry.unit.deployment.values.crewAssignment.positions).toEqual(ready.getCrewAssignment().positions);
-        const restored = await CBTMekUnit.restoreFromEntity(
+        const restored = await restoreMekUnit(
             entry.unit,
             fixture.entity,
             fixture.identity,
@@ -555,12 +542,7 @@ describe('force storage codec', () => {
             2,
             false,
         )).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        const ready = new CBTMekUnit(
-            fixture.entity,
-            fixture.identity,
-            fixture.instance,
-            { schemaVersion: 2, values: fixture.initialized.deployment },
-        );
+        const ready = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
         const unit = ready.serialize();
         const stored = encodeForceForStorage(forceWithUnit(
             unit,
@@ -576,7 +558,7 @@ describe('force storage codec', () => {
             throw new Error('Row-order fixture did not decode as a ready Mek');
         }
         expect(entry.unit.equipmentRowOrder).toEqual({ ranged: [1, 0] });
-        const restored = await CBTMekUnit.restoreFromEntity(
+        const restored = await restoreMekUnit(
             entry.unit,
             fixture.entity,
             fixture.identity,
@@ -587,7 +569,7 @@ describe('force storage codec', () => {
                 scenario: { id: 'megamek', ruleset: 'core-2026' },
             },
         );
-        expect(restored.getInstance().snapshot().equipmentRowOrder).toEqual({ ranged: [1, 0] });
+        expect(restored.snapshot().equipmentRowOrder).toEqual({ ranged: [1, 0] });
     });
 
     it('round-trips formation target groups under one compact metadata key', () => {
@@ -628,44 +610,44 @@ describe('force storage codec', () => {
             { location: entity.locationOrder[0] },
         ));
         const identity = uuid;
-        const ready = CBTNonMekUnit.create(entity, {
+        const ready = createNonMekUnit(entity, {
             instanceId: 'unit:compact-tank',
             uuid: identity,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
-        const runtime = ready.getInstance();
+        const runtime = ready;
         const faceId = [...ready.getIndex().armorFaces.keys()][0]!;
         const damageTrackId = [...ready.getIndex().damageTracks.keys()][0]!;
         const crewPositionId = [...ready.getIndex().crewPositions.keys()][0]!;
         expect(runtime.dispatch({
-            kind: 'end-phase', endTurnBoundary: true,
+            type: 'end-phase', endTurnBoundary: true,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'edit-escalating-failure',
+            type: 'edit-escalating-failure',
             componentId: boosterId, edit: { kind: 'select-sequence', index: 0 },
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'damage-armor', faceId,
+            type: 'damage-armor', faceId,
             amount: 2, target: 'committed',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'damage-track', damageTrackId,
+            type: 'damage-track', damageTrackId,
             amount: 1, target: 'pending', timestamp: 17,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
             movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-cover', cover: 'heavy',
+            type: 'set-cover', cover: 'heavy',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-spotting', spotting: true,
+            type: 'set-spotting', spotting: true,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-crew-state', positionId: crewPositionId,
+            type: 'set-crew-state', positionId: crewPositionId,
             wounds: 0, unconscious: true, ejected: false,
         }).accepted).toBeTrue();
         expect(runtime.setEquipmentRowOrder(
@@ -688,7 +670,7 @@ describe('force storage codec', () => {
                 escalatingFailure: { sequence: 1, active: true },
             }),
         ]));
-        expect(CBTNonMekUnit.restore(
+        expect(restoreNonMekUnit(
             entry.unit,
             entity,
             identity,
@@ -715,7 +697,7 @@ describe('force storage codec', () => {
         entity.uuid.set(uuid);
         entity.heatSinkCount.set(10);
         const identity = uuid;
-        const ready = CBTNonMekUnit.create(entity, {
+        const ready = createNonMekUnit(entity, {
             instanceId: 'unit:compact-aero-heat',
             uuid: identity,
             deployment: { id: 'default' },
@@ -730,32 +712,32 @@ describe('force storage codec', () => {
         expect(storedUnitState(pristine)['z'])
             .toBeUndefined();
 
-        const runtime = ready.getInstance();
+        const runtime = ready;
         runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-pending-heat',
 
             heat: 19,
-            target: 'pending',
+
         });
         runtime.dispatch({
-            kind: 'set-heatsinks-off',
+            type: 'set-heatsinks-off',
 
             heatsinksOff: 2,
         });
         runtime.dispatch({
-            kind: 'set-condition',
+            type: 'set-condition',
 
             condition: 'out-of-control',
             active: true,
         });
         runtime.dispatch({
-            kind: 'set-control-recovery',
+            type: 'set-control-recovery',
 
             workflow: { readyTurn: 1, cause: 'heat-random-movement' },
         });
         const pilotId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -783,7 +765,7 @@ describe('force storage codec', () => {
         expect(entry.unit.heat).toEqual(unit.heat);
         expect(entry.unit.turn?.controlRecovery).toEqual(unit.turn?.controlRecovery);
         expect(entry.unit.crewState?.[0]?.recoveryReadyTurn).toBe(1);
-        expect(CBTNonMekUnit.restore(
+        expect(restoreNonMekUnit(
             entry.unit,
             entity,
             identity,
@@ -859,7 +841,7 @@ describe('force storage codec', () => {
         const decoded = decodeForceFromStorage(stored).cbt!.units[0]!.unit as SerializedCBTUnitV2;
         expect(decoded.deployment.values.crewAssignment.positions).toEqual(original.deployment.values.crewAssignment.positions);
         const fixture = createDirectMekRuntimeFixture();
-        const restored = await CBTMekUnit.restoreFromEntity(decoded, fixture.entity, fixture.identity, {
+        const restored = await restoreMekUnit(decoded, fixture.entity, fixture.identity, {
             initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
             profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
             deployment: decoded.deployment.values,
@@ -911,11 +893,11 @@ describe('force storage codec', () => {
         expect(decoded.personnel).toEqual(force.personnel);
         expect(encodeForceForStorage(decoded)).toEqual(stored);
         const fixture = createDirectMekRuntimeFixture();
-        const restored = await CBTMekUnit.restoreFromEntity(decoded.cbt!.units[0].unit as SerializedCBTUnitV2, fixture.entity, fixture.identity, {
+        const restored = await restoreMekUnit(decoded.cbt!.units[0].unit as SerializedCBTUnitV2, fixture.entity, fixture.identity, {
             initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset: 'core-2026' },
         });
         expect(restored.getCrewAssignment().positions).toEqual([]);
-        expect(restored.getInstance().query().crewState([...fixture.index.crewPositions.keys()][0]!).isAvailable()).toBeFalse();
+        expect(restored.query().crewState([...fixture.index.crewPositions.keys()][0]!).isAvailable()).toBeFalse();
     });
 
     it('rejects invalid person objects and duplicate identities across stations and reserves', () => {
@@ -967,12 +949,7 @@ describe('force storage codec', () => {
             unconscious: false,
             ejected: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        const ready = () => new CBTMekUnit(
-            fixture.entity,
-            fixture.identity,
-            fixture.instance,
-            { schemaVersion: 2, values: fixture.initialized.deployment },
-        );
+        const ready = () => new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
 
         const pendingStored = encodeForceForStorage(forceWithUnit(
             ready().serialize(),
@@ -1004,7 +981,6 @@ function damagedForce(): SerializedCBTForce {
     expect(fixture.instance.dispatch({
         type: 'damage-armor',
 
-
         faceId: face.id,
         amount: 2,
         target: 'committed',
@@ -1013,7 +989,6 @@ function damagedForce(): SerializedCBTForce {
     expect(fixture.instance.dispatch({
         type: 'hit-critical',
 
-
         slotId: slot.id,
         hits: 1,
         target: 'committed',
@@ -1021,13 +996,11 @@ function damagedForce(): SerializedCBTForce {
     expect(fixture.instance.dispatch({
         type: 'end-phase',
 
-
         endTurnBoundary: true,
     }).accepted).toBeTrue();
     const pilotId = [...fixture.index.crewPositions.keys()][0]!;
     expect(fixture.instance.dispatch({
         type: 'set-pending-fall-consequences',
-
 
         pending: {
             eventId: 'fall:compact-storage',
@@ -1041,12 +1014,7 @@ function damagedForce(): SerializedCBTForce {
             seatbeltFailures: [pilotId],
         },
     }).accepted).toBeTrue();
-    const ready = new CBTMekUnit(
-        fixture.entity,
-        fixture.identity,
-        fixture.instance,
-        { schemaVersion: 2, values: fixture.initialized.deployment },
-    );
+    const ready = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
     const unit: SerializedCBTUnitV2 = {
         ...ready.serialize(),
         sourceHashCanary: asSourceHashCanary('k8zQ'),
@@ -1148,3 +1116,5 @@ function storedUnit(stored: Readonly<Record<string, unknown>>, index = 0): Recor
 function storedUnitState(stored: Readonly<Record<string, unknown>>, index = 0): Record<string, unknown> {
     return (storedUnit(stored, index)['state'] ?? {}) as Record<string, unknown>;
 }
+
+import { CBTUnit } from './cbt-unit';

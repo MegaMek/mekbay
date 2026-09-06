@@ -1,37 +1,39 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { systemDamageId } from '../../../models/rules/system-damage-rules';
 
-import { TestBed } from '@angular/core/testing';
 import { Overlay } from '@angular/cdk/overlay';
+import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
+import { componentIdForMount } from '../../../models/runtime/unit-runtime-index';
 
-import type { CBTForceMember, CBTMekForceMember } from '../../../models/force-member.model';
 import {
-    TestAeroSpaceFighterEntity,
-    TestBattleArmorEntity,
-    TestBipedMekEntity,
-    TestTankEntity,
+TestAeroSpaceFighterEntity,
+TestBattleArmorEntity,
+TestBipedMekEntity,
+TestTankEntity,
 } from '../../../models/entity/testing/test-entities';
+import type { CBTForceMember,CBTMekForceMember } from '../../../models/force-member.model';
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
-import { componentIdForMount } from '../../../models/runtime/non-mek-runtime-index';
-import {
-    createPristineNonMekUnitState,
-    projectNonMekEscalatingFailureInteractions,
-} from '../../../models/runtime/non-mek-unit-instance';
-import { ESCALATING_FAILURE_HANDLER_ID } from '../../../models/runtime/component-escalating-failure';
+
 import { addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
+import { ESCALATING_FAILURE_HANDLER_ID } from '../../../models/runtime/component-escalating-failure';
 import {
-    createPristineMekHeatStateV2,
-    type MekHeatSourceV2,
+createPristineMekHeatStateV2,
+type MekHeatSourceV2,
 } from '../../../models/runtime/mek-heat-state-v2';
 import {
-    createPristineMekMovementPsrStateV2,
-    type MekMovementModeV2,
+createPristineMekMovementPsrStateV2,
+type MekMovementModeV2,
 } from '../../../models/runtime/mek-movement-psr-v2';
-import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
-import { OptionsService } from '../../../services/options.service';
+import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
+import {
+createPristineNonMekUnitState,
+projectNonMekEscalatingFailureInteractions,
+} from '../../../models/runtime/non-mek-unit-instance';
 import { DialogsService } from '../../../services/dialogs.service';
+import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import { STANDING_UP_REVIEW_ONLY } from './page-standing-up-panel.component';
@@ -287,14 +289,14 @@ describe('PageTurnSummaryPanelComponent', () => {
 
         fixture.componentInstance.toggleSpotting();
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
-            kind: 'set-spotting',
+            type: 'set-spotting',
             spotting: true,
         });
         harness.dispatch.calls.reset();
 
         fixture.componentInstance.selectCover('heavy');
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
-            kind: 'set-cover',
+            type: 'set-cover',
             cover: 'heavy',
         });
         harness.dispatch.calls.reset();
@@ -302,7 +304,7 @@ describe('PageTurnSummaryPanelComponent', () => {
         fixture.componentInstance.selectMove('walk');
 
         expect(harness.dispatch).toHaveBeenCalledOnceWith('tank-1', {
-            kind: 'set-movement',
+            type: 'set-movement',
             movement: { mode: 'walk', distance: 0, boosterComponentIds: [] },
         });
     });
@@ -332,7 +334,7 @@ describe('PageTurnSummaryPanelComponent', () => {
     });
 
     it('uses origin/next DSR labels and Entity-derived vehicle control modifiers', () => {
-        const harness = entityTurnMember(['commander_hit', 'motive_system_hit_2']);
+        const harness = entityTurnMember([systemDamageId('commander'), systemDamageId('motive', 2)]);
         const fixture = createComponent(harness.member, overlayManager());
         fixture.detectChanges();
         const component = fixture.componentInstance;
@@ -449,7 +451,7 @@ function createComponent(member: CBTForceMember, manager: ReturnType<typeof over
 }
 
 function entityTurnMember(
-    damageTrackSheetIds: readonly string[] = [],
+    damageTrackSheetIds: readonly ReturnType<typeof systemDamageId>[] = [],
     withSupercharger = false,
 ) {
     const changed = new Subject<void>();
@@ -466,9 +468,9 @@ function entityTurnMember(
     const index = buildNonMekRuntimeIndex(entity);
     const pristine = createPristineNonMekUnitState(entity);
     const damageTracks = new Map(pristine.damageTracks);
-    for (const sheetId of damageTrackSheetIds) {
-        const track = [...index.damageTracks.values()].find(candidate => candidate.sheetId === sheetId);
-        if (!track) throw new Error(`Missing test vehicle damage track ${sheetId}`);
+    for (const damageTrackId of damageTrackSheetIds) {
+        const track = index.damageTracks.get(damageTrackId);
+        if (!track) throw new Error(`Missing test vehicle damage track ${damageTrackId}`);
         damageTracks.set(track.id, { hits: 1, hitTimestamps: [damageTracks.size + 1] });
     }
     const snapshot = {
@@ -480,7 +482,7 @@ function entityTurnMember(
         state: { ...pristine, damageTracks },
         query: { hasPendingPhaseChanges: () => false },
     };
-    const dispatch = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+    const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
         accepted: true,
         changed: true,
         state: snapshot.state,
@@ -522,7 +524,7 @@ function entityTurnMember(
             })),
         hasRuntimeHistoryForUnitTurn: () => false,
         hasPendingEndTurnForUnit: () => false,
-        dispatchNonMekUnitCommand: dispatch,
+        dispatchUnitCommand: dispatch,
         dispatchEquipmentChoice,
     };
     member = {
@@ -571,7 +573,7 @@ function battleArmorTurnMember() {
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         getEquipmentInteractions: () => [],
         hasRuntimeHistoryForUnitTurn: () => false,
-        dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
+        dispatchUnitCommand: jasmine.createSpy('dispatchUnitCommand'),
         hasPendingEndTurnForUnit: () => false,
     };
     member = {
@@ -613,7 +615,7 @@ function aeroTurnMember() {
         getEquipmentInteractions: () => [],
         hasRuntimeHistoryForUnitTurn: () => false,
         hasPendingEndTurnForUnit: () => false,
-        dispatchNonMekUnitCommand: jasmine.createSpy('dispatchNonMekUnitCommand'),
+        dispatchUnitCommand: jasmine.createSpy('dispatchUnitCommand'),
     };
     member = {
         kind: 'cbt',
@@ -641,7 +643,7 @@ function turnMember(initial: MekTurnPanelSnapshot, memberCount = 1) {
     const entity = new TestBipedMekEntity();
     let current = initial;
     let pendingEndTurn = false;
-    const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+    const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
         accepted: true,
         changed: false,
         revision: current.stateRevision,
@@ -656,7 +658,7 @@ function turnMember(initial: MekTurnPanelSnapshot, memberCount = 1) {
         getMekTurnPanelSnapshot: () => current,
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         getEquipmentInteractions: () => [],
-        dispatchMekUnitCommand: dispatch,
+        dispatchUnitCommand: dispatch,
         hasRuntimeHistoryForUnitTurn: () => false,
         hasPendingEndTurnForUnit: () => pendingEndTurn,
         endPhaseForAllUnits: jasmine.createSpy('endPhaseForAllUnits').and.resolveTo({

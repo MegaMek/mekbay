@@ -1,36 +1,36 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
-import {
-    type BipedArmorValues,
-    type BipedPaperdollPipLayout,
-    BipedPaperdollUtil,
-} from '../biped-paperdoll.util';
 import { type EntityDamageLocation } from '../../../models/entity/types';
-import { SvgFrameUtil } from '../svg-frame.util';
-import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
+import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import {
-    type Box,
-    XLINK_NS,
-    addFrame,
-    addLine,
-    addText,
-    appendLegacyIdentityAnchors,
-    circle,
-    decoratePaperdollPips,
-    drawHeatScale,
-    formatNumber,
-    formatTechBase,
-    formatWholeNumber,
-    makePips,
-    paperdollPipOptions,
-    setAttributes,
-    setInventoryComponentIds,
-    svgElement,
-    transparentRect,
+type BipedArmorValues,
+type BipedPaperdollPipLayout,
+BipedPaperdollUtil,
+} from '../biped-paperdoll.util';
+import {
+type Box,
+XLINK_NS,
+addFrame,
+addLine,
+addText,
+appendLegacyIdentityAnchors,
+circle,
+decoratePaperdollPips,
+formatNumber,
+formatTechBase,
+formatWholeNumber,
+makePips,
+paperdollPipOptions,
+setAttributes,
+setInventoryComponentIds,
+svgElement,
+transparentRect
 } from '../record-sheet-svg-rendering';
+import { SvgFrameUtil } from '../svg-frame.util';
 
 export interface AeroDataInventoryRow {
     readonly id: string;
@@ -632,31 +632,12 @@ export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, bo
         });
         return;
     }
-    const effects: readonly {
-        readonly heat: number;
-        readonly baseline: number;
-        readonly lines: readonly string[];
-    }[] = [
-        { heat: 30, baseline: 48.218, lines: ['Shutdown'] },
-        { heat: 28, baseline: 58.291, lines: ['Ammo Exp avoid on 8+'] },
-        { heat: 27, baseline: 68.364, lines: ['Pilot damage, avoid on 9+'] },
-        { heat: 26, baseline: 78.436, lines: ['Shutdown, avoid on 10+'] },
-        { heat: 25, baseline: 88.509, lines: ['Random Movement,', 'avoid on 10+'] },
-        { heat: 24, baseline: 108.655, lines: ['+4 Modifier to Fire'] },
-        { heat: 23, baseline: 118.727, lines: ['Ammo Exp avoid on 6+'] },
-        { heat: 22, baseline: 128.8, lines: ['Shutdown, avoid on 8+'] },
-        { heat: 21, baseline: 138.873, lines: ['Pilot damage, avoid on 6+'] },
-        { heat: 20, baseline: 148.945, lines: ['Random Movement, avoid on 8+'] },
-        { heat: 19, baseline: 159.018, lines: ['Ammo Exp avoid on 4+'] },
-        { heat: 18, baseline: 169.091, lines: ['Shutdown, avoid on 6+'] },
-        { heat: 17, baseline: 179.164, lines: ['+3 Modifier to Fire'] },
-        { heat: 15, baseline: 189.236, lines: ['Random Movement, avoid on 7+'] },
-        { heat: 14, baseline: 199.309, lines: ['Shutdown, avoid on 4+'] },
-        { heat: 13, baseline: 209.382, lines: ['+2 Modifier to Fire'] },
-        { heat: 10, baseline: 219.455, lines: ['Random Movement, avoid on 6+'] },
-        { heat: 8, baseline: 229.527, lines: ['+1 Modifier to Fire'] },
-        { heat: 5, baseline: 239.6, lines: ['Random Movement, avoid on 5+'] },
-    ];
+    const baselines = [48.218, 58.291, 68.364, 78.436, 88.509, 108.655, 118.727, 128.8, 138.873,
+        148.945, 159.018, 169.091, 179.164, 189.236, 199.309, 209.382, 219.455, 229.527, 239.6];
+    const effects = recordSheetHeatEffects('aero', 0).map((effect, index) => ({
+        ...effect, baseline: baselines[index],
+        lines: index === 4 ? effect.label.split(', ').map((line, part) => part === 0 ? `${line},` : line) : [effect.label],
+    }));
     addText(group, 'Heat', detailedX(15), detailedY(28.073), {
         size: detailedFont(6.76), anchor: 'middle',
     });

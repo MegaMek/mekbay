@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    createDirectMekRuntimeFixture,
-    emptyCBTEncounterSnapshot,
-} from '../models/runtime/testing/direct-mek-runtime-fixture';
-import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
+C3_CONFIGURATION_CHOICE,
+C3_HANDLER_ID,
+C3Handler,
+} from '../models/runtime/component-c3-configuration';
 import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
 } from '../models/runtime/equipment-interaction';
 import {
-    C3_CONFIGURATION_CHOICE,
-    C3_HANDLER_ID,
-    C3Handler,
-} from '../models/runtime/component-c3-configuration';
+createDirectMekRuntimeFixture,
+emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 
 describe('C3Handler direct V2 navigation', () => {
     it('offers the production Configure action only for canonical C3 equipment', () => {
@@ -53,7 +53,7 @@ describe('C3Handler direct V2 navigation', () => {
             configureC3Network: configure,
         };
         const owner = {
-            instanceId: fixture.instance.id,
+            instanceId: fixture.instance.instanceId,
             encounter: emptyCBTEncounterSnapshot,
         };
         const choice = registry.choices(

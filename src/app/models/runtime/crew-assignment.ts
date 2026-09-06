@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
-import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../crew-member.model';
-import type { CrewPositionId } from '../entity/entity-identifiers';
 import type { CrewMemberRuntimeState } from '../crew-member.model';
+import { CrewMember,DEFAULT_GUNNERY_SKILL,DEFAULT_PILOTING_SKILL } from '../crew-member.model';
+import type { CrewPositionId } from '../entity/entity-identifiers';
 import { ImmutableIndex } from '../entity/immutable-collections';
 
 export const CREW_ASSIGNMENT_SCHEMA_VERSION = 1 as const;
@@ -43,6 +43,21 @@ export function assignedCrewRuntimeState(
         if (!assigned(id)) return new ImmutableIndex([...crew].filter(([positionId]) => assigned(positionId)));
     }
     return crew;
+}
+
+/** Commits pending wound deaths at the boundary selected by each unit's mechanics. */
+export function commitCrewDeaths<State extends { readonly crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState> }>(
+    state: State,
+): State {
+    let crew: Map<CrewPositionId, CrewMemberRuntimeState> | undefined;
+    for (const [positionId, current] of state.crew) {
+        const member = CrewMember.from(current);
+        const committed = member.commitDeath();
+        if (committed === member) continue;
+        crew ??= new Map(state.crew);
+        crew.set(positionId, committed.toRuntimeState());
+    }
+    return crew === undefined ? state : { ...state, crew: new ImmutableIndex(crew) };
 }
 
 export function createDefaultCrewAssignment(crewPositions: CrewTopology): CrewAssignment {

@@ -4,19 +4,19 @@
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import {
-    isVibrobladeMode,
-    VIBROBLADE_OFF_MODE,
-    VIBROBLADE_ON_MODE,
+isVibrobladeMode,
+VIBROBLADE_OFF_MODE,
+VIBROBLADE_ON_MODE,
 } from '../vibroblade-mode.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    ComponentModeHandler,
-    type ComponentModeDefinition,
+ComponentModeHandler,
+type ComponentModeDefinition,
 } from './component-mode';
 import type {
-    EquipmentInteractionCommandContext,
-    EquipmentInteractionQueryContext,
+EquipmentInteractionCommandContext,
+EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
 
 export class VibrobladeHandler extends ComponentModeHandler {
     readonly id = 'vibroblade-handler';
@@ -33,7 +33,7 @@ export class VibrobladeHandler extends ComponentModeHandler {
     }
 
     getComponentModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
@@ -52,7 +52,7 @@ export class VibrobladeHandler extends ComponentModeHandler {
     }
 
     handleComponentModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,

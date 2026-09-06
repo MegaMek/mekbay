@@ -1,26 +1,28 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { DIALOG_DATA,DialogRef } from '@angular/cdk/dialog';
+import { ChangeDetectionStrategy,Component,computed,inject,signal,viewChild } from '@angular/core';
 
+import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 import type { LocationId } from '../../models/entity/entity-identifiers';
 import { getMekLocationLabel } from '../../models/entity/types';
 import type { CBTMekForceMember } from '../../models/force-member.model';
 import type {
-    MekCriticalMutationTarget,
-    MekCriticalRollPlanV2,
-    MekCriticalRollProfileV2,
+MekCriticalMutationTarget,
+MekCriticalRollPlanV2,
+MekCriticalRollProfileV2,
 } from '../../models/runtime/mek-critical-hit-v2';
+import { isUnitEditContextCurrent,type UnitEditContext } from '../../models/runtime/unit-edit-context';
 import { ToastService } from '../../services/toast.service';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
-import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 
 export interface MekCriticalRollDialogData {
     readonly member: CBTMekForceMember;
     readonly locationId: LocationId;
     readonly requiredHits?: number;
     readonly target: MekCriticalMutationTarget;
+    readonly context?: UnitEditContext;
 }
 
 export interface MekCriticalRollDialogResult {
@@ -112,6 +114,7 @@ export class MekCriticalRollDialogComponent {
     private readonly dialogRef = inject(DialogRef<MekCriticalRollDialogResult>);
     private readonly toast = inject(ToastService);
     readonly data = inject<MekCriticalRollDialogData>(DIALOG_DATA);
+    private context = this.data.context ?? this.data.member.force.getUnitSnapshot(this.data.member.id)?.editContext;
     readonly roller = viewChild<DiceRollerComponent>('roller');
     readonly profile = signal(this.readProfile());
     readonly appliedHits = signal(0);
@@ -150,8 +153,9 @@ export class MekCriticalRollDialogComponent {
 
     async onFinished(event: { readonly results: readonly number[] }): Promise<void> {
         const unit = this.data.member.force.getUnitSnapshot(this.data.member.id);
-        if (!unit || !hasMekRuntime(unit)) {
-            this.toast.showToast('This unit is no longer in the force', 'error');
+        if (!unit || !hasMekRuntime(unit) || !this.context
+            || !isUnitEditContextCurrent(this.context, unit.editContext)) {
+            this.toast.showToast('This critical roll is no longer current.', 'error');
             this.close();
             return;
         }
@@ -163,18 +167,19 @@ export class MekCriticalRollDialogComponent {
         }
 
         this.applying.set(true);
-        const result = await this.data.member.force.dispatchMekUnitCommand(this.data.member.id, {
+        const result = await this.data.member.force.dispatchUnitCommand(this.data.member.id, {
             type: 'apply-mek-critical-roll',
             locationId: this.data.locationId,
             results: event.results,
             target: this.data.target,
-        });
+        }, this.context);
         this.applying.set(false);
-        this.refreshProfile();
-        if (!result.accepted) {
-            this.toast.showToast('This force is read-only.', 'error');
+        if (!result.accepted || !result.state) {
+            this.toast.showToast('This critical roll is no longer current, or the force is read-only.', 'error');
             return;
         }
+        this.context = { owner: this.context.owner, state: result.state };
+        this.refreshProfile();
         this.outcome.set(plan);
         this.appliedHits.update(value => value + 1);
     }
@@ -214,7 +219,8 @@ export class MekCriticalRollDialogComponent {
 
     private refreshProfile(): void {
         const unit = this.data.member.force.getUnitSnapshot(this.data.member.id);
-        if (unit && hasMekRuntime(unit)) {
+        if (unit && hasMekRuntime(unit) && this.context
+            && isUnitEditContextCurrent(this.context, unit.editContext)) {
             this.profile.set(unit.query.mekCriticalRollProfile(this.data.locationId, this.data.target));
         }
     }

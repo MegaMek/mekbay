@@ -1,140 +1,63 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { assignedCrewRuntimeState, canonicalizeCrewAssignment, createDefaultCrewAssignment, type CrewAssignment } from './crew-assignment';
+import { withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
+
+import type { CBTUnitAttackerTargetingReconciliationPlan } from './attacker-targeting-state';
+import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './unit-command';
+
+import { freezeCommonUnitRuntimeState,type CBTUnitHeatState,type CBTUnitPendingCombatState } from './cbt-unit-runtime';
+import { assignedCrewRuntimeState,canonicalizeCrewAssignment,commitCrewDeaths,createDefaultCrewAssignment,type CrewAssignment } from './crew-assignment';
+import type { CBTUnitCommand } from './unit-command';
+
 import { compareText } from '../../utils/string.util';
-import type { BaseEntity } from '../entity/base-entity';
-import type { EntityStateView } from '../entity/entity-state-view';
-import type { EntityType } from '../entity/types';
-import { BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    SystemDamageTrackId,
-    LocationId,
-} from '../entity/entity-identifiers';
-import type { EquipmentStatus } from '../equipment-status.model';
-import { AmmoEquipment, WeaponEquipment, type Equipment } from '../equipment.model';
 import { MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitModifierBreakdownEntry } from '../combat-modifier';
-import { CrewMember, MAX_CREW_WOUNDS, type CrewMemberRuntimeState } from '../crew-member.model';
-import type { MotiveModes } from '../motiveModes.model';
-import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import { isUnitCover, type UnitCover } from '../unit-cover.model';
+import { CrewMember,MAX_CREW_WOUNDS,type CrewMemberRuntimeState } from '../crew-member.model';
 import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
+import type { BaseEntity } from '../entity/base-entity';
+import type { ArmorFaceId,ComponentId,CrewPositionId,LocationId,SystemDamageTrackId } from '../entity/entity-identifiers';
+import type { EntityStateView } from '../entity/entity-state-view';
+import { ImmutableIndex } from '../entity/immutable-collections';
+import type { EntityType } from '../entity/types';
+import { BV_MOVEMENT_CALCULATION,STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
+import { isAeroEntity,isInfantryFamilyEntity,isProtoMekEntity,isVehicleEntity } from '../entity/utils/entity-type-guards';
+import type { EquipmentStatus } from '../equipment-status.model';
+import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model';
+import type { MotiveModes } from '../motiveModes.model';
+import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import { gameRulesFor } from '../rules/game-rules';
-import {
-    getDefaultAttackerMovementModifier,
-    getTargetMovementBracketForDistance,
-    getTargetUnitTypeModifier,
-    TN_AIRBORNE_MOVE_TYPE_MODIFIER,
-    TN_IMMOBILE,
-    TN_SKIDDING_MODIFIER,
-} from '../target-number-calculator.model';
-import {
-    isAeroEntity,
-    isInfantryFamilyEntity,
-    isProtoMekEntity,
-    isVehicleEntity,
-} from '../entity/utils/entity-type-guards';
-import { projectVehicleRuntimeRules, type VehicleRuntimeRulesProjection } from '../rules/vehicle-runtime-rules';
-import { projectProtoMekRuntimeRules, type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
-import { projectInfantryRuntimeRules, type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
-import { projectAeroRuntimeRules, type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
-import { type ComponentRuntimeState, type InstanceBaselineRef } from './runtime-state';
-import { buildNonMekRuntimeIndex, type NonMekRuntimeIndex } from './non-mek-runtime-index';
-import type { NonMekDamageTrackDefinition } from '../rules/non-mek-damage-track-rules';
-import { projectNonMekComponentStatuses, type NonMekComponentStatuses } from './non-mek-component-status';
-import { entityAmmoLoadout, entityAmmoLoadouts, weaponAcceptsAmmo } from './mek-ammo';
+import { projectInfantryRuntimeRules,type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
+import { projectProtoMekRuntimeRules,type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
+import type { SystemDamageDefinition } from '../rules/system-damage-rules';
+import { projectVehicleRuntimeRules,type VehicleRuntimeRulesProjection } from '../rules/vehicle-runtime-rules';
+import { getDefaultAttackerMovementModifier,getTargetMovementBracketForDistance,getTargetUnitTypeModifier,TN_AIRBORNE_MOVE_TYPE_MODIFIER,TN_IMMOBILE,TN_SKIDDING_MODIFIER } from '../target-number-calculator.model';
+import { isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
+import { isUnitCover,type UnitCover } from '../unit-cover.model';
+import { createPristineAttackerTargetingState,freezeAttackerTargetingState,MAX_ATTACKER_TARGETING_COMPONENTS,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerTargetingValidationContext } from './attacker-targeting-state';
+import { projectComponentLocationStatuses,type ComponentStatusProjection } from './component-status-projection';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
-import {
-    createPristineAttackerTargetingState,
-    freezeAttackerTargetingState,
-    MAX_ATTACKER_TARGETING_COMPONENTS,
-    reconcileAttackerTargetingState,
-    reduceAttackerTargetingCommand,
-    type AttackerTargetingEdit,
-    type AttackerTargetingState,
-    type AttackerTargetingValidationContext,
-} from './attacker-targeting-state';
-import {
-    freezeEquipmentRowOrder,
-    setEquipmentRowOrder as updateEquipmentRowOrder,
-    type EquipmentRowOrderGroup,
-    type EquipmentRowOrderState,
-} from './equipment-row-order';
-import type { CBTUnitSelectedWeaponFireCommand } from './unit-instance';
-import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
-import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
-import {
-    canUseEscalatingFailure,
-    componentEscalatingFailureChoices,
-    componentEscalatingFailureProfile,
-    createComponentEscalatingFailureDefinition,
-    isMascEquipment,
-    movementBoosterUsableWhile,
-    selectEscalatingFailureComponentState,
-    setEscalatingFailureComponentStatus,
-    settleEscalatingFailureComponentState,
-    type ComponentEscalatingFailureDefinition,
-} from './component-escalating-failure';
-import type { EquipmentChoiceSurface, EquipmentInteractionChoice } from './equipment-interaction';
-import { bombastLaserEquipmentModes, bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
-import { inventoryEquipmentModes } from './component-inventory-mode';
-import { isJumpJetEquipment, isUmuEquipment } from '../jump-equipment.model';
-import {
-    electronicClaims,
-    electronicComponentModes,
-    electronicRuntimeModes,
-    effectiveEcmMode,
-    isNovaCewsEquipment,
-    isPowerControlledEquipment,
-    planElectronicModeRequest,
-    planElectronicSettlement,
-    type ElectronicComponentFact,
-} from './component-electronic-suite';
+import { entityAmmoLoadout,entityAmmoLoadouts,weaponAcceptsAmmo } from './mek-ammo';
+import { buildNonMekRuntimeIndex,type NonMekRuntimeIndex } from './non-mek-runtime-index';
+import { type ComponentRuntimeState } from './runtime-state';
+
+import { isBoobyTrapEquipment,isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { bombastLaserEquipmentModes,bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { ECMMode } from '../common.model';
-import {
-    HPG_IDLE_MODE,
-    isMobileHpgMode,
-    mobileHpgBlocksMovement,
-    mobileHpgBlocksWeaponAttacks,
-    mobileHpgComponentModes,
-    mobileHpgMode,
-    mobileHpgModeChangeReason,
-    mobileHpgOperatingHeat,
-    settleMobileHpgMode,
-    type MobileHpgComponentFact,
-} from './component-mobile-hpg';
-import {
-    canSwitchNonMekAirGroundState,
-    canonicalNonMekAirborneState,
-    projectedNonMekAirGroundCondition,
-} from './non-mek-airborne-state';
-import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
-import { isBoobyTrapEquipment } from '../aerospace-support-equipment.model';
-import {
-    BOOBY_TRAP_ARMED_MODE,
-    BOOBY_TRAP_DETONATED_MODE,
-    boobyTrapComponentModes,
-    isBoobyTrapDetonated,
-} from './component-booby-trap';
-import {
-    prototypeLaserHeatForRoll,
-    prototypeLaserHeatRollMap,
-    prototypeLaserMaximumExtraHeat,
-    type PrototypeLaserHeatResult,
-} from '../prototype-laser-heat.model';
-import {
-    type CBTUnitCommandResult,
-    type CBTUnitQueryPort,
-    type CBTUnitRuntimeState,
-    type RuntimeStatePerspective,
-} from './cbt-unit-runtime';
+import { isJumpJetEquipment,isUmuEquipment } from '../jump-equipment.model';
+import { prototypeLaserHeatForRoll,prototypeLaserHeatRollMap,prototypeLaserMaximumExtraHeat,type PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
+import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
+import { type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeState,type RuntimeStatePerspective } from './cbt-unit-runtime';
+import { BOOBY_TRAP_ARMED_MODE,BOOBY_TRAP_DETONATED_MODE,boobyTrapComponentModes,isBoobyTrapDetonated } from './component-booby-trap';
+import { effectiveEcmMode,electronicClaims,electronicComponentModes,electronicRuntimeModes,isNovaCewsEquipment,isPowerControlledEquipment,planElectronicModeRequest,planElectronicSettlement,type ElectronicComponentFact } from './component-electronic-suite';
+import { canUseEscalatingFailure,componentEscalatingFailureChoices,componentEscalatingFailureProfile,createComponentEscalatingFailureDefinition,isMascEquipment,movementBoosterUsableWhile,selectEscalatingFailureComponentState,setEscalatingFailureComponentStatus,settleEscalatingFailureComponentState,type ComponentEscalatingFailureDefinition } from './component-escalating-failure';
+import { inventoryEquipmentModes } from './component-inventory-mode';
+import { HPG_IDLE_MODE,isMobileHpgMode,mobileHpgBlocksMovement,mobileHpgBlocksWeaponAttacks,mobileHpgComponentModes,mobileHpgMode,mobileHpgModeChangeReason,mobileHpgOperatingHeat,settleMobileHpgMode,type MobileHpgComponentFact } from './component-mobile-hpg';
+import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
+import type { EquipmentChoiceSurface,EquipmentInteractionChoice } from './equipment-interaction';
+import { canonicalNonMekAirborneState,canSwitchNonMekAirGroundState,projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
 
 export type NonMekEntityType = Exclude<EntityType, 'Mek'>;
 export interface NonMekComponentModeDefinition {
@@ -220,10 +143,7 @@ export interface NonMekPendingDamageTrackState {
     readonly hitTimestamps: readonly number[];
 }
 
-export interface NonMekPendingCombatState {
-    readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
-    readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
-    readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
+export interface NonMekPendingCombatState extends CBTUnitPendingCombatState {
     readonly damageTrackHits: ReadonlyMap<SystemDamageTrackId, NonMekPendingDamageTrackState>;
 }
 
@@ -234,12 +154,7 @@ export interface NonMekMovementDeclaration {
 }
 
 /** Durable heat track for non-Mek families that use heat. */
-export interface NonMekHeatRuntimeState {
-    readonly current: number;
-    readonly previous: number;
-    readonly pendingOverride?: number;
-    readonly heatsinksOff: number;
-}
+export type NonMekHeatRuntimeState = CBTUnitHeatState;
 
 export interface NonMekEndTurnHeatProjection {
     readonly current: number;
@@ -560,83 +475,15 @@ export function hasNonMekAirborneTurnSelection(
     return canSwitchNonMekAirGroundState(entity) && state.turn.airborne !== null;
 }
 
-export interface NonMekAttackerTargetingCommand {
-    readonly kind: 'edit-attacker-targeting';
-    readonly edit: AttackerTargetingEdit;
-}
-
-export interface NonMekAttackerTargetingReconciliationPlan {
-    readonly nextTargeting: AttackerTargetingState;
-}
-
 export type NonMekSelectedWeaponFireResult = Readonly<
     CBTUnitCommandResult<NonMekUnitRuntimeState>
     & { readonly prototypeHeat: readonly PrototypeLaserHeatResult[] }
 >;
 
-export type NonMekUnitCommand =
-    | Readonly<{ readonly kind: 'set-destroyed'; readonly destroyed: boolean }>
-    | Readonly<{ readonly kind: 'detonate-booby-trap'; readonly componentId: ComponentId }>
-    | Readonly<{ readonly kind: 'set-internal-damage'; readonly locationId: LocationId; readonly damage: number }>
-    | Readonly<{ readonly kind: 'set-armor-damage'; readonly faceId: ArmorFaceId; readonly damage: number }>
-    | Readonly<{ readonly kind: 'damage-internal'; readonly locationId: LocationId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'repair-internal'; readonly locationId: LocationId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'damage-armor'; readonly faceId: ArmorFaceId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'repair-armor'; readonly faceId: ArmorFaceId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
-    | Readonly<{ readonly kind: 'repair-damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-sensor-damage-level'; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }>
-    | Readonly<{ readonly kind: 'set-component-status'; readonly componentId: ComponentId; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-component-mode'; readonly componentId: ComponentId; readonly mode: string }>
-    | Readonly<{
-        readonly kind: 'edit-escalating-failure';
-        readonly componentId: ComponentId;
-        readonly edit:
-            | Readonly<{ readonly kind: 'select-sequence'; readonly index: number }>
-            | Readonly<{ readonly kind: 'set-status'; readonly status: 'available' | 'disabled' }>;
-    }>
-    | Readonly<{ readonly kind: 'set-ammo-spent'; readonly componentId: ComponentId; readonly shotsSpent: number }>
-    | Readonly<{ readonly kind: 'configure-ammo-source'; readonly componentId: ComponentId; readonly munitionKey: string; readonly remaining: number }>
-    | Readonly<{ readonly kind: 'reset-ammo-loadout' }>
-    | Readonly<{
-        readonly kind: 'set-crew-state';
-        readonly positionId: CrewPositionId;
-        readonly wounds: number;
-        readonly unconscious: boolean;
-        readonly ejected: boolean;
-        /** Used only by families with a manual Killed switch. */
-        readonly dead?: boolean;
-        readonly recoveryReadyTurn?: number | null;
-    }>
-    | Readonly<{ readonly kind: 'set-condition'; readonly condition: UnitConditionKey; readonly active: boolean }>
-    | Readonly<{ readonly kind: 'set-heat'; readonly heat: number; readonly target: 'committed' | 'pending' }>
-    | Readonly<{ readonly kind: 'set-heatsinks-off'; readonly heatsinksOff: number }>
-    | Readonly<{ readonly kind: 'apply-heat' }>
-    | Readonly<{ readonly kind: 'set-airborne'; readonly airborne: boolean | null }>
-    | Readonly<{ readonly kind: 'set-movement'; readonly movement: NonMekMovementDeclaration | null }>
-    | Readonly<{ readonly kind: 'set-cover'; readonly cover: UnitCover | null }>
-    | Readonly<{ readonly kind: 'set-spotting'; readonly spotting: boolean }>
-    | Readonly<{ readonly kind: 'set-control-recovery'; readonly workflow: NonMekControlRecoveryWorkflow | null }>
-    | Readonly<{
-        readonly kind: 'end-phase';
-        /** Set only when End Turn is completing its prerequisite phase. */
-        readonly endTurnBoundary?: true;
-    }>
-    | Readonly<{
-        readonly kind: 'mark-end-turn-heat-staged';
-        }>
-    | Readonly<{ readonly kind: 'cancel-pending' }>
-    | Readonly<{
-        readonly kind: 'end-turn';
-        /** Defaults to automatic; manual leaves current heat unchanged unless an explicit override exists. */
-        readonly heatPolicy?: 'automatic' | 'manual';
-    }>;
-
 export type NonMekUnitCommandResult = CBTUnitCommandResult<NonMekUnitRuntimeState>;
 
 export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRuntimeState {
-    if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
+    if (entity.entityType === 'Mek') throw new Error('Meks require slot mechanics');
     return freezeNonMekUnitState({
         stateRevision: 0,
         explicitlyDestroyed: false,
@@ -661,27 +508,10 @@ export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRun
     });
 }
 
-export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
-    const { equipmentRowOrder: rawEquipmentRowOrder, ...values } = state;
-    const equipmentRowOrder = freezeEquipmentRowOrder(rawEquipmentRowOrder);
+export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
+    const state = freezeCommonUnitRuntimeState(raw);
     return Object.freeze({
-        ...values,
-        locations: new ImmutableIndex([...state.locations].map(([id, value]) => [
-            id,
-            Object.freeze({
-                internalDamage: value.internalDamage,
-                armorDamage: Object.freeze(value.armorDamage.map(entry => Object.freeze({ ...entry }))),
-            }),
-        ] as const)),
-        components: new ImmutableIndex([...state.components].map(([id, value]) => [
-            id,
-            Object.freeze({
-                ...value,
-                ...(value.escalatingFailure === undefined
-                    ? {}
-                    : { escalatingFailure: Object.freeze({ ...value.escalatingFailure }) }),
-            }),
-        ] as const)),
+        ...state,
         damageTracks: new ImmutableIndex([...state.damageTracks].map(([id, value]) => [
             id,
             Object.freeze({
@@ -689,16 +519,6 @@ export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnit
                 hitTimestamps: Object.freeze([...value.hitTimestamps]),
             }),
         ] as const)),
-        ammo: new ImmutableIndex([...state.ammo].map(([id, value]) => [
-            id,
-            Object.freeze({ ...value }),
-        ] as const)),
-        crew: new ImmutableIndex([...state.crew].map(([id, value]) => [
-            id,
-            Object.freeze({ ...value }),
-        ] as const)),
-        conditions: new ImmutableSet(state.conditions),
-        heat: Object.freeze({ ...state.heat }),
         turn: Object.freeze({
             turnCounter: state.turn.turnCounter,
             airborne: state.turn.airborne,
@@ -719,12 +539,8 @@ export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnit
                     boosterComponentIds: Object.freeze([...state.turn.movement.boosterComponentIds]),
                 }),
         }),
-        attackerTargeting: freezeAttackerTargetingState(state.attackerTargeting),
-        ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         pendingCombat: Object.freeze({
-            locationInternalDamage: new ImmutableIndex(state.pendingCombat.locationInternalDamage),
-            armorDamage: new ImmutableIndex(state.pendingCombat.armorDamage),
-            componentStatus: new ImmutableIndex(state.pendingCombat.componentStatus),
+            ...state.pendingCombat,
             damageTrackHits: new ImmutableIndex([...state.pendingCombat.damageTrackHits].map(([id, value]) => [
                 id,
                 Object.freeze({
@@ -736,413 +552,293 @@ export function freezeNonMekUnitState(state: NonMekUnitRuntimeState): NonMekUnit
     });
 }
 
-/** Direct non-Mek runtime. It owns sparse state and computes through its exact entity. */
-export class NonMekUnitInstance {
-    private state: NonMekUnitRuntimeState;
-    private readonly index: NonMekRuntimeIndex;
-    public readonly crewAssignment: CrewAssignment;
+/** Immutable entity/rules binding for system-track mechanics. */
+export interface NonMekRuntimeBinding {
+    readonly entity: BaseEntity;
+    readonly index: NonMekRuntimeIndex;
+    readonly ruleset: CBTRuleset;
+    readonly forcedWithdrawal: boolean;
+    readonly crewAssignment: CrewAssignment;
+}
 
-    public constructor(
-        public readonly id: string,
-        public readonly baselineRef: InstanceBaselineRef,
-        private readonly entity: BaseEntity,
-        public readonly ruleset: CBTRuleset,
-        initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
-        public readonly forcedWithdrawal = true,
-        crewAssignment?: CrewAssignment,
-    ) {
-        if (entity.entityType === 'Mek') throw new Error('Meks require CBTUnitInstance');
-        if (baselineRef.entity !== entity.uuid()) {
-            throw new Error('Runtime baseline does not match the entity UUID');
-        }
-        if (baselineRef.ruleset !== ruleset) throw new Error('Runtime ruleset does not match its baseline');
-        if (typeof forcedWithdrawal !== 'boolean') throw new Error('Forced withdrawal gate must be boolean');
-        this.index = buildNonMekRuntimeIndex(entity);
-        this.crewAssignment = canonicalizeCrewAssignment(this.index.crewPositions,
-            crewAssignment ?? createDefaultCrewAssignment(this.index.crewPositions));
-        this.state = validateState({ ...initialState, crew: assignedCrewRuntimeState(initialState.crew, this.crewAssignment) }, this.index, entity, ruleset);
+/** Prepares immutable non-slot mechanics and one initial snapshot without owning it. */
+export function createNonMekRuntimeBinding(
+    entity: BaseEntity, ruleset: CBTRuleset,
+    initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
+    forcedWithdrawal = true, crewAssignment?: CrewAssignment,
+): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState }> {
+    if (entity.entityType === 'Mek') throw new Error('Meks require slot mechanics');
+    if (typeof forcedWithdrawal !== 'boolean') throw new Error('Forced withdrawal gate must be boolean');
+    const index = buildNonMekRuntimeIndex(entity);
+    const assignment = canonicalizeCrewAssignment(index.crewPositions,
+        crewAssignment ?? createDefaultCrewAssignment(index.crewPositions));
+    const binding = Object.freeze({ entity, index, ruleset, forcedWithdrawal, crewAssignment: assignment });
+    const state = validateState({ ...initialState, crew: assignedCrewRuntimeState(initialState.crew, assignment) },
+        index, entity, ruleset);
+    return Object.freeze({ binding, state });
+}
+
+export function queryNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState): CBTUnitQueryPort {
+    return createNonMekUnitQuery(binding.entity, binding.index, state,
+        binding.ruleset, binding.forcedWithdrawal, binding.crewAssignment);
+}
+
+export function reduceNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
+    command: CBTUnitCommand): NonMekUnitCommandResult {
+    try {
+        const next = reduceNonMekUnitState(state, binding.index, binding.entity, binding.ruleset,
+            command, binding.crewAssignment);
+        return Object.freeze({ accepted: true, changed: next !== null, state: next ?? state });
+    } catch {
+        return Object.freeze({ accepted: true, changed: false, state });
     }
+}
 
-    public getUnit(): BaseEntity {
-        return this.entity;
-    }
-
-    public getIndex(): NonMekRuntimeIndex {
-        return this.index;
-    }
-
-    public matchesEntity(entity: BaseEntity): boolean {
-        return entity === this.entity;
-    }
-
-    public revision(): number {
-        return this.state.stateRevision;
-    }
-
-    public snapshot(): NonMekUnitRuntimeState {
-        return this.state;
-    }
-
-    /** Immutable, state-captured reads shared with the force-level snapshot. */
-    public query(): CBTUnitQueryPort {
-        return createNonMekUnitQuery(
-            this.entity,
-            this.index,
-            this.state,
-            this.ruleset,
-            this.forcedWithdrawal,
-            this.crewAssignment,
-        );
-    }
-
-    public turnState(): NonMekTurnRuntimeState {
-        return this.state.turn;
-    }
-
-    public destroyed(): boolean {
-        return this.query().destroyed();
-    }
-
-    public hasCondition(condition: UnitConditionKey): boolean {
-        return this.query().hasCondition(condition);
-    }
-
-    public vehicleRules(): VehicleRuntimeRulesProjection | null {
-        if (!isVehicleEntity(this.entity)) return null;
-        return projectVehicleRuntimeRules(this.entity, this.index, this.state, this.ruleset, this.crewAssignment);
-    }
-
-    public infantryRules(): InfantryRuntimeRulesProjection | null {
-        if (!isInfantryFamilyEntity(this.entity)) return null;
-        return projectInfantryRuntimeRules(this.entity, this.index, this.state);
-    }
-
-    public componentStatus(
-        componentId: ComponentId,
-        perspective: 'committed' | 'preview' = 'committed',
-    ): EquipmentStatus {
-        return this.query().componentStatus(componentId, perspective);
-    }
-
-    public componentMode(componentId: ComponentId): string | undefined {
-        return this.query().componentMode(componentId);
-    }
-
-    /** Updates presentation order without entering gameplay undo/history. */
-    public setEquipmentRowOrder(
-        group: EquipmentRowOrderGroup,
-        permutation: readonly number[],
-        rowCount: number,
-        forceReadOnly: boolean,
-    ): NonMekUnitCommandResult {
-        if (forceReadOnly) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                state: this.state,
-            });
-        }
-        let equipmentRowOrder: EquipmentRowOrderState | undefined;
-        try {
-            equipmentRowOrder = updateEquipmentRowOrder(
-                this.state.equipmentRowOrder,
-                group,
-                permutation,
-                rowCount,
-            );
-        } catch {
-            return Object.freeze({ accepted: true, changed: false, state: this.state });
-        }
-        if (equipmentRowOrder === this.state.equipmentRowOrder) {
-            return Object.freeze({ accepted: true, changed: false, state: this.state });
-        }
-        const { equipmentRowOrder: _currentOrder, ...current } = this.state;
-        this.state = freezeNonMekUnitState({
-            ...current,
-            stateRevision: nextRevision(this.state.stateRevision),
-            ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
-        });
-        return Object.freeze({ accepted: true, changed: true, state: this.state });
-    }
-
-    public dispatchAttackerTargeting(
-        command: NonMekAttackerTargetingCommand,
-        registry: TargetRegistrySnapshot,
-        forceReadOnly: boolean,
-    ): NonMekUnitCommandResult {
-        if (forceReadOnly) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                state: this.state,
-            });
-        }
-        const selectedComponentIds = command.edit.kind === 'set-component-selection'
-            ? command.edit.selection === null ? [] : [command.edit.componentId]
-            : command.edit.kind === 'set-component-selections' && command.edit.selection !== null
-                ? command.edit.componentIds
-                : [];
-        if (selectedComponentIds.length > 0
-            && (hasVacantNonMekCrew(this.index, this.crewAssignment)
-                || this.destroyed()
-                || selectedComponentIds.some(componentId =>
-                    this.state.components.get(componentId)?.jammed === true
-                    || this.componentStatus(componentId, 'committed') !== 'available')
-                || mobileHpgBlocksWeaponAttacks(buildNonMekMobileHpgFacts(
-                    this.entity,
-                    this.index,
-                    this.state,
-                    this.ruleset,
-                )))) {
-            return Object.freeze({
-                accepted: true,
-                changed: false,
-                state: this.state,
-            });
-        }
-        const context = buildNonMekAttackerTargetingContext(
-            this.entity,
-            this.index,
-            this.ruleset,
-            this.state,
-            registry,
-            false,
-        );
-        const reduced = reduceAttackerTargetingCommand(this.state.attackerTargeting, context, {
-            expectedRegistryRevision: registry.revision,
-            ...command.edit,
-        });
-        if (!reduced.accepted) {
-            return Object.freeze({
-                accepted: forceReadOnly ? false : true,
-                changed: false,
-                state: this.state,
-            });
-        }
-        if (!reduced.changed) {
-            return Object.freeze({ accepted: true, changed: false, state: this.state });
-        }
-        this.state = freezeNonMekUnitState({
-            ...this.state,
-            attackerTargeting: reduced.state,
-        });
-        return Object.freeze({ accepted: true, changed: true, state: this.state });
-    }
-
-    /** Fires the current canonical weapon selections through the Non-Mek runtime owner. */
-    public dispatchSelectedWeaponFire(
-        command: CBTUnitSelectedWeaponFireCommand,
-        registry: TargetRegistrySnapshot,
-        forceReadOnly: boolean,
-        c3Available: boolean,
-    ): NonMekSelectedWeaponFireResult {
-        const unchanged = (): NonMekSelectedWeaponFireResult => Object.freeze({
-            accepted: true,
-            changed: false,
-            state: this.state,
-            prototypeHeat: Object.freeze([]),
-        });
-        if (forceReadOnly) return Object.freeze({
+export function reduceNonMekAttackerTargeting(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
+    command: CBTUnitAttackerTargetingCommand, registry: TargetRegistrySnapshot,
+    forceReadOnly: boolean): NonMekUnitCommandResult {
+    const query = queryNonMekRuntime(binding, state);
+    if (forceReadOnly) {
+        return Object.freeze({
             accepted: false,
             changed: false,
-            state: this.state,
-            prototypeHeat: Object.freeze([]),
-        });
-        if (mobileHpgBlocksWeaponAttacks(buildNonMekMobileHpgFacts(
-            this.entity,
-            this.index,
-            this.state,
-            this.ruleset,
-        ))) return unchanged();
-        if (command.heatPolicy !== 'automatic' && command.heatPolicy !== 'manual') {
-            return unchanged();
-        }
-        const heatRollEvidence = prototypeLaserHeatRollMap(command.prototypeHeatRolls);
-        if (!heatRollEvidence.accepted) return unchanged();
-
-        let context: AttackerTargetingValidationContext;
-        try {
-            context = buildNonMekAttackerTargetingContext(
-                this.entity,
-                this.index,
-                this.ruleset,
-                this.state,
-                registry,
-                false,
-            );
-        } catch {
-            return unchanged();
-        }
-        const reconciled = reconcileAttackerTargetingState(this.state.attackerTargeting, context);
-        if (!reconciled.accepted || reconciled.changed) return unchanged();
-
-        const selected = [...this.state.attackerTargeting.components]
-            .filter(([, component]) => component.selection !== undefined)
-            .sort(([left], [right]) => compareText(left, right));
-        if (selected.length === 0 || selected.length > MAX_ATTACKER_TARGETING_COMPONENTS) {
-            return unchanged();
-        }
-        if (!c3Available && selected.some(([, component]) => component.selection?.kind === 'target'
-            && this.state.attackerTargeting.targets.get(component.selection.targetId)?.useC3 === true)) {
-            return unchanged();
-        }
-
-        const ammoSpends = new Map<ComponentId, number>();
-        const prototypeHeat: PrototypeLaserHeatResult[] = [];
-        let heat = 0;
-        const vehicle = this.vehicleRules();
-        const infantry = this.infantryRules();
-        if (hasVacantNonMekCrew(this.index, this.crewAssignment)
-            || this.destroyed() || this.hasCondition('shutdown')) return unchanged();
-        for (const [weaponId, targeting] of selected) {
-            const component = this.index.components.get(weaponId);
-            const weapon = component?.mount.equipment;
-            if (!(weapon instanceof WeaponEquipment)
-                || component?.mount.isPhysicalWeapon()
-                || this.componentStatus(weaponId, 'committed') !== 'available'
-                || this.state.components.get(weaponId)?.jammed === true
-                || vehicle?.fireBlockedComponentIds.has(weaponId) === true
-                || infantry?.fireBlockedComponentIds.has(weaponId) === true) {
-                return unchanged();
-            }
-            const mode = this.componentMode(weaponId);
-            const shots = rapidFireAutocannonShotCount(weapon, mode);
-            const bombast = bombastLaserEquipmentProfile(weapon, this.ruleset, mode);
-            heat += (bombast?.heat ?? weapon.heat) * shots;
-            const maximumPrototypeHeat = prototypeLaserMaximumExtraHeat(weapon.internalName);
-            if (this.entity.tracksHeat() && maximumPrototypeHeat > 0) {
-                if (this.entity.unitType() === 'Aero') {
-                    heat += maximumPrototypeHeat * shots;
-                } else {
-                    const rolled = prototypeLaserHeatForRoll(
-                        weapon.internalName,
-                        weaponId,
-                        heatRollEvidence.rolls.get(weaponId) ?? 0,
-                    );
-                    if (rolled === null) return unchanged();
-                    const result = shots === 1
-                        ? rolled
-                        : Object.freeze({
-                            ...rolled,
-                            additionalHeat: rolled.additionalHeat * shots,
-                            detail: `${rolled.detail} × ${shots}`,
-                        });
-                    prototypeHeat.push(result);
-                    heat += result.additionalHeat;
-                }
-            }
-            if (!Number.isSafeInteger(heat) || heat < 0 || heat > 1_000_000) {
-                return unchanged();
-            }
-            if (weapon.ammoType === 'NA') {
-                if (targeting.ammo !== undefined) return unchanged();
-                continue;
-            }
-            const ammoSelection = targeting.ammo;
-            if (!ammoSelection?.preferredSourceId) return unchanged();
-            const sourceId = ammoSelection.preferredSourceId;
-            const source = this.index.components.get(sourceId);
-            const runtimeAmmo = this.state.ammo.get(sourceId);
-            const loadout = source === undefined ? null : entityAmmoLoadout(
-                this.entity,
-                source.mount,
-                this.ruleset,
-                runtimeAmmo?.munitionOverride,
-            );
-            if (!source
-                || !loadout
-                || loadout.munitionKey !== ammoSelection.munitionKey
-                || this.componentStatus(sourceId, 'committed') !== 'available'
-                || !weaponAcceptsAmmo(weapon, loadout.equipment, mode)) {
-                return unchanged();
-            }
-            ammoSpends.set(sourceId, (ammoSpends.get(sourceId) ?? 0) + shots);
-        }
-
-        const ammo = new Map(this.state.ammo);
-        for (const [sourceId, amount] of ammoSpends) {
-            const source = this.index.components.get(sourceId)!;
-            const current = ammo.get(sourceId);
-            const loadout = entityAmmoLoadout(
-                this.entity,
-                source.mount,
-                this.ruleset,
-                current?.munitionOverride,
-            )!;
-            const shotsSpent = (current?.shotsSpent ?? 0) + amount;
-            if (shotsSpent > loadout.capacity) return unchanged();
-            ammo.set(sourceId, Object.freeze({
-                shotsSpent,
-                ...(current?.munitionOverride === undefined
-                    ? {}
-                    : { munitionOverride: current.munitionOverride }),
-            }));
-        }
-        const weaponsHeat = this.state.turn.weaponsHeat + (this.entity.tracksHeat() ? heat : 0);
-        if (!Number.isSafeInteger(weaponsHeat) || weaponsHeat > 1_000_000) {
-            return unchanged();
-        }
-        this.state = freezeNonMekUnitState({
-            ...this.state,
-            stateRevision: nextRevision(this.state.stateRevision),
-            ammo,
-            turn: Object.freeze({ ...this.state.turn, weaponsHeat }),
-        });
-        return Object.freeze({
-            accepted: true,
-            changed: true,
-            state: this.state,
-            prototypeHeat: Object.freeze(prototypeHeat.sort((left, right) =>
-                left.weaponId.localeCompare(right.weaponId))),
+            state: state,
         });
     }
+    const selectedComponentIds = command.edit.kind === 'set-component-selection'
+        ? command.edit.selection === null ? [] : [command.edit.componentId]
+        : command.edit.kind === 'set-component-selections' && command.edit.selection !== null
+            ? command.edit.componentIds
+            : [];
+    if (selectedComponentIds.length > 0
+        && (hasVacantNonMekCrew(binding.index, binding.crewAssignment)
+            || query.destroyed()
+            || selectedComponentIds.some(componentId =>
+                state.components.get(componentId)?.jammed === true
+                || query.componentStatus(componentId, 'committed') !== 'available')
+            || mobileHpgBlocksWeaponAttacks(buildNonMekMobileHpgFacts(
+                binding.entity,
+                binding.index,
+                state,
+                binding.ruleset,
+            )))) {
+        return Object.freeze({
+            accepted: true,
+            changed: false,
+            state: state,
+        });
+    }
+    const context = buildNonMekAttackerTargetingContext(
+        binding.entity,
+        binding.index,
+        binding.ruleset,
+        state,
+        registry,
+        false,
+    );
+    const reduced = reduceAttackerTargetingCommand(state.attackerTargeting, context, {
+        expectedRegistryRevision: registry.revision,
+        ...command.edit,
+    });
+    if (!reduced.accepted) {
+        return Object.freeze({
+            accepted: forceReadOnly ? false : true,
+            changed: false,
+            state: state,
+        });
+    }
+    if (!reduced.changed) {
+        return Object.freeze({ accepted: true, changed: false, state: state });
+    }
+    const next = freezeNonMekUnitState({
+        ...state,
+        attackerTargeting: reduced.state,
+    });
+    return Object.freeze({ accepted: true, changed: true, state: next });
+}
 
-    public planAttackerTargetingReconciliation(
-        registry: TargetRegistrySnapshot,
-    ): NonMekAttackerTargetingReconciliationPlan | null {
-        const context = buildNonMekAttackerTargetingContext(
-            this.entity,
-            this.index,
-            this.ruleset,
-            this.state,
+export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
+    command: CBTUnitSelectedWeaponFireCommand, registry: TargetRegistrySnapshot,
+    forceReadOnly: boolean, c3Available: boolean): NonMekSelectedWeaponFireResult {
+    const query = queryNonMekRuntime(binding, state);
+    const unchanged = (): NonMekSelectedWeaponFireResult => Object.freeze({
+        accepted: true,
+        changed: false,
+        state: state,
+        prototypeHeat: Object.freeze([]),
+    });
+    if (forceReadOnly) return Object.freeze({
+        accepted: false,
+        changed: false,
+        state: state,
+        prototypeHeat: Object.freeze([]),
+    });
+    if (mobileHpgBlocksWeaponAttacks(buildNonMekMobileHpgFacts(
+        binding.entity,
+        binding.index,
+        state,
+        binding.ruleset,
+    ))) return unchanged();
+    if (command.heatPolicy !== 'automatic' && command.heatPolicy !== 'manual') {
+        return unchanged();
+    }
+    const heatRollEvidence = prototypeLaserHeatRollMap(command.prototypeHeatRolls);
+    if (!heatRollEvidence.accepted) return unchanged();
+
+    let context: AttackerTargetingValidationContext;
+    try {
+        context = buildNonMekAttackerTargetingContext(
+            binding.entity,
+            binding.index,
+            binding.ruleset,
+            state,
             registry,
             false,
         );
-        const reduced = reconcileAttackerTargetingState(this.state.attackerTargeting, context);
-        if (!reduced.accepted) {
-            throw new Error(`Non-Mek attacker targeting reconciliation failed: ${reduced.reason}`);
+    } catch {
+        return unchanged();
+    }
+    const reconciled = reconcileAttackerTargetingState(state.attackerTargeting, context);
+    if (!reconciled.accepted || reconciled.changed) return unchanged();
+
+    const selected = [...state.attackerTargeting.components]
+        .filter(([, component]) => component.selection !== undefined)
+        .sort(([left], [right]) => compareText(left, right));
+    if (selected.length === 0 || selected.length > MAX_ATTACKER_TARGETING_COMPONENTS) {
+        return unchanged();
+    }
+    if (!c3Available && selected.some(([, component]) => component.selection?.kind === 'target'
+        && state.attackerTargeting.targets.get(component.selection.targetId)?.useC3 === true)) {
+        return unchanged();
+    }
+
+    const ammoSpends = new Map<ComponentId, number>();
+    const prototypeHeat: PrototypeLaserHeatResult[] = [];
+    let heat = 0;
+    const vehicle = isVehicleEntity(binding.entity) ? projectVehicleRuntimeRules(binding.entity, binding.index, state, binding.ruleset, binding.crewAssignment) : null;
+    const infantry = isInfantryFamilyEntity(binding.entity) ? projectInfantryRuntimeRules(binding.entity, binding.index, state) : null;
+    if (hasVacantNonMekCrew(binding.index, binding.crewAssignment)
+        || query.destroyed() || query.hasCondition('shutdown')) return unchanged();
+    for (const [weaponId, targeting] of selected) {
+        const component = binding.index.components.get(weaponId);
+        const weapon = component?.mount.equipment;
+        if (!(weapon instanceof WeaponEquipment)
+            || component?.mount.isPhysicalWeapon()
+            || query.componentStatus(weaponId, 'committed') !== 'available'
+            || state.components.get(weaponId)?.jammed === true
+            || vehicle?.fireBlockedComponentIds.has(weaponId) === true
+            || infantry?.fireBlockedComponentIds.has(weaponId) === true) {
+            return unchanged();
         }
-        return reduced.changed
-            ? Object.freeze({ nextTargeting: reduced.state })
-            : null;
-    }
-
-    public installAttackerTargetingReconciliation(
-        plan: NonMekAttackerTargetingReconciliationPlan,
-    ): void {
-        this.state = freezeNonMekUnitState({
-            ...this.state,
-            attackerTargeting: plan.nextTargeting,
-        });
-    }
-
-    /** Replaces force-session targeting without changing durable unit authority. */
-    public installAttackerTargetingSessionState(targeting: AttackerTargetingState): void {
-        this.state = freezeNonMekUnitState({ ...this.state, attackerTargeting: targeting });
-    }
-
-    public dispatch(command: NonMekUnitCommand): NonMekUnitCommandResult {
-        let next: NonMekUnitRuntimeState | null;
-        try {
-            next = reduceNonMekUnitState(this.state, this.index, this.entity, this.ruleset, command, this.crewAssignment);
-        } catch {
-            return Object.freeze({ accepted: true, changed: false, state: this.state });
+        const mode = query.componentMode(weaponId);
+        const shots = rapidFireAutocannonShotCount(weapon, mode);
+        const bombast = bombastLaserEquipmentProfile(weapon, binding.ruleset, mode);
+        heat += (bombast?.heat ?? weapon.heat) * shots;
+        const maximumPrototypeHeat = prototypeLaserMaximumExtraHeat(weapon.internalName);
+        if (binding.entity.tracksHeat() && maximumPrototypeHeat > 0) {
+            if (binding.entity.unitType() === 'Aero') {
+                heat += maximumPrototypeHeat * shots;
+            } else {
+                const rolled = prototypeLaserHeatForRoll(
+                    weapon.internalName,
+                    weaponId,
+                    heatRollEvidence.rolls.get(weaponId) ?? 0,
+                );
+                if (rolled === null) return unchanged();
+                const result = shots === 1
+                    ? rolled
+                    : Object.freeze({
+                        ...rolled,
+                        additionalHeat: rolled.additionalHeat * shots,
+                        detail: `${rolled.detail} × ${shots}`,
+                    });
+                prototypeHeat.push(result);
+                heat += result.additionalHeat;
+            }
         }
-        if (next === null) return Object.freeze({ accepted: true, changed: false, state: this.state });
-        const crew = assignedCrewRuntimeState(next.crew, this.crewAssignment);
-        this.state = crew === next.crew ? next : freezeNonMekUnitState({ ...next, crew });
-        return Object.freeze({ accepted: true, changed: true, state: this.state });
+        if (!Number.isSafeInteger(heat) || heat < 0 || heat > 1_000_000) {
+            return unchanged();
+        }
+        if (weapon.ammoType === 'NA') {
+            if (targeting.ammo !== undefined) return unchanged();
+            continue;
+        }
+        const ammoSelection = targeting.ammo;
+        if (!ammoSelection?.preferredSourceId) return unchanged();
+        const sourceId = ammoSelection.preferredSourceId;
+        const source = binding.index.components.get(sourceId);
+        const runtimeAmmo = state.ammo.get(sourceId);
+        const loadout = source === undefined ? null : entityAmmoLoadout(
+            binding.entity,
+            source.mount,
+            binding.ruleset,
+            runtimeAmmo?.munitionOverride,
+        );
+        if (!source
+            || !loadout
+            || loadout.munitionKey !== ammoSelection.munitionKey
+            || query.componentStatus(sourceId, 'committed') !== 'available'
+            || !weaponAcceptsAmmo(weapon, loadout.equipment, mode)) {
+            return unchanged();
+        }
+        ammoSpends.set(sourceId, (ammoSpends.get(sourceId) ?? 0) + shots);
     }
+
+    const ammo = new Map(state.ammo);
+    for (const [sourceId, amount] of ammoSpends) {
+        const source = binding.index.components.get(sourceId)!;
+        const current = ammo.get(sourceId);
+        const loadout = entityAmmoLoadout(
+            binding.entity,
+            source.mount,
+            binding.ruleset,
+            current?.munitionOverride,
+        )!;
+        const shotsSpent = (current?.shotsSpent ?? 0) + amount;
+        if (shotsSpent > loadout.capacity) return unchanged();
+        ammo.set(sourceId, Object.freeze({
+            shotsSpent,
+            ...(current?.munitionOverride === undefined
+                ? {}
+                : { munitionOverride: current.munitionOverride }),
+        }));
+    }
+    const weaponsHeat = state.turn.weaponsHeat + (binding.entity.tracksHeat() ? heat : 0);
+    if (!Number.isSafeInteger(weaponsHeat) || weaponsHeat > 1_000_000) {
+        return unchanged();
+    }
+    const next = freezeNonMekUnitState({
+        ...state,
+        stateRevision: nextRevision(state.stateRevision),
+        ammo,
+        turn: Object.freeze({ ...state.turn, weaponsHeat }),
+    });
+    return Object.freeze({
+        accepted: true,
+        changed: true,
+        state: next,
+        prototypeHeat: Object.freeze(prototypeHeat.sort((left, right) =>
+            left.weaponId.localeCompare(right.weaponId))),
+    });
+}
+
+export function planNonMekAttackerTargetingReconciliation(binding: NonMekRuntimeBinding,
+    state: NonMekUnitRuntimeState, registry: TargetRegistrySnapshot): CBTUnitAttackerTargetingReconciliationPlan | null {
+    const context = buildNonMekAttackerTargetingContext(
+        binding.entity,
+        binding.index,
+        binding.ruleset,
+        state,
+        registry,
+        false,
+    );
+    const reduced = reconcileAttackerTargetingState(state.attackerTargeting, context);
+    if (!reduced.accepted) {
+        throw new Error(`Non-Mek attacker targeting reconciliation failed: ${reduced.reason}`);
+    }
+    return reduced.changed
+        ? Object.freeze({ nextTargeting: reduced.state })
+        : null;
 }
 
 interface ProjectedNonMekRuntime {
@@ -1150,7 +846,7 @@ interface ProjectedNonMekRuntime {
     readonly protoMek: ProtoMekRuntimeRulesProjection | null;
     readonly infantry: InfantryRuntimeRulesProjection | null;
     readonly aero: AeroRuntimeRulesProjection | null;
-    componentStatuses(): NonMekComponentStatuses;
+    componentStatuses(): ComponentStatusProjection;
 }
 
 const EMPTY_COMPUTED_CONDITIONS: readonly UnitConditionKey[] = Object.freeze([]);
@@ -1175,21 +871,21 @@ function projectNonMekRuntime(
     const aero = isAeroEntity(entity)
         ? projectAeroRuntimeRules(entity, index, state, ruleset)
         : null;
-    const vehicleStatuses: NonMekComponentStatuses | null = vehicle === null
+    const vehicleStatuses: ComponentStatusProjection | null = vehicle === null
         ? null
         : Object.freeze({
             committed: vehicle.componentStatuses,
             preview: vehicle.previewComponentStatuses,
         });
-    let nonVehicleStatuses: NonMekComponentStatuses | undefined;
+    let nonVehicleStatuses: ComponentStatusProjection | undefined;
     return Object.freeze({
         vehicle,
         protoMek,
         infantry,
         aero,
-        componentStatuses: (): NonMekComponentStatuses => {
+        componentStatuses: (): ComponentStatusProjection => {
             if (vehicleStatuses !== null) return vehicleStatuses;
-            return nonVehicleStatuses ??= projectNonMekComponentStatuses(index, state);
+            return nonVehicleStatuses ??= projectComponentLocationStatuses(index, state);
         },
     });
 }
@@ -1484,11 +1180,11 @@ function reduceNonMekUnitState(
     index: NonMekRuntimeIndex,
     entity: BaseEntity,
     ruleset: CBTRuleset,
-    command: NonMekUnitCommand,
+    command: CBTUnitCommand,
     crewAssignment: CrewAssignment,
 ): NonMekUnitRuntimeState | null {
     let candidate: Omit<NonMekUnitRuntimeState, 'stateRevision'> & { stateRevision: number } = state;
-    switch (command.kind) {
+    switch (command.type) {
         case 'set-destroyed':
             if (!command.destroyed && hasDetonatedNonMekBoobyTrap(index, state)) {
                 throw new Error('A detonated Booby Trap cannot be reset');
@@ -1501,7 +1197,7 @@ function reduceNonMekUnitState(
             const equipment = component?.mount.equipment;
             const statuses = isVehicleEntity(entity)
                 ? projectVehicleRuntimeRules(entity, index, state, ruleset).componentStatuses
-                : projectNonMekComponentStatuses(index, state).committed;
+                : projectComponentLocationStatuses(index, state).committed;
             if (!component
                 || !isBoobyTrapEquipment(equipment)
                 || entityRuntimeDestroyed(entity, index, state, ruleset)
@@ -1509,7 +1205,7 @@ function reduceNonMekUnitState(
                 || isBoobyTrapDetonated(state.components.get(command.componentId)?.mode)) {
                 throw new Error('Invalid Booby Trap detonation');
             }
-            const detonated = withNonMekComponentMode(
+            const detonated = withComponentMode(
                 state,
                 command.componentId,
                 BOOBY_TRAP_DETONATED_MODE,
@@ -1556,7 +1252,7 @@ function reduceNonMekUnitState(
         case 'repair-internal': {
             const location = index.locations.get(command.locationId);
             if (!location) throw new Error('Unknown location');
-            const delta = command.kind === 'damage-internal'
+            const delta = command.type === 'damage-internal'
                 ? positiveAmount(command.amount)
                 : -positiveAmount(command.amount);
             candidate = changeInternalDamage(state, location.id, location.internalPoints, delta, command.target);
@@ -1567,7 +1263,7 @@ function reduceNonMekUnitState(
         case 'repair-armor': {
             const face = index.armorFaces.get(command.faceId);
             if (!face) throw new Error('Unknown armor face');
-            const delta = command.kind === 'damage-armor'
+            const delta = command.type === 'damage-armor'
                 ? positiveAmount(command.amount)
                 : -positiveAmount(command.amount);
             candidate = changeArmorDamage(state, face.locationId, face.id, face.maximumPoints, delta, command.target);
@@ -1578,7 +1274,7 @@ function reduceNonMekUnitState(
         case 'repair-damage-track': {
             const definition = index.damageTracks.get(command.damageTrackId);
             if (!definition) throw new Error('Unknown non-Mek damage track');
-            const delta = command.kind === 'damage-track'
+            const delta = command.type === 'damage-track'
                 ? positiveAmount(command.amount)
                 : -positiveAmount(command.amount);
             candidate = changeDamageTrackHits(
@@ -1587,7 +1283,7 @@ function reduceNonMekUnitState(
                 definition.maximumHits,
                 delta,
                 command.target,
-                command.kind === 'damage-track' ? command.timestamp : undefined,
+                command.type === 'damage-track' ? command.timestamp : undefined,
             );
             if (candidate === state) return null;
             break;
@@ -1604,25 +1300,9 @@ function reduceNonMekUnitState(
             break;
         case 'set-component-status': {
             if (!index.components.has(command.componentId)) throw new Error('Unknown component');
-            const committedStatus = state.components.get(command.componentId)?.statusOverride ?? 'available';
-            if (command.target === 'pending') {
-                const currentStatus = state.pendingCombat.componentStatus.get(command.componentId)
-                    ?? committedStatus;
-                if (currentStatus === command.status) return null;
-                const componentStatus = new Map(state.pendingCombat.componentStatus);
-                if (command.status === committedStatus) componentStatus.delete(command.componentId);
-                else componentStatus.set(command.componentId, command.status);
-                candidate = {
-                    ...state,
-                    pendingCombat: { ...state.pendingCombat, componentStatus },
-                };
-                break;
-            }
-            if (committedStatus === command.status) return null;
-            candidate = {
-                ...state,
-                components: setComponentStatus(state.components, command.componentId, command.status),
-            };
+            candidate = (command.target === 'pending'
+                ? withPendingComponentStatuses(state, [command.componentId], command.status)
+                : withComponentStatuses(state, [command.componentId], command.status)) ?? state;
             break;
         }
         case 'set-component-statuses': {
@@ -1633,34 +1313,9 @@ function reduceNonMekUnitState(
                 || command.componentIds.some(componentId => !index.components.has(componentId))) {
                 throw new Error('Invalid components');
             }
-            if (command.target === 'pending') {
-                const componentStatus = new Map(state.pendingCombat.componentStatus);
-                let changed = false;
-                for (const componentId of command.componentIds) {
-                    const committedStatus = state.components.get(componentId)?.statusOverride ?? 'available';
-                    const currentStatus = componentStatus.get(componentId) ?? committedStatus;
-                    if (currentStatus === command.status) continue;
-                    changed = true;
-                    if (command.status === committedStatus) componentStatus.delete(componentId);
-                    else componentStatus.set(componentId, command.status);
-                }
-                if (!changed) return null;
-                candidate = {
-                    ...state,
-                    pendingCombat: { ...state.pendingCombat, componentStatus },
-                };
-                break;
-            }
-            let components: ReadonlyMap<ComponentId, ComponentRuntimeState> = state.components;
-            let changed = false;
-            for (const componentId of command.componentIds) {
-                const committedStatus = components.get(componentId)?.statusOverride ?? 'available';
-                if (committedStatus === command.status) continue;
-                changed = true;
-                components = setComponentStatus(components, componentId, command.status);
-            }
-            if (!changed) return null;
-            candidate = { ...state, components };
+            candidate = (command.target === 'pending'
+                ? withPendingComponentStatuses(state, command.componentIds, command.status)
+                : withComponentStatuses(state, command.componentIds, command.status)) ?? state;
             break;
         }
         case 'set-component-mode': {
@@ -1689,7 +1344,7 @@ function reduceNonMekUnitState(
                     },
                 );
                 if (reason !== null) throw new Error(reason);
-                const updated = withNonMekComponentMode(
+                const updated = withComponentMode(
                     state,
                     command.componentId,
                     command.mode,
@@ -1716,7 +1371,7 @@ function reduceNonMekUnitState(
                         definition?.mount.equipment,
                         ruleset,
                     ).defaultMode;
-                    updated = withNonMekComponentMode(
+                    updated = withComponentMode(
                         updated,
                         update.componentId,
                         update.mode,
@@ -1739,7 +1394,7 @@ function reduceNonMekUnitState(
             if (status !== 'available' || !modeDefinition.modes.includes(command.mode)) {
                 throw new Error('Invalid component mode');
             }
-            const updated = withNonMekComponentMode(
+            const updated = withComponentMode(
                 state,
                 command.componentId,
                 command.mode,
@@ -1920,15 +1575,16 @@ function reduceNonMekUnitState(
             } else candidate = { ...state, conditions };
             break;
         }
+        case 'set-pending-heat': {
+            if (!entity.tracksHeat()) throw new Error('Unit does not track heat');
+            const pendingOverride = command.heat === null ? undefined : boundedHeat(command.heat);
+            if (state.heat.pendingOverride === pendingOverride) return null;
+            candidate = { ...state, heat: { ...state.heat, pendingOverride } };
+            break;
+        }
         case 'set-heat': {
             if (!entity.tracksHeat()) throw new Error('Non-Mek unit does not track heat');
             const heat = boundedHeat(command.heat);
-            if (command.target === 'pending') {
-                const pendingOverride = heat === state.heat.current ? undefined : heat;
-                if (state.heat.pendingOverride === pendingOverride) return null;
-                candidate = { ...state, heat: { ...state.heat, pendingOverride } };
-                break;
-            }
             if (state.heat.current === heat && state.heat.pendingOverride === undefined) return null;
             candidate = {
                 ...state,
@@ -2080,14 +1736,13 @@ function reduceNonMekUnitState(
             if (state.turn.turnCounter >= Number.MAX_SAFE_INTEGER) {
                 throw new Error('Non-Mek turn counter is exhausted');
             }
-            if (command.heatPolicy !== undefined
-                && command.heatPolicy !== 'automatic'
-                && command.heatPolicy !== 'manual') {
+            if (command.policy !== 'automatic'
+                && command.policy !== 'manual') {
                 throw new Error('Invalid non-Mek heat policy');
             }
             const pendingHeatWasExplicit = state.heat.pendingOverride !== undefined;
             let committed = commitPendingNonMekChanges(state, index);
-            if ((command.heatPolicy ?? 'automatic') === 'automatic'
+            if (command.policy === 'automatic'
                 && isAeroEntity(entity)
                 && entity.tracksHeat()
                 && !pendingHeatWasExplicit) {
@@ -2124,6 +1779,7 @@ function reduceNonMekUnitState(
             break;
         }
     }
+    if (candidate === state) return null;
     return freezeNonMekUnitState({ ...candidate, stateRevision: nextRevision(state.stateRevision) });
 }
 
@@ -2247,18 +1903,6 @@ function commitPendingNonMekChanges(
     return commitPendingHeat(commitPendingCombat(state, index));
 }
 
-function commitCrewDeaths(state: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
-    let crew: Map<CrewPositionId, CrewMemberRuntimeState> | undefined;
-    for (const [positionId, current] of state.crew) {
-        const member = CrewMember.from(current);
-        const committed = member.commitDeath();
-        if (committed === member) continue;
-        crew ??= new Map(state.crew);
-        crew.set(positionId, committed.toRuntimeState());
-    }
-    return crew === undefined ? state : { ...state, crew: new ImmutableIndex(crew) };
-}
-
 function commitPendingHeat(state: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
     const pending = state.heat.pendingOverride;
     if (pending === undefined) return state;
@@ -2301,10 +1945,9 @@ function commitPendingCombat(
             Math.max(0, armorDamage(next, face.locationId, faceId) + delta));
         next = setArmorDamage(next, face.locationId, faceId, damage);
     }
-    let components = next.components;
     for (const [componentId, status] of state.pendingCombat.componentStatus) {
         if (!index.components.has(componentId)) continue;
-        components = setComponentStatus(components, componentId, status);
+        next = withComponentStatuses(next, [componentId], status) ?? next;
     }
     const damageTracks = new Map(next.damageTracks);
     for (const [damageTrackId, pending] of state.pendingCombat.damageTrackHits) {
@@ -2318,7 +1961,7 @@ function commitPendingCombat(
         if (hits === 0) damageTracks.delete(damageTrackId);
         else damageTracks.set(damageTrackId, { hits, hitTimestamps });
     }
-    return { ...next, components, damageTracks, pendingCombat: emptyPendingCombat() };
+    return { ...next, damageTracks, pendingCombat: emptyPendingCombat() };
 }
 
 function buildNonMekElectronicFacts(
@@ -2330,7 +1973,7 @@ function buildNonMekElectronicFacts(
     const protoMek = isProtoMekEntity(entity);
     const statuses = isVehicleEntity(entity)
         ? projectVehicleRuntimeRules(entity, index, state, ruleset).componentStatuses
-        : projectNonMekComponentStatuses(index, state).committed;
+        : projectComponentLocationStatuses(index, state).committed;
     const unavailable = entityRuntimeDestroyed(entity, index, state, ruleset)
         || state.conditions.has('shutdown');
     return Object.freeze([...index.components.values()].flatMap(component => {
@@ -2356,7 +1999,7 @@ function buildNonMekMobileHpgFacts(
 ): readonly MobileHpgComponentFact[] {
     const statuses = isVehicleEntity(entity)
         ? projectVehicleRuntimeRules(entity, index, state, ruleset).componentStatuses
-        : projectNonMekComponentStatuses(index, state).committed;
+        : projectComponentLocationStatuses(index, state).committed;
     const unavailable = entityRuntimeDestroyed(entity, index, state, ruleset)
         || state.conditions.has('shutdown');
     return Object.freeze([...index.components.values()].flatMap(component => {
@@ -2406,7 +2049,7 @@ function settleNonMekMobileHpgs(
             entity.weightClass() === 'Large Support',
         );
         if (mode === mobileHpgMode(current)) continue;
-        settled = withNonMekComponentMode(settled, component.id, mode, HPG_IDLE_MODE) ?? settled;
+        settled = withComponentMode(settled, component.id, mode, HPG_IDLE_MODE) ?? settled;
     }
     return settled;
 }
@@ -2428,7 +2071,7 @@ function settleNonMekElectronicSuites(
             definition?.mount.equipment,
             ruleset,
         ).defaultMode;
-        settled = withNonMekComponentMode(
+        settled = withComponentMode(
             settled,
             update.componentId,
             update.mode,
@@ -2469,25 +2112,6 @@ function nonMekMobileHpgHeat(
     );
 }
 
-function withNonMekComponentMode(
-    state: NonMekUnitRuntimeState,
-    componentId: ComponentId,
-    mode: string,
-    defaultMode: string | undefined,
-): NonMekUnitRuntimeState | null {
-    const current = state.components.get(componentId);
-    if ((current?.mode ?? defaultMode) === mode) return null;
-    const components = new Map(state.components);
-    if (mode === defaultMode) {
-        const { mode: _removed, ...remaining } = current ?? {};
-        if (Object.keys(remaining).length === 0) components.delete(componentId);
-        else components.set(componentId, Object.freeze(remaining));
-    } else {
-        components.set(componentId, Object.freeze({ ...current, mode }));
-    }
-    return { ...state, components };
-}
-
 function hasDetonatedNonMekBoobyTrap(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
@@ -2520,24 +2144,6 @@ function canUseNonMekEscalatingFailure(
     return definition.kind !== 'blue-shield'
         || definition.ruleset !== 'total-warfare'
         || entity.entityType !== 'Aero';
-}
-
-function setComponentStatus(
-    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
-    componentId: ComponentId,
-    status: EquipmentStatus,
-): Map<ComponentId, ComponentRuntimeState> {
-    const current = currentComponents.get(componentId);
-    const components = new Map(currentComponents);
-    if (status !== 'available') {
-        components.set(componentId, { ...current, statusOverride: status });
-        return components;
-    }
-    if (!current) return components;
-    const { statusOverride: _removed, ...rest } = current;
-    if (Object.keys(rest).length === 0) components.delete(componentId);
-    else components.set(componentId, rest);
-    return components;
 }
 
 function setLocationDamage(
@@ -2667,8 +2273,8 @@ function setSensorDamageLevel(
     timestamp: number,
 ): NonMekUnitRuntimeState {
     const sensors = [...index.damageTracks.values()]
-        .map(track => ({ track, level: sensorDamageLevel(track.sheetId) }))
-        .filter((entry): entry is { track: NonMekDamageTrackDefinition; level: number } => entry.level !== null)
+        .map(track => ({ track, level: track.system === 'sensors' ? track.stage ?? null : null }))
+        .filter((entry): entry is { track: SystemDamageDefinition; level: number } => entry.level !== null)
         .sort((left, right) => left.level - right.level);
     const maximumLevel = sensors.at(-1)?.level ?? 0;
     if (!Number.isSafeInteger(level) || level < 0 || level > maximumLevel) {
@@ -2694,11 +2300,6 @@ function setSensorDamageLevel(
         }
     }
     return next;
-}
-
-function sensorDamageLevel(sheetId: string): number | null {
-    const match = /^sensor_hit_(\d+)$/u.exec(sheetId);
-    return match ? Number(match[1]) : null;
 }
 
 const NON_MEK_MOVEMENT_MODES = new Set<MotiveModes>([

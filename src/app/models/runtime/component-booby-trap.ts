@@ -69,7 +69,7 @@ export class BoobyTrapHandler extends EquipmentInteractionHandler {
         const equipment = equipmentForComponent(input.index, input.componentId);
         if (!isBoobyTrapEquipment(equipment) || choice.value !== 'detonate') return false;
         if (isBoobyTrapDetonated(input.runtime.query().componentMode(input.componentId))) return true;
-        if (context.dialogsService.requestConfirmation === undefined) return false;
+        if (context.dialogsService.requestConfirmation === undefined || context.dispatch === undefined) return false;
         const confirmed = await context.dialogsService.requestConfirmation(
             `Detonate ${input.entity.displayName()}'s Booby Trap? `
                 + 'The unit will be completely destroyed. Ejection and blast damage must be resolved on the battlefield.',
@@ -78,7 +78,7 @@ export class BoobyTrapHandler extends EquipmentInteractionHandler {
         );
         if (!confirmed) return true;
 
-        const result = input.runtime.dispatch({
+        const result = context.dispatch({
             type: 'detonate-booby-trap',
             componentId: input.componentId,
         });

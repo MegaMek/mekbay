@@ -1,8 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CBTUnitCommand } from './unit-instance';
-
+import type { CBTUnitCommand } from './unit-command';
 export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean {
     switch (command.type) {
         case 'damage-internal':
@@ -13,6 +12,12 @@ export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean 
         case 'apply-mek-critical-roll':
         case 'set-system-critical-level':
         case 'set-component-status':
+        case 'set-component-statuses':
+        case 'set-destroyed':
+        case 'set-internal-damage':
+        case 'damage-track':
+        case 'repair-damage-track':
+        case 'set-sensor-damage-level':
         case 'set-component-mode':
         case 'detonate-booby-trap':
         case 'set-stealth-state':
@@ -48,12 +53,20 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'apply-mek-critical-roll':
         case 'set-system-critical-level':
         case 'set-component-status':
+        case 'set-component-statuses':
+        case 'damage-track':
+        case 'repair-damage-track':
+        case 'set-sensor-damage-level':
         case 'damage-shield':
         case 'repair-shield':
             return command.target === 'committed';
         case 'set-location-condition':
             return command.target === 'committed' && command.condition !== 'narc';
         case 'configure-ammo-source':
+        case 'set-destroyed':
+        case 'set-internal-damage':
+        case 'set-armor-damage':
+        case 'set-ammo-spent':
         case 'reset-ammo-loadout':
         case 'spend-ammo':
         case 'activate-coolant-pod':
@@ -65,6 +78,11 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'commit-pending':
             return true;
         case 'set-component-mode':
+        case 'set-airborne':
+        case 'set-movement':
+        case 'set-cover':
+        case 'set-spotting':
+        case 'set-control-recovery':
         case 'set-stealth-state':
         case 'toggle-gauss-power':
         case 'set-component-jammed':

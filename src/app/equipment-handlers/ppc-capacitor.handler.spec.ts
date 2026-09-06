@@ -1,27 +1,28 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { type CBTMekUnit } from '../models/runtime/cbt-unit';
 import {
-    componentPpcCapacitorDefinition,
-    componentPpcCapacitorFacts,
-    ppcCapacitorChargedForWeapon,
-    ppcCapacitorWeaponTypes,
-    setComponentPpcCapacitorCharge,
+componentPpcCapacitorDefinition,
+componentPpcCapacitorFacts,
+ppcCapacitorChargedForWeapon,
+ppcCapacitorWeaponTypes,
+setComponentPpcCapacitorCharge,
 } from '../models/runtime/component-ppc-capacitor';
-import { canPerformMekAction } from '../models/runtime/mek-action-availability';
 import { projectMekEquipmentComponents } from '../models/runtime/equipment-panel';
+import { canPerformMekAction } from '../models/runtime/mek-action-availability';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import type { CBTUnitInstance } from '../models/runtime/unit-instance';
-import type { WeaponType } from '../models/weapon-types.model';
-import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
-} from '../models/runtime/equipment-interaction';
+
 import {
-    PPC_CAPACITOR_CHARGED_STATE,
-    PPC_CAPACITOR_CHARGING_STATE,
-    PpcCapacitorHandler,
+PPC_CAPACITOR_CHARGED_STATE,
+PPC_CAPACITOR_CHARGING_STATE,
+PpcCapacitorHandler,
 } from '../models/runtime/component-ppc-capacitor';
+import type {
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
+import type { WeaponType } from '../models/weapon-types.model';
 
 describe('PpcCapacitorHandler direct V2 runtime', () => {
     it('charges for one turn, blocks firing, then applies the charged effects', () => {
@@ -80,8 +81,7 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
 
         const fired = setup.runtime.dispatch({
             type: 'fire-weapons',
-            
-            
+
             selections: [{ weaponId: setup.weapon.id }],
             heatPolicy: 'automatic',
         });
@@ -113,8 +113,7 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
         endTurn(setup.runtime, 'ppc:end-before-destroy');
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            
-            
+
             componentId: setup.capacitor.id,
             status: 'destroyed',
             target: 'committed',
@@ -194,11 +193,10 @@ function canFire(setup: DirectPpcSetup): boolean {
     );
 }
 
-function endTurn(runtime: CBTUnitInstance, commandId: string): void {
+function endTurn(runtime: CBTMekUnit, commandId: string): void {
     expect(runtime.dispatch({
         type: 'end-turn',
-        
-        
+
         policy: 'automatic',
     }).accepted).toBeTrue();
 }

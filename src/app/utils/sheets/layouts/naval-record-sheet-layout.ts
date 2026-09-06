@@ -3,32 +3,33 @@
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
+import { systemDamageControls,systemDamageLocationControls } from '../../../models/runtime/system-damage-presentation';
+import { clusterTableForEntity } from '../../record-sheet-reference-table';
+import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
-    type Box,
-    addFrame,
-    addText,
-    drawClusterHitsReference,
-    drawGeneratedFooter,
-    scaleCompactBox,
-    setAttributes,
-    svgElement,
+type Box,
+addFrame,
+addText,
+drawClusterHitsReference,
+drawGeneratedFooter,
+scaleCompactBox,
+setAttributes,
+svgElement,
 } from '../record-sheet-svg-rendering';
 import { CompactRecordSheetLayout } from './record-sheet-layout';
-import { clusterTableForEntity } from '../../record-sheet-reference-table';
 import {
-    drawCompactVehicleChrome,
-    drawCompactVehicleCrewPanel,
-    drawCompactVehicleDataPanel,
-    drawCompactVehicleDiagram,
-    appendHiddenVehicleDamageTracks,
-} from './vehicle-record-sheet-components';
-import {
-    addExactReferenceText,
-    addReferenceShade,
-    canonicalReferenceContent,
+addExactReferenceText,
+addReferenceShade,
+canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
+import {
+appendHiddenVehicleDamageTracks,
+drawCompactVehicleChrome,
+drawCompactVehicleCrewPanel,
+drawCompactVehicleDataPanel,
+drawCompactVehicleDiagram,
+} from './vehicle-record-sheet-components';
 
 const NAVAL_MOTIVE_TYPES = new Set(['hydrofoil', 'naval', 'submarine']);
 
@@ -288,23 +289,24 @@ function drawNavalCriticalPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box
         cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
     });
     addText(group, 'Turret Locked', 6, 29.403, { size: 6.76, maxWidth: 39.254 });
-    drawNavalDamageCheckbox(group, 'turret_locked_f', 64.08, 23.003, 'F');
-    drawNavalDamageCheckbox(group, 'turret_locked_r', 75.08, 23.003, 'R');
+    const turrets = systemDamageLocationControls(entity, 'turret-lock');
+    turrets.forEach((control, index) => drawNavalDamageCheckbox(group, control.id,
+        75.08 - (turrets.length - 1 - index) * 11, 23.003,
+        turrets.length > 1 ? control.label[0] : undefined));
     addText(group, 'Engine Hit', 90.36, 29.403, { size: 6.76, maxWidth: 28.081 });
     drawNavalDamageCheckbox(group, 'engine_hit_1', 130.32, 23.003);
 
     addText(group, 'Sensor Hits', 6, 39.41, { size: 6.76, maxWidth: 32.801 });
-    drawNavalDamageTrack(group, 'sensor_hit_', 97.32, 33.01, ['+1', '+2', '+3', 'D']);
+    drawNavalDamageTrack(group, 'sensor_hit_', 97.32, 33.01, systemDamageControls(entity, 'sensors').modifiers);
     addText(group, 'Motive System Hits', 6, 49.417, { size: 6.76, maxWidth: 54.079 });
-    drawNavalDamageTrack(group, 'motive_system_hit_', 97.32, 43.017, ['+1', '+2', '+3', 'I']);
+    drawNavalDamageTrack(group, 'motive_system_hit_', 97.32, 43.017, systemDamageControls(entity, 'motive').modifiers);
 
     addText(group, 'Stabilizers', 75.8, 58.027, { size: 6.76, weight: 700, anchor: 'middle' });
-    drawNavalLabeledDamage(group, 'Front', 'stabilizer_hit_front', 6, 63.031);
-    drawNavalLabeledDamage(group, 'Left', 'stabilizer_hit_left', 51.048, 63.031);
-    drawNavalLabeledDamage(group, 'Right', 'stabilizer_hit_right', 97.946, 63.031);
-    drawNavalLabeledDamage(group, 'Rear', 'stabilizer_hit_rear', 6, 73.037);
-    drawNavalLabeledDamage(group, 'F Turret', 'stabilizer_hit_turret_f', 51.048, 73.037);
-    drawNavalLabeledDamage(group, 'R Turret', 'stabilizer_hit_turret_r', 97.946, 73.037);
+    const stabilizers = systemDamageLocationControls(entity, 'stabilizer');
+    const columns = Math.ceil(stabilizers.length / 2);
+    stabilizers.forEach((control, index) => drawNavalLabeledDamage(group,
+        control.label, control.id, 6 + (index % columns) * 138 / columns,
+        index < columns ? 63.031 : 73.037));
     appendHiddenVehicleDamageTracks(svg, entity);
 }
 

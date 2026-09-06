@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { EquipmentInteractionRegistry } from '../../services/equipment-interaction-registry.service';
+import {
+BOOBY_TRAP_ARMED_MODE,
+BOOBY_TRAP_DETONATED_MODE,
+BoobyTrapHandler,
+} from './component-booby-trap';
 import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
 } from './equipment-interaction';
 import {
-    BOOBY_TRAP_ARMED_MODE,
-    BOOBY_TRAP_DETONATED_MODE,
-    BoobyTrapHandler,
-} from './component-booby-trap';
-import {
-    createDirectBoobyTrapRuntimeFixture,
-    emptyCBTEncounterSnapshot,
+createDirectBoobyTrapRuntimeFixture,
+emptyCBTEncounterSnapshot,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Booby Trap runtime', () => {
@@ -25,8 +25,7 @@ describe('direct Booby Trap runtime', () => {
         expect(fixture.instance.query().componentMode(trap.id)).toBe(BOOBY_TRAP_ARMED_MODE);
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: trap.id,
             mode: BOOBY_TRAP_DETONATED_MODE,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -73,10 +72,11 @@ function interactionFixture(
 ) {
     const registry = new EquipmentInteractionRegistry();
     registry.register(new BoobyTrapHandler());
-    const owner = { instanceId: fixture.instance.id, encounter: emptyCBTEncounterSnapshot };
+    const owner = { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot };
     const queryContext = {};
     const dialogs = dialogsService(confirmed);
-    const commandContext = { toastService: toastService(), dialogsService: dialogs };
+    const commandContext = { toastService: toastService(), dialogsService: dialogs,
+        dispatch: fixture.instance.dispatch.bind(fixture.instance) };
     const trap = fixture.equipmentComponent('Test Booby Trap');
     const choice = () => registry.choices(
         fixture.instance,

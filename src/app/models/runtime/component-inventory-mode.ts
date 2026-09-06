@@ -1,18 +1,18 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ATM_INVENTORY_MODES, MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
-import { WeaponEquipment, type AmmoType } from '../equipment.model';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { MekRuntimeIndex } from './mek-runtime-index';
 import type { PickerChoice } from '../../components/picker/picker.interface';
+import { ATM_INVENTORY_MODES,MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { WeaponEquipment,type AmmoType } from '../equipment.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
+import type { MekRuntimeIndex } from './mek-runtime-index';
 
 export const INVENTORY_MODE_HANDLER_ID = 'inventory-mode-handler';
 export const INVENTORY_MODE_CHOICE_LABEL = 'Mode';
@@ -132,7 +132,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
     }
 
     getComponentInventoryModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentInventoryModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
@@ -152,7 +152,7 @@ export class InventoryModeHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentInventoryModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentInventoryModeDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,

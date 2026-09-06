@@ -1,13 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ImmutableSet } from '../entity/immutable-collections';
-import type { ComponentId } from '../entity/entity-identifiers';
 import type { InfantryBaseEntity } from '../entity/entities/infantry/infantry-base-entity';
 import { InfantryEntity } from '../entity/entities/infantry/infantry-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ImmutableSet } from '../entity/immutable-collections';
 import { WeaponEquipment } from '../equipment.model';
 import type { MotiveModes } from '../motiveModes.model';
-import type { NonMekRuntimeComponent, NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
+import { type CBTRuntimeEquipment } from '../runtime/cbt-unit-runtime';
+import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import type { NonMekUnitRuntimeState } from '../runtime/non-mek-unit-instance';
 
 export interface InfantryRuntimeRulesProjection {
@@ -73,7 +74,7 @@ function uncrewedFieldGuns(
             troopLocation.internalPoints
                 - (state.locations.get(troopLocation.id)?.internalDamage ?? 0),
         );
-    const groups = new Map<string, NonMekRuntimeComponent[]>();
+    const groups = new Map<string, CBTRuntimeEquipment[]>();
     for (const component of index.components.values()) {
         if (component.mount.location !== 'Field Guns'
             || !(component.mount.equipment instanceof WeaponEquipment)) continue;

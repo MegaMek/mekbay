@@ -7,21 +7,22 @@ import type { DataService } from '../../services/data.service';
 import { LoggerService } from '../../services/logger.service';
 import { OptionsService } from '../../services/options.service';
 import { ToastService } from '../../services/toast.service';
-import { asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
+import { asUnitUuid,MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
 import { CBTForce } from '../cbt-force.model';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import { GameSystem } from '../common.model';
 import { asComponentId } from '../entity/entity-identifiers';
-import { TestBipedMekEntity, TestTankEntity } from '../entity/testing/test-entities';
+import { TestBipedMekEntity,TestTankEntity } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import { EntityMountedEquipment } from '../entity/types';
 import { AmmoEquipment } from '../equipment.model';
 import type { SerializedCBTForce } from '../force-serialization';
-import { CBTMekUnit } from './cbt-mek-unit';
-import { CBTNonMekUnit } from './cbt-non-mek-unit';
-import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
-import { CBT_FORCE_PERSISTENCE_SCHEMA_VERSION, asForceId, emptyRuntimeHistory, type SerializedCBTUnitV2 } from './persistence-v2';
-import { formatRuntimeHistoryMessage, RUNTIME_HISTORY_MESSAGE } from './runtime-history';
+import { createMekUnit,restoreMekUnit } from './cbt-mek-unit';
+import { createNonMekUnit,restoreNonMekUnit } from './cbt-non-mek-unit';
+
+import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './non-mek-unit-persistence';
+import { asForceId,CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,emptyRuntimeHistory,type SerializedCBTUnitV2 } from './persistence-v2';
+import { formatRuntimeHistoryMessage,RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 
 const standard = new AmmoEquipment({
     id: 'Ammo_AC_10', name: 'AC/10 Ammo', type: 'ammo',
@@ -38,14 +39,14 @@ for (const family of ['mek', 'vehicle'] as const) {
             const { force, instanceId } = await createForce(family);
             const damage = { componentId: asComponentId('ammo:3'), status: 'destroyed' as const, target: 'committed' as const };
             expect((await (family === 'mek'
-                ? force.dispatchMekUnitCommand(instanceId, { type: 'set-component-status', ...damage })
-                : force.dispatchNonMekUnitCommand(instanceId, { kind: 'set-component-status', ...damage }))).changed).toBeTrue();
+                ? force.dispatchUnitCommand(instanceId, { type: 'set-component-status', ...damage })
+                : force.dispatchUnitCommand(instanceId, { type: 'set-component-status', ...damage }))).changed).toBeTrue();
             const configure = (bin: number, munitionKey: string, remaining: number) => family === 'mek'
-                ? force.dispatchMekUnitCommand(instanceId, {
+                ? force.dispatchUnitCommand(instanceId, {
                     type: 'configure-ammo-source', componentId: asComponentId(`ammo:${bin}`), munitionKey, remaining,
                 })
-                : force.dispatchNonMekUnitCommand(instanceId, {
-                    kind: 'configure-ammo-source', componentId: asComponentId(`ammo:${bin}`), munitionKey, remaining,
+                : force.dispatchUnitCommand(instanceId, {
+                    type: 'configure-ammo-source', componentId: asComponentId(`ammo:${bin}`), munitionKey, remaining,
                 });
             expect((await configure(1, precision.id, 2)).changed).toBeTrue();
             expect((await configure(2, precision.id, 1)).changed).toBeTrue();
@@ -54,8 +55,8 @@ for (const family of ['mek', 'vehicle'] as const) {
             const historyCount = force.getRuntimeHistory().length;
 
             const reset = await (family === 'mek'
-                ? force.dispatchMekUnitCommand(instanceId, { type: 'reset-ammo-loadout' })
-                : force.dispatchNonMekUnitCommand(instanceId, { kind: 'reset-ammo-loadout' }));
+                ? force.dispatchUnitCommand(instanceId, { type: 'reset-ammo-loadout' })
+                : force.dispatchUnitCommand(instanceId, { type: 'reset-ammo-loadout' }));
 
             expect(reset).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
             const after = force.getUnitSnapshot(instanceId)!;
@@ -97,8 +98,8 @@ for (const family of ['mek', 'vehicle'] as const) {
             const { force, instanceId } = await createForce(family);
             const before = force.getUnitSnapshot(instanceId)!.state;
             const reset = await (family === 'mek'
-                ? force.dispatchMekUnitCommand(instanceId, { type: 'reset-ammo-loadout' })
-                : force.dispatchNonMekUnitCommand(instanceId, { kind: 'reset-ammo-loadout' }));
+                ? force.dispatchUnitCommand(instanceId, { type: 'reset-ammo-loadout' })
+                : force.dispatchUnitCommand(instanceId, { type: 'reset-ammo-loadout' }));
             expect(reset).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
             expect(force.getUnitSnapshot(instanceId)!.state).toBe(before);
             expect(force.getRuntimeHistory()).toEqual([]);
@@ -125,8 +126,8 @@ async function createForce(family: 'mek' | 'vehicle') {
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
     };
     const ready = entity instanceof TestBipedMekEntity
-        ? await CBTMekUnit.createFromEntity({ uuid, instanceId }, entity, uuid, options)
-        : CBTNonMekUnit.create(entity, {
+        ? await createMekUnit({ uuid, instanceId }, entity, uuid, options)
+        : createNonMekUnit(entity, {
             uuid, instanceId, deployment: options.deployment, scenario: options.scenario,
             initialStateProfileId: 'pristine-non-mek-v1',
         });
@@ -150,8 +151,8 @@ async function createForce(family: 'mek' | 'vehicle') {
     const units = {
         restore: async (saved: SerializedCBTUnitV2 | SerializedNonMekUnit) => ({
             unit: isSerializedNonMekUnit(saved)
-                ? CBTNonMekUnit.restore(saved, entity, uuid, options.scenario)
-                : await CBTMekUnit.restoreFromEntity(saved, entity as TestBipedMekEntity, uuid, options),
+                ? restoreNonMekUnit(saved, entity, uuid, options.scenario)
+                : await restoreMekUnit(saved, entity as TestBipedMekEntity, uuid, options),
             warnings: [],
         }),
     } as unknown as CBTUnitService;

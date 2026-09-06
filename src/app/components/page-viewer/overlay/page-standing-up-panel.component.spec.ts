@@ -1,29 +1,30 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { Overlay } from '@angular/cdk/overlay';
 import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Overlay } from '@angular/cdk/overlay';
 import { Subject } from 'rxjs';
+import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import { createPristineMekHeatStateV2 } from '../../../models/runtime/mek-heat-state-v2';
 import {
-    createPristineMekMovementPsrStateV2,
-    type MekMovementPsrStateV2,
+createPristineMekMovementPsrStateV2,
+type MekMovementPsrStateV2,
 } from '../../../models/runtime/mek-movement-psr-v2';
-import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
-import type { CBTUnitCommand } from '../../../models/runtime/unit-instance';
+import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
+
 import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
-import { PAGE_TURN_MEMBER } from './page-turn-summary.util';
 import {
-    PageStandingUpPanelComponent,
-    STANDING_UP_REVIEW_ONLY,
-    toggleStandingUpOverlay,
+PageStandingUpPanelComponent,
+STANDING_UP_REVIEW_ONLY,
+toggleStandingUpOverlay,
 } from './page-standing-up-panel.component';
+import { PAGE_TURN_MEMBER } from './page-turn-summary.util';
 
 describe('toggleStandingUpOverlay', () => {
     it('keeps the turn summary open until the standing panel closes', () => {
@@ -128,7 +129,7 @@ function standingMember(initialAttempts = 0): {
     let attempts = initialAttempts;
     let carefulStand = false;
     let current = standingSnapshot(revision, attempts, carefulStand);
-    const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.callFake(async (
+    const dispatch = jasmine.createSpy('dispatchUnitCommand').and.callFake(async (
         _instanceId: string,
         command: CBTUnitCommand,
     ) => {
@@ -147,7 +148,7 @@ function standingMember(initialAttempts = 0): {
         changed,
         sessionChanged: new Subject<void>(),
         getMekTurnPanelSnapshot: () => current,
-        dispatchMekUnitCommand: dispatch,
+        dispatchUnitCommand: dispatch,
     };
     return {
         member: { id: 'mek-1', force } as unknown as CBTMekForceMember,

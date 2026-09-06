@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ECMMode } from '../common.model';
+import { mekTargetRosterRow } from './cbt-force-target-roster';
 import { componentModeDefinition } from './component-mode';
 import { StealthHandler } from './component-stealth';
-import { mekTargetRosterRow } from './cbt-force-target-roster';
 import { projectMekEquipmentPanel } from './equipment-panel';
-import { CBTMekUnit } from './cbt-mek-unit';
+
 import {
-    createDirectVoidSignatureRuntimeFixture,
-    emptyCBTEncounterSnapshot,
-    type DirectMekRuntimeFixture,
+createDirectVoidSignatureRuntimeFixture,
+emptyCBTEncounterSnapshot,
+type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Void Signature runtime', () => {
@@ -38,8 +38,7 @@ describe('direct Void Signature runtime', () => {
         const revision = fixture.instance.revision();
         expect(fixture.instance.dispatch({
             type: 'set-stealth-state',
-            
-            
+
             componentId: voidSignature.id,
             state: 'enabling',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -75,8 +74,7 @@ describe('direct Void Signature runtime', () => {
         }
         expect(fixture.instance.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentStealthState(voidSignature.id)).toBe('disabled');
     });
@@ -95,8 +93,7 @@ describe('direct Void Signature runtime', () => {
         });
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
-            
-            
+
             declaration: {
                 schemaVersion: 1,
                 mode: 'walk',
@@ -104,12 +101,7 @@ describe('direct Void Signature runtime', () => {
                 boosterComponentIds: [],
             },
         }).accepted).toBeTrue();
-        const ready = new CBTMekUnit(
-            fixture.entity,
-            fixture.identity,
-            fixture.instance,
-            { schemaVersion: 2, values: fixture.initialized.deployment },
-        );
+        const ready = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
         expect(mekTargetRosterRow('force:void-signature', ready).tnCalculator.stealth).toEqual({
             short: 2, medium: 2, long: 2,
             conventionalInfantry: { short: 1, medium: 1, long: 1 },
@@ -143,16 +135,14 @@ function activateVoidSignature(fixture: DirectMekRuntimeFixture) {
     const component = fixture.equipmentComponent('Test Void Signature');
     expect(fixture.instance.dispatch({
         type: 'set-stealth-state',
-        
-        
+
         componentId: component.id,
         state: 'enabling',
     }).accepted).toBeTrue();
     expect(fixture.instance.query().componentStealthState(component.id)).toBe('enabling');
     expect(fixture.instance.dispatch({
         type: 'end-turn',
-        
-        
+
         policy: 'automatic',
     }).accepted).toBeTrue();
     return component;
@@ -163,10 +153,11 @@ function disableEcm(fixture: DirectMekRuntimeFixture): void {
         const component = fixture.equipmentComponent(equipmentId);
         expect(fixture.instance.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: component.id,
             mode: ECMMode.OFF,
         }).accepted).toBeTrue();
     }
 }
+
+import { CBTUnit } from './cbt-unit';

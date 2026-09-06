@@ -1,75 +1,77 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import type { SystemDamageKind } from '../../../models/rules/system-damage-rules';
+import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 
+import { isMobileHpgEquipment } from '../../../models/aerospace-support-equipment.model';
+import { isApolloEquipment } from '../../../models/apollo-mode.model';
+import { artemisKind } from '../../../models/artemis-equipment.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
+import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { SmallCraftEntity } from '../../../models/entity/entities/aero/small-craft-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
+import type { EntityMountedEquipment,EntityMountedWeapon,EquipmentBay } from '../../../models/entity/types';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
-import type { EntityMountedEquipment, EntityMountedWeapon, EquipmentBay } from '../../../models/entity/types';
-import { AmmoEquipment, ammoMatchesWeapon } from '../../../models/equipment.model';
+import { AmmoEquipment,ammoMatchesWeapon } from '../../../models/equipment.model';
 import {
-    isPpcCapacitorEquipment,
-    PPC_CAPACITOR_DAMAGE_BONUS,
-    PPC_CAPACITOR_HEAT_BONUS,
+isPpcCapacitorEquipment,
+PPC_CAPACITOR_DAMAGE_BONUS,
+PPC_CAPACITOR_HEAT_BONUS,
 } from '../../../models/ppc-capacitor.model';
-import { artemisKind } from '../../../models/artemis-equipment.model';
-import { isApolloEquipment } from '../../../models/apollo-mode.model';
-import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
 import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
-import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
+import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import {
-    fullRecordSheetLayoutProfile,
-    type RecordSheetLayoutProfile,
-    type RecordSheetPageFormat,
+fullRecordSheetLayoutProfile,
+type RecordSheetLayoutProfile,
+type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-    type Box,
-    addDiagramHeading,
-    addFrame,
-    addLine,
-    addText,
-    appendLegacyIdentityAnchors,
-    createRoot,
-    drawGeneratedFooter,
-    drawHeatScale,
-    drawNotesPanel,
-    drawPageChrome,
-    formatNumber,
-    formatTechBase,
-    formatWholeNumber,
-    scalePageBox,
-    setAttributes,
-    setInventoryComponentIds,
-    svgElement,
-    transparentRect,
+addDiagramHeading,
+addFrame,
+addLine,
+addText,
+appendLegacyIdentityAnchors,
+createRoot,
+drawGeneratedFooter,
+drawHeatScale,
+drawNotesPanel,
+drawPageChrome,
+formatNumber,
+formatTechBase,
+formatWholeNumber,
+scalePageBox,
+setAttributes,
+setInventoryComponentIds,
+svgElement,
+transparentRect,
+type Box,
 } from '../record-sheet-svg-rendering';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
-import { isMobileHpgEquipment } from '../../../models/aerospace-support-equipment.model';
 import {
-    type AeroDataInventoryRow,
-    drawAeroArtworkRegion,
-    drawAeroDataPanel,
-    drawAeroHeatDataPanel,
-    drawAeroMovementCompass,
-    drawAeroPaperdoll,
-    drawAeroVelocityPanel,
-} from './aero-record-sheet-components';
-import {
-    drawFighterCriticalPanel,
-    drawFighterPilotPanel,
+drawFighterCriticalPanel,
+drawFighterPilotPanel,
 } from './aero-fighter-record-sheet-controls';
 import {
-    planLargeAeroRecordSheetPages,
-    type LargeAeroRecordSheetBlock,
-    type LargeAeroRecordSheetPagePlan,
+drawAeroArtworkRegion,
+drawAeroDataPanel,
+drawAeroHeatDataPanel,
+drawAeroMovementCompass,
+drawAeroPaperdoll,
+drawAeroVelocityPanel,
+type AeroDataInventoryRow,
+} from './aero-record-sheet-components';
+import {
+planLargeAeroRecordSheetPages,
+type LargeAeroRecordSheetBlock,
+type LargeAeroRecordSheetPagePlan,
 } from './large-aero-record-sheet-page-plan';
 import {
-    createLargeAeroAdvancedMovementReferenceArt,
-    createLargeAeroReverseMovementCompassArt,
-    createLargeAeroVelocityRecordArt,
+createLargeAeroAdvancedMovementReferenceArt,
+createLargeAeroReverseMovementCompassArt,
+createLargeAeroVelocityRecordArt,
 } from './large-aero-reverse-reference-art';
+import type { RecordSheetLayout,RecordSheetLayoutRequest } from './record-sheet-layout';
 
 function isCapitalAeroVessel(entity: AeroEntity): boolean {
     return entity.entityType === 'JumpShip'
@@ -179,7 +181,7 @@ export class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         if (smallCraft) {
             drawAeroArtworkRegion(svg, entity, at({ x: 43, y: 404, width: 193, height: 96 }));
             drawFighterPilotPanel(svg, at({ x: 251.4, y: 509.4, width: 142.6, height: 93.934 }));
-            drawFighterCriticalPanel(svg, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
+            drawFighterCriticalPanel(svg, entity, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
             drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
             drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
         } else {
@@ -1354,57 +1356,33 @@ function drawLargeAeroCriticalPanel(svg: SVGSVGElement, entity: AeroEntity, box:
     const standardRows = spaceStation
         ? { first: 27.992, second: 47.976, third: 67.961 }
         : { first: 26.743, second: 44.229, third: 61.716 };
+    const row = (label: string, x: number, y: number, controlX: number, system: SystemDamageKind): LargeAeroCriticalRow =>
+        ({ label, x, y, controlX, ...systemDamageControls(entity, system) });
     const rows: LargeAeroCriticalRow[] = [
-        criticalRow('Avionics', 6, standardRows.first, 56.46,
-            ['avionics_hit_1', 'avionics_hit_2', 'avionics_hit_3'], ['+1', '+2', '+5']),
-        criticalRow(capital ? 'CIC' : 'FCS', 6, standardRows.second, 56.46,
-            capital ? ['cic_hit_1', 'cic_hit_2', 'cic_hit_3'] : ['fcs_hit_1', 'fcs_hit_2', 'fcs_hit_3'],
-            capital ? ['2', '4', 'D'] : ['2', '4', 'D']),
-        criticalRow('Sensors', 6, standardRows.third, 56.46,
-            ['sensor_hit_1', 'sensor_hit_2', 'sensor_hit_3'], ['+1', '+2', '+5']),
+        row('Avionics', 6, standardRows.first, 56.46, 'avionics'),
+        row(capital ? 'CIC' : 'FCS', 6, standardRows.second, 56.46, capital ? 'combat-information' : 'fire-control'),
+        row('Sensors', 6, standardRows.third, 56.46, 'sensors'),
     ];
     if (entity.entityType === 'DropShip') {
         rows.push(
-            criticalRow('Landing Gear', 115.14, standardRows.first, 47.3, ['landing_gear_hit_1'], ['+5']),
-            criticalRow('Life Support', 115.14, standardRows.second, 47.3, ['life_support_hit_1'], ['+2']),
-            criticalRow('K-F Boom', 115.14, standardRows.third, 47.3, ['kf_boom_hit_1'], ['D']),
-            criticalRow('Docking Collar', 115.14, 79.202, 47.3, ['docking_collar_hit_1'], ['D']),
+            row('Landing Gear', 115.14, standardRows.first, 47.3, 'landing-gear'),
+            row('Life Support', 115.14, standardRows.second, 47.3, 'life-support'),
+            row('K-F Boom', 115.14, standardRows.third, 47.3, 'kf-boom'),
+            row('Docking Collar', 115.14, 79.202, 47.3, 'docking-collar'),
         );
     } else {
-        const lifeSupportId = entity.entityType === 'WarShip' ? 'life_support_hit' : 'life_support_hit_1';
-        rows.push(criticalRow('Life Support', 115.14, standardRows.first, 47.3, [lifeSupportId], ['+2']));
+        rows.push(row('Life Support', 115.14, standardRows.first, 47.3, 'life-support'));
     }
     const thrusterLabelY = spaceStation ? 98.745 : 90.002;
     const leftThrusterY = spaceStation ? 107.929 : 96.688;
     const rightThrusterY = spaceStation ? 127.914 : 114.174;
-    addText(group, 'Thrusters', x(6), y(thrusterLabelY), {
-        size: font(6.76), weight: 700,
-    });
+    addText(group, 'Thrusters', x(6), y(thrusterLabelY), { size: font(6.76), weight: 700 });
     rows.push(
-        criticalRow('Left', 18, leftThrusterY, 44.46,
-            ['thruster_left_hit_1', 'thruster_left_hit_2', 'thruster_left_hit_3', 'thruster_left_hit_4'],
-            ['+1', '+2', '+3', 'D']),
-        criticalRow('Right', 18, rightThrusterY, 44.46,
-            ['thruster_right_hit_1', 'thruster_right_hit_2', 'thruster_right_hit_3', 'thruster_right_hit_4'],
-            ['+1', '+2', '+3', 'D']),
+        row('Left', 18, leftThrusterY, 44.46, 'left-thruster'),
+        row('Right', 18, rightThrusterY, 44.46, 'right-thruster'),
     );
-    if (!spaceStation) {
-        rows.push(criticalRow('Engine', 6, 131.661, 56.46,
-            ['engine_hit_1', 'engine_hit_2', 'engine_hit_3', 'engine_hit_4', 'engine_hit_5', 'engine_hit_6'],
-            ['-1', '-2', '-3', '-4', '-5', 'D']));
-    }
+    if (!spaceStation) rows.push(row('Engine', 6, 131.661, 56.46, 'engine'));
     rows.forEach(row => drawLargeAeroCriticalRow(group, row, { x, y, font }));
-}
-
-function criticalRow(
-    label: string,
-    x: number,
-    y: number,
-    controlX: number,
-    ids: readonly string[],
-    modifiers: readonly string[],
-): LargeAeroCriticalRow {
-    return { label, x, y, controlX, ids, modifiers };
 }
 
 function drawLargeAeroCriticalRow(

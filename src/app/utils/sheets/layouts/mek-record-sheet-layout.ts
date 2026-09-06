@@ -2,68 +2,70 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
-import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
-import type {
-    RecordSheetLayout,
-    RecordSheetLayoutRequest,
-} from './record-sheet-layout';
-import { type BipedArmorValues, type BipedPaperdollPipLayout, BipedPaperdollUtil, type BipedStructureTonnage } from '../biped-paperdoll.util';
-import { CanonPipRenderer } from '../canon-pip-renderer';
+import { type MekEntity } from '../../../models/entity/entities/mek/mek-entity';
 import {
-    type EntityMountedEquipment,
-    type IntrinsicWeapon,
+type EntityMountedEquipment,
+type IntrinsicWeapon,
 } from '../../../models/entity/types';
 import { getMekLocationLabel } from '../../../models/entity/types/mek';
-import { type MekEntity } from '../../../models/entity/entities/mek/mek-entity';
+import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
+import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
+import { isTargetingComputerEquipment } from '../../../models/entity/utils/targeting-computer';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
-import { isTargetingComputerEquipment } from '../../../models/entity/utils/targeting-computer';
-import { isMekRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
+import { recordSheetHeatEffects,type RecordSheetHeatEffect } from '../../../models/runtime/heat-effect-presentation';
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
-import {
-    fullRecordSheetLayoutProfile,
-    type RecordSheetLayoutProfile,
-    type RecordSheetPageFormat,
-    type RecordSheetPageProfile,
-} from '../record-sheet-layout';
-import { clusterTableForMekEntity, clusterTableRows, hitLocationRows, recordSheetPhysicalLocationRows, referenceTableNotes } from '../../record-sheet-reference-table';
-import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
-import { mekCriticalCaseLabel, mekCriticalSlotLabel } from '../../mek-critical-display.util';
-import { mekCriticalLocationCells, mekCriticalTableRowCount } from '../../mek-location-layout.util';
-import {
-    type Box,
-    addDiagramHeading,
-    addFrame,
-    addLine,
-    addText,
-    appendLegacyIdentityAnchors,
-    circle,
-    constructionMaterialSubtitle,
-    createRoot,
-    decoratePaperdollPips,
-    drawCrewHitGrid,
-    drawDamagePanelIntoGroup,
-    drawGeneratedFooter,
-    drawHeatScale,
-    drawPageChrome,
-    formatGeometryNumber,
-    formatNumber,
-    formatTechBase,
-    formatWholeNumber,
-    makeDistributedPips,
-    paperdollPipOptions,
-    type RecordSheetInventoryAlternativeMode,
-    recordSheetAmmoProfile,
-    recordSheetInventoryWeapons,
-    scalePageBox,
-    setAttributes,
-    setInventoryComponentIds,
-    svgElement,
-    transparentRect,
-} from '../record-sheet-svg-rendering';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
+import { mekCriticalCaseLabel,mekCriticalSlotLabel } from '../../mek-critical-display.util';
+import { mekCriticalLocationCells,mekCriticalTableRowCount } from '../../mek-location-layout.util';
+import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,recordSheetPhysicalLocationRows,referenceTableNotes } from '../../record-sheet-reference-table';
+import { BipedPaperdollUtil,type BipedArmorValues,type BipedPaperdollPipLayout,type BipedStructureTonnage } from '../biped-paperdoll.util';
+import { CanonPipRenderer } from '../canon-pip-renderer';
 import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
-import { appendRecordSheetAmmoProfile, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { appendRecordSheetAmmoProfile,measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
+import { isMekRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import {
+fullRecordSheetLayoutProfile,
+type RecordSheetLayoutProfile,
+type RecordSheetPageFormat,
+type RecordSheetPageProfile,
+} from '../record-sheet-layout';
+import {
+addDiagramHeading,
+addFrame,
+addLine,
+addText,
+appendLegacyIdentityAnchors,
+circle,
+constructionMaterialSubtitle,
+createRoot,
+decoratePaperdollPips,
+drawCrewHitGrid,
+drawDamagePanelIntoGroup,
+drawGeneratedFooter,
+drawHeatScale,
+drawPageChrome,
+formatGeometryNumber,
+formatNumber,
+formatTechBase,
+formatWholeNumber,
+makeDistributedPips,
+paperdollPipOptions,
+recordSheetAmmoProfile,
+recordSheetInventoryWeapons,
+scalePageBox,
+setAttributes,
+setInventoryComponentIds,
+svgElement,
+transparentRect,
+type Box,
+type RecordSheetInventoryAlternativeMode,
+} from '../record-sheet-svg-rendering';
+import type {
+RecordSheetLayout,
+RecordSheetLayoutRequest,
+} from './record-sheet-layout';
 /** Biped, tripod, quad, QuadVee, and LAM sheets share one composition. */
 export class MekRecordSheetLayout implements RecordSheetLayout {
     public readonly id = 'mek';
@@ -2306,11 +2308,12 @@ function drawCanonicalMekSystemDamage(
         fill: '#fff', stroke: '#000', 'stroke-width': font(0.92),
     });
     systemGroup.appendChild(backing);
+    const capacity = mekSystemDamageDisplayCapacities(entity);
     const systems: readonly [string, string, number, number][] = [
-        ['Engine Hits', 'engine_hit_', 3, 41.995],
-        ['Gyro Hits', 'gyro_hit_', 2, 34.811],
-        ['Sensor Hits', 'sensor_hit_', 2, 43.825],
-        ['Life Support', 'life_support_hit_', 1, 45.633],
+        ['Engine Hits', 'engine_hit_', capacity['engine'], 41.995],
+        ['Gyro Hits', 'gyro_hit_', capacity['gyro'], 34.811],
+        ['Sensor Hits', 'sensor_hit_', capacity['sensors'], 43.825],
+        ['Life Support', 'life_support_hit_', capacity['life-support'], 45.633],
     ];
     systems.forEach(([label, prefix, count, textLength], rowIndex) => {
         const baseline = 12 + rowIndex * 9;
@@ -2323,7 +2326,7 @@ function drawCanonicalMekSystemDamage(
         labelText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
         for (let index = 0; index < count; index++) {
             const pip = circle(
-                x(61.53 + index * 9.2),
+                x(61.53 + index * Math.min(9.2, 24 / Math.max(1, count - 1))),
                 y(9.2 + rowIndex * 9),
                 font(2.8),
                 'pip systemHitPip',
@@ -2353,13 +2356,14 @@ function drawCanonicalLamSystemDamage(
         fill: '#fff', stroke: '#000', 'stroke-width': font(0.92),
     });
     systemGroup.appendChild(backing);
+    const capacity = mekSystemDamageDisplayCapacities(entity);
     const systems: readonly [string, string, number, number][] = [
-        ['Avionics Hits', 'avionics_hit_', 3, 47.966],
-        ['Engine Hits', 'engine_hit_', 3, 41.995],
-        ['Gyro Hits', 'gyro_hit_', 2, 34.811],
-        ['Sensor Hits', 'sensor_hit_', 2, 43.825],
-        ['Landing Gear', 'landing_gear_hit_', 1, 49.036],
-        ['Life Support', 'life_support_hit_', 1, 45.633],
+        ['Avionics Hits', 'avionics_hit_', capacity['avionics'], 47.966],
+        ['Engine Hits', 'engine_hit_', capacity['engine'], 41.995],
+        ['Gyro Hits', 'gyro_hit_', capacity['gyro'], 34.811],
+        ['Sensor Hits', 'sensor_hit_', capacity['sensors'], 43.825],
+        ['Landing Gear', 'landing_gear_hit_', capacity['landing-gear'], 49.036],
+        ['Life Support', 'life_support_hit_', capacity['life-support'], 45.633],
     ];
     systems.forEach(([label, prefix, count, textLength], rowIndex) => {
         const baseline = 12 + rowIndex * 9;
@@ -2370,7 +2374,7 @@ function drawCanonicalLamSystemDamage(
         labelText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
         for (let index = 0; index < count; index++) {
             const pip = circle(
-                x(64.933 + index * 9.2),
+                x(64.933 + index * Math.min(9.2, 24 / Math.max(1, count - 1))),
                 y(9.2 + rowIndex * 9),
                 font(2.8),
                 'pip systemHitPip',
@@ -2574,55 +2578,23 @@ function appendMekHeatControls(group: SVGGElement, box: Box): void {
     }
 }
 
-interface MekHeatEffectRow {
-    readonly heat: number;
-    readonly label: string;
+interface MekHeatEffectRow extends RecordSheetHeatEffect {
     readonly baseline: number;
-    readonly effectAttribute: 'h-shut' | 'h-ammo' | 'h-fire' | 'h-move';
-    readonly effectValue: number;
-    readonly secondaryLabel?: string;
     readonly secondaryBaseline?: number;
 }
 
-const STANDARD_MEK_HEAT_EFFECTS: readonly MekHeatEffectRow[] = [
-    { heat: 30, label: 'Shutdown', baseline: 42.711, effectAttribute: 'h-shut', effectValue: 99 },
-    { heat: 28, label: 'Ammo Exp, avoid on 8+', baseline: 50.947, effectAttribute: 'h-ammo', effectValue: 8 },
-    { heat: 26, label: 'Shutdown, avoid on 10+', baseline: 59.184, effectAttribute: 'h-shut', effectValue: 10 },
-    { heat: 25, label: '-5 Movement Points', baseline: 67.421, effectAttribute: 'h-move', effectValue: -5 },
-    { heat: 24, label: '+4 Modifier to Fire', baseline: 75.658, effectAttribute: 'h-fire', effectValue: 4 },
-    { heat: 23, label: 'Ammo Exp, avoid on 6+', baseline: 83.895, effectAttribute: 'h-ammo', effectValue: 6 },
-    { heat: 22, label: 'Shutdown, avoid on 8+', baseline: 92.132, effectAttribute: 'h-shut', effectValue: 8 },
-    { heat: 20, label: '-4 Movement Points', baseline: 100.368, effectAttribute: 'h-move', effectValue: -4 },
-    { heat: 19, label: 'Ammo Exp, avoid on 4+', baseline: 108.605, effectAttribute: 'h-ammo', effectValue: 4 },
-    { heat: 18, label: 'Shutdown, avoid on 6+', baseline: 116.842, effectAttribute: 'h-shut', effectValue: 6 },
-    { heat: 17, label: '+3 Modifier to Fire', baseline: 125.079, effectAttribute: 'h-fire', effectValue: 3 },
-    { heat: 15, label: '-3 Movement Points', baseline: 133.316, effectAttribute: 'h-move', effectValue: -3 },
-    { heat: 14, label: 'Shutdown, avoid on 4+', baseline: 141.553, effectAttribute: 'h-shut', effectValue: 4 },
-    { heat: 13, label: '+2 Modifier to Fire', baseline: 149.789, effectAttribute: 'h-fire', effectValue: 2 },
-    { heat: 10, label: '-2 Movement Points', baseline: 158.026, effectAttribute: 'h-move', effectValue: -2 },
-    { heat: 8, label: '+1 Modifier to Fire', baseline: 166.263, effectAttribute: 'h-fire', effectValue: 1 },
-    { heat: 5, label: '-1 Movement Points', baseline: 174.5, effectAttribute: 'h-move', effectValue: -1 },
-];
+const STANDARD_HEAT_ROW_BASELINES = [42.711, 50.947, 59.184, 67.421, 75.658, 83.895, 92.132, 100.368,
+    108.605, 116.842, 125.079, 133.316, 141.553, 149.789, 158.026, 166.263, 174.5];
+const LAM_HEAT_ROW_BASELINES = [37.563, 44.083, 50.604, 57.125, 70.167, 76.688, 83.208, 89.729,
+    102.771, 109.292, 115.812, 122.333, 135.375, 141.896, 148.417, 161.458, 167.979];
 
-const LAM_HEAT_EFFECTS: readonly MekHeatEffectRow[] = [
-    { heat: 30, label: 'Shutdown', baseline: 37.563, effectAttribute: 'h-shut', effectValue: 99 },
-    { heat: 28, label: 'Ammo Exp, avoid on 8+', baseline: 44.083, effectAttribute: 'h-ammo', effectValue: 8 },
-    { heat: 26, label: 'Shutdown, avoid on 10+', baseline: 50.604, effectAttribute: 'h-shut', effectValue: 10 },
-    { heat: 25, label: '-5 Movement Points', baseline: 57.125, effectAttribute: 'h-move', effectValue: -5, secondaryLabel: '/Rand. Movement 10+', secondaryBaseline: 63.646 },
-    { heat: 24, label: '+4 Modifier to Fire', baseline: 70.167, effectAttribute: 'h-fire', effectValue: 4 },
-    { heat: 23, label: 'Ammo Exp, avoid on 6+', baseline: 76.688, effectAttribute: 'h-ammo', effectValue: 6 },
-    { heat: 22, label: 'Shutdown, avoid on 8+', baseline: 83.208, effectAttribute: 'h-shut', effectValue: 8 },
-    { heat: 20, label: '-4 Movement Points', baseline: 89.729, effectAttribute: 'h-move', effectValue: -4, secondaryLabel: '/Rand. Movement 8+', secondaryBaseline: 96.25 },
-    { heat: 19, label: 'Ammo Exp, avoid on 4+', baseline: 102.771, effectAttribute: 'h-ammo', effectValue: 4 },
-    { heat: 18, label: 'Shutdown, avoid on 6+', baseline: 109.292, effectAttribute: 'h-shut', effectValue: 6 },
-    { heat: 17, label: '+3 Modifier to Fire', baseline: 115.812, effectAttribute: 'h-fire', effectValue: 3 },
-    { heat: 15, label: '-3 Movement Points', baseline: 122.333, effectAttribute: 'h-move', effectValue: -3, secondaryLabel: '/Rand. Movement 7+', secondaryBaseline: 128.854 },
-    { heat: 14, label: 'Shutdown, avoid on 4+', baseline: 135.375, effectAttribute: 'h-shut', effectValue: 4 },
-    { heat: 13, label: '+2 Modifier to Fire', baseline: 141.896, effectAttribute: 'h-fire', effectValue: 2 },
-    { heat: 10, label: '-2 Movement Points', baseline: 148.417, effectAttribute: 'h-move', effectValue: -2, secondaryLabel: '/Rand. Movement 6+', secondaryBaseline: 154.938 },
-    { heat: 8, label: '+1 Modifier to Fire', baseline: 161.458, effectAttribute: 'h-fire', effectValue: 1 },
-    { heat: 5, label: '-1 Movement Points', baseline: 167.979, effectAttribute: 'h-move', effectValue: -1, secondaryLabel: '/Rand. Movement 5+', secondaryBaseline: 174.5 },
-];
+function mekHeatEffectRows(family: 'mek' | 'lam'): readonly MekHeatEffectRow[] {
+    const baselines = family === 'lam' ? LAM_HEAT_ROW_BASELINES : STANDARD_HEAT_ROW_BASELINES;
+    return recordSheetHeatEffects(family, 0).map((effect, index) => ({
+        ...effect, baseline: baselines[index],
+        ...(effect.secondaryLabel === undefined ? {} : { secondaryBaseline: baselines[index] + 6.521 }),
+    }));
+}
 
 function drawMekHeatDataContents(group: SVGGElement, entity: MekEntity, box: Box): void {
     const sx = box.width / 159.5;
@@ -2640,7 +2612,7 @@ function drawMekHeatDataContents(group: SVGGElement, entity: MekEntity, box: Box
     const effectsHeading = addText(group, 'Effects', x(56.4), y(34.474), { size: font(6.76), anchor: 'middle' });
     effectsHeading.setAttribute('textLength', formatNumber(x(19.001)));
     effectsHeading.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-    appendMekHeatEffectRows(group, STANDARD_MEK_HEAT_EFFECTS, { x, y, font });
+    appendMekHeatEffectRows(group, mekHeatEffectRows('mek'), { x, y, font });
     appendMekHeatSinkData(group, entity, { x, y, font, fontScale });
 }
 
@@ -2660,7 +2632,7 @@ function drawLamHeatDataContents(group: SVGGElement, entity: MekEntity, box: Box
     const effectsHeading = addText(group, 'Effects', x(56.4), y(31.042), { size: font(6.76), anchor: 'middle' });
     effectsHeading.setAttribute('textLength', formatNumber(x(19.001)));
     effectsHeading.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-    appendMekHeatEffectRows(group, LAM_HEAT_EFFECTS, { x, y, font });
+    appendMekHeatEffectRows(group, mekHeatEffectRows('lam'), { x, y, font });
     appendMekHeatSinkData(group, entity, { x, y, font, fontScale }, '(AirMech +3)');
 }
 
@@ -2679,7 +2651,6 @@ function appendMekHeatEffectRows(
         setAttributes(row, {
             class: 'heatEffect',
             heat: effect.heat,
-            [effect.effectAttribute]: effect.effectValue,
         });
         addText(row, String(effect.heat), x(15), y(effect.baseline), {
             size: font(6.76), anchor: 'middle',
@@ -2687,7 +2658,7 @@ function appendMekHeatEffectRows(
         const effectText = addText(row, effect.label, x(27), y(effect.baseline), {
             size: font(6.76), maxWidth: x(91),
         });
-        if (effect.effectAttribute === 'h-move') effectText.id = `minus${Math.abs(effect.effectValue)}MP`;
+        if (effect.movementModifier !== undefined) effectText.id = `minus${Math.abs(effect.movementModifier)}MP`;
         if (effect.secondaryLabel !== undefined && effect.secondaryBaseline !== undefined) {
             addText(row, effect.secondaryLabel, x(30), y(effect.secondaryBaseline), {
                 size: font(6.76), maxWidth: x(88),

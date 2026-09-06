@@ -1,24 +1,25 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import {
-    GAUSS_POWERED_DOWN,
-    GAUSS_POWERED_UP,
-    GAUSS_POWERING_DOWN,
-    GAUSS_POWERING_UP,
-    mekGaussPowerDefinition,
-} from '../models/runtime/mek-gauss-power';
+import { type CBTMekUnit } from '../models/runtime/cbt-unit';
 import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
 import {
-    createDirectMekRuntimeFixture,
-    emptyCBTEncounterSnapshot,
+GAUSS_POWERED_DOWN,
+GAUSS_POWERED_UP,
+GAUSS_POWERING_DOWN,
+GAUSS_POWERING_UP,
+mekGaussPowerDefinition,
+} from '../models/runtime/mek-gauss-power';
+import {
+createDirectMekRuntimeFixture,
+emptyCBTEncounterSnapshot,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import type { CBTUnitInstance } from '../models/runtime/unit-instance';
+
+import { HAG_FLAK_MODE,HAG_STANDARD_MODE } from '../models/runtime/component-hag-mode';
 import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
 } from '../models/runtime/equipment-interaction';
-import { HAG_FLAK_MODE, HAG_STANDARD_MODE } from '../models/runtime/component-hag-mode';
 import { GaussPowerHandler } from '../models/runtime/mek-gauss-power';
 
 describe('direct V2 Gauss power handler', () => {
@@ -47,8 +48,7 @@ describe('direct V2 Gauss power handler', () => {
         expect(setup.weaponSelectable()).toBeFalse();
         expect(setup.runtime.dispatch({
             type: 'fire-weapons',
-            
-            
+
             selections: [{ weaponId: setup.component.id }],
             heatPolicy: 'automatic',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -91,8 +91,7 @@ describe('direct V2 Gauss power handler', () => {
         const setup = directGaussSetup();
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: setup.component.id,
             mode: HAG_FLAK_MODE,
         }).accepted).toBeTrue();
@@ -103,8 +102,7 @@ describe('direct V2 Gauss power handler', () => {
 
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: setup.component.id,
             mode: HAG_STANDARD_MODE,
         }).accepted).toBeTrue();
@@ -150,11 +148,10 @@ function directGaussSetup() {
     };
 }
 
-function endTurn(runtime: CBTUnitInstance, commandId: string): void {
+function endTurn(runtime: CBTMekUnit, commandId: string): void {
     expect(runtime.dispatch({
         type: 'end-turn',
-        
-        
+
         policy: 'automatic',
     }).accepted).toBeTrue();
 }

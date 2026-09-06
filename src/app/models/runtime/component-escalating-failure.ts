@@ -1,56 +1,57 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isCBTRuleset,type CBTRuleset } from '../cbt-ruleset.model';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentFlag } from '../equipment-flags.type';
+import type { EquipmentStatus } from '../equipment-status.model';
 import type { Equipment } from '../equipment.model';
 import {
-    BLUE_SHIELD_FLAG,
-    EMERGENCY_COOLANT_SYSTEM_FLAG,
-    JET_BOOSTER_FLAG,
-    MASC_FLAG,
-    RADICAL_HEAT_SINK_FLAG,
-    VIRAL_JAMMER_DECOY_FLAG,
-    VIRAL_JAMMER_HOMING_FLAG,
-    VIRAL_JAMMER_OPERATING_HEAT,
-    isEmergencyCoolantSystemEquipment,
-    isRadicalHeatSinkEquipment,
-    isViralJammerEquipment,
+BLUE_SHIELD_FLAG,
+EMERGENCY_COOLANT_SYSTEM_FLAG,
+JET_BOOSTER_FLAG,
+MASC_FLAG,
+RADICAL_HEAT_SINK_FLAG,
+VIRAL_JAMMER_DECOY_FLAG,
+VIRAL_JAMMER_HOMING_FLAG,
+VIRAL_JAMMER_OPERATING_HEAT,
+isEmergencyCoolantSystemEquipment,
+isRadicalHeatSinkEquipment,
+isViralJammerEquipment,
 } from '../escalating-equipment.model';
+import {
+ESCALATING_FAILURE_NO_CHECK_TARGET,
+formatEscalatingFailureTarget,
+gameRulesFor,
+} from '../rules/game-rules';
+import { type CBTMekUnit } from './cbt-unit';
+import {
+componentStateChangeFromReduction,
+type ComponentStateChangeResult,
+} from './component-state-change';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
+import {
+type ComponentRuntimeState,
+} from './runtime-state';
 
 export {
-    escalatingFailureCriticalExplosionDamage,
-    isBattleArmorMyomerBoosterEquipment,
-    isJetBoosterEquipment,
-    isMascEquipment,
-    isSuperchargerEquipment,
-    movementBoosterUsableWhile,
+escalatingFailureCriticalExplosionDamage,
+isBattleArmorMyomerBoosterEquipment,
+isJetBoosterEquipment,
+isMascEquipment,
+isSuperchargerEquipment,
+movementBoosterUsableWhile
 } from '../escalating-equipment.model';
-import { isCBTRuleset, type CBTRuleset } from '../cbt-ruleset.model';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { EquipmentStatus } from '../equipment-status.model';
-import {
-    ESCALATING_FAILURE_NO_CHECK_TARGET,
-    formatEscalatingFailureTarget,
-    gameRulesFor,
-} from '../rules/game-rules';
-import {
-    componentStateChangeFromReduction,
-    type ComponentStateChangeResult,
-} from './component-state-change';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import {
-    type ComponentRuntimeState,
-} from './runtime-state';
-import type { CBTUnitInstance } from './unit-instance';
+
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionHandlerId,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionHandlerId,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
 export const ESCALATING_FAILURE_HANDLER_ID = 'escalating-failure-handler';
@@ -225,7 +226,7 @@ export function componentEscalatingFailureDefinition(
 }
 
 export function componentEscalatingFailureFacts(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentEscalatingFailureDefinition,
 ): ComponentEscalatingFailureFacts {
     const query = runtime.query();
@@ -246,7 +247,7 @@ export function canUseEscalatingFailure(
 }
 
 export function selectComponentEscalatingFailureSequence(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentEscalatingFailureDefinition,
     index: number,
 ): ComponentStateChangeResult {
@@ -258,7 +259,7 @@ export function selectComponentEscalatingFailureSequence(
 }
 
 export function setComponentEscalatingFailureStatus(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentEscalatingFailureDefinition,
     status: 'available' | 'disabled',
 ): ComponentStateChangeResult {
@@ -463,7 +464,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     }
 
     getComponentEscalatingFailureChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentEscalatingFailureDefinition,
         context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -472,7 +473,7 @@ export class EscalatingFailureHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentEscalatingFailureSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentEscalatingFailureDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,

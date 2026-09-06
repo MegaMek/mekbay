@@ -1,40 +1,19 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { CrewMemberRuntimeState } from '../crew-member.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type { CrewPositionId } from '../entity/entity-identifiers';
-import type { CrewMemberRuntimeState } from '../crew-member.model';
 import type { NativeUnitSourceHandle } from '../native-unit-source-handle';
-import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { cloneNativeUnitSourceHandle } from '../native-unit-source-handle';
+import { CBTUnit,type CBTNonMekUnit } from './cbt-unit';
+
 import type { CrewAssignment } from './crew-assignment';
-import { canonicalizeCrewAssignment, createDefaultCrewAssignment } from './crew-assignment';
-import { buildNonMekRuntimeIndex, type NonMekRuntimeIndex } from './non-mek-runtime-index';
-import { createPristineNonMekUnitState, NonMekUnitInstance } from './non-mek-unit-instance';
-import {
-    NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
-    restoreNonMekUnit,
-    serializeNonMekUnit,
-    type NonMekDeploymentConfiguration,
-    type SerializedNonMekDeployment,
-    type SerializedNonMekUnit,
-} from './non-mek-unit-persistence';
-import {
-    scenarioRuleset,
-    scenarioUsesForcedWithdrawal,
-    type ScenarioRules,
-} from './unit-state-initializer';
-import { captureCBTUnitRuntime, type CBTUnitRuntimeReadModel } from './cbt-unit-runtime';
-import type { TargetRegistrySnapshot } from './encounter-runtime';
-import type {
-    CBTSelectedWeaponFireResult,
-    CBTTargetingReconciliation,
-    CBTUnit,
-    CBTUnitDispatchResult,
-} from './cbt-unit';
-import type { EquipmentRowOrderGroup } from './equipment-row-order';
-import type { AttackerTargetingState } from './attacker-targeting-state';
-import type { CBTUnitAttackerTargetingCommand, CBTUnitSelectedWeaponFireCommand } from './unit-instance';
+import { canonicalizeCrewAssignment,createDefaultCrewAssignment } from './crew-assignment';
+import { buildNonMekRuntimeIndex } from './non-mek-runtime-index';
+import { createNonMekRuntimeBinding,createPristineNonMekUnitState } from './non-mek-unit-instance';
+import { NON_MEK_DEPLOYMENT_SCHEMA_VERSION,restoreNonMekRuntime,type NonMekDeploymentConfiguration,type SerializedNonMekDeployment,type SerializedNonMekUnit } from './non-mek-unit-persistence';
+import { scenarioRuleset,scenarioUsesForcedWithdrawal,type ScenarioRules } from './unit-state-initializer';
 
 export interface NonMekUnitDeploymentInput {
     readonly id: string;
@@ -50,282 +29,80 @@ export interface CreateCBTNonMekUnitRequest {
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
 }
 
-/** Ready ownership aggregate for one non-Mek BaseEntity plus its direct sparse runtime. */
-export class CBTNonMekUnit implements CBTUnit {
-    public readonly instanceId: string;
+/** Prepares a new unit from immutable entity facts and deployment choices. */
+export function createNonMekUnit(
+    entity: BaseEntity, request: CreateCBTNonMekUnitRequest, nativeSource?: NativeUnitSourceHandle,
+): CBTNonMekUnit {
+    verifySource(entity, request.uuid, nativeSource);
+    const index = buildNonMekRuntimeIndex(entity);
+    const assigned = request.deployment.crewAssignment === undefined
+        ? createDefaultCrewAssignment(index.crewPositions)
+        : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
+    const crewAssignment = request.crewSkills ? {
+        schemaVersion: 1 as const,
+        positions: assigned.positions.map(position => ({ ...position,
+            gunnery: request.crewSkills!.gunnery, piloting: request.crewSkills!.piloting })),
+    } : assigned;
+    const ruleset = scenarioRuleset(request.scenario);
+    const baselineRef = Object.freeze({
+        entity: request.uuid, ruleset,
+        initialStateProfile: Object.freeze({ schemaVersion: 1 as const, initializerRevision: 1,
+            profileId: boundedText(request.initialStateProfileId, 'initial-state profile') }),
+    });
+    const prepared = createNonMekRuntimeBinding(entity, ruleset, createPristineNonMekUnitState(entity),
+        scenarioUsesForcedWithdrawal(request.scenario), crewAssignment);
+    const deployment = freezeDeployment({ schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
+        values: { id: boundedText(request.deployment.id, 'deployment ID'), crewAssignment } });
+    return new CBTUnit<'non-mek'>({ uuid: request.uuid, instanceId: request.instanceId, baselineRef,
+        runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment }, nativeSource });
+}
 
-    public constructor(
-        private readonly entity: BaseEntity,
-        public readonly uuid: UnitUuid,
-        private readonly runtime: NonMekUnitInstance,
-        private readonly deployment: SerializedNonMekDeployment,
-        private readonly nativeSource?: NativeUnitSourceHandle,
-    ) {
-        if (entity.entityType === 'Mek') throw new Error('CBTNonMekUnit accepts non-Mek entities only');
-        if (uuid !== entity.uuid() || !runtime.matchesEntity(entity)) {
-            throw new Error('Ready entity identity does not match its runtime');
-        }
-        this.instanceId = runtime.id;
-        this.deployment = freezeDeployment(deployment);
-        this.nativeSource = nativeSource === undefined
-            ? undefined
-            : cloneNativeUnitSourceHandle(nativeSource);
-        Object.freeze(this);
-    }
+export function restoreNonMekUnit(
+    saved: SerializedNonMekUnit, entity: BaseEntity, uuid: UnitUuid, scenario: ScenarioRules,
+    nativeSource?: NativeUnitSourceHandle,
+): CBTNonMekUnit {
+    verifySource(entity, uuid, nativeSource);
+    if (saved.entity !== uuid) throw new Error('Persisted entity source does not match the loaded source');
+    const prepared = restoreNonMekRuntime(saved, entity, scenarioRuleset(scenario),
+        scenarioUsesForcedWithdrawal(scenario));
+    return new CBTUnit<'non-mek'>({ uuid, instanceId: saved.instanceId, baselineRef: prepared.baselineRef,
+        runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment: freezeDeployment(saved.deployment) }, nativeSource });
+}
 
-    public getUnit(): BaseEntity {
-        return this.entity;
-    }
+/** Rebinds scenario mechanics while preserving sparse gameplay facts and session targeting. */
+export function cloneNonMekForOwner(current: CBTNonMekUnit, scenario: ScenarioRules): CBTNonMekUnit {
+    const candidate = restoreNonMekUnit(current.serialize(), current.getUnit(), current.uuid, scenario,
+        current.getNativeSource());
+    candidate.installAttackerTargetingSessionState(current.snapshot().attackerTargeting);
+    return candidate;
+}
 
-    public getInstance(): NonMekUnitInstance {
-        return this.runtime;
-    }
+export function repairNonMekUnit(current: CBTNonMekUnit): CBTNonMekUnit {
+    const before = current.snapshot();
+    if (before.stateRevision >= Number.MAX_SAFE_INTEGER) throw new Error('Unit revision is exhausted');
+    const state = Object.freeze({ ...createPristineNonMekUnitState(current.getUnit()),
+        stateRevision: before.stateRevision + 1, attackerTargeting: before.attackerTargeting,
+        ...(before.equipmentRowOrder === undefined ? {} : { equipmentRowOrder: before.equipmentRowOrder }) });
+    const prepared = createNonMekRuntimeBinding(current.getUnit(), current.ruleset(), state,
+        current.mechanics().forcedWithdrawal, current.getCrewAssignment());
+    return new CBTUnit<'non-mek'>({ uuid: current.uuid, instanceId: current.instanceId, baselineRef: current.baselineRef,
+        runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment: current.getDeployment() },
+        nativeSource: current.getNativeSource() });
+}
 
-    public getIndex(): NonMekRuntimeIndex {
-        return this.runtime.getIndex();
-    }
-
-    public revision() {
-        return this.runtime.revision();
-    }
-
-    public captureRuntime(): CBTUnitRuntimeReadModel {
-        return captureCBTUnitRuntime(this.runtime);
-    }
-
-    public planTargetingReconciliation(
-        registry: TargetRegistrySnapshot,
-    ): CBTTargetingReconciliation | null {
-        const plan = this.runtime.planAttackerTargetingReconciliation(registry);
-        return plan === null
-            ? null
-            : () => this.runtime.installAttackerTargetingReconciliation(plan);
-    }
-
-    public setEquipmentRowOrder(
-        group: EquipmentRowOrderGroup,
-        permutation: readonly number[],
-        rowCount: number,
-        forceReadOnly: boolean,
-    ): CBTUnitDispatchResult {
-        return this.runtime.setEquipmentRowOrder(
-            group,
-            permutation,
-            rowCount,
-            forceReadOnly,
-        );
-    }
-
-    public dispatchSelectedWeaponFire(
-        command: CBTUnitSelectedWeaponFireCommand,
-        registry: TargetRegistrySnapshot,
-        forceReadOnly: boolean,
-        c3Available: boolean,
-    ): CBTSelectedWeaponFireResult {
-        return this.runtime.dispatchSelectedWeaponFire(
-            command,
-            registry,
-            forceReadOnly,
-            c3Available,
-        );
-    }
-
-    public dispatchAttackerTargeting(
-        command: CBTUnitAttackerTargetingCommand,
-        registry: TargetRegistrySnapshot,
-        forceReadOnly: boolean,
-    ): CBTUnitDispatchResult {
-        return this.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-            edit: command.edit,
-        }, registry, forceReadOnly);
-    }
-
-    public endTurn(): CBTUnitDispatchResult {
-        return this.runtime.dispatch({
-            kind: 'end-turn',
-        });
-    }
-
-    public installAttackerTargetingSessionState(targeting: AttackerTargetingState): void {
-        this.runtime.installAttackerTargetingSessionState(targeting);
-    }
-
-    public getCrewAssignment(): CrewAssignment {
-        return this.deployment.values.crewAssignment;
-    }
-
-    public getNativeSource(): NativeUnitSourceHandle | undefined {
-        return this.nativeSource === undefined
-            ? undefined
-            : cloneNativeUnitSourceHandle(this.nativeSource);
-    }
-
-    public matchesEntity(entity: BaseEntity): boolean {
-        return entity === this.entity;
-    }
-
-    public serialize(): SerializedNonMekUnit {
-        return serializeNonMekUnit({
-            instance: this.runtime,
-            uuid: this.uuid,
-            sourceHashCanary: this.nativeSource?.sourceHashCanary,
-            deployment: this.deployment,
-        });
-    }
-
-    public static create(
-        entity: BaseEntity,
-        request: CreateCBTNonMekUnitRequest,
-        nativeSource?: NativeUnitSourceHandle,
-    ): CBTNonMekUnit {
-        verifySource(entity, request.uuid, nativeSource);
-        const index = buildNonMekRuntimeIndex(entity);
-        const assigned = request.deployment.crewAssignment === undefined
-            ? createDefaultCrewAssignment(index.crewPositions)
-            : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
-        const crewAssignment = request.crewSkills
-            ? {
-                schemaVersion: 1 as const,
-                positions: assigned.positions.map(position => ({
-                    ...position,
-                    gunnery: request.crewSkills!.gunnery,
-                    piloting: request.crewSkills!.piloting,
-                })),
-            }
-            : assigned;
-        const ruleset = scenarioRuleset(request.scenario);
-        const baseline = Object.freeze({
-            entity: request.uuid,
-            ruleset,
-            initialStateProfile: Object.freeze({
-                schemaVersion: 1 as const,
-                initializerRevision: 1,
-                profileId: boundedText(request.initialStateProfileId, 'initial-state profile'),
-            }),
-        });
-        const runtime = new NonMekUnitInstance(
-            request.instanceId,
-            baseline,
-            entity,
-            ruleset,
-            createPristineNonMekUnitState(entity),
-            scenarioUsesForcedWithdrawal(request.scenario),
-            crewAssignment,
-        );
-        const deployment = freezeDeployment({
-            schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
-            values: Object.freeze({
-                id: boundedText(request.deployment.id, 'deployment ID'),
-                crewAssignment,
-            }),
-        });
-        return new CBTNonMekUnit(entity, request.uuid, runtime, deployment, nativeSource);
-    }
-
-    public static restore(
-        saved: SerializedNonMekUnit,
-        entity: BaseEntity,
-        uuid: UnitUuid,
-        scenario: ScenarioRules,
-        nativeSource?: NativeUnitSourceHandle,
-    ): CBTNonMekUnit {
-        verifySource(entity, uuid, nativeSource);
-        if (saved.entity !== uuid) {
-            throw new Error('Persisted entity source does not match the loaded source');
-        }
-        const runtime = restoreNonMekUnit(
-            saved,
-            entity,
-            scenarioRuleset(scenario),
-            scenarioUsesForcedWithdrawal(scenario),
-        );
-        return new CBTNonMekUnit(
-            entity,
-            uuid,
-            runtime,
-            saved.deployment,
-            nativeSource,
-        );
-    }
-
-    /** Rebinds force-owned scenario options without changing sparse gameplay state. */
-    public static cloneForOwner(
-        current: CBTNonMekUnit,
-        scenario: ScenarioRules,
-    ): CBTNonMekUnit {
-        const candidate = CBTNonMekUnit.restore(
-            current.serialize(),
-            current.getUnit(),
-            current.uuid,
-            scenario,
-            current.getNativeSource(),
-        );
-        candidate.installAttackerTargetingSessionState(
-            current.captureRuntime().query.attackerTargetingState(),
-        );
-        return candidate;
-    }
-
-    public static repair(current: CBTNonMekUnit): CBTNonMekUnit {
-        const runtime = current.getInstance();
-        const currentState = runtime.snapshot();
-        const revision = runtime.revision();
-        if (revision >= Number.MAX_SAFE_INTEGER) throw new Error('Unit revision is exhausted');
-        const state = Object.freeze({
-            ...createPristineNonMekUnitState(current.getUnit()),
-            stateRevision: revision + 1,
-            attackerTargeting: currentState.attackerTargeting,
-            ...(currentState.equipmentRowOrder === undefined
-                ? {}
-                : { equipmentRowOrder: currentState.equipmentRowOrder }),
-        });
-        const replacement = new NonMekUnitInstance(
-            current.instanceId,
-            runtime.baselineRef,
-            current.getUnit(),
-            runtime.ruleset,
-            state,
-            runtime.forcedWithdrawal,
-            current.getCrewAssignment(),
-        );
-        return new CBTNonMekUnit(
-            current.getUnit(),
-            current.uuid,
-            replacement,
-            current.deployment,
-            current.getNativeSource(),
-        );
-    }
-
-    public static redeploy(
-        current: CBTNonMekUnit,
-        crewAssignment: CrewAssignment,
-        crewState?: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
-    ): CBTNonMekUnit {
-        const assignment = canonicalizeCrewAssignment(
-            current.getIndex().crewPositions,
-            crewAssignment,
-        );
-        const state = current.runtime.snapshot();
-        return new CBTNonMekUnit(
-            current.entity,
-            current.uuid,
-            new NonMekUnitInstance(
-                current.instanceId, current.runtime.baselineRef, current.entity, current.runtime.ruleset,
-                crewState === undefined ? state : { ...state, crew: crewState },
-                current.runtime.forcedWithdrawal, assignment,
-            ),
-            {
-                ...current.deployment,
-                values: Object.freeze({
-                    ...current.deployment.values,
-                    crewAssignment: assignment,
-                }),
-            },
-            current.nativeSource,
-        );
-    }
+export function redeployNonMekCrew(
+    current: CBTNonMekUnit, crewAssignment: CrewAssignment,
+    crewState?: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
+): CBTNonMekUnit {
+    const assignment = canonicalizeCrewAssignment(current.getIndex().crewPositions, crewAssignment);
+    const before = current.snapshot();
+    const prepared = createNonMekRuntimeBinding(current.getUnit(), current.ruleset(),
+        crewState === undefined ? before : { ...before, crew: crewState },
+        current.mechanics().forcedWithdrawal, assignment);
+    const deployment = freezeDeployment({ ...current.getDeployment(),
+        values: { ...current.getDeployment().values, crewAssignment: assignment } });
+    return new CBTUnit<'non-mek'>({ uuid: current.uuid, instanceId: current.instanceId, baselineRef: current.baselineRef,
+        runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment }, nativeSource: current.getNativeSource() });
 }
 
 function verifySource(

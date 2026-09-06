@@ -2,30 +2,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    BOMBAST_LASER_DAMAGE_12_MODE,
-    BOMBAST_LASER_DAMAGE_16_MODE,
-    BOMBAST_LASER_DAMAGE_8_MODE,
+BOMBAST_LASER_DAMAGE_12_MODE,
+BOMBAST_LASER_DAMAGE_16_MODE,
+BOMBAST_LASER_DAMAGE_8_MODE,
 } from '../models/bombast-laser-mode.model';
+import { type CBTMekUnit } from '../models/runtime/cbt-unit';
 import {
-    BOMBAST_LASER_CHARGED_STATE,
-    BOMBAST_LASER_CHARGING_STATE,
-    componentBombastLaserDefinition,
-    componentBombastLaserLifecycle,
-    setComponentBombastLaserCharge,
-    setComponentBombastLaserMode,
+BOMBAST_LASER_CHARGED_STATE,
+BOMBAST_LASER_CHARGING_STATE,
+componentBombastLaserDefinition,
+componentBombastLaserLifecycle,
+setComponentBombastLaserCharge,
+setComponentBombastLaserMode,
 } from '../models/runtime/component-bombast-laser';
-import { canPerformMekAction } from '../models/runtime/mek-action-availability';
 import {
-    equipmentWeaponToHitModifier,
-    projectMekEquipmentComponents,
+equipmentWeaponToHitModifier,
+projectMekEquipmentComponents,
 } from '../models/runtime/equipment-panel';
+import { canPerformMekAction } from '../models/runtime/mek-action-availability';
 import { createDirectBombastRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import type { CBTUnitInstance } from '../models/runtime/unit-instance';
-import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
-} from '../models/runtime/equipment-interaction';
+
 import { BombastLaserHandler } from '../models/runtime/component-bombast-laser';
+import type {
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 
 describe('BombastLaserHandler direct V2 runtime', () => {
     it('offers the three Core modes and projects the selected profile', () => {
@@ -101,8 +102,7 @@ describe('BombastLaserHandler direct V2 runtime', () => {
 
         const fired = setup.runtime.dispatch({
             type: 'fire-weapons',
-            
-            
+
             selections: [{ weaponId: setup.component.id }],
             heatPolicy: 'automatic',
         });
@@ -203,11 +203,10 @@ function canFire(setup: DirectBombastSetup): boolean {
     );
 }
 
-function endTurn(runtime: CBTUnitInstance, commandId: string): void {
+function endTurn(runtime: CBTMekUnit, commandId: string): void {
     expect(runtime.dispatch({
         type: 'end-turn',
-        
-        
+
         policy: 'automatic',
     }).accepted).toBeTrue();
 }

@@ -4,19 +4,19 @@
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import {
-    FLAMER_DAMAGE_MODE,
-    FLAMER_FLAG,
-    FLAMER_HEAT_MODE,
+FLAMER_DAMAGE_MODE,
+FLAMER_FLAG,
+FLAMER_HEAT_MODE,
 } from '../flamer-mode.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    ComponentModeHandler,
-    type ComponentModeDefinition,
+ComponentModeHandler,
+type ComponentModeDefinition,
 } from './component-mode';
 import type {
-    EquipmentInteractionCommandContext,
-    EquipmentInteractionQueryContext,
+EquipmentInteractionCommandContext,
+EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
 
 export class FlamerHandler extends ComponentModeHandler {
     readonly id = 'flamer-handler';
@@ -29,7 +29,7 @@ export class FlamerHandler extends ComponentModeHandler {
     }
 
     getComponentModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
@@ -44,7 +44,7 @@ export class FlamerHandler extends ComponentModeHandler {
     }
 
     handleComponentModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,

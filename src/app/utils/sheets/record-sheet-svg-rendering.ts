@@ -1,30 +1,31 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import {
+ATM_AMMO_PROFILES,
+MML_AMMO_PROFILES,
+type AmmoWeaponProfile,
+} from '../../models/ammo-weapon-profile.model';
 import { heatLevels } from '../../models/common.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
-import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
-import type { EntityDamageLocation, EntityTechBase } from '../../models/entity/types';
-import {
-    ATM_AMMO_PROFILES,
-    MML_AMMO_PROFILES,
-    type AmmoWeaponProfile,
-} from '../../models/ammo-weapon-profile.model';
+import type { EntityDamageLocation,EntityTechBase } from '../../models/entity/types';
 import type { WeaponEquipment } from '../../models/equipment.model';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
+import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
 import { clusterHits } from '../cluster-hit-table';
+import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
 import { recordSheetAmmoName } from '../record-sheet-ammo.util';
 import { defaultRecordSheetWeaponDamageText } from '../record-sheet-weapon-info.util';
 import type { BipedPaperdollPipLayout } from './biped-paperdoll.util';
 import { DistributedPipRenderer } from './distributed-pip-renderer';
 import { GenericPipRenderer } from './generic-pip-renderer';
 import { createPipShapeProfile } from './pip-shape-profile';
+import { createBattleTechLogo,createCatalystGameLabsLogo } from './record-sheet-brand';
 import {
-    RECORD_SHEET_CONTENT_HEIGHT,
-    RECORD_SHEET_CONTENT_WIDTH,
-    type RecordSheetPageProfile,
+RECORD_SHEET_CONTENT_HEIGHT,
+RECORD_SHEET_CONTENT_WIDTH,
+type RecordSheetPageProfile,
 } from './record-sheet-layout';
-import { createBattleTechLogo, createCatalystGameLabsLogo } from './record-sheet-brand';
 import { SvgFrameUtil } from './svg-frame.util';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -765,7 +766,7 @@ export function decoratePaperdollPips(layer: SVGGElement, forceRear = false): vo
 
 export function drawCriticalPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box, title = 'CRITICAL HITS'): void {
     const group = addFrame(svg, title, box);
-    const criticals = [...buildNonMekRuntimeIndex(entity).damageTracks.values()];
+    const criticals = [...buildNonMekRuntimeIndex(entity).damageTracks.values()].map(systemDamagePresentation);
     const visible = criticals.slice(0, Math.max(1, Math.floor((box.height - 25) / 11)));
     visible.forEach((critical, index) => {
         const y = 29 + index * 11;

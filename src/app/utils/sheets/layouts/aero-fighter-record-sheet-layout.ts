@@ -5,44 +5,44 @@ import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { isSingleHeatSinkEquipment } from '../../../models/heat-equipment.model';
-import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
-import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
-import {
-    fullRecordSheetLayoutProfile,
-    type RecordSheetLayoutProfile,
-    type RecordSheetPageFormat,
-} from '../record-sheet-layout';
-import {
-    type Box,
-    addFrame,
-    addText,
-    createRoot,
-    addDiagramHeading,
-    constructionMaterialSubtitle,
-    drawGeneratedFooter,
-    drawHeatScale,
-    drawPageChrome,
-    formatNumber,
-    scalePageBox,
-    setAttributes,
-    svgElement,
-} from '../record-sheet-svg-rendering';
+import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import {
-    type AeroDataInventoryRow,
-    drawAeroArtworkRegion,
-    drawAeroDataPanel,
-    drawAeroExternalStores,
-    drawAeroHeatDataPanel,
-    drawAeroMovementCompass,
-    drawAeroPaperdoll,
-    drawAeroVelocityPanel,
-} from './aero-record-sheet-components';
+fullRecordSheetLayoutProfile,
+type RecordSheetLayoutProfile,
+type RecordSheetPageFormat,
+} from '../record-sheet-layout';
 import {
-    drawFighterCriticalPanel,
-    drawFighterPilotPanel,
+addDiagramHeading,
+addFrame,
+addText,
+type Box,
+constructionMaterialSubtitle,
+createRoot,
+drawGeneratedFooter,
+drawHeatScale,
+drawPageChrome,
+formatNumber,
+scalePageBox,
+setAttributes,
+svgElement,
+} from '../record-sheet-svg-rendering';
+import {
+drawFighterCriticalPanel,
+drawFighterPilotPanel,
 } from './aero-fighter-record-sheet-controls';
+import {
+type AeroDataInventoryRow,
+drawAeroArtworkRegion,
+drawAeroDataPanel,
+drawAeroExternalStores,
+drawAeroHeatDataPanel,
+drawAeroMovementCompass,
+drawAeroPaperdoll,
+drawAeroVelocityPanel,
+} from './aero-record-sheet-components';
+import type { RecordSheetLayout,RecordSheetLayoutRequest } from './record-sheet-layout';
 
 /** Aerospace, conventional, and fixed-wing-support fighter composition. */
 export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
@@ -117,7 +117,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
         drawAeroExternalStores(svg, entity, at({ x: 467.534, y: 18, width: 124.466, height: 127 }));
         drawAeroArtworkRegion(svg, entity, at({ x: 43, y: 404, width: 193, height: 96 }));
         drawFighterPilotPanel(svg, at({ x: 251.4, y: 509.4, width: 142.6, height: 93.934 }));
-        drawFighterCriticalPanel(svg, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
+        drawFighterCriticalPanel(svg, entity, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
         drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
         if (conventional) {
             drawGroundMapStraightMovementTable(svg, at({ x: 405.966, y: 509.4, width: 184, height: 157.89 }));

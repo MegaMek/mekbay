@@ -2,53 +2,53 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import {
-    Component,
-    ChangeDetectionStrategy,
-    inject,
-    Injector,
-    input,
-    computed,
-    ElementRef,
-    DestroyRef,
-    effect,
-    signal,
-} from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
+import {
+ChangeDetectionStrategy,
+Component,
+computed,
+DestroyRef,
+effect,
+ElementRef,
+inject,
+Injector,
+input,
+signal,
+} from '@angular/core';
 import { merge } from 'rxjs';
-import { OptionsService } from '../../../services/options.service';
-import { DialogsService } from '../../../services/dialogs.service';
-import { OverlayManagerService } from '../../../services/overlay-manager.service';
-import { ToastService } from '../../../services/toast.service';
 import type { CBTForce } from '../../../models/cbt-force.model';
-import type { PageViewerMember } from '../internal/types';
+import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 import { isCBTMekForceMember } from '../../../models/force-member.model';
 import {
-    hasNonMekAirborneTurnSelection,
-    hasPendingNonMekChanges,
+isMekTurnPanelDirty,
+isMekTurnPanelDirtyPhase,
+mekTurnPanelPhase,
+} from '../../../models/runtime/mek-turn-panel';
+import {
+hasNonMekAirborneTurnSelection,
+hasPendingNonMekChanges,
 } from '../../../models/runtime/non-mek-unit-instance';
-import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
-import { PageRuntimeHistoryPanelComponent } from './page-runtime-history-panel.component';
-import { PageViewerStateService } from '../internal/page-viewer-state.service';
+import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
+import { DialogsService } from '../../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../../services/force-workspace-state.service';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ToastService } from '../../../services/toast.service';
+import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
 import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
-import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import {
-    isMekTurnPanelDirty,
-    isMekTurnPanelDirtyPhase,
-    mekTurnPanelPhase,
-} from '../../../models/runtime/mek-turn-panel';
-import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
-import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
-import {
-    UnitNotificationBadgesComponent,
-    type UnitNotificationActivation,
+UnitNotificationBadgesComponent,
+type UnitNotificationActivation,
 } from '../../unit-notification-badges/unit-notification-badges.component';
 import { projectRuntimeUnitNotifications } from '../../unit-notification-badges/unit-notification-runtime.util';
-import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
+import { PageViewerStateService } from '../internal/page-viewer-state.service';
+import type { PageViewerMember } from '../internal/types';
+import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+import { PageRuntimeHistoryPanelComponent } from './page-runtime-history-panel.component';
+import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
 const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
@@ -409,7 +409,7 @@ export class PageInteractionOverlayComponent {
         if (!member) return;
         try {
             const result = isCBTMekForceMember(member) && snapshot
-                ? await member.force.dispatchMekUnitCommand(member.id, type === 'end-turn'
+                ? await member.force.dispatchUnitCommand(member.id, type === 'end-turn'
                     ? {
                         type,
                         policy: this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
@@ -440,8 +440,9 @@ export class PageInteractionOverlayComponent {
     ) {
         const snapshot = member.force.getUnitSnapshot(member.id);
         if (!snapshot || !hasNonMekRuntime(snapshot)) return Promise.resolve(null);
-        return member.force.dispatchNonMekUnitCommand(member.id, {
-            kind,
+        return member.force.dispatchUnitCommand(member.id, {
+            type: kind,
+            policy: 'automatic',
         });
     }
 

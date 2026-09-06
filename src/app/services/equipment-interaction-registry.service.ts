@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Injectable } from '@angular/core';
-import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
+import { type CBTMekUnit } from '../models/runtime/cbt-unit';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionHandlerId,
-    type EquipmentInteractionOwnerContext,
-    type EquipmentInteractionQueryContext,
-    type EquipmentInteractionChoiceBinding,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoiceBinding,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionHandlerId,
+type EquipmentInteractionInput,
+type EquipmentInteractionOwnerContext,
+type EquipmentInteractionQueryContext,
 } from '../models/runtime/equipment-interaction';
 import {
-    equipmentForComponent,
-    type MekRuntimeIndex,
+equipmentForComponent,
+type MekRuntimeIndex,
 } from '../models/runtime/mek-runtime-index';
-import type { CBTUnitInstance } from '../models/runtime/unit-instance';
 
 /**
  * Generic equipment interaction orchestration. It deliberately has no imports,
@@ -37,7 +37,7 @@ export class EquipmentInteractionRegistry {
     }
 
     choices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         entity: MekEntity,
         index: MekRuntimeIndex,
         ruleset: CBTRuleset,
@@ -89,7 +89,7 @@ export class EquipmentInteractionRegistry {
 
     /** Applies a live choice resolved synchronously by the force owner. */
     select(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         entity: MekEntity,
         index: MekRuntimeIndex,
         ruleset: CBTRuleset,

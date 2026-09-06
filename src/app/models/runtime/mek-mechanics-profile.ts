@@ -1,51 +1,52 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
-import type { CBTRuleset } from '../cbt-ruleset.model';
+import { compareText } from '../../utils/string.util';
 import {
-    c3EquipmentTraits,
-    type C3EquipmentTraits,
-    type C3NetworkType,
-    type C3Role,
+c3EquipmentTraits,
+type C3EquipmentTraits,
+type C3NetworkType,
+type C3Role,
 } from '../c3-network.model';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { isHardenedArmor } from '../construction-equipment.model';
+import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import { COCKPIT_DATA } from '../entity/components/cockpit-data';
-import { ENGINE_DATA, type EnginePowerSource } from '../entity/components/engine-data';
+import { ENGINE_DATA,type EnginePowerSource } from '../entity/components/engine-data';
 import { GYRO_DATA } from '../entity/components/gyro-data';
-import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { LamEntity } from '../entity/entities/mek/lam-entity';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId,CriticalSlotId,LocationId } from '../entity/entity-identifiers';
 import {
-    isPhysicalWeaponEquipment,
-    isShieldEquipment,
-    resolveShieldProfile,
-    resolveShieldSize,
-    type ShieldProfile,
+RUN_WITHOUT_MASC_CALCULATION,
+STANDARD_MOVEMENT_CALCULATION,
+} from '../entity/types';
+import {
+isPhysicalWeaponEquipment,
+isShieldEquipment,
+resolveShieldProfile,
+resolveShieldSize,
+type ShieldProfile,
 } from '../entity/utils/physical-weapon';
 import {
-    RUN_WITHOUT_MASC_CALCULATION,
-    STANDARD_MOVEMENT_CALCULATION,
-} from '../entity/types';
-import type { ComponentId, CriticalSlotId, LocationId } from '../entity/entity-identifiers';
-import type { MekRuntimeIndex, MekIndexedComponent } from './mek-runtime-index';
-import { isModularArmorEquipment } from '../modular-armor.model';
-import { isHardenedArmor } from '../construction-equipment.model';
-import {
-    isMascEquipment,
-    isSuperchargerEquipment,
-} from './component-escalating-failure';
-import {
-    isJumpJetEquipment,
-    isPartialWingEquipment,
-    isUmuEquipment,
-    jumpJetKind,
+isJumpJetEquipment,
+isPartialWingEquipment,
+isUmuEquipment,
+jumpJetKind,
 } from '../jump-equipment.model';
+import { isModularArmorEquipment } from '../modular-armor.model';
 import {
-    isActuatorEnhancementSystem,
-    tripleStrengthMyomerKind,
+isActuatorEnhancementSystem,
+tripleStrengthMyomerKind,
 } from '../myomer-equipment.model';
-import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
-import { isRamPlateEquipment, isSpikesEquipment } from '../physical-augmentation.model';
+import { isRamPlateEquipment,isSpikesEquipment } from '../physical-augmentation.model';
+import { MEK_ENGINE_DESTRUCTION_HITS,mekGyroDestructionHits,mekSensorWeaponDisableHits } from '../rules/mek-system-damage-rules';
+import {
+isMascEquipment,
+isSuperchargerEquipment,
+} from './component-escalating-failure';
+import type { MekIndexedComponent,MekRuntimeIndex } from './mek-runtime-index';
 
 export const PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION = 2 as const;
 
@@ -471,7 +472,7 @@ export function compileMekMechanicsProfile(
         powerSource: engineDescriptor.powerSource,
         fusionFamily: engineDescriptor.powerSource === 'fusion',
         rating: entity.mountedEngine().rating,
-        destructionHitThreshold: 3,
+        destructionHitThreshold: MEK_ENGINE_DESTRUCTION_HITS,
     });
     const cockpit: MekCockpitMechanics = Object.freeze({
         ...cockpitTopology,
@@ -487,15 +488,11 @@ export function compileMekMechanicsProfile(
         ...gyroTopology,
         type: gyroType,
         heavyDuty: gyroType === 'Heavy Duty',
-        destructionHitThreshold: gyroType === 'None'
-            ? 0
-            : gyroType === 'Heavy Duty'
-                ? ruleset === 'core-2026' ? 4 : 3
-                : 2,
+        destructionHitThreshold: mekGyroDestructionHits(gyroType, ruleset),
     });
     const sensors: MekSensorMechanics = Object.freeze({
         ...sensorTopology,
-        weaponFireDisableHitThreshold: cockpitDescriptor.hasTorsoSlots ? 3 : 2,
+        weaponFireDisableHitThreshold: mekSensorWeaponDisableHits(cockpitDescriptor.hasTorsoSlots),
     });
     const profile: MekMechanicsProfile = Object.freeze({
         schemaVersion: PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION,

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { extname, join, relative, resolve } from 'node:path';
+import { existsSync,readFileSync,readdirSync } from 'node:fs';
+import { extname,join,relative,resolve } from 'node:path';
 
 const root = resolve(__dirname, '..');
 const app = join(root, 'src', 'app');
@@ -85,13 +85,15 @@ assert.deepEqual(
     'production must not recreate the discarded published/blueprint/canonicalization layers',
 );
 
-const readyUnit = source(join(app, 'models', 'runtime', 'cbt-mek-unit.ts'));
-assert.match(readyUnit, /private readonly entity: MekEntity;/u);
-assert.match(readyUnit, /public getUnit\(\): MekEntity\s*\{\s*return this\.entity;/u);
+const readyUnit = source(join(app, 'models', 'runtime', 'cbt-unit.ts'));
+assert.match(readyUnit, /export class CBTUnit</u);
+assert.match(readyUnit, /#runtime: BoundRuntime;/u);
+assert.doesNotMatch(readyUnit, /getInstance\(|new (?:CBTUnitInstance|NonMekUnitInstance)/u);
 
 const unitInstance = source(join(app, 'models', 'runtime', 'unit-instance.ts'));
 assert.match(unitInstance, /readonly entity: MekEntity;/u);
-assert.match(unitInstance, /#state: MekUnitRuntimeState;/u);
+assert.match(unitInstance, /export function reduceMekRuntime\(/u);
+assert.doesNotMatch(unitInstance, /^(?!.*readonly).*#state:|class CBTUnitInstance/mu);
 assert.doesNotMatch(unitInstance, /MountedEquipment|SVGElement|querySelector|document\./u);
 assert.doesNotMatch(unitInstance, /legacy|Legacy|migrateLegacy|recovery evidence/u);
 
@@ -187,16 +189,16 @@ assert.doesNotMatch(
 );
 
 const readyClassic = source(join(app, 'models', 'runtime', 'cbt-unit.ts'));
-assert.match(readyClassic, /export interface CBTUnit/u);
-assert.doesNotMatch(readyClassic, /endTurn\([^)]*MekHeatAutomationPolicyV2/u);
+assert.match(readyClassic, /export class CBTUnit</u);
 const readyMek = source(join(app, 'models', 'runtime', 'cbt-mek-unit.ts'));
 const readyNonMek = source(join(app, 'models', 'runtime', 'cbt-non-mek-unit.ts'));
-assert.match(readyMek, /class CBTMekUnit implements CBTUnit/u);
-assert.match(readyNonMek, /class CBTNonMekUnit implements CBTUnit/u);
+assert.match(readyMek, /export async function createMekUnit/u);
+assert.match(readyNonMek, /export function createNonMekUnit/u);
+assert.doesNotMatch(readyMek + readyNonMek, /export class|#state:|#runtime:/u);
 const nonMekRuntime = source(join(app, 'models', 'runtime', 'non-mek-unit-instance.ts'));
 assert.match(nonMekRuntime, /NonMekEntityType = Exclude<EntityType, 'Mek'>/u);
-assert.match(nonMekRuntime, /export class NonMekUnitInstance/u);
-assert.match(nonMekRuntime, /private readonly entity: BaseEntity/u);
+assert.match(nonMekRuntime, /export function reduceNonMekRuntime/u);
+assert.doesNotMatch(nonMekRuntime, /class NonMekUnitInstance|#state:/u);
 assert.match(nonMekRuntime, /currentBaseBattleValue: \(\) => entity\.battleValueFor\(stateView\(\), ruleset\)/u);
 assert.doesNotMatch(
     nonMekRuntime,
@@ -204,6 +206,25 @@ assert.doesNotMatch(
     'NonMekUnitInstance must not regrow public projection wrappers used only by tests',
 );
 assert.doesNotMatch(nonMekRuntime, /ForceUnit|Facade|Published/u);
+
+const commands = source(join(app, 'models', 'runtime', 'unit-command.ts'));
+assert.match(commands, /export type CBTUnitCommand/u);
+assert.doesNotMatch(unitInstance + nonMekRuntime, /export type (?:CBTUnitCommand|NonMekUnitCommand)\s*=/u);
+assert.doesNotMatch(cbtForce + cbtUnitStore, /dispatch(?:Mek|NonMek)UnitCommand/u);
+assert.match(cbtForce, /isUnitEditContextCurrent\(requested, before\.editContext\)/u);
+assert.match(cbtForce, /c3RuntimeMutationScope\(instanceId, emergencyMasterUnitIds\)/u);
+const sharedIndex = source(join(app, 'models', 'runtime', 'unit-runtime-index.ts'));
+assert.match(sharedIndex, /entity\.damageLocations\(\)/u);
+assert.match(sharedIndex, /entity\.equipment\(\)/u);
+assert.doesNotMatch(sharedIndex, /sheetCode|SVG|querySelector/u);
+const interactions = source(join(app, 'components', 'page-viewer', 'record-sheet-interaction.ts'));
+assert.match(interactions, /RecordSheetInteractionPayload & Readonly<\{ context: UnitEditContext \}>/u);
+assert.doesNotMatch(interactions, /expectedRevision/u);
+for (const domainFile of production.filter(path => /models[\\/](?:runtime|rules)[\\/]/u.test(path))) {
+    if (domainFile.endsWith('legacy-force-v1-converter.ts') || domainFile.includes('testing')) continue;
+    assert.doesNotMatch(source(domainFile), /querySelector\(|getAttribute\(|SVGElement|SVGSVGElement/u,
+        `${display(domainFile)} must derive rules from entity/runtime, never SVG`);
+}
 
 const directCatalogModeReaders = production
     .filter(path => /\b(?:equipment|weapon)\.modes\b/u.test(source(path)))
@@ -401,7 +422,7 @@ assert.doesNotMatch(
 const mul = source(join(app, 'utils', 'mul-file.util.ts'));
 assert.match(mul, /isCBTForceMember/u);
 assert.match(mul, /getUnitSnapshot/u);
-assert.match(mul, /dispatchNonMekUnitCommand/u);
+assert.match(mul, /dispatchUnitCommand/u);
 assert.match(mul, /snapshot\.query\.destroyed\(\)/u);
 assert.doesNotMatch(mul, /canonical CBT Mek/u);
 

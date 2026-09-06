@@ -2,37 +2,36 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { TestBed } from '@angular/core/testing';
+import type { CBTNonMekUnit } from '../models/runtime/cbt-unit';
+import type { CBTUnitCommand } from '../models/runtime/unit-command';
+import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 
 import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTNonMekUnitCommandResult } from '../models/cbt-force.types';
-import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
-import type { UnitConditionKey } from '../models/unit-condition.model';
+import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
-import { AmmoEquipment } from '../models/equipment.model';
+import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { TestAeroSpaceFighterEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import {
-    addTestEquipment,
-    addTestEquipmentWithFlags,
+addTestEquipment,
+addTestEquipmentWithFlags,
 } from '../models/entity/testing/test-mounted-equipment';
+import { AmmoEquipment } from '../models/equipment.model';
 import { createDefaultCrewAssignment } from '../models/runtime/crew-assignment';
-import {
-    NonMekUnitInstance,
-    type NonMekUnitCommand,
-} from '../models/runtime/non-mek-unit-instance';
-import { componentIdForMount } from '../models/runtime/non-mek-runtime-index';
+import type { UnitConditionKey } from '../models/unit-condition.model';
+
 import { type InstanceBaselineRef } from '../models/runtime/runtime-state';
 import {
-    asUnitUuid,
-} from './unit-catalog/unit-catalog.types';
-import { CBTAutomationService } from './cbt-automation.service';
-import {
-    CBTAutomationCheckService,
-    resolveAutomationChecksAutomatically,
+CBTAutomationCheckService,
+resolveAutomationChecksAutomatically,
 } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
+import { CBTAutomationService } from './cbt-automation.service';
 import { DirectNonMekAutomationService } from './direct-non-mek-automation.service';
 import { OptionsService } from './options.service';
+import {
+asUnitUuid,
+} from './unit-catalog/unit-catalog.types';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5f1');
 
@@ -80,9 +79,9 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness();
         setHeat(harness.runtime, 10, 'pending');
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         });
 
         expect(await service.settleBeforeCommand(
@@ -103,24 +102,24 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness();
         setHeat(harness.runtime, 10, 'pending');
         const automatic = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         });
         expect(automatic.command).toEqual(jasmine.objectContaining({
-            kind: 'end-turn',
-            heatPolicy: 'automatic',
+            type: 'end-turn',
+            policy: 'automatic',
         }));
 
         resolveAutomation.and.callFake(async () => new Set<string>());
         const manual = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'automatic',
+            policy: 'automatic',
         });
         expect(manual.command).toEqual(jasmine.objectContaining({
-            kind: 'end-turn',
-            heatPolicy: 'manual',
+            type: 'end-turn',
+            policy: 'manual',
         }));
     });
 
@@ -130,9 +129,9 @@ describe('DirectNonMekAutomationService', () => {
         const skippedHarness = createHarness();
         setHeat(skippedHarness.runtime, 10, 'pending');
         const skipped = await service.prepareCommand(skippedHarness.force, skippedHarness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         });
 
         expect(await service.settleBeforeCommand(
@@ -148,9 +147,9 @@ describe('DirectNonMekAutomationService', () => {
         const manualHarness = createHarness();
         setHeat(manualHarness.runtime, 10, 'pending');
         const manual = await service.prepareCommand(manualHarness.force, manualHarness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         });
 
         expect(await service.settleBeforeCommand(
@@ -171,17 +170,17 @@ describe('DirectNonMekAutomationService', () => {
         const heatReview = resolveAutomation.calls.allArgs()
             .find(args => args[0] === 'heatAndDissipationResolution');
         expect(heatReview?.[1]).toEqual([]);
-        expect(harness.runtime.turnState().turnCounter).toBe(1);
+        expect(harness.runtime.snapshot().turn.turnCounter).toBe(1);
     });
 
     it('cancels end turn when the heat review is closed', async () => {
         const harness = createHarness();
         setHeat(harness.runtime, 10);
         resolveAutomation.and.resolveTo(null);
-        const command: NonMekUnitCommand = {
-            kind: 'end-turn',
+        const command: CBTUnitCommand = {
+            type: 'end-turn',
 
-            heatPolicy: 'automatic',
+            policy: 'automatic',
         };
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, command);
@@ -199,10 +198,10 @@ describe('DirectNonMekAutomationService', () => {
         setHeat(harness.runtime, 30);
         resolveAutomation.and.callFake(async (key: string, events: readonly { readonly id: string }[]) =>
             key === 'heatEffectsCheck' ? null : new Set(events.map(event => event.id)));
-        const command: NonMekUnitCommand = {
-            kind: 'end-turn',
+        const command: CBTUnitCommand = {
+            type: 'end-turn',
 
-            heatPolicy: 'automatic',
+            policy: 'automatic',
         };
         const revisionBefore = harness.runtime.revision();
 
@@ -210,7 +209,7 @@ describe('DirectNonMekAutomationService', () => {
 
         expect(prepared).toEqual(jasmine.objectContaining({ command, cancelled: true }));
         expect(harness.runtime.revision()).toBe(revisionBefore);
-        expect(harness.runtime.hasCondition('shutdown')).toBeFalse();
+        expect(harness.runtime.query().hasCondition('shutdown')).toBeFalse();
     });
 
     it('cancels the dedicated aerospace heat checks without mutating the turn', async () => {
@@ -218,10 +217,10 @@ describe('DirectNonMekAutomationService', () => {
         setHeat(harness.runtime, 30);
         resolveChecksAutomation.and.callFake(async (key: string) =>
             key === 'heatEffectsCheck' ? null : []);
-        const command: NonMekUnitCommand = {
-            kind: 'end-turn',
+        const command: CBTUnitCommand = {
+            type: 'end-turn',
 
-            heatPolicy: 'automatic',
+            policy: 'automatic',
         };
         const revisionBefore = harness.runtime.revision();
 
@@ -245,7 +244,7 @@ describe('DirectNonMekAutomationService', () => {
             harness.force,
             [{
                 instanceId: harness.instanceId,
-                command: { kind: 'end-turn', heatPolicy: 'automatic' },
+                command: { type: 'end-turn', policy: 'automatic' },
             }],
             { interactive: true },
         );
@@ -275,7 +274,7 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness();
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         expect(harness.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -283,8 +282,8 @@ describe('DirectNonMekAutomationService', () => {
             ejected: false,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
-        const command: NonMekUnitCommand = {
-            kind: 'end-phase',
+        const command: CBTUnitCommand = {
+            type: 'end-phase',
 
         };
 
@@ -320,8 +319,8 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness();
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         const before = harness.snapshot();
-        const command: NonMekUnitCommand = {
-            kind: 'set-crew-state',
+        const command: CBTUnitCommand = {
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -341,7 +340,7 @@ describe('DirectNonMekAutomationService', () => {
         expect(harness.runtime.query().crewState(pilotId).recoveryReadyTurn).toBe(1);
 
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -356,13 +355,13 @@ describe('DirectNonMekAutomationService', () => {
             .flatMap(args => args[1] as readonly unknown[])).toEqual([]);
 
         expect((await harness.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         })).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
         const nextTurn = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -378,8 +377,8 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness(false, 'recovery-retry');
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         const before = harness.snapshot();
-        const command: NonMekUnitCommand = {
-            kind: 'set-crew-state',
+        const command: CBTUnitCommand = {
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -397,14 +396,14 @@ describe('DirectNonMekAutomationService', () => {
             harness.dispatch,
         );
         expect((await harness.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         })).accepted).toBeTrue();
         const random = spyOn(Math, 'random').and.returnValue(0);
 
         const failed = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -418,7 +417,7 @@ describe('DirectNonMekAutomationService', () => {
 
         resolveChecksAutomation.calls.reset();
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -432,13 +431,13 @@ describe('DirectNonMekAutomationService', () => {
             .flatMap(args => args[1] as readonly unknown[])).toEqual([]);
 
         expect((await harness.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         })).accepted).toBeTrue();
         random.and.returnValue(0.99);
         const retried = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -454,7 +453,7 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness();
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         expect(harness.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -463,8 +462,8 @@ describe('DirectNonMekAutomationService', () => {
         }).accepted).toBeTrue();
         const revision = harness.runtime.revision();
         resolveChecksAutomation.and.resolveTo(null);
-        const command: NonMekUnitCommand = {
-            kind: 'end-phase',
+        const command: CBTUnitCommand = {
+            type: 'end-phase',
 
         };
 
@@ -485,7 +484,7 @@ describe('DirectNonMekAutomationService', () => {
         for (const harness of [first, second]) {
             const positionId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
             expect(harness.runtime.dispatch({
-                kind: 'set-crew-state',
+                type: 'set-crew-state',
 
                 positionId,
                 wounds: 1,
@@ -502,7 +501,7 @@ describe('DirectNonMekAutomationService', () => {
         const prepared = await service.prepareEndPhaseCommands(force, [first, second].map(harness => ({
             instanceId: harness.instanceId,
             command: {
-                kind: 'end-phase' as const,
+                type: 'end-phase' as const,
             },
         })));
 
@@ -519,9 +518,9 @@ describe('DirectNonMekAutomationService', () => {
         setHeat(harness.runtime, 30);
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         });
 
         expect(prepared.cancelled).toBeUndefined();
@@ -539,9 +538,9 @@ describe('DirectNonMekAutomationService', () => {
 
         await executeEndTurn(service, harness);
 
-        expect(harness.runtime.hasCondition('shutdown')).toBeTrue();
-        expect(harness.runtime.hasCondition('random-movement')).toBeTrue();
-        expect(harness.runtime.hasCondition('out-of-control')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('shutdown')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         expect(harness.runtime.query().crewState(pilotId)).toEqual(jasmine.objectContaining({
             wounds: 1,
@@ -564,7 +563,7 @@ describe('DirectNonMekAutomationService', () => {
         spyOn(Math, 'random').and.returnValue(0);
         const turn = harness.runtime.snapshot().turn.turnCounter;
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         });
 
@@ -576,7 +575,7 @@ describe('DirectNonMekAutomationService', () => {
         );
 
         expect(settled).not.toBeNull();
-        expect(harness.runtime.hasCondition('shutdown')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('shutdown')).toBeTrue();
         expect(harness.runtime.snapshot().turn.turnCounter).toBe(turn);
         const result = await harness.dispatch(settled!.command);
         expect(result.accepted).toBeTrue();
@@ -590,10 +589,10 @@ describe('DirectNonMekAutomationService', () => {
 
         await executeEndTurn(service, harness);
 
-        expect(harness.runtime.hasCondition('random-movement')).toBeTrue();
-        expect(harness.runtime.hasCondition('out-of-control')).toBeTrue();
-        expect(harness.runtime.turnState().controlRecovery).toEqual({
-            readyTurn: harness.runtime.turnState().turnCounter,
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
+        expect(harness.runtime.snapshot().turn.controlRecovery).toEqual({
+            readyTurn: harness.runtime.snapshot().turn.turnCounter,
             cause: 'heat-random-movement',
         });
         const endTurnChecks = resolveChecksAutomation.calls.allArgs()
@@ -604,7 +603,7 @@ describe('DirectNonMekAutomationService', () => {
 
         random.and.returnValue(0.99);
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -614,9 +613,9 @@ describe('DirectNonMekAutomationService', () => {
             harness.dispatch,
         )).not.toBeNull();
 
-        expect(harness.runtime.hasCondition('random-movement')).toBeFalse();
-        expect(harness.runtime.hasCondition('out-of-control')).toBeFalse();
-        expect(harness.runtime.turnState().controlRecovery).toBeUndefined();
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeFalse();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeFalse();
+        expect(harness.runtime.snapshot().turn.controlRecovery).toBeUndefined();
         const phaseChecks = resolveChecksAutomation.calls.allArgs()
             .filter(args => args[0] === 'heatEffectsCheck')
             .flatMap(args => args[1] as readonly { readonly description: string }[]);
@@ -629,7 +628,7 @@ describe('DirectNonMekAutomationService', () => {
         const [primary] = [...harness.runtime.getIndex().crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence);
         expect(harness.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: primary.id,
             wounds: 1,
@@ -641,7 +640,7 @@ describe('DirectNonMekAutomationService', () => {
 
         await executeEndTurn(service, harness);
 
-        expect(harness.runtime.hasCondition('shutdown')).toBeFalse();
+        expect(harness.runtime.query().hasCondition('shutdown')).toBeFalse();
         const shutdown = resolveChecksAutomation.calls.allArgs()
             .filter(args => args[0] === 'heatEffectsCheck')
             .flatMap(args => args[1] as readonly { readonly label: string; readonly automaticOutcome?: string }[])
@@ -662,12 +661,12 @@ describe('DirectNonMekAutomationService', () => {
 
         await executeEndTurn(service, harness);
 
-        expect(harness.runtime.hasCondition('out-of-control')).toBeTrue();
-        expect(harness.runtime.hasCondition('random-movement')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeTrue();
 
         (Math.random as jasmine.Spy).and.returnValue(0.99);
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -677,8 +676,8 @@ describe('DirectNonMekAutomationService', () => {
             harness.dispatch,
         )).not.toBeNull();
 
-        expect(harness.runtime.hasCondition('out-of-control')).toBeFalse();
-        expect(harness.runtime.hasCondition('random-movement')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeFalse();
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeTrue();
         const phaseChecks = resolveChecksAutomation.calls.allArgs()
             .flatMap(args => args[1] as readonly { readonly description: string }[]);
         expect(phaseChecks.map(check => check.description))
@@ -692,8 +691,8 @@ describe('DirectNonMekAutomationService', () => {
 
         await executeEndTurn(service, harness);
 
-        expect(harness.runtime.hasCondition('random-movement')).toBeTrue();
-        expect(harness.runtime.hasCondition('out-of-control')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeTrue();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
     });
 
     it('retries a failed aerospace Control Roll only on the following turn', async () => {
@@ -703,7 +702,7 @@ describe('DirectNonMekAutomationService', () => {
 
         await executeEndTurn(service, harness);
         const failed = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -712,15 +711,15 @@ describe('DirectNonMekAutomationService', () => {
             failed,
             harness.dispatch,
         )).not.toBeNull();
-        expect(harness.runtime.hasCondition('out-of-control')).toBeTrue();
-        expect(harness.runtime.turnState().controlRecovery).toEqual({
-            readyTurn: harness.runtime.turnState().turnCounter + 1,
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
+        expect(harness.runtime.snapshot().turn.controlRecovery).toEqual({
+            readyTurn: harness.runtime.snapshot().turn.turnCounter + 1,
             cause: 'heat-random-movement',
         });
 
         resolveChecksAutomation.calls.reset();
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -734,13 +733,13 @@ describe('DirectNonMekAutomationService', () => {
             .some(check => check.label === 'Regain aerospace control')).toBeFalse();
 
         expect((await harness.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         })).accepted).toBeTrue();
         random.and.returnValue(0.99);
         const retried = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-phase',
+            type: 'end-phase',
 
         });
         expect(await service.settleBeforeCommand(
@@ -749,8 +748,8 @@ describe('DirectNonMekAutomationService', () => {
             retried,
             harness.dispatch,
         )).not.toBeNull();
-        expect(harness.runtime.hasCondition('out-of-control')).toBeFalse();
-        expect(harness.runtime.hasCondition('random-movement')).toBeFalse();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeFalse();
+        expect(harness.runtime.query().hasCondition('random-movement')).toBeFalse();
     });
 
     it('drops aerospace Control recovery when no controller can return', async () => {
@@ -760,7 +759,7 @@ describe('DirectNonMekAutomationService', () => {
         await executeEndTurn(service, harness);
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         expect((await harness.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 0,
@@ -771,7 +770,7 @@ describe('DirectNonMekAutomationService', () => {
         resolveChecksAutomation.calls.reset();
         for (let attempt = 0; attempt < 2; attempt += 1) {
             const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-                kind: 'end-phase',
+                type: 'end-phase',
 
             });
             expect(await service.settleBeforeCommand(
@@ -857,7 +856,7 @@ describe('DirectNonMekAutomationService', () => {
         });
         spyOn(Math, 'random').and.returnValue(0);
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         });
 
@@ -889,7 +888,7 @@ describe('DirectNonMekAutomationService', () => {
         const harness = createHarness(true);
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
         expect(harness.runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -937,7 +936,7 @@ function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
     const instanceId = `${withAmmo
         ? 'unit:aero-automation-ammo'
         : 'unit:aero-automation'}${suffix ? `:${suffix}` : ''}`;
-    const runtime = new NonMekUnitInstance(
+    const runtime = createNonMekRuntimeForTest(
         instanceId,
         baseline(),
         entity,
@@ -951,6 +950,7 @@ function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
         uuid: baseline().entity,
         ruleset: CORE_2026_RULESET,
         crewAssignment: crew,
+        editContext: { owner: runtime, state: runtime.snapshot() },
         state: runtime.snapshot(),
         query: runtime.query(),
     });
@@ -958,7 +958,7 @@ function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
         getUnitSnapshot: () => snapshot(),
         getUnitCrewProfile: () => Object.freeze({ revision: 0, positions: crew.positions }),
     } as unknown as CBTForce;
-    const dispatch = async (command: NonMekUnitCommand): Promise<CBTNonMekUnitCommandResult> => {
+    const dispatch = async (command: CBTUnitCommand): Promise<CBTForceUnitCommandResult> => {
         return runtime.dispatch(command);
     };
     return { entity, runtime, instanceId, ammoId, force, snapshot, dispatch };
@@ -970,7 +970,7 @@ async function executeEndTurn(
 ): Promise<void> {
     const before = harness.snapshot();
     const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
-        kind: 'end-turn',
+        type: 'end-turn', policy: 'automatic',
 
     });
     const settled = await service.settleBeforeCommand(
@@ -992,22 +992,20 @@ async function executeEndTurn(
 }
 
 function setHeat(
-    runtime: NonMekUnitInstance,
+    runtime: CBTNonMekUnit,
     heat: number,
     target: 'committed' | 'pending' = 'committed',
 ): void {
     const result = runtime.dispatch({
-        kind: 'set-heat',
-
+        type: target === 'pending' ? 'set-pending-heat' : 'set-heat',
         heat,
-        target,
     });
     if (!result.accepted) throw new Error('Failed to seed test heat');
 }
 
-function setCondition(runtime: NonMekUnitInstance, condition: UnitConditionKey, active: boolean): void {
+function setCondition(runtime: CBTNonMekUnit, condition: UnitConditionKey, active: boolean): void {
     const result = runtime.dispatch({
-        kind: 'set-condition',
+        type: 'set-condition',
 
         condition,
         active,
@@ -1026,3 +1024,5 @@ function baseline(): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest } from '../models/runtime/testing/unit-runtime-owner-fixture';

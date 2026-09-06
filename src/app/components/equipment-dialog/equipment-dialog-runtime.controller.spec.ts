@@ -3,24 +3,23 @@
 
 import { Subject } from 'rxjs';
 
-import type { CBTForceMember, CBTMekForceMember } from '../../models/force-member.model';
 import type {
-    CBTEquipmentChoiceCommand,
-    CBTEquipmentInteraction,
+CBTEquipmentChoiceCommand,
+CBTEquipmentInteraction,
 } from '../../models/cbt-force.types';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
-import { TestBipedMekEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
-import { MiscEquipment, WeaponEquipment, type AmmoEquipment, type Equipment } from '../../models/equipment.model';
-import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
-import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
-import type { MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
+import { TestBipedMekEntity,TestTankEntity } from '../../models/entity/testing/test-entities';
+import { MiscEquipment,WeaponEquipment,type AmmoEquipment,type Equipment } from '../../models/equipment.model';
+import type { CBTForceMember,CBTMekForceMember } from '../../models/force-member.model';
+import {
+BOOBY_TRAP_ARMED_MODE,
+BOOBY_TRAP_DETONATED_MODE,
+} from '../../models/runtime/component-booby-trap';
+import type { EquipmentPanelComponent,EquipmentPanelSnapshot,MekPhysicalAttackRow } from '../../models/runtime/equipment-panel';
 import type { OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
 import { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
-import {
-    BOOBY_TRAP_ARMED_MODE,
-    BOOBY_TRAP_DETONATED_MODE,
-} from '../../models/runtime/component-booby-trap';
+import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 
 function snapshot(displayName: string): EquipmentPanelSnapshot {
     return {
@@ -66,14 +65,16 @@ describe('EquipmentDialogRuntimeController', () => {
             } satisfies EquipmentPanelSnapshot;
             const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true });
             const readOnly = jasmine.createSpy('readOnly').and.returnValue(false);
+            const context = createUnitEditContextFixture()(0);
+            const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ editContext: context });
             const force = {
                 changed: new Subject<void>(),
                 sessionChanged: new Subject<void>(),
                 readOnly,
+                getUnitSnapshot,
                 getEquipmentPanelSnapshot: () => panel,
                 getEquipmentInteractions: () => [],
-                dispatchMekUnitCommand: dispatch,
-                dispatchNonMekUnitCommand: dispatch,
+                dispatchUnitCommand: dispatch,
             };
             const dialogs = {
                 requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false),
@@ -88,12 +89,12 @@ describe('EquipmentDialogRuntimeController', () => {
                 { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
                 dialogs,
             );
-            return { controller, dialogs, dispatch, readOnly, ammo, panel };
+            return { controller, dialogs, dispatch, readOnly, ammo, panel, context, getUnitSnapshot };
         }
 
         for (const mek of [true, false]) {
             it(`confirms one atomic ${mek ? 'Mek' : 'non-Mek'} reset and leaves cancellation unchanged`, async () => {
-                const { controller, dialogs, dispatch } = createResetController(mek);
+                const { controller, dialogs, dispatch, context } = createResetController(mek);
                 try {
                     await controller.resetAmmoLoadout();
                     expect(dialogs.requestConfirmation).toHaveBeenCalledOnceWith(
@@ -106,10 +107,28 @@ describe('EquipmentDialogRuntimeController', () => {
 
                     dialogs.requestConfirmation.and.resolveTo(true);
                     await controller.resetAmmoLoadout();
-                    expect(dispatch).toHaveBeenCalledOnceWith('unit:ammo-reset', mek
-                        ? { type: 'reset-ammo-loadout' }
-                        : { kind: 'reset-ammo-loadout' });
+                    expect(dispatch).toHaveBeenCalledOnceWith('unit:ammo-reset',
+                        { type: 'reset-ammo-loadout' }, context);
                     expect(controller.busy()).toBeFalse();
+                } finally {
+                    controller.dispose();
+                }
+            });
+        }
+
+        for (const mek of [true, false]) {
+            it(`retains the opening ${mek ? 'Mek' : 'non-Mek'} owner during ammo reset confirmation`, async () => {
+                const { controller, dialogs, dispatch, context, getUnitSnapshot } = createResetController(mek);
+                try {
+                    let confirm!: (accepted: boolean) => void;
+                    dialogs.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => confirm = resolve));
+                    const reset = controller.resetAmmoLoadout();
+                    getUnitSnapshot.and.returnValue({ editContext: createUnitEditContextFixture()(0) });
+                    dispatch.and.resolveTo({ accepted: false, changed: false });
+                    confirm(true);
+                    await reset;
+                    expect(dispatch).toHaveBeenCalledOnceWith('unit:ammo-reset',
+                        { type: 'reset-ammo-loadout' }, context);
                 } finally {
                     controller.dispose();
                 }
@@ -306,7 +325,7 @@ describe('EquipmentDialogRuntimeController', () => {
             ...snapshot('Vedette Medium Tank'),
             components: [component],
         } as EquipmentPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             state: {},
@@ -317,7 +336,7 @@ describe('EquipmentDialogRuntimeController', () => {
             getEquipmentPanelSnapshot: () => panel,
             getUnitSnapshot: () => null,
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
-            dispatchNonMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const member = {
             kind: 'cbt',
@@ -338,26 +357,26 @@ describe('EquipmentDialogRuntimeController', () => {
 
         await controller.changeStatus(component);
         expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
-            kind: 'set-component-status',
+            type: 'set-component-status',
             componentId: component.componentId,
             status: 'destroyed',
             target: 'pending',
-        }));
+        }), undefined);
 
         await controller.configureAmmo(component, 'Ammo_AC_10', 7);
         expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
-            kind: 'configure-ammo-source',
+            type: 'configure-ammo-source',
             componentId: component.componentId,
             munitionKey: 'Ammo_AC_10',
             remaining: 7,
-        }));
+        }), undefined);
 
         await controller.changeMode(component, 'Rapid');
         expect(dispatch).toHaveBeenCalledWith('tank-1', jasmine.objectContaining({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
             componentId: component.componentId,
             mode: 'Rapid',
-        }));
+        }), undefined);
         controller.dispose();
     });
 
@@ -436,18 +455,21 @@ describe('EquipmentDialogRuntimeController', () => {
             ...snapshot('Vedette Booby Trap'),
             components: [component],
         } as EquipmentPanelSnapshot;
-        const dispatch = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             state: {},
         });
+        const context = createUnitEditContextFixture()(0);
+        const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ editContext: context });
         const force = {
             changed,
             sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
-            getUnitSnapshot: () => null,
+            getUnitSnapshot,
+            readOnly: () => false,
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
-            dispatchNonMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const member = {
             kind: 'cbt',
@@ -470,12 +492,24 @@ describe('EquipmentDialogRuntimeController', () => {
         expect(dispatch).not.toHaveBeenCalled();
         expect(dialogs.showNoticeHtml).not.toHaveBeenCalled();
 
+        let confirm!: (accepted: boolean) => void;
+        dialogs.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => confirm = resolve));
+        const detonation = controller.changeMode(component, BOOBY_TRAP_DETONATED_MODE);
+        getUnitSnapshot.and.returnValue({ editContext: createUnitEditContextFixture()(0) });
+        dispatch.and.resolveTo({ accepted: false, changed: false });
+        confirm(true);
+        await detonation;
+        expect(dispatch).toHaveBeenCalledOnceWith('tank-1', jasmine.objectContaining({
+            type: 'detonate-booby-trap',
+            componentId: component.componentId,
+        }), context);
+        expect(dialogs.showNoticeHtml).not.toHaveBeenCalled();
+
+        dispatch.calls.reset();
+        dispatch.and.resolveTo({ accepted: true, changed: true });
+        getUnitSnapshot.and.returnValue({ editContext: context });
         dialogs.requestConfirmation.and.resolveTo(true);
         await controller.changeMode(component, BOOBY_TRAP_DETONATED_MODE);
-        expect(dispatch).toHaveBeenCalledOnceWith('tank-1', jasmine.objectContaining({
-            kind: 'detonate-booby-trap',
-            componentId: component.componentId,
-        }));
         expect(dialogs.showNoticeHtml).toHaveBeenCalledOnceWith(
             jasmine.stringContaining('Resolve the Booby Trap blast'),
             'Booby Trap Detonated',
@@ -637,7 +671,7 @@ describe('EquipmentDialogRuntimeController', () => {
             idempotent: false,
             currentRevision: 1,
         });
-        const dispatchUnit = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+        const dispatchUnit = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             state: {},
@@ -650,7 +684,7 @@ describe('EquipmentDialogRuntimeController', () => {
             getEquipmentInteractions: jasmine.createSpy('getEquipmentInteractions').and.returnValue([]),
             getAttackerTargeting: () => ({ stateRevision: 0, registryRevision: 0, state: {} }),
             dispatchAttackerTargeting: dispatchTargeting,
-            dispatchNonMekUnitCommand: dispatchUnit,
+            dispatchUnitCommand: dispatchUnit,
         };
         const controller = new EquipmentDialogRuntimeController(
             {
@@ -671,11 +705,11 @@ describe('EquipmentDialogRuntimeController', () => {
             },
         }));
         expect(dispatchUnit).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
-            kind: 'set-component-statuses',
+            type: 'set-component-statuses',
             componentIds: [firstId, secondId],
             status: 'destroyed',
             target: 'committed',
-        }));
+        }), undefined);
         controller.dispose();
     });
 
@@ -749,14 +783,14 @@ describe('EquipmentDialogRuntimeController', () => {
             idempotent: false,
             currentRevision: 1,
         });
-        const dispatchMekUnitCommand = jasmine.createSpy('dispatchMekUnitCommand');
+        const dispatchUnitCommand = jasmine.createSpy('dispatchUnitCommand');
         const force = {
             changed,
             sessionChanged: new Subject<void>(),
             getEquipmentPanelSnapshot: () => panel,
             getEquipmentInteractions: () => [],
             dispatchEquipmentRowOrder,
-            dispatchMekUnitCommand,
+            dispatchUnitCommand,
         };
         const member = {
             kind: 'cbt', id: 'mek-1', force, entity: new TestBipedMekEntity(),
@@ -773,7 +807,7 @@ describe('EquipmentDialogRuntimeController', () => {
             group: 'ranged',
             permutation: [2, 0, 1],
         });
-        expect(dispatchMekUnitCommand).not.toHaveBeenCalled();
+        expect(dispatchUnitCommand).not.toHaveBeenCalled();
         controller.dispose();
     });
 });

@@ -1,18 +1,18 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { freezeRuntimeState } from './runtime-state';
 import { ImmutableIndex } from '../entity/immutable-collections';
+import { freezeRuntimeState } from './runtime-state';
 import {
-    restoreSerializedCBTUnitV2,
-    serializeCBTUnitStateV2,
+restoreSerializedCBTUnitV2,
+serializeCBTUnitStateV2,
 } from './runtime-state-codec-v2';
 import {
-    createDirectBoobyTrapRuntimeFixture,
-    createDirectEscalatingFailureRuntimeFixture,
-    createDirectMekRuntimeFixture,
-    createDirectModularArmorRuntimeFixture,
-    createDirectShieldRuntimeFixture,
+createDirectBoobyTrapRuntimeFixture,
+createDirectEscalatingFailureRuntimeFixture,
+createDirectMekRuntimeFixture,
+createDirectModularArmorRuntimeFixture,
+createDirectShieldRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mek V2 state codec', () => {
@@ -161,12 +161,10 @@ describe('direct Mek V2 state codec', () => {
         expect(fixture.instance.dispatch({
             type: 'end-turn',
 
-
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'hit-critical',
-
 
             slotId: hip.id,
             hits: 1,
@@ -229,7 +227,6 @@ describe('direct Mek V2 state codec', () => {
         expect(fixture.instance.dispatch({
             type: 'set-stealth-state',
 
-
             componentId: stealth.id,
             state: 'enabling',
         }).accepted).toBeTrue();
@@ -252,7 +249,6 @@ describe('direct Mek V2 state codec', () => {
         for (let index = 0; index < 14; index += 1) {
             expect(fixture.instance.dispatch({
                 type: 'edit-escalating-failure',
-
 
                 componentId: blueShield.id,
                 edit: { kind: 'select-sequence', index },
@@ -401,7 +397,7 @@ function serialize(
     return structuredClone(serializeCBTUnitStateV2({
         entity: fixture.entity,
         index: fixture.index,
-        instanceId: fixture.instance.id,
+        instanceId: fixture.instance.instanceId,
         baselineRef: fixture.instance.baselineRef,
         state,
         deployment: {

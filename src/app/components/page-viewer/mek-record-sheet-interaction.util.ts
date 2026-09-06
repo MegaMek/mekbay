@@ -1,11 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { HeatAutomationPolicy } from '../../models/runtime/cbt-unit-runtime';
+
+import type { CBTUnitCommand } from '../../models/runtime/unit-command';
+import type { MekUnitQueryPort } from '../../models/runtime/unit-instance';
 import type { PickerChoice } from '../picker/picker.interface';
-import type { CBTUnitCommand, MekUnitQueryPort } from '../../models/runtime/unit-instance';
-import type { MekHeatAutomationPolicyV2 } from '../../models/runtime/mek-heat-state-v2';
+import type { DirectRecordSheetInteraction,RecordSheetInteraction } from './record-sheet-interaction';
+
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
-import type { MekRecordSheetInteraction } from './mek-record-sheet-binder';
 
 export interface RecordSheetDamagePickerRange {
     readonly min: number;
@@ -18,11 +21,11 @@ export interface RecordSheetDamagePickerRange {
 export interface MekRecordSheetCommandSource {
     readonly query: Pick<MekUnitQueryPort, 'crewState' | 'hasCondition'>;
     readonly heatSinkCount: number;
-    readonly heatPolicy: MekHeatAutomationPolicyV2;
+    readonly heatPolicy: HeatAutomationPolicy;
 }
 
 export function recordSheetDamagePickerRange(
-    interaction: Extract<MekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'critical' | 'shield' }>,
+    interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' | 'critical' | 'shield' }>,
     snapshot: MekRecordSheetSnapshot,
     pending: boolean,
 ): RecordSheetDamagePickerRange {
@@ -85,7 +88,7 @@ export function recordSheetDamageChoices(min: number, max: number): PickerChoice
 }
 
 export function recordSheetCommand(
-    interaction: MekRecordSheetInteraction,
+    interaction: DirectRecordSheetInteraction,
     source: MekRecordSheetCommandSource,
     trackPhaseAndTurn: boolean,
     delta?: number,
@@ -93,19 +96,19 @@ export function recordSheetCommand(
     const target = trackPhaseAndTurn ? 'pending' as const : 'committed' as const;
     switch (interaction.kind) {
         case 'armor':
-            return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
+            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
                 ? { type: 'damage-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? 1), target }
                 : { type: 'repair-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? -1), target };
         case 'internal':
-            return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
+            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
                 ? { type: 'damage-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? 1), target }
                 : { type: 'repair-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? -1), target };
         case 'critical':
-            return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
+            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
                 ? { type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? 1), target }
                 : { type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? -1), target };
         case 'shield':
-            return (delta ?? (interaction.button === 'primary' ? 1 : -1)) > 0
+            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
                 ? {
                     type: 'damage-shield',
                     componentId: interaction.componentId,
@@ -151,20 +154,7 @@ export function recordSheetCommand(
                 type: 'set-mek-shutdown-state',
                 shutdown: !source.query.hasCondition('shutdown'),
             };
-        case 'crew-skill':
-        case 'crew-name':
-        case 'crew-state-menu':
-        case 'open-equipment':
-        case 'heat-overflow':
-        case 'heat-preview':
-        case 'heat-preview-end':
-        case 'condition-menu':
-        case 'location-condition-menu':
-        case 'inventory-selection':
-        case 'action-selection':
-        case 'reference-table':
-        case 'random-hit':
-            throw new Error(`${interaction.kind} is not a direct unit command`);
+
     }
 }
 

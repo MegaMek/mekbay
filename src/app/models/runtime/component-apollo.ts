@@ -1,35 +1,36 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    APOLLO_MODES,
-    APOLLO_FLAG,
-    APOLLO_SATURATION_MODE,
-    APOLLO_STANDARD_MODE,
-    isApolloMode,
-    isApolloLink,
-    supportsApolloSaturationModeForRuleset,
-    type ApolloMode,
+APOLLO_FLAG,
+APOLLO_MODES,
+APOLLO_SATURATION_MODE,
+APOLLO_STANDARD_MODE,
+isApolloLink,
+isApolloMode,
+supportsApolloSaturationModeForRuleset,
+type ApolloMode,
 } from '../apollo-mode.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { ToHitAdjustment } from '../rules/game-rules';
 import type { WeaponType } from '../weapon-types.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    componentStatusDefinition,
-    type ComponentStatusDefinition,
+componentStatusDefinition,
+type ComponentStatusDefinition,
 } from './component-status';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
+
 import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
 
 export interface ComponentApolloDefinition {
@@ -186,7 +187,7 @@ export class ApolloHandler extends EquipmentInteractionHandler {
     }
 
     getComponentApolloChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentApolloDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -206,7 +207,7 @@ export class ApolloHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentApolloSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentApolloDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,

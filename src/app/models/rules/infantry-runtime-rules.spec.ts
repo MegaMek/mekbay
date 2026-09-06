@@ -1,16 +1,18 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import type { CBTNonMekUnit } from '../runtime/cbt-unit';
 
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
-import { WeaponEquipment } from '../equipment.model';
 import {
-    TestBattleArmorEntity,
-    TestInfantryEntity,
+TestBattleArmorEntity,
+TestInfantryEntity,
 } from '../entity/testing/test-entities';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
-import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { componentIdForMount } from '../runtime/non-mek-runtime-index';
-import { NonMekUnitInstance, projectNonMekMovementCapabilities } from '../runtime/non-mek-unit-instance';
+import { WeaponEquipment } from '../equipment.model';
+import { componentIdForMount } from '../runtime/unit-runtime-index';
+
+import { projectNonMekMovementCapabilities } from '../runtime/non-mek-unit-instance';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { projectInfantryRuntimeRules } from './infantry-runtime-rules';
 
@@ -26,7 +28,7 @@ describe('Infantry runtime rules', () => {
         const troopLocation = [...runtime.getIndex().locations.values()][0]!;
 
         runtime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
             
             locationId: troopLocation.id,
             damage: 7,
@@ -38,7 +40,7 @@ describe('Infantry runtime rules', () => {
         );
 
         expect([...rules.fireBlockedComponentIds]).toEqual([componentIdForMount(mounts[2]!)]);
-        expect(mounts.map(mount => runtime.componentStatus(componentIdForMount(mount))))
+        expect(mounts.map(mount => runtime.query().componentStatus(componentIdForMount(mount))))
             .toEqual(['available', 'available', 'available']);
     });
 
@@ -48,14 +50,14 @@ describe('Infantry runtime rules', () => {
         const troopLocation = [...runtime.getIndex().locations.values()][0]!;
 
         runtime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
             
             locationId: troopLocation.id,
             damage: troopLocation.internalPoints,
         });
 
         expect(runtime.snapshot().explicitlyDestroyed).toBeFalse();
-        expect(runtime.destroyed()).toBeTrue();
+        expect(runtime.query().destroyed()).toBeTrue();
         expect(projectNonMekMovementCapabilities(
             entity,
             runtime.getIndex(),
@@ -75,21 +77,21 @@ describe('Infantry runtime rules', () => {
         for (const location of runtime.getIndex().locations.values()) {
             const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0]!)!;
             runtime.dispatch({
-                kind: 'set-armor-damage',
+                type: 'set-armor-damage',
                 
                 faceId: face.id,
                 damage: face.maximumPoints,
             });
             runtime.dispatch({
-                kind: 'set-internal-damage',
+                type: 'set-internal-damage',
                 
                 locationId: location.id,
                 damage: location.internalPoints,
             });
         }
 
-        expect(runtime.destroyed()).toBeTrue();
-        expect(runtime.componentStatus(componentIdForMount(mount))).toBe('available');
+        expect(runtime.query().destroyed()).toBeTrue();
+        expect(runtime.query().componentStatus(componentIdForMount(mount))).toBe('available');
         expect(runtime.snapshot().components.size).toBe(0);
     });
 
@@ -107,12 +109,12 @@ describe('Infantry runtime rules', () => {
         expect(capabilities.minimum.jump).toBe(1);
         expect(capabilities.maximum.jump).toBe(3);
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
             
             movement: { mode: 'jump', distance: 0, boosterComponentIds: [] },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
             
             movement: { mode: 'jump', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
@@ -140,8 +142,8 @@ function fieldGun(): WeaponEquipment {
 function instance(
     entity: TestInfantryEntity | TestBattleArmorEntity,
     id: string,
-): NonMekUnitInstance {
-    return new NonMekUnitInstance(
+): CBTNonMekUnit {
+    return createNonMekRuntimeForTest(
         id,
         baseline(),
         entity,
@@ -160,3 +162,5 @@ function baseline(): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest } from '../runtime/testing/unit-runtime-owner-fixture';

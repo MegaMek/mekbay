@@ -2,28 +2,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { TestBed } from '@angular/core/testing';
+import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
 import { resolveAutomaticFallingDamage } from '../components/falling-damage-dialog/falling-damage-dialog.component';
 import { projectRuntimeUnitNotifications } from '../components/unit-notification-badges/unit-notification-runtime.util';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
-import type { CBTUnitCommand } from '../models/runtime/unit-instance';
+
 import {
-    createDirectExplosionRuntimeFixture,
-    createDirectMekRuntimeFixture,
-    createDirectTripodRuntimeFixture,
-    type DirectMekRuntimeFixture,
+createDirectExplosionRuntimeFixture,
+createDirectMekRuntimeFixture,
+createDirectTripodRuntimeFixture,
+type DirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
-import { CBTAutomationService } from './cbt-automation.service';
-import { CBTAutomationCheckService, resolveAutomationChecksAutomatically } from './cbt-automation-check.service';
+import { CBTAutomationCheckService,resolveAutomationChecksAutomatically } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
+import { CBTAutomationService } from './cbt-automation.service';
 import {
-    DirectMekAutomationService,
-    type DirectMekAutomationDispatch,
-    type PreparedDirectMekAutomationCommand,
+DirectMekAutomationService,
+type DirectMekAutomationDispatch,
+type PreparedDirectMekAutomationCommand,
 } from './direct-mek-automation.service';
-import { OptionsService } from './options.service';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
+import { OptionsService } from './options.service';
 
 describe('DirectMekAutomationService', () => {
     let resolveAutomation: jasmine.Spy;
@@ -82,7 +83,6 @@ describe('DirectMekAutomationService', () => {
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
 
-
             policy: 'manual',
         });
 
@@ -106,7 +106,6 @@ describe('DirectMekAutomationService', () => {
         const automatic = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
 
-
             policy: 'manual',
         });
 
@@ -124,7 +123,6 @@ describe('DirectMekAutomationService', () => {
         const manual = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
 
-
             policy: 'automatic',
         });
         expect(manual.command).toEqual(jasmine.objectContaining({
@@ -140,7 +138,6 @@ describe('DirectMekAutomationService', () => {
         setPendingHeat(skippedHarness, 10);
         const skipped = await service.prepareCommand(skippedHarness.force, skippedHarness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'manual',
         });
@@ -160,7 +157,6 @@ describe('DirectMekAutomationService', () => {
         const manual = await service.prepareCommand(manualHarness.force, manualHarness.instanceId, {
             type: 'end-turn',
 
-
             policy: 'manual',
         });
 
@@ -178,7 +174,6 @@ describe('DirectMekAutomationService', () => {
         const harness = createHarness();
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'automatic',
         });
@@ -205,7 +200,6 @@ describe('DirectMekAutomationService', () => {
         const command: CBTUnitCommand = {
             type: 'end-turn',
 
-
             policy: 'automatic',
         };
 
@@ -224,14 +218,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         resolveAutomation.and.callFake(async (key: string, events: readonly { readonly id: string }[]) =>
             key === 'heatEffectsCheck' ? null : new Set(events.map(event => event.id)));
         const command: CBTUnitCommand = {
             type: 'end-turn',
-
 
             policy: 'automatic',
         };
@@ -253,14 +245,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         resolveChecksAutomation.and.callFake(async (key: string) =>
             key === 'heatEffectsCheck' ? null : []);
         const command: CBTUnitCommand = {
             type: 'end-turn',
-
 
             policy: 'automatic',
         };
@@ -306,7 +296,6 @@ describe('DirectMekAutomationService', () => {
         const command: CBTUnitCommand = {
             type: 'set-mek-shutdown-state',
 
-
             shutdown: true,
         };
         const before = harness.snapshot();
@@ -333,14 +322,12 @@ describe('DirectMekAutomationService', () => {
         const shutdown: CBTUnitCommand = {
             type: 'set-mek-shutdown-state',
 
-
             shutdown: true,
         };
         expect(harness.fixture.instance.dispatch(shutdown).accepted).toBeTrue();
 
         await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
 
@@ -361,7 +348,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: foot.id,
             hits: 1,
             target: 'committed',
@@ -369,7 +355,6 @@ describe('DirectMekAutomationService', () => {
         const check = harness.fixture.instance.query().mekPilotChecks()[0]!;
         const command: CBTUnitCommand = {
             type: 'resolve-mek-pilot-check',
-
 
             checkId: check.checkId,
             evidence: { dice: [1, 1], claimedOutcome: 'failed' },
@@ -396,7 +381,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: foot.id,
             hits: 1,
             target: 'committed',
@@ -410,7 +394,6 @@ describe('DirectMekAutomationService', () => {
         const beforeDamage = durability();
         const command: CBTUnitCommand = {
             type: 'resolve-mek-pilot-check',
-
 
             checkId: check.checkId,
             evidence: { dice: [1, 1], claimedOutcome: 'failed' },
@@ -439,13 +422,11 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'automatic',
         });
@@ -508,7 +489,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
@@ -521,7 +501,6 @@ describe('DirectMekAutomationService', () => {
             : resolveAutomationChecksAutomatically(checks, options.initiallyFailedGroups));
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'automatic',
         });
@@ -563,7 +542,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0);
@@ -583,7 +561,6 @@ describe('DirectMekAutomationService', () => {
         });
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'automatic',
         });
@@ -624,13 +601,11 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'manual',
         });
@@ -718,7 +693,6 @@ describe('DirectMekAutomationService', () => {
         expect(psr.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: actuator.id,
             hits: 1,
             target: 'pending',
@@ -728,7 +702,6 @@ describe('DirectMekAutomationService', () => {
             const positionId = [...harness.fixture.index.crewPositions.keys()][0]!;
             expect(harness.fixture.instance.dispatch({
                 type: 'set-crew-state',
-
 
                 positionId,
                 wounds: 1,
@@ -775,7 +748,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-crew-state',
 
-
             positionId,
             wounds: 1,
             unconscious: true,
@@ -784,7 +756,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: actuator.id,
             hits: 1,
             target: 'pending',
@@ -792,7 +763,6 @@ describe('DirectMekAutomationService', () => {
         spyOn(Math, 'random').and.returnValue(0.99);
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         const commands: string[] = [];
@@ -820,7 +790,6 @@ describe('DirectMekAutomationService', () => {
         const command: CBTUnitCommand = {
             type: 'set-crew-state',
 
-
             positionId,
             wounds: 1,
             unconscious: true,
@@ -840,7 +809,6 @@ describe('DirectMekAutomationService', () => {
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
 
-
         });
         expect(await service.settleBeforeCommand(
             harness.force,
@@ -856,13 +824,11 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'end-turn',
 
-
             policy: 'manual',
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
         const nextTurn = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         expect(await service.settleBeforeCommand(
@@ -881,7 +847,6 @@ describe('DirectMekAutomationService', () => {
         const command: CBTUnitCommand = {
             type: 'set-crew-state',
 
-
             positionId,
             wounds: 1,
             unconscious: true,
@@ -900,14 +865,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'end-turn',
 
-
             policy: 'manual',
         }).accepted).toBeTrue();
         const random = spyOn(Math, 'random').and.returnValue(0);
 
         const failed = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         expect(await service.settleBeforeCommand(
@@ -921,7 +884,6 @@ describe('DirectMekAutomationService', () => {
         resolveChecksAutomation.calls.reset();
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         expect(await service.settleBeforeCommand(
@@ -937,13 +899,11 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'end-turn',
 
-
             policy: 'manual',
         }).accepted).toBeTrue();
         random.and.returnValue(0.99);
         const retried = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         expect(await service.settleBeforeCommand(
@@ -967,7 +927,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-crew-state',
 
-
             positionId: primary.id,
             wounds: 1,
             unconscious: true,
@@ -978,7 +937,6 @@ describe('DirectMekAutomationService', () => {
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'automatic',
         });
@@ -1068,13 +1026,11 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0);
         const command: CBTUnitCommand = {
             type: 'end-turn',
-
 
             policy: 'manual',
         };
@@ -1123,14 +1079,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: lifeSupport.id,
             hits: 1,
             target: 'committed',
         }).accepted).toBeTrue();
         expect(harness.fixture.instance.dispatch({
             type: 'replace-turn-state',
-
 
             turn: {
                 ...harness.fixture.instance.query().turnState(),
@@ -1140,14 +1094,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'automatic',
         });
@@ -1225,14 +1177,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'set-heat',
 
-
             heat: 40,
         }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0);
         const turn = harness.fixture.instance.query().turnState().turnCounter;
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
 
             policy: 'manual',
         });
@@ -1297,14 +1247,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: slot.id,
             hits: 1,
             target: 'pending',
         }).accepted).toBeTrue();
         const phaseCommand: CBTUnitCommand = {
             type: 'end-phase',
-
 
         };
         const prepared = await service.prepareCommand(
@@ -1510,14 +1458,12 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: slot.id,
             hits: 1,
             target: 'pending',
         }).accepted).toBeTrue();
         const phaseCommand: CBTUnitCommand = {
             type: 'end-phase',
-
 
         };
         const revisionBefore = harness.fixture.instance.query().stateRevision;
@@ -1560,7 +1506,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: actuator.id,
             hits: 1,
             target: 'pending',
@@ -1569,7 +1514,6 @@ describe('DirectMekAutomationService', () => {
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         const settled = await service.settleBeforeCommand(
@@ -1603,7 +1547,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'hit-critical',
 
-
             slotId: actuator.id,
             hits: 1,
             target: 'pending',
@@ -1630,7 +1573,6 @@ describe('DirectMekAutomationService', () => {
         const first = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
 
-
         });
         expect(await service.settleBeforeCommand(
             harness.force,
@@ -1648,7 +1590,6 @@ describe('DirectMekAutomationService', () => {
 
         const retry = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
-
 
         });
         const settled = await service.settleBeforeCommand(
@@ -1671,7 +1612,6 @@ describe('DirectMekAutomationService', () => {
         const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;
         expect(harness.fixture.instance.dispatch({
             type: 'set-crew-state',
-
 
             positionId: pilotId,
             wounds: 1,
@@ -1706,7 +1646,6 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.dispatch({
             type: 'damage-internal',
 
-
             locationId: torso.id,
             amount: torso.internalPoints,
             target: 'committed',
@@ -1714,7 +1653,6 @@ describe('DirectMekAutomationService', () => {
         spyOn(Math, 'random').and.returnValue(0);
         const command: CBTUnitCommand = {
             type: 'end-phase',
-
 
         };
 
@@ -1749,7 +1687,6 @@ describe('DirectMekAutomationService', () => {
         const before = harness.snapshot();
         const command: CBTUnitCommand = {
             type: 'damage-internal',
-
 
             locationId: location.id,
             amount: harness.fixture.instance.query().remainingInternal(location.id, 'committed'),
@@ -2046,7 +1983,6 @@ describe('DirectMekAutomationService', () => {
         const command: CBTUnitCommand = {
             type: 'damage-internal',
 
-
             locationId: location.id,
             amount: fixture.instance.query().remainingInternal(location.id, 'committed'),
             target: 'committed',
@@ -2108,6 +2044,7 @@ function createHarnessForFixture(
         uuid: fixture.identity,
         ruleset,
         crewAssignment: fixture.instance.query().crewAssignment(),
+        editContext: { owner: fixture.instance, state: fixture.instance.snapshot() },
         state: fixture.instance.snapshot(),
         query: fixture.instance.query(),
     });
@@ -2122,7 +2059,6 @@ function setPendingHeat(
 ): void {
     const result = harness.fixture.instance.dispatch({
         type: 'set-pending-heat',
-
 
         heat,
     });
@@ -2144,7 +2080,6 @@ function explosiveCriticalCommand(
                         locationDamage.protection === protection))) {
                 return {
                     type: 'apply-mek-critical-roll',
-
 
                     locationId: location.id,
                     results,

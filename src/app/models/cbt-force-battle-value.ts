@@ -1,24 +1,24 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from './equipment.model';
-import type { EquipmentRegistry } from './equipment-lookup';
-import { asComponentId, type ComponentId } from './entity/entity-identifiers';
-import {
-    C3Role,
-    C3TaxCalculator,
-    projectNonMekC3Components,
-    type C3Component,
-    type C3UnitView,
-} from './c3-network.model';
-import { projectEncounterNetworksToC3Editor } from './c3-network-presentation';
 import { isC3EmergencyMasterOperatingTurnsFried } from './c3-emergency-master.model';
-import { gameRulesFor, type TagBattleValueFacts } from './rules/game-rules';
+import { projectEncounterNetworksToC3Editor } from './c3-network-presentation';
+import {
+C3Role,
+C3TaxCalculator,
+projectNonMekC3Components,
+type C3Component,
+type C3UnitView,
+} from './c3-network.model';
+import { asComponentId,type ComponentId } from './entity/entity-identifiers';
+import { unroundedEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
+import type { EquipmentRegistry } from './equipment-lookup';
+import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from './equipment.model';
+import { gameRulesFor,type TagBattleValueFacts } from './rules/game-rules';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTUnit } from './runtime/cbt-unit';
 import type { EncounterNetwork } from './runtime/encounter-runtime';
-import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { scenarioRuleset } from './runtime/unit-state-initializer';
-import { unroundedEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
 import { unitCrewKind } from './unit-crew-policy';
 
 export interface CBTForceBattleValueUnit {
@@ -219,7 +219,7 @@ function battleValueC3View(
 
 function mekC3Components(unit: CBTUnit): readonly C3Component[] {
     if (!isCBTMekUnit(unit)) return Object.freeze([]);
-    const query = unit.getInstance().query();
+    const query = unit.query();
     const projected = query.mekC3Endpoints();
     if (projected.kind !== 'supported') return Object.freeze([]);
     return Object.freeze(projected.endpoints.map((endpoint, index) => {

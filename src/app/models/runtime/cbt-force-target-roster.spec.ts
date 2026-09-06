@@ -1,9 +1,10 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TestTankEntity } from '../entity/testing/test-entities';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { CBTNonMekUnit } from './cbt-non-mek-unit';
+import { TestTankEntity } from '../entity/testing/test-entities';
+import { createNonMekUnit } from './cbt-non-mek-unit';
+
 import { entityTargetRosterRow } from './cbt-force-target-roster';
 
 describe('CBT force target roster', () => {
@@ -13,21 +14,21 @@ describe('CBT force target roster', () => {
         entity.uuid.set(uuid);
         entity.setTonnage(40);
         entity.originalWalkMP.set(4);
-        const ready = CBTNonMekUnit.create(entity, {
+        const ready = createNonMekUnit(entity, {
             instanceId: 'unit:target-roster-tank',
             uuid,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
             initialStateProfileId: 'pristine-non-mek-v1',
         });
-        const runtime = ready.getInstance();
+        const runtime = ready;
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
             
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-cover',
+            type: 'set-cover',
             
             cover: 'building-1',
         }).accepted).toBeTrue();

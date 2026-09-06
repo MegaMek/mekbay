@@ -2,74 +2,74 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, DestroyRef, Directive, effect, inject, Injector, input, signal } from '@angular/core';
 import { Overlay } from '@angular/cdk/overlay';
+import { computed,DestroyRef,Directive,effect,inject,Injector,input,signal } from '@angular/core';
 import { merge } from 'rxjs';
 
-import {
-    canChangeAirborneGround,
-    getMotiveModeLabel,
-    getMotiveModesOptionsByUnit,
-    motiveModeFactsForEntity,
-    type MotiveModeOption,
-    type MotiveModes,
-} from '../../../models/motiveModes.model';
-import {
-    calculateModifierTotal,
-    type UnitModifierBreakdownEntry,
-    type UnitModifierTotal,
-} from '../../../models/combat-modifier';
-import {
-    isCBTForceMember,
-    isCBTMekForceMember,
-    type CBTForceMember,
-} from '../../../models/force-member.model';
 import type {
-    CBTEquipmentChoice,
-    CBTForceEndTurnAllResult,
+CBTEquipmentChoice,
+CBTForceEndTurnAllResult,
 } from '../../../models/cbt-force.types';
+import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 import {
-    isUnitBuildingLevel,
-    isUnitWaterDepth,
-    resolveUnitBuildingCoverState,
-    resolveUnitWaterState,
-    type UnitCover,
+calculateModifierTotal,
+type UnitModifierBreakdownEntry,
+type UnitModifierTotal,
+} from '../../../models/combat-modifier';
+import type { ComponentId } from '../../../models/entity/entity-identifiers';
+import {
+isCBTForceMember,
+isCBTMekForceMember,
+type CBTForceMember,
+} from '../../../models/force-member.model';
+import {
+canChangeAirborneGround,
+getMotiveModeLabel,
+getMotiveModesOptionsByUnit,
+motiveModeFactsForEntity,
+type MotiveModeOption,
+type MotiveModes,
+} from '../../../models/motiveModes.model';
+import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
+import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr-v2';
+import {
+isMekTurnPanelDirty,
+isMekTurnPanelDirtyPhase,
+} from '../../../models/runtime/mek-turn-panel';
+import { canSwitchNonMekAirGroundState } from '../../../models/runtime/non-mek-airborne-state';
+import {
+hasNonMekAirborneTurnSelection,
+hasPendingNonMekChanges,
+nonMekAttackMovementModifier,
+projectNonMekControlRoll,
+projectNonMekDefenseModifierBreakdown,
+projectNonMekEndTurnHeat,
+projectNonMekMovementCapabilities,
+type NonMekMovementDeclaration,
+} from '../../../models/runtime/non-mek-unit-instance';
+import {
+isUnitBuildingLevel,
+isUnitWaterDepth,
+resolveUnitBuildingCoverState,
+resolveUnitWaterState,
+type UnitCover,
 } from '../../../models/unit-cover.model';
-import { OptionsService } from '../../../services/options.service';
 import { DialogsService } from '../../../services/dialogs.service';
+import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
-import type { TooltipLine } from '../../tooltip/tooltip.component';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
+import type { TooltipLine } from '../../tooltip/tooltip.component';
+import {
+MekTurnSummaryRuntimeController,
+} from './mek-turn-summary-runtime.controller';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 import {
-    MekTurnSummaryRuntimeController,
-} from './mek-turn-summary-runtime.controller';
-import {
-    isMekTurnPanelDirty,
-    isMekTurnPanelDirtyPhase,
-} from '../../../models/runtime/mek-turn-panel';
-import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr-v2';
-import {
-    hasNonMekAirborneTurnSelection,
-    hasPendingNonMekChanges,
-    nonMekAttackMovementModifier,
-    projectNonMekControlRoll,
-    projectNonMekDefenseModifierBreakdown,
-    projectNonMekEndTurnHeat,
-    projectNonMekMovementCapabilities,
-    type NonMekMovementDeclaration,
-} from '../../../models/runtime/non-mek-unit-instance';
-import { canSwitchNonMekAirGroundState } from '../../../models/runtime/non-mek-airborne-state';
-import {
-    composeMekPsrDisplayModifiers,
-    composeTurnSummaryHeatRows,
-    runWithTurnSummaryCloseBlocked,
+composeMekPsrDisplayModifiers,
+composeTurnSummaryHeatRows,
+runWithTurnSummaryCloseBlocked,
 } from './page-turn-summary.util';
-import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
-import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
-import type { ComponentId } from '../../../models/entity/entity-identifiers';
 
 const MAX_VISIBLE_FAILURE_STEPS = 5;
 
@@ -595,7 +595,7 @@ export abstract class TurnTrackerControls {
         }
         const snapshot = this.entitySnapshot();
         if (snapshot) void this.dispatchEntity({
-            kind: 'set-airborne',
+            type: 'set-airborne',
             airborne: snapshot.state.turn.airborne === airborne ? null : airborne,
         });
     }
@@ -612,7 +612,7 @@ export abstract class TurnTrackerControls {
         if (!snapshot || !this.moveModes().some(candidate => candidate.mode === mode)) return;
         this.entityMovementDistancePreview.set(null);
         void this.dispatchEntity({
-            kind: 'set-movement',
+            type: 'set-movement',
             movement: snapshot.state.turn.movement?.mode === mode
                 ? null
                 : {
@@ -668,7 +668,7 @@ export abstract class TurnTrackerControls {
         }
         const snapshot = this.entitySnapshot();
         if (snapshot) void this.dispatchEntity({
-            kind: 'set-spotting',
+            type: 'set-spotting',
             spotting: !snapshot.state.turn.spotting,
         });
     }
@@ -681,7 +681,7 @@ export abstract class TurnTrackerControls {
         }
         const snapshot = this.entitySnapshot();
         if (snapshot) void this.dispatchEntity({
-            kind: 'set-cover',
+            type: 'set-cover',
             cover: snapshot.state.turn.cover === cover ? null : cover,
         });
     }
@@ -747,7 +747,7 @@ export abstract class TurnTrackerControls {
             : [];
         this.entityMovementDistancePreview.set(null);
         void this.dispatchEntity({
-            kind: 'set-movement',
+            type: 'set-movement',
             movement: { ...movement, distance, boosterComponentIds: boosters },
         });
     }
@@ -759,7 +759,7 @@ export abstract class TurnTrackerControls {
         if (runtime) {
             await runtime.boundary('end-phase');
         } else if (this.entitySnapshot()) {
-            await this.dispatchEntity({ kind: 'end-phase' });
+            await this.dispatchEntity({ type: 'end-phase' });
         }
     }
 
@@ -785,7 +785,7 @@ export abstract class TurnTrackerControls {
             await runtime.boundary('end-turn');
             return;
         }
-        if (this.entitySnapshot()) await this.dispatchEntity({ kind: 'end-turn' });
+        if (this.entitySnapshot()) await this.dispatchEntity({ type: 'end-turn', policy: 'automatic' });
     }
 
     async endTurnForAll(event: MouseEvent): Promise<void> {
@@ -828,28 +828,29 @@ export abstract class TurnTrackerControls {
 
     private async dispatchEntity(
         command: Readonly<{
-            readonly kind: 'set-airborne';
+            readonly type: 'set-airborne';
             readonly airborne: boolean | null;
         }> | Readonly<{
-            readonly kind: 'set-movement';
+            readonly type: 'set-movement';
             readonly movement: NonMekMovementDeclaration | null;
         }> | Readonly<{
-            readonly kind: 'set-cover';
+            readonly type: 'set-cover';
             readonly cover: UnitCover | null;
         }> | Readonly<{
-            readonly kind: 'set-spotting';
+            readonly type: 'set-spotting';
             readonly spotting: boolean;
         }> | Readonly<{
-            readonly kind: 'end-phase';
+            readonly type: 'end-phase';
         }> | Readonly<{
-            readonly kind: 'end-turn';
+            readonly type: 'end-turn';
+            readonly policy: 'automatic' | 'manual';
         }>,
     ): Promise<boolean> {
         const member = this.member();
         const snapshot = this.entitySnapshot();
         if (!member || !snapshot) return false;
         try {
-            const result = await member.force.dispatchNonMekUnitCommand(member.id, {
+            const result = await member.force.dispatchUnitCommand(member.id, {
                 ...command,
             });
             if (!result.accepted) {

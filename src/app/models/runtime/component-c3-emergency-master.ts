@@ -2,36 +2,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    C3EM_FRIED_SEQUENCE_VALUE,
-    C3EM_MAX_OPERATING_TURNS,
-    C3_EMERGENCY_MASTER_FLAG,
-    isC3EmergencyMasterEquipment,
-    isC3EmergencyMasterModeRequested,
-    isC3EmergencyMasterOperatingTurnsFried,
-    type C3EmergencyMasterMode,
-    type C3EmergencyMasterStatus,
+C3EM_FRIED_SEQUENCE_VALUE,
+C3EM_MAX_OPERATING_TURNS,
+C3_EMERGENCY_MASTER_FLAG,
+isC3EmergencyMasterEquipment,
+isC3EmergencyMasterModeRequested,
+isC3EmergencyMasterOperatingTurnsFried,
+type C3EmergencyMasterMode,
+type C3EmergencyMasterStatus,
 } from '../c3-emergency-master.model';
-import type { EquipmentFlag } from '../equipment-flags.type';
-import { ImmutableSet } from '../entity/immutable-collections';
-import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ImmutableSet } from '../entity/immutable-collections';
+import type { EquipmentFlag } from '../equipment-flags.type';
 import type { EquipmentStatus } from '../equipment-status.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    componentStateChangeFromReduction,
-    type ComponentStateChangeResult,
-    unchangedComponentState,
+componentStateChangeFromReduction,
+unchangedComponentState,
+type ComponentStateChangeResult,
 } from './component-state-change';
-import type { CBTEncounterSnapshot, EncounterNetworkEndpoint } from './encounter-runtime';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import { type C3EmergencyMasterOperatingTurns, type C3EmergencyMasterRuntimeState } from './runtime-state';
-import type { CBTUnitInstance } from './unit-instance';
+import type { CBTEncounterSnapshot,EncounterNetworkEndpoint } from './encounter-runtime';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
+import { type C3EmergencyMasterOperatingTurns,type C3EmergencyMasterRuntimeState } from './runtime-state';
+
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
 export const C3_EMERGENCY_MASTER_HANDLER_ID = 'c3-emergency-master-handler';
@@ -142,7 +143,7 @@ export function typedC3EmergencyMasterStatus(input: {
 }
 
 export function componentC3EmergencyMasterFacts(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
 ): ComponentC3EmergencyMasterFacts {
@@ -172,7 +173,7 @@ export function componentC3EmergencyMasterFacts(
 }
 
 export function toggleComponentC3EmergencyMaster(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
 ): ComponentStateChangeResult {
@@ -185,7 +186,7 @@ export function toggleComponentC3EmergencyMaster(
 }
 
 export function selectComponentC3EmergencyMasterOperatingTurns(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentC3EmergencyMasterDefinition,
     turns: C3EmergencyMasterOperatingTurns,
 ): ComponentStateChangeResult {
@@ -200,7 +201,7 @@ export function selectComponentC3EmergencyMasterOperatingTurns(
 
 /** Seeds turn one after the encounter coordinator promotes this endpoint. */
 export function syncComponentC3EmergencyMasterEncounter(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
 ): ComponentStateChangeResult {
@@ -214,7 +215,7 @@ export function syncComponentC3EmergencyMasterEncounter(
 }
 
 export function settleComponentC3EmergencyMasterEndTurn(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentC3EmergencyMasterDefinition,
     context: ComponentC3EmergencyMasterContext,
 ): ComponentStateChangeResult {
@@ -227,7 +228,7 @@ export function settleComponentC3EmergencyMasterEndTurn(
 }
 
 function dispatchC3EmergencyMaster(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentC3EmergencyMasterDefinition,
     edit:
         | { readonly kind: 'toggle-requested'; readonly turningOn: boolean }
@@ -319,7 +320,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
     }
 
     getComponentC3EmergencyMasterChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentC3EmergencyMasterDefinition,
         runtimeContext: ComponentC3EmergencyMasterContext,
         _context: EquipmentInteractionQueryContext,
@@ -358,7 +359,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentC3EmergencyMasterSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentC3EmergencyMasterDefinition,
         runtimeContext: ComponentC3EmergencyMasterContext,
         choice: PickerChoice,
@@ -389,7 +390,7 @@ export class C3EmergencyMasterHandler extends EquipmentInteractionHandler {
     }
 
     private statusLabel(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentC3EmergencyMasterDefinition,
         runtimeContext: ComponentC3EmergencyMasterContext,
     ): string {

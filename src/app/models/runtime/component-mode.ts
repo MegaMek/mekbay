@@ -1,23 +1,23 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ImmutableSet } from '../entity/immutable-collections';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { WeaponEquipment } from '../equipment.model';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { ImmutableSet } from '../entity/immutable-collections';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import { mekComponentModes } from './mek-component-rules';
-import type { PickerChoice } from '../../components/picker/picker.interface';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
+import { mekComponentModes } from './mek-component-rules';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
 
 /** Immutable entity and selected-rules facts required by a binary mode control. */
 export interface ComponentModeDefinition {
@@ -88,13 +88,13 @@ export abstract class ComponentModeHandler extends EquipmentInteractionHandler {
     abstract applicableToComponent(definition: ComponentModeDefinition): boolean;
 
     abstract getComponentModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         context: EquipmentInteractionQueryContext,
     ): readonly EquipmentInteractionChoice[];
 
     abstract handleComponentModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,

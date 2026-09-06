@@ -2,27 +2,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Injector } from '@angular/core';
+import { createMekUnit,restoreMekUnit } from '../models/runtime/cbt-mek-unit';
 
-import { ASForce } from '../models/as-force.model';
 import { ASForceUnit } from '../models/as-force-unit.model';
+import { ASForce } from '../models/as-force.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { CBTForceMember } from '../models/force-member.model';
 import type { ForcePerson } from '../models/force-personnel';
-import { CBTMekUnit } from '../models/runtime/cbt-mek-unit';
-import { createDirectCommandConsoleRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
-import { CBTUnitService } from './cbt-unit.service';
-import { OptionsService } from './options.service';
-import { LoggerService } from './logger.service';
+import { GameSystem } from '../models/common.model';
 import type { SerializedCBTForce } from '../models/force-serialization';
-import type { SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
-import { encodeForceForStorage } from '../models/runtime/force-storage-codec';
 import { decodeRemoteLoadForceEntry } from '../models/remote-load-force-entry.model';
-import { createEmptyUnit, createEmptyCBTForceForTest } from '../testing/unit-test-helpers';
+import { encodeForceForStorage } from '../models/runtime/force-storage-codec';
+import type { SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
+import { createDirectCommandConsoleRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { createEmptyCBTForceForTest,createEmptyUnit } from '../testing/unit-test-helpers';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
+import { CBTUnitService } from './cbt-unit.service';
 import type { DataService } from './data.service';
 import { ForceCrewTransferService } from './force-crew-transfer.service';
-import { GameSystem } from '../models/common.model';
+import { LoggerService } from './logger.service';
+import { OptionsService } from './options.service';
 
 describe('ForceCrewTransferService cross-system conversion', () => {
     const service = new ForceCrewTransferService();
@@ -168,7 +169,7 @@ describe('ForceCrewTransferService cross-system conversion', () => {
         ]);
         const sourceSnapshot = source.force.getUnitSnapshot(source.id)!;
         const faceId = [...sourceSnapshot.index.armorFaces.keys()][0]!;
-        await source.force.dispatchMekUnitCommand(source.id, { type: 'damage-armor', faceId, amount: 1, target: 'committed' });
+        await source.force.dispatchUnitCommand(source.id, { type: 'damage-armor', faceId, amount: 1, target: 'committed' });
         const target = await createClassicUnit();
         const originalArmor = target.force.getUnitSnapshot(target.id)!.query.remainingArmor(faceId);
         await service.transferSameSystem(source, target, GameSystem.CBT);
@@ -210,7 +211,7 @@ async function createClassicUnit(profiles?: readonly Omit<ForcePerson, 'id'>[]):
     const instanceId = 'unit:conversion';
     const initialize = { initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET } };
-    const ready = await CBTMekUnit.createFromEntity({ uuid: fixture.identity, instanceId }, fixture.entity, fixture.identity, initialize);
+    const ready = await createMekUnit({ uuid: fixture.identity, instanceId }, fixture.entity, fixture.identity, initialize);
     const unit = ready.serialize();
     const cbt = createEmptyCBTForceForTest('force:conversion');
     const record: SerializedCBTForce = { version: 2, instanceId: cbt.forceId, timestamp: '2026-01-01T00:00:00.000Z',
@@ -221,7 +222,7 @@ async function createClassicUnit(profiles?: readonly Omit<ForcePerson, 'id'>[]):
     const data = { getFactionById: () => null, getEraById: () => null,
         getUnitByUuid: () => createEmptyUnit({ uuid: fixture.identity }) } as unknown as DataService;
     const units = { restore: async (saved: SerializedCBTUnitV2) => ({
-        unit: await CBTMekUnit.restoreFromEntity(saved, fixture.entity, fixture.identity, initialize), warnings: [],
+        unit: await restoreMekUnit(saved, fixture.entity, fixture.identity, initialize), warnings: [],
     }) };
     const injector = { get: (token: unknown) => token === CBTUnitService ? units
         : token === OptionsService ? { options: () => ({ CBTRules: CORE_2026_RULESET, CBTOptionalRules: {} }) }

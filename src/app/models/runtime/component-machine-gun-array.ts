@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
+import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { WeaponEquipment } from '../equipment.model';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { MekRuntimeIndex } from './mek-runtime-index';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
+import type { MekRuntimeIndex } from './mek-runtime-index';
+
 import type { CBTRuleset } from '../cbt-ruleset.model';
 
 export const MGA_LINKED_MODE = 'Linked';
@@ -151,7 +152,7 @@ export class MachineGunArrayHandler extends EquipmentInteractionHandler {
 }
 
 function runtimeMachineGunArrayState(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     componentId: ComponentId,
 ): MachineGunArrayLifecycleState {
     return machineGunArrayLifecycleState(runtime.snapshot().components.get(componentId)?.mode);

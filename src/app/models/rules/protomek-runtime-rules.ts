@@ -3,19 +3,18 @@
 
 import type { CrewAssignment } from '../runtime/crew-assignment';
 
-import {
-    CrewMember,
-    type CrewMemberState,
-} from '../crew-member.model';
-import type { LocationId } from '../entity/entity-identifiers';
-import type { ProtoMekEntity } from '../entity/entities/protomek/protomek-entity';
-import type { MotiveModes } from '../motiveModes.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
+import {
+CrewMember,
+type CrewMemberState,
+} from '../crew-member.model';
+import type { ProtoMekEntity } from '../entity/entities/protomek/protomek-entity';
+import type { LocationId } from '../entity/entity-identifiers';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import type { NonMekUnitRuntimeState } from '../runtime/non-mek-unit-instance';
-import { gameRulesFor } from './game-rules';
+import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
 import type { UnitConditionKey } from '../unit-condition.model';
+import { gameRulesFor } from './game-rules';
 
 export interface ProtoMekRuntimeRulesProjection {
     readonly destroyed: boolean;
@@ -52,7 +51,7 @@ export function projectProtoMekRuntimeRules(
     const torsoDestroyed = torso !== undefined
         && locationDestroyed(torso.id, torso.internalPoints, state);
     const torsoDamage = [...index.damageTracks.values()].some(track =>
-        track.sheetId === 'torso_hit_3'
+        track.system === 'torso' && track.stage === 3
         && (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
     const computedConditions: UnitConditionKey[] = [];
     if (abandoned) computedConditions.push('abandoned');

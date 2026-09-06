@@ -2,20 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { MountedEngine } from '../entity/components';
-import type { MekLocation, MekSystemType } from '../entity/types';
-import {
-    TestBipedMekEntity as BipedMekEntity,
-    TestQuadVeeEntity as QuadVeeEntity,
-} from '../entity/testing/test-entities';
-import { asArmorFaceId, asComponentId, asCriticalSlotId } from '../entity/entity-identifiers';
+import { asArmorFaceId,asComponentId,asCriticalSlotId } from '../entity/entity-identifiers';
 import { mekLocationId } from '../entity/mek-entity-conventions';
 import {
-    buildMekRuntimeIndex,
-    componentIdForMount,
-    componentLocationIds,
-    type MekIndexedSystem,
-    type MekRuntimeIndex,
-} from './mek-runtime-index';
+TestBipedMekEntity as BipedMekEntity,
+TestQuadVeeEntity as QuadVeeEntity,
+} from '../entity/testing/test-entities';
+import type { MekLocation,MekSystemType } from '../entity/types';
+import { buildMekRuntimeIndex,componentLocationIds,type MekIndexedSystem,type MekRuntimeIndex } from './mek-runtime-index';
+import { componentIdForMount } from './unit-runtime-index';
 
 function systemComponents(index: MekRuntimeIndex, systemType: MekSystemType): MekIndexedSystem[] {
     return [...index.components.values()].filter(

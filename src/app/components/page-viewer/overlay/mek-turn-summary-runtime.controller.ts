@@ -1,23 +1,24 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { DestroyRef, computed, signal, type Signal, type WritableSignal } from '@angular/core';
+import { DestroyRef,computed,signal,type Signal,type WritableSignal } from '@angular/core';
 import { merge } from 'rxjs';
+import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
 
-import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
-import type { UnitCover } from '../../../models/unit-cover.model';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
 import {
-    MEK_ACTION_DECLARATION_SCHEMA_VERSION,
-    MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
-    type MekLegalActionProjectionV2,
-    type MekMovementModeV2,
-    type MekPilotCheckDiceEvidenceV2,
-    type MekPilotCheckOutcomeV2,
+MEK_ACTION_DECLARATION_SCHEMA_VERSION,
+MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+type MekLegalActionProjectionV2,
+type MekMovementModeV2,
+type MekPilotCheckDiceEvidenceV2,
+type MekPilotCheckOutcomeV2,
 } from '../../../models/runtime/mek-movement-psr-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
-import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
-import type { CBTUnitCommand } from '../../../models/runtime/unit-instance';
+import type { UnitCover } from '../../../models/unit-cover.model';
+
 import type { OptionsService } from '../../../services/options.service';
 import type { ToastService } from '../../../services/toast.service';
 import { actionableMekPilotChecks } from './page-turn-summary.util';
@@ -313,7 +314,7 @@ export class MekTurnSummaryRuntimeController {
         if (this.busy()) return false;
         this.busy.set(true);
         try {
-            const result = await this.member.force.dispatchMekUnitCommand(this.member.id, {
+            const result = await this.member.force.dispatchUnitCommand(this.member.id, {
                 ...command,
             } as CBTUnitCommand);
             if (!result.accepted) this.toast.showToast('This force is read-only.', 'error');

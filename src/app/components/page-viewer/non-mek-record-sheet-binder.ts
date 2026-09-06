@@ -2,104 +2,45 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    SystemDamageTrackId,
-    LocationId,
+ComponentId,
 } from '../../models/entity/entity-identifiers';
-import type {
-    NonMekRecordSheetArmorFace,
-    NonMekRecordSheetDamageTrack,
-    NonMekRecordSheetLocation,
-    NonMekRecordSheetSnapshot,
-} from '../../models/runtime/non-mek-record-sheet';
-import type { EquipmentPanelComponent, EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
-import {
-    projectTargetingTarget,
-    equipmentWeaponToHitModifier,
-    projectWeaponTargetPresentation,
-} from '../../models/runtime/equipment-panel';
-import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
-import type { UnitConditionKey } from '../../models/unit-condition.model';
 import type { EntityTechBase } from '../../models/entity/types';
+import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
+import type { EquipmentPanelComponent,EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import {
-    crewStateDefinitions,
-    UNIT_CONDITION_DEFINITIONS,
-    unitConditionControls,
+equipmentWeaponToHitModifier,
+projectTargetingTarget,
+projectWeaponTargetPresentation,
+} from '../../models/runtime/equipment-panel';
+import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
+import type {
+NonMekRecordSheetArmorFace,
+NonMekRecordSheetDamageTrack,
+NonMekRecordSheetLocation,
+NonMekRecordSheetSnapshot,
+} from '../../models/runtime/non-mek-record-sheet';
+import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
+import {
+crewStateDefinitions,
+UNIT_CONDITION_DEFINITIONS,
+unitConditionControls,
 } from '../../models/unit-status-presentation';
-import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
+import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
+import {
+createInfantryStrengthDisplay,
+INFANTRY_STRENGTH_DISPLAY_ID,
+type InfantryStrengthDisplay,
+} from '../../utils/sheets/infantry-strength-display';
 import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import {
-    renderRecordSheetConditions,
-    renderRecordSheetCrewState,
-    renderRecordSheetDestroyed,
-    renderRecordSheetPips,
+renderRecordSheetConditions,
+renderRecordSheetCrewState,
+renderRecordSheetDestroyed,
+renderRecordSheetPips,
 } from './record-sheet-dom';
-
-export type NonMekRecordSheetInteraction = Readonly<{
-    readonly kind: 'armor';
-    readonly faceId: ArmorFaceId;
-    readonly locationId: LocationId;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'internal';
-    readonly locationId: LocationId;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'soldier';
-    readonly locationId: LocationId;
-    readonly soldierNumber: number;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'damage-track';
-    readonly damageTrackId: SystemDamageTrackId;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'condition';
-    readonly condition: UnitConditionKey;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'condition-menu';
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'crew-wounds';
-    readonly positionId: CrewPositionId;
-    readonly wounds: number;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'crew-state-menu';
-    readonly positionId: CrewPositionId;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'crew-profile';
-    readonly positionId: CrewPositionId;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'heat';
-    readonly heat: number;
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'heat-overflow';
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'apply-heat';
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'heat-sinks-off';
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'open-equipment';
-    readonly tab: 'ammo';
-    readonly expectedRevision: number;
-}> | Readonly<{
-    readonly kind: 'inventory-selection';
-    readonly componentIds: readonly ComponentId[];
-    readonly mode?: string;
-    readonly range?: 'short' | 'medium' | 'long' | 'extreme';
-    readonly expectedRevision: number;
-}>;
+import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
+import type { RecordSheetInteraction } from './record-sheet-interaction';
 
 export interface NonMekRecordSheetBinding {
     render(snapshot: NonMekRecordSheetSnapshot, equipmentPanel?: EquipmentPanelSnapshot | null): readonly string[];
@@ -109,7 +50,7 @@ export interface NonMekRecordSheetBinding {
 export function bindNonMekRecordSheet(
     svg: SVGSVGElement,
     initial: NonMekRecordSheetSnapshot,
-    onInteraction?: (interaction: NonMekRecordSheetInteraction, event: Event) => void,
+    onInteraction?: (interaction: RecordSheetInteraction, event: Event) => void,
     initialEquipmentPanel?: EquipmentPanelSnapshot | null,
 ): NonMekRecordSheetBinding {
     const abort = new AbortController();
@@ -117,10 +58,11 @@ export function bindNonMekRecordSheet(
     let current = initial;
     let currentEquipmentPanel = initialEquipmentPanel ?? null;
     let firstRender = true;
+    let infantryDisplay: InfantryStrengthDisplay | undefined;
 
     const bind = (
         element: SVGElement,
-        interaction: () => NonMekRecordSheetInteraction,
+        interaction: () => RecordSheetInteraction | null,
     ): void => {
         if (!onInteraction || element.dataset['mekbayEntityBound'] === '1') return;
         element.dataset['mekbayEntityBound'] = '1';
@@ -130,7 +72,8 @@ export function bindNonMekRecordSheet(
             if (element.style.display === 'none') return;
             event.preventDefault();
             event.stopPropagation();
-            onInteraction(interaction(), event);
+            const selected = interaction();
+            if (selected) onInteraction(selected, event);
         };
         element.addEventListener('click', emit, { signal: abort.signal });
         element.addEventListener('contextmenu', emit, { signal: abort.signal });
@@ -156,12 +99,13 @@ export function bindNonMekRecordSheet(
         renderCrew(svg, snapshot, bind, () => current);
         for (const location of snapshot.locations) {
             if (location.soldierPips === true) {
-                renderSoldierLocation(svg, location, issues, bind, () => current.stateRevision, markChanges);
+                infantryDisplay = renderInfantryStrength(svg, location, snapshot, infantryDisplay, issues, bind,
+                    () => current.editContext, markChanges);
                 continue;
             }
             if (!location.sheetCode) continue;
             if (location.combinedPips === true) {
-                renderCombinedLocation(svg, location, issues, bind, () => current.stateRevision, markChanges);
+                renderCombinedLocation(svg, location, issues, bind, () => current.editContext, markChanges);
                 continue;
             }
             const code = attributeValue(location.sheetCode);
@@ -197,7 +141,7 @@ export function bindNonMekRecordSheet(
                 bind(target, () => Object.freeze({
                     kind: 'internal',
                     locationId: location.locationId,
-                    expectedRevision: current.stateRevision,
+                    context: current.editContext,
                 }));
             });
 
@@ -208,19 +152,19 @@ export function bindNonMekRecordSheet(
                     face,
                     issues,
                     bind,
-                    () => current.stateRevision,
+                    () => current.editContext,
                     markChanges,
                 );
             }
         }
-        renderDamageTracks(svg, snapshot.damageTracks, issues, bind, () => current.stateRevision);
-        renderComponents(svg, snapshot);
+        renderDamageTracks(svg, snapshot.damageTracks, issues, bind, () => current.editContext);
+        renderComponents(svg, snapshot, issues);
         renderAmmoProfile(svg, snapshot, onInteraction !== undefined);
         const ammoProfile = svg.querySelector<SVGElement>('#ammoProfile');
         if (ammoProfile) bind(ammoProfile, () => Object.freeze({
             kind: 'open-equipment',
             tab: 'ammo',
-            expectedRevision: current.stateRevision,
+            context: current.editContext,
         }));
         if (currentEquipmentPanel !== null) {
             renderInventorySelections(
@@ -228,7 +172,7 @@ export function bindNonMekRecordSheet(
                 snapshot,
                 currentEquipmentPanel,
                 bind,
-                () => currentEquipmentPanel,
+                () => current.editContext,
             );
         }
         renderHeat(svg, snapshot, issues, bind, () => current);
@@ -255,7 +199,7 @@ export function bindNonMekRecordSheet(
 function renderConditions(
     svg: SVGSVGElement,
     snapshot: NonMekRecordSheetSnapshot,
-    bind: (element: SVGElement, interaction: () => NonMekRecordSheetInteraction) => void,
+    bind: (element: SVGElement, interaction: () => RecordSheetInteraction) => void,
     current: () => NonMekRecordSheetSnapshot,
 ): void {
     renderRecordSheetConditions(svg, snapshot.conditions, UNIT_CONDITION_DEFINITIONS);
@@ -265,14 +209,14 @@ function renderConditions(
             .forEach(button => bind(button, () => Object.freeze({
                 kind: 'condition',
                 condition: control.key,
-                expectedRevision: current().stateRevision,
+                context: current().editContext,
             })));
     }
     if (controls.some(control => control.placement === 'menu')) {
         svg.querySelectorAll<SVGElement>('.unitConditionButton[condition="menu"]')
             .forEach(button => bind(button, () => Object.freeze({
                 kind: 'condition-menu',
-                expectedRevision: current().stateRevision,
+                context: current().editContext,
             })));
     }
 }
@@ -280,7 +224,7 @@ function renderConditions(
 function renderCrew(
     svg: SVGSVGElement,
     snapshot: NonMekRecordSheetSnapshot,
-    bind: (element: SVGElement, interaction: () => NonMekRecordSheetInteraction) => void,
+    bind: (element: SVGElement, interaction: () => RecordSheetInteraction) => void,
     current: () => NonMekRecordSheetSnapshot,
 ): void {
     const displays = crewStateDefinitions(snapshot.crewStateDisplayKeys);
@@ -300,7 +244,7 @@ function renderCrew(
         ).forEach(button => bind(button, () => Object.freeze({
             kind: 'crew-profile',
             positionId: position.positionId,
-            expectedRevision: current().stateRevision,
+            context: current().editContext,
         })));
         for (let wounds = 1; wounds <= 6; wounds += 1) {
             const marker = svg.querySelector<SVGElement>(
@@ -318,7 +262,7 @@ function renderCrew(
                     kind: 'crew-wounds',
                     positionId: position.positionId,
                     wounds: currentWounds === wounds ? Math.max(0, wounds - 1) : wounds,
-                    expectedRevision: latest.stateRevision,
+                    context: latest.editContext,
                 });
             });
         }
@@ -330,7 +274,7 @@ function renderCrew(
             .forEach(button => bind(button, () => Object.freeze({
                 kind: 'crew-state-menu',
                 positionId: position.positionId,
-                expectedRevision: current().stateRevision,
+                context: current().editContext,
             })));
     }
 }
@@ -341,9 +285,9 @@ function renderDamageTracks(
     issues: string[],
     bind: (
         element: SVGElement,
-        interaction: () => NonMekRecordSheetInteraction,
+        interaction: () => RecordSheetInteraction,
     ) => void,
-    revision: () => number,
+    context: () => UnitEditContext,
 ): void {
     for (const track of damageTracks) {
         const element = damageTrackElement(svg, track.sheetId);
@@ -371,7 +315,7 @@ function renderDamageTracks(
         bind(element, () => Object.freeze({
             kind: 'damage-track',
             damageTrackId: track.damageTrackId,
-            expectedRevision: revision(),
+            context: context(),
         }));
     }
 }
@@ -423,52 +367,47 @@ function damageTrackElement(svg: SVGSVGElement, sheetId: string): SVGElement | n
         ?? svg.getElementById(sheetId) as SVGElement | null;
 }
 
-function renderSoldierLocation(
+function renderInfantryStrength(
     svg: SVGSVGElement,
     location: NonMekRecordSheetLocation,
+    snapshot: NonMekRecordSheetSnapshot,
+    existing: InfantryStrengthDisplay | undefined,
     issues: string[],
     bind: (
         element: SVGElement,
-        interaction: () => NonMekRecordSheetInteraction,
+        interaction: () => RecordSheetInteraction | null,
     ) => void,
-    revision: () => number,
+    context: () => UnitEditContext,
     markChanges: boolean,
-): void {
-    const soldiers: SVGElement[] = [];
-    for (let number = 1; number <= location.maximumInternal; number += 1) {
-        const soldier = svg.getElementById(`soldier_${number}`) as SVGElement | null;
-        if (soldier) soldiers.push(soldier);
+): InfantryStrengthDisplay | undefined {
+    const host = svg.getElementById(INFANTRY_STRENGTH_DISPLAY_ID) as SVGGElement | null;
+    if (host === null) {
+        issues.push('Missing generated infantry strength display');
+        return existing;
     }
-    if (soldiers.length < location.maximumInternal) {
-        issues.push(`Missing infantry soldiers: ${soldiers.length}/${location.maximumInternal}`);
-    }
-
-    const committedDamage = location.maximumInternal - location.remainingInternal;
-    const previewDamage = location.maximumInternal - location.previewRemainingInternal;
-    soldiers.forEach((soldier, index) => {
-        const soldierNumber = index + 1;
-        const damageOrdinal = location.maximumInternal - index;
-        soldier.classList.add('soldierPip');
-        soldier.setAttribute('soldier-id', String(soldierNumber));
-        const damaged = damageOrdinal <= previewDamage;
-        if (soldier.classList.contains('damaged') !== damaged) {
-            soldier.classList.toggle('damaged', damaged);
-            soldier.classList.toggle('fresh', markChanges);
-        } else {
-            soldier.classList.remove('fresh');
+    const display = existing ?? createInfantryStrengthDisplay(svg, host);
+    display.render(snapshot.infantry, {
+        maximum: location.maximumInternal,
+        committedRemaining: location.remainingInternal,
+        previewRemaining: location.previewRemainingInternal,
+    }, markChanges);
+    for (const cell of display.cells) {
+        if (!host.contains(cell.element)) {
+            issues.push('Missing generated infantry strength cell');
+            continue;
         }
-        soldier.classList.toggle('pending',
-            damageOrdinal > Math.min(committedDamage, previewDamage)
-            && damageOrdinal <= Math.max(committedDamage, previewDamage));
-        svg.getElementById(`damage_${soldierNumber}`)?.classList
-            .toggle('disabled-text', damaged);
-        bind(soldier, () => Object.freeze({
-            kind: 'soldier',
-            locationId: location.locationId,
-            soldierNumber,
-            expectedRevision: revision(),
-        }));
-    });
+        if (cell.selection() === null) continue;
+        bind(cell.element, () => {
+            const strength = cell.selection();
+            return strength === null ? null : Object.freeze({
+                kind: 'infantry-strength',
+                locationId: location.locationId,
+                strength,
+                context: context(),
+            });
+        });
+    }
+    return display;
 }
 
 function renderCombinedLocation(
@@ -477,9 +416,9 @@ function renderCombinedLocation(
     issues: string[],
     bind: (
         element: SVGElement,
-        interaction: () => NonMekRecordSheetInteraction,
+        interaction: () => RecordSheetInteraction,
     ) => void,
-    revision: () => number,
+    context: () => UnitEditContext,
     markChanges: boolean,
 ): void {
     const face = location.armor.find(candidate => candidate.face === 'front');
@@ -512,7 +451,7 @@ function renderCombinedLocation(
         bind(target, () => Object.freeze({
             kind: 'internal',
             locationId: location.locationId,
-            expectedRevision: revision(),
+            context: context(),
         }));
     });
     const armorTargets = interactionTargets(
@@ -529,7 +468,7 @@ function renderCombinedLocation(
             kind: 'armor',
             faceId: face.faceId,
             locationId: location.locationId,
-            expectedRevision: revision(),
+            context: context(),
         }));
     });
 }
@@ -541,9 +480,9 @@ function renderArmorFace(
     issues: string[],
     bind: (
         element: SVGElement,
-        interaction: () => NonMekRecordSheetInteraction,
+        interaction: () => RecordSheetInteraction,
     ) => void,
-    revision: () => number,
+    context: () => UnitEditContext,
     markChanges: boolean,
 ): void {
     const code = attributeValue(sheetCode);
@@ -576,7 +515,7 @@ function renderArmorFace(
             kind: 'armor',
             faceId: face.faceId,
             locationId: face.locationId,
-            expectedRevision: revision(),
+            context: context(),
         }));
     });
 }
@@ -656,7 +595,7 @@ function renderHeat(
     svg: SVGSVGElement,
     snapshot: NonMekRecordSheetSnapshot,
     issues: string[],
-    bind: (element: SVGElement, interaction: () => NonMekRecordSheetInteraction) => void,
+    bind: (element: SVGElement, interaction: () => RecordSheetInteraction) => void,
     current: () => NonMekRecordSheetSnapshot,
 ): void {
     if (!snapshot.heat.tracked) return;
@@ -671,18 +610,15 @@ function renderHeat(
         bind(row.element, () => Object.freeze({
             kind: 'heat',
             heat: row.heat,
-            expectedRevision: current().stateRevision,
+            context: current().editContext,
         }));
     });
-    svg.querySelectorAll<SVGElement>('.heatEffect[heat]').forEach(element => {
-        const threshold = Number(element.getAttribute('heat'));
-        element.classList.toggle('hot', Number.isSafeInteger(threshold) && threshold <= displayed);
-    });
+    renderRecordSheetHeatEffects(svg, recordSheetHeatEffects('aero', displayed));
     const overflow = svg.querySelector<SVGElement>('#heatScale .overflowButton, #heatScale .overflowFrame');
     overflow?.classList.toggle('hot', displayed > highest);
     if (overflow) bind(overflow, () => Object.freeze({
         kind: 'heat-overflow',
-        expectedRevision: current().stateRevision,
+        context: current().editContext,
     }));
     const overflowText = svg.querySelector<SVGElement>('#heatScale .overflowText');
     if (overflowText) overflowText.textContent = displayed > highest ? String(displayed) : '';
@@ -697,7 +633,7 @@ function renderHeat(
     const apply = svg.getElementById('applyHeatButton') as SVGElement | null;
     if (apply) bind(apply, () => Object.freeze({
         kind: 'apply-heat',
-        expectedRevision: current().stateRevision,
+        context: current().editContext,
     }));
 
     const pips = [...svg.querySelectorAll<SVGElement>('.hsPips .pip')];
@@ -719,48 +655,24 @@ function renderHeat(
     svg.querySelectorAll<SVGElement>('#hsCount, .hsPips, [data-mekbay-field="heat-sinks"]')
         .forEach(element => bind(element, () => Object.freeze({
             kind: 'heat-sinks-off',
-            expectedRevision: current().stateRevision,
+            context: current().editContext,
         })));
 }
 
-function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot): void {
+function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, issues: string[]): void {
     const rows = [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')];
     rows.forEach(row => row.classList.remove('disabled', 'disabledInventory', 'pending'));
     const componentsById = new Map(snapshot.components.map(component => [component.componentId, component]));
-    const assigned = new Set<ComponentId>();
-    const legacyRows = new Map<string, SVGElement[]>();
     for (const row of rows) {
         const components = inventoryComponentIds(row).flatMap(componentId => {
             const component = componentsById.get(componentId);
             return component === undefined ? [] : [component];
         });
         if (components.length > 0) {
-            components.forEach(component => assigned.add(component.componentId));
             renderInventoryComponentStatus(row, components);
-        } else {
-            const key = inventoryRowKey(inventoryEquipmentId(row), inventoryLocation(row));
-            const matches = legacyRows.get(key);
-            if (matches) matches.push(row);
-            else legacyRows.set(key, [row]);
+        } else if (inventoryComponentIds(row).length > 0) {
+            issues.push(`Unknown inventory component binding for ${row.id}`);
         }
-    }
-
-    const legacyOffsets = new Map<string, number>();
-    for (const component of snapshot.components) {
-        if (assigned.has(component.componentId)) continue;
-        let row: SVGElement | undefined;
-        for (const location of component.sheetLocations) {
-            const key = inventoryRowKey(component.equipmentId, location);
-            const matches = legacyRows.get(key);
-            const offset = legacyOffsets.get(key) ?? 0;
-            row = matches?.[offset];
-            if (row) {
-                legacyOffsets.set(key, offset + 1);
-                break;
-            }
-        }
-        if (!row) continue;
-        renderInventoryComponentStatus(row, [component]);
     }
 }
 
@@ -800,11 +712,11 @@ function renderInventorySelections(
     svg: SVGSVGElement,
     snapshot: NonMekRecordSheetSnapshot,
     panel: EquipmentPanelSnapshot,
-    bind: (element: SVGElement, interaction: () => NonMekRecordSheetInteraction) => void,
-    currentPanel: () => EquipmentPanelSnapshot | null,
+    bind: (element: SVGElement, interaction: () => RecordSheetInteraction) => void,
+    context: () => UnitEditContext,
 ): void {
     const rows = [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')];
-    const assignments = inventoryRowAssignments(rows, snapshot, panel);
+    const assignments = inventoryRowAssignments(rows, panel);
     for (const row of rows) {
         row.classList.remove(
             'selected',
@@ -882,7 +794,7 @@ function renderInventorySelections(
         bind(main, () => Object.freeze({
             kind: 'inventory-selection',
             componentIds,
-            expectedRevision: currentPanel()?.stateRevision ?? panel.stateRevision,
+            context: context(),
         }));
         for (const definition of INVENTORY_RANGE_BUTTONS) {
             row.querySelectorAll<SVGElement>(`:scope > .inventoryEntryButton${definition.selector}`)
@@ -890,7 +802,7 @@ function renderInventorySelections(
                     kind: 'inventory-selection',
                     componentIds,
                     range: definition.range,
-                    expectedRevision: currentPanel()?.stateRevision ?? panel.stateRevision,
+                    context: context(),
                 })));
         }
         const modeElements = [...row.querySelectorAll<SVGElement>(':scope > .alternativeMode')];
@@ -911,7 +823,7 @@ function renderInventorySelections(
                 kind: 'inventory-selection',
                 componentIds,
                 mode,
-                expectedRevision: currentPanel()?.stateRevision ?? panel.stateRevision,
+                context: context(),
             }));
             for (const definition of INVENTORY_RANGE_BUTTONS) {
                 modeElement.querySelectorAll<SVGElement>(`:scope > .inventoryEntryButton${definition.selector}`)
@@ -920,7 +832,7 @@ function renderInventorySelections(
                         componentIds,
                         mode,
                         range: definition.range,
-                        expectedRevision: currentPanel()?.stateRevision ?? panel.stateRevision,
+                        context: context(),
                     })));
             }
         });
@@ -929,7 +841,6 @@ function renderInventorySelections(
 
 function inventoryRowAssignments(
     rows: readonly SVGElement[],
-    snapshot: NonMekRecordSheetSnapshot,
     panel: EquipmentPanelSnapshot,
 ): ReadonlyMap<SVGElement, readonly EquipmentPanelComponent[]> {
     const panelById = new Map<ComponentId, EquipmentPanelComponent>();
@@ -950,33 +861,6 @@ function inventoryRowAssignments(
             .forEach(componentId => used.add(componentId)));
     }
 
-    const legacyRows = new Map<string, SVGElement[]>();
-    for (const row of rows) {
-        if (assignments.has(row)) continue;
-        const key = inventoryRowKey(inventoryEquipmentId(row), inventoryLocation(row));
-        const matches = legacyRows.get(key);
-        if (matches) matches.push(row);
-        else legacyRows.set(key, [row]);
-    }
-    const legacyOffsets = new Map<string, number>();
-    for (const component of snapshot.components) {
-        if (used.has(component.componentId)) continue;
-        let row: SVGElement | undefined;
-        for (const location of component.sheetLocations) {
-            const key = inventoryRowKey(component.equipmentId, location);
-            const matches = legacyRows.get(key);
-            const offset = legacyOffsets.get(key) ?? 0;
-            row = matches?.[offset];
-            if (row) {
-                legacyOffsets.set(key, offset + 1);
-                break;
-            }
-        }
-        const panelComponent = panelById.get(component.componentId);
-        if (!row || !panelComponent) continue;
-        assignments.set(row, [panelComponent]);
-        equipmentPanelAttackComponentIds(panelComponent).forEach(componentId => used.add(componentId));
-    }
     return assignments;
 }
 
@@ -1011,23 +895,11 @@ function sameInventorySelection(
     return true;
 }
 
-function inventoryEquipmentId(row: SVGElement): string {
-    return (row.id.split('@', 1)[0] ?? '').trim();
-}
-
 function inventoryComponentIds(row: SVGElement): readonly ComponentId[] {
     return (row.getAttribute('data-mekbay-component-ids') ?? '')
         .trim()
         .split(/\s+/u)
         .filter(Boolean) as ComponentId[];
-}
-
-function inventoryRowKey(equipmentId: string, location: string): string {
-    return `${equipmentId}\u0000${location}`;
-}
-
-function inventoryLocation(row: SVGElement): string {
-    return row.querySelector<SVGElement>('.location')?.textContent?.trim() ?? '';
 }
 
 function formatTechBase(value: EntityTechBase, mixedTech = false): string {

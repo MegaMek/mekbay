@@ -1,30 +1,30 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { EquipmentFlag } from '../equipment-flags.type';
-import { Equipment, WeaponEquipment } from '../equipment.model';
+import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { ImmutableSet } from '../entity/immutable-collections';
+import type { EquipmentFlag } from '../equipment-flags.type';
+import { Equipment,WeaponEquipment } from '../equipment.model';
 import {
-    HAG_FLAK_MODE,
-    HAG_FLAG,
-    HAG_MODES,
-    HAG_STANDARD_MODE,
-    isHagEquipment,
-    isHagMode,
-    type HagMode,
+HAG_FLAG,
+HAG_FLAK_MODE,
+HAG_MODES,
+HAG_STANDARD_MODE,
+isHagEquipment,
+isHagMode,
+type HagMode,
 } from '../hag-mode.model';
 import type { WeaponType } from '../weapon-types.model';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import type { PickerChoice } from '../../components/picker/picker.interface';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
 
 export interface ComponentHagModeDefinition {
     readonly componentId: ComponentId;
@@ -165,7 +165,7 @@ export class HagHandler extends EquipmentInteractionHandler {
     }
 
     getComponentHagModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentHagModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -184,7 +184,7 @@ export class HagHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentHagModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentHagModeDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,
@@ -199,4 +199,4 @@ export class HagHandler extends EquipmentInteractionHandler {
     }
 }
 
-export { HAG_FLAK_MODE, HAG_STANDARD_MODE, isHagMode, type HagMode };
+export { HAG_FLAK_MODE,HAG_STANDARD_MODE,isHagMode,type HagMode };

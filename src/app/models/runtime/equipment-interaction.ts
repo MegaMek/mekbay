@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
-import type { ToastService } from '../../services/toast.service';
 import type { DialogsService } from '../../services/dialogs.service';
-import type { EquipmentFlag } from '../equipment-flags.type';
-import type { ComponentId } from '../entity/entity-identifiers';
-import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ToastService } from '../../services/toast.service';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import type { EquipmentFlag } from '../equipment-flags.type';
+import { type CBTMekUnit } from './cbt-unit';
 import type { CBTEncounterSnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
-import type { CBTUnitInstance } from './unit-instance';
 
 export type EquipmentChoiceSurface = 'critical' | 'inventory' | 'turn-summary';
 
@@ -23,6 +23,8 @@ export interface EquipmentInteractionCommandContext {
     readonly dialogsService: EquipmentInteractionDialogsService;
     /** Force-owned navigation; it does not mutate unit runtime or history. */
     readonly configureC3Network?: () => void;
+    /** Required after awaiting input: checks authority and publishes the mutation before notices. */
+    readonly dispatch?: CBTMekUnit['dispatch'];
 }
 
 export type EquipmentInteractionNotifications = Pick<ToastService, 'showToast'>;
@@ -57,7 +59,7 @@ export interface EquipmentInteractionOwnerContext {
  * link; the behavior owns every equipment-specific definition and decision.
  */
 export interface EquipmentInteractionInput {
-    readonly runtime: CBTUnitInstance;
+    readonly runtime: CBTMekUnit;
     readonly entity: MekEntity;
     readonly index: MekRuntimeIndex;
     readonly ruleset: CBTRuleset;

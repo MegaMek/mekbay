@@ -2,22 +2,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
-import { WeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
+import { WeaponEquipment } from '../equipment.model';
 import { gameRulesFor } from '../rules/game-rules';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    ComponentModeHandler,
-    type ComponentModeDefinition,
+ComponentModeHandler,
+type ComponentModeDefinition,
 } from './component-mode';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
-import type { CBTUnitInstance } from './unit-instance';
+import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
+
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
@@ -67,7 +68,7 @@ export class UACFiringModeHandler extends ComponentModeHandler {
     }
 
     getComponentModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
@@ -83,7 +84,7 @@ export class UACFiringModeHandler extends ComponentModeHandler {
     }
 
     handleComponentModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         choice: PickerChoice,
         _context: EquipmentInteractionCommandContext,
@@ -124,7 +125,7 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
     }
 
     getComponentJamChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentJamDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -141,7 +142,7 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentJamSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentJamDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,

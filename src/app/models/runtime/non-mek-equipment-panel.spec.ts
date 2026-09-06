@@ -1,30 +1,30 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
-import { AmmoEquipment, createEquipment, WeaponEquipment } from '../equipment.model';
+import { asComponentId } from '../entity/entity-identifiers';
 import {
-    TestAeroSpaceFighterEntity,
-    TestDropShipEntity,
-    TestInfantryEntity,
-    TestJumpShipEntity,
-    TestProtoMekEntity,
-    TestTankEntity,
+TestAeroSpaceFighterEntity,
+TestDropShipEntity,
+TestInfantryEntity,
+TestJumpShipEntity,
+TestProtoMekEntity,
+TestTankEntity,
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
-import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { asComponentId } from '../entity/entity-identifiers';
+import { AmmoEquipment,createEquipment,WeaponEquipment } from '../equipment.model';
 import { createDefaultCrewAssignment } from './crew-assignment';
-import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
 import {
-    projectTargetingTarget,
-    projectWeaponTargetPresentation,
+projectTargetingTarget,
+projectWeaponTargetPresentation,
 } from './equipment-panel';
-import { NonMekUnitInstance } from './non-mek-unit-instance';
+import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
+
+import { systemDamageId } from '../rules/system-damage-rules';
 import { asEncounterTargetId } from './encounter-runtime';
 import { type InstanceBaselineRef } from './runtime-state';
-import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
@@ -146,7 +146,7 @@ describe('Entity equipment panel projection', () => {
         const location = entity.locationOrder[0];
         const weaponMount = addTestEquipment(entity, weapon, { location });
         const ammoMount = addTestEquipment(entity, standard, { location, shotsCount: 10 });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-equipment-panel',
             baseline(),
             entity,
@@ -172,15 +172,14 @@ describe('Entity equipment panel projection', () => {
         });
 
         runtime.dispatch({
-            kind: 'configure-ammo-source',
+            type: 'configure-ammo-source',
 
             componentId: ammoId,
             munitionKey: precision.id,
             remaining: 4,
         });
         runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -189,8 +188,7 @@ describe('Entity equipment panel projection', () => {
             },
         }, registry, false);
         runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-target-facts',
@@ -199,8 +197,7 @@ describe('Entity equipment panel projection', () => {
             },
         }, registry, false);
         runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-ammo',
@@ -209,14 +206,14 @@ describe('Entity equipment panel projection', () => {
             },
         }, registry, false);
         runtime.dispatch({
-            kind: 'set-component-status',
+            type: 'set-component-status',
 
             componentId: weaponId,
             status: 'destroyed',
             target: 'pending',
         });
         runtime.dispatch({
-            kind: 'set-component-status',
+            type: 'set-component-status',
 
             componentId: ammoId,
             status: 'destroyed',
@@ -275,7 +272,7 @@ describe('Entity equipment panel projection', () => {
             { id: 'precision', label: 'Precision', modifier: -2 },
         ]);
 
-        runtime.dispatch({ kind: 'end-phase'});
+        runtime.dispatch({ type: 'end-phase'});
         const committed = projectNonMekEquipmentPanel(
             entity,
             runtime.getIndex(),
@@ -312,22 +309,22 @@ describe('Entity equipment panel projection', () => {
         entity.uuid.set(UUID);
         const mount = addTestEquipment(entity, laser, { location: 'Front' });
         addTestEquipment(entity, targetingComputer, { location: 'Body' });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-system-rules',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         runtime.dispatch({
-            kind: 'damage-track',
+            type: 'damage-track',
 
-            damageTrackId: nonMekDamageTrackId('engine_hit_1'),
+            damageTrackId: systemDamageId('engine', 1),
             amount: 1,
             target: 'committed',
             timestamp: 1,
         });
         runtime.dispatch({
-            kind: 'set-sensor-damage-level',
+            type: 'set-sensor-damage-level',
 
             level: 4,
             target: 'committed',
@@ -367,29 +364,28 @@ describe('Entity equipment panel projection', () => {
         entity.setTonnage(60);
         entity.originalWalkMP.set(8);
         const mount = addTestEquipment(entity, weapon, { location: 'Front' });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-charge-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         runtime.dispatch({
-            kind: 'damage-track',
+            type: 'damage-track',
 
-            damageTrackId: nonMekDamageTrackId('stabilizer_hit_front'),
+            damageTrackId: systemDamageId('stabilizer', undefined, 'Front'),
             amount: 1,
             target: 'committed',
             timestamp: 1,
         });
         runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'run', distance: 5, boosterComponentIds: [] },
         });
         const registry = Object.freeze({ revision: 0, targets: Object.freeze([]) });
         runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-action-selection',
@@ -440,17 +436,17 @@ describe('Entity equipment panel projection', () => {
         entity.uuid.set(UUID);
         entity.heatSinkCount.set(10);
         const mount = addTestEquipment(entity, weapon, { location: 'Nose' });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:aero-heat-panel',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-heat',
 
             heat: 24,
-            target: 'committed',
+
         });
         const snapshot = projectNonMekEquipmentPanel(
             entity,
@@ -483,7 +479,7 @@ describe('Entity equipment panel projection', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(10);
         entity.originalWalkMP.set(5);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:proto-frenzy',
             baseline(),
             entity,
@@ -513,7 +509,7 @@ describe('Entity equipment panel projection', () => {
 
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: crewId,
             wounds: 0,
@@ -541,7 +537,7 @@ describe('Entity equipment panel projection', () => {
         entity.squadCount.set(4);
         const mounts = Array.from({ length: 3 }, () =>
             addTestEquipment(entity, gun, { location: 'Field Guns' }));
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:infantry-field-gun-panel',
             baseline(),
             entity,
@@ -549,7 +545,7 @@ describe('Entity equipment panel projection', () => {
         );
         const troopLocation = [...runtime.getIndex().locations.values()][0]!;
         runtime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
 
             locationId: troopLocation.id,
             damage: 7,
@@ -589,7 +585,7 @@ describe('Entity equipment panel projection', () => {
         const mounts = Array.from({ length: 4 }, () =>
             addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
         entity.addEquipmentBay('weapon-bay', { mounts });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:jumpship-bay-panel',
             baseline(),
             entity,
@@ -626,7 +622,7 @@ describe('Entity equipment panel projection', () => {
         const mounts = Array.from({ length: 3 }, () =>
             addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
         entity.addEquipmentBay('weapon-bay', { mounts });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:dropship-bay-panel',
             baseline(),
             entity,
@@ -643,9 +639,9 @@ describe('Entity equipment panel projection', () => {
         ).components.filter(row => row.weapon !== undefined);
 
         expect(weaponRows()).toHaveSize(1);
-        runtime.dispatch({ kind: 'set-airborne', airborne: false });
+        runtime.dispatch({ type: 'set-airborne', airborne: false });
         expect(weaponRows()).toHaveSize(3);
-        runtime.dispatch({ kind: 'set-airborne', airborne: true });
+        runtime.dispatch({ type: 'set-airborne', airborne: true });
         expect(weaponRows()).toHaveSize(1);
     });
 
@@ -685,7 +681,7 @@ describe('Entity equipment panel projection', () => {
         }
         Array.from({ length: 72 }, () =>
             addTestEquipment(entity, ammo, { location, shotsCount: 10 }));
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:leviathan-scale-panel',
             baseline(),
             entity,
@@ -723,3 +719,5 @@ function baseline(): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';

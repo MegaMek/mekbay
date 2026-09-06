@@ -1,47 +1,46 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
+import { isBapEquipment } from '../../../models/bap-equipment.model';
+import { isNovaC3Equipment } from '../../../models/c3-network.model';
+import { isCaseEquipment } from '../../../models/case-equipment.model';
+import { isAngelEcmEquipment,isEcmEquipment,isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
-import { type BipedArmorValues, BipedPaperdollUtil } from '../biped-paperdoll.util';
-import { createBattleTechLogo, createCatalystGameLabsLogo } from '../record-sheet-brand';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
-import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
+import { isEquipmentForPlatform } from '../../../models/equipment-platform.model';
 import type { Equipment } from '../../../models/equipment.model';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
-import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
-import { isCaseEquipment } from '../../../models/case-equipment.model';
-import { isBapEquipment } from '../../../models/bap-equipment.model';
-import { isAngelEcmEquipment, isEcmEquipment, isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
-import { isEquipmentForPlatform } from '../../../models/equipment-platform.model';
-import { isNovaC3Equipment } from '../../../models/c3-network.model';
+import { isJumpJetEquipment,isUmuEquipment } from '../../../models/jump-equipment.model';
+import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
 import { sensorEquipmentKind } from '../../../models/sensor-equipment.model';
-import { isRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
+import { type BipedArmorValues,BipedPaperdollUtil } from '../biped-paperdoll.util';
 import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { createBattleTechLogo,createCatalystGameLabsLogo } from '../record-sheet-brand';
+import { isRecordSheetInventorySupport } from '../record-sheet-inventory-equipment';
 import {
-    type Box,
-    addDiagramHeading,
-    addFrame,
-    addLine,
-    addText,
-    addWrappedText,
-    appendLegacyIdentityAnchors,
-    circle,
-    constructionMaterialSubtitle,
-    decoratePaperdollPips,
-    drawDamagePanelIntoGroup,
-    drawNotesPanel,
-    formatNumber,
-    formatTechBase,
-    paperdollPipOptions,
-    readViewBox,
-    recordSheetAmmoProfile,
-    recordSheetInventoryWeapons,
-    scaleCompactBox,
-    setAttributes,
-    setInventoryComponentIds,
-    svgElement,
-    transparentRect,
+type Box,
+addDiagramHeading,
+addFrame,
+addLine,
+addText,
+addWrappedText,
+appendLegacyIdentityAnchors,
+circle,
+constructionMaterialSubtitle,
+decoratePaperdollPips,
+drawDamagePanelIntoGroup,
+formatNumber,
+formatTechBase,
+paperdollPipOptions,
+readViewBox,
+recordSheetAmmoProfile,
+recordSheetInventoryWeapons,
+setAttributes,
+setInventoryComponentIds,
+svgElement,
+transparentRect
 } from '../record-sheet-svg-rendering';
 
 export interface CompactVehicleInventoryPresentation {
@@ -534,7 +533,14 @@ export function drawCompactVehicleCriticalPanel(
             size: 6.76,
             maxWidth: isVtol ? 46.265 : 39.254,
         });
-        drawVehicleDamageCheckbox(group, isVtol ? 'flight_stabilizer_hit' : 'turret_locked', 75.08, firstRowY, isVtol ? '+3' : undefined);
+        if (isVtol) drawVehicleDamageCheckbox(group, 'flight_stabilizer_hit', 75.08, firstRowY,
+            systemDamageControls(entity, 'flight-stabilizer').modifiers[0]);
+        else {
+            const turrets = systemDamageLocationControls(entity, 'turret-lock');
+            turrets.forEach((control, index) => drawVehicleDamageCheckbox(group, control.id,
+                75.08 - (turrets.length - 1 - index) * 11, firstRowY,
+                turrets.length > 1 ? control.label[0] : undefined));
+        }
         addText(group, 'Engine Hit', 90.36, firstRowY + 6.4, { size: 6.76, maxWidth: 28.081 });
         drawVehicleDamageCheckbox(group, 'engine_hit_1', 130.32, firstRowY);
     } else {
@@ -544,22 +550,20 @@ export function drawCompactVehicleCriticalPanel(
 
     const sensorRowY = isVtol ? 35.262 : 32.796;
     addText(group, 'Sensor Hits', 6, sensorRowY + 6.4, { size: 6.76, maxWidth: 32.801 });
-    drawVehicleDamageTrackRow(group, 'sensor_hit_', 97.32, sensorRowY, ['+1', '+2', '+3', 'D']);
+    drawVehicleDamageTrackRow(group, 'sensor_hit_', 97.32, sensorRowY, systemDamageControls(entity, 'sensors').modifiers);
     if (!isVtol) {
         addText(group, 'Motive System Hits', 6, 49.06, { size: 6.76, maxWidth: 54.079 });
-        drawVehicleDamageTrackRow(group, 'motive_system_hit_', 97.32, 42.66, ['+1', '+2', '+3', 'I']);
+        drawVehicleDamageTrackRow(group, 'motive_system_hit_', 97.32, 42.66, systemDamageControls(entity, 'motive').modifiers);
     }
 
     const stabilizerTitleY = isVtol ? 52.524 : 57.456;
     const stabilizerFirstRowY = isVtol ? 58.278 : 62.388;
     const stabilizerSecondRowY = isVtol ? 69.786 : 72.252;
-    drawVehicleLabeledDamageCheckbox(group, 'Front', 'stabilizer_hit_front', 6, stabilizerFirstRowY);
-    drawVehicleLabeledDamageCheckbox(group, 'Left', 'stabilizer_hit_left', 51.048, stabilizerFirstRowY);
-    drawVehicleLabeledDamageCheckbox(group, 'Right', 'stabilizer_hit_right', 97.946, stabilizerFirstRowY);
-    drawVehicleLabeledDamageCheckbox(group, 'Rear', 'stabilizer_hit_rear', 6, stabilizerSecondRowY);
-    if (!isVtol && hasTurret) {
-        drawVehicleLabeledDamageCheckbox(group, 'Turret', 'stabilizer_hit_turret', 51.048, stabilizerSecondRowY);
-    }
+    const stabilizers = systemDamageLocationControls(entity, 'stabilizer');
+    const stabilizerColumns = Math.ceil(stabilizers.length / 2);
+    stabilizers.forEach((control, index) => drawVehicleLabeledDamageCheckbox(group,
+        control.label, control.id, 6 + (index % stabilizerColumns) * 138 / stabilizerColumns,
+        index < stabilizerColumns ? stabilizerFirstRowY : stabilizerSecondRowY));
     addText(group, 'Stabilizers', 75.8, stabilizerTitleY, { size: 6.76, weight: 700, anchor: 'middle' });
     if (isVtol) addText(group, '*Move at Cruising speed only', 6, 84.294, { size: 4.83, maxWidth: 58.681 });
 
@@ -626,7 +630,8 @@ export function appendHiddenVehicleDamageTracks(svg: SVGSVGElement, entity: Base
         hidden.setAttribute('display', 'none');
         svg.appendChild(hidden);
     }
-    for (const track of buildNonMekRuntimeIndex(entity).damageTracks.values()) {
+    for (const definition of buildNonMekRuntimeIndex(entity).damageTracks.values()) {
+        const track = systemDamagePresentation(definition);
         if (!svg.getElementById(track.sheetId)) {
             const control = svgElement('rect');
             control.id = track.sheetId;

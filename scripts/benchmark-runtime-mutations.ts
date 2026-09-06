@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { type CBTMekUnit } from '../src/app/models/runtime/cbt-unit';
+import type { CBTUnitCommand } from '../src/app/models/runtime/unit-command';
 /**
  * Reproducible direct-Mek sparse-edit pipeline profile.
  *
@@ -11,98 +13,119 @@
  * SVG/DOM binding remains a browser concern and is intentionally out of scope.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { platform, release } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync,writeFileSync } from 'node:fs';
+import { platform,release } from 'node:os';
+import { dirname,resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { clearLine, cursorTo } from 'node:readline';
+import { clearLine,cursorTo } from 'node:readline';
 import type { ComponentId } from '../src/app/models/entity/entity-identifiers';
 import type { AttackerTargetingEdit } from '../src/app/models/runtime/attacker-targeting-state';
+import { commandMayChangeBaseBattleValue } from '../src/app/models/runtime/cbt-force-unit-mutation-impact';
 import { BOMBAST_LASER_CHARGING_STATE } from '../src/app/models/runtime/component-bombast-laser';
 import { PPC_CAPACITOR_CHARGING_STATE } from '../src/app/models/runtime/component-ppc-capacitor';
-import { commandMayChangeBaseBattleValue } from '../src/app/models/runtime/cbt-force-mek-mutation-impact';
 import {
-    asEncounterTargetId,
-    type TargetRegistrySnapshot,
+SHIELD_ACTIVE_MODE,
+SHIELD_INACTIVE_MODE,
+} from '../src/app/models/runtime/component-shield-mode';
+import {
+asEncounterTargetId,
+type TargetRegistrySnapshot,
 } from '../src/app/models/runtime/encounter-runtime';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY } from '../src/app/models/runtime/mek-destruction-state-v2';
 import {
-    projectMekRecordSheet,
-    type MekRecordSheetBattleValueSnapshot,
+projectMekRecordSheet,
+type MekRecordSheetBattleValueSnapshot,
 } from '../src/app/models/runtime/mek-record-sheet';
 import {
-    SHIELD_ACTIVE_MODE,
-    SHIELD_INACTIVE_MODE,
-} from '../src/app/models/runtime/component-shield-mode';
-import {
-    createDirectBombastRuntimeFixture,
-    createDirectBoobyTrapRuntimeFixture,
-    createDirectCoolantPodRuntimeFixture,
-    createDirectMekRuntimeFixture,
-    createDirectModularArmorRuntimeFixture,
-    createDirectShieldRuntimeFixture,
-    emptyCBTEncounterSnapshot,
-    type DirectMekRuntimeFixture,
+createDirectBombastRuntimeFixture,
+createDirectBoobyTrapRuntimeFixture,
+createDirectCoolantPodRuntimeFixture,
+createDirectMekRuntimeFixture,
+createDirectModularArmorRuntimeFixture,
+createDirectShieldRuntimeFixture,
+emptyCBTEncounterSnapshot,
+type DirectMekRuntimeFixture,
 } from '../src/app/models/runtime/testing/direct-mek-runtime-fixture';
-import type {
-    CBTUnitCommand,
-    CBTUnitInstance,
-} from '../src/app/models/runtime/unit-instance';
 
-const REQUIRED_COMMAND_TYPES = Object.freeze({
-    'damage-armor': true,
-    'repair-armor': true,
-    'damage-internal': true,
-    'repair-internal': true,
-    'hit-critical': true,
-    'repair-critical': true,
-    'apply-mek-blow-off': true,
-    'apply-mek-critical-roll': true,
-    'set-system-critical-level': true,
-    'set-component-status': true,
-    'damage-shield': true,
-    'repair-shield': true,
-    'set-component-mode': true,
-    'detonate-booby-trap': true,
-    'set-stealth-state': true,
-    'toggle-gauss-power': true,
-    'set-component-jammed': true,
-    'edit-escalating-failure': true,
-    'set-ppc-capacitor-charge': true,
-    'set-bombast-laser-charge': true,
-    'edit-c3-emergency-master': true,
-    'configure-ammo-source': true,
-    'spend-ammo': true,
-    'activate-coolant-pod': true,
-    'fire-weapons': true,
-    'set-heat': true,
-    'set-pending-heat': true,
-    'set-heatsinks-off': true,
-    'apply-heat': true,
-    'set-condition': true,
-    'set-mek-shutdown-state': true,
-    'resolve-mek-rule-check': true,
-    'set-location-condition': true,
-    'set-crew-state': true,
-    'declare-mek-movement': true,
-    'clear-mek-movement': true,
-    'declare-mek-action': true,
-    'clear-mek-action': true,
-    'prepare-mek-stand': true,
-    'resolve-mek-stand-attempt': true,
-    'adjust-mek-stand-attempts': true,
-    'resolve-mek-pilot-check': true,
-    'dismiss-mek-pilot-checks': true,
-    'dismiss-mek-automatic-falls': true,
-    'replace-turn-state': true,
-    'set-pending-fall-consequences': true,
-    'reset-turn-state': true,
-    'end-phase': true,
-    'mark-end-turn-heat-staged': true,
-    'end-turn': true,
-    'commit-pending': true,
-    'cancel-pending': true,
-} satisfies Readonly<Record<CBTUnitCommand['type'], true>>);
+const COMMAND_PROFILE_COVERAGE = Object.freeze({
+    'damage-armor': 'profiled',
+    'repair-armor': 'profiled',
+    'damage-internal': 'profiled',
+    'repair-internal': 'profiled',
+    'hit-critical': 'profiled',
+    'repair-critical': 'profiled',
+    'apply-mek-blow-off': 'profiled',
+    'apply-mek-critical-roll': 'profiled',
+    'set-system-critical-level': 'profiled',
+    'set-component-status': 'profiled',
+    'damage-shield': 'profiled',
+    'repair-shield': 'profiled',
+    'set-component-mode': 'profiled',
+    'detonate-booby-trap': 'profiled',
+    'set-stealth-state': 'profiled',
+    'toggle-gauss-power': 'profiled',
+    'set-component-jammed': 'profiled',
+    'edit-escalating-failure': 'profiled',
+    'set-ppc-capacitor-charge': 'profiled',
+    'set-bombast-laser-charge': 'profiled',
+    'edit-c3-emergency-master': 'profiled',
+    'configure-ammo-source': 'profiled',
+    'reset-ammo-loadout': 'profiled',
+    'spend-ammo': 'profiled',
+    'activate-coolant-pod': 'profiled',
+    'fire-weapons': 'profiled',
+    'set-heat': 'profiled',
+    'set-pending-heat': 'profiled',
+    'set-heatsinks-off': 'profiled',
+    'apply-heat': 'profiled',
+    'set-condition': 'profiled',
+    'set-mek-shutdown-state': 'profiled',
+    'resolve-mek-rule-check': 'profiled',
+    'set-location-condition': 'profiled',
+    'set-crew-state': 'profiled',
+    'declare-mek-movement': 'profiled',
+    'clear-mek-movement': 'profiled',
+    'declare-mek-action': 'profiled',
+    'clear-mek-action': 'profiled',
+    'prepare-mek-stand': 'profiled',
+    'resolve-mek-stand-attempt': 'profiled',
+    'adjust-mek-stand-attempts': 'profiled',
+    'resolve-mek-pilot-check': 'profiled',
+    'dismiss-mek-pilot-checks': 'profiled',
+    'dismiss-mek-automatic-falls': 'profiled',
+    'replace-turn-state': 'profiled',
+    'set-pending-fall-consequences': 'profiled',
+    'reset-turn-state': 'profiled',
+    'end-phase': 'profiled',
+    'mark-end-turn-heat-staged': 'profiled',
+    'end-turn': 'profiled',
+    'commit-pending': 'profiled',
+    'cancel-pending': 'profiled',
+    // These commands currently reduce only in non-Mek mechanics; this profile uses Mek fixtures.
+    'set-destroyed': 'non-mek-only',
+    'set-internal-damage': 'non-mek-only',
+    'set-armor-damage': 'non-mek-only',
+    'damage-track': 'non-mek-only',
+    'repair-damage-track': 'non-mek-only',
+    'set-sensor-damage-level': 'non-mek-only',
+    'set-component-statuses': 'non-mek-only',
+    'set-ammo-spent': 'non-mek-only',
+    'set-airborne': 'non-mek-only',
+    'set-movement': 'non-mek-only',
+    'set-cover': 'non-mek-only',
+    'set-spotting': 'non-mek-only',
+    'set-control-recovery': 'non-mek-only',
+} satisfies Readonly<Record<CBTUnitCommand['type'], 'profiled' | 'non-mek-only'>>);
+
+type ProfiledCommandType = {
+    [Type in keyof typeof COMMAND_PROFILE_COVERAGE]: typeof COMMAND_PROFILE_COVERAGE[Type] extends 'profiled' ? Type : never;
+}[keyof typeof COMMAND_PROFILE_COVERAGE];
+
+const COMMAND_TYPES = Object.keys(COMMAND_PROFILE_COVERAGE) as (keyof typeof COMMAND_PROFILE_COVERAGE)[];
+const REQUIRED_COMMAND_TYPES = Object.freeze(COMMAND_TYPES.filter((type): type is ProfiledCommandType =>
+    COMMAND_PROFILE_COVERAGE[type] === 'profiled'));
+const NON_MEK_ONLY_COMMAND_TYPES = Object.freeze(COMMAND_TYPES.filter(type =>
+    COMMAND_PROFILE_COVERAGE[type] === 'non-mek-only'));
 
 const REQUIRED_TARGETING_EDIT_KINDS = Object.freeze({
     'set-component-selection': true,
@@ -118,7 +141,7 @@ type EscalatingFailureMutationKey = `edit-escalating-failure:${'select-sequence'
 type C3EmergencyMasterMutationKey = `edit-c3-emergency-master:${
     'toggle-requested' | 'select-operating-turns' | 'ensure-active-started' | 'settle-active-end-turn'
 }`;
-type RuntimeMutationKey = keyof typeof REQUIRED_COMMAND_TYPES
+type RuntimeMutationKey = ProfiledCommandType
     | TargetingMutationKey
     | EscalatingFailureMutationKey
     | C3EmergencyMasterMutationKey
@@ -130,7 +153,7 @@ const BENCHMARK_PIPELINES = Object.freeze(['runtime-only', 'full-sheet'] as cons
 type BenchmarkPipeline = typeof BENCHMARK_PIPELINES[number];
 
 const REQUIRED_MUTATIONS: readonly RuntimeMutationKey[] = Object.freeze([
-    ...Object.keys(REQUIRED_COMMAND_TYPES) as CBTUnitCommand['type'][],
+    ...REQUIRED_COMMAND_TYPES,
     ...Object.keys(REQUIRED_TARGETING_EDIT_KINDS)
         .map(kind => `edit-attacker-targeting:${kind}` as TargetingMutationKey),
     'edit-escalating-failure:select-sequence',
@@ -151,7 +174,7 @@ interface BenchmarkFixture {
 
 interface MutationContext {
     readonly fixture: DirectMekRuntimeFixture;
-    readonly instance: CBTUnitInstance;
+    readonly instance: CBTMekUnit;
     readonly targetRegistry: TargetRegistrySnapshot;
 }
 
@@ -355,6 +378,7 @@ function main(): void {
                 operationCount,
                 exhaustiveMutationCount: REQUIRED_MUTATIONS.length,
                 coveredMutations: Object.freeze([...REQUIRED_MUTATIONS]),
+                nonMekOnlyCommands: NON_MEK_ONLY_COMMAND_TYPES,
                 exhaustiveness: 'all direct Mek sparse-mutation entrypoints and discriminated mutation variants',
                 parameterCoverage: 'representative valid transitions, not the Cartesian product of payloads and runtime states',
                 scope: 'paired runtime-only and full-sheet cohorts over the direct sparse reducer; full-sheet adds dependency-aware runtime BV refresh and complete headless model projection',
@@ -446,11 +470,20 @@ function measureScenarioSample(
         }
         scenario.steps.forEach((step, stepIndex) => {
             const { context } = prepared;
-            const beforeRevision = context.instance.revision();
+            const beforeState = context.instance.snapshot();
             const totalStarted = performance.now();
             const impact = step.execute(context);
             const runtimeFinished = performance.now();
-            if (context.instance.revision() === beforeRevision) {
+            const afterState = context.instance.snapshot();
+            const sessionTargetingEdit = step.mutations.length > 0 && step.mutations.every(mutation =>
+                mutation === 'install-attacker-targeting-reconciliation'
+                || mutation.startsWith('edit-attacker-targeting:'));
+            if (sessionTargetingEdit) {
+                if (afterState.attackerTargeting === beforeState.attackerTargeting
+                    || afterState.stateRevision !== beforeState.stateRevision) {
+                    throw new Error(`${scenario.name} / ${step.name} must change session targeting without changing the durable revision`);
+                }
+            } else if (afterState.stateRevision === beforeState.stateRevision) {
                 throw new Error(`${scenario.name} / ${step.name} did not change sparse runtime state`);
             }
             let runtimeBattleValue = 0;
@@ -652,6 +685,13 @@ function createScenarios(fixtures: readonly BenchmarkFixture[]): readonly Mutati
                 componentId: ammo.id,
                 munitionKey: ammoLoadout.munitionKey,
                 remaining: ammoLoadout.capacity,
+            }))),
+        pairScenario('ammunition loadout reset', 'equipment state', standard,
+            commandStep('spend ammunition before resetting loadout', () => ({
+                type: 'spend-ammo', componentId: ammo.id, amount: 1,
+            })),
+            coveredCommandStep('reset ammunition loadout', 'reset-ammo-loadout', () => ({
+                type: 'reset-ammo-loadout',
             }))),
         pairScenario('rapid-fire mode', 'equipment state', standard,
             coveredCommandStep('select Rapid mode', 'set-component-mode', () => ({
@@ -1204,10 +1244,10 @@ function createScenarios(fixtures: readonly BenchmarkFixture[]): readonly Mutati
                 ['install-attacker-targeting-reconciliation'],
                 context => {
                     const plan = required(
-                        context.instance.planAttackerTargetingReconciliation(emptyTargetRegistry, false),
+                        context.instance.planTargetingReconciliation(emptyTargetRegistry),
                         'attacker-targeting reconciliation plan',
                     );
-                    context.instance.installAttackerTargetingReconciliation(plan);
+                    plan();
                 },
             ),
             context => {
@@ -1339,7 +1379,7 @@ function commandStep(
     });
 }
 
-function coveredCommandStep<T extends CBTUnitCommand['type']>(
+function coveredCommandStep<T extends ProfiledCommandType>(
     name: string,
     mutation: T,
     command: (context: MutationContext) => Extract<CBTUnitCommand, { readonly type: T }>,
@@ -1468,7 +1508,7 @@ function refreshRuntimeBattleValue(
     });
 }
 
-function dispatch(instance: CBTUnitInstance, command: CBTUnitCommand): void {
+function dispatch(instance: CBTMekUnit, command: CBTUnitCommand): void {
     const result = instance.dispatch(command);
     if (!result.accepted) throw new Error(`Benchmark command ${command.type} was rejected`);
 }
@@ -1490,7 +1530,7 @@ function projectSheet(
     checksum += sheet.locations.length + sheet.criticalSlots.length + sheet.stateRevision;
 }
 
-function movement(mode: 'walk', distance: number): CBTUnitCommand {
+function movement(mode: 'walk', distance: number): Extract<CBTUnitCommand, { type: 'declare-mek-movement' }> {
     return {
         type: 'declare-mek-movement',
         declaration: Object.freeze({

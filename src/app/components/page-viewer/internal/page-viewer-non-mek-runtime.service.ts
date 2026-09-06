@@ -1,60 +1,62 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injectable, Injector, inject } from '@angular/core';
 import { ComponentPortal } from '@angular/cdk/portal';
+import { Injectable,Injector,inject } from '@angular/core';
 import { outputToObservable } from '@angular/core/rxjs-interop';
-import { firstValueFrom, merge, takeUntil } from 'rxjs';
+import { firstValueFrom,merge,takeUntil } from 'rxjs';
+import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
+import { isUnitEditContextCurrent,type UnitEditContext } from '../../../models/runtime/unit-edit-context';
+import type { RecordSheetInteraction } from '../record-sheet-interaction';
 
+import { CrewMember,type CrewMemberState } from '../../../models/crew-member.model';
+import type { ComponentId } from '../../../models/entity/entity-identifiers';
 import type { CBTForceMember } from '../../../models/force-member.model';
 import { isCBTMekForceMember } from '../../../models/force-member.model';
-import type {
-    NonMekRecordSheetCrewPosition,
-    NonMekRecordSheetDamageTrack,
-    NonMekRecordSheetSnapshot,
-} from '../../../models/runtime/non-mek-record-sheet';
-import { CrewMember, type CrewMemberState } from '../../../models/crew-member.model';
-import type { ComponentId } from '../../../models/entity/entity-identifiers';
-import type {
-    EquipmentPanelComponent,
-    EquipmentPanelSnapshot,
-} from '../../../models/runtime/equipment-panel';
-import {
-    projectTargetingTarget,
-    projectWeaponTargetPresentation,
-} from '../../../models/runtime/equipment-panel';
 import type { AttackerSelection } from '../../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
-import { isUnitConditionKey, type UnitConditionKey } from '../../../models/unit-condition.model';
-import type { NonMekUnitCommand } from '../../../models/runtime/non-mek-unit-instance';
+import type {
+EquipmentPanelComponent,
+EquipmentPanelSnapshot,
+} from '../../../models/runtime/equipment-panel';
 import {
-    crewStateDefinitions,
-    unitConditionControls,
+projectTargetingTarget,
+projectWeaponTargetPresentation,
+} from '../../../models/runtime/equipment-panel';
+import type {
+NonMekRecordSheetCrewPosition,
+NonMekRecordSheetDamageTrack,
+NonMekRecordSheetSnapshot,
+} from '../../../models/runtime/non-mek-record-sheet';
+import { isUnitConditionKey,type UnitConditionKey } from '../../../models/unit-condition.model';
+
+import {
+crewStateDefinitions,
+unitConditionControls,
 } from '../../../models/unit-status-presentation';
-import { LoggerService } from '../../../services/logger.service';
-import { UnitNameService } from '../../../services/unit-name.service';
 import { DialogsService } from '../../../services/dialogs.service';
-import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
+import { LoggerService } from '../../../services/logger.service';
 import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { PickerFactoryService } from '../../../services/picker-factory.service';
 import { ToastService } from '../../../services/toast.service';
-import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
+import { UnitNameService } from '../../../services/unit-name.service';
+import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
+import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
 import type { PickerInstance } from '../../picker/picker.interface';
 import {
-    bindNonMekRecordSheet,
-    type NonMekRecordSheetBinding,
-    type NonMekRecordSheetInteraction,
-} from '../non-mek-record-sheet-binder';
-import {
-    recordSheetDamageChoices,
-    recordSheetEventPosition,
-    type RecordSheetDamagePickerRange,
+recordSheetDamageChoices,
+recordSheetEventPosition,
+type RecordSheetDamagePickerRange,
 } from '../mek-record-sheet-interaction.util';
+import {
+bindNonMekRecordSheet,
+type NonMekRecordSheetBinding,
+} from '../non-mek-record-sheet-binder';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
-import { PageViewerOverlayService } from './page-viewer-overlay.service';
 import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
-import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
-import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
 const ENTITY_CONDITION_OVERLAY = 'entity-sheet-unit-condition';
 const ENTITY_CREW_STATE_OVERLAY = 'entity-sheet-crew-state';
@@ -146,8 +148,9 @@ export class PageViewerNonMekRuntimeService {
         for (const unitId of [...this.bound.keys()]) this.destroyBinding(unitId);
     }
 
-    private snapshot(member: CBTForceMember): NonMekRecordSheetSnapshot | null {
-        return member.nonMekRecordSheetSnapshot();
+    private snapshot(member: CBTForceMember, context?: UnitEditContext): NonMekRecordSheetSnapshot | null {
+        const snapshot = member.nonMekRecordSheetSnapshot();
+        return snapshot && (!context || isUnitEditContextCurrent(context, snapshot.editContext)) ? snapshot : null;
     }
 
     private render(member: CBTForceMember): void {
@@ -171,15 +174,15 @@ export class PageViewerNonMekRuntimeService {
         }
     }
 
-    handle(member: CBTForceMember, interaction: NonMekRecordSheetInteraction, event: Event): void {
+    handle(member: CBTForceMember, interaction: RecordSheetInteraction, event: Event): void {
         const snapshot = this.snapshot(member);
-        if (!snapshot || snapshot.stateRevision !== interaction.expectedRevision) return;
+        if (!snapshot || !isUnitEditContextCurrent(interaction.context, snapshot.editContext)) return;
         if (interaction.kind === 'open-equipment') {
             this.overlays.openEquipment(member.id, event, interaction.tab);
             return;
         }
         if (interaction.kind === 'heat') {
-            void this.setHeat(member, interaction.heat);
+            void this.setHeat(member, interaction.heat, interaction.context);
             return;
         }
         if (interaction.kind === 'heat-overflow') {
@@ -187,7 +190,7 @@ export class PageViewerNonMekRuntimeService {
             return;
         }
         if (interaction.kind === 'apply-heat') {
-            void this.applyHeat(member);
+            void this.applyHeat(member, interaction.context);
             return;
         }
         if (interaction.kind === 'heat-sinks-off') {
@@ -198,8 +201,8 @@ export class PageViewerNonMekRuntimeService {
             void this.selectInventory(member, interaction, event);
             return;
         }
-        if (interaction.kind === 'soldier') {
-            void this.applySoldierSelection(member, interaction, snapshot);
+        if (interaction.kind === 'infantry-strength') {
+            void this.applyInfantryStrengthSelection(member, interaction, snapshot);
             return;
         }
         if (interaction.kind === 'damage-track') {
@@ -207,7 +210,7 @@ export class PageViewerNonMekRuntimeService {
             return;
         }
         if (interaction.kind === 'condition') {
-            void this.setCondition(member, interaction.condition, !snapshot.conditions.includes(interaction.condition));
+            void this.setCondition(member, interaction.condition, !snapshot.conditions.includes(interaction.condition), interaction.context);
             return;
         }
         if (interaction.kind === 'condition-menu') {
@@ -215,7 +218,7 @@ export class PageViewerNonMekRuntimeService {
             return;
         }
         if (interaction.kind === 'crew-wounds') {
-            void this.setCrewWounds(member, interaction.positionId, interaction.wounds);
+            void this.setCrewWounds(member, interaction.positionId, interaction.wounds, snapshot);
             return;
         }
         if (interaction.kind === 'crew-state-menu') {
@@ -226,24 +229,31 @@ export class PageViewerNonMekRuntimeService {
             void this.pilotEditor.editCBTMember(member.force, member.id);
             return;
         }
-        this.openDamagePicker(member, interaction, snapshot, event);
+        if (interaction.kind === 'armor' || interaction.kind === 'internal') {
+            this.openDamagePicker(member, interaction, snapshot, event);
+        }
     }
 
     private async selectInventory(
         member: CBTForceMember,
-        interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'inventory-selection' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'inventory-selection' }>,
         event: Event,
     ): Promise<void> {
         let panel = member.force.getEquipmentPanelSnapshot(member.id);
-        if (!panel || panel.stateRevision !== interaction.expectedRevision) return;
+        if (!panel || !this.snapshot(member, interaction.context)) return;
+        let context = interaction.context;
+        const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
+        if (registryRevision === undefined) return;
         if (interaction.mode !== undefined) {
-            const modeAccepted = await this.setInventoryModes(
+            const afterModes = await this.setInventoryModes(
                 member,
                 interaction.componentIds,
                 interaction.mode,
                 panel,
+                context,
             );
-            if (!modeAccepted) return;
+            if (!afterModes) return;
+            context = afterModes;
             panel = member.force.getEquipmentPanelSnapshot(member.id);
             if (!panel) return;
         }
@@ -254,7 +264,7 @@ export class PageViewerNonMekRuntimeService {
             } => row?.weapon !== undefined);
         if (weapons.length === 0 || weapons.every(row => !row.weapon.selectable)) return;
         if (panel.targets.length > 1) {
-            this.openWeaponTargetMenu(member, interaction.componentIds, panel, event);
+            this.openWeaponTargetMenu(member, interaction.componentIds, panel, event, context, registryRevision);
             return;
         }
         const desired: AttackerSelection = panel.targets.length === 1
@@ -268,6 +278,8 @@ export class PageViewerNonMekRuntimeService {
             member,
             equipmentPanelSelectionComponentIds(panel, interaction.componentIds, selection),
             selection,
+            context,
+            registryRevision,
         );
     }
 
@@ -276,25 +288,27 @@ export class PageViewerNonMekRuntimeService {
         componentIds: readonly ComponentId[],
         mode: string,
         initialPanel: EquipmentPanelSnapshot,
-    ): Promise<boolean> {
+        context: UnitEditContext,
+    ): Promise<UnitEditContext | null> {
         for (const componentId of componentIds) {
             const panel = member.force.getEquipmentPanelSnapshot(member.id) ?? initialPanel;
             const component = equipmentPanelComponentById(panel, componentId);
-            if (!component || !component.modes.includes(mode)) return false;
+            if (!component || !component.modes.includes(mode)) return null;
             if (component.mode === mode) continue;
-            const snapshot = this.snapshot(member);
-            if (!snapshot) return false;
-            const result = await member.force.dispatchNonMekUnitCommand(member.id, {
-                kind: 'set-component-mode',
+            if (!this.snapshot(member, context)) return null;
+            const result = await member.force.dispatchUnitCommand(member.id, {
+                type: 'set-component-mode',
                 componentId,
                 mode,
-            });
+            }, context);
             if (!result.accepted) {
                 this.showRejectedEdit();
-                return false;
+                return null;
             }
+            if (!result.state) return null;
+            context = { owner: context.owner, state: result.state };
         }
-        return true;
+        return context;
     }
 
     private openWeaponTargetMenu(
@@ -302,6 +316,8 @@ export class PageViewerNonMekRuntimeService {
         componentIds: readonly ComponentId[],
         panel: EquipmentPanelSnapshot,
         event: Event,
+        context: UnitEditContext,
+        registryRevision: number,
     ): void {
         const anchor = event.currentTarget;
         if (!(anchor instanceof Element)) return;
@@ -366,6 +382,8 @@ export class PageViewerNonMekRuntimeService {
                 member,
                 equipmentPanelSelectionComponentIds(panel, componentIds, selection),
                 selection,
+                context,
+                registryRevision,
             );
             this.overlayManager.closeManagedOverlay(ENTITY_WEAPON_TARGET_OVERLAY);
         });
@@ -375,6 +393,8 @@ export class PageViewerNonMekRuntimeService {
         member: CBTForceMember,
         componentIds: readonly ComponentId[],
         selection: AttackerSelection | null,
+        context: UnitEditContext,
+        registryRevision: number,
     ): Promise<void> {
         const uniqueIds = [...new Set(componentIds)];
         if (uniqueIds.length === 0) return;
@@ -385,29 +405,28 @@ export class PageViewerNonMekRuntimeService {
             edit: uniqueIds.length === 1
                 ? { kind: 'set-component-selection', componentId: uniqueIds[0], selection }
                 : { kind: 'set-component-selections', componentIds: uniqueIds, selection },
-        });
+        }, context, registryRevision);
         if (!result.accepted) {
             this.showRejectedEdit();
         }
     }
 
-    private async setHeat(member: CBTForceMember, heat: number): Promise<void> {
-        const snapshot = this.snapshot(member);
+    private async setHeat(member: CBTForceMember, heat: number, context: UnitEditContext): Promise<void> {
+        const snapshot = this.snapshot(member, context);
         if (!snapshot?.heat.tracked) return;
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, {
-            kind: 'set-heat',
+        const result = await member.force.dispatchUnitCommand(member.id, {
+            type: this.options.options().trackPhaseAndTurn ? 'set-pending-heat' : 'set-heat',
             heat: Math.max(0, Math.trunc(heat)),
-            target: this.options.options().trackPhaseAndTurn ? 'pending' : 'committed',
-        });
+        }, context);
         if (!result.accepted) this.showRejectedEdit();
     }
 
-    private async applyHeat(member: CBTForceMember): Promise<void> {
-        const snapshot = this.snapshot(member);
+    private async applyHeat(member: CBTForceMember, context: UnitEditContext): Promise<void> {
+        const snapshot = this.snapshot(member, context);
         if (!snapshot?.heat.tracked || snapshot.heat.pending === null) return;
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, {
-            kind: 'apply-heat',
-        });
+        const result = await member.force.dispatchUnitCommand(member.id, {
+            type: 'apply-heat', policy: 'automatic',
+        }, context);
         if (!result.accepted) this.showRejectedEdit();
     }
 
@@ -429,7 +448,7 @@ export class PageViewerNonMekRuntimeService {
         });
         const value = await firstValueFrom(ref.closed);
         if (value === null || value === undefined || !Number.isFinite(Number(value))) return;
-        await this.setHeat(member, Number(value));
+        await this.setHeat(member, Number(value), snapshot.editContext);
     }
 
     private openHeatSinksPicker(
@@ -441,12 +460,11 @@ export class PageViewerNonMekRuntimeService {
         const active = Math.max(0, count - snapshot.heat.heatsinksOff);
         const apply = (value: number): void => {
             this.closePicker();
-            const current = this.snapshot(member);
-            if (!current?.heat.tracked) return;
-            void member.force.dispatchNonMekUnitCommand(member.id, {
-                kind: 'set-heatsinks-off',
+            if (!this.snapshot(member, snapshot.editContext)?.heat.tracked) return;
+            void member.force.dispatchUnitCommand(member.id, {
+                type: 'set-heatsinks-off',
                 heatsinksOff: count - value,
-            }).then(result => {
+            }, snapshot.editContext).then(result => {
                 if (!result.accepted) this.showRejectedEdit();
             });
         };
@@ -482,14 +500,14 @@ export class PageViewerNonMekRuntimeService {
         this.picker = { unitId: member.id, instance, target };
     }
 
-    private async setCondition(member: CBTForceMember, condition: UnitConditionKey, active: boolean): Promise<void> {
-        const snapshot = this.snapshot(member);
+    private async setCondition(member: CBTForceMember, condition: UnitConditionKey, active: boolean, context: UnitEditContext): Promise<void> {
+        const snapshot = this.snapshot(member, context);
         if (!snapshot) return;
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, {
-            kind: 'set-condition',
+        const result = await member.force.dispatchUnitCommand(member.id, {
+            type: 'set-condition',
             condition,
             active,
-        });
+        }, context);
         if (!result.accepted) this.showRejectedEdit();
     }
 
@@ -516,8 +534,7 @@ export class PageViewerNonMekRuntimeService {
         })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(condition => {
             if (!isUnitConditionKey(condition)) return;
-            const current = this.snapshot(member);
-            if (current) void this.setCondition(member, condition, !current.conditions.includes(condition));
+            void this.setCondition(member, condition, !snapshot.conditions.includes(condition), snapshot.editContext);
             this.overlayManager.closeManagedOverlay(ENTITY_CONDITION_OVERLAY);
         });
         this.bindDropdownClose(componentRef.instance, closed, ENTITY_CONDITION_OVERLAY);
@@ -527,17 +544,17 @@ export class PageViewerNonMekRuntimeService {
         member: CBTForceMember,
         positionId: NonMekRecordSheetSnapshot['crew'][number]['positionId'],
         wounds: number,
+        snapshot: NonMekRecordSheetSnapshot,
     ): Promise<void> {
-        const snapshot = this.snapshot(member);
         const position = snapshot?.crew.find(row => row.positionId === positionId);
         if (!snapshot || !position) return;
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, {
-            kind: 'set-crew-state',
+        const result = await member.force.dispatchUnitCommand(member.id, {
+            type: 'set-crew-state',
             positionId,
             wounds,
             unconscious: position.state.unconscious,
             ejected: position.state.ejected,
-        });
+        }, snapshot.editContext);
         if (!result.accepted) this.showRejectedEdit();
     }
 
@@ -564,16 +581,8 @@ export class PageViewerNonMekRuntimeService {
             active: CrewMember.from(position.state).hasState(control.key),
         })));
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(selected => {
-            const current = this.snapshot(member);
-            const currentPosition = current?.crew.find(row => row.positionId === positionId);
-            const command = current && currentPosition
-                ? nonMekCrewStateCommand(
-                    currentPosition,
-                    current.crewStateControlKeys,
-                    selected,
-                )
-                : null;
-            if (command) void member.force.dispatchNonMekUnitCommand(member.id, command);
+            const command = nonMekCrewStateCommand(position, snapshot.crewStateControlKeys, selected);
+            if (command) void member.force.dispatchUnitCommand(member.id, command, snapshot.editContext);
             this.overlayManager.closeManagedOverlay(ENTITY_CREW_STATE_OVERLAY);
         });
         this.bindDropdownClose(componentRef.instance, closed, ENTITY_CREW_STATE_OVERLAY);
@@ -609,14 +618,14 @@ export class PageViewerNonMekRuntimeService {
 
     private async handleDamageTrack(
         member: CBTForceMember,
-        interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'damage-track' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'damage-track' }>,
         snapshot: NonMekRecordSheetSnapshot,
         event: Event,
     ): Promise<void> {
         const track = snapshot.damageTracks.find(candidate =>
             candidate.damageTrackId === interaction.damageTrackId);
         if (!track) return;
-        const sensorLevel = sensorDamageLevel(track.sheetId);
+        const sensorLevel = track.system === 'sensors' ? track.stage ?? null : null;
         if (sensorLevel !== null) {
             await this.setSensorDamageLevel(member, snapshot, sensorLevel);
             return;
@@ -624,23 +633,24 @@ export class PageViewerNonMekRuntimeService {
         if (track.maximumHits === 1) {
             const pending = this.options.options().trackPhaseAndTurn;
             const hits = pending ? track.previewHits : track.committedHits;
-            await this.dispatchDamageTrackDelta(member, track, hits > 0 ? -1 : 1);
+            await this.dispatchDamageTrackDelta(member, track, hits > 0 ? -1 : 1, interaction.context);
             return;
         }
-        this.openDamageTrackPicker(member, track, event);
+        this.openDamageTrackPicker(member, track, event, interaction.context);
     }
 
     private openDamageTrackPicker(
         member: CBTForceMember,
         track: NonMekRecordSheetDamageTrack,
         event: Event,
+        context: UnitEditContext,
     ): void {
         const pending = this.options.options().trackPhaseAndTurn;
         const hits = pending ? track.previewHits : track.committedHits;
         const range = nonMekDamageTrackPickerRange(track, hits);
         const pick = (delta: number): void => {
             this.closePicker();
-            if (delta !== 0) void this.dispatchDamageTrackDelta(member, track, delta);
+            if (delta !== 0) void this.dispatchDamageTrackDelta(member, track, delta, context);
         };
         this.closePicker();
         this.zoomPan.cancelGesture();
@@ -678,7 +688,7 @@ export class PageViewerNonMekRuntimeService {
     ): Promise<void> {
         const pending = this.options.options().trackPhaseAndTurn;
         const sensorLevels = snapshot.damageTracks
-            .map(track => ({ track, level: sensorDamageLevel(track.sheetId) }))
+            .map(track => ({ track, level: track.system === 'sensors' ? track.stage ?? null : null }))
             .filter((entry): entry is { track: NonMekRecordSheetDamageTrack; level: number } => entry.level !== null);
         const activeLevel = sensorLevels.reduce((highest, entry) => {
             const hits = pending ? entry.track.previewHits : entry.track.committedHits;
@@ -690,14 +700,12 @@ export class PageViewerNonMekRuntimeService {
         const level = activeLevel > selectedLevel
             ? selectedLevel
             : selectedHits > 0 ? selectedLevel - 1 : selectedLevel;
-        const current = this.snapshot(member);
-        if (!current) return;
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, {
-            kind: 'set-sensor-damage-level',
+        const result = await member.force.dispatchUnitCommand(member.id, {
+            type: 'set-sensor-damage-level',
             level,
             target: pending ? 'pending' : 'committed',
             timestamp: Date.now(),
-        });
+        }, snapshot.editContext);
         if (!result.accepted) this.showRejectedEdit();
     }
 
@@ -705,32 +713,26 @@ export class PageViewerNonMekRuntimeService {
         member: CBTForceMember,
         track: NonMekRecordSheetDamageTrack,
         delta: number,
+        context: UnitEditContext,
     ): Promise<boolean> {
-        const startedAt = performance.now();
-        const snapshot = this.snapshot(member);
+        const snapshot = this.snapshot(member, context);
         if (!snapshot || delta === 0) return false;
         const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
-        const command: NonMekUnitCommand = delta > 0
+        const command: CBTUnitCommand = delta > 0
             ? {
-                kind: 'damage-track',
+                type: 'damage-track',
                 damageTrackId: track.damageTrackId,
                 amount: delta,
                 target,
                 timestamp: Date.now(),
             }
             : {
-                kind: 'repair-damage-track',
+                type: 'repair-damage-track',
                 damageTrackId: track.damageTrackId,
                 amount: -delta,
                 target,
             };
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, command);
-        requestAnimationFrame(() => console.info(
-            `[damage-track-frame-perf] ${track.label} ${(performance.now() - startedAt).toFixed(1)}ms`,
-        ));
-        setTimeout(() => console.info(
-            `[damage-track-task-perf] ${track.label} ${(performance.now() - startedAt).toFixed(1)}ms`,
-        ), 0);
+        const result = await member.force.dispatchUnitCommand(member.id, command, context);
         if (!result.accepted) {
             this.showRejectedEdit();
             return false;
@@ -740,7 +742,7 @@ export class PageViewerNonMekRuntimeService {
 
     private openDamagePicker(
         member: CBTForceMember,
-        interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
         snapshot: NonMekRecordSheetSnapshot,
         event: Event,
     ): void {
@@ -783,39 +785,38 @@ export class PageViewerNonMekRuntimeService {
         this.picker = { unitId: member.id, instance, target };
     }
 
-    private async applySoldierSelection(
+    private async applyInfantryStrengthSelection(
         member: CBTForceMember,
-        interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'soldier' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'infantry-strength' }>,
         snapshot: NonMekRecordSheetSnapshot,
     ): Promise<void> {
         const location = snapshot.locations.find(candidate => candidate.locationId === interaction.locationId);
-        if (!location || interaction.soldierNumber < 1 || interaction.soldierNumber > location.maximumInternal) return;
+        const strength = interaction.strength;
+        if (!location || !Number.isSafeInteger(strength)
+            || strength < 1 || strength > location.maximumInternal) return;
         const pending = this.options.options().trackPhaseAndTurn;
         const remaining = pending ? location.previewRemainingInternal : location.remainingInternal;
-        const currentDamage = location.maximumInternal - remaining;
-        const clickedDamage = location.maximumInternal - interaction.soldierNumber + 1;
-        const nextDamage = currentDamage >= clickedDamage ? clickedDamage - 1 : clickedDamage;
-        const delta = nextDamage - currentDamage;
+        const nextRemaining = remaining >= strength ? strength - 1 : strength;
+        const delta = remaining - nextRemaining;
         if (delta === 0) return;
         const accepted = await this.dispatchDelta(member, {
             kind: 'internal',
             locationId: interaction.locationId,
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, delta, pending ? 'pending' : 'committed');
         if (accepted) this.showDamageToast(member, interaction.locationId, delta);
     }
 
     private async dispatchDamage(
         member: CBTForceMember,
-        interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
         delta: number,
     ): Promise<void> {
-        const snapshot = this.snapshot(member);
+        const snapshot = this.snapshot(member, interaction.context);
         if (!snapshot) return;
         const target = this.options.options().trackPhaseAndTurn ? 'pending' : 'committed';
         if (interaction.kind === 'internal' || delta < 0) {
-            const currentInteraction = { ...interaction, expectedRevision: snapshot.stateRevision };
-            const accepted = await this.dispatchDelta(member, currentInteraction, delta, target);
+            const accepted = await this.dispatchDelta(member, interaction, delta, target);
             if (accepted) this.showDamageToast(
                 member,
                 interaction.locationId,
@@ -829,23 +830,25 @@ export class PageViewerNonMekRuntimeService {
         if (!face) return;
         const armorRemaining = target === 'pending' ? face.previewRemaining : face.remaining;
         const armorDamage = Math.min(delta, armorRemaining);
+        let context = interaction.context;
         if (armorDamage > 0) {
             const accepted = await this.dispatchDelta(
                 member,
-                { ...interaction, expectedRevision: snapshot.stateRevision },
+                interaction,
                 armorDamage,
                 target,
             );
             if (!accepted) return;
+            context = accepted;
         }
         const internalDamage = delta - armorDamage;
         if (internalDamage > 0) {
-            const current = this.snapshot(member);
+            const current = this.snapshot(member, context);
             if (!current) return;
             const accepted = await this.dispatchDelta(member, {
                 kind: 'internal',
                 locationId: interaction.locationId,
-                expectedRevision: current.stateRevision,
+                context,
             }, internalDamage, target);
             if (!accepted) return;
         }
@@ -854,31 +857,31 @@ export class PageViewerNonMekRuntimeService {
 
     private async dispatchDelta(
         member: CBTForceMember,
-        interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
         delta: number,
         target: 'committed' | 'pending',
-    ): Promise<boolean> {
-        const command: NonMekUnitCommand = interaction.kind === 'armor'
+    ): Promise<UnitEditContext | null> {
+        const command: CBTUnitCommand = interaction.kind === 'armor'
             ? {
-                kind: delta > 0 ? 'damage-armor' : 'repair-armor',
+                type: delta > 0 ? 'damage-armor' : 'repair-armor',
                 faceId: interaction.faceId,
                 amount: Math.abs(delta),
                 target,
             }
             : {
-                kind: delta > 0 ? 'damage-internal' : 'repair-internal',
+                type: delta > 0 ? 'damage-internal' : 'repair-internal',
                 locationId: interaction.locationId,
                 amount: Math.abs(delta),
                 target,
             };
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, command);
-        if (result.accepted) return true;
+        const result = await member.force.dispatchUnitCommand(member.id, command, interaction.context);
+        if (result.accepted && result.state) return { owner: interaction.context.owner, state: result.state };
         this.showRejectedEdit();
-        return false;
+        return null;
     }
 
     private showRejectedEdit(): void {
-        this.toast.showToast('This force is read-only.', 'error');
+        this.toast.showToast('This edit is no longer current, or the force is read-only.', 'error');
     }
 
     private showDamageToast(
@@ -926,7 +929,7 @@ export function nonMekCrewStateCommand(
     position: NonMekRecordSheetCrewPosition,
     controls: readonly CrewMemberState[],
     selected: string,
-): NonMekUnitCommand | null {
+): CBTUnitCommand | null {
     const control = controls.find(key => key === selected);
     if (control !== 'unconscious'
         && control !== 'ejected'
@@ -934,7 +937,7 @@ export function nonMekCrewStateCommand(
         && control !== 'stunned') return null;
     const active = CrewMember.from(position.state).hasState(control);
     return Object.freeze({
-        kind: 'set-crew-state',
+        type: 'set-crew-state',
         positionId: position.positionId,
         wounds: position.state.wounds,
         unconscious: control === 'unconscious' || control === 'stunned'
@@ -949,16 +952,10 @@ export function nonMekDamageTrackPickerRange(
     track: NonMekRecordSheetDamageTrack,
     currentHits: number,
 ): Readonly<{ readonly min: number; readonly max: number }> {
-    const maximumAddition = track.visibleHitPips ?? track.maximumHits;
     return Object.freeze({
         min: -currentHits,
-        max: Math.min(maximumAddition, track.maximumHits - currentHits),
+        max: track.maximumHits - currentHits,
     });
-}
-
-function sensorDamageLevel(sheetId: string): number | null {
-    const match = /^sensor_hit_(\d+)$/u.exec(sheetId);
-    return match ? Number(match[1]) : null;
 }
 
 function equipmentPanelComponentById(
@@ -1002,7 +999,7 @@ function sameAttackerSelection(
 }
 
 export function nonMekDamagePickerRange(
-    interaction: Extract<NonMekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
+    interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>,
     snapshot: NonMekRecordSheetSnapshot,
     pending: boolean,
 ): RecordSheetDamagePickerRange {

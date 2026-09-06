@@ -1,84 +1,72 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
+import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './runtime/unit-command';
+
+import { CBTUnitService } from '../services/cbt-unit.service';
+import { redeployMekCrew,repairMekUnit,restoreMekSnapshot } from './runtime/cbt-mek-unit';
+import { redeployNonMekCrew,repairNonMekUnit,restoreNonMekUnit } from './runtime/cbt-non-mek-unit';
+import { type CBTMekUnit,type CBTNonMekUnit } from './runtime/cbt-unit';
 import {
-    decodeCBTEncounterStateV2,
-    type CBTEncounterSnapshot,
-    type EncounterNetwork,
-    type TargetRegistrySnapshot,
+decodeCBTEncounterStateV2,
+type CBTEncounterSnapshot,
+type EncounterNetwork,
+type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-    emptyRuntimeHistory,
-    validateSerializedCBTForceV2,
-    type SerializedCBTForceV2,
-    type SerializedCBTUnitV2,
+CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+emptyRuntimeHistory,
+validateSerializedCBTForceV2,
+type SerializedCBTForceV2,
+type SerializedCBTUnitV2,
 } from './runtime/persistence-v2';
-import { CBTUnitService } from '../services/cbt-unit.service';
-import { CBTMekUnit } from './runtime/cbt-mek-unit';
-import { isCBTNonMekUnit, isCBTMekUnit, type CBTTargetingReconciliation, type CBTUnit } from './runtime/cbt-unit';
-import { CBTNonMekUnit } from './runtime/cbt-non-mek-unit';
-import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
+import type { CBTUnitCommand } from './runtime/unit-command';
+
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTTargetingReconciliation,type CBTUnit } from './runtime/cbt-unit';
+
 import { jsonValuesEqual } from '../utils/json-value.util';
-import type { UnitConditionKey } from './unit-condition.model';
-import type { ScenarioRules } from './runtime/unit-state-initializer';
-import { DEFAULT_FORCE_DEPLOYMENT_ID, scenarioRuleset } from './runtime/unit-state-initializer';
 import type { CBTRuleset } from './cbt-ruleset.model';
 import type { CrewAssignment } from './runtime/crew-assignment';
+import { projectNonMekEscalatingFailureInteractions } from './runtime/non-mek-unit-instance';
+import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
+import type { ScenarioRules } from './runtime/unit-state-initializer';
+import { DEFAULT_FORCE_DEPLOYMENT_ID,scenarioRuleset } from './runtime/unit-state-initializer';
+import type { UnitConditionKey } from './unit-condition.model';
+
+import type { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
+import { ToastService } from '../services/toast.service';
+import { currentUnitBaseBattleValue,pristineUnitBattleValue } from './cbt-force-battle-value';
 import {
-    projectNonMekEscalatingFailureInteractions,
-    type NonMekUnitCommand,
-} from './runtime/non-mek-unit-instance';
-import type {
-    CBTUnitAttackerTargetingCommand,
-    CBTUnitCommand,
-    CBTUnitSelectedWeaponFireCommand,
-} from './runtime/unit-instance';
-import { evaluateMekRuntimeCapability } from './runtime/mek-runtime-capability';
+CBTForceC3,
+emptyC3EmergencyMasterMutation,
+publishC3EmergencyMasterNotices,
+validateCBTEncounterNetworks,
+} from './cbt-force-c3';
+import type { AttackerTargetingCommandResult,AttackerTargetingSnapshot,CBTEquipmentChoiceCommand,CBTEquipmentChoiceDispatchResult,CBTEquipmentInteraction,CBTForceEndTurnAllResult,CBTForceEndTurnUnitResult,CBTForceUnitCommandResult,InventoryControlTargetRosterRow,SelectedWeaponFireCommandResult } from './cbt-force.types';
+import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
+import {
+canSelectMekEquipmentInteraction,
+expandEquipmentDropdownBinding,
+projectMekEquipmentInteractions,
+projectNonMekEquipmentInteractions,
+} from './runtime/cbt-equipment-interactions';
+import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-helpers';
+import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
+import { entityTargetRosterRow,mekTargetRosterRow } from './runtime/cbt-force-target-roster';
 import { cbtUnitMatchesEntity } from './runtime/cbt-unit-validation';
 import {
-    canSelectMekEquipmentInteraction,
-    expandEquipmentDropdownBinding,
-    projectMekEquipmentInteractions,
-    projectNonMekEquipmentInteractions,
-} from './runtime/cbt-equipment-interactions';
-import type { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
-import type {
-    EquipmentInteractionCommandContext,
-    EquipmentInteractionQueryContext,
-} from './runtime/equipment-interaction';
-import { ToastService } from '../services/toast.service';
-import { MAX_MEK_HEAT_VALUE_V2, type MekHeatAutomationPolicyV2 } from './runtime/mek-heat-state-v2';
-import { currentUnitBaseBattleValue, pristineUnitBattleValue } from './cbt-force-battle-value';
-import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
-import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
-import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
-import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
-import type {
-    AttackerTargetingCommandResult,
-    AttackerTargetingSnapshot,
-    CBTNonMekUnitCommandResult,
-    CBTForceEndTurnAllResult,
-    CBTForceEndTurnUnitResult,
-    CBTMekUnitCommandResult,
-    InventoryControlTargetRosterRow,
-    CBTEquipmentChoiceCommand,
-    CBTEquipmentChoiceDispatchResult,
-    CBTEquipmentInteraction,
-    SelectedWeaponFireCommandResult,
-} from './cbt-force.types';
-import { entityTargetRosterRow, mekTargetRosterRow } from './runtime/cbt-force-target-roster';
-import {
-    ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
-    ESCALATING_FAILURE_HANDLER_ID,
+ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
+ESCALATING_FAILURE_HANDLER_ID,
 } from './runtime/component-escalating-failure';
-import {
-    CBTForceC3,
-    emptyC3EmergencyMasterMutation,
-    publishC3EmergencyMasterNotices,
-    validateCBTEncounterNetworks,
-} from './cbt-force-c3';
-import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-helpers';
+import type {
+EquipmentInteractionCommandContext,
+EquipmentInteractionQueryContext,
+} from './runtime/equipment-interaction';
+import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
+import { MAX_MEK_HEAT_VALUE_V2 } from './runtime/mek-heat-state-v2';
+import { evaluateMekRuntimeCapability } from './runtime/mek-runtime-capability';
+import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
 
 interface CBTUnitStoreState {
     readonly envelope: SerializedCBTForceV2;
@@ -376,9 +364,9 @@ export class CBTUnitStore {
             const current = units.get(instanceId);
             if (!current) throw new Error(`Ready V2 runtime ${instanceId} is not owned`);
             const candidate = isCBTMekUnit(current)
-                ? await CBTMekUnit.repair(current, binding.scenarioRules)
+                ? await repairMekUnit(current, binding.scenarioRules)
                 : isCBTNonMekUnit(current)
-                    ? CBTNonMekUnit.repair(current)
+                    ? repairNonMekUnit(current)
                     : null;
             if (candidate === null) throw new Error(`Unknown CBT runtime family ${instanceId}`);
             return sameCBTUnitGameplayState(current, candidate)
@@ -401,7 +389,7 @@ export class CBTUnitStore {
                 if (!isCBTNonMekUnit(current)) {
                     throw new Error(`Undo checkpoint family changed for ${row.instanceId}`);
                 }
-                candidate = CBTNonMekUnit.restore(
+                candidate = restoreNonMekUnit(
                     row.unit,
                     current.getUnit(),
                     current.uuid,
@@ -412,7 +400,7 @@ export class CBTUnitStore {
                 if (!isCBTMekUnit(current)) {
                     throw new Error(`Undo checkpoint family changed for ${row.instanceId}`);
                 }
-                candidate = await CBTMekUnit.restoreSnapshot(current, row.unit, binding.scenarioRules);
+                candidate = await restoreMekSnapshot(current, row.unit, binding.scenarioRules);
             }
             candidate.installAttackerTargetingSessionState(row.attackerTargeting);
             if (!jsonValuesEqual(candidate.serialize(), row.unit)) {
@@ -508,6 +496,7 @@ export class CBTUnitStore {
         return Object.freeze({
             instanceId,
             uuid: unit.uuid,
+            editContext: Object.freeze({ owner: unit, state: runtime.state }),
             entity: unit.getUnit(),
             index: runtime.index,
             ...(nativeSource === undefined ? {} : { nativeSource }),
@@ -518,48 +507,15 @@ export class CBTUnitStore {
         }) satisfies CBTUnitSnapshot;
     }
 
-    public dispatchNonMekUnitCommand(
-        instanceId: string,
-        command: NonMekUnitCommand,
-        forceReadOnly: boolean,
-    ): CBTNonMekUnitCommandResult {
-        const unit = this.nonMekUnit(instanceId);
-        if (!unit) {
-            return Object.freeze({
-                accepted: true,
-                changed: false,
-                state: null,
-            });
-        }
-        const runtime = unit.getInstance();
-        if (forceReadOnly) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                state: runtime.snapshot(),
-            });
-        }
-        return runtime.dispatch(command);
-    }
-
-    public dispatchMekUnitCommand(
+    public dispatchUnitCommand(
         instanceId: string,
         command: CBTUnitCommand,
         forceReadOnly: boolean,
-    ): CBTMekUnitCommandResult {
-        const unit = this.mekUnit(instanceId);
-        if (!unit) {
-            return Object.freeze({ accepted: true, changed: false, state: null });
-        }
-        const runtime = unit.getInstance();
-        if (forceReadOnly) {
-            return Object.freeze({
-                accepted: false,
-                changed: false,
-                state: runtime.snapshot(),
-            });
-        }
-        return runtime.dispatch(command);
+    ): CBTForceUnitCommandResult {
+        const unit = this.cbtUnit(instanceId);
+        if (!unit) return Object.freeze({ accepted: true, changed: false, state: null });
+        if (forceReadOnly) return Object.freeze({ accepted: false, changed: false, state: unit.snapshot() });
+        return unit.dispatch(command);
     }
 
     public attackerTargetingSnapshot(
@@ -686,8 +642,8 @@ export class CBTUnitStore {
             const current = binding.units.get(edit.instanceId);
             if (!current) throw new Error('Crew target is not owned');
             const replacement = isCBTMekUnit(current)
-                ? await CBTMekUnit.redeployCrew(current, edit.assignment, binding.scenarioRules, edit.health)
-                : isCBTNonMekUnit(current) ? CBTNonMekUnit.redeploy(current, edit.assignment, edit.health) : null;
+                ? await redeployMekCrew(current, edit.assignment, binding.scenarioRules, edit.health)
+                : isCBTNonMekUnit(current) ? redeployNonMekCrew(current, edit.assignment, edit.health) : null;
             if (!replacement) throw new Error('Unknown runtime family');
             replacement.installAttackerTargetingSessionState(current.captureRuntime().query.attackerTargetingState());
             const serialized = replacement.serialize();
@@ -721,7 +677,7 @@ export class CBTUnitStore {
             ...encounterSnapshot,
             networks: this.c3.effectiveNetworks(encounterSnapshot.networks),
         });
-        const runtime = unit.getInstance();
+        const runtime = unit;
         if (evaluateMekRuntimeCapability(mekEntity).readiness !== 'ready'
             || runtime.query().heatCapability().kind === 'unsupported') return Object.freeze([]);
         const offered = registry.choices(
@@ -740,7 +696,7 @@ export class CBTUnitStore {
 
     public endTurnForAll(
         isReadOnly: () => boolean,
-        policy: () => MekHeatAutomationPolicyV2,
+        policy: () => HeatAutomationPolicy,
         configuredNetworks: readonly EncounterNetwork[],
         toast: Pick<ToastService, 'showToast'>,
         publishChanged: () => void,
@@ -760,7 +716,7 @@ export class CBTUnitStore {
         isOwnerCurrent: () => boolean,
         publishChanged: () => void,
     ): Promise<CBTEquipmentChoiceDispatchResult> {
-        const result = this.dispatchEquipmentChoiceNow(
+        return Promise.resolve(this.dispatchEquipmentChoiceNow(
             command,
             registry,
             queryContext,
@@ -768,15 +724,8 @@ export class CBTUnitStore {
             encounter,
             isReadOnly,
             isOwnerCurrent,
-        );
-        if (isPromiseLike(result)) {
-            return result.then(resolved => {
-                if (resolved.accepted && resolved.changed) publishChanged();
-                return resolved;
-            });
-        }
-        if (result.accepted && result.changed) publishChanged();
-        return Promise.resolve(result);
+            publishChanged,
+        ));
     }
 
     private dispatchEquipmentChoiceNow(
@@ -787,6 +736,7 @@ export class CBTUnitStore {
         encounter: () => CBTEncounterSnapshot,
         isReadOnly: () => boolean,
         isOwnerCurrent: () => boolean,
+        publishChanged: () => void,
     ): CBTEquipmentChoiceDispatchResult | Promise<CBTEquipmentChoiceDispatchResult> {
         if (!isOwnerCurrent()) return rejectedEquipmentChoice('OWNER_CHANGED');
         const owner = this.binding;
@@ -801,20 +751,20 @@ export class CBTUnitStore {
                 || selected.handlerId !== ESCALATING_FAILURE_HANDLER_ID) {
                 return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
             }
-            const runtime = candidate.getInstance();
+            const runtime = candidate;
             const projected = projectNonMekEscalatingFailureInteractions(
                 entity,
                 candidate.getIndex(),
                 runtime.snapshot(),
-                runtime.ruleset,
+                runtime.ruleset(),
                 queryContext.choiceSurface,
             ).find(row => row.componentId === selected.componentId);
             const choice = projected?.choices.find(current =>
                 !current.disabled && Object.is(current.value, selected.value));
             if (!projected || !choice) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
             const edit: Extract<
-                NonMekUnitCommand,
-                { readonly kind: 'edit-escalating-failure' }
+                CBTUnitCommand,
+                { readonly type: 'edit-escalating-failure' }
             >['edit'] | null = selected.value === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
                 ? Object.freeze({
                     kind: 'set-status',
@@ -825,17 +775,19 @@ export class CBTUnitStore {
                     : null;
             if (edit === null) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
             const result = runtime.dispatch({
-                kind: 'edit-escalating-failure',
+                type: 'edit-escalating-failure',
                 componentId: selected.componentId,
                 edit,
             });
-            return Object.freeze({ accepted: true, changed: result.changed });
+            if (result.accepted && result.changed) publishChanged();
+            return Object.freeze({ accepted: true, changed: result.changed,
+                context: Object.freeze({ owner: candidate, state: candidate.snapshot() }) });
         }
 
         if (!isCBTMekUnit(candidate)) return rejectedEquipmentChoice('OWNER_CHANGED');
         const unit = candidate;
         const mekEntity = unit.getUnit();
-        const runtime = unit.getInstance();
+        const runtime = unit;
         if (!unit.matchesEntity(mekEntity)) {
             return rejectedEquipmentChoice('ENTITY_MISMATCH');
         }
@@ -872,26 +824,56 @@ export class CBTUnitStore {
             return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
         }
 
-        const before = runtime.revision();
+        const before = runtime.snapshot();
+        let settled: CBTEquipmentChoiceDispatchResult | undefined;
         const finalize = (accepted: boolean, handlerFailed: boolean): CBTEquipmentChoiceDispatchResult => {
-            if ((isReadOnly() && interaction.choice.readOnlySafe !== true)
-                || !isOwnerCurrent()
+            if (!isOwnerCurrent()
                 || this.binding?.units.get(selected.instanceId) !== unit) {
                 return rejectedEquipmentChoice('OWNER_CHANGED');
             }
-            const handlerChanged = runtime.revision() !== before;
+            const handlerChanged = runtime.snapshot() !== before;
+            if (!handlerChanged && isReadOnly() && interaction.choice.readOnlySafe !== true) {
+                return rejectedEquipmentChoice('READ_ONLY');
+            }
             const c3 = interaction.choice.action !== 'configure-network'
                 && (handlerChanged || accepted)
                 ? this.c3.reconcileEmergencyMasters(configuredEncounter.networks)
                 : emptyC3EmergencyMasterMutation();
             publishC3EmergencyMasterNotices(c3.notices, commandContext.toastService);
             const changed = handlerChanged || c3.changedUnitIds.length > 0;
-            // The revision is the mutation authority. A handler may mutate and then
+            // The immutable state identifies a mutation. A handler may mutate and then
             // fail in a notification side effect; the force must still publish that
             // state change exactly once.
-            if (changed) return Object.freeze({ accepted: true, changed: true });
+            if (changed) return Object.freeze({ accepted: true, changed: true,
+                context: Object.freeze({ owner: unit, state: unit.snapshot() }) });
             if (!accepted || handlerFailed) return rejectedEquipmentChoice('HANDLER_REJECTED');
-            return Object.freeze({ accepted: true, changed: false });
+            return Object.freeze({ accepted: true, changed: false,
+                context: Object.freeze({ owner: unit, state: unit.snapshot() }) });
+        };
+        const finish = (accepted: boolean, failed: boolean): CBTEquipmentChoiceDispatchResult => {
+            if (settled) return settled;
+            settled = finalize(accepted, failed);
+            if (settled.accepted && settled.changed) publishChanged();
+            return settled;
+        };
+        const dispatch: CBTMekUnit['dispatch'] = command => {
+            const rejection = isReadOnly() ? 'READ_ONLY'
+                : settled || !isOwnerCurrent()
+                    || this.binding?.units.get(selected.instanceId) !== unit
+                    || runtime.snapshot() !== before ? 'OWNER_CHANGED' : undefined;
+            if (rejection) {
+                settled ??= rejectedEquipmentChoice(rejection);
+                return Object.freeze({ accepted: false, changed: false, state: runtime.snapshot() });
+            }
+            const result = runtime.dispatch(command);
+            // An awaited notice cannot delay publication or change the outcome of this commit.
+            finish(result.accepted, false);
+            return result;
+        };
+        const finishAwaited = (accepted: boolean, failed: boolean): CBTEquipmentChoiceDispatchResult => {
+            // No guarded commit means any intervening state change belongs to another action.
+            if (!settled && runtime.snapshot() !== before) settled = rejectedEquipmentChoice('OWNER_CHANGED');
+            return finish(accepted, failed);
         };
         try {
             const handled = registry.select(
@@ -902,22 +884,22 @@ export class CBTUnitStore {
                 { instanceId: selected.instanceId, encounter: () => effectiveEncounter },
                 interaction,
                 queryContext,
-                commandContext,
+                { ...commandContext, dispatch },
             );
             return isPromiseLike(handled)
                 ? handled.then(
-                    accepted => finalize(accepted, false),
-                    () => finalize(false, true),
+                    accepted => finishAwaited(accepted, false),
+                    () => finishAwaited(false, true),
                 )
-                : finalize(handled, false);
+                : finish(handled, false);
         } catch {
-            return finalize(false, true);
+            return finish(false, true);
         }
     }
 
     private endTurnForAllNow(
         isReadOnly: () => boolean,
-        policy: () => MekHeatAutomationPolicyV2,
+        policy: () => HeatAutomationPolicy,
         configuredNetworks: readonly EncounterNetwork[],
         toast: Pick<ToastService, 'showToast'>,
     ): CBTForceEndTurnAllResult {
@@ -950,7 +932,7 @@ export class CBTUnitStore {
                     'NOT_ADMITTED',
                 ));
             }
-            const query = unit.getInstance().query();
+            const query = unit.query();
             if (query.heatCapability().kind === 'unsupported') {
                 return frozenEndTurnAllResult(false, false, preflightFailureRows(
                     retained.map(([id]) => id),

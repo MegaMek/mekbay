@@ -4,7 +4,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { PortraitService } from '../../services/portrait.service';
 
-/** Clips a shared sheet to one portrait; missing images retain the helmet placeholder. */
+/** Clips a shared sheet to one portrait */
 @Component({
     selector: 'crew-portrait',
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -17,14 +17,10 @@ import { PortraitService } from '../../services/portrait.service';
                 [style.visibility]="loadedUrl() === sprite.url ? 'visible' : 'hidden'"
                 (load)="loadedUrl.set(sprite.url)" (error)="loadedUrl.set('')" />
         }
-        @if (!sprite() || loadedUrl() !== sprite()?.url) {
-            <img class="placeholder" src="/images/helmet.svg" alt="" draggable="false" />
-        }
     `,
     styles: `
         :host { display: inline-block; position: relative; overflow: hidden; flex-shrink: 0; vertical-align: middle; }
         .sheet { position: absolute; max-width: none; max-height: none; pointer-events: none; }
-        .placeholder { position: absolute; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
     `,
 })
 export class CrewPortraitComponent {

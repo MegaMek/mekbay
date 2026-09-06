@@ -1,29 +1,28 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { C3EmergencyMasterActivationTracker, isC3EmergencyMasterEquipment } from './c3-emergency-master.model';
-import type { C3State } from './cbt-force.types';
-import { C3Role, projectNonMekC3Components, type C3Component } from './c3-network.model';
-import {
-    projectEncounterC3Components,
-    validateEncounterNetworks,
-    type C3EncounterPresentationUnit,
-} from './c3-network-presentation';
-import type { ComponentId } from './entity/entity-identifiers';
 import type { ToastService } from '../services/toast.service';
+import { C3EmergencyMasterActivationTracker,isC3EmergencyMasterEquipment } from './c3-emergency-master.model';
 import {
-    componentC3EmergencyMasterDefinition,
-    componentC3EmergencyMasterFacts,
-    componentC3EmergencyMasterStatusLabel,
-    settleComponentC3EmergencyMasterEndTurn,
-    syncComponentC3EmergencyMasterEncounter,
-    type ComponentC3EmergencyMasterDefinition,
+projectEncounterC3Components,
+validateEncounterNetworks,
+type C3EncounterPresentationUnit,
+} from './c3-network-presentation';
+import { C3Role,projectNonMekC3Components,type C3Component } from './c3-network.model';
+import type { C3State } from './cbt-force.types';
+import type { ComponentId } from './entity/entity-identifiers';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTMekUnit,type CBTUnit } from './runtime/cbt-unit';
+import {
+componentC3EmergencyMasterDefinition,
+componentC3EmergencyMasterFacts,
+componentC3EmergencyMasterStatusLabel,
+settleComponentC3EmergencyMasterEndTurn,
+syncComponentC3EmergencyMasterEncounter,
+type ComponentC3EmergencyMasterDefinition,
 } from './runtime/component-c3-emergency-master';
 import type { EncounterNetwork } from './runtime/encounter-runtime';
-import { c3EndpointKey, projectEffectiveMekC3Networks } from './runtime/mek-c3-runtime';
+import { c3EndpointKey,projectEffectiveMekC3Networks } from './runtime/mek-c3-runtime';
 import { equipmentForComponent } from './runtime/mek-runtime-index';
-import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './runtime/cbt-unit';
-import type { CBTMekUnit } from './runtime/cbt-mek-unit';
 
 export interface C3EmergencyMasterNotice {
     readonly message: string;
@@ -65,7 +64,7 @@ export class CBTForceC3 {
         if (!unit) return false;
         try {
             if (isCBTMekUnit(unit)) {
-                const query = unit.getInstance().query();
+                const query = unit.query();
                 return !query.hasCondition('shutdown')
                     && !query.hasCondition('jammed')
                     && !query.c3DisruptedByStealth('preview')
@@ -86,7 +85,7 @@ export class CBTForceC3 {
         if (!unit) return false;
         try {
             const query = isCBTMekUnit(unit)
-                ? unit.getInstance().query()
+                ? unit.query()
                 : unit.captureRuntime().query;
             return query.componentStatus(componentId, 'committed') !== 'destroyed';
         } catch {
@@ -98,7 +97,7 @@ export class CBTForceC3 {
         return projectEffectiveMekC3Networks(
             configured,
             [...(this.currentUnits() ?? [])].flatMap(([instanceId, unit]) => isCBTMekUnit(unit)
-                ? [Object.freeze({ instanceId, query: unit.getInstance().query() })]
+                ? [Object.freeze({ instanceId, query: unit.query() })]
                 : []),
         );
     }
@@ -160,7 +159,7 @@ export class CBTForceC3 {
         for (const instanceId of new Set(candidateUnitIds)) {
             const unit = units.get(instanceId);
             if (!unit || !isCBTMekUnit(unit)) continue;
-            const runtime = unit.getInstance();
+            const runtime = unit;
             for (const [componentId] of unit.getIndex().components) {
                 if (!isC3EmergencyMasterEquipment(
                     equipmentForComponent(unit.getIndex(), componentId),
@@ -213,7 +212,7 @@ export class CBTForceC3 {
         const unit = candidate && isCBTMekUnit(candidate) ? candidate : undefined;
         if (!owner || !unit) return null;
         const effectiveNetworks = this.effectiveNetworks(configured);
-        const runtime = unit.getInstance();
+        const runtime = unit;
         const definitions = [...unit.getIndex().components.keys()].flatMap(componentId => {
             if (!isC3EmergencyMasterEquipment(
                 equipmentForComponent(unit.getIndex(), componentId),
@@ -245,7 +244,7 @@ export class CBTForceC3 {
         if (!plan || units !== plan.owner || units.get(plan.instanceId) !== plan.unit) {
             return emptyC3EmergencyMasterMutation();
         }
-        const runtime = plan.unit.getInstance();
+        const runtime = plan.unit;
         const notices: C3EmergencyMasterNotice[] = [];
         let changed = false;
         for (const definition of plan.definitions) {
@@ -316,7 +315,7 @@ export function projectReadyC3Components(unit: CBTUnit): readonly C3Component[] 
             ? projectNonMekC3Components(unit.getIndex())
             : Object.freeze([]);
     }
-    const projected = unit.getInstance().query().mekC3Endpoints();
+    const projected = unit.query().mekC3Endpoints();
     if (projected.kind !== 'supported') return Object.freeze([]);
     return Object.freeze(projected.endpoints.map((endpoint, index) => Object.freeze({
         componentId: endpoint.componentId,

@@ -1,50 +1,22 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    CriticalSlotId,
-    LocationId,
-} from '../entity/entity-identifiers';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import type { CBTRuleset } from '../cbt-ruleset.model';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import type { EquipmentStatus } from '../equipment-status.model';
-import {
-    canonicalizeMekTurnStateV2,
-    createPristineMekTurnStateV2,
-    type MekTurnStateV2,
-} from './mek-turn-state-v2';
-import {
-    canonicalizeMekHeatStateV2,
-    createPristineMekHeatStateV2,
-    type MekHeatStateV2,
-} from './mek-heat-state-v2';
-import {
-    freezeRuleChecks,
-    type MekRuleChecksV2,
-} from './mek-destruction-state-v2';
-import {
-    canonicalizeMekMovementPsrStateV2,
-    createPristineMekMovementPsrStateV2,
-    type MekMovementPsrStateV2,
-} from './mek-movement-psr-v2';
 import { uuidv4 } from '../../utils/uuid.util';
-import {
-    createPristineAttackerTargetingState,
-    freezeAttackerTargetingState,
-} from './attacker-targeting-state';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
+import type { EquipmentStatus } from '../equipment-status.model';
+import { createPristineAttackerTargetingState } from './attacker-targeting-state';
+import { freezeCommonUnitRuntimeState,type CBTUnitPendingCombatState } from './cbt-unit-runtime';
+import { freezeRuleChecks,type MekRuleChecksV2 } from './mek-destruction-state-v2';
 import type { SparseMekGaussPowerState } from './mek-gauss-power';
-import {
-    freezeEquipmentRowOrder,
-} from './equipment-row-order';
-import type {
-    CBTLocationRuntimeState,
-    CBTUnitRuntimeState,
-} from './cbt-unit-runtime';
+import { canonicalizeMekHeatStateV2,createPristineMekHeatStateV2,type MekHeatStateV2 } from './mek-heat-state-v2';
+import { canonicalizeMekMovementPsrStateV2,createPristineMekMovementPsrStateV2,type MekMovementPsrStateV2 } from './mek-movement-psr-v2';
+import { canonicalizeMekTurnStateV2,createPristineMekTurnStateV2,type MekTurnStateV2 } from './mek-turn-state-v2';
+
 import type { CrewMemberRuntimeState } from '../crew-member.model';
+import type { CBTLocationRuntimeState,CBTUnitRuntimeState } from './cbt-unit-runtime';
 
 /** Closed Mek location state vocabulary owned by the runtime contract. */
 export const MEK_LOCATION_CONDITION_KEYS = Object.freeze([
@@ -174,12 +146,8 @@ export interface AmmoRuntimeState {
     readonly munitionOverride?: string;
 }
 
-export interface PendingCombatOverlay {
-    readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
-    readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
+export interface PendingCombatOverlay extends CBTUnitPendingCombatState {
     readonly criticalHits: ReadonlyMap<CriticalSlotId, number>;
-    /** Explicit `available` represents a pending repair over a committed override. */
-    readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
     /** Signed preview deltas over committed shield combat damage. */
     readonly shieldDamage: ReadonlyMap<ComponentId, MekShieldDamageRuntimeState>;
     /** Signed preview deltas over committed Modular Armor panel damage. */
@@ -249,11 +217,10 @@ export function createPristineMekState(): MekUnitRuntimeState {
     });
 }
 
-export function freezeRuntimeState(state: MekUnitRuntimeState): MekUnitRuntimeState {
-    const { equipmentRowOrder: rawEquipmentRowOrder, ...values } = state;
-    const equipmentRowOrder = freezeEquipmentRowOrder(rawEquipmentRowOrder);
+export function freezeRuntimeState(raw: MekUnitRuntimeState): MekUnitRuntimeState {
+    const state = freezeCommonUnitRuntimeState(raw);
     return Object.freeze({
-        ...values,
+        ...state,
         locations: new ImmutableIndex([...state.locations].map(([id, value]) => [
             id,
             Object.freeze({
@@ -262,48 +229,16 @@ export function freezeRuntimeState(state: MekUnitRuntimeState): MekUnitRuntimeSt
                 conditions: new ImmutableIndex(value.conditions),
             }),
         ] as const)),
-        slots: new ImmutableIndex(state.slots),
-        components: new ImmutableIndex([...state.components].map(([id, value]) => [
-            id,
-            Object.freeze({
-                ...value,
-                ...(value.escalatingFailure === undefined
-                    ? {}
-                    : { escalatingFailure: Object.freeze({ ...value.escalatingFailure }) }),
-                ...(value.ppcCapacitor === undefined
-                    ? {}
-                    : { ppcCapacitor: Object.freeze({ ...value.ppcCapacitor }) }),
-                ...(value.bombastLaser === undefined
-                    ? {}
-                    : { bombastLaser: Object.freeze({ ...value.bombastLaser }) }),
-                ...(value.c3EmergencyMaster === undefined
-                    ? {}
-                    : { c3EmergencyMaster: Object.freeze({ ...value.c3EmergencyMaster }) }),
-                ...(value.shieldDamage === undefined
-                    ? {}
-                    : { shieldDamage: Object.freeze({ ...value.shieldDamage }) }),
-            }),
-        ] as const)),
-        ammo: new ImmutableIndex([...state.ammo].map(([id, value]) => [
-            id,
-            Object.freeze({ ...value }),
-        ] as const)),
-        crew: new ImmutableIndex([...state.crew].map(([id, value]) => [
-            id,
-            Object.freeze({ ...value }),
+        slots: new ImmutableIndex([...state.slots].map(([id, value]) => [
+            id, Object.isFrozen(value) ? value : Object.freeze({ ...value }),
         ] as const)),
         heat: canonicalizeMekHeatStateV2(state.heat),
-        conditions: new ImmutableSet(state.conditions),
         ruleChecks: freezeRuleChecks(state.ruleChecks),
         movementPsr: canonicalizeMekMovementPsrStateV2(state.movementPsr),
-        attackerTargeting: freezeAttackerTargetingState(state.attackerTargeting),
-        ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         turn: canonicalizeMekTurnStateV2(state.turn),
         pendingCombat: Object.freeze({
-            locationInternalDamage: new ImmutableIndex(state.pendingCombat.locationInternalDamage),
-            armorDamage: new ImmutableIndex(state.pendingCombat.armorDamage),
+            ...state.pendingCombat,
             criticalHits: new ImmutableIndex(state.pendingCombat.criticalHits),
-            componentStatus: new ImmutableIndex(state.pendingCombat.componentStatus),
             shieldDamage: new ImmutableIndex([...state.pendingCombat.shieldDamage].map(([id, value]) => [
                 id,
                 Object.freeze({ ...value }),

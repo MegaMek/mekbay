@@ -1,28 +1,28 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { Overlay } from '@angular/cdk/overlay';
 import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Overlay } from '@angular/cdk/overlay';
 import { Subject } from 'rxjs';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import { createPristineMekHeatStateV2 } from '../../../models/runtime/mek-heat-state-v2';
 import {
-    createPristineMekMovementPsrStateV2,
-    type MekPilotCheckV2,
+createPristineMekMovementPsrStateV2,
+type MekPilotCheckV2,
 } from '../../../models/runtime/mek-movement-psr-v2';
-import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
+import { createPristineMekTurnStateV2 } from '../../../models/runtime/mek-turn-state-v2';
 import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
-import { PAGE_TURN_MEMBER } from './page-turn-summary.util';
 import {
-    PagePsrWarningPanelComponent,
-    psrRollOutcome,
-    togglePsrWarningOverlay,
+PagePsrWarningPanelComponent,
+psrRollOutcome,
+togglePsrWarningOverlay,
 } from './page-psr-warning-panel.component';
+import { PAGE_TURN_MEMBER } from './page-turn-summary.util';
 
 describe('togglePsrWarningOverlay', () => {
     it('keeps the turn summary open until the PSR panel closes', () => {
@@ -128,7 +128,7 @@ describe('PagePsrWarningPanelComponent', () => {
             }],
             checks: [fallCheck, shutdownCheck],
         });
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.callFake(async () => {
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.callFake(async () => {
             current = panelSnapshot({
                 automaticFalls: current.movementState.automaticFalls,
                 checks: [{ ...shutdownCheck, status: 'success', resolution: { dice: [2, 6], total: 8 } }],
@@ -142,7 +142,7 @@ describe('PagePsrWarningPanelComponent', () => {
                 changed,
                 sessionChanged: new Subject<void>(),
                 getMekTurnPanelSnapshot: () => current,
-                dispatchMekUnitCommand: dispatch,
+                dispatchUnitCommand: dispatch,
             },
         } as unknown as CBTMekForceMember;
 
@@ -216,7 +216,7 @@ describe('PagePsrWarningPanelComponent', () => {
         const first = pilotCheck('first-fall', 'leg-destroyed', 'First fall check', 7);
         const second = pilotCheck('second-fall', 'leg-destroyed', 'Second fall check', 8);
         let current = panelSnapshot({ automaticFalls: [], checks: [first, second] });
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.callFake(async (
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.callFake(async (
             _instanceId: string,
             command: { readonly checkId: string; readonly evidence: { readonly dice: readonly [number, number] } },
         ) => {
@@ -244,7 +244,7 @@ describe('PagePsrWarningPanelComponent', () => {
                 changed,
                 sessionChanged: new Subject<void>(),
                 getMekTurnPanelSnapshot: () => current,
-                dispatchMekUnitCommand: dispatch,
+                dispatchUnitCommand: dispatch,
             },
         } as unknown as CBTMekForceMember;
         const closeManagedOverlay = jasmine.createSpy('closeManagedOverlay');

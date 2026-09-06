@@ -1,32 +1,35 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Subject, of } from 'rxjs';
+import { ComponentFixture,TestBed } from '@angular/core/testing';
+import { Subject,of } from 'rxjs';
+import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
+import type { RecordSheetInteraction } from '../record-sheet-interaction';
 
-import { CBTForceMember, type CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTEquipmentChoiceCommand } from '../../../models/cbt-force.types';
 import type { ComponentId } from '../../../models/entity/entity-identifiers';
 import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
+import { CBTForceMember,type CBTMekForceMember } from '../../../models/force-member.model';
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import type { MekLocationConditionKey } from '../../../models/runtime/runtime-state';
+import type { UnitConditionKey } from '../../../models/unit-condition.model';
 import { DialogsService } from '../../../services/dialogs.service';
+import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
 import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import type { ChoicePickerConfig,DirectionalPickerConfig,NumericPickerConfig } from '../../../services/picker-factory.service';
 import { PickerFactoryService } from '../../../services/picker-factory.service';
-import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
 import { ToastService } from '../../../services/toast.service';
-import type { ChoicePickerConfig, DirectionalPickerConfig, NumericPickerConfig } from '../../../services/picker-factory.service';
-import type { MekRecordSheetInteraction } from '../mek-record-sheet-binder';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 import { MekCriticalChanceDialogComponent } from '../mek-critical-chance-dialog.component';
 import { MekCriticalRollDialogComponent } from '../mek-critical-roll-dialog.component';
-import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
-import { PageViewerOverlayService } from './page-viewer-overlay.service';
-import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
-import type { UnitConditionKey } from '../../../models/unit-condition.model';
-import type { MekLocationConditionKey } from '../../../models/runtime/runtime-state';
-import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
+import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
+
+const editContext = createUnitEditContextFixture();
 
 describe('PageViewerMekInteractionService', () => {
     let service: PageViewerMekInteractionService;
@@ -53,10 +56,11 @@ describe('PageViewerMekInteractionService', () => {
             entity: Object.assign(Object.create(member.entity), {
                 totalHeatSinks: () => currentSnapshot.heatSinks.count,
             }),
-            state: { stateRevision: revision },
+            state: editContext(revision).state,
+            editContext: editContext(revision),
             index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
             query: {
-                stateRevision: revision,
+                stateRevision: revision, editContext: editContext(revision),
                 crewState: (positionId: string) => currentSnapshot.crew
                     .find(row => row.positionId === positionId)?.state
                     ?? { wounds: 0, unconscious: false, ejected: false },
@@ -96,21 +100,21 @@ describe('PageViewerMekInteractionService', () => {
         force = {
             getMekRecordSheetSnapshot: jasmine.createSpy().and.callFake(() => currentSnapshot),
             getEquipmentPanelSnapshot: jasmine.createSpy().and.callFake(() => panel),
-            dispatchMekUnitCommand: jasmine.createSpy().and.callFake(async (_unitId: string, command: any) => {
+            dispatchUnitCommand: jasmine.createSpy().and.callFake(async (_unitId: string, command: any) => {
                 revision++;
-                currentSnapshot = { ...currentSnapshot, stateRevision: revision } as MekRecordSheetSnapshot;
+                currentSnapshot = { ...currentSnapshot, stateRevision: revision, editContext: editContext(revision) } as MekRecordSheetSnapshot;
                 panel = { ...panel, stateRevision: revision } as EquipmentPanelSnapshot;
-                return { accepted: true, idempotent: false, currentRevision: revision };
+                return { accepted: true, changed: true, state: editContext(revision).state };
             }),
             getEquipmentInteractions: jasmine.createSpy().and.returnValue([]),
-            dispatchEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true }),
+            dispatchEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true, context: editContext(1) }),
             getUnitCrewProfile: jasmine.createSpy().and.returnValue({
                 schemaVersion: 1,
                 positions: [{ positionId: 'crew-0', name: 'Morgan', gunnery: 3, piloting: 4 }],
             }),
             replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ schemaVersion: 1, positions: [] }),
             getAttackerTargeting: jasmine.createSpy().and.returnValue({
-                instanceId: 'unit-1', stateRevision: 1, registryRevision: 2,
+                instanceId: 'unit-1', stateRevision: 1, editContext: editContext(1), registryRevision: 2,
                 state: { schemaVersion: 1, components: new Map(), actions: new Map(), targets: new Map() },
             }),
             dispatchAttackerTargeting: jasmine.createSpy().and.resolveTo({
@@ -171,16 +175,59 @@ describe('PageViewerMekInteractionService', () => {
 
     afterEach(() => dropdownFixture.destroy());
 
+    it('rejects a damage picker opened before the unit owner was replaced at the same numeric revision', async () => {
+        service.handle(member, {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        const original = force.getUnitSnapshot('unit-1');
+        const replacement = createUnitEditContextFixture()(1);
+        force.getUnitSnapshot.and.returnValue({ ...original, state: replacement.state, editContext: replacement });
+        currentSnapshot = { ...currentSnapshot, editContext: replacement };
+        numericConfig!.onPick({ value: 1 });
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+    });
+
+    it('does not adopt a replacement owner between accepted armor damage and its internal overflow', async () => {
+        const original = force.getUnitSnapshot('unit-1');
+        const replacement = createUnitEditContextFixture()(2);
+        force.dispatchUnitCommand.and.callFake(async () => {
+            revision = 2;
+            currentSnapshot = { ...recordSheetSnapshot(2), editContext: replacement };
+            force.getUnitSnapshot.and.returnValue({ ...original, state: replacement.state, editContext: replacement });
+            return { accepted: true, changed: true, state: editContext(2).state };
+        });
+        service.handle(member, {
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        numericConfig!.onPick({ value: 5 });
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand.calls.count()).toBe(1);
+        expect(force.dispatchUnitCommand.calls.argsFor(0)[1].type).toBe('damage-armor');
+    });
+
+    it('retains the opening heat context through asynchronous input instead of replacing it with current state', async () => {
+        const closed = new Subject<number | null>();
+        dialogs.createDialog.and.returnValue({ closed } as never);
+        service.handle(member, { kind: 'heat-overflow', context: editContext(1) }, anchoredMouseEvent());
+        revision = 2;
+        currentSnapshot = recordSheetSnapshot(2);
+        closed.next(35);
+        closed.complete();
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+    });
+
     it('uses the original radial damage picker and atomically continues armor overflow into internal damage', async () => {
         service.handle(member, {
-            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(numericConfig).toEqual(jasmine.objectContaining({ min: -7, max: 5, threshold: 3, selected: 0 }));
         numericConfig!.onPick({ value: 5 });
         await settleAsyncHandlers();
 
-        const commands = force.dispatchMekUnitCommand.calls.allArgs().map((args: any[]) => args[1]);
+        const commands = force.dispatchUnitCommand.calls.allArgs().map((args: any[]) => args[1]);
         expect(commands[0]).toEqual(jasmine.objectContaining({
             type: 'damage-armor', faceId: 'face-ct', amount: 3, target: 'pending',
         }));
@@ -211,8 +258,8 @@ describe('PageViewerMekInteractionService', () => {
             }],
         }]);
         service.handle(member, {
-            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(choiceConfig).toEqual(jasmine.objectContaining({
             style: 'linear', targetType: 'crit', title: 'Ammo (AC/20)',
@@ -222,7 +269,7 @@ describe('PageViewerMekInteractionService', () => {
         const handler = choiceConfig!.values.find(choice => choice.label === 'Special mode')!;
         choiceConfig!.onPick(handler);
         await settleAsyncHandlers();
-        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(command);
+        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(command, editContext(1));
     });
 
     it('ignores an unhittable critical interaction even if stale SVG emits it', () => {
@@ -237,12 +284,12 @@ describe('PageViewerMekInteractionService', () => {
             slotId: slot.slotId,
             componentIds: slot.components.map(component => component.componentId),
             button: 'primary',
-            expectedRevision: 1,
+            context: editContext(1),
         }, anchoredMouseEvent());
 
         expect(choiceConfig).toBeNull();
         expect(force.getEquipmentInteractions).not.toHaveBeenCalled();
-        expect(force.dispatchMekUnitCommand).not.toHaveBeenCalled();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
     });
 
     it('ports the production location critical actions to the direct V2 dialogs', () => {
@@ -251,8 +298,8 @@ describe('PageViewerMekInteractionService', () => {
             { closed: of(undefined) } as any,
         );
         service.handle(member, {
-            kind: 'location-condition-menu', locationId: 'loc-ct', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'location-condition-menu', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         dropdownFixture.detectChanges();
 
         const choices = dropdownFixture.componentInstance.choices();
@@ -283,8 +330,8 @@ describe('PageViewerMekInteractionService', () => {
 
     it('ports every production Mek condition-menu control through direct sparse state', () => {
         service.handle(member, {
-            kind: 'condition-menu', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'condition-menu', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         dropdownFixture.detectChanges();
 
         expect(dropdownFixture.componentInstance.choices().map(choice => choice.label)).toEqual([
@@ -297,26 +344,26 @@ describe('PageViewerMekInteractionService', () => {
 
         dropdownFixture.componentInstance.selected.emit('ecm-shielded');
 
-        expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'set-condition',
             condition: 'ecm-shielded',
             active: true,
-        }));
+        }), jasmine.any(Object));
     });
 
     it('applies a production blow-off result through one atomic V2 command', async () => {
         dialogs.createDialog.and.returnValue({ closed: of({ kind: 'blown-off' }) } as any);
         service.handle(member, {
-            kind: 'location-condition-menu', locationId: 'loc-ct', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'location-condition-menu', locationId: 'loc-ct', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         dropdownFixture.componentInstance.selected.emit('critical-chance');
         await settleAsyncHandlers();
 
-        expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'apply-mek-blow-off',
             locationId: 'loc-ct',
             target: 'pending',
-        }));
+        }), jasmine.any(Object));
     });
 
     it('restores handler-authored dropdowns, colors, tones, and typed commands on the sheet', async () => {
@@ -346,8 +393,8 @@ describe('PageViewerMekInteractionService', () => {
             }],
         }]);
         service.handle(member, {
-            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
         const dropdown = choiceConfig!.values.find(choice => choice.label === 'ECM Mode')!;
         expect(dropdown).toEqual(jasmine.objectContaining({
@@ -357,27 +404,27 @@ describe('PageViewerMekInteractionService', () => {
         expect(dropdown.choices?.map(choice => choice.label)).toEqual(['STD', 'ECCM']);
         choiceConfig!.onPick({ ...dropdown, value: dropdown.choices![1].value, label: 'ECCM' });
         await settleAsyncHandlers();
-        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(eccmCommand);
+        expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(eccmCommand, editContext(1));
     });
 
     it('keeps authored system-hit controls as direct toggles instead of opening the slot picker', async () => {
         service.handle(member, {
-            kind: 'system-critical', slotId: 'slot-ct-0', system: 'Engine', level: 1, expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'system-critical', slotId: 'slot-ct-0', system: 'Engine', level: 1, context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
         expect(choiceConfig).toBeNull();
-        expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'hit-critical', slotId: 'slot-ct-0', hits: 1, target: 'pending',
-        }));
+        }), jasmine.any(Object));
     });
 
     it('opens the established crew editor from authored crew-name controls', async () => {
         const pilotEditor = TestBed.inject(ForcePilotEditorService) as jasmine.SpyObj<ForcePilotEditorService>;
         pilotEditor.editCBTMember.and.resolveTo();
         service.handle(member, {
-            kind: 'crew-name', positionId: 'crew-0', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'crew-name', positionId: 'crew-0', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
         expect(pilotEditor.editCBTMember).toHaveBeenCalledOnceWith(force, member.id);
@@ -389,8 +436,8 @@ describe('PageViewerMekInteractionService', () => {
         });
 
         service.handle(member, {
-            kind: 'crew-state-menu', positionId: 'crew-0', expectedRevision: 1,
-        } as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'crew-state-menu', positionId: 'crew-0', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
         dropdownFixture.detectChanges();
 
         expect(dropdownFixture.componentInstance.choices().map(choice => choice.key))
@@ -410,8 +457,8 @@ describe('PageViewerMekInteractionService', () => {
         } as unknown as MekRecordSheetSnapshot;
 
         service.handle(member, {
-            kind: 'crew-state-menu', positionId: 'crew-0', expectedRevision: 1,
-        } as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'crew-state-menu', positionId: 'crew-0', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
         dropdownFixture.detectChanges();
 
         expect(dropdownFixture.componentInstance.choices().map(choice => choice.key))
@@ -435,28 +482,28 @@ describe('PageViewerMekInteractionService', () => {
             ],
         } as unknown as MekRecordSheetSnapshot;
         service.handle(member, {
-            kind: 'system-critical', slotId: 'sensor-2', system: 'Sensors', level: 2, expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'system-critical', slotId: 'sensor-2', system: 'Sensors', level: 2, context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
-        expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'set-system-critical-level', system: 'Sensors', level: 2,
             target: 'pending',
-        }));
+        }), jasmine.any(Object));
     });
 
     it('publishes and clears the original heat-drag overlay state', () => {
         const marker = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         service.handle(member, {
-            kind: 'heat-preview', heat: 6, baselineHeat: 2, element: marker, expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'heat-preview', heat: 6, baselineHeat: 2, element: marker, context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(service.heatPreview('unit-1')).toEqual({ element: marker, heat: 6, baselineHeat: 2 });
         expect(service.isPickerOpen('unit-1')).toBeTrue();
 
         service.handle(member, {
-            kind: 'heat-preview-end', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'heat-preview-end', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         expect(service.heatPreview('unit-1')).toBeNull();
     });
 
@@ -466,26 +513,26 @@ describe('PageViewerMekInteractionService', () => {
             heat: { ...currentSnapshot.heat, heatsinksOff: 3 },
         } as MekRecordSheetSnapshot;
         service.handle(member, {
-            kind: 'heat-sinks-off', expectedRevision: 1,
-        } as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'heat-sinks-off', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(numericConfig).toEqual(jasmine.objectContaining({
             min: -7, max: 3, selected: 0, title: 'Active Heatsinks',
         }));
         numericConfig!.onPick({ value: -2 });
         await settleAsyncHandlers();
-        expect(force.dispatchMekUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+        expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'set-heatsinks-off', heatsinksOff: 5,
-        }));
+        }), jasmine.any(Object));
     });
 
     it('toggles manual shutdown state without declaring a PSR action', async () => {
         service.handle(member, {
-            kind: 'shutdown', expectedRevision: 1,
-        } as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'shutdown', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
-        expect(force.dispatchMekUnitCommand.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
+        expect(force.dispatchUnitCommand.calls.argsFor(0)[1]).toEqual(jasmine.objectContaining({
             type: 'set-mek-shutdown-state',
             shutdown: true,
         }));
@@ -495,11 +542,11 @@ describe('PageViewerMekInteractionService', () => {
             conditions: ['shutdown'],
         } as MekRecordSheetSnapshot;
         service.handle(member, {
-            kind: 'shutdown', expectedRevision: 2,
-        } as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'shutdown', context: editContext(2),
+        } as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
-        expect(force.dispatchMekUnitCommand.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
+        expect(force.dispatchUnitCommand.calls.argsFor(1)[1]).toEqual(jasmine.objectContaining({
             type: 'set-mek-shutdown-state',
             shutdown: false,
         }));
@@ -507,15 +554,15 @@ describe('PageViewerMekInteractionService', () => {
 
     it('edits one crew skill through the crew-profile CAS boundary', async () => {
         service.handle(member, {
-            kind: 'crew-skill', positionId: 'crew-0', skill: 'gunnery', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'crew-skill', positionId: 'crew-0', skill: 'gunnery', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(choiceConfig).toEqual(jasmine.objectContaining({ selected: 3, suggestedStyle: 'radial', targetType: 'skill' }));
         choiceConfig!.onPick({ label: '2', value: 2 });
         await settleAsyncHandlers();
         expect(force.replaceUnitCrewProfile).toHaveBeenCalledWith('unit-1', [
             { positionId: 'crew-0', name: 'Morgan', gunnery: 2, piloting: 4 },
-        ]);
+        ], editContext(1));
     });
 
     it('moves the person identity when the sheet swaps into a vacant second station', async () => {
@@ -526,23 +573,42 @@ describe('PageViewerMekInteractionService', () => {
         force.getAssignedPerson = jasmine.createSpy().and.returnValue({ id: 'person-morgan' });
         force.assignPersonToUnit = jasmine.createSpy().and.resolveTo(true);
         const controls = service as unknown as {
-            swapCrewPositions(member: CBTMekForceMember, occurrence: number): Promise<void>;
+            swapCrewPositions(member: CBTMekForceMember, occurrence: number, context: typeof currentSnapshot.editContext): Promise<void>;
         };
-        await controls.swapCrewPositions(member, 0);
+        await controls.swapCrewPositions(member, 0, editContext(1));
         expect(force.assignPersonToUnit).toHaveBeenCalledWith('person-morgan', 'unit-1', 'crew-1');
         expect(force.replaceUnitCrewProfile).not.toHaveBeenCalled();
     });
 
+    it('retains the original target registry across an awaited inventory-mode edit', async () => {
+        const targeting = force.getAttackerTargeting('unit-1');
+        panel = { ...panel, components: panel.components.map(row => ({ ...row, mode: 'normal', modes: ['normal', 'rapid'] })) };
+        force.dispatchUnitCommand.and.callFake(async () => {
+            revision = 2;
+            currentSnapshot = recordSheetSnapshot(2);
+            force.getAttackerTargeting.and.returnValue({ ...targeting, registryRevision: 3 });
+            return { accepted: true, changed: true, state: editContext(2).state };
+        });
+        service.handle(member, {
+            kind: 'inventory-selection', componentIds: ['weapon-1'], mode: 'rapid', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith('unit-1', {
+            type: 'set-component-mode', componentId: 'weapon-1', mode: 'rapid',
+        }, editContext(1));
+        expect(force.dispatchAttackerTargeting).not.toHaveBeenCalled();
+    });
+
     it('routes an inventory range button to the attacker-targeting owner', async () => {
         service.handle(member, {
-            kind: 'inventory-selection', componentIds: ['weapon-1'], range: 'medium', expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'inventory-selection', componentIds: ['weapon-1'], range: 'medium', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
         expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'edit-attacker-targeting',
             edit: { kind: 'set-component-selection', componentId: 'weapon-1', selection: { kind: 'manual-range', range: 'medium' } },
-        }));
+        }), editContext(1), 2);
     });
 
     it('routes an authored physical-attack row through the typed action-selection owner', async () => {
@@ -558,8 +624,8 @@ describe('PageViewerMekInteractionService', () => {
         service.handle(member, {
             kind: 'action-selection',
             target: { kind: 'intrinsic', actionId: 'Kick' },
-            expectedRevision: 1,
-        } as unknown as MekRecordSheetInteraction, anchoredMouseEvent());
+            context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
         expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
@@ -569,14 +635,14 @@ describe('PageViewerMekInteractionService', () => {
                 target: { kind: 'intrinsic', actionId: 'Kick' },
                 selection: { kind: 'selected' },
             },
-        }));
+        }), editContext(1), undefined);
     });
 
     it('opens the reference-table dialog with the unit and active ruleset', () => {
         dialogs.createDialog.and.returnValue({ closed: { subscribe: () => undefined } } as any);
         service.handle(member, {
-            kind: 'reference-table', expectedRevision: 1,
-        } as MekRecordSheetInteraction, anchoredMouseEvent());
+            kind: 'reference-table', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(dialogs.createDialog).toHaveBeenCalledWith(jasmine.any(Function), jasmine.objectContaining({
             data: jasmine.objectContaining({
@@ -597,8 +663,8 @@ describe('PageViewerMekInteractionService', () => {
         spyOn(Math, 'random').and.returnValues(0, 0);
 
         service.handle(member, {
-            kind: 'random-hit', element: control, expectedRevision: 1,
-        } as MekRecordSheetInteraction, event);
+            kind: 'random-hit', element: control, context: editContext(1),
+        } as RecordSheetInteraction, event);
         directionalConfig!.onPick({ label: 'Front', value: 'front' });
 
         expect(svg.querySelector('.unitLocation')?.classList).toContain('random-hit-location-highlight');
@@ -617,8 +683,8 @@ describe('PageViewerMekInteractionService', () => {
         expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
 
         service.handle(member, {
-            kind: 'random-hit', element: control, expectedRevision: 1,
-        } as MekRecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
+            kind: 'random-hit', element: control, context: editContext(1),
+        } as RecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
 
         expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
         expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeFalse();
@@ -650,8 +716,8 @@ describe('PageViewerMekInteractionService', () => {
         spyOn(Math, 'random').and.returnValues(0.8, 0.8);
 
         service.handle(member, {
-            kind: 'random-hit', element: control, expectedRevision: 1,
-        } as MekRecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
+            kind: 'random-hit', element: control, context: editContext(1),
+        } as RecordSheetInteraction, new PointerEvent('pointerdown', { button: 0 }));
         directionalConfig!.onPick({ label: 'Front', value: 'front' });
 
         expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('LT');
@@ -683,6 +749,7 @@ function overlayManagerStub() {
 function recordSheetSnapshot(stateRevision: number): MekRecordSheetSnapshot {
     return {
         stateRevision,
+        editContext: editContext(stateRevision),
         identity: { form: 'biped' },
         locations: [{
             locationId: 'loc-ct', code: 'CT', maximumInternal: 10,

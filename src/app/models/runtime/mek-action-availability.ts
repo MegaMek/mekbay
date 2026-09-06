@@ -1,27 +1,24 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ComponentId, LocationId } from '../entity/entity-identifiers';
+import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type { ComponentId,LocationId } from '../entity/entity-identifiers';
 import type { MekLocation } from '../entity/types';
 import type { IntrinsicWeapon } from '../entity/types/weapon';
-import type { MekUnitQueryPort } from './unit-instance';
 import type { AttackerActionTarget } from './attacker-targeting-state';
-import {
-    type MekRuntimeIndex,
-    type MekIndexedCriticalSlot,
-    type MekIndexedEquipment,
-} from './mek-runtime-index';
-import { isGaussPoweredDown } from './mek-gauss-power';
-import { ppcCapacitorChargingForWeapon } from './component-ppc-capacitor';
-import type { CBTRuleset } from '../cbt-ruleset.model';
-import {
-    shieldBlocksComponentAttack,
-    shieldBlocksIntrinsicAttack,
-} from './component-shield-mode';
-import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { type CBTRuntimeEquipment } from './cbt-unit-runtime';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
+import { ppcCapacitorChargingForWeapon } from './component-ppc-capacitor';
+import {
+shieldBlocksComponentAttack,
+shieldBlocksIntrinsicAttack,
+} from './component-shield-mode';
+import { isGaussPoweredDown } from './mek-gauss-power';
 import { mekLocationDestructionParentId } from './mek-location-state-kernel';
+import { type MekIndexedCriticalSlot,type MekRuntimeIndex } from './mek-runtime-index';
+import type { MekUnitQueryPort } from './unit-instance';
 
 /** `configure-network` remains owned by the C3 encounter/runtime boundary. */
 export type MekAction =
@@ -142,7 +139,7 @@ function coreAmsExempt(
 }
 
 type ResolvedTarget =
-    | { readonly kind: 'component'; readonly definition: MekIndexedEquipment }
+    | { readonly kind: 'component'; readonly definition: CBTRuntimeEquipment }
     | { readonly kind: 'intrinsic'; readonly definition: IntrinsicWeapon };
 
 function resolveTarget(index: MekRuntimeIndex, target: AttackerActionTarget): ResolvedTarget | null {

@@ -1,31 +1,29 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { AmmoEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../equipment.model';
-import { weaponEnhancementFlag } from '../../weapon-enhancement.model';
-import type { EquipmentRegistry } from '../../equipment-lookup';
-import { createTestEquipmentRegistry } from '../../entity/testing/test-equipment-registry';
+import { asUnitUuid,type UnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import { CORE_2026_RULESET,type CBTRuleset } from '../../cbt-ruleset.model';
+import type { GyroType } from '../../entity/components/gyro-data';
+import type { MekEntity } from '../../entity/entities/mek/mek-entity';
 import { parseMtf } from '../../entity/parsers/mtf-parser';
 import { ParseContext } from '../../entity/parsers/parse-context';
-import type { MekEntity } from '../../entity/entities/mek/mek-entity';
-import type { GyroType } from '../../entity/components/gyro-data';
-import type { CockpitType } from '../../entity/types/cockpit';
+import { createTestEquipmentRegistry } from '../../entity/testing/test-equipment-registry';
 import type { EngineType } from '../../entity/types';
-import { asUnitUuid, type UnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
-import { CORE_2026_RULESET, type CBTRuleset } from '../../cbt-ruleset.model';
-import {
-    buildMekRuntimeIndex,
-    type MekRuntimeIndex,
-    type MekIndexedEquipment,
-} from '../mek-runtime-index';
-import { createMekHeatContextV2, mekHeatCapabilityV2 } from '../mek-heat-state-v2';
-import {
-    createMekMechanicsContextV2,
-    mekMechanicsContextCapabilityV2,
-} from '../mek-mechanics-context-v2';
-import { initializeUnitState, type InitializedUnitState } from '../unit-state-initializer';
-import { CBTUnitInstance } from '../unit-instance';
+import type { CockpitType } from '../../entity/types/cockpit';
+import type { EquipmentRegistry } from '../../equipment-lookup';
+import { AmmoEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from '../../equipment.model';
+import { weaponEnhancementFlag } from '../../weapon-enhancement.model';
+import { CBTUnit,type CBTMekUnit } from '../cbt-unit';
+import { type CBTRuntimeEquipment } from '../cbt-unit-runtime';
 import type { CBTEncounterSnapshot } from '../encounter-runtime';
+import { createMekHeatContextV2,mekHeatCapabilityV2 } from '../mek-heat-state-v2';
+import {
+createMekMechanicsContextV2,
+mekMechanicsContextCapabilityV2,
+} from '../mek-mechanics-context-v2';
+import { buildMekRuntimeIndex,type MekRuntimeIndex } from '../mek-runtime-index';
+import { createMekRuntimeBinding } from '../unit-instance';
+import { initializeUnitState,MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,type InitializedUnitState } from '../unit-state-initializer';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
@@ -44,9 +42,9 @@ export interface DirectMekRuntimeFixture {
     readonly equipment: EquipmentRegistry;
     readonly identity: UnitUuid;
     readonly initialized: InitializedUnitState;
-    readonly instance: CBTUnitInstance;
-    equipmentComponent(equipmentId: string): MekIndexedEquipment;
-    createInstance(instanceId: string): CBTUnitInstance;
+    readonly instance: CBTMekUnit;
+    equipmentComponent(equipmentId: string): CBTRuntimeEquipment;
+    createInstance(instanceId: string): CBTMekUnit;
 }
 
 /** One parsed MekEntity plus a separately owned pristine sparse runtime. */
@@ -505,7 +503,7 @@ function createFixture(
         deployment: { id: 'default' },
         scenario: { ...directFixtureScenario(options), ruleset },
     });
-    const createInstance = (id: string): CBTUnitInstance => {
+    const createInstance = (id: string): CBTMekUnit => {
         const scenario = directFixtureScenario(options);
         const heat = createMekHeatContextV2(entity, index, ruleset, scenario);
         const mechanics = createMekMechanicsContextV2(
@@ -520,20 +518,16 @@ function createFixture(
                 mechanics: mekMechanicsContextCapabilityV2(mechanics),
             })}`);
         }
-        return new CBTUnitInstance(
-            id,
-            initialized.baselineRef,
-            entity,
-            index,
-            ruleset,
-            initialized.state,
-            initialized.deployment.crewAssignment,
-            heat,
-            mechanics,
-        );
+        const prepared = createMekRuntimeBinding(entity, index, ruleset, initialized.state,
+            initialized.deployment.crewAssignment, heat, mechanics);
+        return new CBTUnit<'mek'>({ uuid: identity, instanceId: id, baselineRef: initialized.baselineRef,
+            runtime: { kind: 'mek', ...prepared, deployment: {
+                schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
+                values: initialized.deployment,
+            } } });
     };
     const instance = createInstance(instanceId);
-    const equipmentComponent = (equipmentId: string): MekIndexedEquipment => {
+    const equipmentComponent = (equipmentId: string): CBTRuntimeEquipment => {
         const component = [...index.components.values()].find(candidate =>
             candidate.kind === 'equipment' && candidate.mount.equipmentId === equipmentId);
         if (!component || component.kind !== 'equipment') {

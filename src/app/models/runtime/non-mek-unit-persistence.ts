@@ -1,49 +1,51 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { asUnitUuid,type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
-import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { asSourceHashCanary, type SourceHashCanary } from '../source-hash-canary';
-import type { EntityType } from '../entity/types';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { BaseEntity } from '../entity/base-entity';
 import { isNativeEntityType } from '../entity/codec-capabilities';
 import {
-    asArmorFaceId,
-    asComponentId,
-    asSystemDamageTrackId,
-    asCrewPositionId,
-    asLocationId,
-    type ArmorFaceId,
-    type ComponentId,
-    type SystemDamageTrackId,
-    type CrewPositionId,
-    type LocationId,
+asArmorFaceId,
+asComponentId,
+asCrewPositionId,
+asLocationId,
+asSystemDamageTrackId,
+type ArmorFaceId,
+type ComponentId,
+type CrewPositionId,
+type LocationId,
+type SystemDamageTrackId,
 } from '../entity/entity-identifiers';
+import type { EntityType } from '../entity/types';
 import type { EquipmentStatus } from '../equipment-status.model';
-import { requireUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
-import { deserializeUnitCover, serializeUnitCover, type SerializedUnitCover } from '../unit-cover.model';
+import { asSourceHashCanary,type SourceHashCanary } from '../source-hash-canary';
+import { requireUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
+import { deserializeUnitCover,serializeUnitCover,type SerializedUnitCover } from '../unit-cover.model';
+import {
+createPristineAttackerTargetingState,
+} from './attacker-targeting-state';
 import type { CrewAssignment } from './crew-assignment';
 import { assertCanonicalCrewAssignment } from './crew-assignment';
-import type { BaseEntity } from '../entity/base-entity';
-import type { CBTRuleset } from '../cbt-ruleset.model';
+import { isEndTurnCheckpoint,type EndTurnCheckpoint } from './end-turn-checkpoint';
+import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
+import { buildNonMekRuntimeIndex,type NonMekRuntimeIndex } from './non-mek-runtime-index';
 import {
-    serializeInstanceBaselineRef,
-    type ComponentRuntimeState,
-    type SerializedInstanceBaselineRef,
-} from './runtime-state';
-import {
-    NonMekUnitInstance,
-    freezeNonMekUnitState,
-    nonMekComponentStateModes,
-    type NonMekMovementDeclaration,
-    type NonMekUnitRuntimeState,
-    type NonMekEntityType,
+createNonMekRuntimeBinding,
+freezeNonMekUnitState,
+nonMekComponentStateModes,
+type NonMekEntityType,
+type NonMekMovementDeclaration,
+type NonMekRuntimeBinding,
+type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
-import { buildNonMekRuntimeIndex } from './non-mek-runtime-index';
 import {
-    createPristineAttackerTargetingState,
-} from './attacker-targeting-state';
-import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipment-row-order';
-import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
+serializeInstanceBaselineRef,
+type ComponentRuntimeState,
+type InstanceBaselineRef,
+type SerializedInstanceBaselineRef,
+} from './runtime-state';
 
 export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 7 as const;
 export const NON_MEK_DEPLOYMENT_SCHEMA_VERSION = 1 as const;
@@ -149,7 +151,11 @@ export interface SerializedNonMekUnit {
 }
 
 export interface SerializeNonMekUnitInput {
-    readonly instance: NonMekUnitInstance;
+    readonly entity: BaseEntity;
+    readonly index: NonMekRuntimeIndex;
+    readonly baselineRef: InstanceBaselineRef;
+    readonly instanceId: string;
+    readonly state: NonMekUnitRuntimeState;
     readonly uuid: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
     readonly deployment: SerializedNonMekDeployment;
@@ -194,12 +200,12 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
 }
 
 export function serializeNonMekUnit(input: SerializeNonMekUnitInput): SerializedNonMekUnit {
-    const entity = input.instance.getUnit();
+    const entity = input.entity;
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek serializer');
-    const state = input.instance.snapshot();
-    const index = input.instance.getIndex();
+    const state = input.state;
+    const index = input.index;
     if (input.uuid !== entity.uuid()
-        || input.instance.baselineRef.entity !== entity.uuid()) {
+        || input.baselineRef.entity !== entity.uuid()) {
         throw new Error('Non-Mek runtime identity changed before serialization');
     }
     assertCanonicalCrewAssignment(
@@ -256,10 +262,10 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
 
     return Object.freeze({
         schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
-        instanceId: input.instance.id,
+        instanceId: input.instanceId,
         entity: input.uuid,
         ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
-        baselineRefAtSave: serializeInstanceBaselineRef(input.instance.baselineRef),
+        baselineRefAtSave: serializeInstanceBaselineRef(input.baselineRef),
         deployment: freezeDeployment(input.deployment),
         family: Object.freeze({ kind: 'non-mek', entityType: entity.entityType }),
         stateRevision: state.stateRevision,
@@ -277,12 +283,12 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
     });
 }
 
-export function restoreNonMekUnit(
+export function restoreNonMekRuntime(
     saved: SerializedNonMekUnit,
     entity: BaseEntity,
     ruleset: CBTRuleset,
     forcedWithdrawal = true,
-): NonMekUnitInstance {
+): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState; baselineRef: InstanceBaselineRef }> {
     if (saved.schemaVersion !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         throw new Error(`Unsupported non-Mek unit schema ${String(saved.schemaVersion)}`);
     }
@@ -394,19 +400,15 @@ export function restoreNonMekUnit(
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         pendingCombat: restorePendingCombat(saved),
     });
-    return new NonMekUnitInstance(
-        saved.instanceId,
-        Object.freeze({
+    return Object.freeze({
+        baselineRef: Object.freeze({
             ...saved.baselineRefAtSave,
             ruleset,
             initialStateProfile: Object.freeze({ ...saved.baselineRefAtSave.initialStateProfile }),
         }),
-        entity,
-        ruleset,
-        state,
-        forcedWithdrawal,
-        saved.deployment.values.crewAssignment,
-    );
+        ...createNonMekRuntimeBinding(entity, ruleset, state, forcedWithdrawal,
+            saved.deployment.values.crewAssignment),
+    });
 }
 
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {

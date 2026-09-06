@@ -1,13 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { componentC3EmergencyMasterDefinition, componentC3EmergencyMasterFacts } from './component-c3-emergency-master';
 import type { ComponentId } from '../entity/entity-identifiers';
-import { asEncounterNetworkId, type EncounterNetwork } from './encounter-runtime';
+import { componentC3EmergencyMasterDefinition,componentC3EmergencyMasterFacts } from './component-c3-emergency-master';
+import { asEncounterNetworkId,type EncounterNetwork } from './encounter-runtime';
 import { projectEffectiveMekC3Networks } from './mek-c3-runtime';
 import {
-    createDirectC3MasterRuntimeFixture,
-    createDirectMekRuntimeFixture,
+createDirectC3MasterRuntimeFixture,
+createDirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 
 describe('effective Mek C3 runtime', () => {
@@ -17,15 +17,15 @@ describe('effective Mek C3 runtime', () => {
         const masterComponent = master.equipmentComponent('Test C3 Master');
         const emergencyComponent = emergency.equipmentComponent('Test C3 Emergency Master');
         const configured = network(
-            master.instance.id,
+            master.instance.instanceId,
             masterComponent.id,
-            emergency.instance.id,
+            emergency.instance.instanceId,
             emergencyComponent.id,
         );
         const configuredNetworks = [configured] as const;
         const units = [
-            { instanceId: master.instance.id, query: master.instance.query() },
-            { instanceId: emergency.instance.id, query: emergency.instance.query() },
+            { instanceId: master.instance.instanceId, query: master.instance.query() },
+            { instanceId: emergency.instance.instanceId, query: emergency.instance.query() },
         ];
 
         expect(projectEffectiveMekC3Networks(configuredNetworks, units)).toBe(configuredNetworks);
@@ -33,18 +33,17 @@ describe('effective Mek C3 runtime', () => {
         expect(master.instance.dispatch({
             type: 'set-component-status',
 
-
             componentId: masterComponent.id,
             status: 'destroyed',
             target: 'committed',
         }).accepted).toBeTrue();
 
         const effective = projectEffectiveMekC3Networks(configuredNetworks, [
-            { instanceId: master.instance.id, query: master.instance.query() },
-            { instanceId: emergency.instance.id, query: emergency.instance.query() },
+            { instanceId: master.instance.instanceId, query: master.instance.query() },
+            { instanceId: emergency.instance.instanceId, query: emergency.instance.query() },
         ]);
         expect(effective[0]?.endpoints).toEqual([{
-            instanceId: emergency.instance.id,
+            instanceId: emergency.instance.instanceId,
             componentId: emergencyComponent.id,
             role: 'master',
         }]);
@@ -58,7 +57,7 @@ describe('effective Mek C3 runtime', () => {
                 emergencyComponent.id,
             ),
             {
-                instanceId: emergency.instance.id,
+                instanceId: emergency.instance.instanceId,
                 encounter: () => ({ networks: effective }),
             },
         ).status).toBe('active');
@@ -70,15 +69,14 @@ describe('effective Mek C3 runtime', () => {
         const masterComponent = master.equipmentComponent('Test C3 Master');
         const emergencyComponent = emergency.equipmentComponent('Test C3 Emergency Master');
         const configured = network(
-            master.instance.id,
+            master.instance.instanceId,
             masterComponent.id,
-            emergency.instance.id,
+            emergency.instance.instanceId,
             emergencyComponent.id,
         );
         const configuredNetworks = [configured] as const;
         expect(master.instance.dispatch({
             type: 'set-component-status',
-
 
             componentId: masterComponent.id,
             status: 'destroyed',
@@ -87,14 +85,13 @@ describe('effective Mek C3 runtime', () => {
         expect(emergency.instance.dispatch({
             type: 'edit-c3-emergency-master',
 
-
             componentId: emergencyComponent.id,
             edit: { kind: 'toggle-requested', turningOn: false },
         }).accepted).toBeTrue();
 
         expect(projectEffectiveMekC3Networks(configuredNetworks, [
-            { instanceId: master.instance.id, query: master.instance.query() },
-            { instanceId: emergency.instance.id, query: emergency.instance.query() },
+            { instanceId: master.instance.instanceId, query: master.instance.query() },
+            { instanceId: emergency.instance.instanceId, query: emergency.instance.query() },
         ])).toBe(configuredNetworks);
     });
 
@@ -105,14 +102,13 @@ describe('effective Mek C3 runtime', () => {
         const emergencyComponent = emergency.equipmentComponent('Test C3 Emergency Master');
         const stealthComponent = emergency.equipmentComponent('Test Stealth');
         const configured = network(
-            master.instance.id,
+            master.instance.instanceId,
             masterComponent.id,
-            emergency.instance.id,
+            emergency.instance.instanceId,
             emergencyComponent.id,
         );
         expect(master.instance.dispatch({
             type: 'set-component-status',
-
 
             componentId: masterComponent.id,
             status: 'destroyed',
@@ -121,13 +117,11 @@ describe('effective Mek C3 runtime', () => {
         expect(emergency.instance.dispatch({
             type: 'set-stealth-state',
 
-
             componentId: stealthComponent.id,
             state: 'enabling',
         }).accepted).toBeTrue();
         expect(emergency.instance.dispatch({
             type: 'end-turn',
-
 
             policy: 'automatic',
         }).accepted).toBeTrue();
@@ -135,8 +129,8 @@ describe('effective Mek C3 runtime', () => {
 
         const configuredNetworks = [configured] as const;
         expect(projectEffectiveMekC3Networks(configuredNetworks, [
-            { instanceId: master.instance.id, query: master.instance.query() },
-            { instanceId: emergency.instance.id, query: emergency.instance.query() },
+            { instanceId: master.instance.instanceId, query: master.instance.query() },
+            { instanceId: emergency.instance.instanceId, query: emergency.instance.query() },
         ])).toBe(configuredNetworks);
     });
 });

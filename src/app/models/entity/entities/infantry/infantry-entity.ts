@@ -38,6 +38,8 @@ import {
 // InfantryEntity - conventional infantry platoons
 // ============================================================================
 
+export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 30;
+
 export class InfantryEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
     return ['Infantry', 'Field Guns'];
@@ -282,7 +284,10 @@ export class InfantryEntity extends InfantryBaseEntity {
 
   protected override computeStructureValues(_tonnage: number): Map<string, number> {
     const values = new Map<string, number>();
-    values.set('Infantry', this.squadSize() * this.squadCount());
+    const strength = this.squadSize() * this.squadCount();
+    // Preserve recognizable imported definitions while bounding their usable troop count.
+    values.set('Infantry', Number.isFinite(strength)
+      ? Math.max(0, Math.min(MAX_CONVENTIONAL_INFANTRY_STRENGTH, Math.floor(strength))) : 0);
     return values;
   }
 
@@ -315,16 +320,22 @@ export class InfantryEntity extends InfantryBaseEntity {
       });
     }
 
-    if (this.squadSize() <= 0) {
+    if (!Number.isSafeInteger(this.squadSize()) || this.squadSize() <= 0) {
       msgs.push({
         severity: 'error', category: 'general', code: 'INF_NO_SQUAD_SIZE',
-        message: 'Infantry squad size must be greater than 0',
+        message: 'Infantry squad size must be a positive integer',
       });
     }
-    if (this.squadCount() <= 0) {
+    if (!Number.isSafeInteger(this.squadCount()) || this.squadCount() <= 0) {
       msgs.push({
         severity: 'error', category: 'general', code: 'INF_NO_SQUAD_COUNT',
-        message: 'Infantry must have at least one squad',
+        message: 'Infantry squad count must be a positive integer',
+      });
+    }
+    if (this.squadSize() * this.squadCount() > MAX_CONVENTIONAL_INFANTRY_STRENGTH) {
+      msgs.push({
+        severity: 'error', category: 'general', code: 'INF_TOO_MANY_TROOPERS',
+        message: `Conventional infantry cannot exceed ${MAX_CONVENTIONAL_INFANTRY_STRENGTH} troops`,
       });
     }
 

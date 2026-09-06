@@ -2,157 +2,138 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EMPTY_FORCE_PERSONNEL, assignedForcePerson, createForcePerson, addForcePerson, assignForcePerson, updateForcePerson, detachForcePersonnel, removeUnitPersonnel, cloneForcePersonnel, transferForcePersonnel, restoreForcePersonnelEdit, forcePersonnelCrewAssignment, type ForcePerson, type ForcePersonnelSnapshot } from './force-personnel';
-import { unitCrewKind, type UnitCrewPolicy } from './unit-crew-policy';
-import { canonicalizeCrewAssignment } from './runtime/crew-assignment';
+import type { HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
+import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './runtime/unit-command';
+
+import { computed,type Injector } from '@angular/core';
+import { CBTUnitService } from '../services/cbt-unit.service';
+import type { DataService } from '../services/data.service';
+import { affectedPersonnelUnitIds,planPersonnelCrewEdits } from './cbt-force-personnel';
+import { GameSystem } from './common.model';
 import type { CrewMemberRuntimeState } from './crew-member.model';
 import { asCrewPositionId } from './entity/entity-identifiers';
-import { affectedPersonnelUnitIds, planPersonnelCrewEdits } from './cbt-force-personnel';
-import { computed, type Injector } from '@angular/core';
-import type { DataService } from '../services/data.service';
-import { forceMemberAdjustedValue, type CBTForceMember, type ForceMember } from './force-member.model';
-import type { SerializedCBTForce, SerializedForce } from './force-serialization';
-import { GameSystem } from './common.model';
-import type { UnitConditionKey } from './unit-condition.model';
+import { forceMemberAdjustedValue,type CBTForceMember,type ForceMember } from './force-member.model';
+import { addForcePerson,assignedForcePerson,assignForcePerson,cloneForcePersonnel,createForcePerson,detachForcePersonnel,EMPTY_FORCE_PERSONNEL,forcePersonnelCrewAssignment,removeUnitPersonnel,restoreForcePersonnelEdit,transferForcePersonnel,updateForcePerson,type ForcePersonnelSnapshot } from './force-personnel';
+import type { SerializedCBTForce,SerializedForce } from './force-serialization';
 import {
-    Force,
-    MAX_UNITS,
-    resolveSerializedFormation,
-    UnitGroup,
-    type CBTForceMutation,
-    type ForceOwnerRevisionFence,
-    type ForceGroupPatch,
-    type RestoredCBTForce,
+Force,
+MAX_UNITS,
+resolveSerializedFormation,
+UnitGroup,
+type CBTForceMutation,
+type ForceGroupPatch,
+type ForceOwnerRevisionFence,
+type RestoredCBTForce,
 } from './force.model';
+import { cloneMekForOwner } from './runtime/cbt-mek-unit';
+import { cloneNonMekForOwner } from './runtime/cbt-non-mek-unit';
+import { canonicalizeCrewAssignment } from './runtime/crew-assignment';
 import {
-    decodeCBTEncounterStateV2,
-    emptyCBTEncounterC3Snapshot,
-    encodeCBTEncounterStateV2,
-    freezeCBTEncounterC3Snapshot,
-    reduceTargetRegistry,
-    type CBTEncounterSnapshot,
-    type EncounterNetwork,
-    type TargetRegistryCommand,
-    type TargetRegistryCommandResult,
-    type TargetRegistrySnapshot,
+decodeCBTEncounterStateV2,
+emptyCBTEncounterC3Snapshot,
+encodeCBTEncounterStateV2,
+freezeCBTEncounterC3Snapshot,
+reduceTargetRegistry,
+type CBTEncounterSnapshot,
+type EncounterNetwork,
+type TargetRegistryCommand,
+type TargetRegistryCommandResult,
+type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
-    validateSerializedCBTForceV2,
-    type SerializedCBTEncounterStateV2,
-    type SerializedCBTForceV2,
+validateSerializedCBTForceV2,
+type SerializedCBTEncounterStateV2,
+type SerializedCBTForceV2,
 } from './runtime/persistence-v2';
 import { createUnitInstanceId } from './runtime/runtime-state';
-import { CBTUnitService } from '../services/cbt-unit.service';
-import { CBTMekUnit } from './runtime/cbt-mek-unit';
-import { CBTNonMekUnit } from './runtime/cbt-non-mek-unit';
-import { isCBTMekUnit, isCBTNonMekUnit, type CBTUnit } from './runtime/cbt-unit';
+import { captureUnitCommand,type CBTUnitCommand } from './runtime/unit-command';
+import { isUnitEditContextCurrent,type UnitEditContext } from './runtime/unit-edit-context';
+import type { UnitConditionKey } from './unit-condition.model';
+import { unitCrewKind,type UnitCrewPolicy } from './unit-crew-policy';
+
 import { jsonValuesEqual } from '../utils/json-value.util';
 import type { C3UnitPosition } from './c3-network.model';
+import type { ComponentId } from './entity/entity-identifiers';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTUnit } from './runtime/cbt-unit';
 import {
-    prepareCBTForcePersistenceV2 as prepareCurrentCBTForcePersistenceV2,
-    prepareDirectUnitAdmission,
-    type PreparedCBTForcePersistenceV2,
+prepareCBTForcePersistenceV2 as prepareCurrentCBTForcePersistenceV2,
+prepareDirectUnitAdmission,
+type PreparedCBTForcePersistenceV2,
 } from './runtime/force-persistence-boundary';
 import {
-    scenarioRulesFromOptions,
-    type DeploymentConfiguration,
-    type ScenarioRules,
+scenarioRulesFromOptions,
+type DeploymentConfiguration,
+type ScenarioRules,
 } from './runtime/unit-state-initializer';
-import type { ComponentId } from './entity/entity-identifiers';
-import type { NonMekUnitCommand } from './runtime/non-mek-unit-instance';
-import type {
-    CBTUnitAttackerTargetingCommand,
-    CBTUnitCommand,
-    CBTUnitSelectedWeaponFireCommand,
-} from './runtime/unit-instance';
-import { evaluateCBTMekRuntimeCapability } from './runtime/cbt-unit-validation';
-import { type CrewAssignment, type CrewAssignmentPosition } from './runtime/crew-assignment';
+
+import { DialogsService } from '../services/dialogs.service';
+import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
+import { OptionsService } from '../services/options.service';
+import { ToastService } from '../services/toast.service';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
-import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
-import type { EquipmentInteractionQueryContext } from './runtime/equipment-interaction';
-import { ToastService } from '../services/toast.service';
-import { DialogsService } from '../services/dialogs.service';
-import { OptionsService } from '../services/options.service';
 import type { CBTOptionalRules } from './options.model';
-import type { MekHeatAutomationPolicyV2 } from './runtime/mek-heat-state-v2';
-import {
-    prepareCBTForceRosterMutationPlan,
-    type CBTForceRosterQueryResult,
-    type CBTForceRosterCommand,
-    type CBTForceRosterCommandResult,
-    type CBTForceRosterCommandRejection,
-    type CBTForceRosterGroupMetadataPatch,
-    type CBTForceRosterMutationPlanResult,
-} from './runtime/cbt-force-roster-owner';
-import { calculateCBTForceBattleValues, type CBTForceBattleValueBreakdown } from './cbt-force-battle-value';
-import { hasNonMekRuntime, hasMekRuntime, type CBTUnitSnapshot } from './cbt-unit-snapshot';
-import { CBTUnitStore, type CBTUnitStoreSnapshot } from './cbt-unit-store';
+import { evaluateCBTMekRuntimeCapability } from './runtime/cbt-unit-validation';
+import { type CrewAssignment,type CrewAssignmentPosition } from './runtime/crew-assignment';
+import type { EquipmentInteractionQueryContext } from './runtime/equipment-interaction';
+
+import { calculateCBTForceBattleValues,type CBTForceBattleValueBreakdown } from './cbt-force-battle-value';
 import { publishC3EmergencyMasterNotices } from './cbt-force-c3';
-import { CBT_FORCE_UNASSIGNED_GROUP_ID, queryCBTForceRoster } from './runtime/cbt-force-roster';
+import { authorizeCBTForceTargetRegistryCommand } from './cbt-force-target-registry';
+import { hasMekRuntime,hasNonMekRuntime,type CBTUnitSnapshot } from './cbt-unit-snapshot';
+import { CBTUnitStore,type CBTUnitStoreSnapshot } from './cbt-unit-store';
+import { CBTForceMemberRegistry } from './runtime/cbt-force-member-registry';
 import {
-    projectMekRecordSheet,
-    projectMekUnitStatus,
-    type MekRecordSheetSnapshot,
-    type MekUnitStatusSnapshot,
-} from './runtime/mek-record-sheet';
-import { projectNonMekRecordSheet, type NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
-import { projectMekEquipmentPanel, type EquipmentPanelSnapshot } from './runtime/equipment-panel';
-import { projectNonMekEquipmentPanel } from './runtime/non-mek-equipment-panel';
+nextForceRevision,
+pruneRemovedUnitsFromEncounter,
+remapCBTForceCloneEnvelope,
+} from './runtime/cbt-force-persistence-helpers';
+import { CBT_FORCE_UNASSIGNED_GROUP_ID,queryCBTForceRoster } from './runtime/cbt-force-roster';
+import {
+prepareCBTForceRosterMutationPlan,
+type CBTForceRosterCommand,
+type CBTForceRosterCommandRejection,
+type CBTForceRosterCommandResult,
+type CBTForceRosterGroupMetadataPatch,
+type CBTForceRosterMutationPlanResult,
+type CBTForceRosterQueryResult,
+} from './runtime/cbt-force-roster-owner';
+import {
+captureMekComponentModes,
+changedComponentModeHistory,
+crewProfileHistory,
+forceHistory,
+historyCrewLabel,
+historyTargetLabel,
+mekCommandBoundary,
+nonMekCommandBoundary,
+selectedWeaponFireHistory,
+unitCommandHistory,
+unitHistory,
+type RuntimeHistoryInput,
+} from './runtime/cbt-force-runtime-history';
+import { CBTForceSession,type CapturedRuntimeCommandMutation } from './runtime/cbt-force-session';
+import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
+import { commandMayChangeBaseBattleValue,commandMayChangeOperationalC3 } from './runtime/cbt-force-unit-mutation-impact';
+import { readOnlyTargetRegistry } from './runtime/encounter-runtime';
+import { projectMekEquipmentPanel,type EquipmentPanelSnapshot } from './runtime/equipment-panel';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import {
-    RUNTIME_HISTORY_MESSAGE,
-    runtimeHistoryMessageUnitId,
-    type RuntimeHistoryTargetKind,
+projectMekRecordSheet,
+projectMekUnitStatus,
+type MekRecordSheetSnapshot,
+type MekUnitStatusSnapshot,
+} from './runtime/mek-record-sheet';
+import { projectMekTurnPanel,type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
+import { projectNonMekEquipmentPanel } from './runtime/non-mek-equipment-panel';
+import { projectNonMekRecordSheet,type NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
+import {
+RUNTIME_HISTORY_MESSAGE,
+runtimeHistoryMessageUnitId,
+type RuntimeHistoryTargetKind,
 } from './runtime/runtime-history';
-import {
-    captureMekComponentModes,
-    changedComponentModeHistory,
-    crewProfileHistory,
-    nonMekCommandBoundary,
-    nonMekCommandHistory,
-    forceHistory,
-    historyCrewLabel,
-    historyTargetLabel,
-    mekCommandBoundary,
-    mekCommandHistory,
-    selectedWeaponFireHistory,
-    unitHistory,
-    type RuntimeHistoryInput,
-} from './runtime/cbt-force-runtime-history';
-import { CBTForceSession, type CapturedRuntimeCommandMutation } from './runtime/cbt-force-session';
-import { projectMekTurnPanel, type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
-import { CBTForceMemberRegistry } from './runtime/cbt-force-member-registry';
-import { commandMayChangeBaseBattleValue, commandMayChangeOperationalC3 } from './runtime/cbt-force-mek-mutation-impact';
-import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
-import {
-    nextForceRevision,
-    pruneRemovedUnitsFromEncounter,
-    remapCBTForceCloneEnvelope,
-} from './runtime/cbt-force-persistence-helpers';
-import { authorizeCBTForceTargetRegistryCommand } from './cbt-force-target-registry';
-import { readOnlyTargetRegistry } from './runtime/encounter-runtime';
 
-import type {
-    AttackerTargetingCommandResult,
-    AttackerTargetingSnapshot,
-    CBTDirectUnitAdmissionRequest,
-    CBTDirectUnitAdmissionResult,
-    CBTForceEndTurnAllResult,
-    CBTForceTargetRegistryAuthority,
-    CBTMekUnitCommandResult,
-    CBTNonMekUnitCommandResult,
-    CBTUnitRepairResult,
-    CBTUnitTransferResult,
-    C3State,
-    InventoryControlTargetRosterRow,
-    CBTEquipmentChoiceCommand,
-    CBTEquipmentChoiceDispatchResult,
-    CBTEquipmentInteraction,
-    RuntimeUndoCommandResult,
-    SelectedWeaponFireCommandResult,
-} from './cbt-force.types';
-
+import type { AttackerTargetingCommandResult,AttackerTargetingSnapshot,C3State,CBTDirectUnitAdmissionRequest,CBTDirectUnitAdmissionResult,CBTEquipmentChoiceCommand,CBTEquipmentChoiceDispatchResult,CBTEquipmentInteraction,CBTForceEndTurnAllResult,CBTForceTargetRegistryAuthority,CBTForceUnitCommandResult,CBTUnitRepairResult,CBTUnitTransferResult,InventoryControlTargetRosterRow,RuntimeUndoCommandResult,SelectedWeaponFireCommandResult } from './cbt-force.types';
 
 type PreparedCBTForcePersistenceWithFence = PreparedCBTForcePersistenceV2 & Readonly<{
     unitStoreSnapshot: CBTUnitStoreSnapshot;
@@ -164,7 +145,6 @@ function withUnitStoreSnapshot(
 ): PreparedCBTForcePersistenceWithFence {
     return Object.freeze({ ...prepared, unitStoreSnapshot });
 }
-
 
 export class CBTForce extends Force<never> {
     override gameSystem: GameSystem = GameSystem.CBT;
@@ -192,7 +172,7 @@ export class CBTForce extends Force<never> {
         instanceId => this.unitStore.cbtUnit(instanceId),
     );
     /** Synchronous publication scope, restored when nested emissions return. */
-    private publishingMekCommand: Readonly<{ instanceId: string; command: CBTUnitCommand }> | undefined;
+    private publishingUnitCommand: Readonly<{ instanceId: string; command: CBTUnitCommand }> | undefined;
     private readonly unitCommandDispatcher: CBTForceUnitCommandDispatcher;
     private readonly adjustedBattleValues = computed(() => {
         this.memberRegistry.dependOnBattleValueInputs();
@@ -243,10 +223,7 @@ export class CBTForce extends Force<never> {
             instanceIds: () => this.unitStore.instanceIds(),
             snapshot: instanceId => this.getUnitSnapshot(instanceId),
             heatPolicy: () => this.currentHeatPolicy(),
-            dispatchMekCore: (instanceId, command) =>
-                this.dispatchMekUnitCommandCore(instanceId, command),
-            dispatchNonMekCore: (instanceId, command) =>
-                this.dispatchNonMekUnitCommandCore(instanceId, command),
+            dispatchCore: (instanceId, command) => this.dispatchUnitCommandCore(instanceId, command),
             endTurnForAllCore: () => this.endTurnForAllUnitsCore(),
         });
     }
@@ -501,20 +478,20 @@ export class CBTForce extends Force<never> {
                     Promise<readonly [string, CBTUnit]>
                 >(unit =>
                     isCBTMekUnit(unit)
-                        ? [CBTMekUnit.cloneForOwner(unit, scenario).then(candidate => {
-                            const movement = candidate.getInstance().query().mekMovementPsr();
+                        ? [cloneMekForOwner(unit, scenario).then(candidate => {
+                            const movement = candidate.query().mekMovementPsr();
                             if (movement.kind === 'unsupported') {
                                 throw new Error('Scenario rebinding made Mek movement unsupported');
                             }
-                            if (candidate.getInstance().snapshot().movementPsr.movement?.mode === 'sprint') {
+                            if (candidate.snapshot().movementPsr.movement?.mode === 'sprint') {
                                 if (movement.declaration?.legal !== true) {
-                                    const cleared = candidate.getInstance().dispatch({
+                                    const cleared = candidate.dispatch({
                                         type: 'clear-mek-movement',
                                     });
                                     if (!cleared.accepted) throw new Error('Invalid restored Sprint could not be cleared');
-                                } else if (candidate.getInstance().query().turnState().spotting) {
-                                    const turn = candidate.getInstance().query().turnState();
-                                    const cleared = candidate.getInstance().dispatch({
+                                } else if (candidate.query().turnState().spotting) {
+                                    const turn = candidate.query().turnState();
+                                    const cleared = candidate.dispatch({
                                         type: 'replace-turn-state',
                                         turn: { ...turn, spotting: false },
                                     });
@@ -526,7 +503,7 @@ export class CBTForce extends Force<never> {
                         : isCBTNonMekUnit(unit)
                             ? [Promise.resolve([
                                 unit.instanceId,
-                                CBTNonMekUnit.cloneForOwner(unit, scenario),
+                                cloneNonMekForOwner(unit, scenario),
                             ] as const)]
                             : []));
                 replacements = new Map(rows);
@@ -700,9 +677,9 @@ export class CBTForce extends Force<never> {
         let candidate: CBTUnit;
         try {
             candidate = isCBTMekUnit(sourceUnit)
-                ? await CBTMekUnit.cloneForOwner(sourceUnit, destinationScenario)
+                ? await cloneMekForOwner(sourceUnit, destinationScenario)
                 : isCBTNonMekUnit(sourceUnit)
-                    ? CBTNonMekUnit.cloneForOwner(sourceUnit, destinationScenario)
+                    ? cloneNonMekForOwner(sourceUnit, destinationScenario)
                     : sourceUnit;
             const targeting = candidate.planTargetingReconciliation(
                 target.queryInventoryControlTargetRegistry(),
@@ -1131,7 +1108,7 @@ export class CBTForce extends Force<never> {
             current: member?.currentBaseBattleValue() ?? this.getUnitCurrentBaseBattleValue(instanceId),
             adjusted: adjustedBattleValue,
         });
-        return projectMekRecordSheet(
+        return Object.freeze({ ...projectMekRecordSheet(
             unit.entity,
             unit.index,
             unit.ruleset,
@@ -1140,7 +1117,7 @@ export class CBTForce extends Force<never> {
             registry,
             battleValue,
             heatPolicy,
-        );
+        ), editContext: unit.editContext });
     }
 
     /** Small Entity + runtime projection for force-card condition badges. */
@@ -1164,7 +1141,7 @@ export class CBTForce extends Force<never> {
         }
         const crew = this.getUnitCrewAssignment(instanceId);
         if (!crew) throw new Error(`Non-Mek runtime ${instanceId} has no crew assignment`);
-        return projectNonMekRecordSheet(
+        return Object.freeze({ ...projectNonMekRecordSheet(
             unit.entity,
             unit.index,
             unit.state,
@@ -1172,8 +1149,8 @@ export class CBTForce extends Force<never> {
             adjustedBattleValue,
             pristineBattleValue,
             crew,
-            owned.getInstance().forcedWithdrawal,
-        );
+            owned.mechanics().forcedWithdrawal,
+        ), editContext: unit.editContext });
     }
 
     /** Entity + runtime equipment projection; no summary, SVG, mount, or runtime owner escapes. */
@@ -1204,14 +1181,14 @@ export class CBTForce extends Force<never> {
             unit.state,
             crew,
             registry,
-            owned.getInstance().forcedWithdrawal,
+            owned.mechanics().forcedWithdrawal,
         );
     }
 
     /** Entity + runtime turn projection; the legacy TurnState and sheet DOM are not inputs. */
     public getMekTurnPanelSnapshot(
         instanceId: string,
-        heatPolicy: MekHeatAutomationPolicyV2,
+        heatPolicy: HeatAutomationPolicy,
     ): MekTurnPanelSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         return unit && hasMekRuntime(unit) ? projectMekTurnPanel(
@@ -1361,140 +1338,59 @@ export class CBTForce extends Force<never> {
         return this.session.record(captured, history, boundary);
     }
 
-    public dispatchNonMekUnitCommand(
+    public dispatchUnitCommand(
         instanceId: string,
-        command: NonMekUnitCommand,
-    ): Promise<CBTNonMekUnitCommandResult> {
-        return this.unitCommandDispatcher.dispatchNonMek(instanceId, command);
+        command: CBTUnitCommand,
+        context?: UnitEditContext,
+    ): Promise<CBTForceUnitCommandResult> {
+        return this.unitCommandDispatcher.dispatch(instanceId, command, context);
     }
 
-    private dispatchNonMekUnitCommandCore(
+    private dispatchUnitCommandCore(
         instanceId: string,
-        command: NonMekUnitCommand,
-    ): Promise<CBTNonMekUnitCommandResult> {
-        const captured = Object.freeze({ ...command }) as NonMekUnitCommand;
+        command: CBTUnitCommand,
+    ): Promise<CBTForceUnitCommandResult> {
+        const requested = this.getUnitSnapshot(instanceId)?.editContext;
+        const captured = captureUnitCommand(command);
         return this.enqueueCBTMutation(() => {
-            const ready = this.unitStore.nonMekUnit(instanceId);
-            const beforeState = ready?.getInstance().snapshot();
-            const beforeMode = captured.kind === 'set-component-mode'
-                ? ready?.getInstance().componentMode(captured.componentId)
-                : undefined;
-            const capture = ready === null
-                ? null
-                : this.captureRuntimeCommandMutation([instanceId]);
-            const result = this.unitStore.dispatchNonMekUnitCommand(
-                instanceId,
-                captured,
-                this.readOnly(),
-            );
-            if (result.accepted && result.changed) {
-                if (capture === null || ready === null || beforeState === undefined) {
-                    throw new Error('Accepted non-Mek command has no captured state');
-                }
-                const changedUnitIds = this.recordRuntimeCommandMutation(
-                    capture,
-                    nonMekCommandHistory(
-                        instanceId,
-                        ready,
-                        captured,
-                        beforeState,
-                        ready.getInstance().snapshot(),
-                        captured.kind === 'set-component-mode'
-                            ? Object.freeze({
-                                before: beforeMode,
-                                after: ready.getInstance().componentMode(captured.componentId),
-                            })
-                            : undefined,
-                    ),
-                    nonMekCommandBoundary(captured),
-                );
-                this.reserveForceOwnerMutationIntent();
-                this.emitChangedFromReservedIntent(
-                    changedUnitIds.length > 0 ? changedUnitIds : [instanceId],
-                );
+            const ready = this.unitStore.cbtUnit(instanceId);
+            const before = this.getUnitSnapshot(instanceId);
+            if (!ready || !before) return Object.freeze({ accepted: true, changed: false, state: null });
+            if (!requested || !isUnitEditContextCurrent(requested, before.editContext)) {
+                return Object.freeze({ accepted: false, changed: false, state: ready.snapshot() });
             }
-            return result;
-        });
-    }
-
-    public dispatchMekUnitCommand(
-        instanceId: string,
-        command: CBTUnitCommand,
-    ): Promise<CBTMekUnitCommandResult> {
-        return this.unitCommandDispatcher.dispatchMek(instanceId, command);
-    }
-
-    private dispatchMekUnitCommandCore(
-        instanceId: string,
-        command: CBTUnitCommand,
-    ): Promise<CBTMekUnitCommandResult> {
-        return this.enqueueCBTMutation(() => {
-            const ready = this.unitStore.mekUnit(instanceId);
-            const beforeState = ready?.getInstance().snapshot();
-            const beforeMode = command.type === 'set-component-mode'
-                ? ready?.getInstance().query().componentMode(command.componentId)
-                : undefined;
+            const beforeMode = captured.type === 'set-component-mode'
+                ? before.query.componentMode(captured.componentId) : undefined;
             const emergencyMasterUnitIds = this.unitStore.c3.emergencyMasterUnitIds();
-            const capture = ready === null
-                ? null
-                : this.captureRuntimeCommandMutation(
-                    this.c3RuntimeMutationScope(instanceId, emergencyMasterUnitIds),
-                );
-            const configuredNetworks = this.c3Encounter.networks;
-            const c3EndTurn = command.type === 'end-turn'
-                ? this.unitStore.c3.planEmergencyMasterEndTurn(instanceId, configuredNetworks)
-                : null;
-            const reduction = this.unitStore.dispatchMekUnitCommand(
-                instanceId,
-                command,
-                this.readOnly(),
+            const capture = this.captureRuntimeCommandMutation(
+                this.c3RuntimeMutationScope(instanceId, emergencyMasterUnitIds),
             );
+            const networks = this.c3Encounter.networks;
+            const c3EndTurn = captured.type === 'end-turn'
+                ? this.unitStore.c3.planEmergencyMasterEndTurn(instanceId, networks) : null;
+            const reduction = this.unitStore.dispatchUnitCommand(instanceId, captured, this.readOnly());
             if (!reduction.accepted) return reduction;
             const settled = this.unitStore.c3.settleEmergencyMasterEndTurn(c3EndTurn);
-            const reconciled = this.unitStore.c3.reconcileEmergencyMasters(
-                configuredNetworks,
-                emergencyMasterUnitIds,
-            );
+            const reconciled = this.unitStore.c3.reconcileEmergencyMasters(networks, emergencyMasterUnitIds);
             const toast = this.injector.get(ToastService);
             publishC3EmergencyMasterNotices(settled.notices, toast);
             publishC3EmergencyMasterNotices(reconciled.notices, toast);
-            const changed = reduction.changed
-                || settled.changedUnitIds.length > 0
-                || reconciled.changedUnitIds.length > 0;
+            const changed = reduction.changed || settled.changedUnitIds.length > 0 || reconciled.changedUnitIds.length > 0;
+            const after = this.getUnitSnapshot(instanceId)!;
             if (changed) {
-                if (capture === null || ready === null || beforeState === undefined) {
-                    throw new Error('Accepted Mek command has no captured state');
-                }
-                const changedUnitIds = this.recordRuntimeCommandMutation(
-                    capture,
-                    mekCommandHistory(
-                        instanceId,
-                        ready,
-                        command,
-                        beforeState,
-                        ready.getInstance().snapshot(),
-                        command.type === 'set-component-mode'
-                            ? Object.freeze({
-                                before: beforeMode,
-                                after: ready.getInstance().query().componentMode(command.componentId),
-                            })
-                            : undefined,
-                    ),
-                    mekCommandBoundary(command, ready.getInstance().snapshot()),
-                );
+                const modeChange = captured.type === 'set-component-mode'
+                    ? { before: beforeMode, after: after.query.componentMode(captured.componentId) } : undefined;
+                const history = unitCommandHistory(instanceId, ready, captured, before, after, modeChange);
+                const boundary = hasMekRuntime(after)
+                    ? mekCommandBoundary(captured, after.state) : nonMekCommandBoundary(captured);
+                const changedUnitIds = this.recordRuntimeCommandMutation(capture, history, boundary);
                 this.reserveForceOwnerMutationIntent();
-                const previousPublication = this.publishingMekCommand;
-                this.publishingMekCommand = { instanceId, command };
-                try {
-                    this.emitChangedFromReservedIntent(changedUnitIds.length > 0 ? changedUnitIds : [instanceId]);
-                } finally {
-                    this.publishingMekCommand = previousPublication;
-                }
+                const previous = this.publishingUnitCommand;
+                this.publishingUnitCommand = { instanceId, command: captured };
+                try { this.emitChangedFromReservedIntent(changedUnitIds.length ? changedUnitIds : [instanceId]); }
+                finally { this.publishingUnitCommand = previous; }
             }
-            const runtime = this.unitStore.mekUnit(instanceId)?.getInstance();
-            return runtime
-                ? Object.freeze({ ...reduction, changed, state: runtime.snapshot() })
-                : reduction;
+            return Object.freeze({ ...reduction, changed, state: ready.snapshot() });
         });
     }
 
@@ -1528,11 +1424,16 @@ export class CBTForce extends Force<never> {
     }
 
     /** Existing profile editors use the same atomic personnel transaction as assignment commands. */
-    public async replaceUnitCrewProfile(instanceId: string, positions: readonly CrewAssignmentPosition[]): Promise<CrewAssignment | null> {
+    public async replaceUnitCrewProfile(
+        instanceId: string,
+        positions: readonly CrewAssignmentPosition[],
+        context = this.getUnitSnapshot(instanceId)?.editContext,
+    ): Promise<CrewAssignment | null> {
         const captured = structuredClone(positions);
         const accepted = await this.applyPersonnelEdit(before => {
             const unit = this.unitStore.cbtUnit(instanceId);
-            if (!unit) return null;
+            const current = this.getUnitSnapshot(instanceId)?.editContext;
+            if (!unit || !context || !current || !isUnitEditContextCurrent(context, current)) return null;
             const policy = this.getUnitCrewPolicy(instanceId);
             const profile = canonicalizeCrewAssignment(unit.getIndex().crewPositions, { schemaVersion: 1, positions: captured });
             const previous = unit.getCrewAssignment();
@@ -1633,10 +1534,17 @@ export class CBTForce extends Force<never> {
     public async dispatchAttackerTargeting(
         instanceId: string,
         command: CBTUnitAttackerTargetingCommand,
+        context = this.getUnitSnapshot(instanceId)?.editContext,
+        registryRevision = this.queryInventoryControlTargetRegistry().revision,
     ): Promise<AttackerTargetingCommandResult> {
         const capturedCommand = structuredClone(command);
         const capturedInstanceId = instanceId;
         return this.enqueueCBTMutation(() => {
+            const current = this.getUnitSnapshot(capturedInstanceId);
+            if (!current || !context || !isUnitEditContextCurrent(context, current.editContext)
+                || registryRevision !== this.queryInventoryControlTargetRegistry().revision) {
+                return Object.freeze({ accepted: false, changed: false, state: current?.state ?? null });
+            }
             const result = this.unitStore.dispatchAttackerTargeting(
                 capturedInstanceId,
                 capturedCommand,
@@ -1692,10 +1600,19 @@ export class CBTForce extends Force<never> {
     public async fireSelectedWeapons(
         instanceId: string,
         command: CBTUnitSelectedWeaponFireCommand,
+        context = this.getUnitSnapshot(instanceId)?.editContext,
     ): Promise<SelectedWeaponFireCommandResult> {
         const capturedCommand = structuredClone(command);
         const capturedInstanceId = instanceId;
+        const registryRevision = this.queryInventoryControlTargetRegistry().revision;
+        const networks = this.c3Encounter.networks;
         return this.enqueueCBTMutation(() => {
+            const current = this.getUnitSnapshot(capturedInstanceId);
+            if (!current || !context || !isUnitEditContextCurrent(context, current.editContext)
+                || registryRevision !== this.queryInventoryControlTargetRegistry().revision
+                || networks !== this.c3Encounter.networks) {
+                return Object.freeze({ accepted: false, changed: false, state: current?.state ?? null, prototypeHeat: Object.freeze([]) });
+            }
             const ready = this.unitStore.cbtUnit(capturedInstanceId);
             const capture = ready === null
                 ? null
@@ -1740,10 +1657,15 @@ export class CBTForce extends Force<never> {
 
     public async dispatchEquipmentChoice(
         command: CBTEquipmentChoiceCommand,
+        context = this.getUnitSnapshot(command.instanceId)?.editContext,
     ): Promise<CBTEquipmentChoiceDispatchResult> {
         const capturedCommand = Object.freeze({ ...command });
         return this.enqueueCBTMutation(async () => {
             const selectedId = capturedCommand.instanceId;
+            const current = this.getUnitSnapshot(selectedId);
+            if (!current || !context || !isUnitEditContextCurrent(context, current.editContext)) {
+                return Object.freeze({ accepted: false, changed: false, reason: 'OWNER_CHANGED' });
+            }
             const selectedUnit = this.unitStore.cbtUnit(selectedId);
             const mutationScope = selectedUnit && isCBTMekUnit(selectedUnit)
                 ? this.c3RuntimeMutationScope(selectedId)
@@ -1828,7 +1750,7 @@ export class CBTForce extends Force<never> {
         });
     }
 
-    private currentHeatPolicy(): MekHeatAutomationPolicyV2 {
+    private currentHeatPolicy(): HeatAutomationPolicy {
         const mode = this.injector.get(OptionsService, null, { optional: true })
             ?.cbtAutomationMode('heatAndDissipationResolution') ?? 'yes';
         return mode === 'yes' ? 'automatic' : 'manual';
@@ -1866,7 +1788,7 @@ export class CBTForce extends Force<never> {
     protected override onForceChanged(changedUnitIds: readonly string[] | null): void {
         // Runtime edits publish only the changed members and the dependency domains
         // their command can affect. Unrelated base BV and C3 projections stay cold.
-        const publication = this.publishingMekCommand;
+        const publication = this.publishingUnitCommand;
         const baseChanged = publication ? commandMayChangeBaseBattleValue(publication.command) : true;
         this.refreshForceMemberDependencies(
             changedUnitIds,

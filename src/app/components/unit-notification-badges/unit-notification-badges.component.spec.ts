@@ -8,13 +8,13 @@ import { TestBed } from '@angular/core/testing';
 import type { CBTMekUnitSnapshot } from '../../models/cbt-unit-snapshot';
 import type { MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+projectRuntimeFallTooltip,
+projectRuntimePendingNotification,
+UnitNotificationBadgesComponent,
+} from './unit-notification-badges.component';
 import type { RuntimeUnitNotificationSnapshot } from './unit-notification-runtime.util';
 import { projectRuntimeUnitNotifications } from './unit-notification-runtime.util';
-import {
-    projectRuntimeFallTooltip,
-    projectRuntimePendingNotification,
-    UnitNotificationBadgesComponent,
-} from './unit-notification-badges.component';
 
 describe('direct runtime unit notifications', () => {
     it('aggregates the complete queue and follows origin/next priority', () => {
@@ -232,6 +232,7 @@ function unitSnapshot(
         uuid: fixture.identity,
         ruleset: fixture.instance.ruleset(),
         crewAssignment: fixture.instance.query().crewAssignment(),
+        editContext: { owner: fixture.instance, state: fixture.instance.snapshot() },
         state: fixture.instance.snapshot(),
         query: fixture.instance.query(),
     });

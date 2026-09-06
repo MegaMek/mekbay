@@ -1,45 +1,48 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { compareText } from '../../utils/string.util';
-import type { EquipmentStatus } from '../equipment-status.model';
-import { CrewMember, type CrewMemberRuntimeState, type CrewMemberState } from '../crew-member.model';
-import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    CriticalSlotId,
-    LocationId,
-} from '../entity/entity-identifiers';
-import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import type { EntityTechBase, MekLocation } from '../entity/types';
-import { MiscEquipment } from '../equipment.model';
-import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { compareText } from '../../utils/string.util';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { CrewMember,type CrewMemberRuntimeState,type CrewMemberState } from '../crew-member.model';
+import type { MekEntity } from '../entity/entities/mek/mek-entity';
+import type {
+ArmorFaceId,
+ComponentId,
+CrewPositionId,
+CriticalSlotId,
+LocationId,
+} from '../entity/entity-identifiers';
+import type { EntityTechBase,MekLocation } from '../entity/types';
+import type { EquipmentStatus } from '../equipment-status.model';
+import { MiscEquipment } from '../equipment.model';
+import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
 import type { UnitConditionKey } from '../unit-condition.model';
-import type { MekHeatAutomationPolicyV2, MekHeatProjectionResultV2, MekHeatStateV2 } from './mek-heat-state-v2';
-import type { MekMovementPsrProjectionResultV2, MekMovementPsrStateV2 } from './mek-movement-psr-v2';
-import {
-    MEK_LOCATION_CONDITION_KEYS,
-    type MekUnitRuntimeState,
-    type MekLocationConditionKey,
-} from './runtime-state';
-import type { MekUnitQueryPort } from './unit-instance';
-import {
-    projectMekEquipmentComponents,
-    type EquipmentPanelComponent,
-    projectEquipmentTargets,
-    type EquipmentPanelTarget,
-    projectMekPhysicalAttackPresentation,
-    type MekPhysicalAttackPresentation,
-} from './equipment-panel';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
-import type { MekRuntimeIndex } from './mek-runtime-index';
+import {
+projectEquipmentTargets,
+projectMekEquipmentComponents,
+projectMekPhysicalAttackPresentation,
+type EquipmentPanelComponent,
+type EquipmentPanelTarget,
+type MekPhysicalAttackPresentation,
+} from './equipment-panel';
 import { mekAmmoLoadouts } from './mek-ammo';
-import { mekCriticalSlotHittable, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
+import { mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
+import type { MekHeatProjectionResultV2,MekHeatStateV2 } from './mek-heat-state-v2';
+import { projectMekLifeSupportPilotDamage,type MekLifeSupportPilotDamage } from './mek-life-support';
 import { mekLocationDestructionParentId } from './mek-location-state-kernel';
-import { projectMekLifeSupportPilotDamage, type MekLifeSupportPilotDamage } from './mek-life-support';
-import { isModularArmorEquipment, MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
+import type { MekMovementPsrProjectionResultV2,MekMovementPsrStateV2 } from './mek-movement-psr-v2';
+import type { MekRuntimeIndex } from './mek-runtime-index';
+import {
+MEK_LOCATION_CONDITION_KEYS,
+type MekLocationConditionKey,
+type MekUnitRuntimeState,
+} from './runtime-state';
+import type { UnitEditContext } from './unit-edit-context';
+import type { MekUnitQueryPort } from './unit-instance';
 
 export interface MekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -149,6 +152,7 @@ export interface MekUnitStatusSnapshot {
  * these facts; no sheet attribute or text node participates in this model.
  */
 export interface MekRecordSheetSnapshot {
+    readonly editContext: UnitEditContext;
     readonly entityUuid: UnitUuid;
     readonly ruleset: CBTRuleset;
     readonly stateRevision: number;
@@ -191,7 +195,7 @@ export interface MekRecordSheetSnapshot {
         unavailableUnits: number;
     }>;
     readonly heat: MekHeatStateV2;
-    readonly heatPolicy: MekHeatAutomationPolicyV2;
+    readonly heatPolicy: HeatAutomationPolicy;
     readonly heatProjection: MekHeatProjectionResultV2;
     readonly lifeSupport: MekLifeSupportPilotDamage;
     readonly destroyed: boolean;
@@ -237,8 +241,8 @@ export function projectMekRecordSheet(
     query: MekUnitQueryPort,
     targetRegistry: TargetRegistrySnapshot,
     suppliedBattleValue: MekRecordSheetBattleValueSnapshot | null,
-    heatPolicy: MekHeatAutomationPolicyV2 = 'manual',
-): MekRecordSheetSnapshot {
+    heatPolicy: HeatAutomationPolicy = 'manual',
+): Omit<MekRecordSheetSnapshot, 'editContext'> {
     if (state.stateRevision !== query.stateRevision) {
         throw new Error('Record-sheet state and query revisions do not match');
     }

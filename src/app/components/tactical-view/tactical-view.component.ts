@@ -1,94 +1,94 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { Overlay } from '@angular/cdk/overlay';
+import {
+ChangeDetectionStrategy,
+Component,
+DestroyRef,
+ElementRef,
+Injector,
+computed,
+effect,
+inject,
+signal,
+} from '@angular/core';
+import type { CBTUnitCommand } from '../../models/runtime/unit-command';
+import { type UnitEditContext } from '../../models/runtime/unit-edit-context';
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 import { UnitNameService } from '../../services/unit-name.service';
-import {
-    ChangeDetectionStrategy,
-    Component,
-    DestroyRef,
-    ElementRef,
-    Injector,
-    computed,
-    effect,
-    inject,
-    signal,
-} from '@angular/core';
-import { Overlay } from '@angular/cdk/overlay';
+import type { DirectRecordSheetInteraction } from '../page-viewer/record-sheet-interaction';
 
+import type {
+CBTEquipmentChoice,
+CBTEquipmentInteraction,
+} from '../../models/cbt-force.types';
 import {
-    type CBTForceMember,
-    isCBTForceMember,
-    isCBTMekForceMember,
+isCBTForceMember,
+isCBTMekForceMember,
+type CBTForceMember,
 } from '../../models/force-member.model';
 import type {
-    CBTEquipmentChoice,
-    CBTEquipmentInteraction,
-} from '../../models/cbt-force.types';
-import type {
-    EquipmentPanelComponent,
-    EquipmentPanelTarget,
-    MekPhysicalAttackRow,
+EquipmentPanelComponent,
+EquipmentPanelTarget,
+MekPhysicalAttackRow,
 } from '../../models/runtime/equipment-panel';
 import type {
-    MekRecordSheetArmorFace,
-    MekRecordSheetCriticalSlot,
-    MekRecordSheetCrewPosition,
-    MekRecordSheetLocation,
-    MekRecordSheetSnapshot,
+MekRecordSheetArmorFace,
+MekRecordSheetCrewPosition,
+MekRecordSheetCriticalSlot,
+MekRecordSheetLocation,
+MekRecordSheetSnapshot,
 } from '../../models/runtime/mek-record-sheet';
 import type {
-    NonMekRecordSheetArmorFace,
-    NonMekRecordSheetComponent,
-    NonMekRecordSheetCrewPosition,
-    NonMekRecordSheetDamageTrack,
-    NonMekRecordSheetLocation,
-    NonMekRecordSheetSnapshot,
+NonMekRecordSheetArmorFace,
+NonMekRecordSheetComponent,
+NonMekRecordSheetCrewPosition,
+NonMekRecordSheetDamageTrack,
+NonMekRecordSheetLocation,
+NonMekRecordSheetSnapshot,
 } from '../../models/runtime/non-mek-record-sheet';
-import type { NonMekUnitCommand } from '../../models/runtime/non-mek-unit-instance';
-import type { CBTUnitCommand } from '../../models/runtime/unit-instance';
+
+import { TooltipDirective } from '../../directives/tooltip.directive';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
+import { CrewMember,MAX_CREW_WOUNDS,type CrewMemberState } from '../../models/crew-member.model';
+import type { MekLocation } from '../../models/entity/types';
 import {
-    MEK_CREW_STATE_CONTROLS,
-    MEK_UNIT_CONDITION_CONTROLS,
+MEK_CREW_STATE_CONTROLS,
+MEK_UNIT_CONDITION_CONTROLS,
 } from '../../models/mek-record-sheet-controls';
+import type { UnitConditionKey } from '../../models/unit-condition.model';
 import {
-    crewStateDefinitions,
-    getUnitConditionDefinition,
-    unitConditionControls,
-    type UnitConditionControl,
+crewStateDefinitions,
+getUnitConditionDefinition,
+unitConditionControls,
+type UnitConditionControl,
 } from '../../models/unit-status-presentation';
-import { CrewMember, MAX_CREW_WOUNDS, type CrewMemberState } from '../../models/crew-member.model';
-import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
-import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
-import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
-import { OptionsService } from '../../services/options.service';
-import { ToastService } from '../../services/toast.service';
+import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
+import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
+import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
+import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
-import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
-import { TooltipDirective } from '../../directives/tooltip.directive';
+import { ToastService } from '../../services/toast.service';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 import {
-    mekCriticalLocationCells,
-    mekDamageLocationOrder,
+mekCriticalLocationCells,
+mekDamageLocationOrder,
 } from '../../utils/mek-location-layout.util';
 import { EquipmentDialogRuntimeController } from '../equipment-dialog/equipment-dialog-runtime.controller';
 import { WeaponTargetsOverlayController } from '../equipment-dialog/weapon-targets-overlay.controller';
-import { UnitIconComponent } from '../unit-icon/unit-icon.component';
-import type { TooltipLine } from '../tooltip/tooltip.component';
-import { composeMekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-summary.util';
-import { PageViewerStateService } from '../page-viewer/internal/page-viewer-state.service';
 import { PageViewerMekInteractionService } from '../page-viewer/internal/page-viewer-mek-interaction.service';
 import { PageViewerNonMekRuntimeService } from '../page-viewer/internal/page-viewer-non-mek-runtime.service';
 import { PageViewerOverlayService } from '../page-viewer/internal/page-viewer-overlay.service';
-import { PageViewerZoomPanService } from '../page-viewer/page-viewer-zoom-pan.service';
-import type { MekRecordSheetInteraction } from '../page-viewer/mek-record-sheet-binder';
-import type { NonMekRecordSheetInteraction } from '../page-viewer/non-mek-record-sheet-binder';
+import { PageViewerStateService } from '../page-viewer/internal/page-viewer-state.service';
 import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
-import type { UnitConditionKey } from '../../models/unit-condition.model';
-import type { MekLocation } from '../../models/entity/types';
+import { composeMekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-summary.util';
+import { PageViewerZoomPanService } from '../page-viewer/page-viewer-zoom-pan.service';
+import type { TooltipLine } from '../tooltip/tooltip.component';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import { TacticalArmorLayoutDirective } from './tactical-armor-layout.directive';
 import { TacticalPipMatrixDirective } from './tactical-pip-matrix.directive';
 import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component';
@@ -701,7 +701,7 @@ export class TacticalViewComponent {
             slotId: slot.slotId,
             componentIds,
             button: 'primary',
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, event);
     }
 
@@ -714,7 +714,7 @@ export class TacticalViewComponent {
             faceId: face.faceId,
             locationId: face.locationId,
             button: 'primary',
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, event);
     }
 
@@ -726,7 +726,7 @@ export class TacticalViewComponent {
             kind: 'internal',
             locationId: location.locationId,
             button: 'primary',
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, event);
     }
 
@@ -758,8 +758,8 @@ export class TacticalViewComponent {
         }
         this.nonMekInteractions.handle(member, {
             ...interaction,
-            expectedRevision: snapshot.stateRevision,
-        } as Extract<NonMekRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>, event);
+            context: snapshot.editContext,
+        } as Extract<DirectRecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>, event);
     }
 
     protected openNonMekTrackPicker(track: NonMekRecordSheetDamageTrack, event: MouseEvent): void {
@@ -769,7 +769,7 @@ export class TacticalViewComponent {
         this.nonMekInteractions.handle(member, {
             kind: 'damage-track',
             damageTrackId: track.damageTrackId,
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, event);
     }
 
@@ -777,8 +777,8 @@ export class TacticalViewComponent {
         const snapshot = this.mekSnapshot();
         if (!snapshot) return;
         await this.dispatchMekInteraction(key === 'shutdown'
-            ? { kind: 'shutdown', expectedRevision: snapshot.stateRevision }
-            : { kind: 'condition', condition: key, expectedRevision: snapshot.stateRevision });
+            ? { kind: 'shutdown', context: snapshot.editContext }
+            : { kind: 'condition', condition: key, context: snapshot.editContext });
     }
 
     protected async adjustMekArmor(face: MekRecordSheetArmorFace, delta: 1 | -1): Promise<void> {
@@ -789,7 +789,7 @@ export class TacticalViewComponent {
             faceId: face.faceId,
             locationId: face.locationId,
             button: delta > 0 ? 'primary' : 'secondary',
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, delta);
     }
 
@@ -800,7 +800,7 @@ export class TacticalViewComponent {
             kind: 'internal',
             locationId: location.locationId,
             button: delta > 0 ? 'primary' : 'secondary',
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, delta);
     }
 
@@ -812,7 +812,7 @@ export class TacticalViewComponent {
             slotId: slot.slotId,
             componentIds: slot.components.map(component => component.componentId),
             button: delta > 0 ? 'primary' : 'secondary',
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         }, delta);
     }
 
@@ -822,7 +822,7 @@ export class TacticalViewComponent {
         await this.dispatchMekInteraction({
             kind: 'heat',
             heat: Math.max(0, this.mekHeat(snapshot) + delta),
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         });
     }
 
@@ -835,7 +835,7 @@ export class TacticalViewComponent {
             kind: 'crew-wounds',
             positionId: current.positionId,
             wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
-            expectedRevision: snapshot.stateRevision,
+            context: snapshot.editContext,
         });
     }
 
@@ -854,7 +854,7 @@ export class TacticalViewComponent {
             wounds: current.state.wounds,
             unconscious: state === 'unconscious' ? !current.state.unconscious : current.state.unconscious,
             ejected: state === 'ejected' ? !current.state.ejected : current.state.ejected,
-        });
+        }, snapshot.editContext);
     }
 
     protected async adjustMekAmmo(
@@ -875,17 +875,17 @@ export class TacticalViewComponent {
                 componentId: current.componentId,
                 munitionKey: current.ammo.munitionKey,
                 remaining: Math.min(current.ammo.capacity, current.ammo.remaining + 1),
-            });
+            }, snapshot.editContext);
     }
 
     protected async toggleNonMekCondition(key: UnitConditionKey): Promise<void> {
         const snapshot = this.nonMekSnapshot();
         if (!snapshot) return;
         await this.sendNonMekCommand({
-            kind: 'set-condition',
+            type: 'set-condition',
             condition: key,
             active: !snapshot.conditions.includes(key),
-        });
+        }, snapshot.editContext);
     }
 
     protected async adjustNonMekArmor(face: NonMekRecordSheetArmorFace, delta: 1 | -1): Promise<void> {
@@ -893,17 +893,17 @@ export class TacticalViewComponent {
         if (!snapshot) return;
         await this.sendNonMekCommand(delta > 0
             ? {
-                kind: 'damage-armor',
+                type: 'damage-armor',
                 faceId: face.faceId,
                 amount: delta,
                 target: this.damageTarget(),
             }
             : {
-                kind: 'repair-armor',
+                type: 'repair-armor',
                 faceId: face.faceId,
                 amount: Math.abs(delta),
                 target: this.damageTarget(),
-            });
+            }, snapshot.editContext);
     }
 
     protected async adjustNonMekInternal(location: NonMekRecordSheetLocation, delta: 1 | -1): Promise<void> {
@@ -911,17 +911,17 @@ export class TacticalViewComponent {
         if (!snapshot) return;
         await this.sendNonMekCommand(delta > 0
             ? {
-                kind: 'damage-internal',
+                type: 'damage-internal',
                 locationId: location.locationId,
                 amount: delta,
                 target: this.damageTarget(),
             }
             : {
-                kind: 'repair-internal',
+                type: 'repair-internal',
                 locationId: location.locationId,
                 amount: Math.abs(delta),
                 target: this.damageTarget(),
-            });
+            }, snapshot.editContext);
     }
 
     protected async adjustNonMekTrack(track: NonMekRecordSheetDamageTrack, delta: 1 | -1): Promise<void> {
@@ -929,28 +929,28 @@ export class TacticalViewComponent {
         if (!snapshot) return;
         await this.sendNonMekCommand(delta > 0
             ? {
-                kind: 'damage-track',
+                type: 'damage-track',
                 damageTrackId: track.damageTrackId,
                 amount: delta,
                 target: this.damageTarget(),
                 timestamp: Date.now(),
             }
             : {
-                kind: 'repair-damage-track',
+                type: 'repair-damage-track',
                 damageTrackId: track.damageTrackId,
                 amount: Math.abs(delta),
                 target: this.damageTarget(),
-            });
+            }, snapshot.editContext);
     }
 
     protected async adjustNonMekHeat(delta: 1 | -1): Promise<void> {
         const snapshot = this.nonMekSnapshot();
         if (!snapshot?.heat.tracked) return;
         await this.sendNonMekCommand({
-            kind: 'set-heat',
+            type: this.damageTarget() === 'pending' ? 'set-pending-heat' : 'set-heat',
             heat: Math.max(0, this.nonMekHeat(snapshot) + delta),
-            target: this.damageTarget(),
-        });
+
+        }, snapshot.editContext);
     }
 
     protected async adjustNonMekAmmo(component: NonMekRecordSheetComponent, deltaRemaining: 1 | -1): Promise<void> {
@@ -959,10 +959,10 @@ export class TacticalViewComponent {
         if (!snapshot || !current?.ammo) return;
         const remaining = Math.max(0, Math.min(current.ammo.capacity, current.ammo.remaining + deltaRemaining));
         await this.sendNonMekCommand({
-            kind: 'set-ammo-spent',
+            type: 'set-ammo-spent',
             componentId: current.componentId,
             shotsSpent: current.ammo.capacity - remaining,
-        });
+        }, snapshot.editContext);
     }
 
     protected async toggleNonMekComponent(component: NonMekRecordSheetComponent): Promise<void> {
@@ -970,11 +970,11 @@ export class TacticalViewComponent {
         const current = snapshot?.components.find(candidate => candidate.componentId === component.componentId);
         if (!snapshot || !current) return;
         await this.sendNonMekCommand({
-            kind: 'set-component-status',
+            type: 'set-component-status',
             componentId: current.componentId,
             status: current.previewStatus === 'available' ? 'destroyed' : 'available',
             target: this.damageTarget(),
-        });
+        }, snapshot.editContext);
     }
 
     protected async setNonMekCrewWounds(
@@ -986,12 +986,12 @@ export class TacticalViewComponent {
         if (!snapshot || !current || !Number.isSafeInteger(wounds)) return;
         const boundedWounds = Math.max(1, Math.min(CREW_WOUND_STEPS.length, wounds));
         await this.sendNonMekCommand({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId: current.positionId,
             wounds: current.state.wounds === boundedWounds ? boundedWounds - 1 : boundedWounds,
             unconscious: current.state.unconscious,
             ejected: current.state.ejected,
-        });
+        }, snapshot.editContext);
     }
 
     protected async toggleNonMekCrewState(
@@ -1007,7 +1007,7 @@ export class TacticalViewComponent {
         if (!snapshot || !current) return;
         const active = CrewMember.from(current.state).hasState(selected);
         await this.sendNonMekCommand({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId: current.positionId,
             wounds: current.state.wounds,
             unconscious: selected === 'unconscious' || selected === 'stunned'
@@ -1015,7 +1015,7 @@ export class TacticalViewComponent {
                 : current.state.unconscious,
             ejected: selected === 'ejected' ? !active : current.state.ejected,
             ...(selected === 'killed' ? { dead: !active } : {}),
-        });
+        }, snapshot.editContext);
     }
 
     private inventoryComponentRow(
@@ -1087,7 +1087,7 @@ export class TacticalViewComponent {
     }
 
     private async dispatchMekInteraction(
-        interaction: MekRecordSheetInteraction,
+        interaction: DirectRecordSheetInteraction,
         delta?: number,
     ): Promise<void> {
         const member = this.member();
@@ -1099,20 +1099,20 @@ export class TacticalViewComponent {
             heatSinkCount: snapshot.heatSinks.count,
             heatPolicy: snapshot.heatPolicy,
         }, this.pendingDamage(), delta);
-        await this.sendMekCommand(command);
+        await this.sendMekCommand(command, interaction.context);
     }
 
-    private async sendMekCommand(command: CBTUnitCommand): Promise<void> {
+    private async sendMekCommand(command: CBTUnitCommand, context?: UnitEditContext): Promise<void> {
         const member = this.member();
         if (!isCBTMekForceMember(member) || this.readOnly()) return;
-        const result = await member.force.dispatchMekUnitCommand(member.id, command);
+        const result = await member.force.dispatchUnitCommand(member.id, command, context);
         if (!result.accepted) this.showRejectedEdit('This force is read-only.');
     }
 
-    private async sendNonMekCommand(command: NonMekUnitCommand): Promise<void> {
+    private async sendNonMekCommand(command: CBTUnitCommand, context?: UnitEditContext): Promise<void> {
         const member = this.member();
         if (!member || isCBTMekForceMember(member) || this.readOnly()) return;
-        const result = await member.force.dispatchNonMekUnitCommand(member.id, command);
+        const result = await member.force.dispatchUnitCommand(member.id, command);
         if (!result.accepted) this.showRejectedEdit('This force is read-only.');
     }
 

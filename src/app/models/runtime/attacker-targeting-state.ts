@@ -1,12 +1,12 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { compareText } from '../../utils/string.util';
 import { isPlainRecord } from '../../utils/json-value.util';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import { asComponentId, type ComponentId } from '../entity/entity-identifiers';
-import { asEncounterTargetId, MAX_ENCOUNTER_TARGETS, type EncounterTargetId } from './encounter-runtime';
-import { TN_CUSTOM_MODIFIER_MAX, TN_CUSTOM_MODIFIER_MIN, type TnRangeBracket } from '../target-number-calculator.model';
+import { compareText } from '../../utils/string.util';
+import { asComponentId,type ComponentId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
+import { TN_CUSTOM_MODIFIER_MAX,TN_CUSTOM_MODIFIER_MIN,type TnRangeBracket } from '../target-number-calculator.model';
+import { asEncounterTargetId,MAX_ENCOUNTER_TARGETS,type EncounterTargetId } from './encounter-runtime';
 
 export const ATTACKER_TARGETING_STATE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_ATTACKER_TARGET_DISTANCE = 1;
@@ -27,6 +27,10 @@ export const MAX_ATTACKER_MANUAL_TN_MAGNITUDE = Number.MAX_VALUE;
 export type AttackerActionTarget =
     | { readonly kind: 'component'; readonly componentId: ComponentId }
     | { readonly kind: 'intrinsic'; readonly actionId: string };
+
+export interface CBTUnitAttackerTargetingReconciliationPlan {
+    readonly nextTargeting: AttackerTargetingState;
+}
 
 /**
  * Only attacker-relative calculator inputs live here. Target movement, posture,

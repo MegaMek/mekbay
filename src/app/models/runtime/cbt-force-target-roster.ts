@@ -1,17 +1,17 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { getActiveStealthTnModifiers, type StealthEquipmentFacts } from '../stealth-equipment.model';
+import { getActiveStealthTnModifiers,type StealthEquipmentFacts } from '../stealth-equipment.model';
 import {
-    canTnTargetTypeBeLarge,
-    getTargetMovementBracketForDistance,
-    resolveTnTargetWaterState,
-    type TnTargetUnitType,
+canTnTargetTypeBeLarge,
+getTargetMovementBracketForDistance,
+resolveTnTargetWaterState,
+type TnTargetUnitType,
 } from '../target-number-calculator.model';
-import { isUnitBuildingLevel, isUnitWaterDepth } from '../unit-cover.model';
+import { isUnitBuildingLevel,isUnitWaterDepth } from '../unit-cover.model';
+import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
 import { asEncounterTargetId } from './encounter-runtime';
-import type { CBTNonMekUnit } from './cbt-non-mek-unit';
-import type { CBTMekUnit } from './cbt-mek-unit';
+
 import type { InventoryControlTargetRosterRow } from '../cbt-force.types';
 
 const OPFOR_TARGET_ID_PREFIX = 'opfor:';
@@ -21,7 +21,7 @@ export function mekTargetRosterRow(
     unit: CBTMekUnit,
 ): InventoryControlTargetRosterRow {
     const entity = unit.getUnit();
-    const query = unit.getInstance().query();
+    const query = unit.query();
     const turn = query.turnState();
     const movement = query.mekMovementPsrState().movement;
     const immobile = query.hasCondition('immobile');
@@ -87,8 +87,8 @@ export function entityTargetRosterRow(
     unit: CBTNonMekUnit,
 ): InventoryControlTargetRosterRow {
     const entity = unit.getUnit();
-    const runtime = unit.getInstance();
-    const turn = runtime.turnState();
+    const runtime = unit.query();
+    const turn = unit.snapshot().turn;
     const targetMovementDistance = turn.movement?.distance ?? null;
     const unitType = nonMekTargetUnitType(entity);
     const stealthEquipment: StealthEquipmentFacts[] = [];

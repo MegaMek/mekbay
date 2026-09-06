@@ -3,28 +3,28 @@
 
 import { ECMMode } from '../models/common.model';
 import {
-    componentEcmModeDefinition,
+componentEcmModeDefinition,
+ECMHandler,
 } from '../models/runtime/component-ecm-mode';
+import { EquipmentPowerHandler } from '../models/runtime/component-equipment-power';
 import {
-    applyHagWeaponTypes,
-    componentHagModeDefinition,
-    createComponentHagModeDefinition,
-    hagToHitAdjustments,
+applyHagWeaponTypes,
+componentHagModeDefinition,
+createComponentHagModeDefinition,
+HAG_FLAK_MODE,HAG_STANDARD_MODE,HagHandler,
+hagToHitAdjustments,
 } from '../models/runtime/component-hag-mode';
-import { componentModeDefinition, createComponentModeDefinition } from '../models/runtime/component-mode';
+import { componentModeDefinition,createComponentModeDefinition } from '../models/runtime/component-mode';
+import { StealthHandler } from '../models/runtime/component-stealth';
+import type {
+EquipmentInteractionDialogsService,
+EquipmentInteractionNotifications,
+} from '../models/runtime/equipment-interaction';
 import {
-    createDirectBapRuntimeFixture,
-    createDirectMekRuntimeFixture,
+createDirectBapRuntimeFixture,
+createDirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { WeaponType } from '../models/weapon-types.model';
-import type {
-    EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
-} from '../models/runtime/equipment-interaction';
-import { ECMHandler } from '../models/runtime/component-ecm-mode';
-import { HAG_FLAK_MODE, HAG_STANDARD_MODE, HagHandler } from '../models/runtime/component-hag-mode';
-import { StealthHandler } from '../models/runtime/component-stealth';
-import { EquipmentPowerHandler } from '../models/runtime/component-equipment-power';
 
 describe('direct V2 component-mode handlers', () => {
     it('keeps an active probe effective until its End-Turn power transition settles', () => {
@@ -54,8 +54,7 @@ describe('direct V2 component-mode handlers', () => {
         }));
         expect(fixture.instance.dispatch({
             type: 'end-turn',
-            
-            
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentMode(component.id)).toBe('disabled');
@@ -90,8 +89,7 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe('Off');
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            
-            
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('enabled');
@@ -118,8 +116,7 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().c3DisruptedByStealth()).toBeTrue();
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            
-            
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('disabled');
@@ -170,8 +167,7 @@ describe('direct V2 component-mode handlers', () => {
         for (const componentId of ecmIds) {
             expect(setup.runtime.dispatch({
                 type: 'set-component-mode',
-                
-                
+
                 componentId,
                 mode: ECMMode.OFF,
             }).accepted).toBeTrue();
@@ -182,8 +178,7 @@ describe('direct V2 component-mode handlers', () => {
 
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: ecmIds[0],
             mode: ECMMode.ECM,
         }).accepted).toBeTrue();
@@ -195,16 +190,14 @@ describe('direct V2 component-mode handlers', () => {
         )).toBeTrue();
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            
-            
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('enabled');
 
         expect(setup.runtime.dispatch({
             type: 'set-component-status',
-            
-            
+
             componentId: ecmIds[0],
             status: 'destroyed',
             target: 'pending',
@@ -219,8 +212,7 @@ describe('direct V2 component-mode handlers', () => {
         }
         expect(setup.runtime.dispatch({
             type: 'end-phase',
-            
-            
+
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('disabled');
     });
@@ -287,8 +279,7 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.ECM);
         expect(setup.runtime.dispatch({
             type: 'set-component-mode',
-            
-            
+
             componentId: angelId,
             mode: ECMMode.OFF,
         }).accepted).toBeTrue();
@@ -302,8 +293,7 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().componentMode(setup.component.id)).not.toBe(ECMMode.OFF);
         expect(setup.runtime.dispatch({
             type: 'end-turn',
-            
-            
+
             policy: 'automatic',
         }).accepted).toBeTrue();
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe(ECMMode.OFF);
@@ -356,7 +346,7 @@ function interactionInput(setup: ReturnType<typeof directModeSetup>) {
         index: setup.fixture.index,
         ruleset: setup.runtime.ruleset(),
         owner: {
-            instanceId: setup.runtime.id,
+            instanceId: setup.runtime.instanceId,
             encounter: () => ({}) as never,
         },
         componentId: setup.component.id,

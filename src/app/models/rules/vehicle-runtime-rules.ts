@@ -3,29 +3,30 @@
 
 import type { CrewAssignment } from '../runtime/crew-assignment';
 
-import { combineEquipmentStatuses, type EquipmentStatus } from '../equipment-status.model';
-import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
-import type { ComponentId } from '../entity/entity-identifiers';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { CrewMember,type CrewMemberState } from '../crew-member.model';
+import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import type { VehicleEntity } from '../entity/entities/vehicle/vehicle-entity';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import { STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
+import type { EquipmentStatus } from '../equipment-status.model';
 import { WeaponEquipment } from '../equipment.model';
 import { isMascEquipment } from '../escalating-equipment.model';
-import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import { isRamPlateEquipment } from '../physical-augmentation.model';
-import type { ToHitModifierBreakdownEntry } from './game-rules';
+import { projectComponentLocationStatuses } from '../runtime/component-status-projection';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
-import { projectNonMekComponentStatuses } from '../runtime/non-mek-component-status';
 import type {
-    NonMekUnitRuntimeState,
+NonMekUnitRuntimeState,
 } from '../runtime/non-mek-unit-instance';
-import { CrewMember, type CrewMemberState } from '../crew-member.model';
-import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { UnitConditionKey } from '../unit-condition.model';
 import { getDefaultAttackerMovementModifier } from '../target-number-calculator.model';
+import type { UnitConditionKey } from '../unit-condition.model';
 import {
-    calculateChargeDamage,
-    type ChargeDamageProjection,
+calculateChargeDamage,
+type ChargeDamageProjection,
 } from './charge-damage';
+import type { ToHitModifierBreakdownEntry } from './game-rules';
+import { type SystemDamageKind } from './system-damage-rules';
 
 export interface VehicleMotiveHit {
     readonly level: number;
@@ -83,16 +84,6 @@ export interface VehicleRuntimeRulesProjection {
     readonly stabilizerAffectedComponentIds: ReadonlySet<ComponentId>;
 }
 
-const STABILIZER_HIT_LOCATIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-    stabilizer_hit_front: Object.freeze(['FR', 'FRRS', 'FRLS']),
-    stabilizer_hit_rear: Object.freeze(['RR', 'RRRS', 'RRLS']),
-    stabilizer_hit_turret: Object.freeze(['TU']),
-    stabilizer_hit_left: Object.freeze(['LS', 'FRLS', 'RRLS']),
-    stabilizer_hit_right: Object.freeze(['RS', 'FRRS', 'RRRS']),
-    stabilizer_hit_turret_f: Object.freeze(['FT']),
-    stabilizer_hit_turret_r: Object.freeze(['TU']),
-});
-
 export function projectVehicleRuntimeRules(
     entity: VehicleEntity,
     index: NonMekRuntimeIndex,
@@ -102,9 +93,8 @@ export function projectVehicleRuntimeRules(
 ): VehicleRuntimeRulesProjection {
     const activeDamageTracks = [...index.damageTracks.values()]
         .filter(track => (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
-    const activeDamageTrackIds = new Set(activeDamageTracks.map(track => track.sheetId));
-    const hasDamage = (sheetId: string): boolean => activeDamageTrackIds.has(sheetId);
-    const rawCommanderHit = hasDamage('commander_hit');
+    const hasDamage = (system: SystemDamageKind): boolean => activeDamageTracks.some(track => track.system === system);
+    const rawCommanderHit = hasDamage('commander');
     const occupied = crewAssignment?.positions.map(position => position.positionId) ?? [...index.crewPositions.keys()];
     const vacant = index.crewPositions.size > 0 && occupied.length === 0;
     const crewKilled = occupied.some(positionId =>
@@ -117,26 +107,27 @@ export function projectVehicleRuntimeRules(
             .map(timestamp => Object.freeze({ level: track.motiveLevel!, timestamp }));
     }).sort((left, right) => left.timestamp - right.timestamp));
     const sensorHits = activeDamageTracks.reduce((highest, track) => {
-        const match = /^sensor_hit_(\d+)$/u.exec(track.sheetId);
-        return match ? Math.max(highest, Number(match[1])) : highest;
+        return track.system === 'sensors' ? Math.max(highest, track.stage ?? 0) : highest;
     }, 0);
-    const engineHit = activeDamageTracks.some(track => /^engine_hit_\d+$/u.test(track.sheetId));
-    const rotor = [...index.damageTracks.values()].find(track => track.sheetId === 'rotor');
+    const engineHit = hasDamage('engine');
+    const rotor = [...index.damageTracks.values()].find(track => track.system === 'rotor');
     const rotorHits = entity.unitType() === 'VTOL' && rotor !== undefined
         ? state.damageTracks.get(rotor.id)?.hits ?? 0
         : 0;
     const stabilizerLocations = new Set<string>();
     for (const track of activeDamageTracks) {
-        STABILIZER_HIT_LOCATIONS[track.sheetId]?.forEach(location => stabilizerLocations.add(location));
+        if (track.system === 'stabilizer' && track.scope !== undefined) {
+            stabilizerLocations.add(track.scope);
+        }
     }
 
-    const entityStatuses = projectNonMekComponentStatuses(index, state);
-    const baseStatuses = componentStatuses(entityStatuses, index, 'committed', engineHit);
     const previewEngineHit = [...index.damageTracks.values()].some(track =>
-        /^engine_hit_\d+$/u.test(track.sheetId)
+        track.system === 'engine'
         && (state.damageTracks.get(track.id)?.hits ?? 0)
             + (state.pendingCombat.damageTrackHits.get(track.id)?.hitDelta ?? 0) > 0);
-    const previewStatuses = componentStatuses(entityStatuses, index, 'preview', previewEngineHit);
+    const statuses = projectComponentLocationStatuses(index, state, { committed: engineHit, preview: previewEngineHit });
+    const baseStatuses = statuses.committed;
+    const previewStatuses = statuses.preview;
     const droneComponents = [...index.components.values()].filter(component =>
         isDroneOperatingSystemEquipment(component.mount.equipment));
     const hasDroneOperatingSystem = droneComponents.length > 0;
@@ -149,15 +140,15 @@ export function projectVehicleRuntimeRules(
         crewKilled,
         crewStunned,
         commanderHit: !hasDroneOperatingSystem && rawCommanderHit,
-        copilotHit: !hasDroneOperatingSystem && hasDamage('copilot_hit'),
+        copilotHit: !hasDroneOperatingSystem && hasDamage('copilot'),
         driverOrPilotHit: !hasDroneOperatingSystem
-            && (hasDamage('driver_hit') || hasDamage('pilot_hit')),
+            && (hasDamage('driver') || hasDamage('pilot')),
         engineHit,
         hasDroneOperatingSystem,
         hasWorkingSupercharger,
         sensorHits,
         rotorHits,
-        flightStabilizerHit: hasDamage('flight_stabilizer_hit'),
+        flightStabilizerHit: hasDamage('flight-stabilizer'),
         motiveHits,
         stabilizerLocations: new ImmutableSet(stabilizerLocations),
     });
@@ -183,7 +174,7 @@ export function projectVehicleRuntimeRules(
         if (sensorHits >= 4 && equipment instanceof WeaponEquipment
             && !component.mount.isPhysicalWeapon()) fireBlockedComponentIds.add(component.id);
         if (component.mount.getOccupiedLocations().some(location =>
-            stabilizerLocations.has(entity.componentLocationLabel(location)))) {
+            stabilizerLocations.has(location))) {
             stabilizerAffectedComponentIds.add(component.id);
         }
     }
@@ -224,27 +215,6 @@ export function projectVehicleRuntimeRules(
         fireBlockedComponentIds: new ImmutableSet(fireBlockedComponentIds),
         stabilizerAffectedComponentIds: new ImmutableSet(stabilizerAffectedComponentIds),
     });
-}
-
-function componentStatuses(
-    base: ReturnType<typeof projectNonMekComponentStatuses>,
-    index: NonMekRuntimeIndex,
-    perspective: 'committed' | 'preview',
-    engineHit: boolean,
-): Map<ComponentId, EquipmentStatus> {
-    const result = new Map<ComponentId, EquipmentStatus>();
-    for (const component of index.components.values()) {
-        const engineStatus: EquipmentStatus = engineHit
-            && component.mount.equipment?.hasFlag('F_ENERGY') === true
-            ? 'disabled'
-            : 'available';
-        result.set(component.id, combineEquipmentStatuses([
-            (perspective === 'preview' ? base.preview : base.committed).get(component.id)
-                ?? 'available',
-            engineStatus,
-        ]));
-    }
-    return result;
 }
 
 function vehicleMovement(

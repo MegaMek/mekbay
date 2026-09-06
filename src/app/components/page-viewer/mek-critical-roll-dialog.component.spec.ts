@@ -1,14 +1,15 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DIALOG_DATA,DialogRef } from '@angular/cdk/dialog';
+import { ComponentFixture,TestBed } from '@angular/core/testing';
 
 import type { CBTForce } from '../../models/cbt-force.model';
-import type { CriticalSlotId, LocationId } from '../../models/entity/entity-identifiers';
-import { CBTForceMember, type CBTMekForceMember } from '../../models/force-member.model';
-import type { MekCriticalRollPlanV2, MekCriticalRollProfileV2 } from '../../models/runtime/mek-critical-hit-v2';
+import type { CriticalSlotId,LocationId } from '../../models/entity/entity-identifiers';
 import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import { CBTForceMember,type CBTMekForceMember } from '../../models/force-member.model';
+import type { MekCriticalRollPlanV2,MekCriticalRollProfileV2 } from '../../models/runtime/mek-critical-hit-v2';
+import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 import { ToastService } from '../../services/toast.service';
 import { MekCriticalRollDialogComponent } from './mek-critical-roll-dialog.component';
 
@@ -23,9 +24,11 @@ describe('MekCriticalRollDialogComponent', () => {
     let profile: MekCriticalRollProfileV2;
     let plan: MekCriticalRollPlanV2;
     let stateRevision: number;
+    let editContext: ReturnType<typeof createUnitEditContextFixture>;
 
     beforeEach(async () => {
         stateRevision = 7;
+        editContext = createUnitEditContextFixture();
         profile = {
             sourceLocationId: LOCATION_ID,
             targetLocationId: LOCATION_ID,
@@ -45,20 +48,21 @@ describe('MekCriticalRollDialogComponent', () => {
             equipment: 'Medium Laser',
             armoredAbsorption: false,
         };
-        force = jasmine.createSpyObj<CBTForce>('CBTForce', ['getUnitSnapshot', 'dispatchMekUnitCommand']);
+        force = jasmine.createSpyObj<CBTForce>('CBTForce', ['getUnitSnapshot', 'dispatchUnitCommand']);
         force.getUnitSnapshot.and.callFake((() => ({
             entity: { entityType: 'Mek' },
+            editContext: editContext(stateRevision),
             query: {
                 get stateRevision() { return stateRevision; },
                 mekCriticalRollProfile: () => profile,
                 mekCriticalRoll: () => plan,
             },
         })) as unknown as CBTForce['getUnitSnapshot']);
-        force.dispatchMekUnitCommand.and.resolveTo({
+        force.dispatchUnitCommand.and.callFake(async () => ({
             accepted: true,
-            idempotent: false,
-            currentRevision: stateRevision + 1,
-        } as unknown as Awaited<ReturnType<CBTForce['dispatchMekUnitCommand']>>);
+            changed: true,
+            state: editContext(++stateRevision).state,
+        }));
         const member = new CBTForceMember(
             UNIT_ID,
             force,
@@ -107,9 +111,10 @@ describe('MekCriticalRollDialogComponent', () => {
     });
 
     it('dispatches the atomic V2 critical command', async () => {
+        const context = editContext(stateRevision);
         await fixture.componentInstance.onFinished({ results: [1, 1] });
 
-        expect(force.dispatchMekUnitCommand).toHaveBeenCalledOnceWith(
+        expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith(
             UNIT_ID,
             jasmine.objectContaining({
                 type: 'apply-mek-critical-roll',
@@ -117,11 +122,28 @@ describe('MekCriticalRollDialogComponent', () => {
                 results: [1, 1],
                 target: 'pending',
             }),
+            context,
         );
         expect(fixture.componentInstance.outcome()).toBe(
             plan as Extract<MekCriticalRollPlanV2, { readonly kind: 'applied' }>,
         );
         expect(fixture.componentInstance.appliedHits()).toBe(1);
+    });
+
+    it('discards a dice result after same-revision owner replacement', async () => {
+        editContext = createUnitEditContextFixture();
+        await fixture.componentInstance.onFinished({ results: [1, 1] });
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+        expect(fixture.componentInstance.appliedHits()).toBe(0);
+        expect(dialogRef.close).toHaveBeenCalledOnceWith({ completed: false });
+    });
+
+    it('keeps subsequent rolls tied to its accepted state', async () => {
+        await fixture.componentInstance.onFinished({ results: [1, 1] });
+        const context = editContext(stateRevision);
+        await fixture.componentInstance.onFinished({ results: [1, 1] });
+        expect(force.dispatchUnitCommand.calls.mostRecent().args[2]).toEqual(context);
+        expect(fixture.componentInstance.appliedHits()).toBe(2);
     });
 
     it('automatically retries when the selected slot is no longer applicable', async () => {
@@ -137,7 +159,7 @@ describe('MekCriticalRollDialogComponent', () => {
 
         await fixture.componentInstance.onFinished({ results: [1, 1] });
 
-        expect(force.dispatchMekUnitCommand).not.toHaveBeenCalled();
+        expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
         expect(fixture.componentInstance.outcome()).toBeNull();
         expect(roll).toHaveBeenCalledTimes(1);
     });

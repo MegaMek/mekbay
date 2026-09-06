@@ -1,20 +1,23 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
-import type { MekRecordSheetInteraction } from '../mek-record-sheet-binder';
-import {
-    recordSheetCommand,
-    recordSheetDamagePickerRange,
-    type MekRecordSheetCommandSource,
-} from '../mek-record-sheet-interaction.util';
-import { asComponentId } from '../../../models/entity/entity-identifiers';
 import { CrewMember } from '../../../models/crew-member.model';
+import { asComponentId } from '../../../models/entity/entity-identifiers';
+import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
+import {
+recordSheetCommand,
+recordSheetDamagePickerRange,
+type MekRecordSheetCommandSource,
+} from '../mek-record-sheet-interaction.util';
+import type { DirectRecordSheetInteraction } from '../record-sheet-interaction';
+
+const editContext = createUnitEditContextFixture();
 
 describe('page-viewer published Mek runtime commands', () => {
     const revision = 9 as MekRecordSheetSnapshot['stateRevision'];
     const snapshot = {
-        stateRevision: revision,
+        stateRevision: revision, editContext: editContext(revision),
         locations: [{
             locationId: 'loc-ct', code: 'CT', maximumInternal: 7,
             committedRemainingInternal: 5, previewRemainingInternal: 3,
@@ -44,12 +47,12 @@ describe('page-viewer published Mek runtime commands', () => {
 
     it('maps entity-owned armor IDs to pending or committed commands without SVG data', () => {
         const interaction = {
-            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', expectedRevision: revision,
-        } as unknown as MekRecordSheetInteraction;
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', context: editContext(revision),
+        } as unknown as DirectRecordSheetInteraction;
         expect(recordSheetCommand(interaction, source, true)).toEqual(jasmine.objectContaining({
             type: 'damage-armor', faceId: 'face-ct', amount: 1, target: 'pending',
         }));
-        expect(recordSheetCommand({ ...interaction, button: 'secondary' } as MekRecordSheetInteraction, source, false))
+        expect(recordSheetCommand({ ...interaction, button: 'secondary' } as DirectRecordSheetInteraction, source, false))
             .toEqual(jasmine.objectContaining({ type: 'repair-armor', faceId: 'face-ct', amount: 1, target: 'committed' }));
         expect(recordSheetCommand(interaction, source, true, 4)).toEqual(jasmine.objectContaining({ type: 'damage-armor', amount: 4 }));
         expect(recordSheetCommand(interaction, source, true, -2)).toEqual(jasmine.objectContaining({ type: 'repair-armor', amount: 2 }));
@@ -57,39 +60,39 @@ describe('page-viewer published Mek runtime commands', () => {
 
     it('derives picker bounds from entity maxima and runtime state', () => {
         const armor = {
-            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', expectedRevision: revision,
-        } as unknown as Extract<MekRecordSheetInteraction, { kind: 'armor' }>;
+            kind: 'armor', faceId: 'face-ct', locationId: 'loc-ct', button: 'primary', context: editContext(revision),
+        } as unknown as Extract<DirectRecordSheetInteraction, { kind: 'armor' }>;
         expect(recordSheetDamagePickerRange(armor, snapshot, false)).toEqual({ min: -2, max: 13, threshold: 8, title: 'CT Armor' });
         expect(recordSheetDamagePickerRange(armor, snapshot, true)).toEqual({ min: -4, max: 9, threshold: 6, title: 'CT Armor' });
         expect(recordSheetDamagePickerRange({
-            kind: 'critical', slotId: 'slot-ct-0', componentIds: [], button: 'primary', expectedRevision: revision,
-        } as unknown as Extract<MekRecordSheetInteraction, { kind: 'critical' }>, snapshot, true))
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: [], button: 'primary', context: editContext(revision),
+        } as unknown as Extract<DirectRecordSheetInteraction, { kind: 'critical' }>, snapshot, true))
             .toEqual({ min: -1, max: 0, title: 'CT Critical 1' });
     });
 
     it('maps critical, heat, and crew interactions to typed runtime commands', () => {
         expect(recordSheetCommand({
-            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['component-a'], button: 'primary', expectedRevision: revision,
-        } as unknown as MekRecordSheetInteraction, source, true)).toEqual(jasmine.objectContaining({
+            kind: 'critical', slotId: 'slot-ct-0', componentIds: ['component-a'], button: 'primary', context: editContext(revision),
+        } as unknown as DirectRecordSheetInteraction, source, true)).toEqual(jasmine.objectContaining({
             type: 'hit-critical', slotId: 'slot-ct-0', hits: 1, target: 'pending',
         }));
-        expect(recordSheetCommand({ kind: 'heat', heat: 12, expectedRevision: revision }, source, true))
+        expect(recordSheetCommand({ kind: 'heat', heat: 12, context: editContext(revision)}, source, true))
             .toEqual(jasmine.objectContaining({ type: 'set-pending-heat', heat: 12 }));
         expect(recordSheetCommand({
-            kind: 'crew-wounds', positionId: 'crew-0', wounds: 2, expectedRevision: revision,
-        } as unknown as MekRecordSheetInteraction, source, false)).toEqual(jasmine.objectContaining({
+            kind: 'crew-wounds', positionId: 'crew-0', wounds: 2, context: editContext(revision),
+        } as unknown as DirectRecordSheetInteraction, source, false)).toEqual(jasmine.objectContaining({
             type: 'set-crew-state', positionId: 'crew-0', wounds: 2, unconscious: true,
         }));
-        expect(recordSheetCommand({ kind: 'heat-sinks-off', expectedRevision: revision }, source, false, 4))
+        expect(recordSheetCommand({ kind: 'heat-sinks-off', context: editContext(revision)}, source, false, 4))
             .toEqual(jasmine.objectContaining({ type: 'set-heatsinks-off', heatsinksOff: 4 }));
-        expect(recordSheetCommand({ kind: 'condition', condition: 'prone', expectedRevision: revision }, source, false))
+        expect(recordSheetCommand({ kind: 'condition', condition: 'prone', context: editContext(revision)}, source, false))
             .toEqual(jasmine.objectContaining({ type: 'set-condition', condition: 'prone', active: false }));
     });
 
     it('maps authored shield tracks to bounded sparse runtime commands', () => {
         const interaction = {
             kind: 'shield', componentId: asComponentId('shield-la'), track: 'absorption',
-            button: 'primary', expectedRevision: revision,
+            button: 'primary', context: editContext(revision),
         } as const;
         expect(recordSheetDamagePickerRange(interaction, snapshot, false)).toEqual({
             min: 0, max: 4, title: 'LA Shield DA',
@@ -109,7 +112,7 @@ describe('page-viewer published Mek runtime commands', () => {
     });
 
     it('maps the manual shutdown control to transient state without declaring a PSR action', () => {
-        const interaction = { kind: 'shutdown', expectedRevision: revision } as MekRecordSheetInteraction;
+        const interaction = { kind: 'shutdown', context: editContext(revision)} as DirectRecordSheetInteraction;
         expect(recordSheetCommand(interaction, source, false)).toEqual(jasmine.objectContaining({
             type: 'set-mek-shutdown-state',
             shutdown: true,

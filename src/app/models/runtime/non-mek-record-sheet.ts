@@ -1,38 +1,46 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { EquipmentStatus } from '../equipment-status.model';
-import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    SystemDamageTrackId,
-    LocationId,
-} from '../entity/entity-identifiers';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { CBTRuleset } from '../cbt-ruleset.model';
+import { CrewMember,type CrewMemberRuntimeState,type CrewMemberState } from '../crew-member.model';
 import type { BaseEntity } from '../entity/base-entity';
+import type {
+ArmorFaceId,
+ComponentId,
+CrewPositionId,
+LocationId,
+SystemDamageTrackId,
+} from '../entity/entity-identifiers';
+import { STANDARD_MOVEMENT_CALCULATION,type EntityTechBase } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import {
-    isAeroEntity,
-    isInfantryFamilyEntity,
-    isProtoMekEntity,
-    isVehicleEntity,
+isAeroEntity,
+isInfantryEntity,
+isInfantryFamilyEntity,
+isProtoMekEntity,
+isVehicleEntity,
 } from '../entity/utils/entity-type-guards';
-import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { STANDARD_MOVEMENT_CALCULATION, type EntityTechBase } from '../entity/types';
+import type { EquipmentStatus } from '../equipment-status.model';
+import { projectAeroRuntimeRules,type AeroHeatEffects } from '../rules/aero-runtime-rules';
+import {
+projectConventionalInfantryCombat,
+type ConventionalInfantryCombatProfile,
+} from '../rules/conventional-infantry-combat-rules';
+import { projectInfantryRuntimeRules } from '../rules/infantry-runtime-rules';
+import { projectProtoMekRuntimeRules } from '../rules/protomek-runtime-rules';
+import type { SystemDamageKind } from '../rules/system-damage-rules';
+import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
+import type { UnitConditionKey } from '../unit-condition.model';
 import type { UnitType } from '../unit-summary.model';
-import { CrewMember, type CrewMemberRuntimeState, type CrewMemberState } from '../crew-member.model';
-import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
-import { hasVacantNonMekCrew, type NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import { projectComponentLocationStatuses } from './component-status-projection';
 import type { CrewAssignment } from './crew-assignment';
 import { entityAmmoLoadout } from './mek-ammo';
-import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
-import { projectProtoMekRuntimeRules } from '../rules/protomek-runtime-rules';
-import { projectInfantryRuntimeRules } from '../rules/infantry-runtime-rules';
-import { projectAeroRuntimeRules, type AeroHeatEffects } from '../rules/aero-runtime-rules';
-import { projectNonMekComponentStatuses } from './non-mek-component-status';
-import type { UnitConditionKey } from '../unit-condition.model';
 import { projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
+import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
+import { hasVacantNonMekCrew,type NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import { systemDamagePresentation } from './system-damage-presentation';
+import type { UnitEditContext } from './unit-edit-context';
 
 export interface NonMekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -71,6 +79,9 @@ export interface NonMekRecordSheetComponent {
 
 export interface NonMekRecordSheetDamageTrack {
     readonly damageTrackId: SystemDamageTrackId;
+    readonly system: SystemDamageKind;
+    readonly stage?: number;
+    readonly scope?: string;
     readonly sheetId: string;
     readonly label: string;
     readonly maximumHits: number;
@@ -94,6 +105,8 @@ export interface NonMekRecordSheetCrewPosition {
 
 /** Detached display/edit projection of one non-Mek BaseEntity plus sparse runtime state. */
 export interface NonMekRecordSheetSnapshot {
+    readonly editContext: UnitEditContext;
+    readonly infantry?: ConventionalInfantryCombatProfile;
     readonly entityUuid: UnitUuid;
     readonly stateRevision: number;
     readonly displayName: string;
@@ -145,7 +158,7 @@ export function projectNonMekRecordSheet(
     pristineBattleValue: number,
     crewAssignment?: CrewAssignment,
     forcedWithdrawal = true,
-): NonMekRecordSheetSnapshot {
+): Omit<NonMekRecordSheetSnapshot, 'editContext'> {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek record-sheet projection');
     const vehicleRules = isVehicleEntity(entity)
         ? projectVehicleRuntimeRules(entity, index, state, ruleset, crewAssignment)
@@ -159,7 +172,7 @@ export function projectNonMekRecordSheet(
     const aeroRules = isAeroEntity(entity)
         ? projectAeroRuntimeRules(entity, index, state, ruleset)
         : null;
-    const entityComponentStatuses = projectNonMekComponentStatuses(index, state);
+    const entityComponentStatuses = projectComponentLocationStatuses(index, state);
 
     const locations = [...index.locations.values()].map(location => {
         const locationState = state.locations.get(location.id);
@@ -182,9 +195,11 @@ export function projectNonMekRecordSheet(
         return Object.freeze({
             locationId: location.id,
             code: location.code,
-            sheetCode: location.sheetCode ?? '',
-            ...(location.combinedPips === true ? { combinedPips: true } : {}),
-            ...(location.soldierPips === true ? { soldierPips: true } : {}),
+            sheetCode: entity.entityType === 'BattleArmor'
+                ? location.code.replace('Trooper ', 'T')
+                : entity.componentLocationLabel(location.code),
+            ...(entity.entityType === 'BattleArmor' ? { combinedPips: true } : {}),
+            ...(entity.entityType === 'Infantry' ? { soldierPips: true } : {}),
             maximumInternal: location.internalPoints,
             remainingInternal: location.internalPoints - internalDamage,
             previewRemainingInternal: location.internalPoints
@@ -232,10 +247,11 @@ export function projectNonMekRecordSheet(
         const committedHits = committed?.hits ?? 0;
         return Object.freeze({
             damageTrackId: track.id,
-            sheetId: track.sheetId,
-            label: track.label,
+            system: track.system,
+            ...(track.stage === undefined ? {} : { stage: track.stage }),
+            ...(track.scope === undefined ? {} : { scope: track.scope }),
+            ...systemDamagePresentation(track),
             maximumHits: track.maximumHits,
-            ...(track.visibleHitPips === undefined ? {} : { visibleHitPips: track.visibleHitPips }),
             ...(track.motiveLevel === undefined ? {} : { motiveLevel: track.motiveLevel }),
             committedHits,
             previewHits: committedHits + (pending?.hitDelta ?? 0),
@@ -290,6 +306,7 @@ export function projectNonMekRecordSheet(
         || conditions.has('immobile');
     return Object.freeze({
         entityUuid: entity.uuid(),
+        ...(isInfantryEntity(entity) ? { infantry: projectConventionalInfantryCombat(entity) } : {}),
         stateRevision: state.stateRevision,
         displayName: entity.displayName(),
         unitType: entity.unitType(),

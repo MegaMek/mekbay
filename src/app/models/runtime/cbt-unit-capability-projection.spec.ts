@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ECMMode } from '../common.model';
-import { createEquipment, WeaponEquipment } from '../equipment.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { TestBipedMekEntity } from '../entity/testing/test-entities';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import { createEquipment,WeaponEquipment } from '../equipment.model';
 import type { UnitConditionKey } from '../unit-condition.model';
-import type { CBTUnitQueryPort } from './cbt-unit-runtime';
 import { projectCBTUnitTagEcmCapabilitySummary } from './cbt-unit-capability-projection';
-import { buildMekRuntimeIndex, componentIdForMount } from './mek-runtime-index';
+import type { CBTUnitQueryPort } from './cbt-unit-runtime';
+import { buildMekRuntimeIndex } from './mek-runtime-index';
+import { componentIdForMount } from './unit-runtime-index';
 
 describe('CBT unit capability projection', () => {
     it('derives light TAG and the selected ECM mode from Entity equipment', () => {

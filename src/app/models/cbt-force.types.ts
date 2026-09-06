@@ -1,34 +1,32 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ComponentId } from './entity/entity-identifiers';
 import type {
-    PickerChoiceColors,
-    PickerChoiceSelectionTone,
-    PickerDisplayType,
-    PickerValue,
+PickerChoiceColors,
+PickerChoiceSelectionTone,
+PickerDisplayType,
+PickerValue,
 } from '../components/picker/picker.interface';
 import type { TooltipType } from '../components/tooltip/tooltip.component';
-import type { TnTargetUnitType } from './target-number-calculator.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
-import type {
-    EquipmentInteractionHandlerId,
-    EquipmentInteractionKind,
-} from './runtime/equipment-interaction';
-import type {
-    EncounterTargetCalculatorState,
-    EncounterTargetId,
-} from './runtime/encounter-runtime';
-import type { MekUnitRuntimeState } from './runtime/runtime-state';
-import type { NonMekUnitRuntimeState } from './runtime/non-mek-unit-instance';
-import type { CBTUnitCommandResult, CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
-import type { DeploymentConfiguration } from './runtime/unit-state-initializer';
-import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
+import type { ComponentId } from './entity/entity-identifiers';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
+import type { CBTUnitCommandResult,CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
+import type {
+EncounterTargetCalculatorState,
+EncounterTargetId,
+} from './runtime/encounter-runtime';
+import type {
+EquipmentInteractionHandlerId,
+EquipmentInteractionKind,
+} from './runtime/equipment-interaction';
+import type { MekRuntimeCapabilityDecision } from './runtime/mek-runtime-capability';
 import type { RuntimeCommandEntry } from './runtime/runtime-command-session';
+import type { UnitEditContext } from './runtime/unit-edit-context';
+import type { DeploymentConfiguration } from './runtime/unit-state-initializer';
+import type { TnTargetUnitType } from './target-number-calculator.model';
 
 export type CBTForceTargetRegistryAuthority = 'user' | 'opfor-sync' | 'registry-reset';
-
 
 /** Detached target-ready projection; no runtime owner escapes. */
 export interface InventoryControlTargetRosterRow {
@@ -40,9 +38,8 @@ export interface InventoryControlTargetRosterRow {
     readonly projection: 'v2';
 }
 
-export type CBTNonMekUnitCommandResult = CBTUnitCommandResult<NonMekUnitRuntimeState | null>;
-export type CBTMekUnitCommandResult = Readonly<
-    CBTUnitCommandResult<MekUnitRuntimeState | null>
+export type CBTForceUnitCommandResult = Readonly<
+    CBTUnitCommandResult<CBTUnitRuntimeState | null>
     & { readonly prototypeHeat?: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[] }
 >;
 
@@ -119,7 +116,6 @@ export type C3State = 'none' | 'operational' | 'degraded';
 
 export type AttackerTargetingCommandResult = CBTUnitCommandResult<CBTUnitRuntimeState | null>;
 
-
 export type SelectedWeaponFireCommandResult =
     Readonly<AttackerTargetingCommandResult & {
         readonly prototypeHeat: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[];
@@ -166,7 +162,7 @@ export interface CBTEquipmentInteraction {
 }
 
 export type CBTEquipmentChoiceDispatchResult =
-    | { readonly accepted: true; readonly changed: boolean }
+    | { readonly accepted: true; readonly changed: boolean; readonly context: UnitEditContext }
     | {
         readonly accepted: false;
         readonly changed: false;

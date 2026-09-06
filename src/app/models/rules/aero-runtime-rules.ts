@@ -1,18 +1,19 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { CrewMemberState } from '../crew-member.model';
+import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import type { AeroEntity } from '../entity/entities/aero/aero-entity';
+import { projectComponentLocationStatuses } from '../runtime/component-status-projection';
 import type { NonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
 import type {
-    NonMekUnitRuntimeState,
+NonMekUnitRuntimeState,
 } from '../runtime/non-mek-unit-instance';
+import type { UnitConditionKey } from '../unit-condition.model';
 import type { ToHitModifierBreakdownEntry } from './game-rules';
 import { gameRulesFor } from './game-rules';
-import type { CBTRuleset } from '../cbt-ruleset.model';
-import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
-import { projectNonMekComponentStatuses } from '../runtime/non-mek-component-status';
-import type { UnitConditionKey } from '../unit-condition.model';
+import { AERO_HEAT_EFFECTS,heatEffectValue } from './heat-effect-rules';
 
 export interface AeroHeatEffects {
     readonly fireModifier: number;
@@ -43,30 +44,6 @@ export interface AeroRuntimeRulesProjection {
     }>;
 }
 
-const AERO_HEAT_SCALE = Object.freeze([
-    { heat: 5, randomMovementTarget: 5 },
-    { heat: 8, fireModifier: 1 },
-    { heat: 10, randomMovementTarget: 6 },
-    { heat: 13, fireModifier: 2 },
-    { heat: 14, shutdownTarget: 4 },
-    { heat: 15, randomMovementTarget: 7 },
-    { heat: 17, fireModifier: 3 },
-    { heat: 18, shutdownTarget: 6 },
-    { heat: 19, ammoExplosionTarget: 4 },
-    { heat: 20, randomMovementTarget: 8 },
-    { heat: 21, pilotDamageTarget: 6 },
-    { heat: 22, shutdownTarget: 8 },
-    { heat: 23, ammoExplosionTarget: 6 },
-    { heat: 24, fireModifier: 4 },
-    { heat: 25, randomMovementTarget: 10 },
-    { heat: 26, shutdownTarget: 10 },
-    { heat: 27, pilotDamageTarget: 9 },
-    { heat: 28, ammoExplosionTarget: 8 },
-    { heat: 30, shutdownTarget: 100 },
-] as const);
-
-const DESTROYING_DAMAGE_TRACKS = new Set(['engine_hit_3', 'fcs_hit_3']);
-
 export function aeroHeatEffects(heat: number): AeroHeatEffects {
     const effects: {
         fireModifier: number;
@@ -75,14 +52,15 @@ export function aeroHeatEffects(heat: number): AeroHeatEffects {
         ammoExplosionTarget?: number;
         pilotDamageTarget?: number;
     } = { fireModifier: 0 };
-    for (const row of AERO_HEAT_SCALE) {
-        if (heat < row.heat) break;
-        if ('fireModifier' in row) effects.fireModifier = row.fireModifier;
-        if ('randomMovementTarget' in row) effects.randomMovementTarget = row.randomMovementTarget;
-        if ('shutdownTarget' in row) effects.shutdownTarget = row.shutdownTarget;
-        if ('ammoExplosionTarget' in row) effects.ammoExplosionTarget = row.ammoExplosionTarget;
-        if ('pilotDamageTarget' in row) effects.pilotDamageTarget = row.pilotDamageTarget;
-    }
+    effects.fireModifier = heatEffectValue(AERO_HEAT_EFFECTS, 'fire', heat) ?? 0;
+    const random = heatEffectValue(AERO_HEAT_EFFECTS, 'random-movement', heat);
+    const shutdown = heatEffectValue(AERO_HEAT_EFFECTS, 'shutdown', heat);
+    const ammo = heatEffectValue(AERO_HEAT_EFFECTS, 'ammo-explosion', heat);
+    const pilot = heatEffectValue(AERO_HEAT_EFFECTS, 'pilot-damage', heat);
+    if (random !== undefined) effects.randomMovementTarget = random;
+    if (shutdown !== undefined) effects.shutdownTarget = shutdown;
+    if (ammo !== undefined) effects.ammoExplosionTarget = ammo;
+    if (pilot !== undefined) effects.pilotDamageTarget = pilot;
     return Object.freeze(effects);
 }
 
@@ -98,10 +76,11 @@ export function projectAeroRuntimeRules(
         && si.internalPoints > 0
         && (state.locations.get(si.id)?.internalDamage ?? 0) >= si.internalPoints;
     const damageTrackDestroyed = [...index.damageTracks.values()].some(track =>
-        DESTROYING_DAMAGE_TRACKS.has(track.sheetId)
+        ((track.system === 'engine' && track.stage === (['SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType) ? 6 : 3))
+            || (track.system === 'fire-control' && track.stage === 3))
         && (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
 
-    const statuses = projectNonMekComponentStatuses(index, state).committed;
+    const statuses = projectComponentLocationStatuses(index, state).committed;
     const drone = [...index.components.values()].find(component =>
         isDroneOperatingSystemEquipment(component.mount.equipment));
     const disconnected = drone !== undefined && statuses.get(drone.id) !== 'available';

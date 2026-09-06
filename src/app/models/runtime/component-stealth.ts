@@ -3,23 +3,23 @@
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    nextStealthState,
-    isInteractiveStealthFlags,
-    stealthFlagsRequireEcm,
-    stealthStateIsActive,
-    VOID_SIGNATURE_FLAG,
-    type StealthState,
+isInteractiveStealthFlags,
+nextStealthState,
+stealthFlagsRequireEcm,
+stealthStateIsActive,
+VOID_SIGNATURE_FLAG,
+type StealthState,
 } from '../stealth-equipment.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    ComponentModeHandler,
-    type ComponentModeDefinition,
+ComponentModeHandler,
+type ComponentModeDefinition,
 } from './component-mode';
 import type {
-    EquipmentInteractionChoice,
-    EquipmentInteractionCommandContext,
-    EquipmentInteractionQueryContext,
+EquipmentInteractionChoice,
+EquipmentInteractionCommandContext,
+EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
 
 /** End-turn signature-system lifecycle and interaction owner. */
 export class StealthHandler extends ComponentModeHandler {
@@ -31,7 +31,7 @@ export class StealthHandler extends ComponentModeHandler {
     }
 
     getComponentModeChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -52,7 +52,7 @@ export class StealthHandler extends ComponentModeHandler {
     }
 
     handleComponentModeSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentModeDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,

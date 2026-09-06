@@ -10,7 +10,7 @@ describe('directAutomationSubject', () => {
         const fixture = createDirectMekRuntimeFixture();
         const assignment = fixture.instance.query().crewAssignment();
         const snapshot = Object.freeze({
-            instanceId: fixture.instance.id,
+            instanceId: fixture.instance.instanceId,
             entity: fixture.entity,
             index: fixture.index,
             uuid: fixture.identity,
@@ -22,6 +22,7 @@ describe('directAutomationSubject', () => {
                     name: index === 0 ? '  Morgan Kell  ' : position.name,
                 }))),
             }),
+            editContext: { owner: fixture.instance, state: fixture.instance.snapshot() },
             state: fixture.instance.snapshot(),
             query: fixture.instance.query(),
         }) satisfies CBTUnitSnapshot;

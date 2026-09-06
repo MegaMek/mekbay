@@ -2,54 +2,54 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
-    TestAeroSpaceFighterEntity,
-    TestBattleArmorEntity,
-    TestBipedMekEntity,
-    TestDropShipEntity,
-    TestHandheldWeaponEntity,
-    TestInfantryEntity,
-    TestJumpShipEntity,
-    TestProtoMekEntity,
-    TestTankEntity,
-    TestWarShipEntity,
-} from '../entity/testing/test-entities';
-import {
-    asUnitUuid,
+asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
-import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
+import { CORE_2026_RULESET,TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
+import { CrewMember } from '../crew-member.model';
 import type { BaseEntity } from '../entity/base-entity';
-import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
+import {
+TestAeroSpaceFighterEntity,
+TestBattleArmorEntity,
+TestBipedMekEntity,
+TestDropShipEntity,
+TestHandheldWeaponEntity,
+TestInfantryEntity,
+TestJumpShipEntity,
+TestProtoMekEntity,
+TestTankEntity,
+TestWarShipEntity,
+} from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import {
-    addTestEquipment,
-    addTestEquipmentWithFlags,
+addTestEquipment,
+addTestEquipmentWithFlags,
 } from '../entity/testing/test-mounted-equipment';
-import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
-import { type InstanceBaselineRef } from './runtime-state';
-import { CrewMember } from '../crew-member.model';
-import {
-    canNonMekTakeActiveActions,
-    createPristineNonMekUnitState,
-    nonMekAttackMovementModifier,
-    NonMekUnitInstance,
-    projectNonMekDefenseModifierBreakdown,
-    projectNonMekEndTurnHeat,
-    projectNonMekEscalatingFailureInteractions,
-    projectNonMekMovementCapabilities,
-} from './non-mek-unit-instance';
+import { AmmoEquipment,WeaponEquipment } from '../equipment.model';
+import { systemDamageId } from '../rules/system-damage-rules';
 import { createDefaultCrewAssignment } from './crew-assignment';
+import { asEncounterTargetId,type TargetRegistrySnapshot } from './encounter-runtime';
+import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 import {
-    NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
-    inspectSerializedNonMekUnit,
-    restoreNonMekUnit,
-    serializeNonMekUnit,
+canNonMekTakeActiveActions,
+createPristineNonMekUnitState,
+nonMekAttackMovementModifier,
+projectNonMekDefenseModifierBreakdown,
+projectNonMekEndTurnHeat,
+projectNonMekEscalatingFailureInteractions,
+projectNonMekMovementCapabilities,
+} from './non-mek-unit-instance';
+import {
+NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
+inspectSerializedNonMekUnit,
+serializeNonMekUnit,
 } from './non-mek-unit-persistence';
-import { nonMekDamageTrackId } from '../rules/non-mek-damage-track-rules';
-import { componentIdForMount } from './non-mek-runtime-index';
+import { type InstanceBaselineRef } from './runtime-state';
+import { componentIdForMount } from './unit-runtime-index';
+
 import { MountedEngine } from '../entity/components/engine';
 import {
-    BOOBY_TRAP_ARMED_MODE,
-    BOOBY_TRAP_DETONATED_MODE,
+BOOBY_TRAP_ARMED_MODE,
+BOOBY_TRAP_DETONATED_MODE,
 } from './component-booby-trap';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
@@ -66,7 +66,7 @@ describe('NonMekUnitInstance', () => {
 
         for (const entity of entities) {
             entity.uuid.set(UUID);
-            const runtime = new NonMekUnitInstance(
+            const runtime = createNonMekRuntimeForTest(
                 `unit:${entity.entityType}`,
                 baseline(),
                 entity,
@@ -81,7 +81,7 @@ describe('NonMekUnitInstance', () => {
     it('persists the distinction between pending and committed crew death', () => {
         const entity = new TestProtoMekEntity();
         entity.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:deferred-crew-death',
             baseline(),
             entity,
@@ -97,7 +97,7 @@ describe('NonMekUnitInstance', () => {
         } as const;
 
         expect(runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: 6,
             unconscious: true,
@@ -107,12 +107,12 @@ describe('NonMekUnitInstance', () => {
         expect(CrewMember.from(runtime.snapshot().crew.get(positionId)).effectiveState()).toBe('ejected');
 
         const pendingSave = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment,
         });
         expect(pendingSave.crewState?.[0]?.dead).toBeUndefined();
-        const pendingRestore = restoreNonMekUnit(pendingSave, entity, CORE_2026_RULESET);
+        const pendingRestore = restoreNonMekRuntimeForTest(pendingSave, entity, CORE_2026_RULESET);
         const pendingCrew = pendingRestore.query().crewState(positionId);
         expect(pendingCrew).toEqual(jasmine.objectContaining({
             unconscious: true,
@@ -121,7 +121,7 @@ describe('NonMekUnitInstance', () => {
         expect(pendingCrew.dead).toBeUndefined();
         expect(CrewMember.from(pendingRestore.snapshot().crew.get(positionId)).effectiveState()).toBe('ejected');
 
-        expect(pendingRestore.dispatch({ kind: 'end-phase' }))
+        expect(pendingRestore.dispatch({ type: 'end-phase' }))
             .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(pendingRestore.query().crewState(positionId)).toEqual(jasmine.objectContaining({
             dead: true,
@@ -132,15 +132,15 @@ describe('NonMekUnitInstance', () => {
         expect(CrewMember.from(pendingRestore.snapshot().crew.get(positionId)).effectiveState()).toBe('dead');
 
         const committedSave = serializeNonMekUnit({
-            instance: pendingRestore,
+            entity: pendingRestore.getUnit(), index: pendingRestore.getIndex(), state: pendingRestore.snapshot(), baselineRef: pendingRestore.baselineRef, instanceId: pendingRestore.instanceId,
             uuid: baseline().entity,
             deployment,
         });
         expect(committedSave.crewState?.[0]?.dead).toBeTrue();
-        const committedRestore = restoreNonMekUnit(committedSave, entity, CORE_2026_RULESET);
+        const committedRestore = restoreNonMekRuntimeForTest(committedSave, entity, CORE_2026_RULESET);
         expect(committedRestore.query().crewState(positionId).dead).toBeTrue();
         expect(committedRestore.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: 5,
             unconscious: true,
@@ -157,7 +157,7 @@ describe('NonMekUnitInstance', () => {
     it('derives airborne and grounded conditions only for a selectable air state', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:air-ground-conditions',
             baseline(),
             fighter,
@@ -167,22 +167,22 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.query().conditions()).not.toContain('airborne');
         expect(runtime.query().conditions()).not.toContain('grounded');
         expect(runtime.dispatch({
-            kind: 'set-airborne',
+            type: 'set-airborne',
 
             airborne: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(runtime.hasCondition('grounded')).toBeTrue();
-        expect(runtime.hasCondition('airborne')).toBeFalse();
+        expect(runtime.query().hasCondition('grounded')).toBeTrue();
+        expect(runtime.query().hasCondition('airborne')).toBeFalse();
 
         expect(runtime.dispatch({
-            kind: 'set-airborne',
+            type: 'set-airborne',
 
             airborne: true,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(runtime.hasCondition('airborne')).toBeTrue();
-        expect(runtime.hasCondition('grounded')).toBeFalse();
+        expect(runtime.query().hasCondition('airborne')).toBeTrue();
+        expect(runtime.query().hasCondition('grounded')).toBeFalse();
         expect(runtime.dispatch({
-            kind: 'set-condition',
+            type: 'set-condition',
 
             condition: 'grounded',
             active: true,
@@ -190,29 +190,29 @@ describe('NonMekUnitInstance', () => {
 
         const jumpShip = new TestJumpShipEntity();
         jumpShip.uuid.set(UUID);
-        const spaceOnly = new NonMekUnitInstance(
+        const spaceOnly = createNonMekRuntimeForTest(
             'unit:airborne-only-conditions',
             baseline(),
             jumpShip,
             CORE_2026_RULESET,
         );
-        expect(spaceOnly.turnState().airborne).toBeTrue();
+        expect(spaceOnly.snapshot().turn.airborne).toBeTrue();
         expect(spaceOnly.query().conditions()).not.toContain('airborne');
         expect(spaceOnly.query().conditions()).not.toContain('grounded');
 
         const tank = new TestTankEntity();
         tank.uuid.set(UUID);
-        const groundOnly = new NonMekUnitInstance(
+        const groundOnly = createNonMekRuntimeForTest(
             'unit:ground-only-conditions',
             baseline(),
             tank,
             CORE_2026_RULESET,
         );
-        expect(groundOnly.turnState().airborne).toBeNull();
+        expect(groundOnly.snapshot().turn.airborne).toBeNull();
         expect(groundOnly.query().conditions()).not.toContain('airborne');
         expect(groundOnly.query().conditions()).not.toContain('grounded');
         expect(groundOnly.dispatch({
-            kind: 'set-airborne',
+            type: 'set-airborne',
 
             airborne: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -227,7 +227,7 @@ describe('NonMekUnitInstance', () => {
         const minesweeper = addTestEquipmentWithFlags(entity, 'F_MINESWEEPER', {
             location: entity.locationOrder[0],
         });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-delayed-power',
             baseline(),
             entity,
@@ -236,39 +236,39 @@ describe('NonMekUnitInstance', () => {
         const searchlightId = componentIdForMount(searchlight);
         const minesweeperId = componentIdForMount(minesweeper);
 
-        expect(runtime.componentMode(searchlightId)).toBe('enabled');
-        expect(runtime.componentMode(minesweeperId)).toBe('enabled');
+        expect(runtime.query().componentMode(searchlightId)).toBe('enabled');
+        expect(runtime.query().componentMode(minesweeperId)).toBe('enabled');
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: searchlightId,
             mode: 'disabled',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: searchlightId,
             mode: 'disabling',
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(searchlightId)).toBe('disabling');
+        expect(runtime.query().componentMode(searchlightId)).toBe('disabling');
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(searchlightId)).toBe('disabled');
+        expect(runtime.query().componentMode(searchlightId)).toBe('disabled');
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: searchlightId,
             mode: 'enabling',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(searchlightId)).toBe('enabled');
+        expect(runtime.query().componentMode(searchlightId)).toBe('enabled');
         expect(runtime.snapshot().components.has(searchlightId)).toBeFalse();
     });
 
@@ -278,15 +278,15 @@ describe('NonMekUnitInstance', () => {
         const protoEi = addTestEquipmentWithFlags(protoMek, 'F_EI_INTERFACE', {
             location: 'Torso',
         });
-        const protoRuntime = new NonMekUnitInstance(
+        const protoRuntime = createNonMekRuntimeForTest(
             'unit:protomek-ei',
             baseline(),
             protoMek,
             CORE_2026_RULESET,
         );
-        expect(protoRuntime.componentMode(componentIdForMount(protoEi))).toBeUndefined();
+        expect(protoRuntime.query().componentMode(componentIdForMount(protoEi))).toBeUndefined();
         expect(protoRuntime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: componentIdForMount(protoEi),
             mode: 'disabling',
@@ -297,13 +297,13 @@ describe('NonMekUnitInstance', () => {
         const vehicleEi = addTestEquipmentWithFlags(tank, 'F_EI_INTERFACE', {
             location: tank.locationOrder[0],
         });
-        const tankRuntime = new NonMekUnitInstance(
+        const tankRuntime = createNonMekRuntimeForTest(
             'unit:tank-ei',
             baseline(),
             tank,
             CORE_2026_RULESET,
         );
-        expect(tankRuntime.componentMode(componentIdForMount(vehicleEi))).toBe('enabled');
+        expect(tankRuntime.query().componentMode(componentIdForMount(vehicleEi))).toBe('enabled');
     });
 
     it('hands a non-Mek active probe to the last selected mount at End Turn', () => {
@@ -315,7 +315,7 @@ describe('NonMekUnitInstance', () => {
         const second = addTestEquipmentWithFlags(entity, 'F_BAP', {
             location: entity.locationOrder[0],
         });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-probe-handoff',
             baseline(),
             entity,
@@ -325,20 +325,20 @@ describe('NonMekUnitInstance', () => {
         const secondId = componentIdForMount(second);
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: secondId,
             mode: 'enabling',
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(firstId)).toBe('enabled');
-        expect(runtime.componentMode(secondId)).toBe('enabling');
+        expect(runtime.query().componentMode(firstId)).toBe('enabled');
+        expect(runtime.query().componentMode(secondId)).toBe('enabling');
 
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(firstId)).toBe('disabled');
-        expect(runtime.componentMode(secondId)).toBe('enabled');
+        expect(runtime.query().componentMode(firstId)).toBe('disabled');
+        expect(runtime.query().componentMode(secondId)).toBe('enabled');
     });
 
     it('stores damage sparsely and resolves current values against the entity', () => {
@@ -346,7 +346,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(20);
         entity.setArmorValue(entity.locationOrder[0], 'front', 2);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank',
             baseline(),
             entity,
@@ -356,13 +356,13 @@ describe('NonMekUnitInstance', () => {
         const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0])!;
 
         const internal = runtime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
 
             locationId: location.id,
             damage: Math.min(1, location.internalPoints),
         });
         const armor = runtime.dispatch({
-            kind: 'set-armor-damage',
+            type: 'set-armor-damage',
 
             faceId: face.id,
             damage: Math.min(1, face.maximumPoints),
@@ -382,7 +382,7 @@ describe('NonMekUnitInstance', () => {
     it('stores vehicle killed/stunned controls as canonical crew facts', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-crew-state',
             baseline(),
             entity,
@@ -391,7 +391,7 @@ describe('NonMekUnitInstance', () => {
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
 
         expect(runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId,
             wounds: 0,
@@ -402,7 +402,7 @@ describe('NonMekUnitInstance', () => {
         expect(CrewMember.from(runtime.snapshot().crew.get(positionId)).hasState('stunned')).toBeTrue();
 
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -418,11 +418,11 @@ describe('NonMekUnitInstance', () => {
             unconscious: true,
             ejected: false,
         }]);
-        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
+        const restored = restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET);
         expect(restored.snapshot().crew.get(positionId)?.unconscious).toBeTrue();
 
         expect(restored.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: 0,
             unconscious: true,
@@ -434,7 +434,7 @@ describe('NonMekUnitInstance', () => {
             dead: true,
         }));
         expect(serializeNonMekUnit({
-            instance: restored,
+            entity: restored.getUnit(), index: restored.getIndex(), state: restored.snapshot(), baselineRef: restored.baselineRef, instanceId: restored.instanceId,
             uuid: baseline().entity,
             deployment: saved.deployment,
         }).crewState).toEqual([{
@@ -445,7 +445,7 @@ describe('NonMekUnitInstance', () => {
             dead: true,
         }]);
         expect(restored.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: 0,
             unconscious: true,
@@ -458,7 +458,7 @@ describe('NonMekUnitInstance', () => {
         }));
 
         const reset = restored.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId,
             wounds: 0,
@@ -468,21 +468,21 @@ describe('NonMekUnitInstance', () => {
         expect(reset).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(restored.snapshot().crew.has(positionId)).toBeFalse();
         expect(restored.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId,
             wounds: 0,
             unconscious: false,
             ejected: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
-        expect(restored.dispatch({ kind: 'end-phase' }).accepted).toBeTrue();
+        expect(restored.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
         expect(restored.query().hasPendingPhaseChanges()).toBeFalse();
     });
 
     it('preserves a wound-tracking pilot after reassignment to a vehicle', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:transferred-pilot',
             baseline(),
             entity,
@@ -491,7 +491,7 @@ describe('NonMekUnitInstance', () => {
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
 
         expect(runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: 3,
             unconscious: true,
@@ -500,7 +500,7 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.query().crewState(positionId).wounds).toBe(3);
 
         expect(runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
             positionId,
             wounds: 6,
             unconscious: false,
@@ -508,7 +508,7 @@ describe('NonMekUnitInstance', () => {
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.query().crewState(positionId).isDeathCommitted()).toBeFalse();
 
-        runtime.dispatch({ kind: 'end-phase' });
+        runtime.dispatch({ type: 'end-phase' });
         expect(runtime.query().crewState(positionId)).toEqual(jasmine.objectContaining({
             wounds: 6,
             dead: true,
@@ -519,7 +519,7 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
         entity.originalWalkMP.set(8);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-effective-rules',
             baseline(),
             entity,
@@ -527,7 +527,7 @@ describe('NonMekUnitInstance', () => {
         );
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId,
             wounds: 0,
@@ -537,11 +537,11 @@ describe('NonMekUnitInstance', () => {
         });
 
         expect(runtime.query().conditions()).toEqual(['abandoned', 'immobile']);
-        expect(runtime.hasCondition('immobile')).toBeTrue();
-        expect(runtime.vehicleRules()?.movement).toEqual(jasmine.objectContaining({ walk: 0, maxRun: 0 }));
+        expect(runtime.query().hasCondition('immobile')).toBeTrue();
+        expect(vehicleRuntimeRulesForTest(runtime)?.movement).toEqual(jasmine.objectContaining({ walk: 0, maxRun: 0 }));
 
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId,
             wounds: 0,
@@ -550,16 +550,16 @@ describe('NonMekUnitInstance', () => {
             dead: false,
         });
         runtime.dispatch({
-            kind: 'damage-track',
+            type: 'damage-track',
 
-            damageTrackId: nonMekDamageTrackId('engine_hit_1'),
+            damageTrackId: systemDamageId('engine', 1),
             amount: 1,
             target: 'committed',
             timestamp: 1,
         });
 
         expect(runtime.query().conditions()).toEqual([]);
-        expect(runtime.vehicleRules()).toEqual(jasmine.objectContaining({
+        expect(vehicleRuntimeRulesForTest(runtime)).toEqual(jasmine.objectContaining({
             systems: jasmine.objectContaining({ engineHit: true }),
             movement: jasmine.objectContaining({ walk: 0, maxRun: 0 }),
         }));
@@ -568,7 +568,7 @@ describe('NonMekUnitInstance', () => {
     it('scopes projected Non-Mek rules to one immutable query revision', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-query-projection-scope',
             baseline(),
             entity,
@@ -578,7 +578,7 @@ describe('NonMekUnitInstance', () => {
         expect(before.destroyed()).toBeFalse();
 
         expect(runtime.dispatch({
-            kind: 'set-destroyed',
+            type: 'set-destroyed',
 
             destroyed: true,
         }).accepted).toBeTrue();
@@ -594,7 +594,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(20);
         entity.setArmorValue(entity.locationOrder[0], 'front', 3);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-pending',
             baseline(),
             entity,
@@ -604,7 +604,7 @@ describe('NonMekUnitInstance', () => {
         const face = runtime.getIndex().armorFaces.get(location.armorFaceIds[0])!;
 
         expect(runtime.dispatch({
-            kind: 'damage-armor',
+            type: 'damage-armor',
 
             faceId: face.id,
             amount: 2,
@@ -614,7 +614,7 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.snapshot().pendingCombat.armorDamage.get(face.id)).toBe(2);
 
         expect(runtime.dispatch({
-            kind: 'repair-armor',
+            type: 'repair-armor',
 
             faceId: face.id,
             amount: 1,
@@ -623,21 +623,21 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.snapshot().pendingCombat.armorDamage.get(face.id)).toBe(1);
 
         expect(runtime.dispatch({
-            kind: 'damage-internal',
+            type: 'damage-internal',
 
             locationId: location.id,
             amount: 1,
             target: 'pending',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-phase',
+            type: 'end-phase',
 
         }).accepted).toBeTrue();
         expect(runtime.query().remainingArmor(face.id)).toBe(2);
         expect(runtime.query().remainingInternal(location.id)).toBe(location.internalPoints - 1);
         expect(runtime.snapshot().pendingCombat.armorDamage.size).toBe(0);
         expect(runtime.snapshot().pendingCombat.locationInternalDamage.size).toBe(0);
-        expect(runtime.turnState().endTurnCheckpoint).toBeUndefined();
+        expect(runtime.snapshot().turn.endTurnCheckpoint).toBeUndefined();
     });
 
     it('owns vehicle movement, semantic phase boundaries, and turn reset directly', () => {
@@ -647,7 +647,7 @@ describe('NonMekUnitInstance', () => {
         entity.originalWalkMP.set(8);
         const booster = addTestEquipmentWithFlags(entity, ['F_MASC', 'S_SUPERCHARGER']);
         const boosterComponentId = componentIdForMount(booster);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-turn',
             baseline(),
             entity,
@@ -655,39 +655,39 @@ describe('NonMekUnitInstance', () => {
         );
 
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'run', distance: 16, boosterComponentIds: [] },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(runtime.dispatch({
-            kind: 'edit-escalating-failure',
+            type: 'edit-escalating-failure',
 
             componentId: boosterComponentId,
             edit: { kind: 'select-sequence', index: 0 },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'run', distance: 16, boosterComponentIds: [boosterComponentId] },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
-        expect(runtime.turnState().movement).toEqual({
+        expect(runtime.snapshot().turn.movement).toEqual({
             mode: 'run',
             distance: 16,
             boosterComponentIds: [boosterComponentId],
         });
-        expect(runtime.turnState().phaseStateChanged).toBeTrue();
+        expect(runtime.snapshot().turn.phaseStateChanged).toBeTrue();
 
         const beforePhase = runtime.revision();
         expect(runtime.dispatch({
-            kind: 'end-phase',
+            type: 'end-phase',
 
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(Number(runtime.revision())).toBe(Number(beforePhase) + 1);
-        expect(runtime.turnState().movement?.distance).toBe(16);
-        expect(runtime.turnState().phaseStateChanged).toBeFalse();
+        expect(runtime.snapshot().turn.movement?.distance).toBe(16);
+        expect(runtime.snapshot().turn.phaseStateChanged).toBeFalse();
 
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -700,17 +700,17 @@ describe('NonMekUnitInstance', () => {
         expect(saved.turn).toEqual({
             movement: { mode: 'run', distance: 16, boosterComponentIds: [boosterComponentId] },
         });
-        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
-        expect(restored.turnState()).toEqual(runtime.turnState());
+        const restored = restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET);
+        expect(restored.snapshot().turn).toEqual(runtime.snapshot().turn);
 
         expect(restored.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(restored.snapshot().components.get(boosterComponentId)?.escalatingFailure).toEqual({
             sequence: 1,
         });
-        expect(restored.turnState()).toEqual({
+        expect(restored.snapshot().turn).toEqual({
             turnCounter: 1,
             airborne: null,
             movement: null,
@@ -726,7 +726,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(40);
         entity.originalWalkMP.set(4);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-turn-summary',
             baseline(),
             entity,
@@ -734,22 +734,22 @@ describe('NonMekUnitInstance', () => {
         );
 
         expect(runtime.dispatch({
-            kind: 'set-cover',
+            type: 'set-cover',
 
             cover: 'building-1',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.dispatch({
-            kind: 'set-spotting',
+            type: 'set-spotting',
 
             spotting: true,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
 
-        expect(runtime.turnState()).toEqual(jasmine.objectContaining({
+        expect(runtime.snapshot().turn).toEqual(jasmine.objectContaining({
             cover: 'building-1',
             spotting: true,
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
@@ -764,7 +764,7 @@ describe('NonMekUnitInstance', () => {
         ]);
 
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -780,13 +780,13 @@ describe('NonMekUnitInstance', () => {
             spotting: true,
             phaseStateChanged: true,
         });
-        expect(restoreNonMekUnit(saved, entity, CORE_2026_RULESET).turnState()).toEqual(runtime.turnState());
+        expect(restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET).snapshot().turn).toEqual(runtime.snapshot().turn);
 
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
-        expect(runtime.turnState()).toEqual(jasmine.objectContaining({
+        expect(runtime.snapshot().turn).toEqual(jasmine.objectContaining({
             cover: null,
             spotting: false,
         }));
@@ -796,25 +796,25 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
         entity.setTonnage(40);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-end-turn-checkpoint',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         expect(runtime.dispatch({
-            kind: 'end-phase',
+            type: 'end-phase',
 
             endTurnBoundary: true,
         }).accepted).toBeTrue();
-        expect(runtime.turnState().endTurnCheckpoint).toBe('phase-ended');
+        expect(runtime.snapshot().turn.endTurnCheckpoint).toBe('phase-ended');
         expect(runtime.dispatch({
-            kind: 'mark-end-turn-heat-staged',
+            type: 'mark-end-turn-heat-staged',
 
         }).accepted).toBeTrue();
 
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -825,21 +825,21 @@ describe('NonMekUnitInstance', () => {
             },
         });
         expect(saved.turn).toEqual({ endTurnCheckpoint: 'heat-staged' });
-        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
-        expect(restored.turnState().endTurnCheckpoint).toBe('heat-staged');
+        const restored = restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET);
+        expect(restored.snapshot().turn.endTurnCheckpoint).toBe('heat-staged');
         expect(restored.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         }).accepted).toBeTrue();
-        expect(restored.turnState().endTurnCheckpoint).toBeUndefined();
+        expect(restored.snapshot().turn.endTurnCheckpoint).toBeUndefined();
     });
 
     it('round-trips due crew and aerospace Control recovery without an in-memory timer', () => {
         const entity = new TestAeroSpaceFighterEntity();
         entity.uuid.set(UUID);
         entity.heatSinkCount.set(10);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:aero-durable-recovery',
             baseline(),
             entity,
@@ -847,18 +847,18 @@ describe('NonMekUnitInstance', () => {
         );
         const pilotId = [...runtime.getIndex().crewPositions.keys()][0]!;
         expect(runtime.dispatch({
-            kind: 'set-condition',
+            type: 'set-condition',
 
             condition: 'out-of-control',
             active: true,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-control-recovery',
+            type: 'set-control-recovery',
 
             workflow: { readyTurn: 1, cause: 'heat-random-movement' },
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: pilotId,
             wounds: 1,
@@ -868,7 +868,7 @@ describe('NonMekUnitInstance', () => {
         }).accepted).toBeTrue();
 
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -884,25 +884,25 @@ describe('NonMekUnitInstance', () => {
         });
         expect(saved.crewState?.[0]?.recoveryReadyTurn).toBe(1);
 
-        const restored = restoreNonMekUnit(saved, entity, CORE_2026_RULESET);
-        expect(restored.turnState().controlRecovery).toEqual(saved.turn?.controlRecovery);
+        const restored = restoreNonMekRuntimeForTest(saved, entity, CORE_2026_RULESET);
+        expect(restored.snapshot().turn.controlRecovery).toEqual(saved.turn?.controlRecovery);
         expect(restored.query().crewState(pilotId).recoveryReadyTurn).toBe(1);
         for (let turn = 1; turn <= 2; turn += 1) {
             expect(restored.dispatch({
-                kind: 'end-turn',
+                type: 'end-turn',
 
-                heatPolicy: 'manual',
+                policy: 'manual',
             }).accepted).toBeTrue();
-            expect(restored.turnState().turnCounter).toBe(turn);
-            expect(restored.turnState().controlRecovery).toEqual(saved.turn?.controlRecovery);
+            expect(restored.snapshot().turn.turnCounter).toBe(turn);
+            expect(restored.snapshot().turn.controlRecovery).toEqual(saved.turn?.controlRecovery);
         }
         expect(restored.dispatch({
-            kind: 'set-condition',
+            type: 'set-condition',
 
             condition: 'out-of-control',
             active: false,
         }).accepted).toBeTrue();
-        expect(restored.turnState().controlRecovery).toBeUndefined();
+        expect(restored.snapshot().turn.controlRecovery).toBeUndefined();
     });
 
     it('matches origin/next attacker movement badges by loaded Entity family', () => {
@@ -915,7 +915,7 @@ describe('NonMekUnitInstance', () => {
     it('allows active actions for entities with no crew positions', () => {
         const entity = new TestHandheldWeaponEntity();
         entity.uuid.set(UUID);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:handheld-no-crew',
             baseline(),
             entity,
@@ -935,7 +935,7 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
         entity.originalWalkMP.set(4);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-no-controller',
             baseline(),
             entity,
@@ -944,7 +944,7 @@ describe('NonMekUnitInstance', () => {
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
 
         expect(runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId,
             wounds: 0,
@@ -968,12 +968,12 @@ describe('NonMekUnitInstance', () => {
             maximum: jasmine.objectContaining({ walk: 0, run: 0, jump: 0 }),
         }));
         expect(runtime.dispatch({
-            kind: 'set-spotting',
+            type: 'set-spotting',
 
             spotting: true,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -982,7 +982,7 @@ describe('NonMekUnitInstance', () => {
         droneEntity.uuid.set(UUID);
         droneEntity.originalWalkMP.set(4);
         addTestEquipmentWithFlags(droneEntity, 'F_DRONE_OPERATING_SYSTEM');
-        const droneRuntime = new NonMekUnitInstance(
+        const droneRuntime = createNonMekRuntimeForTest(
             'unit:tank-drone-controller',
             baseline(),
             droneEntity,
@@ -990,7 +990,7 @@ describe('NonMekUnitInstance', () => {
         );
         const droneCrewPositionId = [...droneRuntime.getIndex().crewPositions.keys()][0]!;
         expect(droneRuntime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: droneCrewPositionId,
             wounds: 0,
@@ -1005,7 +1005,7 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         )).toBeTrue();
         expect(droneRuntime.dispatch({
-            kind: 'set-spotting',
+            type: 'set-spotting',
 
             spotting: true,
         }).accepted).toBeTrue();
@@ -1018,7 +1018,7 @@ describe('NonMekUnitInstance', () => {
         entity.originalWalkMP.set(6);
         const booster = addTestEquipmentWithFlags(entity, 'F_MASC', { location: 'Torso' });
         const boosterId = componentIdForMount(booster);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:proto-turn',
             baseline(),
             entity,
@@ -1035,7 +1035,7 @@ describe('NonMekUnitInstance', () => {
         expect(capabilities.maximum.run).toBe(9);
         expect(capabilities.boosterComponentIds).toEqual([]);
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'run', distance: 12, boosterComponentIds: [] },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -1050,7 +1050,7 @@ describe('NonMekUnitInstance', () => {
             '3+', '5+', '7+', '10+', '11+', '✖',
         ]);
         expect(runtime.dispatch({
-            kind: 'edit-escalating-failure',
+            type: 'edit-escalating-failure',
 
             componentId: boosterId,
             edit: { kind: 'select-sequence', index: 0 },
@@ -1064,13 +1064,13 @@ describe('NonMekUnitInstance', () => {
         expect(capabilities.maximum.run).toBe(12);
         expect(capabilities.boosterComponentIds).toEqual([boosterId]);
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'run', distance: 12, boosterComponentIds: [boosterId] },
         }).accepted).toBeTrue();
 
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
         expect(runtime.snapshot().components.get(boosterId)?.escalatingFailure).toEqual({ sequence: 1 });
@@ -1081,7 +1081,7 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         ).maximum.run).toBe(9);
         expect(runtime.dispatch({
-            kind: 'edit-escalating-failure',
+            type: 'edit-escalating-failure',
 
             componentId: boosterId,
             edit: { kind: 'set-status', status: 'disabled' },
@@ -1091,7 +1091,7 @@ describe('NonMekUnitInstance', () => {
             escalatingFailure: { sequence: 1 },
         }));
         expect(runtime.dispatch({
-            kind: 'edit-escalating-failure',
+            type: 'edit-escalating-failure',
 
             componentId: boosterId,
             edit: { kind: 'set-status', status: 'available' },
@@ -1099,7 +1099,7 @@ describe('NonMekUnitInstance', () => {
 
         const crewId = [...runtime.getIndex().crewPositions.keys()][0]!;
         runtime.dispatch({
-            kind: 'set-crew-state',
+            type: 'set-crew-state',
 
             positionId: crewId,
             wounds: 0,
@@ -1128,7 +1128,7 @@ describe('NonMekUnitInstance', () => {
         fighter.uuid.set(UUID);
         const blueShield = addTestEquipmentWithFlags(fighter, 'F_BLUE_SHIELD', { location: 'Nose' });
         const componentId = componentIdForMount(blueShield);
-        const totalWarfare = new NonMekUnitInstance(
+        const totalWarfare = createNonMekRuntimeForTest(
             'unit:tw-blue-shield',
             Object.freeze({ ...baseline(), ruleset: TOTAL_WARFARE_RULESET }),
             fighter,
@@ -1142,12 +1142,12 @@ describe('NonMekUnitInstance', () => {
             TOTAL_WARFARE_RULESET,
         )).toEqual([]);
         expect(totalWarfare.dispatch({
-            kind: 'edit-escalating-failure',
+            type: 'edit-escalating-failure',
             componentId,
             edit: { kind: 'select-sequence', index: 0 },
         }).changed).toBeFalse();
 
-        const core = new NonMekUnitInstance(
+        const core = createNonMekRuntimeForTest(
             'unit:core-blue-shield',
             baseline(),
             fighter,
@@ -1183,7 +1183,7 @@ describe('NonMekUnitInstance', () => {
             location: entity.locationOrder[0],
             shotsCount: 10,
         });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-equipment',
             baseline(),
             entity,
@@ -1193,7 +1193,7 @@ describe('NonMekUnitInstance', () => {
         expect(String(componentId)).toBe(String(mount.mountId));
 
         expect(runtime.dispatch({
-            kind: 'set-component-status',
+            type: 'set-component-status',
 
             componentId,
             status: 'destroyed',
@@ -1203,13 +1203,13 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.snapshot().pendingCombat.componentStatus.get(componentId)).toBe('destroyed');
 
         expect(runtime.dispatch({
-            kind: 'end-phase',
+            type: 'end-phase',
 
         }).accepted).toBeTrue();
         expect(runtime.snapshot().components.get(componentId)?.statusOverride).toBe('destroyed');
 
         expect(runtime.dispatch({
-            kind: 'configure-ammo-source',
+            type: 'configure-ammo-source',
 
             componentId,
             munitionKey: precision.id,
@@ -1233,16 +1233,16 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity(createTestEquipmentRegistry({ [weapon.id]: weapon }));
         entity.uuid.set(UUID);
         addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-unowned-mode',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         const componentId = [...runtime.getIndex().components.keys()][0]!;
-        expect(runtime.componentMode(componentId)).toBeUndefined();
+        expect(runtime.query().componentMode(componentId)).toBeUndefined();
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId,
             mode: 'Rapid',
@@ -1250,7 +1250,7 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.snapshot().components.has(componentId)).toBeFalse();
 
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -1260,11 +1260,11 @@ describe('NonMekUnitInstance', () => {
                 },
             },
         });
-        const restored = restoreNonMekUnit({
+        const restored = restoreNonMekRuntimeForTest({
             ...saved,
             componentState: Object.freeze([Object.freeze({ componentId, mode: 'Rapid' })]),
         }, entity, CORE_2026_RULESET);
-        expect(restored.componentMode(componentId)).toBeUndefined();
+        expect(restored.query().componentMode(componentId)).toBeUndefined();
         expect(restored.snapshot().components.has(componentId)).toBeFalse();
     });
 
@@ -1286,49 +1286,49 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestTankEntity(createTestEquipmentRegistry({ [weapon.id]: weapon }));
         entity.uuid.set(UUID);
         addTestEquipment(entity, weapon, { location: entity.locationOrder[0] });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-uac-mode',
             baseline(),
             entity,
             CORE_2026_RULESET,
         );
         const componentId = [...runtime.getIndex().components.keys()][0]!;
-        expect(runtime.componentMode(componentId)).toBe('Single');
+        expect(runtime.query().componentMode(componentId)).toBe('Single');
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId,
             mode: 'Ultra',
         }).accepted).toBeTrue();
         expect(runtime.snapshot().components.get(componentId)?.mode).toBe('Ultra');
-        expect(runtime.componentMode(componentId)).toBe('Ultra');
+        expect(runtime.query().componentMode(componentId)).toBe('Ultra');
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId,
             mode: 'Single',
         }).accepted).toBeTrue();
         expect(runtime.snapshot().components.has(componentId)).toBeFalse();
-        expect(runtime.componentMode(componentId)).toBe('Single');
+        expect(runtime.query().componentMode(componentId)).toBe('Single');
 
         runtime.dispatch({
-            kind: 'set-component-status',
+            type: 'set-component-status',
 
             componentId,
             status: 'destroyed',
             target: 'pending',
         });
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId,
             mode: 'Ultra',
         }).accepted).toBeTrue();
-        runtime.dispatch({ kind: 'end-phase'});
+        runtime.dispatch({ type: 'end-phase'});
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId,
             mode: 'Single',
@@ -1366,7 +1366,7 @@ describe('NonMekUnitInstance', () => {
             location: entity.locationOrder[0],
             shotsCount: 17,
         });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-mml-mode',
             baseline(),
             entity,
@@ -1374,14 +1374,14 @@ describe('NonMekUnitInstance', () => {
         );
         const componentId = componentIdForMount(weaponMount);
 
-        expect(runtime.componentMode(componentId)).toBe('LRM');
+        expect(runtime.query().componentMode(componentId)).toBe('LRM');
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId,
             mode: 'SRM',
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(componentId)).toBe('SRM');
+        expect(runtime.query().componentMode(componentId)).toBe('SRM');
     });
 
     it('owns vehicle weapon targeting and exact ammunition preference in sparse runtime state', () => {
@@ -1389,8 +1389,7 @@ describe('NonMekUnitInstance', () => {
         const durableRevision = fixture.runtime.revision();
 
         expect(fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -1399,8 +1398,7 @@ describe('NonMekUnitInstance', () => {
             },
         }, fixture.registry, false)).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-ammo',
@@ -1434,7 +1432,7 @@ describe('NonMekUnitInstance', () => {
         const mounts = Array.from({ length: 4 }, () =>
             addTestEquipment(entity, weapon, { location: entity.locationOrder[0] }));
         const componentIds = mounts.map(componentIdForMount);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:dropship-grouped-command',
             baseline(),
             entity,
@@ -1447,8 +1445,7 @@ describe('NonMekUnitInstance', () => {
         const selectionRevision = runtime.revision();
 
         expect(runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selections',
@@ -1465,14 +1462,14 @@ describe('NonMekUnitInstance', () => {
 
         const damageRevision = runtime.revision();
         expect(runtime.dispatch({
-            kind: 'set-component-statuses',
+            type: 'set-component-statuses',
 
             componentIds,
             status: 'destroyed',
             target: 'pending',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(runtime.revision()).toBe(damageRevision + 1);
-        expect(componentIds.map(componentId => runtime.componentStatus(componentId, 'preview')))
+        expect(componentIds.map(componentId => runtime.query().componentStatus(componentId, 'preview')))
             .toEqual(['destroyed', 'destroyed', 'destroyed', 'destroyed']);
     });
 
@@ -1491,8 +1488,7 @@ describe('NonMekUnitInstance', () => {
             },
         }]) {
             expect(fixture.runtime.dispatchAttackerTargeting({
-                kind: 'edit-attacker-targeting',
-
+                type: 'edit-attacker-targeting',
 
                 edit,
             }, fixture.registry, false).accepted).toBeTrue();
@@ -1501,14 +1497,12 @@ describe('NonMekUnitInstance', () => {
         const result = fixture.runtime.dispatchSelectedWeaponFire({
             type: 'fire-selected-weapons',
 
-
-
             heatPolicy: 'automatic',
         }, fixture.registry, false, false);
 
         expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(9);
-        expect(fixture.runtime.turnState().weaponsHeat).toBe(0);
+        expect(fixture.runtime.snapshot().turn.weaponsHeat).toBe(0);
     });
 
     it('uses maximum prototype-laser heat for aerospace fire without die evidence', () => {
@@ -1524,7 +1518,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.heatSinkCount.set(10);
         const mount = addTestEquipment(entity, weapon, { location: 'Nose' });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:aero-prototype-fire',
             baseline(),
             entity,
@@ -1544,8 +1538,7 @@ describe('NonMekUnitInstance', () => {
             })]),
         });
         expect(runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -1557,8 +1550,6 @@ describe('NonMekUnitInstance', () => {
         const result = runtime.dispatchSelectedWeaponFire({
             type: 'fire-selected-weapons',
 
-
-
             heatPolicy: 'automatic',
         }, registry, false, false);
 
@@ -1566,13 +1557,13 @@ describe('NonMekUnitInstance', () => {
             accepted: true,
             prototypeHeat: [],
         }));
-        expect(runtime.turnState().weaponsHeat).toBe(10);
+        expect(runtime.snapshot().turn.weaponsHeat).toBe(10);
     });
 
     it('keeps a pending-destroyed vehicle weapon actionable until phase commit', () => {
         const fixture = targetingFixture('unit:tank-targeting-destroyed');
         fixture.runtime.dispatch({
-            kind: 'set-component-status',
+            type: 'set-component-status',
 
             componentId: fixture.weaponId,
             status: 'destroyed',
@@ -1580,8 +1571,7 @@ describe('NonMekUnitInstance', () => {
         });
 
         expect(fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -1592,10 +1582,9 @@ describe('NonMekUnitInstance', () => {
             accepted: true,
             changed: true,
         }));
-        fixture.runtime.dispatch({ kind: 'end-phase'});
+        fixture.runtime.dispatch({ type: 'end-phase'});
         expect(fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -1611,14 +1600,13 @@ describe('NonMekUnitInstance', () => {
     it('rejects weapon selection after the Non-Mek runtime is destroyed', () => {
         const fixture = targetingFixture('unit:tank-targeting-unit-destroyed');
         expect(fixture.runtime.dispatch({
-            kind: 'set-destroyed',
+            type: 'set-destroyed',
 
             destroyed: true,
         }).accepted).toBeTrue();
 
         expect(fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -1634,8 +1622,7 @@ describe('NonMekUnitInstance', () => {
     it('reconciles deleted targets before the force commits its target registry', () => {
         const fixture = targetingFixture('unit:tank-targeting-reconcile');
         fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-component-selection',
@@ -1644,8 +1631,7 @@ describe('NonMekUnitInstance', () => {
             },
         }, fixture.registry, false);
         fixture.runtime.dispatchAttackerTargeting({
-            kind: 'edit-attacker-targeting',
-
+            type: 'edit-attacker-targeting',
 
             edit: {
                 kind: 'set-target-facts',
@@ -1654,13 +1640,13 @@ describe('NonMekUnitInstance', () => {
             },
         }, fixture.registry, false);
         const before = fixture.runtime.revision();
-        const plan = fixture.runtime.planAttackerTargetingReconciliation(Object.freeze({
+        const plan = fixture.runtime.planTargetingReconciliation(Object.freeze({
             revision: 1,
             targets: Object.freeze([]),
         }));
 
         expect(plan).not.toBeNull();
-        fixture.runtime.installAttackerTargetingReconciliation(plan!);
+        plan!();
         expect(fixture.runtime.revision()).toBe(before);
         expect(fixture.runtime.query().attackerTargetingState().components.has(fixture.weaponId)).toBeFalse();
         expect(fixture.runtime.query().attackerTargetingState().targets.has(fixture.targetId)).toBeFalse();
@@ -1685,15 +1671,14 @@ describe('NonMekUnitInstance', () => {
             facts: { distance: 7, calculator: { partialCover: true as const } },
         }]) {
             const result = fixture.runtime.dispatchAttackerTargeting({
-                kind: 'edit-attacker-targeting',
-
+                type: 'edit-attacker-targeting',
 
                 edit,
             }, fixture.registry, false);
             expect(result.accepted).toBeTrue();
         }
         const saved = serializeNonMekUnit({
-            instance: fixture.runtime,
+            entity: fixture.runtime.getUnit(), index: fixture.runtime.getIndex(), state: fixture.runtime.snapshot(), baselineRef: fixture.runtime.baselineRef, instanceId: fixture.runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
                 schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
@@ -1704,9 +1689,9 @@ describe('NonMekUnitInstance', () => {
             },
         });
 
-        expect(inspectSerializedNonMekUnit(saved).instanceId).toBe(fixture.runtime.id);
+        expect(inspectSerializedNonMekUnit(saved).instanceId).toBe(fixture.runtime.instanceId);
         expect('attackerTargeting' in saved).toBeFalse();
-        const restored = restoreNonMekUnit(saved, fixture.entity, CORE_2026_RULESET);
+        const restored = restoreNonMekRuntimeForTest(saved, fixture.entity, CORE_2026_RULESET);
         expect(restored.query().attackerTargetingState().components.size).toBe(0);
         expect(restored.query().attackerTargetingState().actions.size).toBe(0);
         expect(restored.query().attackerTargetingState().targets.size).toBe(0);
@@ -1717,7 +1702,7 @@ describe('NonMekUnitInstance', () => {
         battleArmor.uuid.set(UUID);
         battleArmor.trooperCount.set(4);
         battleArmor.setArmorValue('Squad', 'front', 5);
-        const battleArmorRuntime = new NonMekUnitInstance(
+        const battleArmorRuntime = createNonMekRuntimeForTest(
             'unit:battle-armor',
             baseline(),
             battleArmor,
@@ -1727,8 +1712,11 @@ describe('NonMekUnitInstance', () => {
         expect(battleArmorLocations.map(location => location.code)).toEqual([
             'Trooper 1', 'Trooper 2', 'Trooper 3', 'Trooper 4',
         ]);
-        expect(battleArmorLocations.map(location => location.sheetCode)).toEqual(['T1', 'T2', 'T3', 'T4']);
-        expect(battleArmorLocations.every(location => location.internalPoints === 1 && location.combinedPips)).toBeTrue();
+        const battleArmorSheet = projectNonMekRecordSheet(battleArmor, battleArmorRuntime.getIndex(),
+            battleArmorRuntime.snapshot(), CORE_2026_RULESET, 0, 0);
+        expect(battleArmorSheet.locations.map(location => location.sheetCode)).toEqual(['T1', 'T2', 'T3', 'T4']);
+        expect(battleArmorLocations.every(location => location.internalPoints === 1)).toBeTrue();
+        expect(battleArmorSheet.locations.every(location => location.combinedPips)).toBeTrue();
         expect(battleArmorLocations.map(location =>
             battleArmorRuntime.getIndex().armorFaces.get(location.armorFaceIds[0])!.maximumPoints,
         )).toEqual([5, 5, 5, 5]);
@@ -1736,7 +1724,7 @@ describe('NonMekUnitInstance', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
         fighter.structuralIntegrity.set(7);
-        const fighterRuntime = new NonMekUnitInstance(
+        const fighterRuntime = createNonMekRuntimeForTest(
             'unit:fighter',
             baseline(),
             fighter,
@@ -1752,14 +1740,14 @@ describe('NonMekUnitInstance', () => {
         const warShip = new TestWarShipEntity();
         warShip.uuid.set(UUID);
         warShip.structuralIntegrity.set(20);
-        const warShipRuntime = new NonMekUnitInstance(
+        const warShipRuntime = createNonMekRuntimeForTest(
             'unit:warship',
             baseline(),
             warShip,
             CORE_2026_RULESET,
         );
         const warShipTracks = [...warShipRuntime.getIndex().locations.values()];
-        expect(warShipTracks.find(location => location.code === 'SI')?.sheetCode).toBe('SI');
+        expect(warShipTracks.find(location => location.code === 'SI')?.internalPoints).toBe(20);
         expect(warShipTracks.some(location => location.code === 'KF')).toBeTrue();
         expect(warShipTracks.some(location => location.code === 'SAIL')).toBeTrue();
     });
@@ -1768,7 +1756,7 @@ describe('NonMekUnitInstance', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
         fighter.heatSinkCount.set(10);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:fighter-heat-persistence',
             baseline(),
             fighter,
@@ -1782,24 +1770,24 @@ describe('NonMekUnitInstance', () => {
             },
         } as const;
         expect(serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment,
         }).heat).toBeUndefined();
 
         runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-pending-heat',
 
             heat: 19,
-            target: 'pending',
+
         });
         runtime.dispatch({
-            kind: 'set-heatsinks-off',
+            type: 'set-heatsinks-off',
 
             heatsinksOff: 2,
         });
         const saved = serializeNonMekUnit({
-            instance: runtime,
+            entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment,
         });
@@ -1809,7 +1797,28 @@ describe('NonMekUnitInstance', () => {
             pendingOverride: 19,
             heatsinksOff: 2,
         });
-        expect(restoreNonMekUnit(saved, fighter, CORE_2026_RULESET).snapshot().heat).toEqual(saved.heat!);
+        expect(restoreNonMekRuntimeForTest(saved, fighter, CORE_2026_RULESET).snapshot().heat).toEqual(saved.heat!);
+    });
+
+    it('preserves an explicit current-heat override and clears it only with null', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(0);
+        addTestEquipmentWithFlags(fighter, ['F_NOVA', 'F_ECM', 'F_BAP'], { location: 'Nose' });
+        const runtime = createNonMekRuntimeForTest('unit:held-heat', baseline(), fighter, CORE_2026_RULESET);
+
+        expect(runtime.dispatch({ type: 'set-pending-heat', heat: 0 }).changed).toBeTrue();
+        const saved = runtime.serialize();
+        expect(saved.heat?.pendingOverride).toBe(0);
+        const restored = restoreNonMekRuntimeForTest(saved, fighter, CORE_2026_RULESET);
+        restored.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(restored.snapshot().heat.current).toBe(0);
+
+        restored.dispatch({ type: 'set-pending-heat', heat: 0 });
+        expect(restored.dispatch({ type: 'set-pending-heat', heat: null }).changed).toBeTrue();
+        expect(restored.snapshot().heat.pendingOverride).toBeUndefined();
+        restored.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(restored.snapshot().heat.current).toBe(2);
     });
 
     it('applies Nova CEWS heat to aerospace units using the committed power state', () => {
@@ -1821,7 +1830,7 @@ describe('NonMekUnitInstance', () => {
             ['F_NOVA', 'F_ECM', 'F_BAP'],
             { location: 'Nose' },
         );
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:fighter-nova-heat',
             baseline(),
             fighter,
@@ -1830,26 +1839,26 @@ describe('NonMekUnitInstance', () => {
         const novaId = componentIdForMount(nova);
 
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
         expect(runtime.snapshot().heat.current).toBe(2);
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: novaId,
             mode: 'disabling',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
         expect(runtime.snapshot().heat.current).toBe(4);
-        expect(runtime.componentMode(novaId)).toBe('disabled');
+        expect(runtime.query().componentMode(novaId)).toBe('disabled');
 
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
         expect(runtime.snapshot().heat.current).toBe(4);
@@ -1864,17 +1873,17 @@ describe('NonMekUnitInstance', () => {
             ['F_NOVA', 'F_ECM', 'F_BAP'],
             { location: 'Nose' },
         );
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:fighter-heat-projection',
             baseline(),
             fighter,
             CORE_2026_RULESET,
         );
         expect(runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-heat',
 
             heat: 10,
-            target: 'committed',
+
         }).accepted).toBeTrue();
 
         const before = runtime.snapshot();
@@ -1903,26 +1912,26 @@ describe('NonMekUnitInstance', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
         fighter.heatSinkCount.set(10);
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:fighter-manual-heat',
             baseline(),
             fighter,
             CORE_2026_RULESET,
         );
         expect(runtime.dispatch({
-            kind: 'set-heat',
+            type: 'set-heat',
 
             heat: 20,
-            target: 'committed',
+
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn',
 
-            heatPolicy: 'manual',
+            policy: 'manual',
         }).accepted).toBeTrue();
 
         expect(runtime.snapshot().heat.current).toBe(20);
-        expect(runtime.turnState()).toEqual({
+        expect(runtime.snapshot().turn).toEqual({
             turnCounter: 1,
             airborne: null,
             movement: null,
@@ -1943,7 +1952,7 @@ describe('NonMekUnitInstance', () => {
             ['F_MOBILE_HPG', 'F_MEK_EQUIPMENT'],
             { location: tank.locationOrder[0] },
         );
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-ground-mobile-hpg',
             baseline(),
             tank,
@@ -1952,35 +1961,35 @@ describe('NonMekUnitInstance', () => {
         const hpgId = componentIdForMount(hpg);
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: hpgId,
             mode: 'charging',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(hpgId)).toBe('charged');
+        expect(runtime.query().componentMode(hpgId)).toBe('charged');
 
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: hpgId,
             mode: 'transmitting',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(runtime.dispatch({
-            kind: 'set-movement',
+            type: 'set-movement',
 
             movement: null,
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: hpgId,
             mode: 'transmitting',
@@ -1993,17 +2002,17 @@ describe('NonMekUnitInstance', () => {
         ).maximum.walk).toBe(0);
 
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(hpgId)).toBe('cooldown-3');
+        expect(runtime.query().componentMode(hpgId)).toBe('cooldown-3');
         for (let turn = 0; turn < 3; turn += 1) {
             expect(runtime.dispatch({
-                kind: 'end-turn',
+                type: 'end-turn', policy: 'automatic',
 
             }).accepted).toBeTrue();
         }
-        expect(runtime.componentMode(hpgId)).toBe('idle');
+        expect(runtime.query().componentMode(hpgId)).toBe('idle');
     });
 
     it('toggles a non-ground Mobile HPG and applies forty aerospace heat', () => {
@@ -2012,7 +2021,7 @@ describe('NonMekUnitInstance', () => {
         fighter.heatSinkCount.set(0);
         fighter.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 100, techBase: 'IS' }));
         const hpg = addTestEquipmentWithFlags(fighter, 'F_MOBILE_HPG', { location: 'Nose' });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:fighter-mobile-hpg',
             baseline(),
             fighter,
@@ -2021,19 +2030,19 @@ describe('NonMekUnitInstance', () => {
         const hpgId = componentIdForMount(hpg);
 
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: hpgId,
             mode: 'transmitting',
         }).accepted).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'end-turn',
+            type: 'end-turn', policy: 'automatic',
 
         }).accepted).toBeTrue();
         expect(runtime.snapshot().heat.current).toBe(40);
-        expect(runtime.componentMode(hpgId)).toBe('transmitting');
+        expect(runtime.query().componentMode(hpgId)).toBe('transmitting');
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: hpgId,
             mode: 'idle',
@@ -2048,7 +2057,7 @@ describe('NonMekUnitInstance', () => {
             'F_BOOBY_TRAP',
             { location: tank.locationOrder[0] },
         );
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:tank-booby-trap',
             baseline(),
             tank,
@@ -2057,9 +2066,9 @@ describe('NonMekUnitInstance', () => {
         const trapId = componentIdForMount(trap);
         const revision = runtime.revision();
 
-        expect(runtime.componentMode(trapId)).toBe(BOOBY_TRAP_ARMED_MODE);
+        expect(runtime.query().componentMode(trapId)).toBe(BOOBY_TRAP_ARMED_MODE);
         expect(runtime.dispatch({
-            kind: 'set-component-mode',
+            type: 'set-component-mode',
 
             componentId: trapId,
             mode: BOOBY_TRAP_DETONATED_MODE,
@@ -2067,15 +2076,15 @@ describe('NonMekUnitInstance', () => {
         expect(runtime.revision()).toBe(revision);
 
         expect(runtime.dispatch({
-            kind: 'detonate-booby-trap',
+            type: 'detonate-booby-trap',
 
             componentId: trapId,
         }).accepted).toBeTrue();
-        expect(runtime.componentMode(trapId)).toBe(BOOBY_TRAP_DETONATED_MODE);
+        expect(runtime.query().componentMode(trapId)).toBe(BOOBY_TRAP_DETONATED_MODE);
         expect(runtime.snapshot().explicitlyDestroyed).toBeFalse();
         expect(runtime.query().destroyed()).toBeTrue();
         expect(runtime.dispatch({
-            kind: 'set-destroyed',
+            type: 'set-destroyed',
 
             destroyed: false,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -2087,7 +2096,7 @@ describe('NonMekUnitInstance', () => {
         fighter.uuid.set(UUID);
         fighter.setTonnage(50);
         fighter.structuralIntegrity.set(10);
-        const fighterRuntime = new NonMekUnitInstance(
+        const fighterRuntime = createNonMekRuntimeForTest(
             'unit:fighter-bv',
             baseline(),
             fighter,
@@ -2097,7 +2106,7 @@ describe('NonMekUnitInstance', () => {
         const si = [...fighterRuntime.getIndex().locations.values()]
             .find(location => location.code === 'SI')!;
         expect(fighterRuntime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
 
             locationId: si.id,
             damage: 1,
@@ -2109,7 +2118,7 @@ describe('NonMekUnitInstance', () => {
         battleArmor.uuid.set(UUID);
         battleArmor.trooperCount.set(4);
         battleArmor.setArmorValue('Squad', 'front', 5);
-        const battleArmorRuntime = new NonMekUnitInstance(
+        const battleArmorRuntime = createNonMekRuntimeForTest(
             'unit:battle-armor-bv',
             baseline(),
             battleArmor,
@@ -2118,7 +2127,7 @@ describe('NonMekUnitInstance', () => {
         const pristineBattleArmorBV = battleArmorRuntime.query().currentBaseBattleValue()!;
         const firstTrooper = [...battleArmorRuntime.getIndex().locations.values()][0];
         expect(battleArmorRuntime.dispatch({
-            kind: 'set-internal-damage',
+            type: 'set-internal-damage',
 
             locationId: firstTrooper.id,
             damage: 1,
@@ -2140,7 +2149,7 @@ describe('NonMekUnitInstance', () => {
         entity.setTonnage(6);
         entity.originalWalkMP.set(5);
         const mount = addTestEquipment(entity, weapon, { location: 'Left Arm' });
-        const runtime = new NonMekUnitInstance(
+        const runtime = createNonMekRuntimeForTest(
             'unit:proto-bv',
             baseline(),
             entity,
@@ -2153,20 +2162,20 @@ describe('NonMekUnitInstance', () => {
         expect(pristine).toBe(entity.battleValue());
 
         expect(runtime.dispatch({
-            kind: 'damage-internal',
+            type: 'damage-internal',
 
             locationId: arm.id,
             amount: arm.internalPoints,
             target: 'pending',
         }).accepted).toBeTrue();
-        expect(runtime.componentStatus(componentId)).toBe('available');
-        expect(runtime.componentStatus(componentId, 'preview')).toBe('destroyed');
+        expect(runtime.query().componentStatus(componentId)).toBe('available');
+        expect(runtime.query().componentStatus(componentId, 'preview')).toBe('destroyed');
 
         expect(runtime.dispatch({
-            kind: 'end-phase',
+            type: 'end-phase',
 
         }).accepted).toBeTrue();
-        expect(runtime.componentStatus(componentId)).toBe('destroyed');
+        expect(runtime.query().componentStatus(componentId)).toBe('destroyed');
         expect(runtime.query().currentBaseBattleValue()!).toBeLessThan(pristine);
     });
 
@@ -2174,12 +2183,12 @@ describe('NonMekUnitInstance', () => {
         const entity = new TestBipedMekEntity();
         entity.uuid.set(UUID);
 
-        expect(() => new NonMekUnitInstance(
+        expect(() => createNonMekRuntimeForTest(
             'unit:mek',
             baseline('mtf'),
             entity,
             CORE_2026_RULESET,
-        )).toThrowError(/Meks require CBTUnitInstance/u);
+        )).toThrowError(/Meks require/u);
     });
 
     it('rejects persisted pending damage outside the Entity capacity', () => {
@@ -2187,7 +2196,7 @@ describe('NonMekUnitInstance', () => {
         entity.uuid.set(UUID);
         entity.setTonnage(20);
         const pristine = createPristineNonMekUnitState(entity);
-        const index = new NonMekUnitInstance(
+        const index = createNonMekRuntimeForTest(
             'unit:index',
             baseline(),
             entity,
@@ -2203,7 +2212,7 @@ describe('NonMekUnitInstance', () => {
             },
         };
 
-        expect(() => new NonMekUnitInstance(
+        expect(() => createNonMekRuntimeForTest(
             'unit:invalid',
             baseline(),
             entity,
@@ -2236,7 +2245,7 @@ function targetingFixture(instanceId: string) {
         location: entity.locationOrder[0],
         shotsCount: 10,
     });
-    const runtime = new NonMekUnitInstance(
+    const runtime = createNonMekRuntimeForTest(
         instanceId,
         baseline(),
         entity,
@@ -2272,3 +2281,5 @@ function baseline(_sourceFormat: 'mtf' | 'blk' = 'blk'): InstanceBaselineRef {
         }),
     });
 }
+
+import { createNonMekRuntimeForTest,restoreNonMekRuntimeForTest,vehicleRuntimeRulesForTest } from './testing/unit-runtime-owner-fixture';

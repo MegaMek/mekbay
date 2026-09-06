@@ -1,89 +1,89 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import {
+AEROSPACE_RANGE_BRACKETS,
+aerospaceAttackValues,
+aerospaceRangeLimits,
+effectiveAerospaceMaximumBracket,
+} from '../../utils/aerospace-range.util';
 import { compareText } from '../../utils/string.util';
+import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
+import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
+import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
+import { asComponentId,asLocationId,type ComponentId } from '../entity/entity-identifiers';
+import type { EntityMountedEquipment,EntityWeaponHitModifier } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import {
-    isAeroEntity,
-    isInfantryFamilyEntity,
-    isProtoMekEntity,
-    isVehicleEntity,
+isAeroEntity,
+isInfantryFamilyEntity,
+isProtoMekEntity,
+isVehicleEntity,
 } from '../entity/utils/entity-type-guards';
-import { asComponentId, asLocationId, type ComponentId } from '../entity/entity-identifiers';
-import type { EntityMountedEquipment, EntityWeaponHitModifier } from '../entity/types';
-import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
-import type { CBTRuleset } from '../cbt-ruleset.model';
 import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
-import type { CrewAssignment } from './crew-assignment';
-import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
-import {
-    nonMekComponentModes,
-    effectiveNonMekComponentMode,
-    type NonMekUnitRuntimeState,
-} from './non-mek-unit-instance';
-import {
-    entityAmmoLoadout,
-    entityAmmoLoadouts,
-    entityWeaponTechBasesForAmmo,
-    weaponAcceptsAmmo,
-    type AmmoLoadout,
-} from './mek-ammo';
-import {
-    projectEquipmentTargets,
-    projectWeaponTargetDisabledReasons,
-    projectEquipmentPanelHit,
-    projectEquipmentPanelWeaponDamage,
-    equipmentPanelWeaponTypes,
-    selectedAmmoEquipment,
-    type EquipmentPanelTarget,
-    EquipmentPanelAmmoLoadout,
-    EquipmentPanelAmmoSource,
-    EquipmentPanelComponent,
-    EquipmentPanelSnapshot,
-    type MekPhysicalAttackRow,
-} from './equipment-panel';
-import type { TargetRegistrySnapshot } from './encounter-runtime';
-import {
-    gameRulesFor,
-    type ComponentToHitTargetingComputerFacts,
-    type ComponentToHitSubject,
-    type ToHitModifierBreakdownEntry,
-} from '../rules/game-rules';
-import {
-    projectVehicleRuntimeRules,
-    type VehicleRuntimeRulesProjection,
-} from '../rules/vehicle-runtime-rules';
-import {
-    projectProtoMekRuntimeRules,
-    type ProtoMekRuntimeRulesProjection,
-} from '../rules/protomek-runtime-rules';
-import {
-    projectInfantryRuntimeRules,
-    type InfantryRuntimeRulesProjection,
-} from '../rules/infantry-runtime-rules';
-import {
-    projectAeroRuntimeRules,
-    type AeroRuntimeRulesProjection,
-} from '../rules/aero-runtime-rules';
-import { attackerActionSelection } from './attacker-targeting-state';
-import {
-    projectNonMekComponentStatuses,
-    type NonMekComponentStatuses,
-} from './non-mek-component-status';
-import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
-import {
-    AEROSPACE_RANGE_BRACKETS,
-    aerospaceAttackValues,
-    aerospaceRangeLimits,
-    effectiveAerospaceMaximumBracket,
-} from '../../utils/aerospace-range.util';
-import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
+import { AmmoEquipment,WeaponEquipment } from '../equipment.model';
 import { isLaserInsulatorEquipment } from '../laser-insulator.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
-import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import {
+projectAeroRuntimeRules,
+type AeroRuntimeRulesProjection,
+} from '../rules/aero-runtime-rules';
+import {
+gameRulesFor,
+type ComponentToHitSubject,
+type ComponentToHitTargetingComputerFacts,
+type ToHitModifierBreakdownEntry,
+} from '../rules/game-rules';
+import {
+projectInfantryRuntimeRules,
+type InfantryRuntimeRulesProjection,
+} from '../rules/infantry-runtime-rules';
+import {
+projectProtoMekRuntimeRules,
+type ProtoMekRuntimeRulesProjection,
+} from '../rules/protomek-runtime-rules';
+import {
+projectVehicleRuntimeRules,
+type VehicleRuntimeRulesProjection,
+} from '../rules/vehicle-runtime-rules';
+import { attackerActionSelection } from './attacker-targeting-state';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
+import {
+projectComponentLocationStatuses,
+type ComponentStatusProjection,
+} from './component-status-projection';
+import type { CrewAssignment } from './crew-assignment';
+import type { TargetRegistrySnapshot } from './encounter-runtime';
+import {
+EquipmentPanelAmmoLoadout,
+EquipmentPanelAmmoSource,
+EquipmentPanelComponent,
+EquipmentPanelSnapshot,
+equipmentPanelWeaponTypes,
+projectEquipmentPanelHit,
+projectEquipmentPanelWeaponDamage,
+projectEquipmentTargets,
+projectWeaponTargetDisabledReasons,
+selectedAmmoEquipment,
+type EquipmentPanelTarget,
+type MekPhysicalAttackRow,
+} from './equipment-panel';
+import {
+entityAmmoLoadout,
+entityAmmoLoadouts,
+entityWeaponTechBasesForAmmo,
+weaponAcceptsAmmo,
+type AmmoLoadout,
+} from './mek-ammo';
+import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
+import {
+effectiveNonMekComponentMode,
+nonMekComponentModes,
+type NonMekUnitRuntimeState,
+} from './non-mek-unit-instance';
 import { nonMekWeaponAttackGroups } from './non-mek-weapon-attack-groups';
 
 interface NonMekAmmoSourceCandidate {
@@ -118,7 +118,7 @@ export function projectNonMekEquipmentPanel(
     const aeroRules = isAeroEntity(entity)
         ? projectAeroRuntimeRules(entity, index, state, ruleset)
         : null;
-    const entityStatuses = projectNonMekComponentStatuses(index, state);
+    const entityStatuses = projectComponentLocationStatuses(index, state);
     const ammoSourceCandidates = projectAmmoSourceCandidates(
         entity,
         index,
@@ -214,7 +214,7 @@ function projectComponent(
     protoMekRules: ProtoMekRuntimeRulesProjection | null,
     infantryRules: InfantryRuntimeRulesProjection | null,
     aeroRules: AeroRuntimeRulesProjection | null,
-    entityStatuses: NonMekComponentStatuses,
+    entityStatuses: ComponentStatusProjection,
     targetingComputer: ComponentToHitTargetingComputerFacts | null,
     hpgBlocksWeaponFire: boolean,
     ammoSourceCandidates: readonly NonMekAmmoSourceCandidate[],
@@ -699,7 +699,7 @@ function projectAmmoSourceCandidates(
     ruleset: CBTRuleset,
     state: NonMekUnitRuntimeState,
     vehicleRules: VehicleRuntimeRulesProjection | null,
-    entityStatuses: NonMekComponentStatuses,
+    entityStatuses: ComponentStatusProjection,
 ): readonly NonMekAmmoSourceCandidate[] {
     return Object.freeze([...index.components.values()].flatMap(component => {
         const loadouts = entityAmmoLoadouts(entity, component.mount, ruleset);
@@ -752,7 +752,7 @@ function compatibleAmmoSources(
 function installedTargetingComputer(
     index: NonMekRuntimeIndex,
     vehicleRules: VehicleRuntimeRulesProjection | null,
-    entityStatuses: NonMekComponentStatuses,
+    entityStatuses: ComponentStatusProjection,
 ): ComponentToHitTargetingComputerFacts | null {
     for (const component of index.components.values()) {
         const equipment = component.mount.equipment;

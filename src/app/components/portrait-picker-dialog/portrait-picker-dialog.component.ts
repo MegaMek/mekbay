@@ -28,7 +28,7 @@ export interface PortraitPickerDialogData { readonly portrait?: string; }
             <div class="wide-dialog-body" role="tabpanel" [id]="'portrait-panel-' + activeSet()"
                 [attr.aria-labelledby]="'portrait-tab-' + activeSet()" tabindex="0">
                 @if (loading() || sheetLoading()) {
-                    <p role="status">Loading portraits…</p>
+                    <p role="status"></p>
                 } @else if (error()) {
                     <p role="alert">Portraits could not be loaded. Please try again.</p>
                     <button class="bt-button" type="button" (click)="load()">RETRY</button>

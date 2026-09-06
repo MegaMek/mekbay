@@ -1,12 +1,16 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { bindMekRecordSheet, type MekRecordSheetInteraction } from './mek-record-sheet-binder';
-import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
+import { asComponentId,asCriticalSlotId,asLocationId } from '../../models/entity/entity-identifiers';
+import { MiscEquipment,WeaponEquipment } from '../../models/equipment.model';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
-import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
-import { asComponentId, asCriticalSlotId, asLocationId } from '../../models/entity/entity-identifiers';
+import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
+import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { bindMekRecordSheet } from './mek-record-sheet-binder';
+import type { RecordSheetInteraction } from './record-sheet-interaction';
+
+const editContext = createUnitEditContextFixture();
 
 describe('Mek record-sheet binder', () => {
     it('opens ammo loadout from the full ammo row after live reflow and supports keyboard activation', () => {
@@ -15,16 +19,16 @@ describe('Mek record-sheet binder', () => {
         profile.setAttribute('data-width', '110');
         const base = snapshot();
         const ammo = base.equipment.find(component => component.ammo !== undefined)!;
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, { ...base, equipment: [] },
             interaction => interactions.push(interaction));
         binding.render(base);
         profile.querySelector('rect')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision }]);
+        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', context: editContext(base.stateRevision)}]);
 
         binding.render({
             ...base,
-            stateRevision: base.stateRevision + 1,
+            stateRevision: base.stateRevision + 1, editContext: editContext(base.stateRevision + 1),
             equipment: ['Arrow IV ADA Ammo', 'Arrow IV Fuel-Air Ammo'].map((displayName, index) => ({
                 ...ammo,
                 componentId: asComponentId(`profile-ammo-${index}`),
@@ -36,8 +40,8 @@ describe('Mek record-sheet binder', () => {
         profile.querySelectorAll('text')[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         profile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         expect(interactions.slice(1)).toEqual([
-            { kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision + 1 },
-            { kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision + 1 },
+            { kind: 'open-equipment', tab: 'ammo', context: editContext(base.stateRevision + 1)},
+            { kind: 'open-equipment', tab: 'ammo', context: editContext(base.stateRevision + 1)},
         ]);
 
         binding.render({ ...base, equipment: [] });
@@ -45,7 +49,7 @@ describe('Mek record-sheet binder', () => {
         binding.render(base);
         expect(profile.querySelector('rect')!.getAttribute('height')).toBe('10');
         profile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-        expect(interactions.at(-1)).toEqual({ kind: 'open-equipment', tab: 'ammo', expectedRevision: base.stateRevision });
+        expect(interactions.at(-1)).toEqual({ kind: 'open-equipment', tab: 'ammo', context: editContext(base.stateRevision)});
         binding.destroy();
         profile.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions.length).toBe(4);
@@ -59,7 +63,7 @@ describe('Mek record-sheet binder', () => {
     it('clears departed crew data, shows the vacant station, and restores its controls on assignment', () => {
         const svg = sheet();
         const original = snapshot();
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, original,
             interaction => interactions.push(interaction));
         binding.render({
@@ -86,7 +90,7 @@ describe('Mek record-sheet binder', () => {
     it('emits a typed random-hit interaction from the generated roll control', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -98,7 +102,7 @@ describe('Mek record-sheet binder', () => {
         control.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
 
         expect(interactions).toEqual([jasmine.objectContaining({
-            kind: 'random-hit', element: control, expectedRevision: 7,
+            kind: 'random-hit', element: control, context: editContext(7),
         })]);
         expect(control.getAttribute('tabindex')).toBe('0');
     });
@@ -218,7 +222,7 @@ describe('Mek record-sheet binder', () => {
     it('binds every armor and internal pip only when the sheet has no authored location zone', () => {
         const svg = sheet();
         svg.querySelectorAll('.unitLocation.armor, .unitLocation.structure').forEach(zone => zone.remove());
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -251,7 +255,7 @@ describe('Mek record-sheet binder', () => {
             <circle class="pip-hit-area armor" loc="CT"></circle>
             <circle class="pip-hit-area structure" loc="CT"></circle>
             <circle class="pip-hit-area structure" loc="CT"></circle>`);
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -404,7 +408,7 @@ describe('Mek record-sheet binder', () => {
     it('uses the latest rendered crew wounds when a hit marker clears damage', () => {
         const svg = sheet();
         const current = snapshot();
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -421,12 +425,13 @@ describe('Mek record-sheet binder', () => {
 
         const marker = svg.querySelector<SVGElement>('.crewHit[crewId="0"][hit="2"]');
         expect(marker).not.toBeNull();
+        marker!.dataset['mekbayCrewWounds'] = '99';
         marker!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
         expect(interactions.at(-1)).toEqual(jasmine.objectContaining({
             kind: 'crew-wounds',
             wounds: 1,
-        }) as unknown as MekRecordSheetInteraction);
+        }) as unknown as RecordSheetInteraction);
     });
 
     it('projects only ranged weapons and typed physical attacks into the authored weapon table', () => {
@@ -436,7 +441,7 @@ describe('Mek record-sheet binder', () => {
             <text class="damage"></text>
             <rect class="hitMod-rect"></rect>
             <text class="hitMod-text"></text>`);
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const current = snapshot();
         const withPhysical = {
             ...current,
@@ -484,7 +489,7 @@ describe('Mek record-sheet binder', () => {
         expect(interactions).toContain(jasmine.objectContaining({
             kind: 'action-selection',
             target: { kind: 'intrinsic', actionId: 'intrinsic:punch:LA' },
-        }) as unknown as MekRecordSheetInteraction);
+        }) as unknown as RecordSheetInteraction);
 
         if (withPhysical.physicalAttacks.kind !== 'supported') {
             throw new Error('Physical fixture is unsupported');
@@ -526,7 +531,7 @@ describe('Mek record-sheet binder', () => {
 
     it('emits authoritative IDs captured from the projection, never forged SVG metadata', () => {
         const svg = sheet();
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -575,7 +580,7 @@ describe('Mek record-sheet binder', () => {
         const critical = svg.querySelector<SVGElement>('.critSlot')!;
         critical.insertAdjacentHTML('afterbegin', '<rect class="critSlot-bg-rect"></rect>');
         const base = snapshot();
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
 
         bindMekRecordSheet(
             svg,
@@ -597,7 +602,7 @@ describe('Mek record-sheet binder', () => {
 
     it('renders and binds shield DA/DC tracks from the runtime projection', () => {
         const svg = sheet();
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const current = snapshot();
         bindMekRecordSheet(
             svg,
@@ -647,7 +652,7 @@ describe('Mek record-sheet binder', () => {
     it('renders a read-only projection without attaching mutation handlers', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -1003,7 +1008,7 @@ describe('Mek record-sheet binder', () => {
                 }],
             }],
         } as MekRecordSheetSnapshot;
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         const binding = bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -1418,7 +1423,7 @@ describe('Mek record-sheet binder', () => {
                 ? { ...component, modes: ['Standard', 'Pulse'], defaultMode: 'Standard', mode: 'Standard' }
                 : component),
         } as MekRecordSheetSnapshot;
-        const interactions: MekRecordSheetInteraction[] = [];
+        const interactions: RecordSheetInteraction[] = [];
         bindMekRecordSheet(
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
@@ -1450,22 +1455,22 @@ describe('Mek record-sheet binder', () => {
 
         expect(interactions).toContain(jasmine.objectContaining({
             kind: 'internal', locationId: 'location-ct', button: 'secondary',
-        }) as unknown as MekRecordSheetInteraction);
+        }) as unknown as RecordSheetInteraction);
         expect(interactions).toContain(jasmine.objectContaining({
             kind: 'crew-wounds', positionId: 'crew-0', wounds: 0,
-        }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'crew-name', positionId: 'crew-0' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'condition-menu' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'shutdown' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'location-condition-menu', locationId: 'location-ct' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', componentIds: ['weapon-component'] }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', range: 'short' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', mode: 'Pulse' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', mode: 'Pulse', range: 'medium' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'apply-heat' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'heat-overflow' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'open-equipment', tab: 'weapons' }) as unknown as MekRecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'reference-table' }) as unknown as MekRecordSheetInteraction);
+        }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'crew-name', positionId: 'crew-0' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'condition-menu' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'shutdown' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'location-condition-menu', locationId: 'location-ct' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', componentIds: ['weapon-component'] }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', range: 'short' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', mode: 'Pulse' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'inventory-selection', mode: 'Pulse', range: 'medium' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'apply-heat' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'heat-overflow' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'open-equipment', tab: 'weapons' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'reference-table' }) as unknown as RecordSheetInteraction);
         expect(svg.querySelector('#mpWalk')?.classList).not.toContain('interactive');
         expect(svg.querySelector('.unitLocation.armor')?.classList).toContain('selectable');
         expect(svg.querySelector('.unitConditionButton')?.classList).toContain('edit-only');
@@ -1581,7 +1586,7 @@ function snapshot(): MekRecordSheetSnapshot {
     return {
         entityUuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'),
         ruleset: 'core-2026',
-        stateRevision: 7 as MekRecordSheetSnapshot['stateRevision'],
+        stateRevision: 7 as MekRecordSheetSnapshot['stateRevision'], editContext: editContext(7),
         identity: {
             baseChassis: 'Atlas',
             model: 'AS7-D',

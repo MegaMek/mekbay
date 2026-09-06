@@ -1,30 +1,31 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { Injectable,inject } from '@angular/core';
+import { createMekUnit,restoreMekUnit } from '../models/runtime/cbt-mek-unit';
+import { createNonMekUnit,restoreNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
 import { UnitNameService } from './unit-name.service';
-import { Injectable, inject } from '@angular/core';
 
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
+import type { CBTUnit } from '../models/runtime/cbt-unit';
 import type { SerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
 import { isSerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
-import type { CBTUnit } from '../models/runtime/cbt-unit';
-import { CBTNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
-import { CBTMekUnit } from '../models/runtime/cbt-mek-unit';
+
 import type { SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
 import type { V2StateRestoreWarningCode } from '../models/runtime/runtime-state-codec-v2';
 import {
-    DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
-    DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
-    UNIT_STATE_INITIALIZER_REVISION,
-    type DeploymentConfiguration,
-    type ScenarioRules,
+DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
+UNIT_STATE_INITIALIZER_REVISION,
+type DeploymentConfiguration,
+type ScenarioRules,
 } from '../models/runtime/unit-state-initializer';
-import type { UnitUuid } from './unit-catalog/unit-catalog.types';
 import { sourceHashCanaryChanged } from '../models/source-hash-canary';
 import {
-    NativeEntityService,
-    nativeSourceHandleForLoadedEntity,
+NativeEntityService,
+nativeSourceHandleForLoadedEntity,
 } from './native-entity.service';
+import type { UnitUuid } from './unit-catalog/unit-catalog.types';
 
 export interface CreateCBTUnitRequest {
     readonly uuid: UnitUuid;
@@ -62,7 +63,7 @@ export class CBTUnitService {
         const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
         if (loaded.entity instanceof MekEntity) {
-            return CBTMekUnit.createFromEntity({
+            return createMekUnit({
                 uuid: request.uuid,
                 instanceId: request.instanceId,
                 ...(request.crewSkills ? { crewSkills: request.crewSkills } : {}),
@@ -76,7 +77,7 @@ export class CBTUnitService {
         if (loaded.source.format !== 'blk') {
             throw new Error(`${loaded.entity.entityType} requires a BLK source`);
         }
-        return CBTNonMekUnit.create(loaded.entity, {
+        return createNonMekUnit(loaded.entity, {
             instanceId: request.instanceId,
             uuid,
             deployment: request.deployment,
@@ -110,12 +111,12 @@ export class CBTUnitService {
             if (loaded.entity instanceof MekEntity) {
                 throw new Error('A persisted non-Mek runtime resolved to a Mek entity');
             }
-            unit = CBTNonMekUnit.restore(saved, loaded.entity, uuid, scenario, nativeSource);
+            unit = restoreNonMekUnit(saved, loaded.entity, uuid, scenario, nativeSource);
         } else {
             if (!(loaded.entity instanceof MekEntity)) {
                 throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
             }
-            unit = await CBTMekUnit.restoreFromEntity(saved, loaded.entity, uuid, {
+            unit = await restoreMekUnit(saved, loaded.entity, uuid, {
                 initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                 profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
                 deployment: saved.deployment.values,

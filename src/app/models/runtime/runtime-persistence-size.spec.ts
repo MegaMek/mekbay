@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { createMekUnit } from './cbt-mek-unit';
+import { createNonMekUnit } from './cbt-non-mek-unit';
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
-import { CBTMekUnit } from './cbt-mek-unit';
+
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-    asForceId,
-    validateSerializedCBTForceV2,
-    type SerializedCBTEncounterStateV2,
-    type SerializedCBTForceV2,
+CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
+asForceId,
+validateSerializedCBTForceV2,
+type SerializedCBTEncounterStateV2,
+type SerializedCBTForceV2,
 } from './persistence-v2';
-import { RUNTIME_HISTORY_MESSAGE, type SerializedRuntimeHistory } from './runtime-history';
-import { CBTNonMekUnit } from './cbt-non-mek-unit';
-import { TestTankEntity } from '../entity/testing/test-entities';
+import { RUNTIME_HISTORY_MESSAGE,type SerializedRuntimeHistory } from './runtime-history';
+
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { GameSystem } from '../common.model';
+import { TestTankEntity } from '../entity/testing/test-entities';
+import type { ASSerializedForce,ASSerializedState,ASSerializedUnit } from '../force-serialization';
 import { encodeForceForStorage } from './force-storage-codec';
-import type { ASSerializedForce, ASSerializedState, ASSerializedUnit } from '../force-serialization';
 
 function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
     return { networks: [] };
@@ -35,7 +37,7 @@ describe('compact runtime persistence', () => {
         entity.uuid.set(uuid);
         entity.setTonnage(20);
         const identity = uuid;
-        const unit = CBTNonMekUnit.create(entity, {
+        const unit = createNonMekUnit(entity, {
             instanceId: 'unit:size-tank',
             uuid: identity,
             deployment: { id: 'default' },
@@ -171,7 +173,7 @@ function uuidAt(index: number): string {
 
 async function pristineMek() {
     const fixture = createDirectMekRuntimeFixture();
-    return (await CBTMekUnit.createFromEntity({
+    return (await createMekUnit({
         uuid: fixture.identity,
         instanceId: 'unit:size-template',
     }, fixture.entity, fixture.identity, {
@@ -207,12 +209,7 @@ async function representativeDamagedMek() {
         ejected: false,
     }).accepted).toBeTrue();
     expect(fixture.instance.dispatch({ type: 'set-heat', heat: 6 }).accepted).toBeTrue();
-    return new CBTMekUnit(
-        fixture.entity,
-        fixture.identity,
-        fixture.instance,
-        { schemaVersion: 2, values: fixture.initialized.deployment },
-    ).serialize();
+    return new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined }).serialize();
 }
 
 function mixedDamageMek(
@@ -257,3 +254,5 @@ function mixedDamageMek(
 function byteLength(value: unknown): number {
     return new TextEncoder().encode(JSON.stringify(value)).length;
 }
+
+import { CBTUnit } from './cbt-unit';

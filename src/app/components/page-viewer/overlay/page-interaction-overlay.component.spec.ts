@@ -1,12 +1,12 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { CBTForceMember, CBTMekForceMember } from '../../../models/force-member.model';
-import { TestBipedMekEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
+import { signal } from '@angular/core';
+import { TestBipedMekEntity,TestTankEntity } from '../../../models/entity/testing/test-entities';
+import type { CBTForceMember,CBTMekForceMember } from '../../../models/force-member.model';
+import type { CBTUnitViewMode } from '../../../models/options.model';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
-import { signal } from '@angular/core';
-import type { CBTUnitViewMode } from '../../../models/options.model';
 
 describe('PageInteractionOverlay view selection', () => {
     it('writes toolbar changes to the persisted view option and closes overlays', () => {
@@ -77,7 +77,7 @@ describe('PageInteractionOverlay turn boundaries', () => {
     });
 
     it('dispatches End Phase through the admitted V2 member', async () => {
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             revision: 13,
@@ -94,7 +94,7 @@ describe('PageInteractionOverlay turn boundaries', () => {
     });
 
     it('commits pending non-Mek Entity damage through the same End Phase button', async () => {
-        const dispatch = jasmine.createSpy('dispatchNonMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: true,
             changed: true,
             currentRevision: 13,
@@ -105,7 +105,7 @@ describe('PageInteractionOverlay turn boundaries', () => {
                 entity,
                 state: { stateRevision: 12 },
             }),
-            dispatchNonMekUnitCommand: dispatch,
+            dispatchUnitCommand: dispatch,
         };
         const member = {
             kind: 'cbt',
@@ -126,12 +126,13 @@ describe('PageInteractionOverlay turn boundaries', () => {
 
         expect(event.stopPropagation).toHaveBeenCalledTimes(1);
         expect(dispatch).toHaveBeenCalledOnceWith('tank-1', {
-            kind: 'end-phase',
+            type: 'end-phase',
+            policy: 'automatic',
         });
     });
 
     it('dispatches End Turn with the configured heat policy and surfaces read-only rejection', async () => {
-        const dispatch = jasmine.createSpy('dispatchMekUnitCommand').and.resolveTo({
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({
             accepted: false,
             changed: false,
             reason: 'READ_ONLY',
@@ -156,7 +157,7 @@ function componentForMember(
     automated = false,
 ): PageInteractionOverlayComponent {
     const component = Object.create(PageInteractionOverlayComponent.prototype) as PageInteractionOverlayComponent;
-    const force = { dispatchMekUnitCommand: dispatch };
+    const force = { dispatchUnitCommand: dispatch };
     const entity = new TestBipedMekEntity();
     const member = {
         kind: 'cbt',

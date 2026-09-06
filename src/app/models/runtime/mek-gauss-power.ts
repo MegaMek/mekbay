@@ -1,20 +1,20 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { ComponentId } from '../entity/entity-identifiers';
+import type { Equipment } from '../equipment.model';
+import { GAUSS_FLAG,isGaussEquipment } from '../gauss-equipment.model';
+import type { WeaponType } from '../weapon-types.model';
+import { type CBTMekUnit } from './cbt-unit';
+import {
+EquipmentInteractionHandler,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
+} from './equipment-interaction';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { equipmentForComponent } from './mek-runtime-index';
-import type { Equipment } from '../equipment.model';
-import { GAUSS_FLAG, isGaussEquipment } from '../gauss-equipment.model';
-import type { WeaponType } from '../weapon-types.model';
-import type { PickerChoice } from '../../components/picker/picker.interface';
-import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
-} from './equipment-interaction';
-import type { CBTUnitInstance } from './unit-instance';
 
 export const GAUSS_POWERED_UP = 'Powered Up';
 export const GAUSS_POWERING_DOWN = 'Powering Down';
@@ -126,7 +126,7 @@ export class GaussPowerHandler extends EquipmentInteractionHandler {
     }
 
     getComponentGaussPowerChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: MekGaussPowerDefinition,
         _context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
@@ -140,7 +140,7 @@ export class GaussPowerHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentGaussPowerSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: MekGaussPowerDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,

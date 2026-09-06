@@ -1,55 +1,56 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { WeaponEquipment } from '../equipment.model';
-import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
+import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
-import type { WeaponType } from '../weapon-types.model';
+import { WeaponEquipment } from '../equipment.model';
 import {
-    PPC_CAPACITOR_COMPATIBLE_FLAG,
-    PPC_CAPACITOR_DAMAGE_BONUS,
-    PPC_CAPACITOR_FLAG,
-    PPC_FLAG,
-    isPpcCapacitorCompatibleWeapon,
-    isPpcCapacitorEquipment,
+PPC_CAPACITOR_COMPATIBLE_FLAG,
+PPC_CAPACITOR_DAMAGE_BONUS,
+PPC_CAPACITOR_FLAG,
+PPC_FLAG,
+isPpcCapacitorCompatibleWeapon,
+isPpcCapacitorEquipment,
 } from '../ppc-capacitor.model';
+import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
+import type { WeaponType } from '../weapon-types.model';
+import { type CBTMekUnit } from './cbt-unit';
 import {
-    componentStatusDefinition,
-    createComponentStatusDefinition,
-    type ComponentStatusDefinition,
-} from './component-status';
-import {
-    componentStateChangeFromReduction,
-    type ComponentStateChangeResult,
+componentStateChangeFromReduction,
+type ComponentStateChangeResult,
 } from './component-state-change';
 import {
-    equipmentForComponent,
-    mountedEquipmentForComponent,
-    type MekRuntimeIndex,
+componentStatusDefinition,
+createComponentStatusDefinition,
+type ComponentStatusDefinition,
+} from './component-status';
+import {
+equipmentForComponent,
+mountedEquipmentForComponent,
+type MekRuntimeIndex,
 } from './mek-runtime-index';
 import {
-    type PpcCapacitorChargeState,
-    type PpcCapacitorRuntimeState,
+type PpcCapacitorChargeState,
+type PpcCapacitorRuntimeState,
 } from './runtime-state';
-import type { CBTUnitInstance } from './unit-instance';
+
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import {
-    EquipmentInteractionHandler,
-    type EquipmentInteractionChoice,
-    type EquipmentInteractionCommandContext,
-    type EquipmentInteractionInput,
-    type EquipmentInteractionQueryContext,
+EquipmentInteractionHandler,
+type EquipmentInteractionChoice,
+type EquipmentInteractionCommandContext,
+type EquipmentInteractionInput,
+type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
 export const PPC_CAPACITOR_CHARGING_STATE = 'charging' as const;
 export const PPC_CAPACITOR_CHARGED_STATE = 'charged' as const;
 export {
-    PPC_CAPACITOR_DAMAGE_BONUS,
-    PPC_CAPACITOR_HEAT_BONUS,
-    isPpcCapacitorCompatibleWeapon,
-    isPpcCapacitorEquipment,
+PPC_CAPACITOR_DAMAGE_BONUS,
+PPC_CAPACITOR_HEAT_BONUS,
+isPpcCapacitorCompatibleWeapon,
+isPpcCapacitorEquipment
 } from '../ppc-capacitor.model';
 
 export interface ComponentPpcCapacitorDefinition {
@@ -186,7 +187,7 @@ export function componentPpcCapacitorDefinition(
 }
 
 export function componentPpcCapacitorFacts(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentPpcCapacitorDefinition,
 ): ComponentPpcCapacitorFacts {
     const query = runtime.query();
@@ -203,7 +204,7 @@ export function componentPpcCapacitorFacts(
 }
 
 export function setComponentPpcCapacitorCharge(
-    runtime: CBTUnitInstance,
+    runtime: CBTMekUnit,
     definition: ComponentPpcCapacitorDefinition,
     state: typeof PPC_CAPACITOR_CHARGING_STATE | null,
 ): ComponentStateChangeResult {
@@ -218,7 +219,7 @@ export function setComponentPpcCapacitorCharge(
 export function ppcCapacitorChargedForWeapon(
     entity: MekEntity,
     index: MekRuntimeIndex,
-    runtime: Pick<ReturnType<CBTUnitInstance['query']>, 'componentStatus' | 'componentPpcCapacitor'>,
+    runtime: Pick<ReturnType<CBTMekUnit['query']>, 'componentStatus' | 'componentPpcCapacitor'>,
     weaponId: ComponentId,
 ): boolean {
     const capacitorId = index.relationships.linkedSourceByTarget.get(weaponId);
@@ -285,7 +286,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     }
 
     getComponentPpcCapacitorChoices(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentPpcCapacitorDefinition,
         _context: EquipmentInteractionQueryContext,
     ): EquipmentInteractionChoice[] {
@@ -315,7 +316,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
     }
 
     handleComponentPpcCapacitorSelection(
-        runtime: CBTUnitInstance,
+        runtime: CBTMekUnit,
         definition: ComponentPpcCapacitorDefinition,
         choice: PickerChoice,
         context: EquipmentInteractionCommandContext,
@@ -338,7 +339,7 @@ export class PpcCapacitorHandler extends EquipmentInteractionHandler {
         return false;
     }
 
-    private usable(runtime: CBTUnitInstance, definition: ComponentPpcCapacitorDefinition): boolean {
+    private usable(runtime: CBTMekUnit, definition: ComponentPpcCapacitorDefinition): boolean {
         const facts = componentPpcCapacitorFacts(runtime, definition);
         return this.applicableToComponentPpcCapacitor(definition)
             && facts.capacitorStatus === 'available'

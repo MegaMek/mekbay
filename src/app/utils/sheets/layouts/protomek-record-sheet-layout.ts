@@ -1,51 +1,53 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
-import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guards';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
-import { type BipedArmorValues, BipedPaperdollUtil } from '../biped-paperdoll.util';
 import { type ProtoMekEntity } from '../../../models/entity/entities/protomek/protomek-entity';
-import {
-    RECORD_SHEET_CONTENT_WIDTH,
-    type RecordSheetPageProfile,
-} from '../record-sheet-layout';
-import { SvgFrameUtil } from '../svg-frame.util';
+import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
-import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
+import { protoMekCriticalReferences,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
+import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
+import { type BipedArmorValues,BipedPaperdollUtil } from '../biped-paperdoll.util';
 import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import {
-    type Box,
-    addFrame,
-    addLine,
-    addText,
-    appendLegacyIdentityAnchors,
-    compactArmorDisplayName,
-    compactLocationLabel,
-    decoratePaperdollPips,
-    drawCheckbox,
-    drawClusterHitsReference,
-    drawDamageLocation,
-    drawGeneratedFooter,
-    formatNumber,
-    paperdollPipOptions,
-    readViewBox,
-    recordSheetAmmoProfile,
-    recordSheetInventoryWeapons,
-    scaleCompactBox,
-    scalePageBox,
-    setAttributes,
-    setInventoryComponentIds,
-    svgElement,
-    transparentRect,
-} from '../record-sheet-svg-rendering';
-import {
-    PROTOMEK_DEFAULT_ART,
-    appendEmbeddedRasterUse,
-    appendRecordSheetEraIcon,
+PROTOMEK_DEFAULT_ART,
+appendEmbeddedRasterUse,
+appendRecordSheetEraIcon,
 } from '../record-sheet-embedded-art';
+import {
+RECORD_SHEET_CONTENT_WIDTH,
+type RecordSheetPageProfile,
+} from '../record-sheet-layout';
+import {
+type Box,
+addFrame,
+addLine,
+addText,
+appendLegacyIdentityAnchors,
+compactArmorDisplayName,
+compactLocationLabel,
+decoratePaperdollPips,
+drawCheckbox,
+drawClusterHitsReference,
+drawDamageLocation,
+drawGeneratedFooter,
+formatNumber,
+paperdollPipOptions,
+readViewBox,
+recordSheetAmmoProfile,
+recordSheetInventoryWeapons,
+scaleCompactBox,
+scalePageBox,
+setAttributes,
+setInventoryComponentIds,
+svgElement,
+transparentRect,
+} from '../record-sheet-svg-rendering';
+import { SvgFrameUtil } from '../svg-frame.util';
+import { CompactRecordSheetLayout } from './record-sheet-layout';
 export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     public constructor() {
         super(
@@ -372,68 +374,21 @@ function drawCompactProtoMekCriticals(
         size: font(6.2), weight: 700, anchor,
     }));
 
-    type CriticalEffect = Readonly<{
-        id: string;
-        text: string;
-        secondLine?: string;
-        fill?: string;
-    }>;
-    type CriticalRow = Readonly<{
-        rolls: readonly string[];
-        location: string;
-        baseline: number;
-        effects: readonly CriticalEffect[];
-    }>;
-    const mainGun: CriticalRow = {
-        rolls: ['2'], location: 'Main Gun', baseline: entity.isQuad() ? 34.113 : 32.029,
-        effects: [{ id: 'gun_hit_1', text: 'Main Gun Destroyed' }],
-    };
-    const legs: CriticalRow = {
-        rolls: entity.isQuad() ? ['4,5', '9,10'] : ['5,9'],
-        location: 'Legs', baseline: entity.isQuad() ? 45.575 : 50.786,
-        effects: [
-            { id: 'legs_hit_1', text: '-1 Walk MP' },
-            { id: 'legs_hit_2', text: '1/2 Walk MP' },
-            { id: 'legs_hit_3', text: 'No Move', fill: '#c7c7c7' },
-        ],
-    };
-    const torso: CriticalRow = {
-        rolls: ['6,7,8'], location: 'Torso', baseline: entity.isQuad() ? 57.038 : 60.164,
-        effects: [
-            { id: 'torso_hit_1', text: '-1 Jump MP*', fill: '#c7c7c7' },
-            { id: 'torso_hit_2', text: '1/2 Jump MP*', fill: '#c7c7c7' },
-            { id: 'torso_hit_3', text: 'Proto', secondLine: 'Destroyed', fill: '#000' },
-        ],
-    };
-    const head: CriticalRow = {
-        rolls: ['12'], location: 'Head', baseline: entity.isQuad() ? 68.501 : 78.921,
-        effects: [
-            { id: 'head_hit_1', text: '+1 to Hit' },
-            { id: 'head_hit_2', text: '+2 to Hit', secondLine: 'No Long Range Shots', fill: '#c7c7c7' },
-        ],
-    };
-    const rows: readonly CriticalRow[] = entity.isQuad()
-        ? [mainGun, legs, torso, head]
-        : [
-            mainGun,
-            {
-                rolls: ['4'], location: 'Right Arm', baseline: 41.407,
-                effects: [
-                    { id: 'ra_hit_1', text: '+1 to Hit' },
-                    { id: 'ra_hit_2', text: 'Right Arm Destroyed', fill: '#c7c7c7' },
-                ],
-            },
-            legs,
-            torso,
-            {
-                rolls: ['10'], location: 'Left Arm', baseline: 69.543,
-                effects: [
-                    { id: 'la_hit_1', text: '+1 to Hit' },
-                    { id: 'la_hit_2', text: 'Left Arm Destroyed', fill: '#c7c7c7' },
-                ],
-            },
-            head,
-        ];
+    const baselines = entity.isQuad()
+        ? { 'main-gun': 34.113, legs: 45.575, torso: 57.038, head: 68.501 }
+        : { 'main-gun': 32.029, 'right-arm': 41.407, legs: 50.786, torso: 60.164, 'left-arm': 69.543, head: 78.921 };
+    const rows = protoMekCriticalReferences(entity).map(row => ({
+        ...row,
+        rolls: row.rolls.length > 3 ? [row.rolls.slice(0, 2).join(','), row.rolls.slice(2).join(',')] : [row.rolls.join(',')],
+        baseline: baselines[row.system as keyof typeof baselines]!,
+        effects: row.effects.map((effect, index) => ({
+            id: systemDamageControls(entity, row.system).ids[index],
+            text: effect.text,
+            secondLine: effect.detail,
+            fill: row.system === 'torso' ? index === 2 ? '#000' : '#c7c7c7'
+                : index === row.effects.length - 1 && index > 0 ? '#c7c7c7' : undefined,
+        })),
+    }));
     const controlXs = [57.4, 102.733, 148.067] as const;
     const textXs = [65.8, 111.133, 156.467] as const;
     rows.forEach(row => {
@@ -474,23 +429,9 @@ function drawCompactProtoMekCriticals(
 }
 
 function compactProtoMekTorsoCriticalResults(entity: ProtoMekEntity): readonly string[] {
-    const weapons = entity.equipment()
-        .filter(mount => mount.getOccupiedLocations().includes('Torso')
-            && mount.getAmmoShots() === undefined
-            && !isJumpJetEquipment(mount.equipment))
-        .map(mount => mount.displayName());
-    if (weapons.length === 0) return Object.freeze(['No Torso Weapons']);
-    const facesPerWeapon = entity.isQuad() ? 1 : 2;
-    const results: string[] = [];
-    let roll = 1;
-    for (const weapon of weapons) {
-        if (roll > 6) break;
-        const end = Math.min(6, roll + facesPerWeapon - 1);
-        results.push(`${roll}${end > roll ? `-${end}` : ''}: ${weapon}`);
-        roll = end + 1;
-    }
-    if (roll <= 6) results.push(`${roll}${roll < 6 ? '-6' : ''}: No Effect`);
-    return Object.freeze(results);
+    const results = protoMekTorsoCriticalResults(entity);
+    if (results.length === 1 && results[0].weapon === undefined) return ['No Torso Weapons'];
+    return results.map(result => `${result.firstRoll}${result.lastRoll > result.firstRoll ? `-${result.lastRoll}` : ''}: ${result.weapon ?? 'No Effect'}`);
 }
 
 async function drawCompactProtoMekDiagram(

@@ -1,39 +1,42 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { type CBTMekUnit } from './cbt-unit';
+import { systemDamagePresentation } from './system-damage-presentation';
+import type { CBTUnitCommand } from './unit-command';
 
 import { jsonValuesEqual } from '../../utils/json-value.util';
-import type { JsonValue } from '../persisted-unit-state';
 import type { MotiveModes } from '../motiveModes.model';
-import { createSavedTargetRef, parseSavedTargetRef, type SerializedCBTUnitV2 } from './persistence-v2';
+import type { JsonValue } from '../persisted-unit-state';
+import { isCBTMekUnit,isCBTNonMekUnit,type CBTUnit } from './cbt-unit';
+import { createSavedTargetRef,parseSavedTargetRef,type SerializedCBTUnitV2 } from './persistence-v2';
 import {
-    type MekUnitRuntimeState,
-    type MekLocationConditionKey,
-    type AmmoRuntimeState,
+type AmmoRuntimeState,
+type MekLocationConditionKey,
+type MekUnitRuntimeState,
 } from './runtime-state';
-import { isCBTNonMekUnit, isCBTMekUnit, type CBTUnit } from './cbt-unit';
-import type { CBTMekUnit } from './cbt-mek-unit';
+
+import { hasMekRuntime,hasNonMekRuntime,type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import type {
-    ArmorFaceId,
-    ComponentId,
-    CrewPositionId,
-    CriticalSlotId,
-    LocationId,
-    SystemDamageTrackId,
+ArmorFaceId,
+ComponentId,
+CrewPositionId,
+CriticalSlotId,
+LocationId,
+SystemDamageTrackId,
 } from '../entity/entity-identifiers';
 import { getMekLocationLabel } from '../entity/types/mek';
-import type { NonMekUnitCommand, NonMekUnitRuntimeState } from './non-mek-unit-instance';
-import type { CBTUnitCommand } from './unit-instance';
-import type { CrewAssignment } from './crew-assignment';
-import { CrewMember, type CrewMemberRuntimeState } from '../crew-member.model';
+
+import { CrewMember,type CrewMemberRuntimeState } from '../crew-member.model';
 import { serializeUnitCover } from '../unit-cover.model';
+import type { CrewAssignment } from './crew-assignment';
 import type { EquipmentRowOrderState } from './equipment-row-order';
+import { entityAmmoLoadout,mekAmmoLoadout } from './mek-ammo';
+import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './non-mek-unit-persistence';
 import {
-    RUNTIME_HISTORY_MESSAGE,
-    type RuntimeHistoryEventInput,
-    type RuntimeHistoryTargetKind,
+RUNTIME_HISTORY_MESSAGE,
+type RuntimeHistoryEventInput,
+type RuntimeHistoryTargetKind,
 } from './runtime-history';
-import { isSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
-import { entityAmmoLoadout, mekAmmoLoadout } from './mek-ammo';
 
 interface MekHistoryUnitAccess {
     instanceIds(): readonly string[];
@@ -249,7 +252,8 @@ function historyCriticalLabel(
     targetId: string,
 ): string {
     if (isCBTNonMekUnit(unit)) {
-        return unit.getIndex().damageTracks.get(targetId as SystemDamageTrackId)?.label ?? targetId;
+        const track = unit.getIndex().damageTracks.get(targetId as SystemDamageTrackId);
+        return track === undefined ? targetId : systemDamagePresentation(track).label;
     }
     if (!isCBTMekUnit(unit)) return targetId;
     const slot = historyMekSlot(unit, targetId)
@@ -328,12 +332,12 @@ function ammoLoadoutResetHistory(
             && previous.munitionOverride === current?.munitionOverride) continue;
         const loadout = (munitionOverride?: string) => {
             if (isCBTMekUnit(unit)) {
-                return mekAmmoLoadout(unit.getUnit(), unit.getIndex(), componentId, unit.getInstance().ruleset(), munitionOverride);
+                return mekAmmoLoadout(unit.getUnit(), unit.getIndex(), componentId, unit.ruleset(), munitionOverride);
             }
             if (isCBTNonMekUnit(unit)) {
                 const component = unit.getIndex().components.get(componentId);
                 return component === undefined ? null
-                    : entityAmmoLoadout(unit.getUnit(), component.mount, unit.getInstance().ruleset, munitionOverride);
+                    : entityAmmoLoadout(unit.getUnit(), component.mount, unit.ruleset(), munitionOverride);
             }
             return null;
         };
@@ -351,34 +355,37 @@ function ammoLoadoutResetHistory(
     return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET, instanceId, ...changes);
 }
 
-export function nonMekCommandHistory(
+export function unitCommandHistory(
     instanceId: string,
     unit: CBTUnit,
-    command: NonMekUnitCommand,
-    before: NonMekUnitRuntimeState,
-    after: NonMekUnitRuntimeState,
+    command: CBTUnitCommand,
+    beforeSnapshot: CBTUnitSnapshot,
+    afterSnapshot: CBTUnitSnapshot,
     modeChange?: Readonly<{ readonly before?: string; readonly after?: string }>,
 ): RuntimeHistoryInput {
-    if (command.kind === 'set-movement' || command.kind === 'set-airborne') {
+    const before = beforeSnapshot.state;
+    const after = afterSnapshot.state;
+    if (hasNonMekRuntime(beforeSnapshot) && hasNonMekRuntime(afterSnapshot)
+        && (command.type === 'set-movement' || command.type === 'set-airborne')) {
         const events: RuntimeHistoryEventInput[] = [];
-        const beforeMovement = before.turn.movement;
-        const afterMovement = after.turn.movement;
+        const beforeMovement = beforeSnapshot.state.turn.movement;
+        const afterMovement = afterSnapshot.state.turn.movement;
         if (beforeMovement?.mode !== afterMovement?.mode
             || beforeMovement?.distance !== afterMovement?.distance) {
             events.push(movementRuntimeHistory(instanceId, beforeMovement, afterMovement));
         }
-        if (before.turn.airborne !== after.turn.airborne) {
+        if (beforeSnapshot.state.turn.airborne !== afterSnapshot.state.turn.airborne) {
             events.push(unitHistory(
                 RUNTIME_HISTORY_MESSAGE.AIRBORNE_CHANGED,
                 instanceId,
-                airborneHistoryCode(before.turn.airborne),
-                airborneHistoryCode(after.turn.airborne),
+                airborneHistoryCode(beforeSnapshot.state.turn.airborne),
+                airborneHistoryCode(afterSnapshot.state.turn.airborne),
             ));
         }
         return events;
     }
 
-    switch (command.kind) {
+    switch (command.type) {
         case 'damage-armor':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR, instanceId, armorHistoryTarget(unit, command.faceId), command.amount, command.target);
         case 'repair-armor':
@@ -391,13 +398,33 @@ export function nonMekCommandHistory(
             return unitHistory(RUNTIME_HISTORY_MESSAGE.DAMAGE_CRITICAL, instanceId, command.damageTrackId, command.amount, command.target);
         case 'repair-damage-track':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.REPAIR_CRITICAL, instanceId, command.damageTrackId, command.amount, command.target);
+        case 'hit-critical':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.DAMAGE_CRITICAL, instanceId, criticalHistoryTarget(unit, command.slotId), command.hits, command.target);
+        case 'repair-critical':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.REPAIR_CRITICAL, instanceId, criticalHistoryTarget(unit, command.slotId), command.hits, command.target);
         case 'set-component-status':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS, instanceId, componentHistoryTarget(command.componentId), command.status, command.target);
         case 'set-component-mode':
             return componentModeHistory(instanceId, command.componentId, modeChange?.before, modeChange?.after);
-        case 'end-phase':
+        case 'apply-mek-blow-off':
+            if (!hasMekRuntime(beforeSnapshot) || !hasMekRuntime(afterSnapshot)) return undefined;
+            return mekLocationConditionHistory(
+                instanceId,
+                unit,
+                beforeSnapshot.state,
+                afterSnapshot.state,
+                command.locationId,
+                'blown-off',
+                command.target,
+            );
+        case 'commit-pending':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
+        case 'end-phase':
+            return hasMekRuntime(afterSnapshot) && afterSnapshot.state.movementPsr.checks.some(check => check.status === 'pending')
+                ? undefined
+                : unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
         case 'mark-end-turn-heat-staged':
+        case 'set-pending-fall-consequences':
         case 'set-control-recovery':
             return undefined;
         case 'cancel-pending':
@@ -412,6 +439,17 @@ export function nonMekCommandHistory(
                 before.conditions.has(command.condition),
                 after.conditions.has(command.condition),
             );
+        case 'set-location-condition':
+            if (!hasMekRuntime(beforeSnapshot) || !hasMekRuntime(afterSnapshot)) return undefined;
+            return mekLocationConditionHistory(
+                instanceId,
+                unit,
+                beforeSnapshot.state,
+                afterSnapshot.state,
+                command.locationId,
+                command.condition,
+                command.target,
+            );
         case 'set-crew-state':
             return crewRuntimeHistory(
                 instanceId,
@@ -420,100 +458,9 @@ export function nonMekCommandHistory(
                 before.crew.get(command.positionId) ?? { wounds: 0, unconscious: false, ejected: false },
                 after.crew.get(command.positionId) ?? { wounds: 0, unconscious: false, ejected: false },
             );
-        case 'set-heat':
-        case 'set-heatsinks-off':
-        case 'apply-heat':
-            return heatHistory(instanceId, before.heat, after.heat);
         case 'reset-ammo-loadout':
             return ammoLoadoutResetHistory(instanceId, unit, before.ammo, after.ammo);
         case 'set-ammo-spent':
-        case 'configure-ammo-source':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED, instanceId);
-        default:
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, instanceId, command.kind);
-    }
-}
-
-export function nonMekCommandBoundary(command: NonMekUnitCommand): 'phase' | undefined {
-    return command.kind === 'end-phase' ? 'phase' : undefined;
-}
-
-export function mekCommandHistory(
-    instanceId: string,
-    unit: CBTUnit,
-    command: CBTUnitCommand,
-    before: MekUnitRuntimeState,
-    after: MekUnitRuntimeState,
-    modeChange?: Readonly<{ readonly before?: string; readonly after?: string }>,
-): RuntimeHistoryInput {
-    switch (command.type) {
-        case 'damage-armor':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.DAMAGE_ARMOR, instanceId, armorHistoryTarget(unit, command.faceId), command.amount, command.target);
-        case 'repair-armor':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.REPAIR_ARMOR, instanceId, armorHistoryTarget(unit, command.faceId), command.amount, command.target);
-        case 'damage-internal':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.DAMAGE_INTERNAL, instanceId, internalHistoryTarget(unit, command.locationId), command.amount, command.target);
-        case 'repair-internal':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.REPAIR_INTERNAL, instanceId, internalHistoryTarget(unit, command.locationId), command.amount, command.target);
-        case 'hit-critical':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.DAMAGE_CRITICAL, instanceId, criticalHistoryTarget(unit, command.slotId), command.hits, command.target);
-        case 'repair-critical':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.REPAIR_CRITICAL, instanceId, criticalHistoryTarget(unit, command.slotId), command.hits, command.target);
-        case 'set-component-status':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.COMPONENT_STATUS, instanceId, componentHistoryTarget(command.componentId), command.status, command.target);
-        case 'set-component-mode':
-            return componentModeHistory(instanceId, command.componentId, modeChange?.before, modeChange?.after);
-        case 'apply-mek-blow-off':
-            return mekLocationConditionHistory(
-                instanceId,
-                unit,
-                before,
-                after,
-                command.locationId,
-                'blown-off',
-                command.target,
-            );
-        case 'commit-pending':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
-        case 'end-phase':
-            return after.movementPsr.checks.some(check => check.status === 'pending')
-                ? undefined
-                : unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
-        case 'mark-end-turn-heat-staged':
-        case 'set-pending-fall-consequences':
-            return undefined;
-        case 'cancel-pending':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_DISCARDED, instanceId);
-        case 'end-turn':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.TURN_ENDED, instanceId);
-        case 'set-condition':
-            return unitHistory(
-                RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED,
-                instanceId,
-                command.condition,
-                before.conditions.has(command.condition),
-                after.conditions.has(command.condition),
-            );
-        case 'set-location-condition':
-            return mekLocationConditionHistory(
-                instanceId,
-                unit,
-                before,
-                after,
-                command.locationId,
-                command.condition,
-                command.target,
-            );
-        case 'set-crew-state':
-            return crewRuntimeHistory(
-                instanceId,
-                unit,
-                command.positionId,
-                before.crew.get(command.positionId) ?? { wounds: 0, unconscious: false, ejected: false },
-                after.crew.get(command.positionId) ?? { wounds: 0, unconscious: false, ejected: false },
-            );
-        case 'reset-ammo-loadout':
-            return ammoLoadoutResetHistory(instanceId, unit, before.ammo, after.ammo);
         case 'configure-ammo-source':
         case 'spend-ammo':
         case 'activate-coolant-pod':
@@ -525,10 +472,11 @@ export function mekCommandHistory(
             return heatHistory(instanceId, before.heat, after.heat);
         case 'declare-mek-movement':
         case 'clear-mek-movement':
+            if (!hasMekRuntime(beforeSnapshot) || !hasMekRuntime(afterSnapshot)) return undefined;
             return movementRuntimeHistory(
                 instanceId,
-                before.movementPsr.movement,
-                after.movementPsr.movement,
+                beforeSnapshot.state.movementPsr.movement,
+                afterSnapshot.state.movementPsr.movement,
             );
         case 'declare-mek-action': {
             const wasShutdown = before.conditions.has('shutdown') ? 1 : 0;
@@ -545,10 +493,15 @@ export function mekCommandHistory(
         case 'clear-mek-action':
             return undefined;
         case 'replace-turn-state':
-            return mekTurnStateHistory(instanceId, before, after);
+            return hasMekRuntime(beforeSnapshot) && hasMekRuntime(afterSnapshot)
+                ? mekTurnStateHistory(instanceId, beforeSnapshot.state, afterSnapshot.state) : undefined;
         default:
             return unitHistory(RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, instanceId, command.type);
     }
+}
+
+export function nonMekCommandBoundary(command: CBTUnitCommand): 'phase' | undefined {
+    return command.type === 'end-phase' ? 'phase' : undefined;
 }
 
 function componentModeHistory(
@@ -631,7 +584,7 @@ export function captureMekComponentModes(
     for (const instanceId of instanceIds) {
         const unit = authority.mekUnit(instanceId);
         if (unit === null) continue;
-        const query = unit.getInstance().query();
+        const query = unit.query();
         for (const componentId of unit.getIndex().components.keys()) {
             const mode = query.componentMode(componentId);
             rows.push(Object.freeze({
@@ -651,7 +604,7 @@ export function changedComponentModeHistory(
     const events: RuntimeHistoryEventInput[] = [];
     for (const row of before) {
         const after = authority.mekUnit(row.instanceId)
-            ?.getInstance().query().componentMode(row.componentId);
+            ?.query().componentMode(row.componentId);
         const event = componentModeHistory(row.instanceId, row.componentId, row.mode, after);
         if (event !== undefined) events.push(event);
     }
