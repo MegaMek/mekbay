@@ -131,9 +131,17 @@ export class CBTPrintUtil {
             printServices.injector
         );
         printUnit.disabledSaving = true;
+        const layoutContainer = document.createElement('div');
+        layoutContainer.style.cssText = 'position: absolute; left: -9999px; top: -9999px; visibility: hidden;';
 
         try {
             await printUnit.load();
+            const svg = printUnit.svg();
+            if (svg) {
+                // Keep SVG text measurable while restoring and repainting the print state.
+                layoutContainer.appendChild(svg);
+                document.body.appendChild(layoutContainer);
+            }
             printUnit.update(serializedUnit);
 
             if (clean) {
@@ -152,11 +160,15 @@ export class CBTPrintUtil {
             printUnit.syncInventoryControlSelectionSvg();
             printUnit.svgService?.forceRepaint();
             await nextAnimationFrames(2);
+            printUnit.svgService?.refreshLayoutDependentDisplays();
 
             return printUnit;
         } catch (error) {
             printUnit.destroy();
             throw error;
+        } finally {
+            layoutContainer.replaceChildren();
+            layoutContainer.remove();
         }
     }
 
