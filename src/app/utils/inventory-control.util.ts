@@ -1149,7 +1149,8 @@ function mergeModeData(base: InventoryControlDisplayData, modeData: InventoryCon
         heat: modeData.heat !== '—' ? modeData.heat : base.heat,
         damage: modeData.damage !== '—' ? modeData.damage : base.damage,
         hit: base.hit,
-        min: modeData.min !== '—' ? modeData.min : base.min,
+        // Ammo profiles can explicitly remove the weapon's minimum range.
+        min: modeData.min,
         short: modeData.short !== '—' ? modeData.short : base.short,
         medium: modeData.medium !== '—' ? modeData.medium : base.medium,
         long: modeData.long !== '—' ? modeData.long : base.long,
