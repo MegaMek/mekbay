@@ -51,6 +51,7 @@ AGENTS.md
 /plans
 /rules
 /outputs
+/docs
 
 # Test fixtures (large data files)
 /scripts/fixtures
