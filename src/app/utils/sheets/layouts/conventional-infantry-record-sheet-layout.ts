@@ -103,11 +103,12 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     const font = (value: number): number => value * fontScale;
 
     const armorName = entity.armorKit()?.name ?? entity.uniformArmor()?.armor.name ?? 'Standard Infantry Kit';
-    addText(group, 'Armor Type:', x(287), y(18), { size: font(8.6), weight: 700 });
-    addText(group, armorName, x(336.657), y(18), { size: font(8.6), maxWidth: x(139) });
-    addText(group, 'Damage Divisor:', x(479), y(18), { size: font(8.6), weight: 700 });
+    const ARMOR_Y = 20;
+    addText(group, 'Armor Type:', x(287), y(ARMOR_Y), { size: font(8.6), weight: 700 });
+    addText(group, armorName, x(336.657), y(ARMOR_Y), { size: font(8.6), maxWidth: x(139) });
+    addText(group, 'Damage Divisor:', x(479), y(ARMOR_Y), { size: font(8.6), weight: 700 });
     addText(group, infantryDamageDivisor(entity).toFixed(1) + (entity.effectiveEncumberingArmor() ? 'E' : ''),
-        x(543.987), y(18), { size: font(8.6), maxWidth: x(26) });
+        x(543.987), y(ARMOR_Y), { size: font(8.6), maxWidth: x(26) });
 
     const facts: readonly [string, string, number, string?][] = [
         ['Commander:', '', 29.777, undefined],

@@ -1,0 +1,12 @@
+:host { display: grid; gap: 18px; }
+section { min-width: 0; border: 1px solid #ffffff24; background: #101318b3; padding: 14px; }
+h3 { margin: 0 0 12px; color: var(--bt-yellow); font-size: 12px; letter-spacing: .1em; }
+p { font-size: 12px; line-height: 1.5; color: var(--text-color-secondary); }
+.choices, .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; }
+label { display: flex; flex-direction: column; gap: 5px; min-width: 0; color: var(--text-color-secondary); font-size: 11px; }
+input, select { box-sizing: border-box; min-width: 0; width: 100%; padding: 7px 8px; color: var(--text-color); background: #07090db3; border: 1px solid #ffffff30; border-radius: 0; font: inherit; font-size: 12px; }
+input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--bt-yellow); outline-offset: 2px; }
+.check { flex-direction: row; align-items: center; min-height: 26px; }
+.check input { width: 15px; height: 15px; margin: 0 3px 0 0; accent-color: var(--bt-yellow); }
+details { border-top: 1px solid #ffffff24; margin-top: 14px; padding-top: 12px; }
+summary { font-size: 12px; cursor: pointer; }

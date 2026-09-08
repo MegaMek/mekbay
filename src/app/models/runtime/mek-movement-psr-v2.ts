@@ -1610,6 +1610,10 @@ function permanentPsr(
     modularArmorActive: boolean,
 ): MekPsrModifierProjection {
     const modifiers: MekPsrModifier[] = [];
+    if (profile.frankenMekPilotingModifier > 0) modifiers.push(psrModifier(
+        profile.frankenMekPilotingModifier,
+        profile.frankenMekPilotingModifier === 2 ? 'Mismatched Legs with different tonnages' : 'Mismatched Legs from different Meks',
+    ));
     const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
     const destroyed = legs.filter(leg => leg.destroyed);
     if (destroyed.length === 0) {

@@ -49,6 +49,22 @@ function expectUnitIds(
 }
 
 describe('UnitSearchIndexService', () => {
+    it('indexes custom units without allowing them to affect any core statistics bucket', () => {
+        const service = new UnitSearchIndexService();
+        const core = createUnit({ name: 'Core', armor: 100, internal: 50, heat: 20 });
+        const custom = createUnit({ name: 'Custom', origin: 'user', isCustom: true,
+            armor: 100000, internal: 100000, heat: 100000, jump: 100000 });
+        prepareCatalog(service, [core]);
+        const expected = service.getUnitStats(core);
+        prepareCatalog(service, [core, custom]);
+        expect(service.getUnitStats(custom)).toEqual(expected);
+        expectUnitIds(service.getIndexedUnitIds('type', 'Mek'), [core.uuid, custom.uuid]);
+        expect(custom._searchOrdinal).toBe(1);
+        prepareCatalog(service, [custom]);
+        expect(service.getUnitStats(custom).armor.count).toBe(0);
+        expectUnitIds(service.getIndexedUnitIds('type', 'Mek'), [custom.uuid]);
+    });
+
     it('uses native categories for units without Alpha Strike support', () => {
         const service = new UnitSearchIndexService();
         const building = createUnit({ name: 'Building', entityType: 'BuildingEntity', armor: 100, as: { TP: 'XX' } });

@@ -237,7 +237,7 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (motive === 'Beast' && mountData) {
       if (mountData.custom) {
         const fields = [
-          mountData.name, mountData.size, mountData.weight, mountData.movementPoints,
+          mountData.name, mountData.size.toUpperCase().replace(/ /g, '_'), mountData.weight, mountData.movementPoints,
           mountData.movementMode, mountData.burstDamage, mountData.vehicleDamage,
           mountData.damageDivisor, mountData.maxWaterDepth, mountData.secondaryGroundMP,
           mountData.uwEndurance,

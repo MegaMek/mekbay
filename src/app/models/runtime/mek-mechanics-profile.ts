@@ -205,6 +205,7 @@ export interface MekMechanicsProfile {
     readonly form: 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
     readonly configuration: 'biped' | 'quad' | 'tripod' | 'lam' | 'quadvee';
     readonly declaredMassTons: number;
+    readonly frankenMekPilotingModifier: number;
     readonly locations: readonly MekLocationMechanics[];
     readonly engine: MekEngineMechanics;
     readonly cockpit: MekCockpitMechanics;
@@ -500,6 +501,7 @@ export function compileMekMechanicsProfile(
         form,
         configuration: form,
         declaredMassTons: entity.tonnage(),
+        frankenMekPilotingModifier: entity.frankenMekPilotingModifier(),
         locations: Object.freeze(locations),
         engine,
         cockpit,

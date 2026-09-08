@@ -24,6 +24,13 @@ export function getBayConstructionWeight(bay: EntityTransportBay): number {
     case 'battle-armor': return capacity * (bay.configuration.techBase === 'Clan'
       ? 10 : bay.configuration.comStar ? 12 : 8);
     case 'drop-shuttle': return 11_000;
+    case 'standard-seats': return capacity * 0.075;
+    case 'pillion-seats': return capacity * 0.025;
+    case 'ejection-seats': return capacity * 0.1;
+    case 'crew-quarters':
+    case 'second-class-quarters': return capacity * 7;
+    case 'steerage-quarters': return capacity * 5;
+    case 'first-class-quarters': return capacity * 10;
     case 'naval-repair': {
       const factor = (bay.configuration.pressurized ? 0.075 : 0.025)
         * (bay.configuration.arts ? 1.25 : 1);

@@ -39,6 +39,7 @@ const STRUCTURE_DIVISORS: Readonly<Record<number, { normal: number; superHeavy: 
 const HYBRID_STRUCTURE_FRACTIONS: Readonly<Record<string, number>> = {
   HD: 0.05, CT: 0.25, RT: 0.15, LT: 0.15,
   RA: 0.1, LA: 0.1, RL: 0.1, LL: 0.1,
+  FRL: 0.1, FLL: 0.1, RRL: 0.1, RLL: 0.1,
 };
 
 export function calculateMekEffectiveTonnage(entity: MekEntity): number {

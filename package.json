@@ -73,6 +73,7 @@
     "karma-coverage": "^2.2.1",
     "karma-jasmine": "^5.1.0",
     "karma-jasmine-html-reporter": "^2.2.0",
+    "prettier": "3.9.6",
     "sharp": "^0.35.3",
     "tsx": "^4.23.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"

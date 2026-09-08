@@ -131,6 +131,9 @@ export interface UnitSummary {
   uuid: UnitUuid;
   provider: UnitProviderId;
   origin: CatalogEntryOrigin;
+  /** Locally constructed native design, independent of the core catalog. */
+  isCustom?: boolean;
+  originalUnitUuid?: UnitUuid;
   /** Supplier-provided source revision; native core rows use the MTF/BLK SHA-1. */
   hash: string;
   /** Projection revision used to decide whether this row must be regenerated. */

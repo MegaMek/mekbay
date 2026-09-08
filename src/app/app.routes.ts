@@ -28,6 +28,12 @@ const dataReadyGuard: CanActivateFn = () => {
  */
 export const routes: Routes = [
     {
+        path: 'construction',
+        canActivate: [dataReadyGuard],
+        canDeactivate: [(component: { canDeactivate(): boolean | Promise<boolean> }) => component.canDeactivate()],
+        loadComponent: () => import('./pages/unit-construction-page.component').then(m => m.UnitConstructionPageComponent),
+    },
+    {
         path: 'toe',
         canActivate: [dataReadyGuard],
         loadComponent: () => import('./pages/toe-page.component').then(m => m.ToePageComponent),

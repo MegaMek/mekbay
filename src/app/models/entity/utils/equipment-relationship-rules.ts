@@ -2,17 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { WeaponEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import type { EntityMountedEquipment } from '../types';
-import { isWeaponEnhancement } from './equipment-link-rules';
+import { isEquipmentLinkSource } from './equipment-link-rules';
 import { isLaserInsulatorEquipment } from '../../laser-insulator.model';
 import { isRiscLaserPulseModule } from '../../risc-laser-mode.model';
 
 /** Reconcile inferred relationships from the entity's current mounted equipment. */
 export function reconcileEquipmentRelationships(entity: BaseEntity): void {
   const mounts = entity.equipment();
-  const weapons = mounts.filter(mount => mount.equipment instanceof WeaponEquipment);
   const claimedTargets = new Set<EntityMountedEquipment>();
   const links = new Map<EntityMountedEquipment, EntityMountedEquipment>();
 
@@ -23,9 +22,8 @@ export function reconcileEquipmentRelationships(entity: BaseEntity): void {
 
   const firstTarget = (
     source: EntityMountedEquipment,
-  ): EntityMountedEquipment | undefined => weapons.find(target => {
-    const weapon = target.equipment;
-    return weapon instanceof WeaponEquipment && !claimedTargets.has(target)
+  ): EntityMountedEquipment | undefined => mounts.find(target => {
+    return !claimedTargets.has(target)
       && entity.canLinkEquipment(source, target);
   });
 
@@ -35,11 +33,23 @@ export function reconcileEquipmentRelationships(entity: BaseEntity): void {
     claimedTargets.add(target);
   };
 
+  // BLKBattleArmorFile gives each :APM weapon the preceding free AP mount/glove.
+  // A second pass below assigns any remaining weapons to the first free mount.
+  const precedingAp = new Map<string, EntityMountedEquipment>();
+  for (const mount of mounts) {
+    if (mount.equipment?.hasFlag('F_AP_MOUNT') || mount.equipment?.hasFlag('F_ARMORED_GLOVE')) {
+      if (!entity.getLinkedMount(mount)) precedingAp.set(mount.location, mount);
+    } else if (mount.isAPM && !claimedTargets.has(mount)) {
+      const source = precedingAp.get(mount.location);
+      if (source && entity.canLinkEquipment(source, mount)) setLink(source, mount);
+      precedingAp.delete(mount.location);
+    }
+  }
+
   for (let index = 0; index < mounts.length; index++) {
     const source = mounts[index];
     const equipment = source.equipment;
-    if (!(equipment instanceof MiscEquipment) || !isWeaponEnhancement(source)
-      || entity.getLinkedMount(source)) continue;
+    if (!isEquipmentLinkSource(source) || entity.getLinkedMount(source) || links.has(source)) continue;
 
     if (isLaserInsulatorEquipment(equipment) || isRiscLaserPulseModule(equipment)) {
       const predecessor = mounts[index - 1];

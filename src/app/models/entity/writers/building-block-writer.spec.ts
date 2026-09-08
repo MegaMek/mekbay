@@ -3,10 +3,15 @@
 // Author: Drake
 
 import { signal } from '@angular/core';
-import { ArmorEquipment } from '../../equipment.model';
+import { AmmoEquipment, ArmorEquipment, WeaponEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import { MountedArmor } from '../components';
 import type { SupportVehicle } from '../entities/support-vehicle';
+import { DropShipEntity } from '../entities/aero/dropship-entity';
+import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
+import { addTestEquipment } from '../testing/test-mounted-equipment';
+import { encodeNativeEntity } from '../write-entity';
+import { parseEntity } from '../parse-entity';
 import {
   BuildingBlockWriter,
   writeEmbeddedImages,
@@ -16,6 +21,30 @@ import {
 } from './building-block-writer';
 
 describe('BuildingBlockWriter', () => {
+  it('round-trips authored bay membership independently of inventory order', () => {
+    const weapon = new WeaponEquipment({ id: 'Test AC10', name: 'Test AC10', type: 'weapon',
+      weapon: { ammoType: 'AC', rackSize: 10, atClass: 'AC', av: [10, 10, 0, 0] } });
+    const ammo = new AmmoEquipment({ id: 'Test AC10 Ammo', name: 'Test AC10 Ammo', type: 'ammo',
+      ammo: { type: 'AC', rackSize: 10, shots: 10 }, stats: { tonnage: 1 } });
+    const registry = createTestEquipmentRegistry({ [weapon.id]: weapon, [ammo.id]: ammo });
+    const entity = new DropShipEntity(registry);
+    entity.setTonnage(2000);
+    const first = addTestEquipment(entity, weapon, { location: 'Nose' });
+    const second = addTestEquipment(entity, weapon, { location: 'Nose' });
+    const third = addTestEquipment(entity, weapon, { location: 'Nose' });
+    const firstAmmo = addTestEquipment(entity, ammo, { location: 'Nose', size: 1 });
+    const secondAmmo = addTestEquipment(entity, ammo, { location: 'Nose', size: 2 });
+    entity.replaceEquipmentBays('weapon-bay', [
+      { mounts: [first, third, firstAmmo] }, { mounts: [second, secondAmmo] },
+    ]);
+    const inventory = entity.equipment();
+    const parsed = parseEntity(encodeNativeEntity(entity), 'regrouped.blk', registry).entity;
+    expect(entity.equipment()).toEqual(inventory);
+    const bays = parsed.equipmentBays().filter(bay => bay.kind === 'weapon-bay');
+    expect(bays.map(bay => bay.weapons.length)).toEqual([2, 1]);
+    expect(bays.map(bay => bay.ammo.map(mount => mount.size))).toEqual([[1], [2]]);
+  });
+
   it('writes BAR rating only for installed support-vehicle BAR armor', () => {
     const barArmor = new ArmorEquipment({
       id: 'BAR 2 Armor',

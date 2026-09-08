@@ -35,6 +35,7 @@ export class NativeEntityService {
     private cachedRepository?: PreparedEntityRepository;
 
     public canLoad(identity: { readonly uuid: UnitUuid }): boolean {
+        if (this.catalog.hasCustomUnit(identity.uuid)) return true;
         const units = this.coreCatalog.getPublishedGeneration()?.manifest.manifest.units;
         return units !== undefined && Object.prototype.hasOwnProperty.call(units, identity.uuid);
     }

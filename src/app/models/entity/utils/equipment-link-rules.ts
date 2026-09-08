@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
+import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../equipment.model';
 import type { EntityMountedEquipment } from '../types';
 import {
   isLaserInsulatorCompatibleWeapon,
@@ -48,6 +48,13 @@ export function isWeaponEnhancement(mount: EntityMountedEquipment): boolean {
       || isLaserInsulatorEquipment(mount.equipment));
 }
 
+/** Sources whose directed links are encoded by native equipment order/attachment flags. */
+export function isEquipmentLinkSource(mount: EntityMountedEquipment): boolean {
+  return isWeaponEnhancement(mount) || (mount.equipment instanceof WeaponEquipment && mount.isDWP === true)
+    || (mount.equipment instanceof MiscEquipment && (['F_AP_MOUNT', 'F_ARMORED_GLOVE', 'F_DETACHABLE_WEAPON_PACK'] as const)
+      .some(flag => mount.equipment!.hasFlag(flag)));
+}
+
 /**
  * Domain rule for directed enhancement links. The enhancement is the source;
  * the weapon it modifies is the target, matching MegaMek Mounted#setLinked.
@@ -59,8 +66,13 @@ export function canLinkEquipment(
 ): boolean {
   const enhancement = source.equipment;
   const weapon = target.equipment;
-  if (!(enhancement instanceof MiscEquipment) || !(weapon instanceof WeaponEquipment)) return false;
   if (source.mountId === target.mountId || source.location !== target.location) return false;
+  if (enhancement instanceof WeaponEquipment && weapon instanceof AmmoEquipment) {
+    return source.isDWP === true && target.isDWP === true && ammoMatchesWeapon(enhancement, weapon);
+  }
+  if (!(enhancement instanceof MiscEquipment) || !(weapon instanceof WeaponEquipment)) return false;
+  if (enhancement.hasFlag('F_AP_MOUNT') || enhancement.hasFlag('F_ARMORED_GLOVE')) return target.isAPM === true && weapon.isInfantryWeapon();
+  if (enhancement.hasFlag('F_DETACHABLE_WEAPON_PACK')) return target.isDWP === true;
 
   if (isArtemisEquipment(enhancement)) return isArtemisCompatibleWeapon(weapon);
   if (isApolloEquipment(enhancement)) return weapon.ammoType === 'MRM';

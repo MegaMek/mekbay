@@ -52,7 +52,7 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
   const structure = calculateSupportVehicleStructureWeight(entity);
   const controls = roundKg(entity.transporters().reduce((total, transporter) =>
     total + (transporter.kind === 'bay' && isQuartersBay(transporter)
-      ? getQuartersWeight(transporter)
+      ? getBayConstructionWeight(transporter)
       : 0), 0));
   const heatSinks = small ? 0 : calculateHeatNeutralRequirement(entity);
   const armor = calculateSupportVehicleArmorWeight(entity);
@@ -94,16 +94,6 @@ export function calculateSupportVehicleWeightBreakdown(entity: SupportVehicleEnt
     weapons, ammo, powerAmplifiers, carryingSpace, fuel, exact,
     rounded: small ? roundKg(exact) : ceilToHalfTon(exact),
   };
-}
-
-function getQuartersWeight(bay: { configuration: { type: string }; capacity: number; constructionWeight?: number }): number {
-  if (bay.constructionWeight !== undefined) return bay.constructionWeight;
-  switch (bay.configuration.type) {
-    case 'pillion-seats': return bay.capacity * 0.025;
-    case 'standard-seats': return bay.capacity * 0.075;
-    case 'ejection-seats': return bay.capacity * 0.1;
-    default: return bay.capacity;
-  }
 }
 
 export function calculateSupportVehicleStructureWeight(entity: SupportVehicleEntity): number {

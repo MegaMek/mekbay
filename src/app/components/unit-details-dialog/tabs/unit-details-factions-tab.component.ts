@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import type { TooltipLine } from '../../tooltip/tooltip.component';
 import type { Era } from '../../../models/eras.model';
@@ -20,6 +20,7 @@ import {
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
+import { OptionsService } from '../../../services/options.service';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 import { ModeSwitchComponent } from '../../mode-switch/mode-switch.component';
 import { UnitDetailsFactionsTabGridComponent } from './unit-details-factions-tab-grid.component';
@@ -34,8 +35,6 @@ import {
     type FactionMegaMekAvailability,
     type FactionNameWrapParts,
 } from './unit-details-factions-tab.models';
-
-type FactionAvailabilityView = 'list' | 'grid';
 
 interface FactionAvailabilityCandidate extends FactionAvailabilityItem {
     group: string;
@@ -68,10 +67,11 @@ function splitFactionName(name: string): FactionNameWrapParts {
 })
 export class UnitDetailsFactionTabComponent {
     private readonly dataService = inject(DataService);
+    private readonly optionsService = inject(OptionsService);
     private readonly unitAvailabilitySource = inject(UnitAvailabilitySourceService);
 
     readonly unit = input.required<UnitSummary>();
-    readonly selectedView = signal<FactionAvailabilityView>('grid');
+    readonly selectedView = computed(() => this.optionsService.options().factionAvailabilityViewMode);
     readonly megaMekAvailabilitySourceSelected = computed(() => (
         this.unitAvailabilitySource.useMegaMekAvailability()
     ));
@@ -90,7 +90,7 @@ export class UnitDetailsFactionTabComponent {
     });
 
     setGridView(selected: boolean): void {
-        this.selectedView.set(selected ? 'grid' : 'list');
+        void this.optionsService.setOption('factionAvailabilityViewMode', selected ? 'grid' : 'list');
     }
 
     private buildMulFactionAvailability(

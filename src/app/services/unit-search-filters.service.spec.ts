@@ -78,7 +78,7 @@ class TestUnitsCatalog {
         return this.units;
     }
 
-    public getCoreSummaries(): readonly UnitSummary[] {
+    public getSummaries(): readonly UnitSummary[] {
         return this.units;
     }
 

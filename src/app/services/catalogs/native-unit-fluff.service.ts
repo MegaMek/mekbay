@@ -83,7 +83,7 @@ export class NativeUnitFluffService {
 }
 
 function captureNativeFluffIdentity(unit: UnitSummary): NativeFluffIdentity {
-  if (unit.origin !== 'megamek') {
+  if (unit.origin !== 'megamek' && !unit.isCustom) {
     throw new NativeUnitFluffLoadError(
       'unsupported-source',
       'This unit does not expose an authoritative native source',

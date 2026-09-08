@@ -20,6 +20,7 @@ export type CatalogEntryOrigin = 'megamek' | 'user';
 export type SourceRevision = string;
 
 export const MM_DATA_UNIT_PROVIDER_ID = 'mm-data' as UnitProviderId;
+export const CUSTOM_UNIT_PROVIDER_ID = 'mekbay-custom' as UnitProviderId;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 // A 20-byte SHA-1 encodes to 27 unpadded base64url characters. The final character has

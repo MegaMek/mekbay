@@ -78,7 +78,14 @@
 }
 
 .chassis {
+    display: flex;
+    align-items: center;
+    min-width: 0;
     font-weight: bold;
+}
+
+.chassis-name {
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

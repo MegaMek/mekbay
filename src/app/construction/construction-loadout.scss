@@ -1,0 +1,110 @@
+.warehouse { display: flex; flex-direction: column; background: #202023; border-right: 1px solid var(--line); min-height: 0; overflow: hidden; }
+.warehouse-heading { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 12px; }
+.warehouse-heading span { color: #888; font-size: 11px; }
+.warehouse-search { margin: 0 14px 12px; display: flex; border: 1px solid #ffffff38; background: #171719; align-items: center; }
+.warehouse-search span { font-size: 24px; color: #888; padding-left: 10px; }
+.warehouse-search input { width: 100%; border: 0; background: transparent; font-size: 12px; padding: 9px; }
+.equipment-categories { display: flex; padding: 0 14px; gap: 3px; }
+.equipment-categories button { flex: 1; padding: 7px 3px; font-size: 10px; border-bottom: 2px solid transparent; background: #ffffff06; }
+.equipment-categories img { width: 19px; height: 19px; opacity: .7; vertical-align: middle; }
+.equipment-categories button.active { border-bottom-color: var(--bt-yellow); background: #ffffff18; color: var(--bt-yellow); }
+.equipment-categories .category-energy { border-top-color: #6082f6; }
+.equipment-categories .category-ballistic { border-top-color: #9482b4; }
+.equipment-categories .category-missile { border-top-color: #86c86e; }
+.equipment-categories .category-artillery { border-top-color: #a35958; }
+.equipment-categories .category-ammo { border-top-color: #40a8b0; }
+.warehouse-filters { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 12px 14px; }
+.warehouse-filters label { display: flex; gap: 5px; align-items: center; font-size: 10px; color: #bbb; white-space: nowrap; }
+.warehouse-filters select { width: 124px; padding: 5px 2px; font-size: 10px; }
+.equipment-columns, .warehouse-item { display: grid; grid-template-columns: minmax(0, 1fr) 32px 34px 23px; gap: 4px; align-items: center; }
+.equipment-columns { padding: 6px 14px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: #888; font-size: 9px; }
+.equipment-columns span:not(:first-child) { text-align: right; }
+.equipment-list { overflow-y: auto; min-height: 100px; flex: 1; padding: 7px 8px 8px 14px; }
+.warehouse-item { padding: 3px 0; cursor: grab; }
+.warehouse-item.selected { background: #ffffff13; }
+.equipment-name { display: flex; align-items: flex-start; flex-direction: column; gap: 3px; text-align: left; width: 100%; min-height: 38px; padding: 6px; border-left-width: 4px !important; }
+.equipment-name span { font-size: 11px; line-height: 1.2; }
+.equipment-name small { color: #ffffff77; font-size: 8px; letter-spacing: .5px; }
+.equipment-name, .installed-equipment, .equipment-inspector { background: color-mix(in srgb, var(--type-color, #aaa) 13%, #141417); border-color: color-mix(in srgb, var(--type-color, #aaa) 55%, #333); border-left-color: var(--type-color, #aaa); }
+.equipment-number { font-size: 10px; text-align: right; color: #bbb; }
+.install-button { padding: 5px 3px; border: 0; color: #aaa; font-size: 18px; }
+.load-more { display: block; margin: 10px auto; font-size: 11px; width: 95%; }
+.empty-list { padding: 30px 12px; text-align: center; color: #bbb; font-size: 13px; }
+.empty-list span, .warehouse-hint span { display: block; color: #888; margin-top: 8px; line-height: 1.5; }
+.warehouse-hint { border-top: 1px solid var(--line); padding: 15px 18px; font-size: 11px; color: #aaa; line-height: 1.5; }
+.equipment-inspector { margin: 10px 14px 14px; padding: 12px; max-height: 42%; overflow: auto; border-left-width: 4px !important; }
+.inspector-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; }
+.inspector-heading h3 { font-size: 13px; line-height: 1.4; }
+.inspector-heading>span { font-size: 9px; color: #aaa; }
+.inspector-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 10px; color: #aaa; margin: 10px 0; }
+.inspector-facts span { display: flex; flex-direction: column; gap: 3px; }
+.inspector-facts b { color: #fff; font-size: 11px; }
+.rules-reference { margin-top: 10px; color: #aaa; font-size: 9px; line-height: 1.4; }
+.inspector-install, .remove-equipment { font-size: 11px; width: 100%; }
+.remove-equipment { color: #ed9b90; margin-top: 8px; }
+.placement-issue { margin-top: 6px; font-size: 10px; color: #e9bc85; line-height: 1.4; }
+.mount-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mount-controls label { display: flex; flex-direction: column; gap: 4px; color: #bbb; font-size: 10px; }
+.mount-controls select, .mount-controls input { font-size: 10px; padding: 4px; width: 100%; }
+.mount-controls .check { flex-direction: row; align-items: center; gap: 4px; }
+.mount-controls input[type=checkbox] { width: 13px; }
+.construction-workspace { min-width: 0; overflow: auto; padding: 18px 22px 30px; background: radial-gradient(ellipse at 50% 25%, #30303860, transparent 65%), #171719; }
+.loadout-toolbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 16px; }
+.loadout-toolbar>div:first-child { display: flex; flex-direction: column; gap: 4px; }
+.loadout-toolbar>div:last-child { display: flex; gap: 5px; }
+.loadout-toolbar button { font-size: 10px; padding: 6px 9px; }
+.location-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: start; gap: 14px; }
+.location-grid.mek-grid { grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 10px; align-items: start; }
+.mek-grid [data-location=RA], .mek-grid [data-location=FRL] { grid-column: 1; grid-row: 1 / span 2; margin-top: 92px; }
+.mek-grid [data-location=RT] { grid-column: 2; grid-row: 1; }
+.mek-grid [data-location=HD] { grid-column: 3; grid-row: 1; }
+.mek-grid [data-location=CT] { grid-column: 3; grid-row: 2; margin-top: -45px; }
+.mek-grid [data-location=LT] { grid-column: 4; grid-row: 1; }
+.mek-grid [data-location=LA], .mek-grid [data-location=FLL] { grid-column: 5; grid-row: 1 / span 2; margin-top: 92px; }
+.mek-grid [data-location=RL], .mek-grid [data-location=RRL] { grid-column: 2; grid-row: 2; }
+.mek-grid [data-location=LL], .mek-grid [data-location=RLL] { grid-column: 4; grid-row: 2; }
+.mek-grid [data-location=CL] { grid-column: 3; grid-row: 3; }
+.location-card { min-width: 0; border: 1px solid #ffffff38; background: #1c1c1f; box-shadow: 0 5px 15px #0003; border-top-right-radius: 9px; overflow: hidden; }
+.location-card.selected-location { border-color: var(--bt-yellow); box-shadow: 0 0 0 1px #eaae3f16; }
+.location-title { display: flex; align-items: center; justify-content: space-between; gap: 4px; text-align: left; width: 100%; padding: 9px 8px; background: #303033; border: 0; border-bottom: 1px solid #ffffff30; }
+.location-title span { font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: .35px; }
+.location-title small { font-size: 9px; color: #aaa; white-space: nowrap; }
+.selected-location .location-title { background: #403723; }
+.location-defense { padding: 9px 8px 0; }
+.defense-label { display: flex; align-items: baseline; justify-content: space-between; color: #bbb; font-size: 9px; }
+.defense-label b { font-size: 12px; color: #ddd; font-variant-numeric: tabular-nums; }
+.defense-label small { font-size: 9px; color: #777; font-weight: 400; }
+.armor-meter { height: 3px; background: #fff1; margin: 6px 0; overflow: hidden; }
+.armor-meter i { background: #b7b7c0; }
+.armor-inputs { display: flex; gap: 8px; margin-bottom: 8px; }
+.armor-inputs label { display: flex; justify-content: space-between; align-items: center; gap: 5px; flex: 1; min-width: 0; font-size: 8px; color: #888; }
+.armor-inputs input { width: 50px; padding: 2px 0 2px 3px; color: var(--bt-yellow); background: #131315; font-size: 14px; text-align: center; }
+.structure-label { border-top: 1px solid #fff1; padding: 6px 0; }
+.location-config { border-top: 1px solid #fff1; margin: 0 -8px; font-size: 9px; color: #888; }
+.location-config summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; padding: 6px 8px; }
+.location-config[open] { padding-bottom: 8px; }
+.location-config label { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px; }
+.location-config select, .location-config input { font-size: 10px; padding: 4px 0; width: 100%; }
+.critical-grid { padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.system-slot, .empty-slot { min-height: 25px; display: flex; align-items: center; padding: 3px 5px; gap: 5px; font-size: 9px; }
+.system-slot { background: repeating-linear-gradient(135deg, #ffffff02 0px, #ffffff02 2px, transparent 2px, transparent 7px), #ffffff09; color: #777; border: 1px solid #ffffff0c; }
+.system-slot small, .empty-slot small { font-size: 8px; color: #555; flex: 0 0 11px; }
+.system-slot .lock-symbol { margin-left: auto; font-size: 8px; color: #555; }
+.slot-target { display: flex; flex-direction: column; min-height: 25px; }
+.empty-slot { width: 100%; flex: 1; text-align: left; font-size: 8px; border: 1px solid #ffffff17; background: #121214; color: #555; }
+.empty-slot b { margin-left: auto; font-size: 12px; font-weight: 400; color: #555; }
+.empty-slot:hover { color: #bbb; }
+.installed-equipment { position: relative; flex: 1; display: flex; width: 100%; min-height: 27px; border-left-width: 4px !important; cursor: grab; }
+.mounted-name { border: 0; background: none; display: flex; justify-content: center; align-items: flex-start; flex-direction: column; gap: 5px; width: 100%; text-align: left; font-size: 10px; line-height: 1.25; padding: 5px 17px 5px 5px; }
+.mounted-name small { font-size: 8px; color: #ffffff65; }
+.mounted-name:hover:not(:disabled) { background: #ffffff08; }
+.critical-ticks { display: flex; gap: 2px; flex-wrap: wrap; }
+.critical-ticks i { width: 7px; height: 2px; background: #ffffff50; }
+.remove-mount { position: absolute; top: 0; right: 0; border: 0; padding: 0 3px; font-size: 14px; color: #ffffff50; background: none; }
+.selected-equipment { outline: 1px solid #fff9; outline-offset: -1px; }
+.inventory-drop { min-height: 38px; border-style: dashed; }
+.unallocated-panel { border: 1px solid var(--line); padding: 12px; margin-top: 20px; }
+.unallocated-panel h3 { font-size: 11px; font-weight: 500; color: #aaa; margin-bottom: 8px; }
+.unallocated-panel>div { display: flex; flex-wrap: wrap; gap: 5px; }
+.unallocated-panel button { font-size: 10px; border-left-width: 4px; }
+.unallocated-panel small { color: #888; margin-left: 5px; }

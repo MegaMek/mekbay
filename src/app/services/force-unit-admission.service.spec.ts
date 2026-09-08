@@ -11,6 +11,7 @@ import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { createEmptyUnit, createTestMekEntity, createTestTankEntity } from '../testing/unit-test-helpers';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
 import { OptionsService } from './options.service';
+import { CUSTOM_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
 
 describe('ForceUnitAdmissionService', () => {
     it('applies Alpha Strike skill and commander facts during admission', async () => {
@@ -103,6 +104,15 @@ describe('ForceUnitAdmissionService', () => {
         expect(isCBTForceMember(member)).toBeTrue();
         expect(isCBTMekForceMember(member)).toBeFalse();
         expect(member).toBe(ownedMember);
+    });
+
+    it('admits constructed native units through the same CBT runtime', async () => {
+        const force = new CBTForce('Custom force', {} as DataService, createCBTForceInjector());
+        const summary = createEmptyUnit({ origin: 'user', provider: CUSTOM_UNIT_PROVIDER_ID, isCustom: true });
+        const service = createAdmissionService();
+        const admit = spyOn(service, 'admitCBT').and.resolveTo({} as CBTForceMember);
+        await service.admit({ force, summary });
+        expect(admit).toHaveBeenCalledOnceWith(jasmine.objectContaining({ uuid: summary.uuid }));
     });
 });
 

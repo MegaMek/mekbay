@@ -30,15 +30,27 @@ export function calculateSmallCraftEffectiveTonnage(entity: SmallCraftEntity): n
   return calculateSmallCraftWeightBreakdown(entity).rounded;
 }
 
+export function calculateSmallCraftEngineWeight(entity: SmallCraftEntity): number {
+  const multiplier = entity.techBase() === 'Clan' ? 0.061 : entity.entityType === 'DropShip'
+    ? dropShipEngineMultiplier(entity.effectiveOriginalBuildYear()) : smallCraftEngineMultiplier(entity.effectiveOriginalBuildYear());
+  return ceilToHalfTon(entity.tonnage() * entity.originalWalkMP() * multiplier);
+}
+
+export function calculateSmallCraftMinimumHeatSinks(entity: SmallCraftEntity, engine = calculateSmallCraftEngineWeight(entity)): number {
+  const primitive = entity.uniformArmor()?.type === 'PRIMITIVE_AERO';
+  const militaryDropship = entity.entityType === 'DropShip' && entity.designType() === 'Military';
+  return entity.motiveType() === 'Spheroid'
+    ? Math.floor(Math.sqrt(engine * (primitive ? 1.3 : militaryDropship ? 6.8 : 1.6)))
+    : Math.floor(engine / (primitive ? 75 : militaryDropship ? 20 : 60));
+}
+
 export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): SmallCraftWeightBreakdown {
   const dropShip = entity.entityType === 'DropShip';
   const spheroid = entity.motiveType() === 'Spheroid';
   const primitive = entity.uniformArmor()?.type === 'PRIMITIVE_AERO';
   const year = entity.effectiveOriginalBuildYear();
   const structure = ceilToHalfTon(entity.structuralIntegrity() * entity.tonnage() / (spheroid ? 500 : 200));
-  const engineMultiplier = entity.techBase() === 'Clan' ? 0.061
-    : dropShip ? dropShipEngineMultiplier(year) : smallCraftEngineMultiplier(year);
-  const engine = ceilToHalfTon(entity.tonnage() * entity.originalWalkMP() * engineMultiplier);
+  const engine = calculateSmallCraftEngineWeight(entity);
   const controlYear = primitive ? year : 2500;
   const controlsRaw = entity.tonnage() * (dropShip
     ? dropShipControlMultiplier(controlYear)
@@ -50,12 +62,7 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
     : 1;
   const fuelTonnage = Math.round(2 * entity.fuel() / (baseFuelPpt / primitiveFactor)) / 2;
   const fuel = ceilToHalfTon(fuelTonnage * 1.02);
-  let freeHeatSinks: number;
-  if (spheroid) {
-    freeHeatSinks = Math.floor(Math.sqrt(engine * (primitive ? 1.3 : dropShip && entity.designType() === 'Military' ? 6.8 : 1.6)));
-  } else {
-    freeHeatSinks = Math.floor(engine / (primitive ? 75 : dropShip && entity.designType() === 'Military' ? 20 : 60));
-  }
+  const freeHeatSinks = calculateSmallCraftMinimumHeatSinks(entity, engine);
   const heatSinks = Math.max(0, entity.heatSinkCount() - freeHeatSinks);
   const armor = calculateArmorWeight(entity, primitive, spheroid);
   const systems = 7 * (entity.lifeboats() + entity.escapePods()) + calculateExtraSlotWeight(entity);

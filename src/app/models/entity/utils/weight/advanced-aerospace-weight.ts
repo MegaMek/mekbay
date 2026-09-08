@@ -26,6 +26,15 @@ export function calculateAdvancedAerospaceEffectiveTonnage(entity: JumpShipEntit
   return calculateAdvancedAerospaceWeightBreakdown(entity).rounded;
 }
 
+export function calculateAdvancedAerospaceEngineWeight(entity: JumpShipEntity): number {
+  const multiplier = entity.driveCoreType() === 'Primitive' ? primitiveEngineMultiplier(entity.effectiveOriginalBuildYear()) : 0.06;
+  return roundHalf(entity.originalWalkMP() === 0 ? 0.012 * entity.tonnage() : entity.tonnage() * entity.originalWalkMP() * multiplier);
+}
+
+export function calculateAdvancedAerospaceMinimumHeatSinks(entity: JumpShipEntity, engine = calculateAdvancedAerospaceEngineWeight(entity)): number {
+  return Math.floor(45 + Math.sqrt(engine * (entity.driveCoreType() === 'Primitive' ? 1 : 2)));
+}
+
 export function calculateAdvancedAerospaceWeightBreakdown(entity: JumpShipEntity): AdvancedAerospaceWeightBreakdown {
   const tonnage = entity.tonnage();
   const primitive = entity.driveCoreType() === 'Primitive';
@@ -33,10 +42,7 @@ export function calculateAdvancedAerospaceWeightBreakdown(entity: JumpShipEntity
   const structure = entity.entityType === 'WarShip'
     ? ceilToHalfTon(entity.structuralIntegrity() * tonnage / 1000)
     : ceilToHalfTon(tonnage / (entity.entityType === 'SpaceStation' ? 100 : 150));
-  const engineMultiplier = primitive ? primitiveEngineMultiplier(year) : 0.06;
-  const engine = roundHalf(entity.originalWalkMP() === 0
-    ? 0.012 * tonnage
-    : tonnage * entity.originalWalkMP() * engineMultiplier);
+  const engine = calculateAdvancedAerospaceEngineWeight(entity);
   const jumpDrive = entity.jumpDriveWeight();
   const lithiumFusionBattery = entity.lithiumFusion() ? 0.01 * tonnage : 0;
   const sail = calculateSailWeight(entity, primitive, year);
@@ -47,7 +53,7 @@ export function calculateAdvancedAerospaceWeightBreakdown(entity: JumpShipEntity
   const fuelPointsPerTon = baseFuelPointsPerTon / (primitive ? primitiveFuelFactor(year) : 1);
   const fuelOnly = roundHalf(entity.fuel() / fuelPointsPerTon);
   const fuel = fuelOnly + Math.ceil(fuelOnly * 0.02);
-  const freeHeatSinks = Math.floor(45 + Math.sqrt(engine * (primitive ? 1 : 2)));
+  const freeHeatSinks = calculateAdvancedAerospaceMinimumHeatSinks(entity, engine);
   const heatSinks = Math.max(0, entity.heatSinkCount() - freeHeatSinks);
   const armor = calculateArmorWeight(entity, primitive);
   const fireControl = calculateExtraSlotWeight(entity);

@@ -498,7 +498,14 @@
     line-height: 1.05;
 }
 
+.chassis-view-name-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
 .chassis-view-chassis-name {
+    min-width: 0;
     color: #fff;
 }
 

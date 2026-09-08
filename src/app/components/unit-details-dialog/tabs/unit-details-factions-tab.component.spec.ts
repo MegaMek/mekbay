@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { provideZonelessChangeDetection } from '@angular/core';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
@@ -10,8 +10,10 @@ import type { Era } from '../../../models/eras.model';
 import type { Faction } from '../../../models/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../../../models/megamek/availability.model';
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
+import type { Options } from '../../../models/options.model';
 import type { UnitSummary } from '../../../models/unit-summary.model';
 import { DataService } from '../../../services/data.service';
+import { OptionsService } from '../../../services/options.service';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
 import { UnitAvailabilitySourceService } from '../../../services/unit-availability-source.service';
 import { UnitDetailsFactionsTabGridComponent } from './unit-details-factions-tab-grid.component';
@@ -78,6 +80,13 @@ describe('UnitDetailsFactionTabComponent', () => {
 
     let megaMekAvailabilityRecord: MegaMekWeightedAvailabilityRecord | undefined;
     let useMegaMekAvailability = false;
+    const options = signal<Pick<Options, 'factionAvailabilityViewMode'>>({ factionAvailabilityViewMode: 'grid' });
+    const optionsServiceMock = {
+        options,
+        setOption: jasmine.createSpy('setOption').and.callFake(async (
+            key: 'factionAvailabilityViewMode', value: Options['factionAvailabilityViewMode'],
+        ) => options.update(current => ({ ...current, [key]: value }))),
+    };
 
     const dataServiceMock = {
         getEras: jasmine.createSpy('getEras').and.callFake(() => eras),
@@ -100,6 +109,8 @@ describe('UnitDetailsFactionTabComponent', () => {
             },
         };
         useMegaMekAvailability = false;
+        options.set({ factionAvailabilityViewMode: 'grid' });
+        optionsServiceMock.setOption.calls.reset();
 
         dataServiceMock.getEras.calls.reset();
         dataServiceMock.getFactions.calls.reset();
@@ -113,6 +124,7 @@ describe('UnitDetailsFactionTabComponent', () => {
             providers: [
                 provideZonelessChangeDetection(),
                 { provide: DataService, useValue: dataServiceMock },
+                { provide: OptionsService, useValue: optionsServiceMock },
                 { provide: UnitAvailabilitySourceService, useValue: unitAvailabilitySourceMock },
             ],
         });

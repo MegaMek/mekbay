@@ -1,0 +1,184 @@
+<div class="construction-shell">
+    <header class="workshop-header">
+        <div class="workshop-title"><img src="/images/workshop.svg" width="34" height="34" alt=""><div><span class="eyebrow">MEKBAY WORKSHOP</span><h1>Unit Construction</h1></div></div>
+        <div class="document-actions">
+            <button (click)="picker.set('new')" [disabled]="busy()">New design</button>
+            <button (click)="chooseUnit()" [disabled]="busy() || unitPickerOpen()">Open unit</button>
+            <button class="icon-button" (click)="close()" [disabled]="busy()" aria-label="Close unit construction">✕</button>
+        </div>
+    </header>
+
+    <section class="design-summary" aria-label="Design summary" [attr.inert]="busy() ? '' : null">
+        <div class="design-identity">
+            <div class="identity-line"><span class="custom-unit-badge">CUSTOM</span><span class="subtype">{{ entity().unitSubtype() }}</span><span class="save-state">{{ dirty() ? '● Unsaved' : savedUuid() ? 'Saved locally' : 'New design' }}</span></div>
+            <div class="name-inputs"><input aria-label="Chassis name" placeholder="Chassis name" [ngModel]="entity().chassis()" (ngModelChange)="setIdentity('chassis', $event)"><input aria-label="Model designation" placeholder="Model designation" [ngModel]="entity().model()" (ngModelChange)="setIdentity('model', $event)"></div>
+            <div class="provenance" [title]="originalUuid() ?? ''">{{ originalUuid() ? 'Based on ' : '' }}{{ originalName() }}<span> · {{ entity().techBase() === 'Clan' ? 'Clan' : 'Inner Sphere' }}{{ entity().mixedTech() ? ' / Mixed tech' : '' }} · {{ entity().year() }}</span></div>
+        </div>
+        <div class="mass-summary" [class.overweight]="mass() !== null && mass()! > massCapacity()">
+            <span class="eyebrow">TONNAGE</span><div class="mass-value">{{ mass() === null ? '—' : (mass() | number:'1.0-3') }}<small> / {{ massCapacity() | number:'1.0-3' }} t</small></div>
+            <div class="meter"><i [style.width.%]="massRatio()"></i></div>
+            <span class="muted">{{ mass() === null ? 'Construction mass unavailable' : ((massCapacity() - mass()!) | number:'1.0-3') + ' t available' }}</span>
+        </div>
+        <div class="summary-stats">
+            <div><span>ARMOR</span><b>{{ entity().totalArmorPoints() | number }}<small> / {{ entity().maximumArmorPoints() | number }}</small></b></div>
+            <div><span>STRUCTURE</span><b>{{ entity().totalInternalPoints() | number }}</b></div>
+            <div><span>MOVE / JUMP</span><b>{{ entity().walkMP() }} / {{ entity().jumpMP() }}</b></div>
+            <div><span>HEAT / COOLING</span><b>{{ entity().heatGeneration() < 0 ? '—' : entity().heatGeneration() }} / {{ entity().heatDissipation() < 0 ? '—' : entity().heatDissipation() }}</b></div>
+        </div>
+    </section>
+
+    <nav class="workspace-tabs" aria-label="Construction views">
+        <button [class.active]="panel() === 'loadout'" (click)="panel.set('loadout')">LOADOUT</button>
+        <button [class.active]="panel() === 'systems'" (click)="panel.set('systems')">CHASSIS & SYSTEMS</button>
+        <span class="tab-spacer"></span>
+        <button class="history-button" (click)="undo()" [disabled]="busy() || !canUndo()" title="Undo last edit">↶ <span>Undo</span></button>
+        <button class="history-button" (click)="redo()" [disabled]="busy() || !canRedo()" title="Redo last edit">↷ <span>Redo</span></button>
+        <button class="validation-toggle" [class.has-errors]="errors().length" [class.active]="showValidation()" (click)="showValidation.set(!showValidation())">{{ errors().length ? '⚠ ' + errors().length + ' issues' : '✓ Checks passed' }}{{ warnings().length ? ' · ' + warnings().length + ' warnings' : '' }}</button>
+    </nav>
+
+    @if (status()) { <div class="status-message" [class.error]="statusError()" role="status">{{ status() }}<button (click)="status.set('')" aria-label="Dismiss message">✕</button></div> }
+    @if (showValidation()) {
+        <section class="validation-panel" aria-label="Construction validation">
+            @for (message of validation().messages; track $index) {
+                <button [class.error]="message.severity === 'error'" (click)="message.location && selectedLocation.set(message.location)"><b>{{ message.severity === 'error' ? '!' : 'i' }}</b><span>{{ message.message }}</span><small>{{ message.location || message.category }}</small></button>
+            } @empty { <p class="checks-clear">All implemented construction checks pass.</p> }
+        </section>
+    }
+
+    <main class="workshop-body" [class.systems-view]="panel() === 'systems'" [attr.inert]="busy() ? '' : null" cdkDropListGroup>
+        <aside class="warehouse" aria-label="Equipment warehouse">
+            <div class="warehouse-heading"><h2>Equipment</h2><span>{{ filteredEquipment().length | number }} items</span></div>
+            <div class="warehouse-search"><span aria-hidden="true">⌕</span><input type="search" aria-label="Search equipment" placeholder="Search equipment…" [ngModel]="query()" (ngModelChange)="query.set($event); equipmentLimit.set(80)"></div>
+            <div class="equipment-categories" aria-label="Equipment category">
+                @for (cat of categories; track cat.id) { <button [class.active]="category() === cat.id" [class]="'category-' + cat.id" [attr.aria-pressed]="category() === cat.id" [title]="cat.label" [attr.aria-label]="cat.label" (click)="category.set(cat.id); equipmentLimit.set(80)">@if (cat.icon) { <img [src]="'/images/' + cat.icon + '.svg'" alt=""> } @else { ALL }</button> }
+            </div>
+            <div class="warehouse-filters"><label><input type="checkbox" [ngModel]="compatibleOnly()" (ngModelChange)="compatibleOnly.set($event)"> Compatible only</label><select aria-label="Equipment destination" [ngModel]="selectedLocation()" (ngModelChange)="selectedLocation.set($event)">@for (location of locations(); track location.id) { <option [value]="location.id">{{ location.label }}</option> }</select></div>
+            <div class="equipment-columns"><span>NAME</span><span>SLOTS</span><span>TONS</span><span></span></div>
+            <div class="equipment-list" cdkDropList [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="rejectWarehouseDrop">
+                @for (eq of visibleEquipment(); track eq.id) {
+                    <div class="warehouse-item" cdkDrag [cdkDragData]="{ equipmentId: eq.id }" [cdkDragStartDelay]="{ touch: 180, mouse: 0 }" [class.selected]="selectedEquipment()?.id === eq.id">
+                        <button class="equipment-name" [class]="equipmentClass(eq)" (click)="selectEquipment(eq)" (dblclick)="install(eq)"><span>{{ eq.shortName }}</span><small>{{ eq.techBase === 'All' ? 'IS / CLAN' : eq.techBase === 'IS' ? 'IS' : 'CLAN' }}</small></button>
+                        <span class="equipment-number">{{ equipmentSlots(eq) }}</span><span class="equipment-number">{{ equipmentMass(eq) }}</span><button class="install-button" (click)="install(eq)" [attr.aria-label]="'Install ' + eq.name + ' in ' + locationLabel(selectedLocation())" title="Install in selected location">+</button>
+                    </div>
+                } @empty { <div class="empty-list">No matching equipment.<span>Try another category, location, or disable “Compatible only”.</span></div> }
+                @if (visibleEquipment().length < filteredEquipment().length) { <button class="load-more" (click)="equipmentLimit.set(equipmentLimit() + 100)">Show more equipment</button> }
+            </div>
+            @if (selectedEquipment(); as eq) {
+                <section class="equipment-inspector" [class]="equipmentClass(eq)">
+                    <div class="inspector-heading"><h3>{{ eq.name }}</h3><span>{{ eq.techBase }}</span></div>
+                    <div class="inspector-facts"><span>Mass <b>{{ equipmentMass(eq) }} t</b></span><span>Critical slots <b>{{ equipmentSlots(eq) }}</b></span>
+                        @if (weapon(eq); as weapon) { <span>Heat <b>{{ weapon.heat }}</b></span><span>Range <b>{{ weapon.ranges.join(' / ') }}</b></span> }
+                        @if (ammo(eq); as ammo) { <span>Shots / bin <b>{{ ammo.shots }}</b></span> }
+                    </div>
+                    @if (selectedMount(); as mount) {
+                        <div class="mount-controls">
+                            <label>Location<select aria-label="Move selected equipment" [ngModel]="mount.location" (ngModelChange)="moveSelected($event)">@for (location of locations(); track location.id) { <option [value]="location.id">{{ location.label }}</option> }</select></label>
+                            @if (eq.tonnage === 'variable') { <label>Size<input type="number" min="0.001" step="0.5" [ngModel]="mount.size ?? 1" (ngModelChange)="updateMount(mount, {size: $event})"></label> }
+                            @if (ammo(eq) && supportsAmmoQuantity()) { <label>Shots<input type="number" min="0" [ngModel]="mount.shotsCount ?? ammo(eq)!.shots" (ngModelChange)="updateMount(mount, {shotsCount: $event})"></label> }
+                            @if (weapon(eq)) { <label class="check"><input type="checkbox" [ngModel]="mount.rearMounted" (ngModelChange)="updateMount(mount, {rearMounted: $event})"> Rear mounted</label> }
+                            @if (isMek()) { <label class="check"><input type="checkbox" [ngModel]="mount.armored" (ngModelChange)="updateMount(mount, {armored: $event})"> Armored component</label> }
+                            @if (isMek() && weapon(eq)) { <label class="check"><input type="checkbox" [ngModel]="mount.turretMounted" (ngModelChange)="updateMount(mount, {turretMounted: $event})"> Turret mounted</label> }
+                            @if (eq.hasFlag('F_VGL') || mount.facing !== undefined) { <label>Facing<select [ngModel]="mount.facing ?? 2" (ngModelChange)="updateMount(mount, {facing: $event})"><option [ngValue]="0">Front left</option><option [ngValue]="1">Front right</option><option [ngValue]="2">Forward</option><option [ngValue]="3">Rear</option><option [ngValue]="4">Rear left</option><option [ngValue]="5">Rear right</option></select></label> }
+                            @if (isVehicle() && weapon(eq) && !mount.location.includes('Turret')) { <label>Weapon mount<select [ngModel]="mount.turretType ?? ''" (ngModelChange)="updateMount(mount, {turretType: $event || undefined})"><option value="">Fixed</option><option value="sponson">Sponson turret</option><option value="pintle">Pintle mount</option></select></label> }
+                            @if (entity().omni()) { <label class="check"><input type="checkbox" [ngModel]="mount.omniPodMounted" (ngModelChange)="updateMount(mount, {omniPodMounted: $event})"> OmniPod</label> }
+                            @if (isBattleArmor()) {
+                                <label>Suit mount<select aria-label="Battle armor equipment mount" [ngModel]="mount.baMountLocation ?? 'Body'" (ngModelChange)="updateMount(mount, {baMountLocation: $event})"><option value="Body">Body</option><option value="LA">Left arm</option><option value="RA">Right arm</option><option value="Turret">Turret</option></select></label>
+                                <label class="check"><input type="checkbox" [ngModel]="mount.isDWP ?? false" (ngModelChange)="updateMount(mount, {isDWP: $event})"> Detachable pack</label>
+                                <label class="check"><input type="checkbox" [ngModel]="mount.isSSWM ?? false" (ngModelChange)="updateMount(mount, {isSSWM: $event})"> Squad support</label>
+                                <label class="check"><input type="checkbox" [ngModel]="mount.isAPM ?? false" (ngModelChange)="updateMount(mount, {isAPM: $event})"> Anti-personnel</label>
+                            }
+                            @if (entity().getLinkedMount(mount); as target) { <label>Linked equipment<span>{{ target.displayName() }} · {{ locationLabel(target.location) }}</span><small>Paired automatically from equipment placement.</small></label> }
+                        </div>
+                        <button class="remove-equipment" (click)="remove(mount)">Remove equipment</button>
+                    } @else { <button class="inspector-install" (click)="install(eq)">+ Install in {{ locationLabel(selectedLocation()) }}</button> }
+                    @for (issue of selectedIssues(); track issue) { <p class="placement-issue">{{ issue }}</p> }
+                    @if (equipmentRefs(eq)) { <div class="rules-reference">{{ equipmentRefs(eq) }}</div> }
+                </section>
+            } @else { <div class="warehouse-hint">Drag equipment into a location, or select an item and click an empty slot.<span>The + button installs in the selected location.</span></div> }
+        </aside>
+
+        <section class="construction-workspace">
+            @if (panel() === 'systems') {
+                <div class="systems-grid">
+                    @for (group of fieldGroups(); track group.name) {
+                        <section class="system-panel"><h2>{{ group.name }}</h2><div class="system-fields">
+                            @for (field of group.fields; track field.id) {
+                                <label [class.checkbox-field]="field.kind === 'boolean'" [title]="field.hint ?? ''">
+                                    <span>{{ field.label }}</span>
+                                    @switch (field.kind) {
+                                        @case ('select') { <select [attr.aria-label]="field.label" [ngModel]="field.get()" (ngModelChange)="setField(field, $event)">@for (option of field.options; track option.value) { <option [ngValue]="option.value">{{ option.label }}</option> }</select> }
+                                        @case ('boolean') { <input type="checkbox" [attr.aria-label]="field.label" [ngModel]="field.get()" (ngModelChange)="setField(field, $event)"> }
+                                        @case ('number') { <input type="number" [attr.aria-label]="field.label" [min]="field.min ?? 0" [attr.max]="field.max" [step]="field.step ?? 1" [ngModel]="field.get()" (ngModelChange)="setField(field, $event)"> }
+                                        @default { <input type="text" [attr.aria-label]="field.label" [ngModel]="field.get()" (ngModelChange)="setField(field, $event)"> }
+                                    }
+                                    @if (field.hint) { <small>{{ field.hint }}</small> }
+                                </label>
+                            }
+                        </div></section>
+                    }
+                    @if (armorOptions().length || structureOptions().length) {
+                        <section class="system-panel"><h2>Materials</h2><div class="system-fields">
+                            @if (armorOptions().length) { <label>Uniform armor<select aria-label="Uniform armor material" [ngModel]="entity().uniformArmor()?.armor?.id ?? ''" (ngModelChange)="setArmorMaterial($event)"><option value="" disabled>Patchwork armor</option>@for (armor of armorOptions(); track armor.id) { <option [value]="armor.id">{{ materialLabel(armor) }}</option> }</select></label> }
+                            @if (structureOptions().length) { <label>Uniform structure<select aria-label="Uniform structure material" [ngModel]="entity().uniformStructureMaterial()?.structure?.id ?? ''" (ngModelChange)="setStructure($event)"><option value="" disabled>Mixed structure</option>@for (structure of structureOptions(); track structure.id) { <option [value]="structure.id">{{ materialLabel(structure) }}</option> }</select></label> }
+                        </div><p class="muted">Individual location materials are available from each location’s configuration menu.</p></section>
+                    }
+                </div>
+                <construction-extras [entity]="entity()" (change)="change($event)" />
+            } @else {
+                <div class="loadout-toolbar"><div><h2>Location loadout</h2><span class="muted">{{ isMek() ? 'Critical slot allocation' : 'Equipment by location' }}</span></div><div><button (click)="maxArmor()">Max armor</button><button (click)="stripArmor()">Strip armor</button><button (click)="stripEquipment()">Strip equipment</button></div></div>
+                <div class="location-grid" [class.mek-grid]="isMek()">
+                    @for (location of locations(); track location.id) {
+                        <article class="location-card" [class.selected-location]="selectedLocation() === location.id" [attr.data-location]="location.id">
+                            <button class="location-title" (click)="selectedLocation.set(location.id)"><span>{{ location.label }}</span><small>{{ location.slotCapacity === null ? location.slots.length + ' mounts' : location.slotCapacity + ' slots' }}</small></button>
+                            @if (entity().armorLocations.includes(location.id)) {
+                                <div class="location-defense">
+                                    <div class="defense-label"><span>ARMOR</span><b>{{ location.armor + location.rearArmor }}<small> / {{ location.maxArmor }}</small></b></div>
+                                    <div class="armor-meter"><i [style.width.%]="location.maxArmor > 0 ? (location.armor + location.rearArmor) / location.maxArmor * 100 : 0"></i></div>
+                                    <div class="armor-inputs"><label>{{ entity().hasRearArmor(location.id) ? 'FRONT' : 'POINTS' }}<input type="number" min="0" [max]="location.maxArmor" [attr.aria-label]="location.label + ' front armor'" [ngModel]="location.armor" (ngModelChange)="setArmor(location.id, 'front', $event)"></label>
+                                        @if (entity().hasRearArmor(location.id)) { <label>REAR<input type="number" min="0" [max]="location.maxArmor" [attr.aria-label]="location.label + ' rear armor'" [ngModel]="location.rearArmor" (ngModelChange)="setArmor(location.id, 'rear', $event)"></label> }
+                                    </div>
+                                    <div class="defense-label structure-label"><span>STRUCTURE</span><b>{{ location.structure }}</b></div>
+                                    @if (armorOptions().length || structureOptions().length) { <details class="location-config"><summary [attr.aria-label]="'Configure ' + location.label">Materials & structure <span>⌄</span></summary>
+                                        @if (armorOptions().length && entity().armorByLocation().has(location.id)) { <label>Armor<select [attr.aria-label]="location.label + ' armor material'" [ngModel]="armorAt(location.id)" (ngModelChange)="setArmorMaterial($event, location.id)">@for (armor of armorOptions(); track armor.id) { <option [value]="armor.id">{{ materialLabel(armor) }}</option> }</select></label> }
+                                        @if (structureOptions().length && entity().structureByLocation().has(location.id)) { <label>Structure<select [attr.aria-label]="location.label + ' structure material'" [ngModel]="structureAt(location.id)" (ngModelChange)="setStructure($event, location.id)">@for (structure of structureOptions(); track structure.id) { <option [value]="structure.id">{{ materialLabel(structure) }}</option> }</select></label>
+                                            @if (isMek()) { <label>Donor chassis tonnage<input type="number" min="10" max="200" step="5" [attr.aria-label]="location.label + ' donor structure tonnage'" [ngModel]="donorTonnage(location.id)" (ngModelChange)="setStructure(structureAt(location.id), location.id, $event)"></label> }
+                                        }
+                                    </details> }
+                                </div>
+                            }
+                            <div class="critical-grid">
+                                @for (row of location.rows; track row.index) {
+                                    @if (row.system) { <div class="system-slot"><small>{{ row.index + 1 }}</small><span>{{ row.system }}</span><span class="lock-symbol" aria-label="Fixed system">▰</span></div> }
+                                    @else {
+                                        <div class="slot-target" cdkDropList [cdkDropListData]="{location: location.id, slotIndex: location.slotCapacity === null ? undefined : row.index}" [cdkDropListSortingDisabled]="true" (cdkDropListDropped)="onDrop($event)" [style.min-height.px]="row.span * 27">
+                                            @if (row.mount; as mount) {
+                                                <div class="installed-equipment" [class]="equipmentClass(mount.equipment)" [class.selected-equipment]="selectedMountId() === mount.mountId" cdkDrag [cdkDragData]="{equipmentId: mount.equipmentId, mountId: mount.mountId}" [cdkDragStartDelay]="{touch: 180, mouse: 0}">
+                                                    <button class="mounted-name" (click)="selectMount(mount)"><span class="critical-ticks">@for (tick of rowTicks(row.span); track $index) { <i></i> }</span><span>{{ mount.displayName() }}</span><small>{{ mountedMass(mount) }}{{ mount.omniPodMounted ? ' · POD' : '' }}</small></button>
+                                                    <button class="remove-mount" (click)="remove(mount, $event)" [attr.aria-label]="'Remove ' + mount.displayName() + ' from ' + location.label">×</button>
+                                                </div>
+                                            } @else { <button class="empty-slot" (click)="clickSlot(location.id, location.slotCapacity === null ? undefined : row.index)" [attr.aria-label]="'Install selected equipment in ' + location.label + ', slot ' + (row.index + 1)"><small>{{ row.index + 1 }}</small><span>EMPTY SLOT</span><b>+</b></button> }
+                                        </div>
+                                    }
+                                }
+                                @if (location.slotCapacity === null) { <div class="slot-target" cdkDropList [cdkDropListData]="{location: location.id}" [cdkDropListSortingDisabled]="true" (cdkDropListDropped)="onDrop($event)"><button class="empty-slot inventory-drop" (click)="clickSlot(location.id)" [attr.aria-label]="'Install selected equipment in ' + location.label"><span>DROP EQUIPMENT HERE</span><b>+</b></button></div> }
+                            </div>
+                        </article>
+                    }
+                </div>
+                @if (unallocated().length) { <section class="unallocated-panel"><h3>Integral / unallocated equipment</h3><div cdkDropList [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="rejectWarehouseDrop">@for (mount of unallocated(); track mount.mountId) { <button cdkDrag [cdkDragDisabled]="mount.allocation.kind === 'engine'" [cdkDragData]="{equipmentId: mount.equipmentId, mountId: mount.mountId}" [class]="equipmentClass(mount.equipment)" (click)="selectMount(mount)">{{ mount.displayName() }} <small>{{ mount.location }}</small></button> }</div></section> }
+            }
+        </section>
+    </main>
+
+    <footer class="workshop-footer"><div class="file-actions"><input #nativeFile type="file" accept=".mtf,.blk" hidden (change)="importFile($event)"><button (click)="nativeFile.click()" [disabled]="busy()">Import MTF / BLK</button><button (click)="exportDesign()">Export</button></div><span class="storage-note">Saved on this device</span><div class="save-actions">@if (savedUuid()) { <button (click)="deleteSaved()" [disabled]="busy()">Delete</button><button (click)="save(true)" [disabled]="busy()">Save a copy</button> }<button class="save-button" (click)="save()" [disabled]="busy()">{{ busy() ? 'Working…' : errors().length ? 'Save draft' : 'Save custom unit' }}</button></div></footer>
+
+    @if (picker()) {
+        <div class="picker-backdrop" (click)="picker.set(null)"></div>
+        <section class="design-picker" role="dialog" aria-modal="true" cdkTrapFocus [cdkTrapFocusAutoCapture]="true" aria-label="New design">
+            <header><div><span class="eyebrow">UNIT CONSTRUCTION</span><h2>Start a new design</h2></div><button class="icon-button" (click)="picker.set(null)" aria-label="Close unit picker">✕</button></header>
+                <p class="muted">Choose a chassis family. Configure its systems and build a loadout from the equipment warehouse.</p>
+                <div class="new-type-grid">@for (type of unitTypes; track type.id) { <button [class.active]="newType() === type.id" [attr.aria-pressed]="newType() === type.id" (click)="newType.set(type.id)">{{ type.label }}</button> }</div>
+                <footer><button class="save-button" (click)="createNew()">Create design →</button></footer>
+        </section>
+    }
+</div>

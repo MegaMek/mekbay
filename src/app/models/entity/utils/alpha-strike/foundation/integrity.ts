@@ -15,6 +15,7 @@ import {
 } from '../../../entities';
 import { infantryDamageDivisor } from '../../battle-value/infantry-rules';
 import { modularArmorPoints } from '../../../../modular-armor.model';
+import { supportVehicleBarRating } from '../../../entities/support-vehicle';
 
 const AS_MEK_STRUCTURE: readonly (readonly number[])[] = [
   [1,1,2,2,3,3,3,4,4,5,5,5,6,6,6,7,7,8,8,8,8,9,9,10,10,10,11,11,11,12,12,13,13,13,14,14,14,15,15],
@@ -45,8 +46,9 @@ export function alphaStrikeArmor(entity: BaseEntity): number {
     let modifier = type === 'COMMERCIAL' ? 0.5
       : type === 'FERRO_LAMELLOR' ? 1.2
       : type === 'HARDENED' ? 2 : 1;
-    if (entity.isSupportVehicle() && entity.barRating() < 9 && type !== 'COMMERCIAL') {
-      modifier *= entity.barRating() / 10;
+    // ASArmStrConverter uses one reference facing's BAR for the whole conversion.
+    if (entity.isSupportVehicle() && supportVehicleBarRating(entity) < 9 && type !== 'COMMERCIAL') {
+      modifier *= supportVehicleBarRating(entity) / 10;
     }
     points += Math.max(0, armor.front * modifier) + Math.max(0, armor.rear * modifier);
   }

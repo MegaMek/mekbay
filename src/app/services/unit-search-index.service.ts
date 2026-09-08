@@ -302,6 +302,9 @@ export class UnitSearchIndexService {
                 }
             }
 
+            // Custom designs participate in search, but never influence reference
+            // distributions used by radar charts and stat-bar-specs.
+            if (unit.origin !== 'megamek' || unit.isCustom) continue;
             const key = getUnitStatBucketKey(unit);
             const samples = samplesByBucket[key] ??= {};
             for (const statKey of UNIT_STAT_KEYS) {

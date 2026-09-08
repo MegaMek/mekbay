@@ -9,6 +9,8 @@ import { DbService } from './db.service';
 import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
 import { createEmptyCBTForceForTest } from '../testing/unit-test-helpers';
+import type { SavedCustomUnit } from '../models/custom-unit.model';
+import { asUnitUuid } from './unit-catalog/unit-catalog.types';
 
 describe('DbService current force persistence', () => {
     let service: DbService;
@@ -29,6 +31,29 @@ describe('DbService current force persistence', () => {
 
     afterEach(async () => {
         await service.deleteForce(instanceId);
+    });
+
+    it('stores custom native designs in their own store across updates and cache clearing', async () => {
+        const uuid = asUnitUuid(crypto.randomUUID());
+        const record: SavedCustomUnit = {
+            schemaVersion: 1, uuid, createdAt: Date.now(), updatedAt: Date.now(), format: 'mtf',
+            source: `Version:1.3\nuuid:${uuid}\nchassis:Workshop\n`,
+        };
+        try {
+            await service.saveCustomUnit(record);
+            expect((await service.listCustomUnits()).find(row => (row as SavedCustomUnit).uuid === uuid)).toEqual(record);
+            const updated = { ...record, source: `${record.source}model:Modified\n`, updatedAt: record.updatedAt + 1 };
+            await service.saveCustomUnit(updated);
+            await service.clearCatalogCaches();
+            const stored = (await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid);
+            expect(stored).toEqual([updated]);
+            const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            expect(database.objectStoreNames.contains('customUnitsStore')).toBeTrue();
+            await service.deleteCustomUnit(uuid);
+            expect((await service.listCustomUnits()).some(row => (row as SavedCustomUnit).uuid === uuid)).toBeFalse();
+        } finally {
+            await service.deleteCustomUnit(uuid);
+        }
     });
 
     it('writes admitted compact V2 records without materializing their predecessor', async () => {

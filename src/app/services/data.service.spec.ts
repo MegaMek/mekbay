@@ -276,6 +276,7 @@ describe('DataService', () => {
     const unitsCatalogMock = {
         initialize: jasmine.createSpy('initialize').and.resolveTo(undefined),
         getUnits: jasmine.createSpy('getUnits').and.returnValue([]),
+        getSummaries: (): readonly UnitSummary[] => unitsCatalogMock.getUnits(),
         coreState: signal({ status: 'idle', availableUnits: 0 } as const).asReadonly(),
         catalogRevision: unitCatalogRevision.asReadonly(),
         pendingActivation: pendingUnitCatalogActivation.asReadonly(),

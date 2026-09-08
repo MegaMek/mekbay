@@ -635,6 +635,10 @@ export class App {
         void this.router.navigate(['/collection'], { queryParamsHandling: 'preserve' });
     }
 
+    showUnitConstruction(): void {
+        void this.router.navigate(['/construction'], { queryParamsHandling: 'preserve' });
+    }
+
     showForceGeneratorDialog(): void {
         void this.forceImport.showSearchForceGeneratorDialog();
     }

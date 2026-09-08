@@ -28,12 +28,14 @@
     } @else {
         @if (expandedView()) {
         <button type="button" class="bt-button expand-btn square" (click)="toggleExpandedView()"
-            title="Collapse View" aria-label="Collapse View">
+            [title]="selectionMode() ? 'Cancel unit selection' : 'Collapse View'" [attr.aria-label]="selectionMode() ? 'Cancel unit selection' : 'Collapse View'">
+        @if (selectionMode()) { <span aria-hidden="true">✕</span> } @else {
         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"
             focusable="false" aria-hidden="true" role="img">
             <path d="M4 14H10M10 14V20M10 14L3 21M20 10H14M14 10V4M14 10L21 3" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" />
         </svg>
+        }
         </button>
         } @else {
         <a class="bt-button expand-btn square" href="/?expanded=true" (click)="openExpandedSearch($event)"
@@ -250,7 +252,10 @@
                     <div class="chassis-view-td chassis-view-td-count">{{ group.variantCount }}</div>
                     <div class="chassis-view-td chassis-view-td-icon"><unit-icon [unit]="group.representativeUnit" [size]="28"></unit-icon></div>
                     <div class="chassis-view-td chassis-view-td-chassis">
-                        <span class="chassis-view-chassis-name">{{ formatVariantGroupTitle(group) }}</span>
+                        <span class="chassis-view-name-row">
+                            <span class="chassis-view-chassis-name">{{ formatVariantGroupTitle(group) }}</span>
+                            @if (group.customVariantCount) { <span class="custom-unit-badge" [title]="group.customVariantCount + ' custom variant(s)'">CUSTOM</span> }
+                        </span>
                         <span class="chassis-view-type">{{ formatVariantGroupType(group) }}@if (group.omni) {<span class="chassis-view-omni">(omni)</span>}</span>
                     </div>
                     <div class="chassis-view-td chassis-view-td-value">{{ formatChassisGroupBvPv(group) }}</div>
@@ -314,6 +319,7 @@
                     <span class="as-td-model" [innerHTML]="highlight(unit.model)"></span>
                     <span class="as-td-chassis">
                         <span class="as-td-chassis-name" [innerHTML]="highlight(unitNames.chassis(unit))"></span>
+                        @if (unit.isCustom) { <span class="custom-unit-badge">CUSTOM</span> }
                     </span>
                 </div>
             </ng-template>
@@ -437,7 +443,7 @@
                         [searchResultContext]="filtersService.activeNormalization() ? getSearchResultContext(unit) : null"
                         [useBvPvDisplayOption]="true"
                         [expandedView]="false"
-                        [showSelectCheckbox]="true"
+                        [showSelectCheckbox]="!selectionMode()"
                         [megaMekAvailability]="getSearchResultMegaMekAvailability(unit)"
                         [isSelected]="isUnitSelected(unit)"
                         [sortKey]="currentSortKey()"
@@ -451,7 +457,7 @@
             </cdk-virtual-scroll-viewport>
             }
 
-            @if (this.selectedUnits().size > 0) {
+            @if (!selectionMode() && this.selectedUnits().size > 0) {
                 <div class="selection-footer">
                     <div class="selected-count">{{ this.selectedUnits().size }} units selected</div>
                     <span class="spanner"></span>
@@ -504,11 +510,13 @@
                             }
                         </button>
                     </div>
+                    @if (!selectionMode()) {
                     <button type="button" class="bt-button square-small generate-force-btn" (click)="showGenerateForceDialog()" title="Generate Force from Search Results" aria-label="Generate Force from Search Results">
                         <svg fill="currentColor" width="24px" height="24px" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
                             <path d="M30.8,2.29A.49.49,0,0,0,30.35,2H16.42a.5.5,0,0,0-.42.23l-10.71,17A.49.49,0,0,0,5.7,20h7.67L6.6,33.25a.52.52,0,0,0,.46.75h3a.5.5,0,0,0,.37-.16L28,14.85a.5.5,0,0,0-.37-.85H20.89L30.72,2.82A.49.49,0,0,0,30.8,2.29Z"></path>
                         </svg>
                     </button>
+                    }
                     <button class="bt-button square-small" (click)="openShareSearch($event)" title="Share Search Results" aria-label="Share Search Results">
                         <svg width="24px" height="24px" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                             <path fill-rule="evenodd" clip-rule="evenodd"

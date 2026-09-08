@@ -264,10 +264,26 @@ export function writeEquipmentByLocation(
   encodeOptions: EncodeEquipmentOptions = { blkMode: true },
 ): Map<string, string[]> {
   const mountsByLoc = new Map<string, string[]>();
-  const weaponBayStarts = new Set(entity.equipmentBays()
-    .filter(bay => bay.kind === 'weapon-bay')
-    .flatMap(bay => bay.mounts.length > 0 ? [bay.mounts[0].mountId] : []));
-  for (const m of entity.equipment()) {
+  const weaponBays = entity.equipmentBays().filter(bay => bay.kind === 'weapon-bay');
+  const weaponBayStarts = new Set(weaponBays.flatMap(bay => bay.weapons[0] ? [bay.weapons[0].mountId] : []));
+  const bayByMount = new Map(weaponBays.flatMap(bay => bay.mounts.map(mount => [mount.mountId, bay] as const)));
+  const emitted = new Set<EntityMountedEquipment['mountId']>();
+  const orderedMounts: EntityMountedEquipment[] = [];
+  for (const mount of entity.equipment()) {
+    if (emitted.has(mount.mountId)) continue;
+    const bay = bayByMount.get(mount.mountId);
+    // BLK encodes membership through a (B) marker and contiguous members. The
+    // author can regroup mounts without changing their canonical inventory order.
+    const firstWeapon = bay?.weapons[0];
+    const members = bay && firstWeapon
+      ? [firstWeapon, ...bay.mounts.filter(member => member.mountId !== firstWeapon.mountId)] : [mount];
+    for (const member of members) {
+      if (emitted.has(member.mountId)) continue;
+      emitted.add(member.mountId);
+      orderedMounts.push(member);
+    }
+  }
+  for (const m of orderedMounts) {
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
     lines.push(encodeLineFn(m, {

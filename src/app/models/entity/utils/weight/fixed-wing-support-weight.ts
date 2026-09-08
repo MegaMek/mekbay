@@ -102,11 +102,14 @@ export function calculateFixedWingSupportWeightBreakdown(entity: FixedWingSuppor
 }
 
 function calculateArmor(entity: FixedWingSupportEntity): number {
-  const mounted = entity.uniformArmor();
-  if (!mounted) return 0;
-  const raw = isSupportVehicleBarArmor(mounted.armor)
-    ? entity.totalArmorPoints() * (mounted.armor.weightPerPointSV[mounted.techRating ?? RATINGS[entity.structuralTechRating()] ?? 'A'] ?? mounted.armor.weightPerPoint)
-    : entity.totalArmorPoints() / (16 * mounted.armor.pptMultiplier);
+  let raw = 0;
+  for (const location of entity.armorLocations) {
+    const mounted = entity.armorAt(location);
+    const points = entity.getArmorValue(location);
+    raw += isSupportVehicleBarArmor(mounted.armor)
+      ? points * (mounted.armor.weightPerPointSV[mounted.techRating ?? RATINGS[entity.structuralTechRating()] ?? 'A'] ?? mounted.armor.weightPerPoint)
+      : points / (16 * mounted.armor.pptMultiplier);
+  }
   return entity.weightClass() === 'Small Support' ? ceilKg(raw) : ceilToHalfTon(raw);
 }
 function requireTonnage(entity: FixedWingSupportEntity, mount: { equipmentId: string; getTonnage(owner: FixedWingSupportEntity): number | undefined }): number {

@@ -6,6 +6,50 @@ import { EquipmentFlag } from '../../../equipment-flags.type';
 import { InfantryWeaponEquipment, WeaponEquipment } from '../../../equipment.model';
 import { TestInfantryEntity as InfantryEntity } from '../../testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+import { PREDEFINED_INFANTRY_MOUNTS } from '../../types/infantry';
+import { encodeNativeEntity } from '../../write-entity';
+import { parseEntity } from '../../parse-entity';
+import { InfantryEntity as NativeInfantryEntity } from './infantry-entity';
+
+describe('InfantryEntity custom beast construction', () => {
+  for (const species of ['Elephant', 'Hipposaur']) {
+    it(`round-trips every custom ${species} specification through native source`, () => {
+      const infantry = new InfantryEntity();
+      const mount = { ...PREDEFINED_INFANTRY_MOUNTS.get(species)!, name: `Custom ${species}`, custom: true };
+      infantry.motiveType.set('Beast');
+      infantry.mount.set(mount);
+
+      const encoded = encodeNativeEntity(infantry);
+      const parsed = parseEntity(encoded, 'custom.blk', infantry.getEquipmentRegistry()).entity;
+
+      expect(parsed instanceof NativeInfantryEntity).toBeTrue();
+      expect((parsed as NativeInfantryEntity).mount()).toEqual(mount);
+      expect(parsed.motiveType()).toBe('Beast');
+    });
+  }
+
+  it('preserves specialization and prosthetic design choices through native source', () => {
+    const infantry = new InfantryEntity();
+    infantry.specializations.set(new Set(['marines', 'xct']));
+    infantry.augmentations.set(['pl_ienhanced', 'pl_extra_limbs']);
+    infantry.prostheticEnhancement1.set('LASER');
+    infantry.prostheticEnhancement1Count.set(1);
+    infantry.prostheticEnhancement2.set('BLADE');
+    infantry.prostheticEnhancement2Count.set(2);
+    infantry.extraneousPair1.set('GRAPPLER');
+    infantry.extraneousPair2.set('CLIMBING_CLAWS');
+
+    const parsed = parseEntity(encodeNativeEntity(infantry), 'custom.blk', infantry.getEquipmentRegistry()).entity as NativeInfantryEntity;
+    expect(parsed.specializations()).toEqual(infantry.specializations());
+    expect(parsed.augmentations()).toEqual(infantry.augmentations());
+    expect(parsed.prostheticEnhancement1()).toBe('LASER');
+    expect(parsed.prostheticEnhancement1Count()).toBe(1);
+    expect(parsed.prostheticEnhancement2()).toBe('BLADE');
+    expect(parsed.prostheticEnhancement2Count()).toBe(2);
+    expect(parsed.extraneousPair1()).toBe('GRAPPLER');
+    expect(parsed.extraneousPair2()).toBe('CLIMBING_CLAWS');
+  });
+});
 
 describe('InfantryEntity strength limit', () => {
   it('validates the thirty-troop construction limit as squad size or count changes', () => {

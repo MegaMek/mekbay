@@ -12,6 +12,7 @@ import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
 import type { LinkedOAuthProvider } from '../models/account-auth.model';
+import type { SavedCustomUnit } from '../models/custom-unit.model';
 import {
     decodeForceFromStorage,
     encodeForceForStorage,
@@ -19,7 +20,7 @@ import {
 } from '../models/runtime/force-storage-codec';
 
 const DB_NAME = 'mekbay';
-const DB_VERSION = 18;
+const DB_VERSION = 19;
 const DB_STORE = 'store';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
@@ -35,6 +36,7 @@ const TAGS_STORE = 'tagsStore';
 const SAVED_SEARCHES_STORE = 'savedSearchesStore';
 const PUBLIC_TAGS_STORE = 'publicTagsStore';
 const ORGANIZATIONS_STORE = 'organizationsStore';
+const CUSTOM_UNITS_STORE = 'customUnitsStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
@@ -325,6 +327,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
+                this.createStoreIfMissing(db, transaction, CUSTOM_UNITS_STORE);
 
                 if (db.objectStoreNames.contains('forceV2Store')) {
                     // Schema 18 stores one complete force object. The V1 copy in
@@ -388,6 +391,43 @@ export class DbService {
 
     public async waitForDbReady(): Promise<void> {
         await this.dbPromise;
+    }
+
+    /** User designs are independent of disposable core catalog caches. */
+    public async listCustomUnits(): Promise<unknown[]> {
+        const db = await this.dbPromise;
+        if (!db) return [];
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(CUSTOM_UNITS_STORE, 'readonly');
+            const request = transaction.objectStore(CUSTOM_UNITS_STORE).getAll();
+            transaction.oncomplete = () => resolve(request.result);
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit read was aborted'));
+        });
+    }
+
+    public async saveCustomUnit(record: SavedCustomUnit): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; the custom unit was not saved');
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(CUSTOM_UNITS_STORE, 'readwrite');
+            transaction.objectStore(CUSTOM_UNITS_STORE).put(record, record.uuid);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit save was aborted'));
+        });
+    }
+
+    public async deleteCustomUnit(uuid: string): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; the custom unit was not deleted');
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(CUSTOM_UNITS_STORE, 'readwrite');
+            transaction.objectStore(CUSTOM_UNITS_STORE).delete(uuid);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit deletion was aborted'));
+        });
     }
 
     private async getDataFromGeneralStore<T>(key: string): Promise<T | null> {

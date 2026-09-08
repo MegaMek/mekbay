@@ -1,4 +1,10 @@
+// One geometry for native select backgrounds and all app chevron masks.
+@function chevron-image($color) {
+    @return url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23#{$color}'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+}
+
 :root {
+    --chevron-image: #{chevron-image("999999")};
     color-scheme: dark;
     // --safe-area-inset-top: env(safe-area-inset-top, 0px);
     // --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
@@ -14,21 +20,21 @@
     --background-color-light: #313131;
     --background-warning: orange;
     --background-input: rgba(40, 40, 40, 0.5);
-    --background-highlight: #3D3D3D;
-    --background-highlight-bright: #7A7A7A;
+    --background-highlight: #3d3d3d;
+    --background-highlight-bright: #7a7a7a;
     --hover-highlight-transparent: #fff1;
     --border-color: #555;
     --text-color: #ffffff;
     --text-color-secondary: silver;
     --text-color-tertiary: #888;
-    --accent-color: #EAAE3F;
+    --accent-color: #eaae3f;
     --accent-color-background: #44391266;
-    --bt-yellow: #EAAE3F;
-    --bt-yellow-strong: #FFAE16;
+    --bt-yellow: #eaae3f;
+    --bt-yellow-strong: #ffae16;
     --bt-yellow-background: #443912;
     --bt-yellow-background-transparent: #68540faa;
     --bt-yellow-background-bright: #5f5018;
-    --bt-yellow-background-light: #FFCF73;
+    --bt-yellow-background-light: #ffcf73;
     --bt-yellow-background-bright-transparent: #68540fee;
     color: white;
     -webkit-tap-highlight-color: transparent;
@@ -41,14 +47,14 @@
     --equipment-hover-secondary-color: #8883;
 
     --disabled-color: #888;
-    --damage-color: #F00;
+    --damage-color: #f00;
     --pip-pending-damage-color: orange;
     --pip-pending-repair-color: #03a9f4;
-    --pip-fresh-damage-color: #FF0;
-    --pip-fresh-repair-color: #80DEEA;
+    --pip-fresh-damage-color: #ff0;
+    --pip-fresh-repair-color: #80deea;
     --success: #7dcc80;
-    --danger: #F00;
-    --undamaged-highlight-color: #FEE;
+    --danger: #f00;
+    --undamaged-highlight-color: #fee;
     --undamaged-night-highlight-color: #300;
     --damaged-highlight-color: rgb(255, 105, 105);
 
@@ -67,7 +73,7 @@
     --phase-heat: #dd7d00;
     --phase-pending-effects: #d00;
     --hot-color: #f00;
-    --cold-color: #0081FF;
+    --cold-color: #0081ff;
 
     --friendly-color: 100, 180, 255;
     --enemy-color: 220, 80, 80;
@@ -113,7 +119,14 @@ body {
     height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
-    font-family: 'Roboto', "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI Symbol";
+    font-family:
+        "Roboto",
+        "Inter",
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        "Segoe UI Symbol";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-user-select: none;
@@ -149,7 +162,7 @@ body {
         color-scheme: light;
     }
     body,
-    html {    
+    html {
         background-color: white;
     }
 }
@@ -195,7 +208,7 @@ a {
 }
 
 .tv-fade {
-    animation: tv-vertical-expand .38s cubic-bezier(0.23, 1.02, 0.35, 1) both;
+    animation: tv-vertical-expand 0.38s cubic-bezier(0.23, 1.02, 0.35, 1) both;
     transform-origin: center center;
 }
 
@@ -235,7 +248,11 @@ hr {
 .gradient-frame {
     padding: 12px;
     border: 1px solid var(--border-color);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(0, 0, 0, 0.16));
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.045),
+        rgba(0, 0, 0, 0.16)
+    );
 }
 
 .modal-btn {
@@ -327,14 +344,16 @@ hr {
 }
 
 .has-shadow {
-    box-shadow: rgba(0, 0, 0, 0.4) 0px 2px 4px, rgba(0, 0, 0, 0.3) 0px 7px 13px -3px;
+    box-shadow:
+        rgba(0, 0, 0, 0.4) 0px 2px 4px,
+        rgba(0, 0, 0, 0.3) 0px 7px 13px -3px;
 }
 
 .next-badge {
     position: absolute;
     bottom: 0px;
     right: 18px;
-    background: #FFA800;
+    background: #ffa800;
     color: #fff;
     font-size: 9px;
     font-weight: 800;
@@ -352,54 +371,69 @@ hr {
     background-image:
         linear-gradient(white, white), linear-gradient(white, white),
         linear-gradient(white, white), linear-gradient(white, white);
-    background-size: 2px 12px, 2px 12px, 2px 12px, 2px 12px;
-    background-position: top left, top right, bottom left, bottom right;
+    background-size:
+        2px 12px,
+        2px 12px,
+        2px 12px,
+        2px 12px;
+    background-position:
+        top left,
+        top right,
+        bottom left,
+        bottom right;
 
     &.error {
         border-color: red;
         background-color: rgba(128, 24, 24, 0.28);
         background-image:
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
+            linear-gradient(red, red), linear-gradient(red, red),
+            linear-gradient(red, red), linear-gradient(red, red);
     }
     &.muted-frame {
         border-color: silver;
         background-image:
-            linear-gradient(silver, silver),
-            linear-gradient(silver, silver),
-            linear-gradient(silver, silver),
-            linear-gradient(silver, silver),
+            linear-gradient(silver, silver), linear-gradient(silver, silver),
+            linear-gradient(silver, silver), linear-gradient(silver, silver);
     }
 }
 
 .corner-borders {
-    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+    transition:
+        border 0.2s ease-in-out,
+        background 0.2s ease-in-out,
+        color 0.2s ease-in-out;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666);
-    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
-    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666);
+    background-size:
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px;
+    background-position:
+        top left,
+        top left,
+        top right,
+        top right,
+        bottom left,
+        bottom left,
+        bottom right,
+        bottom right;
 
     &:hover {
         background-image:
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white);
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
     }
 
     &:focus,
@@ -407,16 +441,28 @@ hr {
     &.open {
         outline: none;
         background-image:
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white);
-        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
+        background-size:
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
+        background-position:
+            top left,
+            top left,
+            top right,
+            top right,
+            bottom left,
+            bottom left,
+            bottom right,
+            bottom right;
     }
 
     &.semantic-only {
@@ -438,59 +484,78 @@ hr {
     color: white;
     background: var(--background-input);
     box-sizing: border-box;
-    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+    transition:
+        border 0.2s ease-in-out,
+        background 0.2s ease-in-out,
+        color 0.2s ease-in-out;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666),
-        linear-gradient(#666, #666);
-    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
-    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666),
+        linear-gradient(#666, #666), linear-gradient(#666, #666);
+    background-size:
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px;
+    background-position:
+        top left,
+        top left,
+        top right,
+        top right,
+        bottom left,
+        bottom left,
+        bottom right,
+        bottom right;
 
     &:hover {
         background-image:
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white);
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
     }
 
     &:focus,
     &:focus-visible {
         outline: none;
         background-image:
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white),
-            linear-gradient(white, white);
-        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white),
+            linear-gradient(white, white), linear-gradient(white, white);
+        background-size:
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
+        background-position:
+            top left,
+            top left,
+            top right,
+            top right,
+            bottom left,
+            bottom left,
+            bottom right,
+            bottom right;
     }
 
     &.error {
         background-image:
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red),
-            linear-gradient(red, red);
+            linear-gradient(red, red), linear-gradient(red, red),
+            linear-gradient(red, red), linear-gradient(red, red),
+            linear-gradient(red, red), linear-gradient(red, red),
+            linear-gradient(red, red), linear-gradient(red, red);
     }
 
     &.active {
@@ -514,6 +579,35 @@ hr {
     }
 }
 
+.chevron {
+    display: inline-block;
+    width: var(--chevron-size, 12px);
+    height: var(--chevron-size, 12px);
+    flex-shrink: 0;
+    vertical-align: middle;
+    background-color: currentColor;
+    mask: var(--chevron-image) center / contain no-repeat;
+    transition: transform 0.15s ease;
+    transform: rotate(-180deg);
+
+    &.collapsed,
+    &.chevron-down {
+        transform: rotate(0deg);
+    }
+
+    &.chevron-right {
+        transform: rotate(-90deg);
+    }
+
+    &.chevron-left {
+        transform: rotate(90deg);
+    }
+}
+
+details:not([open]) > summary .chevron {
+    transform: rotate(0deg);
+}
+
 .bt-checkbox {
     --checkbox-fill-color: transparent;
     --checkbox-border-color: #666;
@@ -528,26 +622,80 @@ hr {
     box-sizing: border-box;
     cursor: pointer;
     background: var(--background-input);
-    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+    transition:
+        border 0.2s ease-in-out,
+        background 0.2s ease-in-out,
+        color 0.2s ease-in-out;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
         linear-gradient(var(--checkbox-fill-color), var(--checkbox-fill-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color)),
-        linear-gradient(var(--checkbox-border-color), var(--checkbox-border-color));
-    background-size: 12px 12px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px, 6px 2px, 2px 6px;
-    background-position: center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        ),
+        linear-gradient(
+            var(--checkbox-border-color),
+            var(--checkbox-border-color)
+        );
+    background-size:
+        12px 12px,
+        6px 2px,
+        2px 6px,
+        6px 2px,
+        2px 6px,
+        6px 2px,
+        2px 6px,
+        6px 2px,
+        2px 6px;
+    background-position:
+        center,
+        top left,
+        top left,
+        top right,
+        top right,
+        bottom left,
+        bottom left,
+        bottom right,
+        bottom right;
 
     &:hover {
         --checkbox-border-color: white;
         background-color: var(--background-highlight);
-        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        background-size:
+            12px 12px,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
     }
 
     &:focus,
@@ -555,7 +703,16 @@ hr {
         --checkbox-border-color: white;
         outline: none;
         background-color: var(--background-input);
-        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        background-size:
+            12px 12px,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
     }
 
     &:checked {
@@ -575,7 +732,7 @@ hr {
 .bt-select {
     --select-text-color: white;
     --select-border-color: #666;
-    --select-arrow-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23999999'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+    --select-arrow-image: #{chevron-image("999999")};
     touch-action: manipulation;
     cursor: pointer;
     padding: 8px 20px 8px 8px;
@@ -585,9 +742,13 @@ hr {
     color: var(--select-text-color);
     -webkit-appearance: none;
     appearance: none;
-    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+    transition:
+        border 0.2s ease-in-out,
+        background 0.2s ease-in-out,
+        color 0.2s ease-in-out;
     background-origin: border-box;
-    background-image: var(--select-arrow-image),
+    background-image:
+        var(--select-arrow-image),
         linear-gradient(var(--select-border-color), var(--select-border-color)),
         linear-gradient(var(--select-border-color), var(--select-border-color)),
         linear-gradient(var(--select-border-color), var(--select-border-color)),
@@ -597,8 +758,26 @@ hr {
         linear-gradient(var(--select-border-color), var(--select-border-color)),
         linear-gradient(var(--select-border-color), var(--select-border-color));
     background-repeat: no-repeat;
-    background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
-    background-size: 12px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
+    background-position:
+        right 6px center,
+        top left,
+        top left,
+        top right,
+        top right,
+        bottom left,
+        bottom left,
+        bottom right,
+        bottom right;
+    background-size:
+        12px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px;
 
     &.small {
         padding: 2px 20px 2px 6px;
@@ -609,31 +788,48 @@ hr {
     &:hover,
     &.open {
         --select-border-color: white;
-        --select-arrow-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ffffff'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+        --select-arrow-image: #{chevron-image("ffffff")};
         outline: none;
-        background-size: 12px 12px, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: right 6px center, top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        background-size:
+            12px 12px,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
+        background-position:
+            right 6px center,
+            top left,
+            top left,
+            top right,
+            top right,
+            bottom left,
+            bottom left,
+            bottom right,
+            bottom right;
     }
 
     &.has-value {
         --select-text-color: var(--bt-yellow);
         --select-border-color: var(--bt-yellow);
-        --select-arrow-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23EAAE3F'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+        --select-arrow-image: #{chevron-image("EAAE3F")};
         border-color: var(--bt-yellow);
     }
 
     &.danger {
         --select-text-color: #f00;
         --select-border-color: #a00;
-        --select-arrow-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23a00'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+        --select-arrow-image: #{chevron-image("a00")};
 
         &:hover {
             background-color: #300;
             --select-border-color: red;
-            --select-arrow-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23f00'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+            --select-arrow-image: #{chevron-image("f00")};
         }
     }
-    
 }
 
 .bt-button {
@@ -651,17 +847,40 @@ hr {
     box-sizing: border-box;
     text-align: center;
     border: 2px solid transparent;
-    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+    transition:
+        border 0.2s ease-in-out,
+        background 0.2s ease-in-out,
+        color 0.2s ease-in-out;
     min-height: 32px;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color)),
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color)),
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color)),
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color));
-    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
-    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color));
+    background-size:
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px;
+    background-position:
+        top left,
+        top left,
+        top right,
+        top right,
+        bottom left,
+        bottom left,
+        bottom right,
+        bottom right;
 
     &.multiline {
         white-space: normal;
@@ -673,15 +892,47 @@ hr {
         --btn-border-color: white;
         border-color: transparent;
         background-color: var(--background-highlight);
-        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        background-size:
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
+        background-position:
+            top left,
+            top left,
+            top right,
+            top right,
+            bottom left,
+            bottom left,
+            bottom right,
+            bottom right;
     }
 
     &.tiny {
-        background-size: 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px, 8px 2px, 2px 8px;
+        background-size:
+            8px 2px,
+            2px 8px,
+            8px 2px,
+            2px 8px,
+            8px 2px,
+            2px 8px,
+            8px 2px,
+            2px 8px;
 
         &:hover {
-            background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+            background-size:
+                100% 2px,
+                2px 100%,
+                100% 2px,
+                2px 100%,
+                100% 2px,
+                2px 100%,
+                100% 2px,
+                2px 100%;
         }
     }
 
@@ -700,7 +951,6 @@ hr {
             --btn-text-color: #54ef59;
             --btn-border-color: #54ef59;
         }
-
     }
 
     &.danger:not(.selected) {
@@ -739,11 +989,19 @@ hr {
     &:active {
         background-color: var(--background-highlight-bright);
     }
-    
+
     &.active {
         --btn-text-color: var(--bt-yellow);
         --btn-border-color: var(--bt-yellow);
-        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
+        background-size:
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
     }
 
     &[disabled],
@@ -804,24 +1062,63 @@ hr {
     color: var(--btn-text-color);
     box-sizing: border-box;
     border: 2px solid transparent;
-    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+    transition:
+        border 0.2s ease-in-out,
+        background 0.2s ease-in-out,
+        color 0.2s ease-in-out;
     min-height: 32px;
     background-repeat: no-repeat;
     background-origin: border-box;
     background-image:
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color)),
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color)),
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color)),
-        linear-gradient(var(--btn-border-color), var(--btn-border-color)), linear-gradient(var(--btn-border-color), var(--btn-border-color));
-    background-size: 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px, 12px 2px, 2px 12px;
-    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color)),
+        linear-gradient(var(--btn-border-color), var(--btn-border-color));
+    background-size:
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px,
+        12px 2px,
+        2px 12px;
+    background-position:
+        top left,
+        top left,
+        top right,
+        top right,
+        bottom left,
+        bottom left,
+        bottom right,
+        bottom right;
 
     &:hover {
         --btn-border-color: white;
         border-color: transparent;
         background-color: var(--background-highlight);
-        background-size: 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%, 100% 2px, 2px 100%;
-        background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+        background-size:
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%,
+            100% 2px,
+            2px 100%;
+        background-position:
+            top left,
+            top left,
+            top right,
+            top right,
+            bottom left,
+            bottom left,
+            bottom right,
+            bottom right;
     }
 
     &[disabled],
@@ -908,7 +1205,7 @@ hr {
         &.centered {
             text-align: center;
         }
-        
+
         .optional {
             font-weight: normal;
             text-transform: none;
@@ -927,7 +1224,7 @@ hr {
         word-break: break-word;
         line-height: 1.3;
     }
-    
+
     .input-wrapper {
         position: relative;
         display: flex;
@@ -941,7 +1238,8 @@ hr {
         width: 32px;
         height: 32px;
         border: none;
-        background: transparent url('/images/random.svg') center / 24px 24px no-repeat;
+        background: transparent url("/images/random.svg") center / 24px 24px
+            no-repeat;
         cursor: pointer;
         opacity: 0.8;
         transition: opacity 0.2s ease-in-out;
@@ -965,7 +1263,10 @@ hr {
         border: 0;
         border-bottom: 1px solid #666;
         outline: none;
-        transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+        transition:
+            border 0.2s ease-in-out,
+            background 0.2s ease-in-out,
+            color 0.2s ease-in-out;
         white-space: normal;
         overflow-wrap: break-word;
         word-break: break-word;
@@ -1012,7 +1313,7 @@ hr {
         &.centered {
             text-align: center;
         }
-        
+
         .optional {
             font-weight: normal;
             text-transform: none;
@@ -1161,7 +1462,7 @@ h3 {
 }
 
 .alphastrike-text {
-    font-family: 'Roboto Condensed', sans-serif;
+    font-family: "Roboto Condensed", sans-serif;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     paint-order: stroke fill;
@@ -1176,7 +1477,7 @@ h3 {
 
         &.colored {
             color: #d22027;
-            -webkit-text-stroke: 0.1em #ECD24B;
+            -webkit-text-stroke: 0.1em #ecd24b;
         }
     }
 }
@@ -1195,7 +1496,7 @@ span {
     block-size: 12px;
     border: 1px solid currentColor;
     border-radius: 50%;
-    font-size: 0.60rem;
+    font-size: 0.6rem;
     font-weight: 600;
     line-height: 0;
     text-transform: none;
@@ -1222,7 +1523,9 @@ span {
         display: flex;
         align-items: center;
         flex-direction: row;
-        transition: color 0.2s, background-color 0.2s;
+        transition:
+            color 0.2s,
+            background-color 0.2s;
 
         &:hover {
             background-color: var(--background-highlight);
@@ -1232,7 +1535,7 @@ span {
             color: var(--danger);
         }
 
-        &[aria-expanded='true'] {
+        &[aria-expanded="true"] {
             background-color: var(--background-highlight);
         }
 
@@ -1261,14 +1564,13 @@ span {
             }
         }
 
-        &[aria-haspopup='menu']::after {
-            content: '›';
+        &[aria-haspopup="menu"]::after {
+            content: "›";
             margin-left: auto;
             opacity: 0.75;
             font-size: 1.2em;
             line-height: 1;
         }
-
     }
 }
 
@@ -1281,8 +1583,6 @@ hr.divider {
     padding: 0;
     border: 0;
 }
-
-
 
 .update-marker-anchor {
     position: relative;
@@ -1408,7 +1708,7 @@ hr.divider {
 
 /* Energy: #6082F6, background: #1a2030, inbetween: #35407a */
 .energy {
-    --type-color: #6082F6;
+    --type-color: #6082f6;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #35407a;
     border-right: 1px solid #35407a;
@@ -1418,7 +1718,7 @@ hr.divider {
 
 /* Ballistic: #9482B4, background: #211a29, inbetween: #5e4d7c */
 .ballistic {
-    --type-color: #9482B4;
+    --type-color: #9482b4;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #5e4d7c;
     border-right: 1px solid #5e4d7c;
@@ -1428,7 +1728,7 @@ hr.divider {
 
 /* Missile: #86C86E, background: #192617, inbetween: #3e7c36 */
 .missile {
-    --type-color: #86C86E;
+    --type-color: #86c86e;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #3e7c36;
     border-right: 1px solid #3e7c36;
@@ -1438,7 +1738,7 @@ hr.divider {
 
 /* Artillery: #A35958, background: #231a18, inbetween: #6c3e34 */
 .artillery {
-    --type-color: #A35958;
+    --type-color: #a35958;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #6c3e34;
     border-right: 1px solid #6c3e34;
@@ -1478,7 +1778,7 @@ hr.divider {
 
 /* Chemical: #7BA3A0, background: #1a2524, inbetween: #4d7370 */
 .ammo-chemical {
-    --type-color: #7BA3A0;
+    --type-color: #7ba3a0;
     border-left: 5px solid var(--type-color);
     border-top: 1px solid #4d7370;
     border-right: 1px solid #4d7370;
@@ -1564,7 +1864,8 @@ hr.divider {
         rgba(205, 100, 0, 0.7333333333) 0px,
         rgba(205, 100, 0, 0.7333333333) 12px,
         rgba(205, 80, 0, 0.6666666667) 12px,
-        rgba(205, 80, 0, 0.6666666667) 24px);
+        rgba(205, 80, 0, 0.6666666667) 24px
+    );
 }
 
 .repairing-entry {
@@ -1573,7 +1874,8 @@ hr.divider {
         rgba(3, 169, 244, 0.7333333333) 0px,
         rgba(3, 169, 244, 0.7333333333) 12px,
         rgba(0, 122, 204, 0.6666666667) 12px,
-        rgba(0, 122, 204, 0.6666666667) 24px);
+        rgba(0, 122, 204, 0.6666666667) 24px
+    );
 }
 
 .destroyed-entry {
@@ -1583,7 +1885,8 @@ hr.divider {
         rgba(85, 0, 0, 0.7333333333) 0px,
         rgba(85, 0, 0, 0.7333333333) 12px,
         rgba(51, 0, 0, 0.6666666667) 12px,
-        rgba(51, 0, 0, 0.6666666667) 24px);
+        rgba(51, 0, 0, 0.6666666667) 24px
+    );
 }
 
 .disabled-entry {
@@ -1593,50 +1896,73 @@ hr.divider {
         rgba(85, 85, 85, 0.56) 0px,
         rgba(85, 85, 85, 0.56) 12px,
         rgba(45, 45, 45, 0.52) 12px,
-        rgba(45, 45, 45, 0.52) 24px);
+        rgba(45, 45, 45, 0.52) 24px
+    );
 }
 
 .component-damaged {
     &::before {
-        content: '';
+        content: "";
         position: absolute;
         top: 1px;
         left: 0px;
         width: 100%;
         height: 4px;
-        background-image: repeating-linear-gradient(140deg,
-                #F008 0px,
-                #F008 4px,
-                transparent 5px,
-                transparent 10px);
+        background-image: repeating-linear-gradient(
+            140deg,
+            #f008 0px,
+            #f008 4px,
+            transparent 5px,
+            transparent 10px
+        );
     }
 
     &::after {
-        content: '';
+        content: "";
         position: absolute;
         bottom: 1px;
         left: 0px;
         width: 100%;
         height: 4px;
-        background-image: repeating-linear-gradient(140deg,
-                #F008 0px,
-                #F008 4px,
-                transparent 5px,
-                transparent 10px);
+        background-image: repeating-linear-gradient(
+            140deg,
+            #f008 0px,
+            #f008 4px,
+            transparent 5px,
+            transparent 10px
+        );
     }
 }
 
-
 /* MekBay SVG Sheet Styles */
+.custom-unit-badge {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    vertical-align: middle;
+    margin-inline-start: 5px;
+    padding: 2px 4px;
+    border: 1px solid var(--bt-yellow);
+    background: var(--bt-yellow-background-transparent);
+    color: var(--bt-yellow);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+}
+
 @media screen {
-    .multiple-visible .page-wrapper.selected>svg.mekbay-sheet {
+    .multiple-visible .page-wrapper.selected > svg.mekbay-sheet {
         outline: 4px solid var(--bt-yellow);
         outline-offset: -4px;
     }
 }
 
 .mekbay-sheet {
-    background-color: #FFF;
+    background-color: #fff;
     display: block;
     box-sizing: content-box;
     touch-action: none;
@@ -1662,11 +1988,16 @@ hr.divider {
         stroke: var(--damage-color);
     }
 
-    .inventoryEntry>*:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
+    .inventoryEntry
+        > *:not(.inventoryEntryButton):not(.inventoryEntry):not(
+            .alternativeMode
+        ) {
         pointer-events: none;
     }
 
-    .inventoryEntry>.alternativeMode>*:not(.inventoryEntryButton):not(.alternativeModeButton) {
+    .inventoryEntry
+        > .alternativeMode
+        > *:not(.inventoryEntryButton):not(.alternativeModeButton) {
         pointer-events: none;
     }
 
@@ -1680,7 +2011,6 @@ hr.divider {
     }
 
     .inventoryEntry.disabledInventory {
-
         .hitMod-rect,
         .hitMod-text {
             display: none;
@@ -1688,7 +2018,6 @@ hr.divider {
     }
 
     .inventoryEntry.damagedInventory {
-
         .hitMod-rect,
         .hitMod-text {
             display: none;
@@ -1729,7 +2058,7 @@ hr.divider {
     }
 
     .flooded,
-    .flooded>path,
+    .flooded > path,
     .flooded path {
         fill: #66f;
     }
@@ -1752,7 +2081,7 @@ hr.divider {
     }
 
     path.detached,
-    .detached>path {
+    .detached > path {
         fill: #888 !important;
         pointer-events: none;
     }
@@ -1774,8 +2103,6 @@ hr.divider {
         fill: #888 !important;
         pointer-events: none;
     }
-
-
 
     .critGroup.flooded .critSlot-bg-rect {
         fill: #66f;
@@ -1862,7 +2189,8 @@ hr.divider {
         stroke-linejoin: round;
         paint-order: fill stroke;
         filter: drop-shadow(0 0 4px var(--damage-color));
-        animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
+        animation: random-hit-location-pulse 650ms ease-in-out infinite
+            alternate;
     }
 
     .mek-random-hit-result {
@@ -1891,7 +2219,7 @@ hr.divider {
 
         .mek-random-hit-result-through-armor {
             fill: var(--damage-color);
-            font-family: 'Roboto Condensed', serif;
+            font-family: "Roboto Condensed", serif;
             font-size: 25px;
             stroke: #000;
             stroke-width: 4;
@@ -1932,8 +2260,12 @@ hr.divider {
 }
 
 @keyframes random-hit-location-pulse {
-    from { filter: drop-shadow(0 0 2px var(--damage-color)); }
-    to { filter: drop-shadow(0 0 6px var(--damage-color)); }
+    from {
+        filter: drop-shadow(0 0 2px var(--damage-color));
+    }
+    to {
+        filter: drop-shadow(0 0 6px var(--damage-color));
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1953,7 +2285,7 @@ hr.divider {
         }
 
         .critSlot {
-            &.equipment-hover-secondary>.critSlot-bg-rect {
+            &.equipment-hover-secondary > .critSlot-bg-rect {
                 fill: var(--equipment-hover-secondary-color);
                 stroke: var(--equipment-hover-secondary-color);
                 stroke-width: 0.35px;
@@ -1976,8 +2308,6 @@ hr.divider {
                     fill: #f999 !important;
                 }
             }
-
-
         }
 
         .critGroup.flooded .critSlot-bg-rect:hover {
@@ -1987,7 +2317,6 @@ hr.divider {
         .critGroup.disabledLocation .critSlot-bg-rect:hover {
             fill: #999;
         }
-
 
         .picker-active.critSlot text {
             text-decoration: underline !important;
@@ -2011,11 +2340,11 @@ hr.divider {
             stroke: #ccc;
         }
 
-        .inventoryEntry.weakenedHitMod>.hitMod-rect {
+        .inventoryEntry.weakenedHitMod > .hitMod-rect {
             fill: var(--damage-color) !important;
         }
 
-        .inventoryEntry.weakenedHitMod>.hitMod-text {
+        .inventoryEntry.weakenedHitMod > .hitMod-text {
             fill: #fff !important;
         }
 
@@ -2030,29 +2359,30 @@ hr.divider {
 
         /* Armor and structure highlight */
         .unitLocation.selectable:is(:focus-visible, .picker-active),
-        .unitLocation.selectable:is(:focus-visible, .picker-active)>path {
+        .unitLocation.selectable:is(:focus-visible, .picker-active) > path {
             fill: var(--undamaged-highlight-color) !important;
         }
 
         .unitLocation.selectable.damaged:is(:focus-visible, .picker-active),
-        .unitLocation.selectable.damaged:is(:focus-visible, .picker-active)>path {
+        .unitLocation.selectable.damaged:is(:focus-visible, .picker-active)
+            > path {
             fill: var(--damaged-highlight-color) !important;
         }
 
         .selectable,
-        .selectable>path {
+        .selectable > path {
             cursor: pointer;
             touch-action: none;
             transition: fill ease-out 0.2s;
         }
 
         .selectable:not(.pip-hit-area):hover,
-        .selectable:not(.pip-hit-area):hover>path {
+        .selectable:not(.pip-hit-area):hover > path {
             fill: var(--undamaged-highlight-color) !important;
         }
 
         .selectable.damaged:not(.pip-hit-area):hover,
-        .selectable.damaged:not(.pip-hit-area):hover>path {
+        .selectable.damaged:not(.pip-hit-area):hover > path {
             fill: var(--damaged-highlight-color) !important;
         }
 
@@ -2063,7 +2393,7 @@ hr.divider {
 
         .critLoc:not(.counterGroup).willChange:not(.damaged) {
             fill: orange !important;
-            stroke: #FF0 !important;
+            stroke: #ff0 !important;
             stroke-width: 1.5px;
             paint-order: stroke fill;
             stroke-linejoin: round;
@@ -2142,7 +2472,7 @@ hr.divider {
         &.read-only .edit-only {
             display: none;
         }
-        
+
         .locConditionButton,
         .locationConditionControl {
             cursor: pointer;
@@ -2150,7 +2480,6 @@ hr.divider {
             text {
                 pointer-events: none;
             }
-
         }
 
         .locationConditionHitArea {
@@ -2229,83 +2558,156 @@ hr.divider {
         }
 
         .inventoryEntry {
-            &.equipment-hover-secondary>.inventoryEntryButton {
+            &.equipment-hover-secondary > .inventoryEntryButton {
                 fill: var(--equipment-hover-secondary-color);
             }
 
-            &:hover>.inventoryEntryButton {
+            &:hover > .inventoryEntryButton {
                 fill: var(--highlight-color);
             }
 
-            &:active>.inventoryEntryButton {
+            &:active > .inventoryEntryButton {
                 filter: brightness(1.03);
             }
 
-            &.selected:not(.selected-alternative-mode):not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.inventoryEntryButton,
-            &.selected-range-short:not(.selected-alternative-mode)>.mainButton,
-            &.selected-range-short:not(.selected-alternative-mode)>.shrButton,
-            &.selected-range-medium:not(.selected-alternative-mode)>.mainButton,
-            &.selected-range-medium:not(.selected-alternative-mode)>.medButton,
-            &.selected-range-long:not(.selected-alternative-mode)>.mainButton,
-            &.selected-range-long:not(.selected-alternative-mode)>.lngButton,
-            &.selected-range-extreme:not(.selected-alternative-mode)>.mainButton,
-            &.selected-range-extreme:not(.selected-alternative-mode)>.extButton,
-            &.selected.selected-alternative-mode:not(.selected-range-short):not(.selected-range-medium):not(.selected-range-long):not(.selected-range-extreme)>.alternativeMode.selected>.inventoryEntryButton,
-            &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.alternativeModeButton,
-            &.selected-alternative-mode.selected-range-short>.alternativeMode.selected>.shrButton,
-            &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.alternativeModeButton,
-            &.selected-alternative-mode.selected-range-medium>.alternativeMode.selected>.medButton,
-            &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.alternativeModeButton,
-            &.selected-alternative-mode.selected-range-long>.alternativeMode.selected>.lngButton,
-            &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.alternativeModeButton,
-            &.selected-alternative-mode.selected-range-extreme>.alternativeMode.selected>.extButton {
-                fill: var(--inventory-control-selection-color, var(--bt-yellow));
+            &.selected:not(.selected-alternative-mode):not(
+                    .selected-range-short
+                ):not(.selected-range-medium):not(.selected-range-long):not(
+                    .selected-range-extreme
+                )
+                > .inventoryEntryButton,
+            &.selected-range-short:not(.selected-alternative-mode)
+                > .mainButton,
+            &.selected-range-short:not(.selected-alternative-mode) > .shrButton,
+            &.selected-range-medium:not(.selected-alternative-mode)
+                > .mainButton,
+            &.selected-range-medium:not(.selected-alternative-mode)
+                > .medButton,
+            &.selected-range-long:not(.selected-alternative-mode) > .mainButton,
+            &.selected-range-long:not(.selected-alternative-mode) > .lngButton,
+            &.selected-range-extreme:not(.selected-alternative-mode)
+                > .mainButton,
+            &.selected-range-extreme:not(.selected-alternative-mode)
+                > .extButton,
+            &.selected.selected-alternative-mode:not(.selected-range-short):not(
+                    .selected-range-medium
+                ):not(.selected-range-long):not(.selected-range-extreme)
+                > .alternativeMode.selected
+                > .inventoryEntryButton,
+            &.selected-alternative-mode.selected-range-short
+                > .alternativeMode.selected
+                > .alternativeModeButton,
+            &.selected-alternative-mode.selected-range-short
+                > .alternativeMode.selected
+                > .shrButton,
+            &.selected-alternative-mode.selected-range-medium
+                > .alternativeMode.selected
+                > .alternativeModeButton,
+            &.selected-alternative-mode.selected-range-medium
+                > .alternativeMode.selected
+                > .medButton,
+            &.selected-alternative-mode.selected-range-long
+                > .alternativeMode.selected
+                > .alternativeModeButton,
+            &.selected-alternative-mode.selected-range-long
+                > .alternativeMode.selected
+                > .lngButton,
+            &.selected-alternative-mode.selected-range-extreme
+                > .alternativeMode.selected
+                > .alternativeModeButton,
+            &.selected-alternative-mode.selected-range-extreme
+                > .alternativeMode.selected
+                > .extButton {
+                fill: var(
+                    --inventory-control-selection-color,
+                    var(--bt-yellow)
+                );
             }
 
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.shrButton,
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.medButton,
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.lngButton,
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.extButton,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.shrButton,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.medButton,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.lngButton,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.extButton {
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .shrButton,
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .medButton,
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .lngButton,
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .extButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .shrButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .medButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .lngButton,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .extButton {
                 fill: var(--damage-color);
             }
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_short,
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_medium,
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_long,
-            &.selected.selected-target-out-of-range:not(.selected-alternative-mode)>.range_extreme,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_short,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_medium,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_long,
-            &.selected.selected-target-out-of-range.selected-alternative-mode>.alternativeMode.selected>.range_extreme {
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .range_short,
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .range_medium,
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .range_long,
+            &.selected.selected-target-out-of-range:not(
+                    .selected-alternative-mode
+                )
+                > .range_extreme,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .range_short,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .range_medium,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .range_long,
+            &.selected.selected-target-out-of-range.selected-alternative-mode
+                > .alternativeMode.selected
+                > .range_extreme {
                 fill: #fff;
             }
 
-            &.selected.selected-target-out-of-range>.targetTn-rect {
+            &.selected.selected-target-out-of-range > .targetTn-rect {
                 fill: var(--damage-color);
             }
-            
-            &.selected.selected-target-out-of-range>.targetTn-text {
+
+            &.selected.selected-target-out-of-range > .targetTn-text {
                 fill: #fff;
             }
         }
 
-        #ammoProfile:hover>.inventoryEntryButton {
+        #ammoProfile:hover > .inventoryEntryButton {
             fill: var(--highlight-color);
         }
 
-        .inventoryEntry>.alternativeMode {
-            &:hover>.inventoryEntryButton {
+        .inventoryEntry > .alternativeMode {
+            &:hover > .inventoryEntryButton {
                 fill: var(--highlight-color);
             }
 
-            &:active>.inventoryEntryButton {
+            &:active > .inventoryEntryButton {
                 filter: brightness(1.03);
             }
         }
-    
+
         .locationConditionText {
             text-decoration: underline dotted;
         }
@@ -2316,127 +2718,127 @@ hr.divider {
 
         .hot {
             &.heat0 {
-                fill: #FFFFFF !important;
+                fill: #ffffff !important;
             }
 
             &.heat1 {
-                fill: #FFFFEE !important;
+                fill: #ffffee !important;
             }
 
             &.heat2 {
-                fill: #FFFFDD !important;
+                fill: #ffffdd !important;
             }
 
             &.heat3 {
-                fill: #FFFFCC !important;
+                fill: #ffffcc !important;
             }
 
             &.heat4 {
-                fill: #FFFFBB !important;
+                fill: #ffffbb !important;
             }
 
             &.heat5 {
-                fill: #FFFFAA !important;
+                fill: #ffffaa !important;
             }
 
             &.heat6 {
-                fill: #FFFF99 !important;
+                fill: #ffff99 !important;
             }
 
             &.heat7 {
-                fill: #FFFF88 !important;
+                fill: #ffff88 !important;
             }
 
             &.heat8 {
-                fill: #FFFF77 !important;
+                fill: #ffff77 !important;
             }
 
             &.heat9 {
-                fill: #FFFF66 !important;
+                fill: #ffff66 !important;
             }
 
             &.heat10 {
-                fill: #FFFF55 !important;
+                fill: #ffff55 !important;
             }
 
             &.heat11 {
-                fill: #FFFF44 !important;
+                fill: #ffff44 !important;
             }
 
             &.heat12 {
-                fill: #FFFF33 !important;
+                fill: #ffff33 !important;
             }
 
             &.heat13 {
-                fill: #FFFF22 !important;
+                fill: #ffff22 !important;
             }
 
             &.heat14 {
-                fill: #FFFF11 !important;
+                fill: #ffff11 !important;
             }
 
             &.heat15 {
-                fill: #FFFF00 !important;
+                fill: #ffff00 !important;
             }
 
             &.heat16 {
-                fill: #FFEE00 !important;
+                fill: #ffee00 !important;
             }
 
             &.heat17 {
-                fill: #FFDD00 !important;
+                fill: #ffdd00 !important;
             }
 
             &.heat18 {
-                fill: #FFCC00 !important;
+                fill: #ffcc00 !important;
             }
 
             &.heat19 {
-                fill: #FFBB00 !important;
+                fill: #ffbb00 !important;
             }
 
             &.heat20 {
-                fill: #FFAA00 !important;
+                fill: #ffaa00 !important;
             }
 
             &.heat21 {
-                fill: #FF9900 !important;
+                fill: #ff9900 !important;
             }
 
             &.heat22 {
-                fill: #FF8800 !important;
+                fill: #ff8800 !important;
             }
 
             &.heat23 {
-                fill: #FF7700 !important;
+                fill: #ff7700 !important;
             }
 
             &.heat24 {
-                fill: #FF6600 !important;
+                fill: #ff6600 !important;
             }
 
             &.heat25 {
-                fill: #FF5500 !important;
+                fill: #ff5500 !important;
             }
 
             &.heat26 {
-                fill: #FF4400 !important;
+                fill: #ff4400 !important;
             }
 
             &.heat27 {
-                fill: #FF3300 !important;
+                fill: #ff3300 !important;
             }
 
             &.heat28 {
-                fill: #FF2200 !important;
+                fill: #ff2200 !important;
             }
 
             &.heat29 {
-                fill: #FF1100 !important;
+                fill: #ff1100 !important;
             }
 
             &.heat30 {
-                fill: #FF0000 !important;
+                fill: #ff0000 !important;
             }
         }
 
@@ -2452,20 +2854,19 @@ hr.divider {
             }
         }
 
-
         /* workaround to prevent Battle Armor text and images to steal the click event for the armor picker */
-        #suit0>text,
-        #suit0>image,
-        #suit1>text,
-        #suit1>image,
-        #suit2>text,
-        #suit2>image,
-        #suit3>text,
-        #suit3>image,
-        #suit4>text,
-        #suit4>image,
-        #suit5>text,
-        #suit5>image {
+        #suit0 > text,
+        #suit0 > image,
+        #suit1 > text,
+        #suit1 > image,
+        #suit2 > text,
+        #suit2 > image,
+        #suit3 > text,
+        #suit3 > image,
+        #suit4 > text,
+        #suit4 > image,
+        #suit5 > text,
+        #suit5 > image {
             pointer-events: none;
         }
 
@@ -2499,7 +2900,7 @@ hr.divider {
 @media screen {
     .night-mode .mekbay-sheet {
         --svg-bg-color: #141414;
-        --svg-fg-color: #FFF;
+        --svg-fg-color: #fff;
         --svg-fg-color-inv: #000;
         background-color: var(--svg-bg-color);
         color: var(--svg-fg-color);
@@ -2570,25 +2971,25 @@ hr.divider {
         [fill="#c7c8ca" i],
         [style*="fill:#c7c8ca" i],
         [style*="fill: #c7c8ca" i] {
-            fill: #34373D !important;
+            fill: #34373d !important;
         }
 
         [stroke="#c7c8ca" i],
         [style*="stroke:#c7c8ca" i],
         [style*="stroke: #c7c8ca" i] {
-            stroke: #34373D !important;
+            stroke: #34373d !important;
         }
 
         [fill="#c7c7c7" i],
         [style*="fill:#c7c7c7" i],
         [style*="fill: #c7c7c7" i] {
-            fill: #34373D !important;
+            fill: #34373d !important;
         }
 
         [stroke="#c7c7c7" i],
         [style*="stroke:#c7c7c7" i],
         [style*="stroke: #c7c7c7" i] {
-            stroke: #34373D !important;
+            stroke: #34373d !important;
         }
 
         [fill="#bbb" i],
@@ -2636,13 +3037,13 @@ hr.divider {
         }
 
         .detached,
-        .detached>path {
+        .detached > path {
             fill: gray !important;
             pointer-events: none;
         }
 
         .disabledLocation,
-        .disabledLocation>path,
+        .disabledLocation > path,
         .disabledLocation path {
             fill: gray !important;
         }
@@ -2710,7 +3111,8 @@ hr.divider {
         }
 
         .soldierPip.damaged.fresh {
-            filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important;
+            filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg)
+                contrast(4) !important;
         }
 
         .soldierPip.fresh {
@@ -2722,7 +3124,8 @@ hr.divider {
         }
 
         .soldierPip.damaged.pending:not(.fresh) {
-            filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
+            filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg)
+                contrast(1.5) !important;
         }
 
         .skillValue {
@@ -2734,20 +3137,26 @@ hr.divider {
         }
 
         .selectable:not(.pip-hit-area):hover,
-        .selectable:not(.pip-hit-area):hover>path {
+        .selectable:not(.pip-hit-area):hover > path {
             fill: var(--undamaged-night-highlight-color) !important;
         }
 
         .selectable.damaged:not(.pip-hit-area)::hover,
-        .selectable.damaged:not(.pip-hit-area)::hover>path {
+        .selectable.damaged:not(.pip-hit-area)::hover > path {
             fill: var(--damaged-highlight-color) !important;
         }
 
-
         .inventoryEntry {
-            &.selected:not(.selected-alternative-mode)>text:not(.hitMod-text):not(.targetTn-text):not(.targetAimedShotWarning-text),
-            &.selected:not(.selected-alternative-mode)>g:not(.alternativeMode):not(.inventoryEntry) text,
-            &.selected.selected-alternative-mode>.alternativeMode.selected text {
+            &.selected:not(.selected-alternative-mode)
+                > text:not(.hitMod-text):not(.targetTn-text):not(
+                    .targetAimedShotWarning-text
+                ),
+            &.selected:not(.selected-alternative-mode)
+                > g:not(.alternativeMode):not(.inventoryEntry)
+                text,
+            &.selected.selected-alternative-mode
+                > .alternativeMode.selected
+                text {
                 fill: #000;
             }
 
@@ -2763,17 +3172,25 @@ hr.divider {
             &.selected-range-extreme .range_short,
             &.selected-range-extreme .range_medium,
             &.selected-range-extreme .range_long,
-            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_short,
-            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_medium,
-            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_long,
-            &.selected.selected-alternative-mode>.alternativeMode:not(.selected) .range_extreme {
+            &.selected.selected-alternative-mode
+                > .alternativeMode:not(.selected)
+                .range_short,
+            &.selected.selected-alternative-mode
+                > .alternativeMode:not(.selected)
+                .range_medium,
+            &.selected.selected-alternative-mode
+                > .alternativeMode:not(.selected)
+                .range_long,
+            &.selected.selected-alternative-mode
+                > .alternativeMode:not(.selected)
+                .range_extreme {
                 fill: #888 !important;
             }
         }
 
         rect.heat {
             fill: #000;
-            stroke: #fff;      
+            stroke: #fff;
         }
 
         rect.heat.hot {
@@ -2790,7 +3207,7 @@ hr.divider {
             }
 
             &.heat3 {
-                fill: #1B1B00 !important;
+                fill: #1b1b00 !important;
             }
 
             &.heat4 {
@@ -2798,7 +3215,7 @@ hr.divider {
             }
 
             &.heat5 {
-                fill: #2D2D00 !important;
+                fill: #2d2d00 !important;
             }
 
             &.heat6 {
@@ -2806,7 +3223,7 @@ hr.divider {
             }
 
             &.heat7 {
-                fill: #3F3F00 !important;
+                fill: #3f3f00 !important;
             }
 
             &.heat8 {
@@ -2818,7 +3235,7 @@ hr.divider {
             }
 
             &.heat10 {
-                fill: #5A5A00 !important;
+                fill: #5a5a00 !important;
             }
 
             &.heat11 {
@@ -2826,7 +3243,7 @@ hr.divider {
             }
 
             &.heat12 {
-                fill: #6C6C00 !important;
+                fill: #6c6c00 !important;
             }
 
             &.heat13 {
@@ -2834,7 +3251,7 @@ hr.divider {
             }
 
             &.heat14 {
-                fill: #7F7F00 !important;
+                fill: #7f7f00 !important;
             }
 
             &.heat15 {
@@ -2842,7 +3259,7 @@ hr.divider {
             }
 
             &.heat16 {
-                fill: #907F00 !important;
+                fill: #907f00 !important;
             }
 
             &.heat17 {
@@ -2850,55 +3267,55 @@ hr.divider {
             }
 
             &.heat18 {
-                fill: #A06D00 !important;
+                fill: #a06d00 !important;
             }
 
             &.heat19 {
-                fill: #A86400 !important;
+                fill: #a86400 !important;
             }
 
             &.heat20 {
-                fill: #B05B00 !important;
+                fill: #b05b00 !important;
             }
 
             &.heat21 {
-                fill: #B85200 !important;
+                fill: #b85200 !important;
             }
 
             &.heat22 {
-                fill: #C04900 !important;
+                fill: #c04900 !important;
             }
 
             &.heat23 {
-                fill: #C84000 !important;
+                fill: #c84000 !important;
             }
 
             &.heat24 {
-                fill: #D03700 !important;
+                fill: #d03700 !important;
             }
 
             &.heat25 {
-                fill: #D82E00 !important;
+                fill: #d82e00 !important;
             }
 
             &.heat26 {
-                fill: #E02500 !important;
+                fill: #e02500 !important;
             }
 
             &.heat27 {
-                fill: #E81C00 !important;
+                fill: #e81c00 !important;
             }
 
             &.heat28 {
-                fill: #F01300 !important;
+                fill: #f01300 !important;
             }
 
             &.heat29 {
-                fill: #F80A00 !important;
+                fill: #f80a00 !important;
             }
 
             &.heat30 {
-                fill: #FF0000 !important;
+                fill: #ff0000 !important;
             }
         }
 
@@ -2921,9 +3338,10 @@ hr.divider {
 
 @media screen {
     .mekbay-sheet {
-
         .applyHeatButtonFrame {
-            transition: stroke 0.2s, fill 0.2s;
+            transition:
+                stroke 0.2s,
+                fill 0.2s;
         }
 
         .heatApplicationAvailable.hot {
@@ -2973,13 +3391,11 @@ hr.divider {
                 }
             }
         }
-
     }
 }
 
 /* Printing */
 @media print {
-
     * {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
@@ -3005,7 +3421,6 @@ hr.divider {
         background: white;
         overflow: unset;
     }
-
 }
 
 @media screen {
@@ -3015,7 +3430,6 @@ hr.divider {
 }
 
 @media print {
-
     .header,
     .backdrop,
     .screen-only {

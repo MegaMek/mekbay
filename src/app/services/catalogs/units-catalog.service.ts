@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { materializeUnitSummaryView } from '../../utils/unit-summary-view';
 import { LoggerService } from '../logger.service';
+import { CustomUnitsService } from '../custom-units.service';
 import {
     CoreUnitCatalogService,
     type PreparedCoreCatalogActivation,
@@ -22,6 +23,9 @@ export interface UnitsCatalogSnapshot {
     readonly coreRevision: number;
     readonly coreActivationId?: CatalogActivationId;
     readonly summaries: readonly UnitSummary[];
+    readonly coreSummaries: readonly UnitSummary[];
+    readonly customSummaries: readonly UnitSummary[];
+    readonly customSources: ReadonlyMap<UnitUuid, StoredCoreContent>;
     readonly units: UnitSummary[];
 }
 
@@ -30,10 +34,11 @@ export interface PreparedUnitsCatalogActivation {
     readonly coreRevision: number;
     readonly core: PreparedCoreCatalogActivation;
     readonly snapshot: UnitsCatalogSnapshot;
+    readonly customOnly?: boolean;
 }
 
 /**
- * Projects the one native MegaMek catalog into mutable search views.
+ * Joins native core and custom summaries into one atomically published search catalog.
  *
  * Native MTF/BLK content remains authoritative. UnitSummary exists only for
  * catalog/search presentation, and no remote summary-only overlay is accepted.
@@ -42,6 +47,7 @@ export interface PreparedUnitsCatalogActivation {
 export class UnitsCatalogService {
     private readonly core = inject(CoreUnitCatalogService);
     private readonly logger = inject(LoggerService);
+    private readonly custom = inject(CustomUnitsService);
 
     public readonly coreState = this.core.state;
 
@@ -49,6 +55,9 @@ export class UnitsCatalogService {
         revision: 0,
         coreRevision: 0,
         summaries: Object.freeze([]),
+        coreSummaries: Object.freeze([]),
+        customSummaries: Object.freeze([]),
+        customSources: new Map(),
         units: [],
     }));
     public readonly catalogSnapshot = this.snapshotValue.asReadonly();
@@ -62,13 +71,19 @@ export class UnitsCatalogService {
     private nextPreparedRevision = 1;
     private initialized = false;
     private initialization?: Promise<void>;
+    private activeCore?: PreparedCoreCatalogActivation;
+    private lastPreparedKey = '';
 
     public constructor() {
         effect(() => {
             if (!this.liveCoreUpdatesEnabled()) return;
             const pending = this.core.pendingActivation();
-            if (!pending || pending.revision === this.pendingActivationValue()?.coreRevision) return;
-            this.prepareCoreActivation(pending);
+            const customRevision = this.custom.revision();
+            untracked(() => {
+                const core = pending ?? this.activeCore;
+                if (!core) return;
+                this.prepareCoreActivation(core, customRevision, !pending);
+            });
         });
     }
 
@@ -86,10 +101,28 @@ export class UnitsCatalogService {
     }
 
     public getCoreSummaries(): readonly UnitSummary[] {
+        return this.snapshotValue().coreSummaries;
+    }
+
+    public getSummaries(): readonly UnitSummary[] {
         return this.snapshotValue().summaries;
     }
 
+    public hasCustomUnit(uuid: UnitUuid): boolean {
+        return this.snapshotValue().customSources.has(uuid);
+    }
+
+    /** Explicit save/delete callers can join publication before Angular's next effect turn. */
+    public prepareCustomChanges(): number | undefined {
+        const pending = this.core.pendingActivation();
+        const core = pending ?? this.activeCore;
+        if (!core) return undefined;
+        return this.prepareCoreActivation(core, this.custom.revision(), !pending)?.revision;
+    }
+
     public async readNativeUnitSource(uuid: UnitUuid): Promise<StoredCoreContent | undefined> {
+        const custom = this.snapshotValue().customSources.get(uuid);
+        if (custom) return cloneStoredCoreContent(custom);
         const snapshot = this.core.catalogSnapshot();
         const activationId = snapshot.generation?.activationId;
         const loadKey = `${snapshot.revision}\0${activationId ?? ''}\0${uuid}`;
@@ -119,8 +152,10 @@ export class UnitsCatalogService {
     public commitPendingActivation(revision: number): UnitsCatalogSnapshot | undefined {
         const pending = this.pendingActivationValue();
         if (!pending || pending.revision !== revision) return undefined;
-        if (!this.core.commitPendingActivation(pending.core.revision)) return undefined;
+        if (!pending.customOnly && !this.core.commitPendingActivation(pending.core.revision)) return undefined;
+        this.activeCore = pending.core;
         this.snapshotValue.set(pending.snapshot);
+        this.custom.commitSummaries(pending.core.dependencies, pending.snapshot.customSummaries);
         this.pendingActivationValue.set(undefined);
         return pending.snapshot;
     }
@@ -128,44 +163,68 @@ export class UnitsCatalogService {
     public async finalizePendingActivation(revision: number): Promise<boolean> {
         const pending = this.pendingActivationValue();
         if (!pending || pending.revision !== revision) return false;
-        return this.core.finalizePendingActivation(pending.core.revision);
+        return pending.customOnly || this.core.finalizePendingActivation(pending.core.revision);
     }
 
     public rejectPendingActivation(revision: number, error: unknown): void {
         const pending = this.pendingActivationValue();
         if (!pending || pending.revision !== revision) return;
         this.pendingActivationValue.set(undefined);
-        this.core.rejectPendingActivation(pending.core.revision, error);
+        // A caller may retry publishing already-saved custom bytes after an
+        // index build fails; the next attempt needs a fresh catalog revision.
+        this.lastPreparedKey = '';
+        if (!pending.customOnly) this.core.rejectPendingActivation(pending.core.revision, error);
+        else this.logger.error(`Custom unit search publication failed: ${String(error)}`);
     }
 
     private async performInitialize(): Promise<void> {
-        await this.core.initialize();
+        await Promise.all([this.core.initialize(), this.custom.initialize()]);
         const pending = this.core.pendingActivation();
         if (!pending) {
             throw new Error('The core unit catalog prepared no complete activation');
         }
-        this.prepareCoreActivation(pending);
+        this.prepareCoreActivation(pending, this.custom.revision());
         this.liveCoreUpdatesEnabled.set(true);
     }
 
     private prepareCoreActivation(
         core: PreparedCoreCatalogActivation,
-    ): PreparedUnitsCatalogActivation {
+        customRevision: number,
+        customOnly = false,
+    ): PreparedUnitsCatalogActivation | undefined {
+        const key = `${core.revision}:${customRevision}`;
         const existing = this.pendingActivationValue();
-        if (existing?.coreRevision === core.revision) return existing;
-        const snapshot = this.buildSnapshot(core);
+        if (key === this.lastPreparedKey) return existing;
+        const snapshot = this.buildSnapshot(core, customOnly);
+        this.lastPreparedKey = key;
         const prepared = Object.freeze({
             revision: snapshot.revision,
             coreRevision: core.revision,
             core,
             snapshot,
+            ...(customOnly ? { customOnly: true } : {}),
         });
         this.pendingActivationValue.set(prepared);
         return prepared;
     }
 
-    private buildSnapshot(core: PreparedCoreCatalogActivation): UnitsCatalogSnapshot {
-        const summaries = core.snapshot.summaries;
+    private buildSnapshot(core: PreparedCoreCatalogActivation, customOnly: boolean): UnitsCatalogSnapshot {
+        const coreSummaries = core.snapshot.summaries;
+        const customSummaries = this.custom.prepareSummaries(core.dependencies);
+        const coreIds = new Set(coreSummaries.map(summary => summary.uuid));
+        if (customSummaries.some(summary => coreIds.has(summary.uuid))) {
+            throw new Error('Custom unit UUID conflicts with a core unit');
+        }
+        // A custom edit reuses the active core generation. Detach only branches
+        // that search preparation mutates, keeping the currently visible rows
+        // intact until the complete replacement index commits.
+        const summaries = [
+            ...coreSummaries.map(summary => customOnly ? {
+                ...summary,
+                as: { ...summary.as, dmg: { ...summary.as.dmg }, MVm: { ...summary.as.MVm } },
+            } : summary),
+            ...customSummaries,
+        ];
         for (const summary of summaries) {
             if (Object.prototype.hasOwnProperty.call(summary, 'fluff')) {
                 throw new Error('Runtime catalog summary cannot contain native-source fluff');
@@ -193,6 +252,9 @@ export class UnitsCatalogService {
                 ? { coreActivationId: core.snapshot.generation.activationId }
                 : {}),
             summaries,
+            coreSummaries,
+            customSummaries,
+            customSources: this.custom.captureSources(),
             units,
         });
     }

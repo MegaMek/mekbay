@@ -1,0 +1,92 @@
+@if (infantry(); as infantryEntity) {
+    <construction-infantry [entity]="infantryEntity" (change)="change.emit($event)" />
+}
+@if (isMek()) { <p class="hint">Install Cargo equipment from the warehouse to configure Mek carrying capacity.</p> }
+@if (transportChoices().length || entity().transporters().length) {
+<section class="extras-section">
+    <header><h3>TRANSPORT &amp; ACCOMMODATION</h3><span>{{ entity().transporters().length }} installed</span></header>
+    @if (transportChoices().length) { <div class="add-row">
+        <select aria-label="Transport bay type" [ngModel]="newTransport()" (ngModelChange)="newTransport.set($event)">
+            @for (choice of transportChoices(); track choice.value) { <option [value]="choice.value">{{ choice.label }}</option> }
+        </select>
+        <button type="button" class="bt-button" (click)="addTransport()" [disabled]="!transportChoices().length">+ ADD</button>
+    </div> }
+    @for (transport of entity().transporters(); track transport.id) {
+    <article class="transport-row">
+        <div class="row-heading"><strong>{{ transportLabel(transport) }}</strong>@if (transport.kind !== 'battle-armor-handles') { <button type="button" class="remove" (click)="removeTransport(transport)" [attr.aria-label]="'Remove ' + transportLabel(transport)">×</button> }</div>
+        <div class="fields">
+            @if (transport.kind === 'bay') {
+                @let config = transport.configuration;
+                <label>{{ capacityLabel(transport) }}<input type="number" min="0" step="any" [disabled]="config.type === 'drop-shuttle'" [ngModel]="capacity(transport)" (ngModelChange)="setCapacity(transport, $event)"></label>
+                <label>Doors<input type="number" [min]="minimumDoors(config.type)" max="2147483647" step="1" [disabled]="config.type.includes('seats')" [ngModel]="transport.doors" (ngModelChange)="setDoors(transport, $event)"></label>
+                <div class="mass"><span>Construction mass</span><strong>{{ mass(transport) | number:'1.0-3' }} t</strong></div>
+                @if (config.type === 'infantry') {
+                    <label>Infantry type<select [ngModel]="config.infantryType" (ngModelChange)="setBayOption(transport, 'infantryType', $event)">@for (type of infantryTypes; track type) { <option [value]="type">{{ type }}</option> }</select></label>
+                }
+                @if (config.type === 'battle-armor') {
+                    <label>Bay standard<select [ngModel]="config.techBase" (ngModelChange)="setBayOption(transport, 'techBase', $event)"><option value="IS">Inner Sphere</option><option value="Clan">Clan</option></select></label>
+                    @if (config.techBase === 'IS') { <label class="check"><input type="checkbox" [ngModel]="config.comStar" (ngModelChange)="setBayOption(transport, 'comStar', $event)">ComStar six-suit squads</label> }
+                }
+                @if (config.type === 'fighter' || config.type === 'small-craft' || config.type === 'naval-repair') {
+                    <label class="check"><input type="checkbox" [ngModel]="config.arts" (ngModelChange)="setBayOption(transport, 'arts', $event)">Automated robotic transport system</label>
+                }
+                @if (config.type === 'naval-repair') {
+                    <label class="check"><input type="checkbox" [ngModel]="config.pressurized" (ngModelChange)="setBayOption(transport, 'pressurized', $event)">Pressurized facility</label>
+                }
+                @if (config.type === 'naval-repair' || config.type === 'reinforced-repair' || config.type === 'drop-shuttle') {
+                    <label>Facing (0–5)<input type="number" min="0" max="5" step="1" [ngModel]="config.facing" (ngModelChange)="setBayOption(transport, 'facing', $event)"></label>
+                }
+            } @else if (transport.kind === 'troop-space') {
+                <label>Capacity (t)<input type="number" min="0" step="any" [ngModel]="transport.totalSpace" (ngModelChange)="setCapacity(transport, $event)"></label>
+            } @else if (transport.kind === 'docking-collar') {
+                <p class="hint">One docking collar · 1,000 t</p>
+            } @else if (transport.kind === 'battle-armor-handles') {
+                <p class="hint">Integral to the Omni chassis.</p>
+            }
+            @if (entity().omni() && transport.kind !== 'docking-collar' && transport.kind !== 'battle-armor-handles') {
+                <label class="check"><input type="checkbox" [ngModel]="transport.omni" (ngModelChange)="setOmni(transport, $event)">OmniPod</label>
+            }
+        </div>
+    </article>
+    } @empty { <p class="empty">Add cargo capacity, transport bays, or accommodation for this design.</p> }
+</section>
+}
+
+@if (hasWeaponBays()) {
+<section class="extras-section">
+    <header><h3>WEAPON BAYS</h3><span>{{ bays().length }} bays</span></header>
+    <p class="hint">Group weapons by class and firing arc. Standard bays hold up to 700 damage; ammunition belongs to the bay that uses it.</p>
+    <button type="button" class="bt-button" (click)="autoGroupBays()" [disabled]="!bayMounts().length">AUTO-GROUP BY CLASS &amp; ARC</button>
+    @for (bay of bays(); track $index; let index = $index) {
+        <div class="bay-summary"><strong>{{ bayLabel(bay, index) }}</strong><span>{{ bay.weapons.length }} weapons · {{ bay.ammo.length }} ammo · {{ bayDamage(bay) | number:'1.0-1' }} damage</span></div>
+    }
+    @for (mount of bayMounts(); track mount.mountId) {
+        <label class="bay-assignment"><span>{{ mount.equipment?.name ?? mount.equipmentId }} <small>{{ mount.location }}{{ mount.rearMounted ? ' · rear' : '' }}</small></span>
+            <select [attr.aria-label]="'Weapon bay for ' + (mount.equipment?.name ?? mount.equipmentId)" [ngModel]="mountBay(mount)" (ngModelChange)="assignBay(mount, $event)">
+                <option value="" disabled>Assign a bay</option>
+                @for (bay of bays(); track $index; let index = $index) { <option [value]="index" [disabled]="!canAssign(bay, mount)">{{ bayLabel(bay, index) }}</option> }
+                @if (isWeapon(mount)) { <option value="new">Create separate bay</option> }
+            </select>
+        </label>
+    } @empty { <p class="empty">Install weapons and ammunition in the loadout to configure their bays.</p> }
+</section>
+}
+
+<section class="extras-section">
+    <header><h3>DESIGN QUIRKS</h3><span>{{ entity().quirks().length }} assigned</span></header>
+    @for (entry of entity().quirks(); track entry.quirk.key) {
+        <div class="quirk-row" [class.negative]="entry.quirk.type === 'negative'">
+            <span [title]="entry.quirk.description">{{ entry.quirk.name }}</span>
+            @if (entry.value !== undefined || entry.quirk.key === 'obsolete') {
+                <input type="text" [attr.aria-label]="entry.quirk.name + ' value'" placeholder="Value" [ngModel]="entry.value ?? ''" (ngModelChange)="setQuirkValue(entry, $event)">
+            }
+            <button type="button" class="remove" [attr.aria-label]="'Remove ' + entry.quirk.name" (click)="removeQuirk(entry)">×</button>
+        </div>
+    }
+    <input type="search" class="quirk-search" aria-label="Filter design quirks" placeholder="Find a design quirk…" [ngModel]="quirkQuery()" (ngModelChange)="quirkQuery.set($event)">
+    <div class="quirk-options">
+        @for (quirk of quirks(); track quirk.key) {
+            <button type="button" class="quirk-option" [class.negative]="quirk.type === 'negative'" [title]="quirk.description" (click)="addQuirk(quirk.key)"><span>{{ quirk.type === 'negative' ? '−' : '+' }}</span>{{ quirk.name }}</button>
+        } @empty { <p class="empty">No matching quirks.</p> }
+    </div>
+</section>

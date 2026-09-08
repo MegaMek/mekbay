@@ -326,6 +326,34 @@ describe('UnitSearchComponent card virtualization', () => {
             .compileComponents();
     });
 
+    it('uses the same filtered results in selection mode without opening details or adding to a force', async () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.componentRef.setInput('selectionMode', true);
+        const component = fixture.componentInstance;
+        const unit = createUnit('Workshop source');
+        filteredUnitsSignal.set([unit]);
+        const selected = jasmine.createSpy('selected');
+        component.unitSelected.subscribe(selected);
+        component.onUnitCardClick(unit);
+        expect(selected).toHaveBeenCalledOnceWith(unit);
+        expect(component.displayedUnits()).toEqual([unit]);
+        expect(component.showInlinePanel()).toBeFalse();
+        component.selectAll();
+        expect(component.selectedUnits().size).toBe(0);
+        selected.calls.reset();
+        await component.showUnitDetails(unit);
+        expect(selected).toHaveBeenCalledOnceWith(unit);
+    });
+
+    it('cancels selection when the expanded-view control is pressed', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.componentRef.setInput('selectionMode', true);
+        const canceled = jasmine.createSpy('canceled');
+        fixture.componentInstance.selectionCanceled.subscribe(canceled);
+        fixture.componentInstance.toggleExpandedView();
+        expect(canceled).toHaveBeenCalledOnceWith();
+    });
+
     it('groups card-mode results into width-derived virtual rows', () => {
         const fixture = TestBed.createComponent(UnitSearchComponent);
         const component = fixture.componentInstance;

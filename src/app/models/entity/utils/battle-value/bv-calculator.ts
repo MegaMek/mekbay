@@ -6,6 +6,7 @@ import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '.
 import type { Equipment } from '../../../equipment.model';
 import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../../rules/game-rules';
 import type { BaseEntity } from '../../base-entity';
+import { supportVehicleBarRating } from '../../entities/support-vehicle';
 import type { EntityStateView } from '../../entity-state-view';
 import { BV_MOVEMENT_CALCULATION, type EntityMountedEquipment } from '../../types';
 import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../battle-value';
@@ -172,7 +173,7 @@ export class BVCalculator {
       } : maximum;
       const armor = this.entity.armorByLocation().get(location)?.armor;
       const bar = this.entity.isSupportVehicle()
-        ? this.entity.barRating() / 10
+        ? supportVehicleBarRating(this.entity, location) / 10
         : this.entity.entityType === 'Mek' ? mekArmorBarFactor(armor?.armorType) : 1;
       const modularArmor = this.entity.equipment()
         .filter(mount => mount.location === location && mount.equipment instanceof MiscEquipment

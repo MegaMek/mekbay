@@ -12,6 +12,7 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from '../models/runtime/unit-state-initializer';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
+    CUSTOM_UNIT_PROVIDER_ID,
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
 import { type CBTForceMember, type ForceMember } from '../models/force-member.model';
@@ -138,5 +139,6 @@ export class ForceUnitAdmissionService {
 }
 
 function isNativeCBTSummary(unit: UnitSummary): boolean {
-    return unit.origin === 'megamek' && unit.provider === MM_DATA_UNIT_PROVIDER_ID;
+    return (unit.origin === 'megamek' && unit.provider === MM_DATA_UNIT_PROVIDER_ID)
+        || (unit.origin === 'user' && unit.provider === CUSTOM_UNIT_PROVIDER_ID && unit.isCustom === true);
 }

@@ -11,6 +11,7 @@ import {
 } from '../../equipment.model';
 import {
   INFANTRY_SPECIALIZATION_FROM_BIT,
+  PREDEFINED_INFANTRY_MOUNTS,
   InfantryMount,
   InfantrySpecialization,
 } from '../types';
@@ -18,24 +19,6 @@ import { BuildingBlock, parseExactFiniteNumber, parseExactInteger } from './buil
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { ParseContext } from './parse-context';
 import { decodeMotiveType } from './motive-type-codec';
-
-// ============================================================================
-// Canonical predefined beast mounts from MegaMek InfantryMount.
-// ============================================================================
-
-const PREDEFINED_MOUNTS: ReadonlyMap<string, InfantryMount> = new Map([
-  ['Donkey',            { name: 'Donkey',            size: 'Large',      weight: 0.15, movementPoints: 2, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Coventry Kangaroo', { name: 'Coventry Kangaroo', size: 'Large',      weight: 0.11, movementPoints: 3, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Horse',             { name: 'Horse',             size: 'Large',      weight: 0.5,  movementPoints: 3, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Camel',             { name: 'Camel',             size: 'Large',      weight: 0.65, movementPoints: 2, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Branth',            { name: 'Branth',            size: 'Large',      weight: 0.72, movementPoints: 6, movementMode: 'VTOL',      burstDamage: 2,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Odessan Raxx',      { name: 'Odessan Raxx',      size: 'Large',      weight: 2.4,  movementPoints: 2, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Tabiranth',         { name: 'Tabiranth',         size: 'Large',      weight: 0.25, movementPoints: 2, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Tariq',             { name: 'Tariq',             size: 'Large',      weight: 0.51, movementPoints: 5, movementMode: 'Leg',       burstDamage: 0,  vehicleDamage: 0, damageDivisor: 1.0, maxWaterDepth: 0,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Elephant',          { name: 'Elephant',          size: 'Very Large', weight: 6.0,  movementPoints: 2, movementMode: 'Leg',       burstDamage: 1,  vehicleDamage: 1, damageDivisor: 2.0, maxWaterDepth: 1,  secondaryGroundMP: 0, uwEndurance: 0 }],
-  ['Orca',              { name: 'Orca',              size: 'Very Large', weight: 7.2,  movementPoints: 5, movementMode: 'Submarine', burstDamage: 2,  vehicleDamage: 1, damageDivisor: 2.0, maxWaterDepth: -1, secondaryGroundMP: 0, uwEndurance: 180 }],
-  ['Hipposaur',         { name: 'Hipposaur',         size: 'Monstrous',  weight: 35.5, movementPoints: 2, movementMode: 'Submarine', burstDamage: 10, vehicleDamage: 4, damageDivisor: 4.0, maxWaterDepth: -1, secondaryGroundMP: 1, uwEndurance: 2 }],
-] as [string, InfantryMount][]);
 
 /** Java BeastSize enum names → our BeastSize type */
 const BEAST_SIZE_MAP: Record<string, 'Large' | 'Very Large' | 'Monstrous'> = {
@@ -81,7 +64,7 @@ function parseInfantryMotionType(raw: string, entity: InfantryEntity, ctx: Parse
       }
     } else {
       // Predefined beast: "Beast:Tariq"
-      const predefined = PREDEFINED_MOUNTS.get(afterBeast);
+      const predefined = PREDEFINED_INFANTRY_MOUNTS.get(afterBeast);
       if (predefined) {
         entity.mount.set(predefined);
       } else {

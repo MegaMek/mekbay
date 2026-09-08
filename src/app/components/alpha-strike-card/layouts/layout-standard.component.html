@@ -37,11 +37,11 @@
         @let alias = forceUnit()?.alias();
         @if (alias) {
             @let longChassis = alias.length > 20;
-            <div class="model-text" [class.small]="chassisSmall()">{{ chassis() | uppercase }} {{ model() | uppercase }}</div>
+            <div class="model-text" [class.small]="chassisSmall()">{{ chassis() | uppercase }} {{ model() | uppercase }} @if (unit().isCustom) { <span class="custom-unit-badge">CUSTOM</span> }</div>
             <div class="chassis-text alphastrike-text stroked" [class.long-chassis]="longChassis" [class.small]="chassisSmall()">{{ alias }}</div>
         } @else {
             @let longChassis = chassis().length > 20;
-            <div class="model-text" [class.small]="chassisSmall()">{{ model() | uppercase}}</div>
+            <div class="model-text" [class.small]="chassisSmall()">{{ model() | uppercase}} @if (unit().isCustom) { <span class="custom-unit-badge">CUSTOM</span> }</div>
             <div class="chassis-text alphastrike-text stroked" [class.long-chassis]="longChassis" [class.small]="chassisSmall()">{{ chassis() | uppercase }}</div>
         }
     </div>

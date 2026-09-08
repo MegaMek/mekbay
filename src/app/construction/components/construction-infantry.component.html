@@ -1,0 +1,36 @@
+<section>
+    <h3>INFANTRY SPECIALIZATIONS</h3>
+    <div class="choices">@for (specialization of specializations; track specialization.value) {
+        <label class="check"><input type="checkbox" [ngModel]="entity().specializations().has(specialization.value)" (ngModelChange)="setSpecialization(specialization.value, $event)">{{ specialization.label }}</label>
+    }</div>
+</section>
+<section>
+    <h3>BEAST MOUNT</h3>
+    <label>Mount species<select aria-label="Beast mount" [ngModel]="mountChoice()" (ngModelChange)="selectMount($event)"><option value="">None</option>@for (name of predefinedMounts; track name) { <option [value]="name">{{ name }}</option> }<option value="custom">Custom species</option></select></label>
+    @if (entity().mount(); as mount) {
+        <p>Changing a specification creates a custom species for this design.</p>
+        <div class="fields">
+            <label>Species name<input type="text" [ngModel]="mount.name" (ngModelChange)="setMountText('name', $event)"></label>
+            <label>Beast size<select [ngModel]="mount.size" (ngModelChange)="setMountText('size', $event)"><option>Large</option><option>Very Large</option><option>Monstrous</option></select></label>
+            <label>Primary movement<select [ngModel]="mount.movementMode" (ngModelChange)="setMountText('movementMode', $event)"><option value="Leg">Ground</option><option value="VTOL">Flight</option><option value="Submarine">Submarine</option></select></label>
+            @for (field of mountNumberFields; track field.key) {
+                <label>{{ field.label }}<input type="number" [min]="field.min" [max]="field.max" [step]="field.step" [ngModel]="mount[field.key]" (ngModelChange)="setMountNumber(field.key, $event)"></label>
+            }
+        </div>
+    }
+</section>
+<section>
+    <h3>AUGMENTATIONS &amp; PROSTHETICS</h3>
+    <div class="choices">@for (augmentation of augmentations; track augmentation[0]) {
+        <label class="check"><input type="checkbox" [ngModel]="entity().augmentations().includes(augmentation[0])" (ngModelChange)="setAugmentation(augmentation[0], $event)">{{ augmentation[1] }}</label>
+    }</div>
+    <details [open]="!!(entity().prostheticEnhancement1() || entity().prostheticEnhancement2() || entity().extraneousPair1() || entity().extraneousPair2())">
+        <summary>Prosthetic weapon and extra-limb configuration</summary>
+        <p>Enhanced limbs use one enhancement type. Improved enhanced limbs can use two. Winged infantry can use one extraneous limb pair.</p>
+        <div class="fields">@for (slot of limbSlots(); track slot.id) {
+            <label>Enhancement {{ slot.id }}<select [ngModel]="slot.enhancement()" (ngModelChange)="setLimbType(slot.enhancement.set, $event)">@for (option of prosthetics; track option.value) { <option [value]="option.value">{{ option.label }}</option> }</select></label>
+            <label>Enhancement {{ slot.id }} count<input type="number" min="0" max="2" step="1" [ngModel]="slot.count()" (ngModelChange)="setLimbCount(slot.count.set, $event)"></label>
+            <label>Extraneous pair {{ slot.id }}<select [ngModel]="slot.pair()" (ngModelChange)="setLimbType(slot.pair.set, $event)">@for (option of prosthetics; track option.value) { <option [value]="option.value">{{ option.label }}</option> }</select></label>
+        }</div>
+    </details>
+</section>

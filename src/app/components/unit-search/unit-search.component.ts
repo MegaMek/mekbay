@@ -4,7 +4,8 @@
 
 import { UnitNameService } from '../../services/unit-name.service';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
-import { Component, signal, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
+import { Component, signal, input, output, type ElementRef, computed, effect, afterNextRender, Injector, inject, ChangeDetectionStrategy, viewChild, ChangeDetectorRef, DestroyRef, untracked, type ComponentRef, type TemplateRef } from '@angular/core';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { UnitSearchAdvancedFiltersComponent } from '../unit-search-advanced-filters/unit-search-advanced-filters.component';
@@ -82,6 +83,7 @@ export interface ChassisGroup extends UnitVariantGroupIdentity {
     /** A representative unit (first encountered) for icon display */
     representativeUnit: UnitSummary;
     variantCount: number;
+    customVariantCount: number;
     minBV: number;
     maxBV: number;
     minPV: number;
@@ -124,6 +126,12 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
     }
 })
 export class UnitSearchComponent {
+    /** Reuses the complete search experience for choosing one catalog unit. */
+    readonly selectionMode = input(false);
+    readonly unitSelected = output<UnitSummary>();
+    readonly selectionCanceled = output<void>();
+    private readonly containingDialog = inject(DialogRef, { optional: true });
+    private readonly dialog = inject(Dialog);
     readonly unitNames = inject(UnitNameService);
     readonly maximumNormalizedPv = DEFAULT_ALPHA_STRIKE_PV_NORMALIZATION_MAX;
     readonly forceBvLimitTooltip = [
@@ -350,7 +358,7 @@ export class UnitSearchComponent {
 
     /** Whether to show the inline details panel (expanded view + sufficient screen width) */
     showInlinePanel = computed(() => {
-        return !this.resultsLoading()
+        return !this.selectionMode() && !this.resultsLoading()
             && this.expandedView()
             && this.layoutService.windowWidth() >= this.INLINE_PANEL_MIN_WIDTH;
     });
@@ -446,6 +454,7 @@ export class UnitSearchComponent {
                     /** Store a representative unit for the icon component */
                     representativeUnit: unit,
                     variantCount: 0,
+                    customVariantCount: 0,
                     minBV: Infinity,
                     maxBV: -Infinity,
                     minPV: Infinity,
@@ -455,6 +464,7 @@ export class UnitSearchComponent {
                 map.set(key, group);
             }
             group.variantCount++;
+            if (unit.isCustom) group.customVariantCount++;
             group.units.push(unit);
             if (unit.bv < group.minBV) group.minBV = unit.bv;
             if (unit.bv > group.maxBV) group.maxBV = unit.bv;
@@ -1096,6 +1106,7 @@ export class UnitSearchComponent {
     constructor() {
         this.keyboardShortcutService.register({
             id: 'unit-search-results',
+            dialogRef: this.containingDialog ?? undefined,
             active: () => this.resultsVisible() && this.displayedUnits().length > 0,
             handle: (event) => this.handleSearchResultsShortcutKeyDown(event),
         }, this.destroyRef);
@@ -1628,6 +1639,8 @@ export class UnitSearchComponent {
     }
 
     onDocumentKeydown(event: KeyboardEvent) {
+        const topDialog = this.dialog.openDialogs.at(-1);
+        if (topDialog && topDialog !== this.containingDialog) return;
         // FILTER Chord
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === UnitSearchComponent.CHORD_ACTIVATE_KEY) {
             event.preventDefault();
@@ -1678,6 +1691,10 @@ export class UnitSearchComponent {
                 this.focusInput();
                 return;
             } else {
+                if (this.selectionMode()) {
+                    this.selectionCanceled.emit();
+                    return;
+                }
                 if (this.expandedView()) {
                     this.expandedView.set(false);
                     return;
@@ -1886,6 +1903,7 @@ export class UnitSearchComponent {
     }
 
     async showUnitDetails(unit: UnitSummary): Promise<void> {
+        if (this.selectionMode()) { this.unitSelected.emit(unit); return; }
         const filteredUnits = this.displayedUnits();
         const filteredUnitIndex = filteredUnits.findIndex(candidate => candidate.uuid === unit.uuid);
         const searchResultContexts = new Map(
@@ -2450,6 +2468,7 @@ export class UnitSearchComponent {
 
     multiSelectUnit(unit: UnitSummary, event?: Event) {
         event?.stopPropagation();
+        if (this.selectionMode()) { this.unitSelected.emit(unit); return; }
         const selected = new Set(this.selectedUnits());
         const identity = unit.uuid;
         if (selected.has(identity)) {
@@ -2464,6 +2483,7 @@ export class UnitSearchComponent {
 
     // Multi-select logic: click with Ctrl/Cmd or Shift to select multiple units
     onUnitCardClick(unit: UnitSummary, event?: MouseEvent) {
+        if (this.selectionMode()) { this.unitSelected.emit(unit); return; }
         const multiSelect = event ? (event.ctrlKey || event.metaKey || event.shiftKey) : false;
         if (event && multiSelect) {
             // Multi-select logic
@@ -2528,6 +2548,7 @@ export class UnitSearchComponent {
     }
 
     selectAll() {
+        if (this.selectionMode()) return;
         const allUnits = this.displayedUnits();
         const allIdentities = new Set(allUnits.map(unit => unit.uuid));
         this.selectedUnits.set(allIdentities);
@@ -2538,6 +2559,7 @@ export class UnitSearchComponent {
     }
 
     async addSelectedUnits() {
+        if (this.selectionMode()) return;
         const selectedUnits = this.selectedUnits();
         for (const selectedUnitUuid of selectedUnits) {
             const unit = this.dataService.getUnitByUuid(selectedUnitUuid);
@@ -2672,6 +2694,7 @@ export class UnitSearchComponent {
     }
 
     toggleExpandedView() {
+        if (this.selectionMode()) { this.selectionCanceled.emit(); return; }
         const isExpanded = this.expandedView();
 
         if (isExpanded) {

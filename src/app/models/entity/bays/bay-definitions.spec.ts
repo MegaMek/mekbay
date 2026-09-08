@@ -33,6 +33,16 @@ describe('bay definitions', () => {
       doors: 1, bayNumber: 1, omni: false })).toBe(11_000);
   });
 
+  it('keeps seat passenger counts independent of construction mass and BLK capacity', () => {
+    const base = { id: 'seats', kind: 'bay' as const, capacity: 12, doors: 0, bayNumber: 1, omni: false };
+    for (const [type, tons] of [['standard-seats', 0.9], ['pillion-seats', 0.3], ['ejection-seats', 1.2]] as const) {
+      const bay = { ...base, configuration: { type } };
+      expect(getBayConstructionWeight(bay)).toBeCloseTo(tons, 8);
+      expect(encodeBaySize(bay)).toBe(12);
+      expect(decodeBaySize(bay.configuration, encodeBaySize(bay)).capacity).toBe(12);
+    }
+  });
+
   it('resolves canonical BLK types and aliases', () => {
     expect(resolveStandardBayType('mekbay')).toBe('mek');
     expect(resolveStandardBayType('MechBay')).toBe('mek');
@@ -57,6 +67,7 @@ describe('bay definitions', () => {
     };
     expect(encodeBaySize(parsedQuarter)).toBe(26);
     expect(encodeBaySize(createdQuarter)).toBe(25);
+    expect(getBayConstructionWeight(createdQuarter)).toBe(25);
     expect(isQuartersBay(parsedQuarter)).toBeTrue();
   });
 

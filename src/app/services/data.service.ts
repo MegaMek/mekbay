@@ -291,7 +291,19 @@ export class DataService {
     }
 
     public getUnitSummaries(): readonly UnitSummary[] {
-        return this.unitsCatalog.getCoreSummaries();
+        return this.unitsCatalog.getSummaries();
+    }
+
+    /** Resolve only once a saved custom design and all its search indexes are visible together. */
+    public async refreshCustomUnits(): Promise<void> {
+        await this.requireApplicationCatalogReady();
+        const revision = this.unitsCatalog.prepareCustomChanges();
+        if (revision === undefined) return;
+        this.queueUnitCatalogRevision(revision);
+        await this.unitCatalogSettlement;
+        if (this.appliedUnitCatalogRevision < revision) {
+            throw new Error('The custom unit is saved, but its search catalog could not be refreshed');
+        }
     }
 
     public getUnitByName(name: string): UnitSummary | undefined {
