@@ -2648,6 +2648,55 @@ describe('WeaponsEquipmentPanelComponent', () => {
         expect((fixture.nativeElement.querySelector('.min-cell') as HTMLElement).classList.contains('minimum-range-active')).toBeFalse();
     });
 
+    it('clears the ATM minimum range and target penalty for HE ammo and restores them for Standard', async () => {
+        const atmEquipment = weapon('ATM 6', 'ATM', 6, [5, 10, 15, 20], 0, 4);
+        atmEquipment.weapon.minRange = 4;
+        const atm = entry({ id: 'atm', equipment: atmEquipment });
+        const standardAmmo = ammo('ATM 6 Standard', 'ATM', 6, ['M_STANDARD']);
+        const heAmmo = ammo('ATM 6 HE', 'ATM', 6, ['M_HIGH_EXPLOSIVE']);
+        const standardBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const heBin = entry({ id: 'he-ammo', equipment: heAmmo, totalAmmo: 10, consumed: 0, locations: new Set(['RT']) });
+        const { component, fixture, unit } = createComponent(
+            [atm, standardBin, heBin],
+            { [standardAmmo.internalName]: standardAmmo, [heAmmo.internalName]: heAmmo },
+            [],
+            new Map(),
+            { gunnerySkill: 4, moveMode: 'stationary' }
+        );
+        unit.createInventoryControlTarget();
+        unit.updateInventoryControlTarget('A', { distance: 3 });
+        unit.setInventoryControlEntryTarget(atm, 'A');
+        unit.inventoryControl.markInventoryViewChanged();
+        fixture.detectChanges();
+
+        let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.min).toBe('4');
+        expect(component.targetState(row).rangeSelection?.minimumRangeModifier).toBe(2);
+        expect(component.targetState(row).targetNumberText).toBe('6');
+        expect(fixture.nativeElement.querySelector('.min-cell').classList.contains('minimum-range-active')).toBeTrue();
+
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'High Explosive', label: 'HE' });
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(component.ammoState(row).text).toBe('ATM 6 HE (10/10)');
+        expect(row.display).toEqual(jasmine.objectContaining({ min: '—', short: '3', medium: '6', long: '9' }));
+        expect(component.targetState(row).rangeSelection?.minimumRangeModifier).toBe(0);
+        expect(component.targetState(row).targetNumberText).toBe('4');
+        expect(fixture.nativeElement.querySelector('.min-value').textContent.trim()).toBe('—');
+        expect(fixture.nativeElement.querySelector('.min-cell').classList.contains('minimum-range-active')).toBeFalse();
+
+        await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Standard', label: 'STD' });
+        fixture.detectChanges();
+
+        row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.min).toBe('4');
+        expect(component.targetState(row).rangeSelection?.minimumRangeModifier).toBe(2);
+        expect(component.targetState(row).targetNumberText).toBe('6');
+        expect(fixture.nativeElement.querySelector('.min-value').textContent.trim()).toBe('4');
+        expect(fixture.nativeElement.querySelector('.min-cell').classList.contains('minimum-range-active')).toBeTrue();
+    });
+
     it('shows movement placeholder for target numbers when movement is unassigned and affects TN', () => {
         const laser = entry({ id: 'laser', equipment: weapon('laser', 'NA', 0, [3, 6, 9, 12]), el: svgEntry('<g><g class="name"><text>Wrong SVG Name</text></g><text class="range_short">99</text><text class="range_medium">99</text><text class="range_long">99</text></g>') });
         const { component, unit } = createComponent([laser], {}, [], new Map(), { gunnerySkill: 4 });
@@ -3660,6 +3709,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
             `)
         });
         (atm.equipment as WeaponEquipment).weapon.damage = 'cluster';
+        (atm.equipment as WeaponEquipment).weapon.minRange = 4;
         const standardBin = entry({ id: 'std-ammo', equipment: standardAmmo, totalAmmo: 10, consumed: 2, locations: new Set(['CT']) });
         const erBin = entry({ id: 'er-ammo', equipment: erAmmo, totalAmmo: 10, consumed: 10, locations: new Set(['RT']) });
         const equipmentMap: EquipmentMap = {
@@ -3671,6 +3721,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         let row = component.groups().find(group => group.id === 'ranged')!.rows[0];
         expect(row.selectedMode).toBe('Standard');
+        expect(row.display.min).toBe('4');
         expect(component.modeChoice(row)?.choices?.map(choice => choice.label)).toEqual(['STD', 'ER', 'HE']);
         expect(component.ammoState(row).text).toBe('ATM 6 Standard (8/10)');
         expect(component.ammoState(row).depleted).toBeFalse();
@@ -3681,6 +3732,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'Extended Range', label: 'ER' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.min).toBe('4');
         expect(row.tracksAmmo).toBeTrue();
         expect(component.targetState(row).damageText).toBe('1/Msl [C6,M,S]');
         expect(component.ammoState(row).hasAmmo).toBeFalse();
@@ -3691,6 +3743,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
 
         await component.handleChoice(row, { ...component.modeChoice(row)!, value: 'High Explosive', label: 'HE' });
         row = component.groups().find(group => group.id === 'ranged')!.rows[0];
+        expect(row.display.min).toBe('—');
         expect(row.tracksAmmo).toBeTrue();
         expect(component.targetState(row).damageText).toBe('3/Msl [C6,M,S]');
         expect(component.ammoState(row).hasAmmo).toBeFalse();
