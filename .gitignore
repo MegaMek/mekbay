@@ -50,6 +50,7 @@ AGENTS.md
 /src/app/build-meta.ts
 /plans
 /rules
+/outputs
 
 # Test fixtures (large data files)
 /scripts/fixtures
