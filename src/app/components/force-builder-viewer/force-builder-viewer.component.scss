@@ -152,14 +152,6 @@
         color: var(--text-color);
     }
 
-    svg {
-        transition: transform 0.2s ease;
-    }
-
-    svg.collapsed {
-        transform: rotate(-90deg);
-    }
-
     &.group-toggle {
         top: 2px;
     }
@@ -371,16 +363,6 @@
 
     &:hover {
         opacity: 1;
-    }
-
-    svg {
-        width: 14px;
-        height: 14px;
-        transition: transform 0.2s;
-
-        &.collapsed {
-            transform: rotate(-90deg);
-        }
     }
 
     .mini-collapsed-count {

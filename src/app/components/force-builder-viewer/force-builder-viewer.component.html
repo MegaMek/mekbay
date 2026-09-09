@@ -24,9 +24,7 @@
                 <div class="force-slot-header" #forceSlotHeader cdkDragHandle [class.blink]="blinkingForces().has(slotForce)">
                     @if (slotForce.groups().length > 1) {
                     <button class="btn-toggle-collapse" (click)="toggleForceCollapsed($event, slotForce)" [title]="forceCollapsed ? 'Expand force' : 'Collapse force'">
-                        <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="forceCollapsed">
-                            <path d="M0 2l5 6 5-6z"/>
-                        </svg>
+                        <span class="chevron" [class.collapsed]="forceCollapsed" aria-hidden="true"></span>
                     </button>
                     }
                     <div class="force-name-area" (click)="promptChangeForceName(slotForce)">
@@ -84,9 +82,7 @@
                     @if (!miniMode()) {
                         <div class="group-header" cdkDragHandle>
                             <button class="btn-toggle-collapse group-toggle" (click)="toggleGroupCollapsed($event, group.id)" [title]="groupCollapsed ? 'Expand group' : 'Collapse group'">
-                                <svg width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="groupCollapsed">
-                                    <path d="M0 2l5 6 5-6z"/>
-                                </svg>
+                                <span class="chevron" [class.collapsed]="groupCollapsed" aria-hidden="true"></span>
                             </button>
                             <div class="group-name-area">
                                 <span class="group-name" (click)="promptChangeGroupName(group)">{{ group.groupDisplayName() }}</span>
@@ -126,9 +122,7 @@
                     }
                     @if (groupCollapsed && miniMode()) {
                         <div class="mini-collapsed-indicator" (click)="toggleGroupCollapsed($event, group.id)" title="{{ group.groupDisplayName() }} ({{ groupMemberCount(slotForce, group) }} units) — click to expand">
-                            <svg width="14px" height="14px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="collapsed">
-                                <path d="M0 2l5 6 5-6z"/>
-                            </svg>
+                            <span class="chevron collapsed" aria-hidden="true"></span>
                             <span class="mini-collapsed-count">{{ groupMemberCount(slotForce, group) }}</span>
                         </div>
                     }
