@@ -47,6 +47,9 @@ export function writeBlkDropShip(entity: DropShipEntity): string {
     w.addBlock('collartype', encodeBlkDropShipCollarType(entity.collarType()));
   }
 
+  // Preserve the duplicate native marker without a second mutable configuration value.
+  w.addBlock('kf_boom', entity.kfBoomAttached() ? 1 : 0);
+
   // 6. Heat sinks / Fuel
   w.addBlock('heatsinks', entity.heatSinkCount());
   w.addBlock('sink_type', encodeBlkHeatSinkType(entity.heatSinkType()));

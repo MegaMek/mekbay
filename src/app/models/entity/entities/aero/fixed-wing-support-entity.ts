@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { computed, signal } from '@angular/core';
-import type { SupportVehicle } from '../support-vehicle';
+import { supportVehicleBarRating, type SupportVehicle } from '../support-vehicle';
 import {
   AERO_LOCATIONS,
   EntityType,
@@ -84,7 +84,7 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   }
 
   override armorDamageThreshold(location: string): number {
-    const bar = this.barRating();
+    const bar = supportVehicleBarRating(this, location);
     return bar === 10 ? super.armorDamageThreshold(location) : bar >= 2 ? 1 : 0;
   }
 

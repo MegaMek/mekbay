@@ -46,9 +46,8 @@ export function parseBlkDropShip(bb: BuildingBlock, ctx: ParseContext): DropShip
   parseLegacyDockingCollars(bb, entity);
   if (bb.exists('collartype')) {
     entity.collarType.set(decodeBlkDropShipCollarType(bb.getFirstInt('collartype')));
-  }
-  if (bb.exists('kf_boom')) {
-    entity.kfBoomAttached.set(bb.getFirstInt('kf_boom') === 1);
+  } else if (bb.exists('kf_boom')) {
+    entity.collarType.set(bb.getFirstInt('kf_boom') === 1 ? 'Standard' : 'No Boom');
   }
 
   // ── Armor ──

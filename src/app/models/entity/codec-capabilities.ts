@@ -50,8 +50,8 @@ const NATIVE_CODEC_CAPABILITIES: readonly NativeCodecCapability[] = [
   capability(
     'static-emplacement',
     'blk',
-    ['GunEmplacement', 'BuildingEntity'],
-    ['GunEmplacement', 'BuildingEntity'],
+    ['BuildingEntity'],
+    ['BuildingEntity'],
   ),
 ] as const;
 

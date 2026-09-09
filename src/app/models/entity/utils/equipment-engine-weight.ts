@@ -43,7 +43,10 @@ function getSupportVehicleEngineWeight(
         weight = Math.max(weight, 5);
     }
     if (entity.motiveType() === 'Hover') {
-        weight = Math.max(weight, entity.tonnage() * 0.2);
+        // TM errata v8, p. 126: round the minimum lift-engine mass upward.
+        const increment = entity.weightClass() === 'Small Support' ? 1000 : 2;
+        const minimum = Math.ceil((entity.tonnage() * 0.2 - 1e-9) * increment) / increment;
+        weight = Math.max(weight, minimum);
     }
 
     return entity.weightClass() === 'Small Support'

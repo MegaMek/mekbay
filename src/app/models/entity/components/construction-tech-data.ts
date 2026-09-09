@@ -17,6 +17,24 @@ function advancement(
   return data;
 }
 
+/** TestSupportVehicle.TECH_LEVEL_TA: shared structure, armor and engine rating histories. */
+const SUPPORT_COMPONENT_TECH: readonly TechAdvancement[] = [
+  { techBase: 'All', rating: 'A', level: 'Standard', availability: ['A', 'A', 'A', 'A'], dates: { prototype: DATE_PS, production: DATE_PS, common: DATE_PS } },
+  { techBase: 'All', rating: 'B', level: 'Standard', availability: ['B', 'B', 'B', 'A'], dates: { prototype: DATE_PS, production: DATE_PS, common: DATE_PS } },
+  { techBase: 'All', rating: 'C', level: 'Standard', availability: ['C', 'B', 'B', 'B'], dates: { prototype: DATE_ES, production: DATE_ES, common: DATE_ES }, factions: { prototype: ['TA'], production: ['TA'] } },
+  { techBase: 'All', rating: 'D', level: 'Standard', availability: ['C', 'C', 'C', 'B'], dates: { prototype: approx(2420), production: approx(2430), common: 2435 }, factions: { prototype: ['TH'], production: ['TH'] } },
+  { techBase: 'All', rating: 'E', level: 'Standard', availability: ['D', 'F', 'D', 'C'], dates: { is: { prototype: 2557, production: 2571, common: 3055 }, clan: { prototype: 2557, production: 2571, common: 2815 } } },
+  { techBase: 'All', rating: 'F', level: 'Standard', availability: ['E', 'E', 'D', 'C'], dates: { is: { common: approx(3065) }, clan: { prototype: approx(2820), production: approx(2825), common: 2830 } } },
+];
+
+export function getSupportComponentTech(rating: number): TechAdvancement { return SUPPORT_COMPONENT_TECH[rating]; }
+
+/** Dropship.getCollarTA; prototypes and ordinary collars share this progression. */
+export const DROPSHIP_COLLAR_TECH: TechAdvancement = {
+  techBase: 'All', rating: 'C', level: 'Standard', availability: ['C', 'C', 'C', 'C'],
+  dates: { prototype: 2458, production: 2470, common: 2500 }, factions: { prototype: ['TH'], production: ['TH'] },
+};
+
 const MEK_CONSTRUCTION_TECH = {
   standard: advancement({
     techBase: 'All', rating: 'D', availability: ['C', 'E', 'D', 'C'], level: 'Introductory',

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { normalizeMulId } from '../utils/mul-id';
 import { BaseEntity } from '../base-entity';
 import { AmmoEquipment, ammoMatchesWeapon, WeaponEquipment } from '../../equipment.model';
 import {
@@ -73,9 +74,8 @@ export function parseBaseBlk(
   entity.model.set(bb.getFirstString('Model'));
 
   if (bb.exists('mul id:')) {
-    const mulId = bb.getFirstInt('mul id:');
-    ctx.validateNonNegativeInt('mul id:', mulId);
-    entity.mulId.set(mulId);
+    const mulId = bb.getFirstString('mul id:');
+    entity.mulId.set(normalizeMulId(mulId));
   }
 
   // ── Year ──
@@ -88,7 +88,7 @@ export function parseBaseBlk(
   if (bb.exists('originalBuildYear')) {
     const oby = bb.getFirstInt('originalBuildYear');
     ctx.validateNumber('originalBuildYear', oby);
-    entity.originalBuildYear.set(oby);
+    entity.originalBuildYear.set(oby === entity.year() ? -1 : oby);
   }
 
   // ── Tech Level ──
@@ -543,8 +543,7 @@ export function parseBlkArmor(
     return;
   }
 
-  // Patchwork is a wire-format marker. Domain state is effective armor at
-  // every real armor location; pseudo-locations remain codec-only sentinels.
+  // Preserve the native mode even if all effective location materials match.
   entity.setUniformArmor(new MountedArmor({
     armor: requireArmorEquipment(
       'STANDARD',
@@ -553,17 +552,20 @@ export function parseBlkArmor(
     ),
     techBase: entity.techBase(),
   }));
+  entity.enablePatchworkArmor();
   if (type === 'PATCHWORK' && opts?.patchworkLocs) {
     for (const loc of opts.patchworkLocs) {
       if (!entity.armorLocations.includes(loc)) continue;
-      if (!bb.exists(`${loc}_armor_type`)) continue;
-      const code = bb.getFirstInt(`${loc}_armor_type`);
+      const hasLocalBar = entity.isSupportVehicle() && bb.exists(`${loc}_barrating`);
+      if (!bb.exists(`${loc}_armor_type`) && !hasLocalBar) continue;
+      const code = bb.exists(`${loc}_armor_type`) ? bb.getFirstInt(`${loc}_armor_type`) : 0;
       if (code < 0) continue;
       const locationTech = bb.getFirstString(`${loc}_armor_tech`).toLowerCase();
       const explicitClan = locationTech.includes('clan');
       const explicitIs = locationTech.includes('inner sphere');
       const isClan = explicitClan || (!explicitIs && entity.techBase() === 'Clan');
-      const locationType = decodeBlkArmorType(code);
+      const locationType = hasLocalBar
+        ? `SV_BAR_${bb.getFirstInt(`${loc}_barrating`)}` as ArmorType : decodeBlkArmorType(code);
       if (locationType === 'PATCHWORK') continue;
       const locationArmor = resolveArmorEquipment(
         locationType,
@@ -589,12 +591,11 @@ export function parseBlkArmor(
 }
 
 /**
- * Parse the uniform support-vehicle armor policy from Java's `loadSVArmor()`.
+ * Parse support-vehicle armor using Java's `loadSVArmor()` policy.
  *
  * A BAR block supplies the armor material only when `armor_type` is absent;
- * an explicit armor type always wins. Location-specific support patchwork
- * requires location-specific BAR state and is rejected until that state is
- * represented by the entity model.
+ * an explicit armor type always wins. Patchwork stores each facing's BAR in
+ * its installed armor material and accepts either local BAR or armor type.
  */
 export function parseBlkSupportArmor(
   bb: BuildingBlock,
@@ -605,7 +606,8 @@ export function parseBlkSupportArmor(
   const hasBarRating = bb.exists('barrating');
 
   if (hasArmorType && bb.getFirstInt('armor_type') === 7) {
-    ctx.error('armor_type', 'Support-vehicle patchwork armor is not yet supported');
+    parseBlkArmor(bb, entity, ctx, { patchworkLocs: entity.armorLocations });
+    entity.barRating.set(entity.armorAt(entity.armorLocations[0]).armor.bar);
     return;
   }
   if (!hasArmorType && !hasBarRating) {

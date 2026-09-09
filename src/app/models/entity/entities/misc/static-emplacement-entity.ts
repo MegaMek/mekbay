@@ -1,44 +1,33 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { BUILDING_ORIGIN, buildingLocationName, buildingConnectedComponents, type BuildingHex } from '../../types/building';
 import { computed, signal, type Signal } from '@angular/core';
 import { BaseEntity } from '../../base-entity';
-import { GUN_EMPLACEMENT_WEIGHT_LIMITS, resolveWeightClass } from '../../types';
 import type {
-  EntityType,
   EntityValidationMessage,
   UnitSubtype,
   UnitType,
   WeightClass,
 } from '../../types';
 
-export type StaticEmplacementKind = 'GunEmplacement' | 'BuildingEntity';
-
-/** Entity source of truth for MegaMek's static BLK families. */
+/** Entity source of truth for MegaMek's building BLKs. */
 export class StaticEmplacementEntity extends BaseEntity {
-  override readonly entityType: EntityType;
-  readonly equipmentLocations = signal<readonly string[]>([]);
+  override readonly entityType = 'BuildingEntity' as const;
+  readonly equipmentLocations = computed<readonly string[]>(() =>
+    this.coordinates().flatMap(hex => Array.from({ length: this.height() ?? 1 }, (_, floor) => buildingLocationName(hex, floor))));
   readonly buildingClass = signal<number | undefined>(undefined);
   readonly buildingType = signal<number | undefined>(undefined);
   readonly constructionFactor = signal<number | undefined>(undefined);
   readonly height = signal<number | undefined>(undefined);
-  readonly coordinates = signal<readonly string[]>([]);
-  readonly turret = signal(false);
-
-  constructor(
-    readonly staticKind: StaticEmplacementKind,
-    equipmentRegistry: ConstructorParameters<typeof BaseEntity>[0],
-  ) {
-    super(equipmentRegistry);
-    this.entityType = staticKind;
-  }
+  readonly coordinates = signal<readonly BuildingHex[]>([BUILDING_ORIGIN]);
 
   override unitType(): UnitType {
-    return this.staticKind === 'GunEmplacement' ? 'Gun Emplacement' : 'Building';
+    return 'Building';
   }
 
   override unitSubtype(): UnitSubtype {
-    return this.staticKind === 'GunEmplacement' ? 'Gun Emplacement' : 'Building';
+    return 'Building';
   }
 
   get locationOrder(): readonly string[] {
@@ -58,9 +47,7 @@ export class StaticEmplacementEntity extends BaseEntity {
   }
 
   protected override computeWeightClass(): WeightClass {
-    return this.staticKind === 'GunEmplacement'
-      ? resolveWeightClass(this.tonnage(), GUN_EMPLACEMENT_WEIGHT_LIMITS)
-      : 'Medium';
+    return 'Medium';
   }
 
   protected override computeStructureValues(_tonnage: number): Map<string, number> {
@@ -73,5 +60,9 @@ export class StaticEmplacementEntity extends BaseEntity {
     return new Map([...structureValues].map(([location, value]) => [location, value * 2]));
   }
 
-  protected override typeSpecificValidation: Signal<EntityValidationMessage[]> = computed(() => []);
+  protected override typeSpecificValidation: Signal<EntityValidationMessage[]> = computed(() => {
+    const messages: EntityValidationMessage[] = [];
+    if (buildingConnectedComponents(this.coordinates()).length > 1) messages.push({ severity: 'warning', message: 'The building footprint contains disconnected sections.', category: 'structure', code: 'BUILDING_DISCONNECTED' });
+    return messages;
+  });
 }

@@ -16,6 +16,7 @@ import type { SupportVehicle } from '../entities/support-vehicle';
 import { serializeTransporterLines } from '../parsers/transporter-codec';
 import type { EncodeEquipmentOptions } from './equipment-encoder';
 import { isSupportVehicleBarArmor } from '../../construction-equipment.model';
+import { blkEquipmentOrder } from '../utils/blk-equipment-order';
 
 /**
  * Serialises BLK tag-based format.
@@ -102,7 +103,7 @@ export function writeIdentity(w: BuildingBlockWriter, entity: BaseEntity, unitTy
   w.addBlock('UnitType', unitType);
   w.addBlock('Name', entity.chassis());
   w.addBlock('Model', entity.model());
-  if (entity.mulId() >= 0) w.addBlock('mul id:', entity.mulId());
+  if ((entity.mulId() ?? 0) > 0) w.addBlock('mul id:', entity.mulId()!);
 }
 
 /**
@@ -111,13 +112,15 @@ export function writeIdentity(w: BuildingBlockWriter, entity: BaseEntity, unitTy
  */
 export function writeYearTechMeta(w: BuildingBlockWriter, entity: BaseEntity): void {
   w.addBlock('year', entity.year());
-  if (entity.originalBuildYear() >= 0) w.addBlock('originalBuildYear', entity.originalBuildYear());
+  if (entity.originalBuildYear() >= 0 && entity.originalBuildYear() !== entity.year()) w.addBlock('originalBuildYear', entity.originalBuildYear());
   w.addBlock('type', encodeBlkTechLevel({
     techBase: entity.techBase(),
     rulesLevel: entity.rulesLevel(),
     mixedTech: entity.mixedTech(),
   }));
   if (entity.role()) w.addBlock('role', entity.role());
+  const caseOptOut = entity.clanCaseOptOutLocations();
+  if (caseOptOut.size) w.addBlock('clancaseoptedoutlocs', ...caseOptOut);
 
   // ── Quirks ──
   const quirks = entity.quirks();
@@ -186,6 +189,9 @@ export function writeArmorBlocks(
           ? 'Clan'
           : locationArmor.techBase === 'IS' ? 'Inner Sphere' : '(Unknown Technology Base)');
         w.addBlock(`${loc}_armor_tech_rating`, encodeBlkArmorTechRating(locationArmor));
+        if (entity.isSupportVehicle() && isSupportVehicleBarArmor(locationArmor.armor)) {
+          w.addBlock(`${loc}_barrating`, locationArmor.armor.bar);
+        }
       } else {
         // MegaMek writes sentinel values for patchwork pseudo-locations without armor.
         w.addBlock(`${loc}_armor_type`, -1);
@@ -266,24 +272,7 @@ export function writeEquipmentByLocation(
   const mountsByLoc = new Map<string, string[]>();
   const weaponBays = entity.equipmentBays().filter(bay => bay.kind === 'weapon-bay');
   const weaponBayStarts = new Set(weaponBays.flatMap(bay => bay.weapons[0] ? [bay.weapons[0].mountId] : []));
-  const bayByMount = new Map(weaponBays.flatMap(bay => bay.mounts.map(mount => [mount.mountId, bay] as const)));
-  const emitted = new Set<EntityMountedEquipment['mountId']>();
-  const orderedMounts: EntityMountedEquipment[] = [];
-  for (const mount of entity.equipment()) {
-    if (emitted.has(mount.mountId)) continue;
-    const bay = bayByMount.get(mount.mountId);
-    // BLK encodes membership through a (B) marker and contiguous members. The
-    // author can regroup mounts without changing their canonical inventory order.
-    const firstWeapon = bay?.weapons[0];
-    const members = bay && firstWeapon
-      ? [firstWeapon, ...bay.mounts.filter(member => member.mountId !== firstWeapon.mountId)] : [mount];
-    for (const member of members) {
-      if (emitted.has(member.mountId)) continue;
-      emitted.add(member.mountId);
-      orderedMounts.push(member);
-    }
-  }
-  for (const m of orderedMounts) {
+  for (const m of blkEquipmentOrder(entity)) {
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
     lines.push(encodeLineFn(m, {

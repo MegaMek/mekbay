@@ -1,7 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { StaticEmplacementEntity, type StaticEmplacementKind } from '../entities/misc/static-emplacement-entity';
+import { StaticEmplacementEntity } from '../entities/misc/static-emplacement-entity';
+import { BUILDING_ORIGIN, buildingHexKey, buildingLocationName, parseBuildingHex, parseBuildingLocation } from '../types/building';
 import { locationArmor } from '../types';
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { BuildingBlock } from './building-block';
@@ -10,53 +11,65 @@ import { ParseContext } from './parse-context';
 
 const EQUIPMENT_TAG_SUFFIX = ' equipment';
 
-function equipmentLocations(bb: BuildingBlock, kind: StaticEmplacementKind): readonly [string, string][] {
+function equipmentLocations(bb: BuildingBlock): readonly [string, string][] {
   const tags = bb.sourceDocument.blocks
     .filter(block => block.normalizedTag.endsWith(EQUIPMENT_TAG_SUFFIX))
     .map(block => block.tag);
 
   return tags.map(tag => {
     const rawLocation = tag.slice(0, -EQUIPMENT_TAG_SUFFIX.length).trim();
-    const location = kind === 'GunEmplacement' && rawLocation.toLowerCase() === 'guns'
-      ? 'Guns'
-      : rawLocation || (kind === 'GunEmplacement' ? 'Guns' : 'Building');
+    const parsed = parseBuildingLocation(rawLocation);
+    const location = parsed ? buildingLocationName(parsed.hex, parsed.floor) : rawLocation;
     return [tag, location] as const;
   });
 }
 
-/** Parse catalog-only GunEmplacement and BuildingEntity BLKs. */
+/** Parse BuildingEntity BLKs, including every hex and floor. */
 export function parseBlkStaticEmplacement(
   bb: BuildingBlock,
   ctx: ParseContext,
-  kind: StaticEmplacementKind,
 ): StaticEmplacementEntity {
-  const entity = new StaticEmplacementEntity(kind, ctx.equipmentRegistry);
+  const entity = new StaticEmplacementEntity(ctx.equipmentRegistry);
   parseBaseBlk(bb, entity, ctx);
 
-  const equipmentTags = equipmentLocations(bb, kind);
-  const locations = [...new Set(equipmentTags.map(([, location]) => location))];
-  if (locations.length === 0) locations.push(kind === 'GunEmplacement' ? 'Guns' : 'Building');
-  entity.equipmentLocations.set(locations);
+  const equipmentTags = equipmentLocations(bb);
 
   if (bb.exists('building_class')) entity.buildingClass.set(bb.getFirstInt('building_class'));
   if (bb.exists('building_type')) entity.buildingType.set(bb.getFirstInt('building_type'));
   if (bb.exists('cf')) entity.constructionFactor.set(bb.getFirstInt('cf'));
-  if (bb.exists('height')) entity.height.set(bb.getFirstInt('height'));
-  if (bb.exists('coords')) entity.coordinates.set(bb.getDataAsString('coords'));
-  entity.turret.set(bb.exists('turret'));
+  const height = bb.exists('height') ? bb.getFirstInt('height') : 1;
+  if (!Number.isSafeInteger(height) || height < 1) ctx.error('height', 'Building height must be a positive whole number.');
+  entity.height.set(Number.isSafeInteger(height) && height > 0 ? height : 1);
+  const hexes = new Map([[buildingHexKey(BUILDING_ORIGIN), BUILDING_ORIGIN]]);
+  for (const line of bb.getDataAsString('coords')) {
+    if (!line.trim()) continue;
+    const hex = parseBuildingHex(line);
+    if (hex) hexes.set(buildingHexKey(hex), hex);
+    else ctx.error('coords', 'Invalid building hex: ' + line + '. Expected whole cube coordinates q,r,s with q+r+s=0.');
+  }
+  entity.coordinates.set([...hexes.values()]);
   if (bb.exists('motion_type')) entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
   if (bb.exists('cruiseMP')) entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
 
   if (bb.exists('armor')) {
     const armor = bb.getFirstInt('armor');
     if (Number.isFinite(armor)) {
-      entity.armorValues.set(new Map([[locations[0]!, locationArmor(armor)]]));
+      entity.armorValues.set(new Map(entity.locationOrder.map(location => [location, locationArmor(armor)])));
     }
   }
 
   parseBlkEquipment(bb, entity, ctx, equipmentTags, {
-    computeTurretMounted: () => kind === 'GunEmplacement',
     includeTurretType: true,
   });
+  // The generic equipment grammar stores VGL facings; buildings use clockwise 0=N.
+  const buildingFacing = [5, 1, 0, 3, 4, 2];
+  entity.updateEquipment(mounts => mounts.map(mount => mount.facing === undefined ? mount
+    : mount.clone({ facing: buildingFacing[mount.facing] })));
+  for (const mount of entity.equipment()) {
+    if (mount.allocation.kind === 'location' && !entity.validLocations.has(mount.location)) {
+      ctx.error('equipment', 'Equipment location ' + mount.location + ' is outside the building footprint or height.');
+      entity.updateEquipment(mounts => mounts.map(item => item === mount ? item.clone({ allocation: { kind: 'unallocated' } }) : item));
+    }
+  }
   return entity;
 }

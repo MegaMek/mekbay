@@ -223,6 +223,8 @@ export abstract class VehicleEntity extends BaseEntity {
   calculatedEngineRating = computed(() => this.calculateEngineRating(this.mountedEngine().type()));
 
   calculateEngineRating(engineType: EngineType): number {
+    // TM errata v8, p. 126: support ratings use chassis mass and cruise MP, capped at 500.
+    if (this.isSupportVehicle()) return Math.min(500, this.originalWalkMP() * this.tonnage());
     let rating = (this.cruiseMP() * Math.trunc(this.tonnage())) - this.suspensionFactor();
     if (this.minimumEngineRating !== null) rating = Math.max(this.minimumEngineRating, rating);
     if (this.zeroCruiseUsesEngineType && this.cruiseMP() === 0) {
@@ -299,13 +301,12 @@ export abstract class VehicleEntity extends BaseEntity {
   }
 
   protected override computeMaxArmor(
-    structureValues: Map<string, number>,
+    _structureValues: Map<string, number>,
   ): Map<string, number> {
-    const maxArmor = new Map<string, number>();
-    for (const [loc, isVal] of structureValues) {
-      maxArmor.set(loc, isVal * 2);
-    }
-    return maxArmor;
+    // Tanks share one construction budget; only a VTOL rotor has a local cap.
+    return new Map(this.armorLocations.map(loc => [loc,
+      loc === 'Rotor' ? 2 : this.maximumArmorPoints(),
+    ]));
   }
 
   // ── Validation ────────────────────────────────────────────────────────

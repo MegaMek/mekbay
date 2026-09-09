@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Equipment } from "../../equipment.model";
+import { ArmorEquipment, type Equipment } from "../../equipment.model";
 import type { BaseEntity } from "../base-entity";
+import type { TechRating } from "../types";
 import type { ArmorType } from "../types/armor";
 import { isQuadMekConfig } from "../types/mek";
 import { weightClassCode } from "../types/weight";
@@ -39,6 +40,7 @@ import { supportEquipmentCriticalSlots } from "../../support-equipment.model";
  * Java's `MiscType.getNumCriticalSlots(Entity, double)`.
  */
 export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: number = 1): number | undefined {
+    if (eq instanceof ArmorEquipment && entity.isSupportVehicle()) return getSupportVehicleArmorSlots(entity, eq);
     if (eq.svSlots !== undefined && eq.svSlots >= 0
         && entity.isSupportVehicle()) {
         return eq.svSlots;
@@ -204,6 +206,16 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
 
     // MegaMek logs an error and assumes one slot for an unrecognized formula.
     return 1;
+}
+
+/** TechManual p. 134 and errata v8: BAR 10 at E/F uses IS/Clan ferro-fibrous slots. */
+export function getSupportVehicleArmorSlots(entity: BaseEntity, armor: ArmorEquipment,
+    rating: TechRating | null = entity.uniformArmor()?.techRating ?? null, patchwork = false): number {
+    if (armor.armorType === 'SV_BAR_10') {
+        const effectiveRating = rating ?? (entity.isSupportVehicle() ? ['A', 'B', 'C', 'D', 'E', 'F'][entity.structuralTechRating()] : undefined);
+        return effectiveRating === 'E' ? 2 : effectiveRating === 'F' ? 1 : 0;
+    }
+    return (patchwork ? armor.patchworkSlotsMekSV : armor.svSlots) ?? 0;
 }
 
 function getPatchworkArmorSlots(

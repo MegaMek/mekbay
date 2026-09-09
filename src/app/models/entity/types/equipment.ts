@@ -6,6 +6,7 @@ import {
   AmmoEquipment,
   Equipment,
   WeaponEquipment,
+  formatEquipmentName,
 } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
 import { getEquipmentBV } from '../utils/equipment-bv';
@@ -161,8 +162,10 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   }
 
   /** Canonical user-facing name for this installed equipment mount. */
-  displayName(): string {
-    const name = this.equipment?.shortName || this.equipment?.name || this.equipmentId;
+  displayName(includeAmmoShots = false): string {
+    const name = this.equipment
+      ? formatEquipmentName(this.equipment, includeAmmoShots ? this.getAmmoShots() : undefined)
+      : this.equipmentId;
     const modifiers: string[] = [];
     if (this.rearMounted) modifiers.push('R');
 

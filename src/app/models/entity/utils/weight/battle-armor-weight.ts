@@ -44,11 +44,12 @@ export function calculateBattleArmorWeightBreakdown(entity: BattleArmorEntity): 
     * (entity.uniformArmor()?.armor.weightPerPoint ?? 0);
   const turret = calculateTurretWeight(entity.turretConfig());
   const suits = Array.from({ length: entity.trooperCount() }, (_, trooper) => {
-    const mounts = entity.equipment().filter(mount => appliesToSuit(mount, trooper));
+    const mounts = entity.getConstructionEquipmentForTrooper(trooper + 1);
     const miscellaneous = mounts.reduce((sum, mount) => {
       if (!(mount.equipment instanceof MiscEquipment)
         || isConstructionSystemEquipment(mount.equipment)) return sum;
-      return sum + requireTonnage(entity, mount);
+      const weight = requireTonnage(entity, mount);
+      return sum + (mount.isSSWM ? ceilKg(weight * (entity.techBase() === 'Clan' ? 0.4 : 0.5)) : weight);
     }, 0);
     const weapons = roundKg(mounts.reduce((sum, mount) => {
       if (!(mount.equipment instanceof WeaponEquipment) || mount.isAPM) return sum;
@@ -89,12 +90,6 @@ export function calculateTurretWeight(config: string): number {
   const capacity = Number(match[2]);
   if (capacity <= 0) return 0;
   return capacity * 0.01 + 0.03 + (/^(Modular|Configurable)$/i.test(match[1]) ? 0.02 : 0);
-}
-
-function appliesToSuit(mount: EntityMountedEquipment, trooper: number): boolean {
-  if (mount.location === 'Squad') return true;
-  if (trooper === 0 || mount.location !== `Trooper ${trooper}`) return false;
-  return mount.baMountLocation !== undefined;
 }
 
 function requireTonnage(entity: BattleArmorEntity, mount: EntityMountedEquipment): number {

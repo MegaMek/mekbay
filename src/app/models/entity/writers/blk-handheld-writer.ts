@@ -11,6 +11,7 @@ import {
   writeEmbeddedImages,
   writeInternalType,
   writeSource,
+  writeManualBV,
   writeTonnage,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
@@ -50,6 +51,7 @@ export function writeBlkHandheld(entity: HandheldWeaponEntity): string {
 
   // ── Source / Tonnage ──
   writeSource(w, entity);
+  writeManualBV(w, entity);
   writeTonnage(w, entity);
 
   writeEmbeddedImages(w, entity);

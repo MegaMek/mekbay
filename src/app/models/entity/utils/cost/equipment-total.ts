@@ -13,8 +13,7 @@ import {
   isPpcEquipment,
 } from '../../../ppc-capacitor.model';
 import { isEcmEquipment } from '../../../ecm-mode.model';
-import { isBlueShieldEquipment } from '../../../escalating-equipment.model';
-import { isCaseIIEquipment, isStandardCaseEquipment } from '../../../case-equipment.model';
+import { isStandardCaseEquipment } from '../../../case-equipment.model';
 import {
   isBattleArmorManipulatorEquipment,
   isElectronicInterfaceEquipment,
@@ -111,15 +110,9 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
     || family === 'SupportTank' || family === 'SupportNaval' || family === 'SupportVTOL'
     || family === 'LargeSupportTank';
   if (!isMek && !isVehicle) return 0;
-  const hasClanCase = entity.equipment().some(mount =>
-    mount.equipment instanceof MiscEquipment
-    && isStandardCaseEquipment(mount.equipment)
-    && mount.equipment.techBase === 'Clan');
-  if (entity.techBase() !== 'Clan' && !(isMek && hasClanCase)) return 0;
-
   let sourceCaseCount = 0;
   const explosiveLocations = new Set<string>();
-  const optedOut = isMek ? entity.clanCaseOptOutLocations() : new Set<string>();
+  const optedOut = entity.clanCaseOptOutLocations();
   for (const mount of entity.equipment()) {
     const equipment = mount.equipment;
     if (!equipment) continue;
@@ -129,7 +122,7 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
     }
     if (!isExplosiveForConstructionCost(entity, mount)) continue;
     for (const location of mount.getOccupiedLocations()) {
-      if ((location !== 'Unallocated' || isVehicle) && !optedOut.has(location)) {
+      if ((location !== 'Unallocated' || isVehicle) && entity.supportsAutomaticClanCaseAt(location) && !optedOut.has(location)) {
         explosiveLocations.add(location);
       }
     }
@@ -138,18 +131,7 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
 
   // MekFileParser materializes generated Clan CASE before the cost calculator
   // runs. Reproduce that lifecycle without adding derived mounts to the entity.
-  const protectedLocations = new Set(entity.equipment()
-    .filter(mount => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
-    .flatMap(mount => mount.getOccupiedLocations()));
-  const generatedLocations = new Set<string>();
-  for (const mount of entity.equipment()) {
-    if (!isExplosiveForGeneratedClanCase(entity, mount)) continue;
-    for (const location of mount.getOccupiedLocations()) {
-      if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
-        generatedLocations.add(location);
-      }
-    }
-  }
+  const generatedLocations = entity.automaticClanCaseLocations();
   const implicitCount = Math.max(
     0,
     explosiveLocations.size - sourceCaseCount - generatedLocations.size,
@@ -173,29 +155,6 @@ function isExplosiveForConstructionCost(entity: BaseEntity, mount: EntityMounted
     if (isRiscLaserPulseModule(equipment)) {
       return entity.getLinkedMount(mount) !== undefined;
     }
-  }
-  return true;
-}
-
-/** Mirrors EquipmentType.isExplosive(mount, true) during MekFileParser.addClanCase. */
-function isExplosiveForGeneratedClanCase(entity: BaseEntity, mount: EntityMountedEquipment): boolean {
-  const equipment = mount.equipment;
-  if (!equipment?.isExplosive()) return false;
-  if (equipment instanceof WeaponEquipment) {
-    if (['AC_ROTARY', 'AC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC', 'LAC'].includes(equipment.ammoType)) {
-      return false;
-    }
-    if (equipment.hasFlag('F_B_POD') || equipment.hasFlag('F_M_POD')) return false;
-    if (isPpcEquipment(equipment)) {
-      return isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment);
-    }
-  }
-  if (equipment instanceof MiscEquipment) {
-    if (isPpcCapacitorEquipment(equipment)) return entity.getLinkedMount(mount) !== undefined;
-    if (isRiscLaserPulseModule(equipment)) {
-      return entity.getLinkedMount(mount) !== undefined;
-    }
-    if (isBlueShieldEquipment(equipment)) return false;
   }
   return true;
 }

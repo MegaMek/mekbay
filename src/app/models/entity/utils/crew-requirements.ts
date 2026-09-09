@@ -9,9 +9,9 @@ import { supportEquipmentCrewContribution } from '../../support-equipment.model'
 import { sensorEquipmentCrewContribution } from '../../sensor-equipment.model';
 import { aerospaceSupportCrewContribution } from '../../aerospace-support-equipment.model';
 
-const INFANTRY_PERSONNEL: Readonly<Record<InfantryTransportType, { IS: number; Clan: number }>> = {
-  Foot: { IS: 28, Clan: 25 }, Jump: { IS: 21, Clan: 20 },
-  Motorized: { IS: 28, Clan: 25 }, Mechanized: { IS: 7, Clan: 5 },
+// TM errata v8, p. 239: bay capacity is independent of a formation's faction and squad size.
+const INFANTRY_PERSONNEL: Readonly<Record<InfantryTransportType, number>> = {
+  Foot: 30, Jump: 30, Motorized: 30, Mechanized: 7,
 };
 const BAY_PERSONNEL_PER_CAPACITY: Partial<Record<StandardTransportBayType, number>> = {
   mek: 2, protomek: 6, 'light-vehicle': 5, 'heavy-vehicle': 8, 'super-heavy-vehicle': 15,
@@ -41,7 +41,7 @@ export function calculateTransportBayPersonnel(entity: BaseEntity): number {
       case 'fighter': return total + (config.arts ? 0 : Math.trunc(transporter.capacity) * 2);
       case 'small-craft': return total + (config.arts ? 0 : Math.trunc(transporter.capacity) * 5);
       case 'battle-armor': return total + Math.trunc(transporter.capacity) * 6;
-      case 'infantry': return total + Math.trunc(transporter.capacity / INFANTRY_TRANSPORT_WEIGHTS[config.infantryType]) * INFANTRY_PERSONNEL[config.infantryType][entity.techBase()];
+      case 'infantry': return total + Math.trunc(transporter.capacity / INFANTRY_TRANSPORT_WEIGHTS[config.infantryType]) * INFANTRY_PERSONNEL[config.infantryType];
       case 'protomek': return total + Math.ceil(transporter.capacity) * 6;
       default: return total + Math.trunc(transporter.capacity) * (BAY_PERSONNEL_PER_CAPACITY[config.type as StandardTransportBayType] ?? 0);
     }

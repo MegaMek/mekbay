@@ -149,8 +149,8 @@ export const VALID_QUADVEE_MOTIVE_TYPES: ReadonlySet<MotiveType> = new Set<Motiv
 // `signal<MotiveType>` (invariant), but downstream code can narrow via guards.
 // ============================================================================
 
-/** Motive types valid for combat vehicles */
-export type VehicleMotiveType = Extract<MotiveType, 'Tracked' | 'Wheeled' | 'Hover' | 'WiGE' | 'Naval' | 'Submarine' | 'Hydrofoil' | 'VTOL'>;
+/** Motive types valid for combat and support vehicles */
+export type VehicleMotiveType = Extract<MotiveType, 'Tracked' | 'Wheeled' | 'Hover' | 'WiGE' | 'Naval' | 'Submarine' | 'Hydrofoil' | 'VTOL' | 'Rail' | 'MagLev'>;
 
 /** Motive types valid for conventional infantry */
 export type InfantryMotiveType = Extract<MotiveType, 'Leg' | 'Motorized' | 'Jump' | 'UMU' | 'Hover' | 'Wheeled' | 'Tracked' | 'VTOL' | 'Submarine' | 'Beast'>;

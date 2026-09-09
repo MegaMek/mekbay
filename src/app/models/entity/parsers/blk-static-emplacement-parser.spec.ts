@@ -14,38 +14,9 @@ describe('static emplacement BLK parser', () => {
   });
   const registry = new EquipmentRegistry({ [standardArmor.id]: standardArmor });
 
-  it('loads and writes a GunEmplacement as its own catalog family', () => {
-    const result = parseEntity(`
-<UUID>
-019f583e-b5e8-7032-b925-ba6c429a0687
-</UUID>
-<UnitType>
-GunEmplacement
-</UnitType>
-<Name>
-Medium Sniper Turret
-</Name>
-<Model>
-(3075)
-</Model>
-<year>
-3075
-</year>
-<type>
-IS Level 3
-</type>
-<GUNS Equipment>
-Unknown Test Weapon
-</GUNS Equipment>
-`, 'gun.blk', registry);
-
-    expect(result.entity instanceof StaticEmplacementEntity).toBeTrue();
-    expect(result.entity.entityType).toBe('GunEmplacement');
-    expect(result.entity.unitType()).toBe('Gun Emplacement');
-    expect(result.entity.equipment()[0]?.allocation).toEqual({ kind: 'location', location: 'Guns' });
-    const encoded = encodeNativeEntity(result.entity);
-    expect(encoded).toContain('<UnitType>\nGunEmplacement\n</UnitType>');
-    expect(encoded).toContain('<GUNS Equipment>\nUnknown Test Weapon\n</GUNS Equipment>');
+  it('rejects deprecated gun-emplacement BLKs', () => {
+    expect(() => parseEntity('<UnitType>\nGunEmplacement\n</UnitType>', 'gun.blk', registry))
+      .toThrowError('Unsupported BLK UnitType: "GunEmplacement"');
   });
 
   it('keeps BuildingEntity construction and dynamic level equipment facts', () => {
@@ -92,5 +63,13 @@ Unknown Test Weapon
     expect(entity.constructionFactor()).toBe(90);
     expect(entity.totalArmorPoints()).toBe(60);
     expect(entity.locationOrder).toEqual(['Level 0 0.0,0.0,0.0']);
+    const encoded = encodeNativeEntity(entity);
+    expect(encoded).toContain('<UnitType>\nBuildingEntity\n</UnitType>');
+    expect(encoded).toContain('<Level 0 0.0,0.0,0.0 Equipment>\nUnknown Test Weapon\n</Level 0 0.0,0.0,0.0 Equipment>');
+    const reloaded = parseEntity(encoded, 'building.blk', registry).entity as StaticEmplacementEntity;
+    expect(reloaded.buildingClass()).toBe(3);
+    expect(reloaded.constructionFactor()).toBe(90);
+    expect(reloaded.totalArmorPoints()).toBe(60);
+    expect(reloaded.equipment()[0]?.location).toBe('Level 0 0.0,0.0,0.0');
   });
 });

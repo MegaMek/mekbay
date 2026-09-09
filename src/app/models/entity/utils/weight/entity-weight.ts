@@ -13,17 +13,17 @@ import type { HandheldWeaponEntity } from '../../entities/misc/handheld-weapon-e
 import type { FixedWingSupportEntity } from '../../entities/aero/fixed-wing-support-entity';
 import type { SmallCraftEntity } from '../../entities/aero/small-craft-entity';
 import type { JumpShipEntity } from '../../entities/largecraft/jumpship-entity';
-import { getInfantryTonnage } from '../infantry-tonnage';
-import { calculateMekEffectiveTonnage } from './mek-weight';
-import { calculateBattleArmorEffectiveTonnage } from './battle-armor-weight';
-import { calculateProtoMekEffectiveTonnage } from './protomek-weight';
-import { calculateVehicleEffectiveTonnage } from './vehicle-weight';
-import { calculateSupportVehicleEffectiveTonnage } from './support-vehicle-weight';
-import { calculateFighterEffectiveTonnage } from './fighter-weight';
-import { calculateHandheldWeaponEffectiveTonnage } from './handheld-weapon-weight';
-import { calculateFixedWingSupportEffectiveTonnage } from './fixed-wing-support-weight';
-import { calculateSmallCraftEffectiveTonnage } from './small-craft-weight';
-import { calculateAdvancedAerospaceEffectiveTonnage } from './advanced-aerospace-weight';
+import { getInfantryWeightBreakdown } from '../infantry-tonnage';
+import { calculateMekWeightBreakdown } from './mek-weight';
+import { calculateBattleArmorWeightBreakdown } from './battle-armor-weight';
+import { calculateProtoMekWeightBreakdown } from './protomek-weight';
+import { calculateVehicleWeightBreakdown } from './vehicle-weight';
+import { calculateSupportVehicleWeightBreakdown } from './support-vehicle-weight';
+import { calculateFighterWeightBreakdown } from './fighter-weight';
+import { calculateHandheldWeaponWeightBreakdown } from './handheld-weapon-weight';
+import { calculateFixedWingSupportWeightBreakdown } from './fixed-wing-support-weight';
+import { calculateSmallCraftWeightBreakdown } from './small-craft-weight';
+import { calculateAdvancedAerospaceWeightBreakdown } from './advanced-aerospace-weight';
 
 /**
  * Calculate installed construction mass independently of declared chassis
@@ -34,38 +34,43 @@ import { calculateAdvancedAerospaceEffectiveTonnage } from './advanced-aerospace
  * declared tonnage as a fallback would hide underweight and overweight units.
  */
 export function calculateEntityEffectiveTonnage(entity: BaseEntity): number {
+  return calculateEntityWeightBreakdown(entity).rounded;
+}
+
+/** The same family calculation supplies both installed mass and its complete breakdown. */
+export function calculateEntityWeightBreakdown(entity: BaseEntity) {
   switch (entity.entityType) {
     case 'JumpShip':
     case 'WarShip':
     case 'SpaceStation':
-      return calculateAdvancedAerospaceEffectiveTonnage(entity as JumpShipEntity);
+      return calculateAdvancedAerospaceWeightBreakdown(entity as JumpShipEntity);
     case 'SmallCraft':
     case 'DropShip':
-      return calculateSmallCraftEffectiveTonnage(entity as SmallCraftEntity);
+      return calculateSmallCraftWeightBreakdown(entity as SmallCraftEntity);
     case 'FixedWingSupport':
-      return calculateFixedWingSupportEffectiveTonnage(entity as FixedWingSupportEntity);
+      return calculateFixedWingSupportWeightBreakdown(entity as FixedWingSupportEntity);
     case 'HandheldWeapon':
-      return calculateHandheldWeaponEffectiveTonnage(entity as HandheldWeaponEntity);
+      return calculateHandheldWeaponWeightBreakdown(entity as HandheldWeaponEntity);
     case 'Aero':
     case 'ConvFighter':
-      return calculateFighterEffectiveTonnage(entity as AeroEntity);
+      return calculateFighterWeightBreakdown(entity as AeroEntity);
     case 'SupportTank':
     case 'LargeSupportTank':
     case 'SupportNaval':
     case 'SupportVTOL':
-      return calculateSupportVehicleEffectiveTonnage(entity as VehicleEntity & import('../../entities/support-vehicle').SupportVehicle);
+      return calculateSupportVehicleWeightBreakdown(entity as VehicleEntity & import('../../entities/support-vehicle').SupportVehicle);
     case 'Tank':
     case 'Naval':
     case 'VTOL':
-      return calculateVehicleEffectiveTonnage(entity as VehicleEntity);
+      return calculateVehicleWeightBreakdown(entity as VehicleEntity);
     case 'ProtoMek':
-      return calculateProtoMekEffectiveTonnage(entity as ProtoMekEntity);
+      return calculateProtoMekWeightBreakdown(entity as ProtoMekEntity);
     case 'BattleArmor':
-      return calculateBattleArmorEffectiveTonnage(entity as BattleArmorEntity);
+      return calculateBattleArmorWeightBreakdown(entity as BattleArmorEntity);
     case 'Mek':
-      return calculateMekEffectiveTonnage(entity as MekEntity);
+      return calculateMekWeightBreakdown(entity as MekEntity);
     case 'Infantry':
-      return getInfantryTonnage(entity as InfantryEntity);
+      return getInfantryWeightBreakdown(entity as InfantryEntity);
     default:
       throw new Error(`Effective tonnage is not implemented for ${entity.entityType}`);
   }

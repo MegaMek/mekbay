@@ -71,6 +71,15 @@ export function parseEntity(
   else if (lowerName.endsWith('.blk')) {
     const bb = new BuildingBlock(content);
     entity = parseBlk(bb, ctx);
+    // Apply after family parsing, when optional turret and other locations are known.
+    if (bb.exists('clancaseoptedoutlocs')) {
+      const locations = bb.getDataAsString('clancaseoptedoutlocs').flatMap(line => line.split(','))
+        .map(location => location.trim()).filter(Boolean);
+      for (const location of locations) {
+        if (!entity.validLocations.has(location)) ctx.warn('clancaseoptedoutlocs', `Unknown CASE opt-out location: ${location}`);
+      }
+      entity.setClanCaseOptOutLocations(new Set(locations.filter(location => entity.validLocations.has(location))));
+    }
   } else {
     throw new Error(`Unsupported file format: ${fileName}`);
   }
@@ -116,11 +125,7 @@ function parseBlk(bb: BuildingBlock, ctx: ParseContext): BaseEntity {
     case 'handheld-weapon':
       return parseBlkHandheld(bb, ctx);
     case 'static-emplacement':
-      return parseBlkStaticEmplacement(
-        bb,
-        ctx,
-        unitType === 'BuildingEntity' ? 'BuildingEntity' : 'GunEmplacement',
-      );
+      return parseBlkStaticEmplacement(bb, ctx);
     case 'mek':
       // Guarded above by the categorical format check.
       throw new UnsupportedNativeFormatError('blk', unitType);

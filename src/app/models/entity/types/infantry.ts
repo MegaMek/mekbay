@@ -80,4 +80,3 @@ export const PREDEFINED_INFANTRY_MOUNTS: ReadonlyMap<string, InfantryMount> = ne
   ['Orca',              { name: 'Orca',              size: 'Very Large', weight: 7.2,  movementPoints: 5, movementMode: 'Submarine', burstDamage: 2,  vehicleDamage: 1, damageDivisor: 2.0, maxWaterDepth: -1, secondaryGroundMP: 0, uwEndurance: 180 }],
   ['Hipposaur',         { name: 'Hipposaur',         size: 'Monstrous',  weight: 35.5, movementPoints: 2, movementMode: 'Submarine', burstDamage: 10, vehicleDamage: 4, damageDivisor: 4.0, maxWaterDepth: -1, secondaryGroundMP: 1, uwEndurance: 2 }],
 ] as [string, InfantryMount][]);
-

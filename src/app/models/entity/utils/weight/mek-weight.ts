@@ -122,14 +122,18 @@ function calculateMekConversionWeight(entity: MekEntity): number {
 }
 
 function calculateMekEquipmentWeight(entity: MekEntity): number {
-  return entity.equipment().reduce((total, mount) => {
+  return calculateMekEquipmentWeightDetails(entity).reduce((total, entry) => total + entry.tonnage, 0);
+}
+
+export function calculateMekEquipmentWeightDetails(entity: MekEntity) {
+  return entity.equipment().flatMap(mount => {
     const equipment = mount.equipment;
     if (!equipment) throw new Error(`Unresolved equipment ${mount.equipmentId} on ${entity.displayName()}`);
-    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return total;
-    if (equipment instanceof MiscEquipment && isConstructionSystemEquipment(equipment)) return total;
-    if (equipment instanceof AmmoEquipment && mount.allocation.kind === 'unallocated') return total;
-    return total + requireMountTonnage(entity, mount);
-  }, 0);
+    if (equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment) return [];
+    if (equipment instanceof MiscEquipment && isConstructionSystemEquipment(equipment)) return [];
+    if (equipment instanceof AmmoEquipment && mount.allocation.kind === 'unallocated') return [];
+    return [{ mount, tonnage: requireMountTonnage(entity, mount) }];
+  });
 }
 
 function calculateMekPowerAmplifierWeight(entity: MekEntity): number {

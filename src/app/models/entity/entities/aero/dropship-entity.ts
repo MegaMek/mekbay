@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { MiscEquipment } from '../../../equipment.model';
 import {
   DropShipCollarType,
@@ -57,7 +57,8 @@ export class DropShipEntity extends SmallCraftEntity {
 
   // ── DropShip-specific signals ──
   collarType = signal<DropShipCollarType>('Unspecified');
-  kfBoomAttached = signal<boolean>(false);
+  /** Duplicate native compatibility field, derived from the editable collar. */
+  readonly kfBoomAttached = computed(() => this.collarType() !== 'No Boom');
 
   protected override computeWeightClass(): WeightClass {
     return resolveWeightClass(this.tonnage(), DROPSHIP_WEIGHT_LIMITS);

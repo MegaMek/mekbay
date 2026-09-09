@@ -135,7 +135,7 @@ function writeIdentity(entity: MekEntity, lines: string[]): void {
   lines.push(`chassis:${entity.chassis()}`);
   if (entity.clanName()) lines.push(`clanname:${entity.clanName()}`);
   lines.push(`model:${entity.model()}`);
-  if (entity.mulId() >= 0) lines.push(`mul id:${entity.mulId()}`);
+  if ((entity.mulId() ?? 0) > 0) lines.push(`mul id:${entity.mulId()}`);
   lines.push('');
 }
 
@@ -143,7 +143,7 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
   lines.push(`Config:${getConfigString(entity)}`);
   lines.push(`techbase:${formatTechBase(entity)}`);
   lines.push(`era:${entity.year()}`);
-  if (entity.originalBuildYear() > 0) lines.push(`original era:${entity.originalBuildYear()}`);
+  if (entity.originalBuildYear() > 0 && entity.originalBuildYear() !== entity.year()) lines.push(`original era:${entity.originalBuildYear()}`);
   if (entity.source().length > 0) lines.push(`source:${entity.source().map(source => source.abbrev).join(',')}`);
   if (entity.published().length > 0) lines.push(`published:${entity.published().map(source => source.abbrev).join(',')}`);
   lines.push(`rules level:${entity.rulesLevel()}`);
@@ -211,6 +211,7 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
   // Nocrit: misc equipment with 0 crit slots, excluding CASE, armor, and structure
   // (matches MegaMek's Mek.getMtf() nocrit logic)
   const nocritMounts = entity.equipment().filter(m => {
+    if (m.allocation.kind !== 'location') return false;
     const eq = m.equipment;
     if (!eq) return false;
     if (eq.type !== 'misc') return false;
@@ -266,7 +267,7 @@ const WEAPON_LOC_ORDER: Record<string, number> = {
 };
 
 function writeWeapons(entity: MekEntity, lines: string[]): void {
-  const mounts = entity.equipment().filter(m => m.location !== 'None' && m.equipment instanceof WeaponEquipment);
+  const mounts = entity.equipment().filter(m => m.allocation.kind === 'location' && m.location !== 'None' && m.equipment instanceof WeaponEquipment);
 
   // Sort by first crit-slot appearance: location order, then slot index
   mounts.sort((a, b) => {
@@ -335,6 +336,8 @@ function writeQuirks(entity: MekEntity, lines: string[]): void {
 
 function writeFluff(entity: MekEntity, lines: string[]): void {
   const fluff = entity.fluff();
+  if (entity.fluffImageEncoded()) lines.push(`fluffimage:${entity.fluffImageEncoded()}`);
+  if (entity.iconEncoded()) lines.push(`icon:${entity.iconEncoded()}`);
   const writeField = (key: string, value: string | undefined): void => {
     if (value) lines.push(`${key}:${value}`, '');
   };

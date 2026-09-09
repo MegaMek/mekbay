@@ -257,12 +257,12 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   /** Whether a rating above 400 selects MegaMek's Large Engine technology record. */
-  protected usesLargeEngineTechnology(): boolean {
+  usesLargeEngineTechnology(): boolean {
     return true;
   }
 
   /** Whether a mounted item contributes to the context-free static technology level. */
-  protected mountedEquipmentContributesStaticTech(_equipment: Equipment): boolean {
+  mountedEquipmentContributesStaticTech(_equipment: Equipment): boolean {
     return true;
   }
 
@@ -284,7 +284,8 @@ export abstract class BaseEntity implements EntityTechnology {
     return sources;
   }
 
-  private techRatingSources(): TechRatingSource[] {
+  /** Complete construction technology sources, shared by the rating and construction summary. */
+  techRatingSources(): readonly TechRatingSource[] {
     const sources: TechRatingSource[] = this.equipment()
       .flatMap(mount => mount.equipment ? [mount.equipment.tech] : []);
     sources.push(...this.implicitSystemEquipment().map(equipment => equipment.tech));
@@ -323,7 +324,7 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly chassis = signal<string>('');
   readonly model = signal<string>('');
   readonly clanName = signal<string>('');
-  readonly mulId = signal<number>(-1);
+  readonly mulId = signal<number | null>(null);
   readonly role = signal<string>('');
   readonly omni = signal<boolean>(false);
 
@@ -389,6 +390,7 @@ export abstract class BaseEntity implements EntityTechnology {
 
   // ── Armor ──
   private readonly armorLayout = signal<LocationComponentLayout<string, MountedArmor> | null>(null);
+  private readonly explicitPatchworkArmor = signal(false);
   /** Total effective armor material/configuration for every armor-bearing location. */
   readonly armorByLocation = computed<ReadonlyMap<string, MountedArmor>>(() => {
     const layout = this.armorLayout();
@@ -396,12 +398,13 @@ export abstract class BaseEntity implements EntityTechnology {
   });
   /** Common effective armor, or null when the entity uses patchwork armor. */
   readonly uniformArmor = computed<MountedArmor | null>(() => {
+    if (this.explicitPatchworkArmor()) return null;
     const layout = this.armorLayout();
     return layout
       ? uniformLocationComponent(layout, this.armorLocations, (left, right) => left.equals(right))
       : null;
   });
-  /** Patchwork is derived from heterogeneous effective location armor. */
+  /** Native Patchwork remains meaningful even when its location materials currently match. */
   readonly hasPatchworkArmor = computed(() =>
     this.armorLayout() !== null && this.uniformArmor() === null
   );
@@ -452,9 +455,16 @@ export abstract class BaseEntity implements EntityTechnology {
       .map(([location]) => location),
   ));
 
-  protected readonly allowsImplicitClanCase = computed<boolean>(()=>{
-    return this.techBase() === 'Clan';
-  });
+  /** Family eligibility; ProtoMeks explicitly exclude automatic CASE. */
+  protected readonly allowsImplicitClanCase = computed<boolean>(() => true);
+
+  /** TM errata p. 210: the internal structure determines automatic Clan CASE, not mixed tech alone. */
+  supportsAutomaticClanCaseAt(location: string): boolean {
+    if (!this.allowsImplicitClanCase()) return false;
+    const structure = this.structureByLocation().get(location) ?? this.uniformStructureMaterial();
+    const techBase = structure?.techBase;
+    return (techBase && techBase !== 'All' ? techBase : this.techBase()) === 'Clan';
+  }
 
   static readonly #NO_IMPLICIT_CLAN_CASE = new Set<string>();
 
@@ -472,7 +482,8 @@ export abstract class BaseEntity implements EntityTechnology {
       if (!equipment || isStandardCaseEquipment(equipment) || isCaseIIEquipment(equipment)) continue;
       if (!this.isMountedEquipmentExplosive(mount)) continue;
       for (const location of mount.getOccupiedLocations()) {
-        if (location !== 'Unallocated' && !protectedLocations.has(location) && !optedOut.has(location)) {
+        if (location !== 'Unallocated' && this.supportsAutomaticClanCaseAt(location)
+          && !protectedLocations.has(location) && !optedOut.has(location)) {
           locations.add(location);
         }
       }
@@ -495,7 +506,7 @@ export abstract class BaseEntity implements EntityTechnology {
       return this.getLinkedMount(mount)?.equipment instanceof WeaponEquipment;
     }
     if (equipment instanceof WeaponEquipment && [
-      'AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'PAC',
+      'AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC',
     ].includes(equipment.ammoType)) return false;
     if (equipment instanceof MiscEquipment && isBlueShieldEquipment(equipment)) return false;
     return equipment.isExplosive();
@@ -512,7 +523,7 @@ export abstract class BaseEntity implements EntityTechnology {
       if (!equipment || isStandardCaseEquipment(equipment)) continue;
       if (!this.isMountedEquipmentExplosive(mount)) continue;
       for (const location of mount.getOccupiedLocations()) {
-        if (location !== 'Unallocated' && !optedOut.has(location)) locations.add(location);
+        if (location !== 'Unallocated' && this.supportsAutomaticClanCaseAt(location) && !optedOut.has(location)) locations.add(location);
       }
     }
     return locations;
@@ -560,7 +571,7 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   setLocationMetadata(location: string, metadata: EntityLocationMetadata): void {
-    if (!this.locationOrder.includes(location)) {
+    if (!this.validLocations.has(location)) {
       throw new Error(`Unknown location "${location}"`);
     }
     const next = new Map(this.#locationMetadata());
@@ -577,7 +588,7 @@ export abstract class BaseEntity implements EntityTechnology {
       else next.set(location, updated);
     }
     for (const location of locations) {
-      if (!this.locationOrder.includes(location)) throw new Error(`Unknown location "${location}"`);
+      if (!this.validLocations.has(location)) throw new Error(`Unknown location "${location}"`);
       next.set(location, { ...next.get(location), clanCaseOptOut: true });
     }
     this.#locationMetadata.set(next);
@@ -1362,11 +1373,19 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Install one effective armor definition at every armor-bearing location. */
   setUniformArmor(armor: MountedArmor): void {
+    this.explicitPatchworkArmor.set(false);
     this.armorLayout.set(withUniformLocationComponent(armor));
+  }
+
+  /** Keep native patchwork construction without inventing a different location material. */
+  enablePatchworkArmor(): void {
+    if (!this.armorLayout()) throw new Error(`No armor material installed for ${this.entityType}`);
+    this.explicitPatchworkArmor.set(true);
   }
 
   /** Initialize entity families whose Java model has no location armor material. */
   protected clearArmorMaterial(): void {
+    this.explicitPatchworkArmor.set(false);
     this.armorLayout.set(null);
   }
 

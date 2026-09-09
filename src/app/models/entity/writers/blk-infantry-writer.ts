@@ -9,6 +9,7 @@ import {
   writeFluffBlocks,
   writeEmbeddedImages,
   writeSource,
+  writeManualBV,
   writeBlkPreamble,
 } from './building-block-writer';
 import { encodeEquipmentLine } from './equipment-encoder';
@@ -64,6 +65,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
 
   // ── Section 6: Source ──
   writeSource(w, entity);
+  writeManualBV(w, entity);
 
   // ── Section 7: Infantry-specific tail fields ──
   w.addBlock('squad_size', entity.squadSize());

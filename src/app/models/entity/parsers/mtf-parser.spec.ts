@@ -20,6 +20,19 @@ const STANDARD_ARMOR = new ArmorEquipment({
 const STANDARD_ARMOR_REGISTRY = equipmentRegistry({});
 
 describe('MTF parser identity', () => {
+  it('preserves an earlier original era and treats an era equal to introduction as unset', () => {
+    const source = minimalMtf().replace('Config:Biped', 'Config:Biped\nera:3050\noriginal era:2750');
+    const entity = parseMtf(source, new ParseContext('oem.mtf', STANDARD_ARMOR_REGISTRY));
+    expect(entity.originalBuildYear()).toBe(2750);
+    expect(writeMtf(entity)).toContain('original era:2750');
+    const sameYear = parseMtf(source.replace('original era:2750', 'original era:3050'),
+      new ParseContext('same-year.mtf', STANDARD_ARMOR_REGISTRY));
+    expect(sameYear.originalBuildYear()).toBe(-1);
+    entity.originalBuildYear.set(entity.year());
+    expect(writeMtf(entity)).not.toContain('original era:');
+    expect(writeMtf(sameYear)).not.toContain('original era:');
+  });
+
   it('bounds untrusted MTF source before parsing it', () => {
     const oversized = `chassis:${'x'.repeat(8 * 1024 * 1024)}`;
 

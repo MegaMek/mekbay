@@ -11,7 +11,7 @@ import { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
 import { InfantryEntity } from '../../entities/infantry/infantry-entity';
 import { MekEntity } from '../../entities/mek/mek-entity';
 import { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
-import { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
+import { isVehicleEntity } from '../entity-type-guards';
 import { getMekLegLocations, isQuadMekConfig } from '../../types/mek';
 import { BV_MOVEMENT_CALCULATION } from '../../types';
 import { getPpcCapacitorBV } from '../equipment-bv';
@@ -486,7 +486,6 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 }
 
 export class CombatVehicleBVCalculator extends BVCalculator {
-  declare readonly entity: VehicleEntity;
 
   protected override processTypeModifier(): void {
     const before = this.defensiveValue;
@@ -526,7 +525,7 @@ export class CombatVehicleBVCalculator extends BVCalculator {
   protected override isNominalRear(mount: EntityMountedEquipment): boolean {
     // MegaMek compares inherited Tank turret indices. On a superheavy those
     // indices correspond to Rear Left and Rear, not its actual turret(s).
-    const excluded = this.entity.isSuperHeavy()
+    const excluded = isVehicleEntity(this.entity) && this.entity.isSuperHeavy()
       ? ['Rear Left', 'Rear']
       : ['Turret', 'Front Turret', 'Rear Turret'];
     return !excluded.includes(mount.location) && super.isNominalRear(mount);

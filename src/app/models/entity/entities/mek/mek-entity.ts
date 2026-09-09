@@ -3,6 +3,8 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
+import { firstCriticalSlots } from '../../utils/critical-slot-allocation';
+import type { MountPlacement } from '../../types/equipment';
 import { EquipmentRegistry } from '../../../equipment-lookup';
 import { AmmoEquipment, MiscEquipment } from '../../../equipment.model';
 import { modularArmorMovementPenalty } from '../../../modular-armor.model';
@@ -200,6 +202,7 @@ export abstract class MekEntity extends BaseEntity {
   hasFullHeadEjectionSystem = signal(false);
   hasRiscHeatSinkOverrideKit = signal(false);
   private readonly structureDonors = signal<ReadonlyMap<MekLocation, MekStructureDonor>>(new Map());
+  private readonly explicitHybridStructure = signal(false);
 
   /**
    * Set of armored system slot keys: "LOC:INDEX" (e.g. "HD:0", "CT:3").
@@ -227,10 +230,33 @@ export abstract class MekEntity extends BaseEntity {
 
   isSuperHeavy = computed(() => this.tonnage() > 100);
 
-  /** Hybrid is derived from effective material-or-tonnage differences. */
-  readonly hasHybridStructure = computed(() => this.uniformStructure() === null);
+  /** FrankenMek construction may start with identical donor materials and tonnages. */
+  readonly hasHybridStructure = computed(() => this.explicitHybridStructure() || this.uniformStructure() === null);
   /** Material-only heterogeneity used by MTF's `structure:Hybrid` marker. */
   readonly hasMixedStructureMaterials = computed(() => this.uniformStructureMaterial() === null);
+
+  /** Native donor provenance, material and mass all participate in leg matching. */
+  readonly hasMismatchedFrankenMekLegs = computed(() => {
+    if (!this.hasHybridStructure()) return false;
+    const legs = this.locationOrder.filter(location => this.locationIsLeg(location));
+    const first = legs[0];
+    if (!first) return false;
+    const structure = this.structureAt(first);
+    const donor = this.structureDonorAt(first);
+    return legs.slice(1).some(location => {
+      const other = this.structureDonorAt(location);
+      return !structure.equals(this.structureAt(location))
+        || (donor?.name ?? '').trim() !== (other?.name ?? '').trim()
+        || (donor?.unitType ?? '').trim() !== (other?.unitType ?? '').trim();
+    });
+  });
+
+  readonly hasMismatchedTonnageFrankenMekLegs = computed(() => this.hasHybridStructure()
+    && new Set(this.locationOrder.filter(location => this.locationIsLeg(location))
+      .map(location => this.structureAt(location).tonnage)).size > 1);
+
+  readonly frankenMekPilotingModifier = computed(() => this.hasMismatchedTonnageFrankenMekLegs() ? 2
+    : this.hasMismatchedFrankenMekLegs() ? 1 : 0);
 
   /**
    * Whether this Mek has an Industrial structure type.
@@ -240,8 +266,13 @@ export abstract class MekEntity extends BaseEntity {
   );
 
   override setUniformStructure(structure: MountedStructure): void {
+    this.explicitHybridStructure.set(false);
     super.setUniformStructure(structure);
     this.structureDonors.set(new Map());
+  }
+
+  enableHybridStructure(): void {
+    this.explicitHybridStructure.set(true);
   }
 
   override setStructureAt(location: string, structure: MountedStructure): void {
@@ -766,6 +797,46 @@ export abstract class MekEntity extends BaseEntity {
     return grid;
   });
 
+  /** Pack logical equipment blocks upwards, preserving the fixed system template.
+   * The optional order changes only this location, including its part of a split mount.
+   * Returns a plan so construction can preview exactly the same layout it commits.
+   */
+  planEquipmentOrder(location: string, order?: readonly string[], mounts: readonly EntityMountedEquipment[] = this.equipment()): Map<string, readonly MountPlacement[]> {
+    const capacity = location === 'HD' || this.locationIsLeg(location) ? 6 : 12;
+    const systems = this.getSystemSlotsForLocation(location);
+    let free = Array.from({ length: capacity }, (_, index) => index).filter(index => systems[index]?.type !== 'system');
+    const local = mounts.filter(mount => mount.placements?.some(p => p.location === location))
+      .sort((a, b) => Math.min(...a.placements!.filter(p => p.location === location).map(p => p.slotIndex))
+        - Math.min(...b.placements!.filter(p => p.location === location).map(p => p.slotIndex)));
+    if (order) local.sort((a, b) => order.indexOf(a.mountId) - order.indexOf(b.mountId));
+    const result = new Map<string, readonly MountPlacement[]>();
+    // Native superheavy designs can share a slot; keep those mounts together.
+    const shared = new Map<string, number[]>();
+    for (const mount of local) {
+      const previous = mount.placements!.filter(p => p.location === location).map(p => p.slotIndex).sort((a, b) => a - b);
+      const key = previous.join(',');
+      const shareable = previous.every(index => {
+        const slot = this.criticalSlotGrid().get(location as MekLocation)?.[index];
+        return slot?.type === 'equipment' && slot.mounts.length > 1 && slot.mounts.some(item => item.mountId === mount.mountId);
+      });
+      const slots = (shareable ? shared.get(key) : undefined) ?? firstCriticalSlots(free, previous.length, mount.equipment?.isSpreadable);
+      if (slots.length !== previous.length) throw new Error(`${mount.displayName(true)} needs ${previous.length} contiguous critical slots in ${location}.`);
+      if (shareable) shared.set(key, slots);
+      free = free.filter(index => !slots.includes(index));
+      result.set(mount.mountId, [...mount.placements!.filter(p => p.location !== location), ...slots.map(slotIndex => ({ location, slotIndex }))]);
+    }
+    return result;
+  }
+
+  arrangeEquipment(location: string, order?: readonly string[]): void {
+    const plan = this.planEquipmentOrder(location, order);
+    this.updateEquipment(mounts => mounts.map(mount => {
+      const placements = plan.get(mount.mountId);
+      return placements && mount.allocation.kind === 'location'
+        ? mount.clone({ allocation: { ...mount.allocation, placements } }) : mount;
+    }));
+  }
+
   // ── Abstract ──────────────────────────────────────────────────────────
 
   abstract get chassisConfig(): MekConfig;
@@ -876,7 +947,7 @@ export abstract class MekEntity extends BaseEntity {
    * Entries at a given index mean "this slot is reserved for this system."
    * Remaining indices (up to MEK_SLOTS_PER_LOCATION) are empty.
    */
-  protected getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
+  getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
     switch (loc) {
       case 'HD': {
         const layout = buildHeadSystemLayout(this.mountedCockpit());

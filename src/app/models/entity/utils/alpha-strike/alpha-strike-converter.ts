@@ -174,7 +174,7 @@ function writeConversionReport(
   report.addEmptyLine().addSubHeader('Basic Info:')
     .addLine('Chassis:', entity.chassis())
     .addLine('Model:', entity.model())
-    .addLine('MUL ID:', String(entity.mulId()))
+    .addLine('MUL ID:', String(entity.mulId() ?? ''))
     .addLine('Unit Role:', entity.role())
     .addLine('Unit Type:', alphaStrikeUnitTypeName(stats.TP), stats.TP)
     .addLine('Size:', alphaStrikeSizeDescription(stats.TP, stats.SZ), String(stats.SZ))

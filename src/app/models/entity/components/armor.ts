@@ -16,8 +16,8 @@
  * - Resolved ArmorEquipment from the equipment database
  * - Tech rating override for BLK output
  *
- * Patchwork is deliberately not represented here. It is derived from the
- * effective armor installed at each entity location.
+ * Patchwork is an entity construction mode, not a material. Each location
+ * still carries an ordinary MountedArmor, even if every material matches.
  */
 
 import { ArmorEquipment } from '../../equipment.model';

@@ -38,7 +38,7 @@ import {
 // InfantryEntity - conventional infantry platoons
 // ============================================================================
 
-export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 30;
+export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 36;
 
 export class InfantryEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {

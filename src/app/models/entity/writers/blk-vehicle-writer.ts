@@ -62,7 +62,7 @@ export function writeBlkVehicle(entity: VehicleEntity): string {
   writeEngine(w, entity);
 
   // 7. Armor: armor_type, armor_tech_rating, armor_tech_level
-  writeArmorBlocks(w, entity);
+  writeArmorBlocks(w, entity, entity.armorLocations);
 
   // 8. internal_type (only if not Standard)
   writeInternalType(w, entity);

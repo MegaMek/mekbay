@@ -67,7 +67,7 @@ export class ProtoMekEntity extends BaseEntity {
     return [];
   }
 
-  protected override mountedEquipmentContributesStaticTech(equipment: Equipment): boolean {
+  override mountedEquipmentContributesStaticTech(equipment: Equipment): boolean {
     // MegaMek's context-free BLK load resets the built-in EI to Off. The
     // separate interface-cockpit system advancement still contributes.
     return !isElectronicInterfaceEquipment(equipment);
@@ -219,8 +219,11 @@ export class ProtoMekEntity extends BaseEntity {
   ): Map<string, number> {
     const maxArmor = new Map<string, number>();
     for (const [loc, isVal] of structureValues) {
-      // Torso can have front + rear (max = IS x 2 total)
-      maxArmor.set(loc, loc === 'Torso' ? isVal * 2 : isVal * 2);
+      // TestProtoMek.maxArmorFactor: the head, arms and main gun have special limits.
+      maxArmor.set(loc, loc === 'Head' ? 2 + Math.floor(this.tonnage() / 2)
+        : loc === 'Main Gun' ? (this.hasMainGun() ? isVal * 3 : 0)
+        : loc.endsWith('Arm') ? (this.isQuad() ? 0 : this.tonnage() < 6 ? 2 : this.tonnage() < 10 ? 4 : 6)
+        : loc === 'Body' ? 0 : isVal * 2);
     }
     return maxArmor;
   }

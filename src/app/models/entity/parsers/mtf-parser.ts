@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { normalizeMulId } from '../utils/mul-id';
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
 import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
@@ -208,7 +209,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.model.set(header.model);
   entity.mulId.set(header.mulId);
   entity.year.set(header.era);
-  entity.originalBuildYear.set(header.originalEra);
+  entity.originalBuildYear.set(header.originalEra === header.era ? -1 : header.originalEra);
   entity.source.set(header.source.map(source => ctx.resolveSourcebook(source)));
   entity.published.set(header.published.map(source => ctx.resolveSourcebook(source)));
   entity.rulesLevel.set(header.rulesLevel);
@@ -266,6 +267,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   });
   entity.setUniformStructure(globalStructure);
   if (header.isFrankenMek) {
+    entity.enableHybridStructure();
     for (const rawLocation of entity.locationOrder) {
       const location = rawLocation as MekLocation;
       const locationData = header.frankenMekLocations.get(location);
@@ -348,7 +350,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       armor: armorEquipment,
     }));
 
-    // Patchwork is represented internally by effective per-location armor.
+    if (armorType === 'PATCHWORK') entity.enablePatchworkArmor();
+    // The native layout marker and effective per-location materials are independent facts.
     if (armorType === 'PATCHWORK' && header.patchworkTypes.size > 0) {
       for (const [label, typeStr] of header.patchworkTypes) {
         const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
@@ -583,6 +586,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   // ── Fluff & BV ──
   entity.fluff.set(header.fluff);
+  entity.fluffImageEncoded.set(header.fluffImage);
+  entity.iconEncoded.set(header.icon);
   if (header.manualBV > 0) entity.manualBV.set(header.manualBV);
   if (header.generator) entity.generator = header.generator;
 
@@ -610,7 +615,7 @@ interface DecodedMtfSource {
   uuid: string;
   chassis: string;
   model: string;
-  mulId: number;
+  mulId: number | null;
   config: string;
   techBase: EntityTechBase;
   mixedTech: boolean;
@@ -646,6 +651,8 @@ interface DecodedMtfSource {
   faction: FactionCode;
   clanCaseOptOut: string;
   fluff: EntityFluff;
+  fluffImage: string;
+  icon: string;
   manualBV: number;
   generator?: string;
   clanName: string;
@@ -658,7 +665,7 @@ interface DecodedMtfSource {
 function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
   const h: DecodedMtfSource = {
     uuid: '',
-    chassis: '', model: '', mulId: -1, config: 'Biped',
+    chassis: '', model: '', mulId: null, config: 'Biped',
     techBase: 'IS', mixedTech: false, techBaseRaw: 'IS',
     era: 3025, originalEra: -1, source: [], published: [], rulesLevel: 2, role: '',
     isOmni: false, isFrankenMek: false,
@@ -669,7 +676,7 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
     quirks: [], weaponQuirks: [],
     locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
     faction: 'None', clanCaseOptOut: '',
-    fluff: {}, manualBV: 0, generator: undefined,
+    fluff: {}, fluffImage: '', icon: '', manualBV: 0, generator: undefined,
     clanName: '', lamType: '', motiveType: 'None' as MotiveType, rawHeatSinks: '',
     frankenMekLocations: new Map(),
   };
@@ -733,7 +740,7 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
       case 'generator': h.generator = value; break;
       case 'chassis':   h.chassis = value; break;
       case 'model':     h.model = value; break;
-      case 'mul id':    h.mulId = parseMtfInteger(value, 'mul id', ctx, -1); break;
+      case 'mul id':    h.mulId = normalizeMulId(value); break;
       case 'config': {
         const lowerValue = value.toLowerCase();
         h.config = value;
@@ -830,6 +837,8 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
       case 'lam':      h.lamType = value; break;
       case 'motive':   h.motiveType = decodeMotiveType(value); break;
       case 'faction':  h.faction = factionFromAbbr(value); break;
+      case 'fluffimage': h.fluffImage = value; break;
+      case 'icon': h.icon = value; break;
       case 'clancaseoptedoutlocs': h.clanCaseOptOut = value; break;
       default: {
         if (applyMtfFluffField(h.fluff, key, value)) break;

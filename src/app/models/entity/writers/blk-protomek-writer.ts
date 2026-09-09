@@ -14,6 +14,7 @@ import {
   writeFluffBlocks,
   writeInternalType,
   writeSource,
+  writeManualBV,
   writeTonnage,
   writeTransporters,
 } from './building-block-writer';
@@ -84,6 +85,7 @@ export function writeBlkProtoMek(entity: ProtoMekEntity): string {
   // ── Section 11-13: Fluff / Source / Tonnage ──
   writeFluffBlocks(w, entity.fluff());
   writeSource(w, entity);
+  writeManualBV(w, entity);
   writeTonnage(w, entity);
 
   writeEmbeddedImages(w, entity);

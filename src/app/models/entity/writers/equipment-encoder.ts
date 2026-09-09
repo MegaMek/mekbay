@@ -8,6 +8,8 @@ import { EntityMountedEquipment } from '../types';
  * Options for equipment line encoding.
  */
 export interface EncodeEquipmentOptions {
+  /** Building facings follow MegaMek's clockwise 0=N ordering. */
+  buildingFacing?: boolean;
   /**
    * When true, suppresses location-implied suffixes (`(T)`, `(R)`)
    * that are already conveyed by the BLK block structure.
@@ -61,7 +63,12 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
 
   // Turret suffix - standard (T) is implied by the BLK location block,
   // but sponson (ST) and pintle (PT) appear in location blocks and need the suffix.
-  if (!blk) {
+  if (options?.buildingFacing) {
+    // BLKStructureFile uses BLKFile's suffix parser: facing, turret, OmniPod, shots, size.
+    if (mount.facing !== undefined) name += [' (F)', ' (FR)', ' (RR)', ' (R)', ' (RL)', ' (FL)'][mount.facing] ?? '';
+    if (mount.turretType) name += ' ' + turretSuffix(mount.turretType);
+    else if (mount.turretMounted) name += ' (T)';
+  } else if (!blk) {
     if (mount.turretType) {
       name += turretSuffix(mount.turretType);
     } else if (mount.turretMounted) {
@@ -106,7 +113,7 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
   }
 
   // VGL facing
-  if (mount.facing !== undefined) {
+  if (mount.facing !== undefined && !options?.buildingFacing) {
     name += facingSuffix(mount.facing);
   }
 

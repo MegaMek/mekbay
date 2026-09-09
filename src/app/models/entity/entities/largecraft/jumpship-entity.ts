@@ -222,12 +222,7 @@ export class JumpShipEntity extends LargeAeroEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    const maxPerLoc = this.tonnage();
-    const maxArmor = new Map<string, number>();
-    for (const loc of this.locationOrder) {
-      maxArmor.set(loc, maxPerLoc);
-    }
-    return maxArmor;
+    return new Map(this.armorLocations.map(loc => [loc, this.maximumArmorPoints()]));
   }
 
   // ── Validation ────────────────────────────────────────────────────────

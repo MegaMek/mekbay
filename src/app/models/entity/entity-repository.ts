@@ -19,6 +19,7 @@ export interface NativeEntitySource {
     readonly sourceHash: SourceHash;
     readonly bytes: ArrayBuffer;
     readonly file?: UnitFileName;
+    readonly isCustom?: true;
 }
 
 export interface LoadedEntity {
@@ -113,6 +114,19 @@ export class EntityRepository {
 
     public clear(): void {
         this.cache.clear();
+    }
+
+    /** Saved revisions share canonical entities by UUID/hash, just like core sources. Editors detach before changing them. */
+    public async loadSavedSource(source: NativeEntitySource): Promise<LoadedEntity> {
+        const captured = captureSource(source)!;
+        validateSource(captured);
+        const key = cacheKey(captured.uuid, captured.sourceHash);
+        const existing = this.cache.get(key);
+        if (existing) return existing;
+        const loading = Promise.resolve().then(() => loadedEntity(captured, this.equipmentRegistry, this.parseOptions));
+        this.cache.set(key, loading);
+        try { return await loading; }
+        catch (error) { if (this.cache.get(key) === loading) this.cache.delete(key); throw error; }
     }
 
     private async loadSource(

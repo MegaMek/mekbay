@@ -38,7 +38,7 @@ export class LamEntity extends BipedMekEntity {
     );
   }
 
-  protected override getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
+  override getSystemSlotsForLocation(loc: string): CriticalSlotView[] {
     const base = super.getSystemSlotsForLocation(loc);
 
     if (loc === 'HD') {

@@ -145,7 +145,7 @@ export function parseBlkVehicle(bb: BuildingBlock, ctx: ParseContext): VehicleEn
 
   // ── Armor ──
   if (entity.isSupportVehicle()) parseBlkSupportArmor(bb, entity, ctx);
-  else parseBlkArmor(bb, entity, ctx);
+  else parseBlkArmor(bb, entity, ctx, { patchworkLocs: entity.armorLocations });
 
   if (bb.exists('armor')) {
     const ints = bb.getDataAsInt('armor');

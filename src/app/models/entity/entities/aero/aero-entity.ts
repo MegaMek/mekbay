@@ -84,7 +84,7 @@ export abstract class AeroEntity extends BaseEntity {
     return this.techBase() === 'IS' ? super.omniTechAdvancement() : null;
   }
 
-  protected override usesLargeEngineTechnology(): boolean {
+  override usesLargeEngineTechnology(): boolean {
     return false;
   }
 
@@ -220,14 +220,8 @@ export abstract class AeroEntity extends BaseEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    // Rough max: tonnage determines total max armor points
-    // Per-location maximums are fairly permissive for aero
-    const maxPerLoc = this.tonnage() * 2;
-    const maxArmor = new Map<string, number>();
-    for (const loc of this.locationOrder) {
-      maxArmor.set(loc, maxPerLoc);
-    }
-    return maxArmor;
+    // Fighters and small craft have a total armor budget, not per-facing tonnage caps.
+    return new Map(this.armorLocations.map(loc => [loc, this.maximumArmorPoints()]));
   }
 
   // ── Validation ────────────────────────────────────────────────────────

@@ -40,6 +40,8 @@ export {
 } from './mek-system-tech-data';
 
 export {
+  DROPSHIP_COLLAR_TECH,
+  getSupportComponentTech,
   getAerospaceFighterConstructionTech,
   getBattleArmorConstructionTech,
   getCombatVehicleConstructionTech,

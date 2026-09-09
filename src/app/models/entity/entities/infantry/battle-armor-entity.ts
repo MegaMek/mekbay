@@ -12,6 +12,7 @@ import {
 import {
   type MovementCalculationOptions,
   type EntityDamageLocation,
+  type EntityMountedEquipment,
   type UnitSubtype,
   EntityType,
   EntityValidationMessage,
@@ -70,10 +71,6 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   declaredWeightClass = signal<WeightClass>('Medium');
   chassisType = signal<string>('Biped');
   propulsionMP = signal<number>(0);
-  apMounts = signal<number>(0);
-  dwpCapacity = signal<number>(0);
-  sswmCapacity = signal<number>(0);
-  costKC = signal<number>(0);
 
   /** Quad BA turret config, e.g. "Modular:3" or "Standard:2" */
   turretConfig = signal<string>('');
@@ -228,6 +225,12 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   //  LOCATION OVERRIDES
   // ═══════════════════════════════════════════════════════════════════════════
 
+  /** Construction uses one-based troopers; squad-support gear reserves space and mass on every suit. */
+  getConstructionEquipmentForTrooper(trooper: number): readonly EntityMountedEquipment[] {
+    return this.equipment().filter(mount => mount.allocation.kind === 'location'
+      && (mount.location === 'Squad' || mount.location === `Trooper ${trooper}` || mount.isSSWM));
+  }
+
   override get locationOrder(): readonly string[] {
     const locs: string[] = ['Squad'];
     for (let i = 1; i <= this.trooperCount(); i++) {
@@ -273,10 +276,10 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   ): Map<string, number> {
     // BA armor points depend on weight class
     const maxPerTrooper: Partial<Record<WeightClass, number>> = {
-      'Ultra Light': 2, 'Light': 5, 'Medium': 8, 'Heavy': 10, 'Assault': 14,
+      'Ultra Light': 2, 'Light': 6, 'Medium': 10, 'Heavy': 14, 'Assault': 18,
     };
     const mx = maxPerTrooper[this.weightClass()] ?? 8;
-    const maxArmor = new Map<string, number>();
+    const maxArmor = new Map<string, number>([['Squad', mx]]);
     for (let i = 1; i <= this.trooperCount(); i++) {
       maxArmor.set(`Trooper ${i}`, mx);
     }

@@ -13,10 +13,10 @@ describe('native codec capabilities', () => {
       'Mek', 'Aero', 'ConvFighter', 'FixedWingSupport', 'SmallCraft', 'DropShip',
       'JumpShip', 'WarShip', 'SpaceStation', 'Tank', 'Naval', 'VTOL',
       'SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank', 'Infantry',
-      'BattleArmor', 'ProtoMek', 'HandheldWeapon', 'GunEmplacement', 'BuildingEntity',
+      'BattleArmor', 'ProtoMek', 'HandheldWeapon', 'BuildingEntity',
     ];
     expected.forEach(type => expect(isNativeEntityType(type)).toBeTrue());
-    for (const invalid of [undefined, null, 0, {}, 'FutureMysteryUnit', 'Mek ']) {
+    for (const invalid of [undefined, null, 0, {}, 'FutureMysteryUnit', 'GunEmplacement', 'Mek ']) {
       expect(isNativeEntityType(invalid)).toBeFalse();
     }
   });
@@ -25,7 +25,7 @@ describe('native codec capabilities', () => {
     expect(nativeCapabilityForUnitTypeAlias('BattleMek')).toEqual(jasmine.objectContaining({
       family: 'mek', format: 'mtf',
     }));
-    expect(nativeCapabilityForUnitTypeAlias('GunEmplacement')).toEqual(jasmine.objectContaining({
+    expect(nativeCapabilityForUnitTypeAlias('BuildingEntity')).toEqual(jasmine.objectContaining({
       family: 'static-emplacement', format: 'blk',
     }));
     expect(nativeCapabilityForUnitTypeAlias('Tank')).toEqual(jasmine.objectContaining({
@@ -40,5 +40,6 @@ describe('native codec capabilities', () => {
 
   it('default-denies unknown UnitType values', () => {
     expect(nativeCapabilityForUnitTypeAlias('FutureMysteryUnit')).toBeUndefined();
+    expect(nativeCapabilityForUnitTypeAlias('GunEmplacement')).toBeUndefined();
   });
 });
