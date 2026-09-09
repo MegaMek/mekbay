@@ -41,10 +41,7 @@ export interface PortraitPickerDialogData { readonly portrait?: string; }
                             <button class="category-title" type="button" [id]="'portrait-category-' + $index"
                                 [attr.aria-expanded]="isOpen(category.name)" [attr.aria-controls]="'portrait-choices-' + $index"
                                 (click)="toggleCategory(category.name)">
-                                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10"
-                                    xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isOpen(category.name)" aria-hidden="true">
-                                    <path d="M0 2l5 6 5-6z" />
-                                </svg>
+                                <span class="chevron" [class.collapsed]="!isOpen(category.name)" aria-hidden="true"></span>
                                 <span>{{ category.name }}</span><span class="count">{{ category.portraits.length }}</span>
                             </button>
                             @if (isOpen(category.name)) {
@@ -78,8 +75,6 @@ export interface PortraitPickerDialogData { readonly portrait?: string; }
         .category-title { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 8px;
             border: 0; background: transparent; color: var(--text-color); cursor: pointer; text-align: left; font: inherit; }
         .category-title:hover { background: #ffffff0a; }
-        .chevron { color: var(--text-color-secondary); transition: transform 0.15s ease; flex-shrink: 0; }
-        .chevron.collapsed { transform: rotate(-90deg); }
         .count { margin-left: auto; color: var(--text-color-secondary); font-size: .8em; }
         .portrait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; padding: 8px 0 16px; }
         .portrait-choice { display: flex; align-items: center; justify-content: center; padding: 3px; cursor: pointer;
