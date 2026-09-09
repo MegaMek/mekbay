@@ -149,18 +149,14 @@
     content: '';
     display: inline-block;
     vertical-align: middle;
-    width: 0;
-    height: 0;
+    width: 12px;
+    height: 12px;
     margin-left: 2px;
     margin-right: -12px;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
+    background-color: currentColor;
+    mask: var(--chevron-image) center / contain no-repeat;
 }
 
 .mb-data-table.sort-asc .mb-data-table-header-cell.is-sortable.sort-active::after {
-    border-bottom: 5px solid currentColor;
-}
-
-.mb-data-table.sort-desc .mb-data-table-header-cell.is-sortable.sort-active::after {
-    border-top: 5px solid currentColor;
+    transform: rotate(180deg);
 }
