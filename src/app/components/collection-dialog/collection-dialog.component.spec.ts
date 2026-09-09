@@ -47,13 +47,28 @@ describe('CollectionDialogComponent', () => {
     function selectOrganization(component: CollectionDialogComponent, organizationUnits: UnitSummary[]): void {
         const counts = new Map<string, number>();
         for (const unit of organizationUnits) {
-            counts.set(`name:${unit.name}`, 1);
+            counts.set(`uuid:${unit.uuid}`, 1);
             counts.set(`chassis:${TagsService.getChassisTagKey(unit)}`, 1);
         }
 
         component.selectedOrganizationId.set('test-organization');
         component.organizationUnitCounts.set(counts);
     }
+
+    it('keeps same-name custom collection rows and quick-add selections separate by UUID', () => {
+        const first = createEmptyUnit({ name: 'Custom collision', isCustom: true, _nameTags: [{ tag: 'Owned', quantity: 1 }] });
+        const second = createEmptyUnit({ name: first.name, isCustom: true, _nameTags: [{ tag: 'Owned', quantity: 1 }] });
+        units = [first, second];
+        const fixture = TestBed.createComponent(CollectionDialogComponent);
+        const component = fixture.componentInstance;
+        expect(new Set(component.allRows().map(row => row.key))).toEqual(new Set([`uuid:${first.uuid}`, `uuid:${second.uuid}`]));
+        component.selectedQuickAddTargetType.set('name');
+        component.selectedAddModelUuids.set(new Set([second.uuid]));
+        expect(component.quickAddTargets().map(target => target.unit)).toEqual([second]);
+        component.selectedRows.set(new Set([`uuid:${first.uuid}`]));
+        expect(component.selectedCount()).toBe(1);
+        fixture.destroy();
+    });
 
     it('places untagged TO&E units after tagged entries with a separator', () => {
         const nameTagged = createEmptyUnit({
@@ -96,22 +111,22 @@ describe('CollectionDialogComponent', () => {
             { title: 'Charlie C-1', tags: 0 },
             { title: 'Delta D-1', tags: 0 },
         ]);
-        expect(component.firstUntaggedRowKey()).toBe(`name:${untagged.name}`);
+        expect(component.firstUntaggedRowKey()).toBe(`uuid:${untagged.uuid}`);
 
         const separator = fixture.nativeElement.querySelector('.untagged-separator') as HTMLElement;
         expect(separator.querySelector('.untagged-separator-label')?.textContent?.trim()).toBe('UNTAGGED UNITS');
         expect(fixture.nativeElement.querySelectorAll('.collection-row .tag-list').length).toBe(2);
 
-        component.selectedRows.set(new Set([`name:${nameTagged.name}`]));
+        component.selectedRows.set(new Set([`uuid:${nameTagged.uuid}`]));
         const selectAllUntagged = separator.querySelector('.untagged-select-all-control input') as HTMLInputElement;
         selectAllUntagged.checked = true;
         selectAllUntagged.dispatchEvent(new Event('change'));
         fixture.detectChanges();
 
         expect(component.selectedRows()).toEqual(new Set([
-            `name:${nameTagged.name}`,
-            `name:${untagged.name}`,
-            `name:${secondUntagged.name}`,
+            `uuid:${nameTagged.uuid}`,
+            `uuid:${untagged.uuid}`,
+            `uuid:${secondUntagged.uuid}`,
         ]));
         expect(component.allVisibleUntaggedSelected()).toBeTrue();
 
@@ -119,7 +134,7 @@ describe('CollectionDialogComponent', () => {
         selectAllUntagged.dispatchEvent(new Event('change'));
         fixture.detectChanges();
 
-        expect(component.selectedRows()).toEqual(new Set([`name:${nameTagged.name}`]));
+        expect(component.selectedRows()).toEqual(new Set([`uuid:${nameTagged.uuid}`]));
 
         component.unitTextFilter.set('Charlie');
         fixture.detectChanges();

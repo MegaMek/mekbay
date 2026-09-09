@@ -54,7 +54,7 @@ interface ChassisOption {
 
 interface ModelOption {
     label: string;
-    key: string;
+    key: UnitSummary['uuid'];
     unit: UnitSummary;
 }
 
@@ -129,7 +129,7 @@ export class CollectionDialogComponent {
     readonly addQuantity = signal(1);
     readonly quickAddOpen = signal(false);
     readonly selectedAddChassisKey = signal('');
-    readonly selectedAddModelNames = signal<Set<string>>(new Set<string>());
+    readonly selectedAddModelUuids = signal<Set<UnitSummary['uuid']>>(new Set());
     readonly selectedQuickAddTargetType = signal<CollectionRowType | null>(null);
     readonly statusMessage = signal('');
     readonly pendingRemovedTags = signal<Record<string, PendingRemovedTag>>({});
@@ -441,13 +441,13 @@ export class CollectionDialogComponent {
 
     readonly quickAddTargets = computed((): QuickAddTarget[] => {
         if (this.selectedQuickAddTargetType() === 'name') {
-            const selectedNames = this.selectedAddModelNames();
-            if (selectedNames.size === 0) {
+            const selectedUuids = this.selectedAddModelUuids();
+            if (selectedUuids.size === 0) {
                 return [];
             }
 
             return this.dataService.getUnits()
-                .filter(unit => selectedNames.has(unit.name))
+                .filter(unit => selectedUuids.has(unit.uuid))
                 .sort(compareUnitsByName)
                 .map(unit => ({
                     rowType: 'name',
@@ -821,7 +821,7 @@ export class CollectionDialogComponent {
     selectSuggestion(option: ChassisOption): void {
         this.addChassisText.set(option.inputLabel);
         this.selectedAddChassisKey.set(option.key);
-        this.selectedAddModelNames.set(new Set<string>());
+        this.selectedAddModelUuids.set(new Set());
         this.selectedQuickAddTargetType.set('chassis');
     }
 
@@ -833,14 +833,14 @@ export class CollectionDialogComponent {
 
         this.addChassisText.set(option.inputLabel);
         this.selectedAddChassisKey.set(option.key);
-        this.selectedAddModelNames.set(new Set<string>());
+        this.selectedAddModelUuids.set(new Set());
         this.selectedQuickAddTargetType.set('chassis');
     }
 
     toggleModelSuggestion(option: ModelOption, event: Event): void {
         const checked = (event.target as HTMLInputElement).checked;
         let selectedCount = 0;
-        this.selectedAddModelNames.update(current => {
+        this.selectedAddModelUuids.update(current => {
             const next = new Set(current);
             if (checked) {
                 next.add(option.key);
@@ -865,7 +865,7 @@ export class CollectionDialogComponent {
     }
 
     isSelectedAddModelOption(option: ModelOption): boolean {
-        return this.selectedQuickAddTargetType() === 'name' && this.selectedAddModelNames().has(option.key);
+        return this.selectedQuickAddTargetType() === 'name' && this.selectedAddModelUuids().has(option.key);
     }
 
     toggleRow(row: CollectionRow, event: Event): void {
@@ -1261,7 +1261,7 @@ export class CollectionDialogComponent {
 
     private clearQuickAddTargetSelection(): void {
         this.selectedAddChassisKey.set('');
-        this.selectedAddModelNames.set(new Set<string>());
+        this.selectedAddModelUuids.set(new Set());
         this.selectedQuickAddTargetType.set(null);
     }
 
@@ -1270,7 +1270,7 @@ export class CollectionDialogComponent {
             return `chassis:${TagsService.getChassisTagKey(unit)}`;
         }
 
-        return `name:${unit.name}`;
+        return `uuid:${unit.uuid}`;
     }
 
     private getRemovalKey(rowKey: string, tag: string): string {
@@ -1329,7 +1329,7 @@ export class CollectionDialogComponent {
     private toModelOption(unit: UnitSummary, includeChassis: boolean): ModelOption {
         return {
             label: includeChassis ? this.getQuickAddUnitDisplayName(unit) : (unit.model || '(Standard)'),
-            key: unit.name,
+            key: unit.uuid,
             unit
         };
     }

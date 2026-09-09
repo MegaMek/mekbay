@@ -266,28 +266,7 @@
 }
 
 .header-icon-button {
-    display: inline-flex;
-    align-items: center;
     align-self: flex-start;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--text-color-secondary);
-    cursor: pointer;
-    transition: color 0.2s ease;
-
-    svg {
-        width: 20px;
-        height: 20px;
-    }
-
-    &:hover,
-    &:focus-visible {
-        color: var(--bt-yellow);
-    }
 }
 
 .select-all-control,
@@ -691,16 +670,6 @@
 
 .quick-add-content {
     padding: 0 8px 8px;
-}
-
-.chevron {
-    color: var(--text-color-secondary);
-    transition: transform 0.15s ease;
-    flex-shrink: 0;
-
-    &.collapsed {
-        transform: rotate(-90deg);
-    }
 }
 
 .quick-add-fields {

@@ -56,7 +56,7 @@ const OVERFLOW_OVERLAY_KEY = 'panel-tab-overflow-menu';
                                         @if (isActiveTabInOverflow()) {
                                             <span class="overflow-active-label">{{ activeTab() }}</span>
                                         }
-                                        <span class="overflow-icon">▾</span>
+                                        <span class="chevron chevron-down overflow-icon" aria-hidden="true"></span>
                                     </button>
                                 }
                             } @else {

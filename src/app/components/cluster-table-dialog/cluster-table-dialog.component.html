@@ -1,7 +1,7 @@
 <div class="cluster-dialog glass framed-borders has-shadow" [class.history-open]="historyOpen()">
     <header class="dialog-header">
         <h2>Reference Tables</h2>
-        <button type="button" class="close-button" aria-label="Close" (click)="close()">×</button>
+        <button type="button" class="close-button" aria-label="Close" (click)="close()"></button>
     </header>
 
     <nav #tableSelector class="table-selector" aria-label="Reference table type" (keydown.escape)="closeTableGroupMenu()">
@@ -20,7 +20,7 @@
                 >
                     <span>{{ tableGroupButtonLabel(group) }}</span>
                     @if (group.options.length > 1) {
-                    <span class="selector-chevron" [class.expanded]="expandedGroupId() === group.id" aria-hidden="true"></span>
+                    <span class="chevron" [class.collapsed]="expandedGroupId() !== group.id" aria-hidden="true"></span>
                     }
                 </button>
 
