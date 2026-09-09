@@ -134,6 +134,10 @@ export class UnitCardExpandedComponent {
         return this.isForceUnit(u) ? u.getSummary() : u;
     });
 
+    readonly loadIssuesTooltip = computed<TooltipLine[]>(() => this.resolvedUnit().loadIssues.map(issue => ({
+        value: `${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.message}`,
+    })));
+
     /** Resolved alias - from ForceUnit */
     readonly alias = computed<string | undefined>(() => {
         const u = this.unit();
