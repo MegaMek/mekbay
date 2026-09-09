@@ -24,7 +24,7 @@ export interface PrintOptionsDialogData {
     <div class="wide-dialog print-dialog">
         <h2 class="wide-dialog-title">Print Options</h2>
         <div class="wide-dialog-body">
-            <p class="message">These settings only apply to this print job.</p>
+            <p class="message">Changes are saved. Paper size and center panel also apply to the record sheets.</p>
 
             <div class="option-grid">
                 <div class="option-col">
@@ -48,6 +48,9 @@ export interface PrintOptionsDialogData {
                             <option value="letter">Letter</option>
                             <option value="a4">A4</option>
                         </select>
+                    </div>
+                    <div class="description">
+                        <p>For printer output, also select the matching paper size in the browser's print dialog.</p>
                     </div>
                 </div>
 
@@ -111,9 +114,12 @@ export interface PrintOptionsDialogData {
                         <select id="printMargin" class="bt-select option-select"
                             [value]="printOptions().printMargin"
                             (change)="onPrintMarginChange($event)">
-                            <option value="none">None</option>
+                            <option value="none">None (recommended)</option>
                             <option value="browserDefined">Handled by browser</option>
                         </select>
+                    </div>
+                    <div class="description">
+                        <p>None is recommended for record sheets. Summaries always include a small page margin. If headers and footers appear, turn them off in the browser's print dialog.</p>
                     </div>
                 </div>
             </div>
@@ -198,9 +204,7 @@ export class PrintOptionsDialogComponent {
     private data = inject<PrintOptionsDialogData>(DIALOG_DATA);
     private optionsService = inject(OptionsService);
 
-    protected readonly printOptions = signal<PrintAllOptions>({
-        ...this.optionsService.options().printAllOptions,
-    });
+    protected readonly printOptions = computed(() => this.optionsService.options().printAllOptions);
     protected readonly isPrinting = signal(false);
 
     protected readonly isCBT = computed(() => this.data.gameSystem === GameSystem.CBT);
@@ -208,27 +212,27 @@ export class PrintOptionsDialogComponent {
 
     protected onBooleanChange(key: 'clean' | 'printPilotData' | 'ASPrintPageBreakOnGroups', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';
-        this.printOptions.update(current => ({ ...current, [key]: value }));
+        void this.optionsService.setPrintOption(key, value);
     }
 
     protected onCenterPanelChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['recordSheetCenterPanelContent'];
-        this.printOptions.update(current => ({ ...current, recordSheetCenterPanelContent: value }));
+        void this.optionsService.setPrintOption('recordSheetCenterPanelContent', value);
     }
 
     protected onPaperSizeChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['paperSize'];
-        this.printOptions.update(current => ({ ...current, paperSize: value }));
+        void this.optionsService.setPrintOption('paperSize', value);
     }
 
     protected onASPrintCardSizeChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['ASPrintCardSize'];
-        this.printOptions.update(current => ({ ...current, ASPrintCardSize: value }));
+        void this.optionsService.setPrintOption('ASPrintCardSize', value);
     }
 
     protected onPrintMarginChange(event: Event): void {
         const value = (event.target as HTMLSelectElement).value as PrintAllOptions['printMargin'];
-        this.printOptions.update(current => ({ ...current, printMargin: value }));
+        void this.optionsService.setPrintOption('printMargin', value);
     }
 
     protected onClose(): void {
@@ -248,9 +252,7 @@ export class PrintOptionsDialogComponent {
         if (this.isPrinting()) return;
         this.isPrinting.set(true);
         try {
-            const printOptions = this.printOptions();
-            await this.optionsService.setOption('printAllOptions', printOptions);
-            await action(printOptions);
+            await action(this.printOptions());
         } finally {
             this.isPrinting.set(false);
         }
