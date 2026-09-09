@@ -33,6 +33,7 @@ import { decodeRemoteLoadForceEntry } from './remote-load-force-entry.model';
 import { decodeForceFromStorage,encodeForceForStorage } from './runtime/force-storage-codec';
 
 import { OptionsService } from '../services/options.service';
+import { ForceCustomDesignsService } from '../services/force-custom-designs.service';
 import { MM_DATA_UNIT_PROVIDER_ID,asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from './cbt-ruleset.model';
 import { hasMekRuntime,hasNonMekRuntime } from './cbt-unit-snapshot';
@@ -51,11 +52,26 @@ createDirectMekRuntimeFixture,
 } from './runtime/testing/direct-mek-runtime-fixture';
 import type { UnitCover } from './unit-cover.model';
 import type { UnitSummary } from './unit-summary.model';
+import { parseEntity } from './entity/parse-entity';
+import { encodeNativeEntity } from './entity/write-entity';
+import { matchNativeMounts } from './entity/utils/native-mount-correspondence';
+import { makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
+import type { NativeUnitSourceHandle } from './native-unit-source-handle';
 
 const dataService = {
     getFactionById: () => null,
     getEraById: () => null,
 } as unknown as DataService;
+
+function refitCopy(entity: BaseEntity, uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-000000000078')) {
+    const format = entity.entityType === 'Mek' ? 'mtf' : 'blk';
+    const draft = parseEntity(encodeNativeEntity(entity), `refit.${format}`, entity.getEquipmentRegistry()).entity;
+    draft.uuid.set(uuid);
+    draft.model.set('Refitted');
+    const source: NativeUnitSourceHandle = { file: makeUnitFileName(uuid, format), format,
+        bytes: new TextEncoder().encode(encodeNativeEntity(draft)).buffer as ArrayBuffer };
+    return { draft, source, origins: matchNativeMounts(entity, draft) };
+}
 
 const optionsService = {
     options: () => ({
@@ -217,6 +233,8 @@ async function readyCloneForce(): Promise<{
                 ? optionsService
             : token === ToastService
                 ? jasmine.createSpyObj<ToastService>('ToastService', ['showToast'])
+            : token === ForceCustomDesignsService
+                ? { checkNative: async () => true, resetIfEmbedded: () => {} }
                 : token === LoggerService
                     ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
                     : null,
@@ -240,6 +258,117 @@ async function readyCloneForce(): Promise<{
     };
     return { force, armorFaceId, createTargetForce, reload };
 }
+
+describe('CBTForce construction refits', () => {
+    it('refuses a requested design update while the unit is damaged', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        await expectAsync(force.applyConstruction(member, { entity: draft, source, origins }, undefined, true))
+            .toBeRejectedWithError(/Fully repair/u);
+        expect(force.getUnitSnapshot(member.id)!.entity).toBe(before.entity);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+    });
+
+    it('previews a repair without mutating the force, then commits it with the core identity and force undo intact', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [member, other] = force.getCBTMembers();
+        const before = force.getUnitSnapshot(member.id)!;
+        const untouched = force.getUnitSnapshot(other.id)!;
+        const changes = { context: before.editContext, commands: [{ type: 'repair-all' as const }] };
+        const preview = await force.previewConstructionRuntime(member, changes);
+        expect(preview.changed).toBeTrue();
+        expect(preview.snapshot.query.remainingArmor(armorFaceId)).toBe(before.index.armorFaces.get(armorFaceId)!.maximumPoints);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+        const updated = await force.applyConstruction(member, undefined, changes);
+        const after = force.getUnitSnapshot(member.id)!;
+        expect(updated.entity).toBe(member.entity);
+        expect(after.uuid).toBe(before.uuid);
+        expect(after.query.remainingArmor(armorFaceId)).toBe(preview.snapshot.query.remainingArmor(armorFaceId));
+        expect(force.getUnitSnapshot(other.id)!.state).toBe(untouched.state);
+        expect(force.getC3State(member.id)).toBe('operational');
+        await force.undoRuntimeCommand();
+        expect(force.getUnitSnapshot(member.id)!.query.remainingArmor(armorFaceId)).toBe(before.query.remainingArmor(armorFaceId));
+    });
+
+    it('commits a staged repair and custom refit together', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        const changes = { context: before.editContext, commands: [{ type: 'repair-all' as const }] };
+        const updated = await force.applyConstruction(member, { entity: draft, source, origins }, changes);
+        expect(updated.entity.uuid()).toBe(draft.uuid());
+        expect(force.getUnitSnapshot(member.id)!.query.remainingArmor(armorFaceId)).toBe(before.index.armorFaces.get(armorFaceId)!.maximumPoints);
+    });
+
+    it('rejects stale runtime edits without overwriting new combat damage or applying a partial refit', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const changes = { context: force.getUnitSnapshot(member.id)!.editContext, commands: [{ type: 'repair-all' as const }] };
+        await force.previewConstructionRuntime(member, changes);
+        await force.dispatchUnitCommand(member.id, { type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'committed' });
+        const current = force.getUnitSnapshot(member.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        await expectAsync(force.applyConstruction(member, { entity: draft, source, origins }, changes)).toBeRejectedWithError(/force unit changed/u);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(current.state);
+        expect(force.getUnitSnapshot(member.id)!.entity).toBe(member.entity);
+    });
+
+    it('atomically switches only the selected core instance to a custom design and keeps its roster, crew, C3 and damage', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [member, copy] = force.getCBTMembers();
+        const roster = force.queryCanonicalRoster();
+        const personnel = force.personnel();
+        const before = force.getUnitSnapshot(member.id)!;
+        const other = force.getUnitSnapshot(copy.id)!;
+        const { draft, source, origins } = refitCopy(member.entity);
+        const updated = await force.applyConstruction(member, { entity: draft, source, origins });
+        expect(updated.id).toBe(member.id);
+        expect(updated.entity).toBe(draft);
+        expect(updated.entity.uuid()).not.toBe(member.entity.uuid());
+        expect(force.getUnitSnapshot(member.id)!.query.remainingArmor(armorFaceId)).toBe(before.query.remainingArmor(armorFaceId));
+        expect(force.getUnitSnapshot(member.id)!.crewAssignment).toEqual(before.crewAssignment);
+        expect(force.getUnitSnapshot(member.id)!.nativeSource?.bytes).toEqual(source.bytes);
+        expect(force.getUnitSnapshot(copy.id)!.entity).toBe(other.entity);
+        expect(force.getUnitSnapshot(copy.id)!.state).toBe(other.state);
+        expect(force.personnel()).toEqual(personnel);
+        const updatedRoster = force.queryCanonicalRoster();
+        if (roster.kind === 'available' && updatedRoster.kind === 'available') {
+            expect(updatedRoster.snapshot.groups).toEqual(roster.snapshot.groups);
+        }
+        expect(force.getC3State(member.id)).toBe('operational');
+        expect((await force.serialize()).cbt!.units.find(entry => entry.instanceId === member.id)!.unit.entity).toBe(draft.uuid());
+    });
+
+    it('can refit the same custom UUID again through the newly published member', async () => {
+        const { force } = await readyCloneForce();
+        const initial = force.getCBTMembers()[0];
+        const first = refitCopy(initial.entity);
+        const member = await force.applyConstruction(initial, { entity: first.draft, source: first.source, origins: first.origins });
+        const second = refitCopy(member.entity, member.entity.uuid());
+        second.draft.model.set('Second refit');
+        second.source = { ...second.source, bytes: new TextEncoder().encode(encodeNativeEntity(second.draft)).buffer as ArrayBuffer };
+        const updated = await force.applyConstruction(member, { entity: second.draft, source: second.source, origins: second.origins });
+        expect(updated.id).toBe(initial.id);
+        expect(updated.entity.uuid()).toBe(member.entity.uuid());
+        expect(updated.entity.model()).toBe('Second refit');
+        await expectAsync(force.applyConstruction(initial, { entity: first.draft, source: first.source, origins: first.origins })).toBeRejectedWithError(/changed or was removed/u);
+    });
+
+    it('rejects unsupported family changes without publishing a partial force replacement', async () => {
+        const { force } = await readyCloneForce();
+        const member = force.getCBTMembers()[0];
+        const before = force.getUnitSnapshot(member.id)!;
+        const revision = force.getCBTForceV2Revision();
+        const invalid = refitCopy(new TestTankEntity());
+        await expectAsync(force.applyConstruction(member, { entity: invalid.draft, source: invalid.source, origins: new Map() })).toBeRejectedWithError(/retain the unit family/u);
+        expect(force.getCBTMember(member.id)).toBe(member);
+        expect(force.getUnitSnapshot(member.id)!.state).toBe(before.state);
+        expect(force.getCBTForceV2Revision()).toBe(revision);
+    });
+});
 
 async function readyEntityForce(options: Readonly<{
     readonly supportsAirborne?: boolean;

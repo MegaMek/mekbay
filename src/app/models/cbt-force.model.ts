@@ -3,10 +3,14 @@
 // Author: Drake
 
 import type { HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
+import { prepareConstructionRefit, type ConstructionRefit } from './runtime/unit-construction-refit';
+import { constructionRuntimeBattleValue, constructionRuntimeSource, prepareConstructionRuntime, type ConstructionRuntimeChanges, type ConstructionRuntimePreview } from './runtime/construction-runtime';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './runtime/unit-command';
 
 import { computed,type Injector } from '@angular/core';
 import { CBTUnitService } from '../services/cbt-unit.service';
+import { ForceCustomDesignsService } from '../services/force-custom-designs.service';
+import { constructionCanUpdateDesign } from '../construction/domain/construction-repairs';
 import type { DataService } from '../services/data.service';
 import { affectedPersonnelUnitIds,planPersonnelCrewEdits } from './cbt-force-personnel';
 import { GameSystem } from './common.model';
@@ -442,6 +446,102 @@ export class CBTForce extends Force<never> {
         return this.repairMembers(null);
     }
 
+    /** Uses the same damage mapping for a draft's effective BV as the eventual save. */
+    public async previewConstructionBattleValue(
+        member: CBTForceMember, draft: ConstructionRefit['entity'], origins: ConstructionRefit['origins'], changes?: ConstructionRuntimeChanges,
+    ): Promise<{ beforeRepairs: number | null; effective: number | null }> {
+        const current = this.unitStore.cbtUnit(member.id), source = this.getUnitSnapshot(member.id);
+        const scenario = this.unitStore.scenarioRules();
+        if (member.force !== this || this.getCBTMember(member.id) !== member || !current || !source || !scenario
+            || (changes && !isUnitEditContextCurrent(changes.context, source.editContext))) {
+            throw new Error('The force unit changed. Reopen construction to preview its Battle Value.');
+        }
+        return constructionRuntimeBattleValue(current, draft, origins, changes?.commands ?? [], scenario);
+    }
+
+    /** Previews runtime edits without publishing or saving any force changes. */
+    public async previewConstructionRuntime(member: CBTForceMember, changes: ConstructionRuntimeChanges): Promise<ConstructionRuntimePreview> {
+        const current = this.unitStore.cbtUnit(member.id);
+        const source = this.getUnitSnapshot(member.id);
+        const scenario = this.unitStore.scenarioRules();
+        if (this.readOnly() || member.force !== this || this.getCBTMember(member.id) !== member
+            || !current || !source || !scenario || !isUnitEditContextCurrent(changes.context, source.editContext)) {
+            throw new Error('The force unit changed. Reopen construction before editing its runtime.');
+        }
+        const candidate = await prepareConstructionRuntime(current, changes.commands, scenario);
+        return { changes, snapshot: { ...source, ...candidate.captureRuntime() },
+            changed: constructionRuntimeSource(candidate) !== constructionRuntimeSource(current) };
+    }
+
+    /** Atomically saves runtime edits and/or switches one instance to a saved custom design. */
+    public applyConstruction(
+        member: CBTForceMember, refit?: ConstructionRefit, runtime?: ConstructionRuntimeChanges,
+        requireRepaired = false,
+    ): Promise<CBTForceMember> {
+        const capturedOrigins = new Map(refit?.origins);
+        const commands = runtime?.commands.map(command => command.type === 'repair-all' ? command : captureUnitCommand(command));
+        return this.enqueueCBTMutation(async () => {
+            if (this.readOnly()) throw new Error('This force is read-only');
+            const current = this.unitStore.cbtUnit(member.id);
+            if (member.force !== this || this.getCBTMember(member.id) !== member || !current) {
+                throw new Error('The force unit changed or was removed while construction was open');
+            }
+            if (runtime && !isUnitEditContextCurrent(runtime.context, this.getUnitSnapshot(member.id)!.editContext)) {
+                throw new Error('The force unit changed. Reopen construction before saving its runtime edits.');
+            }
+            if (!refit && !commands?.length) return member;
+            if (refit && !await this.injector.get(ForceCustomDesignsService).checkNative(this, refit.entity.uuid(), refit.source, member.id)) throw new Error('Refit cancelled.');
+            if (requireRepaired && !constructionCanUpdateDesign(this.getUnitSnapshot(member.id)!)) throw new Error('Fully repair this unit and finish pending changes before updating its design.');
+            const context = this.beginCBTForceMutation();
+            const envelope = context.previous;
+            const scenario = this.unitStore.scenarioRules();
+            if (!envelope || !scenario) throw new Error('The force runtime is not ready');
+            const fence = this.unitStore.snapshot();
+            const generation = this.captureForceOwnerGeneration();
+            const edited = commands?.length ? await prepareConstructionRuntime(current, commands, scenario) : current;
+            const prepared = refit
+                ? await prepareConstructionRefit(edited, refit.entity, refit.source, capturedOrigins, scenario)
+                : { unit: edited, componentIds: new Map([...current.getIndex().components.keys()].map(id => [id, id])) };
+            const capture = refit ? undefined : this.captureRuntimeCommandMutation([member.id]);
+            const serialized = prepared.unit.serialize();
+            const encounter = context.typedEncounterState ?? envelope.encounter;
+            const networks = encounter.networks.flatMap(network => {
+                const endpoints = network.endpoints.flatMap(endpoint => {
+                    if (endpoint.instanceId !== member.id) return [endpoint];
+                    const componentId = prepared.componentIds.get(endpoint.componentId);
+                    return componentId ? [{ ...endpoint, componentId }] : [];
+                });
+                if (endpoints.length < 2 || (network.networkType === 'c3'
+                    && !endpoints.some(endpoint => endpoint.role === 'master'))) return [];
+                return [{ ...network, endpoints }];
+            });
+            const updated = await validateSerializedCBTForceV2({ ...envelope,
+                forceRevision: nextForceRevision(envelope.forceRevision),
+                units: envelope.units.map(entry => entry.instanceId === member.id
+                    ? { ...entry, unit: serialized, stateRevision: serialized.stateRevision } : entry),
+                encounter: { ...encounter, networks },
+            });
+            if (this.readOnly() || !this.isForceOwnerGenerationCurrent(generation)
+                || !this.unitStore.isSnapshotCurrent(fence) || this.getCBTMember(member.id) !== member) {
+                throw new Error('The force changed while the refit was being prepared; save again to retry');
+            }
+            let personnel = this.prepareCBTForcePersonnel(envelope, updated);
+            const retainedCrew = prepared.unit.getIndex().crewPositions;
+            for (const assignment of this.personnel().assignments) {
+                if (assignment.unitId !== member.id || retainedCrew.has(asCrewPositionId(assignment.positionId))) continue;
+                const health = current.snapshot().crew.get(asCrewPositionId(assignment.positionId));
+                if (health) personnel = updateForcePerson(personnel, assignment.personId, { health });
+            }
+            this.commitCBTForceMutation(context, { envelope: updated, reused: false },
+                () => this.unitStore.replace(updated, new Map([[member.id, prepared.unit]])), personnel);
+            // Combat checkpoints refer to the old topology after a design change.
+            if (refit) this.session.prune(new Set([member.id]));
+            else if (capture) this.recordRuntimeCommandMutation(capture, unitHistory(RUNTIME_HISTORY_MESSAGE.EQUIPMENT_CHANGED, member.id));
+            this.emitChangedFromReservedIntent([member.id]);
+            return this.getCBTMember(member.id)!;
+        });
+    }
+
     /**
      * Rebinds force-owned Mek mechanics to the current bounded application
      * options. Runtime wrappers and persistence are replaced in one authority
@@ -681,6 +781,7 @@ export class CBTForce extends Force<never> {
                 : isCBTNonMekUnit(sourceUnit)
                     ? cloneNonMekForOwner(sourceUnit, destinationScenario)
                     : sourceUnit;
+            if (candidate.getNativeSource()?.isCustom && !await this.injector.get(ForceCustomDesignsService).checkNative(target, candidate.uuid, candidate.getNativeSource())) return rejectedUnitTransfer('PERSISTENCE_REJECTED');
             const targeting = candidate.planTargetingReconciliation(
                 target.queryInventoryControlTargetRegistry(),
             );
@@ -856,6 +957,7 @@ export class CBTForce extends Force<never> {
         let uuid: CBTDirectUnitAdmissionRequest['uuid'];
         let deployment: DeploymentConfiguration;
         let crewSkills: CBTDirectUnitAdmissionRequest['crewSkills'];
+        const customSource = request.customSource ? { ...request.customSource } : undefined;
         let initialStateProfileId: string | undefined;
         let instanceId: string;
         let targetRosterGroupId: string | undefined;
@@ -919,6 +1021,7 @@ export class CBTForce extends Force<never> {
             try {
                 candidate = await this.injector.get(CBTUnitService).create({
                     uuid,
+                    ...(customSource ? { customSource } : {}),
                     instanceId,
                     deployment,
                     scenario,
@@ -927,6 +1030,7 @@ export class CBTForce extends Force<never> {
                         ? {}
                         : { initialStateProfileId }),
                 });
+                if (candidate.getNativeSource()?.isCustom && !await this.injector.get(ForceCustomDesignsService).checkNative(this, uuid, candidate.getNativeSource())) return directAdmissionFailure('CANDIDATE_PREPARATION_FAILED', 'The custom design cannot be added to this force.');
                 if (isCBTMekUnit(candidate)) {
                     const decision = evaluateCBTMekRuntimeCapability(candidate);
                     if (decision.readiness === 'deferred') {

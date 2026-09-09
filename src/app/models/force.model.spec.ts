@@ -303,16 +303,16 @@ describe('getEraUnitValidationSummary', () => {
         const unit = createUnit(101, 'Shadow Hawk SHD-2H', 3020);
 
         const visibilityByEra = new Map<number, ReadonlySet<string>>([
-            [earlierEra.id, new Set([unit.name])],
+            [earlierEra.id, new Set([unit.uuid])],
             [selectedEra.id, new Set()],
         ]);
         const extinctByEra = new Map<number, ReadonlySet<string>>([
-            [selectedEra.id, new Set([unit.name])],
+            [selectedEra.id, new Set([unit.uuid])],
         ]);
 
         const availabilityContext: ForceAvailabilityContext = {
             source: 'megamek',
-            getUnitKey: (candidate) => candidate.name,
+            getUnitKey: (candidate) => candidate.uuid,
             getVisibleEraUnitIds: (era) => visibilityByEra.get(era.id) ?? new Set<string>(),
             getFactionUnitIds: () => new Set<string>(),
             getFactionEraUnitIds: (faction, era) => faction.id === extinctFaction.id
@@ -342,8 +342,8 @@ describe('buildEraWarningMessage', () => {
 
         const availabilityContext: ForceAvailabilityContext = {
             source: 'megamek',
-            getUnitKey: (candidate) => candidate.name,
-            getVisibleEraUnitIds: () => new Set([unit.name]),
+            getUnitKey: (candidate) => candidate.uuid,
+            getVisibleEraUnitIds: () => new Set([unit.uuid]),
             getFactionUnitIds: () => new Set<string>(),
             getFactionEraUnitIds: () => new Set<string>(),
         };

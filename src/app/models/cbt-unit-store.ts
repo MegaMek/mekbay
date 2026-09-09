@@ -5,6 +5,7 @@ import type { HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './runtime/unit-command';
 
 import { CBTUnitService } from '../services/cbt-unit.service';
+import { EntityRepositoryError } from './entity/entity-repository';
 import { redeployMekCrew,repairMekUnit,restoreMekSnapshot } from './runtime/cbt-mek-unit';
 import { redeployNonMekCrew,repairNonMekUnit,restoreNonMekUnit } from './runtime/cbt-non-mek-unit';
 import { type CBTMekUnit,type CBTNonMekUnit } from './runtime/cbt-unit';
@@ -113,12 +114,14 @@ export class CBTUnitStore {
                     entry,
                     unit: result.unit,
                 };
-            } catch {
+            } catch (error) {
+                if (error instanceof EntityRepositoryError && error.code === 'SOURCE_NOT_FOUND') return { entry, unit: null };
                 invalidStateUnitIds.add(entry.instanceId);
                 try {
                     const identity = entry.unit.entity;
                     return { entry, unit: await cbtUnits.create({
                         uuid: identity,
+                        customSource: entry.unit.customSource,
                         instanceId: entry.instanceId,
                         deployment: entry.unit.deployment.values,
                         scenario: scenarioRules,
@@ -128,6 +131,7 @@ export class CBTUnitStore {
                         const identity = entry.unit.entity;
                         return { entry, unit: await cbtUnits.create({
                             uuid: identity,
+                            customSource: entry.unit.customSource,
                             instanceId: entry.instanceId,
                             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
                             scenario: scenarioRules,
@@ -187,10 +191,18 @@ export class CBTUnitStore {
                 ? '1 unit had unreadable saved state and was reset to pristine.'
                 : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
         }
-        if (removedUnitIds.size > 0) {
-            warnings.add(removedUnitIds.size === 1
+        const unreadableCustomCount = entries.filter(entry => removedUnitIds.has(entry.instanceId)
+            && entry.unit.customSource !== undefined).length;
+        if (unreadableCustomCount > 0) {
+            warnings.add(unreadableCustomCount === 1
+                ? '1 unit had an unreadable saved custom source and was skipped.'
+                : `${unreadableCustomCount} units had unreadable saved custom sources and were skipped.`);
+        }
+        const missingCatalogCount = removedUnitIds.size - unreadableCustomCount;
+        if (missingCatalogCount > 0) {
+            warnings.add(missingCatalogCount === 1
                 ? '1 unit was not found in the catalog and was skipped.'
-                : `${removedUnitIds.size} units were not found in the catalog and were skipped.`);
+                : `${missingCatalogCount} units were not found in the catalog and were skipped.`);
         }
         const roster = Object.freeze({
             ...envelope.roster,

@@ -9,6 +9,7 @@ PickerValue,
 } from '../components/picker/picker.interface';
 import type { TooltipType } from '../components/tooltip/tooltip.component';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { PinnedCustomUnitSource } from './pinned-custom-unit-source';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
 import type { CBTUnitCommandResult,CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
@@ -77,6 +78,7 @@ export type CBTUnitTransferResult =
 
 export interface CBTDirectUnitAdmissionRequest {
     readonly uuid: UnitUuid;
+    readonly customSource?: PinnedCustomUnitSource;
     readonly deployment: DeploymentConfiguration;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
     readonly instanceId?: string;

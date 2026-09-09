@@ -8,7 +8,7 @@ import type { UnitSummary } from './unit-summary.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 export interface ForceEntryResolver {
-    getUnitByName(name: string): UnitSummary | undefined;
+    getUnitByIdentifier(identifier: string): UnitSummary | undefined;
     getUnitByUuid(uuid: UnitUuid): UnitSummary | undefined;
     getFactionById(id: number): Faction | undefined;
     getEraById(id: number): Era | undefined;

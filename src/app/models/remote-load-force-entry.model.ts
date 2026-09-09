@@ -6,6 +6,7 @@ import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog
 import { unpackUuid } from './runtime/compact-uuid';
 
 export interface RemoteLoadForceUnit {
+    embeddedCustom?: true;
     unit?: string;
     uuid?: UnitUuid;
     alias?: string;
@@ -48,6 +49,7 @@ export type RemoteLoadForceListUnitV2 = readonly [uuid: string, details?: {
     readonly commander?: true;
     readonly destroyed?: true;
     readonly vacant?: true;
+    readonly embeddedCustom?: true;
 }];
 
 export interface RemoteLoadForceListGroupV2 {
@@ -132,7 +134,7 @@ function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUni
                 throw new Error('Invalid force-list unit ' + key);
             }
         }
-        for (const key of ['commander', 'destroyed', 'vacant']) {
+        for (const key of ['commander', 'destroyed', 'vacant', 'embeddedCustom']) {
             if (details[key] !== undefined && typeof details[key] !== 'boolean') {
                 throw new Error('Invalid force-list unit ' + key);
             }
@@ -140,6 +142,7 @@ function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUni
     }
     const unit: RemoteLoadForceUnit = {
         uuid: asUnitUuid(unpackUuid(row[0], 'force-list unit UUID')),
+        ...(details?.['embeddedCustom'] === true ? { embeddedCustom: true } : {}),
         state: { destroyed: details?.['destroyed'] === true },
     };
     if (details?.['vacant'] === true) return unit;
@@ -176,6 +179,7 @@ function storedGroups(root: Record<string, unknown>, system: GameSystem): Remote
         }
         return {
             uuid: asUnitUuid(unpackUuid(unit['uuid'], 'force.units[' + index + '].uuid')),
+            ...(typeof unit['customDesign'] === 'number' || isRecord(unit['customSource']) ? { embeddedCustom: true as const } : {}),
             ...(typeof pilot?.['name'] === 'string' ? { alias: pilot['name'] } : {}),
             ...(system === GameSystem.AS ? {
                 ...(pilot ? { skill: typeof pilot['g'] === 'number' ? pilot['g'] : 4 } : {}),

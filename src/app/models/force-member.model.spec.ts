@@ -41,6 +41,40 @@ describe('CBTForceMember tactical presentation memory', () => {
 });
 
 describe('CBTForceMember record-sheet ownership', () => {
+    it('regenerates after toggling quirks and ignores pending sheets using the old option', async () => {
+        const member = createMember('unit');
+        let finishEnabled!: (pages: readonly SVGSVGElement[]) => void;
+        const older = member.loadRecordSheets(() => new Promise(resolve => finishEnabled = resolve), 'classic', 'letter', true);
+        const withoutQuirks = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const generateDisabled = jasmine.createSpy('generateDisabled').and.resolveTo([withoutQuirks]);
+        await member.loadRecordSheets(generateDisabled, 'classic', 'letter', false);
+        finishEnabled([document.createElementNS('http://www.w3.org/2000/svg', 'svg')]);
+        await older;
+        await member.loadRecordSheets(generateDisabled, 'classic', 'letter', false);
+        expect(generateDisabled).toHaveBeenCalledTimes(1);
+        expect(member.recordSheet()).toBe(withoutQuirks);
+        const withQuirks = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        await member.loadRecordSheets(async () => [withQuirks], 'classic', 'letter', true);
+        expect(member.recordSheet()).toBe(withQuirks);
+    });
+
+    it('invalidates the paper-format cache and ignores late results for the old format', async () => {
+        const member = createMember('unit');
+        let finishLetter!: (pages: readonly SVGSVGElement[]) => void;
+        const older = member.loadRecordSheets(() => new Promise(resolve => finishLetter = resolve), 'classic', 'letter');
+        const a4 = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const generateA4 = jasmine.createSpy('generateA4').and.resolveTo([a4]);
+        await member.loadRecordSheets(generateA4, 'classic', 'a4');
+        finishLetter([document.createElementNS('http://www.w3.org/2000/svg', 'svg')]);
+        await older;
+        await member.loadRecordSheets(generateA4, 'classic', 'a4');
+        expect(generateA4).toHaveBeenCalledTimes(1);
+        expect(member.recordSheet()).toBe(a4);
+        const letter = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        await member.loadRecordSheets(async () => [letter], 'classic', 'letter');
+        expect(member.recordSheet()).toBe(letter);
+    });
+
     it('regenerates sheets when the selected pip layout changes', async () => {
         const member = createMember('unit');
         const canon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

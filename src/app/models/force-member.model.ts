@@ -11,6 +11,8 @@ import type { ForceViewerBVPVDisplayDamage, RecordSheetPipLayout } from './optio
 import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 import { effectiveEntityPilotingSkill } from './entity/utils/battle-value/skill-facts';
 
+import type { RecordSheetPageFormat } from '../utils/sheets/record-sheet-layout';
+
 const MAX_RECORD_SHEET_PAGES = 2;
 
 /** A direct CBT member. Its force owns the entity, rules, and sparse runtime. */
@@ -22,6 +24,9 @@ export class CBTForceMember {
     #recordSheets: readonly SVGSVGElement[] = [];
     #recordSheetLoad: Promise<readonly SVGSVGElement[]> | null = null;
     #recordSheetPipLayout: RecordSheetPipLayout = 'classic';
+    #recordSheetPageFormat: RecordSheetPageFormat = 'letter';
+    #recordSheetShowQuirks = true;
+    #recordSheetArtwork: string | null = null;
     readonly #recordSheetIndex = signal(0);
     readonly #runtime = signal<Readonly<{
         owner: object | null;
@@ -94,9 +99,15 @@ export class CBTForceMember {
     public loadRecordSheets(
         create: () => Promise<readonly SVGSVGElement[]>,
         pipLayout: RecordSheetPipLayout = 'classic',
+        pageFormat: RecordSheetPageFormat = 'letter',
+        showQuirks = true,
+        fluffImageUrl: string | null = null,
     ): Promise<readonly SVGSVGElement[]> {
-        if (this.#recordSheetPipLayout !== pipLayout) {
+        if (this.#recordSheetPipLayout !== pipLayout || this.#recordSheetPageFormat !== pageFormat || this.#recordSheetShowQuirks !== showQuirks || this.#recordSheetArtwork !== fluffImageUrl) {
+            this.#recordSheetArtwork = fluffImageUrl;
+            this.#recordSheetShowQuirks = showQuirks;
             this.#recordSheetPipLayout = pipLayout;
+            this.#recordSheetPageFormat = pageFormat;
             this.#recordSheets = [];
             this.#recordSheetLoad = null;
         }

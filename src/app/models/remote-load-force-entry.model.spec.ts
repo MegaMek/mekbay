@@ -6,6 +6,16 @@ import { decodeRemoteLoadForceEntry } from './remote-load-force-entry.model';
 import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 describe('remote force-list wire decoder', () => {
+    it('keeps the embedded marker in both cloud and local previews without loading source bodies', () => {
+        const base = { version: 2, instanceId: 'force', timestamp: 0, type: GameSystem.CBT, name: 'Custom force' };
+        const uuid = 'AZ9nZw3Le7iZL67wggL14g';
+        const cloud = decodeRemoteLoadForceEntry({ ...base, groups: [{ units: [[uuid, { embeddedCustom: true }]] }] });
+        const local = decodeRemoteLoadForceEntry({ ...base, units: [{ uuid, customDesign: 0 }], groups: [{ unitIndices: [0] }] });
+        expect(cloud.groups![0].units[0].embeddedCustom).toBeTrue();
+        expect(local.groups![0].units[0].embeddedCustom).toBeTrue();
+        expect(JSON.stringify(local)).not.toContain('source');
+    });
+
     it('decodes compact V2 unit summaries without full force state', () => {
         const decoded = decodeRemoteLoadForceEntry({
             version: 2, instanceId: 'force-1', timestamp: Date.parse('2026-09-01T00:00:00.000Z'),

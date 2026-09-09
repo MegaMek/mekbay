@@ -15,7 +15,7 @@ import type {
 } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 10 as const;
+export const UNIT_SUMMARY_VERSION = 13 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -138,12 +138,13 @@ export interface UnitSummary {
   hash: string;
   /** Projection revision used to decide whether this row must be regenerated. */
   summaryVersion: number;
-  /** Recoverable problems found while loading the source entity. */
+  /** Source parsing diagnostics and construction validation errors, exposed by the semantic issues filter. */
   loadIssues: readonly EntityLoadIssue[];
 
+  /** Catalog name, not a unique identity. Custom units must be referenced by UUID. */
   name: string;
-  /** MegaMek Unit List (MUL) database reference. Not unique; -1 means absent. */
-  id: number;
+  /** MegaMek Unit List (MUL) database reference. Not unique; null means absent. */
+  id: number | null;
   chassis: string;
   baseChassis: string;
   clanName?: string;

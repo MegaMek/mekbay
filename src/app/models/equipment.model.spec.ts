@@ -1,9 +1,20 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { createEquipment, formatEquipmentRulesRefs } from './equipment.model';
+import { createEquipment, formatEquipmentName, formatEquipmentRulesRefs } from './equipment.model';
 
 describe('equipment model', () => {
+    it('formats ammo labels with optional counts without duplicating Ammo', () => {
+        for (const shortName of ['MML 7/LRM', 'MML 7/LRM Ammo']) {
+            const ammo = createEquipment({ id: 'mml-ammo', name: 'MML 7 LRM Ammo', shortName, type: 'ammo' });
+            expect(formatEquipmentName(ammo)).toBe('MML 7/LRM Ammo');
+            expect(formatEquipmentName(ammo, 17)).toBe('MML 7/LRM Ammo (17)');
+            expect(formatEquipmentName(ammo, 0)).toBe('MML 7/LRM Ammo (0)');
+        }
+        const weapon = createEquipment({ id: 'ppc', name: 'Particle Projector Cannon', shortName: 'PPC', type: 'weapon' });
+        expect(formatEquipmentName(weapon)).toBe('PPC');
+    });
+
     it('keeps and formats structured equipment rules references', () => {
         const rulesRefs = [
             { book: 'TO:AUE', page: 181 },

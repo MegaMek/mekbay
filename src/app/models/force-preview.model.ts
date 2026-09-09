@@ -30,6 +30,7 @@ import { assignedForcePerson, type ForcePerson } from './force-personnel';
 
 export interface ForcePreviewUnit {
     unit: UnitSummary | undefined;
+    embeddedCustom?: true;
     alias?: string;
     destroyed: boolean;
     skill?: number;
@@ -89,7 +90,7 @@ function resolveSerializedUnitId(id: string | undefined): string {
 
 function createForcePreviewGroups(
     rawGroups: readonly RemoteLoadForceGroup[] | undefined,
-    getUnitByName: (name: string) => UnitSummary | undefined,
+    getUnitByIdentifier: (name: string) => UnitSummary | undefined,
     getUnitByUuid?: (uuid: UnitUuid) => UnitSummary | undefined,
 ): ForcePreviewGroup[] {
     if (!Array.isArray(rawGroups)) {
@@ -100,7 +101,7 @@ function createForcePreviewGroups(
         name: group.name,
         formationId: group.formationId,
         units: (group.units ?? []).map((unit: RemoteLoadForceUnit) =>
-            createForcePreviewUnit(unit, getUnitByName, getUnitByUuid)),
+            createForcePreviewUnit(unit, getUnitByIdentifier, getUnitByUuid)),
     }));
 }
 
@@ -140,14 +141,15 @@ export function isForcePreviewEntry(value: unknown): value is ForcePreviewEntry 
 
 export function createForcePreviewUnit(
     raw: RemoteLoadForceUnit,
-    getUnitByName: (name: string) => UnitSummary | undefined,
+    getUnitByIdentifier: (name: string) => UnitSummary | undefined,
     getUnitByUuid?: (uuid: UnitUuid) => UnitSummary | undefined,
 ): ForcePreviewUnit {
     const previewUnit: ForcePreviewUnit = {
         unit: raw.uuid !== undefined
             ? getUnitByUuid?.(raw.uuid)
-            : raw.unit === undefined ? undefined : getUnitByName(raw.unit),
+            : raw.unit === undefined ? undefined : getUnitByIdentifier(raw.unit),
         destroyed: raw.state?.destroyed ?? false,
+        ...(raw.embeddedCustom ? { embeddedCustom: true } : {}),
         lockKey: uuidv7(),
     };
 
@@ -227,6 +229,7 @@ function createCBTForcePreviewGroups(
             const identity = entry.unit.entity;
             const preview: ForcePreviewUnit = {
                 unit: resolver.getUnitByUuid(identity),
+                ...(entry.unit.customSource ? { embeddedCustom: true } : {}),
                 destroyed: entry.unit.destroyed === true,
                 lockKey: member.instanceId,
             };
@@ -270,7 +273,7 @@ export function createForcePreviewEntry(
         timestamp: raw.timestamp,
         groups: createForcePreviewGroups(
             raw.groups,
-            (name) => resolver.getUnitByName(name),
+            (name) => resolver.getUnitByIdentifier(name),
             (uuid) => resolver.getUnitByUuid(uuid),
         ),
     });

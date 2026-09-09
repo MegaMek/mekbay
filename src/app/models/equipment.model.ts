@@ -1032,7 +1032,7 @@ export class StructureEquipment extends Equipment {
 }
 
 // ============================================================================
-// Factory Functions
+// Formatting and Factory Functions
 // ============================================================================
 
 const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData) => Equipment> = {
@@ -1042,6 +1042,16 @@ const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData)
     armor: ArmorEquipment,
     structure: StructureEquipment
 };
+
+/** Short equipment label, with an explicit ammo designation and optional shot count. */
+export function formatEquipmentName(equipment: Equipment, ammoShots?: number): string {
+    let name = equipment.shortName || equipment.name || equipment.id;
+    if (equipment instanceof AmmoEquipment) {
+        if (!/\bammo\b/i.test(name)) name += ' Ammo';
+        if (ammoShots !== undefined) name += ` (${ammoShots})`;
+    }
+    return name;
+}
 
 /** Creates the appropriate Equipment subclass based on type */
 export function createEquipment(data: EquipmentRawData): Equipment {

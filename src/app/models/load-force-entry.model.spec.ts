@@ -13,7 +13,7 @@ describe('createForcePreviewEntry', () => {
     const resolvedFaction = { id: 1, name: 'Mercenary' } as any;
     const resolvedEra = { id: 3025, name: 'Succession Wars' } as any;
     const resolver = {
-        getUnitByName: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
+        getUnitByIdentifier: (name: string) => name === 'Atlas AS7-D' ? resolvedUnit : undefined,
         getUnitByUuid: () => resolvedUnit,
         getUnitByIdentity: () => resolvedUnit,
         getFactionById: (id: number) => id === 1 ? resolvedFaction : undefined,

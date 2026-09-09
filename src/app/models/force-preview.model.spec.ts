@@ -15,7 +15,7 @@ import {
 import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 describe('createForcePreviewUnitFromSerializedUnit', () => {
-    const getUnitByName = (name: string) => ({
+    const getUnitByIdentifier = (name: string) => ({
         name,
         type: 'Mek',
         subtype: name === 'Phoenix Hawk LAM' ? 'Land-Air BattleMek' : 'BattleMek',
@@ -41,7 +41,7 @@ describe('createForcePreviewUnitFromSerializedUnit', () => {
             },
         } as any;
 
-        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByName,
+        const result = createForcePreviewUnitFromSerializedUnit(serializedUnit, getUnitByIdentifier,
             { id: 'person:ace', name: 'Ace', gunnery: 3, commander: true });
 
         expect(result).toEqual(jasmine.objectContaining({
@@ -181,7 +181,7 @@ describe('force preview helpers', () => {
             },
             groups: [{ id: 'group', units: [{ id: 'unit', uuid: asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2') }] }],
         }, {
-            getUnitByName: () => undefined, getUnitByUuid: () => undefined,
+            getUnitByIdentifier: () => undefined, getUnitByUuid: () => undefined,
             getFactionById: () => undefined, getEraById: () => undefined,
         });
 

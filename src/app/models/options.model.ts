@@ -21,6 +21,7 @@ export const OPTION_VALUES = {
     recordSheetPipLayout: ['classic', 'distributed', 'rail'],
     unitSearchExpandedViewLayout: ['panel-list-filters', 'filters-list-panel'],
     unitSearchViewMode: ['list', 'card', 'chassis', 'table'],
+    factionAvailabilityViewMode: ['list', 'grid'],
     forceOverviewViewMode: ['expanded', 'compact', 'table'],
     cbtUnitViewMode: ['sheet', 'tactical'],
     ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
@@ -86,6 +87,7 @@ export type ForceViewerBVPVDisplay = OptionValue<'forceViewerBVPVDisplay'>;
 export type ForceViewerBVPVDisplayDamage = OptionValue<'forceViewerBVPVDisplayDamage'>;
 
 export interface CBTOptionalRules {
+    quirks: boolean;
     floatingCriticals: boolean;
     forcedWithdrawal: boolean;
     extremeRange: boolean;
@@ -126,6 +128,7 @@ export interface Options {
     unitSearchExpandedViewLayout: OptionValue<'unitSearchExpandedViewLayout'>;
     showFilteredComponents: boolean;
     unitSearchViewMode: UnitSearchViewMode;
+    factionAvailabilityViewMode: OptionValue<'factionAvailabilityViewMode'>;
     forceOverviewViewMode: OptionValue<'forceOverviewViewMode'>;
     ASUseAutomations: boolean;
     ASVehiclesCriticalHitTable: OptionValue<'ASVehiclesCriticalHitTable'>;
