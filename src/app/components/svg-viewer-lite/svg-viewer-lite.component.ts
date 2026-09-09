@@ -3,15 +3,18 @@
 // Author: Drake
 
 import { UnitNameService } from '../../services/unit-name.service';
-import { Component, ChangeDetectionStrategy, DestroyRef, signal, computed, effect, input, inject, viewChild, type ElementRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, signal, computed, effect, input, inject, untracked, viewChild, type ElementRef } from '@angular/core';
 
 import type { UnitSummary } from '../../models/unit-summary.model';
+import type { BaseEntity } from '../../models/entity/base-entity';
 import { OptionsService } from '../../services/options.service';
 import { LoggerService } from '../../services/logger.service';
 import { SvgExportUtil } from '../../utils/svg-export.util';
 import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 import { NativeEntityService } from '../../services/native-entity.service';
 import { RecordSheetSourceService } from '../../services/record-sheet-source.service';
+import type { PrintAllOptions } from '../../models/print-options.model';
+import { printRecordSheetPages } from '../../utils/record-sheet-print.util';
 
 type Point = { x: number; y: number };
 
@@ -33,12 +36,25 @@ export class SvgViewerLiteComponent {
     private destroyRef = inject(DestroyRef);
     private optionsService = inject(OptionsService);
     private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
+    private readonly showQuirks = computed(() => this.optionsService.options().CBTOptionalRules?.quirks !== false);
     private fluffImages = inject(UnitFluffImageService);
     private nativeEntities = inject(NativeEntityService);
     private recordSheets = inject(RecordSheetSourceService);
 
     unit = input<UnitSummary | null>(null);
+    /** An admitted force design can differ from the latest catalog entry with the same UUID. */
+    nativeEntity = input<BaseEntity | null>(null);
+    readonly fluffImageUrl = input<string | null>();
     zoomable = input<boolean>(false);
+    paperSize = input<PrintAllOptions['paperSize']>();
+    private readonly sheetPaperSize = computed(() => this.paperSize() ?? this.optionsService.options().printAllOptions.paperSize);
+    /** Fit the first full page at 100%, or retain the details viewer's fit-width behavior. */
+    fitMode = input<'width' | 'page'>('width');
+
+    private readonly loadingState = signal(false);
+    private readonly loadErrorState = signal<string | null>(null);
+    readonly loading = this.loadingState.asReadonly();
+    readonly loadError = this.loadErrorState.asReadonly();
 
     containerRef = viewChild.required<ElementRef<HTMLDivElement>>('container');
     contentRef = viewChild.required<ElementRef<HTMLDivElement>>('content');
@@ -49,6 +65,7 @@ export class SvgViewerLiteComponent {
 
     private svgs = signal<SVGSVGElement[]>([]);
     private svgsAttached = signal(false);
+    readonly ready = computed(() => this.svgsAttached() && !this.loading() && this.svgs().length > 0);
     private scale = 1;
     private readonly maxScale = this.maxZoomPercent / 100;
     private readonly doubleTapZoomScale = 2.5;
@@ -68,7 +85,7 @@ export class SvgViewerLiteComponent {
     // Reactive effect: load sheet when unit changes
     constructor() {
         effect(() => {
-            const unit = this.unit();
+            const unit = this.nativeEntity() ?? this.unit();
             if (!unit) return;
             for (const svg of this.svgs()) this.unitNames.applyToRecordSheet(svg, unit);
         });
@@ -81,22 +98,35 @@ export class SvgViewerLiteComponent {
             });
 
             const u = this.unit();
+            const nativeEntity = this.nativeEntity();
             const pipLayout = this.pipLayout();
+            const showQuirks = this.showQuirks();
+            const paperSize = this.sheetPaperSize();
+            this.fluffImages.revision();
+            const fluffImageUrl = this.fluffImageUrl();
             this.svgs.set([]);
             this.svgsAttached.set(false);
+            this.loadingState.set(false);
+            this.loadErrorState.set(null);
             this.cleanContainer();
             this.resetZoom();
 
-            if (!u || !this.nativeEntities.canLoad(u)) return;
+            if (!nativeEntity && !u) return;
+            if (!nativeEntity && !this.nativeEntities.canLoad(u!)) {
+                this.loadErrorState.set('No native record sheet is available for this unit.');
+                return;
+            }
+            this.loadingState.set(true);
 
             (async () => {
                 try {
-                    const loaded = await this.nativeEntities.load(u.uuid);
+                    const entity = nativeEntity ?? (await this.nativeEntities.load(u!.uuid)).entity;
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
-                    const sheets = await this.recordSheets.load(loaded.entity, { pipLayout }, {
-                        design: { provider: u.provider, uuid: u.uuid },
+                    const sheets = await this.recordSheets.load(entity, { pipLayout, showQuirks, format: paperSize, pageFormat: paperSize, ...(fluffImageUrl === undefined ? {} : { fluffImageUrl }) }, {
+                        design: u ? { provider: u.provider, uuid: u.uuid } : undefined,
                     });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
+                    if (sheets.svgs.length === 0) throw new Error('No record sheet pages were generated.');
 
                     const svgs = sheets.svgs.map(svg => {
                         svg.removeAttribute('id');
@@ -110,6 +140,8 @@ export class SvgViewerLiteComponent {
 
                     this.logger.error('svg-viewer-lite: failed to load sheet: ' + JSON.stringify(err));
                     this.svgs.set([]);
+                    this.loadingState.set(false);
+                    this.loadErrorState.set(err instanceof Error ? err.message : String(err));
                 }
             })();
         });
@@ -117,7 +149,10 @@ export class SvgViewerLiteComponent {
             if (!this.svgsAttached()) return;
             const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
             const u = this.unit();
-            const fluffImageUrl = this.fluffImages.resolveUrl(u);
+            const nativeEntity = this.nativeEntity();
+            const fluffImageUrl = this.fluffImageUrl() === undefined ? (nativeEntity
+                ? this.fluffImages.resolveEntityUrl(nativeEntity, u ? { provider: u.provider, uuid: u.uuid } : undefined)
+                : this.fluffImages.resolveUrl(u)) : this.fluffImageUrl();
             if (!fluffImageUrl) return;
             for (const svg of this.svgs()) {
                 if (svg.getElementById('fluff-image')) continue; // already present from the original sheet, we skip
@@ -165,6 +200,10 @@ export class SvgViewerLiteComponent {
 
             this.applyScale();
             this.clampScroll();
+        });
+        effect(() => {
+            this.fitMode();
+            untracked(() => this.resetZoom());
         });
         this.destroyRef.onDestroy(() => this.cancelPendingSliderZoom());
     }
@@ -263,6 +302,7 @@ export class SvgViewerLiteComponent {
             this.applyScale();
             this.clampScroll();
             this.svgsAttached.set(true);
+            this.loadingState.set(false);
         });
     }
 
@@ -276,19 +316,14 @@ export class SvgViewerLiteComponent {
         event.preventDefault();
         event.stopPropagation();
 
-        if (event.ctrlKey) {
-            const delta = this.normalizeWheelDelta(event.deltaY, event.deltaMode);
-            this.zoomAt(this.localPoint(event), this.scale * Math.exp(-delta * 0.002));
+        if (event.shiftKey || event.ctrlKey) {
+            const delta = this.normalizeWheelDelta(event.deltaY || event.deltaX, event.deltaMode);
+            this.panBy(event.shiftKey ? delta : 0, event.shiftKey ? 0 : delta);
             return;
         }
 
-        const container = this.containerRef().nativeElement;
-        if (event.shiftKey) {
-            container.scrollLeft += this.normalizeWheelDelta(event.deltaX || event.deltaY, event.deltaMode);
-        } else {
-            container.scrollTop += this.normalizeWheelDelta(event.deltaY, event.deltaMode);
-        }
-        this.clampScroll();
+        const delta = this.normalizeWheelDelta(event.deltaY, event.deltaMode);
+        this.zoomAt(this.localPoint(event), this.scale * Math.exp(-delta * 0.002));
     };
 
     private readonly onPointerDown = (event: PointerEvent): void => {
@@ -504,33 +539,70 @@ export class SvgViewerLiteComponent {
         });
     }
 
-    async downloadPng(): Promise<void> {
+    async downloadPng(strict = false): Promise<void> {
         try {
-            await SvgExportUtil.downloadPng(this.svgs(), this.exportFileName());
+            if (strict) this.requireReady();
+            await SvgExportUtil.downloadPng(this.snapshotPages(), this.exportFileName());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to download PNG: ' + JSON.stringify(err));
+            if (strict) throw err;
         }
     }
     
-    async openPng(): Promise<void> {
+    async openPng(strict = false): Promise<void> {
         try {
-            await SvgExportUtil.openPng(this.svgs());
+            if (strict) this.requireReady();
+            await SvgExportUtil.openPng(this.snapshotPages());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to open PNG: ' + JSON.stringify(err));
+            if (strict) throw err;
         }
     }
     
     async copyPngToClipboard(): Promise<void> {
         try {
-            await SvgExportUtil.copyPngToClipboard(this.svgs(), this.exportFileName());
+            this.requireReady();
+            await SvgExportUtil.copyPngToClipboard(this.snapshotPages(), this.exportFileName());
         } catch (err) {
             this.logger.error('svg-viewer-lite: failed to copy PNG to clipboard: ' + JSON.stringify(err));
             throw err;
         }
     }
 
+    /** Prints the displayed design without looking up or changing a force/catalog entry. */
+    async print(): Promise<void> {
+        this.requireReady();
+        await printRecordSheetPages(this.svgs(), {
+            paperSize: this.sheetPaperSize(),
+            printMargin: this.optionsService.options().printAllOptions.printMargin,
+        });
+    }
+
+    private requireReady(): void {
+        if (!this.ready()) throw new Error(this.loadError() ?? 'The record sheet is not ready yet.');
+    }
+
+    private snapshotPages(): SVGSVGElement[] {
+        return this.svgs().map(svg => svg.cloneNode(true) as SVGSVGElement);
+    }
+
     private applyScale(): void {
-        this.contentRef().nativeElement.style.width = `${this.scale * 100}%`;
+        const content = this.contentRef().nativeElement;
+        // These presentation reads must not make the sheet-loading effect reload on a fit change.
+        if (untracked(this.fitMode) === 'page') {
+            const container = this.containerRef().nativeElement;
+            const svg = untracked(this.svgs)[0];
+            const viewBox = svg?.viewBox.baseVal;
+            const width = viewBox && viewBox.width > 0 ? viewBox.width : svg?.width.baseVal.value;
+            const height = viewBox && viewBox.height > 0 ? viewBox.height : svg?.height.baseVal.value;
+            if (width && height && Number.isFinite(width) && Number.isFinite(height)
+                && container.clientWidth > 0 && container.clientHeight > 0) {
+                const fittedWidth = Math.min(container.clientWidth, container.clientHeight * width / height);
+                content.style.width = `${fittedWidth * this.scale}px`;
+                return;
+            }
+        }
+        content.style.width = `${this.scale * 100}%`;
     }
 
     private syncZoomPercent(): void {
