@@ -108,9 +108,7 @@ export interface ResolvedEffectGroup {
                 <div class="abilities-section">
                     <div class="abilities-header" (click)="toggleAllAbilities()">
                         <span class="abilities-label">Granted Abilities</span>
-                        <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!allAbilitiesExpanded()">
-                            <path d="M0 2l5 6 5-6z"/>
-                        </svg>
+                        <span class="chevron" [class.collapsed]="!allAbilitiesExpanded()" aria-hidden="true"></span>
                     </div>
                     @for (eg of resolvedEffectGroups(); track $index) {
                         @let groupIdx = $index;
@@ -130,9 +128,7 @@ export interface ResolvedEffectGroup {
                                 <div class="ability-card">
                                     <div class="ability-card-toggle" (click)="toggleAbility(groupIdx, ability.name)">
                                         <span class="ability-card-name">{{ ability.name }}</span>
-                                        <svg class="chevron" width="10px" height="10px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isAbilityExpanded(groupIdx, ability.name)">
-                                            <path d="M0 2l5 6 5-6z"/>
-                                        </svg>
+                                        <span class="chevron" [class.collapsed]="!isAbilityExpanded(groupIdx, ability.name)" aria-hidden="true"></span>
                                     </div>
                                     @if (isAbilityExpanded(groupIdx, ability.name)) {
                                     <div class="ability-card-body">
@@ -330,16 +326,6 @@ export interface ResolvedEffectGroup {
                 color: var(--bt-yellow);
             }
 
-        }
-
-        .chevron {
-            color: var(--text-color-secondary);
-            transition: transform 0.15s ease;
-            flex-shrink: 0;
-        }
-
-        .chevron.collapsed {
-            transform: rotate(-90deg);
         }
 
         .ability-card {
