@@ -63,7 +63,7 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                 <div class="ammo-control-label" [class.expandable]="group.expandable">
                     @if (group.expandable) {
                         <button class="ammo-expand-button" type="button" (click)="toggleGroup(group)">
-                            <svg width="13px" height="13px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" class="chevron" [class.collapsed]="!isExpanded(group)"><path d="M0 2l5 6 5-6z"></path></svg>
+                            <span class="chevron" [class.collapsed]="!isExpanded(group)" aria-hidden="true"></span>
                             <span class="ammo-name-wrapper">
                                 <span class="ammo-name">{{ group.displayName }}</span>
                                 @if (!isExpanded(group)) {
@@ -224,9 +224,6 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
         }
 
         .chevron {
-            color: var(--text-color-secondary);
-            transition: transform 0.15s ease;
-            flex-shrink: 0;
             width: 13px;
             height: 13px;
             margin-top: calc((1.3em - 13px) / 2);
@@ -244,10 +241,6 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
         .disabled-entry .chevron,
         .disabled-entry .no-chevron {
             color: var(--disabled-color);
-        }
-
-        .chevron.collapsed {
-            transform: rotate(-90deg);
         }
 
         .ammo-name {
