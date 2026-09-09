@@ -279,8 +279,8 @@
     <!-- Semantic-Only Fields (Text Search) -->
     @if (semanticFilters().length > 0) {
     <section class="guide-section fields-section">
-        <h3>Text Search Fields (Semantic Only)</h3>
-        <p>These fields are only available via text input (no UI panel). They use <strong>exact match</strong> by default, unlike the fuzzy text search. Use <code>*</code> wildcards for partial matching:</p>
+        <h3>Semantic Only Fields</h3>
+        <p>These fields are only available via text input (no UI panel). Text fields use <strong>exact match</strong> by default, unlike the fuzzy text search. Use <code>*</code> wildcards for partial matching:</p>
         <div class="filter-list inline">
             @for (f of semanticFilters(); track f.key) {
                 <div class="filter-item">
@@ -301,6 +301,13 @@
             <div class="example"><code class="allow-select" (click)="appendToSearch('model!=*Prime')">model!=*Prime</code><span class="desc">→ Exclude Prime variants</span></div>
         </div>
         <p class="note"><strong>Note:</strong> <code>chassis</code> and <code>model</code> match exact field values, while plain text search (e.g., <code>crab</code>) does fuzzy matching across both fields.</p>
+        <p><code>issues</code> filters by the number of unit data issues (errors and warnings). It supports numeric comparisons and ranges:</p>
+        <div class="examples">
+            <div class="example"><code class="allow-select" (click)="appendToSearch('issues=1')">issues=1</code><span class="desc">→ Exactly 1 issue</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('issues>0')">issues&gt;0</code><span class="desc">→ Units with any issues</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('issues=0')">issues=0</code><span class="desc">→ Units without issues</span></div>
+            <div class="example"><code class="allow-select" (click)="appendToSearch('issues=2-5')">issues=2-5</code><span class="desc">→ Between 2 and 5 issues</span></div>
+        </div>
     </section>
     }
 </div>
