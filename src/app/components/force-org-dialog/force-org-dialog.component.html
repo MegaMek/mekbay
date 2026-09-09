@@ -561,7 +561,7 @@
                 </compact-filter-menu>
             </div>
             <div class="sort-controls">
-                <select class="bt-input sort-select"
+                <select class="bt-select sort-select"
                     (change)="setSidebarSort($any($event.target).value)">
                     @for (opt of SORT_OPTIONS; track opt.key) {
                         <option [value]="opt.key" [selected]="opt.key === sidebarSort()">{{ opt.label }}</option>

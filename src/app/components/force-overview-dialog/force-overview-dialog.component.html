@@ -360,7 +360,7 @@
 <div class="dialog-footer">
     @if (!isSummaryTab()) {
         <div class="sort-controls">
-            <select class="bt-input sort-select"
+            <select class="bt-select sort-select"
                 (change)="setSortOrder($any($event.target).value)">
                 @for (opt of SORT_OPTIONS; let i = $index; track i) {
                     @if (!opt.gameSystem || opt.gameSystem === gameSystem()) {

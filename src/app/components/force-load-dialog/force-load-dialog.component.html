@@ -130,9 +130,7 @@
                             <div class="force-note-shell">
                                 @if (noteIsExpandable) {
                                 <button class="force-note-toggle" type="button" [attr.aria-expanded]="isForceNoteExpanded(force)" (click)="toggleForceNote(force, $event)">
-                                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isForceNoteExpanded(force)">
-                                        <path d="M0 2l5 6 5-6z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="!isForceNoteExpanded(force)" aria-hidden="true"></span>
                                     <span
                                         class="force-note-summary"
                                         [class.clamped]="!isForceNoteExpanded(force)"
@@ -304,9 +302,7 @@
                             <div class="operation-note-shell">
                                 @if (noteIsExpandable) {
                                 <button class="operation-note-toggle" type="button" [attr.aria-expanded]="isOperationNoteExpanded(op)" (click)="toggleOperationNote(op, $event)">
-                                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!isOperationNoteExpanded(op)">
-                                        <path d="M0 2l5 6 5-6z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="!isOperationNoteExpanded(op)" aria-hidden="true"></span>
                                     <span
                                         class="operation-note-summary"
                                         [class.clamped]="!isOperationNoteExpanded(op)"
@@ -407,7 +403,7 @@
             </div>
             }
             <div class="sort-controls">
-                <select class="bt-input sort-select"
+                <select class="bt-select sort-select"
                     (change)="setSortOrder($any($event.target).value)">
                     @for (opt of activeSortOptions(); let i = $index; track i) {
                         <option [value]="opt.key" [selected]="opt.key === activeSort()">{{ opt.label }}</option>

@@ -84,16 +84,8 @@
 }
 
 .chevron {
-    transition: transform 0.2s ease-in-out;
     margin-left: auto;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    min-height: 30px; 
-}
-
-.multi-select-container.open .chevron {
-    transform: rotate(180deg);
+    align-self: center;
 }
 
 .options-dropdown {

@@ -233,7 +233,7 @@ class MultilineDropdownPanelComponent {
                         <span class="multiline-dropdown-measure-option">{{ option.label }}</span>
                     }
                 </span>
-                <span class="multiline-dropdown-arrow" aria-hidden="true">\u25be</span>
+                <span class="chevron multiline-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
             </button>
         </div>
     `,
@@ -327,13 +327,7 @@ class MultilineDropdownPanelComponent {
         .multiline-dropdown-arrow {
             grid-column: 3;
             grid-row: 1;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             align-self: center;
-            color: inherit;
-            font-size: 1.1em;
-            line-height: 1;
         }
 
         .modifier-badge {

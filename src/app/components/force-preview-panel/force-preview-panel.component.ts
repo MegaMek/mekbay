@@ -137,9 +137,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                     class="force-preview-note-toggle"
                     [attr.aria-expanded]="noteExpanded()"
                     (click)="toggleNoteExpanded()">
-                    <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!noteExpanded()">
-                        <path d="M0 2l5 6 5-6z"/>
-                    </svg>
+                    <span class="chevron" [class.collapsed]="!noteExpanded()" aria-hidden="true"></span>
                     <span
                         class="force-preview-note-summary"
                         [class.clamped]="!noteExpanded()"
@@ -192,7 +190,7 @@ export interface ForcePreviewUnitMenuActionEvent {
                             (pointerleave)="onUnitHover(null)">
                             <div class="unit-square compact-mode"
                                 [class.destroyed]="unitEntry.destroyed"
-                                [class.missing]="!unitEntry.unit"
+                                [class.missing]="!unitEntry.unit && !unitEntry.embeddedCustom"
                                 [class.clickable]="!!unitEntry.unit"
                                 (click)="onUnitClick(unitEntry)">
                                 @if (unitEntry.commander) {
@@ -209,7 +207,10 @@ export interface ForcePreviewUnitMenuActionEvent {
                                 }
                                 <div class="unit-content">
                                     <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
-                                    @if (unitDisplayName === 'chassisModel'
+                                    @if (!unitEntry.unit && unitEntry.embeddedCustom) {
+                                    <div class="unit-model">Custom design</div>
+                                    <div class="unit-chassis">Included in force</div>
+                                    } @else if (unitDisplayName === 'chassisModel'
                                         || unitDisplayName === 'both'
                                         || !unitEntry.alias) {
                                     <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
@@ -488,14 +489,7 @@ export interface ForcePreviewUnitMenuActionEvent {
         }
 
         .chevron {
-            color: var(--text-color-secondary);
-            transition: transform 0.15s ease;
-            flex-shrink: 0;
             margin-top: 2px;
-        }
-
-        .chevron.collapsed {
-            transform: rotate(-90deg);
         }
 
         .game-type-badge {
@@ -982,7 +976,7 @@ export class ForcePreviewPanelComponent {
         }
 
         const unitList = this.resolvedUnits();
-        const unitIndex = unitList.findIndex((unit: UnitSummary) => unit === loadForceUnit.unit || unit.name === loadForceUnit.unit?.name);
+        const unitIndex = unitList.findIndex((unit: UnitSummary) => unit.uuid === loadForceUnit.unit?.uuid);
         const variantChange = this.variantChange();
         this.dialogsService.createDialog(UnitDetailsDialogComponent, {
             data: {

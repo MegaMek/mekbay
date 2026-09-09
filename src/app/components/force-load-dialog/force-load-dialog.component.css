@@ -466,7 +466,7 @@
 
 .sort-select {
     height: 32px;
-    padding: 0 8px;
+    padding: 0 20px 0 8px;
     font-size: 13px;
 }
 
@@ -582,14 +582,7 @@
 }
 
 .chevron {
-    color: var(--text-color-secondary);
-    transition: transform 0.15s ease;
-    flex-shrink: 0;
     margin-top: 2px;
-}
-
-.chevron.collapsed {
-    transform: rotate(-90deg);
 }
 
 .operation-timestamp {
