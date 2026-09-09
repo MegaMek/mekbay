@@ -165,7 +165,7 @@ describe('ForceRadarPanelComponent', () => {
     });
 
     it('shows unavailable AS axes for native units with no AS conversion', () => {
-        const unit = createEmptyUnit({ entityType: 'GunEmplacement', as: { TP: 'XX' } });
+        const unit = createEmptyUnit({ entityType: 'BuildingEntity', as: { TP: 'XX' } });
         index.commitPreparedCatalogIndexes(index.prepareCatalogIndexes([unit], [], []));
         const fixture = render([unit], GameSystem.AS);
         fixture.componentRef.setInput('hoveredUnit', unit);
