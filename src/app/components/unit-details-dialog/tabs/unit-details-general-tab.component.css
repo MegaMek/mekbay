@@ -1,4 +1,7 @@
 :host {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
     height: fit-content;
     min-height: 100%;
     width: 100%;
@@ -10,12 +13,63 @@
     min-height: 0;
     flex: 1;
     width: 100%;
-    height: 100%;
     box-sizing: border-box;
 }
 
 .tab-general {
     padding: 8px 16px;
+}
+
+.unit-load-issues-footer {
+    position: sticky;
+    bottom: 0;
+    flex: 0 0 auto;
+    padding: 8px 16px;
+    background-color: var(--background-color-menu);
+    z-index: 2;
+}
+
+.unit-load-issues-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 8px;
+    border: 0;
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    text-align: left;
+}
+
+.unit-load-issues-toggle:hover {
+    background-color: var(--hover-highlight-transparent);
+}
+
+.unit-load-issues-toggle:focus-visible {
+    outline: 2px solid var(--danger);
+    outline-offset: -2px;
+}
+
+.unit-load-issues-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.unit-load-issues-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: min(36vh, 260px);
+    margin: 0;
+    padding: 0 12px 8px 28px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    font-size: 0.9em;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
 }
 
 .component-view-mode {
@@ -94,27 +148,6 @@
     width: 100%;
     gap: 8px 16px;
     margin: 4px 0px 4px 0px;
-}
-
-.quirk {
-    cursor: help;
-    font-size: 0.9em;
-    border: 1px solid gray;
-    background-color: #202020B0;
-    border-radius: 4px;
-    padding: 0px 4px;
-    box-sizing: border-box;
-    position: relative;
-}
-
-.quirk.positive {
-    border: 1px solid green;
-    background-color: #3C5331;
-}
-
-.quirk.negative {
-    border: 1px solid red;
-    background-color: #452420;
 }
 
 /* Stats */

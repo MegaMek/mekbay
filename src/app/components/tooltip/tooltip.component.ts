@@ -65,6 +65,8 @@ export type TooltipContent = string | readonly TooltipLine[];
         }
         .tooltip-content {
             color: #fff;
+            -webkit-user-select: text;
+            user-select: text;
             box-sizing: border-box;
             padding: 6px 8px;
             font-size: 0.9em;

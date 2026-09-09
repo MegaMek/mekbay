@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { UnitComponent } from '../../../models/unit-summary.model';
+import type { UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 import {
     buildComponentMatrixLayout,
     createComponentMatrixAreas,
@@ -28,6 +28,17 @@ function compareComponentsByName(left: UnitComponent, right: UnitComponent): num
 }
 
 describe('unit-details-component-matrix util', () => {
+    it('keeps destroyed bay weapons separate from intact copies', () => {
+        const layout = buildComponentMatrixLayout('Mek', [{
+            l: 'LA', p: 0, bays: [
+                createComponent('laser', 'Laser', 'LA', { q: 2, t: 'E' }),
+                createComponent('laser', 'Laser', 'LA', { q: 1, t: 'E', destroyed: true }),
+            ],
+        }], [], compareComponentsByName);
+        expect(layout.baysForArea.get('LA')?.map(bay => [bay.q, !!bay.destroyed]))
+            .toEqual([[2, false], [1, true]]);
+    });
+
     it('reports supported matrix unit types', () => {
         expect(hasComponentMatrixLayout('Mek')).toBeTrue();
         expect(hasComponentMatrixLayout('Tank')).toBeTrue();

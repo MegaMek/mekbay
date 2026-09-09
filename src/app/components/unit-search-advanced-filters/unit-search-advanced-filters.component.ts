@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { GameSystem } from '../../models/common.model';
+import { UnitsCatalogService } from '../../services/catalogs/units-catalog.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { isCBTForceMember } from '../../models/force-member.model';
@@ -50,6 +51,7 @@ export class UnitSearchAdvancedFiltersComponent {
     readonly showFormationTargetFilter = input(false);
 
     readonly filtersService = inject(UnitSearchFiltersService);
+    private readonly unitsCatalog = inject(UnitsCatalogService);
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly optionsService = inject(OptionsService);
     private readonly dialogsService = inject(DialogsService);
@@ -110,11 +112,13 @@ export class UnitSearchAdvancedFiltersComponent {
         const options = this.optionsService.options();
         const availabilitySource = options.availabilitySource;
         const excludedKeys = this.excludedKeySet();
+        const hasCustomUnits = this.unitsCatalog.catalogSnapshot().customSummaries.length > 0;
 
         return BOOLEAN_FILTERS.filter((filter) => (
             (!filter.game || filter.game === gameSystem)
             && isFilterAvailableForAvailabilitySource(filter, availabilitySource)
             && !excludedKeys.has(filter.key)
+            && (filter.key !== 'isCustom' || hasCustomUnits)
         ));
     });
 

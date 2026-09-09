@@ -68,4 +68,14 @@ describe('UnitDetailsVariantsTabComponent', () => {
 
         expect(card.resolvedBv()).toBe('1,320 (1,000)');
     });
+
+    it('identifies the selected custom variant by UUID even when names match', () => {
+        const first = createEmptyUnit({ name: variant.name, isCustom: true });
+        const second = createEmptyUnit({ name: variant.name, isCustom: true });
+        const fixture = TestBed.createComponent(UnitDetailsVariantsTabComponent);
+        fixture.componentRef.setInput('unit', first);
+
+        expect(fixture.componentInstance.isCurrentUnit({ ...first })).toBeTrue();
+        expect(fixture.componentInstance.isCurrentUnit(second)).toBeFalse();
+    });
 });

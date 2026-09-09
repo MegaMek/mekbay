@@ -26,8 +26,11 @@ import { UnitDetailsVariantsTabComponent, type VariantsTabState, DEFAULT_VARIANT
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
+import { CustomUnitActionsComponent } from '../custom-unit-actions/custom-unit-actions.component';
+import { UnitConstructionButtonComponent } from '../../construction/unit-construction-button.component';
 import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
+import { buildUnitShareLinks } from '../../utils/force-url.util';
 
 /**
  * Inline unit details panel for expanded view mode.
@@ -47,7 +50,9 @@ import { UnitDetailsSummaryService } from '../../services/unit-details-summary.s
         UnitDetailsSheetTabComponent,
         UnitDetailsCardTabComponent,
         UnitDetailsVariantsTabComponent,
-        UnitDetailsFooterComponent
+        UnitDetailsFooterComponent,
+        CustomUnitActionsComponent,
+        UnitConstructionButtonComponent
     ],
     templateUrl: './unit-details-panel.component.html',
     styleUrl: './unit-details-panel.component.scss',
@@ -246,10 +251,13 @@ export class UnitDetailsPanelComponent {
         const unit = this.unit();
         if (!unit) return;
         
-        const domain = window.location.origin + window.location.pathname;
-        const unitName = encodeURIComponent(unit.name);
-        const tab = encodeURIComponent(this.activeTab());
-        const shareUrl = `${domain}?gs=${this.gameService.currentGameSystem()}&shareUnit=${unitName}&tab=${tab}`;
+        const { httpsUrl: shareUrl } = buildUnitShareLinks(
+            window.location.origin,
+            window.location.pathname,
+            this.gameService.currentGameSystem(),
+            unit,
+            this.activeTab(),
+        );
         const shareText = `${this.unitNames.name(unit)}`;
         
         if (navigator.share) {

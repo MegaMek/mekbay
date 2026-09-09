@@ -151,7 +151,7 @@ export interface RenameGroupDialogResult {
             <details class="selected-formation-accordion">
               <summary class="selected-formation-summary">
                 <span>Formation details</span>
-                <svg class="expand-icon" width="16" height="16" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1l5 4-5 4z"/></svg>
+                <span class="chevron" aria-hidden="true"></span>
               </summary>
               <div class="selected-formation-details">
                 <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.formationUnits().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterCompositionName]="selectedFormationRequirementsFilterCompositionName()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
@@ -266,14 +266,6 @@ export interface RenameGroupDialogResult {
 
         .selected-formation-summary:hover {
             color: var(--text-color);
-        }
-
-        .expand-icon {
-            transition: transform 0.2s;
-        }
-
-        .selected-formation-accordion[open] .expand-icon {
-            transform: rotate(90deg);
         }
 
         .selected-formation-details {

@@ -56,14 +56,14 @@ unit().moveType }}</strong></div>
 }
 </div>
 @if (forceMember(); as member) {
-    <force-unit-crew class="instance-crew" [force]="member.force" [unitId]="member.id" layout="cards" />
+    <force-unit-crew class="instance-crew" [force]="member.force" [unitId]="member.id" layout="cards" [showHealth]="true" />
 }
 @if (unit().quirks && unit().quirks.length > 0) {
 <div class="quirks-block">
 <div class="quirks">
     <div class="muted">Quirks: </div>
     @for (quirk of unit().quirks; let i = $index; track i) {
-        <div class="quirk" [class]="getQuirkClass(quirk)" [tooltip]="getQuirkDesc(quirk)">{{ quirk }}</div>
+        <quirk-badge [name]="quirk" [quirk]="getQuirk(quirk)" />
     }
 </div>
 </div>
@@ -112,13 +112,13 @@ unit().moveType }}</strong></div>
             @if (area.bays.length > 0) {
                 <div class="bay">
                     @for (bay of area.bays; let i = $index; track i) {
-                        <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small"></unit-component-item>
+                        <unit-component-item [unit]="unit()" [comp]="bay" [damaged]="isComponentDestroyed(bay)" displayStyle="small"></unit-component-item>
                     }
                 </div>
             } @else {
                 <!-- Normal components (matrix) -->
                 @for (comp of area.components; let i = $index; track i) {
-                    <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
+                    <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
                 }
             }
         </div>
@@ -134,7 +134,7 @@ unit().moveType }}</strong></div>
         <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">[</span>}{{ group.l }}@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">]</span>}</div>
         <div class="bay">
             @for (bay of group.bays; let j = $index; track j) {
-                <unit-component-item [unit]="unit()" [comp]="bay" displayStyle="small"></unit-component-item>
+                <unit-component-item [unit]="unit()" [comp]="bay" [damaged]="isComponentDestroyed(bay)" displayStyle="small"></unit-component-item>
             }
         </div>
     </div>
@@ -148,7 +148,7 @@ unit().moveType }}</strong></div>
         <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">[</span>}{{ group.l }}@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">]</span>}</div>
         <div class="comp-list">
             @for (comp of group.components; let j = $index; track j) {
-                <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
+                <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
             }
         </div>
     </div>
@@ -158,7 +158,7 @@ unit().moveType }}</strong></div>
     <div class="component-rect" [class.additional-component-rect]="isAdditionalComponent(comp)">
         <div class="comp-loc" [class.has-case]="getCaseLabel(comp.l)">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span>}{{ comp.l }}@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">]</span>}</div>
         <div class="comp-list">
-            <unit-component-item [unit]="unit()" [comp]="comp" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
+            <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
         </div>
     </div>
 }
@@ -167,11 +167,11 @@ unit().moveType }}</strong></div>
 }
 }
 @if (componentLayout().showAmmoSummary) {
-@if ((unit().comp | filterAmmo); as ammoList) {
+@if ((conditionComponents() | filterAmmo); as ammoList) {
 @if (ammoList.length > 0) {
 <div class="ammo-list"><span class="info-label muted">Ammo: </span>
 @for (comp of ammoList; let last = $last; let i = $index; track i) {
-    <span class="ammo-entry">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span><unit-component-item [unit]="unit()" [comp]="comp" displayStyle="text"></unit-component-item><span class="case-bracket">]</span>} @else {<unit-component-item [unit]="unit()" [comp]="comp" displayStyle="text"></unit-component-item>}@if(!last){,&#32;}</span>
+    <span class="ammo-entry">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span><unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" displayStyle="text"></unit-component-item><span class="case-bracket">]</span>} @else {<unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" displayStyle="text"></unit-component-item>}@if(!last){,&#32;}</span>
 }
 </div>
 }
@@ -180,9 +180,9 @@ unit().moveType }}</strong></div>
 @if (componentLayout().showAdditionalSummary && additionalComponentSummary().length > 0) {
 <div class="additional-components-list" [class.weapons-additional-components-list]="!showFilteredComponents()"><span class="info-label muted">Additional components: </span>
 @for (comp of additionalComponentSummary(); let last = $last; let i = $index; track i) {
-    <span class="additional-components-entry">
+    <span class="additional-components-entry" [class.destroyed-entry]="isComponentDestroyed(comp)">
         @if (additionalComponentSummaryInteractive()) {
-            <unit-component-item [unit]="unit()" [comp]="comp" displayStyle="text"></unit-component-item>
+            <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" displayStyle="text"></unit-component-item>
         } @else {
             {{ comp.q }}×{{ comp.n }}
         }
@@ -281,7 +281,7 @@ unit().moveType }}</strong></div>
     SARNA
 </a>
 }
-@if (unit().id && unit().id > 0) {
+@if ((unit().id ?? 0) > 0) {
 <span class="label muted">MUL ID: </span><a
 class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit().id}}">{{
 unit().id }}</a>
@@ -289,3 +289,22 @@ unit().id }}</a>
 </div>
 </div>
 </div>
+
+@if (unit().loadIssues.length) {
+<div class="unit-load-issues-footer">
+    <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
+        <button class="unit-load-issues-toggle" type="button" (click)="toggleLoadIssues()"
+            [attr.aria-expanded]="loadIssuesOpen()">
+            <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
+            <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
+        </button>
+        @if (loadIssuesOpen()) {
+        <ul class="unit-load-issues-list allow-select">
+            @for (issue of unit().loadIssues; track $index) {
+            <li><strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong> {{ issue.message }}</li>
+            }
+        </ul>
+        }
+    </section>
+</div>
+}

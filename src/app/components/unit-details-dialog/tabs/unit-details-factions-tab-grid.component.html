@@ -49,9 +49,7 @@
                     [attr.aria-label]="(rowExpanded ? 'Collapse ' : 'Expand ') + row.name"
                     (click)="toggleCatchAll(row.id)"
                 >
-                    <svg class="disclosure-icon" viewBox="0 0 16 16" aria-hidden="true">
-                        <path d="M5 3.5 10 8l-5 4.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" />
-                    </svg>
+                    <span class="chevron disclosure-icon" [class.collapsed]="!rowExpanded" aria-hidden="true"></span>
                     @if (row.img) {
                         <img [src]="row.img" class="faction-logo row-faction-logo" alt="" aria-hidden="true" />
                     } @else {

@@ -107,9 +107,7 @@ export interface FormationDropdownPointerHoverEvent {
                                         [class.active]="isActiveTarget(item.definition.id, 'details')"
                                         [class.expanded]="expandedId() === item.definition.id"
                                         title="Show details">
-                                    <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                                        <path d="M3 1l5 4-5 4z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="expandedId() !== item.definition.id" aria-hidden="true"></span>
                                 </button>
                             </div>
                             @if (expandedId() === item.definition.id) {
@@ -148,9 +146,7 @@ export interface FormationDropdownPointerHoverEvent {
                                         [class.active]="isActiveTarget(item.definition.id, 'details')"
                                         [class.expanded]="expandedId() === item.definition.id"
                                         title="Show details">
-                                    <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                                        <path d="M3 1l5 4-5 4z"/>
-                                    </svg>
+                                    <span class="chevron" [class.collapsed]="expandedId() !== item.definition.id" aria-hidden="true"></span>
                                 </button>
                             </div>
                             @if (expandedId() === item.definition.id) {
@@ -296,14 +292,6 @@ export interface FormationDropdownPointerHoverEvent {
         .expand-btn.active {
             color: var(--text-color);
             background: rgba(255, 255, 255, 0.12);
-        }
-
-        .expand-btn svg {
-            transition: transform 0.2s;
-        }
-
-        .expand-btn.expanded svg {
-            transform: rotate(90deg);
         }
 
         .formation-option-details {

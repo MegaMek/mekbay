@@ -1275,7 +1275,7 @@ export class UnitSearchComponent {
         });
     }
 
-    trackCardRow = (index: number, row: UnitSummary[]) => row[0]?.name ?? index;
+    trackCardRow = (index: number, row: UnitSummary[]) => row[0]?.uuid ?? index;
 
     getCardUnitIndex(rowIndex: number, columnIndex: number): number {
         return rowIndex * this.cardViewColumnCount() + columnIndex;

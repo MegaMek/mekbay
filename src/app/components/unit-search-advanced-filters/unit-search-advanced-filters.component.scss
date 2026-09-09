@@ -12,6 +12,17 @@
     min-width: 0;
 }
 
+.boolean-filters {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: inherit;
+    gap: inherit;
+
+    &.three-columns {
+        grid-template-columns: repeat(3, auto);
+    }
+}
+
 .boolean-filter-row {
     min-height: 38px;
     display: flex;
@@ -132,7 +143,6 @@
 
 .placeholder-chevron {
     margin-left: 8px;
-    font-size: 1.1em;
 }
 
 .range-filter-placeholder {

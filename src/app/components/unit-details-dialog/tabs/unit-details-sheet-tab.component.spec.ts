@@ -11,6 +11,8 @@ import { LoggerService } from '../../../services/logger.service';
 import { OptionsService } from '../../../services/options.service';
 import { NativeEntityService } from '../../../services/native-entity.service';
 import { TestTankEntity } from '../../../models/entity/testing/test-entities';
+import { CBTForceMember } from '../../../models/force-member.model';
+import type { CBTForce } from '../../../models/cbt-force.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 import { UnitDetailsSheetTabComponent } from './unit-details-sheet-tab.component';
 
@@ -91,5 +93,21 @@ describe('UnitDetailsSheetTabComponent', () => {
 
         (viewer.isZoomPanActive as jasmine.Spy).and.returnValue(true);
         expect(component.isZoomPanActive()).toBeTrue();
+    });
+
+    it('passes the exact admitted force design to the viewer without loading its latest catalog revision', async () => {
+        const entity = new TestTankEntity();
+        const member = new CBTForceMember('retained-instance', {} as CBTForce, entity);
+        nativeEntities.canLoad.and.returnValue(false);
+        const fixture = TestBed.createComponent(UnitDetailsSheetTabComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit());
+        fixture.componentRef.setInput('forceMember', member);
+        fixture.detectChanges();
+        await settle();
+        fixture.detectChanges();
+        const viewer = fixture.debugElement.query(By.directive(SvgViewerLiteComponent)).componentInstance as SvgViewerLiteComponent;
+
+        expect(viewer.nativeEntity()).toBe(entity);
+        expect(nativeEntities.load).not.toHaveBeenCalled();
     });
 });

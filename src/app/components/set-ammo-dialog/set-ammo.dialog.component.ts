@@ -5,10 +5,13 @@
 import { ChangeDetectionStrategy, Component, computed, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
+import { hasMekRuntime, type CBTUnitSnapshot } from '../../models/cbt-unit-snapshot';
+import type { ComponentId } from '../../models/entity/entity-identifiers';
+import { entityAmmoLoadouts, entityWeaponTechBasesForAmmo, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from '../../models/runtime/mek-ammo';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { Era } from '../../models/eras.model';
 import type { EquipmentTechBase } from '../../models/entity/types/tech';
-import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../models/rules/game-rules';
+import { CORE_2026_GAME_RULES, gameRulesFor, type CBTGameRules } from '../../models/rules/game-rules';
 import type { UnitType } from '../../models/unit-summary.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { OptionsService } from '../../services/options.service';
@@ -30,6 +33,32 @@ export interface SetAmmoDialogData {
     gameRules?: CBTGameRules;
     equipmentRegistry?: EquipmentRegistry;
     weaponTechBases?: readonly EquipmentTechBase[];
+}
+
+/** Dialog data for one runtime bin, shared by construction and record-sheet actions. */
+export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: ComponentId): SetAmmoDialogData | null {
+    const mount = source.index.components.get(componentId)?.mount;
+    if (!mount) return null;
+    const loadouts = hasMekRuntime(source)
+        ? mekAmmoLoadouts(source.entity, source.index, componentId, source.ruleset)
+        : entityAmmoLoadouts(source.entity, mount, source.ruleset);
+    const defaultKey = hasMekRuntime(source)
+        ? mekAmmoDefaultMunitionKey(source.entity, source.index, componentId)
+        : mount.equipment?.internalName;
+    const original = loadouts.find(loadout => loadout.munitionKey === defaultKey);
+    if (!original) return null;
+    const currentAmmo = source.query.ammoEquipment(componentId);
+    const selected = loadouts.find(loadout => loadout.equipment.id === currentAmmo?.id);
+    if (!selected || !currentAmmo) return null;
+    return {
+        currentAmmo, originalAmmo: original.equipment,
+        originalTotalAmmo: original.capacity,
+        ammoOptions: loadouts.map(loadout => loadout.equipment),
+        quantity: source.query.remainingAmmo(componentId), maxQuantity: selected.capacity,
+        unitType: source.entity.unitType(), gameRules: gameRulesFor(source.ruleset),
+        equipmentRegistry: source.entity.getEquipmentRegistry(),
+        weaponTechBases: entityWeaponTechBasesForAmmo(source.entity, original.equipment),
+    };
 }
 
 @Component({

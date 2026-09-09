@@ -4,7 +4,8 @@
 
 import { UnitNameService } from '../../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, input, inject, computed, signal } from '@angular/core';
-import type { UnitSummary, UnitComponent } from '../../../models/unit-summary.model';
+import type { UnitSummary } from '../../../models/unit-summary.model';
+import { buildUnitComponentMetadata, type UnitConditionComponent as UnitComponent } from '../../../utils/unit-component-metadata-builder';
 import { weaponTypes } from '../../../utils/equipment.util';
 import { DataService } from '../../../services/data.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -40,8 +41,9 @@ import { formatBvPv } from '../../../utils/force-viewer-bv-pv-display.util';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { GameService } from '../../../services/game.service';
 import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
-import { forceMemberAdjustedValue, type ForceMember } from '../../../models/force-member.model';
+import { forceMemberAdjustedValue, isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
 import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
+import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -227,7 +229,7 @@ export function shouldShowAdjustedPilotSkills(
 @Component({
     selector: 'unit-details-general-tab',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent],
+    imports: [UnitComponentItemComponent, ModeSwitchComponent, StatBarSpecsPipe, FilterAmmoPipe, TooltipDirective, ForceUnitCrewComponent, QuirkBadgeComponent],
     templateUrl: './unit-details-general-tab.component.html',
     styleUrl: './unit-details-general-tab.component.css'
 })
@@ -245,6 +247,30 @@ export class UnitDetailsGeneralTabComponent {
     gunnerySkill = input<number | undefined>(undefined);
     pilotingSkill = input<number | undefined>(undefined);
     adjustedValueOverride = input<number | undefined>(undefined);
+
+    private readonly runtimeSnapshot = computed(() => {
+        const member = this.forceMember();
+        if (!isCBTForceMember(member)) return null;
+        // Subscribe to this member's runtime, including pending damage and repairs.
+        if (member.entity.entityType === 'Mek') member.mekRecordSheetSnapshot();
+        else member.nonMekRecordSheetSnapshot();
+        return member.force.getUnitSnapshot(member.id);
+    });
+    isComponentDestroyed(component: UnitComponent): boolean {
+        return component.destroyed ?? false;
+    }
+
+    readonly conditionComponents = computed<UnitComponent[]>(() => {
+        const snapshot = this.runtimeSnapshot();
+        return snapshot ? buildUnitComponentMetadata(snapshot.entity, snapshot.query) : this.unit().comp;
+    });
+
+    private readonly collapsedLoadIssuesUnit = signal<UnitSummary | null>(null);
+    readonly loadIssuesOpen = computed(() => this.collapsedLoadIssuesUnit() !== this.unit());
+
+    toggleLoadIssues(): void {
+        this.collapsedLoadIssuesUnit.set(this.loadIssuesOpen() ? this.unit() : null);
+    }
 
     // Computed state - derived from unit
     groupedBays = computed(() => this.getGroupedBaysByLocation());
@@ -429,16 +455,7 @@ export class UnitDetailsGeneralTabComponent {
         return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    getQuirkClass(quirk: string): string {
-        const q = this.dataService.getQuirkByName(quirk);
-        if (!q) return '';
-        return q.type == 'positive' ? 'positive' : 'negative';
-    }
-
-    getQuirkDesc(quirk: string): string {
-        const q = this.dataService.getQuirkByName(quirk);
-        return q?.description || '';
-    }
+    getQuirk(quirk: string) { return this.dataService.getQuirkByName(quirk); }
 
     openSourcebooksDialog(index: number): void {
         const sources = this.sourceList();
@@ -624,7 +641,7 @@ export class UnitDetailsGeneralTabComponent {
     private getHydratedComponents(): UnitComponent[] {
         const u = this.unit();
         if (!u?.comp) return [];
-        return u.comp.map(component => ({
+        return this.conditionComponents().map(component => ({
             ...component,
             eq: component.eq ?? this.dataService.findEquipment(component.id)
         }));
@@ -633,7 +650,7 @@ export class UnitDetailsGeneralTabComponent {
     private getAdditionalComponentSummary(): UnitComponent[] {
         const byName = new Map<string, UnitComponent>();
         for (const comp of this.additionalComponentEntries()) {
-            const key = comp.n ?? '';
+            const key = `${comp.n ?? ''}|${comp.destroyed ?? false}`;
             if (!byName.has(key)) {
                 byName.set(key, { ...comp });
             } else {
@@ -649,7 +666,7 @@ export class UnitDetailsGeneralTabComponent {
         const u = this.unit();
         if (!u?.comp) return [];
         const groupMap = new Map<string, { l: string, p: number, comps: UnitComponent[] }>();
-        u.comp.forEach(comp => {
+        this.conditionComponents().forEach(comp => {
             const loc = comp.l;
             const pos = comp.p ?? 0;
             const key = `${loc}|${pos}`;
@@ -665,7 +682,7 @@ export class UnitDetailsGeneralTabComponent {
             comps.forEach(comp => {
                 if (comp.bay && comp.bay.length) {
                     comp.bay.forEach(bayComp => {
-                        const key = bayComp.n;
+                        const key = `${bayComp.n}|${bayComp.rear ?? false}|${bayComp.destroyed ?? false}`;
                         if (!bayMap[key]) {
                             bayMap[key] = { ...bayComp };
                         } else {

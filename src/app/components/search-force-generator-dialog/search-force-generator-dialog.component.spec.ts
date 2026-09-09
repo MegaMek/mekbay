@@ -163,7 +163,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const factionsByName = new Map<string, any>();
         const dataServiceMock = {
             isDataReady: signal(true),
-            getUnitByName: jasmine.createSpy('getUnitByName').and.callFake((name: string) => unitsByName.get(name)),
+            getUnitByIdentifier: jasmine.createSpy('getUnitByIdentifier').and.callFake((name: string) => unitsByName.get(name)),
             getFactionByName: jasmine.createSpy('getFactionByName').and.callFake((name: string) => factionsByName.get(name)),
             getFactionById: jasmine.createSpy('getFactionById').and.returnValue(null),
             getEraById: jasmine.createSpy('getEraById').and.returnValue(null),
@@ -984,12 +984,36 @@ describe('SearchForceGeneratorDialogComponent', () => {
         const unitEntry = component.previewEntry()!.groups[0].units[0];
         await component.onPreviewUnitMenuAction({ action: 'reject', unitEntry });
 
-        expect(component.rejectedUnitPills()).toEqual([{ name: atlas.name, label: 'Atlas AS7-D' }]);
+        expect(component.rejectedUnitPills()).toEqual([{ uuid: atlas.uuid, label: 'Atlas AS7-D' }]);
         expect(component.generationEligibleUnits()).toEqual([locust]);
 
         component.reroll();
 
         expect(buildPreviewSpy.calls.mostRecent().args[0].eligibleUnits).toEqual([locust]);
+    });
+
+    it('rejects and restores individual custom designs with identical names', async () => {
+        const first = createEmptyUnit({ name: 'Shared custom name', isCustom: true, bv: 1000 });
+        const second = createEmptyUnit({ name: first.name, isCustom: true, bv: 1000 });
+        forceGeneratorEligibleUnitsSignal.set([first, second]);
+        (component as any).__test.setPreviewResult({
+            gameSystem: GameSystem.CBT,
+            units: [first, second].map((unit, index) => ({
+                unit, cost: 1000, gunnery: 4, piloting: 5, lockKey: `slot-${index}`,
+            })),
+            totalCost: 2000, error: null, faction: null, era: null, explanationLines: [],
+        });
+        component.reroll();
+        const [firstEntry, secondEntry] = component.previewEntry()!.groups[0].units;
+
+        await component.onPreviewUnitMenuAction({ action: 'reject', unitEntry: firstEntry });
+        expect(component.generationEligibleUnits()).toEqual([second]);
+        await component.onPreviewUnitMenuAction({ action: 'reject', unitEntry: secondEntry });
+        expect(component.rejectedUnitPills().map(unit => unit.uuid)).toEqual([first.uuid, second.uuid]);
+
+        component.removeRejectedUnit(first.uuid);
+        expect(component.generationEligibleUnits()).toEqual([first]);
+        expect(component.rejectedUnitPills().map(unit => unit.uuid)).toEqual([second.uuid]);
     });
 
     it('marks chassis-only locked preview units as variant-group locked generation slots', async () => {

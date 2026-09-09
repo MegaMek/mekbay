@@ -16,6 +16,8 @@
         <semantic-guide [compact]="true" />
     </div>
     } @else {
+        @if (booleanFilters().length) {
+        <div class="boolean-filters" [class.three-columns]="columnsCount() === 2 && booleanFilters().length > 2">
         @for (conf of booleanFilters(); track conf.key) {
             <div class="filter-row boolean-filter-row"
                 [class.semantic-only]="filtersReady() && $any(filtersService.advOptions()[conf.key])?.semanticOnly">
@@ -34,8 +36,7 @@
                 }
             </div>
         }
-        @if (booleanFilters().length % 2) {
-            <div class="filter-row"></div>
+        </div>
         }
 
     @for (conf of dropdownFilters(); track conf.key; let index = $index) {
@@ -59,7 +60,7 @@
         <div class="filter-placeholder dropdown-filter-placeholder corner-borders" aria-hidden="true">
             <span>{{ conf.label }}</span>
             <span class="placeholder-value">Any</span>
-            <span class="placeholder-chevron">⌄</span>
+            <span class="chevron chevron-down placeholder-chevron" aria-hidden="true"></span>
         </div>
         }
       </div>
@@ -79,7 +80,7 @@
         <div class="filter-placeholder dropdown-filter-placeholder corner-borders" aria-hidden="true">
             <span>Formation</span>
             <span class="placeholder-value">Any</span>
-            <span class="placeholder-chevron">⌄</span>
+            <span class="chevron chevron-down placeholder-chevron" aria-hidden="true"></span>
         </div>
         }
     </div>

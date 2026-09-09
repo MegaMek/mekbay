@@ -137,7 +137,7 @@ export class UnitDetailsVariantsTabComponent {
 
     /** Check if a variant is the current unit */
     isCurrentUnit(variant: UnitSummary): boolean {
-        return variant.name === this.unit()?.name;
+        return variant.uuid === this.unit()?.uuid;
     }
 
     onVariantClick(variant: UnitSummary, variants: UnitSummary[]): void {

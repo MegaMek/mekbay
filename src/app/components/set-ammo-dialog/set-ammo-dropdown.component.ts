@@ -67,9 +67,7 @@ interface AmmoDropdownPointerHoverEvent {
                     [class.expanded]="allFilteredOptionsExpanded()"
                     [title]="allFilteredOptionsExpanded() ? 'Hide all details' : 'Show all details'"
                     (click)="toggleAllExpanded($event)">
-                    <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                        <path d="M3 1l5 4-5 4z"/>
-                    </svg>
+                    <span class="chevron" [class.collapsed]="!allFilteredOptionsExpanded()" aria-hidden="true"></span>
                 </button>
             </div>
             <div class="dropdown-panel" data-scroll-container>
@@ -101,9 +99,7 @@ interface AmmoDropdownPointerHoverEvent {
                                 (pointerenter)="onOptionPointerHover(option, 'details', $event)"
                                 (pointermove)="onOptionPointerHover(option, 'details', $event)"
                                 (click)="toggleOptionExpanded(option, $event)">
-                                <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                                    <path d="M3 1l5 4-5 4z"/>
-                                </svg>
+                                <span class="chevron" [class.collapsed]="!isOptionExpanded(option)" aria-hidden="true"></span>
                             </button>
                         }
                     </span>
@@ -312,14 +308,6 @@ interface AmmoDropdownPointerHoverEvent {
             opacity: 0.35;
         }
 
-        .expand-btn svg {
-            transition: transform 0.2s;
-        }
-
-        .expand-btn.expanded svg {
-            transform: rotate(90deg);
-        }
-
         .master-expand-btn {
             padding: 7px 8px;
         }
@@ -501,7 +489,7 @@ class SetAmmoDropdownPanelComponent {
                         <span class="set-ammo-dropdown-measure-option">{{ option.label }}</span>
                     }
                 </span>
-                <span class="set-ammo-dropdown-arrow" aria-hidden="true">\u25be</span>
+                <span class="chevron set-ammo-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
             </button>
         </div>
     `,
@@ -570,9 +558,7 @@ class SetAmmoDropdownPanelComponent {
         .set-ammo-dropdown-arrow {
             grid-column: 2;
             grid-row: 1;
-            color: inherit;
-            font-size: 1.1em;
-            line-height: 0;
+            align-self: center;
         }
     `]
 })

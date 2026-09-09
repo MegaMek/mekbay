@@ -386,17 +386,17 @@ export class SearchForceGeneratorDialogComponent {
         );
     });
     readonly chassisOnlyLockedUnitKeys = computed(() => new Set(this.chassisOnlyLockVariantGroupByLockKey().keys()));
-    readonly rejectedUnitNames = computed(() => new Set(this.rejectedUnits().map((unit) => unit.name)));
+    readonly rejectedUnitUuids = computed(() => new Set(this.rejectedUnits().map((unit) => unit.uuid)));
     readonly generationEligibleUnits = computed(() => {
-        const rejectedUnitNames = this.rejectedUnitNames();
-        if (rejectedUnitNames.size === 0) {
+        const rejectedUnitUuids = this.rejectedUnitUuids();
+        if (rejectedUnitUuids.size === 0) {
             return this.eligibleUnits();
         }
 
-        return this.eligibleUnits().filter((unit) => !rejectedUnitNames.has(unit.name));
+        return this.eligibleUnits().filter((unit) => !rejectedUnitUuids.has(unit.uuid));
     });
     readonly rejectedUnitPills = computed(() => this.rejectedUnits().map((unit) => ({
-        name: unit.name,
+        uuid: unit.uuid,
         label: this.formatUnitLabel(unit),
     })));
     readonly previewUnitMenuItems: readonly ForcePreviewUnitMenuItem[] = [
@@ -1013,8 +1013,8 @@ export class SearchForceGeneratorDialogComponent {
         void this.editPreviewUnitPilot(unitEntry);
     }
 
-    removeRejectedUnit(unitName: string): void {
-        this.rejectedUnits.update((units) => units.filter((unit) => unit.name !== unitName));
+    removeRejectedUnit(unitUuid: UnitSummary['uuid']): void {
+        this.rejectedUnits.update((units) => units.filter((unit) => unit.uuid !== unitUuid));
     }
 
     submit(): void {
@@ -1698,7 +1698,7 @@ export class SearchForceGeneratorDialogComponent {
     }
 
     private changePreviewUnitVariant(unitEntry: ForcePreviewUnit, variant: UnitSummary): void {
-        if (!unitEntry.unit || unitEntry.unit.name === variant.name) {
+        if (!unitEntry.unit || unitEntry.unit.uuid === variant.uuid) {
             return;
         }
 
@@ -1773,7 +1773,7 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
         const replacementUnit = this.pickPreviewSlotRerollUnit(unitEntry);
-        if (!replacementUnit || replacementUnit.name === unitEntry.unit.name) {
+        if (!replacementUnit || replacementUnit.uuid === unitEntry.unit.uuid) {
             return;
         }
 
@@ -1873,13 +1873,13 @@ export class SearchForceGeneratorDialogComponent {
         } else if (this.preventDuplicateChassis()) {
             const otherPreviewVariantGroupKeys = new Set(
                 preview.units
-                    .filter((unit) => unit.lockKey !== lockKey && unit.unit.name !== unitEntry.unit?.name)
+                    .filter((unit) => unit.lockKey !== lockKey && unit.unit.uuid !== unitEntry.unit?.uuid)
                     .map((unit) => getUnitVariantGroupKey(unit.unit)),
             );
             candidates = candidates.filter((unit) => !otherPreviewVariantGroupKeys.has(getUnitVariantGroupKey(unit)));
         }
 
-        const alternateCandidates = candidates.filter((unit) => unit.name !== unitEntry.unit?.name);
+        const alternateCandidates = candidates.filter((unit) => unit.uuid !== unitEntry.unit?.uuid);
         return alternateCandidates.length > 0 ? alternateCandidates : candidates;
     }
 
@@ -1997,8 +1997,8 @@ export class SearchForceGeneratorDialogComponent {
             return;
         }
 
-        const unitName = unitEntry.unit.name;
-        this.rejectedUnits.update((units) => units.some((unit) => unit.name === unitName)
+        const unitUuid = unitEntry.unit.uuid;
+        this.rejectedUnits.update((units) => units.some((unit) => unit.uuid === unitUuid)
             ? units
             : [...units, unitEntry.unit!]);
 
@@ -2208,7 +2208,7 @@ export class SearchForceGeneratorDialogComponent {
             }
         }
 
-        return units.findIndex((unit) => unit.unit === unitEntry.unit || unit.unit.name === unitEntry.unit?.name);
+        return units.findIndex((unit) => unit.unit.uuid === unitEntry.unit?.uuid);
     }
 
     private createReplacementPreviewUnit(

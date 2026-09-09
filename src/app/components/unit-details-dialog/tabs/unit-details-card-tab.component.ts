@@ -18,6 +18,7 @@ import { OptionsService } from '../../../services/options.service';
 export class UnitDetailsCardTabComponent {
     optionsService = inject(OptionsService);
     unit = input.required<UnitSummary>();
+    readonly fluffImageUrl = input<string | null>();
 
     readonly unitType = computed(() => this.unit().as?.TP ?? '');
     readonly cardIndices = computed<number[]>(() => {

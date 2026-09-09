@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Component, ChangeDetectionStrategy, input, viewChild } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, input, viewChild } from '@angular/core';
 import type { UnitSummary } from '../../../models/unit-summary.model';
+import { isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
 import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.component';
 
 @Component({
@@ -15,6 +16,11 @@ import { SvgViewerLiteComponent } from '../../svg-viewer-lite/svg-viewer-lite.co
 })
 export class UnitDetailsSheetTabComponent {
     unit = input.required<UnitSummary>();
+    forceMember = input<ForceMember | null>(null);
+    readonly nativeEntity = computed(() => {
+        const member = this.forceMember();
+        return member && isCBTForceMember(member) ? member.entity : null;
+    });
 
     private viewer = viewChild<SvgViewerLiteComponent>(SvgViewerLiteComponent);
 

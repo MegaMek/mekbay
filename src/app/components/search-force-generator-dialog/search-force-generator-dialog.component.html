@@ -250,9 +250,7 @@
                     <div class="form-fields span-all">
                         <div class="skill-settings-shell framed-borders">
                             <button class="skill-settings-toggle" type="button" (click)="togglePilotSkills()">
-                                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!pilotSkillsOpen()">
-                                    <path d="M0 2l5 6 5-6z"/>
-                                </svg>
+                                <span class="chevron" [class.collapsed]="!pilotSkillsOpen()" aria-hidden="true"></span>
                                 <span class="skill-settings-title" [class.active]="pilotSkillsHasActiveSettings()">Pilot Skills</span>
                             </button>
 
@@ -346,9 +344,7 @@
                     <div class="form-fields span-all">
                         <div class="additional-filters-shell framed-borders">
                             <button class="additional-filters-toggle" type="button" (click)="toggleAdditionalFilters()">
-                                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!additionalFiltersOpen()">
-                                    <path d="M0 2l5 6 5-6z"/>
-                                </svg>
+                                <span class="chevron" [class.collapsed]="!additionalFiltersOpen()" aria-hidden="true"></span>
                                 <span class="additional-filters-title" [class.active]="additionalFiltersHasActiveSettings()">Additional Filters</span>
                             </button>
 
@@ -453,10 +449,10 @@
                         <div class="rejected-units span-all framed-borders">
                             <span class="rejected-units-label">Rejected variants</span>
                             <div class="rejected-unit-pills">
-                                @for (unit of rejectedUnitPills(); track unit.name) {
+                                @for (unit of rejectedUnitPills(); track unit.uuid) {
                                     <span class="rejected-unit-pill">
                                         <span>{{ unit.label }}</span>
-                                        <span class="action" aria-hidden="true" (click)="removeRejectedUnit(unit.name)">✕</span>
+                                        <span class="action" aria-hidden="true" (click)="removeRejectedUnit(unit.uuid)">✕</span>
                                     </span>
                                 }
                             </div>
@@ -561,9 +557,7 @@
                     @if (preview().explanationLines.length > 0) {
                         <div class="preview-explanation-shell framed-borders" [class.expanded]="collapsedHowPicksWhereChosen()">
                             <button class="preview-explanation-toggle" type="button" (click)="toggleHowPicksWereChosen()">
-                                <svg class="chevron" width="12px" height="12px" fill="currentColor" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg" [class.collapsed]="!collapsedHowPicksWhereChosen()">
-                                    <path d="M0 2l5 6 5-6z"/>
-                                </svg>
+                                <span class="chevron" [class.collapsed]="!collapsedHowPicksWhereChosen()" aria-hidden="true"></span>
                                 <span class="preview-explanation-title">How Picks Were Chosen</span>
                             </button>
 

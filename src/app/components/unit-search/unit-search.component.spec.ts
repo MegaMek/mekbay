@@ -351,7 +351,7 @@ describe('UnitSearchComponent card virtualization', () => {
         const canceled = jasmine.createSpy('canceled');
         fixture.componentInstance.selectionCanceled.subscribe(canceled);
         fixture.componentInstance.toggleExpandedView();
-        expect(canceled).toHaveBeenCalledOnceWith();
+        expect(canceled).toHaveBeenCalledOnceWith(undefined);
     });
 
     it('groups card-mode results into width-derived virtual rows', () => {

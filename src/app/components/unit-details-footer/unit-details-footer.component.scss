@@ -57,7 +57,7 @@
 
 .sort-select {
     height: 32px;
-    padding: 0 8px;
+    padding: 0 20px 0 8px;
     font-size: 13px;
 }
 
@@ -150,9 +150,7 @@
 }
 
 .nav-arrow-symbol {
-    flex: 0 0 auto;
-    font-size: 2rem;
-    line-height: 1;
+    --chevron-size: 24px;
 }
 
 .nav-unit-name {
