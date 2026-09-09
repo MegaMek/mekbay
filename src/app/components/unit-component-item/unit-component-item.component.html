@@ -3,26 +3,37 @@
 @if (displayStyle() === 'text') {
     <span #component
         class="component {{ displayStyle() }}-data"
+        [attr.role]="isInteractive() ? 'button' : null"
+        [attr.tabindex]="isInteractive() ? 0 : null"
+        [class.customAmmoLoadout]="compEntry?.customAmmo"
+        [class.destroyed-entry]="damaged()"
+        [attr.title]="damaged() ? 'Destroyed' : null"
         (pointerenter)="onPointerEnter($event)" 
         (click)="onCompClick($event)" 
-        (pointerleave)="onPointerLeave($event)">{{ compEntry?.q }}×{{ compEntry?.n }}@if (compEntry?.rear) { <span class="rear-indicator" title="Rear Mounted">(R)</span>} @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
+        (keydown.enter)="onCompClick($event)"
+        (keydown.space)="onCompClick($event)"
+        (pointerleave)="onPointerLeave($event)">{{ compEntry?.q }}×{{ compEntry?.customAmmo ? '*' : '' }}{{ compEntry?.n }}@if (compEntry?.rear) { <span class="rear-indicator" title="Rear Mounted">(R)</span>} @if (compEntry?.q2 || compEntry?.t === 'X') {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
 } @else {
 <div #component
     class="component {{ displayStyle() }}-data {{ typeClass() }}"
+    [attr.role]="isInteractive() ? 'button' : null"
+    [attr.tabindex]="isInteractive() ? 0 : null"
+    [class.destroyed-entry]="damaged()"
+    [attr.title]="damaged() ? 'Destroyed' : null"
     (pointerenter)="onPointerEnter($event)"
     (click)="onCompClick($event)"
+    (keydown.enter)="onCompClick($event)"
+    (keydown.space)="onCompClick($event)"
     (pointerleave)="onPointerLeave($event)">
         <div class="comp-title">
             <span class="comp-qty">{{ compEntry?.q }}×</span>
-            <span class="comp-name">{{ compEntry?.n }} 
+            <span class="comp-name"><span [class.customAmmoLoadout]="compEntry?.customAmmo">{{ compEntry?.customAmmo ? '*' : '' }}{{ compEntry?.n }}
                 @if (compEntry?.rear) {<span class="rear-indicator" title="Rear Mounted">(R)</span>} 
-                @if (compEntry?.q2) {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
+                @if (compEntry?.q2 || compEntry?.t === 'X') {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span></span>
             
             @if (displayStyle() === 'normal') {
                 @if (unit().mixed && componentTechBase != 'All') {
-                    <div class="tech-base tech-{{ componentTechBase | lowercase }}">
-                        {{ componentTechBase == 'Clan' ? 'C' : 'IS' }}
-                    </div>
+                    <tech-base-badge [techBase]="componentTechBase" />
                 }
             }
         </div>

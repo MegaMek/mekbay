@@ -41,6 +41,14 @@
     cursor: pointer;
 }
 
+.component.destroyed-entry {
+    color: var(--damage-color);
+}
+
+.text-data.destroyed-entry {
+    text-decoration: line-through;
+}
+
 .text-data:hover {
     text-decoration: dotted underline;
 }
@@ -65,7 +73,7 @@
     border-top: 1px solid #555;
     border-right: 1px solid #555;
     border-bottom: 1px solid #555;
-    background: #2c2c2c;
+    background-color: #2c2c2c;
     color: #aaa;
 }
 
@@ -112,30 +120,6 @@ floating-comp-info {
 .additional-data .comp-qty,
 .additional-data .comp-name {
     color: #fff;
-}
-
-.additional-data .tech-base {
-    display: none;
-}
-
-.tech-base {
-    width: 20px;
-    height: 20px;
-    margin: -2px -2px -4px 0px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    border-radius: 4px;
-    padding: 2px;
-}
-
-.tech-base.tech-is {
-    background-color: rgb(0, 63, 208);
-}
-
-.tech-base.tech-clan {
-    background-color: rgb(155, 0, 0);
 }
 
 .damage-stripe {
