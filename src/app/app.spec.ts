@@ -9,6 +9,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
 import { App } from './app';
+import { createEmptyUnit } from './testing/unit-test-helpers';
 import { DataService } from './services/data.service';
 import { ForcePersistenceService } from './services/force-persistence.service';
 import { ForceImportService } from './services/force-import.service';
@@ -29,6 +30,7 @@ import { GameSystem } from './models/common.model';
 import { AppUpdateService } from './services/app-update.service';
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
 import { LobbyService } from './services/lobby.service';
+import { CustomUnitSyncService } from './services/custom-unit-sync.service';
 
 @Component({
   selector: 'unit-search',
@@ -61,10 +63,12 @@ describe('App', () => {
   let savedSearchesServiceMock: any;
   let loggerServiceMock: any;
   let lobbyServiceMock: any;
+  let openSharedCustom: jasmine.Spy;
 
   beforeEach(async () => {
     versionUpdates = new Subject();
     fixture = null;
+    openSharedCustom = jasmine.createSpy('openSharedCustom').and.resolveTo();
     swUpdateMock = {
       isEnabled: false,
       versionUpdates,
@@ -79,7 +83,7 @@ describe('App', () => {
       runtimeCatalogProgress: signal({ status: 'idle' }),
       auxiliaryCatalogProgress: signal({ status: 'idle' }),
       ensureMegaMekAvailabilityCatalogInitialized: jasmine.createSpy('ensureMegaMekAvailabilityCatalogInitialized').and.resolveTo(false),
-      getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
+      getUnitByIdentifier: jasmine.createSpy('getUnitByIdentifier').and.returnValue(undefined),
     };
     forcePersistenceServiceMock = {
       isCloudForceLoading: signal(false),
@@ -182,6 +186,7 @@ describe('App', () => {
         { provide: ForceDialogsService, useValue: forceBuilderServiceMock },
         { provide: LayoutService, useValue: layoutServiceMock },
         { provide: WsService, useValue: wsServiceMock },
+        { provide: CustomUnitSyncService, useValue: { openShared: openSharedCustom } },
         { provide: DialogsService, useValue: dialogsServiceMock },
         { provide: ToastService, useValue: toastServiceMock },
         { provide: OptionsService, useValue: optionsServiceMock },
@@ -207,6 +212,41 @@ describe('App', () => {
     fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  it('opens the unit selected by a shareUnit identifier after catalog startup', () => {
+    const identifier = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
+    const unit = createEmptyUnit({ uuid: identifier, name: 'BMKingCrab_KGC000Custom', isCustom: true });
+    urlServiceMock.getInitialParam.and.callFake((key: string) =>
+      key === 'shareUnit' ? identifier : key === 'tab' ? 'General' : null);
+    dataServiceMock.getUnitByIdentifier.and.returnValue(unit);
+    fixture = TestBed.createComponent(App);
+    const showDetails = spyOn(fixture.componentInstance, 'showSingleUnitDetails');
+
+    dataServiceMock.isDataReady.set(true);
+    fixture.detectChanges();
+
+    expect(dataServiceMock.getUnitByIdentifier).toHaveBeenCalledOnceWith(identifier);
+    expect(showDetails).toHaveBeenCalledOnceWith(unit, 'General');
+    expect(openSharedCustom).not.toHaveBeenCalled();
+  });
+
+  it('fetches a missing custom share UUID and then opens its details', async () => {
+    const identifier = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
+    const unit = createEmptyUnit({ uuid: identifier, isCustom: true });
+    dataServiceMock.getUnitByUuid = jasmine.createSpy('getUnitByUuid').and.returnValue(unit);
+    fixture = TestBed.createComponent(App);
+    const showDetails = spyOn(fixture.componentInstance, 'showSingleUnitDetails').and.resolveTo();
+    await (fixture.componentInstance as any).openSharedUnit(identifier, 'General');
+    expect(openSharedCustom).toHaveBeenCalledOnceWith(identifier);
+    expect(showDetails).toHaveBeenCalledOnceWith(unit, 'General');
+  });
+
+  it('does not request the cloud for a missing non-UUID unit identifier', async () => {
+    fixture = TestBed.createComponent(App);
+    await (fixture.componentInstance as any).openSharedUnit('missing-old-unit-name');
+    expect(openSharedCustom).not.toHaveBeenCalled();
+    expect(toastServiceMock.showToast).toHaveBeenCalled();
   });
 
   it('blocks unload while serialization, local persistence, or cloud acknowledgement is pending', () => {

@@ -49,7 +49,6 @@ describe('UnitSearchAvailabilityService', () => {
                 searchCorpusVersion: version,
                 megaMekAvailabilityVersion: () => 1,
                 getUnits: () => units,
-                getUnitsByName: (name: string) => units.filter(unit => unit.name === name),
                 getEras: () => eras,
                 getFactions: () => factions,
                 getEraByName: (name: string) => eras.find(era => era.name === name),
@@ -84,7 +83,7 @@ describe('UnitSearchAvailabilityService', () => {
         expect(service.resolveContext(scope, true)?.eraIds).toEqual(new Set([300]));
     });
 
-    it('translates a MegaMek name to every matching UUID and keeps era/faction pairs scoped', () => {
+    it('returns UUID postings for same-name core units and keeps era/faction pairs scoped', () => {
         expect(service.getIndexedUnitIds('era', 'Early', { factionNames: ['First'] }, false))
             .toEqual(new Set([units[0].uuid, units[1].uuid]));
         expect(service.getIndexedUnitIds('faction', 'Second', { eraNames: ['Late'] }, false)?.size).toBe(0);
@@ -118,7 +117,7 @@ describe('UnitSearchAvailabilityService', () => {
         expect(service.getFacetOptions('availabilityRarity', units, scope).filter(option => option.available).map(option => option.name))
             .toEqual(['Unknown', 'Not Available', 'Very Rare']);
         expect(service.getCandidateUnitIds(scope, ['Unknown'], ['Not Available']).size).toBe(0);
-        expect(service.getCandidateUnitIds(scope, ['Unknown'], ['Unknown'])).toEqual(new Set(['Unknown Mek']));
+        expect(service.getCandidateUnitIds(scope, ['Unknown'], ['Unknown'])).toEqual(new Set([units[3].uuid]));
     });
 
     it('keeps MUL-only units in Unknown facet availability without inventing a rarity', () => {
@@ -133,7 +132,7 @@ describe('UnitSearchAvailabilityService', () => {
         options.update(value => ({ ...value, availabilitySource: 'mul' }));
         records.set('Unknown Mek', { n: 'Unknown Mek', e: { 200: { 20: [10, 0] } } });
         const scope = { eraNames: ['Late'], factionNames: ['Second'], bridgeThroughMulMembership: false };
-        expect(service.getCandidateUnitIds(scope, ['Requisition'], [])).toEqual(new Set(['Unknown Mek']));
+        expect(service.getCandidateUnitIds(scope, ['Requisition'], [])).toEqual(new Set([units[3].uuid]));
         expect(service.getBadges(units[3], scope, false))
             .toEqual([{ source: 'Requisition', score: 10, rarity: 'Very Rare' }]);
     });

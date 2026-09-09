@@ -11,7 +11,7 @@ export type ForceAvailabilityKey = string;
 
 export interface ForceAvailabilityContext {
     source: AvailabilitySource;
-    getUnitKey(unit: Pick<UnitSummary, 'id' | 'name'>): ForceAvailabilityKey;
+    getUnitKey(unit: Pick<UnitSummary, 'id' | 'uuid'>): ForceAvailabilityKey;
     getVisibleEraUnitIds(era: Era): ReadonlySet<ForceAvailabilityKey>;
     getFactionUnitIds(faction: Faction, contextEraIds?: ReadonlySet<number>): ReadonlySet<ForceAvailabilityKey>;
     getFactionEraUnitIds(faction: Faction, era: Era): ReadonlySet<ForceAvailabilityKey>;
@@ -31,7 +31,7 @@ function normalizeMembershipUnitIds(unitIds: number[] | Set<number> | undefined)
 
 const MUL_FORCE_AVAILABILITY_CONTEXT: ForceAvailabilityContext = {
     source: 'mul',
-    getUnitKey(unit: Pick<UnitSummary, 'id' | 'name'>): ForceAvailabilityKey {
+    getUnitKey(unit: Pick<UnitSummary, 'id' | 'uuid'>): ForceAvailabilityKey {
         return String(unit.id);
     },
     getVisibleEraUnitIds(era: Era): ReadonlySet<ForceAvailabilityKey> {

@@ -4,6 +4,7 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { CORE_CATALOG_ARCHIVE_WORKER_FACTORY } from '../../utils/core-catalog-archive-worker-factory.util';
+import { UNIT_SUMMARY_PROJECTION_WORKERS } from '../../utils/unit-summary-projection-worker-factory.util';
 import { CatalogDownloadTrackerService } from '../catalogs/catalog-base.service';
 import { RepositoryAssetManifestService } from '../catalogs/repository-asset-manifest.service';
 import { LoggerService } from '../logger.service';
@@ -13,6 +14,7 @@ import {
 } from './application-catalog-bundle-coordinator.service';
 import {
     CoreCatalogSynchronizer,
+    sameSummaryDependencyHashes,
     type CoreCatalogSyncProgress,
     type CoreCatalogSyncResult,
     type PreparedCoreCatalogSynchronization,
@@ -65,6 +67,7 @@ interface OpenedSourceArchive {
 @Injectable({ providedIn: 'root' })
 export class CoreUnitCatalogBackend {
     private readonly createArchiveWorker = inject(CORE_CATALOG_ARCHIVE_WORKER_FACTORY);
+    private readonly summaryWorkers = inject(UNIT_SUMMARY_PROJECTION_WORKERS);
     private readonly repositoryAssets = inject(RepositoryAssetManifestService);
 
     public openDatabase(): Promise<UnitCatalogDatabase> {
@@ -76,6 +79,7 @@ export class CoreUnitCatalogBackend {
             baseUrl: globalThis.document.baseURI,
             repositoryAssets: this.repositoryAssets,
             ...(this.createArchiveWorker ? { createArchiveWorker: this.createArchiveWorker } : {}),
+            ...(this.summaryWorkers ? { summaryWorkers: this.summaryWorkers } : {}),
         });
     }
 
@@ -131,7 +135,8 @@ export class CoreUnitCatalogService {
         readonly activationId: CatalogActivationId;
         readonly opened: OpenedSourceArchive;
     };
-    private sourceArchiveOpening?: Promise<OpenedSourceArchive>;
+    private sourceArchiveOpening?: { readonly activationId: CatalogActivationId; readonly promise: Promise<OpenedSourceArchive> };
+    private retainedSource?: { readonly activationId: CatalogActivationId; readonly blob: Blob };
 
     public constructor() {
         this.destroyRef.onDestroy(() => {
@@ -159,9 +164,17 @@ export class CoreUnitCatalogService {
     public async finalizePendingActivation(revision: number): Promise<boolean> {
         const pending = this.pendingActivationValue();
         if (!pending || pending.revision !== revision) return false;
+        const active = this.snapshotValue().generation;
+        if (active && this.retainedSource?.activationId !== active.activationId) {
+            // Retain the Blob handle without decompressing it. Disk can switch before the UI does.
+            const blob = await this.database!.readSourceArchive(active.manifest.hash);
+            if (!blob && this.sourceArchive?.activationId !== active.activationId) throw new Error('The active unit source ZIP is unavailable');
+            if (blob) this.retainedSource = { activationId: active.activationId, blob };
+        }
+        if (this.destroyed || this.pendingActivationValue()?.revision !== revision) return false;
         await this.bundles.persistPreparedDependencies(pending.dependencies);
         await pending.preparedCore?.finalize();
-        if (pending.preparedCore) {
+        if (pending.preparedCore?.assetsManifest) {
             await this.bundles.recordInstalledUnitAssets(pending.preparedCore.assetsManifest);
         }
         return !this.destroyed && this.pendingActivationValue()?.revision === revision;
@@ -175,6 +188,8 @@ export class CoreUnitCatalogService {
         this.sourceArchive?.opened.dispose();
         this.sourceArchive = undefined;
         this.sourceArchiveOpening = undefined;
+        this.retainedSource = pending.generation.sourceArchive
+            ? { activationId: pending.generation.activationId, blob: pending.generation.sourceArchive } : undefined;
         this.snapshotValue.set(pending.snapshot);
         this.pendingActivationValue.set(undefined);
         this.stateValue.set(pending.committedState);
@@ -230,7 +245,14 @@ export class CoreUnitCatalogService {
                     progress => this.setProgress(progress),
                 );
                 if (dependencies) {
-                    this.queueActivation(active, dependencies, undefined);
+                    if (sameSummaryDependencyHashes(active.summaryDependencyHashes, dependencies.assetHashes)) {
+                        this.queueActivation(active, dependencies, undefined);
+                    } else {
+                        const recovered = await this.synchronizer.recoverCachedCatalog(active, dependencies, {
+                            signal: this.abortController.signal, onProgress: progress => this.setProgress(progress),
+                        });
+                        this.queueActivation(recovered.generation, dependencies, recovered);
+                    }
                     this.refreshAfterInitialCommit = true;
                     return;
                 }
@@ -323,6 +345,9 @@ export class CoreUnitCatalogService {
         if (!isUnitSummaryArray(generation.summary.payload)) {
             throw new Error('Core catalog contains an invalid UnitSummary array');
         }
+        if (!sameSummaryDependencyHashes(generation.summaryDependencyHashes, dependencies.assetHashes)) {
+            throw new Error('Core summaries do not match the prepared catalog dependencies');
+        }
         const revision = this.nextPendingRevision++;
         const snapshot: CoreUnitCatalogSnapshot = Object.freeze({
             revision: this.snapshotValue().revision + 1,
@@ -350,26 +375,30 @@ export class CoreUnitCatalogService {
     ): Promise<OpenedSourceArchive> {
         if (this.sourceArchive?.activationId === generation.activationId) return this.sourceArchive.opened;
         if (!this.database) throw new Error('Unit catalog database is unavailable');
-        if (!this.sourceArchiveOpening) {
-            this.sourceArchiveOpening = (async () => {
-                const blob = await this.database!.readSourceArchive(generation.manifest.hash);
+        if (this.sourceArchiveOpening?.activationId !== generation.activationId) {
+            const promise = (async () => {
+                const blob = this.retainedSource?.activationId === generation.activationId ? this.retainedSource.blob
+                    : await this.database!.readSourceArchive(generation.manifest.hash);
                 if (!blob) throw new Error('The active unit source ZIP is unavailable');
-                return this.backend.openStoredSourceArchive(
+                const opened = await this.backend.openStoredSourceArchive(
                     blob,
                     generation.manifest.manifest,
                     this.abortController.signal,
                 );
+                if (this.destroyed || this.snapshotValue().generation?.activationId !== generation.activationId) {
+                    opened.dispose();
+                    throw new Error('Core catalog changed while opening its source ZIP');
+                }
+                this.sourceArchive = { activationId: generation.activationId, opened };
+                return opened;
             })();
+            this.sourceArchiveOpening = { activationId: generation.activationId, promise };
         }
-        const opened = await this.sourceArchiveOpening;
-        if (this.snapshotValue().generation?.activationId !== generation.activationId) {
-            opened.dispose();
-            this.sourceArchiveOpening = undefined;
-            throw new Error('Core catalog changed while opening its source ZIP');
+        const opening = this.sourceArchiveOpening;
+        try { return await opening.promise; }
+        finally {
+            if (this.sourceArchiveOpening === opening) this.sourceArchiveOpening = undefined;
         }
-        this.sourceArchive = { activationId: generation.activationId, opened };
-        this.sourceArchiveOpening = undefined;
-        return opened;
     }
 
     private setProgress(progress: CoreCatalogSyncProgress): void {

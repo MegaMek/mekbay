@@ -48,12 +48,13 @@ describe('UnitCatalogDatabase', () => {
         const storedManifest = rows.find(row => row['key'] === UNIT_CATALOG_ROWS.unitsManifest);
         expect(Object.keys(storedManifest!).sort()).toEqual(['hash', 'json', 'key']);
         const storedCatalog = rows.find(row => row['key'] === UNIT_CATALOG_ROWS.catalog);
+        expect(storedCatalog!['sourceArchive']).toBeUndefined();
         expect(storedCatalog).not.toEqual(jasmine.objectContaining({
             assetsManifest: jasmine.anything(),
             dependencyBundle: jasmine.anything(),
             manifest: jasmine.anything(),
         }));
-        expect(await database.readActiveCatalog()).toEqual(generation);
+        expect(await database.readActiveCatalog()).toEqual({ ...generation, sourceArchive: jasmine.any(Blob) });
         expect((await database.readSourceArchive(hash))?.size).toBe(archive.size);
         expect((await database.readActiveCatalog())?.activationId).toBe(generation.activationId);
     });

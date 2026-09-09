@@ -201,7 +201,7 @@ export class ForceUrlStateService {
         const unitsParam = params.get('units');
         const mulIdsParam = params.get('mul_ids');
         const inlineUnitsParam = unitsParam || mulIdsParam;
-        const lookupMode: ForceUrlUnitLookupMode = unitsParam ? 'name' : 'mulId';
+        const lookupMode: ForceUrlUnitLookupMode = unitsParam ? 'identifier' : 'mulId';
         if (inlineUnitsParam) {
             const force = this.createInlineForce(params);
             force.loading = true;

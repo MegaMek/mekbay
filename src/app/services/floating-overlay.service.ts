@@ -2,23 +2,31 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { afterNextRender, DestroyRef, inject, Injectable, Injector, type ComponentRef } from '@angular/core';
+import { afterNextRender, DestroyRef, effect, inject, Injectable, Injector, inputBinding, type ComponentRef } from '@angular/core';
+import { Dialog, type DialogRef } from '@angular/cdk/dialog';
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { FloatingCompInfoComponent } from '../components/floating-comp-info/floating-comp-info.component';
 import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
+import { LayoutService } from './layout.service';
 
 
 @Injectable({ providedIn: 'root' })
 export class FloatingOverlayService {
     private overlay = inject(Overlay);
+    private dialog = inject(Dialog);
+    private layout = inject(LayoutService);
     private injector = inject(Injector);
+    private dialogRef: DialogRef<void, FloatingCompInfoComponent> | null = null;
     private overlayRef: OverlayRef | null = null;
     private compRef: ComponentRef<FloatingCompInfoComponent> | null = null;
     private isPointerOver = false;
     private hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
+        effect(() => {
+            if (this.layout.isPhone() && this.overlayRef) this.destroy();
+        });
         window.addEventListener('scroll', this.onScroll, true);
         window.addEventListener('wheel', this.onScroll, { capture: true, passive: true });
         window.addEventListener('pointerdown', this.onPointerDown, true);
@@ -27,6 +35,7 @@ export class FloatingOverlayService {
             window.removeEventListener('scroll', this.onScroll, true);
             window.removeEventListener('wheel', this.onScroll, { capture: true, passive: true } as AddEventListenerOptions);
             window.removeEventListener('pointerdown', this.onPointerDown, true);
+            this.destroy();
         });
     }
 
@@ -80,7 +89,28 @@ export class FloatingOverlayService {
     }
 
     show(unit: UnitSummary, comp: UnitComponent | null, origin: HTMLElement) {
-        if (!origin) return;
+        if (!comp) return;
+
+        if (this.layout.isPhone()) {
+            this.destroy();
+            const ref = this.dialog.open<void, unknown, FloatingCompInfoComponent>(FloatingCompInfoComponent, {
+                bindings: [inputBinding('unit', () => unit), inputBinding('comp', () => comp)],
+                ariaLabel: `Component inspector: ${comp.n}`,
+                ariaModal: true,
+                width: 'calc(100vw - 24px)',
+                maxWidth: '340px',
+                maxHeight: 'calc(100dvh - 24px)',
+                autoFocus: '.inspector-close',
+                restoreFocus: origin,
+            });
+            this.dialogRef = ref;
+            ref.closed.subscribe(() => {
+                if (this.dialogRef === ref) this.dialogRef = null;
+            });
+            return;
+        }
+
+        this.dialogRef?.close();
         
         // Cancel any pending hide so quick moves between anchors won't hide the overlay.
         if (this.hideTimeout) {
@@ -132,6 +162,7 @@ export class FloatingOverlayService {
     }
 
     hideWithDelay(delay = 60) {
+        if (this.dialogRef) return;
         if (this.hideTimeout) {
             clearTimeout(this.hideTimeout);
         }
@@ -149,14 +180,15 @@ export class FloatingOverlayService {
     }
 
     destroy() {
-        if (this.overlayRef) {
-            this.overlayRef.dispose();
-            this.overlayRef = null;
-            this.compRef = null;
-            if (this.hideTimeout) {
-                clearTimeout(this.hideTimeout);
-                this.hideTimeout = null;
-            }
+        this.dialogRef?.close();
+        this.dialogRef = null;
+        this.overlayRef?.dispose();
+        this.overlayRef = null;
+        this.compRef = null;
+        this.isPointerOver = false;
+        if (this.hideTimeout) {
+            clearTimeout(this.hideTimeout);
+            this.hideTimeout = null;
         }
     }
 }

@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { inject, Injectable } from '@angular/core';
+import { Subject } from 'rxjs';
 import type { Options } from '../models/options.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { decodeRemoteLoadForceEntry, type RemoteLoadForceEntry } from '../models/remote-load-force-entry.model';
@@ -13,6 +14,13 @@ import type { SerializedOperation } from '../models/operation.model';
 import type { SerializedOrganization } from '../models/organization.model';
 import type { LinkedOAuthProvider } from '../models/account-auth.model';
 import type { SavedCustomUnit } from '../models/custom-unit.model';
+import { isUnitArtwork, type UnitArtwork } from '../models/unit-artwork.model';
+import { asUnitUuid, type UnitUuid } from './unit-catalog/unit-catalog.types';
+import { assertImageFreeUnitSource, extractNativeUnitArtwork } from '../models/entity/native-unit-artwork';
+import { decodeUnitArtwork } from '../utils/unit-artwork.util';
+import { sha1Base64Url } from '../utils/sha1.util';
+import { sourceHashCanary } from '../models/source-hash-canary';
+import type { StoredCustomUnitSummary } from './unit-catalog/custom-unit-summary-cache';
 import {
     decodeForceFromStorage,
     encodeForceForStorage,
@@ -20,7 +28,7 @@ import {
 } from '../models/runtime/force-storage-codec';
 
 const DB_NAME = 'mekbay';
-const DB_VERSION = 19;
+const DB_VERSION = 22;
 const DB_STORE = 'store';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
@@ -36,7 +44,10 @@ const TAGS_STORE = 'tagsStore';
 const SAVED_SEARCHES_STORE = 'savedSearchesStore';
 const PUBLIC_TAGS_STORE = 'publicTagsStore';
 const ORGANIZATIONS_STORE = 'organizationsStore';
+const UNIT_ARTWORK_STORE = 'unitArtworkStore';
 const CUSTOM_UNITS_STORE = 'customUnitsStore';
+const SUBSCRIBED_CUSTOM_UNITS_STORE = 'subscribedCustomUnitsStore';
+const CUSTOM_UNIT_SUMMARIES_STORE = 'customUnitSummariesStore';
 const OPTIONS_KEY = 'options';
 const USER_KEY = 'user';
 const QUIRKS_KEY = 'quirks';
@@ -327,7 +338,30 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, PUBLIC_TAGS_STORE);
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
+                this.createStoreIfMissing(db, transaction, UNIT_ARTWORK_STORE);
                 this.createStoreIfMissing(db, transaction, CUSTOM_UNITS_STORE);
+                this.createStoreIfMissing(db, transaction, SUBSCRIBED_CUSTOM_UNITS_STORE);
+                this.createStoreIfMissing(db, transaction, CUSTOM_UNIT_SUMMARIES_STORE);
+                if (transaction) {
+                    const owned = transaction.objectStore(CUSTOM_UNITS_STORE);
+                    // Keep existing user designs while separating disposable subscription copies.
+                    const subscriptions = transaction.objectStore(SUBSCRIBED_CUSTOM_UNITS_STORE);
+                    const cursor = owned.openCursor();
+                    cursor.onsuccess = () => {
+                        const entry = cursor.result;
+                        if (!entry) return;
+                        const record = entry.value as SavedCustomUnit;
+                        if (!record || typeof record.uuid !== 'string') { entry.continue(); return; }
+                        if (record.owned === false) {
+                            if (record.subscribed) subscriptions.put(record, [record.accountUuid ?? '', record.uuid]);
+                            entry.delete();
+                        } else if (typeof entry.key === 'string') {
+                            owned.put(record, [record.accountUuid ?? '', record.uuid]);
+                            entry.delete();
+                        }
+                        entry.continue();
+                    };
+                }
 
                 if (db.objectStoreNames.contains('forceV2Store')) {
                     // Schema 18 stores one complete force object. The V1 copy in
@@ -393,40 +427,156 @@ export class DbService {
         await this.dbPromise;
     }
 
+    /** Local artwork outlives account sessions. A null change means the entire store changed. */
+    readonly unitArtworkChanges = new Subject<readonly UnitUuid[] | null>();
+
+    async listUnitArtwork(): Promise<ReadonlyMap<UnitUuid, UnitArtwork>> {
+        const db = await this.dbPromise;
+        if (!db) return new Map();
+        return new Promise((resolve, reject) => {
+            const rows = new Map<UnitUuid, UnitArtwork>();
+            const tx = db.transaction(UNIT_ARTWORK_STORE, 'readonly');
+            const request = tx.objectStore(UNIT_ARTWORK_STORE).openCursor();
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) return;
+                try { if (isUnitArtwork(cursor.value)) rows.set(asUnitUuid(String(cursor.key)), cursor.value); }
+                catch { /* An invalid stored key is not a unit identity. */ }
+                cursor.continue();
+            };
+            tx.oncomplete = () => resolve(rows);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Artwork read was aborted.'));
+        });
+    }
+
+    async getUnitArtwork(uuid: UnitUuid): Promise<UnitArtwork | null> {
+        const value = await this.getDataFromStore<unknown>(uuid, UNIT_ARTWORK_STORE);
+        return isUnitArtwork(value) ? value : null;
+    }
+
+    async saveUnitArtwork(uuid: UnitUuid, artwork: UnitArtwork | null, onlyIfAbsent = false): Promise<void> {
+        asUnitUuid(uuid);
+        if (artwork && !isUnitArtwork(artwork)) throw new Error('Invalid or oversized unit artwork.');
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; artwork was not saved.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(UNIT_ARTWORK_STORE, 'readwrite');
+            const store = tx.objectStore(UNIT_ARTWORK_STORE);
+            const write = (): void => { if (artwork) store.put(artwork, uuid); else store.delete(uuid); };
+            if (onlyIfAbsent) {
+                const request = store.getKey(uuid);
+                request.onsuccess = () => { if (request.result === undefined) write(); };
+            } else write();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Artwork save was aborted.'));
+        });
+        this.unitArtworkChanges.next([uuid]);
+    }
+
+    async purgeUnitArtwork(uuids?: readonly UnitUuid[]): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(UNIT_ARTWORK_STORE, 'readwrite');
+            const store = tx.objectStore(UNIT_ARTWORK_STORE);
+            if (uuids) uuids.forEach(uuid => store.delete(uuid)); else store.clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Artwork purge was aborted.'));
+        });
+        this.unitArtworkChanges.next(uuids ? [...uuids] : null);
+    }
+
     /** User designs are independent of disposable core catalog caches. */
     public async listCustomUnits(): Promise<unknown[]> {
         const db = await this.dbPromise;
         if (!db) return [];
         return new Promise((resolve, reject) => {
-            const transaction = db.transaction(CUSTOM_UNITS_STORE, 'readonly');
-            const request = transaction.objectStore(CUSTOM_UNITS_STORE).getAll();
-            transaction.oncomplete = () => resolve(request.result);
+            const transaction = db.transaction([CUSTOM_UNITS_STORE, SUBSCRIBED_CUSTOM_UNITS_STORE], 'readonly');
+            const owned = transaction.objectStore(CUSTOM_UNITS_STORE).getAll();
+            const subscribed = transaction.objectStore(SUBSCRIBED_CUSTOM_UNITS_STORE).getAll();
+            transaction.oncomplete = () => resolve([...owned.result, ...subscribed.result]);
             transaction.onerror = () => reject(transaction.error);
             transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit read was aborted'));
         });
     }
 
-    public async saveCustomUnit(record: SavedCustomUnit): Promise<void> {
+    /** Read/modify/write together: another tab's pending edits must participate in the decision. */
+    public async updateCustomUnits(changes: readonly {
+        readonly uuid: string;
+        readonly accountUuid: string;
+        readonly update: (current: SavedCustomUnit | undefined) => SavedCustomUnit | undefined;
+    }[]): Promise<readonly (SavedCustomUnit | undefined)[]> {
+        if (!changes.length) return [];
         const db = await this.dbPromise;
         if (!db) throw new Error('Local storage is unavailable; the custom unit was not saved');
         return new Promise((resolve, reject) => {
-            const transaction = db.transaction(CUSTOM_UNITS_STORE, 'readwrite');
-            transaction.objectStore(CUSTOM_UNITS_STORE).put(record, record.uuid);
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject(transaction.error);
-            transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit save was aborted'));
+            const transaction = db.transaction([CUSTOM_UNITS_STORE, SUBSCRIBED_CUSTOM_UNITS_STORE, CUSTOM_UNIT_SUMMARIES_STORE], 'readwrite');
+            const owned = transaction.objectStore(CUSTOM_UNITS_STORE);
+            const subscribed = transaction.objectStore(SUBSCRIBED_CUSTOM_UNITS_STORE);
+            const results: (SavedCustomUnit | undefined)[] = [];
+            let failure: unknown;
+            for (const [index, change] of changes.entries()) {
+                const key = [change.accountUuid, change.uuid];
+                const ownedRead = owned.get(key);
+                const subscribedRead = subscribed.get(key);
+                subscribedRead.onsuccess = () => {
+                    try {
+                        const current = ownedRead.result ?? subscribedRead.result;
+                        const record = change.update(current);
+                        results[index] = record;
+                        if (record === current) return;
+                        if (record) {
+                            if (record.uuid !== change.uuid || (record.accountUuid ?? '') !== change.accountUuid) {
+                                throw new Error('Custom unit identity cannot change during an update');
+                            }
+                            if (record.owned === false && (!record.subscribed || record.pending)) {
+                                throw new Error('Only subscribed foreign designs can be saved locally.');
+                            }
+                            assertImageFreeUnitSource(record.source, record.format);
+                            (record.owned === false ? subscribed : owned).put(record, key);
+                            (record.owned === false ? owned : subscribed).delete(key);
+                        } else {
+                            owned.delete(key);
+                            subscribed.delete(key);
+                            transaction.objectStore(CUSTOM_UNIT_SUMMARIES_STORE).delete(key);
+                        }
+                    } catch (error) { failure = error; transaction.abort(); }
+                };
+            }
+            transaction.oncomplete = () => resolve(results);
+            // Failed requests bubble before onabort; retain an explicit callback failure.
+            transaction.onerror = () => undefined;
+            transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('Custom unit save was aborted'));
         });
     }
 
-    public async deleteCustomUnit(uuid: string): Promise<void> {
+    public async listCustomUnitSummaries(): Promise<unknown[]> {
         const db = await this.dbPromise;
-        if (!db) throw new Error('Local storage is unavailable; the custom unit was not deleted');
+        if (!db) return [];
         return new Promise((resolve, reject) => {
-            const transaction = db.transaction(CUSTOM_UNITS_STORE, 'readwrite');
-            transaction.objectStore(CUSTOM_UNITS_STORE).delete(uuid);
+            const transaction = db.transaction(CUSTOM_UNIT_SUMMARIES_STORE, 'readonly');
+            const request = transaction.objectStore(CUSTOM_UNIT_SUMMARIES_STORE).getAll();
+            transaction.oncomplete = () => resolve(request.result);
+            transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom summary read was aborted'));
+        });
+    }
+
+    /** One cache transaction per rebuild; cache failure never rolls back a saved native design. */
+    public async saveCustomUnitSummaries(rows: readonly StoredCustomUnitSummary[]): Promise<void> {
+        if (!rows.length) return;
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Custom summary storage is unavailable');
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(CUSTOM_UNIT_SUMMARIES_STORE, 'readwrite');
+            const store = transaction.objectStore(CUSTOM_UNIT_SUMMARIES_STORE);
+            for (const row of rows) store.put(row, [row.accountUuid, row.uuid]);
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
-            transaction.onabort = () => reject(transaction.error ?? new Error('Custom unit deletion was aborted'));
+            transaction.onabort = () => reject(transaction.error ?? new Error('Custom summary save was aborted'));
         });
     }
 
@@ -940,6 +1090,31 @@ export class DbService {
         }
         // Live owners save V2. Background downloads may cache an intact V1
         // source until an explicit load can warn about best-effort conversion.
+        if (force.version === 2 && force.cbt) {
+            const cleaned = new Map<string, Promise<{ source: string; sourceHashCanary: ReturnType<typeof sourceHashCanary> }>>();
+            const units = await Promise.all(force.cbt.units.map(async entry => {
+                const pin = entry.unit.customSource;
+                if (!pin) return entry;
+                const extracted = extractNativeUnitArtwork(pin.source, pin.format);
+                if (extracted.source === pin.source) return entry;
+                const key = JSON.stringify([entry.unit.entity, pin]);
+                let preparation = cleaned.get(key);
+                if (!preparation) {
+                    preparation = (async () => {
+                        const { artwork, warnings } = await decodeUnitArtwork(extracted.images);
+                        warnings.forEach(warning => this.logger.warn(warning));
+                        if (artwork) await this.saveUnitArtwork(entry.unit.entity, artwork, true);
+                        const hash = await sha1Base64Url(new TextEncoder().encode(extracted.source).buffer);
+                        return { source: extracted.source, sourceHashCanary: sourceHashCanary(hash) };
+                    })();
+                    cleaned.set(key, preparation);
+                }
+                const clean = await preparation;
+                return { ...entry, unit: { ...entry.unit, sourceHashCanary: clean.sourceHashCanary,
+                    customSource: { format: pin.format, source: clean.source } } };
+            }));
+            force = { ...force, cbt: { ...force.cbt, units } };
+        }
         const stored = encodeForceForStorage(force);
         const db = await this.dbPromise;
         if (!db) return;
@@ -1199,7 +1374,7 @@ export class DbService {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
 
-        const storesToClear = Array.from(db.objectStoreNames).filter(storeName => storeName !== DB_STORE);
+        const storesToClear = Array.from(db.objectStoreNames).filter(storeName => storeName !== DB_STORE && storeName !== UNIT_ARTWORK_STORE);
         const transactionStores = [DB_STORE, ...storesToClear];
 
         return new Promise<void>((resolve, reject) => {

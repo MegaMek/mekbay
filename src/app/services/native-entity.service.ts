@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { Injectable, inject } from '@angular/core';
+import { UnitArtworkService } from './unit-artwork.service';
 import {
     EntityRepository,
     type LoadedEntity,
@@ -14,8 +15,11 @@ import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
 import { CoreUnitCatalogService } from './unit-catalog/core-unit-catalog.service';
 import { DataService } from './data.service';
-import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+import { asSourceHash, makeUnitFileName, type UnitUuid } from './unit-catalog/unit-catalog.types';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
+import { validateNativeUnitSource } from './unit-catalog/native-unit-source';
+import { sha1Base64Url } from '../utils/sha1.util';
 
 interface PreparedEntityRepository {
     readonly inputsKey: string;
@@ -27,6 +31,7 @@ interface PreparedEntityRepository {
 @Injectable({ providedIn: 'root' })
 export class NativeEntityService {
     private readonly coreCatalog = inject(CoreUnitCatalogService);
+    private readonly artwork = inject(UnitArtworkService);
     private readonly catalog = inject(UnitsCatalogService);
     private readonly equipment = inject(EquipmentCatalogService);
     private readonly sourcebooks = inject(SourcebooksCatalogService);
@@ -46,6 +51,17 @@ export class NativeEntityService {
         return prepared.repository.load({
             uuid,
             ...(sourceHash === undefined ? {} : { sourceHash }),
+        });
+    }
+
+    /** Saved custom revisions are portable and independent of current/deleted catalog designs. */
+    public async loadPinnedCustom(uuid: UnitUuid, saved: PinnedCustomUnitSource): Promise<LoadedEntity> {
+        const pin = await this.artwork.extractSource(uuid, decodePinnedCustomUnitSource(saved));
+        const validated = await validateNativeUnitSource(uuid, pin.format, new TextEncoder().encode(pin.source));
+        const prepared = await this.prepareRepository();
+        return prepared.repository.loadSavedSource({
+            uuid, format: pin.format, bytes: validated.bytes, isCustom: true,
+            file: makeUnitFileName(uuid, pin.format), sourceHash: asSourceHash(await sha1Base64Url(validated.bytes)),
         });
     }
 
@@ -86,6 +102,7 @@ export class NativeEntityService {
 
     private async readSource(uuid: UnitUuid): Promise<NativeEntitySource | undefined> {
         await this.data.requireApplicationCatalogReady();
+        const isCustom = this.catalog.hasCustomUnit(uuid);
         const stored = await this.catalog.readNativeUnitSource(uuid);
         if (!stored) return undefined;
         return {
@@ -94,6 +111,7 @@ export class NativeEntityService {
             sourceHash: stored.hash,
             bytes: stored.bytes,
             file: stored.file,
+            ...(isCustom ? { isCustom: true as const } : {}),
         };
     }
 }
@@ -106,7 +124,9 @@ export function nativeSourceHandleForLoadedEntity(
     return Object.freeze({
         file: loaded.source.file,
         format: loaded.source.format,
+        sourceHash: loaded.source.sourceHash,
         ...(hashCanary === undefined ? {} : { sourceHashCanary: hashCanary }),
         bytes: loaded.source.bytes.slice(0),
+        ...(loaded.source.isCustom ? { isCustom: true as const } : {}),
     });
 }

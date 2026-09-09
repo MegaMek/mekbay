@@ -127,3 +127,21 @@ function elementClientBounds(element: SVGGraphicsElement): DOMRect | null {
 function rectanglesOverlap(a: DOMRect, b: DOMRect): boolean {
     return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
+
+/** Restore the reference tables if the optional artwork cannot be loaded for print/export. */
+export function fallbackRecordSheetFluffImage(image: Element): void {
+    if (image.id !== 'fluff-image-injected') {
+        return;
+    }
+
+    const svg = image.closest('svg') as SVGSVGElement | null;
+    if (!svg) {
+        return;
+    }
+
+    const injectedEl = svg.getElementById('fluff-image-fo') as SVGElement | null;
+    (injectedEl ?? image as SVGElement).style.setProperty('display', 'none');
+    resolveCenterPanelTables(svg).forEach((referenceTable) => {
+        referenceTable.style.display = 'block';
+    });
+}

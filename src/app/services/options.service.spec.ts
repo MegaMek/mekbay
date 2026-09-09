@@ -28,6 +28,25 @@ describe('OptionsService theme migration', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
+    it('updates paper size immediately, preserves the other print settings, and reloads it from storage', async () => {
+        savedOptions = { printAllOptions: { paperSize: 'letter', printPilotData: false, printMargin: 'none' } };
+        const service = await createService();
+        const previous = service.options().printAllOptions;
+        let finishSave!: () => void;
+        dbService.saveOptions.and.returnValue(new Promise<void>(resolve => { finishSave = resolve; }));
+
+        const saving = service.setPrintOption('paperSize', 'a4');
+
+        expect(service.options().printAllOptions).toEqual({ ...previous, paperSize: 'a4' });
+        expect(previous.paperSize).toBe('letter');
+        savedOptions = dbService.saveOptions.calls.mostRecent().args[0];
+        finishSave();
+        await saving;
+        TestBed.resetTestingModule();
+        const reloaded = await createService();
+        expect(reloaded.options().printAllOptions).toEqual({ ...previous, paperSize: 'a4' });
+    });
+
     it('defaults old saves to Inner Sphere first and persists the selected name format', async () => {
         savedOptions = {};
         let service = await createService();
@@ -180,7 +199,7 @@ describe('OptionsService theme migration', () => {
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: true,
             ASPrintCardSize: 'standard',
-            printMargin: 'browserDefined',
+            printMargin: 'none',
         });
     });
 
@@ -206,7 +225,7 @@ describe('OptionsService theme migration', () => {
             recordSheetCenterPanelContent: 'clusterTable',
             ASPrintPageBreakOnGroups: false,
             ASPrintCardSize: 'enlarged',
-            printMargin: 'browserDefined',
+            printMargin: 'none',
         });
     });
 
@@ -264,12 +283,21 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
+            quirks: true,
             floatingCriticals: false,
             forcedWithdrawal: true,
             extremeRange: false,
             sprinting: false,
             allowMixedTechBaseAmmo: false,
         });
+    });
+
+    it('persists an explicitly disabled Quirks option', async () => {
+        savedOptions = { CBTOptionalRules: { quirks: false } };
+        const service = await createService();
+        expect(service.options().CBTOptionalRules.quirks).toBeFalse();
+        await service.setOption('CBTOptionalRules', { ...service.options().CBTOptionalRules, quirks: true });
+        expect(dbService.saveOptions.calls.mostRecent().args[0].CBTOptionalRules.quirks).toBeTrue();
     });
 
     it('restores structured CBT optional rules', async () => {
@@ -286,6 +314,7 @@ describe('OptionsService theme migration', () => {
         const service = await createService();
 
         expect(service.options().CBTOptionalRules).toEqual({
+            quirks: true,
             floatingCriticals: true,
             forcedWithdrawal: false,
             extremeRange: true,

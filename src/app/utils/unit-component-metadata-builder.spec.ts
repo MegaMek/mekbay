@@ -17,8 +17,56 @@ import { createTestEquipmentRegistry } from '../models/entity/testing/test-equip
 import { EntityMountedEquipment } from '../models/entity/types/equipment';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { EquipmentFlag } from '../models/equipment-flags.type';
+import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 
 describe('buildUnitComponentMetadata', () => {
+  it('separates destroyed copies of grouped weapons, ammo and miscellaneous equipment', () => {
+    const entity = new TankEntity();
+    const laser = weapon('laser', { damage: 5, ranges: [3, 6, 9, 12], flags: ['F_ENERGY'] });
+    const ammo = new AmmoEquipment({ id: 'ammo', name: 'Ammo', type: 'ammo', ammo: { shots: 20 } });
+    const misc = new MiscEquipment({ id: 'misc', name: 'Equipment', type: 'misc' });
+    entity.setEquipment([
+      mount(laser, 'Front'), mount(laser, 'Front'),
+      mount(ammo, 'Body', { shotsCount: 10 }), mount(ammo, 'Body', { shotsCount: 15 }),
+      mount(misc, 'Body'), mount(misc, 'Body'),
+    ]);
+    const pristine = buildUnitComponentMetadata(entity);
+    const destroyed = new Set(entity.equipment().filter((_, index) => index % 2 === 1));
+    const mounts = new Map(entity.equipment().map(mounted => [componentIdForMount(mounted), mounted]));
+    const current = buildUnitComponentMetadata(entity, {
+      componentStatus: id => destroyed.has(mounts.get(id)!) ? 'destroyed' : 'available',
+      ammoEquipment: () => ammo,
+      remainingAmmo: id => mounts.get(id)!.getAmmoShots()!,
+    });
+    for (const id of ['laser', 'ammo', 'misc']) {
+      expect(pristine.find(component => component.id === id)?.q).toBe(2);
+      expect(current.filter(component => component.id === id).map(component => [component.q, !!component.destroyed]))
+        .toEqual([[1, false], [1, true]]);
+    }
+    expect(current.find(component => component.id === 'ammo' && component.destroyed)?.q2).toBe(15);
+    expect(buildUnitComponentMetadata(entity)).toEqual(pristine);
+  });
+
+  it('groups current ammunition by type and custom status without changing the catalog loadout', () => {
+    const entity = new TankEntity();
+    const standard = new AmmoEquipment({ id: 'standard', name: 'AC/20 Ammo', type: 'ammo', ammo: { shots: 5 } });
+    const flak = new AmmoEquipment({ id: 'flak', name: 'Flak AC/20 Ammo', type: 'ammo', ammo: { shots: 5 } });
+    const bins = [mount(standard, 'Body'), mount(standard, 'Body'), mount(flak, 'Body')];
+    entity.setEquipment(bins);
+    const current = buildUnitComponentMetadata(entity, {
+      componentStatus: () => 'available',
+      ammoEquipment: id => id === componentIdForMount(bins[1]) ? standard : flak,
+      remainingAmmo: id => id === componentIdForMount(bins[0]) ? 0 : 3,
+    }).filter(component => component.t === 'X');
+    expect(current.map(component => [component.n, component.q, component.q2, !!component.customAmmo])).toEqual([
+      ['Flak AC/20 Ammo', 1, 0, true], ['AC/20 Ammo', 1, 3, false], ['Flak AC/20 Ammo', 1, 3, false],
+    ]);
+    expect(current[0].eq).toBe(flak);
+    const pristine = buildUnitComponentMetadata(entity).filter(component => component.t === 'X');
+    expect(pristine.map(component => [component.id, component.q, !!component.customAmmo]))
+      .toEqual([['standard', 2, false], ['flak', 1, false]]);
+  });
+
   it('exports Mek systems from the canonical entity', () => {
     const components = buildUnitComponentMetadata(new BipedMekEntity())!;
     expect(components.find(component => component.id === 'cockpit')).toBeDefined();

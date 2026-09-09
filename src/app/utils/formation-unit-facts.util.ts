@@ -18,7 +18,6 @@ const CBT_ASSAULT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Assault') ?? 4;
 export interface FormationUnitFacts {
     readonly forceUnit: FormationUnitLike;
     readonly uuid: UnitUuid;
-    readonly name: string;
     readonly chassis: string;
     readonly role: string;
     readonly unitType: string;
@@ -175,7 +174,6 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
     return {
         forceUnit,
         uuid: entity === undefined ? summary!.uuid : entity.uuid(),
-        name: entity?.displayName() ?? summary!.name,
         chassis: entity?.chassis() ?? summary!.chassis,
         role: entity?.role() ?? summary!.role,
         unitType: entity?.unitType() ?? summary!.type,

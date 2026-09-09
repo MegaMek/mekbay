@@ -19,6 +19,8 @@ import {
     type RecordSheetLayoutProfile,
 } from './sheets/record-sheet-layout';
 import { recordSheetLayoutProfile } from './sheets/layouts/record-sheet-layout-resolver';
+import { printRecordSheetPages } from './record-sheet-print.util';
+import { nextAnimationFrames } from './print-overlay.util';
 
 interface PreparedPrintSheet {
     readonly member: CBTForceMember;
@@ -26,6 +28,7 @@ interface PreparedPrintSheet {
     readonly compact: boolean;
     readonly kind: RecordSheetLayoutProfile['kind'];
     readonly height: number;
+    readonly stride: number | undefined;
     readonly pageContentY: number | undefined;
     readonly pristineBattleValue: number;
 }
@@ -54,7 +57,7 @@ export class CBTPrintUtil {
             for (const sheet of memberSheets) {
                 const { svg } = sheet;
 
-                await this.nextAnimationFrames(2);
+                await nextAnimationFrames(2);
 
                 this.applyPilotDataPrintOption(
                     svg,
@@ -89,16 +92,13 @@ export class CBTPrintUtil {
             compact: sheet.compact,
             kind: sheet.kind,
             height: sheet.height,
+            stride: sheet.stride,
             pageContentY: sheet.pageContentY,
         }), printOptions.paperSize).map(page => page.compact
             ? RecordSheetSvgGenerator.composeCompactPage(page.items.map(item => item.svg), printOptions.paperSize)
             : page.items[0].svg);
-        const svgStrings: string[] = [];
-        for (const page of pages) {
-            await this.embedExternalImages(page);
-            svgStrings.push(this.serializeSvg(page));
-        }
-        await this.generateMultipagePrintContainer(svgStrings, printOptions, triggerPrint);
+        for (const page of pages) await this.embedExternalImages(page);
+        await printRecordSheetPages(pages, printOptions, triggerPrint);
     }
 
     private static async createPrintSheets(
@@ -133,6 +133,7 @@ export class CBTPrintUtil {
                     compact,
                     kind: profile.kind,
                     height: profile.height,
+                    stride: profile.stride,
                     pageContentY: profile.pageContentY,
                     pristineBattleValue: snapshot.battleValue.pristine
                         ?? snapshot.battleValue.current
@@ -155,6 +156,7 @@ export class CBTPrintUtil {
                 compact,
                 kind: profile.kind,
                 height: profile.height,
+                stride: profile.stride,
                 pageContentY: profile.pageContentY,
                 pristineBattleValue: snapshot.pristineBattleValue,
             });
@@ -243,26 +245,6 @@ export class CBTPrintUtil {
                 state: Object.freeze({ wounds: 0, unconscious: false, ejected: false }),
                 effectiveState: 'healthy' as const,
             }))),
-        });
-    }
-
-    private static serializeSvg(svg: SVGSVGElement): string {
-        svg.querySelectorAll('[style]').forEach(element => {
-            const style = element.getAttribute('style');
-            if (!style || !/font-size\s*:\s*\d+(\.\d+)?(\s*;|;|$)/iu.test(style)) return;
-            element.setAttribute('style', style.replace(
-                /font-size\s*:\s*(\d+(\.\d+)?)(?!\s*[a-zA-Z%])(\s*;?)/giu,
-                (_match, number, _fraction, tail) => `font-size: ${number}px${tail || ''}`,
-            ));
-        });
-        const serializer = new XMLSerializer();
-        return serializer.serializeToString(svg).replace(/^<svg([^>]*)>/u, (_match, attributes: string) => {
-            let resolved = attributes;
-            if (!/viewBox=/u.test(resolved)) resolved += ' viewBox="0 0 612 792"';
-            if (!/xmlns=/u.test(resolved)) resolved += ' xmlns="http://www.w3.org/2000/svg"';
-            if (!/xmlns:xlink=/u.test(resolved)) resolved += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
-            if (!/preserveAspectRatio=/u.test(resolved)) resolved += ' preserveAspectRatio="xMidYMid meet"';
-            return `<svg${resolved}>`;
         });
     }
 
@@ -362,188 +344,4 @@ export class CBTPrintUtil {
     /**
      * Generates a multipage print container and waits for images to load before printing.
      */
-    private static async generateMultipagePrintContainer(svgStrings: string[],
-        printOptions: PrintAllOptions,
-        triggerPrint: boolean = true): Promise<void> {
-        const pages = svgStrings.map(svg => `<div class="svg-container">${svg}</div>`);
-        if (pages.length > 0) {
-            pages[pages.length - 1] = pages[pages.length - 1].replace('svg-container', 'svg-container last-svg');
-        }
-
-        const bodyContent = pages.join('');
-        const overlay = document.createElement('div');
-        overlay.id = 'multipage-container';
-        overlay.innerHTML = bodyContent;
-
-        const style = document.createElement('style');
-        style.textContent = this.getPrintStyles(printOptions.printMargin, printOptions.paperSize);
-        overlay.appendChild(style);
-        document.body.appendChild(overlay);
-        document.body.classList.add('multipage-container-active');
-
-        // Wait for fonts and all <image> elements in the SVGs
-        if (document.fonts?.ready) {
-            try { await document.fonts.ready; } catch { }
-        }
-        await this.waitForSvgImagesToLoad(overlay);
-        await this.nextAnimationFrames(2);
-
-        // Trigger print
-        if (triggerPrint) {
-            window.print();
-        }
-
-        // Remove overlay on first user interaction
-        const removeOverlay = (evt: Event) => {
-            overlay.remove();
-            document.body.classList.remove('multipage-container-active');
-
-            window.removeEventListener('click', removeOverlay, { capture: true });
-            window.removeEventListener('keydown', removeOverlay, { capture: true });
-            window.removeEventListener('pointerdown', removeOverlay, { capture: true });
-        };
-        window.addEventListener('click', removeOverlay, { capture: true, once: true });
-        window.addEventListener('keydown', removeOverlay, { capture: true, once: true });
-        window.addEventListener('pointerdown', removeOverlay, { capture: true, once: true });
-    }
-
-    private static async waitForSvgImagesToLoad(root: ParentNode): Promise<void> {
-        const svgImages = Array.from(root.querySelectorAll('image')) as SVGImageElement[];
-        const htmlImages = Array.from(root.querySelectorAll('img')) as HTMLImageElement[];
-
-        await Promise.all([
-            ...svgImages.map(img => new Promise<void>((resolve) => {
-                const href = this.getImageHref(img);
-                if (!href || href.startsWith('data:')) return resolve();
-
-                let settled = false;
-                const done = (loaded: boolean) => {
-                    if (settled) return;
-                    settled = true;
-                    if (!loaded) {
-                        this.fallbackFluffImageToReferenceTables(img);
-                    }
-                    resolve();
-                };
-
-                img.addEventListener('load', () => done(true), { once: true });
-                img.addEventListener('error', () => done(false), { once: true });
-                setTimeout(() => done(false), 4000);
-            })),
-            ...htmlImages.map(img => new Promise<void>((resolve) => {
-                if (img.complete) {
-                    if (img.naturalWidth === 0) {
-                        this.fallbackFluffImageToReferenceTables(img);
-                    }
-                    resolve();
-                    return;
-                }
-
-                let settled = false;
-                const done = (loaded: boolean) => {
-                    if (settled) return;
-                    settled = true;
-                    if (!loaded) {
-                        this.fallbackFluffImageToReferenceTables(img);
-                    }
-                    resolve();
-                };
-                img.addEventListener('load', () => done(true), { once: true });
-                img.addEventListener('error', () => done(false), { once: true });
-                setTimeout(() => done(img.complete && img.naturalWidth > 0), 4000);
-            }))
-        ]);
-    }
-
-    private static fallbackFluffImageToReferenceTables(image: Element): void {
-        if (image.id !== 'fluff-image-injected') {
-            return;
-        }
-
-        const svg = image.closest('svg') as SVGSVGElement | null;
-        if (!svg) {
-            return;
-        }
-
-        const injectedEl = svg.getElementById('fluff-image-fo') as SVGElement | null;
-        (injectedEl ?? image as SVGElement).style.setProperty('display', 'none');
-        svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((referenceTable) => {
-            referenceTable.style.display = 'block';
-        });
-    }
-
-    private static async nextAnimationFrames(n: number = 1): Promise<void> {
-        for (let i = 0; i < n; i++) {
-            await new Promise<void>(r => requestAnimationFrame(() => r()));
-        }
-    }
-
-    private static getPrintStyles(
-        printMargin: PrintAllOptions['printMargin'],
-        paperSize: PrintAllOptions['paperSize'],
-    ): string {
-        return `
-            @media print {
-                body, html {
-                    margin: 0 !important;
-                    padding: 0 !important;
-                    height: 100% !important;
-                    width: 100% !important;
-                }
-
-                body.multipage-container-active > *:not(#multipage-container) {
-                    display: none !important;
-                }
-
-                #multipage-container {
-                    width: 100% !important;
-                    height: 100% !important;
-                    padding: 0;
-                    margin: 0;
-                    left: 0;
-                    top: 0;
-                    display: block;
-                    background: transparent !important;
-                }
-                #multipage-container .svg-container {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    background: white !important;
-                    width: 100% !important;
-                    height: 100% !important;
-                    margin: 0 auto !important;
-                    box-sizing: border-box;
-                    page-break-after: always;
-                    break-after: page;
-                    overflow: hidden;
-                }
-                #multipage-container .svg-container.last-svg { 
-                    page-break-after: auto !important;
-                    break-after: auto !important;
-                }
-
-                #multipage-container .svg-container > svg {
-                    display: block;
-                    box-sizing: border-box;
-                    padding: 0;
-                    margin: 0in 0.16in;
-                    transform: none !important;
-                    height: 100%;
-                    width: auto;
-                    max-width: 100%;
-                    min-width: 0;
-                    max-height: 100%;
-                    page-break-inside: avoid;
-                    break-inside: avoid;
-                }
-
-                @page {
-                    size: ${paperSize === 'a4' ? 'A4' : 'Letter'} portrait;
-                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
-                }
-            }
-        `;
-    }
-
 }

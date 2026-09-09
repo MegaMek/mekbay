@@ -6,7 +6,6 @@ import type { DisplayUnitNameFormat } from '../models/options.model';
 import { formatUnitName } from './unit-display-name.util';
 import type { ASForceUnit } from '../models/as-force-unit.model';
 import type { ASForce } from '../models/as-force.model';
-import type { PrintAllOptions } from '../models/print-options.model';
 import type { AsAbilityLookupService } from '../services/as-ability-lookup.service';
 import { formatMovement, formatMovementWithAlternate } from './as-common.util';
 import { createASPrintRulesReferencePage, getASPrintRulesReferenceStyles } from './as-print-reference.util';
@@ -23,7 +22,6 @@ interface RosterCell {
     renderAsHtml?: boolean;
 }
 
-type ASSummaryPrintOptions = Pick<PrintAllOptions, 'printMargin'>;
 type ASAbilityLookup = Pick<AsAbilityLookupService, 'parseAbility'>;
 
 export class ASSummaryPrintUtil {
@@ -31,7 +29,6 @@ export class ASSummaryPrintUtil {
         force: ASForce,
         abilityLookup: ASAbilityLookup,
         useHex: boolean,
-        printOptions: ASSummaryPrintOptions,
         triggerPrint: boolean = true,
         nameFormat: DisplayUnitNameFormat = 'innerSphereClan',
     ): Promise<void> {
@@ -55,7 +52,7 @@ export class ASSummaryPrintUtil {
             containerId: 'as-summary-print-container',
             bodyClass: 'as-summary-print-active',
             content: rosterPage.outerHTML + rulesReferencePage.outerHTML,
-            styles: this.getPrintStyles(printOptions.printMargin),
+            styles: this.getPrintStyles(),
             triggerPrint,
         });
     }
@@ -181,7 +178,7 @@ export class ASSummaryPrintUtil {
         return td;
     }
 
-    private static getPrintStyles(printMargin: PrintAllOptions['printMargin']): string {
+    private static getPrintStyles(): string {
         return `
             @media screen {
                 #as-summary-print-container {
@@ -208,7 +205,7 @@ export class ASSummaryPrintUtil {
                 #as-summary-print-container {
                     display: block;
                     width: 100% !important;
-                    height: 100% !important;
+                    height: auto !important;
                     margin: 0 !important;
                     padding: 0 !important;
                 }
@@ -231,7 +228,7 @@ export class ASSummaryPrintUtil {
                 }
 
                 @page {
-                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
+                    margin: 0.25in !important;
                 }
             }
         `;
@@ -292,4 +289,3 @@ export class ASSummaryPrintUtil {
         `;
     }
 }
-

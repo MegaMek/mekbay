@@ -77,9 +77,9 @@ describe('UnitRuntimeService', () => {
 
         activateRuntimeCatalog(service, [unit]);
 
-        expect(service.getUnitByName('Mad Cat Prime')).toBe(unit);
-        expect(service.getUnitByName('mad cat prime')).toBe(unit);
-        expect(service.getUnitByName('MAD CAT PRIME')).toBe(unit);
+        expect(service.getUnitByIdentifier('Mad Cat Prime')).toBe(unit);
+        expect(service.getUnitByIdentifier('mad cat prime')).toBe(unit);
+        expect(service.getUnitByIdentifier('MAD CAT PRIME')).toBe(unit);
     });
 
     it('retrieves distinct units by UUID even when names collide', () => {
@@ -89,9 +89,40 @@ describe('UnitRuntimeService', () => {
         activateRuntimeCatalog(service, [first, second]);
 
         expect(service.getUnitsByName('duplicate name')).toEqual([first, second]);
-        expect(service.getUnitByName('Duplicate Name')).toBeUndefined();
+        expect(service.getUnitByIdentifier('Duplicate Name')).toBeUndefined();
         expect(service.getUnitByUuid(first.uuid)).toBe(first);
         expect(service.getUnitByUuid(second.uuid)).toBe(second);
+    });
+
+    it('resolves both catalog and custom UUIDs but indexes names only for non-custom units', () => {
+        const catalog = createUnit('Shared Name');
+        const custom = createEmptyUnit({ name: catalog.name, isCustom: true });
+        const secondCustom = createEmptyUnit({ name: catalog.name, isCustom: true });
+        const uniqueCustom = createEmptyUnit({ name: 'Custom Only', isCustom: true });
+        activateRuntimeCatalog(service, [custom, catalog, secondCustom, uniqueCustom]);
+
+        expect(service.getUnitsByName('shared name')).toEqual([catalog]);
+        expect(service.getUnitByIdentifier('SHARED NAME')).toBe(catalog);
+        expect(service.getUnitsByName(uniqueCustom.name)).toEqual([]);
+        expect(service.getUnitByIdentifier(uniqueCustom.name)).toBeUndefined();
+        for (const unit of [catalog, custom, secondCustom, uniqueCustom]) {
+            expect(service.getUnitByIdentifier(unit.uuid)).toBe(unit);
+            expect(service.getUnitByIdentifier(unit.uuid.toUpperCase())).toBe(unit);
+        }
+    });
+
+    it('prefers UUIDs over names and never treats a custom name as a legacy identity', () => {
+        const custom = createEmptyUnit({ name: 'Custom Only', isCustom: true });
+        const collision = createUnit(custom.uuid);
+        activateRuntimeCatalog(service, [collision, custom]);
+
+        expect(service.getUnitByIdentifier(custom.uuid)).toBe(custom);
+        expect(service.resolveUnitReference({ unit: custom.name }).kind).toBe('deferred');
+        expect(service.resolveUnitReference({ unit: custom.uuid })).toEqual({
+            kind: 'resolved', unit: custom, uuid: custom.uuid, usedLegacyNameFallback: false,
+        });
+        expect(service.resolveUnitReference({ unit: collision.name, entityIdentity: { uuid: custom.uuid } }))
+            .toEqual({ kind: 'resolved', unit: custom, uuid: custom.uuid, usedLegacyNameFallback: false });
     });
 
     it('resolves a V1 UUID before a conflicting legacy name', () => {
@@ -109,7 +140,7 @@ describe('UnitRuntimeService', () => {
             expect(resolution.unit).toBe(requested);
             expect(resolution.usedLegacyNameFallback).toBeFalse();
         }
-        expect(service.getUnitByName('Shared Name')).toBeUndefined();
+        expect(service.getUnitByIdentifier('Shared Name')).toBeUndefined();
     });
 
     it('indexes summaries by UUID without a readiness facade', () => {

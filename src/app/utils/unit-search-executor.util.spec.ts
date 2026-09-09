@@ -10,6 +10,13 @@ import { executeUnitSearch } from './unit-search-executor.util';
 import { parseASSpecials } from './as-special-filter.util';
 import { applyFilterStateToUnits } from './unit-filter-kernel.util';
 import { getProperty } from './unit-search-shared.util';
+import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
+import { DROPDOWN_FILTERS, RANGE_FILTERS, SORT_OPTIONS } from '../services/unit-search-filters.model';
+import { createConstructionEntity } from '../construction/domain/construction-factory';
+import { STANDARD_ARMOR_EQUIPMENT } from '../models/entity/components/armor';
+import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { asSourceHash, asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../services/unit-catalog/unit-catalog.types';
+import { UnitSummaryBuilder } from './unit-summary-builder';
 
 function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
     return createEmptyUnit(overrides);
@@ -35,12 +42,12 @@ function executeSortedUnits(units: UnitSummary[], sortKey: string): UnitSummary[
     }).results;
 }
 
-function executeQuery(units: UnitSummary[], query: string): UnitSummary[] {
+function executeQuery(units: UnitSummary[], query: string, gameSystem = GameSystem.CBT): UnitSummary[] {
     return executeUnitSearch({
         units,
-        parsedQuery: parseSemanticQueryAST(query, GameSystem.CBT),
+        parsedQuery: parseSemanticQueryAST(query, gameSystem),
         searchTokens: [],
-        gameSystem: GameSystem.CBT,
+        gameSystem,
         sortKey: 'name',
         sortDirection: 'asc',
         bvPvLimit: 0,
@@ -56,6 +63,104 @@ function executeQuery(units: UnitSummary[], query: string): UnitSummary[] {
 }
 
 describe('unit-search-executor', () => {
+    describe('semantic issue counts', () => {
+        it('finds both parsing and construction errors in generated summaries', () => {
+            const registry = createTestEquipmentRegistry({
+                [STANDARD_ARMOR_EQUIPMENT.id]: STANDARD_ARMOR_EQUIPMENT,
+            });
+            const summaries = ['Valid', 'Parsing error', 'Construction error'].map(name => {
+                const entity = createConstructionEntity('BuildingEntity', registry);
+                entity.chassis.set(name);
+                if (name === 'Parsing error') {
+                    entity.setLoadIssues([{
+                        code: 'INVALID_MOVEMENT_TYPE', severity: 'error', field: 'motion_type',
+                        message: 'Invalid movement type',
+                    }]);
+                } else if (name === 'Construction error') {
+                    entity.originalBuildYear.set(entity.year() + 1);
+                }
+                return new UnitSummaryBuilder().build(entity, {
+                    entryKey: {
+                        origin: 'megamek',
+                        design: { provider: MM_DATA_UNIT_PROVIDER_ID, uuid: asUnitUuid(entity.uuid()!) },
+                        sourceRevision: asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA'),
+                    },
+                    format: 'blk',
+                });
+            });
+
+            for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
+                expect(executeQuery(summaries, 'issues>0', gameSystem).map(unit => unit.chassis))
+                    .toEqual(jasmine.arrayWithExactContents(['Parsing error', 'Construction error']));
+                expect(executeQuery(summaries, 'issues=0', gameSystem).map(unit => unit.chassis))
+                    .toEqual(['Valid']);
+            }
+        });
+
+        const units = [0, 1, 2, 101].map(count => createEmptyUnit({
+            name: `Issues ${count}`,
+            loadIssues: Array.from({ length: count }, (_, index) => ({
+                code: 'test-issue', severity: index % 2 ? 'warning' : 'error',
+                field: 'equipment', message: `Issue ${index + 1}`,
+            })),
+        }));
+        const cases: [string, number[]][] = [
+            ['issues=1', [1]],
+            ['issues>0', [1, 2, 101]],
+            ['issues=0', [0]],
+            ['issues!=1', [0, 2, 101]],
+            ['issues>=2', [2, 101]],
+            ['issues<2', [0, 1]],
+            ['issues<=2', [0, 1, 2]],
+            ['issues=1-2', [1, 2]],
+            ['issues!=1-2', [0, 101]],
+            ['issues>0 issues<2', [1]],
+        ];
+
+        for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
+            it(`filters by issue count in ${gameSystem}`, () => {
+                for (const [query, counts] of cases) {
+                    expect(executeQuery(units, query, gameSystem).map(unit => unit.loadIssues.length))
+                        .withContext(query).toEqual(jasmine.arrayWithExactContents(counts));
+                }
+                expect(executeQuery(units, '(issues=0 OR issues>=2) issues<100', gameSystem)
+                    .map(unit => unit.loadIssues.length)).toEqual(jasmine.arrayWithExactContents([0, 2]));
+            });
+        }
+
+        it('preserves numeric constraints through filter state and serialization', () => {
+            for (const [query, counts] of cases) {
+                const state = tokensToFilterState(parseSemanticQueryAST(query, GameSystem.CBT).tokens, GameSystem.CBT, {});
+                expect(state['loadIssues.length'].semanticOnly).withContext(query).toBeTrue();
+                const filtered = applyFilterStateToUnits({
+                    units, state,
+                    dependencies: {
+                        getProperty,
+                        getAdjustedBV: unit => unit.bv,
+                        getAdjustedPV: unit => unit.as.PV,
+                        getUnitIdsForExternalFilters: () => null,
+                        getPositiveFactionNames: () => [],
+                        unitMatchesAvailabilityFrom: () => false,
+                        unitMatchesAvailabilityRarity: () => false,
+                        getForcePackLookupSet: () => undefined,
+                        getAvailabilityLookupKey: unit => unit.name,
+                    },
+                });
+                expect(filtered.map(unit => unit.loadIssues.length))
+                    .withContext(query).toEqual(jasmine.arrayWithExactContents(counts));
+                const serialized = filterStateToSemanticText(state, '', GameSystem.CBT, {});
+                expect(executeQuery(units, serialized).map(unit => unit.loadIssues.length))
+                    .withContext(`${query} serialized as ${serialized}`).toEqual(jasmine.arrayWithExactContents(counts));
+            }
+        });
+
+        it('keeps issue counts out of UI filters and sorting', () => {
+            for (const options of [DROPDOWN_FILTERS, RANGE_FILTERS, SORT_OPTIONS]) {
+                expect(options.some(option => option.key === 'loadIssues.length')).toBeFalse();
+            }
+        });
+    });
+
     describe('heat filters on units without heat tracking', () => {
         const nonHeat = createEmptyUnit({
             name: 'Tank', type: 'Tank', heat: null, dissipation: null,

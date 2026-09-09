@@ -219,7 +219,6 @@ function foldersForFacts(facts: FluffImageFacts): readonly FluffImageFolder[] {
     // These catalog-only families have no legacy image oracle or approved
     // folder mapping. An explicit empty search is safer than defaulting them
     // to Mek art by inheritance.
-    case 'GunEmplacement':
     case 'BuildingEntity': return [];
     default: return assertNever(facts.entityType);
   }

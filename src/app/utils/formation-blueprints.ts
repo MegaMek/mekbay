@@ -1462,7 +1462,7 @@ export const FORMATION_BLUEPRINTS: Readonly<Record<string, FormationRequirementB
             allOf('phalanx-cv-core', 'CV core plus support', [countMin('phalanx-cv-count', '2 CV units', 'phalanx-cv', 2), countMin('phalanx-bm-ba-count', '1 BM/BA unit', 'phalanx-bm-or-ba', 1)]),
         ]),
     ]),
-    'rogue-star': sharedBlueprint('rogue-star', [...clanOnlyConstraints, matchedPairs('rogue-model-pair', 'At least two same model/name units', 'clan-force', 1)]),
+    'rogue-star': sharedBlueprint('rogue-star', [...clanOnlyConstraints, matchedPairs('rogue-model-pair', 'At least two units of the same model', 'clan-force', 1)]),
     'strategic-command-star': sharedBlueprint('strategic-command-star', [
         ...clanOnlyConstraints,
         all('strategic-skill', 'All skill 3 or lower', 'strategic-skill-3'),

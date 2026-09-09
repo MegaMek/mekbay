@@ -9,6 +9,35 @@ import type { CBTForceMember } from '../models/force-member.model';
 import { CBTSummaryPrintUtil } from './cbt-summary-print.util';
 
 describe('CBTSummaryPrintUtil', () => {
+    afterEach(() => window.dispatchEvent(new Event('afterprint')));
+
+    for (const paperSize of ['letter', 'a4'] as const) {
+        it(`keeps a page margin for ${paperSize} summaries`, async () => {
+            const force = createForce();
+            force.groups = () => [{ id: 'alpha', groupDisplayName: () => 'Alpha Lance' }];
+            force.getCBTMembers = () => [createMember(force as unknown as CBTForce, 'Atlas', 'alpha')];
+
+            await CBTSummaryPrintUtil.print(
+                force as unknown as CBTForce,
+                { paperSize, printPilotData: true },
+                false,
+            );
+
+            const overlay = document.getElementById('cbt-summary-print-container')!;
+            const rules = [...overlay.querySelector('style')!.sheet!.cssRules]
+                .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText === 'print')
+                .flatMap(rule => [...rule.cssRules]);
+            const defaultPage = rules.find((rule): rule is CSSPageRule =>
+                rule instanceof CSSPageRule && rule.selectorText === '')!;
+
+            expect(defaultPage.style.getPropertyValue('size').toLowerCase()).toBe(`${paperSize} landscape`);
+            for (const side of ['top', 'right', 'bottom', 'left']) {
+                expect(defaultPage.style.getPropertyValue(`margin-${side}`)).toBe('0.25in');
+                expect(defaultPage.style.getPropertyPriority(`margin-${side}`)).toBe('important');
+            }
+        });
+    }
+
     it('renders every admitted Entity member and repeats the group name in the table header', async () => {
         const group = { id: 'alpha', groupDisplayName: () => 'Alpha Lance' };
         const force = createForce();

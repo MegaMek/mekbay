@@ -14,6 +14,12 @@ import { asUnitUuid } from './unit-catalog/unit-catalog.types';
 
 describe('DbService current force persistence', () => {
     let service: DbService;
+    const saveCustomUnit = (record: SavedCustomUnit) => service.updateCustomUnits([
+        { uuid: record.uuid, accountUuid: record.accountUuid ?? '', update: () => record },
+    ]);
+    const deleteCustomUnit = (uuid: string, accountUuid = '') => service.updateCustomUnits([
+        { uuid, accountUuid, update: () => undefined },
+    ]);
     const instanceId = `force-v2-db-${Date.now()}-${Math.random()}`;
 
     beforeEach(async () => {
@@ -40,19 +46,54 @@ describe('DbService current force persistence', () => {
             source: `Version:1.3\nuuid:${uuid}\nchassis:Workshop\n`,
         };
         try {
-            await service.saveCustomUnit(record);
+            await saveCustomUnit(record);
             expect((await service.listCustomUnits()).find(row => (row as SavedCustomUnit).uuid === uuid)).toEqual(record);
             const updated = { ...record, source: `${record.source}model:Modified\n`, updatedAt: record.updatedAt + 1 };
-            await service.saveCustomUnit(updated);
+            await saveCustomUnit(updated);
             await service.clearCatalogCaches();
             const stored = (await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid);
             expect(stored).toEqual([updated]);
             const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
             expect(database.objectStoreNames.contains('customUnitsStore')).toBeTrue();
-            await service.deleteCustomUnit(uuid);
+            await deleteCustomUnit(uuid);
             expect((await service.listCustomUnits()).some(row => (row as SavedCustomUnit).uuid === uuid)).toBeFalse();
         } finally {
-            await service.deleteCustomUnit(uuid);
+            await deleteCustomUnit(uuid);
+        }
+    });
+
+    it('stores the same subscribed UUID independently for two accounts', async () => {
+        const uuid = asUnitUuid(crypto.randomUUID());
+        const first: SavedCustomUnit = { schemaVersion: 1, uuid, accountUuid: 'custom-test-first', owned: false, subscribed: true,
+            createdAt: 1, updatedAt: 1, format: 'mtf', source: `uuid:${uuid}\nchassis:Shared\n` };
+        const second = { ...first, accountUuid: 'custom-test-second' };
+        try {
+            await saveCustomUnit(first); await saveCustomUnit(second);
+            expect((await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid).length).toBe(2);
+            await deleteCustomUnit(uuid, first.accountUuid);
+            expect((await service.listCustomUnits()).filter(row => (row as SavedCustomUnit).uuid === uuid)).toEqual([second]);
+        } finally {
+            await deleteCustomUnit(uuid, first.accountUuid); await deleteCustomUnit(uuid, second.accountUuid);
+        }
+    });
+
+    it('separates owned designs from subscriptions and refuses to persist a temporary preview', async () => {
+        const owned: SavedCustomUnit = { schemaVersion: 1, uuid: asUnitUuid(crypto.randomUUID()), accountUuid: 'separate-stores-test', owned: true,
+            createdAt: 1, updatedAt: 1, format: 'mtf', source: 'test source' };
+        const subscribed = { ...owned, uuid: asUnitUuid(crypto.randomUUID()), owned: false, subscribed: true };
+        try {
+            await saveCustomUnit(owned); await saveCustomUnit(subscribed);
+            await expectAsync(saveCustomUnit({ ...subscribed, subscribed: false })).toBeRejectedWithError(/Only subscribed/);
+            const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            expect(database.objectStoreNames.contains('subscribedCustomUnitsStore')).toBeTrue();
+            await new Promise<void>((resolve, reject) => {
+                const tx = database.transaction('subscribedCustomUnitsStore', 'readwrite');
+                tx.objectStore('subscribedCustomUnitsStore').clear();
+                tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+            });
+            expect((await service.listCustomUnits()).filter(r => (r as SavedCustomUnit).accountUuid === owned.accountUuid)).toEqual([owned]);
+        } finally {
+            await deleteCustomUnit(owned.uuid, owned.accountUuid); await deleteCustomUnit(subscribed.uuid, owned.accountUuid);
         }
     });
 
@@ -302,6 +343,7 @@ describe('DbService legacy catalog cleanup', () => {
         const baseStore = {
             indexNames: { contains: () => true },
             createIndex: () => undefined,
+            openCursor: () => ({} as IDBRequest<IDBCursorWithValue | null>),
         };
         const generalStore = {
             ...baseStore,

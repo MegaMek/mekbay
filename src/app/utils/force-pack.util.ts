@@ -27,7 +27,7 @@ export function resolveForcePackUnits(
     dataService: DataService
 ): PackUnitEntry[] {
     return unitList.map(u => {
-        const found = dataService.getUnitByName(u.name);
+        const found = dataService.getUnitByIdentifier(u.name);
 
         return {
             chassis: found?.chassis ?? 'NOT FOUND',

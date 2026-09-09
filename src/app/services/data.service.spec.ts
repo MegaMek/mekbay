@@ -236,7 +236,7 @@ describe('DataService', () => {
         uuid: jasmine.createSpy('uuid').and.returnValue('user-1'),
     };
     const unitRuntimeServiceMock = {
-        getUnitByName: jasmine.createSpy('getUnitByName').and.returnValue(undefined),
+        getUnitByIdentifier: jasmine.createSpy('getUnitByIdentifier').and.returnValue(undefined),
         getUnitByUuid: jasmine.createSpy('getUnitByUuid').and.returnValue(undefined),
         resolveUnitReference: jasmine.createSpy('resolveUnitReference'),
         resolvePersistedUnitIdentity: jasmine.createSpy('resolvePersistedUnitIdentity').and.callFake(
@@ -407,8 +407,8 @@ describe('DataService', () => {
         wsServiceMock.sendAndWaitForResponse.and.resolveTo(undefined);
         userStateServiceMock.uuid.calls.reset();
         userStateServiceMock.uuid.and.returnValue('user-1');
-        unitRuntimeServiceMock.getUnitByName.calls.reset();
-        unitRuntimeServiceMock.getUnitByName.and.returnValue(undefined);
+        unitRuntimeServiceMock.getUnitByIdentifier.calls.reset();
+        unitRuntimeServiceMock.getUnitByIdentifier.and.returnValue(undefined);
         unitRuntimeServiceMock.getUnitByUuid.calls.reset();
         unitRuntimeServiceMock.getUnitByUuid.and.returnValue(undefined);
         unitRuntimeServiceMock.resolveUnitReference.calls.reset();
@@ -425,6 +425,7 @@ describe('DataService', () => {
         unitRuntimeServiceMock.loadUnitTags.calls.reset();
         unitRuntimeServiceMock.loadUnitTags.and.resolveTo(null);
         unitRuntimeServiceMock.postprocessUnits.calls.reset();
+        unitRuntimeServiceMock.postprocessUnits.and.stub();
         unitRuntimeServiceMock.linkEquipmentToUnits.calls.reset();
         unitSearchIndexServiceMock.rebuildIndexes.calls.reset();
         unitSearchIndexServiceMock.rebuildIndexes.and.stub();
@@ -575,11 +576,11 @@ describe('DataService', () => {
     });
 
     it('delegates unit lookup to the runtime service', () => {
-        service.getUnitByName('Mad Cat Prime');
+        service.getUnitByIdentifier('Mad Cat Prime');
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
         service.getUnitByUuid(uuid);
 
-        expect(unitRuntimeServiceMock.getUnitByName).toHaveBeenCalledOnceWith('Mad Cat Prime');
+        expect(unitRuntimeServiceMock.getUnitByIdentifier).toHaveBeenCalledOnceWith('Mad Cat Prime');
         expect(unitRuntimeServiceMock.getUnitByUuid).toHaveBeenCalledOnceWith(uuid);
     });
 
@@ -688,24 +689,24 @@ describe('DataService', () => {
         expect(service.getFactionById(activeHouse.id)).toBe(activeHouse);
         expect(eraIndexMock.getEraById).not.toHaveBeenCalled();
         expect(factionsCatalogMock.getFactionById).not.toHaveBeenCalled();
-        expect(activeNone.eras[earlyEra.id]).toEqual(new Set<number>([eraBoundaryUnit.id]));
+        expect(activeNone.eras[earlyEra.id!]).toEqual(new Set<number>([eraBoundaryUnit.id!]));
         expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([
-            noFactionUnit.id, eraBoundaryUnit.id,
+            noFactionUnit.id!, eraBoundaryUnit.id!,
         ]));
         expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([
-            noFactionUnit.id, futureNoFactionUnit.id, eraBoundaryUnit.id,
+            noFactionUnit.id!, futureNoFactionUnit.id!, eraBoundaryUnit.id!,
         ]));
-        expect((activeEarly.units as Set<number>).has(noFactionUnit.id)).toBeFalse();
-        expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
-        expect((activeEarly.units as Set<number>).has(eraBoundaryUnit.id)).toBeTrue();
-        expect((activeIntro.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
-        expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
-        expect((activeOpen.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
-        expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.id)).toBeTrue();
+        expect((activeEarly.units as Set<number>).has(noFactionUnit.id!)).toBeFalse();
+        expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.id!)).toBeFalse();
+        expect((activeEarly.units as Set<number>).has(eraBoundaryUnit.id!)).toBeTrue();
+        expect((activeIntro.units as Set<number>).has(noFactionUnit.id!)).toBeTrue();
+        expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.id!)).toBeFalse();
+        expect((activeOpen.units as Set<number>).has(noFactionUnit.id!)).toBeTrue();
+        expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.id!)).toBeTrue();
         expect((activeIntro.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
         expect((activeOpen.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
         expect((activeEarly.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect(activeNone.eras[introEra.id].has(houseUnit.id)).toBeFalse();
+        expect(activeNone.eras[introEra.id!].has(houseUnit.id!)).toBeFalse();
         expect(noneFaction.eras).toEqual({});
         expect(introEra.units).toEqual(new Set<number>());
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes).toHaveBeenCalledWith(
@@ -714,6 +715,7 @@ describe('DataService', () => {
             activeFactions,
             undefined,
             equipmentCatalogMock.getEquipmentRegistry(),
+            undefined,
         );
         expect(unitSearchIndexServiceMock.commitPreparedCatalogIndexes).toHaveBeenCalledTimes(1);
     });
@@ -844,7 +846,7 @@ describe('DataService', () => {
 
     it('merges local previews with cloud bulk entries even when local combat state is unreadable', async () => {
         const atlas = createUnit('Atlas');
-        unitRuntimeServiceMock.getUnitByName.and.callFake((name: string) => name === 'Atlas' ? atlas : undefined);
+        unitRuntimeServiceMock.getUnitByIdentifier.and.callFake((name: string) => name === 'Atlas' ? atlas : undefined);
 
         dbServiceMock.getForce.and.rejectWith(new Error('Unreadable local combat state'));
         dbServiceMock.getForcePreview.and.callFake(async (instanceId: string) => {
@@ -2605,29 +2607,32 @@ describe('DataService', () => {
 
     it('settles user save and delete overlays through the same atomic runtime and search switch', async () => {
         const unit = createUnit('MM-Data');
-        unitsCatalogMock.getUnits.and.returnValue([unit]);
+        const initialUnits = [unit];
+        unitsCatalogMock.getUnits.and.returnValue(initialUnits);
         await service.initialize();
         await waitForUnitCatalogSettlement(service);
 
         const savedUser = createUnit('Saved User');
         const afterSave = [unit, savedUser];
-        queueMockCatalogActivation(afterSave);
+        queueMockCatalogActivation(afterSave).customOnly = true;
         TestBed.tick();
         await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2]]);
         expect(unitRuntimeServiceMock.prepareRuntimeCatalog.calls.mostRecent().args[0]).toBe(afterSave);
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[0]).toBe(afterSave);
+        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[5]).toBe(initialUnits);
         expect(service.searchCorpusVersion()).toBe(2);
 
         const afterDelete = [unit];
-        queueMockCatalogActivation(afterDelete);
+        queueMockCatalogActivation(afterDelete).customOnly = true;
         TestBed.tick();
         await waitForUnitCatalogSettlement(service);
 
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2], [3]]);
         expect(unitRuntimeServiceMock.prepareRuntimeCatalog.calls.mostRecent().args[0]).toBe(afterDelete);
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[0]).toBe(afterDelete);
+        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[5]).toBe(afterSave);
         expect(unitRuntimeServiceMock.commitPreparedRuntimeCatalog).toHaveBeenCalledTimes(3);
         expect(unitSearchIndexServiceMock.commitPreparedCatalogIndexes).toHaveBeenCalledTimes(3);
         expect(service.searchCorpusVersion()).toBe(3);
@@ -2814,4 +2819,27 @@ describe('DataService', () => {
         expect(megaMekAvailabilityCatalogMock.initialize).toHaveBeenCalledTimes(2);
     });
 
+    it('applies buffered tags to the retained active catalog after candidate indexing fails', async () => {
+        const initialUnits = [createUnit('A')];
+        unitsCatalogMock.getUnits.and.returnValue(initialUnits);
+        await service.initialize();
+        await waitForUnitCatalogSettlement(service);
+        unitRuntimeServiceMock.applyPreparedTagDataToUnits.calls.reset();
+        const localCallback = tagsServiceMock.setRefreshUnitsCallback.calls.mostRecent().args[0];
+        const changedTags = { tags: {} } as any;
+        unitRuntimeServiceMock.postprocessUnits.and.callFake(() => {
+            localCallback(changedTags, { searchIndexChanged: true });
+            localCallback(changedTags, { searchIndexChanged: false });
+        });
+        unitSearchIndexServiceMock.prepareCatalogIndexes.and.throwError('Injected index failure');
+        queueMockCatalogActivation([createUnit('B')]);
+        TestBed.tick();
+        await waitForUnitCatalogSettlement(service);
+        expect(unitsCatalogMock.getUnits()).toBe(initialUnits);
+        expect(unitsCatalogMock.rejectPendingActivation).toHaveBeenCalled();
+        expect(unitRuntimeServiceMock.applyPreparedTagDataToUnits.calls.allArgs()
+            .some(args => args[0] === initialUnits && args[1] === changedTags))
+            .withContext('The retained live catalog must receive the tag change that was consumed by failed candidate B').toBeTrue();
+        expect(unitSearchIndexServiceMock.rebuildTagSearchIndex).toHaveBeenCalledWith(initialUnits);
+    });
 });

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { fallbackRecordSheetFluffImage } from './record-sheet-center-panel.util';
+
 const PNG_MIME_TYPE = 'image/png';
 const DEFAULT_PNG_SCALE = 3;
 const DEFAULT_CLIPBOARD_PNG_SCALE = 5; //workaround for some browsers that uses some internal pixel scaling that is less than the rendering one
@@ -199,7 +201,7 @@ export class SvgExportUtil {
             return;
         }
 
-        this.fallbackFluffImageToReferenceTables(image);
+        fallbackRecordSheetFluffImage(image);
     }
 
     private static async inlineHtmlImage(image: HTMLImageElement): Promise<void> {
@@ -212,7 +214,7 @@ export class SvgExportUtil {
             return;
         }
 
-        this.fallbackFluffImageToReferenceTables(image);
+        fallbackRecordSheetFluffImage(image);
     }
 
     private static getImageHref(image: SVGImageElement): string | null {
@@ -241,23 +243,6 @@ export class SvgExportUtil {
         } catch {
             return null;
         }
-    }
-
-    private static fallbackFluffImageToReferenceTables(image: Element): void {
-        if (image.id !== 'fluff-image-injected') {
-            return;
-        }
-
-        const svg = image.closest('svg') as SVGSVGElement | null;
-        if (!svg) {
-            return;
-        }
-
-        const injectedEl = svg.getElementById('fluff-image-fo') as SVGElement | null;
-        (injectedEl ?? image as SVGElement).style.setProperty('display', 'none');
-        svg.querySelectorAll<SVGGraphicsElement>('.referenceTable').forEach((referenceTable) => {
-            referenceTable.style.display = 'block';
-        });
     }
 
     private static injectExportStyles(svg: SVGSVGElement, embeddedFontCss: string): void {

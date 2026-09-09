@@ -169,10 +169,10 @@ describe('ForceNamerUtil.buildFactionDisplayList', () => {
 
         const availabilityContext: ForceAvailabilityContext = {
             source: 'megamek',
-            getUnitKey: (candidate) => candidate.name,
-            getVisibleEraUnitIds: () => new Set([unit.name]),
-            getFactionUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
-            getFactionEraUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
+            getUnitKey: (candidate) => candidate.uuid,
+            getVisibleEraUnitIds: () => new Set([unit.uuid]),
+            getFactionUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.uuid]) : new Set<string>(),
+            getFactionEraUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.uuid]) : new Set<string>(),
         };
 
         const result = ForceNamerUtil.buildFactionDisplayList(
@@ -217,10 +217,10 @@ describe('ForceNamerUtil.pickBestFaction', () => {
 
         const availabilityContext: ForceAvailabilityContext = {
             source: 'megamek',
-            getUnitKey: (candidate) => candidate.name,
-            getVisibleEraUnitIds: () => new Set([unit.name]),
-            getFactionUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
-            getFactionEraUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.name]) : new Set<string>(),
+            getUnitKey: (candidate) => candidate.uuid,
+            getVisibleEraUnitIds: () => new Set([unit.uuid]),
+            getFactionUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.uuid]) : new Set<string>(),
+            getFactionEraUnitIds: (faction) => faction.id === contextFaction.id ? new Set([unit.uuid]) : new Set<string>(),
         };
 
         const result = ForceNamerUtil.pickBestFaction(

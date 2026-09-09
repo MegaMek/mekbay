@@ -146,15 +146,16 @@ describe('FormationRequirementEngine', () => {
     });
 
     it('enforces Battle Lance vehicle pairs only in CBT', () => {
+        const vehicleA = createUnit(1, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Brawler', as: { TP: 'CV', SZ: 3 } });
+        const vehicleB = createUnit(2, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Sniper', as: { TP: 'CV', SZ: 3 } });
         const validVehiclePairs = [
-            createForceUnit(createUnit(1, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Brawler', as: { TP: 'CV', SZ: 3 } })),
-            createForceUnit(createUnit(2, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Sniper', as: { TP: 'CV', SZ: 3 } })),
-            createForceUnit(createUnit(3, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Skirmisher', as: { TP: 'CV', SZ: 3 } })),
-            createForceUnit(createUnit(4, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Scout', as: { TP: 'CV', SZ: 3 } })),
+            createForceUnit(vehicleA), createForceUnit({ ...vehicleA }),
+            createForceUnit(vehicleB), createForceUnit({ ...vehicleB }),
         ];
         const unmatchedVehicles = validVehiclePairs.map((forceUnit, index) => {
             const unit = forceUnit.getSummary();
-            return createForceUnit(createUnit(index + 10, `${unit.name}-${index}`, {
+            return createForceUnit(createUnit(index + 10, 'Same custom name', {
+                isCustom: true,
                 type: 'Tank',
                 subtype: 'Combat Vehicle',
                 weightClass: 'Heavy',
@@ -365,19 +366,27 @@ describe('FormationRequirementEngine', () => {
     });
 
     it('validates Rogue Star same-model pair requirements', () => {
+        const adder = createUnit(1, 'Adder Prime', { as: { TP: 'BM' } });
         const validUnits = [
-            createForceUnit(createUnit(1, 'Adder Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(2, 'Adder Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(adder, GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit({ ...adder }, GameSystem.AS, { faction: CLAN_FACTION }),
             createForceUnit(createUnit(3, 'Kit Fox Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
             createForceUnit(createUnit(4, 'Nova Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
             createForceUnit(createUnit(5, 'Stormcrow Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
         ];
-        const invalidUnits = validUnits.map((forceUnit, index) => createForceUnit(createUnit(index + 10, `${forceUnit.getSummary().name}-${index}`, {
+        const invalidUnits = validUnits.map((forceUnit, index) => createForceUnit(createUnit(index + 10, forceUnit.getSummary().name, {
+            isCustom: true,
             as: { TP: 'BM' },
         }), GameSystem.AS, { faction: CLAN_FACTION }));
 
         expect(LanceTypeIdentifierUtil.isValid(definition('rogue-star'), validUnits, GameSystem.AS)).toBeTrue();
         expect(LanceTypeIdentifierUtil.isValid(definition('rogue-star'), invalidUnits, GameSystem.AS)).toBeFalse();
+        expect(FormationRequirementEngine.getSearchCandidatePredicateFilter(
+            definition('rogue-star'), validUnits, GameSystem.AS,
+        ).helpfulPredicates).not.toContain('clan-force');
+        expect(FormationRequirementEngine.getSearchCandidatePredicateFilter(
+            definition('rogue-star'), invalidUnits, GameSystem.AS,
+        ).helpfulPredicates).toContain('clan-force');
     });
 
     it('validates Strategic Command Star aerospace, skill, and heavy Mek constraints', () => {

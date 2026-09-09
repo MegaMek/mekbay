@@ -219,7 +219,7 @@ export function getDefaultSpriteAssignmentKeyForFacts(
   if (facts.entityType === 'BattleArmor') return 'default_ba';
   if (facts.entityType === 'Infantry') return 'default_infantry';
   if (facts.entityType === 'ProtoMek') return 'default_proto';
-  if (facts.entityType === 'GunEmplacement' || facts.entityType === 'BuildingEntity') {
+  if (facts.entityType === 'BuildingEntity') {
     return 'default_gun_emplacement';
   }
   if (facts.entityType === 'Mek') return defaultMekKey(facts);

@@ -12,20 +12,44 @@ import { OptionsService } from './options.service';
 import { RecordSheetSourceService } from './record-sheet-source.service';
 
 describe('RecordSheetSourceService', () => {
-    const options = signal({ CBTRules: 'core-2026', recordSheetPipLayout: 'classic' } as Options);
+    const options = signal({ CBTRules: 'core-2026', recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' } } as Options);
 
     beforeEach(() => {
-        options.set({ CBTRules: 'core-2026', recordSheetPipLayout: 'classic' } as Options);
+        options.set({ CBTRules: 'core-2026', recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' } } as Options);
         TestBed.configureTestingModule({
             providers: [
                 RecordSheetSourceService,
                 { provide: OptionsService, useValue: { options } },
                 {
                     provide: UnitFluffImageService,
-                    useValue: { resolveEntityUrl: () => 'https://art.example/tank.png' },
+                    useValue: { initialize: async () => undefined, resolveEntityUrl: () => 'https://art.example/tank.png' },
                 },
             ],
         });
+    });
+
+    it('uses the global paper format unless the caller explicitly overrides it', async () => {
+        options.update(value => ({ ...value, printAllOptions: { ...value.printAllOptions, paperSize: 'a4' } }));
+        const generate = spyOn(RecordSheetSvgGenerator, 'generatePages').and.resolveTo([svg('sheet')]);
+        const entity = new TestTankEntity();
+        const service = TestBed.inject(RecordSheetSourceService);
+        await service.load(entity);
+        expect(generate.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({ format: 'a4', pageFormat: 'a4' }));
+        await service.load(entity, { format: 'compact' });
+        expect(generate.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({ format: 'compact', pageFormat: 'a4' }));
+        await service.load(entity, { format: 'letter' });
+        expect(generate.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({ format: 'letter', pageFormat: 'letter' }));
+    });
+
+    it('uses the default-enabled quirk setting and honors disabling it for every caller', async () => {
+        const generate = spyOn(RecordSheetSvgGenerator, 'generatePages').and.resolveTo([svg('sheet')]);
+        const service = TestBed.inject(RecordSheetSourceService);
+        const entity = new TestTankEntity();
+        await service.load(entity);
+        expect(generate.calls.mostRecent().args[1]?.showQuirks).toBeTrue();
+        options.update(value => ({ ...value, CBTOptionalRules: { ...value.CBTOptionalRules, quirks: false } }));
+        await service.load(entity, { showQuirks: true });
+        expect(generate.calls.mostRecent().args[1]?.showQuirks).toBeFalse();
     });
 
     it('always generates a record sheet from the Entity and active ruleset', async () => {

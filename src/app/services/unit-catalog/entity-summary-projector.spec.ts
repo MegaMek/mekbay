@@ -5,7 +5,7 @@
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { ArmorEquipment } from '../../models/equipment.model';
 import { sha1Base64Url } from '../../utils/sha1.util';
-import { EntityCoreUnitSummaryProjector } from './entity-summary-projector';
+import { EntityUnitSummaryProjector } from './entity-summary-projector';
 import {
     asSourceHash,
     asUnitUuid,
@@ -13,7 +13,7 @@ import {
     MM_DATA_UNIT_PROVIDER_ID,
 } from './unit-catalog.types';
 
-describe('EntityCoreUnitSummaryProjector', () => {
+describe('EntityUnitSummaryProjector', () => {
     it('uses the real BLK parser and summary builder exactly once for a direct-runtime family', async () => {
         const uuid = asUnitUuid('019f583e-b5e8-7032-b925-ba6c429a0687');
         const bytes = new TextEncoder().encode(`
@@ -21,7 +21,7 @@ describe('EntityCoreUnitSummaryProjector', () => {
 ${uuid}
 </UUID>
 <UnitType>
-GunEmplacement
+BuildingEntity
 </UnitType>
 <Name>
 Medium Sniper Turret
@@ -45,7 +45,7 @@ IS Level 3
             armor: { type: 'STANDARD' },
             tech: { base: 'All' },
         });
-        const projector = new EntityCoreUnitSummaryProjector(new EquipmentRegistry({
+        const projector = new EntityUnitSummaryProjector(new EquipmentRegistry({
             [standardArmor.id]: standardArmor,
         }), {
         });
@@ -62,7 +62,7 @@ IS Level 3
         });
 
         expect(projected.summary.uuid).toBe(uuid);
-        expect(projected.summary.entityType).toBe('GunEmplacement');
+        expect(projected.summary.entityType).toBe('BuildingEntity');
         expect(projected.summary.hash).toBe(sourceHash);
         expect(projected.summary.summaryVersion).toBeGreaterThan(0);
         expect(Object.prototype.hasOwnProperty.call(projected.summary, 'sourceRef')).toBeFalse();

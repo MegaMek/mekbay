@@ -25,6 +25,7 @@ import type { UnitIconResolver } from './unit-sprite-resolver';
 import { canonicalOptionalClanName } from './fluff-image-resolver';
 import { calculateUnitSustainedDamage } from './unit-sustained-damage';
 import { buildUnitRulesRefs } from './unit-rules-ref-builder';
+import { validateConstruction } from '../construction/domain/construction-rules';
 
 export interface UnitSummaryBuildContext {
   readonly entryKey: CatalogEntryKey;
@@ -41,7 +42,6 @@ export class UnitSummaryBuilder {
 
   /** Build the entity-derived base. Sheets are composed separately without reparsing. */
   build(entity: BaseEntity, context: UnitSummaryBuildContext): UnitSummary {
-    const loadIssues = entity.loadIssues().map(issue => ({ ...issue }));
     const uuid = validateIdentityAndSource(entity, context);
     if (entity instanceof StaticEmplacementEntity) {
       return this.buildStaticEmplacement(entity, context, uuid);
@@ -56,7 +56,7 @@ export class UnitSummaryBuilder {
       origin: context.entryKey.origin,
       hash: context.entryKey.sourceRevision,
       summaryVersion: UNIT_SUMMARY_VERSION,
-      loadIssues,
+      loadIssues: buildUnitIssues(entity),
       name: metadata.name,
       id: metadata.id,
       chassis: entity.fullChassis(),
@@ -134,7 +134,6 @@ export class UnitSummaryBuilder {
     context: UnitSummaryBuildContext,
     uuid: UnitUuid,
   ): UnitSummary {
-    const loadIssues = entity.loadIssues().map(issue => ({ ...issue }));
     const components = cloneComponents(buildUnitComponentMetadata(entity));
     const armor = entity.totalArmorPoints();
     const maximumArmor = entity.maximumArmorPoints();
@@ -145,7 +144,7 @@ export class UnitSummaryBuilder {
       origin: context.entryKey.origin,
       hash: context.entryKey.sourceRevision,
       summaryVersion: UNIT_SUMMARY_VERSION,
-      loadIssues,
+      loadIssues: buildUnitIssues(entity),
       name: buildStaticName(entity),
       id: entity.mulId(),
       chassis: entity.fullChassis(),
@@ -206,6 +205,21 @@ export class UnitSummaryBuilder {
       as: alphaStrike,
     };
   }
+}
+
+/** The catalog issue list includes source diagnostics and the same construction errors shown in MekLab. */
+function buildUnitIssues(entity: BaseEntity): UnitSummary['loadIssues'] {
+  return [
+    ...entity.loadIssues().map(issue => ({ ...issue })),
+    ...validateConstruction(entity).messages
+      .filter(issue => issue.severity === 'error')
+      .map(issue => ({
+        code: issue.code,
+        severity: 'error' as const,
+        field: issue.location ?? issue.category,
+        message: issue.message,
+      })),
+  ];
 }
 
 function validateIdentityAndSource(

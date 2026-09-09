@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { UnitNameService } from './unit-name.service';
+import { pinnedCustomSourceForHandle } from '../models/native-unit-source-handle';
 import { inject, Injectable, Injector } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -199,9 +200,11 @@ export class ForceWorkspaceCommandsService {
                 const sourceIndex = force.membersInGroup(group)
                     .findIndex(member => member.id === sourceUnit.id);
                 if (sourceIndex < 0) return null;
+                const customSource = pinnedCustomSourceForHandle(force.getUnitSnapshot(sourceUnit.id)?.nativeSource);
                 const clone = await this.unitAdmission.admitCBT({
                     force,
                     uuid,
+                    ...(customSource ? { customSource } : {}),
                     rosterGroupId: sourceUnit.rosterGroupId,
                     rosterMemberIndex: sourceIndex + 1,
                 });
@@ -648,9 +651,7 @@ export class ForceWorkspaceCommandsService {
         sourceForce: Force,
         targetForce: Force,
     ): Promise<ASForceUnit | null> {
-        const unitName = sourceUnit.getSummary()?.name;
-        if (!unitName) return null;
-        const unitData = this.dataService.getUnitByName(unitName);
+        const unitData = this.dataService.getUnitByUuid(sourceUnit.getSummary().uuid);
         if (!unitData) return null;
         if (!(targetForce instanceof ASForce)) {
             throw new Error('CBT units must be admitted from their canonical native source.');

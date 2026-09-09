@@ -346,7 +346,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
             continue;
         }
 
-        if (conf.type === AdvFilterType.SEMANTIC) {
+        if (conf.type === AdvFilterType.SEMANTIC && !conf.numeric) {
             const searchTerms: string[] = Array.isArray(val)
                 ? val.filter((value): value is string => typeof value === 'string')
                 : val !== null && typeof val === 'object'
@@ -453,7 +453,7 @@ export function applyFilterStateToUnits(request: ApplyUnitFilterStateRequest): U
             continue;
         }
 
-        if (conf.type === AdvFilterType.RANGE && Array.isArray(val)) {
+        if ((conf.type === AdvFilterType.RANGE || conf.numeric) && Array.isArray(val)) {
             const excludeRanges = filterState.excludeRanges;
             const includeRanges = filterState.includeRanges;
 

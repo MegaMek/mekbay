@@ -29,7 +29,6 @@ import {
 import {
     buildCoreCatalogGeneration,
     isReusableCoreSummary,
-    prepareUnitSummaryArray,
 } from './core-catalog-generation';
 import {
     CORE_UNITS_ARCHIVE_PATH,
@@ -43,7 +42,9 @@ import {
     type CoreUnitsManifest,
     type StoredCoreUnitsManifest,
 } from './core-unit-manifest';
-import type { CoreUnitSummaryProjector } from './entity-summary-projector';
+import type { UnitSummaryProjector } from './entity-summary-projector';
+import { projectUnitSummaryBatches, type UnitSummaryProjectionContext,
+    type UnitSummaryProjectionWorkers } from './unit-summary-projection';
 import { buildStoredCoreContent } from './native-unit-source';
 import {
     type PublishedCatalogGeneration,
@@ -103,7 +104,7 @@ export interface PreparedCoreRelease {
 }
 
 export interface PreparedCoreCatalogSynchronization {
-    readonly assetsManifest: RepositoryAssetsManifest;
+    readonly assetsManifest?: RepositoryAssetsManifest;
     readonly result: CoreCatalogSyncResult;
     readonly generation: PublishedCatalogGeneration<readonly UnitSummary[]>;
     readonly requiresPublication: boolean;
@@ -122,6 +123,7 @@ export interface CoreCatalogSynchronizerOptions {
     readonly baseUrl: string;
     readonly repositoryAssets: RepositoryAssetManifestService;
     readonly createArchiveWorker?: CoreCatalogArchiveWorkerFactory;
+    readonly summaryWorkers?: UnitSummaryProjectionWorkers;
     readonly fetcher?: typeof globalThis.fetch;
 }
 
@@ -176,7 +178,7 @@ export class CoreCatalogSynchronizer {
     public async prepareSynchronization(
         release: PreparedCoreRelease,
         dependencies: PreparedApplicationCatalogDependencies,
-        projector: CoreUnitSummaryProjector,
+        projector: UnitSummaryProjector,
         input: {
             readonly signal: AbortSignal;
             readonly dependenciesChanged: boolean;
@@ -184,6 +186,9 @@ export class CoreCatalogSynchronizer {
         },
     ): Promise<PreparedCoreCatalogSynchronization> {
         throwIfAborted(input.signal);
+        const projection: UnitSummaryProjectionContext = {
+            projector, dependencies: dependencies.bundle, workers: this.options.summaryWorkers,
+        };
         const desired = release.manifest.manifest;
         const active = release.active;
         const activeArchiveBlob = active
@@ -241,7 +246,7 @@ export class CoreCatalogSynchronizer {
                         desired,
                         opened.archive,
                         opened.summaries,
-                        projector,
+                        projection,
                         input,
                     ),
                     strategy: 'archive',
@@ -255,7 +260,7 @@ export class CoreCatalogSynchronizer {
                     diff.missingFiles,
                     activeSummaries,
                     summaryDependenciesChanged,
-                    projector,
+                    projection,
                     input,
                 );
             }
@@ -266,19 +271,45 @@ export class CoreCatalogSynchronizer {
                 diff.missingFiles,
                 activeSummaries,
                 summaryDependenciesChanged,
-                projector,
+                projection,
                 input,
             );
         }
 
+        return this.preparePublication(release.manifest, nextSummaryDependencyHashes, update,
+            release.manifestSource, release.assetsManifest, input.onProgress);
+    }
+
+    /** Repair interrupted dependency persistence using only the already stored native ZIP. */
+    public async recoverCachedCatalog(
+        active: PublishedCatalogGeneration<readonly UnitSummary[]>,
+        dependencies: PreparedApplicationCatalogDependencies,
+        input: { readonly signal: AbortSignal; readonly onProgress?: (progress: CoreCatalogSyncProgress) => void },
+    ): Promise<PreparedCoreCatalogSynchronization> {
+        const blob = await this.database.readSourceArchive(active.manifest.hash);
+        if (!blob) throw new Error('The local unit source ZIP is unavailable for recovery');
+        const update = await this.prepareIncrementalUpdate(blob, active.manifest.manifest, [], new Map(), true,
+            { projector: await dependencies.getProjector(), dependencies: dependencies.bundle, workers: this.options.summaryWorkers }, input);
+        return this.preparePublication(active.manifest, summaryDependencyHashes(dependencies.assetHashes),
+            update, 'stored', undefined, input.onProgress);
+    }
+
+    private preparePublication(
+        manifest: StoredCoreUnitsManifest,
+        nextSummaryDependencyHashes: SummaryDependencyHashes,
+        update: PreparedCoreCatalogUpdate,
+        manifestSource: CoreCatalogSyncResult['manifestSource'],
+        assetsManifest: RepositoryAssetsManifest | undefined,
+        onProgress?: (progress: CoreCatalogSyncProgress) => void,
+    ): PreparedCoreCatalogSynchronization {
         const built = buildCoreCatalogGeneration({
-            unitsManifestHash: release.manifest.hash,
+            unitsManifestHash: manifest.hash,
             summaryDependencyHashes: nextSummaryDependencyHashes,
             units: update.summaries,
         });
         const generation: PublishedCatalogGeneration<readonly UnitSummary[]> = Object.freeze({
             activationId: built.activationId,
-            manifest: release.manifest,
+            manifest,
             summary: Object.freeze({
                 activationId: built.activationId,
                 summaryVersion: UNIT_SUMMARY_VERSION,
@@ -291,7 +322,7 @@ export class CoreCatalogSynchronizer {
             activationId: generation.activationId,
             strategy: update.strategy,
             downloadedUnits: update.downloadedUnits,
-            manifestSource: release.manifestSource,
+            manifestSource,
         });
         return preparedSynchronization(
             this.database,
@@ -299,8 +330,8 @@ export class CoreCatalogSynchronizer {
             update.archiveBlob,
             result,
             true,
-            release.assetsManifest,
-            input.onProgress,
+            assetsManifest,
+            onProgress,
         );
     }
 
@@ -310,7 +341,7 @@ export class CoreCatalogSynchronizer {
         missingFiles: readonly UnitFileName[],
         activeSummaries: ReadonlyMap<UnitUuid, UnitSummary>,
         regenerateAll: boolean,
-        projector: CoreUnitSummaryProjector,
+        projection: UnitSummaryProjectionContext,
         input: {
             readonly signal: AbortSignal;
             readonly onProgress?: (progress: CoreCatalogSyncProgress) => void;
@@ -326,7 +357,7 @@ export class CoreCatalogSynchronizer {
                 replacementByFile,
                 activeSummaries,
                 regenerateAll,
-                projector,
+                projection,
                 input,
             );
             return {
@@ -459,18 +490,18 @@ export class CoreCatalogSynchronizer {
         manifest: CoreUnitsManifest,
         archive: CoreUnitArchive,
         embedded: readonly UnitSummary[],
-        projector: CoreUnitSummaryProjector,
+        projection: UnitSummaryProjectionContext,
         input: {
             readonly signal: AbortSignal;
             readonly onProgress?: (progress: CoreCatalogSyncProgress) => void;
         },
     ): Promise<readonly UnitSummary[]> {
         const embeddedByUuid = new Map(embedded.map(summary => [summary.uuid, summary] as const));
-        return this.projectSummaries(manifest, projector, input, async (uuid, entry) => {
+        return this.projectSummaries(manifest, projection, input, uuid => {
             const summary = embeddedByUuid.get(uuid);
             if (summary && isReusableCoreSummary(summary, entryKey(uuid, manifest))) return summary;
-            return this.project(projector, uuid, entry, await archive.extract(entry.file));
-        });
+            return undefined;
+        }, (_uuid, entry) => archive.extract(entry.file));
     }
 
     private async summariesFromIncrementalUpdate(
@@ -479,68 +510,56 @@ export class CoreCatalogSynchronizer {
         replacements: ReadonlyMap<UnitFileName, StoredCoreContent>,
         active: ReadonlyMap<UnitUuid, UnitSummary>,
         regenerateAll: boolean,
-        projector: CoreUnitSummaryProjector,
+        projection: UnitSummaryProjectionContext,
         input: {
             readonly signal: AbortSignal;
             readonly onProgress?: (progress: CoreCatalogSyncProgress) => void;
         },
     ): Promise<readonly UnitSummary[]> {
-        return this.projectSummaries(manifest, projector, input, async (uuid, entry) => {
+        return this.projectSummaries(manifest, projection, input, uuid => {
             const summary = active.get(uuid);
             if (!regenerateAll && summary && isReusableCoreSummary(summary, entryKey(uuid, manifest))) return summary;
-            const bytes = replacements.get(entry.file)?.bytes ?? await archive.extract(entry.file);
-            return this.project(projector, uuid, entry, bytes);
-        });
+            return undefined;
+        }, async (_uuid, entry) => replacements.get(entry.file)?.bytes ?? await archive.extract(entry.file));
     }
 
     private async projectSummaries(
         manifest: CoreUnitsManifest,
-        _projector: CoreUnitSummaryProjector,
+        projection: UnitSummaryProjectionContext,
         input: {
             readonly signal: AbortSignal;
             readonly onProgress?: (progress: CoreCatalogSyncProgress) => void;
         },
-        resolve: (
+        reusable: (uuid: UnitUuid) => UnitSummary | undefined,
+        load: (
             uuid: UnitUuid,
             entry: CoreUnitsManifest['units'][UnitUuid],
-        ) => Promise<UnitSummary>,
+        ) => Promise<ArrayBuffer>,
     ): Promise<readonly UnitSummary[]> {
         const uuids = Object.keys(manifest.units).sort() as UnitUuid[];
         const summaries = new Array<UnitSummary>(uuids.length);
-        let cursor = 0;
-        let completed = 0;
-        emit(input.onProgress, { phase: 'projecting', completed, total: uuids.length });
-        const worker = async (): Promise<void> => {
-            for (;;) {
-                const index = cursor++;
-                if (index >= uuids.length) return;
-                throwIfAborted(input.signal);
-                const uuid = uuids[index];
-                summaries[index] = await resolve(uuid, manifest.units[uuid]);
-                completed += 1;
-                emit(input.onProgress, { phase: 'projecting', completed, total: uuids.length });
-            }
-        };
-        await Promise.all(Array.from(
-            { length: Math.min(MAX_PARALLEL_UNIT_FETCHES, uuids.length) },
-            () => worker(),
-        ));
-        return prepareUnitSummaryArray(summaries);
-    }
-
-    private async project(
-        projector: CoreUnitSummaryProjector,
-        uuid: UnitUuid,
-        entry: CoreUnitsManifest['units'][UnitUuid],
-        bytes: ArrayBuffer,
-    ): Promise<UnitSummary> {
-        const projected = await projector.project({
-            entryKey: entryKey(uuid, { units: { [uuid]: entry } } as CoreUnitsManifest),
-            format: entry.format,
-            file: entry.file,
-            bytes,
+        const rebuilds: { index: number; uuid: UnitUuid }[] = [];
+        for (let index = 0; index < uuids.length; index++) {
+            const uuid = uuids[index];
+            const summary = reusable(uuid);
+            if (summary) summaries[index] = summary;
+            else rebuilds.push({ index, uuid });
+        }
+        const outcomes = await projectUnitSummaryBatches(rebuilds.map(({ uuid }) => async () => {
+            const entry = manifest.units[uuid];
+            return {
+                entryKey: entryKey(uuid, manifest), format: entry.format, file: entry.file,
+                bytes: await load(uuid, entry),
+            };
+        }), projection, {
+            signal: input.signal,
+            onProgress: progress => emit(input.onProgress, { phase: 'projecting', ...progress }),
         });
-        return projected.summary;
+        outcomes.forEach((outcome, index) => {
+            if (outcome.status === 'error') throw new Error(outcome.message);
+            summaries[rebuilds[index].index] = outcome.value.summary;
+        });
+        return Object.freeze(summaries);
     }
 }
 
@@ -552,7 +571,7 @@ function entryKey(uuid: UnitUuid, manifest: CoreUnitsManifest): CoreCatalogEntry
     };
 }
 
-function sameSummaryDependencyHashes(
+export function sameSummaryDependencyHashes(
     left: SummaryDependencyHashes | undefined,
     right: SummaryDependencyHashes,
 ): boolean {
@@ -574,9 +593,10 @@ function preparedSynchronization(
     archiveBlob: Blob,
     result: CoreCatalogSyncResult,
     requiresPublication: boolean,
-    assetsManifest: RepositoryAssetsManifest,
+    assetsManifest: RepositoryAssetsManifest | undefined,
     onProgress?: (progress: CoreCatalogSyncProgress) => void,
 ): PreparedCoreCatalogSynchronization {
+    generation = Object.freeze({ ...generation, sourceArchive: archiveBlob });
     let discarded = false;
     let finalized = false;
     return Object.freeze({

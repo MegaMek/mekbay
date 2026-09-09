@@ -19,12 +19,14 @@ import {
 } from './unit-catalog/unit-catalog.types';
 import { UnitDetailsSummaryService } from './unit-details-summary.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { parseEntity } from '../models/entity/parse-entity';
+import type { CBTForceMember } from '../models/force-member.model';
 
 describe('UnitDetailsSummaryService', () => {
     const uuid = asUnitUuid('019f583e-b5e8-7032-b925-ba6c429a0687');
     let data: jasmine.SpyObj<Pick<
         DataService,
-        'getEquipmentRegistry' | 'getSourcebookByAbbrev' | 'getQuirkByKey'
+        'getEquipmentRegistry' | 'getSourcebookByAbbrev' | 'getQuirkByKey' | 'getUnitByUuid'
     >>;
     let catalog: jasmine.SpyObj<Pick<UnitsCatalogService, 'readNativeUnitSource'>>;
     let logger: jasmine.SpyObj<Pick<LoggerService, 'warn'>>;
@@ -35,6 +37,7 @@ describe('UnitDetailsSummaryService', () => {
             'getEquipmentRegistry',
             'getSourcebookByAbbrev',
             'getQuirkByKey',
+            'getUnitByUuid',
         ]);
         catalog = jasmine.createSpyObj('UnitsCatalogService', ['readNativeUnitSource']);
         logger = jasmine.createSpyObj('LoggerService', ['warn']);
@@ -56,7 +59,7 @@ describe('UnitDetailsSummaryService', () => {
     it('rebuilds the active native row through the canonical entity summary path', async () => {
         const bytes = new TextEncoder().encode([
             '<UUID>', uuid, '</UUID>',
-            '<UnitType>', 'GunEmplacement', '</UnitType>',
+            '<UnitType>', 'BuildingEntity', '</UnitType>',
             '<Name>', 'Medium Sniper Turret', '</Name>',
             '<Model>', '(3075)', '</Model>',
             '<year>', '3075', '</year>',
@@ -71,7 +74,7 @@ describe('UnitDetailsSummaryService', () => {
 
         expect(catalog.readNativeUnitSource).toHaveBeenCalledOnceWith(uuid);
         expect(rebuilt).not.toBe(cached);
-        expect(rebuilt.entityType).toBe('GunEmplacement');
+        expect(rebuilt.entityType).toBe('BuildingEntity');
         expect(rebuilt.chassis).toBe('Medium Sniper Turret');
         expect(rebuilt.icon).toBe('catalog-icon');
         expect(rebuilt._searchKey).toBe('cached-search-overlay');
@@ -108,6 +111,62 @@ describe('UnitDetailsSummaryService', () => {
         );
     });
 
+    it('projects the force-owned design instead of a later custom catalog revision', async () => {
+        const { member, hash } = await forceMember('Original refit');
+        data.getUnitByUuid.and.returnValue({ ...nativeSummary(asSourceHash('A'.repeat(27))),
+            isCustom: true, model: 'Later refit', tons: 999 });
+
+        const summary = service.resolveForceMember(member);
+
+        expect(summary.model).toBe('Original refit');
+        expect(summary.tons).not.toBe(999);
+        expect(summary.hash).toBe(hash);
+        expect(summary.isCustom).toBeTrue();
+        expect(summary.icon).toBe('catalog-icon');
+        expect(service.resolveForceMember(member)).toBe(summary);
+        expect(catalog.readNativeUnitSource).not.toHaveBeenCalled();
+    });
+
+    it('keeps a pinned custom design available after catalog deletion', async () => {
+        const { member, hash } = await forceMember('Retained refit');
+        data.getUnitByUuid.and.returnValue(undefined);
+
+        const summary = service.resolveForceMember(member);
+
+        expect(summary.model).toBe('Retained refit');
+        expect(summary.uuid).toBe(uuid);
+        expect(summary.hash).toBe(hash);
+        expect(summary.isCustom).toBeTrue();
+        expect(summary.origin).toBe('user');
+        expect(catalog.readNativeUnitSource).not.toHaveBeenCalled();
+    });
+
+    it('refreshes details for a replacement force entity with the same UUID and roster ID', async () => {
+        const first = await forceMember('First');
+        const next = await forceMember('Second');
+
+        expect(service.resolveForceMember(first.member).model).toBe('First');
+        expect(service.resolveForceMember(next.member).model).toBe('Second');
+        expect(service.resolveForceMember(first.member).model).toBe('First');
+    });
+
+    async function forceMember(model: string) {
+        const source = [
+            '<UUID>', uuid, '</UUID>', '<UnitType>', 'BuildingEntity', '</UnitType>',
+            '<Name>', 'Medium Sniper Turret', '</Name>', '<Model>', model, '</Model>',
+            '<year>', '3075', '</year>', '<type>', 'IS Level 3', '</type>',
+        ].join('\n');
+        const entity = parseEntity(source, 'force.blk', equipmentRegistry()).entity;
+        const bytes = new TextEncoder().encode(source).buffer;
+        const hash = asSourceHash(await sha1Base64Url(bytes));
+        const nativeSource = { format: 'blk', file: makeUnitFileName(uuid, 'blk'),
+            sourceHash: hash, bytes, isCustom: true };
+        const member = { id: 'unit:refit', entity,
+            force: { getUnitSnapshot: () => ({ entity, nativeSource }) },
+        } as unknown as CBTForceMember;
+        return { member, hash };
+    }
+
     function nativeSummary(
         hash: ReturnType<typeof asSourceHash>,
     ): UnitSummary {
@@ -115,7 +174,7 @@ describe('UnitDetailsSummaryService', () => {
             provider: MM_DATA_UNIT_PROVIDER_ID,
             origin: 'megamek' as const,
             hash,
-            entityType: 'GunEmplacement' as const,
+            entityType: 'BuildingEntity' as const,
             icon: 'catalog-icon',
             _searchKey: 'cached-search-overlay',
         });

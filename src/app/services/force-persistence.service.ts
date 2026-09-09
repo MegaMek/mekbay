@@ -48,6 +48,7 @@ import { LoggerService } from './logger.service';
 import { UserStateService } from './userState.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { CBTUnitService } from './cbt-unit.service';
+import { ForceCustomDesignsService } from './force-custom-designs.service';
 import { OptionsService } from './options.service';
 import { scenarioRulesFromOptions } from '../models/runtime/unit-state-initializer';
 import {
@@ -773,6 +774,7 @@ export class ForcePersistenceService {
         if (!fence) return;
         let cloudOwnsFence = false;
         try {
+            if (force instanceof CBTForce && !await this.injector.get(ForceCustomDesignsService).check(force)) return;
             const serialized = await this.saveForceLocally(force, fence);
             if (!serialized || localOnly) return;
             cloudOwnsFence = true;

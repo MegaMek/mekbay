@@ -24,6 +24,9 @@ import {
   isShieldEquipment,
 } from '../models/entity/utils/physical-weapon';
 import { UnitComponent } from '../models/unit-summary.model';
+import type { CBTUnitQueryPort } from '../models/runtime/cbt-unit-runtime';
+import { ammoLoadoutDisplay } from '../models/runtime/mek-ammo';
+import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { formatWeaponDamage } from './weapon-damage.util';
 import { isApolloEquipment } from '../models/apollo-mode.model';
 import { isSingleHexEcmEquipment } from '../models/ecm-mode.model';
@@ -65,14 +68,25 @@ import {
 import { tripleStrengthMyomerKind } from '../models/myomer-equipment.model';
 import { isRamPlateEquipment } from '../models/physical-augmentation.model';
 
-type ExportComponent = Omit<UnitComponent, 'l' | 'bay'> & {
+/** Disposable details projection; condition is never part of the catalog summary. */
+export interface UnitConditionComponent extends UnitComponent {
+  destroyed?: boolean;
+  customAmmo?: boolean;
+  bay?: UnitConditionComponent[];
+}
+
+type ComponentRuntime = Pick<CBTUnitQueryPort, 'componentStatus' | 'ammoEquipment' | 'remainingAmmo'>;
+
+type ExportComponent = Omit<UnitConditionComponent, 'l' | 'bay'> & {
   l?: string;
   bay?: ExportComponent[];
 };
 type ComponentType = ExportComponent['t'];
 
 /** Mirrors SVGMassPrinter.Components while using only canonical parser state. */
-export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] {
+export function buildUnitComponentMetadata(
+  entity: BaseEntity, runtime?: ComponentRuntime,
+): UnitConditionComponent[] {
   const components = new Map<string, ExportComponent>();
   addConventionalInfantryWeapons(components, entity);
   addSyntheticStructure(components, entity);
@@ -80,34 +94,42 @@ export function buildUnitComponentMetadata(entity: BaseEntity): UnitComponent[] 
   addMekSystems(components, entity);
   addImplicitSmallCraftEcm(components, entity);
 
-  if (usesWeaponBays(entity)) addWeaponBays(components, entity);
-  else addOrdinaryEquipment(components, entity);
+  if (usesWeaponBays(entity)) addWeaponBays(components, entity, runtime);
+  else addOrdinaryEquipment(components, entity, runtime);
 
   addImplicitClanCase(components, entity);
   addIntegralHeatSinks(components, entity);
-  return [...components.values()] as UnitComponent[];
+  return [...components.values()] as UnitConditionComponent[];
 }
 
-function addOrdinaryEquipment(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+function addOrdinaryEquipment(
+  components: Map<string, ExportComponent>, entity: BaseEntity,
+  runtime?: ComponentRuntime,
+): void {
+  const destroyedComponents = new Map<string, ExportComponent>();
   for (const mount of entity.equipment()) {
     if (mount.allocation.kind === 'engine' || !mount.equipment) continue;
     const equipment = mount.equipment;
+    const target = runtime?.componentStatus(componentIdForMount(mount), 'preview') === 'destroyed' ? destroyedComponents : components;
 
     if (equipment instanceof StructureEquipment || equipment instanceof ArmorEquipment) {
       continue;
     } else if (equipment instanceof AmmoEquipment) {
-      addAmmo(components, entity, mount, equipment);
+      addAmmo(target, entity, mount, equipment, runtime);
     } else if (mount.isPhysicalWeapon() && !isProtoMekMeleeEquipment(equipment)) {
       if (equipment instanceof WeaponEquipment && skipWeapon(entity, mount, equipment)) continue;
       if (equipment instanceof MiscEquipment && skipMisc(entity, mount, equipment)) continue;
-      addPhysicalEquipment(components, entity, mount, equipment);
+      addPhysicalEquipment(target, entity, mount, equipment);
     } else if (equipment instanceof WeaponEquipment) {
       if (skipWeapon(entity, mount, equipment)) continue;
-      addWeapon(components, entity, mount, equipment);
+      addWeapon(target, entity, mount, equipment);
     } else if (equipment instanceof MiscEquipment) {
       if (skipMisc(entity, mount, equipment)) continue;
-      addMisc(components, entity, mount, equipment);
+      addMisc(target, entity, mount, equipment);
     }
+  }
+  for (const [key, component] of destroyedComponents) {
+    components.set(`destroyed:${key}`, { ...component, destroyed: true });
   }
 }
 
@@ -356,11 +378,14 @@ function maximumWeaponDamage(
 
 function addAmmo(
   components: Map<string, ExportComponent>, entity: BaseEntity,
-  mount: EntityMountedEquipment, equipment: AmmoEquipment,
+  mount: EntityMountedEquipment, original: AmmoEquipment, runtime?: ComponentRuntime,
 ): void {
+  const componentId = componentIdForMount(mount);
+  const equipment = runtime?.ammoEquipment(componentId) ?? original;
+  const display = ammoLoadoutDisplay(original.internalName, equipment);
   const location = componentLocation(entity, mount);
-  const key = `${equipment.id}_${location.name}`;
-  const shots = mount.getAmmoShots() ?? 0;
+  const key = `${equipment.id}_${location.name}_${display.custom}`;
+  const shots = runtime ? runtime.remainingAmmo(componentId) : mount.getAmmoShots() ?? 0;
   const existing = components.get(key);
   if (existing) {
     existing.q++;
@@ -368,8 +393,10 @@ function addAmmo(
     return;
   }
   const entry = baseComponent(equipment, 1, location.id, location.name, 'X', criticals(equipment, entity, mount));
-  entry.n = `${equipment.shortName.replace('Ammo', '').trim()} Ammo`;
+  entry.n = display.name;
   entry.q2 = shots;
+  if (runtime) entry.eq = equipment;
+  if (display.custom) entry.customAmmo = true;
   components.set(key, entry);
 }
 
@@ -457,7 +484,10 @@ function usesWeaponBays(entity: BaseEntity): boolean {
 }
 
 /** Reconstruct Java WeaponMounted bays from BLK's ordered `(B)` boundary markers. */
-function addWeaponBays(components: Map<string, ExportComponent>, entity: BaseEntity): void {
+function addWeaponBays(
+  components: Map<string, ExportComponent>, entity: BaseEntity,
+  runtime?: ComponentRuntime,
+): void {
   for (const equipmentBay of entity.equipmentBays()) {
     if (equipmentBay.kind !== 'weapon-bay') continue;
     const members = equipmentBay.weapons;
@@ -477,11 +507,15 @@ function addWeaponBays(components: Map<string, ExportComponent>, entity: BaseEnt
     const nested = new Map<string, ExportComponent>();
     for (const member of members) {
       const equipment = member.equipment as WeaponEquipment;
-      const key = `${equipment.id}_${member.rearMounted}`;
+      const destroyed = runtime?.componentStatus(componentIdForMount(member), 'preview') === 'destroyed';
+      const key = `${equipment.id}_${member.rearMounted}_${destroyed}`;
       const existing = nested.get(key);
       if (existing) existing.q++;
-      else nested.set(key, weaponComponent(entity, member as EntityMountedWeapon, 1, 0, undefined,
-        criticals(equipment, entity, member)));
+      else nested.set(key, {
+        ...weaponComponent(entity, member as EntityMountedWeapon, 1, 0, undefined,
+          criticals(equipment, entity, member)),
+        ...(destroyed ? { destroyed: true } : {}),
+      });
     }
     bay.bay = [...nested.values()];
     components.set(`bay:${first.mountId}`, bay);

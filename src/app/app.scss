@@ -50,6 +50,20 @@
         overflow: visible;
         transform: none;
     }
+
+    // The viewer's absolute page layers need a definite height all the way to
+    // the printed page. Keep this separate from layouts that print multiple pages.
+    :host:has(page-viewer) {
+        &,
+        .application-surface,
+        .application-viewport,
+        .app-container,
+        .main-content,
+        .content-area {
+            display: block;
+            height: 100%;
+        }
+    }
 }
 
 .main-content {
@@ -447,6 +461,7 @@ svg-viewer {
 }
 
 .home-actions-close-button {
+    --chevron-size: 24px;
     width: 36px;
     height: 36px;
     color: var(--text-color-secondary);
@@ -462,11 +477,6 @@ svg-viewer {
 
 .home-actions-close-button:hover {
     color: var(--text-color);
-}
-
-.home-actions-close-button svg {
-    width: 20px;
-    height: 20px;
 }
 
 .home-actions-panel-list {

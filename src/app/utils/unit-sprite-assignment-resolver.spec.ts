@@ -56,7 +56,7 @@ describe('framework-free unit sprite assignment resolver', () => {
       .toBe('default_quadvee');
   });
 
-  it('routes both static-emplacement entity spellings to the generated default', () => {
+  it('keeps the gun-emplacement sprite default for buildings', () => {
     const staticFacts = {
       ...facts,
       displayName: 'Assault Bombard Gun Emplacement',
@@ -65,8 +65,6 @@ describe('framework-free unit sprite assignment resolver', () => {
       motiveType: '',
     };
     expect(getDefaultSpriteAssignmentKeyForFacts(staticFacts)).toBe('default_gun_emplacement');
-    expect(getDefaultSpriteAssignmentKeyForFacts({ ...staticFacts, entityType: 'GunEmplacement' }))
-      .toBe('default_gun_emplacement');
     expect(resolveUnitSpriteAssignmentPath(staticFacts, {
       exact: { DEFAULT_GUN_EMPLACEMENT: 'defaults/default_gun_emplacement.png' },
       chassis: {},

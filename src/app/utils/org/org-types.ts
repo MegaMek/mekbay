@@ -111,7 +111,7 @@ export interface PointRange {
  * organization logic never depends on or synthesizes catalog projections.
  */
 export interface OrgUnit {
-    readonly id: number;
+    readonly id: number | null;
     readonly uuid: UnitUuid;
     readonly name: string;
     readonly type: UnitSummary['type'];
@@ -168,7 +168,7 @@ export interface OrgTypeModifier {
 // Declarative org model
 // -----------------------------------------------------------------------------
 
-export type OrgFactScalar = string | number | boolean;
+export type OrgFactScalar = string | number | boolean | null;
 export type BuiltInOrgSelectorName =
     | 'all'
     | 'aero'
@@ -289,7 +289,7 @@ export type BuiltInOrgFactPath = `bucket:${OrgBucketName}` | `sum:${OrgPatternRe
 export type OrgFactPath = BuiltInOrgFactPath;
 
 export interface UnitFactScalars {
-    readonly id: number;
+    readonly id: number | null;
     readonly tons: number;
     readonly pv: number;
     readonly bv: number;

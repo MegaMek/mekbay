@@ -68,10 +68,9 @@ describe('UnitSearchIndexService', () => {
     it('uses native categories for units without Alpha Strike support', () => {
         const service = new UnitSearchIndexService();
         const building = createUnit({ name: 'Building', entityType: 'BuildingEntity', armor: 100, as: { TP: 'XX' } });
-        const gun = createUnit({ name: 'Gun', entityType: 'GunEmplacement', armor: 10, as: { TP: 'XX' } });
         const handheld = createUnit({ name: 'Handheld', entityType: 'HandheldWeapon', armor: 2, as: { TP: 'XX' } });
-        prepareCatalog(service, [building, gun, handheld]);
-        for (const unit of [building, gun, handheld]) {
+        prepareCatalog(service, [building, handheld]);
+        for (const unit of [building, handheld]) {
             const stats = service.getUnitStats(unit);
             expect(stats.armor).toEqual({ min: unit.armor, max: unit.armor, average: unit.armor, p95: unit.armor, count: 1 });
             expect(stats.asArm.count).toBe(0);

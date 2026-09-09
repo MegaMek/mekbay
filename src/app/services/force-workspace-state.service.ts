@@ -5,7 +5,7 @@ import { computed, effect, Injectable, signal } from '@angular/core';
 
 import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
-import type { ForceMember } from '../models/force-member.model';
+import { CBTForceMember, type ForceMember } from '../models/force-member.model';
 import type { ForceSlot } from '../models/force-slot.model';
 
 export type ForceAlignmentFilter = 'friendly' | 'enemy' | 'all';
@@ -41,6 +41,12 @@ export class ForceWorkspaceStateService {
     readonly forceGameSystem = computed<GameSystem | null>(() => this.smartCurrentForce()?.gameSystem ?? null);
 
     constructor() {
+        effect(() => {
+            const selected = this.selectedUnit();
+            if (!(selected instanceof CBTForceMember)) return;
+            const current = selected.force.getCBTMembers().find(member => member.id === selected.id);
+            if (current && current !== selected) this.selectedUnit.set(current);
+        });
         effect(() => {
             if (this.hasMixedAlignments()) return;
             const slots = this.loadedForces();

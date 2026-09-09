@@ -26,6 +26,7 @@ NativeEntityService,
 nativeSourceHandleForLoadedEntity,
 } from './native-entity.service';
 import type { UnitUuid } from './unit-catalog/unit-catalog.types';
+import type { PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
 
 export interface CreateCBTUnitRequest {
     readonly uuid: UnitUuid;
@@ -34,6 +35,8 @@ export interface CreateCBTUnitRequest {
     readonly scenario: ScenarioRules;
     readonly initialStateProfileId?: string;
     readonly crewSkills?: Readonly<{ readonly gunnery: number; readonly piloting: number }>;
+    /** A saved custom instance also retains its exact source when unreadable runtime state is reset. */
+    readonly customSource?: PinnedCustomUnitSource;
 }
 
 export type CBTUnitRestoreWarningCode =
@@ -59,7 +62,9 @@ export class CBTUnitService {
     private readonly entities = inject(NativeEntityService);
 
     public async create(request: CreateCBTUnitRequest): Promise<CBTUnit> {
-        const loaded = await this.entities.load(request.uuid);
+        const loaded = request.customSource === undefined
+            ? await this.entities.load(request.uuid)
+            : await this.entities.loadPinnedCustom(request.uuid, request.customSource);
         const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
         if (loaded.entity instanceof MekEntity) {
@@ -92,7 +97,9 @@ export class CBTUnitService {
         saved: SerializedCBTUnitV2 | SerializedNonMekUnit,
         scenario: ScenarioRules,
     ): Promise<CBTUnitRestoreResult> {
-        const loaded = await this.entities.load(saved.entity);
+        const loaded = saved.customSource === undefined
+            ? await this.entities.load(saved.entity)
+            : await this.entities.loadPinnedCustom(saved.entity, saved.customSource);
         const uuid = loaded.source.uuid;
         const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
         const unitName = this.unitNames.name(loaded.entity);

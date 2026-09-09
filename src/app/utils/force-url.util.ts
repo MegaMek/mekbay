@@ -24,7 +24,7 @@ export interface ForceQueryParams {
 }
 
 export interface UnitShareLinks { readonly httpsUrl: string; readonly appUrl: string; }
-export type ForceUrlUnitLookupMode = 'name' | 'mulId';
+export type ForceUrlUnitLookupMode = 'identifier' | 'mulId';
 
 export interface ParsedForceUrlUnit {
     readonly summary: UnitSummary;
@@ -38,8 +38,8 @@ export interface ParsedForceUrlGroup {
     readonly units: readonly ParsedForceUrlUnit[];
 }
 
-export function buildUnitShareLinks(origin: string, pathname: string, gameSystem: GameSystem, unitName: string, tab: string): UnitShareLinks {
-    const params = new URLSearchParams({ gs: gameSystem, shareUnit: unitName, tab });
+export function buildUnitShareLinks(origin: string, pathname: string, gameSystem: GameSystem, unit: UnitSummary, tab: string): UnitShareLinks {
+    const params = new URLSearchParams({ gs: gameSystem, shareUnit: unit.uuid, tab });
     return { httpsUrl: `${origin}${pathname}?${params.toString()}`, appUrl: `web+mekbay://share?${params.toString()}` };
 }
 
@@ -84,12 +84,17 @@ export function parseForceUrl(
     unitsParam: string,
     allUnits: readonly UnitSummary[],
     logger?: UrlParseLogger,
-    lookupMode: ForceUrlUnitLookupMode = 'name',
+    lookupMode: ForceUrlUnitLookupMode = 'identifier',
 ): readonly ParsedForceUrlGroup[] {
-    const lookup = new Map<string, UnitSummary>();
+    const lookup = new Map<string, UnitSummary | undefined>();
+    const unitsByUuid = new Map<string, UnitSummary>();
     for (const unit of allUnits) {
+        unitsByUuid.set(unit.uuid, unit);
+        if (unit.isCustom) continue;
+        if (lookupMode === 'mulId' && unit.id === null) continue;
         const key = lookupMode === 'mulId' ? String(unit.id) : unit.name.toLowerCase();
         if (!lookup.has(key)) lookup.set(key, unit);
+        else if (lookupMode === 'identifier') lookup.set(key, undefined);
     }
     const sourceGroups = unitsParam.includes('|') || unitsParam.includes('~') ? unitsParam.split('|') : [unitsParam];
     const result: ParsedForceUrlGroup[] = [];
@@ -104,9 +109,9 @@ export function parseForceUrl(
             if (!encoded.trim()) continue;
             const parts = encoded.split(':');
             const key = lookupMode === 'mulId' ? parts[0] : parts[0].toLowerCase();
-            const summary = lookup.get(key);
+            const summary = lookupMode === 'mulId' ? lookup.get(key) : unitsByUuid.get(key) ?? lookup.get(key);
             if (!summary) {
-                logger?.warn(`Unit with ${lookupMode === 'mulId' ? 'MUL ID' : 'name'} "${parts[0]}" not found in data`);
+                logger?.warn(`Unit with ${lookupMode === 'mulId' ? 'MUL ID' : 'UUID or non-custom name'} "${parts[0]}" not found in data`);
                 continue;
             }
             const gunnery = parseOptionalSkill(parts[1]);
@@ -128,11 +133,14 @@ function encodeForceGroups(force: Force): string[] {
         if (roster.kind !== 'available') return [];
         return roster.snapshot.groups.flatMap(group => {
             const rows = roster.snapshot.members.filter(member => member.groupId === group.groupId).flatMap(member => {
-                const sheet = force.getMekRecordSheetSnapshot(member.instanceId);
-                if (!sheet) return [];
-                const pilot = sheet.crew[0];
-                let text = sheet.identity.displayName;
-                if (pilot && (pilot.gunnery !== DEFAULT_GUNNERY_SKILL || pilot.piloting !== DEFAULT_PILOTING_SKILL)) text += `:${pilot.gunnery}:${pilot.piloting}`;
+                const uuid = force.getUnitUuid(member.instanceId);
+                if (!uuid) return [];
+                const position = force.getUnitCrewPolicy(member.instanceId).positions[0];
+                const pilot = position ? force.getAssignedPerson(member.instanceId, position.positionId) : undefined;
+                let text: string = uuid;
+                const gunnery = pilot?.gunnery ?? DEFAULT_GUNNERY_SKILL;
+                const piloting = pilot?.piloting ?? DEFAULT_PILOTING_SKILL;
+                if (gunnery !== DEFAULT_GUNNERY_SKILL || piloting !== DEFAULT_PILOTING_SKILL) text += `:${gunnery}:${piloting}`;
                 return [text];
             });
             if (rows.length === 0) return [];
@@ -142,7 +150,7 @@ function encodeForceGroups(force: Force): string[] {
     }
     return force.groups().filter(group => group.units().length > 0).map(group => {
         const rows = group.units().map(unit => {
-            let text = unit.getSummary().name;
+            let text: string = unit.getSummary().uuid;
             if (unit instanceof ASForceUnit && unit.pilotSkill() !== DEFAULT_GUNNERY_SKILL) text += `:${unit.pilotSkill()}`;
             return text;
         });

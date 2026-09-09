@@ -71,10 +71,12 @@ export class UnitRuntimeService {
         const unitUuidMap = new Map<UnitUuid, UnitSummary>();
         for (const unit of units) {
             unit._techBaseDisplay = getUnitTechBaseDisplay(unit);
-            const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
-            const nameMatches = unitNameMap.get(nameKey) ?? [];
-            nameMatches.push(unit);
-            unitNameMap.set(nameKey, nameMatches);
+            if (!unit.isCustom) {
+                const nameKey = UnitRuntimeService.getUnitNameKey(unit.name);
+                const nameMatches = unitNameMap.get(nameKey) ?? [];
+                nameMatches.push(unit);
+                unitNameMap.set(nameKey, nameMatches);
+            }
             unitUuidMap.set(unit.uuid, unit);
         }
         return Object.freeze({ unitNameMap, unitUuidMap });
@@ -193,8 +195,11 @@ export class UnitRuntimeService {
         }
     }
 
-    public getUnitByName(name: string): UnitSummary | undefined {
-        const matches = this.getUnitsByName(name);
+    /** UUIDs identify any unit; names identify only a unique non-custom catalog unit. */
+    public getUnitByIdentifier(identifier: string): UnitSummary | undefined {
+        const unit = this.unitUuidMap.get(identifier.toLowerCase() as UnitUuid);
+        if (unit) return unit;
+        const matches = this.getUnitsByName(identifier);
         return matches.length === 1 ? matches[0] : undefined;
     }
 
@@ -244,7 +249,16 @@ export class UnitRuntimeService {
             };
         }
 
-        const nameMatches = this.unitNameMap.get(UnitRuntimeService.getUnitNameKey(reference.unit)) ?? [];
+        const uuidMatch = this.unitUuidMap.get(reference.unit.toLowerCase() as UnitUuid);
+        if (uuidMatch) {
+            return {
+                kind: 'resolved',
+                unit: uuidMatch,
+                uuid: uuidMatch.uuid,
+                usedLegacyNameFallback: false,
+            };
+        }
+        const nameMatches = this.getUnitsByName(reference.unit);
         if (nameMatches.length === 1) {
             const unit = nameMatches[0];
             return {

@@ -3,16 +3,16 @@
 // Author: Drake
 
 import { Injectable, inject } from '@angular/core';
+import { UnitArtworkService } from '../unit-artwork.service';
 import type { EntityType } from '../../models/entity/types';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { FluffImageAssetRef } from '../../models/presentation-catalog.model';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import {
-  MM_DATA_UNIT_PROVIDER_ID,
+  MM_DATA_UNIT_PROVIDER_ID, CUSTOM_UNIT_PROVIDER_ID,
   type DesignIdentity,
 } from '../unit-catalog/unit-catalog.types';
 import {
-  parseFluffImageCatalog,
   type FluffImageFacts,
   type FluffImagePath,
 } from '../../utils/fluff-image-resolver';
@@ -30,19 +30,26 @@ type PresentationUnit = Pick<
 @Injectable({ providedIn: 'root' })
 export class UnitFluffImageService {
   private readonly catalog = inject(FluffImageCatalogService);
+  private readonly local = inject(UnitArtworkService);
+  readonly revision = this.local.revision.asReadonly();
+  initialize(): Promise<void> { return this.local.initialize(); }
 
   resolveUrl(unit: PresentationUnit | null | undefined): string | null {
     if (!unit) return null;
 
-    return this.resolveCatalogUrl(unit);
+    return this.local.url(unit.uuid) ?? this.resolveCatalogUrl(unit);
   }
 
   resolveEntityUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    return this.local.url(design?.uuid ?? entity.uuid()) ?? this.resolveEntityCatalogUrl(entity, design);
+  }
+
+  resolveEntityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
     const identity: DesignIdentity = design ?? {
       provider: MM_DATA_UNIT_PROVIDER_ID,
       uuid: entity.uuid(),
     };
-    const resolution = this.catalog.resolveUnitImage(identity, {
+    const resolution = this.catalog.resolveUnitImage({ ...identity, provider: identity.provider === CUSTOM_UNIT_PROVIDER_ID ? MM_DATA_UNIT_PROVIDER_ID : identity.provider }, {
       entityType: entity.entityType,
       baseChassis: entity.chassis(),
       model: entity.model(),
@@ -53,7 +60,7 @@ export class UnitFluffImageService {
 
   private resolveCatalogUrl(unit: PresentationUnit): string | null {
     const design: DesignIdentity = {
-      provider: unit.provider ?? MM_DATA_UNIT_PROVIDER_ID,
+      provider: unit.provider === CUSTOM_UNIT_PROVIDER_ID ? MM_DATA_UNIT_PROVIDER_ID : unit.provider ?? MM_DATA_UNIT_PROVIDER_ID,
       uuid: unit.uuid,
     };
 
@@ -105,7 +112,6 @@ function legacyEntityType(unit: PresentationUnit): EntityType | undefined {
     case 'ProtoMek':
     case 'Quad ProtoMek': return 'ProtoMek';
     case 'Handheld Weapon': return 'HandheldWeapon';
-    case 'Gun Emplacement': return 'GunEmplacement';
     case 'Building': return 'BuildingEntity';
     default: break;
   }

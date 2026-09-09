@@ -5,6 +5,8 @@
 import { Component, computed, signal, inject, effect, ChangeDetectionStrategy, viewChild, type ElementRef, afterNextRender, Injector, DestroyRef } from '@angular/core';
 
 import { UnitSearchComponent } from './components/unit-search/unit-search.component';
+import { CustomUnitSyncService } from './services/custom-unit-sync.service';
+import { asUnitUuid } from './services/unit-catalog/unit-catalog.types';
 import { PageViewerComponent } from './components/page-viewer/page-viewer.component';
 import { TacticalViewComponent } from './components/tactical-view/tactical-view.component';
 import { AlphaStrikeViewerComponent } from './components/alpha-strike-viewer/alpha-strike-viewer.component';
@@ -90,6 +92,7 @@ declare global {
     }
 })
 export class App {
+    private readonly customUnitSync = inject(CustomUnitSyncService);
     logger = inject(LoggerService);
     protected dataService = inject(DataService);
     private readonly forcePersistence = inject(ForcePersistenceService);
@@ -284,16 +287,13 @@ export class App {
                 // are handled here, based on the initial URL captured at startup.
                 const onHomePage = this.urlService.initialPathname.replace(/\/+$/, '') === '';
                 const organizationId = this.urlService.getInitialParam('toe');
-                const sharedUnitName = this.urlService.getInitialParam('shareUnit');
+                const sharedUnitIdentifier = this.urlService.getInitialParam('shareUnit');
                 const tab = this.urlService.getInitialParam('tab') ?? undefined;
                 if (onHomePage && organizationId) {
                     // Legacy ?toe=... link on the home page: open the TO&E page
                     void this.forceDialogs.showForceOrgDialog(organizationId);
-                } else if (onHomePage && sharedUnitName) {
-                    const unit = this.dataService.getUnitByName(sharedUnitName);
-                    if (unit) {
-                        this.showSingleUnitDetails(unit, tab);
-                    }
+                } else if (onHomePage && sharedUnitIdentifier) {
+                    void this.openSharedUnit(sharedUnitIdentifier, tab);
                 } else if (onHomePage) {
                     afterNextRender(() => {
                         // Don't focus if loading forces
@@ -636,7 +636,7 @@ export class App {
     }
 
     showUnitConstruction(): void {
-        void this.router.navigate(['/construction'], { queryParamsHandling: 'preserve' });
+        void this.router.navigate(['/meklab'], { queryParamsHandling: 'preserve' });
     }
 
     showForceGeneratorDialog(): void {
@@ -661,6 +661,19 @@ export class App {
 
     closeHomeActionsPanel(): void {
         this.homeActionsPanelOpen.set(false);
+    }
+
+    private async openSharedUnit(identifier: string, tab?: string): Promise<void> {
+        try {
+            let unit = this.dataService.getUnitByIdentifier(identifier);
+            if (!unit) {
+                const uuid = asUnitUuid(identifier);
+                await this.customUnitSync.openShared(uuid);
+                unit = this.dataService.getUnitByUuid(uuid);
+            }
+            if (!unit) throw new Error('This unit is no longer available.');
+            await this.showSingleUnitDetails(unit, tab);
+        } catch (error) { this.toastService.showToast(error instanceof Error ? error.message : 'This unit could not be opened.', 'error'); }
     }
 
     async showSingleUnitDetails(unit: UnitSummary, tab?: string): Promise<void> {

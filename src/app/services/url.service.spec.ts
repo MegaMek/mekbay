@@ -76,23 +76,45 @@ describe('UrlService', () => {
         expect(navigateSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('omits a game system without a consuming parameter', async () => {
+        service.setQueryParams({ gs: GameSystem.CBT, name: 'Empty force' });
+        await flushPendingWrites();
+
+        expect(router.parseUrl(router.url).queryParams['gs']).toBeUndefined();
+    });
+
+    it('preserves the game system for coalesced content and removes it when content is cleared', async () => {
+        service.setQueryParams({ gs: GameSystem.AS });
+        service.setQueryParams({ q: 'atlas' });
+        await flushPendingWrites();
+        expect(router.parseUrl(router.url).queryParams['gs']).toBe(GameSystem.AS);
+
+        service.setQueryParams({ q: null });
+        await flushPendingWrites();
+        expect(router.url).toBe('/');
+    });
+
     describe('computeGameSystemOverride', () => {
         it('returns null when only gs is present', () => {
-            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.AS), '/')).toBeNull();
+            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.AS))).toBeNull();
         });
 
         it('returns the game system when meaningful params are present', () => {
-            expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.CBT}&q=atlas`), '/'))
+            expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.CBT}&q=atlas`)))
                 .toBe(GameSystem.CBT);
         });
 
-        it('treats a page path as meaningful', () => {
-            expect(computeGameSystemOverride(new URLSearchParams('gs=' + GameSystem.AS), '/toe'))
+        it('recognizes force units specified by MUL ID', () => {
+            expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.AS}&mul_ids=123`)))
                 .toBe(GameSystem.AS);
         });
 
+        it('ignores empty consuming parameters', () => {
+            expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.AS}&q=`))).toBeNull();
+        });
+
         it('ignores invalid gs values', () => {
-            expect(computeGameSystemOverride(new URLSearchParams('gs=bogus&q=atlas'), '/')).toBeNull();
+            expect(computeGameSystemOverride(new URLSearchParams('gs=bogus&q=atlas'))).toBeNull();
         });
     });
 });

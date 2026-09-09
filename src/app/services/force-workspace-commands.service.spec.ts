@@ -149,6 +149,21 @@ describe('ForceWorkspaceCommandsService force conversion', () => {
 });
 
 describe('ForceWorkspaceCommandsService unit cloning', () => {
+    it('passes the force-held custom source to the clone instead of requiring an installed design', async () => {
+        const { admission, dataService, injector, service } = createHarness();
+        const force = new CBTForce('Custom clone', dataService, injector), group = await force.addGroup();
+        const entity = createTestMekEntity(), source = new CBTForceMember('source', force, entity);
+        const clone = new CBTForceMember('clone', force, entity);
+        const text = 'uuid:' + entity.uuid() + '\nchassis:Saved custom\n';
+        spyOn(force, 'getUnitUuid').and.returnValue(entity.uuid());
+        spyOn(force, 'getRosterGroupId').and.returnValue(group.id);
+        spyOn(force, 'membersInGroup').and.returnValue([source]);
+        spyOn(force, 'getUnitSnapshot').and.returnValue({ nativeSource: { isCustom: true, format: 'mtf', bytes: new TextEncoder().encode(text).buffer } } as any);
+        admission.admitCBT.and.resolveTo(clone);
+        expect(await service.cloneUnit(source)).toBe(clone);
+        expect(admission.admitCBT).toHaveBeenCalledOnceWith(jasmine.objectContaining({ customSource: { format: 'mtf', source: text } }));
+    });
+
     it('routes a unit-block CBT clone through canonical unit admission', async () => {
         const harness = createHarness();
         const { admission, dataService, injector, service, workspace } = harness;

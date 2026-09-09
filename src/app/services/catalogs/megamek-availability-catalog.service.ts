@@ -33,12 +33,12 @@ export class MegaMekAvailabilityCatalogService extends CatalogBaseService<MegaMe
         return 'online-assets/generated/mulized_availability_weighted.json';
     }
 
-    public getRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
-        return this.recordsByUnitName.get(unit.name);
+    public getRecordForUnit(unit: Pick<UnitSummary, 'name' | 'isCustom'>): MegaMekWeightedAvailabilityRecord | undefined {
+        return unit.isCustom ? undefined : this.recordsByUnitName.get(unit.name);
     }
 
     public getAvailabilityForUnit(
-        unit: Pick<UnitSummary, 'name'>,
+        unit: Pick<UnitSummary, 'name' | 'isCustom'>,
         eraId: number,
         factionId: number,
     ): MegaMekWeightedAvailabilityValue | undefined {

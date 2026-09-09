@@ -33,13 +33,20 @@ export class RecordSheetSourceService {
         generatorOptions: RecordSheetSvgGeneratorOptions = {},
         context: RecordSheetEntitySourceContext = {},
     ): Promise<RecordSheetSourceResult> {
+        await this.fluffImages.initialize();
         const currentOptions = this.options.options();
+        const pageFormat = generatorOptions.pageFormat
+            ?? (generatorOptions.format === 'a4' || generatorOptions.format === 'letter'
+                ? generatorOptions.format : currentOptions.printAllOptions.paperSize);
         const svgs = await RecordSheetSvgGenerator.generatePages(entity, {
             ...generatorOptions,
+            format: generatorOptions.format ?? pageFormat,
+            pageFormat,
             ruleset: generatorOptions.ruleset ?? currentOptions.CBTRules,
             pipLayout: generatorOptions.pipLayout ?? currentOptions.recordSheetPipLayout,
-            fluffImageUrl: generatorOptions.fluffImageUrl
-                ?? this.fluffImages.resolveEntityUrl(entity, context.design),
+            showQuirks: currentOptions.CBTOptionalRules?.quirks !== false,
+            fluffImageUrl: generatorOptions.fluffImageUrl === undefined
+                ? this.fluffImages.resolveEntityUrl(entity, context.design) : generatorOptions.fluffImageUrl,
         });
         svgs.forEach(svg => {
             svg.dataset['mekbaySheetSource'] = 'generated';

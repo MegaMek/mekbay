@@ -3,10 +3,11 @@
 
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 import { CONSTRUCTION_UNIT_TYPES, createConstructionEntity } from '../construction/domain/construction-factory';
 import { getConstructionFields, type ConstructionFieldValue } from '../construction/domain/construction-fields';
 import { equipmentPlacementIssues, getConstructionLocations, installConstructionEquipment, setConstructionArmor } from '../construction/domain/construction-rules';
-import { BattleArmorEntity, InfantryEntity, StaticEmplacementEntity, VehicleEntity } from '../models/entity/entities';
+import { BattleArmorEntity, InfantryEntity, VehicleEntity } from '../models/entity/entities';
 import type { SavedCustomUnit } from '../models/custom-unit.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import { AmmoEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
@@ -17,6 +18,7 @@ import { CustomUnitsService } from './custom-units.service';
 import { DbService } from './db.service';
 import { LoggerService } from './logger.service';
 import type { PreparedApplicationCatalogDependencies } from './unit-catalog/application-catalog-bundle-coordinator.service';
+import { EntityUnitSummaryProjector } from './unit-catalog/entity-summary-projector';
 
 describe('custom construction saves across the complete native family catalog', () => {
     let registry: EquipmentRegistry;
@@ -29,9 +31,11 @@ describe('custom construction saves across the complete native family catalog', 
         if (!response.ok) throw new Error(`Equipment fixture returned ${response.status}`);
         registry = buildEquipmentRegistry(await response.json());
         dependencies = {
+            assetHashes: { equipment: 'equipment', quirks: 'quirks', sourcebooks: 'sourcebooks', sprites: 'sprites', factions: 'factions' },
             equipment: { registry }, quirks: { quirksByKey: new Map() },
             sourcebooks: { sourcebooksByAbbrev: new Map() },
             sprites: { assignmentContext: { assignments: undefined } },
+            getProjector: async () => new EntityUnitSummaryProjector(registry),
         } as unknown as PreparedApplicationCatalogDependencies;
     });
 
@@ -40,8 +44,17 @@ describe('custom construction saves across the complete native family catalog', 
         TestBed.configureTestingModule({ providers: [
             provideZonelessChangeDetection(), CustomUnitsService,
             { provide: DbService, useValue: {
+                unitArtworkChanges: new Subject(), listUnitArtwork: async () => new Map(),
                 listCustomUnits: async () => structuredClone(rows),
-                saveCustomUnit: async (row: SavedCustomUnit) => { rows = [structuredClone(row)]; },
+                listCustomUnitSummaries: async () => [],
+                saveCustomUnitSummaries: async () => undefined,
+                updateCustomUnits: async (changes: Parameters<DbService['updateCustomUnits']>[0]) => changes.map(change => {
+                    const current = rows.find(row => row.uuid === change.uuid && (row.accountUuid ?? '') === change.accountUuid);
+                    const next = change.update(current);
+                    rows = rows.filter(row => row !== current);
+                    if (next) rows.push(structuredClone(next));
+                    return next;
+                }),
             } },
             { provide: LoggerService, useValue: { info() {}, warn() {}, error() {} } },
         ] });
@@ -75,7 +88,7 @@ describe('custom construction saves across the complete native family catalog', 
             const entity = createConstructionEntity(kind.id, registry);
             const locations = getConstructionLocations(entity);
             const weapon = Object.values(registry.equipment).find((equipment): equipment is WeaponEquipment =>
-                equipment instanceof WeaponEquipment && !equipment.oneShotCount
+                equipment instanceof WeaponEquipment && !equipment.oneShotCount && !equipment.isInfantryWeapon()
                 && registry.getAmmoForWeapon(equipment).some(ammo => ammo.shots > 0)
                 && locations.some(location => equipmentPlacementIssues(entity, equipment, location.id).length === 0));
             expect(weapon).withContext(`${kind.id} ammunition-using weapon`).toBeDefined();
@@ -147,14 +160,13 @@ describe('custom construction saves across the complete native family catalog', 
             if (!location) return;
             installConstructionEquipment(entity, equipment, location.id);
 
-            // BA suit armor is a shared native construction value; gun emplacements
-            // and infantry use their family-specific protection inputs.
+            // BA suit armor is a shared native construction value; infantry
+            // uses its family-specific protection input.
             const armorLocation = entity instanceof BattleArmorEntity ? 'Squad'
-                : entity instanceof InfantryEntity || (entity instanceof StaticEmplacementEntity && entity.staticKind === 'GunEmplacement')
+                : entity instanceof InfantryEntity
                     ? undefined : entity.armorLocations.find(loc => (entity.maxArmorValues().get(loc) ?? 0) > 0);
             if (armorLocation) setConstructionArmor(entity, armorLocation, 2, entity.hasRearArmor(armorLocation) ? 1 : 0);
             if (entity instanceof InfantryEntity) entity.armorDivisor.set(2);
-            if (entity instanceof StaticEmplacementEntity && entity.staticKind === 'GunEmplacement') entity.turret.set(true);
 
             const saved = await service.save(entity, { originalUnitUuid: originalUuid });
             const loaded = await service.load(saved.uuid);
@@ -171,8 +183,7 @@ describe('custom construction saves across the complete native family catalog', 
                 expect(loaded.getArmorValue(armorLocation, 'rear')).withContext(armorLocation).toBe(entity.hasRearArmor(armorLocation) ? 1 : 0);
             }
             if (loaded instanceof InfantryEntity) expect(loaded.armorDivisor()).toBe(2);
-            if (loaded instanceof StaticEmplacementEntity && loaded.staticKind === 'GunEmplacement') expect(loaded.turret()).toBeTrue();
-            const summary = service.prepareSummaries(dependencies)[0];
+            const summary = (await service.prepareSummaries(dependencies))[0];
             expect(summary).toBeDefined();
             expect(summary.uuid).toBe(saved.uuid);
             expect(summary.isCustom).toBeTrue();

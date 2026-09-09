@@ -34,6 +34,8 @@ export interface PublishedCatalogGeneration<TSummary = readonly UnitSummary[]> {
     readonly manifest: StoredCoreUnitsManifest;
     readonly summary: StoredUnitSummaries<TSummary>;
     readonly summaryDependencyHashes: SummaryDependencyHashes;
+    /** Transient Blob handle retained with a loaded generation, never duplicated in the catalog row. */
+    readonly sourceArchive?: Blob;
 }
 
 interface StoredUnitCatalog<TSummary = readonly UnitSummary[]> {
@@ -197,6 +199,7 @@ export class UnitCatalogDatabase {
         const parsedManifest = parseCoreUnitsManifest(manifest.json, manifest.hash);
         return {
             activationId: catalog.activationId,
+            sourceArchive: archive.blob,
             manifest: parsedManifest,
             summary: {
                 activationId: catalog.activationId,

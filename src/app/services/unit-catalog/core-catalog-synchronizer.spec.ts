@@ -22,7 +22,7 @@ import {
     type CoreUnitsManifest,
     type StoredCoreUnitsManifest,
 } from './core-unit-manifest';
-import type { CoreUnitSummaryProjector } from './entity-summary-projector';
+import type { UnitSummaryProjector } from './entity-summary-projector';
 import {
     type PublishedCatalogGeneration,
     UnitCatalogDatabase,
@@ -111,7 +111,7 @@ describe('CoreCatalogSynchronizer', () => {
         const archiveBlob = new Blob([new Uint8Array(22)]);
         database.readSourceArchive.and.resolveTo(archiveBlob);
         const openArchive = jasmine.createSpy('openArchive');
-        const projector = jasmine.createSpyObj<CoreUnitSummaryProjector>('CoreUnitSummaryProjector', ['project']);
+        const projector = jasmine.createSpyObj<UnitSummaryProjector>('UnitSummaryProjector', ['project']);
 
         const prepared = await synchronizer.prepareSynchronization(
             preparedRelease(active, openArchive),
@@ -150,7 +150,7 @@ describe('CoreCatalogSynchronizer', () => {
             dispose: jasmine.createSpy('dispose'),
         };
         const openArchive = jasmine.createSpy('openArchive').and.resolveTo(opened);
-        const projector = jasmine.createSpyObj<CoreUnitSummaryProjector>('CoreUnitSummaryProjector', ['project']);
+        const projector = jasmine.createSpyObj<UnitSummaryProjector>('UnitSummaryProjector', ['project']);
         projector.project.and.resolveTo({ summary: current, diagnostics: [] });
 
         const prepared = await synchronizer.prepareSynchronization(
@@ -197,7 +197,7 @@ describe('CoreCatalogSynchronizer', () => {
             dispose: jasmine.createSpy('dispose'),
         };
         const openArchive = jasmine.createSpy('openArchive').and.resolveTo(opened);
-        const projector = jasmine.createSpyObj<CoreUnitSummaryProjector>('CoreUnitSummaryProjector', ['project']);
+        const projector = jasmine.createSpyObj<UnitSummaryProjector>('UnitSummaryProjector', ['project']);
 
         const prepared = await synchronizer.prepareSynchronization(
             preparedRelease(catalog.generation, openArchive, catalog.storedManifest),
@@ -220,7 +220,7 @@ describe('CoreCatalogSynchronizer', () => {
         const localArchive = await createCoreUnitSourceArchive(catalog.storedManifest.manifest, catalog.sources);
         database.readSourceArchive.and.resolveTo(new Blob([localArchive]));
         const openArchive = jasmine.createSpy('openArchive').and.rejectWith(new TypeError('Offline'));
-        const projector = jasmine.createSpyObj<CoreUnitSummaryProjector>('CoreUnitSummaryProjector', ['project']);
+        const projector = jasmine.createSpyObj<UnitSummaryProjector>('UnitSummaryProjector', ['project']);
         projector.project.and.callFake(async request => ({
             summary: summaryFor(request.entryKey.design.uuid, UNIT_SUMMARY_VERSION),
             diagnostics: [],
@@ -241,6 +241,24 @@ describe('CoreCatalogSynchronizer', () => {
         expect(prepared.generation.summary.payload.every(
             unit => unit.summaryVersion === UNIT_SUMMARY_VERSION,
         )).toBeTrue();
+    });
+
+    it('repairs cached summaries from stored sources without contacting the repository', async () => {
+        const catalog = manyUnitCatalog(3, UNIT_SUMMARY_VERSION);
+        const localArchive = await createCoreUnitSourceArchive(catalog.storedManifest.manifest, catalog.sources);
+        database.readSourceArchive.and.resolveTo(new Blob([localArchive]));
+        const projector = jasmine.createSpyObj<UnitSummaryProjector>('UnitSummaryProjector', ['project']);
+        projector.project.and.callFake(async input => ({ summary: summaryFor(input.entryKey.design.uuid, UNIT_SUMMARY_VERSION), diagnostics: [] }));
+        const current = { ...dependencies(), assetHashes: { ...hashes, equipment: 'changed-equipment' }, getProjector: async () => projector };
+        const prepared = await synchronizer.recoverCachedCatalog(catalog.generation, current, { signal: new AbortController().signal });
+        expect(projector.project).toHaveBeenCalledTimes(3);
+        expect(repository.loadManifest).not.toHaveBeenCalled();
+        expect(repository.download).not.toHaveBeenCalled();
+        expect(prepared.assetsManifest).toBeUndefined();
+        expect(prepared.generation.summaryDependencyHashes.equipment).toBe('changed-equipment');
+        expect(database.writeActiveCatalog).not.toHaveBeenCalled();
+        await prepared.finalize();
+        expect(database.writeActiveCatalog).toHaveBeenCalledOnceWith(prepared.generation, jasmine.any(Blob));
     });
 
     function preparedRelease(

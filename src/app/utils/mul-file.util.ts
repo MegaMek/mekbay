@@ -803,10 +803,12 @@ function parseEntityLocations(entity: Element): ParsedMulLocation[] {
 function createUnitLookup(units: readonly UnitSummary[]): Map<string, UnitSummary> {
     const result = new Map<string, UnitSummary>();
     for (const unit of units) {
+        if (unit.isCustom) continue;
         for (const key of [unitLookupKey(unit.chassis, unit.model), normalizeUnitLookup(unit.name)]) {
             if (!result.has(key)) result.set(key, unit);
         }
     }
+    for (const unit of units) result.set(unit.uuid, unit);
     return result;
 }
 

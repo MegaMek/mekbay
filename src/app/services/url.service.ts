@@ -21,6 +21,7 @@ export type UrlParamValue = string | number | null | undefined;
  */
 export const MEANINGFUL_URL_PARAMS = [
     'units',       // Force units
+    'mul_ids',     // Force units by MUL ID
     'instance',    // Cloud force instance ID
     'toe',         // TO&E organization ID
     'shareUnit',   // Shared single unit
@@ -31,15 +32,14 @@ export const MEANINGFUL_URL_PARAMS = [
 /**
  * Computes the game system override from the initial URL.
  * The `gs` parameter only overrides the user's preference when the link
- * carries meaningful content (units, search, a routed page, ...).
+ * carries meaningful query parameters (units, search, ...).
  */
-export function computeGameSystemOverride(params: URLSearchParams, pathname: string): GameSystem | null {
+export function computeGameSystemOverride(params: URLSearchParams): GameSystem | null {
     const gsParam = params.get('gs');
     if (gsParam !== GameSystem.AS && gsParam !== GameSystem.CBT) {
         return null;
     }
-    const isPagePath = pathname.replace(/\/+$/, '') !== '';
-    const hasMeaningfulParams = MEANINGFUL_URL_PARAMS.some(key => params.has(key)) || isPagePath;
+    const hasMeaningfulParams = MEANINGFUL_URL_PARAMS.some(key => !!params.get(key));
     return hasMeaningfulParams ? gsParam : null;
 }
 
@@ -83,7 +83,7 @@ export class UrlService {
      * no meaningful content. Does NOT persist to user options.
      */
     getGameSystemOverride(): GameSystem | null {
-        return computeGameSystemOverride(this.initialParams, this.initialPathname);
+        return computeGameSystemOverride(this.initialParams);
     }
 
     /**
@@ -119,6 +119,13 @@ export class UrlService {
         }
         const queryParams = this.pendingParams;
         this.pendingParams = null;
+        const mergedParams = this.router.createUrlTree([], {
+            queryParams,
+            queryParamsHandling: 'merge',
+        }).queryParams;
+        if (mergedParams['gs'] != null && !MEANINGFUL_URL_PARAMS.some(key => !!mergedParams[key])) {
+            queryParams['gs'] = null;
+        }
         void this.router.navigate([], {
             queryParams,
             queryParamsHandling: 'merge',

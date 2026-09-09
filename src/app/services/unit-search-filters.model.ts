@@ -75,6 +75,7 @@ export interface AdvFilterConfig {
     specialValues?: readonly number[]; // extra allowed slider stops between regular steps
     formatValue?: (value: number) => string; // for range sliders, maps internal numeric values to display labels
     semanticKey?: string; // Simplified key for semantic filter mode (e.g., 'tmm' instead of 'as.TMM')
+    numeric?: boolean; // Semantic-only field evaluated with numeric range operators
     booleanSource?: BooleanFilterSource; // How to derive a boolean filter value from the unit property
     valueNormalizer?: (value: string) => string; // Optional function to normalize semantic filter values
     displayNameFn?: (value: string) => string; // Optional function to map a raw option value to a human-readable display name
@@ -404,6 +405,7 @@ export interface SemanticFilterConfig {
     semanticKey?: string;
     availabilitySources?: readonly AvailabilitySource[];
     external?: boolean;
+    numeric?: boolean;
 }
 
 export const FORMATION_TARGET_FILTER_KEY = 'formationTarget';
@@ -455,6 +457,7 @@ export const DROPDOWN_FILTERS: readonly DropdownFilterConfig[] = Object.freeze([
 
 /** Boolean tri-state filters - shown before dropdown filters */
 export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
+    { key: 'isCustom', semanticKey: 'custom', label: 'Custom', booleanSource: 'boolean' },
     {
         key: 'canon',
         semanticKey: 'canon',
@@ -464,7 +467,7 @@ export const BOOLEAN_FILTERS: readonly BooleanFilterConfig[] = Object.freeze([
     {
         key: 'published',
         semanticKey: 'published',
-        label: 'Published Record Sheet',
+        label: 'Published Sheets',
         booleanSource: 'nonEmptyArray',
     },
 ]);
@@ -506,10 +509,10 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
 /** Semantic-only filters (not shown in UI, only for query parsing) */
 export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
     { key: FORMATION_TARGET_FILTER_KEY, semanticKey: 'formation', label: 'Formation Target', external: true },
-    { key: 'name', semanticKey: 'name', label: 'Internal Name' },
     { key: 'id', semanticKey: 'mul', label: 'MUL ID' },
     { key: 'chassis', semanticKey: 'chassis', label: 'Chassis' },
     { key: 'model', semanticKey: 'model', label: 'Model' },
+    { key: 'loadIssues.length', semanticKey: 'issues', label: 'Issue Count', numeric: true },
 ]);
 
 /** One combined registry used by semantic parsing, filtering, and sort options. */
@@ -536,6 +539,7 @@ export const SORT_OPTIONS: SortOption[] = [
     { key: '', label: 'Relevance' },
     { key: 'name', label: 'Name' },
     ...ADVANCED_FILTERS
+        .filter(f => !f.numeric)
         .filter(f => f.type !== AdvFilterType.BOOLEAN)
         .filter(f => !['era', 'faction', 'availabilityRarity', 'availabilityFrom', 'forcePack', 'componentName', 'weaponType', 'source', 'rulesRefs', '_tags', 'as.specials', 'name', 'chassis', 'model', 'as._motive', 'quirks', 'features'].includes(f.key))
         .map(f => ({

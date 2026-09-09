@@ -5,6 +5,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { GameSystem } from '../models/common.model';
+import { CrewMember } from '../models/crew-member.model';
 import type { Force } from '../models/force.model';
 import type { ForcePersonnelSnapshot } from '../models/force-personnel';
 import type { UnitCrewPolicy } from '../models/unit-crew-policy';
@@ -24,6 +25,8 @@ function ownerFixture(system: GameSystem) {
     const remove = jasmine.createSpy('deletePerson').and.resolveTo(true);
     const owner = {
         gameSystem: system, personnel, units: () => [], members: () => [],
+        getUnitSnapshot: jasmine.createSpy('getUnitSnapshot').and.returnValue(null),
+        dispatchUnitCommand: jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true }),
         faction: () => null, era: () => null, canEditPersonnel: () => policy().canEdit,
         getUnitCrewPolicy: () => policy(), updatePerson: update, unassignPerson: unassign, deletePerson: remove,
     };
@@ -97,6 +100,33 @@ describe('ForcePilotEditorService personnel editing', () => {
         expect(data.personnelActions).toEqual({ canUnassign: false, canDelete: true });
         expect(source.update).toHaveBeenCalledOnceWith('person', { name: 'Alex', notes: undefined, portrait: undefined,
             gunnery: 3, piloting: 2, commander: true });
+    });
+
+    it('loads assigned health and saves edited wounds through the runtime while preserving status', async () => {
+        const source = ownerFixture(GameSystem.CBT);
+        source.personnel.update(personnel => ({ ...personnel, assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }] }));
+        const health = CrewMember.from({ wounds: 2, unconscious: true, ejected: false });
+        source.owner.getUnitSnapshot.and.returnValue({ query: { crewState: () => health }, editContext: {} });
+        dialogs.createDialog.and.returnValue({ closed: of({ crew: [{ id: 'crew:0', name: 'Alex', gunnery: 3, piloting: 2, wounds: 4 }], commander: false }) } as never);
+        await editor.editPerson(source.force, 'person');
+        const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
+        expect(data.editHealth).toBeTrue();
+        expect(data.crew[0].wounds).toBe(2);
+        expect(source.owner.dispatchUnitCommand).toHaveBeenCalledOnceWith('unit', {
+            type: 'set-crew-state', positionId: 'crew:0', wounds: 4, unconscious: true, ejected: false,
+        }, {});
+    });
+
+    it('saves reserve wounds and preserves unconsciousness and recovery state', async () => {
+        const source = ownerFixture(GameSystem.CBT);
+        source.personnel.update(personnel => ({ ...personnel, people: [{ ...personnel.people[0],
+            health: { wounds: 2, unconscious: true, ejected: false, recoveryReadyTurn: 3 } }] }));
+        dialogs.createDialog.and.returnValue({ closed: of({ crew: [{ id: 'reserve', name: 'Alex', gunnery: 3, piloting: 2, wounds: 1 }], commander: false }) } as never);
+        await editor.editPerson(source.force, 'person');
+        expect(source.update.calls.mostRecent().args).toEqual(['person', {
+            health: { wounds: 1, unconscious: true, ejected: false, recoveryReadyTurn: 3 },
+        }]);
+        expect(source.owner.dispatchUnitCommand).not.toHaveBeenCalled();
     });
 
     it('unassigns the same person from their current station after a move while the dialog is open', async () => {

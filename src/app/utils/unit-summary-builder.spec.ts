@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
+import { STANDARD_ARMOR_EQUIPMENT } from '../models/entity/components/armor';
 import {
   TestBipedMekEntity as BipedMekEntity,
   TestTankEntity,
@@ -35,12 +36,13 @@ describe('UnitSummaryBuilder', () => {
   }
 
   function staticEntity() {
-    const entity = new StaticEmplacementEntity('GunEmplacement', createTestEquipmentRegistry());
+    const entity = new StaticEmplacementEntity(createTestEquipmentRegistry({
+      [STANDARD_ARMOR_EQUIPMENT.id]: STANDARD_ARMOR_EQUIPMENT,
+    }));
     entity.uuid.set(uuid);
     entity.chassis.set('Fortress Turret');
     entity.model.set('Heavy');
     entity.setTonnage(35);
-    entity.equipmentLocations.set(['Guns']);
     entity.constructionFactor.set(20);
     return entity;
   }
@@ -88,21 +90,58 @@ describe('UnitSummaryBuilder', () => {
     expect(summary.hybridLayout).toBeUndefined();
   });
 
-  it('keeps a native Mek runtime-ready while exposing its load errors', () => {
+  it('combines parsing diagnostics and validation errors without changing the entity diagnostics', () => {
     const entity = mek();
     entity.setLoadIssues([{
       code: 'EQUIPMENT_NOT_FOUND',
       severity: 'error',
       field: 'RA',
       message: 'Equipment not found: "Missing Test Equipment"',
+    }, {
+      code: 'SOURCE_WARNING',
+      severity: 'warning',
+      field: 'source',
+      message: 'Source parsing warning',
     }]);
+    entity.setArmorValue('RA', 'front', (entity.maxArmorValues().get('RA') ?? 0) + 1);
+    entity.originalBuildYear.set(entity.year() + 1);
+    const originalDiagnostics = [...entity.loadIssues()];
 
-    const summary = new UnitSummaryBuilder().build(entity, {
-      entryKey,
-      format: 'mtf',
-    });
+    const builder = new UnitSummaryBuilder();
+    const summary = builder.build(entity, { entryKey, format: 'mtf' });
 
-    expect(summary.loadIssues).toEqual(entity.loadIssues());
+    expect(summary.loadIssues).toEqual(jasmine.arrayContaining([
+      ...originalDiagnostics,
+      jasmine.objectContaining({ code: 'ARMOR_EXCEEDS_MAX', severity: 'error', field: 'RA' }),
+      jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', field: 'tech' }),
+    ]));
+    expect(summary.loadIssues[0]).not.toBe(entity.loadIssues()[0]);
+    expect(entity.loadIssues()).toEqual(originalDiagnostics);
+    expect(builder.build(entity, { entryKey, format: 'mtf' }).loadIssues).toEqual(summary.loadIssues);
+    expect(JSON.parse(JSON.stringify(summary)).loadIssues).toEqual(summary.loadIssues);
+  });
+
+  it('does not turn construction warnings into catalog errors', () => {
+    const entity = mek();
+    entity.setTonnage(50);
+    entity.originalWalkMP.set(5);
+    expect(entity.validationResult().messages).toContain(jasmine.objectContaining({
+      code: 'ENGINE_RATING_MISMATCH', severity: 'warning',
+    }));
+
+    const summary = new UnitSummaryBuilder().build(entity, { entryKey, format: 'mtf' });
+    expect(summary.loadIssues.some(issue => issue.code === 'ENGINE_RATING_MISMATCH')).toBeFalse();
+  });
+
+  it('includes construction errors for static families and leaves valid designs issue-free', () => {
+    const entity = staticEntity();
+    const builder = new UnitSummaryBuilder();
+    expect(builder.build(entity, { entryKey, format: 'blk' }).loadIssues).toEqual([]);
+
+    entity.originalBuildYear.set(entity.year() + 1);
+    expect(builder.build(entity, { entryKey, format: 'blk' }).loadIssues).toEqual([
+      jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', field: 'tech' }),
+    ]);
   });
 
   it('rejects identity and native-format mismatches', () => {
@@ -128,9 +167,9 @@ describe('UnitSummaryBuilder', () => {
       entryKey,
       format: 'blk',
     });
-    expect(summary.type).toBe('Gun Emplacement');
-    expect(summary.subtype).toBe('Gun Emplacement');
-    expect(summary.entityType).toBe('GunEmplacement');
+    expect(summary.type).toBe('Building');
+    expect(summary.subtype).toBe('Building');
+    expect(summary.entityType).toBe('BuildingEntity');
     expect(summary.weightClass).toBe('Medium');
     expect(summary.bv).toBe(0);
     expect(summary.cost).toBe(0);

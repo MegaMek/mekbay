@@ -22,7 +22,7 @@ import {
 
 type CBTSummaryPrintOptions = Pick<
     PrintAllOptions,
-    'printPilotData' | 'paperSize' | 'printMargin'
+    'printPilotData' | 'paperSize'
 >;
 
 interface AmmoSummary {
@@ -49,7 +49,7 @@ export class CBTSummaryPrintUtil {
             containerId: 'cbt-summary-print-container',
             bodyClass: 'cbt-summary-print-active',
             content: await this.createRosterSummary(force, printOptions.printPilotData, nameFormat),
-            styles: this.getPrintStyles(printOptions.printMargin, printOptions.paperSize),
+            styles: this.getPrintStyles(printOptions.paperSize),
             triggerPrint,
         });
     }
@@ -260,10 +260,7 @@ export class CBTSummaryPrintUtil {
             .replaceAll("'", '&#39;');
     }
 
-    private static getPrintStyles(
-        printMargin: PrintAllOptions['printMargin'],
-        paperSize: PrintAllOptions['paperSize'],
-    ): string {
+    private static getPrintStyles(paperSize: PrintAllOptions['paperSize']): string {
         return `
             @media screen { #cbt-summary-print-container { display: none; } }
             ${getPrintRosterBrandingStyles('#cbt-summary-print-container')}
@@ -355,7 +352,7 @@ export class CBTSummaryPrintUtil {
                 }
                 @page {
                     size: ${paperSize === 'a4' ? 'A4' : 'Letter'} landscape;
-                    margin: ${printMargin === 'none' ? '0in' : '0.25in'} !important;
+                    margin: 0.25in !important;
                 }
             }
         `;

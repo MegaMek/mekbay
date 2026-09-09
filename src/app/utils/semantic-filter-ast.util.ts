@@ -355,11 +355,11 @@ function tryParseFilterToken(
         }
     }
 
-    if (operator === '==' && (!conf || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC && conf.type !== AdvFilterType.BOOLEAN))) {
+    if (operator === '==' && (!conf || conf.numeric || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC && conf.type !== AdvFilterType.BOOLEAN))) {
         return null;
     }
     
-    if (operator === '&=' && conf && conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC) {
+    if (operator === '&=' && conf && (conf.numeric || (conf.type !== AdvFilterType.DROPDOWN && conf.type !== AdvFilterType.SEMANTIC))) {
         return null;
     }
     
@@ -1656,7 +1656,7 @@ function evaluateSingleFilterConfig<TUnit extends object>(
     }
     
     // Handle different filter types
-    if (conf.type === AdvFilterType.RANGE) {
+    if (conf.type === AdvFilterType.RANGE || conf.numeric) {
         return evaluateRangeFilter(unitValue, operator, parsedRangeValues, conf);
     } else if (conf.type === AdvFilterType.BOOLEAN) {
         return evaluateBooleanFilter(unitValue, operator, values, conf);

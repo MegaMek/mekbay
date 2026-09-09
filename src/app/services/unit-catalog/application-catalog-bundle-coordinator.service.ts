@@ -34,8 +34,8 @@ import { CORE_UNITS_ARCHIVE_PATH, CORE_UNITS_MANIFEST_PATH } from './core-unit-m
 import type { RepositoryAssetsManifest } from '../catalogs/repository-asset-manifest.service';
 import type { CoreCatalogSyncProgress } from './core-catalog-synchronizer';
 import {
-    EntityCoreUnitSummaryProjector,
-    type CoreUnitSummaryProjector,
+    EntityUnitSummaryProjector,
+    type UnitSummaryProjector,
 } from './entity-summary-projector';
 
 export const DEPENDENCY_ASSET_PATHS = Object.freeze({
@@ -59,7 +59,7 @@ export interface PreparedApplicationCatalogDependencies {
     readonly eras: PreparedEraIndex;
     readonly factions: PreparedFactionsCatalog;
     readonly sprites: PreparedUnitSpriteManifest;
-    readonly getProjector: () => Promise<CoreUnitSummaryProjector>;
+    readonly getProjector: () => Promise<UnitSummaryProjector>;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -273,7 +273,7 @@ export class ApplicationCatalogBundleCoordinatorService {
         factions: PreparedFactionsCatalog,
         sprites: PreparedUnitSpriteManifest,
     ): PreparedApplicationCatalogDependencies {
-        let projector: Promise<CoreUnitSummaryProjector> | undefined;
+        let projector: Promise<UnitSummaryProjector> | undefined;
         return Object.freeze({
             bundle,
             assetHashes: Object.freeze({ ...assetHashes }),
@@ -283,7 +283,7 @@ export class ApplicationCatalogBundleCoordinatorService {
             eras,
             factions,
             sprites,
-            getProjector: () => projector ??= Promise.resolve(new EntityCoreUnitSummaryProjector(
+            getProjector: () => projector ??= Promise.resolve(new EntityUnitSummaryProjector(
                 equipment.registry,
                 {
                     parseOptions: {

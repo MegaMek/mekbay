@@ -3,6 +3,8 @@
 // Author: Drake
 
 import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
+import { isUnitIntroducedByEra } from '../utils/unit-introduction.util';
+import { MULFACTION_NONE } from '../models/mulfactions.model';
 
 import { Injectable, inject } from '@angular/core';
 import type { Era } from '../models/eras.model';
@@ -234,7 +236,7 @@ export class UnitSearchAvailabilityService {
 
         if (!hasSourceFilter && !hasRarityFilter) {
             const membershipUnitIds = this.unitAvailabilitySource.getMegaMekMembershipUnitIds(baseContext);
-            return contextUnits.some(unit => membershipUnitIds.has(unit.name));
+            return contextUnits.some(unit => membershipUnitIds.has(unit.uuid));
         }
 
         if (!hasRarityFilter) {
@@ -457,7 +459,14 @@ export class UnitSearchAvailabilityService {
         selectedFactionIds?: ReadonlySet<number>,
     ): ReadonlySet<number> {
         const availableIds = new Set<number>();
-        const contextUnitIds = new Set(contextUnits.map(unit => unit.id));
+        const contextUnitIds = new Set(contextUnits.map(unit => unit.id).filter((id): id is number => id !== null));
+        if (!selectedFactionIds || selectedFactionIds.has(MULFACTION_NONE)) {
+            const unlisted = contextUnits.filter(unit => unit.id === null);
+            for (const era of this.dataService.getEras()) {
+                if (target === 'faction' && selectedEraIds && !selectedEraIds.has(era.id)) continue;
+                if (unlisted.some(unit => isUnitIntroducedByEra(unit, era))) availableIds.add(target === 'era' ? era.id : MULFACTION_NONE);
+            }
+        }
         const allFactions = this.dataService.getFactions();
 
         if (target === 'faction') {
@@ -510,8 +519,12 @@ export class UnitSearchAvailabilityService {
         return false;
     }
 
-    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'id'>, factionId: number, eraId: number): boolean {
-        return this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.id);
+    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'id' | 'year'>, factionId: number, eraId: number): boolean {
+        if (unit.id === null) {
+            const era = this.dataService.getEras().find(era => era.id === eraId);
+            return factionId === MULFACTION_NONE && !!era && isUnitIntroducedByEra(unit, era);
+        }
+        return unit.id !== null && this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.id);
     }
 
     private membershipContainsUnitId(
@@ -701,9 +714,7 @@ export class UnitSearchAvailabilityService {
             }
 
             if (scope?.factionNames === undefined) {
-                return this.mapMegaMekAvailabilityKeysToUnitUuids(
-                    this.unitAvailabilitySource.getVisibleEraUnitIds(era),
-                );
+                return this.unitAvailabilitySource.getMegaMekMembershipUnitIds({ eraIds: new Set([era.id]) });
             }
 
             const context = this.resolveContext({
@@ -711,9 +722,9 @@ export class UnitSearchAvailabilityService {
                 factionNames: scope.factionNames,
             });
             const availabilityKeys = context === null
-                ? new Set<string>()
+                ? new Set<UnitUuid>()
                 : this.unitAvailabilitySource.getMegaMekMembershipUnitIds(context);
-            return this.mapMegaMekAvailabilityKeysToUnitUuids(availabilityKeys);
+            return availabilityKeys;
         }
 
         if (filterKey === 'faction') {
@@ -723,9 +734,7 @@ export class UnitSearchAvailabilityService {
             }
 
             if (scope?.eraNames === undefined) {
-                return this.mapMegaMekAvailabilityKeysToUnitUuids(
-                    this.unitAvailabilitySource.getFactionUnitIds(faction),
-                );
+                return this.unitAvailabilitySource.getMegaMekMembershipUnitIds({ factionIds: new Set([faction.id]) });
             }
 
             const contextEraIds = new Set(
@@ -734,9 +743,11 @@ export class UnitSearchAvailabilityService {
                     .filter((eraId): eraId is number => eraId !== undefined),
             );
             const availabilityKeys = contextEraIds.size === 0
-                ? new Set<string>()
-                : this.unitAvailabilitySource.getFactionUnitIds(faction, contextEraIds);
-            return this.mapMegaMekAvailabilityKeysToUnitUuids(availabilityKeys);
+                ? new Set<UnitUuid>()
+                : this.unitAvailabilitySource.getMegaMekMembershipUnitIds({
+                    factionIds: new Set([faction.id]), eraIds: contextEraIds,
+                });
+            return availabilityKeys;
         }
 
         if (filterKey === 'availabilityFrom') {
@@ -746,17 +757,13 @@ export class UnitSearchAvailabilityService {
             }
 
             if (value === MEGAMEK_AVAILABILITY_UNKNOWN) {
-                return this.mapMegaMekAvailabilityKeysToUnitUuids(
-                    this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context),
-                );
+                return this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context);
             }
 
-            return this.mapMegaMekAvailabilityKeysToUnitUuids(
-                this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds({
-                    ...context,
-                    availabilityFrom: new Set([value as MegaMekAvailabilityFrom]),
-                }),
-            );
+            return this.unitAvailabilitySource.getMegaMekAvailabilityUnitIds({
+                ...context,
+                availabilityFrom: new Set([value as MegaMekAvailabilityFrom]),
+            });
         }
 
         if (filterKey === 'availabilityRarity') {
@@ -768,20 +775,10 @@ export class UnitSearchAvailabilityService {
             const availabilityKeys = value === MEGAMEK_AVAILABILITY_UNKNOWN
                 ? this.unitAvailabilitySource.getMegaMekUnknownUnitIds(context)
                 : this.unitAvailabilitySource.getMegaMekRarityUnitIds(value as MegaMekAvailabilityRarity, context);
-            return this.mapMegaMekAvailabilityKeysToUnitUuids(availabilityKeys);
+            return availabilityKeys;
         }
 
         return this.searchIndex.getIndexedUnitIds(filterKey, value);
-    }
-
-    private mapMegaMekAvailabilityKeysToUnitUuids(availabilityKeys: ReadonlySet<string>): Set<UnitUuid> {
-        const unitUuids = new Set<UnitUuid>();
-        for (const unitName of availabilityKeys) {
-            for (const unit of this.dataService.getUnitsByName(unitName)) {
-                unitUuids.add(unit.uuid);
-            }
-        }
-        return unitUuids;
     }
 
     getIndexedFilterValues(filterKey: string): readonly string[] {

@@ -606,7 +606,7 @@ export class FormationRequirementEngine {
             if (!evaluateFormationPredicate(predicate, unitFacts, gameSystem)) {
                 continue;
             }
-            pairCounts.set(unitFacts.name, (pairCounts.get(unitFacts.name) ?? 0) + 1);
+            pairCounts.set(unitFacts.uuid, (pairCounts.get(unitFacts.uuid) ?? 0) + 1);
         }
         return [...pairCounts.values()].filter(count => count >= 2).length;
     }
@@ -753,19 +753,7 @@ export class FormationRequirementEngine {
             };
         }
 
-        const pairCounts = new Map<string, number>();
-        for (const unitFacts of facts) {
-            if (!evaluateFormationPredicate(constraint.predicate, unitFacts, gameSystem)) {
-                continue;
-            }
-
-            pairCounts.set(unitFacts.name, (pairCounts.get(unitFacts.name) ?? 0) + 1);
-        }
-
-        let matchedPairs = 0;
-        for (const count of pairCounts.values()) {
-            if (count >= 2) matchedPairs++;
-        }
+        const matchedPairs = this.countMatchedPairs(facts, constraint.predicate, gameSystem);
 
         return {
             constraintId: constraint.id,

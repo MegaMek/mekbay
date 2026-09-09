@@ -1014,9 +1014,9 @@ describe('ForceGeneratorService', () => {
         };
 
         ageOfWar.units = new Set<number>();
-        civilWar.units = new Set<number>([unit.id]);
+        civilWar.units = new Set<number>([unit.id!]);
         capellanConfederation.eras = {
-            [civilWar.id]: new Set<number>([unit.id]),
+            [civilWar.id!]: new Set<number>([unit.id!]),
         };
 
         erasByName.set(ageOfWar.name, ageOfWar);
@@ -1111,11 +1111,11 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.map((unit) => unit.unit.name)).toEqual(['Name-Keyed Available Unit']);
     });
 
-    it('does not reuse force generation candidate caches across different names that share a missing MUL id', () => {
+    it('does not reuse force generation caches across custom UUIDs that share a name and missing MUL id', () => {
         const era = createEra(3150, 'ilClan');
         const faction = createFaction(10, 'Federated Suns');
-        const firstUnit = createUnit({ id: -1, name: 'Signature Name Unit A', as: { PV: 5 } as UnitSummary['as'] });
-        const secondUnit = createUnit({ id: -1, name: 'Signature Name Unit B', as: { PV: 6 } as UnitSummary['as'] });
+        const firstUnit = createUnit({ id: -1, name: 'Shared Custom Name', isCustom: true, as: { PV: 5 } as UnitSummary['as'] });
+        const secondUnit = createUnit({ id: -1, name: firstUnit.name, isCustom: true, as: { PV: 6 } as UnitSummary['as'] });
 
         addMegaMekAvailability(firstUnit, faction, era, 5, 0);
         addMegaMekAvailability(secondUnit, faction, era, 5, 0);
@@ -1142,8 +1142,47 @@ describe('ForceGeneratorService', () => {
 
         expect(firstPreview.error).toBeNull();
         expect(secondPreview.error).toBeNull();
-        expect(firstPreview.units.map((unit) => unit.unit.name)).toEqual(['Signature Name Unit A']);
-        expect(secondPreview.units.map((unit) => unit.unit.name)).toEqual(['Signature Name Unit B']);
+        expect(firstPreview.units.map((unit) => unit.unit.uuid)).toEqual([firstUnit.uuid]);
+        expect(secondPreview.units.map((unit) => unit.unit.uuid)).toEqual([secondUnit.uuid]);
+    });
+
+    it('keeps a same-name custom candidate available when another design is locked', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const first = createUnit({ name: 'Custom collision', isCustom: true, as: { PV: 5 } });
+        const second = createUnit({ name: first.name, isCustom: true, as: { PV: 5 } });
+        for (const unit of [first, second]) addMegaMekAvailability(unit, faction, era);
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [first, second], context: createContext(faction, era), gameSystem: GameSystem.AS,
+            budgetRange: { min: 0, max: 10 }, minUnitCount: 2, maxUnitCount: 2,
+            gunnery: 4, piloting: 5, preventDuplicateChassis: false,
+            lockedUnits: [{ unit: first, cost: 5, skill: 4, lockKey: 'locked-custom' }],
+        });
+
+        expect(preview.error).toBeNull();
+        expect(preview.units.map(unit => unit.unit.uuid)).toEqual([first.uuid, second.uuid]);
+    });
+
+    it('keeps exact-design tag quantity pools separate for same-name custom units', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Federated Suns');
+        const first = createUnit({ name: 'Custom collision', isCustom: true, as: { PV: 4 }, _nameTags: [{ tag: 'owned', quantity: 1 }] });
+        const second = createUnit({ name: first.name, isCustom: true, as: { PV: 4 }, _nameTags: [{ tag: 'owned', quantity: 1 }] });
+        filtersServiceMock.effectiveFilterState.and.returnValue({
+            _tags: { interactedWith: true, value: { owned: { name: 'owned', state: 'and', count: 1 } } },
+        });
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const preview = service.buildPreview({
+            eligibleUnits: [first, second], context: createContext(faction, era), gameSystem: GameSystem.AS,
+            budgetRange: { min: 0, max: 8 }, minUnitCount: 2, maxUnitCount: 2,
+            gunnery: 4, piloting: 5, useTaggedQuantities: true, preventDuplicateChassis: false,
+        });
+
+        expect(preview.error).toBeNull();
+        expect(new Set(preview.units.map(unit => unit.unit.uuid))).toEqual(new Set([first.uuid, second.uuid]));
     });
 
     it('builds target formation candidates incrementally around locked units', () => {
@@ -3059,9 +3098,9 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Draconis Combine');
         const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unit', as: { PV: 5 } as UnitSummary['as'] });
 
-        era.units = new Set<number>([mulVisibleUnit.id]);
+        era.units = new Set<number>([mulVisibleUnit.id!]);
         faction.eras = {
-            [era.id]: new Set<number>([mulVisibleUnit.id]),
+            [era.id!]: new Set<number>([mulVisibleUnit.id!]),
         };
 
         erasByName.set(era.name, era);
@@ -3136,9 +3175,9 @@ describe('ForceGeneratorService', () => {
         const faction = createFaction(10, 'Draconis Combine');
         const mulVisibleUnit = createUnit({ id: 1, name: 'MUL Visible Unknown', as: { PV: 5 } as UnitSummary['as'] });
 
-        era.units = new Set<number>([mulVisibleUnit.id]);
+        era.units = new Set<number>([mulVisibleUnit.id!]);
         faction.eras = {
-            [era.id]: new Set<number>([mulVisibleUnit.id]),
+            [era.id!]: new Set<number>([mulVisibleUnit.id!]),
         };
 
         erasByName.set(era.name, era);
@@ -3173,12 +3212,12 @@ describe('ForceGeneratorService', () => {
         const secondaryFaction = createFaction(20, 'Free Worlds League');
         const mixedScopeUnit = createUnit({ id: 1, name: 'Mixed Scope Unknown', as: { PV: 5 } as UnitSummary['as'] });
 
-        era.units = new Set<number>([mixedScopeUnit.id]);
+        era.units = new Set<number>([mixedScopeUnit.id!]);
         primaryFaction.eras = {
-            [era.id]: new Set<number>([mixedScopeUnit.id]),
+            [era.id!]: new Set<number>([mixedScopeUnit.id!]),
         };
         secondaryFaction.eras = {
-            [era.id]: new Set<number>([mixedScopeUnit.id]),
+            [era.id!]: new Set<number>([mixedScopeUnit.id!]),
         };
 
         megaMekAvailabilityByUnitName.set(mixedScopeUnit.name, {

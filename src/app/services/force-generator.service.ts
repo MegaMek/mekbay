@@ -129,7 +129,7 @@ interface ForceGenerationCandidateUnit {
 
 interface ForceGenerationTaggedQuantityCaps {
     capByKey: ReadonlyMap<string, number>;
-    keyByUnitName: ReadonlyMap<string, string>;
+    keyByUnitUuid: ReadonlyMap<string, string>;
 }
 
 type ForceGenerationAvailabilitySource = 'requisition' | 'salvage';
@@ -149,7 +149,7 @@ interface ForceGenerationAvailabilityWeightCache {
     signature: string;
     useMegaMekAvailability: boolean;
     scopeState: ForceGenerationAvailabilityScopeState;
-    weightsByUnitName: Map<string, { requisition: number; salvage: number }>;
+    weightsByUnitUuid: Map<string, { requisition: number; salvage: number }>;
 }
 
 interface ForceGenerationPreparedCandidateCache {
@@ -1596,7 +1596,7 @@ function buildDuplicateChassisKey(unit: UnitSummary): string {
 }
 
 function buildTaggedQuantityUnitKey(unit: UnitSummary): string {
-    return `unit:${normalizeSelectionKey(unit.name)}`;
+    return `unit:${unit.uuid}`;
 }
 
 function buildTaggedQuantityChassisKey(unit: UnitSummary): string {
@@ -1612,8 +1612,8 @@ function serializeForceGenerationCacheIds(ids: readonly number[]): string {
     return [...new Set(ids)].sort((left, right) => left - right).join(',');
 }
 
-function buildForceGenerationUnitListSignature(units: readonly Pick<UnitSummary, 'name'>[]): string {
-    return [units.length, ...units.map((unit) => unit.name)].join('\u001f');
+function buildForceGenerationUnitListSignature(units: readonly Pick<UnitSummary, 'uuid'>[]): string {
+    return [units.length, ...units.map((unit) => unit.uuid)].join('\u001f');
 }
 
 function getEraReferenceYear(era: Era | null): number | undefined {
@@ -2067,13 +2067,13 @@ export class ForceGeneratorService implements OnDestroy {
                 availabilityWeightCache,
             );
         });
-        const lockedUnitNames = new Set(lockedCandidates.map((candidate) => candidate.unit.name));
+        const lockedUnitUuids = new Set(lockedCandidates.map((candidate) => candidate.unit.uuid));
         const lockedTaggedQuantityCounts = useTaggedQuantityCaps && taggedQuantityCaps
             ? this.countTaggedQuantityCandidates(lockedCandidates, taggedQuantityCaps)
             : new Map<string, number>();
-        const availabilityCandidates = lockedUnitNames.size === 0 || useTaggedQuantityCaps
+        const availabilityCandidates = lockedUnitUuids.size === 0 || useTaggedQuantityCaps
             ? preparedCandidateCache.candidates
-            : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitNames.has(candidate.unit.name));
+            : preparedCandidateCache.candidates.filter((candidate) => !lockedUnitUuids.has(candidate.unit.uuid));
         const skillCompatibleCandidates = this.filterCandidatesForSkillSettings(
             availabilityCandidates,
             options.gameSystem,
@@ -3514,7 +3514,7 @@ export class ForceGeneratorService implements OnDestroy {
         if (selectedTagKeys.size === 0) {
             return {
                 capByKey: new Map<string, number>(),
-                keyByUnitName: new Map<string, string>(),
+                keyByUnitUuid: new Map<string, string>(),
             };
         }
 
@@ -3523,20 +3523,20 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         const capByKey = new Map<string, number>();
-        const keyByUnitName = new Map<string, string>();
+        const keyByUnitUuid = new Map<string, string>();
         for (const unit of eligibleUnits) {
             const resolvedCap = this.getTaggedQuantityCapForUnit(unit, selectedTagKeys, maxUnitCount)
                 ?? {
                     key: buildTaggedQuantityUnitKey(unit),
                     cap: 1,
                 };
-            keyByUnitName.set(unit.name, resolvedCap.key);
+            keyByUnitUuid.set(unit.uuid, resolvedCap.key);
             capByKey.set(resolvedCap.key, Math.max(capByKey.get(resolvedCap.key) ?? 1, resolvedCap.cap));
         }
 
         return {
             capByKey,
-            keyByUnitName,
+            keyByUnitUuid,
         };
     }
 
@@ -3546,7 +3546,7 @@ export class ForceGeneratorService implements OnDestroy {
         maxUnitCount: number,
     ): ForceGenerationTaggedQuantityCaps {
         const capByKey = new Map<string, number>();
-        const keyByUnitName = new Map<string, string>();
+        const keyByUnitUuid = new Map<string, string>();
 
         for (const unit of eligibleUnits) {
             const chassisQuantityCap = this.getTaggedQuantityCapFromEntries(unit._chassisTags, selectedTagKeys, maxUnitCount);
@@ -3556,13 +3556,13 @@ export class ForceGeneratorService implements OnDestroy {
                 ? buildTaggedQuantityChassisKey(unit)
                 : buildTaggedQuantityUnitKey(unit);
 
-            keyByUnitName.set(unit.name, resolvedKey);
+            keyByUnitUuid.set(unit.uuid, resolvedKey);
             capByKey.set(resolvedKey, Math.max(capByKey.get(resolvedKey) ?? 1, resolvedCap || 1));
         }
 
         return {
             capByKey,
-            keyByUnitName,
+            keyByUnitUuid,
         };
     }
 
@@ -3670,7 +3670,7 @@ export class ForceGeneratorService implements OnDestroy {
         unit: UnitSummary,
         taggedQuantityCaps: ForceGenerationTaggedQuantityCaps,
     ): string | null {
-        const mappedKey = taggedQuantityCaps.keyByUnitName.get(unit.name);
+        const mappedKey = taggedQuantityCaps.keyByUnitUuid.get(unit.uuid);
         if (mappedKey) {
             return mappedKey;
         }
@@ -4080,17 +4080,18 @@ export class ForceGeneratorService implements OnDestroy {
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly UnitSummary[],
     ): ForceGenerationAvailabilityWeightCache {
-        const recordsByUnitName = useMegaMekAvailability ? undefined : new Map<string, MegaMekWeightedAvailabilityRecord | undefined>();
-        const weightsByUnitName = new Map<string, AvailabilityWeights>();
+        const recordsByUnitUuid = useMegaMekAvailability ? undefined : new Map<string, MegaMekWeightedAvailabilityRecord | undefined>();
+        const weightsByUnitUuid = new Map<string, AvailabilityWeights>();
         for (const unit of eligibleUnits) {
             const record = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
-            recordsByUnitName?.set(unit.name, record);
-            weightsByUnitName.set(unit.name, getScopedAvailabilityWeights(record, scopeState, useMegaMekAvailability));
+            recordsByUnitUuid?.set(unit.uuid, record);
+            weightsByUnitUuid.set(unit.uuid, getScopedAvailabilityWeights(record, scopeState, useMegaMekAvailability));
         }
 
         if (!useMegaMekAvailability) {
             const unitsByMulId = new Map<number, UnitSummary[]>();
             for (const unit of eligibleUnits) {
+                if (unit.id === null) continue;
                 const matchingUnits = unitsByMulId.get(unit.id) ?? [];
                 matchingUnits.push(unit);
                 unitsByMulId.set(unit.id, matchingUnits);
@@ -4103,14 +4104,14 @@ export class ForceGeneratorService implements OnDestroy {
                 }
                 for (const unitId of this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, 'mul')) {
                     for (const unit of unitsByMulId.get(Number(unitId)) ?? []) {
-                        const exactValue = recordsByUnitName!.get(unit.name)?.e[String(eraId)]?.[String(factionId)];
-                        includeMulAvailabilityFallback(weightsByUnitName.get(unit.name)!, exactValue);
+                        const exactValue = recordsByUnitUuid!.get(unit.uuid)?.e[String(eraId)]?.[String(factionId)];
+                        includeMulAvailabilityFallback(weightsByUnitUuid.get(unit.uuid)!, exactValue);
                     }
                 }
             }
         }
 
-        return { signature, useMegaMekAvailability, scopeState, weightsByUnitName };
+        return { signature, useMegaMekAvailability, scopeState, weightsByUnitUuid };
     }
 
     private buildAvailabilityScopeState(context: ForceGenerationContext): ForceGenerationAvailabilityScopeState {
@@ -4147,13 +4148,13 @@ export class ForceGeneratorService implements OnDestroy {
         context: ForceGenerationContext,
         availabilityWeightCache?: ForceGenerationAvailabilityWeightCache,
     ): { requisition: number; salvage: number } {
-        const cachedWeights = availabilityWeightCache?.weightsByUnitName.get(unit.name);
+        const cachedWeights = availabilityWeightCache?.weightsByUnitUuid.get(unit.uuid);
         if (cachedWeights !== undefined) {
             return cachedWeights;
         }
 
         const computedWeights = this.getAvailabilityWeights(unit, context, availabilityWeightCache?.scopeState);
-        availabilityWeightCache?.weightsByUnitName.set(unit.name, computedWeights);
+        availabilityWeightCache?.weightsByUnitUuid.set(unit.uuid, computedWeights);
         return computedWeights;
     }
 
@@ -5994,13 +5995,13 @@ export class ForceGeneratorService implements OnDestroy {
         maxUnitCount: number,
     ): number {
         let capacity = 0;
-        const countedUnitNames = new Set<string>();
+        const countedUnitUuids = new Set<string>();
 
         for (const candidate of candidates) {
-            if (countedUnitNames.has(candidate.unit.name)) {
+            if (countedUnitUuids.has(candidate.unit.uuid)) {
                 continue;
             }
-            countedUnitNames.add(candidate.unit.name);
+            countedUnitUuids.add(candidate.unit.uuid);
 
             const currentEvaluation = FormationRequirementEngine.evaluateDefinition(
                 definition,
@@ -6618,7 +6619,7 @@ export class ForceGeneratorService implements OnDestroy {
         allowUnlimitedDuplicateUnits = false,
     ): ForceGenerationCandidateUnit[] {
         const selectedCandidateSet = new Set(selectedCandidates);
-        const selectedUnitNames = new Set(selectedCandidates.map((candidate) => candidate.unit.name));
+        const selectedUnitUuids = new Set(selectedCandidates.map((candidate) => candidate.unit.uuid));
         const selectedLockKeys = new Set(
             selectedCandidates
                 .map((candidate) => candidate.lockKey)
@@ -6652,7 +6653,7 @@ export class ForceGeneratorService implements OnDestroy {
                 if ((selectedTaggedQuantityCounts.get(candidate.taggedQuantityCapKey) ?? 0) >= quantityCap) {
                     return false;
                 }
-            } else if (!allowUnlimitedDuplicateUnits && selectedUnitNames.has(candidate.unit.name)) {
+            } else if (!allowUnlimitedDuplicateUnits && selectedUnitUuids.has(candidate.unit.uuid)) {
                 return false;
             }
             if (preventDuplicateChassis) {

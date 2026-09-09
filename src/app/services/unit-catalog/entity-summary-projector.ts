@@ -8,25 +8,25 @@ import { parseEntity } from '../../models/entity/parse-entity';
 import type { ParseContextOptions, EntityLoadIssue } from '../../models/entity/parsers/parse-context';
 import { UnitSummaryBuilder } from '../../utils/unit-summary-builder';
 import {
-    CoreCatalogEntryKey,
+    CatalogEntryKey,
     NativeUnitFormat,
     UnitFileName,
 } from './unit-catalog.types';
 
-export interface CoreUnitProjectionInput {
-    readonly entryKey: CoreCatalogEntryKey;
+export interface UnitSummaryProjectionInput {
+    readonly entryKey: CatalogEntryKey;
     readonly format: NativeUnitFormat;
     readonly file: UnitFileName;
     readonly bytes: ArrayBuffer;
 }
 
-export interface ProjectedCoreUnitSummary {
+export interface ProjectedUnitSummary {
     readonly summary: UnitSummary;
     readonly diagnostics: readonly EntityLoadIssue[];
 }
 
-export interface CoreUnitSummaryProjector {
-    project(input: CoreUnitProjectionInput): Promise<ProjectedCoreUnitSummary>;
+export interface UnitSummaryProjector {
+    project(input: UnitSummaryProjectionInput): Promise<ProjectedUnitSummary>;
 }
 
 export class EntitySummaryProjectionError extends Error {
@@ -40,25 +40,25 @@ export class EntitySummaryProjectionError extends Error {
     }
 }
 
-export interface EntityCoreUnitSummaryProjectorOptions {
+export interface EntityUnitSummaryProjectorOptions {
     readonly parseOptions?: ParseContextOptions;
     readonly summaryBuilder?: UnitSummaryBuilder;
 }
 
 /** The single native parser/domain/summary path used by catalog installation. */
-export class EntityCoreUnitSummaryProjector implements CoreUnitSummaryProjector {
+export class EntityUnitSummaryProjector implements UnitSummaryProjector {
     private readonly parseOptions: ParseContextOptions;
     private readonly summaryBuilder: UnitSummaryBuilder;
 
     public constructor(
         private readonly equipmentRegistry: EquipmentRegistry,
-        options: EntityCoreUnitSummaryProjectorOptions = {},
+        options: EntityUnitSummaryProjectorOptions = {},
     ) {
         this.parseOptions = options.parseOptions ?? {};
         this.summaryBuilder = options.summaryBuilder ?? new UnitSummaryBuilder();
     }
 
-    public async project(input: CoreUnitProjectionInput): Promise<ProjectedCoreUnitSummary> {
+    public async project(input: UnitSummaryProjectionInput): Promise<ProjectedUnitSummary> {
         let raw: string;
         try {
             raw = new TextDecoder('utf-8', { fatal: true }).decode(input.bytes);

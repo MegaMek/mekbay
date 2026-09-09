@@ -542,9 +542,9 @@ export function tokensToFilterState(
                     semanticOnly: positiveSelected && negativeSelected ? true : undefined,
                 };
             }
-        } else if (conf.type === AdvFilterType.RANGE) {
+        } else if (conf.type === AdvFilterType.RANGE || conf.numeric) {
             // Handle range filters with support for multiple ranges (OR logic) and exclusions
-            const totalRange = totalRanges[conf.key] || [0, 100];
+            const totalRange = totalRanges[conf.key] || [0, conf.numeric ? Number.MAX_SAFE_INTEGER : 100];
             
             // Collect all include ranges and exclude ranges
             const includeRanges: [number, number][] = [];
@@ -683,7 +683,7 @@ export function tokensToFilterState(
                 includeRanges: finalIncludeRanges,
                 excludeRanges: finalExcludeRanges,
                 displayText,
-                semanticOnly
+                semanticOnly: conf.numeric || semanticOnly
             };
 
         } else if (conf.type === AdvFilterType.DROPDOWN) {
@@ -1011,9 +1011,9 @@ export function filterStateToSemanticText(
             if (expression) {
                 parts.push(expression);
             }
-        } else if (conf.type === AdvFilterType.RANGE) {
+        } else if (conf.type === AdvFilterType.RANGE || conf.numeric) {
             const [min, max] = state.value as [number, number];
-            const totalRange = totalRanges[key] || [0, 100];
+            const totalRange = totalRanges[key] || [0, conf.numeric ? Number.MAX_SAFE_INTEGER : 100];
             const extState = state as SemanticFilterState[string];
 
             // Handle exclude ranges (semantic-only)

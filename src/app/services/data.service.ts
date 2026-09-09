@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { Injectable, signal, inject, DestroyRef, effect } from '@angular/core';
+import { isUnitIntroducedByEra } from '../utils/unit-introduction.util';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { Faction, FactionId } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
@@ -214,7 +215,7 @@ export class DataService {
         this.latestTagDataSnapshot = tagData;
         this.hasLatestTagDataSnapshot = true;
         if (this.catalogActivationFinalizing) {
-            this.bufferedTagRefresh = { data: tagData, searchIndexChanged };
+            this.bufferedTagRefresh = { data: tagData, searchIndexChanged: searchIndexChanged || !!this.bufferedTagRefresh?.searchIndexChanged };
             return;
         }
         this.unitRuntimeService.applyTagDataToUnits(this.getUnits(), tagData, { rebuildTagSearchIndex: searchIndexChanged });
@@ -242,6 +243,8 @@ export class DataService {
     /** Flush callbacks that arrived while the fenced DB pointer was finalizing. */
     private flushBufferedTagRefresh(): void {
         const searchIndexChanged = this.applyBufferedTagRefreshToUnits(this.getUnits());
+        this.bufferedTagRefresh = undefined;
+        this.bufferedPublicTagRefresh = false;
         if (!searchIndexChanged) return;
         this.unitSearchIndexService.rebuildTagSearchIndex(this.getUnits());
         this.tagsVersion.update(version => version + 1);
@@ -252,8 +255,7 @@ export class DataService {
     private applyBufferedTagRefreshToUnits(units: UnitSummary[]): boolean {
         const local = this.bufferedTagRefresh;
         const refreshPublic = this.bufferedPublicTagRefresh;
-        this.bufferedTagRefresh = undefined;
-        this.bufferedPublicTagRefresh = false;
+        // Applying to a candidate does not consume callbacks: publication may still fail.
         if (!local && !refreshPublic) return false;
         if (local) {
             this.unitRuntimeService.applyPreparedTagDataToUnits(
@@ -297,7 +299,7 @@ export class DataService {
     /** Resolve only once a saved custom design and all its search indexes are visible together. */
     public async refreshCustomUnits(): Promise<void> {
         await this.requireApplicationCatalogReady();
-        const revision = this.unitsCatalog.prepareCustomChanges();
+        const revision = await this.unitsCatalog.prepareCustomChanges();
         if (revision === undefined) return;
         this.queueUnitCatalogRevision(revision);
         await this.unitCatalogSettlement;
@@ -306,8 +308,8 @@ export class DataService {
         }
     }
 
-    public getUnitByName(name: string): UnitSummary | undefined {
-        return this.unitRuntimeService.getUnitByName(name);
+    public getUnitByIdentifier(identifier: string): UnitSummary | undefined {
+        return this.unitRuntimeService.getUnitByIdentifier(identifier);
     }
 
     public getUnitsByName(name: string): readonly UnitSummary[] {
@@ -422,7 +424,7 @@ export class DataService {
             .filter((ruleset): ruleset is MegaMekRulesetRecord => ruleset !== undefined);
     }
 
-    public getMegaMekAvailabilityRecordForUnit(unit: Pick<UnitSummary, 'name'>): MegaMekWeightedAvailabilityRecord | undefined {
+    public getMegaMekAvailabilityRecordForUnit(unit: Pick<UnitSummary, 'name' | 'isCustom'>): MegaMekWeightedAvailabilityRecord | undefined {
         return this.megaMekAvailabilityCatalog.getRecordForUnit(unit);
     }
 
@@ -488,7 +490,8 @@ export class DataService {
                 status: 'running',
                 completed: 0,
                 total: 5,
-                detail: `Preparing indexes from ${units.length.toLocaleString()} stored unit summaries`,
+                detail: pending.customOnly ? 'Updating search indexes for custom designs'
+                    : `Preparing indexes from ${units.length.toLocaleString()} stored unit summaries`,
             });
 
             // Availability is a separate saved catalog. Its cache-only hydration
@@ -543,11 +546,13 @@ export class DataService {
                     membershipState.factions,
                     extinctFaction,
                     equipmentRegistry,
+                    pending.customOnly ? this.unitsCatalog.getUnits() : undefined,
                 );
             const searchIndexPreparationMs = Math.max(0, Date.now() - searchIndexPreparationStartedAt);
             this.setRuntimeCatalogProgress({
                 status: 'running', completed: 3, total: 5,
-                detail: `Indexed ${units.length.toLocaleString()} unit summaries`,
+                detail: pending.customOnly ? 'Updated search indexes for custom designs'
+                    : `Indexed ${units.length.toLocaleString()} unit summaries`,
             });
 
             this.setRuntimeCatalogProgress({
@@ -695,13 +700,13 @@ export class DataService {
             }
         }
 
-        const noneUnits = units.filter((unit) => !factionUnitIds.has(unit.id));
+        const noneUnits = units.filter((unit) => unit.id !== null && !factionUnitIds.has(unit.id));
 
         noneFaction.eras = {};
         for (const era of eras) {
             const noneEraUnitIds = new Set<number>();
             for (const unit of noneUnits) {
-                if (!this.isUnitYearValidForEra(unit, era)) {
+                if (unit.id === null || !isUnitIntroducedByEra(unit, era)) {
                     continue;
                 }
 
@@ -716,10 +721,6 @@ export class DataService {
         }
     }
 
-    private isUnitYearValidForEra(unit: Pick<UnitSummary, 'year'>, era: Era): boolean {
-        const eraEndYear = era.years.to ?? Number.POSITIVE_INFINITY;
-        return Number.isFinite(unit.year) && unit.year <= eraEndYear;
-    }
 
     private async checkForUpdate(): Promise<void> {
         await this.unitsCatalog.initialize();
@@ -998,7 +999,7 @@ export class DataService {
 
             const processUnits = (unitList: Array<{ name: string }>) => {
                 for (const pu of unitList) {
-                    const unit = this.getUnitByName(pu.name);
+                    const unit = this.getUnitByIdentifier(pu.name);
                     if (unit) {
                         const key = getUnitVariantGroupKey(unit);
                         lookupKeys.add(key);

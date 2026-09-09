@@ -5,7 +5,9 @@
 import { ASSummaryPrintUtil } from './as-summary-print.util';
 
 describe('ASSummaryPrintUtil', () => {
-    it('builds a summary-only print container with its rules reference', async () => {
+    afterEach(() => window.dispatchEvent(new Event('afterprint')));
+
+    it('builds a summary and rules reference with safe page margins', async () => {
         const unit = {
             id: 'u1',
             manualPilotAbilities: () => [],
@@ -51,7 +53,6 @@ describe('ASSummaryPrintUtil', () => {
             force as never,
             abilityLookup as never,
             false,
-            { printMargin: 'none' },
             false,
         );
 
@@ -64,6 +65,16 @@ describe('ASSummaryPrintUtil', () => {
             .toBe('Federated Suns · Inner Sphere · Succession Wars');
         expect(overlay.querySelector('.print-roster-name')?.textContent).toBe('Example Force');
         expect(overlay.querySelector('.print-roster-logo img')).not.toBeNull();
+
+        const rules = [...overlay.querySelector('style')!.sheet!.cssRules]
+            .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText === 'print')
+            .flatMap(rule => [...rule.cssRules]);
+        const defaultPage = rules.find((rule): rule is CSSPageRule =>
+            rule instanceof CSSPageRule && rule.selectorText === '')!;
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+            expect(defaultPage.style.getPropertyValue(`margin-${side}`)).toBe('0.25in');
+            expect(defaultPage.style.getPropertyPriority(`margin-${side}`)).toBe('important');
+        }
 
         window.dispatchEvent(new Event('click'));
     });

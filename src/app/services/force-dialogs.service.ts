@@ -102,7 +102,6 @@ export class ForceDialogsService {
                             force,
                             this.injector.get(AsAbilityLookupService),
                             this.options.options().ASUseHex,
-                            printOptions,
                             true,
                             this.options.options().displayUnitNameFormat,
                         );

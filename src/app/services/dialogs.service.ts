@@ -23,9 +23,11 @@ type DialogAutoFocus = boolean | string;
 
 export interface DialogOptions<D = unknown> {
     data?: D;
+    ariaLabel?: string;
     panelClass?: string | string[];
     backdropClass?: string | string[];
     disableClose?: boolean;
+    closeOnNavigation?: boolean;
     hasBackdrop?: boolean;
     width?: string;
     height?: string;
@@ -45,9 +47,11 @@ export class DialogsService {
     ): DialogRef<T, R> {
         const cdkRef = this.dialog.open<R, D, T>(component, {
             data: opts?.data,
+            ariaLabel: opts?.ariaLabel,
             panelClass: opts?.panelClass,
             backdropClass: opts?.backdropClass ?? 'cdk-overlay-dark-backdrop',
             disableClose: opts?.disableClose,
+            closeOnNavigation: opts?.closeOnNavigation ?? true,
             hasBackdrop: opts?.hasBackdrop ?? true,
             width: opts?.width,
             height: opts?.height,

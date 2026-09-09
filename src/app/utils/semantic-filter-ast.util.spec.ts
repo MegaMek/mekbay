@@ -7,7 +7,7 @@ import type { AvailabilityFilterScope } from '../models/megamek/availability.mod
 import { GameSystem } from '../models/common.model';
 import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { prepareASTSearch, parseSemanticQueryAST, tokenizeForHighlight, type EvaluatorContext, type GroupASTNode, type ParseResult } from './semantic-filter-ast.util';
-import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
+import { buildSemanticKeyMap, filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
 import { matchesSearch, parseSearchQuery } from './search.util';
 
 function filterUnitsWithAST<TUnit extends object>(
@@ -39,6 +39,18 @@ function getUnitId(unit: unknown): UnitUuid {
 function unitIds(...values: readonly (string | number)[]): Set<UnitUuid> {
     return new Set(values.map(testUnitUuid));
 }
+
+describe('unit identity semantic fields', () => {
+    it('removes the internal-name field while retaining chassis and model filters', () => {
+        for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
+            const keys = buildSemanticKeyMap(gameSystem);
+            expect(keys.has('name')).toBeFalse();
+            expect(keys.has('chassis')).toBeTrue();
+            expect(keys.has('model')).toBeTrue();
+            expect(parseSemanticQueryAST('chassis:Atlas model:AS7', gameSystem).errors).toEqual([]);
+        }
+    });
+});
 
 describe('prepared semantic search', () => {
     const context = {

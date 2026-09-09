@@ -167,9 +167,9 @@ describe('ForceGeneratorService negative era filters', () => {
         };
 
         invisibleEra.units = new Set<number>();
-        visibleEra.units = new Set<number>([unit.id]);
+        visibleEra.units = new Set<number>([unit.id!]);
         faction.eras = {
-            [visibleEra.id]: new Set<number>([unit.id]),
+            [visibleEra.id!]: new Set<number>([unit.id!]),
         };
 
         erasByName.set(invisibleEra.name, invisibleEra);

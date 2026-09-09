@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { materializeUnitSummaryView } from '../../utils/unit-summary-view';
@@ -11,6 +11,7 @@ import { CustomUnitsService } from '../custom-units.service';
 import {
     CoreUnitCatalogService,
     type PreparedCoreCatalogActivation,
+    type CoreUnitCatalogState,
 } from '../unit-catalog/core-unit-catalog.service';
 import {
     type CatalogActivationId,
@@ -49,7 +50,8 @@ export class UnitsCatalogService {
     private readonly logger = inject(LoggerService);
     private readonly custom = inject(CustomUnitsService);
 
-    public readonly coreState = this.core.state;
+    private readonly summaryPreparationState = signal<CoreUnitCatalogState | undefined>(undefined);
+    public readonly coreState = computed(() => this.summaryPreparationState() ?? this.core.state());
 
     private readonly snapshotValue = signal<UnitsCatalogSnapshot>(Object.freeze({
         revision: 0,
@@ -65,7 +67,13 @@ export class UnitsCatalogService {
 
     private readonly pendingActivationValue =
         signal<PreparedUnitsCatalogActivation | undefined>(undefined);
-    public readonly pendingActivation = this.pendingActivationValue.asReadonly();
+    public readonly pendingActivation = computed(() => {
+        const pending = this.pendingActivationValue();
+        const currentCore = this.core.pendingActivation() ?? this.activeCore;
+        return pending && currentCore?.revision === pending.core.revision
+            && this.lastPreparedKey === `${pending.core.revision}:${this.custom.revision()}`
+            ? pending : undefined;
+    });
     private readonly liveCoreUpdatesEnabled = signal(false);
     private readonly nativeSourceLoads = new Map<string, Promise<StoredCoreContent | undefined>>();
     private nextPreparedRevision = 1;
@@ -73,16 +81,27 @@ export class UnitsCatalogService {
     private initialization?: Promise<void>;
     private activeCore?: PreparedCoreCatalogActivation;
     private lastPreparedKey = '';
+    private initialCustomRebuildPending = false;
+    private destroyed = false;
+    private preparation?: {
+        readonly key: string;
+        readonly controller: AbortController;
+        readonly promise: Promise<PreparedUnitsCatalogActivation | undefined>;
+    };
 
     public constructor() {
+        inject(DestroyRef).onDestroy(() => {
+            this.destroyed = true;
+            this.preparation?.controller.abort();
+        });
         effect(() => {
             if (!this.liveCoreUpdatesEnabled()) return;
             const pending = this.core.pendingActivation();
-            const customRevision = this.custom.revision();
+            this.custom.revision();
             untracked(() => {
                 const core = pending ?? this.activeCore;
                 if (!core) return;
-                this.prepareCoreActivation(core, customRevision, !pending);
+                void this.prepareLatestActivation().catch(() => undefined);
             });
         });
     }
@@ -113,11 +132,8 @@ export class UnitsCatalogService {
     }
 
     /** Explicit save/delete callers can join publication before Angular's next effect turn. */
-    public prepareCustomChanges(): number | undefined {
-        const pending = this.core.pendingActivation();
-        const core = pending ?? this.activeCore;
-        if (!core) return undefined;
-        return this.prepareCoreActivation(core, this.custom.revision(), !pending)?.revision;
+    public async prepareCustomChanges(): Promise<number | undefined> {
+        return (await this.prepareLatestActivation())?.revision;
     }
 
     public async readNativeUnitSource(uuid: UnitUuid): Promise<StoredCoreContent | undefined> {
@@ -150,24 +166,28 @@ export class UnitsCatalogService {
 
     /** Final no-build switch invoked in the same turn as Core/Data commits. */
     public commitPendingActivation(revision: number): UnitsCatalogSnapshot | undefined {
-        const pending = this.pendingActivationValue();
+        const pending = this.pendingActivation();
         if (!pending || pending.revision !== revision) return undefined;
         if (!pending.customOnly && !this.core.commitPendingActivation(pending.core.revision)) return undefined;
         this.activeCore = pending.core;
         this.snapshotValue.set(pending.snapshot);
         this.custom.commitSummaries(pending.core.dependencies, pending.snapshot.customSummaries);
         this.pendingActivationValue.set(undefined);
+        if (!this.liveCoreUpdatesEnabled()) {
+            if (this.initialCustomRebuildPending) this.lastPreparedKey = '';
+            this.liveCoreUpdatesEnabled.set(true);
+        }
         return pending.snapshot;
     }
 
     public async finalizePendingActivation(revision: number): Promise<boolean> {
-        const pending = this.pendingActivationValue();
+        const pending = this.pendingActivation();
         if (!pending || pending.revision !== revision) return false;
         return pending.customOnly || this.core.finalizePendingActivation(pending.core.revision);
     }
 
     public rejectPendingActivation(revision: number, error: unknown): void {
-        const pending = this.pendingActivationValue();
+        const pending = this.pendingActivation();
         if (!pending || pending.revision !== revision) return;
         this.pendingActivationValue.set(undefined);
         // A caller may retry publishing already-saved custom bytes after an
@@ -183,38 +203,86 @@ export class UnitsCatalogService {
         if (!pending) {
             throw new Error('The core unit catalog prepared no complete activation');
         }
-        this.prepareCoreActivation(pending, this.custom.revision());
-        this.liveCoreUpdatesEnabled.set(true);
+        // Publish core and compatible cached custom summaries before a cold custom rebuild.
+        // The first commit enables the normal background preparation observer.
+        await this.prepareLatestActivation(true);
+    }
+
+    /** Explicit refreshes and the reactive observer join the same current job. */
+    private async prepareLatestActivation(cachedOnly = false): Promise<PreparedUnitsCatalogActivation | undefined> {
+        while (!this.destroyed) {
+            const pending = this.core.pendingActivation();
+            const core = pending ?? this.activeCore;
+            if (!core) return undefined;
+            const customRevision = this.custom.revision();
+            const prepared = await this.prepareCoreActivation(core, customRevision, !pending, cachedOnly);
+            const current = this.core.pendingActivation() ?? this.activeCore;
+            if (current?.revision === core.revision && this.custom.revision() === customRevision) return prepared;
+        }
+        return undefined;
     }
 
     private prepareCoreActivation(
         core: PreparedCoreCatalogActivation,
         customRevision: number,
         customOnly = false,
-    ): PreparedUnitsCatalogActivation | undefined {
+        cachedOnly = false,
+    ): Promise<PreparedUnitsCatalogActivation | undefined> {
         const key = `${core.revision}:${customRevision}`;
-        const existing = this.pendingActivationValue();
-        if (key === this.lastPreparedKey) return existing;
-        const snapshot = this.buildSnapshot(core, customOnly);
-        this.lastPreparedKey = key;
-        const prepared = Object.freeze({
-            revision: snapshot.revision,
-            coreRevision: core.revision,
-            core,
-            snapshot,
-            ...(customOnly ? { customOnly: true } : {}),
+        if (this.preparation?.key === key) return this.preparation.promise;
+        if (key === this.lastPreparedKey) return Promise.resolve(this.pendingActivation());
+        this.preparation?.controller.abort();
+        this.pendingActivationValue.set(undefined);
+        this.summaryPreparationState.set(undefined);
+        const controller = new AbortController();
+        const promise = this.custom.prepareSummaries(core.dependencies, {
+            signal: controller.signal,
+            cachedOnly,
+            onProgress: progress => {
+                if (controller.signal.aborted) return;
+                this.summaryPreparationState.set({
+                    status: 'loading', availableUnits: this.snapshotValue().summaries.length,
+                    progress: { phase: 'projecting', ...progress },
+                });
+            },
+        }).then(customSummaries => {
+            if (controller.signal.aborted || this.custom.revision() !== customRevision
+                || (this.core.pendingActivation() ?? this.activeCore)?.revision !== core.revision) return undefined;
+            if (cachedOnly) this.initialCustomRebuildPending = customSummaries.length < this.custom.records().length;
+            const snapshot = this.buildSnapshot(core, customOnly, customSummaries);
+            this.lastPreparedKey = key;
+            const prepared = Object.freeze({
+                revision: snapshot.revision, coreRevision: core.revision, core, snapshot,
+                ...(customOnly ? { customOnly: true } : {}),
+            });
+            this.pendingActivationValue.set(prepared);
+            this.summaryPreparationState.set(undefined);
+            return prepared;
+        }).catch(error => {
+            if (controller.signal.aborted) return undefined;
+            this.summaryPreparationState.set({ status: 'error', availableUnits: this.snapshotValue().summaries.length,
+                error: error instanceof Error ? error.message : String(error) });
+            if (!customOnly) this.core.rejectPendingActivation(core.revision, error);
+            this.logger.error(`Custom unit summary preparation failed: ${String(error)}`);
+            throw error;
+        }).finally(() => {
+            if (this.preparation?.controller === controller) this.preparation = undefined;
         });
-        this.pendingActivationValue.set(prepared);
-        return prepared;
+        this.preparation = { key, controller, promise };
+        return promise;
     }
 
-    private buildSnapshot(core: PreparedCoreCatalogActivation, customOnly: boolean): UnitsCatalogSnapshot {
+    private buildSnapshot(core: PreparedCoreCatalogActivation, customOnly: boolean,
+        preparedCustomSummaries: readonly UnitSummary[]): UnitsCatalogSnapshot {
         const coreSummaries = core.snapshot.summaries;
-        const customSummaries = this.custom.prepareSummaries(core.dependencies);
         const coreIds = new Set(coreSummaries.map(summary => summary.uuid));
-        if (customSummaries.some(summary => coreIds.has(summary.uuid))) {
-            throw new Error('Custom unit UUID conflicts with a core unit');
-        }
+        // Core assets win UUID collisions; the custom store already selects owned
+        // designs over subscriptions before projecting summaries and sources.
+        const customSummaries = preparedCustomSummaries
+            .filter(summary => !coreIds.has(summary.uuid));
+        const customIds = new Set(customSummaries.map(summary => summary.uuid));
+        const customSources = new Map([...this.custom.captureSources()]
+            .filter(([uuid]) => customIds.has(uuid)));
         // A custom edit reuses the active core generation. Detach only branches
         // that search preparation mutates, keeping the currently visible rows
         // intact until the complete replacement index commits.
@@ -254,7 +322,7 @@ export class UnitsCatalogService {
             summaries,
             coreSummaries,
             customSummaries,
-            customSources: this.custom.captureSources(),
+            customSources,
             units,
         });
     }

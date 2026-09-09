@@ -172,7 +172,7 @@ describe('CoreUnitCatalogService', () => {
         );
         synchronizer = jasmine.createSpyObj<CoreCatalogSynchronizer>(
             'CoreCatalogSynchronizer',
-            ['preparePinnedRelease', 'prepareSynchronization'],
+            ['preparePinnedRelease', 'prepareSynchronization', 'recoverCachedCatalog'],
         );
         bundles = jasmine.createSpyObj<ApplicationCatalogBundleCoordinatorService>(
             'ApplicationCatalogBundleCoordinatorService',
@@ -194,9 +194,10 @@ describe('CoreUnitCatalogService', () => {
         bundles.recordInstalledUnitAssets.and.resolveTo();
         backend = jasmine.createSpyObj<CoreUnitCatalogBackend>(
             'CoreUnitCatalogBackend',
-            ['openDatabase', 'createSynchronizer'],
+            ['openDatabase', 'createSynchronizer', 'openStoredSourceArchive'],
         );
         backend.openDatabase.and.resolveTo(database);
+        database.readSourceArchive.and.resolveTo(new Blob(['A local source archive']));
         backend.createSynchronizer.and.returnValue(synchronizer);
         logger = jasmine.createSpyObj<LoggerService>('LoggerService', ['info', 'warn', 'error']);
 
@@ -322,5 +323,61 @@ describe('CoreUnitCatalogService', () => {
         service.commitPendingActivation(pending.revision);
         expect(service.catalogSnapshot().generation).toBe(remote);
         expect(prepared.finalize).toHaveBeenCalledTimes(1);
+    });
+
+    it('recovers mismatched cached dependencies before staging a catalog, without a network request', async () => {
+        const local = generation();
+        const newerDependencies = { ...dependencies(), assetHashes: { ...ASSET_HASHES, equipment: REMOTE_HASH } };
+        const repaired = { ...local, summaryDependencyHashes: { ...local.summaryDependencyHashes, equipment: REMOTE_HASH } };
+        database.readActiveCatalog.and.resolveTo(local);
+        bundles.prepareCachedDependencies.and.resolveTo(newerDependencies);
+        synchronizer.recoverCachedCatalog.and.resolveTo({ ...synchronization(repaired), assetsManifest: undefined });
+        const service = TestBed.inject(CoreUnitCatalogService);
+        await service.initialize();
+        expect(service.pendingActivation()?.generation).toBe(repaired);
+        expect(service.pendingActivation()?.dependencies).toBe(newerDependencies);
+        expect(synchronizer.recoverCachedCatalog).toHaveBeenCalledOnceWith(local, newerDependencies, jasmine.any(Object));
+        expect(synchronizer.preparePinnedRelease).not.toHaveBeenCalled();
+        expect(await service.finalizePendingActivation(service.pendingActivation()!.revision)).toBeTrue();
+        expect(bundles.recordInstalledUnitAssets).not.toHaveBeenCalled();
+    });
+
+    it('keeps the visible generation source readable after disk switches and finalization fails', async () => {
+        const local = generation(), remote = generation('Remote Unit', REMOTE_HASH);
+        const oldBlob = new Blob(['old source archive']), newBlob = new Blob(['new source archive']);
+        const prepared = synchronization(remote);
+        database.readActiveCatalog.and.resolveTo(local);
+        database.readSourceArchive.and.callFake(async hash => hash === LOCAL_HASH ? oldBlob : undefined);
+        synchronizer.preparePinnedRelease.and.resolveTo(release(local));
+        synchronizer.prepareSynchronization.and.resolveTo(prepared);
+        const bytes = new TextEncoder().encode(`uuid:${UUID}\nchassis:Local\n`).buffer;
+        backend.openStoredSourceArchive.and.resolveTo({ archive: { extract: async () => bytes }, dispose() {} } as never);
+        (prepared.finalize as jasmine.Spy).and.callFake(async () => {
+            database.readSourceArchive.and.callFake(async hash => hash === REMOTE_HASH ? newBlob : undefined);
+        });
+        bundles.recordInstalledUnitAssets.and.rejectWith(new Error('Injected persistence failure'));
+        const service = TestBed.inject(CoreUnitCatalogService);
+        await service.initialize(); service.commitPendingActivation(service.pendingActivation()!.revision);
+        await flushBackgroundRefresh();
+        const pending = service.pendingActivation()!;
+        await expectAsync(service.finalizePendingActivation(pending.revision)).toBeRejectedWithError('Injected persistence failure');
+        service.rejectPendingActivation(pending.revision, new Error('Injected persistence failure'));
+        expect(await service.readUnitSource(UUID)).toBeDefined();
+        expect(backend.openStoredSourceArchive.calls.mostRecent().args[0]).toBe(oldBlob);
+        expect(service.catalogSnapshot().generation).toBe(local);
+    });
+
+    it('retains the loaded Blob when another tab replaces the on-disk source archive', async () => {
+        const blob = new Blob(['archive retained at activation']);
+        const local = { ...generation(), sourceArchive: blob };
+        database.readActiveCatalog.and.resolveTo(local);
+        synchronizer.preparePinnedRelease.and.returnValue(new Promise(() => undefined));
+        const bytes = new TextEncoder().encode(`uuid:${UUID}\nchassis:Local\n`).buffer;
+        backend.openStoredSourceArchive.and.resolveTo({ archive: { extract: async () => bytes }, dispose() {} } as never);
+        const service = TestBed.inject(CoreUnitCatalogService);
+        await service.initialize(); service.commitPendingActivation(service.pendingActivation()!.revision);
+        database.readSourceArchive.and.resolveTo(undefined);
+        expect(await service.readUnitSource(UUID)).toBeDefined();
+        expect(backend.openStoredSourceArchive.calls.mostRecent().args[0]).toBe(blob);
     });
 });

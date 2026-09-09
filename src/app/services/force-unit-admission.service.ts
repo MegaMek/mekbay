@@ -16,6 +16,7 @@ import {
     type UnitUuid,
 } from './unit-catalog/unit-catalog.types';
 import { type CBTForceMember, type ForceMember } from '../models/force-member.model';
+import type { PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
 
 
 export interface ForceUnitAdmissionRequest {
@@ -33,6 +34,7 @@ export interface ForceUnitAdmissionRequest {
 export interface CBTUnitAdmissionRequest {
     readonly force: CBTForce;
     readonly uuid: UnitUuid;
+    readonly customSource?: PinnedCustomUnitSource;
     readonly group?: UnitGroup;
     readonly rosterGroupId?: string;
     readonly rosterMemberIndex?: number;
@@ -84,6 +86,7 @@ export class ForceUnitAdmissionService {
 
         const result: CBTDirectUnitAdmissionResult = await request.force.admitRetainedUnit({
             uuid: request.uuid,
+            ...(request.customSource ? { customSource: request.customSource } : {}),
             deployment: Object.freeze({ id: DEFAULT_FORCE_DEPLOYMENT_ID }),
             crewSkills: Object.freeze({
                 gunnery: request.gunnerySkill ?? DEFAULT_GUNNERY_SKILL,

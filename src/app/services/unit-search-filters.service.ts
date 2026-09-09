@@ -992,7 +992,7 @@ export class UnitSearchFiltersService {
             }
         }
         const { availabilityFromNames } = this.getAvailabilitySelectionScopeParts(availabilityState);
-        const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
+        const contextUnitIds = new Set(contextUnits.map((unit) => unit.uuid));
 
         const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => {
             const candidateScope: AvailabilityFilterScope = {
@@ -1035,7 +1035,7 @@ export class UnitSearchFiltersService {
         const optimizedAvailableFactionIds = this.availabilityQueries.collectAvailableOptionIds(contextUnits, this.getAvailabilitySelectionScopeParts(state), 'faction', this.useAllScopedMegaMekAvailabilityOptions());
         if (optimizedAvailableFactionIds) {
             const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
-            const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
+            const contextUnitIds = new Set(contextUnits.map((unit) => unit.uuid));
             const extinctFactionName = this.dataService.getFactionById(MULFACTION_EXTINCT)?.name;
             const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => ({
                 name: option.name,
@@ -1055,7 +1055,7 @@ export class UnitSearchFiltersService {
         }
 
         const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
-        const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
+        const contextUnitIds = new Set(contextUnits.map((unit) => unit.uuid));
 
         const options = this.searchIndex.getDropdownOptionUniverse(conf.key).map((option) => {
             const candidateScope: AvailabilityFilterScope = {
@@ -1090,7 +1090,7 @@ export class UnitSearchFiltersService {
         state: FilterState,
     ): boolean {
         const { eraNames, availabilityFromNames } = this.getAvailabilitySelectionScopeParts(state);
-        const contextUnitIds = new Set(contextUnits.map((unit) => unit.name));
+        const contextUnitIds = new Set<string>(contextUnits.map((unit) => unit.uuid));
         const candidateFilterState = this.buildExternalDropdownCandidateState(state['faction'], optionName);
         const candidateMembershipUnitIds = this.getUnitIdsForExternalFilters(state['era'], candidateFilterState);
         if (!candidateMembershipUnitIds || candidateMembershipUnitIds.size === 0) {
