@@ -4,30 +4,32 @@
 
 import { Injectable, computed, inject } from '@angular/core';
 
-import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
+import { PAGE_GAP, PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { PageViewerStateService } from './page-viewer-state.service';
 import { pageViewerShadowKey } from './page-viewer-shadow-render.service';
+import { resolveDisplayedUnits } from './page-viewer-display-window';
 import type { PageViewerMember, PageViewerOverlayMode, PageViewerPageDescriptor, PageViewerShadowDescriptor } from './types';
 
 @Injectable()
 export class PageViewerRenderModelService {
+    private readonly zoomPan = inject(PageViewerZoomPanService);
     private readonly state = inject(PageViewerStateService);
 
     readonly activePages = computed<PageViewerPageDescriptor[]>(() => {
         const units = this.state.forceUnits();
         const totalUnits = units.length;
-        const visibleCount = Math.min(this.state.effectiveVisiblePageCount(), totalUnits);
+        const displayWindow = resolveDisplayedUnits(units, this.state.effectiveVisiblePageCount(), this.state.viewStartIndex());
+        const visibleCount = displayWindow.units.length;
         const selectedUnitId = this.state.selectedUnitId();
         const isSinglePage = visibleCount <= 1;
-        const pageStep = PAGE_WIDTH + PAGE_GAP;
+        const pageStep = this.zoomPan.pageWidth() + PAGE_GAP;
 
         if (totalUnits === 0 || visibleCount === 0) {
             return [];
         }
 
-        return Array.from({ length: visibleCount }, (_, slotIndex) => {
-            const unitIndex = this.state.normalizeIndex(this.state.viewStartIndex() + slotIndex);
-            const unit = units[unitIndex];
+        return displayWindow.units.map((unit, slotIndex) => {
+            const unitIndex = (displayWindow.startIndex + slotIndex) % totalUnits;
             const overlayMode: PageViewerOverlayMode = isSinglePage && slotIndex === 0 ? 'fixed' : 'page';
             const originalLeft = slotIndex * pageStep;
 
@@ -84,12 +86,12 @@ export class PageViewerRenderModelService {
             return [];
         }
 
-        const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
-        const scaledPageWidth = PAGE_WIDTH * scale;
+        const scaledPageStep = (this.zoomPan.pageWidth() + PAGE_GAP) * scale;
+        const scaledPageWidth = this.zoomPan.pageWidth() * scale;
         const visibleLeft = -translateX;
         const visibleRight = visibleLeft + containerWidth;
         const firstPageScaledLeft = (displayedPositions[0] ?? 0) * scale;
-        const lastPageUnscaledLeft = displayedPositions[visibleCount - 1] ?? ((visibleCount - 1) * (PAGE_WIDTH + PAGE_GAP));
+        const lastPageUnscaledLeft = displayedPositions[visibleCount - 1] ?? ((visibleCount - 1) * (this.zoomPan.pageWidth() + PAGE_GAP));
         const lastPageScaledRight = lastPageUnscaledLeft * scale + scaledPageWidth;
         const shadows: PageViewerShadowDescriptor[] = [];
 

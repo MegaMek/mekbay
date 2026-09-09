@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
@@ -16,7 +17,7 @@ describe('PageViewerShadowRenderService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [
+            providers: [PageViewerZoomPanService,
                 PageViewerShadowRenderService,
                 {
                     provide: PageViewerSheetSourceService,
@@ -162,6 +163,48 @@ describe('PageViewerShadowRenderService', () => {
 
         expect(upsertTransientShadowPage).not.toHaveBeenCalled();
         clickedShadow.remove();
+    });
+
+    it('refreshes in-place source changes and cleans up replaced and removed bindings', async () => {
+        const wrapper = document.createElement('div');
+        wrapper.dataset['shadowKey'] = 'right:1';
+        let svg = createSvg();
+        svg.innerHTML = '<text>Before</text>';
+        const onShadowClick = jasmine.createSpy('onShadowClick');
+        const options: Parameters<PageViewerShadowRenderService['bindDeclarativeShadowPages']>[0] = {
+            wrappers: [wrapper], currentCleanups: [], scale: 1, showFluff: false,
+            descriptors: [{ key: 'right:1', unit: { recordSheet: () => svg } as never,
+                unitId: 'b', unitIndex: 1, direction: 'right', originalLeft: 632, scaledLeft: 632, isDimmed: true }],
+            setPromotedShadowState: () => {}, applyWrapperLayout: () => {},
+            setPageWrapperContentState: () => {}, applyFluffImageVisibilityToSvg: () => {}, onShadowClick,
+        };
+        const refresh = () => options.currentCleanups = service.bindDeclarativeShadowPages(options);
+        refresh();
+        const firstClone = wrapper.firstElementChild;
+        svg.querySelector('text')!.textContent = 'After';
+        refresh(); // Observer records have not been delivered yet.
+        expect(wrapper.firstElementChild).not.toBe(firstClone);
+        expect(wrapper.textContent).toBe('After');
+
+        svg.querySelector('text')!.setAttribute('class', 'damaged');
+        await Promise.resolve();
+        refresh(); // Exercise the delivered-record path too.
+        expect(wrapper.querySelector('text')!.classList.contains('damaged')).toBeTrue();
+        const unchangedClone = wrapper.firstElementChild;
+        refresh();
+        expect(wrapper.firstElementChild).toBe(unchangedClone);
+
+        svg = createSvg();
+        svg.innerHTML = '<text>Replacement</text>';
+        refresh();
+        wrapper.click();
+        expect(onShadowClick).toHaveBeenCalledTimes(1);
+        expect(wrapper.textContent).toBe('Replacement');
+        options.wrappers = [];
+        refresh();
+        wrapper.click();
+        expect(onShadowClick).toHaveBeenCalledTimes(1);
+        expect(options.currentCleanups).toEqual([]);
     });
 
     it('collects existing shadow keys from current shadow wrappers', () => {

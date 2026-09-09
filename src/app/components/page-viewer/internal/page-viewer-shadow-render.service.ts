@@ -4,7 +4,7 @@
 
 import { Injectable, inject } from '@angular/core';
 
-import { PAGE_GAP, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
+import { PAGE_GAP, PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service';
 import type { PageViewerMember, PageViewerShadowDescriptor } from './types';
 
@@ -14,11 +14,15 @@ export function pageViewerShadowKey(unitIndex: number, direction: 'left' | 'righ
 
 @Injectable()
 export class PageViewerShadowRenderService {
+    private readonly zoomPan = inject(PageViewerZoomPanService);
     private readonly sheetSource = inject(PageViewerSheetSourceService);
     private readonly shadowBindings = new WeakMap<HTMLDivElement, {
         descriptor: PageViewerShadowDescriptor;
         onShadowClick: (descriptor: PageViewerShadowDescriptor, wrapper: HTMLDivElement, event: MouseEvent) => void;
         sourceSvg: SVGSVGElement | null;
+        clone: SVGSVGElement | null;
+        sourceChanged: boolean;
+        observer: MutationObserver | null;
         clickHandler: (event: MouseEvent) => void;
         cleanup: () => void;
     }>();
@@ -49,7 +53,7 @@ export class PageViewerShadowRenderService {
         } = options;
 
         const descriptorMap = new Map(descriptors.map((descriptor) => [descriptor.key, descriptor]));
-        const cleanups = [...currentCleanups];
+        const cleanups: Array<() => void> = [];
         const addCleanup = (cleanup: () => void) => {
             if (!cleanups.includes(cleanup)) {
                 cleanups.push(cleanup);
@@ -73,11 +77,18 @@ export class PageViewerShadowRenderService {
 
             const sourceSvg = descriptor.unit.recordSheet();
             const existingSvg = wrapper.querySelector(':scope > svg');
-            const currentBinding = this.shadowBindings.get(wrapper);
+            let currentBinding = this.shadowBindings.get(wrapper);
+            if (currentBinding && (currentBinding.sourceSvg !== sourceSvg || currentBinding.descriptor.unitId !== descriptor.unitId)) {
+                currentBinding.cleanup();
+                currentBinding = undefined;
+            }
+            // Runtime and presentation updates mutate member-owned SVGs in place.
+            // Drain pending records too: a refresh can run before the observer callback.
+            const sourceChanged = (currentBinding?.observer?.takeRecords().length ?? 0) > 0
+                || currentBinding?.sourceChanged === true;
             const canReuseExistingSvg =
                 existingSvg instanceof SVGSVGElement &&
-                currentBinding?.descriptor.unitId === descriptor.unitId &&
-                currentBinding.sourceSvg === sourceSvg;
+                currentBinding?.clone === existingSvg && !sourceChanged;
 
             let boundSvg: SVGSVGElement | null = canReuseExistingSvg ? existingSvg : null;
 
@@ -101,8 +112,16 @@ export class PageViewerShadowRenderService {
 
             let clickHandler = currentBinding?.clickHandler;
             let cleanup = currentBinding?.cleanup;
+            let observer = currentBinding?.observer ?? null;
 
             if (!clickHandler || !cleanup) {
+                observer = sourceSvg ? new MutationObserver(() => {
+                    const binding = this.shadowBindings.get(wrapper);
+                    if (binding) binding.sourceChanged = true;
+                }) : null;
+                if (sourceSvg) observer?.observe(sourceSvg, {
+                    subtree: true, childList: true, attributes: true, characterData: true,
+                });
                 const newClickHandler = (event: MouseEvent) => {
                     const binding = this.shadowBindings.get(wrapper);
                     if (!binding) {
@@ -112,8 +131,11 @@ export class PageViewerShadowRenderService {
                     binding.onShadowClick(binding.descriptor, wrapper, event);
                 };
                 const newCleanup = () => {
+                    observer?.disconnect();
                     wrapper.removeEventListener('click', newClickHandler);
-                    this.shadowBindings.delete(wrapper);
+                    if (this.shadowBindings.get(wrapper)?.clickHandler === newClickHandler) {
+                        this.shadowBindings.delete(wrapper);
+                    }
                 };
                 clickHandler = newClickHandler;
                 cleanup = newCleanup;
@@ -126,11 +148,17 @@ export class PageViewerShadowRenderService {
                 descriptor,
                 onShadowClick,
                 sourceSvg,
+                clone: boundSvg,
+                sourceChanged: false,
+                observer,
                 clickHandler,
                 cleanup
             });
         }
 
+        for (const cleanup of currentCleanups) {
+            if (!cleanups.includes(cleanup)) cleanup();
+        }
         return cleanups;
     }
 
@@ -164,7 +192,7 @@ export class PageViewerShadowRenderService {
         } = options;
 
         const totalUnits = allUnits.length;
-        const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
+        const scaledPageStep = (this.zoomPan.pageWidth() + PAGE_GAP) * scale;
         const clickedShadowLeft = parseFloat(clickedShadow.style.left) || 0;
         const incomingCount = Math.abs(pagesToMove);
         const existingShadowKeys = this.collectExistingShadowKeys(shadowPageElements, getShadowKey);

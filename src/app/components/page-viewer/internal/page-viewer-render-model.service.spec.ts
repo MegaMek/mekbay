@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerRenderModelService } from './page-viewer-render-model.service';
@@ -13,11 +14,21 @@ describe('PageViewerRenderModelService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerStateService, PageViewerRenderModelService]
+            providers: [PageViewerZoomPanService, PageViewerStateService, PageViewerRenderModelService]
         });
 
         renderModel = TestBed.inject(PageViewerRenderModelService);
         state = TestBed.inject(PageViewerStateService);
+    });
+
+    it('updates active page positions when paper size changes', () => {
+        state.setForceUnits([{ id: 'a' }, { id: 'b' }] as never[]);
+        state.visiblePageCount.set(2);
+        state.maxVisiblePageCount.set(2);
+        state.allowMultipleActiveSheets.set(true);
+        const before = renderModel.activePages()[1].originalLeft;
+        TestBed.inject(PageViewerZoomPanService).setPageFormat('a4');
+        expect(renderModel.activePages()[1].originalLeft - before).toBeCloseTo(595.276 - 612, 6);
     });
 
     it('creates active page descriptors from visible units and selection', () => {
@@ -49,6 +60,18 @@ describe('PageViewerRenderModelService', () => {
 
         expect(pages.length).toBe(1);
         expect(pages[0].overlayMode).toBe('fixed');
+    });
+
+    it('uses roster order when resizing from a paginated window to all units fitting', () => {
+        state.setForceUnits([{ id: 'a' }, { id: 'b' }, { id: 'c' }] as never[]);
+        state.visiblePageCount.set(2);
+        state.setViewStartIndex(2);
+        expect(renderModel.activePages().map(page => page.unitId)).toEqual(['c', 'a']);
+
+        state.visiblePageCount.set(3);
+        expect(renderModel.activePages().map(page => [page.unitId, page.unitIndex])).toEqual([
+            ['a', 0], ['b', 1], ['c', 2],
+        ]);
     });
 
     it('returns the state-driven shadow descriptors', () => {
@@ -158,5 +181,28 @@ describe('PageViewerRenderModelService', () => {
         expect(shadows[0].unitId).toBe('c');
         expect(shadows[1].unitId).toBe('d');
         expect(shadows[2].unitId).toBe('a');
+    });
+
+    for (const visibleCount of [1, 3]) {
+        it(`omits idle shadows when ${visibleCount} sheets fill the viewport edge to edge`, () => {
+            state.setForceUnits(['a', 'b', 'c', 'd', 'e'].map(id => ({ id })) as never[]);
+            for (const scale of [0.5, 1, 2]) {
+                expect(renderModel.buildSteadyStateShadowPages({
+                    units: state.forceUnits(), startIndex: 1, visibleCount, scale,
+                    containerWidth: (visibleCount * 612 + (visibleCount - 1) * 20) * scale,
+                    translateX: 0,
+                    displayedPositions: Array.from({ length: visibleCount }, (_, index) => index * 632),
+                })).toEqual([]);
+            }
+        });
+    }
+
+    it('keeps a partially visible neighbor but omits one that only touches the viewport edge', () => {
+        state.setForceUnits(['a', 'b', 'c'].map(id => ({ id })) as never[]);
+        const options = { units: state.forceUnits(), startIndex: 1, visibleCount: 1,
+            scale: 1, containerWidth: 652, translateX: 20, displayedPositions: [0] };
+        expect(renderModel.buildSteadyStateShadowPages(options)).toEqual([]);
+        expect(renderModel.buildSteadyStateShadowPages({ ...options, containerWidth: 654, translateX: 21 })
+            .map(page => page.direction)).toEqual(['left', 'right']);
     });
 });

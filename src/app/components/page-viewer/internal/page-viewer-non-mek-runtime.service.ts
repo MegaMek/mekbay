@@ -135,7 +135,8 @@ export class PageViewerNonMekRuntimeService {
             this.bound.set(member.id, current);
         }
         current.pages.set(svg, { svg, binding });
-        this.renderPage(current.pages.get(svg)!, snapshot, equipment, member);
+        this.unitNames.applyToRecordSheet(svg, member.entity);
+        this.reportLayoutIssues(svg, snapshot, binding.initialIssues);
         return true;
     }
 
@@ -174,7 +175,11 @@ export class PageViewerNonMekRuntimeService {
     ): void {
         const issues = page.binding.render(snapshot, equipment);
         this.unitNames.applyToRecordSheet(page.svg, member.entity);
-        if (issues.length > 0 && page.svg.dataset['mekbayPartialSheet'] !== '1') {
+        this.reportLayoutIssues(page.svg, snapshot, issues);
+    }
+
+    private reportLayoutIssues(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, issues: readonly string[]): void {
+        if (issues.length > 0 && svg.dataset['mekbayPartialSheet'] !== '1') {
             this.logger.warn(`Record-sheet layout omissions for ${snapshot.displayName}: ${issues.join('; ')}`);
         }
     }

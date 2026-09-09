@@ -33,6 +33,7 @@
 }
 
 @media screen {
+
     :host-context(.night-mode) .page-wrapper.has-svg {
         background-color: unset;
     }
@@ -78,7 +79,7 @@
             top: 0 !important;
             left: 0 !important;
             height: 100%;
-            width: auto;
+            width: 100%;
             max-width: 100%;
             min-width: 0;
             max-height: 100%;

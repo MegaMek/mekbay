@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ApplicationRef, Injectable, Injector, createComponent, type ComponentRef } from '@angular/core';
+import { ApplicationRef, Injectable, inject, Injector, createComponent, type ComponentRef } from '@angular/core';
 
 import type { CBTForce } from '../../../models/cbt-force.model';
 import type { PageViewerMember } from './types';
-import { PAGE_HEIGHT, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { PageCanvasOverlayComponent } from '../canvas';
 import { PageInteractionOverlayComponent } from '../overlay';
 
@@ -20,6 +20,7 @@ function applyAbsoluteFillLayout(element: HTMLElement): void {
 
 @Injectable()
 export class PageViewerOverlayService {
+    private readonly zoomPan = inject(PageViewerZoomPanService);
     private canvasOverlayRefs = new Map<string, ComponentRef<PageCanvasOverlayComponent>>();
     private canvasOverlaySubscriptions = new Map<string, { unsubscribe: () => void }>();
     private interactionOverlayRefs = new Map<string, ComponentRef<PageInteractionOverlayComponent>>();
@@ -36,8 +37,10 @@ export class PageViewerOverlayService {
         const existingRef = this.canvasOverlayRefs.get(unit.id);
         if (existingRef) {
             existingRef.setInput('unit', unit);
+            existingRef.setInput('width', this.zoomPan.pageWidth());
+            existingRef.setInput('height', this.zoomPan.pageHeight());
             const canvasElement = existingRef.location.nativeElement as HTMLElement;
-            pageWrapper.appendChild(canvasElement);
+            if (canvasElement.parentElement !== pageWrapper) pageWrapper.appendChild(canvasElement);
             return existingRef;
         }
 
@@ -47,8 +50,8 @@ export class PageViewerOverlayService {
         });
 
         componentRef.setInput('unit', unit);
-        componentRef.setInput('width', PAGE_WIDTH);
-        componentRef.setInput('height', PAGE_HEIGHT);
+        componentRef.setInput('width', this.zoomPan.pageWidth());
+        componentRef.setInput('height', this.zoomPan.pageHeight());
 
         const subscription = componentRef.instance.drawingStarted.subscribe((drawnUnit) => {
             onDrawingStarted(drawnUnit as PageViewerMember);
@@ -103,8 +106,9 @@ export class PageViewerOverlayService {
         unit: PageViewerMember;
         force: CBTForce | null;
         mode: 'fixed' | 'page';
+        showTopRightControls: boolean;
     }): ComponentRef<PageInteractionOverlayComponent> {
-        const { appRef, injector, pageWrapper, fixedOverlayContainer, unit, force, mode } = options;
+        const { appRef, injector, pageWrapper, fixedOverlayContainer, unit, force, mode, showTopRightControls } = options;
         const targetContainer = mode === 'fixed' ? fixedOverlayContainer : pageWrapper;
         const existingRef = this.interactionOverlayRefs.get(unit.id);
         const existingMode = this.interactionOverlayModes.get(unit.id);
@@ -112,14 +116,14 @@ export class PageViewerOverlayService {
         if (existingRef) {
             existingRef.setInput('member', unit);
             existingRef.setInput('force', force);
+            existingRef.setInput('showTopRightControls', showTopRightControls);
             if (existingMode !== mode) {
                 existingRef.setInput('mode', mode);
                 this.interactionOverlayModes.set(unit.id, mode);
             }
 
             const overlayElement = existingRef.location.nativeElement as HTMLElement;
-            applyAbsoluteFillLayout(overlayElement);
-            targetContainer.appendChild(overlayElement);
+            if (overlayElement.parentElement !== targetContainer) targetContainer.appendChild(overlayElement);
             return existingRef;
         }
 
@@ -131,6 +135,7 @@ export class PageViewerOverlayService {
         componentRef.setInput('member', unit);
         componentRef.setInput('force', force);
         componentRef.setInput('mode', mode);
+        componentRef.setInput('showTopRightControls', showTopRightControls);
 
         appRef.attachView(componentRef.hostView);
 

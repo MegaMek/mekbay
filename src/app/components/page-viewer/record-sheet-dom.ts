@@ -6,6 +6,7 @@ import type {
     UnitConditionDefinition,
 } from '../../models/unit-status-presentation';
 import type { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
+import { setAttributes, svgElement } from '../../utils/sheets/record-sheet-svg-rendering';
 
 export function renderRecordSheetPips(
     highlights: RecordSheetDamageHighlights,
@@ -34,25 +35,26 @@ export function renderRecordSheetPips(
 }
 
 export function renderRecordSheetDestroyed(svg: SVGSVGElement, destroyed: boolean): void {
-    let overlay = svg.querySelector<SVGTextElement>('#destroyed-overlay');
+    const overlay = svg.querySelector('#destroyed-overlay');
     if (!destroyed) {
         overlay?.remove();
         return;
     }
-    if (!overlay) {
-        overlay = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        overlay.setAttribute('id', 'destroyed-overlay');
-        overlay.setAttribute('x', '50%');
-        overlay.setAttribute('y', '40%');
-        overlay.setAttribute('text-anchor', 'middle');
-        overlay.setAttribute('font-size', '64');
-        overlay.setAttribute('fill', 'red');
-        overlay.setAttribute('stroke', 'black');
-        overlay.setAttribute('paint-order', 'stroke fill');
-        overlay.setAttribute('pointer-events', 'none');
-        svg.appendChild(overlay);
-    }
-    overlay.textContent = 'DESTROYED';
+    if (overlay) return;
+
+    const label = svgElement('text');
+    setAttributes(label, {
+        id: 'destroyed-overlay', x: '50%', y: '40%',
+        'text-anchor': 'middle', 'dominant-baseline': 'central',
+        'font-size': 86, 'font-weight': 800, 'letter-spacing': 2.5,
+        fill: '#f00', stroke: '#000', 'stroke-width': 5,
+        'stroke-linejoin': 'round', 'paint-order': 'stroke fill',
+        'pointer-events': 'none', 'aria-label': 'Unit destroyed',
+        style: 'font-family: "Roboto", "Arial", sans-serif; '
+            + 'transform-box: fill-box; transform-origin: center; transform: rotate(12deg)',
+    });
+    label.textContent = 'DESTROYED';
+    svg.appendChild(label);
 }
 
 /** Shared condition presentation for authored and polyfilled record sheets. */

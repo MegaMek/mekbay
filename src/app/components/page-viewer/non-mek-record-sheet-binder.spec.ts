@@ -18,6 +18,7 @@ import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-rec
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
+import { INFANTRY_STRENGTH_CELL_COUNT } from '../../utils/sheets/infantry-strength-projection';
 import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
 import {
@@ -167,6 +168,44 @@ describe('bindNonMekRecordSheet', () => {
         binding.destroy();
         svg.querySelector('.unitLocation.armor')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions.length).toBe(2);
+    });
+
+    it('updates numeric CF and armor cells, retains damage interactions, and accepts their pip-free contract', () => {
+        const svg = sheet();
+        svg.querySelectorAll('.pip').forEach(pip => pip.remove());
+        for (const kind of ['structure', 'armor']) {
+            const value = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            value.setAttribute('data-mekbay-protection-value', kind);
+            value.setAttribute('data-loc', 'FR');
+            svg.appendChild(value);
+        }
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, snapshot(2), interaction => interactions.push(interaction));
+        const armor = svg.querySelector('[data-mekbay-protection-value="armor"]')!;
+        const cf = svg.querySelector('[data-mekbay-protection-value="structure"]')!;
+        expect(binding.initialIssues).toEqual([]);
+        expect(armor.textContent).toBe('2');
+        expect(armor.classList.contains('damaged')).toBeTrue();
+        expect(cf.textContent).toBe('2');
+        const damaged = snapshot(0);
+        expect(binding.render({ ...damaged, locations: damaged.locations.map(location => ({ ...location,
+            remainingInternal: 1, previewRemainingInternal: 1 })) })).toEqual([]);
+        expect(armor.textContent).toBe('0');
+        expect(cf.textContent).toBe('1');
+        svg.querySelector('.unitLocation.armor')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        svg.querySelector('.unitLocation.structure')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+        expect(interactions).toEqual([
+            jasmine.objectContaining({ kind: 'armor', faceId: FACE_ID, locationId: LOCATION_ID }),
+            jasmine.objectContaining({ kind: 'internal', locationId: LOCATION_ID }),
+        ]);
+        binding.render(snapshot(3));
+        expect(armor.textContent).toBe('3');
+        expect(cf.textContent).toBe('2');
+        expect(armor.classList.contains('damaged')).toBeFalse();
+        expect(cf.classList.contains('damaged')).toBeFalse();
+        armor.remove();
+        expect(binding.render(snapshot(3))).toContain('Missing armor pips for FR: 0/3');
+        binding.destroy();
     });
 
     it('shows and clears the destroyed overlay from runtime state', () => {
@@ -464,24 +503,24 @@ describe('bindNonMekRecordSheet', () => {
         }));
     });
 
-    it('renders conventional infantry with 30 generated aggregate-strength controls', () => {
+    it('renders conventional infantry with the generated aggregate-strength controls', () => {
         const svg = soldierSheet();
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, soldierSnapshot(3), interaction => interactions.push(interaction));
 
         const cells = [...svg.querySelectorAll('.infantry-strength-cell')];
-        expect(cells.length).toBe(30);
-        expect(cells[26]!.querySelector('.infantry-strength-committed')).not.toBeNull();
-        expect(cells[27]!.querySelector('.infantry-strength-alive')).not.toBeNull();
-        expect(cells[26]!.querySelector('.disabled-text')).not.toBeNull();
-        cells[28]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(cells.length).toBe(INFANTRY_STRENGTH_CELL_COUNT);
+        expect(cells.at(-4)!.querySelector('.infantry-strength-committed')).not.toBeNull();
+        expect(cells.at(-3)!.querySelector('.infantry-strength-alive')).not.toBeNull();
+        expect(cells.at(-4)!.querySelector('.disabled-text')).not.toBeNull();
+        cells.at(-2)!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([
             jasmine.objectContaining({ kind: 'infantry-strength', locationId: INFANTRY_ID, strength: 2 }),
         ]);
         expect(svg.querySelector('[soldier-id]')).toBeNull();
 
         binding.render(soldierSnapshot(2));
-        expect(cells[27]!.querySelector('.infantry-strength-fresh')).not.toBeNull();
+        expect(cells.at(-3)!.querySelector('.infantry-strength-fresh')).not.toBeNull();
         expect(binding.render(soldierSnapshot(2))).not.toContain('Missing crew layout');
         binding.destroy();
     });
@@ -1036,7 +1075,7 @@ function criticalSheet(): SVGSVGElement {
                 <circle class="motiveHitPip"></circle><circle class="motiveHitPip"></circle>
             </g>
         </g>
-        <g id="rotor_hits_group" class="critLoc counterGroup rotorHitsControl" critId="rotor">
+        <g id="rotor_hits_group" class="critLoc" critId="rotor">
             <rect></rect><text id="rotor_hits_counter"></text>
         </g>
     </svg>`;

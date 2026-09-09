@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
@@ -54,10 +55,21 @@ describe('PageViewerOverlayService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerOverlayService]
+            providers: [PageViewerZoomPanService, PageViewerOverlayService]
         });
 
         service = TestBed.inject(PageViewerOverlayService);
+    });
+
+    it('updates a reused drawing overlay to the current page dimensions', () => {
+        const ref = createOverlayRef(document.createElement('div'));
+        const member = { id: 'unit-a' };
+        (service as unknown as OverlayServiceTestAccess).canvasOverlayRefs.set(member.id, ref);
+        TestBed.inject(PageViewerZoomPanService).setPageFormat('a4');
+        service.getOrCreateCanvasOverlay({ appRef: createAppRefSpy() as never, injector: {} as never,
+            pageWrapper: document.createElement('div'), unit: member as never, onDrawingStarted: () => {} });
+        expect(ref.setInput).toHaveBeenCalledWith('width', 595.276);
+        expect(ref.setInput).toHaveBeenCalledWith('height', 841.89);
     });
 
     it('returns only connected canvas overlay elements for requested units', () => {
@@ -112,6 +124,7 @@ describe('PageViewerOverlayService', () => {
             unit: member as never,
             force: force as never,
             mode: 'page',
+            showTopRightControls: true,
         });
 
         expect(ref.setInput).toHaveBeenCalledWith('member', member);
@@ -128,5 +141,30 @@ describe('PageViewerOverlayService', () => {
         service.openEquipment('unit-a', event, 'ammo');
 
         expect(ref.instance.openWeaponEquipmentDialog).toHaveBeenCalledOnceWith(event, 'ammo');
+    });
+
+    it('keeps a reused overlay attached until its parent changes, including fixed-to-page transitions', () => {
+        const ref = createOverlayRef(document.createElement('div'));
+        const page = document.createElement('div');
+        const fixed = document.createElement('div');
+        page.appendChild(ref.location.nativeElement);
+        const pageAppend = spyOn(page, 'appendChild').and.callThrough();
+        const fixedAppend = spyOn(fixed, 'appendChild').and.callThrough();
+        const access = service as unknown as OverlayServiceTestAccess;
+        access.interactionOverlayRefs.set('a', ref);
+        access.interactionOverlayModes.set('a', 'page');
+        const options = { appRef: createAppRefSpy() as never, injector: {} as never,
+            pageWrapper: page, fixedOverlayContainer: fixed, unit: { id: 'a' } as never, force: null,
+            showTopRightControls: true };
+        service.getOrCreateInteractionOverlay({ ...options, mode: 'page', showTopRightControls: false });
+        expect(ref.setInput).toHaveBeenCalledWith('showTopRightControls', false);
+        expect(pageAppend).not.toHaveBeenCalled();
+        service.getOrCreateInteractionOverlay({ ...options, mode: 'fixed' });
+        expect(ref.setInput).toHaveBeenCalledWith('showTopRightControls', true);
+        service.getOrCreateInteractionOverlay({ ...options, mode: 'fixed' });
+        expect(fixedAppend).toHaveBeenCalledTimes(1);
+        service.getOrCreateInteractionOverlay({ ...options, mode: 'page' });
+        expect(pageAppend).toHaveBeenCalledTimes(1);
+        expect(ref.location.nativeElement.parentElement).toBe(page);
     });
 });

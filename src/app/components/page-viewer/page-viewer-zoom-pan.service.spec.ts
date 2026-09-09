@@ -27,8 +27,98 @@ describe('PageViewerZoomPanService', () => {
         service = TestBed.inject(PageViewerZoomPanService);
     });
 
+    it('recalculates page spacing and fit using the selected physical dimensions', () => {
+        service.updateDimensions(1000, 700, 1);
+        service.setPageFormat('a4');
+        expect(service.pageWidth()).toBe(595.276);
+        expect(service.pageHeight()).toBe(841.89);
+        expect(service.minScale()).toBeCloseTo(700 / 841.89, 6);
+        expect(service.getPagePositions(2)).toEqual([0, 595.276 + PAGE_GAP]);
+        service.setPageFormat('letter');
+        expect(service.minScale()).toBeCloseTo(700 / 792, 6);
+        expect(service.getPagePositions(2)).toEqual([0, 612 + PAGE_GAP]);
+    });
+
     it('allows picker interactions to cancel gestures before a page viewer is initialized', () => {
         expect(() => service.cancelGesture()).not.toThrow();
+    });
+
+    it('coalesces wheel writes while retaining the accumulated pan', () => {
+        const frames: FrameRequestCallback[] = [];
+        spyOn(window, 'requestAnimationFrame').and.callFake(callback => { frames.push(callback); return 12345; });
+        const { container, content } = setupGestureDom(service);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: 0, y: 0 });
+        dispatchWheel(container, { deltaY: 30, shiftKey: true });
+        dispatchWheel(container, { deltaY: 40, shiftKey: true });
+        expect(frames.length).toBe(1);
+        expect(content.style.transform).toBe('');
+        frames[0](0);
+        expect(service.translate().x).toBe(-70);
+        expect(content.style.transform).toBe('translate(-70px, 0px)');
+    });
+
+    it('keeps the last pinch sample received before a frame', () => {
+        const frames: FrameRequestCallback[] = [];
+        spyOn(window, 'requestAnimationFrame').and.callFake(callback => { frames.push(callback); return 12345; });
+        const { container, content } = setupGestureDom(service);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: -80, y: -80 });
+        pointer(container, 'pointerdown', 1, 100);
+        pointer(container, 'pointerdown', 2, 200);
+        pointer(container, 'pointermove', 1, 90);
+        pointer(container, 'pointermove', 2, 220);
+        pointer(container, 'pointermove', 2, 240);
+        expect(frames.length).toBe(1);
+        frames[0](0);
+        expect(service.scale()).toBeCloseTo(1.5, 6);
+        const transform = new DOMMatrix(content.style.transform);
+        expect(transform.m41).toBeCloseTo(service.translate().x, 6);
+        expect(transform.m42).toBeCloseTo(service.translate().y, 6);
+    });
+
+    it('applies two-finger translation even when pinch scale stays constant', () => {
+        const frames: FrameRequestCallback[] = [];
+        spyOn(window, 'requestAnimationFrame').and.callFake(callback => { frames.push(callback); return 12345; });
+        const { container, content } = setupGestureDom(service);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: -80, y: -80 });
+        pointer(container, 'pointerdown', 1, 100);
+        pointer(container, 'pointerdown', 2, 200);
+        pointer(container, 'pointermove', 1, 110);
+        pointer(container, 'pointermove', 2, 210);
+        frames[0](0);
+        expect(service.scale()).toBe(1);
+        expect(content.style.transform).toBe('translate(-70px, -80px)');
+    });
+
+    it('flushes the final pan when the pointer ends before its animation frame', () => {
+        spyOn(window, 'requestAnimationFrame').and.returnValue(12345);
+        const cancel = spyOn(window, 'cancelAnimationFrame');
+        const { container, content } = setupGestureDom(service);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        service.translate.set({ x: -80, y: -80 });
+        pointer(container, 'pointerdown', 1, 100);
+        pointer(container, 'pointermove', 1, 110);
+        pointer(container, 'pointermove', 1, 120);
+        pointer(container, 'pointerup', 1, 120);
+        expect(content.style.transform).toBe('translate(-70px, -80px)');
+        expect(cancel).toHaveBeenCalledWith(12345);
+    });
+
+    it('cancels pending transforms when destroyed', () => {
+        spyOn(window, 'requestAnimationFrame').and.returnValue(12345);
+        const cancel = spyOn(window, 'cancelAnimationFrame');
+        const { container } = setupGestureDom(service);
+        service.updateDimensions(300, 300, 1);
+        service.scale.set(1);
+        dispatchWheel(container, { deltaY: 30, shiftKey: true });
+        TestBed.resetTestingModule();
+        expect(cancel).toHaveBeenCalledWith(12345);
     });
 
     it('skips scale-dependent target writes during translate-only updates', () => {
@@ -227,6 +317,10 @@ describe('PageViewerZoomPanService', () => {
         expect(service.translate()).toEqual({ x: -40, y: -50 });
     });
 });
+
+function pointer(target: HTMLElement, type: string, pointerId: number, clientX: number): void {
+    target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId, pointerType: 'touch', clientX, clientY: 100 }));
+}
 
 function setupGestureDom(service: PageViewerZoomPanService): {
     container: HTMLDivElement;

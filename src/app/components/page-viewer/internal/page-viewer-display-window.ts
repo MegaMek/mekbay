@@ -9,7 +9,7 @@ export function resolveDisplayStartIndex(totalUnits: number, visiblePages: numbe
         return 0;
     }
 
-    return currentViewStartIndex;
+    return ((currentViewStartIndex % totalUnits) + totalUnits) % totalUnits;
 }
 
 export function resolveDisplayedUnits(
@@ -74,7 +74,7 @@ export function buildForceChangePlan(options: {
         const displayedUnit = displayedUnits[slotIndex];
         const expectedIndex = (nextViewStartIndex + slotIndex) % totalUnits;
         const expectedUnit = allUnits[expectedIndex];
-        if (!expectedUnit || displayedUnit.id !== expectedUnit.id) {
+        if (displayedUnit !== expectedUnit) {
             needsRedisplay = true;
             break;
         }

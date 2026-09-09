@@ -11,6 +11,7 @@ import {
     DestroyRef,
     inject
 } from '@angular/core';
+import { recordSheetPageProfile, type RecordSheetPageFormat } from '../../utils/sheets/record-sheet-layout';
 import { LayoutService } from '../../services/layout.service';
 import type { RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 
@@ -26,8 +27,8 @@ import type { RecordSheetDoubleTapZoomResetMode } from '../../models/options.mod
  */
 
 // Letter page dimensions in points (8.5 x 11 inches at 72 DPI)
-export const PAGE_WIDTH = 612;
-export const PAGE_HEIGHT = 792;
+export const PAGE_WIDTH = recordSheetPageProfile().width;
+export const PAGE_HEIGHT = recordSheetPageProfile().height;
 export const PAGE_GAP = 20; // Gap between pages in multi-page view
 
 const MIN_SCALE_ABSOLUTE = 0.1;
@@ -68,6 +69,19 @@ export interface NonInteractiveSelectors {
 export class PageViewerZoomPanService {
     private layoutService = inject(LayoutService);
 
+    private readonly pageProfile = signal(recordSheetPageProfile());
+    readonly pageWidth = computed(() => this.pageProfile().width);
+    readonly pageHeight = computed(() => this.pageProfile().height);
+
+    setPageFormat(format: RecordSheetPageFormat): void {
+        if (this.pageProfile().format === format) return;
+        this.pageProfile.set(recordSheetPageProfile(format));
+        this.lastAppliedScale = null;
+        this.transformTargetsDirty = true;
+        this.canvasTargetsDirty = true;
+        this.updateDimensions(this.containerDimensions.width, this.containerDimensions.height, this.totalPages);
+    }
+
     // Core state signals
     readonly scale = signal(1);
     readonly translate = signal({ x: 0, y: 0 });
@@ -91,7 +105,7 @@ export class PageViewerZoomPanService {
     readonly pagesVisibleAtCurrentZoom = computed(() => {
         const containerWidth = this.containerDimensions.width;
         if (containerWidth <= 0) return 1;
-        const scaledPageWidth = PAGE_WIDTH * this.scale();
+        const scaledPageWidth = this.pageWidth() * this.scale();
         return Math.max(1, Math.floor((containerWidth + PAGE_GAP) / (scaledPageWidth + PAGE_GAP)));
     });
 
@@ -156,7 +170,7 @@ export class PageViewerZoomPanService {
     };
 
     // RAF throttling
-    private rafPending = false;
+    private transformFrameId: number | null = null;
 
     // Event listeners bound to this
     private boundOnWheel = this.onWheel.bind(this);
@@ -243,7 +257,7 @@ export class PageViewerZoomPanService {
             // Space-evenly at min scale: calculate positions that will be evenly spaced
             const scale = this.minScale();
             const containerWidth = this.containerDimensions.width;
-            const scaledPageWidth = PAGE_WIDTH * scale;
+            const scaledPageWidth = this.pageWidth() * scale;
             const totalPagesWidth = scaledPageWidth * pageCount;
             const remainingSpace = containerWidth - totalPagesWidth;
             const gapCount = pageCount + 1;
@@ -263,7 +277,7 @@ export class PageViewerZoomPanService {
             // Standard: pages in a row with PAGE_GAP between them, starting from 0
             const positions: number[] = [];
             for (let i = 0; i < pageCount; i++) {
-                positions.push(i * (PAGE_WIDTH + PAGE_GAP));
+                positions.push(i * (this.pageWidth() + PAGE_GAP));
             }
             return positions;
         }
@@ -277,10 +291,10 @@ export class PageViewerZoomPanService {
         if (containerWidth <= 0 || containerHeight <= 0) return;
 
         // Calculate the scale needed to fit the page height in the container
-        const scaleToFitHeight = containerHeight / PAGE_HEIGHT;
+        const scaleToFitHeight = containerHeight / this.pageHeight();
         
         // At this scale, how wide is one page?
-        const scaledPageWidth = PAGE_WIDTH * scaleToFitHeight;
+        const scaledPageWidth = this.pageWidth() * scaleToFitHeight;
         const scaledGap = PAGE_GAP * scaleToFitHeight;
         
         // How many pages could fit side-by-side at this scale?
@@ -288,7 +302,7 @@ export class PageViewerZoomPanService {
         const maxPagesVisible = Math.min(Math.max(1, pagesAtFitScale), this.totalPages);
 
         // Calculate min scale to fit at least one page
-        const scaleToFitWidth = containerWidth / PAGE_WIDTH;
+        const scaleToFitWidth = containerWidth / this.pageWidth();
         const fitScale = Math.min(scaleToFitWidth, scaleToFitHeight);
 
         // Determine optimal visible page count and corresponding scale
@@ -298,9 +312,9 @@ export class PageViewerZoomPanService {
         // Check if we can fit multiple pages while still fitting in height
         // Start from max possible pages and work down
         for (let pages = maxPagesVisible; pages >= 1; pages--) {
-            const totalWidth = pages * PAGE_WIDTH + (pages - 1) * PAGE_GAP;
+            const totalWidth = pages * this.pageWidth() + (pages - 1) * PAGE_GAP;
             const scaleForWidth = containerWidth / totalWidth;
-            const scaleForHeight = containerHeight / PAGE_HEIGHT;
+            const scaleForHeight = containerHeight / this.pageHeight();
             const scale = Math.min(scaleForWidth, scaleForHeight);
 
             if (scale >= MIN_SCALE_ABSOLUTE) {
@@ -394,6 +408,7 @@ export class PageViewerZoomPanService {
     }
 
     private cleanup(): void {
+        this.cancelTransformFrame();
         const container = this.containerRef?.nativeElement;
         if (!container) return;
 
@@ -441,7 +456,7 @@ export class PageViewerZoomPanService {
             ? { x: translate.x - delta, y: translate.y }
             : { x: translate.x, y: translate.y - delta });
         this.clampPan();
-        this.applyTransform();
+        this.scheduleTransform();
     }
 
     private normalizeWheelDelta(event: WheelEvent): number {
@@ -473,7 +488,7 @@ export class PageViewerZoomPanService {
         this.translate.set({ x: newX, y: newY });
         this.scale.set(newScale);
         this.clampPan();
-        this.applyTransform();
+        this.scheduleTransform();
     }
 
     // ========== Pointer Events ==========
@@ -653,16 +668,9 @@ export class PageViewerZoomPanService {
         this.translate.set({ x: translate.x + dx, y: translate.y + dy });
         this.gestureState.pinchPrevCenter = { ...newCenter };
 
-        // Apply zoom centered on pinch center
-        if (!this.rafPending) {
-            this.rafPending = true;
-            requestAnimationFrame(() => {
-                if (newScale !== this.scale()) {
-                    this.zoomToPoint(newCenter.x, newCenter.y, newScale);
-                }
-                this.rafPending = false;
-            });
-        }
+        // Keep every input sample in state, including translation at constant
+        // scale. Only DOM writes are coalesced, so the final sample is retained.
+        this.zoomToPoint(newCenter.x, newCenter.y, newScale);
 
         this.gestureState.pointerMoved = true;
     }
@@ -721,7 +729,7 @@ export class PageViewerZoomPanService {
         this.translate.set({ x: translate.x + dx, y: translate.y + dy });
 
         this.clampPan();
-        this.applyTransform();
+        this.scheduleTransform();
 
         if (!this.gestureState.pointerMoved) {
             const totalDx = px - this.gestureState.pointerStart.x;
@@ -812,7 +820,7 @@ export class PageViewerZoomPanService {
             ? (tapY - currentTranslate.y) / currentScale
             : 0;
         const originalLeft = this.getPageWrapperOriginalLeft(pageWrapper);
-        const nextScale = Math.max(this.minScale(), Math.min(this.maxScale, containerWidth / PAGE_WIDTH));
+        const nextScale = Math.max(this.minScale(), Math.min(this.maxScale, containerWidth / this.pageWidth()));
         const centeredTapY = (this.containerDimensions.height / 2) - tappedContentY * nextScale;
 
         this.scale.set(nextScale);
@@ -850,6 +858,7 @@ export class PageViewerZoomPanService {
     }
 
     private resetGestureState(): void {
+        if (this.transformFrameId !== null) this.applyTransform();
         this.gestureState.isPanning = false;
         this.gestureState.isSwiping = false;
         this.gestureState.swipeStarted = false;
@@ -891,9 +900,9 @@ export class PageViewerZoomPanService {
         
         // Calculate content dimensions (content starts at 0,0 in content space)
         const contentWidth = displayedPages === 1 
-            ? PAGE_WIDTH * scale 
-            : (displayedPages * PAGE_WIDTH + (displayedPages - 1) * PAGE_GAP) * scale;
-        const contentHeight = PAGE_HEIGHT * scale;
+            ? this.pageWidth() * scale
+            : (displayedPages * this.pageWidth() + (displayedPages - 1) * PAGE_GAP) * scale;
+        const contentHeight = this.pageHeight() * scale;
 
         // Calculate pan bounds
         let minX: number, maxX: number;
@@ -925,7 +934,8 @@ export class PageViewerZoomPanService {
         const clampedX = Math.max(minX, Math.min(maxX, translate.x));
         const clampedY = Math.max(minY, Math.min(maxY, translate.y));
 
-        if (Number.isFinite(clampedX) && Number.isFinite(clampedY)) {
+        if (Number.isFinite(clampedX) && Number.isFinite(clampedY)
+            && (clampedX !== translate.x || clampedY !== translate.y)) {
             this.translate.set({ x: clampedX, y: clampedY });
         }
     }
@@ -940,9 +950,9 @@ export class PageViewerZoomPanService {
         
         // Calculate content dimensions
         const contentWidth = displayedPages === 1 
-            ? PAGE_WIDTH * scale 
-            : (displayedPages * PAGE_WIDTH + (displayedPages - 1) * PAGE_GAP) * scale;
-        const contentHeight = PAGE_HEIGHT * scale;
+            ? this.pageWidth() * scale
+            : (displayedPages * this.pageWidth() + (displayedPages - 1) * PAGE_GAP) * scale;
+        const contentHeight = this.pageHeight() * scale;
 
         // Center horizontally
         const x = (this.containerDimensions.width - contentWidth) / 2;
@@ -955,14 +965,27 @@ export class PageViewerZoomPanService {
         });
     }
 
+    private scheduleTransform(): void {
+        if (this.transformFrameId !== null) return;
+        this.transformFrameId = requestAnimationFrame(() => {
+            this.transformFrameId = null;
+            this.applyTransform();
+        });
+    }
+
+    private cancelTransformFrame(): void {
+        if (this.transformFrameId === null) return;
+        cancelAnimationFrame(this.transformFrameId);
+        this.transformFrameId = null;
+    }
+
     /**
-     * Apply the current transform to the content element
-     * Scale is applied directly to each root SVG element to prevent iOS Safari
-     * from rendering SVGs blurry when scaling a parent container.
-     * Translation is applied to the content container.
-     * Note: Only root SVGs are scaled, not nested SVGs within them.
+     * Apply the current transform to the content element.
+     * Scale root SVGs directly to keep them sharp on iOS Safari, without
+     * double-scaling nested SVGs. Translate the content container separately.
      */
     private applyTransform(): void {
+        this.cancelTransformFrame();
         const content = this.contentRef?.nativeElement;
         if (!content) return;
 
@@ -987,8 +1010,8 @@ export class PageViewerZoomPanService {
                 }
                 // Apply scaled position
                 wrapper.style.left = `${originalLeft * scale}px`;
-                wrapper.style.width = `${PAGE_WIDTH * scale}px`;
-                wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+                wrapper.style.width = `${this.pageWidth() * scale}px`;
+                wrapper.style.height = `${this.pageHeight() * scale}px`;
                 
                 // Scale only the direct SVG child (not nested SVGs)
                 if (rootSvg) {
@@ -1007,8 +1030,8 @@ export class PageViewerZoomPanService {
                     overlay.dataset['originalLeft'] = String(originalLeft);
                 }
                 overlay.style.left = `${originalLeft * scale}px`;
-                overlay.style.width = `${PAGE_WIDTH * scale}px`;
-                overlay.style.height = `${PAGE_HEIGHT * scale}px`;
+                overlay.style.width = `${this.pageWidth() * scale}px`;
+                overlay.style.height = `${this.pageHeight() * scale}px`;
             });
             this.canvasTargetsDirty = false;
         }

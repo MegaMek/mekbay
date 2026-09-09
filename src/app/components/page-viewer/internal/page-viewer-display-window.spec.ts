@@ -10,6 +10,12 @@ describe('page-viewer display-window', () => {
         expect(resolveDisplayStartIndex(4, 2, 1)).toBe(1);
     });
 
+    it('normalizes wrapped starts without dropping slots', () => {
+        const units = [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as never[];
+        expect(resolveDisplayedUnits(units, 2, -1).units).toEqual([units[2], units[0]]);
+        expect(resolveDisplayedUnits(units, 2, 4).units).toEqual([units[1], units[2]]);
+    });
+
     it('resolves the displayed unit window from the current start index', () => {
         const result = resolveDisplayedUnits([
             { id: 'a' },
@@ -38,5 +44,21 @@ describe('page-viewer display-window', () => {
         expect(plan.needsRedisplay).toBeTrue();
         expect(plan.preserveSelectedSlot).toBeTrue();
         expect(plan.modeChanged).toBeFalse();
+    });
+
+    it('refreshes replacement members but leaves an unchanged visible window alone', () => {
+        const units = [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as never[];
+        const options = {
+            allUnits: units,
+            displayedUnits: units.slice(0, 2),
+            selectedUnitId: 'a',
+            visibleCount: 2,
+            previousUnitCount: 3,
+            currentViewStartIndex: 0,
+        };
+        expect(buildForceChangePlan(options).needsRedisplay).toBeFalse();
+        expect(buildForceChangePlan({
+            ...options, allUnits: [units[0], { id: 'b' } as never, units[2]],
+        }).needsRedisplay).toBeTrue();
     });
 });

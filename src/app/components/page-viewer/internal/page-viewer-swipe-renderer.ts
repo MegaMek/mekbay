@@ -40,7 +40,7 @@ export interface PageViewerSwipeRendererUpdate {
 
 export function buildSwipeRenderUpdate(options: {
     slots: readonly PageViewerSwipeRendererSlotState[];
-    units: readonly PageViewerSwipeRendererUnitState[];
+    resolveUnit: (unitIndex: number) => PageViewerSwipeRendererUnitState | undefined;
     visibleLeft: number;
     visibleRight: number;
     scaledPageWidth: number;
@@ -52,13 +52,7 @@ export function buildSwipeRenderUpdate(options: {
     selectedUnitId: string | null;
 }): PageViewerSwipeRendererUpdate {
     const visibilityPlan = resolveSwipeSlotVisibilityPlan({
-        slots: options.slots.map((slot) => ({
-            slotIndex: slot.slotIndex,
-            slotOffset: slot.slotOffset,
-            slotLeft: slot.slotLeft,
-            slotRight: slot.slotRight,
-            unitIndex: slot.unitIndex
-        })),
+        slots: options.slots,
         visibleLeft: options.visibleLeft,
         visibleRight: options.visibleRight,
         scaledPageWidth: options.scaledPageWidth,
@@ -94,7 +88,7 @@ export function buildSwipeRenderUpdate(options: {
 
     const slotInstructions = bindingPlan.slotsToProcess.flatMap((slotPlan) => {
         const slot = options.slots[slotPlan.slotIndex];
-        const unit = options.units[slotPlan.unitIndex];
+        const unit = options.resolveUnit(slotPlan.unitIndex);
         if (!slot || !unit) {
             return [];
         }

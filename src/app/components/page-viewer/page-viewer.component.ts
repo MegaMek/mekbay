@@ -18,7 +18,6 @@ import {
     viewChild,
     viewChildren,
     computed,
-    type EffectRef,
     DestroyRef,
     untracked,
     ApplicationRef
@@ -27,12 +26,11 @@ import {
 import {
     PageViewerZoomPanService,
     type SwipeCallbacks,
-    PAGE_WIDTH,
-    PAGE_HEIGHT,
     PAGE_GAP
 } from './page-viewer-zoom-pan.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { OptionsService } from '../../services/options.service';
+import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 import { DbService } from '../../services/db.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { CBTForce } from '../../models/cbt-force.model';
@@ -49,13 +47,13 @@ import { PageViewerStateService } from './internal/page-viewer-state.service';
 import { PageViewerNavigationService } from './internal/page-viewer-navigation.service';
 import { PageViewerRenderModelService } from './internal/page-viewer-render-model.service';
 import { PageViewerViewStateService } from './internal/page-viewer-view-state.service';
-import { clearActivePageElements, prepareActiveDisplay, prepareActiveInPlaceUpdate } from './internal/page-viewer-active-display';
+import { clearActivePageElements, prepareActiveDisplay } from './internal/page-viewer-active-display';
 import { PageViewerOverlayService } from './internal/page-viewer-overlay.service';
 import {
     pageViewerShadowKey,
     PageViewerShadowRenderService,
 } from './internal/page-viewer-shadow-render.service';
-import { buildForceChangePlan } from './internal/page-viewer-display-window';
+import { buildForceChangePlan, resolveDisplayStartIndex } from './internal/page-viewer-display-window';
 import { PageViewerPresentationService } from './internal/page-viewer-presentation.service';
 import { buildViewerResizePlan, resolvePageSelectionUnit } from './internal/page-viewer-ui-glue';
 import { resolveSwipeVisibleOffsets, buildSwipeInitialRangePlan, resolveSwipeVisibleOffsetRefresh, buildSwipeSlotExtensionPlan } from './internal/page-viewer-swipe-slot';
@@ -113,9 +111,13 @@ type ShadowDirection = 'left' | 'right';
     ],
     imports: [ViewerStageComponent, ViewerPageComponent, ViewerShadowPageComponent, HeatDiffMarkerComponent, PageViewerCanvasControlsComponent],
     templateUrl: './page-viewer.component.html',
-    styleUrl: './page-viewer.component.scss'
+    styleUrl: './page-viewer.component.scss',
+    host: {
+        '[style.page]': "'mekbay-sheet-' + pageFormat()",
+    },
 })
 export class PageViewerComponent implements AfterViewInit {
+    private readonly fluffImages = inject(UnitFluffImageService);
     readonly unitNames = inject(UnitNameService);
     private injector = inject(Injector);
     private renderer = inject(Renderer2);
@@ -124,6 +126,8 @@ export class PageViewerComponent implements AfterViewInit {
     private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private optionsService = inject(OptionsService);
     private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
+    private readonly showQuirks = computed(() => this.optionsService.options().CBTOptionalRules?.quirks !== false);
+    protected readonly pageFormat = computed(() => this.optionsService.options().printAllOptions.paperSize);
     private dbService = inject(DbService);
     private pageViewerState = inject(PageViewerStateService);
     private pageViewerNavigation = inject(PageViewerNavigationService);
@@ -150,6 +154,8 @@ export class PageViewerComponent implements AfterViewInit {
     readonly rewriteCanNavigate = this.pageViewerNavigation.canNavigate;
     readonly stageSwiping = computed(() => this.isSwiping);
     readonly performanceMode = computed(() => this.optionsService.options().performanceMode);
+    private readonly unitNameFormat = computed(() => this.optionsService.options().displayUnitNameFormat);
+    private readonly centerPanelContent = computed(() => this.optionsService.options().printAllOptions.recordSheetCenterPanelContent);
 
     readonly unit = computed(() => {
         const selectedUnit = this.forceWorkspace.selectedUnit();
@@ -226,7 +232,7 @@ export class PageViewerComponent implements AfterViewInit {
         if (!allowMultiple) {
             return 1;
         }
-        return Math.min(this.visiblePageCount(), this.maxVisiblePageCount());
+        return Math.max(1, Math.min(this.visiblePageCount(), this.maxVisiblePageCount()));
     });
 
     // Navigation computed properties for keyboard and button navigation
@@ -303,18 +309,8 @@ export class PageViewerComponent implements AfterViewInit {
     // Track display version to handle async loads
     private displayVersion = 0;
 
-    // Effect ref for fluff image visibility
-    private fluffImageInjectEffectRef: EffectRef | null = null;
-
     constructor() {
-        effect(() => {
-            this.optionsService.options().displayUnitNameFormat;
-            for (const member of this.forceUnits()) {
-                for (const svg of member.recordSheets()) {
-                    this.unitNames.applyToRecordSheet(svg, member.entity);
-                }
-            }
-        });
+        this.watchSheetPresentation();
         this.keyboardShortcutService.register({
             id: 'page-viewer',
             active: () => this.viewInitialized() && !!this.unit(),
@@ -360,6 +356,9 @@ export class PageViewerComponent implements AfterViewInit {
         // Watch for unit changes
         let previousUnit: PageViewerMember | null = null;
         let previousPipLayout = this.optionsService.options().recordSheetPipLayout;
+        let previousPageFormat = this.pageFormat();
+        let previousShowQuirks = this.showQuirks();
+        let previousArtworkRevision = this.fluffImages.revision();
         let unitEffectRunId = 0;
 
         effect((onCleanup) => {
@@ -372,19 +371,23 @@ export class PageViewerComponent implements AfterViewInit {
 
             const currentUnit = this.unit();
             const pipLayout = this.pipLayout();
+            const pageFormat = this.pageFormat();
+            const showQuirks = this.showQuirks();
+            const artworkRevision = this.fluffImages.revision();
 
             // Skip if view isn't ready yet
             if (!this.viewInitialized()) {
                 return;
             }
 
-            // Only the selected unit, pip layout and view readiness belong to this effect's dependency
+            // Only the selected unit, paper format, pip layout and view readiness belong to this effect's dependency
             // set.  When there is no current unit the async body reaches the
             // selection reads synchronously (there is no `await load()`), so
             // `displayedUnits()` used to become an accidental dependency.  The
             // subsequent `displayUnit()` clears that signal and retriggered this
             // effect forever, starving mechanics loading on the ADD path.
             untracked(() => void (async () => {
+                this.zoomPanService.setPageFormat(pageFormat);
                 // Load unit if needed
                 if (currentUnit) {
                     try {
@@ -402,9 +405,18 @@ export class PageViewerComponent implements AfterViewInit {
                     return;
                 }
 
-                if (pipLayout !== previousPipLayout) this.displayUnit({ fromSwipe: true });
+                if (pageFormat !== previousPageFormat) {
+                    this.pageViewerViewState.clearAll();
+                    this.lastViewState = null;
+                    this.updateDimensions();
+                    this.initialRenderComplete = false;
+                    this.displayUnit({ fromSwipe: true });
+                } else if (pipLayout !== previousPipLayout || showQuirks !== previousShowQuirks || artworkRevision !== previousArtworkRevision) this.displayUnit({ fromSwipe: true });
                 else this.applySelectionChange(previousUnit, currentUnit);
                 previousPipLayout = pipLayout;
+                previousPageFormat = pageFormat;
+                previousShowQuirks = showQuirks;
+                previousArtworkRevision = artworkRevision;
                 previousUnit = currentUnit;
             })());
         }, { injector: this.injector });
@@ -429,14 +441,14 @@ export class PageViewerComponent implements AfterViewInit {
             const snapshot = this.captureCurrentViewState();
 
             this.pageViewerViewState.saveSharedViewState(snapshot);
+            // Zooming or panning can move every neighbor outside the viewport,
+            // even when the container and active page count have not changed.
+            untracked(() => {
+                if (this.initialRenderComplete && !this.pageViewerSwipeAnimation.hasActiveAnimation()) {
+                    this.scheduleRenderShadowPages();
+                }
+            });
         }, { injector: this.injector });
-
-        // Watch for fluff image visibility option changes
-        this.fluffImageInjectEffectRef = effect(() => {
-            // Track the option - when it changes, update visibility on all displayed SVGs
-            this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
-            this.setFluffImageVisibility();
-        });
 
         effect(() => {
             this.zoomPanService.setDoubleTapZoomResetMode(this.optionsService.options().recordSheetDoubleTapZoomReset);
@@ -463,15 +475,32 @@ export class PageViewerComponent implements AfterViewInit {
         this.destroyRef.onDestroy(() => this.cleanup());
     }
 
-    private watchForceUnits(): void {
-        let previousUnitIds: string[] = [];
+    private watchSheetPresentation(): void {
         effect(() => {
-            const currentUnitIds = this.forceUnits().map(unit => unit.id);
+            this.unitNameFormat();
+            const members = this.forceUnits();
+            // The name service also reads options; keep those reads out of the
+            // dependency set so brush and other unrelated settings do no work.
+            untracked(() => {
+                for (const member of members) {
+                    for (const svg of member.recordSheets()) {
+                        this.unitNames.applyToRecordSheet(svg, member.entity);
+                    }
+                }
+            });
+        }, { injector: this.injector });
+        effect(() => this.setFluffImageVisibility(), { injector: this.injector });
+    }
+
+    private watchForceUnits(): void {
+        let previousUnits: readonly PageViewerMember[] = [];
+        effect(() => {
+            const currentUnits = this.forceUnits();
             const initialized = this.viewInitialized();
-            const previousUnitCount = previousUnitIds.length;
-            const changed = currentUnitIds.length !== previousUnitCount
-                || currentUnitIds.some((id, index) => id !== previousUnitIds[index]);
-            previousUnitIds = currentUnitIds;
+            const previousUnitCount = previousUnits.length;
+            const changed = currentUnits.length !== previousUnitCount
+                || currentUnits.some((unit, index) => unit !== previousUnits[index]);
+            previousUnits = currentUnits;
 
             if (initialized && changed) {
                 untracked(() => this.handleForceUnitsChanged(previousUnitCount));
@@ -540,7 +569,7 @@ export class PageViewerComponent implements AfterViewInit {
                 '.crewNameButton',
                 '.crewSkillButton',
                 '.unitConditionButton',
-                '.locConditionButton',
+                '.locationConditionControl',
                 '.soldierPip',
                 '#heatScale',
                 '#heatDataPanel',
@@ -608,7 +637,7 @@ export class PageViewerComponent implements AfterViewInit {
             baseLeft: this.swipeBasePositions[0] ?? 0,
             translateX: 0,
             panTranslateX: this.zoomPanService.translate().x,
-            pageWidth: PAGE_WIDTH,
+            pageWidth: this.zoomPanService.pageWidth(),
             pageGap: PAGE_GAP
         });
         this.baseDisplayStartIndex = this.viewStartIndex();
@@ -641,7 +670,7 @@ export class PageViewerComponent implements AfterViewInit {
             baseLeft: this.swipeBasePositions[0] ?? 0,
             translateX: totalDx,
             panTranslateX: this.zoomPanService.translate().x,
-            pageWidth: PAGE_WIDTH,
+            pageWidth: this.zoomPanService.pageWidth(),
             pageGap: PAGE_GAP
         });
         const refreshState = resolveSwipeVisibleOffsetRefresh({
@@ -658,8 +687,10 @@ export class PageViewerComponent implements AfterViewInit {
      * Animates to final position, then updates state cleanly without flicker.
      */
     private onSwipeEnd(totalDx: number, velocity: number): void {
+        if (!this.isSwiping) return;
         if (!this.swipeAllowed()) {
             this.cleanupSwipeState();
+            this.displayUnit({ fromSwipe: true });
             return;
         }
 
@@ -668,7 +699,7 @@ export class PageViewerComponent implements AfterViewInit {
 
         const swipeWrapper = this.swipeWrapperRef().nativeElement;
         const scale = this.zoomPanService.scale();
-        const scaledPageStep = PAGE_WIDTH * scale + PAGE_GAP * scale;
+        const scaledPageStep = this.zoomPanService.pageWidth() * scale + PAGE_GAP * scale;
         const totalUnits = this.forceUnits().length;
         const swipeEndPlan = resolveSwipeEndPlan({
             totalDx,
@@ -897,7 +928,7 @@ export class PageViewerComponent implements AfterViewInit {
         const scale = this.zoomPanService.scale();
         const reversePlan = resolveSwipeReversePlan({
             currentTranslateX,
-            fullPageDistance: (PAGE_WIDTH + PAGE_GAP) * scale
+            fullPageDistance: (this.zoomPanService.pageWidth() + PAGE_GAP) * scale
         });
 
         this.pendingDirectionalNavigation = 0;
@@ -998,8 +1029,8 @@ export class PageViewerComponent implements AfterViewInit {
         const left = options.originalLeft * scale;
 
         wrapper.dataset['originalLeft'] = String(options.originalLeft);
-        wrapper.style.width = `${PAGE_WIDTH * scale}px`;
-        wrapper.style.height = `${PAGE_HEIGHT * scale}px`;
+        wrapper.style.width = `${this.zoomPanService.pageWidth() * scale}px`;
+        wrapper.style.height = `${this.zoomPanService.pageHeight() * scale}px`;
         wrapper.style.position = 'absolute';
         wrapper.style.left = `${left}px`;
         wrapper.style.top = '0';
@@ -1066,9 +1097,10 @@ export class PageViewerComponent implements AfterViewInit {
         wrapper: HTMLDivElement,
         unit: PageViewerMember,
         svg: SVGSVGElement,
-        overlayMode: 'fixed' | 'page'
+        overlayMode: 'fixed' | 'page',
+        showTopRightControls = true
     ): void {
-        this.bindCBTInteractiveLayers(wrapper, unit, svg, overlayMode);
+        this.bindCBTInteractiveLayers(wrapper, unit, svg, overlayMode, showTopRightControls);
     }
 
     private bindCBTInteractiveLayers(
@@ -1076,6 +1108,7 @@ export class PageViewerComponent implements AfterViewInit {
         member: PageViewerMember,
         svg: SVGSVGElement,
         overlayMode: 'fixed' | 'page',
+        showTopRightControls: boolean,
     ): void {
         if (isCBTMekForceMember(member)) {
             const interactive = this.pageViewerMekRuntime.bind(member, svg);
@@ -1086,14 +1119,14 @@ export class PageViewerComponent implements AfterViewInit {
             if (!interactive) return;
         }
         if (!this.readOnly()) this.getOrCreateCanvasOverlay(wrapper, member);
-        this.getOrCreateInteractionOverlay(wrapper, member, overlayMode);
+        this.getOrCreateInteractionOverlay(wrapper, member, overlayMode, showTopRightControls);
     }
 
     protected onRecordSheetPageFlip(event: Event): void {
         if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
         if (!(event.target instanceof Element)) return;
         const control = event.target.closest('.record-sheet-page-flip-control');
-        const wrapper = control?.closest<HTMLDivElement>('.page-wrapper.active-page');
+        const wrapper = control?.closest<HTMLDivElement>('.page-wrapper[data-page-role="active"]');
         const svg = control?.closest<SVGSVGElement>('svg');
         const unitId = wrapper?.dataset['unitId'];
         if (!control || !wrapper || !svg || !unitId) return;
@@ -1162,7 +1195,7 @@ export class PageViewerComponent implements AfterViewInit {
             baseLeft: this.swipeBasePositions[0] ?? 0,
             translateX,
             panTranslateX: this.zoomPanService.translate().x,
-            pageWidth: PAGE_WIDTH,
+            pageWidth: this.zoomPanService.pageWidth(),
             pageGap: PAGE_GAP
         });
 
@@ -1350,7 +1383,13 @@ export class PageViewerComponent implements AfterViewInit {
             return;
         }
 
-        this.displayedUnits.set(nextDisplayedUnits);
+        const currentUnits = this.displayedUnits();
+        if (currentUnits.length !== nextDisplayedUnits.length
+            || currentUnits.some((unit, index) => unit !== nextDisplayedUnits[index])) {
+            this.displayedUnits.set(nextDisplayedUnits);
+        }
+        // A newly loaded SVG can create overlays without changing the visible
+        // unit list, so retain cleanup even when that list is unchanged.
         this.cleanupUnusedCanvasOverlays(displayedUnitIds);
         this.cleanupUnusedInteractionOverlays(displayedUnitIds);
     }
@@ -1378,7 +1417,7 @@ export class PageViewerComponent implements AfterViewInit {
         const visibleLeft = -totalTranslateX;
         const visibleRight = visibleLeft + containerWidth;
         const visiblePages = this.effectiveVisiblePageCount();
-        const scaledPageWidth = PAGE_WIDTH * scale;
+        const scaledPageWidth = this.zoomPanService.pageWidth() * scale;
         const allUnits = this.forceUnits();
         const slotStates = this.pageViewerSwipeDom.buildSlotStates({
             swipeSlots: this.swipeSlots,
@@ -1388,10 +1427,10 @@ export class PageViewerComponent implements AfterViewInit {
         });
         const renderUpdate = buildSwipeRenderUpdate({
             slots: slotStates,
-            units: allUnits.map((unit) => ({
-                unitId: unit.id,
-                svg: unit.recordSheet()
-            })),
+            resolveUnit: (index) => {
+                const unit = allUnits[index];
+                return unit ? { unitId: unit.id, svg: unit.recordSheet() } : undefined;
+            },
             visibleLeft,
             visibleRight,
             scaledPageWidth,
@@ -1413,8 +1452,6 @@ export class PageViewerComponent implements AfterViewInit {
             renderUpdate,
             resolveUnit: (unitIndex) => allUnits[unitIndex],
             scale,
-            visiblePages,
-            readOnly: this.readOnly(),
             showFluff: this.optionsService.options().printAllOptions.recordSheetCenterPanelContent === 'fluffImage',
             performanceMode: this.performanceMode(),
             setPageWrapperContentState: (wrapper, hasSvg) => this.setPageWrapperContentState(wrapper, hasSvg),
@@ -1424,8 +1461,8 @@ export class PageViewerComponent implements AfterViewInit {
             setSwipeNeighborVisibilityState: (wrapper, isVisible) => this.setSwipeNeighborVisibilityState(wrapper, isVisible),
             attachSvgToWrapper: (options) => this.attachSvgToWrapper(options),
             applyFluffImageVisibilityToSvg: (svg, showFluff) => this.pageViewerPresentation.applyFluffImageVisibilityToSvg(svg, showFluff),
-            bindWrapperInteractiveLayers: (wrapper, unit, svg, overlayMode) => this.bindWrapperInteractiveLayers(wrapper, unit, svg, overlayMode),
-            getOrCreateInteractionOverlay: (wrapper, unit, overlayMode) => this.getOrCreateInteractionOverlay(wrapper, unit, overlayMode)
+            bindWrapperInteractiveLayers: (wrapper, unit, svg, overlayMode, showTopRightControls) => this.bindWrapperInteractiveLayers(wrapper, unit, svg, overlayMode, showTopRightControls),
+            getOrCreateInteractionOverlay: (wrapper, unit, overlayMode, showTopRightControls) => this.getOrCreateInteractionOverlay(wrapper, unit, overlayMode, showTopRightControls)
         });
 
         this.finalizeSwipeSlotVisibility({
@@ -1514,7 +1551,8 @@ export class PageViewerComponent implements AfterViewInit {
     private getOrCreateInteractionOverlay(
         pageWrapper: HTMLDivElement,
         unit: PageViewerMember,
-        mode: 'fixed' | 'page' = 'page'
+        mode: 'fixed' | 'page',
+        showTopRightControls: boolean
     ): void {
         this.pageViewerOverlay.getOrCreateInteractionOverlay({
             appRef: this.appRef,
@@ -1523,7 +1561,8 @@ export class PageViewerComponent implements AfterViewInit {
             fixedOverlayContainer: this.fixedOverlayContainerRef().nativeElement,
             unit,
             force: this.force(),
-            mode
+            mode,
+            showTopRightControls
         });
     }
 
@@ -1772,7 +1811,7 @@ export class PageViewerComponent implements AfterViewInit {
             }
             
             const scale = this.zoomPanService.scale();
-            const scaledPageStep = (PAGE_WIDTH + PAGE_GAP) * scale;
+            const scaledPageStep = (this.zoomPanService.pageWidth() + PAGE_GAP) * scale;
             
             // Get position for the incoming page
             const displayedPositions = this.zoomPanService.getPagePositions(effectiveVisible);
@@ -1812,29 +1851,37 @@ export class PageViewerComponent implements AfterViewInit {
 
     // ========== Unit Display ==========
 
-    private displayUnit(options: { fromSwipe?: boolean } = {}): void {
+    private displayUnit(options: { fromSwipe?: boolean; preserveView?: boolean } = {}): void {
         this.asyncNavigationVersion++;
+        // Even an empty/loading display supersedes outstanding loads and render callbacks.
+        const currentVersion = ++this.displayVersion;
 
         const currentUnit = this.unit();
         const content = this.contentRef().nativeElement;
         const fromSwipe = options.fromSwipe ?? false;
+        const allUnits = this.forceUnits();
+        const visiblePages = this.effectiveVisiblePageCount();
+        this.viewStartIndex.set(resolveDisplayStartIndex(allUnits.length, visiblePages, this.viewStartIndex()));
 
         // Close any open interaction overlays when recreating pages
         this.closeInteractionOverlays();
         
         // Note: Shadow pages are cleaned up smartly in renderPages() to avoid flicker
 
-        // Clear existing page DOM elements
-        this.pageElements = clearActivePageElements(content, this.pageElements);
+        // During roster changes Angular retains wrappers whose unit and slot still
+        // match. Keep their contents, then bind every live wrapper after reconciliation.
+        if (!options.preserveView) {
+            this.pageElements = clearActivePageElements(content, this.pageElements);
+            this.currentSvg.set(null);
+        }
         this.displayedUnits.set([]);
 
         this.loadError.set(null);
-        this.currentSvg.set(null);
 
         const displayPreparation = prepareActiveDisplay({
             currentUnit,
-            allUnits: this.forceUnits(),
-            visiblePages: this.effectiveVisiblePageCount(),
+            allUnits,
+            visiblePages,
             viewStartIndex: this.viewStartIndex()
         });
         if (!displayPreparation.canRender) {
@@ -1844,16 +1891,13 @@ export class PageViewerComponent implements AfterViewInit {
 
         this.displayedUnits.set(displayPreparation.displayedUnits);
 
-        // Capture version to detect stale callbacks
-        const currentVersion = ++this.displayVersion;
-
         // Load all displayed units first
         this.loadUnits(this.displayedUnits()).then(() => {
             // Check if this call is still valid
             if (this.displayVersion !== currentVersion) {
                 return;
             }
-            this.renderPages({ fromSwipe });
+            this.renderPages({ fromSwipe, applyCurrentTransform: options.preserveView });
         }).catch((error) => {
             if (this.displayVersion !== currentVersion) {
                 return;
@@ -1862,84 +1906,6 @@ export class PageViewerComponent implements AfterViewInit {
             this.displayedUnits.set([]);
             this.currentSvg.set(null);
             this.setUnitLoadFailure(error);
-        });
-    }
-
-    /**
-     * Update currently displayed pages without clearing/recreating wrappers.
-     * Used to avoid flicker when force units are reordered and the selected unit remains visible.
-     *
-     * Preserves the selected unit's existing wrapper/SVG and updates the other slots in-place.
-     */
-    private updateDisplayedPagesInPlace(options: { preserveSelectedUnitId: string } ): void {
-        const content = this.contentRef().nativeElement;
-        const preserveSelectedUnitId = options.preserveSelectedUnitId;
-
-        if (this.pageElements.length === 0) {
-            this.displayUnit();
-            return;
-        }
-
-        const allUnits = this.forceUnits();
-        const visiblePages = this.effectiveVisiblePageCount();
-        const totalUnits = allUnits.length;
-
-        if (totalUnits === 0) {
-            this.clearPages();
-            return;
-        }
-        const inPlacePreparation = prepareActiveInPlaceUpdate({
-            allUnits,
-            visiblePages,
-            viewStartIndex: this.viewStartIndex(),
-            currentWrapperUnitIds: this.pageElements.map((element) => element.dataset['unitId'] ?? ''),
-            preserveSelectedUnitId
-        });
-        const { expectedUnits, patchPlan } = inPlacePreparation;
-
-        // If wrapper count doesn't match, fall back to full render
-        if (!patchPlan.canPatchInPlace) {
-            this.displayUnit();
-            return;
-        }
-
-        // Capture version to avoid stale async updates
-        const currentVersion = ++this.displayVersion;
-
-        this.loadUnits(expectedUnits).then(() => {
-            if (this.displayVersion !== currentVersion) {
-                return;
-            }
-
-            const displayedUnitIds = new Set<string>();
-            const activeDescriptors = this.rewriteActivePages();
-
-            for (const slotPlan of patchPlan.slots) {
-                const unit = slotPlan.unit;
-                const wrapper = this.pageElements[slotPlan.slotIndex];
-                if (!unit || !wrapper) continue;
-
-                displayedUnitIds.add(unit.id);
-
-                // Preserve the selected unit's existing wrapper/SVG to prevent flicker.
-                if (slotPlan.preserveExisting) {
-                    continue;
-                }
-                this.bindActivePageWrapper({
-                    unit,
-                    wrapper,
-                    slotIndex: slotPlan.slotIndex,
-                    descriptor: activeDescriptors[slotPlan.slotIndex]
-                });
-            }
-
-            // Replace displayed units (model) without rebuilding wrappers
-            this.displayedUnits.set(expectedUnits);
-            this.finalizeActivePageRender(displayedUnitIds, { applyCurrentTransform: true });
-        }).catch((error) => {
-            if (this.displayVersion === currentVersion) {
-                this.setUnitLoadFailure(error);
-            }
         });
     }
 
@@ -1952,7 +1918,7 @@ export class PageViewerComponent implements AfterViewInit {
             return;
         }
 
-        if (currentUnit && this.displayedUnits().some(unit => unit.id === currentUnit.id)) {
+        if (currentUnit && this.displayedUnits().includes(currentUnit)) {
             this.pageViewerPresentation.updateSelectedPageHighlight(this.pageElements, currentUnit.id);
             return;
         }
@@ -1964,7 +1930,7 @@ export class PageViewerComponent implements AfterViewInit {
         this.displayUnit({ fromSwipe: previousUnit === null });
     }
 
-    private renderPages(options: { fromSwipe?: boolean } = {}): void {
+    private renderPages(options: { fromSwipe?: boolean; applyCurrentTransform?: boolean } = {}): void {
         const fromSwipe = options.fromSwipe ?? false;
         const renderVersion = this.displayVersion;
 
@@ -1998,7 +1964,9 @@ export class PageViewerComponent implements AfterViewInit {
                     descriptor
                 });
             });
-            this.finalizeActivePageRender(displayedUnitIds, { fromSwipe });
+            this.finalizeActivePageRender(displayedUnitIds, options.applyCurrentTransform
+                ? { applyCurrentTransform: true }
+                : { fromSwipe });
         }, { injector: this.injector });
     }
 
@@ -2120,8 +2088,6 @@ export class PageViewerComponent implements AfterViewInit {
             displayedPositions
         });
 
-        this.shadowPageCleanups.forEach(cleanup => cleanup());
-        this.shadowPageCleanups = [];
         this.pageViewerState.transientShadowPages.set([]);
 
         for (const element of this.shadowPageElements) {
@@ -2131,10 +2097,7 @@ export class PageViewerComponent implements AfterViewInit {
         }
 
         if (desiredShadows.length === 0) {
-            this.pageViewerState.shadowPages.set([]);
-            this.shadowPageElements = [];
-            this.pageViewerPresentation.setShadowFluffImageVisibility(this.shadowPageElements, false);
-            this.syncZoomPanTransformTargets();
+            this.clearShadowPages();
             return;
         }
         
@@ -2194,7 +2157,7 @@ export class PageViewerComponent implements AfterViewInit {
             targetIndex,
             totalUnits
         });
-        const targetOffset = -pagesToMove * ((PAGE_WIDTH + PAGE_GAP) * scale);
+        const targetOffset = -pagesToMove * ((this.zoomPanService.pageWidth() + PAGE_GAP) * scale);
         const nextViewStartIndex = resolveSwipeViewStartIndex({
             baseDisplayStartIndex: currentStartIndex,
             pagesToMove,
@@ -2316,6 +2279,7 @@ export class PageViewerComponent implements AfterViewInit {
      * Clears all shadow page elements.
      */
     private clearShadowPages(): void {
+        this.shadowRenderVersion++;
         this.cancelScheduledShadowRender();
         const hadDeclarativeShadows = this.pageViewerState.shadowPages().length > 0;
         const hadTransientShadows = this.pageViewerState.transientShadowPages().length > 0;
@@ -2339,6 +2303,10 @@ export class PageViewerComponent implements AfterViewInit {
     }
     
     private clearPages(): void {
+        this.displayVersion++;
+        this.asyncNavigationVersion++;
+        this.currentSvg.set(null);
+        this.loadError.set(null);
         // Clear shadow pages first
         this.clearShadowPages();
         
@@ -2384,7 +2352,7 @@ export class PageViewerComponent implements AfterViewInit {
      * Controlled by the recordSheetCenterPanelContent option.
      */
     private setFluffImageVisibility(): void {
-        const centerContent = this.optionsService.options().printAllOptions.recordSheetCenterPanelContent;
+        const centerContent = this.centerPanelContent();
         const showFluff = centerContent === 'fluffImage';
 
         this.pageViewerPresentation.setDisplayedFluffImageVisibility(this.displayedUnits(), showFluff);
@@ -2428,10 +2396,13 @@ export class PageViewerComponent implements AfterViewInit {
     retryLoad(): void {
         const currentUnit = this.unit();
         if (currentUnit) {
+            const requestVersion = ++this.asyncNavigationVersion;
             this.pageViewerSheetSource.load(currentUnit).then(() => {
+                if (requestVersion !== this.asyncNavigationVersion || currentUnit !== this.unit()) return;
                 this.loadError.set(null);
                 this.displayUnit();
             }).catch((error) => {
+                if (requestVersion !== this.asyncNavigationVersion || currentUnit !== this.unit()) return;
                 this.setUnitLoadFailure(error);
             });
         }
@@ -2498,11 +2469,16 @@ export class PageViewerComponent implements AfterViewInit {
         if (plan.nextViewStartIndex !== this.viewStartIndex()) {
             this.viewStartIndex.set(plan.nextViewStartIndex);
         }
-        if (!plan.needsRedisplay) return;
+        if (!plan.needsRedisplay) {
+            // Off-screen reorders can change the neighbor previews and their navigation targets.
+            this.scheduleRenderShadowPages();
+            return;
+        }
 
         this.closeInteractionOverlays();
-        if (selectedUnitId && plan.preserveSelectedSlot && this.pageElements.length > 0 && !plan.modeChanged) {
-            this.updateDisplayedPagesInPlace({ preserveSelectedUnitId: selectedUnitId });
+        if (selectedUnitId && plan.preserveSelectedSlot
+            && this.pageElements.length === plan.targetDisplayCount && !plan.modeChanged) {
+            this.displayUnit({ preserveView: true });
         } else {
             this.displayUnit();
         }
@@ -2523,12 +2499,6 @@ export class PageViewerComponent implements AfterViewInit {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
-        }
-        
-        // Clean up fluff image effect
-        if (this.fluffImageInjectEffectRef) {
-            this.fluffImageInjectEffectRef.destroy();
-            this.fluffImageInjectEffectRef = null;
         }
         
         // Clean up event listeners

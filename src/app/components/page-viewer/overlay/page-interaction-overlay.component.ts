@@ -151,6 +151,7 @@ export class PageInteractionOverlayComponent {
      * Page mode is the normal multi-page layout; fixed mode is opt-in.
      */
     mode = input<'fixed' | 'page'>('page');
+    showTopRightControls = input(true);
     
     get nativeElement(): HTMLElement {
         return this.host.nativeElement;

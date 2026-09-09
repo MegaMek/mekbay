@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injector, signal, type WritableSignal } from '@angular/core';
+import { computed, Injector, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerComponent } from './page-viewer.component';
@@ -17,7 +17,7 @@ describe('PageViewerComponent rendering', () => {
         Object.assign(viewer, {
             pageElements: [],
             initialRenderComplete: false,
-            zoomPanService: jasmine.createSpyObj('zoomPan', ['setDisplayedPages', 'applyCurrentTransform', 'resetView']),
+            zoomPanService: Object.assign(jasmine.createSpyObj('zoomPan', ['setDisplayedPages', 'applyCurrentTransform', 'resetView']), { pageWidth: () => 612, pageHeight: () => 792 }),
             pageViewerNavigation: jasmine.createSpyObj('navigation', ['consumeSelectionRedisplaySuppression']),
             pageViewerPresentation: jasmine.createSpyObj('presentation', ['updateSelectedPageHighlight']),
             displayedUnits: signal([]),
@@ -32,7 +32,7 @@ describe('PageViewerComponent rendering', () => {
             'cleanupUnusedCanvasOverlays', 'cleanupUnusedInteractionOverlays', 'syncZoomPanTransformTargets',
             'updateDimensions', 'restoreViewState', 'setFluffImageVisibility', 'scheduleRenderShadowPages',
             'flushQueuedDirectionalNavigation', 'saveViewState', 'displayUnit',
-            'clearPages', 'closeInteractionOverlays', 'updateDisplayedPagesInPlace',
+            'clearPages', 'closeInteractionOverlays',
         ] as const) {
             spyOn(viewer as never, method);
         }
@@ -123,6 +123,16 @@ describe('PageViewerComponent rendering', () => {
         expect(viewer['displayUnit']).toHaveBeenCalledOnceWith({ fromSwipe: true });
     });
 
+    it('regenerates a visible sheet when construction replaces the member under the same roster ID', () => {
+        const previousUnit = { id: 'unit-a' } as PageViewerMember;
+        const currentUnit = { id: 'unit-a' } as PageViewerMember;
+        viewer['displayedUnits'].set([previousUnit]);
+        Object.assign(viewer, { forceUnits: signal([currentUnit]) });
+        viewer['applySelectionChange'](previousUnit, currentUnit);
+        expect(viewer['displayUnit']).toHaveBeenCalledOnceWith({ fromSwipe: false });
+        expect(viewer['pageViewerPresentation'].updateSelectedPageHighlight).not.toHaveBeenCalled();
+    });
+
     it('saves the old viewport without redisplaying a selection consumed by navigation', () => {
         const previousUnit = { id: 'unit-a' } as PageViewerMember;
         const currentUnit = { id: 'unit-b' } as PageViewerMember;
@@ -157,8 +167,7 @@ describe('PageViewerComponent rendering', () => {
 
         expect(viewer['viewStartIndex']()).toBe(1);
         expect(viewer['closeInteractionOverlays']).toHaveBeenCalled();
-        expect(viewer['updateDisplayedPagesInPlace']).toHaveBeenCalledOnceWith({ preserveSelectedUnitId: 'b' });
-        expect(viewer['displayUnit']).not.toHaveBeenCalled();
+        expect(viewer['displayUnit']).toHaveBeenCalledOnceWith({ preserveView: true });
     });
 
     it('rebuilds the display when the selected sheet has no slot to preserve', () => {
@@ -172,8 +181,42 @@ describe('PageViewerComponent rendering', () => {
 
         viewer['handleForceUnitsChanged'](2);
 
-        expect(viewer['displayUnit']).toHaveBeenCalled();
-        expect(viewer['updateDisplayedPagesInPlace']).not.toHaveBeenCalled();
+        expect(viewer['displayUnit']).toHaveBeenCalledOnceWith();
+    });
+
+    it('refreshes shadow neighbors when only off-screen units change order', () => {
+        const units = ['a', 'b', 'c'].map(id => ({ id }) as PageViewerMember);
+        Object.assign(viewer, {
+            forceUnits: signal([units[0], units[2], units[1]]),
+            displayedUnits: signal([units[0]]),
+            unit: signal(units[0]),
+            pageElements: [document.createElement('div')],
+        });
+
+        viewer['handleForceUnitsChanged'](3);
+
+        expect(viewer['scheduleRenderShadowPages']).toHaveBeenCalledTimes(1);
+        expect(viewer['displayUnit']).not.toHaveBeenCalled();
+    });
+
+    it('restores the sheets when resizing or an option change disables an ongoing swipe', () => {
+        Object.assign(viewer, { isSwiping: true, swipeAllowed: () => false });
+        spyOn(viewer as never, 'cleanupSwipeState');
+
+        viewer['onSwipeEnd'](100, 0);
+
+        expect(viewer['cleanupSwipeState']).toHaveBeenCalledTimes(1);
+        expect(viewer['displayUnit']).toHaveBeenCalledOnceWith({ fromSwipe: true });
+    });
+
+    it('ignores a swipe-end event after its session was already cancelled', () => {
+        Object.assign(viewer, { isSwiping: false });
+        spyOn(viewer as never, 'cleanupSwipeState');
+
+        viewer['onSwipeEnd'](100, 0);
+
+        expect(viewer['cleanupSwipeState']).not.toHaveBeenCalled();
+        expect(viewer['displayUnit']).not.toHaveBeenCalled();
     });
 
     describe('shadow navigation', () => {
@@ -185,7 +228,7 @@ describe('PageViewerComponent rendering', () => {
                 pageViewerState: { transientShadowPages: signal([]) },
                 forceWorkspace: jasmine.createSpyObj('workspace', ['selectUnit']),
                 optionsService: { options: () => ({ printAllOptions: { recordSheetCenterPanelContent: 'referenceTables' } }) },
-                zoomPanService: { scale: () => 1 },
+                zoomPanService: { scale: () => 1, pageWidth: () => 612, pageHeight: () => 792 },
                 swipeWrapperRef: () => ({ nativeElement: document.createElement('div') }),
                 swipeVersion: 0,
             });
@@ -213,7 +256,7 @@ describe('PageViewerComponent rendering', () => {
 
         it('preserves leftward fallback without starting a transition when the direction is missing', () => {
             const units = Array.from({ length: 5 }, (_, index) => ({ id: String(index), recordSheet: () => null }) as PageViewerMember);
-            Object.assign(viewer, { forceUnits: signal(units), zoomPanService: { scale: () => 0.5 } });
+            Object.assign(viewer, { forceUnits: signal(units), zoomPanService: { scale: () => 0.5, pageWidth: () => 612, pageHeight: () => 792 } });
             viewer['viewStartIndex'].set(2);
 
             viewer['navigateToShadowPage'](units[0], 0, document.createElement('div'), 'keyboard');
@@ -285,7 +328,7 @@ describe('PageViewerComponent change tracking', () => {
         expect((viewer['handleForceUnitsChanged'] as jasmine.Spy).calls.allArgs()).toEqual([[2], [3], [2]]);
         units.set([{ id: 'c' }, { id: 'a' }] as PageViewerMember[]);
         TestBed.tick();
-        expect(viewer['handleForceUnitsChanged']).toHaveBeenCalledTimes(3);
+        expect(viewer['handleForceUnitsChanged']).toHaveBeenCalledTimes(4);
     });
 
     it('redisplays once for a combined layout and ownership change', () => {
@@ -322,5 +365,58 @@ describe('PageViewerComponent change tracking', () => {
         readOnly.set(false);
         TestBed.tick();
         expect(viewer['displayUnit']).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('PageViewerComponent presentation work', () => {
+    it('updates names and center panels only when their own settings or sheets change', () => {
+        const options = signal({ name: 'full', center: 'referenceTables', brushSize: 4 });
+        const a = { id: 'a', recordSheets: () => [document.createElementNS('http://www.w3.org/2000/svg', 'svg')] };
+        const members = signal([a]);
+        const displayed = signal([a]);
+        const names = jasmine.createSpy('applyToRecordSheet').and.callFake(() => options());
+        const presentation = jasmine.createSpyObj('presentation', ['setDisplayedFluffImageVisibility', 'setShadowFluffImageVisibility']);
+        const viewer = Object.create(PageViewerComponent.prototype) as PageViewerComponent;
+        Object.assign(viewer, {
+            injector: TestBed.inject(Injector), forceUnits: members, displayedUnits: displayed, shadowPageElements: [],
+            unitNameFormat: computed(() => options().name), centerPanelContent: computed(() => options().center),
+            unitNames: { applyToRecordSheet: names }, pageViewerPresentation: presentation,
+        });
+        viewer['watchSheetPresentation']();
+        TestBed.tick();
+        names.calls.reset();
+        presentation.setDisplayedFluffImageVisibility.calls.reset();
+        options.update(value => ({ ...value, brushSize: 8 }));
+        TestBed.tick();
+        expect(names).not.toHaveBeenCalled();
+        expect(presentation.setDisplayedFluffImageVisibility).not.toHaveBeenCalled();
+        options.update(value => ({ ...value, name: 'short' }));
+        TestBed.tick();
+        expect(names).toHaveBeenCalledTimes(1);
+        options.update(value => ({ ...value, center: 'fluffImage' }));
+        TestBed.tick();
+        expect(presentation.setDisplayedFluffImageVisibility).toHaveBeenCalledOnceWith([a], true);
+        displayed.set([]);
+        TestBed.tick();
+        expect(presentation.setDisplayedFluffImageVisibility).toHaveBeenCalledWith([], true);
+    });
+
+    it('retains the displayed-unit signal across unchanged swipe frames but publishes replacements', () => {
+        const a = { id: 'a' } as PageViewerMember;
+        const units = [a];
+        const viewer = Object.create(PageViewerComponent.prototype) as PageViewerComponent;
+        const displayed = signal(units);
+        Object.assign(viewer, {
+            forceUnits: signal(units), displayedUnits: displayed,
+            pageViewerSwipeDom: { resolveDisplayedUnits: () => [...viewer['forceUnits']()] },
+            cleanupUnusedCanvasOverlays: () => {}, cleanupUnusedInteractionOverlays: () => {},
+        });
+        const options = { addOnly: false, displayedUnitIds: new Set(['a']), winningUnitIndices: [0] };
+        viewer['finalizeSwipeSlotVisibility'](options);
+        expect(displayed()).toBe(units);
+        const replacement = { id: 'a' } as PageViewerMember;
+        Object.assign(viewer, { forceUnits: signal([replacement]) });
+        viewer['finalizeSwipeSlotVisibility'](options);
+        expect(displayed()).toEqual([replacement]);
     });
 });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { TestBed } from '@angular/core/testing';
 
 import { PageViewerSwipeDomService } from './page-viewer-swipe-dom.service';
@@ -16,7 +17,7 @@ describe('PageViewerSwipeDomService', () => {
 
     beforeEach(() => {
         TestBed.configureTestingModule({
-            providers: [PageViewerSwipeDomService]
+            providers: [PageViewerZoomPanService, PageViewerSwipeDomService]
         });
 
         service = TestBed.inject(PageViewerSwipeDomService);
@@ -168,6 +169,7 @@ describe('PageViewerSwipeDomService', () => {
                 decision: {
                     action: 'attach' as const,
                     overlayMode: 'page' as const,
+                    showTopRightControls: true,
                     updateVisualState: true,
                     isSelected: true,
                     showNeighborVisible: false
@@ -193,8 +195,6 @@ describe('PageViewerSwipeDomService', () => {
             renderUpdate,
             resolveUnit: () => unit,
             scale: 1,
-            visiblePages: 1,
-            readOnly: false,
             showFluff: true,
             performanceMode: false,
             setPageWrapperContentState,
@@ -238,6 +238,7 @@ describe('PageViewerSwipeDomService', () => {
                 decision: {
                     action: 'attach' as const,
                     overlayMode: 'page' as const,
+                    showTopRightControls: false,
                     updateVisualState: true,
                     isSelected: false,
                     showNeighborVisible: true
@@ -261,8 +262,6 @@ describe('PageViewerSwipeDomService', () => {
             renderUpdate,
             resolveUnit: () => unit,
             scale: 1,
-            visiblePages: 1,
-            readOnly: false,
             showFluff: false,
             performanceMode: true,
             setPageWrapperContentState,
@@ -363,6 +362,7 @@ describe('PageViewerSwipeDomService', () => {
             decision: {
                 action: 'attach',
                 overlayMode: 'page',
+                showTopRightControls: true,
                 updateVisualState: true,
                 isSelected: true,
                 showNeighborVisible: false
@@ -382,14 +382,12 @@ describe('PageViewerSwipeDomService', () => {
         const getOrCreateInteractionOverlay = jasmine.createSpy('getOrCreateInteractionOverlay');
         const unit = { id: 'unit-0' } as never;
 
-        const displayedUnitIds = service.applyInstructions({
+        const options: Parameters<PageViewerSwipeDomService['applyInstructions']>[0] = {
             slotStates,
             slotInstructions: [instruction],
             resolveUnit: () => unit,
             attachedUnitToSlotMap,
             scale: 1,
-            visiblePages: 1,
-            readOnly: false,
             showFluff: true,
             performanceMode: false,
             setPageWrapperContentState,
@@ -401,7 +399,8 @@ describe('PageViewerSwipeDomService', () => {
             applyFluffImageVisibilityToSvg,
             bindWrapperInteractiveLayers,
             getOrCreateInteractionOverlay
-        });
+        };
+        const displayedUnitIds = service.applyInstructions(options);
 
         expect(Array.from(displayedUnitIds)).toEqual(['unit-0']);
         expect(slot.dataset['unitId']).toBe('unit-0');
@@ -412,8 +411,18 @@ describe('PageViewerSwipeDomService', () => {
         expect(setSwipeNeighborVisibilityState).toHaveBeenCalledWith(slot, false);
         expect(attachSvgToWrapper).toHaveBeenCalled();
         expect(applyFluffImageVisibilityToSvg).toHaveBeenCalledWith(svg, true);
-        expect(bindWrapperInteractiveLayers).toHaveBeenCalledWith(slot, unit, svg, 'page');
+        expect(bindWrapperInteractiveLayers).toHaveBeenCalledWith(slot, unit, svg, 'page', true);
         expect(getOrCreateInteractionOverlay).not.toHaveBeenCalled();
+
+        instruction.decision.action = 'reuse-existing';
+        instruction.decision.showTopRightControls = false;
+        service.applyInstructions(options);
+        expect(getOrCreateInteractionOverlay).toHaveBeenCalledWith(slot, unit, 'page', false);
+        instruction.decision.overlayMode = 'fixed';
+        instruction.decision.showTopRightControls = true;
+        service.applyInstructions(options);
+        expect(getOrCreateInteractionOverlay).toHaveBeenCalledWith(slot, unit, 'fixed', true);
+        expect(attachSvgToWrapper).toHaveBeenCalledTimes(1);
     });
 
     it('resolves the next displayed units from winning unit indices when not in add-only mode', () => {

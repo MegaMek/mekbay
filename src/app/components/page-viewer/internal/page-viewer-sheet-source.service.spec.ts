@@ -10,6 +10,7 @@ import { CBTForceMember } from '../../../models/force-member.model';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { OptionsService } from '../../../services/options.service';
+import { UnitFluffImageService } from '../../../services/catalogs/unit-fluff-image.service';
 import type { RecordSheetPipLayout } from '../../../models/options.model';
 import { RecordSheetSourceService } from '../../../services/record-sheet-source.service';
 import { RecordSheetSvgGenerator } from '../../../utils/sheets/record-sheet-svg-generator';
@@ -19,10 +20,10 @@ import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service
 describe('PageViewerSheetSourceService', () => {
     let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let service: PageViewerSheetSourceService;
-    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout }>({ recordSheetPipLayout: 'classic' });
+    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; printAllOptions: { paperSize: 'a4' | 'letter' } }>({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' } });
 
     beforeEach(() => {
-        options.set({ recordSheetPipLayout: 'classic' });
+        options.set({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' } });
         source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
         source.load.and.callFake(async (entity, options) => ({
             svgs: [await RecordSheetSvgGenerator.generate(entity, options)],
@@ -30,11 +31,34 @@ describe('PageViewerSheetSourceService', () => {
         TestBed.configureTestingModule({
             providers: [
                 PageViewerSheetSourceService,
+                { provide: UnitFluffImageService, useValue: { initialize: async () => undefined, resolveEntityUrl: () => null } },
                 { provide: RecordSheetSourceService, useValue: source },
                 { provide: OptionsService, useValue: { options } },
             ],
         });
         service = TestBed.inject(PageViewerSheetSourceService);
+    });
+
+    it('regenerates a cached member when global paper size changes', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        await service.load(member);
+        const letter = member.recordSheet();
+        options.update(value => ({ ...value, printAllOptions: { paperSize: 'a4' } }));
+        await service.load(member);
+        expect(member.recordSheet()).not.toBe(letter);
+        expect(member.recordSheet()?.getAttribute('viewBox')).toBe('0 0 595.276 841.89');
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, format: 'a4', pageFormat: 'a4', fluffImageUrl: null });
+    });
+
+    it('regenerates a cached sheet when local artwork changes or is purged', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        const image = spyOn(TestBed.inject(UnitFluffImageService), 'resolveEntityUrl').and.returnValue('blob:first');
+        await service.load(member); const before = member.recordSheet();
+        image.and.returnValue('blob:replacement');
+        await service.load(member); expect(member.recordSheet()).not.toBe(before);
+        const replaced = member.recordSheet(); image.and.returnValue(null);
+        await service.load(member); expect(member.recordSheet()).not.toBe(replaced);
+        expect(source.load.calls.mostRecent().args[1]?.fluffImageUrl).toBeNull();
     });
 
     it('generates and retains a Mek sheet from the admitted Entity snapshot', async () => {
@@ -113,10 +137,10 @@ describe('PageViewerSheetSourceService', () => {
         const member = createMember('Tank', new TestTankEntity());
         await service.load(member);
         const first = member.recordSheet();
-        options.set({ recordSheetPipLayout: 'rail' });
+        options.update(value => ({ ...value, recordSheetPipLayout: 'rail' }));
         await service.load(member);
         expect(member.recordSheet()).not.toBe(first);
-        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail' });
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, format: 'letter', pageFormat: 'letter', fluffImageUrl: null });
     });
 
     it('allows the member to retry after generation fails', async () => {

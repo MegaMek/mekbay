@@ -9,6 +9,10 @@ import type { RecordSheetInteraction } from '../record-sheet-interaction';
 import type { CBTEquipmentChoiceCommand } from '../../../models/cbt-force.types';
 import type { ComponentId } from '../../../models/entity/entity-identifiers';
 import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../../../models/entity/testing/test-equipment-registry';
+import { EntityMountedEquipment } from '../../../models/entity/types/equipment';
+import { AmmoEquipment, WeaponEquipment } from '../../../models/equipment.model';
+import { SetAmmoDialogComponent } from '../../set-ammo-dialog/set-ammo.dialog.component';
 import { CBTForceMember,type CBTMekForceMember } from '../../../models/force-member.model';
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
@@ -271,6 +275,48 @@ describe('PageViewerMekInteractionService', () => {
         await settleAsyncHandlers();
         expect(force.dispatchEquipmentChoice).toHaveBeenCalledWith(command, editContext(1));
     });
+
+    for (const outcome of ['selected', 'cancelled', 'stale', 'intrinsic'] as const) {
+        it(`opens Set Ammo for the clicked slot and handles a ${outcome} selection`, async () => {
+            const ammo = new AmmoEquipment({ id: 'standard', name: 'AC/20 Ammo', type: 'ammo',
+                ammo: { type: 'AC', rackSize: 20, shots: 5 } });
+            const flak = new AmmoEquipment({ id: 'flak', name: 'Flak AC/20 Ammo', type: 'ammo',
+                ammo: { type: 'AC', rackSize: 20, shots: 5, munitionType: ['M_FLAK'] } });
+            const entity = new TestBipedMekEntity(createTestEquipmentRegistry({ standard: ammo, flak }));
+            const intrinsic = outcome === 'intrinsic';
+            const equipment = intrinsic ? new WeaponEquipment({ id: 'one-shot-ac', name: 'One-Shot AC/20', type: 'weapon',
+                flags: ['F_ONE_SHOT'], weapon: { ammoType: 'AC', rackSize: 20 } }) : ammo;
+            const mount = new EntityMountedEquipment({ mountId: 'ammo-1', equipmentId: equipment.id, equipment,
+                allocation: { kind: 'location', location: 'CT', placements: [{ location: 'CT', slotIndex: 0 }] },
+                rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+            entity.setEquipment([mount]);
+            const source = force.getUnitSnapshot(member.id);
+            force.getUnitSnapshot.and.callFake(() => ({
+                ...source, entity, ruleset: 'core-2026', editContext: editContext(revision),
+                index: { ...source.index, components: new Map([['ammo-1', { kind: 'equipment', mount }]]) },
+                query: { ...source.query, ammoEquipment: () => ammo, remainingAmmo: () => intrinsic ? 1 : 3 },
+            }));
+            const closed = new Subject<{ name: string; quantity: number } | null>();
+            dialogs.createDialog.and.returnValue({ closed } as never);
+            service.handle(member, {
+                kind: 'critical', slotId: 'slot-ct-0', componentIds: ['ammo-1'], button: 'primary', context: editContext(1),
+            } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+            choiceConfig!.onPick(choiceConfig!.values.find(choice => choice.label === 'Set Ammo')!);
+            expect(dialogs.createDialog).toHaveBeenCalledWith(SetAmmoDialogComponent, {
+                data: jasmine.objectContaining({ originalAmmo: ammo, currentAmmo: ammo, originalTotalAmmo: intrinsic ? 1 : 5,
+                    quantity: intrinsic ? 1 : 3, maxQuantity: intrinsic ? 1 : 5, ammoOptions: jasmine.arrayContaining([ammo, flak]) }),
+            });
+            expect(TestBed.inject(PageViewerOverlayService).openEquipment).not.toHaveBeenCalled();
+            if (outcome === 'stale') revision++;
+            closed.next(outcome === 'cancelled' ? null : { name: flak.id, quantity: intrinsic ? 1 : 2 });
+            closed.complete();
+            await settleAsyncHandlers();
+            if (outcome === 'selected' || intrinsic) expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith(member.id, {
+                type: 'configure-ammo-source', componentId: 'ammo-1', munitionKey: 'flak', remaining: intrinsic ? 1 : 2,
+            }, editContext(1));
+            else expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+        });
+    }
 
     it('ignores an unhittable critical interaction even if stale SVG emits it', () => {
         const slot = currentSnapshot.criticalSlots[0]!;

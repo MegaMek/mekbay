@@ -54,6 +54,7 @@ import { clusterTableForMekEntity,type MekHitArc } from '../../../utils/record-s
 import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
+import { mountedAmmoDialogData, SetAmmoDialogComponent } from '../../set-ammo-dialog/set-ammo.dialog.component';
 import type { PickerChoice,PickerInstance,PickerTargetType } from '../../picker/picker.interface';
 import { isChoicePickerInstance } from '../../picker/picker.interface';
 import {
@@ -473,7 +474,7 @@ export class PageViewerMekInteractionService {
                 disabled: component.ammo.remaining <= 0,
                 keepOpen: true,
             });
-            values.push({ label: 'Set Ammo', value: 'open-ammo' });
+            values.push({ label: 'Set Ammo', value: `set-ammo:${component.componentId}` });
         }
         for (const handler of member.force.getEquipmentInteractions(member.id)) {
             if (!interaction.componentIds.includes(handler.componentId)) continue;
@@ -499,8 +500,16 @@ export class PageViewerMekInteractionService {
                 interaction,
                 value === 'hit' ? 1 : -1,
             );
-        } else if (value === 'open-ammo') {
-            this.overlays.openEquipment(member.id, new Event('click'), 'ammo');
+        } else if (value.startsWith('set-ammo:')) {
+            const componentId = value.slice('set-ammo:'.length) as ComponentId;
+            const current = this.currentMekUnit(member, interaction.context);
+            const data = current && mountedAmmoDialogData(current, componentId);
+            if (!data) return null;
+            const ref = this.dialogs.createDialog<{ name: string; quantity: number } | null>(SetAmmoDialogComponent, { data });
+            const selection = await firstValueFrom(ref.closed);
+            if (selection && this.currentMekUnit(member, interaction.context)) accepted = await this.dispatchCommand(member, {
+                type: 'configure-ammo-source', componentId, munitionKey: selection.name, remaining: selection.quantity,
+            }, interaction.context);
         } else if (value.startsWith('ammo-add:') || value.startsWith('ammo-spend:')) {
             const componentId = value.slice(value.indexOf(':') + 1) as ComponentId;
             const current = this.currentMekUnit(member, interaction.context);

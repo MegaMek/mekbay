@@ -3,17 +3,12 @@
 // Author: Drake
 
 import { resolveDisplayedUnits } from './page-viewer-display-window';
-import type { PageViewerInPlaceUpdatePlan, PageViewerMember } from './types';
+import type { PageViewerMember } from './types';
 
 export interface PageViewerActiveDisplayPreparation {
     canRender: boolean;
     displayedUnits: PageViewerMember[];
     loadError: string | null;
-}
-
-export interface PageViewerActiveInPlacePreparation {
-    expectedUnits: PageViewerMember[];
-    patchPlan: PageViewerInPlaceUpdatePlan;
 }
 
 export function clearActivePageElements(content: HTMLDivElement, pageElements: readonly HTMLDivElement[]): HTMLDivElement[] {
@@ -55,47 +50,5 @@ export function prepareActiveDisplay(options: {
         canRender: true,
         displayedUnits: resolveDisplayedUnits(allUnits, visiblePages, viewStartIndex).units,
         loadError: null
-    };
-}
-
-export function prepareActiveInPlaceUpdate(options: {
-    allUnits: readonly PageViewerMember[];
-    visiblePages: number;
-    viewStartIndex: number;
-    currentWrapperUnitIds: readonly string[];
-    preserveSelectedUnitId: string;
-}): PageViewerActiveInPlacePreparation {
-    const { allUnits, visiblePages, viewStartIndex, currentWrapperUnitIds, preserveSelectedUnitId } = options;
-    const expectedUnits = resolveDisplayedUnits(allUnits, visiblePages, viewStartIndex).units;
-
-    return {
-        expectedUnits,
-        patchPlan: buildInPlaceUpdatePlan({
-            expectedUnits,
-            currentWrapperUnitIds,
-            preserveSelectedUnitId
-        })
-    };
-}
-
-function buildInPlaceUpdatePlan(options: {
-    expectedUnits: readonly PageViewerMember[];
-    currentWrapperUnitIds: readonly string[];
-    preserveSelectedUnitId: string;
-}): PageViewerInPlaceUpdatePlan {
-    const { expectedUnits, currentWrapperUnitIds, preserveSelectedUnitId } = options;
-    if (expectedUnits.length !== currentWrapperUnitIds.length) {
-        return { canPatchInPlace: false, slots: [] };
-    }
-
-    const preservedSlotIndex = currentWrapperUnitIds.indexOf(preserveSelectedUnitId);
-    return {
-        canPatchInPlace: true,
-        slots: expectedUnits.map((unit, slotIndex) => ({
-            slotIndex,
-            unit,
-            preserveExisting: slotIndex === preservedSlotIndex
-                && unit.id === preserveSelectedUnitId,
-        })),
     };
 }

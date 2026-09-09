@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { clearActivePageElements, prepareActiveDisplay, prepareActiveInPlaceUpdate } from './page-viewer-active-display';
+import { clearActivePageElements, prepareActiveDisplay } from './page-viewer-active-display';
 
 function createUnit(id: string, hasSvg: boolean = true) {
     return {
@@ -65,47 +65,4 @@ describe('page-viewer active-display', () => {
         });
     });
 
-    it('builds the in-place patch plan for the current wrapper ids', () => {
-        const units = [createUnit('a'), createUnit('b')];
-
-        const preparation = prepareActiveInPlaceUpdate({
-            allUnits: units,
-            visiblePages: 2,
-            viewStartIndex: 0,
-            currentWrapperUnitIds: ['a', 'b'],
-            preserveSelectedUnitId: 'b'
-        });
-
-        expect(preparation.expectedUnits).toEqual(units);
-        expect(preparation.patchPlan.canPatchInPlace).toBeTrue();
-        expect(preparation.patchPlan.slots.map((slot) => slot.preserveExisting)).toEqual([false, true]);
-    });
-
-    it('refuses in-place patching when wrapper and unit counts differ', () => {
-        const unit = createUnit('a');
-
-        const preparation = prepareActiveInPlaceUpdate({
-            allUnits: [unit],
-            visiblePages: 1,
-            viewStartIndex: 0,
-            currentWrapperUnitIds: [],
-            preserveSelectedUnitId: 'a',
-        });
-
-        expect(preparation.patchPlan).toEqual({ canPatchInPlace: false, slots: [] });
-    });
-
-    it('replaces every slot when the selected unit moved to another wrapper', () => {
-        const units = [createUnit('b'), createUnit('a')];
-
-        const preparation = prepareActiveInPlaceUpdate({
-            allUnits: units,
-            visiblePages: 2,
-            viewStartIndex: 0,
-            currentWrapperUnitIds: ['a', 'b'],
-            preserveSelectedUnitId: 'b',
-        });
-
-        expect(preparation.patchPlan.slots.map(slot => slot.preserveExisting)).toEqual([false, false]);
-    });
 });

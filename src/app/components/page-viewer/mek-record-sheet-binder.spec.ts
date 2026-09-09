@@ -18,6 +18,36 @@ import type { RecordSheetInteraction } from './record-sheet-interaction';
 const editContext = createUnitEditContextFixture();
 
 describe('Mek record-sheet binder', () => {
+    it('marks a custom ammo slot and restores its ordinary label and styling when the loadout resets', () => {
+        const svg = sheet();
+        const original = snapshot();
+        const host = document.createElement('div');
+        svg.classList.add('mekbay-sheet');
+        host.append(svg);
+        document.body.append(host);
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, original);
+        const slot = svg.querySelector('.critSlot')!;
+        binding.render({
+            ...original,
+            criticalSlots: original.criticalSlots.map(slot => ({
+                ...slot, components: slot.components.map(component => ({
+                    ...component, ammo: { ...component.ammo!, displayName: 'Flak AC/20 Ammo', custom: true, remaining: 0 },
+                })),
+            })),
+        });
+        expect(slot.querySelector('text')?.textContent).toBe('*Ammo (Flak AC/20) 0');
+        expect(slot.classList.contains('customAmmoLoadout')).toBeTrue();
+        expect(getComputedStyle(slot.querySelector('text')!).fill).toBe('rgb(0, 0, 255)');
+        host.classList.add('night-mode');
+        expect(getComputedStyle(slot.querySelector('text')!).fill).toBe('rgb(187, 187, 255)');
+        host.classList.remove('night-mode');
+        binding.render(original);
+        expect(slot.querySelector('text')?.textContent).toBe('Ammo (AC/20) 4');
+        expect(slot.classList.contains('customAmmoLoadout')).toBeFalse();
+        binding.destroy();
+        host.remove();
+    });
+
     it('opens ammo loadout from the full ammo row after live reflow and supports keyboard activation', () => {
         const svg = sheet();
         const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;

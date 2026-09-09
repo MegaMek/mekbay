@@ -261,11 +261,12 @@ export function bindMekRecordSheet(
             const label = slot.components.length === 0
                 ? 'Roll Again'
                 : slot.components.map(component => component.ammo
-                    ? `Ammo (${recordSheetAmmoName(component.ammo.displayName)}) ${component.ammo.remaining}`
+                    ? `${component.ammo.custom ? '*' : ''}Ammo (${recordSheetAmmoName(component.ammo.displayName)}) ${component.ammo.remaining}`
                     : component.label).join(' / ');
             const labelElement = element.querySelector<SVGTextElement>('text');
             if (labelElement) labelElement.textContent = label;
             else element.textContent = label;
+            element.classList.toggle('customAmmoLoadout', slot.components.some(component => component.ammo?.custom));
             element.removeAttribute('uid');
             element.removeAttribute('totalAmmo');
             element.setAttribute('data-mekbay-slot-id', slot.slotId);
@@ -1294,7 +1295,6 @@ function renderInventoryHitModifier(
     rect?.setAttribute('display', visible ? 'block' : 'none');
     text?.setAttribute('display', visible ? 'block' : 'none');
     if (text) text.textContent = visible ? value : '';
-    element.classList.remove('weakenedHitMod');
 }
 
 const INVENTORY_RANGE_BUTTONS = Object.freeze([
@@ -2223,7 +2223,7 @@ function resetUnitDataLayout(
     svg.querySelectorAll<SVGElement>(manifest.selectors.criticalSlot).forEach(element => {
         const generatedEmptySlot = element.dataset['mekbayEmptySlot'] === '1';
         element.style.display = generatedEmptySlot ? '' : 'none';
-        element.classList.remove('damaged', 'pending', 'willDamage', 'willRepair', 'armored', 'disabled');
+        element.classList.remove('damaged', 'pending', 'willDamage', 'willRepair', 'armored', 'disabled', 'customAmmoLoadout');
         element.classList.remove('interactive');
         element.removeAttribute('tabindex');
         element.removeAttribute('hittable');

@@ -2,11 +2,60 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { Overlay } from '@angular/cdk/overlay';
 import { TestBipedMekEntity,TestTankEntity } from '../../../models/entity/testing/test-entities';
 import type { CBTForceMember,CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTUnitViewMode } from '../../../models/options.model';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
+import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
+import { DialogsService } from '../../../services/dialogs.service';
+import { ForceWorkspaceStateService } from '../../../services/force-workspace-state.service';
+import { OptionsService } from '../../../services/options.service';
+import { OverlayManagerService } from '../../../services/overlay-manager.service';
+import { ToastService } from '../../../services/toast.service';
+import { PageViewerStateService } from '../internal/page-viewer-state.service';
+
+describe('PageInteractionOverlay toolbar visibility', () => {
+    it('removes inactive toolbars from the DOM and restores them independently of end-phase controls', () => {
+        TestBed.configureTestingModule({
+            imports: [PageInteractionOverlayComponent],
+            providers: [
+                PageViewerStateService,
+                { provide: OptionsService, useValue: { options: signal({ cbtUnitViewMode: 'sheet' }) } },
+                { provide: DialogsService, useValue: {} },
+                { provide: ForceWorkspaceStateService, useValue: {} },
+                { provide: Overlay, useValue: {} },
+                { provide: OverlayManagerService, useValue: { closeAllManagedOverlays: () => {} } },
+                { provide: ToastService, useValue: {} },
+                { provide: CBTAutomationToastService, useValue: {
+                    setVisibleUnitIds: () => {}, clearVisibleUnitIds: () => {},
+                } },
+            ],
+        });
+        const fixture = TestBed.createComponent(PageInteractionOverlayComponent);
+        fixture.componentInstance.dirtyPhase = signal(true);
+        const element: HTMLElement = fixture.nativeElement;
+
+        for (const mode of ['page', 'fixed']) {
+            fixture.componentRef.setInput('mode', mode);
+            fixture.componentRef.setInput('showTopRightControls', true);
+            fixture.detectChanges();
+            expect(element.querySelector('.top-right-controls')).not.toBeNull();
+            fixture.componentRef.setInput('showTopRightControls', false);
+            fixture.detectChanges();
+            expect(element.querySelector('.top-right-controls')).toBeNull();
+            expect(element.querySelector('.end-phase-button')).not.toBeNull();
+        }
+
+        fixture.componentRef.setInput('showTopRightControls', true);
+        TestBed.inject(PageViewerStateService).beginInventoryDialog();
+        fixture.detectChanges();
+        expect(element.querySelector('.top-right-controls')).toBeNull();
+        expect(element.querySelector('.end-phase-button')).toBeNull();
+    });
+});
 
 describe('PageInteractionOverlay view selection', () => {
     it('writes toolbar changes to the persisted view option and closes overlays', () => {

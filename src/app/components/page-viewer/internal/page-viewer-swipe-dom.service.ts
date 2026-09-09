@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 
-import { PAGE_GAP, PAGE_HEIGHT, PAGE_WIDTH } from '../page-viewer-zoom-pan.service';
+import { PAGE_GAP, PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import type { PageViewerSwipeSlotExtensionPlan } from './page-viewer-swipe-slot';
 import type { PageViewerMember, PageViewerOverlayMode } from './types';
 import type { PageViewerSwipeRendererInstruction, PageViewerSwipeRendererSlotState, PageViewerSwipeRendererUpdate } from './page-viewer-swipe-renderer';
 
 @Injectable()
 export class PageViewerSwipeDomService {
+    private readonly zoomPan = inject(PageViewerZoomPanService);
     setupSlots(options: {
         content: HTMLDivElement;
         existingSwipeSlots: readonly HTMLDivElement[];
@@ -212,8 +213,6 @@ export class PageViewerSwipeDomService {
         renderUpdate: Pick<PageViewerSwipeRendererUpdate, 'clearSlotIndices' | 'attachedUnitToSlotMap' | 'slotInstructions'>;
         resolveUnit: (unitIndex: number) => PageViewerMember | undefined;
         scale: number;
-        visiblePages: number;
-        readOnly: boolean;
         showFluff: boolean;
         performanceMode: boolean;
         setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
@@ -223,8 +222,8 @@ export class PageViewerSwipeDomService {
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
         applyFluffImageVisibilityToSvg: (svg: SVGSVGElement, showFluff: boolean) => void;
-        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode) => void;
-        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: PageViewerMember, overlayMode: PageViewerOverlayMode) => unknown;
+        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode, showTopRightControls: boolean) => void;
+        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: PageViewerMember, overlayMode: PageViewerOverlayMode, showTopRightControls: boolean) => unknown;
     }): Set<string> {
         const {
             addOnly,
@@ -233,8 +232,6 @@ export class PageViewerSwipeDomService {
             renderUpdate,
             resolveUnit,
             scale,
-            visiblePages,
-            readOnly,
             showFluff,
             performanceMode,
             setPageWrapperContentState,
@@ -266,8 +263,6 @@ export class PageViewerSwipeDomService {
             resolveUnit,
             attachedUnitToSlotMap: renderUpdate.attachedUnitToSlotMap,
             scale,
-            visiblePages,
-            readOnly,
             showFluff,
             performanceMode,
             setPageWrapperContentState,
@@ -352,8 +347,6 @@ export class PageViewerSwipeDomService {
         resolveUnit: (unitIndex: number) => PageViewerMember | undefined;
         attachedUnitToSlotMap: Map<number, number>;
         scale: number;
-        visiblePages: number;
-        readOnly: boolean;
         showFluff: boolean;
         performanceMode: boolean;
         setPageWrapperContentState: (wrapper: HTMLDivElement, hasSvg: boolean) => void;
@@ -363,8 +356,8 @@ export class PageViewerSwipeDomService {
         setSwipeNeighborVisibilityState: (wrapper: HTMLDivElement, isVisible: boolean) => void;
         attachSvgToWrapper: (options: { wrapper: HTMLDivElement; svg: SVGSVGElement; scale?: number; setAsCurrent?: boolean }) => void;
         applyFluffImageVisibilityToSvg: (svg: SVGSVGElement, showFluff: boolean) => void;
-        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode) => void;
-        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: PageViewerMember, overlayMode: PageViewerOverlayMode) => unknown;
+        bindWrapperInteractiveLayers: (wrapper: HTMLDivElement, unit: PageViewerMember, svg: SVGSVGElement, overlayMode: PageViewerOverlayMode, showTopRightControls: boolean) => void;
+        getOrCreateInteractionOverlay: (wrapper: HTMLDivElement, unit: PageViewerMember, overlayMode: PageViewerOverlayMode, showTopRightControls: boolean) => unknown;
     }): Set<string> {
         const displayedUnitIds = new Set<string>();
         const {
@@ -373,8 +366,6 @@ export class PageViewerSwipeDomService {
             resolveUnit,
             attachedUnitToSlotMap,
             scale,
-            visiblePages,
-            readOnly,
             showFluff,
             performanceMode,
             setPageWrapperContentState,
@@ -423,9 +414,7 @@ export class PageViewerSwipeDomService {
 
             if (instruction.decision.action === 'reuse-existing') {
                 clearSwipePlaceholderContent(slotState.element);
-                if (!readOnly && visiblePages === 1) {
-                    getOrCreateInteractionOverlay(slotState.element, unit, instruction.decision.overlayMode);
-                }
+                getOrCreateInteractionOverlay(slotState.element, unit, instruction.decision.overlayMode, instruction.decision.showTopRightControls);
                 continue;
             }
 
@@ -442,7 +431,7 @@ export class PageViewerSwipeDomService {
             slotState.attachedSvg = svg;
             attachedUnitToSlotMap.set(instruction.unitIndex, instruction.slotIndex);
             applyFluffImageVisibilityToSvg(svg, showFluff);
-            bindWrapperInteractiveLayers(slotState.element, unit, svg, instruction.decision.overlayMode);
+            bindWrapperInteractiveLayers(slotState.element, unit, svg, instruction.decision.overlayMode, instruction.decision.showTopRightControls);
         }
 
         return displayedUnitIds;
@@ -481,10 +470,10 @@ export class PageViewerSwipeDomService {
             slot.classList.add('neighbor-page');
         }
 
-        const originalLeft = baseLeft + offset * (PAGE_WIDTH + PAGE_GAP);
+        const originalLeft = baseLeft + offset * (this.zoomPan.pageWidth() + PAGE_GAP);
         slot.dataset['originalLeft'] = String(originalLeft);
-        slot.style.width = `${PAGE_WIDTH * scale}px`;
-        slot.style.height = `${PAGE_HEIGHT * scale}px`;
+        slot.style.width = `${this.zoomPan.pageWidth() * scale}px`;
+        slot.style.height = `${this.zoomPan.pageHeight() * scale}px`;
         slot.style.position = 'absolute';
         slot.style.left = `${originalLeft * scale}px`;
         slot.style.top = '0';

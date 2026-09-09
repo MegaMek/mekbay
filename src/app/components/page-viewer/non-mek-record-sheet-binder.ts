@@ -46,6 +46,7 @@ import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
 
 export interface NonMekRecordSheetBinding {
+    readonly initialIssues: readonly string[];
     render(snapshot: NonMekRecordSheetSnapshot, equipmentPanel?: EquipmentPanelSnapshot | null): readonly string[];
     destroy(): void;
 }
@@ -153,7 +154,8 @@ export function bindNonMekRecordSheet(
                 markChanges,
             );
             const internalCapacity = internalPips.length + CapitalShipPipRenderer.capacity(internalGrids);
-            if (location.maximumInternal > 0 && internalCapacity < location.maximumInternal) {
+            const numericInternal = renderNumericProtection(svg, 'structure', code, location.maximumInternal, location.previewRemainingInternal);
+            if (!numericInternal && location.maximumInternal > 0 && internalCapacity < location.maximumInternal) {
                 issues.push(`Missing structure pips for ${location.sheetCode}: ${internalCapacity}/${location.maximumInternal}`);
             }
             const internalTargets = interactionTargets(
@@ -209,8 +211,9 @@ export function bindNonMekRecordSheet(
         return Object.freeze(issues);
     };
 
-    render(initial);
+    const initialIssues = render(initial);
     return Object.freeze({
+        initialIssues,
         render,
         destroy: () => {
             abort.abort();
@@ -538,7 +541,8 @@ function renderArmorFace(
         markChanges,
     );
     const capacity = pips.length + CapitalShipPipRenderer.capacity(grids);
-    if (face.maximum > 0 && capacity < face.maximum) {
+    const numericArmor = renderNumericProtection(svg, 'armor', code, face.maximum, face.previewRemaining, rearSelector);
+    if (!numericArmor && face.maximum > 0 && capacity < face.maximum) {
         issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${sheetCode}: ${capacity}/${face.maximum}`);
     }
     const targets = interactionTargets(
@@ -557,6 +561,18 @@ function renderArmorFace(
             context: context(),
         }));
     });
+}
+
+/** Structure sheets track CF and armor in numeric table cells instead of pip fields. */
+function renderNumericProtection(svg: SVGSVGElement, kind: 'structure' | 'armor', escapedCode: string,
+    maximum: number, remaining: number, faceSelector = ''): boolean {
+    const values = [...svg.querySelectorAll<SVGTextElement>(
+        `[data-mekbay-protection-value="${kind}"][data-loc="${escapedCode}"]${faceSelector}`)];
+    for (const value of values) {
+        value.textContent = String(remaining);
+        value.classList.toggle('damaged', remaining < maximum);
+    }
+    return values.length > 0;
 }
 
 function interactionTargets(
@@ -764,7 +780,6 @@ function renderInventorySelections(
             'selected-range-long',
             'selected-range-extreme',
             'selected-target-out-of-range',
-            'weakenedHitMod',
         );
         row.style.removeProperty('--inventory-control-selection-color');
         renderInventoryOverlay(row, 'targetTn', undefined);

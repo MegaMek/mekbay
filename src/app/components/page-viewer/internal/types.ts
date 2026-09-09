@@ -79,14 +79,3 @@ export interface PageViewerForceChangePlan {
     targetDisplayCount: number;
     modeChanged: boolean;
 }
-
-export interface PageViewerInPlaceSlotPlan {
-    slotIndex: number;
-    unit: PageViewerMember;
-    preserveExisting: boolean;
-}
-
-export interface PageViewerInPlaceUpdatePlan {
-    canPatchInPlace: boolean;
-    slots: PageViewerInPlaceSlotPlan[];
-}
