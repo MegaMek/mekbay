@@ -15,9 +15,9 @@ import type { TagClickEvent } from '../unit-tags/unit-tags.component';
     imports: [UnitCardCompactComponent],
     template: `
         <div class="dropdown-panel glass has-shadow framed-borders" #panelContainer>
-            @for (variant of variants(); track variant.name) {
-                @let isOriginal = variant.name === originalUnitName();
-                @let isCurrent = variant.name === currentUnitName();
+            @for (variant of variants(); track variant.uuid) {
+                @let isOriginal = variant.uuid === originalUnitUuid();
+                @let isCurrent = variant.uuid === currentUnitUuid();
                 <unit-card-compact
                     [unit]="variant"
                     [gameSystem]="gameSystem()"
@@ -70,8 +70,8 @@ export class VariantDropdownPanelComponent {
     panelContainer = viewChild<ElementRef<HTMLDivElement>>('panelContainer');
 
     variants = input.required<UnitSummary[]>();
-    originalUnitName = input<string | null>(null);
-    currentUnitName = input<string | null>(null);
+    originalUnitUuid = input<UnitSummary['uuid'] | null>(null);
+    currentUnitUuid = input<UnitSummary['uuid'] | null>(null);
     /** Game system override for correct stat display (PV vs BV). */
     gameSystem = input<GameSystem | null>(null);
 
