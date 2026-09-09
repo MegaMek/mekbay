@@ -1,33 +1,63 @@
 @if (comp()) {
-    <div
+  <div
     #floatingDialog
-    class="floating-comp-info allow-select {{ typeClass }}" [class.visible]="comp()">
-    <div class="caption">{{ name }}</div>
-    <div class="basic-info">
-        <div><span class="muted">Type: </span>{{ typeLabel }}</div>
-        @if(toHitModifier !== null){<div><span class="muted">To-Hit: </span>{{ toHitModifier }}</div>}
-        @if(range){<div><span class="muted">Range: </span>@if(minRange > 0){[{{ minRange }}] }{{ range }}</div>}
-        @if(typeClass != 'other' && damage !== null){<div><span class="muted">Damage: </span>{{ damage }}</div>}
-        @if(typeClass === 'missile' && rackSize !== null && rackSize > 0){<div><span class="muted">Rack Size: </span>{{ rackSize }}</div>}
-        @if(hasHeat){<div><span class="muted">Heat: </span>{{ heat }}</div>}
+    class="floating-comp-info allow-select framed-borders equipment-frame {{ typeClass }}"
+    [class.visible]="comp()"
+  >
+    <div class="inspector-heading">
+      <div class="caption">{{ name }}</div>
+      @if (dialogRef) {
+        <button
+          type="button"
+          class="close-button inspector-close"
+          aria-label="Close component inspector"
+          (click)="dialogRef.close()"
+        ></button>
+      }
     </div>
-    @if (equipment()) {<hr>}
-    @for ( group of equipmentDisplay(); let i = $index; track i) {
-        <div class="equip-group-container">
-            <div class="equip-group">
-                <div class="equip-group-title">{{ group.group }}</div>
-                <div class="equip-items">
-                    @for (item of group.items; let j = $index; track j) {
-                        @if (item.value !== undefined && item.value !== '') {
-                            <div class="equip-item">
-                                <span class="equip-label">{{ item.label }}:</span>
-                                <span class="equip-value">{{ item.value }}</span>
-                            </div>
-                        }
-                    }
-                </div>
-            </div>
+    <div class="basic-info">
+      <div><span class="muted">Type: </span>{{ typeLabel }}</div>
+      @if (toHitModifier !== null) {
+        <div><span class="muted">To-Hit: </span>{{ toHitModifier }}</div>
+      }
+      @if (range) {
+        <div>
+          <span class="muted">Range: </span>
+          @if (minRange > 0) {
+            [{{ minRange }}]
+          }
+          {{ range }}
         </div>
+      }
+      @if (typeClass != 'other' && damage !== null) {
+        <div><span class="muted">Damage: </span>{{ damage }}</div>
+      }
+      @if (typeClass === 'missile' && rackSize !== null && rackSize > 0) {
+        <div><span class="muted">Rack Size: </span>{{ rackSize }}</div>
+      }
+      @if (hasHeat) {
+        <div><span class="muted">Heat: </span>{{ heat }}</div>
+      }
+    </div>
+    @if (equipment()) {
+      <hr />
     }
-</div>
+    @for (group of equipmentDisplay(); let i = $index; track i) {
+      <div class="equip-group-container">
+        <div class="equip-group">
+          <div class="equip-group-title">{{ group.group }}</div>
+          <div class="equip-items">
+            @for (item of group.items; let j = $index; track j) {
+              @if (item.value !== undefined && item.value !== '') {
+                <div class="equip-item">
+                  <span class="equip-label">{{ item.label }}:</span>
+                  <span class="equip-value">{{ item.value }}</span>
+                </div>
+              }
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
 }

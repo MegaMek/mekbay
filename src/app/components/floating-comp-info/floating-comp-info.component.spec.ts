@@ -44,6 +44,13 @@ describe('FloatingCompInfoComponent', () => {
 
         fixture.detectChanges();
 
+        const panel = fixture.nativeElement.querySelector('.floating-comp-info') as HTMLElement;
+        expect(panel.classList.contains('framed-borders')).toBeTrue();
+        expect(getComputedStyle(panel).borderTopWidth).toBe('2px');
+        expect(getComputedStyle(panel).borderLeftWidth).toBe('0px');
+        expect(getComputedStyle(panel).backgroundImage).toContain('linear-gradient');
+        expect(getComputedStyle(panel).backgroundImage).toContain(getComputedStyle(panel).borderTopColor);
+
         const reference = Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.equip-item'),
         ).find(item => item.querySelector('.equip-label')?.textContent?.trim() === 'Reference:');
