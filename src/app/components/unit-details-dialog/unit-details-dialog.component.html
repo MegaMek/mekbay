@@ -26,6 +26,7 @@
             </div>
         </div>
         <div class="header-row-tags">
+                @if (headerUnit().isCustom) { <custom-unit-actions [unit]="headerUnit()" [member]="constructionMember()" /> }
             <unit-tags class="header-tags" [unit]="headerUnit()" [mode]="'full'"
                 (tagClick)="onTagClick($event)"></unit-tags>
 
@@ -56,16 +57,6 @@
         <div class="swipe-container" [class.animating]="isSwipeAnimating()" [class.swiping]="isSwiping()">
             <!-- Current unit view -->
             <div #currentPanel class="swipe-panel current-panel" [style.--current-offset]="currentPanelOffset()">
-                @if (unit.loadIssues.length) {
-                <section class="unit-load-issues" role="alert">
-                    <strong>Unit data issues</strong>
-                    @for (issue of unit.loadIssues; track $index) {
-                    <div class="unit-load-issue" [class.error]="issue.severity === 'error'">
-                        <span>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</span> {{ issue.message }}
-                    </div>
-                    }
-                </section>
-                }
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="unit" [gunnerySkill]="gunnerySkill()"
                     [forceMember]="currentForceMember()"
@@ -91,7 +82,7 @@
                 }
 
                 @if (activeTab() === 'Sheet') {
-                <unit-details-sheet-tab [unit]="unit"></unit-details-sheet-tab>
+                    <unit-details-sheet-tab [unit]="unit" [forceMember]="currentForceMember() ?? null"></unit-details-sheet-tab>
                 }
 
                 @if (activeTab() === 'Card') {
@@ -104,16 +95,6 @@
             @if (incomingUnit()) {
             <div #incomingPanel class="swipe-panel incoming-panel" [style.--incoming-offset]="incomingPanelOffset()"
                 [scrollTop]="incomingPanelScrollTop()">
-                @if (incomingUnit()!.loadIssues.length) {
-                <section class="unit-load-issues" role="alert">
-                    <strong>Unit data issues</strong>
-                    @for (issue of incomingUnit()!.loadIssues; track $index) {
-                    <div class="unit-load-issue" [class.error]="issue.severity === 'error'">
-                        <span>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</span> {{ issue.message }}
-                    </div>
-                    }
-                </section>
-                }
                 @if (activeTab() === 'General') {
                 <unit-details-general-tab [unit]="incomingUnit()!"
                     [forceMember]="incomingForceMember()"
@@ -141,7 +122,7 @@
                 }
 
                 @if (activeTab() === 'Sheet') {
-                <unit-details-sheet-tab [unit]="incomingUnit()!"></unit-details-sheet-tab>
+                        <unit-details-sheet-tab [unit]="incomingUnit()!" [forceMember]="incomingForceMember() ?? null"></unit-details-sheet-tab>
                 }
 
                 @if (activeTab() === 'Card') {
@@ -181,6 +162,7 @@
         <button [disabled]="isChangeDisabled()" class="modal-btn bt-button"
             (click)="onChange()">CHANGE</button>
         }
+        <unit-construction-button [unit]="unit" [forceMember]="constructionMember()"></unit-construction-button>
         <button class="modal-btn bt-button" (click)="onClose()">DISMISS</button>
             </ng-container>
     </unit-details-footer>

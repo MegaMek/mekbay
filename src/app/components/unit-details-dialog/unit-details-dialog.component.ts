@@ -34,6 +34,8 @@ import { buildUnitShareLinks } from '../../utils/force-url.util';
 import { ConfirmDialogComponent, type ConfirmDialogData } from '../confirm-dialog/confirm-dialog.component';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsFooterComponent } from '../unit-details-footer/unit-details-footer.component';
+import { CustomUnitActionsComponent } from '../custom-unit-actions/custom-unit-actions.component';
+import { UnitConstructionButtonComponent } from '../../construction/unit-construction-button.component';
 import { getNormalizationGunnery, getNormalizationPiloting, type UnitSearchNormalizationMatch } from '../../models/unit-search-result.model';
 import { UnitFluffImageService } from '../../services/catalogs/unit-fluff-image.service';
 import { UnitDetailsSummaryService } from '../../services/unit-details-summary.service';
@@ -75,7 +77,7 @@ export interface UnitDetailsChangeAction {
 @Component({
     selector: 'unit-details-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent],
+    imports: [BaseDialogComponent, SwipeDirective, LongPressDirective, UnitIconComponent, UnitDetailsGeneralTabComponent, UnitDetailsIntelTabComponent, UnitDetailsFactionTabComponent, UnitDetailsSheetTabComponent, UnitDetailsCardTabComponent, UnitDetailsVariantsTabComponent, UnitTagsComponent, UnitDetailsFooterComponent, UnitConstructionButtonComponent, CustomUnitActionsComponent],
     templateUrl: './unit-details-dialog.component.html',
     styleUrl: './unit-details-dialog.component.css',
     host: {
@@ -119,7 +121,7 @@ export class UnitDetailsDialogComponent {
 
     isChangeDisabled = computed(() => {
         const action = this.activeChangeAction();
-        return !action || action.disabled?.() === true || action.originalUnit.name === this.unit.name;
+        return !action || action.disabled?.() === true || action.originalUnit.uuid === this.unit.uuid;
     });
 
     tabs = computed<string[]>(() => {
@@ -129,12 +131,20 @@ export class UnitDetailsDialogComponent {
 
     unitList = computed<UnitSummary[] | ForceMember[]>(() => {
         const input = this.data.unitList;
-        return isSignal(input) ? input() : input;
+        const entries = isSignal(input) ? input() : input;
+        // A construction refit replaces the immutable member handle under the same roster ID.
+        return entries.map(entry => entry instanceof CBTForceMember
+            ? entry.force.getCBTMembers().find(member => member.id === entry.id) ?? entry
+            : entry) as UnitSummary[] | ForceMember[];
     });
     unitIndex = signal(this.data.unitIndex);
     readonly currentForceMember = computed<ForceMember | undefined>(() => {
         const item = this.unitList()[this.unitIndex()];
         return item instanceof ASForceUnit || item instanceof CBTForceMember ? item : undefined;
+    });
+    readonly constructionMember = computed(() => {
+        const member = this.currentForceMember();
+        return member instanceof CBTForceMember ? member : undefined;
     });
     private readonly resolvedActiveUnit = signal<{
         readonly source: UnitDetailsListItem;
@@ -277,7 +287,7 @@ export class UnitDetailsDialogComponent {
         effect(onCleanup => {
             const current = this.unitList()[this.unitIndex()];
             this.resolvedActiveUnit.set(null);
-            if (current instanceof ASForceUnit) return;
+            if (current instanceof ASForceUnit || current instanceof CBTForceMember) return;
 
             let active = true;
             void this.detailsSummaries.resolve(this.getUnitSummary(current)).then(summary => {
@@ -296,7 +306,7 @@ export class UnitDetailsDialogComponent {
             this.unit;
             const activeTab = this.activeTab();
             this.urlService.setQueryParams({
-                shareUnit: this.unit.name,
+                shareUnit: this.unit.uuid,
                 tab: activeTab,
             });
         });
@@ -351,15 +361,14 @@ export class UnitDetailsDialogComponent {
     }
 
     private getUnitSummary(item: UnitDetailsListItem): UnitSummary {
-        if (item instanceof ASForceUnit || item instanceof CBTForceMember) {
+        if (item instanceof CBTForceMember) return this.detailsSummaries.resolveForceMember(item);
+        if (item instanceof ASForceUnit) {
             const summary = resolveForceMemberCatalogSummary(
                 item,
                 uuid => this.dataService.getUnitByUuid(uuid),
             );
             if (!summary) {
-                const name = item instanceof CBTForceMember
-                    ? this.unitNames.name(item.entity)
-                    : this.unitNames.name(item.getSummary());
+                const name = this.unitNames.name(item.getSummary());
                 throw new Error(`Catalog presentation is unavailable for ${name}`);
             }
             return summary;
@@ -534,7 +543,7 @@ export class UnitDetailsDialogComponent {
             window.location.origin,
             window.location.pathname,
             this.currentGameSystem(),
-            this.unit.name,
+            this.unit,
             this.activeTab(),
         );
         const shareTitle = `${this.unitNames.name(this.unit)}`;
