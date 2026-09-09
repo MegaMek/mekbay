@@ -310,9 +310,9 @@ export abstract class AsLayoutBaseComponent {
         const unitExistsInAnyEra = allEras.some(era => {
             const units = era.units;
             if (units instanceof Set) {
-                return units.has(unitId);
+                return unitId !== null && units.has(unitId);
             }
-            return Array.isArray(units) && units.includes(unitId);
+            return Array.isArray(units) && unitId !== null && units.includes(unitId);
         });
 
         // Helper to check if unit is available in a specific era
@@ -320,9 +320,9 @@ export abstract class AsLayoutBaseComponent {
             if (unitExistsInAnyEra) {
                 const units = era.units;
                 if (units instanceof Set) {
-                    return units.has(unitId);
+                    return unitId !== null && units.has(unitId);
                 }
-                return Array.isArray(units) && units.includes(unitId);
+                return Array.isArray(units) && unitId !== null && units.includes(unitId);
             } else {
                 // Unit not in era data, use year-based calculation
                 const eraEnd = era.years.to ?? Infinity;

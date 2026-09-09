@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, untracked, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { OptionsService } from '../../services/options.service';
@@ -27,6 +27,7 @@ import type {
     RecordSheetDoubleTapZoomResetMode,
     RecordSheetPipLayout,
 } from '../../models/options.model';
+import type { PrintAllOptions } from '../../models/print-options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -44,8 +45,12 @@ import { deleteUnitCatalogDatabase } from '../../services/unit-catalog/unit-cata
 import { DisplayNameService } from '../../services/display-name.service';
 import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
+import { CustomUnitLibraryComponent } from '../custom-unit-library/custom-unit-library.component';
+import { UnitArtworkService } from '../../services/unit-artwork.service';
+import { CustomUnitsService } from '../../services/custom-units.service';
+import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
-type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
+type OptionsSectionId = 'General' | 'Search' | 'Account' | 'Tags' | 'My Custom Units' | 'Subscribed Units' | 'Classic BattleTech' | 'Alpha Strike' | 'Advanced' | 'Logs';
 
 interface OptionsViewDefinition {
     id: OptionsSectionId;
@@ -82,6 +87,8 @@ const OPTIONS_VIEW_DEFINITIONS: readonly OptionsViewDefinition[] = [
         title: 'Tags',
         description: 'Share your tags, copy public links, and manage subscriptions.'
     },
+    { id: 'My Custom Units', title: 'My Custom Units', description: 'Your designs, cloud sync, and subscriber counts.' },
+    { id: 'Subscribed Units', title: 'Subscribed Units', description: 'Manage designs you follow from other players.' },
     {
         id: 'Classic BattleTech',
         title: 'Classic BattleTech',
@@ -159,7 +166,7 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
 @Component({
     selector: 'options-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent, ModeSwitchComponent],
+    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent, ModeSwitchComponent, CustomUnitLibraryComponent],
     templateUrl: './options-dialog.component.html',
     styleUrl: './options-dialog.component.scss'
 })
@@ -168,6 +175,8 @@ export class OptionsDialogComponent {
     optionsService = inject(OptionsService);
     gameSystem = inject(GameService);
     dbService = inject(DbService);
+    readonly artwork = inject(UnitArtworkService);
+    private readonly customUnits = inject(CustomUnitsService);
     private readonly catalogStorage = inject(CatalogStorage);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
     userStateService = inject(UserStateService);
@@ -224,6 +233,16 @@ export class OptionsDialogComponent {
     userUuidError = '';
     canvasMemorySize = signal(0);
     unitIconsCount = signal(0);
+    readonly artworkCollectionReady = signal(false);
+    readonly purgingArtwork = signal(false);
+    readonly artworkError = signal('');
+    private readonly storedUnitUuids = signal<ReadonlySet<UnitUuid>>(new Set());
+    readonly unusedArtworkUuids = computed(() => {
+        if (!this.artworkCollectionReady()) return [];
+        const collection = new Set([...this.storedUnitUuids(), ...this.dataService.getUnits().map(unit => unit.uuid),
+            ...this.customUnits.records().map(unit => unit.uuid)]);
+        return [...this.artwork.records().keys()].filter(uuid => !collection.has(uuid));
+    });
     unitsCount = computed(() => this.dataService.getUnits().length);
     equipmentCount = computed(() => this.dataService.getEquipmentRegistry().size);
 
@@ -256,6 +275,11 @@ export class OptionsDialogComponent {
         this.updateCanvasMemorySize();
         this.updateUnitIconsCount();
         this.loadTagSubscriberCounts();
+        effect(() => {
+            if (this.activeTab() !== 'Advanced') return;
+            this.customUnits.records();
+            untracked(() => void this.refreshArtworkCollection().catch(error => this.artworkError.set(String(error))));
+        });
     }
 
     private setupLayoutModeTracking(): void {
@@ -394,12 +418,14 @@ export class OptionsDialogComponent {
         window.location.reload();
     }
 
+    onRecordSheetPaperSizeChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['paperSize'];
+        void this.optionsService.setPrintOption('paperSize', value);
+    }
+
     onRecordSheetCenterPanelContentChange(event: Event) {
-        const value = (event.target as HTMLSelectElement).value as 'fluffImage' | 'clusterTable';
-        this.optionsService.setOption('printAllOptions', {
-            ...this.optionsService.options().printAllOptions,
-            recordSheetCenterPanelContent: value,
-        });
+        const value = (event.target as HTMLSelectElement).value as PrintAllOptions['recordSheetCenterPanelContent'];
+        void this.optionsService.setPrintOption('recordSheetCenterPanelContent', value);
     }
 
     onRecordSheetDoubleTapZoomResetChange(event: Event) {
@@ -492,7 +518,8 @@ export class OptionsDialogComponent {
     }
 
     onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
-        const value = (event.target as HTMLSelectElement).value === 'true';
+        const target = event.target as HTMLInputElement | HTMLSelectElement;
+        const value = target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value === 'true';
         this.optionsService.setOption('CBTOptionalRules', {
             ...this.optionsService.options().CBTOptionalRules,
             [key]: value,
@@ -551,6 +578,44 @@ export class OptionsDialogComponent {
         } catch {
             this.toastService.showToast('Failed to copy user identifier.', 'error');
         }
+    }
+
+    private async refreshArtworkCollection(): Promise<void> {
+        this.artworkCollectionReady.set(false);
+        await Promise.all([this.artwork.initialize(), this.customUnits.initialize(), this.dataService.requireApplicationCatalogReady()]);
+        // Include persisted designs from every account, including subscriptions not yet projected into search.
+        const uuids = new Set<UnitUuid>();
+        for (const row of await this.dbService.listCustomUnits()) {
+            if (row && typeof row === 'object' && 'uuid' in row && typeof row.uuid === 'string') {
+                try { uuids.add(asUnitUuid(row.uuid)); } catch { /* Ignore unrecognizable persisted records. */ }
+            }
+        }
+        this.storedUnitUuids.set(uuids);
+        this.artworkCollectionReady.set(true);
+        this.artworkError.set('');
+    }
+
+    async onPurgeArtwork(unusedOnly = false): Promise<void> {
+        if (this.purgingArtwork()) return;
+        this.purgingArtwork.set(true);
+        try {
+            if (unusedOnly) await this.refreshArtworkCollection();
+            const candidates = unusedOnly ? this.unusedArtworkUuids() : undefined;
+            if (candidates?.length === 0) return;
+            const confirmed = await this.dialogsService.requestConfirmation(
+                unusedOnly ? `Delete artwork for ${candidates!.length} units absent from your collection? This cannot be undone.`
+                    : 'Delete all locally stored unit artwork? This cannot be undone.',
+                unusedOnly ? 'Purge unused fluff images' : 'Purge fluff images', 'danger');
+            if (!confirmed) return;
+            if (unusedOnly) {
+                // A unit may have been imported or subscribed to while the confirmation was open.
+                await this.refreshArtworkCollection();
+                const stillUnused = new Set(this.unusedArtworkUuids());
+                await this.artwork.purge(candidates!.filter(uuid => stillUnused.has(uuid)));
+            } else await this.artwork.purge();
+        } catch (error) {
+            this.artworkError.set(error instanceof Error ? error.message : String(error));
+        } finally { this.purgingArtwork.set(false); }
     }
 
     async onPurgeCanvas() {

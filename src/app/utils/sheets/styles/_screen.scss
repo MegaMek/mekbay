@@ -1,0 +1,455 @@
+@media screen {
+  .mekbay-sheet {
+    #heatScale text {
+      pointer-events: none;
+    }
+
+    .critSlot {
+      &.equipment-hover-secondary > .critSlot-bg-rect {
+        fill: var(--equipment-hover-secondary-color);
+        stroke: var(--equipment-hover-secondary-color);
+        stroke-width: 0.35px;
+      }
+
+      text {
+        pointer-events: none;
+      }
+
+      .critSlot-bg-rect {
+        &:hover {
+          fill: var(--highlight-color);
+        }
+      }
+
+      &.willDamage .critSlot-bg-rect {
+        fill: #f669 !important;
+
+        &:hover {
+          fill: #f999 !important;
+        }
+      }
+    }
+
+    .critGroup.flooded .critSlot-bg-rect:hover {
+      fill: #99f;
+    }
+
+    .critGroup.disabledLocation .critSlot-bg-rect:hover {
+      fill: #999;
+    }
+
+    .picker-active.critSlot text {
+      text-decoration: underline !important;
+    }
+
+    .heatEffect.hot {
+      fill: var(--hot-color) !important;
+      font-weight: bold;
+
+      &.surpassed {
+        fill: silver !important;
+        font-weight: normal;
+      }
+    }
+
+    #heatScale .overflowFrame.hot {
+      fill: var(--hot-color) !important;
+    }
+
+    #faded-arrow {
+      stroke: #ccc;
+    }
+
+    .skillValue,
+    .customAmmoLoadout {
+      fill: #00f;
+    }
+
+    /* Armor and structure highlight */
+    .unitLocation.selectable:is(:focus-visible, .picker-active),
+    .unitLocation.selectable:is(:focus-visible, .picker-active) > path {
+      fill: var(--undamaged-highlight-color) !important;
+    }
+
+    .unitLocation.selectable.damaged:is(:focus-visible, .picker-active),
+    .unitLocation.selectable.damaged:is(:focus-visible, .picker-active) > path {
+      fill: var(--damaged-highlight-color) !important;
+    }
+
+    .selectable,
+    .selectable > path {
+      cursor: pointer;
+      touch-action: none;
+      transition: fill ease-out 0.2s;
+    }
+
+    .selectable:not(.pip-hit-area):hover,
+    .selectable:not(.pip-hit-area):hover > path {
+      fill: var(--undamaged-highlight-color) !important;
+    }
+
+    .selectable.damaged:not(.pip-hit-area):hover,
+    .selectable.damaged:not(.pip-hit-area):hover > path {
+      fill: var(--damaged-highlight-color) !important;
+    }
+
+    .pip-hit-area:hover {
+      fill: transparent !important;
+      stroke: transparent !important;
+    }
+
+    .critLoc.willChange:not(.damaged) {
+      fill: orange !important;
+      stroke: #ff0 !important;
+      stroke-width: 1.5px;
+      paint-order: stroke fill;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .critLoc.damaged.willChange {
+      stroke: #03a9f4 !important;
+      fill: #d2f1ff !important;
+    }
+
+    .motiveHitPips {
+      pointer-events: none;
+
+      .motiveHitPip {
+        fill: transparent;
+        stroke: transparent;
+
+        &.damaged {
+          fill: var(--damage-color) !important;
+        }
+
+        &.willChange:not(.damaged) {
+          fill: orange !important;
+        }
+
+        &.damaged.pendingRemoval {
+          fill: #03a9f4 !important;
+        }
+      }
+    }
+
+    .critLoc[critId='rotor'] {
+      &.rotorHitsPendingPositive {
+        &:is(rect),
+        > rect {
+          stroke: orange !important;
+          stroke-width: 1.5px;
+        }
+      }
+
+      &.rotorHitsPendingNegative {
+        &:is(rect),
+        > rect {
+          stroke: #03a9f4 !important;
+          stroke-width: 1.5px;
+        }
+      }
+    }
+
+    #rotor_hits_counter {
+      .rotorHitsCommitted {
+        fill: var(--damage-color) !important;
+      }
+
+      .rotorHitsPending.positive {
+        fill: orange !important;
+      }
+
+      .rotorHitsPending.negative {
+        fill: #03a9f4 !important;
+      }
+    }
+
+    .unitConditionButton {
+      cursor: pointer;
+
+      text {
+        pointer-events: none;
+      }
+
+      &.active rect {
+        fill: var(--unit-condition-active-color, #666) !important;
+      }
+
+      &.active text {
+        fill: #fff !important;
+      }
+    }
+
+    &.read-only .edit-only {
+      display: none;
+    }
+
+    .locationConditionControl {
+      cursor: pointer;
+
+      text {
+        pointer-events: none;
+      }
+    }
+
+    .locationConditionHitArea {
+      pointer-events: all;
+    }
+
+    .unitConditionBanner {
+      pointer-events: none;
+      opacity: 0;
+
+      .unitConditionBannerRect {
+        transform-box: fill-box;
+        transform-origin: left center;
+        transform: scaleX(0);
+        fill-opacity: 0.9;
+        transition: transform 90ms ease-out;
+      }
+
+      &.visible {
+        opacity: 1;
+
+        .unitConditionBannerRect {
+          transform: scaleX(1);
+        }
+      }
+    }
+
+    .crewStateBanner .unitConditionBannerRect {
+      transform-origin: right center;
+      transition: none;
+    }
+
+    .pip.disabled {
+      stroke: var(--disabled-color) !important;
+      fill: #666 !important;
+    }
+
+    .pip.damaged {
+      fill: var(--damage-color) !important;
+    }
+
+    .pip.fresh:not(.damaged) {
+      stroke: var(--pip-pending-repair-color) !important;
+      stroke-width: 1.5px;
+    }
+
+    .pip.damaged.fresh {
+      fill: var(--pip-fresh-damage-color) !important;
+      stroke: var(--damage-color) !important;
+      stroke-width: 1.5px;
+      paint-order: fill stroke;
+    }
+
+    .pip.damaged.pending:not(.fresh) {
+      fill: var(--pip-pending-damage-color) !important;
+    }
+
+    .pip.pending:not(.damaged):not(.fresh) {
+      fill: var(--pip-pending-repair-color) !important;
+    }
+
+    .soldierPip.fresh {
+      filter: brightness(1.1) saturate(100) hue-rotate(-140deg) !important;
+    }
+
+    .soldierPip.damaged.fresh {
+      filter: brightness(1.1) saturate(100) hue-rotate(20deg) !important;
+    }
+
+    .soldierPip.pending:not(.fresh) {
+      filter: brightness(1.1) saturate(50) hue-rotate(-120deg) !important;
+    }
+
+    .soldierPip.damaged.pending:not(.fresh) {
+      filter: brightness(1) saturate(50) hue-rotate(10deg) !important;
+    }
+
+    .inventoryEntry {
+      &.equipment-hover-secondary > .inventoryEntryButton {
+        fill: var(--equipment-hover-secondary-color);
+      }
+
+      &:hover > .inventoryEntryButton {
+        fill: var(--highlight-color);
+      }
+
+      &:active > .inventoryEntryButton {
+        filter: brightness(1.03);
+      }
+
+      &.selected:not(.selected-alternative-mode):not(.selected-range-short):not(.selected-range-medium):not(
+          .selected-range-long
+        ):not(.selected-range-extreme)
+        > .inventoryEntryButton,
+      &.selected-range-short:not(.selected-alternative-mode) > .mainButton,
+      &.selected-range-short:not(.selected-alternative-mode) > .shrButton,
+      &.selected-range-medium:not(.selected-alternative-mode) > .mainButton,
+      &.selected-range-medium:not(.selected-alternative-mode) > .medButton,
+      &.selected-range-long:not(.selected-alternative-mode) > .mainButton,
+      &.selected-range-long:not(.selected-alternative-mode) > .lngButton,
+      &.selected-range-extreme:not(.selected-alternative-mode) > .mainButton,
+      &.selected-range-extreme:not(.selected-alternative-mode) > .extButton,
+      &.selected.selected-alternative-mode:not(.selected-range-short):not(.selected-range-medium):not(
+          .selected-range-long
+        ):not(.selected-range-extreme)
+        > .alternativeMode.selected
+        > .inventoryEntryButton,
+      &.selected-alternative-mode.selected-range-short > .alternativeMode.selected > .alternativeModeButton,
+      &.selected-alternative-mode.selected-range-short > .alternativeMode.selected > .shrButton,
+      &.selected-alternative-mode.selected-range-medium > .alternativeMode.selected > .alternativeModeButton,
+      &.selected-alternative-mode.selected-range-medium > .alternativeMode.selected > .medButton,
+      &.selected-alternative-mode.selected-range-long > .alternativeMode.selected > .alternativeModeButton,
+      &.selected-alternative-mode.selected-range-long > .alternativeMode.selected > .lngButton,
+      &.selected-alternative-mode.selected-range-extreme > .alternativeMode.selected > .alternativeModeButton,
+      &.selected-alternative-mode.selected-range-extreme > .alternativeMode.selected > .extButton {
+        fill: var(--inventory-control-selection-color, var(--bt-yellow));
+      }
+
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .shrButton,
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .medButton,
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .lngButton,
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .extButton,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .shrButton,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .medButton,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .lngButton,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .extButton {
+        fill: var(--damage-color);
+      }
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .range_short,
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .range_medium,
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .range_long,
+      &.selected.selected-target-out-of-range:not(.selected-alternative-mode) > .range_extreme,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .range_short,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .range_medium,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .range_long,
+      &.selected.selected-target-out-of-range.selected-alternative-mode > .alternativeMode.selected > .range_extreme {
+        fill: #fff;
+      }
+
+      &.selected.selected-target-out-of-range > .targetTn-rect {
+        fill: var(--damage-color);
+      }
+
+      &.selected.selected-target-out-of-range > .targetTn-text {
+        fill: #fff;
+      }
+    }
+
+    #ammoProfile:hover > .inventoryEntryButton {
+      fill: var(--highlight-color);
+    }
+
+    .inventoryEntry > .alternativeMode {
+      &:hover > .inventoryEntryButton {
+        fill: var(--highlight-color);
+      }
+
+      &:active > .inventoryEntryButton {
+        filter: brightness(1.03);
+      }
+    }
+
+    .locationConditionText {
+      text-decoration: underline dotted;
+    }
+
+    .locationConditionControl:hover .locationConditionText {
+      text-decoration-style: solid;
+    }
+
+    .heat.hot {
+      fill: var(--heat-color) !important;
+    }
+
+    g.hsPips.interactive {
+      .changeActiveHeatsinksCountButton {
+        transition: stroke 0.2s;
+        stroke-width: 1px;
+        stroke: transparent;
+
+        &:hover {
+          stroke: var(--highlight-color);
+        }
+      }
+    }
+
+    .pip.hsPip {
+      pointer-events: none;
+    }
+
+    .currentMoveMode {
+      font-weight: bold;
+    }
+
+    .unusedMoveMode {
+      opacity: 0.5;
+    }
+
+    .movePsrWarning {
+      fill: var(--danger);
+      font-family: Roboto, sans-serif;
+      font-size: 7px;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .applyHeatButtonFrame {
+      transition:
+        stroke 0.2s,
+        fill 0.2s;
+    }
+
+    .heatApplicationAvailable.hot {
+      .applyHeatButtonFrame {
+        fill: hsl(0, 100%, 95%) !important;
+        stroke: var(--hot-color) !important;
+
+        .night-mode & {
+          fill: hsl(0, 100%, 8%) !important;
+        }
+      }
+
+      #applyHeatButton path {
+        fill: var(--hot-color) !important;
+      }
+    }
+
+    .heatApplicationAvailable.cold {
+      .applyHeatButtonFrame {
+        fill: hsl(240, 100%, 95%) !important;
+        stroke: var(--cold-color) !important;
+
+        .night-mode & {
+          fill: hsl(240, 100%, 8%) !important;
+        }
+      }
+
+      #applyHeatButton path {
+        fill: var(--cold-color) !important;
+      }
+    }
+
+    #applyHeatButton {
+      display: none;
+    }
+
+    .heatApplicationAvailable #applyHeatButton.interactive {
+      display: block;
+
+      path {
+        transition: filter 0.2s;
+      }
+
+      &:hover {
+        path {
+          filter: brightness(1.2);
+        }
+      }
+    }
+  }
+}

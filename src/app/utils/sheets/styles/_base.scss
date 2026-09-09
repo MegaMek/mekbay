@@ -1,0 +1,265 @@
+.mekbay-sheet {
+  background-color: #fff;
+  display: block;
+  box-sizing: content-box;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+
+  text.disabled-text {
+    fill: #aaa;
+  }
+
+  .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
+    pointer-events: none;
+  }
+
+  .inventoryEntry > .alternativeMode > *:not(.inventoryEntryButton):not(.alternativeModeButton) {
+    pointer-events: none;
+  }
+
+  .inventoryEntryButton,
+  .alternativeModeButton {
+    fill: transparent;
+  }
+
+  .inventoryEntry:not(.interactive) {
+    pointer-events: none;
+  }
+
+  .inventoryEntry.disabledInventory {
+    .hitMod-rect,
+    .hitMod-text {
+      display: none;
+    }
+  }
+
+  #fluff-image-fo {
+    transform: none;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .interactive {
+    cursor: pointer;
+    touch-action: none;
+    pointer-events: all;
+  }
+
+  .critGroup.locationDestroyed text {
+    fill: var(--damage-color) !important;
+    pointer-events: none;
+  }
+
+  .damaged {
+    fill: var(--damage-color) !important;
+
+    path {
+      fill: var(--damage-color) !important;
+    }
+
+    text {
+      fill: var(--damage-color) !important;
+    }
+  }
+
+  .flooded,
+  .flooded > path,
+  .flooded path {
+    fill: #66f;
+  }
+
+  .unitLocation.disabledLocation {
+    fill: silver !important;
+  }
+
+  .unitLocation.flooded {
+    fill: #66f !important;
+  }
+
+  .pip.flooded {
+    stroke: #00d;
+  }
+
+  .critGroup.flooded text {
+    fill: #00d !important;
+    pointer-events: none;
+  }
+
+  path.detached,
+  .detached > path {
+    fill: #888 !important;
+    pointer-events: none;
+  }
+
+  .pip.detached {
+    stroke: silver;
+  }
+
+  .detached path {
+    fill: #888 !important;
+    pointer-events: none;
+  }
+
+  .critGroup.detached text.locationConditionText {
+    fill: #888;
+  }
+
+  .critGroup.detached text:not(.locationConditionText) {
+    fill: #888 !important;
+    pointer-events: none;
+  }
+
+  .critGroup.flooded .critSlot-bg-rect {
+    fill: #66f;
+  }
+
+  .critGroup.detached .critSlot text,
+  .critGroup.flooded .critSlot text,
+  .critGroup.disabledLocation .critSlot text {
+    text-decoration: line-through;
+  }
+
+  .critGroup.flooded,
+  .critGroup.detached,
+  .critGroup.disabledLocation,
+  .critGroup.flooded .locationConditionControl,
+  .critGroup.detached .locationConditionControl,
+  .critGroup.disabledLocation .locationConditionControl,
+  .critGroup.flooded .locationConditionText,
+  .critGroup.detached .locationConditionText,
+  .critGroup.disabledLocation .locationConditionText {
+    pointer-events: all;
+  }
+
+  .pip {
+    stroke-linecap: square;
+    vector-effect: non-scaling-stroke;
+
+    &.damaged {
+      fill: var(--damage-color) !important;
+    }
+  }
+
+  .capital-pip-state-damaged {
+    fill: var(--damage-color) !important;
+  }
+
+  .capital-pip-state-pending-damage {
+    fill: var(--pip-pending-damage-color) !important;
+  }
+
+  .capital-pip-state-fresh-damage {
+    fill: var(--pip-fresh-damage-color) !important;
+  }
+
+  .capital-pip-state-pending-repair {
+    fill: var(--pip-pending-repair-color) !important;
+  }
+
+  .capital-pip-state-fresh-repair {
+    fill: var(--pip-fresh-repair-color) !important;
+  }
+
+  .capital-pip-interaction {
+    fill: transparent !important;
+    stroke: transparent !important;
+  }
+
+  .soldierPip.damaged {
+    filter: opacity(0.3) !important;
+  }
+
+  .mek-random-hit-button {
+    cursor: pointer;
+
+    &.picker-active .mek-random-hit-area,
+    &:focus-visible .mek-random-hit-area {
+      fill: var(--bt-yellow) !important;
+      stroke-width: 2;
+    }
+  }
+
+  .random-hit-location-highlight {
+    stroke: var(--bt-yellow) !important;
+    stroke-width: 4;
+    stroke-linejoin: round;
+    paint-order: fill stroke;
+    filter: drop-shadow(0 0 4px var(--damage-color));
+    animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
+  }
+
+  .mek-random-hit-result {
+    pointer-events: none;
+
+    .mek-random-hit-result-background {
+      fill: #111e;
+      stroke: var(--bt-yellow);
+      stroke-width: 2;
+    }
+
+    text {
+      fill: #fff;
+      font-weight: 700;
+      text-anchor: middle;
+    }
+
+    .mek-random-hit-result-location {
+      font-size: 12px;
+    }
+
+    .mek-random-hit-result-transferred-from {
+      fill: #ccc;
+      font-size: 5px;
+    }
+
+    .mek-random-hit-result-through-armor {
+      fill: var(--damage-color);
+      font-family: 'Roboto Condensed', serif;
+      font-size: 25px;
+      stroke: #000;
+      stroke-width: 4;
+      paint-order: stroke fill;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+  }
+
+  .disabledInventory,
+  .disabledInventory text {
+    fill: var(--disabled-color) !important;
+  }
+
+  .critSlot.damaged {
+    fill: var(--damage-color) !important;
+    text-decoration: line-through;
+  }
+
+  .critSlot.damaged.willRepair text {
+    fill: var(--pip-pending-repair-color) !important;
+  }
+
+  .critLoc.damaged {
+    fill: var(--damage-color) !important;
+  }
+
+  .crewHit.damaged .crew-x {
+    opacity: 1 !important;
+  }
+}
+
+@keyframes random-hit-location-pulse {
+  from {
+    filter: drop-shadow(0 0 2px var(--damage-color));
+  }
+  to {
+    filter: drop-shadow(0 0 6px var(--damage-color));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mekbay-sheet .random-hit-location-highlight {
+    animation: none;
+  }
+}

@@ -1,0 +1,43 @@
+// Heat value, day color, night color. The existing SVG heat attribute selects a row.
+@media screen {
+  .mekbay-sheet .heat {
+    @each $heat, $day, $night in (
+      0 #ffffff #000000,
+      1 #ffffee #090900,
+      2 #ffffdd #121200,
+      3 #ffffcc #1b1b00,
+      4 #ffffbb #242400,
+      5 #ffffaa #2d2d00,
+      6 #ffff99 #363600,
+      7 #ffff88 #3f3f00,
+      8 #ffff77 #484800,
+      9 #ffff66 #515100,
+      10 #ffff55 #5a5a00,
+      11 #ffff44 #636300,
+      12 #ffff33 #6c6c00,
+      13 #ffff22 #757500,
+      14 #ffff11 #7f7f00,
+      15 #ffff00 #888800,
+      16 #ffee00 #907f00,
+      17 #ffdd00 #987600,
+      18 #ffcc00 #a06d00,
+      19 #ffbb00 #a86400,
+      20 #ffaa00 #b05b00,
+      21 #ff9900 #b85200,
+      22 #ff8800 #c04900,
+      23 #ff7700 #c84000,
+      24 #ff6600 #d03700,
+      25 #ff5500 #d82e00,
+      26 #ff4400 #e02500,
+      27 #ff3300 #e81c00,
+      28 #ff2200 #f01300,
+      29 #ff1100 #f80a00,
+      30 #ff0000 #ff0000
+    ) {
+      &[heat='#{$heat}'] {
+        --heat-color: #{$day};
+        --heat-night-color: #{$night};
+      }
+    }
+  }
+}

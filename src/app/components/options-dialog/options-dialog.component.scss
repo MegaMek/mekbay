@@ -71,33 +71,10 @@
   font-weight: 500;
 }
 
-.header-icon-button,
 .header-icon-button-spacer {
   width: 40px;
   height: 40px;
   flex-shrink: 0;
-}
-
-.header-icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-color-secondary);
-  cursor: pointer;
-  transition: color 0.2s;
-}
-
-.header-icon-button:hover,
-.header-icon-button:focus-visible {
-  color: var(--bt-yellow);
-}
-
-.header-icon-button svg {
-  width: 20px;
-  height: 20px;
 }
 
 .options-shell {

@@ -79,7 +79,8 @@ export class AlphaStrikeCardComponent {
     selected = output<ASForceUnit>();
     editPilot = output<ASForceUnit>();
     
-    imageUrl = computed(() => this.fluffImages.resolveUrl(this.resolvedUnit()) ?? '');
+    readonly fluffImageUrl = input<string | null>();
+    imageUrl = computed(() => (this.fluffImageUrl() === undefined ? this.fluffImages.resolveUrl(this.resolvedUnit()) : this.fluffImageUrl()) ?? '');
     
     // Interaction state
     private interactionAbortController: AbortController | null = null;

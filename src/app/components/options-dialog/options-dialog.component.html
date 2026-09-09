@@ -1,926 +1,1262 @@
 <base-dialog [modalClass]="modalClass">
-    <div dialog-header>
-        @if (isWideLayout()) {
-        <div class="settings-header settings-header-desktop">
-            <div class="settings-title-group">
-                <div class="settings-dialog-title">Options</div>
-                <div class="settings-dialog-subtitle">Adjust how MekBay looks, behaves, syncs, and stores local data.
-                </div>
+  <div dialog-header>
+    @if (isWideLayout()) {
+      <div class="settings-header settings-header-desktop">
+        <div class="settings-title-group">
+          <div class="settings-dialog-title">Options</div>
+          <div class="settings-dialog-subtitle">Adjust how MekBay looks, behaves, syncs, and stores local data.</div>
+        </div>
+        <button
+          type="button"
+          class="close-button header-icon-button"
+          (click)="onClose()"
+          aria-label="Close options"
+          title="Close options"
+        ></button>
+      </div>
+    } @else {
+      <div class="settings-header settings-header-mobile">
+        <button
+          type="button"
+          class="close-button header-icon-button"
+          (click)="onMobileBack()"
+          [attr.aria-label]="mobileDetailOpen() ? 'Go back' : 'Close options'"
+          [title]="mobileDetailOpen() ? 'Back' : 'Close options'"
+        >
+          <span class="chevron chevron-left" aria-hidden="true"></span>
+        </button>
+        <div class="settings-mobile-title">{{ mobileHeaderTitle() }}</div>
+        <div class="header-icon-button-spacer"></div>
+      </div>
+    }
+  </div>
+  <div dialog-body class="options-shell">
+    <ng-template #viewContent>
+      @switch (activeTab()) {
+        @case ('General') {
+          <div class="settings-view-content">
+            <div class="option-row">
+              <label for="colorScheme">Color scheme:</label>
+              <select
+                id="colorScheme"
+                class="bt-select"
+                [value]="optionsService.options().colorScheme"
+                (change)="onColorSchemeChange($event)"
+              >
+                <option value="default">Normal (default)</option>
+                <option value="night">Night mode</option>
+              </select>
             </div>
-            <button type="button" class="header-icon-button" (click)="onClose()" aria-label="Close options"
-                title="Close options">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M18 6L6 18" />
-                    <path d="M6 6L18 18" />
-                </svg>
-            </button>
-        </div>
-        } @else {
-        <div class="settings-header settings-header-mobile">
-            <button type="button" class="header-icon-button" (click)="onMobileBack()"
-                [attr.aria-label]="mobileDetailOpen() ? 'Go back' : 'Close options'"
-                [title]="mobileDetailOpen() ? 'Back' : 'Close options'">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                    stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M15 18L9 12L15 6" />
-                </svg>
-            </button>
-            <div class="settings-mobile-title">{{ mobileHeaderTitle() }}</div>
-            <div class="header-icon-button-spacer"></div>
-        </div>
+            <div class="option-row">
+              <label for="gameSystem">Default game system:</label>
+              <select
+                id="gameSystem"
+                class="bt-select"
+                [value]="optionsService.options().gameSystem"
+                (change)="onGameSystemChange($event)"
+              >
+                <option value="cbt">BattleTech (default)</option>
+                <option value="as">Alpha Strike</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="unitDisplayName">Unit display name:</label>
+              <select
+                id="unitDisplayName"
+                class="bt-select"
+                [value]="optionsService.options().unitDisplayName"
+                (change)="onUnitDisplayNameChange($event)"
+              >
+                <option value="chassisModel">Chassis & model (default)</option>
+                <option value="alias">Pilot name</option>
+                <option value="both">Chassis, model and pilot</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="displayUnitNameFormat">Unit name format:</label>
+              <select
+                id="displayUnitNameFormat"
+                class="bt-select"
+                [value]="optionsService.options().displayUnitNameFormat"
+                (change)="onDisplayUnitNameFormatChange($event)"
+              >
+                <option value="innerSphereClan">Inner Sphere (Clan)</option>
+                <option value="clanInnerSphere">Clan (Inner Sphere)</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="forceViewerBVPVDisplay">Force viewer BV/PV:</label>
+              <select
+                id="forceViewerBVPVDisplay"
+                class="bt-select"
+                [value]="optionsService.options().forceViewerBVPVDisplay"
+                (change)="onForceViewerBVPVDisplayChange($event)"
+              >
+                <option value="adjustedPostSkill">Adjusted after skills (default)</option>
+                <option value="adjustedPreSkill">Adjusted before skills</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+          </div>
         }
-    </div>
-    <div dialog-body class="options-shell">
-        <ng-template #viewContent>
-            @switch (activeTab()) {
-            @case ('General') {
-            <div class="settings-view-content">
-                <div class="option-row">
-                    <label for="colorScheme">Color scheme:</label>
-                    <select id="colorScheme" class="bt-select" [value]="optionsService.options().colorScheme"
-                        (change)="onColorSchemeChange($event)">
-                        <option value="default">Normal (default)</option>
-                        <option value="night">Night mode</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="gameSystem">Default game system:</label>
-                    <select id="gameSystem" class="bt-select" [value]="optionsService.options().gameSystem"
-                        (change)="onGameSystemChange($event)">
-                        <option value="cbt">BattleTech (default)</option>
-                        <option value="as">Alpha Strike</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="unitDisplayName">Unit display name:</label>
-                    <select id="unitDisplayName" class="bt-select" [value]="optionsService.options().unitDisplayName"
-                        (change)="onUnitDisplayNameChange($event)">
-                        <option value="chassisModel">Chassis & model (default)</option>
-                        <option value="alias">Pilot name</option>
-                        <option value="both">Chassis, model and pilot</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="displayUnitNameFormat">Unit name format:</label>
-                    <select id="displayUnitNameFormat" class="bt-select"
-                        [value]="optionsService.options().displayUnitNameFormat"
-                        (change)="onDisplayUnitNameFormatChange($event)">
-                        <option value="innerSphereClan">Inner Sphere (Clan)</option>
-                        <option value="clanInnerSphere">Clan (Inner Sphere)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="forceViewerBVPVDisplay">Force viewer BV/PV:</label>
-                    <select id="forceViewerBVPVDisplay" class="bt-select"
-                        [value]="optionsService.options().forceViewerBVPVDisplay"
-                        (change)="onForceViewerBVPVDisplayChange($event)">
-                        <option value="adjustedPostSkill">Adjusted after skills (default)</option>
-                        <option value="adjustedPreSkill">Adjusted before skills</option>
-                        <option value="both">Both</option>
-                    </select>
-                </div>
+        @case ('Search') {
+          <div class="settings-view-content">
+            <div class="option-col">
+              <div class="option-row">
+                <label for="availabilitySource">Units availability source:</label>
+                <select
+                  id="availabilitySource"
+                  class="bt-select"
+                  [value]="optionsService.options().availabilitySource"
+                  (change)="onAvailabilitySourceChange($event)"
+                >
+                  <option value="mul">Master Unit List (default)</option>
+                  <option value="megamek">MegaMek's RAT</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  Choose which unit availability catalog MekBay uses for <strong>Era</strong> and
+                  <strong>Faction</strong> filtering.
+                </p>
+              </div>
             </div>
-            }
-            @case ('Search') {
-            <div class="settings-view-content">
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="availabilitySource">Units availability source:</label>
-                        <select id="availabilitySource" class="bt-select"
-                            [value]="optionsService.options().availabilitySource"
-                            (change)="onAvailabilitySourceChange($event)">
-                            <option value="mul">Master Unit List (default)</option>
-                            <option value="megamek">MegaMek's RAT</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Choose which unit availability catalog MekBay uses for <strong>Era</strong> and
-                            <strong>Faction</strong> filtering.
-                        </p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="megaMekAvailabilityScopeMode">Rarity filter scope:</label>
-                        <select id="megaMekAvailabilityScopeMode" class="bt-select"
-                            [value]="optionsService.options().megaMekAvailabilityFiltersUseAllScopedOptions"
-                            (change)="onMegaMekAvailabilityFiltersUseAllScopedOptionsChange($event)">
-                            <option value="true">All matches (default)</option>
-                            <option value="false">Most available match only</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Controls how the MegaMek-backed <strong>Rarity</strong> filter works inside the current Era
-                            and Faction scope.</p>
-                        <p><strong>All matches</strong> checks every rarity a unit has in that scope.</p>
-                        <p><strong>Most available match only</strong> uses just one rarity per unit: the most available
-                            one in that scope. Example: if a unit is both <strong>Rare</strong> and
-                            <strong>Common</strong>, MekBay uses <strong>Common</strong> only.
-                        </p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="autoConvertFilters">Auto-convert filters to semantic:</label>
-                        <select id="autoConvertFilters" class="bt-select"
-                            [value]="optionsService.options().automaticallyConvertFiltersToSemantic"
-                            (change)="onAutoConvertFiltersChange($event)">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled (default)</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>When enabled, changes to UI filters (dropdowns, sliders) are automatically converted to
-                            semantic
-                            filter syntax in the search bar.</p>
-                        <p>When disabled, UI filters and semantic filters in the search bar work independently and are
-                            merged together.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="unitSearchExpandedViewLayout">Expanded search layout:</label>
-                        <select id="unitSearchExpandedViewLayout" class="bt-select"
-                            [value]="optionsService.options().unitSearchExpandedViewLayout"
-                            (change)="onunitSearchExpandedViewLayoutChange($event)">
-                            <option value="panel-list-filters">Details | Results | Filters (default)</option>
-                            <option value="filters-list-panel">Filters | Results | Details</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
-                    </div>
-                </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="megaMekAvailabilityScopeMode">Rarity filter scope:</label>
+                <select
+                  id="megaMekAvailabilityScopeMode"
+                  class="bt-select"
+                  [value]="optionsService.options().megaMekAvailabilityFiltersUseAllScopedOptions"
+                  (change)="onMegaMekAvailabilityFiltersUseAllScopedOptionsChange($event)"
+                >
+                  <option value="true">All matches (default)</option>
+                  <option value="false">Most available match only</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  Controls how the MegaMek-backed <strong>Rarity</strong> filter works inside the current Era and
+                  Faction scope.
+                </p>
+                <p><strong>All matches</strong> checks every rarity a unit has in that scope.</p>
+                <p>
+                  <strong>Most available match only</strong> uses just one rarity per unit: the most available one in
+                  that scope. Example: if a unit is both <strong>Rare</strong> and <strong>Common</strong>, MekBay uses
+                  <strong>Common</strong> only.
+                </p>
+              </div>
             </div>
-            }
-            @case ('Account') {
-            <div class="settings-view-content">
-                <div class="option-col">
-                    <div class="form-fields account-display-name-field">
-                        <label class="field-label" for="userDisplayName">Display name:</label>
-                        <div class="input-wrapper">
-                            <input #displayNameInput id="userDisplayName" class="field-input" type="text"
-                                autocomplete="nickname" maxlength="16" [value]="userDisplayName()"
-                                [attr.aria-busy]="displayNameSaving() || displayNameGenerating()"
-                                (input)="queueDisplayNameSave(displayNameInput)"
-                                (keydown)="onDisplayNameKeydown($event, displayNameInput)" />
-                            <button type="button" class="random-button" (click)="fillRandomDisplayName(displayNameInput)"
-                                [disabled]="displayNameGenerating()"
-                                aria-label="Generate random callsign" title="Generate random callsign"></button>
-                        </div>
-                        @if (displayNameError()) {<div class="error-msg">{{ displayNameError() }}</div>}
-                        <span class="field-note">Shown to other participants in Operation Lobbies</span>
-                    </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="autoConvertFilters">Auto-convert filters to semantic:</label>
+                <select
+                  id="autoConvertFilters"
+                  class="bt-select"
+                  [value]="optionsService.options().automaticallyConvertFiltersToSemantic"
+                  (change)="onAutoConvertFiltersChange($event)"
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled (default)</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  When enabled, changes to UI filters (dropdowns, sliders) are automatically converted to semantic
+                  filter syntax in the search bar.
+                </p>
+                <p>
+                  When disabled, UI filters and semantic filters in the search bar work independently and are merged
+                  together.
+                </p>
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="unitSearchExpandedViewLayout">Expanded search layout:</label>
+                <select
+                  id="unitSearchExpandedViewLayout"
+                  class="bt-select"
+                  [value]="optionsService.options().unitSearchExpandedViewLayout"
+                  (change)="onunitSearchExpandedViewLayoutChange($event)"
+                >
+                  <option value="panel-list-filters">Details | Results | Filters (default)</option>
+                  <option value="filters-list-panel">Filters | Results | Details</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>Choose the panel arrangement in expanded unit search view on wide screens.</p>
+              </div>
+            </div>
+          </div>
+        }
+        @case ('Account') {
+          <div class="settings-view-content">
+            <div class="option-col">
+              <div class="form-fields account-display-name-field">
+                <label class="field-label" for="userDisplayName">Display name:</label>
+                <div class="input-wrapper">
+                  <input
+                    #displayNameInput
+                    id="userDisplayName"
+                    class="field-input"
+                    type="text"
+                    autocomplete="nickname"
+                    maxlength="16"
+                    [value]="userDisplayName()"
+                    [attr.aria-busy]="displayNameSaving() || displayNameGenerating()"
+                    (input)="queueDisplayNameSave(displayNameInput)"
+                    (keydown)="onDisplayNameKeydown($event, displayNameInput)"
+                  />
+                  <button
+                    type="button"
+                    class="random-button"
+                    (click)="fillRandomDisplayName(displayNameInput)"
+                    [disabled]="displayNameGenerating()"
+                    aria-label="Generate random callsign"
+                    title="Generate random callsign"
+                  ></button>
                 </div>
-                <div class="option-section-title">Identity</div>
-                <div class="option-col">
-                    <label for="userUuid">User identifier:</label>
-                    <div class="option-row">
-                        <div class="sensitive-input-wrapper" [class.uuid-visible]="showUserUuid()">
-                            <input #uuidInput id="userUuid" class="bt-input" [class.error]="!!userUuidError"
-                                [class.user-uuid-input-readonly]="userHasOAuth()"
-                                [type]="showUserUuid() ? 'text' : 'password'" [value]="userUuid()"
-                                [readOnly]="userHasOAuth()" [attr.aria-readonly]="userHasOAuth() ? 'true' : null"
-                                (focus)="selectAll($event)" (keydown)="onUserUuidKeydown($event)" />
-                            @if (showUserUuid()) {
-                            <button type="button" class="sensitive-copy" (click)="copyUserUuid()"
-                                [disabled]="!userUuid()" aria-label="Copy user identifier"
-                                title="Copy user identifier">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="9" y="9" width="11" height="11" rx="2" />
-                                    <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
-                                </svg>
-                            </button>
-                            }
-                            <button type="button" class="sensitive-toggle" (click)="toggleUserUuidVisibility()"
-                                [attr.aria-label]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'"
-                                [title]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'">
-                                @if (showUserUuid()) {
-                                <!-- show eye -->
-                                <svg fill="currentColor" width="20" height="20" viewBox="0 0 48 48"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M0 0h48v48H0z" fill="none" />
-                                    <circle cx="24" cy="24" r="4" />
-                                    <path
-                                        d="M24,38c12,0,20-14,20-14s-8-14-20-14S4,24,4,24S12,38,24,38z M24,16c4.418,0,8,3.582,8,8s-3.582,8-8,8s-8-3.582-8-8 S19.582,16,24,16z" />
-                                </svg>
-                                } @else {
-                                <!-- closed eye -->
-                                <svg fill="currentColor" width="20" height="20" viewBox="0 0 48 48"
-                                    xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M0 0h48v48H0z" fill="none" />
-                                    <path
-                                        d="M11.957,33.214L7.171,38L10,40.828l5.305-5.305C17.867,36.992,20.788,38,24,38c12,0,20-14,20-14s-2.953-5.159-7.957-9.214 L40.829,10L38,7.172l-5.305,5.305C30.133,11.008,27.212,10,24,10C12,10,4,24,4,24S6.953,29.159,11.957,33.214z M16,24 c0-4.418,3.582-8,8-8c1.483,0,2.867,0.411,4.058,1.114l-3.035,3.035C24.694,20.062,24.356,20,24,20c-2.206,0-4,1.794-4,4 c0,0.356,0.062,0.694,0.149,1.023l-3.035,3.035C16.411,26.867,16,25.483,16,24z M32,24c0,4.418-3.582,8-8,8 c-1.483,0-2.867-0.411-4.058-1.114l3.035-3.035C23.306,27.938,23.644,28,24,28c2.206,0,4-1.794,4-4 c0-0.356-0.062-0.694-0.149-1.023l3.035-3.035C31.589,21.133,32,22.517,32,24z" />
-                                </svg>
-                                }
-                            </button>
-                        </div>
-                        <button class="bt-button" type="button" [disabled]="userHasOAuth()"
-                            [title]="userHasOAuth() ? 'User Identifier changes are disabled for OAuth-connected accounts' : 'Apply User Identifier'"
-                            (click)="onSetUuid(uuidInput.value)">APPLY</button>
-                    </div>
-                    @if (userUuidError) {<div class="error-msg">{{ userUuidError }}</div>}
-                    <div class="account-summary-row">
-                        <span class="account-summary-label">Account mode:</span>
-                        <strong class="account-summary-value">{{ userHasOAuth() ? 'OAuth connected' : 'Anonymous UUID
-                            only' }}</strong>
-                    </div>
-                    <div class="description">
-                        <p>The User Identifier is used for cloud saving and is autogenerated the first time the
-                            application
-                            is started.</p>
-                        <p>By setting the same ID on multiple devices, you can share your saved forces across them.</p>
-                        @if (userHasOAuth()) {
-                        <p>Manual UUID changes are disabled while this account is signed in with OAuth.</p>
-                        }
-                    </div>
-                    <div class="account-summary-row">
-                        <span class="account-summary-label">Public ID:</span>
-                        <span class="account-summary-value readonly-value">{{ userPublicId() }}</span>
-                    </div>
-                    <div class="description">
-                        <p>Your Public ID is assigned by the server and can be shared with others to let them subscribe
-                            to
-                            your public tags.</p>
-                    </div>
-                </div>
-                <div class="option-section-title">Linked Providers</div>
-                @if (linkedOAuthProviders().length > 0) {
-                @if (userHasOAuth()) {
-                <div class="description oauth-description-block">
-                    <p>If you unlink every provider, the account on this device falls back to UUID-only access until you
-                        link a provider again.</p>
-                </div>
+                @if (displayNameError()) {
+                  <div class="error-msg">{{ displayNameError() }}</div>
                 }
-                <div class="linked-provider-list">
-                    @for (provider of linkedOAuthProviders(); track provider.provider) {
-                    <div class="linked-provider-row">
-                        <div class="linked-provider-info">
-                            <div class="linked-provider-title">
-                                <span class="provider-brand" [attr.data-provider]="provider.provider">
-                                    <span class="provider-icon-frame">
-                                        <img class="provider-icon" [src]="'/images/' + provider.provider + '.svg'"
-                                            alt="" aria-hidden="true" />
-                                    </span>
-                                    <span>{{ getProviderLabel(provider.provider) }}</span>
-                                </span>
-                            </div>
-                            <div class="linked-provider-primary">{{ getProviderIdentity(provider) }}</div>
-                            @if (provider.email && provider.displayName && provider.email !== provider.displayName) {
-                            <div class="linked-provider-meta">{{ provider.email }}</div>
-                            }
-                            <div class="linked-provider-meta">
-                                Linked {{ provider.linkedAt | date:'medium' }}
-                            </div>
-                        </div>
-                        <div class="linked-provider-actions">
-                            <button class="bt-button small"
-                                [disabled]="oauthActionInFlight() || !isProviderEnabled(provider.provider)"
-                                (click)="onReplaceProvider(provider.provider)">REPLACE</button>
-                            <button class="bt-button danger small" [disabled]="oauthActionInFlight()"
-                                (click)="onUnlinkProvider(provider.provider)">UNLINK</button>
-                        </div>
-                    </div>
-                    }
-                </div>
-                } @else {
-                <div class="empty-state">
-                    <p>No OAuth providers are linked to this UUID yet.</p>
-                </div>
-                }
-
-                @if (linkableAuthProviders().length > 0) {
-                <div class="option-section-title">Link Current Account</div>
-                <div class="description oauth-description-block">
-                    <p>You can keep using MekBay anonymously with your UUID only. OAuth is optional.</p>
-                </div>
-                <div class="provider-actions">
-                    @for (provider of linkableAuthProviders(); track provider.provider) {
-                    <button class="bt-button provider-action-button provider-link-button"
-                        [attr.data-provider]="provider.provider" [disabled]="oauthActionInFlight() || !provider.enabled"
-                        (click)="onLinkProvider(provider.provider)">
-                        <span class="provider-action-content">
-                            <span class="provider-icon-frame">
-                                <img class="provider-icon" [src]="'/images/' + provider.provider + '.svg'" alt=""
-                                    aria-hidden="true" />
-                            </span>
-                            <span class="provider-action-label">Link {{ getProviderLabel(provider.provider) }}</span>
-                        </span>
+                <span class="field-note">Shown to other participants in Operation Lobbies</span>
+              </div>
+            </div>
+            <div class="option-section-title">Identity</div>
+            <div class="option-col">
+              <label for="userUuid">User identifier:</label>
+              <div class="option-row">
+                <div class="sensitive-input-wrapper" [class.uuid-visible]="showUserUuid()">
+                  <input
+                    #uuidInput
+                    id="userUuid"
+                    class="bt-input"
+                    [class.error]="!!userUuidError"
+                    [class.user-uuid-input-readonly]="userHasOAuth()"
+                    [type]="showUserUuid() ? 'text' : 'password'"
+                    [value]="userUuid()"
+                    [readOnly]="userHasOAuth()"
+                    [attr.aria-readonly]="userHasOAuth() ? 'true' : null"
+                    (focus)="selectAll($event)"
+                    (keydown)="onUserUuidKeydown($event)"
+                  />
+                  @if (showUserUuid()) {
+                    <button
+                      type="button"
+                      class="sensitive-copy"
+                      (click)="copyUserUuid()"
+                      [disabled]="!userUuid()"
+                      aria-label="Copy user identifier"
+                      title="Copy user identifier"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <rect x="9" y="9" width="11" height="11" rx="2" />
+                        <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+                      </svg>
                     </button>
+                  }
+                  <button
+                    type="button"
+                    class="sensitive-toggle"
+                    (click)="toggleUserUuidVisibility()"
+                    [attr.aria-label]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'"
+                    [title]="showUserUuid() ? 'Hide user identifier' : 'Show user identifier'"
+                  >
+                    @if (showUserUuid()) {
+                      <!-- show eye -->
+                      <svg
+                        fill="currentColor"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 48 48"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path d="M0 0h48v48H0z" fill="none" />
+                        <circle cx="24" cy="24" r="4" />
+                        <path
+                          d="M24,38c12,0,20-14,20-14s-8-14-20-14S4,24,4,24S12,38,24,38z M24,16c4.418,0,8,3.582,8,8s-3.582,8-8,8s-8-3.582-8-8 S19.582,16,24,16z"
+                        />
+                      </svg>
+                    } @else {
+                      <!-- closed eye -->
+                      <svg
+                        fill="currentColor"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 48 48"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path d="M0 0h48v48H0z" fill="none" />
+                        <path
+                          d="M11.957,33.214L7.171,38L10,40.828l5.305-5.305C17.867,36.992,20.788,38,24,38c12,0,20-14,20-14s-2.953-5.159-7.957-9.214 L40.829,10L38,7.172l-5.305,5.305C30.133,11.008,27.212,10,24,10C12,10,4,24,4,24S6.953,29.159,11.957,33.214z M16,24 c0-4.418,3.582-8,8-8c1.483,0,2.867,0.411,4.058,1.114l-3.035,3.035C24.694,20.062,24.356,20,24,20c-2.206,0-4,1.794-4,4 c0,0.356,0.062,0.694,0.149,1.023l-3.035,3.035C16.411,26.867,16,25.483,16,24z M32,24c0,4.418-3.582,8-8,8 c-1.483,0-2.867-0.411-4.058-1.114l3.035-3.035C23.306,27.938,23.644,28,24,28c2.206,0,4-1.794,4-4 c0-0.356-0.062-0.694-0.149-1.023l3.035-3.035C31.589,21.133,32,22.517,32,24z"
+                        />
+                      </svg>
                     }
+                  </button>
                 </div>
-                }
-
-                @if (!userHasOAuth()) {
-                <div class="option-section-title">Provider Sign-In</div>
-                <div class="description oauth-description-block">
-                    <p>If you have already linked an OAuth provider to a MekBay account, choose that provider to recover
-                        the UUID associated with it.</p>
-                </div>
-                <div class="provider-actions provider-login-launcher">
-                    <button class="bt-button provider-action-button provider-login-button provider-login-launch-button"
-                        [disabled]="oauthActionInFlight() || !hasEnabledAuthProviders()"
-                        (click)="showProviderSignInDialog()">
-                        <span class="provider-action-content">
-                            <span class="provider-login-launch-icon" aria-hidden="true">
-                                <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" stroke="currentColor"
-                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                    <path d="M10 17l5-5-5-5" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" stroke-linejoin="round" />
-                                    <path d="M15 12H4" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                        stroke-linejoin="round" />
-                                </svg>
-                            </span>
-                            <span class="provider-action-label">Choose Sign-In Provider</span>
-                        </span>
-                    </button>
-                </div>
-                }
-
-                @if (!hasEnabledAuthProviders()) {
-                <div class="empty-state">
-                    <p>No OAuth providers are configured on the server yet.</p>
-                </div>
-                }
-
-                @if (userHasOAuth()) {
-                <div class="option-section-title">Log Out</div>
-                <div class="option-col account-logout-block">
-                    <div class="description">
-                        <p>Log out on this device and reset it to a fresh anonymous UUID.</p>
-                        <p>This removes local account data and related caches from this browser, but it does not unlink
-                            your OAuth providers from the MekBay account.</p>
-                    </div>
-                    <div class="account-logout-actions">
-                        <button class="bt-button danger" [disabled]="logoutInFlight() || oauthActionInFlight()"
-                            (click)="onLogout()">LOG OUT</button>
-                    </div>
-                </div>
-                }
-            </div>
-            }
-            @case ('Tags') {
-            <div class="settings-view-content">
-                <div class="option-col tags-description">
-                    <div class="description">
-                        <p>Share your tags with others by copying the link and sending it to them.</p>
-                    </div>
-                </div>
-                @if (userOwnTags().length > 0) {
-                <div class="tags-list">
-                    @for (tag of userOwnTags(); track $index) {
-                    <div class="tag-row">
-                        <span class="tag-name">{{ tag }}</span>
-                        @if (getSubscriberCount(tag) > 0) {
-                        <span class="subscriber-count" title="Number of subscribers">
-                            {{ getSubscriberCount(tag) }}
-                            <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                <path
-                                    d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
-                            </svg>
-                        </span>
-                        }
-                        <div class="tag-actions">
-                            <button class="bt-button icon" (click)="onCopyTagLink(tag)" title="Copy shareable link">
-                                <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                    <path fill-rule="evenodd" clip-rule="evenodd"
-                                        d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z" />
-                                </svg>
-                            </button>
-                            <button class="bt-button icon" (click)="onRenameTag(tag)" title="Rename this tag">
-                                <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                                </svg>
-                            </button>
-                            <button class="bt-button icon danger" (click)="onDeleteTag(tag)" title="Delete this tag">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                    stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                                    <path
-                                        d="M6 7V18C6 19.1046 6.89543 20 8 20H16C17.1046 20 18 19.1046 18 18V7M6 7H5M6 7H8M18 7H19M18 7H16M10 11V16M14 11V16M8 7V5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5V7M8 7H16" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    }
-                </div>
-                } @else {
-                <div class="empty-state">
-                    <p>You don't have any tags yet. Create tags by searching units and clicking on the tag button
-                        <svg class="inline-icon" fill="none" stroke="currentColor" width="20px" height="20px"
-                            viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                            <path
-                                d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
-                                stroke-width="1.5" />
-                            <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
-                        </svg>
-                    </p>
-                </div>
-                }
-
-                <div class="option-section-title">Subscribed Tags</div>
-                <div class="description" style="padding: 0 0.5em;">
-                    <p>Tags you've subscribed to from other users.</p>
-                </div>
-                @if (!showSubscriptionInput()) {
-                <div class="option-row">
-                    <button class="bt-button" (click)="onShowSubscriptionInput()">ADD SUBSCRIPTION</button>
-                </div>
-                } @else {
-                <div class="option-col subscription-input-container">
-                    <div class="option-row">
-                        <input #subscriptionInput class="bt-input" [class.error]="!!subscriptionError()" type="text"
-                            placeholder="publicId:tagName" (keydown)="onSubscriptionKeydown($event)" />
-                        <button class="bt-button primary"
-                            (click)="onAddSubscription(subscriptionInput.value)">ADD</button>
-                        <button class="bt-button" (click)="onCancelSubscription()">CANCEL</button>
-                    </div>
-                    @if (subscriptionError()) {
-                    <div class="error-msg">{{ subscriptionError() }}</div>
-                    }
-                </div>
-                }
-                @if (subscribedTags().length > 0) {
-                <div class="subscribed-tags-list">
-                    @for (tag of subscribedTags(); track tag.publicId + ':' + tag.tagName) {
-                    <div class="subscribed-tag-row">
-                        <span class="tag-info">
-                            <span class="tag-name">{{ tag.tagName }}</span>
-                            <span class="tag-owner">from {{ tag.publicId }}</span>
-                        </span>
-                        <button class="bt-button danger small"
-                            (click)="onUnsubscribePublicTag(tag.publicId, tag.tagName)">Unsubscribe</button>
-                    </div>
-                    }
-                </div>
-                } @else {
-                <div class="empty-state">
-                    <p>You haven't subscribed to any public tags yet.</p>
-                </div>
-                }
-            </div>
-            }
-            @case ('Classic BattleTech') {
-            <div class="settings-view-content">
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="CBTRules">Rules:</label>
-                        <select id="CBTRules" class="bt-select" [value]="optionsService.options().CBTRules"
-                            (change)="onCBTRulesChange($event)">
-                            <option value="total-warfare">Total Warfare (default)</option>
-                            <option value="core-2026">Core 2026</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Changing this setting affects the calculation of hit modifiers, critical hits, PSRs, and C³
-                            network costs.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="forceViewerBVPVDisplayDamage">Force viewer BV damage:</label>
-                        <select id="forceViewerBVPVDisplayDamage" class="bt-select"
-                            [value]="optionsService.options().forceViewerBVPVDisplayDamage"
-                            (change)="onForceViewerBVPVDisplayDamageChange($event)">
-                            <option value="damaged">Include permanent damage (default)</option>
-                            <option value="pristine">Use pristine unit BV</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Controls whether Classic force-viewer BV starts from the unit's current damaged state or
-                            pristine Entity. Skills, TAG, and intact C³/Nova adjustments are applied in either mode;
-                            transient conditions never change BV.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <span id="classicUnitViewModeLabel">Default unit view:</span>
-                        <mode-switch leftLabel="Sheet" rightLabel="Tactical"
-                            ariaLabel="Default Classic BattleTech unit view"
-                            switchAriaLabel="Switch default Classic BattleTech unit view"
-                            [selectedRight]="optionsService.options().cbtUnitViewMode === 'tactical'"
-                            (selectedRightChange)="onCBTUnitViewModeChange($event)"></mode-switch>
-                    </div>
-                    <div class="description">
-                        <p>Chooses which view opens by default. Switching views from either toolbar also updates this preference.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="recordSheetPipLayout">Pip layout:</label>
-                        <select id="recordSheetPipLayout" class="bt-select"
-                            [value]="optionsService.options().recordSheetPipLayout"
-                            (change)="onRecordSheetPipLayoutChange($event)">
-                            <option value="classic">Canon</option>
-                            <option value="distributed">Distributed</option>
-                            <option value="rail">Grouped</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Canon uses the standard pip layout for biped 'Mechs up to 100 tons. Other units use Distributed.</p>
-                    </div>
-                </div>
-                <div class="option-row">
-                    <label for="recordSheetCenterPanelContent">Center panel:</label>
-                    <select id="recordSheetCenterPanelContent" class="bt-select"
-                        [value]="optionsService.options().printAllOptions.recordSheetCenterPanelContent"
-                        (change)="onRecordSheetCenterPanelContentChange($event)">
-                        <option value="clusterTable">Hit location and cluster table (default)</option>
-                        <option value="fluffImage">Artwork</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="syncZoomBetweenSheets">Sync zoom/pan:</label>
-                    <select id="syncZoomBetweenSheets" class="bt-select"
-                        [value]="optionsService.options().syncZoomBetweenSheets"
-                        (change)="onSyncZoomBetweenSheetsChange($event)">
-                        <option value="true">Enabled (default)</option>
-                        <option value="false">Disabled</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="recordSheetDoubleTapZoomReset">Double-tap zoom reset:</label>
-                    <select id="recordSheetDoubleTapZoomReset" class="bt-select"
-                        [value]="optionsService.options().recordSheetDoubleTapZoomReset"
-                        (change)="onRecordSheetDoubleTapZoomResetChange($event)">
-                        <option value="contextual">Contextual (default)</option>
-                        <option value="fit-to-screen">Fit to screen</option>
-                        <option value="full-width">Full width</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="allowMultipleActiveSheets">Multiple active sheets:</label>
-                        <select id="allowMultipleActiveSheets" class="bt-select"
-                            [value]="optionsService.options().allowMultipleActiveSheets"
-                            (change)="onAllowMultipleActiveSheetsChange($event)">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled (default)</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>When enabled, multiple sheets can be displayed side-by-side on wide screens.</p>
-                        <p>When disabled, only one active sheet is shown at a time, with neighbor sheets displayed as
-                            faded
-                            previews.</p>
-                    </div>
-                </div>
-                <div class="option-row">
-                    <label for="swipeToNextSheet">Swipe to next sheet:</label>
-                    <select id="swipeToNextSheet" class="bt-select" [value]="optionsService.options().swipeToNextSheet"
-                        (change)="onSwipeToNextSheetChange($event)">
-                        <!-- <option value="vertical">Vertical</option> -->
-                        <option value="horizontal">Horizontal</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="trackPhaseAndTurn">Track game phase/turn:</label>
-                        <select id="trackPhaseAndTurn" class="bt-select"
-                            [value]="optionsService.options().trackPhaseAndTurn" (change)="onTrackPhaseAndTurn($event)">
-                            <option value="true">Enabled (default)</option>
-                            <option value="false">Disabled</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn
-                            cleanup.</p>
-                        <p>When disabled, these mechanics must be tracked manually. <strong>Damage and to-hit modifiers
-                                take effect immediately instead of being deferred to the appropriate phase or
-                                turn.</strong></p>
-                    </div>
-                </div>
-                <div class="option-section-title">Automations</div>
-                <div class="description automation-description">
-                    <p><strong>Auto</strong> automatically rolls and applies the result, <strong>Ask</strong> opens the
-                        review and roll controls, and <strong>No</strong> leaves it for manual tracking.</p>
-                </div>
-                <div class="automation-options">
-                    @for (automation of cbtAutomationOptions; track automation.key) {
-                    <div class="option-col automation-option">
-                        <div class="option-row">
-                            <span class="automation-option-label" [id]="'automation-label-' + automation.key">
-                                {{ automation.label }}:
-                            </span>
-                            <div class="automation-mode-switch" role="radiogroup"
-                                [attr.aria-labelledby]="'automation-label-' + automation.key">
-                                @for (mode of cbtAutomationModes; track mode.value) {
-                                <button type="button" class="automation-mode-choice" role="radio"
-                                    [class.selected]="optionsService.cbtAutomationMode(automation.key) === mode.value"
-                                    [attr.aria-checked]="optionsService.cbtAutomationMode(automation.key) === mode.value"
-                                    (click)="onCbtAutomationModeChange(automation.key, mode.value)">
-                                    {{ mode.label }}
-                                </button>
-                                }
-                            </div>
-                        </div>
-                        <div class="description">
-                            <p>{{ automation.description }}</p>
-                        </div>
-                    </div>
-                    }
-                </div>
-                <div class="option-section-title">Optional rules</div>
-                <div class="option-row">
-                    <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
-                    <select id="CBTOptionalFloatingCritical" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
-                        (change)="onCBTOptionalRuleChange('floatingCriticals', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
-                    <select id="CBTOptionalSprinting" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.sprinting"
-                        (change)="onCBTOptionalRuleChange('sprinting', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTOptionalExtremeRange">"Extreme" range:</label>
-                    <select id="CBTOptionalExtremeRange" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.extremeRange"
-                        (change)="onCBTOptionalRuleChange('extremeRange', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTOptionalMixedTechBaseAmmo">Allow mixed IS/Clan ammunition:</label>
-                    <select id="CBTOptionalMixedTechBaseAmmo" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.allowMixedTechBaseAmmo"
-                        (change)="onCBTOptionalRuleChange('allowMixedTechBaseAmmo', $event)">
-                        <option value="true">Enabled</option>
-                        <option value="false">Disabled (default)</option>
-                    </select>
-                </div>
-                <div class="option-row">
-                    <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
-                    <select id="CBTForcedWithdrawal" class="bt-select"
-                        [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
-                        (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)">
-                        <option value="true">Enabled (default)</option>
-                        <option value="false">Disabled</option>
-                    </select>
-                </div>
-            </div>
-            }
-            @case ('Alpha Strike') {
-            <div class="settings-view-content">
-                <div class="option-row">
-                    <label for="ASUseHex">Measures:</label>
-                    <select id="ASUseHex" class="bt-select" [value]="optionsService.options().ASUseHex"
-                        (change)="onASUseHexChange($event)">
-                        <option value="false">Inches (default)</option>
-                        <option value="true">Hexes</option>
-                    </select>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="ASUnifiedDamagePicker">Unified damage picker:</label>
-                        <select id="ASUnifiedDamagePicker" class="bt-select"
-                            [value]="optionsService.options().ASUnifiedDamagePicker"
-                            (change)="onASUnifiedDamagePickerChange($event)">
-                            <option value="true">Enabled (default)</option>
-                            <option value="false">Disabled</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>When enabled: damage is automatically assigned in the order armor->structure.</p>
-                        <p>When disabled: damage must be assigned manually to either armor or structure.</p>
-                    </div>
-                </div>
-                <div class="option-section-title">Rules</div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="ASUseAutomations">Use automations:</label>
-                        <select id="ASUseAutomations" class="bt-select"
-                            [value]="optionsService.options().ASUseAutomations"
-                            (change)="onASUseAutomationsChange($event)">
-                            <option value="true">Enabled (default)</option>
-                            <option value="false">Disabled</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Automations provide automatic triggers like critical hits rolls or vehicle motive damage.</p>
-                        <p>Disabling automations will require manual tracking of these mechanics during gameplay.</p>
-                    </div>
-                </div>
-                <div class="option-row">
-                    <label for="ASVehiclesCriticalHitTable">Vehicles critical hit table:</label>
-                    <select id="ASVehiclesCriticalHitTable" class="bt-select"
-                        [value]="optionsService.options().ASVehiclesCriticalHitTable"
-                        (change)="onVehiclesCriticalHitTableChange($event)">
-                        <option value="default">Alpha Strike: Commander's Edition (default)</option>
-                        <option value="scouringSands">Aces: Scouring Sands</option>
-                    </select>
-                </div>
-            </div>
-            }
-            @case ('Advanced') {
-            <div class="settings-view-content">
-                <div class="option-col">
-                    <div class="option-row">
-                        <span>Units loaded: <strong>{{ unitsCount() }}</strong></span>
-                    </div>
-                    <div class="option-row">
-                        <span>Equipment entries: <strong>{{ equipmentCount() }}</strong></span>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <span>Downloaded catalogs</span>
-                        <button class="bt-button" (click)="onPurgeCatalogs()">PURGE</button>
-                    </div>
-                    <div class="description">
-                        <p>Deletes the locally stored unit, equipment, era, faction, quirk, sourcebook, and MegaMek
-                            catalogs.</p>
-                        <p>Use this if catalog-backed filters or lookups appear empty or inconsistent after an update.
-                            MekBay will reload and download fresh copies.</p>
-                    </div>
-                </div>
-                <div class="option-row">
-                    <span>Unit icons stored: <strong>{{ unitIconsCount() }}</strong></span>
-                    <button class="bt-button" (click)="onPurgeIcons()">PURGE</button>
-                </div>
-                <div class="option-row">
-                    <span>Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span>
-                    <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
-                </div>
-                <hr />
-                <div class="option-row">
-                    <label for="pickerStyle">Picker style:</label>
-                    <select id="pickerStyle" class="bt-select" [value]="optionsService.options().pickerStyle"
-                        (change)="onPickerStyleChange($event)">
-                        <option value="default">Automatic (default)</option>
-                        <option value="radial">Always Dial</option>
-                        <option value="linear">Always Linear</option>
-                    </select>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="canvasInput">Drawing input:</label>
-                        <select id="canvasInput" class="bt-select" [value]="optionsService.options().canvasInput"
-                            (change)="onCanvasInputChange($event)">
-                            <option value="all">All</option>
-                            <option value="pen">Pen only</option>
-                            <option value="touch">Touch only</option>
-                        </select>
-                    </div>
-                    @if (isIOS) {
-                    <div class="description">
-                        <p>To enhance the performance with Apple Pencil, disable Scribble mode in Settings > Apple
-                            Pencil >
-                            Scribble.</p>
-                    </div>
-                    }
-                </div>
-                <div class="option-col">
-                    <div class="option-row force-gen-search-window-row">
-                        <label id="forceGenFailureSearchWindowMsLabel" for="forceGenFailureSearchWindowMs">Force
-                            generator search window:</label>
-                        <div class="force-gen-search-window-control">
-                            <range-slider id="forceGenFailureSearchWindowMs"
-                                [attr.aria-labelledby]="'forceGenFailureSearchWindowMsLabel forceGenFailureSearchWindowMsValue'"
-                                [min]="forceGenFailureSearchWindowMinMs" [max]="forceGenFailureSearchWindowMaxMs"
-                                [singleValue]="forceGenFailureSearchWindowMs()"
-                                [stepSize]="forceGenFailureSearchWindowStepMs"
-                                (singleValueChange)="onForceGenFailureSearchWindowMsChange($event)">
-                            </range-slider>
-                            <span id="forceGenFailureSearchWindowMsValue" class="force-gen-search-window-value">{{
-                                forceGenFailureSearchWindowMs() }} ms</span>
-                        </div>
-                    </div>
-                    <div class="description">
-                        <p>Controls how long the force generator keeps searching before stopping when no valid force is
-                            found.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="performanceMode">Performance mode:</label>
-                        <select id="performanceMode" class="bt-select"
-                            [value]="optionsService.options().performanceMode"
-                            (change)="onPerformanceModeChange($event)">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled (default)</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>Reduces expensive visual effects in components that support a lighter rendering path.</p>
-                    </div>
-                </div>
-                <div class="option-col">
-                    <div class="option-row">
-                        <label for="enableForceSyncConflictDialog">Force sync conflict dialog:</label>
-                        <select id="enableForceSyncConflictDialog" class="bt-select"
-                            [value]="optionsService.options().enableForceSyncConflictDialog"
-                            (change)="onForceSyncConflictDialogChange($event)">
-                            <option value="true">Enabled</option>
-                            <option value="false">Disabled (default)</option>
-                        </select>
-                    </div>
-                    <div class="description">
-                        <p>When enabled, ask how to resolve an owned force conflict when reconnecting to cloud sync.</p>
-                    </div>
-                </div>
-            </div>
-            }
-            @case ('Logs') {
-            <div class="settings-view-content debug">
-                <div class="logs-list allow-select">
-                    @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
-                    <div class="log-row log-{{ log.type.toLowerCase() }}">
-                        <span class="log-timestamp">{{ log.timestamp | date:'short' }}</span>
-                        <span class="log-message">{{ log.message }}</span>
-                    </div>
-                    }
-                </div>
-                <div class="spanner"></div>
-                <div class="option-row debug-controls">
-                    <button class="bt-button" (click)="logger.clear()">CLEAR</button>
-                </div>
-            </div>
-            }
-            }
-        </ng-template>
-
-        @if (isWideLayout()) {
-        <div class="options-desktop-shell">
-            <nav class="options-nav" aria-label="Options sections">
-                @if (appUpdateService.updatePending()) {
-                <div class="options-nav-item update-entry">
-                    <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
-                        INSTALL UPDATE
-                    </button>
-                </div>
-                }
-                <div class="options-nav-heading">Sections</div>
-                @for (section of sections; track section.id) {
-                <button type="button" class="options-nav-item" [class.active]="activeTab() === section.id"
-                    [attr.aria-current]="activeTab() === section.id ? 'page' : null"
-                    (click)="selectDesktopSection(section.id)">
-                    <span class="options-nav-label">{{ section.title }}</span>
-                    <span class="options-nav-description">{{ section.description }}</span>
+                <button
+                  class="bt-button"
+                  type="button"
+                  [disabled]="userHasOAuth()"
+                  [title]="
+                    userHasOAuth()
+                      ? 'User Identifier changes are disabled for OAuth-connected accounts'
+                      : 'Apply User Identifier'
+                  "
+                  (click)="onSetUuid(uuidInput.value)"
+                >
+                  APPLY
                 </button>
+              </div>
+              @if (userUuidError) {
+                <div class="error-msg">{{ userUuidError }}</div>
+              }
+              <div class="account-summary-row">
+                <span class="account-summary-label">Account mode:</span>
+                <strong class="account-summary-value">{{
+                  userHasOAuth()
+                    ? 'OAuth connected'
+                    : 'Anonymous UUID
+                            only'
+                }}</strong>
+              </div>
+              <div class="description">
+                <p>
+                  The User Identifier is used for cloud saving and is autogenerated the first time the application is
+                  started.
+                </p>
+                <p>By setting the same ID on multiple devices, you can share your saved forces across them.</p>
+                @if (userHasOAuth()) {
+                  <p>Manual UUID changes are disabled while this account is signed in with OAuth.</p>
                 }
-            </nav>
-
-            <section class="options-detail-shell" aria-label="Options details">
-                <div class="options-detail-intro">
-                    <h2 class="options-detail-title">{{ currentViewDefinition().title }}</h2>
-                    @if (currentViewDescription()) {
-                    <p class="options-detail-description">{{ currentViewDescription() }}</p>
-                    }
-                </div>
-
-                <div class="options-detail-content">
-                    <ng-container *ngTemplateOutlet="viewContent"></ng-container>
-                </div>
-            </section>
-        </div>
-        } @else {
-        <div class="options-mobile-shell">
-            @if (!mobileDetailOpen()) {
-            <div class="mobile-settings-list" role="list">
-                @if (appUpdateService.updatePending()) {
-                <div class="mobile-settings-item update-entry">
-                    <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
-                        INSTALL UPDATE
-                    </button>
-                </div>
-                }
-                @for (section of sections; track section.id) {
-                <button type="button" class="mobile-settings-item" role="listitem"
-                    (click)="openMobileSection(section.id)">
-                    <span class="mobile-settings-copy">
-                        <span class="mobile-settings-label">{{ section.title }}</span>
-                        <span class="mobile-settings-description">{{ section.description }}</span>
-                    </span>
-                    <svg class="mobile-settings-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                        xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 6L15 12L9 18" />
-                    </svg>
-                </button>
-                }
+              </div>
+              <div class="account-summary-row">
+                <span class="account-summary-label">Public ID:</span>
+                <span class="account-summary-value readonly-value">{{ userPublicId() }}</span>
+              </div>
+              <div class="description">
+                <p>
+                  Your Public ID is assigned by the server and can be shared with others to let them subscribe to your
+                  public tags.
+                </p>
+              </div>
             </div>
+            <div class="option-section-title">Linked Providers</div>
+            @if (linkedOAuthProviders().length > 0) {
+              @if (userHasOAuth()) {
+                <div class="description oauth-description-block">
+                  <p>
+                    If you unlink every provider, the account on this device falls back to UUID-only access until you
+                    link a provider again.
+                  </p>
+                </div>
+              }
+              <div class="linked-provider-list">
+                @for (provider of linkedOAuthProviders(); track provider.provider) {
+                  <div class="linked-provider-row">
+                    <div class="linked-provider-info">
+                      <div class="linked-provider-title">
+                        <span class="provider-brand" [attr.data-provider]="provider.provider">
+                          <span class="provider-icon-frame">
+                            <img
+                              class="provider-icon"
+                              [src]="'/images/' + provider.provider + '.svg'"
+                              alt=""
+                              aria-hidden="true"
+                            />
+                          </span>
+                          <span>{{ getProviderLabel(provider.provider) }}</span>
+                        </span>
+                      </div>
+                      <div class="linked-provider-primary">{{ getProviderIdentity(provider) }}</div>
+                      @if (provider.email && provider.displayName && provider.email !== provider.displayName) {
+                        <div class="linked-provider-meta">{{ provider.email }}</div>
+                      }
+                      <div class="linked-provider-meta">Linked {{ provider.linkedAt | date: 'medium' }}</div>
+                    </div>
+                    <div class="linked-provider-actions">
+                      <button
+                        class="bt-button small"
+                        [disabled]="oauthActionInFlight() || !isProviderEnabled(provider.provider)"
+                        (click)="onReplaceProvider(provider.provider)"
+                      >
+                        REPLACE
+                      </button>
+                      <button
+                        class="bt-button danger small"
+                        [disabled]="oauthActionInFlight()"
+                        (click)="onUnlinkProvider(provider.provider)"
+                      >
+                        UNLINK
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
             } @else {
-            <div class="options-mobile-detail">
-                <div class="mobile-view-content">
-                    <ng-container *ngTemplateOutlet="viewContent"></ng-container>
-                </div>
-            </div>
+              <div class="empty-state">
+                <p>No OAuth providers are linked to this UUID yet.</p>
+              </div>
             }
-        </div>
+
+            @if (linkableAuthProviders().length > 0) {
+              <div class="option-section-title">Link Current Account</div>
+              <div class="description oauth-description-block">
+                <p>You can keep using MekBay anonymously with your UUID only. OAuth is optional.</p>
+              </div>
+              <div class="provider-actions">
+                @for (provider of linkableAuthProviders(); track provider.provider) {
+                  <button
+                    class="bt-button provider-action-button provider-link-button"
+                    [attr.data-provider]="provider.provider"
+                    [disabled]="oauthActionInFlight() || !provider.enabled"
+                    (click)="onLinkProvider(provider.provider)"
+                  >
+                    <span class="provider-action-content">
+                      <span class="provider-icon-frame">
+                        <img
+                          class="provider-icon"
+                          [src]="'/images/' + provider.provider + '.svg'"
+                          alt=""
+                          aria-hidden="true"
+                        />
+                      </span>
+                      <span class="provider-action-label">Link {{ getProviderLabel(provider.provider) }}</span>
+                    </span>
+                  </button>
+                }
+              </div>
+            }
+
+            @if (!userHasOAuth()) {
+              <div class="option-section-title">Provider Sign-In</div>
+              <div class="description oauth-description-block">
+                <p>
+                  If you have already linked an OAuth provider to a MekBay account, choose that provider to recover the
+                  UUID associated with it.
+                </p>
+              </div>
+              <div class="provider-actions provider-login-launcher">
+                <button
+                  class="bt-button provider-action-button provider-login-button provider-login-launch-button"
+                  [disabled]="oauthActionInFlight() || !hasEnabledAuthProviders()"
+                  (click)="showProviderSignInDialog()"
+                >
+                  <span class="provider-action-content">
+                    <span class="provider-login-launch-icon" aria-hidden="true">
+                      <svg fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                          d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                        <path
+                          d="M10 17l5-5-5-5"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                        <path
+                          d="M15 12H4"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                    </span>
+                    <span class="provider-action-label">Choose Sign-In Provider</span>
+                  </span>
+                </button>
+              </div>
+            }
+
+            @if (!hasEnabledAuthProviders()) {
+              <div class="empty-state">
+                <p>No OAuth providers are configured on the server yet.</p>
+              </div>
+            }
+
+            @if (userHasOAuth()) {
+              <div class="option-section-title">Log Out</div>
+              <div class="option-col account-logout-block">
+                <div class="description">
+                  <p>Log out on this device and reset it to a fresh anonymous UUID.</p>
+                  <p>
+                    This removes local account data and related caches from this browser, but it does not unlink your
+                    OAuth providers from the MekBay account.
+                  </p>
+                </div>
+                <div class="account-logout-actions">
+                  <button
+                    class="bt-button danger"
+                    [disabled]="logoutInFlight() || oauthActionInFlight()"
+                    (click)="onLogout()"
+                  >
+                    LOG OUT
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
         }
-    </div>
+        @case ('My Custom Units') {
+          <div class="settings-view-content"><custom-unit-library [owned]="true" /></div>
+        }
+        @case ('Subscribed Units') {
+          <div class="settings-view-content"><custom-unit-library [owned]="false" /></div>
+        }
+        @case ('Tags') {
+          <div class="settings-view-content">
+            <div class="option-col tags-description">
+              <div class="description">
+                <p>Share your tags with others by copying the link and sending it to them.</p>
+              </div>
+            </div>
+            @if (userOwnTags().length > 0) {
+              <div class="tags-list">
+                @for (tag of userOwnTags(); track $index) {
+                  <div class="tag-row">
+                    <span class="tag-name">{{ tag }}</span>
+                    @if (getSubscriberCount(tag) > 0) {
+                      <span class="subscriber-count" title="Number of subscribers">
+                        {{ getSubscriberCount(tag) }}
+                        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"
+                          />
+                        </svg>
+                      </span>
+                    }
+                    <div class="tag-actions">
+                      <button class="bt-button icon" (click)="onCopyTagLink(tag)" title="Copy shareable link">
+                        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            fill-rule="evenodd"
+                            clip-rule="evenodd"
+                            d="M13.803 5.33333C13.803 3.49238 15.3022 2 17.1515 2C19.0008 2 20.5 3.49238 20.5 5.33333C20.5 7.17428 19.0008 8.66667 17.1515 8.66667C16.2177 8.66667 15.3738 8.28596 14.7671 7.67347L10.1317 10.8295C10.1745 11.0425 10.197 11.2625 10.197 11.4872C10.197 11.9322 10.109 12.3576 9.94959 12.7464L15.0323 16.0858C15.6092 15.6161 16.3473 15.3333 17.1515 15.3333C19.0008 15.3333 20.5 16.8257 20.5 18.6667C20.5 20.5076 19.0008 22 17.1515 22C15.3022 22 13.803 20.5076 13.803 18.6667C13.803 18.1845 13.9062 17.7255 14.0917 17.3111L9.05007 13.9987C8.46196 14.5098 7.6916 14.8205 6.84848 14.8205C4.99917 14.8205 3.5 13.3281 3.5 11.4872C3.5 9.64623 4.99917 8.15385 6.84848 8.15385C7.9119 8.15385 8.85853 8.64725 9.47145 9.41518L13.9639 6.35642C13.8594 6.03359 13.803 5.6896 13.803 5.33333Z"
+                          />
+                        </svg>
+                      </button>
+                      <button class="bt-button icon" (click)="onRenameTag(tag)" title="Rename this tag">
+                        <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path
+                            d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+                          />
+                        </svg>
+                      </button>
+                      <button class="bt-button icon danger" (click)="onDeleteTag(tag)" title="Delete this tag">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M6 7V18C6 19.1046 6.89543 20 8 20H16C17.1046 20 18 19.1046 18 18V7M6 7H5M6 7H8M18 7H19M18 7H16M10 11V16M14 11V16M8 7V5C8 3.89543 8.89543 3 10 3H14C15.1046 3 16 3.89543 16 5V7M8 7H16"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="empty-state">
+                <p>
+                  You don't have any tags yet. Create tags by searching units and clicking on the tag button
+                  <svg
+                    class="inline-icon"
+                    fill="none"
+                    stroke="currentColor"
+                    width="20px"
+                    height="20px"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path
+                      d="M21.842 6.218a1.977 1.977 0 0 0-.424-.628A1.99 1.99 0 0 0 20 5H8c-.297 0-.578.132-.769.359l-5 6c-.309.371-.309.91 0 1.281l5 6c.191.228.472.36.769.36h12a1.977 1.977 0 0 0 1.41-.582A1.99 1.99 0 0 0 22 17V7c0-.266-.052-.525-.158-.782z"
+                      stroke-width="1.5"
+                    />
+                    <path d="M14 8V16M10 12H18" stroke-width="2" stroke-linecap="round" />
+                  </svg>
+                </p>
+              </div>
+            }
+
+            <div class="option-section-title">Subscribed Tags</div>
+            <div class="description" style="padding: 0 0.5em">
+              <p>Tags you've subscribed to from other users.</p>
+            </div>
+            @if (!showSubscriptionInput()) {
+              <div class="option-row">
+                <button class="bt-button" (click)="onShowSubscriptionInput()">ADD SUBSCRIPTION</button>
+              </div>
+            } @else {
+              <div class="option-col subscription-input-container">
+                <div class="option-row">
+                  <input
+                    #subscriptionInput
+                    class="bt-input"
+                    [class.error]="!!subscriptionError()"
+                    type="text"
+                    placeholder="publicId:tagName"
+                    (keydown)="onSubscriptionKeydown($event)"
+                  />
+                  <button class="bt-button primary" (click)="onAddSubscription(subscriptionInput.value)">ADD</button>
+                  <button class="bt-button" (click)="onCancelSubscription()">CANCEL</button>
+                </div>
+                @if (subscriptionError()) {
+                  <div class="error-msg">{{ subscriptionError() }}</div>
+                }
+              </div>
+            }
+            @if (subscribedTags().length > 0) {
+              <div class="subscribed-tags-list">
+                @for (tag of subscribedTags(); track tag.publicId + ':' + tag.tagName) {
+                  <div class="subscribed-tag-row">
+                    <span class="tag-info">
+                      <span class="tag-name">{{ tag.tagName }}</span>
+                      <span class="tag-owner">from {{ tag.publicId }}</span>
+                    </span>
+                    <button class="bt-button danger small" (click)="onUnsubscribePublicTag(tag.publicId, tag.tagName)">
+                      Unsubscribe
+                    </button>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="empty-state">
+                <p>You haven't subscribed to any public tags yet.</p>
+              </div>
+            }
+          </div>
+        }
+        @case ('Classic BattleTech') {
+          <div class="settings-view-content">
+            <div class="option-col">
+              <div class="option-row">
+                <label for="CBTRules">Rules:</label>
+                <select
+                  id="CBTRules"
+                  class="bt-select"
+                  [value]="optionsService.options().CBTRules"
+                  (change)="onCBTRulesChange($event)"
+                >
+                  <option value="total-warfare">Total Warfare (default)</option>
+                  <option value="core-2026">Core 2026</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  Changing this setting affects the calculation of hit modifiers, critical hits, PSRs, and C³ network
+                  costs.
+                </p>
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="forceViewerBVPVDisplayDamage">Force viewer BV damage:</label>
+                <select
+                  id="forceViewerBVPVDisplayDamage"
+                  class="bt-select"
+                  [value]="optionsService.options().forceViewerBVPVDisplayDamage"
+                  (change)="onForceViewerBVPVDisplayDamageChange($event)"
+                >
+                  <option value="damaged">Include permanent damage (default)</option>
+                  <option value="pristine">Use pristine unit BV</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  Controls whether Classic force-viewer BV starts from the unit's current damaged state or pristine
+                  Entity. Skills, TAG, and intact C³/Nova adjustments are applied in either mode; transient conditions
+                  never change BV.
+                </p>
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <span id="classicUnitViewModeLabel">Default unit view:</span>
+                <mode-switch
+                  leftLabel="Sheet"
+                  rightLabel="Tactical"
+                  ariaLabel="Default Classic BattleTech unit view"
+                  switchAriaLabel="Switch default Classic BattleTech unit view"
+                  [selectedRight]="optionsService.options().cbtUnitViewMode === 'tactical'"
+                  (selectedRightChange)="onCBTUnitViewModeChange($event)"
+                ></mode-switch>
+              </div>
+              <div class="description">
+                <p>
+                  Chooses which view opens by default. Switching views from either toolbar also updates this preference.
+                </p>
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="recordSheetPipLayout">Pip layout:</label>
+                <select
+                  id="recordSheetPipLayout"
+                  class="bt-select"
+                  [value]="optionsService.options().recordSheetPipLayout"
+                  (change)="onRecordSheetPipLayoutChange($event)"
+                >
+                  <option value="classic">Canon</option>
+                  <option value="distributed">Distributed</option>
+                  <option value="rail">Grouped</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>Canon uses the standard pip layout for biped 'Mechs up to 100 tons. Other units use Distributed.</p>
+              </div>
+            </div>
+            <div class="option-row">
+              <label for="recordSheetPaperSize">Paper size:</label>
+              <select
+                id="recordSheetPaperSize"
+                class="bt-select"
+                [value]="optionsService.options().printAllOptions.paperSize"
+                (change)="onRecordSheetPaperSizeChange($event)"
+              >
+                <option value="letter">Letter (default)</option>
+                <option value="a4">A4</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="recordSheetCenterPanelContent">Center panel:</label>
+              <select
+                id="recordSheetCenterPanelContent"
+                class="bt-select"
+                [value]="optionsService.options().printAllOptions.recordSheetCenterPanelContent"
+                (change)="onRecordSheetCenterPanelContentChange($event)"
+              >
+                <option value="clusterTable">Hit location and cluster table (default)</option>
+                <option value="fluffImage">Artwork</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="syncZoomBetweenSheets">Sync zoom/pan:</label>
+              <select
+                id="syncZoomBetweenSheets"
+                class="bt-select"
+                [value]="optionsService.options().syncZoomBetweenSheets"
+                (change)="onSyncZoomBetweenSheetsChange($event)"
+              >
+                <option value="true">Enabled (default)</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="recordSheetDoubleTapZoomReset">Double-tap zoom reset:</label>
+              <select
+                id="recordSheetDoubleTapZoomReset"
+                class="bt-select"
+                [value]="optionsService.options().recordSheetDoubleTapZoomReset"
+                (change)="onRecordSheetDoubleTapZoomResetChange($event)"
+              >
+                <option value="contextual">Contextual (default)</option>
+                <option value="fit-to-screen">Fit to screen</option>
+                <option value="full-width">Full width</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="allowMultipleActiveSheets">Multiple active sheets:</label>
+                <select
+                  id="allowMultipleActiveSheets"
+                  class="bt-select"
+                  [value]="optionsService.options().allowMultipleActiveSheets"
+                  (change)="onAllowMultipleActiveSheetsChange($event)"
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled (default)</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>When enabled, multiple sheets can be displayed side-by-side on wide screens.</p>
+                <p>
+                  When disabled, only one active sheet is shown at a time, with neighbor sheets displayed as faded
+                  previews.
+                </p>
+              </div>
+            </div>
+            <div class="option-row">
+              <label for="swipeToNextSheet">Swipe to next sheet:</label>
+              <select
+                id="swipeToNextSheet"
+                class="bt-select"
+                [value]="optionsService.options().swipeToNextSheet"
+                (change)="onSwipeToNextSheetChange($event)"
+              >
+                <!-- <option value="vertical">Vertical</option> -->
+                <option value="horizontal">Horizontal</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="trackPhaseAndTurn">Track game phase/turn:</label>
+                <select
+                  id="trackPhaseAndTurn"
+                  class="bt-select"
+                  [value]="optionsService.options().trackPhaseAndTurn"
+                  (change)="onTrackPhaseAndTurn($event)"
+                >
+                  <option value="true">Enabled (default)</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  Tracks game phases and turns, including pending damage, next-phase modifiers, and end-of-turn cleanup.
+                </p>
+                <p>
+                  When disabled, these mechanics must be tracked manually.
+                  <strong
+                    >Damage and to-hit modifiers take effect immediately instead of being deferred to the appropriate
+                    phase or turn.</strong
+                  >
+                </p>
+              </div>
+            </div>
+            <div class="option-section-title">Automations</div>
+            <div class="description automation-description">
+              <p>
+                <strong>Auto</strong> automatically rolls and applies the result, <strong>Ask</strong> opens the review
+                and roll controls, and <strong>No</strong> leaves it for manual tracking.
+              </p>
+            </div>
+            <div class="automation-options">
+              @for (automation of cbtAutomationOptions; track automation.key) {
+                <div class="option-col automation-option">
+                  <div class="option-row">
+                    <span class="automation-option-label" [id]="'automation-label-' + automation.key">
+                      {{ automation.label }}:
+                    </span>
+                    <div
+                      class="automation-mode-switch"
+                      role="radiogroup"
+                      [attr.aria-labelledby]="'automation-label-' + automation.key"
+                    >
+                      @for (mode of cbtAutomationModes; track mode.value) {
+                        <button
+                          type="button"
+                          class="automation-mode-choice"
+                          role="radio"
+                          [class.selected]="optionsService.cbtAutomationMode(automation.key) === mode.value"
+                          [attr.aria-checked]="optionsService.cbtAutomationMode(automation.key) === mode.value"
+                          (click)="onCbtAutomationModeChange(automation.key, mode.value)"
+                        >
+                          {{ mode.label }}
+                        </button>
+                      }
+                    </div>
+                  </div>
+                  <div class="description">
+                    <p>{{ automation.description }}</p>
+                  </div>
+                </div>
+              }
+            </div>
+            <div class="option-section-title">Optional rules</div>
+            <div class="option-row">
+              <label for="CBTOptionalQuirks">Quirks</label>
+              <input id="CBTOptionalQuirks" class="bt-checkbox" type="checkbox"
+                [checked]="optionsService.options().CBTOptionalRules.quirks"
+                (change)="onCBTOptionalRuleChange('quirks', $event)">
+            </div>
+            <div class="option-row">
+              <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
+              <select
+                id="CBTOptionalFloatingCritical"
+                class="bt-select"
+                [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
+                (change)="onCBTOptionalRuleChange('floatingCriticals', $event)"
+              >
+                <option value="true">Enabled</option>
+                <option value="false">Disabled (default)</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
+              <select
+                id="CBTOptionalSprinting"
+                class="bt-select"
+                [value]="optionsService.options().CBTOptionalRules.sprinting"
+                (change)="onCBTOptionalRuleChange('sprinting', $event)"
+              >
+                <option value="true">Enabled</option>
+                <option value="false">Disabled (default)</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="CBTOptionalExtremeRange">"Extreme" range:</label>
+              <select
+                id="CBTOptionalExtremeRange"
+                class="bt-select"
+                [value]="optionsService.options().CBTOptionalRules.extremeRange"
+                (change)="onCBTOptionalRuleChange('extremeRange', $event)"
+              >
+                <option value="true">Enabled</option>
+                <option value="false">Disabled (default)</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="CBTOptionalMixedTechBaseAmmo">Allow mixed IS/Clan ammunition:</label>
+              <select
+                id="CBTOptionalMixedTechBaseAmmo"
+                class="bt-select"
+                [value]="optionsService.options().CBTOptionalRules.allowMixedTechBaseAmmo"
+                (change)="onCBTOptionalRuleChange('allowMixedTechBaseAmmo', $event)"
+              >
+                <option value="true">Enabled</option>
+                <option value="false">Disabled (default)</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
+              <select
+                id="CBTForcedWithdrawal"
+                class="bt-select"
+                [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
+                (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)"
+              >
+                <option value="true">Enabled (default)</option>
+                <option value="false">Disabled</option>
+              </select>
+            </div>
+          </div>
+        }
+        @case ('Alpha Strike') {
+          <div class="settings-view-content">
+            <div class="option-row">
+              <label for="ASUseHex">Measures:</label>
+              <select
+                id="ASUseHex"
+                class="bt-select"
+                [value]="optionsService.options().ASUseHex"
+                (change)="onASUseHexChange($event)"
+              >
+                <option value="false">Inches (default)</option>
+                <option value="true">Hexes</option>
+              </select>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="ASUnifiedDamagePicker">Unified damage picker:</label>
+                <select
+                  id="ASUnifiedDamagePicker"
+                  class="bt-select"
+                  [value]="optionsService.options().ASUnifiedDamagePicker"
+                  (change)="onASUnifiedDamagePickerChange($event)"
+                >
+                  <option value="true">Enabled (default)</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>When enabled: damage is automatically assigned in the order armor->structure.</p>
+                <p>When disabled: damage must be assigned manually to either armor or structure.</p>
+              </div>
+            </div>
+            <div class="option-section-title">Rules</div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="ASUseAutomations">Use automations:</label>
+                <select
+                  id="ASUseAutomations"
+                  class="bt-select"
+                  [value]="optionsService.options().ASUseAutomations"
+                  (change)="onASUseAutomationsChange($event)"
+                >
+                  <option value="true">Enabled (default)</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>Automations provide automatic triggers like critical hits rolls or vehicle motive damage.</p>
+                <p>Disabling automations will require manual tracking of these mechanics during gameplay.</p>
+              </div>
+            </div>
+            <div class="option-row">
+              <label for="ASVehiclesCriticalHitTable">Vehicles critical hit table:</label>
+              <select
+                id="ASVehiclesCriticalHitTable"
+                class="bt-select"
+                [value]="optionsService.options().ASVehiclesCriticalHitTable"
+                (change)="onVehiclesCriticalHitTableChange($event)"
+              >
+                <option value="default">Alpha Strike: Commander's Edition (default)</option>
+                <option value="scouringSands">Aces: Scouring Sands</option>
+              </select>
+            </div>
+          </div>
+        }
+        @case ('Advanced') {
+          <div class="settings-view-content">
+            <div class="option-col">
+              <div class="option-row">
+                <span
+                  >Units loaded: <strong>{{ unitsCount() }}</strong></span
+                >
+              </div>
+              <div class="option-row">
+                <span
+                  >Equipment entries: <strong>{{ equipmentCount() }}</strong></span
+                >
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <span>Downloaded catalogs</span>
+                <button class="bt-button" (click)="onPurgeCatalogs()">PURGE</button>
+              </div>
+              <div class="description">
+                <p>
+                  Deletes the locally stored unit, equipment, era, faction, quirk, sourcebook, and MegaMek catalogs.
+                </p>
+                <p>
+                  Use this if catalog-backed filters or lookups appear empty or inconsistent after an update. MekBay
+                  will reload and download fresh copies.
+                </p>
+              </div>
+            </div>
+            <div class="option-row">
+              <span
+                >Unit icons stored: <strong>{{ unitIconsCount() }}</strong></span
+              >
+              <button class="bt-button" (click)="onPurgeIcons()">PURGE</button>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <span>Fluff images stored: <strong>{{ artwork.count() }}</strong> ({{ formatBytes(artwork.bytes()) }})</span>
+                <button class="bt-button" [disabled]="purgingArtwork() || !artwork.records().size" (click)="onPurgeArtwork()">PURGE</button>
+              </div>
+              @if (unusedArtworkUuids().length) {
+                <div class="option-row">
+                  <span>Units with unused artwork: <strong>{{ unusedArtworkUuids().length }}</strong></span>
+                  <button class="bt-button" [disabled]="purgingArtwork() || !artworkCollectionReady()" (click)="onPurgeArtwork(true)">PURGE UNUSED</button>
+                </div>
+              }
+              <div class="description"><p>Artwork stays on this device when you log out or change accounts. Storage includes embedded unit icons.</p></div>
+              @if (artworkError()) { <p class="error" role="alert">{{ artworkError() }}</p> }
+            </div>
+            <div class="option-row">
+              <span
+                >Drawings stored: <strong>{{ formatBytes(canvasMemorySize()) }}</strong></span
+              >
+              <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
+            </div>
+            <hr />
+            <div class="option-row">
+              <label for="pickerStyle">Picker style:</label>
+              <select
+                id="pickerStyle"
+                class="bt-select"
+                [value]="optionsService.options().pickerStyle"
+                (change)="onPickerStyleChange($event)"
+              >
+                <option value="default">Automatic (default)</option>
+                <option value="radial">Always Dial</option>
+                <option value="linear">Always Linear</option>
+              </select>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="canvasInput">Drawing input:</label>
+                <select
+                  id="canvasInput"
+                  class="bt-select"
+                  [value]="optionsService.options().canvasInput"
+                  (change)="onCanvasInputChange($event)"
+                >
+                  <option value="all">All</option>
+                  <option value="pen">Pen only</option>
+                  <option value="touch">Touch only</option>
+                </select>
+              </div>
+              @if (isIOS) {
+                <div class="description">
+                  <p>
+                    To enhance the performance with Apple Pencil, disable Scribble mode in Settings > Apple Pencil >
+                    Scribble.
+                  </p>
+                </div>
+              }
+            </div>
+            <div class="option-col">
+              <div class="option-row force-gen-search-window-row">
+                <label id="forceGenFailureSearchWindowMsLabel" for="forceGenFailureSearchWindowMs"
+                  >Force generator search window:</label
+                >
+                <div class="force-gen-search-window-control">
+                  <range-slider
+                    id="forceGenFailureSearchWindowMs"
+                    [attr.aria-labelledby]="'forceGenFailureSearchWindowMsLabel forceGenFailureSearchWindowMsValue'"
+                    [min]="forceGenFailureSearchWindowMinMs"
+                    [max]="forceGenFailureSearchWindowMaxMs"
+                    [singleValue]="forceGenFailureSearchWindowMs()"
+                    [stepSize]="forceGenFailureSearchWindowStepMs"
+                    (singleValueChange)="onForceGenFailureSearchWindowMsChange($event)"
+                  >
+                  </range-slider>
+                  <span id="forceGenFailureSearchWindowMsValue" class="force-gen-search-window-value"
+                    >{{ forceGenFailureSearchWindowMs() }} ms</span
+                  >
+                </div>
+              </div>
+              <div class="description">
+                <p>
+                  Controls how long the force generator keeps searching before stopping when no valid force is found.
+                </p>
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="performanceMode">Performance mode:</label>
+                <select
+                  id="performanceMode"
+                  class="bt-select"
+                  [value]="optionsService.options().performanceMode"
+                  (change)="onPerformanceModeChange($event)"
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled (default)</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>Reduces expensive visual effects in components that support a lighter rendering path.</p>
+              </div>
+            </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="enableForceSyncConflictDialog">Force sync conflict dialog:</label>
+                <select
+                  id="enableForceSyncConflictDialog"
+                  class="bt-select"
+                  [value]="optionsService.options().enableForceSyncConflictDialog"
+                  (change)="onForceSyncConflictDialogChange($event)"
+                >
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled (default)</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>When enabled, ask how to resolve an owned force conflict when reconnecting to cloud sync.</p>
+              </div>
+            </div>
+          </div>
+        }
+        @case ('Logs') {
+          <div class="settings-view-content debug">
+            <div class="logs-list allow-select">
+              @for (log of logger.logs().slice().reverse(); let i = $index; track i) {
+                <div class="log-row log-{{ log.type.toLowerCase() }}">
+                  <span class="log-timestamp">{{ log.timestamp | date: 'short' }}</span>
+                  <span class="log-message">{{ log.message }}</span>
+                </div>
+              }
+            </div>
+            <div class="spanner"></div>
+            <div class="option-row debug-controls">
+              <button class="bt-button" (click)="logger.clear()">CLEAR</button>
+            </div>
+          </div>
+        }
+      }
+    </ng-template>
+
+    @if (isWideLayout()) {
+      <div class="options-desktop-shell">
+        <nav class="options-nav" aria-label="Options sections">
+          @if (appUpdateService.updatePending()) {
+            <div class="options-nav-item update-entry">
+              <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
+                INSTALL UPDATE
+              </button>
+            </div>
+          }
+          <div class="options-nav-heading">Sections</div>
+          @for (section of sections; track section.id) {
+            <button
+              type="button"
+              class="options-nav-item"
+              [class.active]="activeTab() === section.id"
+              [attr.aria-current]="activeTab() === section.id ? 'page' : null"
+              (click)="selectDesktopSection(section.id)"
+            >
+              <span class="options-nav-label">{{ section.title }}</span>
+              <span class="options-nav-description">{{ section.description }}</span>
+            </button>
+          }
+        </nav>
+
+        <section class="options-detail-shell" aria-label="Options details">
+          <div class="options-detail-intro">
+            <h2 class="options-detail-title">{{ currentViewDefinition().title }}</h2>
+            @if (currentViewDescription()) {
+              <p class="options-detail-description">{{ currentViewDescription() }}</p>
+            }
+          </div>
+
+          <div class="options-detail-content">
+            <ng-container *ngTemplateOutlet="viewContent"></ng-container>
+          </div>
+        </section>
+      </div>
+    } @else {
+      <div class="options-mobile-shell">
+        @if (!mobileDetailOpen()) {
+          <div class="mobile-settings-list" role="list">
+            @if (appUpdateService.updatePending()) {
+              <div class="mobile-settings-item update-entry">
+                <button type="button" class="bt-button warning restart-update-button" (click)="restartToUpdate()">
+                  INSTALL UPDATE
+                </button>
+              </div>
+            }
+            @for (section of sections; track section.id) {
+              <button
+                type="button"
+                class="mobile-settings-item"
+                role="listitem"
+                (click)="openMobileSection(section.id)"
+              >
+                <span class="mobile-settings-copy">
+                  <span class="mobile-settings-label">{{ section.title }}</span>
+                  <span class="mobile-settings-description">{{ section.description }}</span>
+                </span>
+                <span class="chevron chevron-right mobile-settings-chevron" aria-hidden="true"></span>
+              </button>
+            }
+          </div>
+        } @else {
+          <div class="options-mobile-detail">
+            <div class="mobile-view-content">
+              <ng-container *ngTemplateOutlet="viewContent"></ng-container>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
 </base-dialog>

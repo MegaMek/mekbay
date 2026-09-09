@@ -1,0 +1,10 @@
+@media print {
+  .night-mode .mekbay-sheet,
+  .night-mode .mekbay-sheet * {
+    filter: none !important;
+  }
+
+  .mekbay-sheet {
+    transform: none !important;
+  }
+}

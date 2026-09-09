@@ -23,6 +23,8 @@ import { ToastService } from '../../services/toast.service';
 import { UserStateService } from '../../services/userState.service';
 import { DisplayNameService } from '../../services/display-name.service';
 import { OptionsDialogComponent } from './options-dialog.component';
+import { UnitArtworkService } from '../../services/unit-artwork.service';
+import { CustomUnitsService } from '../../services/custom-units.service';
 
 describe('OptionsDialogComponent', () => {
     function configureComponent(
@@ -41,8 +43,10 @@ describe('OptionsDialogComponent', () => {
             providers: [
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
                 { provide: AppUpdateService, useValue: {} },
-                { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry: () => new EquipmentRegistry({}) } },
-                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DataService, useValue: { getUnits: () => [], requireApplicationCatalogReady: async () => undefined, getEquipmentRegistry: () => new EquipmentRegistry({}) } },
+                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0), listCustomUnits: async () => [] } },
+                { provide: UnitArtworkService, useValue: { initialize: async () => undefined, records: signal(new Map()), count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
                 { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
@@ -59,6 +63,32 @@ describe('OptionsDialogComponent', () => {
         });
         return TestBed.runInInjectionContext(() => new OptionsDialogComponent());
     }
+
+    it('protects catalogue, owned, subscribed, and unprojected units and rechecks before purging unused artwork', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        const uuids = Array.from({ length: 5 }, (_, i) => `019f6767-0dcb-7bb8-992f-00000000001${i}`);
+        (TestBed.inject(UnitArtworkService).records as any).set(new Map(uuids.map(uuid => [uuid, { fluff: new Blob(['png'], { type: 'image/png' }) }])));
+        spyOn(component.dataService, 'getUnits').and.returnValue([{ uuid: uuids[0] }] as any);
+        (TestBed.inject(CustomUnitsService).records as any).set([{ uuid: uuids[1], owned: true }, { uuid: uuids[2], owned: false }]);
+        const stored = [{ uuid: uuids[3], owned: false }];
+        spyOn(component.dbService, 'listCustomUnits').and.callFake(async () => stored);
+        (component.dialogsService as any).requestConfirmation = jasmine.createSpy('confirm').and.callFake(async () => {
+            expect(component.unusedArtworkUuids()).toEqual(uuids.slice(4) as any);
+            stored.push({ uuid: uuids[4], owned: false });
+            return true;
+        });
+        expect(component.unusedArtworkUuids()).toEqual([]);
+        await component.onPurgeArtwork(true);
+        expect(component.artwork.purge).toHaveBeenCalledOnceWith([]);
+        expect(component.artworkCollectionReady()).toBeTrue(); expect(component.unusedArtworkUuids()).toEqual([]);
+    });
+    it('does not purge unused artwork when the complete collection cannot be loaded', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        spyOn(component.dataService, 'requireApplicationCatalogReady').and.rejectWith(new Error('Catalogue unavailable'));
+        await component.onPurgeArtwork(true);
+        expect(component.artwork.purge).not.toHaveBeenCalled();
+        expect(component.artworkCollectionReady()).toBeFalse(); expect(component.artworkError()).toContain('Catalogue unavailable');
+    });
 
     it('returns from mobile details before closing the dialog', () => {
         const component = configureComponent({ options: () => ({}) });
@@ -148,6 +178,30 @@ describe('OptionsDialogComponent', () => {
         });
     }
 
+    for (const paperSize of ['letter', 'a4'] as const) {
+        it(`updates the shared ${paperSize} print preference`, () => {
+            const setPrintOption = jasmine.createSpy('setPrintOption');
+            const component = configureComponent({ options: () => ({}), setPrintOption });
+            const select = document.createElement('select');
+            select.add(new Option(paperSize, paperSize));
+
+            component.onRecordSheetPaperSizeChange({ target: select } as unknown as Event);
+
+            expect(setPrintOption).toHaveBeenCalledOnceWith('paperSize', paperSize);
+        });
+    }
+
+    it('updates the shared record sheet center panel preference', () => {
+        const setPrintOption = jasmine.createSpy('setPrintOption');
+        const component = configureComponent({ options: () => ({}), setPrintOption });
+        const select = document.createElement('select');
+        select.add(new Option('Artwork', 'fluffImage'));
+
+        component.onRecordSheetCenterPanelContentChange({ target: select } as unknown as Event);
+
+        expect(setPrintOption).toHaveBeenCalledOnceWith('recordSheetCenterPanelContent', 'fluffImage');
+    });
+
     it('persists each CBT automation mode independently', () => {
         const setCbtAutomationMode = jasmine.createSpy('setCbtAutomationMode');
         const component = configureComponent({ options: () => ({}), setCbtAutomationMode });
@@ -186,6 +240,16 @@ describe('OptionsDialogComponent', () => {
         });
     });
 
+    it('reads the Quirks checkbox as a boolean and preserves other optional rules', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({ CBTOptionalRules: { quirks: true, forcedWithdrawal: true } }), setOption });
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = false;
+        component.onCBTOptionalRuleChange('quirks', { target: checkbox } as unknown as Event);
+        expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', { quirks: false, forcedWithdrawal: true });
+    });
+
     it('counts canonical equipment registry entries rather than lookup aliases', () => {
         const registry = new EquipmentRegistry({
             CanonicalOne: createEquipment({
@@ -207,7 +271,9 @@ describe('OptionsDialogComponent', () => {
                 { provide: AccountAuthService, useValue: { authInFlight: signal(false) } },
                 { provide: AppUpdateService, useValue: {} },
                 { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry } },
-                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0) } },
+                { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0), listCustomUnits: async () => [] } },
+                { provide: UnitArtworkService, useValue: { initialize: async () => undefined, records: signal(new Map()), count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
                 { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },

@@ -1,0 +1,288 @@
+@media screen {
+  .night-mode .mekbay-sheet {
+    --svg-bg-color: #141414;
+    --svg-fg-color: #fff;
+    --svg-fg-color-inv: #000;
+    background-color: var(--svg-bg-color);
+    color: var(--svg-fg-color);
+    fill: var(--svg-fg-color);
+
+    :where(:not(mask):not(mask *):not(.no-autocolor):not(.no-autocolor *)) {
+      &[fill='#000000' i],
+      &[fill='#000' i],
+      &[fill='black' i],
+      &[style*='fill:#000000' i],
+      &[style*='fill:black' i],
+      &[style*='fill: #000000' i],
+      &[style*='fill: black' i],
+      &[style*='fill:#000' i],
+      &[style*='fill: #000' i],
+      &[style*='fill:rgb(0' i],
+      &[style*='fill: rgb(0' i] {
+        fill: var(--svg-fg-color) !important;
+      }
+
+      &[stroke='#000000' i],
+      &[stroke='#000' i],
+      &[stroke='black' i],
+      &[style*='stroke:#000000' i],
+      &[style*='stroke:black' i],
+      &[style*='stroke: #000000' i],
+      &[style*='stroke: black' i],
+      &[style*='stroke:#000' i],
+      &[style*='stroke: #000' i],
+      &[style*='stroke:rgb(0' i],
+      &[style*='stroke: rgb(0' i] {
+        stroke: var(--svg-fg-color) !important;
+      }
+
+      &[fill='#FFFFFF' i],
+      &[fill='#FFF' i],
+      &[fill='white' i],
+      &[style*='fill:#FFFFFF' i],
+      &[style*='fill:white' i],
+      &[style*='fill: #FFFFFF' i],
+      &[style*='fill: white' i],
+      &[style*='fill:#FFF' i],
+      &[style*='fill: #FFF' i],
+      &[style*='fill:rgb(255' i],
+      &[style*='fill: rgb(255' i] {
+        fill: var(--svg-fg-color-inv) !important;
+      }
+
+      &[stroke='#FFFFFF' i],
+      &[stroke='#FFF' i],
+      &[stroke='white' i],
+      &[style*='stroke:#FFFFFF' i],
+      &[style*='stroke:white' i],
+      &[style*='stroke: #FFFFFF' i],
+      &[style*='stroke: white' i],
+      &[style*='stroke:#FFF' i],
+      &[style*='stroke: #FFF' i],
+      &[style*='stroke:rgb(255' i],
+      &[style*='stroke: rgb(255' i] {
+        stroke: var(--svg-fg-color-inv) !important;
+      }
+    }
+
+    [fill='#c7c8ca' i],
+    [style*='fill:#c7c8ca' i],
+    [style*='fill: #c7c8ca' i],
+    [fill='#c7c7c7' i],
+    [style*='fill:#c7c7c7' i],
+    [style*='fill: #c7c7c7' i] {
+      fill: #34373d !important;
+    }
+
+    [stroke='#c7c8ca' i],
+    [style*='stroke:#c7c8ca' i],
+    [style*='stroke: #c7c8ca' i],
+    [stroke='#c7c7c7' i],
+    [style*='stroke:#c7c7c7' i],
+    [style*='stroke: #c7c7c7' i] {
+      stroke: #34373d !important;
+    }
+
+    [fill='#bbb' i],
+    [style*='fill:#bbb' i] {
+      fill: #444 !important;
+    }
+
+    text.disabled-text {
+      fill: #666;
+    }
+
+    // Runtime states must win over the important artwork recoloring above.
+    .damaged {
+      fill: var(--damage-color) !important;
+
+      path {
+        fill: var(--damage-color) !important;
+      }
+
+      text {
+        fill: var(--damage-color) !important;
+      }
+    }
+
+    image {
+      transform: none;
+      filter: url('#mekbay-night-image-invert');
+    }
+
+    #fluff-image-fo {
+      mix-blend-mode: lighten;
+    }
+
+    #fluff-image-injected {
+      transform: none;
+      filter: invert(1);
+      mix-blend-mode: lighten;
+    }
+
+    #faded-arrow {
+      stroke: #444;
+    }
+
+    .heatEffect.hot.surpassed {
+      fill: #3f3f3f !important;
+    }
+
+    .detached,
+    .detached > path {
+      fill: gray !important;
+      pointer-events: none;
+    }
+
+    .disabledLocation,
+    .disabledLocation > path,
+    .disabledLocation path {
+      fill: gray !important;
+    }
+
+    .critGroup.detached text {
+      fill: rgb(63, 63, 63) !important;
+    }
+
+    .critGroup.disabledLocation text {
+      fill: rgb(63, 63, 63) !important;
+    }
+
+    .critGroup.flooded .critSlot-bg-rect {
+      fill: #006;
+    }
+
+    .critGroup.flooded text {
+      fill: #99f !important;
+    }
+
+    .unitLocation.disabledLocation {
+      fill: gray !important;
+    }
+
+    .unitLocation.flooded {
+      fill: #006 !important;
+    }
+
+    .pip.detached {
+      stroke: gray;
+    }
+
+    .pip.disabledLocation {
+      stroke: gray;
+    }
+
+    .pip.disabled {
+      stroke: var(--disabled-color) !important;
+      fill: #666 !important;
+    }
+
+    .pip.damaged {
+      fill: var(--damage-color) !important;
+    }
+
+    .pip.fresh:not(.damaged) {
+      stroke: var(--pip-pending-repair-color) !important;
+    }
+
+    .pip.damaged.fresh {
+      fill: var(--pip-fresh-damage-color) !important;
+      stroke: var(--damage-color) !important;
+    }
+
+    .pip.damaged.pending:not(.fresh) {
+      fill: var(--pip-pending-damage-color) !important;
+    }
+
+    .pip.pending:not(.damaged):not(.fresh) {
+      fill: var(--pip-pending-repair-color) !important;
+    }
+
+    .soldierPip.damaged {
+      filter: invert(1) opacity(0.3) !important;
+    }
+
+    .soldierPip.damaged.fresh {
+      filter: invert(1) brightness(0.6) saturate(100) hue-rotate(237deg) contrast(4) !important;
+    }
+
+    .soldierPip.fresh {
+      filter: invert(1) saturate(100) hue-rotate(10deg) !important;
+    }
+
+    .soldierPip.pending:not(.fresh) {
+      filter: invert(1) saturate(100) hue-rotate(40deg) !important;
+    }
+
+    .soldierPip.damaged.pending:not(.fresh) {
+      filter: invert(1) brightness(0.6) saturate(50) hue-rotate(217deg) contrast(1.5) !important;
+    }
+
+    .skillValue,
+    .customAmmoLoadout {
+      fill: #bbf;
+    }
+
+    .selectable:not(.pip-hit-area):hover,
+    .selectable:not(.pip-hit-area):hover > path {
+      fill: var(--undamaged-night-highlight-color) !important;
+    }
+
+    .selectable.damaged:not(.pip-hit-area):hover,
+    .selectable.damaged:not(.pip-hit-area):hover > path {
+      fill: var(--damaged-highlight-color) !important;
+    }
+
+    .inventoryEntry {
+      &.selected:not(.selected-alternative-mode)
+        > text:not(.hitMod-text):not(.targetTn-text),
+      &.selected:not(.selected-alternative-mode) > g:not(.alternativeMode):not(.inventoryEntry) text,
+      &.selected.selected-alternative-mode > .alternativeMode.selected text {
+        fill: #000;
+      }
+
+      &.selected-range-short .range_medium,
+      &.selected-range-short .range_long,
+      &.selected-range-short .range_extreme,
+      &.selected-range-medium .range_short,
+      &.selected-range-medium .range_long,
+      &.selected-range-medium .range_extreme,
+      &.selected-range-long .range_short,
+      &.selected-range-long .range_medium,
+      &.selected-range-long .range_extreme,
+      &.selected-range-extreme .range_short,
+      &.selected-range-extreme .range_medium,
+      &.selected-range-extreme .range_long,
+      &.selected.selected-alternative-mode > .alternativeMode:not(.selected) .range_short,
+      &.selected.selected-alternative-mode > .alternativeMode:not(.selected) .range_medium,
+      &.selected.selected-alternative-mode > .alternativeMode:not(.selected) .range_long,
+      &.selected.selected-alternative-mode > .alternativeMode:not(.selected) .range_extreme {
+        fill: #888 !important;
+      }
+    }
+
+    rect.heat {
+      fill: #000;
+      stroke: #fff;
+    }
+
+    rect.heat.hot {
+      fill: var(--heat-night-color) !important;
+    }
+
+    .locationNarcBanner > rect {
+      stroke: #fff !important;
+      fill: #f00 !important;
+    }
+
+    .locationNarcBanner > text {
+      fill: #fff !important;
+    }
+
+    .unitConditionButton {
+      .conditionText {
+        fill: #fff !important;
+      }
+    }
+  }
+}
