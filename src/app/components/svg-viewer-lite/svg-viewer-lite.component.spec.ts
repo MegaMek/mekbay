@@ -172,6 +172,9 @@ describe('SvgViewerLiteComponent', () => {
         const state = { ...layouts.get(element), ...layout };
         layouts.set(element, state);
 
+        if (layout.clientWidth !== undefined) element.style.width = `${layout.clientWidth}px`;
+        if (layout.clientHeight !== undefined) element.style.height = `${layout.clientHeight}px`;
+
         for (const key of ['clientWidth', 'clientHeight', 'scrollWidth', 'scrollHeight', 'offsetLeft', 'offsetTop'] as const) {
             Object.defineProperty(element, key, { configurable: true, get: () => layouts.get(element)?.[key] ?? 0 });
         }
@@ -258,6 +261,7 @@ describe('SvgViewerLiteComponent', () => {
         expect(parseFloat(content.style.width)).toBeCloseTo(fittedWidth * 2, 2);
         setLayout(container, { clientWidth: 200, clientHeight: 500 });
         triggerResize?.();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         expect(content.style.width).toBe('400px');
         expect(fixture.componentInstance.zoomPercent()).toBe(200);
 
@@ -593,6 +597,7 @@ describe('SvgViewerLiteComponent', () => {
         container.scrollTop = 1200;
         setLayout(container, { scrollWidth: 1000, scrollHeight: 700 });
         triggerResize?.();
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
         expect(container.scrollLeft).toBe(0);
         expect(container.scrollTop).toBeLessThanOrEqual(200);

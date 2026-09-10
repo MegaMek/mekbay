@@ -25,9 +25,20 @@ describe('adjustPointValueForSkill', () => {
         expect(adjustPointValueForSkill(1, 10)).toBe(1);
     });
 
+    it('preserves zero PV for units without an Alpha Strike conversion at every skill', () => {
+        for (let skill = 0; skill <= 10; skill++) {
+            expect(adjustPointValueForSkill(0, skill)).withContext(`skill ${skill}`).toBe(0);
+        }
+    });
+
     it('rejects invalid values', () => {
-        expect(() => adjustPointValueForSkill(0, 4)).toThrowError(RangeError);
-        expect(() => adjustPointValueForSkill(10, -1)).toThrowError(RangeError);
-        expect(() => adjustPointValueForSkill(10, 1.5)).toThrowError(RangeError);
+        for (const basePv of [-1, 1.5, NaN, Infinity, -Infinity]) {
+            expect(() => adjustPointValueForSkill(basePv, 4)).toThrowError(RangeError);
+        }
+        for (const basePv of [0, 10]) {
+            for (const skill of [-1, 1.5, NaN, Infinity, -Infinity]) {
+                expect(() => adjustPointValueForSkill(basePv, skill)).toThrowError(RangeError);
+            }
+        }
     });
 });

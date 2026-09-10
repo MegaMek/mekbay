@@ -536,8 +536,13 @@ export class ASPrintUtil {
         
         return `
             @media screen {
+                /* Keep SVG text laid out for critical-table measurements before printing. */
                 #as-multipage-container {
-                    display: none;
+                    position: fixed;
+                    left: -100000px;
+                    top: 0;
+                    visibility: hidden;
+                    pointer-events: none;
                     z-index: -1000;
                 }
             }
@@ -665,8 +670,13 @@ export class ASPrintUtil {
         
         return `            
             @media screen {
+                /* Keep SVG text laid out for critical-table measurements before printing. */
                 #as-multipage-container {
-                    display: none;
+                    position: fixed;
+                    left: -100000px;
+                    top: 0;
+                    visibility: hidden;
+                    pointer-events: none;
                     z-index: -1000;
                 }
             }

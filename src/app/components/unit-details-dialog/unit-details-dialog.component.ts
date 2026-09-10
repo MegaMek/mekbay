@@ -110,6 +110,7 @@ export class UnitDetailsDialogComponent {
     indexChange = output<number>();
     baseDialogRef = viewChild('baseDialog', { read: ElementRef });
     sheetTabRef = viewChild<UnitDetailsSheetTabComponent>(UnitDetailsSheetTabComponent);
+    cardTabRef = viewChild(UnitDetailsCardTabComponent);
     currentPanelRef = viewChild<ElementRef<HTMLElement>>('currentPanel');
     incomingPanelRef = viewChild<ElementRef<HTMLElement>>('incomingPanel');
     shareButtonInActions = computed(() => this.layoutService.windowWidth() > 600);
@@ -642,6 +643,7 @@ export class UnitDetailsDialogComponent {
         if (this.isSwiping()) return false;
 
         if (this.activeTab() === 'Sheet' && this.isSheetSwipeBlocked()) return true;
+        if (this.activeTab() === 'Card' && this.cardTabRef()?.isZoomPanActive()) return true;
 
         // Block if animation is in progress
         if (this.isSwipeAnimating()) return true;

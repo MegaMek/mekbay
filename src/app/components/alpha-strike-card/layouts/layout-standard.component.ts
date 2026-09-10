@@ -6,12 +6,6 @@ import {
     Component,
     ChangeDetectionStrategy,
     computed,
-    signal,
-    inject,
-    ElementRef,
-    DestroyRef,
-    afterNextRender,
-    viewChild,
 } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
@@ -21,8 +15,9 @@ import {
     AsCriticalHitsProtomekComponent,
     AsCriticalHitsAerofighterComponent,
     AsCriticalHitsEmplacementComponent,
+    criticalHitsHeight,
 } from '../critical-hits';
-import { AsLayoutBaseComponent } from './layout-base.component';
+import { AsLayoutBaseComponent, type PipState } from './layout-base.component';
 import { formatMovement, isAerospace } from '../../../utils/as-common.util';
 
 /*
@@ -31,7 +26,7 @@ import { formatMovement, isAerospace } from '../../../utils/as-common.util';
  */
 
 @Component({
-    selector: 'as-layout-standard',
+    selector: 'g[as-layout-standard]',
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
         UpperCasePipe,
@@ -49,13 +44,10 @@ import { formatMovement, isAerospace } from '../../../utils/as-common.util';
     }
 })
 export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
-    private readonly elRef = inject(ElementRef<HTMLElement>);
-    private readonly destroyRef = inject(DestroyRef);
-    private readonly statsContainerRef = viewChild('statsContainer', { read: ElementRef<HTMLElement> });
-
-    private readonly statsToHostHeightThreshold = 0.67;
-    private resizeObserver: ResizeObserver | null = null;
-    chassisSmall = signal(false);
+    private static nextId = 0;
+    protected readonly svgId = `as-standard-${AsLayoutStandardComponent.nextId++}`;
+    protected readonly leftWidth = 611.8;
+    protected readonly rightWidth = 446.88;
 
     // Critical hits variant from layout config (override for standard units)
     override criticalHitsVariant = computed<CriticalHitsVariant>(() => {
@@ -164,48 +156,118 @@ export class AsLayoutStandardComponent extends AsLayoutBaseComponent {
         return isAerospace(type, movements);
     });
 
-    constructor() {
-        super();
-        const afterRenderRef = afterNextRender(() => {
-            const hostEl = this.elRef.nativeElement;
-            const statsEl = this.statsContainerRef()?.nativeElement;
-            if (!hostEl || !statsEl) return;
+    // Coordinates use the card's 1120 × 800 viewBox. One former em is 11.2 units.
+    protected readonly bodyLine = 40.6;
+    protected readonly bodyFont = '500 33.6px Roboto';
+    protected readonly valueFont = '900 33.6px Roboto';
+    protected readonly padding = 13.44;
+    protected readonly gap = 5.6;
 
-            this.resizeObserver?.disconnect();
-            this.resizeObserver = new ResizeObserver(() => {
-                this.updateChassisSmallClass();
-            });
+    protected specialRuns = computed(() => this.layoutTextRuns(
+        this.effectiveSpecials(),
+        (item, index) => this.specialDisplayText(item, index === this.effectiveSpecials().length - 1),
+        this.padding + this.measureText('SPECIAL: ', this.bodyFont), 0,
+        1064 - this.padding, this.bodyLine, this.valueFont,
+        this.measureText(' ', '400 11.2px Roboto'), this.padding,
+    ));
+    protected specialsHeight = computed(() => this.specialRuns().length
+        ? 15.68 + this.bodyLine + (this.specialRuns().at(-1)?.y ?? 0) : 0);
+    protected specialsY = computed(() => 704 - this.specialsHeight());
+    protected stackBottom = computed(() => this.specialsHeight() ? this.specialsY() - this.gap : 704);
 
-            this.resizeObserver.observe(hostEl);
-            this.resizeObserver.observe(statsEl);
+    protected armorRows = computed(() => this.pipRows(this.armorPipStates()));
+    protected structureRows = computed(() => this.pipRows(this.structurePipStates()));
+    protected armorRowHeight = computed(() => Math.max(this.bodyLine, this.armorRows().length * 36.96 - this.gap));
+    protected structureRowHeight = computed(() => Math.max(this.bodyLine, this.structureRows().length * 36.96 - this.gap));
+    protected armorHeight = computed(() => 15.68 + this.armorRowHeight() + this.structureRowHeight());
+    protected armorY = computed(() => this.stackBottom() - this.armorHeight());
+    protected heatY = computed(() => this.armorY() - this.gap - 66.42);
+    protected damageHeight = computed(() => this.cardStyle() === 'default' ? 117.81 : 115.57);
+    protected damageValueY = computed(() => this.cardStyle() === 'default' ? 42.12 : 39.88);
+    protected damageY = computed(() => (this.asStats().usesOV ? this.heatY() : this.armorY()) - this.gap - this.damageHeight());
 
-            // Initial calculation after layout.
-            requestAnimationFrame(() => {
-                this.updateChassisSmallClass();
-            });
+    protected statItems = computed(() => {
+        const items = [
+            { caption: 'TP:', value: this.asStats().TP },
+            { caption: 'SZ:', value: String(this.asStats().SZ) },
+            ...(!this.isAerospace() ? [{ caption: 'TMM:', value: this.tmmDisplay() }] : []),
+            { caption: this.isAerospace() ? 'THR:' : 'MV:', value: this.movementText() },
+        ].map(item => ({ ...item, width: this.measureText(item.caption, this.bodyFont) + 5.04 + this.measureText(item.value, this.valueFont) }));
+        const available = this.leftWidth - 2 * this.padding;
+        const total = items.reduce((sum, item) => sum + item.width, 0);
+        const wraps = total + this.gap * (items.length - 1) > available;
+        const firstRow = wraps ? items.slice(0, -1) : items;
+        const spacing = firstRow.length > 1
+            ? Math.max(this.gap, (available - firstRow.reduce((sum, item) => sum + item.width, 0)) / (firstRow.length - 1)) : 0;
+        let x = this.padding;
+        return items.map((item, index) => {
+            const wrapped = wraps && index === items.length - 1;
+            const positioned = { ...item, x: wrapped ? this.leftWidth - this.padding - item.width : x,
+                y: wrapped ? this.bodyLine + this.gap : 0 };
+            x += item.width + spacing;
+            return positioned;
         });
+    });
+    protected statsHeight = computed(() => 15.68 + this.bodyLine * 2 + (this.statItems().at(-1)?.y ?? 0) + (this.sprintMove() ? 22.4 : 0));
+    protected statsY = computed(() => this.damageY() - this.gap - this.statsHeight());
+    protected chassisSmall = computed(() => 704 - this.statsY() > 536);
+    protected chassisLabel = computed(() => this.forceUnit()?.alias() || this.chassis().toUpperCase());
+    protected modelLabel = computed(() => this.forceUnit()?.alias()
+        ? `${this.chassis()} ${this.model()}`.toUpperCase() : this.model().toUpperCase());
+    protected modelSize = computed(() => this.chassisSmall() ? 36.96 : 44.8);
+    protected chassisSize = computed(() => this.chassisSmall() ? 56 : this.chassisLabel().length > 20 ? 67.2 : 78.4);
+    protected chassisBaseline = computed(() => 31.36 + this.modelSize() * 1.2
+        + this.textBaseline(`700 ${this.chassisSize()}px "Roboto Condensed"`, this.chassisSize() * 0.95));
+    protected chassisTextWidth = computed(() => {
+        const width = this.measureText(this.chassisLabel().toUpperCase(), `700 ${this.chassisSize()}px "Roboto Condensed"`)
+            + this.chassisLabel().length * this.chassisSize() * 0.05;
+        return width > 850 ? 850 : null;
+    });
+    protected modelTextWidth = computed(() => {
+        const available = 800 - (this.unit().isCustom ? this.customBadge().width + 14 : 0);
+        return this.measureText(this.modelLabel(), `400 ${this.modelSize()}px Roboto`) > available ? available : null;
+    });
+    protected modelBaseline = computed(() => 31.36 + this.textBaseline(`400 ${this.modelSize()}px Roboto`, this.modelSize() * 1.2));
+    protected customBadgeX = computed(() => 31.36 + (this.modelTextWidth() ?? this.measureText(this.modelLabel(), `400 ${this.modelSize()}px Roboto`)) + 14);
 
-        this.destroyRef.onDestroy(() => {
-            afterRenderRef.destroy();
-            this.resizeObserver?.disconnect();
+    protected damageRanges = computed(() => {
+        const ranges = [
+            { key: 'short', header: `S (0 | ${this.toHitShort()}+)`, value: this.effectiveDamageS(), distance: this.rangeShort() },
+            { key: 'medium', header: `M (+2 | ${this.toHitMedium()}+)`, value: this.effectiveDamageM(), distance: this.rangeMedium() },
+            { key: 'long', header: `L (+4 | ${this.toHitLong()}+)`, value: this.effectiveDamageL(), distance: this.rangeLong() },
+        ];
+        if (this.hasExtremeRange()) ranges.push({ key: 'extreme', header: `E (+6 | ${this.toHitExtreme()}+)`, value: this.effectiveDamageE(), distance: this.rangeExtreme() });
+        const width = (this.leftWidth - 79.36 - this.padding) / ranges.length;
+        return ranges.map((range, index) => ({ ...range, x: 79.36 + width * index, width, center: 79.36 + width * (index + 0.5) }));
+    });
+
+    protected heatSegments = computed(() => {
+        const committed = this.heatLevel();
+        const pending = committed + this.pendingHeat();
+        return [...this.heatTrackLevels(), this.shutdownHeatThreshold()].map((level, index, levels) => {
+            const shutdown = index === levels.length - 1;
+            return { level, label: shutdown ? 'S' : String(level), shutdown,
+                active: shutdown ? committed >= level : committed === level,
+                pending: this.pendingHeat() !== 0 && (shutdown ? pending >= level : pending === level) };
         });
-    }
+    });
+    protected heatCellWidth = computed(() => this.hasExtendedHeatTrack() ? 40.768 : 49.392);
+    protected heatTrackWidth = computed(() => this.heatCellWidth() * this.heatSegments().length + 3.136);
+    protected heatTrackX = computed(() => this.leftWidth - this.padding - this.heatTrackWidth());
+    protected heatLabelX = computed(() => {
+        const ovWidth = this.measureText(`OV: ${this.asStats().OV}`, this.bodyFont);
+        return (this.padding + ovWidth + this.heatTrackX()) / 2;
+    });
 
-    private updateChassisSmallClass(): void {
-        const hostEl = this.elRef.nativeElement;
-        const statsEl = this.statsContainerRef()?.nativeElement;
-        if (!hostEl || !statsEl) {
-            this.chassisSmall.set(false);
-            return;
-        }
+    protected criticalHeight = computed(() => criticalHitsHeight(this.criticalHitsVariant()));
+    protected criticalY = computed(() => this.stackBottom() - this.criticalHeight());
+    protected abilityRuns = computed(() => this.layoutAbilityRuns(5.6, this.rightWidth));
 
-        const hostHeight = hostEl.clientHeight;
-        if (hostHeight <= 0) {
-            this.chassisSmall.set(false);
-            return;
-        }
-
-        const ratio = statsEl.clientHeight / hostHeight;
-        this.chassisSmall.set(ratio > this.statsToHostHeightThreshold);
+    private pipRows(pips: PipState[]): PipState[][] {
+        const available = this.leftWidth - 2 * this.padding - 33.6 - this.gap - (this.asStats().usesTh ? 67.2 : 0);
+        const count = Math.max(1, Math.floor((available + this.gap) / 36.96));
+        const rows: PipState[][] = [];
+        for (let i = 0; i < pips.length; i += count) rows.push(pips.slice(i, i + count));
+        return rows;
     }
 }

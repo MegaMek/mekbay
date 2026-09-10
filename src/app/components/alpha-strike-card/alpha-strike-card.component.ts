@@ -85,7 +85,7 @@ export class AlphaStrikeCardComponent {
     // Interaction state
     private interactionAbortController: AbortController | null = null;
     private pickerRef: NumericPickerInstance | ChoicePickerInstance | null = null;
-    private pickerAnchorElement: HTMLElement | null = null;
+    private pickerAnchorElement: SVGElement | HTMLElement | null = null;
     private interactionsSetup = false;
     
     onCardClick(): void {
@@ -199,7 +199,7 @@ export class AlphaStrikeCardComponent {
         
         // In interactive mode, show picker for consumable/exhaustible abilities
         if (this.interactive() && fu && ability && (ability.consumable || ability.canExhaust)) {
-            const anchorElement = event.currentTarget as HTMLElement | undefined;
+            const anchorElement = event.currentTarget as SVGElement | HTMLElement | undefined;
             if (anchorElement) {
                 this.showAbilityPicker(state, parsedAbility, anchorElement);
                 return;
@@ -221,7 +221,7 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private showAbilityPicker(state: SpecialAbilityState, parsedAbility: ParsedAbility, anchorElement: HTMLElement): void {
+    private showAbilityPicker(state: SpecialAbilityState, parsedAbility: ParsedAbility, anchorElement: SVGElement | HTMLElement): void {
         const fu = this.forceUnit();
         const ability = parsedAbility.ability;
         if (!fu || !ability) return;
@@ -412,7 +412,7 @@ export class AlphaStrikeCardComponent {
         this.interactionsSetup = false;
     }
     
-    private addTapHandler(el: HTMLElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
+    private addTapHandler(el: SVGElement | HTMLElement, handler: (evt: PointerEvent) => void, signal: AbortSignal): void {
         el.classList.add('interactive');
         const eventOptions = { passive: false, signal };
         
@@ -422,49 +422,49 @@ export class AlphaStrikeCardComponent {
         let startY = 0;
         const moveThreshold = 10;
         
-        el.addEventListener('pointerdown', (evt: PointerEvent) => {
+        el.addEventListener('pointerdown', ((evt: PointerEvent) => {
             evt.preventDefault();
             evt.stopPropagation();
             pointerMoved = false;
             startX = evt.clientX;
             startY = evt.clientY;
             pointerId = evt.pointerId;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointermove', (evt: PointerEvent) => {
+        el.addEventListener('pointermove', ((evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             const dx = Math.abs(evt.clientX - startX);
             const dy = Math.abs(evt.clientY - startY);
             if (dx > moveThreshold || dy > moveThreshold) {
                 pointerMoved = true;
             }
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointerup', (evt: PointerEvent) => {
+        el.addEventListener('pointerup', ((evt: PointerEvent) => {
             if (evt.pointerId !== pointerId) return;
             evt.preventDefault();
             if (!pointerMoved) {
                 handler(evt);
             }
             pointerId = null;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointerleave', (evt: PointerEvent) => {
+        el.addEventListener('pointerleave', ((evt: PointerEvent) => {
             if (evt.pointerId === pointerId) pointerId = null;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
         
-        el.addEventListener('pointercancel', (evt: PointerEvent) => {
+        el.addEventListener('pointercancel', ((evt: PointerEvent) => {
             if (evt.pointerId === pointerId) pointerId = null;
-        }, eventOptions);
+        }) as EventListener, eventOptions);
     }
     
-    private setupArmorInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupArmorInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         if (this.optionsService.options().ASUnifiedDamagePicker) {
             // Unified: tap anywhere in pips-wrapper shows combined damage picker
             const pipsWrapper = cardElement.querySelector('.pips-wrapper');
             if (!pipsWrapper) return;
             
-            this.addTapHandler(pipsWrapper as HTMLElement, (evt) => {
+            this.addTapHandler(pipsWrapper as SVGElement | HTMLElement, (evt) => {
                 this.showDamagePicker(evt);
             }, signal);
         } else {
@@ -473,31 +473,31 @@ export class AlphaStrikeCardComponent {
             const structureRow = cardElement.querySelector('[data-damage-type="structure"]');
             
             if (armorRow) {
-                this.addTapHandler(armorRow as HTMLElement, (evt) => {
+                this.addTapHandler(armorRow as SVGElement | HTMLElement, (evt) => {
                     this.showSingleDamagePicker(evt, 'armor');
                 }, signal);
             }
             if (structureRow) {
-                this.addTapHandler(structureRow as HTMLElement, (evt) => {
+                this.addTapHandler(structureRow as SVGElement | HTMLElement, (evt) => {
                     this.showSingleDamagePicker(evt, 'structure');
                 }, signal);
             }
         }
     }
     
-    private setupCriticalHitInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupCriticalHitInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         const critRows = cardElement.querySelectorAll('[data-crit]');
         critRows.forEach(row => {
             const critKey = row.getAttribute('data-crit');
             if (!critKey) return;
             
-            this.addTapHandler(row as HTMLElement, (evt) => {
-                this.showCritPicker(evt, critKey, row as HTMLElement);
+            this.addTapHandler(row as SVGElement | HTMLElement, (evt) => {
+                this.showCritPicker(evt, critKey, row as SVGElement | HTMLElement);
             }, signal);
         });
     }
     
-    private setupVesselDamageTrackInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupVesselDamageTrackInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         const damageTracks = cardElement.querySelectorAll('.damage-track');
         damageTracks.forEach(track => {
             const trackType = track.getAttribute('data-damage-track');
@@ -506,7 +506,7 @@ export class AlphaStrikeCardComponent {
         
             if (this.optionsService.options().ASUnifiedDamagePicker) {
                 // Unified: any damage track shows combined damage dialog
-                this.addTapHandler(track as HTMLElement, (evt) => {
+                this.addTapHandler(track as SVGElement | HTMLElement, (evt) => {
                     if (pickerStyle === 'linear') {
                         this.showVesselDamageDialog();
                     } else {
@@ -516,7 +516,7 @@ export class AlphaStrikeCardComponent {
             } else {
                 // Separate: each track shows its own damage dialog
                 if (trackType === 'armor' || trackType === 'structure') {
-                    this.addTapHandler(track as HTMLElement, (evt) => {
+                    this.addTapHandler(track as SVGElement | HTMLElement, (evt) => {
                     if (pickerStyle === 'linear') {
                         this.showVesselSingleDamageDialog(trackType);
                     } else {
@@ -528,13 +528,13 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private setupHeatInteraction(cardElement: HTMLElement, signal: AbortSignal): void {
+    private setupHeatInteraction(cardElement: SVGElement | HTMLElement, signal: AbortSignal): void {
         const heatTrack = cardElement.querySelector('.heat-track');
         if (!heatTrack) return;
 
-        this.addTapHandler(heatTrack as HTMLElement, (event) => {
-            const target = event.target instanceof HTMLElement
-                ? event.target.closest<HTMLElement>('.heat-level')
+        this.addTapHandler(heatTrack as SVGElement | HTMLElement, (event) => {
+            const target = event.target instanceof Element
+                ? event.target.closest<SVGElement>('.heat-level')
                 : null;
             if (!target || !heatTrack.contains(target)) return;
 
@@ -572,7 +572,7 @@ export class AlphaStrikeCardComponent {
         const currentTotal = totalMax - currentTotalDamage;
         
         this.showNumericPicker({
-            anchorElement: event.currentTarget as HTMLElement,
+            anchorElement: event.currentTarget as SVGElement | HTMLElement,
             event,
             title: 'DAMAGE',
             min: -currentTotalDamage,
@@ -612,7 +612,7 @@ export class AlphaStrikeCardComponent {
         const remaining = max - currentDamage;
         
         this.showNumericPicker({
-            anchorElement: event.currentTarget as HTMLElement,
+            anchorElement: event.currentTarget as SVGElement | HTMLElement,
             event,
             title: isArmor ? 'ARMOR' : 'STRUCTURE',
             min: -currentDamage,
@@ -849,7 +849,7 @@ export class AlphaStrikeCardComponent {
         return hits;
     }
     
-    private showCritPicker(event: PointerEvent, critKey: string, rowElement: HTMLElement): void {
+    private showCritPicker(event: PointerEvent, critKey: string, rowElement: SVGElement | HTMLElement): void {
         const unit = this.forceUnit();
         if (!unit) return;
         
@@ -894,7 +894,7 @@ export class AlphaStrikeCardComponent {
      * - 'radial' or 'default': Uses rotating dial picker
      */
     private showNumericPicker(config: {
-        anchorElement: HTMLElement;
+        anchorElement: SVGElement | HTMLElement;
         event?: PointerEvent;
         title: string;
         min: number;
@@ -963,7 +963,7 @@ export class AlphaStrikeCardComponent {
      * Show a choice picker (linear style) for selecting from a list of options.
      */
     private showLinearPicker(config: {
-        anchorElement: HTMLElement;
+        anchorElement: SVGElement | HTMLElement;
         title: string;
         values: PickerChoice[];
         onPick: (val: PickerChoice) => void;
@@ -986,7 +986,7 @@ export class AlphaStrikeCardComponent {
         });
     }
     
-    private calculatePickerPosition(element: HTMLElement, centerVertically: boolean): PickerPosition {
+    private calculatePickerPosition(element: SVGElement | HTMLElement, centerVertically: boolean): PickerPosition {
         const rect = element.getBoundingClientRect();
         return {
             x: rect.left + rect.width / 2,

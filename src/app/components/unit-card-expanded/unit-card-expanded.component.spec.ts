@@ -175,8 +175,23 @@ describe('UnitCardExpandedComponent MegaMek availability display', () => {
         fixture.componentRef.setInput('useBvPvDisplayOption', true);
         fixture.detectChanges();
 
-        expect(fixture.componentInstance.resolvedCompactBv()).toMatch(/^\d+ \(40\)$/);
+        expect(fixture.componentInstance.resolvedCompactBv()).toBe('48 (40)');
         expect(fixture.componentInstance.resolvedBv()).toBe(fixture.componentInstance.resolvedCompactBv());
+    });
+
+    it('displays zero PV for unconverted Alpha Strike search results at any skill', () => {
+        currentGameSystemSignal.set(GameSystem.AS);
+        const fixture = TestBed.createComponent(UnitCardExpandedComponent);
+        fixture.componentRef.setInput('unit', createEmptyUnit({ as: { TP: 'XX', PV: 0 } }));
+        fixture.componentRef.setInput('useBvPvDisplayOption', true);
+
+        for (const skill of [4, 3, 5]) {
+            fixture.componentRef.setInput('gunnery', skill);
+            fixture.detectChanges();
+
+            expect(fixture.componentInstance.resolvedBv()).withContext(`expanded skill ${skill}`).toBe('0');
+            expect(fixture.componentInstance.resolvedCompactBv()).withContext(`compact skill ${skill}`).toBe('0');
+        }
     });
 
     it('uses the live force display instead of catalog BV and skills, including zero', () => {

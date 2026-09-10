@@ -106,6 +106,7 @@ export class UnitDetailsPanelComponent {
     readonly variantsTabState = signal<VariantsTabState>({ ...DEFAULT_VARIANTS_TAB_STATE });
     readonly currentGameSystem = computed(() => this.gameService.currentGameSystem());
     readonly sheetTabRef = viewChild(UnitDetailsSheetTabComponent);
+    readonly cardTabRef = viewChild(UnitDetailsCardTabComponent);
 
     constructor() {
         effect(onCleanup => {

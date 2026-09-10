@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Component, ChangeDetectionStrategy, computed } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
+import { AsVesselHeaderComponent } from './vessel-header.component';
 import { AsLayoutBaseComponent } from './layout-base.component';
 
 /*
@@ -55,12 +55,12 @@ interface EffectiveArcDamage extends ArcDamage {
 }
 
 @Component({
-    selector: 'as-layout-large-vessel-2',
+    selector: 'g[as-layout-large-vessel-2]',
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './layout-large-vessel-2.component.html',
     styleUrl: './layout-large-vessel-2.component.scss',
     imports: [
-        UpperCasePipe,
+        AsVesselHeaderComponent,
     ],
     host: {
         '[class.interactive]': 'interactive()',
@@ -68,6 +68,24 @@ interface EffectiveArcDamage extends ArcDamage {
     }
 })
 export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
+    protected readonly columns = computed(() => this.hasCap() ? ['STD', 'CAP', 'SCAP', 'MSL'] : ['STD', 'SCAP', 'MSL']);
+    protected readonly columnWidth = computed(() => 472.1 / (this.columns().length + 1));
+    protected readonly tableHeight = computed(() => this.cardStyle() === 'default' ? 285.4 : 279.8);
+    protected readonly rowHeight = computed(() => (this.tableHeight() - 15.68 - 35.26 - 37.5 - 38.05) / 4);
+    protected readonly rangeRows = computed(() => [
+        { label: `S (${this.toHitShort()}+)`, key: 'S' },
+        { label: `M(${this.toHitMedium()}+)`, key: 'M' },
+        { label: `L (${this.toHitLong()}+)`, key: 'L' },
+        { label: `E (${this.toHitExtreme()}+)`, key: 'E' },
+    ]);
+    protected readonly cellBaseline = computed(() => this.textBaseline('600 22.4px Roboto', 22.4) - 11.2);
+    protected arcValue(arc: EffectiveArcDamage, column: string, range: string): string {
+        const prefix = column === 'STD' ? 'effDmg' : column === 'CAP' ? 'effCap' : column === 'SCAP' ? 'effScap' : 'effMsl';
+        return arc[`${prefix}${range}` as keyof EffectiveArcDamage] as string;
+    }
+    protected arcSpecialWidth(text: string): number | null {
+        return this.measureText(text, '600 22.4px Roboto') > 472.1 - this.columnWidth() ? 472.1 - this.columnWidth() : null;
+    }
     hasCap = computed<boolean>(() => {
         const stats = this.asStats();
         return stats.TP == 'WS' || stats.TP == 'SS' || stats.TP == 'JS';
@@ -188,16 +206,6 @@ export class AsLayoutLargeVessel2Component extends AsLayoutBaseComponent {
             return parseInt(val, 10);
         }
         return val;
-    }
-
-    /**
-     * Get column name from index based on whether CAP column is present.
-     */
-    getColumnName(index: number): string {
-        if (this.hasCap()) {
-            return ['STD', 'CAP', 'SCAP', 'MSL'][index] ?? '';
-        }
-        return ['STD', 'SCAP', 'MSL'][index] ?? '';
     }
 
     /**

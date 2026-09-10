@@ -50,7 +50,7 @@
             </button>
         </div>
     }
-    <div dialog-body class="dialog-body" swipe [direction]="'horizontal'" [shouldBlockSwipe]="shouldBlockSwipe"
+    <div dialog-body class="dialog-body" [class.card-zoomed]="activeTab() === 'Card' && cardTabRef()?.isZoomPanActive()" swipe [direction]="'horizontal'" [shouldBlockSwipe]="shouldBlockSwipe"
         (swipestart)="onSwipeStart($event)" (swipemove)="onSwipeMove($event)" (swipeend)="onSwipeEnd($event)">
 
         <!-- Swipe animation container -->
@@ -139,6 +139,7 @@
             [hasPrev]="hasPrev"
             [hasNext]="hasNext"
             [sheetTab]="sheetTabRef()"
+            [cardTab]="cardTabRef()"
             [variantsTabState]="variantsTabState()"
             [gameSystem]="currentGameSystem()"
             (prev)="onPrev()"
