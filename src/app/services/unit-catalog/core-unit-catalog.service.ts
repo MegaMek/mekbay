@@ -19,10 +19,6 @@ import {
     type CoreCatalogSyncResult,
     type PreparedCoreCatalogSynchronization,
 } from './core-catalog-synchronizer';
-import {
-    openCoreCatalogSourceArchiveInWorker,
-    type WorkerBackedCoreSourceArchive,
-} from './core-catalog-archive-worker-client';
 import { isUnitSummaryArray } from './core-catalog-generation';
 import { openStoredCoreUnitArchive, type CoreUnitArchive } from './core-unit-archive';
 import type { CoreUnitsManifest } from './core-unit-manifest';
@@ -88,17 +84,15 @@ export class CoreUnitCatalogBackend {
         manifest: CoreUnitsManifest,
         signal: AbortSignal,
     ): Promise<OpenedSourceArchive> {
+        signal.throwIfAborted();
         const bytes = await blob.arrayBuffer();
-        if (this.createArchiveWorker) {
-            const opened: WorkerBackedCoreSourceArchive = await openCoreCatalogSourceArchiveInWorker(
-                bytes,
-                manifest,
-                { createWorker: this.createArchiveWorker, signal },
-            );
-            return opened;
-        }
+        signal.throwIfAborted();
+        // Cached sources only need the ZIP directory and requested entries. Avoid
+        // worker startup here; catalog validation and compaction still use workers.
+        const archive = await openStoredCoreUnitArchive(bytes, manifest);
+        signal.throwIfAborted();
         return Object.freeze({
-            archive: await openStoredCoreUnitArchive(bytes, manifest),
+            archive,
             dispose: () => undefined,
         });
     }

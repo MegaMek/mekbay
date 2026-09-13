@@ -4,7 +4,9 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../../models/unit-summary.model';
+import { CORE_CATALOG_ARCHIVE_WORKER_FACTORY } from '../../utils/core-catalog-archive-worker-factory.util';
 import { CatalogDownloadTrackerService } from '../catalogs/catalog-base.service';
+import { RepositoryAssetManifestService } from '../catalogs/repository-asset-manifest.service';
 import { LoggerService } from '../logger.service';
 import {
     ApplicationCatalogBundleCoordinatorService,
@@ -18,6 +20,7 @@ import type {
     PreparedCoreRelease,
 } from './core-catalog-synchronizer';
 import { CoreUnitCatalogBackend, CoreUnitCatalogService } from './core-unit-catalog.service';
+import { createCoreUnitSourceArchive } from './core-unit-archive';
 import type { PublishedCatalogGeneration, UnitCatalogDatabase } from './unit-catalog-database';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
@@ -157,6 +160,48 @@ function synchronization(
 async function flushBackgroundRefresh(): Promise<void> {
     for (let index = 0; index < 12; index += 1) await Promise.resolve();
 }
+
+describe('CoreUnitCatalogBackend cached sources', () => {
+    let backend: CoreUnitCatalogBackend;
+    let createWorker: jasmine.Spy;
+
+    beforeEach(() => {
+        createWorker = jasmine.createSpy('createWorker').and.throwError('Worker startup must not block cached sources');
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: CORE_CATALOG_ARCHIVE_WORKER_FACTORY, useValue: createWorker },
+                { provide: RepositoryAssetManifestService, useValue: {} },
+            ],
+        });
+        backend = TestBed.inject(CoreUnitCatalogBackend);
+    });
+
+    it('reads a cached unit when archive workers are unavailable', async () => {
+        const manifest = generation().manifest.manifest;
+        const bytes = new TextEncoder().encode('cached unit source').buffer;
+        const file = manifest.units[UUID].file;
+        const zip = await createCoreUnitSourceArchive(manifest, [{ file, bytes }]);
+
+        const opened = await backend.openStoredSourceArchive(new Blob([zip]), manifest, new AbortController().signal);
+
+        expect(new Uint8Array(await opened.archive.extract(file))).toEqual(new Uint8Array(bytes));
+        expect(createWorker).not.toHaveBeenCalled();
+        opened.dispose();
+    });
+
+    it('does not read the cached ZIP after cancellation', async () => {
+        const controller = new AbortController();
+        controller.abort();
+        const blob = new Blob();
+        const read = spyOn(blob, 'arrayBuffer');
+
+        await expectAsync(backend.openStoredSourceArchive(blob, generation().manifest.manifest, controller.signal))
+            .toBeRejectedWith(jasmine.objectContaining({ name: 'AbortError' }));
+
+        expect(read).not.toHaveBeenCalled();
+        expect(createWorker).not.toHaveBeenCalled();
+    });
+});
 
 describe('CoreUnitCatalogService', () => {
     let database: jasmine.SpyObj<UnitCatalogDatabase>;

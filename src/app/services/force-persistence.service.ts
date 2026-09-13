@@ -632,8 +632,15 @@ export class ForcePersistenceService {
     public async getForce(
         instanceId: string,
         ownedOnly: boolean = false,
-        { skipLocal = false, showLoading = true }: { skipLocal?: boolean; showLoading?: boolean } = {},
+        { skipLocal = false, showLoading = true, onMetadata }: {
+            skipLocal?: boolean;
+            showLoading?: boolean;
+            onMetadata?: (force: Pick<SerializedForce, 'instanceId' | 'name' | 'factionId' | 'eraId'>) => void;
+        } = {},
     ): Promise<Force | null> {
+        const reportMetadata = ({ instanceId, name, factionId, eraId }: SerializedForce): void => {
+            onMetadata?.({ instanceId, name, factionId, eraId });
+        };
         // Storage reconciliation is detached work. It may have storage/cloud
         // side effects only while the ID remains continuously ownerless.
         const ownerlessLease = this.acquireOwnerlessForceOperation(instanceId);
@@ -653,6 +660,7 @@ export class ForcePersistenceService {
             }
         }
         let cloudRaw: SerializedForce | null = null;
+        if (localRaw) reportMetadata(localRaw);
         let triedCloud = false;
         if (showLoading) this.isCloudForceLoading.set(true);
         try {
@@ -692,6 +700,7 @@ export class ForcePersistenceService {
         let resultSource: 'local' | 'cloud' | null = null;
         for (const candidate of candidates) {
             try {
+                reportMetadata(candidate.raw);
                 result = await this.loadPersistedForce(candidate.raw);
                 resultSource = candidate.source;
                 break;

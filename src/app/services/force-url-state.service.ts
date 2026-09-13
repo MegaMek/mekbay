@@ -1,12 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { computed, effect, inject, Injectable, Injector, signal, untracked } from '@angular/core';
+import { computed, DestroyRef, effect, inject, Injectable, Injector, signal, untracked } from '@angular/core';
 
+import { ForceLoadingOverlayComponent, type ForceLoadingOverlayData } from '../components/force-loading-overlay/force-loading-overlay.component';
 import { ASForce } from '../models/as-force.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { GameSystem } from '../models/common.model';
 import type { Force } from '../models/force.model';
+import type { ForceLoadingProgress } from '../models/force-loading-progress.model';
 import type { ForceMember } from '../models/force-member.model';
 import type { ForceAlignment, ForceSlot } from '../models/force-slot.model';
 import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
@@ -46,6 +48,7 @@ export class ForceUrlStateService {
     private readonly unitAdmission = inject(ForceUnitAdmissionService);
     private readonly urlService = inject(UrlService);
     private readonly injector = inject(Injector);
+    private readonly destroyRef = inject(DestroyRef);
 
     private workspace: ForceUrlWorkspace | null = null;
     private readonly synchronizationEnabled = signal(false);
@@ -102,7 +105,9 @@ export class ForceUrlStateService {
         });
 
         effect(() => {
-            if (this.startupRequested || !this.dataService.isDataReady() || this.synchronizationEnabled()) return;
+            if (this.startupRequested || this.synchronizationEnabled()) return;
+            // Force links must block interaction while the catalog is preparing too.
+            if (!this.hasInitialForceRequest() && !this.dataService.isDataReady()) return;
             this.startupRequested = true;
             untracked(() => void this.initializeFromUrl());
         });
@@ -124,12 +129,39 @@ export class ForceUrlStateService {
         });
     }
 
+    private hasInitialForceRequest(): boolean {
+        return ['operation', 'instance', 'units', 'mul_ids'].some(key => this.urlService.initialParams.get(key));
+    }
+
     private async initializeFromUrl(): Promise<void> {
         const params = new URLSearchParams(this.urlService.initialParams.toString());
+        const message = signal('Preparing force data…');
+        const forces = signal<readonly ForceLoadingProgress[]>([]);
+        const reportForceProgress = (progress: ForceLoadingProgress): void => {
+            forces.update(entries => entries.some(entry => entry.instanceId === progress.instanceId)
+                ? entries.map(entry => entry.instanceId === progress.instanceId ? { ...entry, ...progress } : entry)
+                : [...entries, progress]);
+        };
+        const loadingDialog = this.hasInitialForceRequest()
+            ? this.dialogsService.createDialog(ForceLoadingOverlayComponent, {
+                data: { message, forces } satisfies ForceLoadingOverlayData,
+                ariaLabel: 'Loading forces',
+                disableClose: true,
+                closeOnNavigation: false,
+                hasBackdrop: true,
+                autoFocus: 'dialog',
+                panelClass: 'force-loading-overlay-panel',
+            })
+            : null;
+        const unregisterCleanup = this.destroyRef.onDestroy(() => loadingDialog?.close());
         try {
+            if (loadingDialog) await this.dataService.requireApplicationCatalogReady();
+            message.set('Loading forces and units…');
             const operationId = params.get('operation');
             if (operationId) {
-                const loaded = await this.operations.loadOperation(operationId, { skipPrompts: true });
+                const loaded = await this.operations.loadOperation(operationId, {
+                    skipPrompts: true, onForceProgress: reportForceProgress,
+                });
                 if (loaded) {
                     this.restoreSelectionFromUrl(params);
                     return;
@@ -137,7 +169,7 @@ export class ForceUrlStateService {
                 this.logger.warn(`Force URL startup: operation "${operationId}" was not found; loading force parameters.`);
             }
 
-            const loadedAny = await this.loadForceParamsCore(params);
+            const loadedAny = await this.loadForceParamsCore(params, message.set, reportForceProgress);
             this.restoreSelectionFromUrl(params);
 
             if (loadedAny) {
@@ -151,7 +183,12 @@ export class ForceUrlStateService {
             } else if (params.has('instance')) {
                 this.urlService.setQueryParams({ instance: null });
             }
+        } catch (error) {
+            this.logger.error(`Force URL startup failed: ${String(error)}`);
+            void this.dialogsService.showError('The forces in this link could not be loaded. Please try opening the link again.', 'Force Loading Failed');
         } finally {
+            unregisterCleanup();
+            loadingDialog?.close();
             this.synchronizationEnabled.set(true);
         }
     }
@@ -171,6 +208,8 @@ export class ForceUrlStateService {
 
     private async loadForceParamsCore(
         params: URLSearchParams,
+        reportProgress: (message: string) => void,
+        reportForceProgress: (progress: ForceLoadingProgress) => void,
         defaultAlignment: ForceAlignment = 'friendly',
     ): Promise<boolean> {
         const workspace = this.requireWorkspace();
@@ -181,17 +220,30 @@ export class ForceUrlStateService {
         if (instanceParam) {
             const entries = instanceParam.split(',').map(entry => entry.trim()).filter(Boolean);
             for (const entry of entries) {
+                reportForceProgress({ instanceId: entry.replace(/^enemy:/, ''), status: 'pending' });
+            }
+            for (const [index, entry] of entries.entries()) {
                 const enemy = entry.startsWith('enemy:');
                 const alignment: ForceAlignment = enemy ? 'enemy' : defaultAlignment;
                 const instanceId = enemy ? entry.substring('enemy:'.length) : entry;
-                if (workspace.loadedForces().some(slot => slot.force.instanceId() === instanceId)) continue;
+                if (workspace.loadedForces().some(slot => slot.force.instanceId() === instanceId)) {
+                    reportForceProgress({ instanceId, status: 'loaded' });
+                    continue;
+                }
 
-                const force = await this.forcePersistence.getForce(instanceId);
+                reportProgress(`Loading force ${index + 1} of ${entries.length}…`);
+                reportForceProgress({ instanceId, status: 'loading' });
+                const force = await this.forcePersistence.getForce(instanceId, false, {
+                    showLoading: false,
+                    onMetadata: metadata => reportForceProgress({ ...metadata, status: 'loading' }),
+                });
                 if (!force) {
+                    reportForceProgress({ instanceId, status: 'failed' });
                     this.logger.warn(`Force URL startup: instance "${instanceId}" was not found.`);
                     continue;
                 }
                 const added = workspace.addLoadedForce(force, alignment, !loadedAny && isFirst);
+                reportForceProgress({ instanceId, status: added ? 'loaded' : 'failed' });
                 if (added) {
                     loadedAny = true;
                 }
@@ -203,7 +255,15 @@ export class ForceUrlStateService {
         const inlineUnitsParam = unitsParam || mulIdsParam;
         const lookupMode: ForceUrlUnitLookupMode = unitsParam ? 'identifier' : 'mulId';
         if (inlineUnitsParam) {
+            reportProgress(params.get('name') ? `Loading ${params.get('name')}…` : 'Loading shared units…');
             const force = this.createInlineForce(params);
+            const inlineProgress = {
+                instanceId: 'inline',
+                name: force.displayName(),
+                factionId: force.faction()?.id,
+                eraId: force.era()?.id,
+            };
+            reportForceProgress({ ...inlineProgress, status: 'loading' });
             force.loading = true;
             try {
                 const admitted = await this.parseUnitsFromUrl(force, inlineUnitsParam, lookupMode);
@@ -217,9 +277,12 @@ export class ForceUrlStateService {
 
             if (force.members().length > 0) {
                 const added = workspace.addLoadedForce(force, defaultAlignment, !loadedAny && isFirst);
+                reportForceProgress({ ...inlineProgress, status: added ? 'loaded' : 'failed' });
                 if (added) {
                     loadedAny = true;
                 }
+            } else {
+                reportForceProgress({ ...inlineProgress, status: 'failed' });
             }
         }
 

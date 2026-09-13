@@ -5,6 +5,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import type { Force } from '../models/force.model';
+import type { ForceLoadingProgress } from '../models/force-loading-progress.model';
 import type { ForceSlot } from '../models/force-slot.model';
 import type { ForceAlignment } from '../models/force-slot.model';
 import {
@@ -207,7 +208,10 @@ export class ForceOperationService {
         if (result === 'unload' && await this.requireHost().removeAllForces()) this.currentOperation.set(null);
     }
 
-    async loadOperation(operationId: string, options: { skipPrompts?: boolean } = {}): Promise<boolean> {
+    async loadOperation(operationId: string, options: {
+        skipPrompts?: boolean;
+        onForceProgress?: (progress: ForceLoadingProgress) => void;
+    } = {}): Promise<boolean> {
         const host = this.requireHost();
         if (!options.skipPrompts) {
             const current = this.currentOperation();
@@ -216,6 +220,7 @@ export class ForceOperationService {
         }
         const entry = await this.operationStorage.getOperation(operationId);
         if (!entry) return false;
+        for (const forceInfo of entry.forces) options.onForceProgress?.({ ...forceInfo, status: 'pending' });
         if (entry.owned) {
             try {
                 await this.forcePersistence.cacheForcesLocally(entry.forces.map(force => force.instanceId));
@@ -229,12 +234,19 @@ export class ForceOperationService {
             let loadedAny = false;
             const failedForces: string[] = [];
             for (const forceInfo of entry.forces) {
-                const force = await this.forcePersistence.getForce(forceInfo.instanceId);
+                options.onForceProgress?.({ ...forceInfo, status: 'loading' });
+                const force = await this.forcePersistence.getForce(forceInfo.instanceId, false, {
+                    onMetadata: options.onForceProgress
+                        ? metadata => options.onForceProgress?.({ ...metadata, status: 'loading' })
+                        : undefined,
+                });
                 if (!force) {
+                    options.onForceProgress?.({ instanceId: forceInfo.instanceId, status: 'failed' });
                     failedForces.push(forceInfo.name || forceInfo.instanceId);
                     continue;
                 }
                 const added = host.addLoadedForce(force, forceInfo.alignment, !loadedAny);
+                options.onForceProgress?.({ instanceId: forceInfo.instanceId, status: added ? 'loaded' : 'failed' });
                 if (added) loadedAny = true;
                 else {
                     failedForces.push(forceInfo.name || forceInfo.instanceId);
