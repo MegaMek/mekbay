@@ -21,7 +21,7 @@ import type {
 } from '../services/unit-catalog/unit-catalog.types';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
-import type { UnitIconResolver } from './unit-sprite-resolver';
+import { createUnitIconResolver, type UnitIconResolver } from './unit-sprite-resolver';
 import { canonicalOptionalClanName } from './fluff-image-resolver';
 import { calculateUnitSustainedDamage } from './unit-sustained-damage';
 import { buildUnitRulesRefs } from './unit-rules-ref-builder';
@@ -36,7 +36,7 @@ export interface UnitSummaryBuildContext {
 export class UnitSummaryBuilder {
   private readonly metadataBuilder: UnitMetadataBuilder;
 
-  constructor(private readonly resolveIcon: UnitIconResolver = () => '') {
+  constructor(private readonly resolveIcon: UnitIconResolver = createUnitIconResolver(undefined)) {
     this.metadataBuilder = new UnitMetadataBuilder(resolveIcon);
   }
 
@@ -58,7 +58,7 @@ export class UnitSummaryBuilder {
       summaryVersion: UNIT_SUMMARY_VERSION,
       loadIssues: buildUnitIssues(entity),
       name: metadata.name,
-      id: metadata.id,
+      mul1id: metadata.mul1id,
       chassis: entity.fullChassis(),
       baseChassis: entity.chassis(),
       ...optionalClanName(entity),
@@ -146,7 +146,7 @@ export class UnitSummaryBuilder {
       summaryVersion: UNIT_SUMMARY_VERSION,
       loadIssues: buildUnitIssues(entity),
       name: buildStaticName(entity),
-      id: entity.mulId(),
+      mul1id: entity.mulId(),
       chassis: entity.fullChassis(),
       baseChassis: entity.chassis(),
       ...optionalClanName(entity),
@@ -156,7 +156,7 @@ export class UnitSummaryBuilder {
       tons: entity.tonnage(),
       loadoutTons: 0,
       offSpeedFactor: 0,
-      bv: 0,
+      bv: Math.max(0, entity.manualBV()),
       pv: 0,
       cost: 0,
       level: entity.staticTechLevel(),
@@ -208,7 +208,7 @@ export class UnitSummaryBuilder {
 }
 
 /** The catalog issue list includes source diagnostics and the same construction errors shown in MekLab. */
-function buildUnitIssues(entity: BaseEntity): UnitSummary['loadIssues'] {
+export function buildUnitIssues(entity: BaseEntity): UnitSummary['loadIssues'] {
   return [
     ...entity.loadIssues().map(issue => ({ ...issue })),
     ...validateConstruction(entity).messages

@@ -123,16 +123,18 @@ describe('custom construction saves across the complete native family catalog', 
                 const value: ConstructionFieldValue | undefined = field.kind === 'boolean' ? !previous
                     : field.kind === 'number' ? Math.max(field.min ?? -Infinity,
                         Math.min(field.max ?? Infinity, Math.max(Number(previous) + (field.step ?? 1), 0.01)))
-                    : field.kind === 'select' ? field.options?.find(option => String(option.value) !== String(previous))?.value
+                    : field.kind === 'select' ? field.options?.find(option => !option.disabled && String(option.value) !== String(previous))?.value
                     : field.id === 'gravDecks' ? '50, 75' : field.id === 'turretConfig' ? 'Modular:1'
                     : `${previous} edited`.trim();
-                if (value === undefined) continue;
-                field.set(value);
+                // Disabled controls preserve their imported value. Legal edits must respect
+                // chassis, motive-type and technology restrictions (TM; IO:AE for LAMs).
+                if (!field.disabled && value !== undefined) field.set(value);
                 const expected = field.get();
                 const loaded = service.parseDraft(encodeNativeEntity(entity), entity instanceof MekEntity ? 'mtf' : 'blk');
                 const actual = getConstructionFields(loaded).find(item => item.id === field.id)?.get();
                 expect(actual).withContext(`${kind.id}.${field.id}`).toEqual(expected);
                 if (field.id === 'engineType') for (const choice of field.options ?? []) {
+                    if (choice.disabled) continue;
                     const engineDesign = createConstructionEntity(kind.id, registry);
                     getConstructionFields(engineDesign).find(item => item.id === 'engineType')!.set(choice.value);
                     expect(() => service.parseDraft(encodeNativeEntity(engineDesign), engineDesign instanceof MekEntity ? 'mtf' : 'blk'))

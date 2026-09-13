@@ -13,7 +13,7 @@ describe('native codec capabilities', () => {
       'Mek', 'Aero', 'ConvFighter', 'FixedWingSupport', 'SmallCraft', 'DropShip',
       'JumpShip', 'WarShip', 'SpaceStation', 'Tank', 'Naval', 'VTOL',
       'SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank', 'Infantry',
-      'BattleArmor', 'ProtoMek', 'HandheldWeapon', 'BuildingEntity',
+      'BattleArmor', 'ProtoMek', 'HandheldWeapon', 'BuildingEntity', 'MobileStructure',
     ];
     expected.forEach(type => expect(isNativeEntityType(type)).toBeTrue());
     for (const invalid of [undefined, null, 0, {}, 'FutureMysteryUnit', 'GunEmplacement', 'Mek ']) {

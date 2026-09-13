@@ -582,7 +582,10 @@ export class PageViewerComponent implements AfterViewInit {
             this.contentRef(),
             swipeCallbacks,
             zoomResetBlockedSelectors,
-            this.spaceEvenly()
+            this.spaceEvenly(),
+            direction => {
+                if (!this.canvasService.isActive()) this.navigateByDirection(direction);
+            }
         );
     }
 

@@ -11,6 +11,42 @@ import { createDirectElectronicSuiteRuntimeFixture,createDirectMekRuntimeFixture
 import type { UnitSummary } from './unit-summary.model';
 
 describe('CBT force battle value authority', () => {
+  for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+    it(`uses exact manual BV before skill/network adjustments and preserves peers in ${ruleset}`, async () => {
+      const fixtures = [createDirectElectronicSuiteRuntimeFixture(ruleset), createDirectElectronicSuiteRuntimeFixture(ruleset)];
+      const units = await Promise.all(fixtures.map((fixture, index) => createMekUnit({
+        uuid: fixture.identity, instanceId: `manual-network-${index}`, crewSkills: { gunnery: 2, piloting: 3 },
+      }, fixture.entity, fixture.identity, { initializerRevision: 1, profileId: 'pristine',
+        deployment: { id: 'default' }, scenario: { id: 'test', ruleset } })));
+      const input = { units: units.map((unit, index) => ({ unit, baseBattleValue: index === 0 ? 1234 : 500 })),
+        scenario: { id: 'test', ruleset }, networks: [], isC3EndpointIntact: () => true };
+      const calculated = calculateCBTForceBattleValues(input);
+      expect(calculated.get(units[0].instanceId)!.adjusted).not.toBe(1234);
+      expect(calculated.get(units[1].instanceId)!.c3).toBeGreaterThan(0);
+
+      fixtures[0].entity.manualBV.set(1234);
+      const manual = calculateCBTForceBattleValues(input);
+      expect(manual.get(units[0].instanceId)).toEqual({
+        base: 1234, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 1234, adjusted: 1234,
+      });
+      expect(manual.get(units[1].instanceId)).toEqual(calculated.get(units[1].instanceId));
+    });
+
+    it(`uses a manual value even before null runtime BV and vacant-crew handling in ${ruleset}`, () => {
+      const fixture = createDirectMekRuntimeFixture(ruleset);
+      fixture.entity.manualBV.set(432);
+      const unit = { instanceId: 'manual-vacant', getUnit: () => fixture.entity,
+        query: () => fixture.instance.query(),
+        getCrewAssignment: () => ({ schemaVersion: 1, positions: [] }),
+      } as unknown as CBTUnit;
+      expect(calculateCBTForceBattleValues({ units: [{ unit, baseBattleValue: null }],
+        scenario: { id: 'test', ruleset }, networks: [], isC3EndpointIntact: () => false,
+      }).get(unit.instanceId)).toEqual({
+        base: 432, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 432, adjusted: 432,
+      });
+    });
+  }
+
   it('uses Entity family facts when a presentation summary disagrees', () => {
     const fixture = createDirectMekRuntimeFixture();
     const positionId = [...fixture.index.crewPositions.keys()][0]!;

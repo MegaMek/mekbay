@@ -4,6 +4,7 @@
 
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 import type { Era } from '../models/eras.model';
 import type { Faction } from '../models/factions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
@@ -216,6 +217,8 @@ describe('DataService', () => {
         return result.persistence();
     };
     const dbServiceMock = {
+        unitArtworkChanges: new Subject(),
+        listUnitArtwork: async () => new Map(),
         getForce: jasmine.createSpy('getForce'),
         getForcePreview: jasmine.createSpy('getForcePreview'),
         getExistingForceIds: jasmine.createSpy('getExistingForceIds'),
@@ -359,6 +362,7 @@ describe('DataService', () => {
         const pending = {
             revision,
             coreRevision: revision,
+            showProgress: true,
             snapshot: {
                 revision,
                 coreRevision: revision,
@@ -437,6 +441,11 @@ describe('DataService', () => {
             searchFilterValues: new Map(),
             dropdownOptionUniverse: new Map(),
             factionEraSnapshot: {},
+            preparationTimings: {
+                unitDerivativesMs: 0, filterIndexesMs: 0, identityMapMs: 0, unitFiltersMs: 0,
+                componentIndexesMs: 0, eraMembershipsMs: 0, factionMembershipsMs: 0, finalizationMs: 0,
+            },
+            indexStats: { filterKeys: 0, filterValues: 0, memberships: 0 },
         });
         unitSearchIndexServiceMock.commitPreparedCatalogIndexes.calls.reset();
         unitsCatalogMock.initialize.calls.reset();
@@ -564,7 +573,11 @@ describe('DataService', () => {
                     useValue: {
                         options: () => ({
                             CBTRules: 'total-warfare',
-                            CBTOptionalRules: { forcedWithdrawal: true, sprinting: false },
+                            CBTOptionalRules: {
+                                quirks: true, floatingCriticals: false, forcedWithdrawal: true,
+                                extremeRange: false, sprinting: false, hotLoadedAmmo: false,
+                                allowMixedTechBaseAmmo: false,
+                            },
                         }),
                     },
                 },
@@ -657,10 +670,10 @@ describe('DataService', () => {
                 [introEra.id]: new Set<number>([3]),
             },
         };
-        const noFactionUnit = createEmptyUnit({ id: -1, name: 'No Faction', year: 3030 });
-        const futureNoFactionUnit = createEmptyUnit({ id: -2, name: 'Future No Faction', year: 3151 });
-        const eraBoundaryUnit = createEmptyUnit({ id: -3, name: 'Era Boundary', year: 2570 });
-        const houseUnit = createEmptyUnit({ id: 3, name: 'House Unit', year: 3030 });
+        const noFactionUnit = createEmptyUnit({ mul1id: -1, name: 'No Faction', year: 3030 });
+        const futureNoFactionUnit = createEmptyUnit({ mul1id: -2, name: 'Future No Faction', year: 3151 });
+        const eraBoundaryUnit = createEmptyUnit({ mul1id: -3, name: 'Era Boundary', year: 2570 });
+        const houseUnit = createEmptyUnit({ mul1id: 3, name: 'House Unit', year: 3030 });
 
         unitsCatalogMock.getUnits.and.returnValue([
             noFactionUnit, futureNoFactionUnit, eraBoundaryUnit, houseUnit,
@@ -689,24 +702,24 @@ describe('DataService', () => {
         expect(service.getFactionById(activeHouse.id)).toBe(activeHouse);
         expect(eraIndexMock.getEraById).not.toHaveBeenCalled();
         expect(factionsCatalogMock.getFactionById).not.toHaveBeenCalled();
-        expect(activeNone.eras[earlyEra.id!]).toEqual(new Set<number>([eraBoundaryUnit.id!]));
+        expect(activeNone.eras[earlyEra.id!]).toEqual(new Set<number>([eraBoundaryUnit.mul1id!]));
         expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([
-            noFactionUnit.id!, eraBoundaryUnit.id!,
+            noFactionUnit.mul1id!, eraBoundaryUnit.mul1id!,
         ]));
         expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([
-            noFactionUnit.id!, futureNoFactionUnit.id!, eraBoundaryUnit.id!,
+            noFactionUnit.mul1id!, futureNoFactionUnit.mul1id!, eraBoundaryUnit.mul1id!,
         ]));
-        expect((activeEarly.units as Set<number>).has(noFactionUnit.id!)).toBeFalse();
-        expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.id!)).toBeFalse();
-        expect((activeEarly.units as Set<number>).has(eraBoundaryUnit.id!)).toBeTrue();
-        expect((activeIntro.units as Set<number>).has(noFactionUnit.id!)).toBeTrue();
-        expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.id!)).toBeFalse();
-        expect((activeOpen.units as Set<number>).has(noFactionUnit.id!)).toBeTrue();
-        expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.id!)).toBeTrue();
+        expect((activeEarly.units as Set<number>).has(noFactionUnit.mul1id!)).toBeFalse();
+        expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.mul1id!)).toBeFalse();
+        expect((activeEarly.units as Set<number>).has(eraBoundaryUnit.mul1id!)).toBeTrue();
+        expect((activeIntro.units as Set<number>).has(noFactionUnit.mul1id!)).toBeTrue();
+        expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.mul1id!)).toBeFalse();
+        expect((activeOpen.units as Set<number>).has(noFactionUnit.mul1id!)).toBeTrue();
+        expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.mul1id!)).toBeTrue();
         expect((activeIntro.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
         expect((activeOpen.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
         expect((activeEarly.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect(activeNone.eras[introEra.id!].has(houseUnit.id!)).toBeFalse();
+        expect(activeNone.eras[introEra.id!].has(houseUnit.mul1id!)).toBeFalse();
         expect(noneFaction.eras).toEqual({});
         expect(introEra.units).toEqual(new Set<number>());
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes).toHaveBeenCalledWith(
@@ -2614,7 +2627,8 @@ describe('DataService', () => {
 
         const savedUser = createUnit('Saved User');
         const afterSave = [unit, savedUser];
-        queueMockCatalogActivation(afterSave).customOnly = true;
+        const progress = spyOn(service.runtimeCatalogProgress, 'set').and.callThrough();
+        Object.assign(queueMockCatalogActivation(afterSave), { customOnly: true, showProgress: false });
         TestBed.tick();
         await waitForUnitCatalogSettlement(service);
 
@@ -2625,7 +2639,7 @@ describe('DataService', () => {
         expect(service.searchCorpusVersion()).toBe(2);
 
         const afterDelete = [unit];
-        queueMockCatalogActivation(afterDelete).customOnly = true;
+        Object.assign(queueMockCatalogActivation(afterDelete), { customOnly: true, showProgress: false });
         TestBed.tick();
         await waitForUnitCatalogSettlement(service);
 
@@ -2636,6 +2650,18 @@ describe('DataService', () => {
         expect(unitRuntimeServiceMock.commitPreparedRuntimeCatalog).toHaveBeenCalledTimes(3);
         expect(unitSearchIndexServiceMock.commitPreparedCatalogIndexes).toHaveBeenCalledTimes(3);
         expect(service.searchCorpusVersion()).toBe(3);
+        expect(progress.calls.allArgs().every(([state]) => state.status === 'idle')).toBeTrue();
+
+        const afterSync = [unit, ...Array.from({ length: 10 }, (_, index) => createUnit(`Remote ${index}`))];
+        Object.assign(queueMockCatalogActivation(afterSync), { customOnly: true, showProgress: true });
+        TestBed.tick();
+        await waitForUnitCatalogSettlement(service);
+
+        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[0]).toBe(afterSync);
+        expect(service.searchCorpusVersion()).toBe(4);
+        expect(progress).toHaveBeenCalledWith(jasmine.objectContaining({ status: 'running', completed: 0 }));
+        expect(progress).toHaveBeenCalledWith(jasmine.objectContaining({ status: 'running', completed: 5 }));
+        expect(service.runtimeCatalogProgress()).toEqual({ status: 'idle' });
     });
 
     it('skips a superseded summary before the atomic publication boundary', async () => {
@@ -2726,7 +2752,7 @@ describe('DataService', () => {
         };
         eraIndexMock.getEras.and.returnValue([era]);
         factionsCatalogMock.getFactions.and.returnValue([none]);
-        const unitsA = [createEmptyUnit({ id: 101, name: 'A', year: 3100 })];
+        const unitsA = [createEmptyUnit({ mul1id: 101, name: 'A', year: 3100 })];
         unitsCatalogMock.getUnits.and.returnValue(unitsA);
         await service.initialize();
         await waitForUnitCatalogSettlement(service);
@@ -2741,7 +2767,7 @@ describe('DataService', () => {
 
         const unitsB = [
             ...unitsA,
-            createEmptyUnit({ id: 202, name: 'B', year: 3200 }),
+            createEmptyUnit({ mul1id: 202, name: 'B', year: 3200 }),
         ];
         let finishFinalize!: (value: boolean) => void;
         unitsCatalogMock.finalizePendingActivation.and.callFake((revision: number) => revision === 2

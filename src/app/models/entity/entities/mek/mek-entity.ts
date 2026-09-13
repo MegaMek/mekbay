@@ -849,8 +849,18 @@ export abstract class MekEntity extends BaseEntity {
     return MEK_REAR_ARMOR_LOCATIONS.has(loc);
   }
 
+  /** Construction uses base Walk MP, before equipment movement penalties. */
+  calculateEngineRating(
+    walkMP = this.originalWalkMP(),
+    tonnage = this.tonnage(),
+    primitive = this.mountedCockpit().isPrimitive,
+  ): number {
+    const rating = walkMP * tonnage;
+    return primitive ? Math.ceil(rating * 1.2 / 5) * 5 : rating;
+  }
+
   protected override computeExpectedEngineRating(): number | null {
-    return this.walkMP() * this.tonnage();
+    return this.calculateEngineRating();
   }
 
   protected override computeStructureValues(tonnage: number): Map<string, number> {
@@ -877,16 +887,16 @@ export abstract class MekEntity extends BaseEntity {
   protected override typeSpecificValidation: Signal<EntityValidationMessage[]> = computed(() => {
     const msgs: EntityValidationMessage[] = [];
 
-    // Minimum 10 heat sinks
-    if (this.totalHeatSinks() < 10) {
+    const engine = this.mountedEngine();
+    const minimumHeatSinks = engine.weightFreeHeatSinks;
+    if (this.totalHeatSinks() < minimumHeatSinks) {
       msgs.push({
         severity: 'error', category: 'heat', code: 'HEAT_SINKS_BELOW_MIN',
-        message: `Mek needs at least 10 heat sinks (has ${this.totalHeatSinks()})`,
+        message: `Mek needs at least ${minimumHeatSinks} heat sinks (has ${this.totalHeatSinks()})`,
       });
     }
 
     // Engine rating ≥ 10
-    const engine = this.mountedEngine();
     if (engine && engine.rating > 0 && engine.rating < 10) {
       msgs.push({
         severity: 'error', category: 'engine', code: 'ENGINE_RATING_TOO_LOW',
@@ -907,7 +917,7 @@ export abstract class MekEntity extends BaseEntity {
         if (p.slotIndex < systemSlots.length && systemSlots[p.slotIndex].type === 'system') {
           msgs.push({
             severity: 'error', category: 'crit', code: 'CRIT_PLACEMENT_CONFLICT',
-            message: `"${mount.equipmentId}" placed on system slot ${p.slotIndex} in ${p.location}`,
+            message: `"${mount.equipmentId}" placed on system slot ${p.slotIndex + 1} in ${p.location}`,
             location: p.location,
           });
         }
@@ -923,10 +933,11 @@ export abstract class MekEntity extends BaseEntity {
           slot = sharedSlot;
           continue;
         }
+        const [location, index] = slotKey.split(':');
         msgs.push({
           severity: 'error', category: 'crit', code: 'CRIT_SLOT_SHARING_INVALID',
-          message: `Critical slot ${slotKey} cannot be shared by "${mounts.map(item => item.equipmentId).join('", "')}"`,
-          location: mounts[0].location,
+          message: `Critical slot ${Number(index) + 1} in ${location} cannot be shared by "${mounts.map(item => item.equipmentId).join('", "')}"`,
+          location,
         });
         break;
       }

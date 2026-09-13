@@ -161,6 +161,7 @@ export interface CBTUnitQueryPort {
     componentMode(componentId: ComponentId): string | undefined;
     remainingAmmo(componentId: ComponentId): number;
     ammoEquipment(componentId: ComponentId): AmmoEquipment | null;
+    ammoHotLoaded(componentId: ComponentId): boolean;
     attackerTargetingState(): AttackerTargetingState;
     equipmentRowOrder(): EquipmentRowOrderState | undefined;
     hasCondition(condition: UnitConditionKey): boolean;

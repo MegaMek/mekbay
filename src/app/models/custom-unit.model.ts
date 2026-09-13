@@ -13,6 +13,13 @@ export interface SavedCustomUnit {
     readonly updatedAt: number;
     readonly format: NativeUnitFormat;
     readonly source: string;
+    readonly accountUuid?: string;
+    readonly ownerId?: string;
+    readonly owned?: boolean;
+    readonly subscribed?: boolean;
+    readonly hash?: string;
+    readonly syncedHash?: string;
+    readonly pending?: 'save' | 'delete';
 }
 
 /** Decode untrusted IndexedDB data at its owning boundary. Native content is parsed separately. */
@@ -39,5 +46,12 @@ export function decodeSavedCustomUnit(value: unknown): SavedCustomUnit {
         ...(originalUnitUuid ? { originalUnitUuid } : {}),
         createdAt: record['createdAt'], updatedAt: record['updatedAt'],
         format: record['format'], source: record['source'],
+        ...(typeof record['accountUuid'] === 'string' ? { accountUuid: record['accountUuid'] } : {}),
+        ...(typeof record['ownerId'] === 'string' ? { ownerId: record['ownerId'] } : {}),
+        ...(typeof record['owned'] === 'boolean' ? { owned: record['owned'] } : {}),
+        ...(typeof record['subscribed'] === 'boolean' ? { subscribed: record['subscribed'] } : {}),
+        ...(typeof record['hash'] === 'string' && /^[A-Za-z0-9_-]{27}$/.test(record['hash']) ? { hash: record['hash'] } : {}),
+        ...(typeof record['syncedHash'] === 'string' && /^[A-Za-z0-9_-]{27}$/.test(record['syncedHash']) ? { syncedHash: record['syncedHash'] } : {}),
+        ...(record['pending'] === 'save' || record['pending'] === 'delete' ? { pending: record['pending'] } : {}),
     });
 }

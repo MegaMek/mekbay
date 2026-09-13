@@ -72,15 +72,9 @@
                         [attr.title]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
                         (click)="toggleConditionMenu()">
                         @if (conditionMenuExpanded()) {
-                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"
-                            viewBox="0 0 24 24">
-                            <path d="m15 5-7 7 7 7" />
-                        </svg>
+                        <span class="chevron chevron-left" aria-hidden="true"></span>
                         } @else {
-                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2"
-                            viewBox="0 0 24 24">
-                            <path d="m9 5 7 7-7 7" />
-                        </svg>
+                        <span class="chevron chevron-right" aria-hidden="true"></span>
                         }
                     </button>
                     }
@@ -245,10 +239,7 @@
                                     <button type="button" class="row-expand-button" (click)="toggleInventoryRow(row)"
                                         [attr.aria-expanded]="inventoryRowExpanded(row)"
                                         [attr.aria-label]="(inventoryRowExpanded(row) ? 'Collapse controls for ' : 'Expand controls for ') + row.label">
-                                        <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"
-                                            viewBox="0 0 24 24">
-                                            <path d="m7 10 5 5 5-5" />
-                                        </svg>
+                                        <span class="chevron" [class.collapsed]="!inventoryRowExpanded(row)" aria-hidden="true"></span>
                                     </button>
                                     }
                                 </div>
@@ -550,7 +541,7 @@
             [class.hidden]="!canNavigate()" [disabled]="!canNavigate()" (click)="previousUnit()"
             [attr.aria-label]="previousNavigationUnit() ? 'Previous Unit: ' + unitNames.name(previousNavigationUnit()!.entity) : 'Previous Unit'"
             [title]="unitNames.name(previousNavigationUnit()?.entity)">
-            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
+            <span class="chevron chevron-left nav-arrow-symbol" aria-hidden="true"></span>
             <span class="nav-unit-name">
                 <span class="nav-unit-model">{{ previousNavigationUnit()?.entity?.model() }}</span>
                 <span class="nav-unit-chassis">{{ unitNames.chassis(previousNavigationUnit()?.entity) }}</span>
@@ -565,7 +556,7 @@
                 <span class="nav-unit-model">{{ nextNavigationUnit()?.entity?.model() }}</span>
                 <span class="nav-unit-chassis">{{ unitNames.chassis(nextNavigationUnit()?.entity) }}</span>
             </span>
-            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
+            <span class="chevron chevron-right nav-arrow-symbol" aria-hidden="true"></span>
         </button>
     </nav>
 </div>

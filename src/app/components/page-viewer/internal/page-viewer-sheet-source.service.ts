@@ -18,14 +18,14 @@ export class PageViewerSheetSourceService {
 
     async load(member: PageViewerMember): Promise<void> {
         await this.fluffImages.initialize();
-        const fluffImageUrl = this.fluffImages.resolveEntityUrl(member.entity);
+        const fluffImageUrl = await this.fluffImages.loadEntityUrl(member.entity);
         const pipLayout = this.options.options().recordSheetPipLayout;
         const pageFormat = this.options.options().printAllOptions.paperSize;
         const showQuirks = this.options.options().CBTOptionalRules?.quirks !== false;
+        const unit = member.force.getUnitSnapshot(member.id);
+        if (!unit) throw new Error('The selected CBT unit is no longer admitted');
         const pages = await member.loadRecordSheets(async () => {
-            const unit = member.force.getUnitSnapshot(member.id);
-            if (!unit) throw new Error('The selected CBT unit is no longer admitted');
-            const result = await this.source.load(unit.entity, { pipLayout, showQuirks, format: pageFormat, pageFormat, fluffImageUrl });
+            const result = await this.source.load(unit.entity, { pipLayout, showQuirks, format: pageFormat, pageFormat, fluffImageUrl, ruleset: unit.ruleset });
             if (result.svgs.length === 0) {
                 throw new Error(`No record sheet is available for ${member.entity.displayName()}`);
             }
@@ -35,7 +35,7 @@ export class PageViewerSheetSourceService {
                 return svg;
             });
             return svgs;
-        }, pipLayout, pageFormat, showQuirks, fluffImageUrl);
+        }, pipLayout, pageFormat, showQuirks, fluffImageUrl, unit.ruleset);
         addRecordSheetPageFlipControls(pages);
     }
 }

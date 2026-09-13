@@ -71,10 +71,10 @@ export class ForceBuilderService {
         this.opforTargets.connect(this.workspace.loadedForces);
         effect(() => {
             if (!this.options.initialized()) return;
-            const { forcedWithdrawal, sprinting } = this.options.options().CBTOptionalRules;
+            const { forcedWithdrawal, sprinting, hotLoadedAmmo } = this.options.options().CBTOptionalRules;
             for (const slot of this.workspace.loadedForces()) {
                 if (!(slot.force instanceof CBTForce)) continue;
-                void slot.force.synchronizeOptionalRules({ forcedWithdrawal, sprinting })
+                void slot.force.synchronizeOptionalRules({ forcedWithdrawal, sprinting, hotLoadedAmmo })
                     .catch(error => this.logger.error(
                         `ForceBuilderService: Optional-rule synchronization failed: ${String(error)}`,
                     ));

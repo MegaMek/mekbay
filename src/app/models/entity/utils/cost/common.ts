@@ -14,6 +14,7 @@ import {
 } from '../../../ppc-capacitor.model';
 import { isSupportVehicleBarArmor } from '../../../construction-equipment.model';
 import { isSpotWelderEquipment } from '../physical-weapon';
+import { resolveLabArmorEquipment } from '../weight/armor-weight';
 
 export function nextHalfTon(tonnage: number): number {
   const truncated = Math.round(tonnage * 1000000) / 1000000;
@@ -36,7 +37,7 @@ export function standardRound(value: number, entity: BaseEntity): number {
 export function calculateArmorCost(entity: BaseEntity): number {
   const uniformArmor = entity.uniformArmor();
   if (uniformArmor && !isSupportVehicleBarArmor(uniformArmor.armor)) {
-    const armor = uniformArmor.armor;
+    const armor = resolveLabArmorEquipment(entity, uniformArmor);
     if (!armor.hasFixedCost()) throw new Error(`Unable to calculate armor cost for ${armor.id}`);
     const armorWeight = standardRound(
       entity.totalArmorPoints() / (16 * armor.pptMultiplier),

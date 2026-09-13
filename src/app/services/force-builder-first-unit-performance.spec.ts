@@ -26,7 +26,7 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
 
     it('adds a first unit without enumerating the full MUL faction membership', async () => {
         const unit = createEmptyUnit({
-            id: 10_001,
+            mul1id: 10_001,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',

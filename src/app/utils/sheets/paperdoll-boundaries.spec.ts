@@ -9,6 +9,7 @@ describe('paperdoll location boundaries', () => {
     afterEach(() => { mounted?.remove(); mounted = undefined; });
 
     function mount(svg: SVGSVGElement): void {
+        svg.classList.add('interactive-sheet');
         const box = svg.viewBox.baseVal;
         const scale = Math.min((window.innerWidth - 20) / box.width, (window.innerHeight - 20) / box.height);
         Object.assign(svg.style, {

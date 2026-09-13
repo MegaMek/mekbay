@@ -5,6 +5,7 @@ import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
+import { mekCriticalMountName, mekCriticalSlotLabel } from '../../utils/mek-critical-display.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { CrewMember,type CrewMemberRuntimeState,type CrewMemberState } from '../crew-member.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
@@ -29,7 +30,7 @@ type EquipmentPanelComponent,
 type EquipmentPanelTarget,
 type MekPhysicalAttackPresentation,
 } from './equipment-panel';
-import { mekAmmoLoadouts } from './mek-ammo';
+import { ammoLoadoutDisplay, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from './mek-ammo';
 import { mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import type { MekHeatProjectionResultV2,MekHeatStateV2 } from './mek-heat-state-v2';
 import { projectMekLifeSupportPilotDamage,type MekLifeSupportPilotDamage } from './mek-life-support';
@@ -43,6 +44,9 @@ type MekUnitRuntimeState,
 } from './runtime-state';
 import type { UnitEditContext } from './unit-edit-context';
 import type { MekUnitQueryPort } from './unit-instance';
+import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
+import { mekAttackMovementModifier } from './mek-turn-panel';
+import type { RecordSheetMovementSelection } from './record-sheet-movement';
 
 export interface MekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -92,6 +96,7 @@ export interface MekRecordSheetSlotComponent {
     readonly ammo?: Readonly<{
         munitionKey: string;
         displayName: string;
+        custom: boolean;
         capacity: number;
         remaining: number;
     }>;
@@ -131,6 +136,8 @@ export interface MekRecordSheetCrewPosition {
     readonly name: string;
     readonly gunnery: number;
     readonly piloting: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
     readonly state: CrewMemberRuntimeState;
     /** Rule-derived display state, including lethal wounds and cockpit loss. */
     readonly effectiveState: Extract<CrewMemberState, 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'vacant'>;
@@ -184,11 +191,13 @@ export interface MekRecordSheetSnapshot {
         walkMp: number;
         runMp: number;
         jumpMp: number;
+        secondaryMode: 'jump' | 'UMU';
         motiveType: string;
         declared: ReturnType<MekUnitQueryPort['mekMovementMode']>;
         projection: MekMovementPsrProjectionResultV2;
         psr: MekMovementPsrStateV2;
     }>;
+    readonly movementSelection: RecordSheetMovementSelection;
     readonly heatSinks: Readonly<{
         count: number;
         equipmentKey?: string;
@@ -350,8 +359,8 @@ export function projectMekRecordSheet(
                 const component = index.components.get(componentId);
                 if (!component) throw new Error(`Slot ${slot.id} references unknown component ${componentId}`);
                 const label = component.kind === 'equipment'
-                    ? component.mount.displayName()
-                    : component.systemType;
+                    ? mekCriticalMountName(entity, component.mount)
+                    : mekCriticalSlotLabel(entity.criticalSlotGrid().get(location.code)?.[slot.slotIndex], entity);
                 const loadouts = mekAmmoLoadouts(entity, index, componentId, ruleset);
                 const ammo = loadouts.length === 0
                     ? undefined
@@ -359,9 +368,11 @@ export function projectMekRecordSheet(
                         const loadout = query.ammoLoadout(componentId);
                         const selected = loadouts.find(candidate => candidate.munitionKey === loadout.munitionKey)
                             ?? loadouts[0]!;
+                        const display = ammoLoadoutDisplay(mekAmmoDefaultMunitionKey(entity, index, componentId)!, selected.equipment);
                         return Object.freeze({
                             munitionKey: loadout.munitionKey,
-                            displayName: selected.equipment.shortName || selected.equipment.name,
+                            displayName: display.name,
+                            custom: display.custom,
                             capacity: query.ammoCapacity(componentId),
                             remaining: query.remainingAmmo(componentId),
                         });
@@ -441,6 +452,10 @@ export function projectMekRecordSheet(
                 name: assigned?.name ?? '',
                 gunnery: assigned?.gunnery ?? 4,
                 piloting: assigned?.piloting ?? 5,
+                ...(entity.unitSubtype() === 'Land-Air BattleMek' ? {
+                    aeroGunnery: assigned?.aeroGunnery ?? 4,
+                    aeroPiloting: assigned?.aeroPiloting ?? 5,
+                } : {}),
                 state: Object.freeze({
                     ...crewState.toRuntimeState(),
                     ejected: crewState.ejected === true,
@@ -459,6 +474,9 @@ export function projectMekRecordSheet(
         targets,
     );
     const physicalAttacks = projectMekPhysicalAttackPresentation(entity, index, ruleset, query, targeting);
+    const movement = query.mekMovementPsr();
+    const airborne = query.turnState().airborne === true;
+    const movementOptions = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
     const construction = constructionLabels(index);
     const battleValue = suppliedBattleValue ?? Object.freeze({
         pristine: safePristineMekBattleValue(entity),
@@ -498,11 +516,23 @@ export function projectMekRecordSheet(
         movement: Object.freeze({
             walkMp: entity.walkMP(),
             runMp: entity.runMP(),
-            jumpMp: entity.jumpMP(),
+            jumpMp: entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP(),
+            secondaryMode: entity.umuMP() > 0 ? 'UMU' : 'jump',
             motiveType: entity.motiveType(),
             declared: query.mekMovementMode(),
-            projection: query.mekMovementPsr(),
+            projection: movement,
             psr: query.mekMovementPsrState(),
+        }),
+        movementSelection: Object.freeze({
+            selectedMode: query.mekMovementPsrState().movement?.mode ?? null,
+            airborne,
+            options: Object.freeze(movementOptions.flatMap(mode => {
+                if (mode === 'VTOL') return [];
+                const action = movement.kind === 'supported'
+                    ? movement.actions.find(action => action.kind === mode) : undefined;
+                return [{ mode, modifier: mekAttackMovementModifier(entity, mode, airborne),
+                    legal: action?.legal === true, minimumMp: action?.minimumMp ?? 0 }];
+            })),
         }),
         heatSinks: Object.freeze({
             count: entity.totalHeatSinks(),

@@ -51,7 +51,7 @@ function controlledGate(): ControlledGate {
 
 function createUnit(id: number, name: string, year: number): UnitSummary {
     return createEmptyUnit({
-        id,
+        mul1id: id,
         name,
         chassis: 'Test',
         model: 'Unit',

@@ -10,6 +10,22 @@ import { encodeNativeEntity } from './write-entity';
 import { parseEntity } from './parse-entity';
 
 describe('native unit artwork boundary', () => {
+    it('persists only explicit sprite paths through native save, copy and artwork extraction', () => {
+        const registry = createTestEquipmentRegistry();
+        for (const kind of ['Biped', 'Tank', 'BuildingEntity'] as const) {
+            const entity = createConstructionEntity(kind, registry);
+            const format = kind === 'Biped' ? 'mtf' : 'blk';
+            expect(encodeNativeEntity(entity)).not.toContain('iconpath');
+            entity.iconPath.set('Color Archive/Meks/Baboon-CO.png');
+            const source = extractNativeUnitArtwork(encodeNativeEntity(entity), format).source;
+            const copy = parseEntity(source, `copy.${format}`, registry).entity;
+            expect(copy.iconPath()).toBe(entity.iconPath());
+            copy.iconPath.set('');
+            const automatic = encodeNativeEntity(copy);
+            expect(automatic).not.toContain('iconpath');
+            expect(parseEntity(automatic, `auto.${format}`, registry).entity.iconPath()).toBe('');
+        }
+    });
     it('strips every MTF image field, retaining other bytes and the last image', () => {
         const extracted = extractNativeUnitArtwork('Version:1.0\r\nfluffimage:first\r\nChassis:Atlas\r\n FLUFFIMAGE : last\r\nicon:icon-data', 'mtf');
         expect(extracted).toEqual({ source: 'Version:1.0\r\nChassis:Atlas\r\n', images: { fluff: 'last', icon: 'icon-data' } });

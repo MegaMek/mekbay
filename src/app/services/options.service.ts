@@ -22,6 +22,7 @@ import { isCBTRuleset } from '../models/cbt-ruleset.model';
 
 const DEFAULT_OPTIONS: Options = {
   canvasInput: 'all',
+  mouseWheelAction: 'scroll',
   unitDisplayName: 'both',
   displayUnitNameFormat: 'innerSphereClan',
   gameSystem: GameSystem.CBT,
@@ -73,6 +74,7 @@ const DEFAULT_OPTIONS: Options = {
     forcedWithdrawal: true,
     extremeRange: false,
     sprinting: false,
+    hotLoadedAmmo: false,
     allowMixedTechBaseAmmo: false,
   },
   allowMultipleActiveSheets: false,
@@ -249,6 +251,7 @@ function resolveCBTOptionalRules(saved: Partial<Options> | null | undefined): CB
     forcedWithdrawal: saved?.CBTOptionalRules?.forcedWithdrawal ?? defaults.forcedWithdrawal,
     extremeRange: saved?.CBTOptionalRules?.extremeRange ?? defaults.extremeRange,
     sprinting: saved?.CBTOptionalRules?.sprinting ?? defaults.sprinting,
+    hotLoadedAmmo: saved?.CBTOptionalRules?.hotLoadedAmmo ?? defaults.hotLoadedAmmo,
     allowMixedTechBaseAmmo: saved?.CBTOptionalRules?.allowMixedTechBaseAmmo ?? defaults.allowMixedTechBaseAmmo,
   };
 }
@@ -278,6 +281,7 @@ export class OptionsService {
     colorScheme: DEFAULT_OPTIONS.colorScheme,
     pickerStyle: DEFAULT_OPTIONS.pickerStyle,
     canvasInput: DEFAULT_OPTIONS.canvasInput,
+    mouseWheelAction: DEFAULT_OPTIONS.mouseWheelAction,
     swipeToNextSheet: DEFAULT_OPTIONS.swipeToNextSheet,
     syncZoomBetweenSheets: DEFAULT_OPTIONS.syncZoomBetweenSheets,
     unitDisplayName: DEFAULT_OPTIONS.unitDisplayName,
@@ -323,6 +327,11 @@ export class OptionsService {
       colorScheme: resolveColorScheme(saved),
       pickerStyle: saved?.pickerStyle ?? DEFAULT_OPTIONS.pickerStyle,
       canvasInput: saved?.canvasInput ?? DEFAULT_OPTIONS.canvasInput,
+      mouseWheelAction: resolveSavedValue(
+        saved?.mouseWheelAction,
+        DEFAULT_OPTIONS.mouseWheelAction,
+        OPTION_VALUES.mouseWheelAction,
+      ),
       swipeToNextSheet: saved?.swipeToNextSheet ?? DEFAULT_OPTIONS.swipeToNextSheet,
       syncZoomBetweenSheets: saved?.syncZoomBetweenSheets ?? DEFAULT_OPTIONS.syncZoomBetweenSheets,
       unitDisplayName: saved?.unitDisplayName ?? DEFAULT_OPTIONS.unitDisplayName,

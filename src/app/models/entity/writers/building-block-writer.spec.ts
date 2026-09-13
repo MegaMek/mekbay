@@ -13,6 +13,7 @@ import { TestTankEntity } from '../testing/test-entities';
 import { addTestEquipment } from '../testing/test-mounted-equipment';
 import { encodeNativeEntity } from '../write-entity';
 import { parseEntity } from '../parse-entity';
+import { encodeEquipmentLine } from './equipment-encoder';
 import {
   BuildingBlockWriter,
   writeEmbeddedImages,
@@ -22,6 +23,33 @@ import {
 } from './building-block-writer';
 
 describe('BuildingBlockWriter', () => {
+  it('preserves authored force-generator availability across native writes', () => {
+    const entity = new TestTankEntity();
+    entity.setTonnage(55);
+    const availability = ['2840- CLAN:4', '-2839 FS:5,LA:3', '3067-3085:FS:7', 'LA:3'];
+    const source = `${encodeNativeEntity(entity)}\n<availability>\n${availability.join('\n')}\n</availability>\n`;
+    const parsed = parseEntity(source, 'availability.blk', entity.getEquipmentRegistry()).entity;
+    expect(parsed.forceGeneratorAvailability()).toEqual([
+      { startYear: 2840, endYear: 0, availabilityCodes: 'CLAN:4' },
+      { startYear: 0, endYear: 2839, availabilityCodes: 'FS:5,LA:3' },
+      { startYear: 3067, endYear: 3085, availabilityCodes: 'FS:7' },
+      { startYear: 0, endYear: 0, availabilityCodes: 'LA:3' },
+    ]);
+    const written = encodeNativeEntity(parsed);
+    expect(written).toContain('<availability>\n2840- CLAN:4\n-2839 FS:5,LA:3\n3067-3085 FS:7\nLA:3\n</availability>');
+    expect(parseEntity(written, 'availability.blk', entity.getEquipmentRegistry()).entity
+      .forceGeneratorAvailability()).toEqual(parsed.forceGeneratorAvailability());
+  });
+
+  it('writes building turret markers after the facing with native spacing', () => {
+    const entity = new TestTankEntity();
+    const weapon = new WeaponEquipment({ id: 'TestLaser', name: 'Test Laser', type: 'weapon' });
+    const mount = addTestEquipment(entity, weapon, { location: 'Front', facing: 1, turretType: 'sponson' });
+    expect(encodeEquipmentLine(mount, { buildingFacing: true })).toBe('TestLaser (FR)(ST)');
+    const unoriented = addTestEquipment(entity, weapon, { location: 'Front', turretType: 'sponson' });
+    expect(encodeEquipmentLine(unoriented, { buildingFacing: true })).toBe('TestLaser(ST)');
+  });
+
   it('round-trips an earlier originalBuildYear and omits one equal to the introduction year', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(55);
@@ -92,6 +120,7 @@ describe('BuildingBlockWriter', () => {
       published: () => [],
       faction: () => 'DC',
       iconEncoded: () => 'icon-bytes',
+      iconPath: () => 'meks/Atlas.png',
       fluffImageEncoded: () => 'fluff-bytes',
     } as unknown as BaseEntity;
     const writer = new BuildingBlockWriter();

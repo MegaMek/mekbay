@@ -7,13 +7,53 @@ import type { EntityMountedEquipment, EntityValidationMessage } from '../../mode
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import { AmmoEquipment, WeaponEquipment, ammoMatchesWeapon } from '../../models/equipment.model';
 import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
+import { isSimpleCamoEquipment } from '../../models/stealth-equipment.model';
 
 const PAIRED_MANIPULATORS = new Set(['BABasicManipulatorMineClearance', 'BABattleClawMagnets', 'BAHeavyBattleClawMagnets', 'BACargoLifter']);
+const AUGMENTATION_EXCLUSIONS = [
+    { first: 'dermal_armor', second: 'dermal_camo_armor', code: 'INFANTRY_DERMAL_CONFLICT', message: 'Dermal armor and dermal camouflage armor cannot be combined.' },
+    { first: 'pl_glider', second: 'pl_flight', code: 'INFANTRY_WING_CONFLICT', message: 'Glider wings and powered-flight wings cannot be combined.' },
+] as const;
+
+/** A squad-level addition overlaps every trooper; an individual addition overlaps that trooper and squad gear. */
+export function constructionBattleArmorCamoCount(entity: BattleArmorEntity, location: string, ignore?: EntityMountedEquipment): number {
+    return entity.equipment().filter(m => m.mountId !== ignore?.mountId && m.equipment && isSimpleCamoEquipment(m.equipment)
+        && (location === 'Squad' || m.location === 'Squad' || m.location === location)).length;
+}
+
+/** Last-selected augmentation wins; imported combinations are still diagnosed below. */
+export function setConstructionInfantryAugmentation(entity: InfantryEntity, key: string, enabled: boolean): void {
+    const excluded: readonly string[] = AUGMENTATION_EXCLUSIONS.flatMap(pair => pair.first === key ? [pair.second] : pair.second === key ? [pair.first] : []);
+    entity.augmentations.update(current => enabled ? [...new Set([...current.filter(value => !excluded.includes(value)), key])]
+        : current.filter(value => value !== key));
+    if (enabled && (key === 'pl_glider' || key === 'pl_flight')) entity.extraneousPair2.set('');
+}
 const BEAST_LIMITS = {
     Large: { squad: 10, squads: 5, troops: 21, secondary: 0 },
     'Very Large': { squad: 2, squads: 7, troops: 14, secondary: 2 },
     Monstrous: { squad: 4, squads: 2, troops: 8, secondary: 3 },
 } as const;
+
+/** MML CIEquipmentView: crew-served support weapons belong in the secondary slot. */
+export function constructionInfantryPrimaryApplies(weapon: WeaponEquipment): boolean {
+    return weapon.isInfantryWeapon() && !weapon.hasFlag('F_INF_SUPPORT');
+}
+
+function infantryCrewReduction(entity: InfantryEntity): number {
+    const augments = entity.augmentations();
+    return Number(augments.includes('dermal_armor')) + Number(augments.includes('tsm_implant'));
+}
+
+/** TestInfantry.maxSecondaryWeapons, also used by MML's secondary-weapon selector. */
+export function constructionInfantrySecondaryLimit(entity: InfantryEntity): number {
+    const mode = entity.motiveType(), specs = entity.specializations(), mount = entity.mount();
+    let limit = mount ? BEAST_LIMITS[mount.size].secondary
+        : mode === 'VTOL' ? entity.isMicrolite() ? 0 : 1
+        : mode === 'UMU' ? entity.isMotorizedScuba() ? 2 : 1 : 2;
+    if ([...specs].some(spec => spec.endsWith('-engineers'))) limit = 0;
+    if (specs.has('mountain-troops') || specs.has('paramedics')) limit = 1;
+    return limit + infantryCrewReduction(entity);
+}
 
 /** Construction predicates from TestBattleArmor and TestInfantry; runtime damage is irrelevant. */
 export function constructionInfantryBaMessages(entity: BaseEntity): EntityValidationMessage[] {
@@ -25,6 +65,8 @@ export function constructionInfantryBaMessages(entity: BaseEntity): EntityValida
 function infantryMessages(entity: InfantryEntity): EntityValidationMessage[] {
     const messages: EntityValidationMessage[] = [];
     const add = (code: string, message: string) => messages.push({ code, message, category: 'general', severity: 'error' });
+    const primary = entity.primaryWeapon();
+    if (primary && !constructionInfantryPrimaryApplies(primary)) add('INFANTRY_PRIMARY_SUPPORT', 'Infantry support weapons must be selected as secondary weapons.');
     const mode = entity.motiveType();
     const specs = entity.specializations();
     const augments = new Set(entity.augmentations());
@@ -46,11 +88,8 @@ function infantryMessages(entity: InfantryEntity): EntityValidationMessage[] {
     const troopLimits: Partial<Record<typeof mode, number>> = { Hover: 20, Submarine: 20, Wheeled: 24, Tracked: 28, UMU: motorScuba ? 12 : 30, VTOL: squad * 4 };
     let troops = beast?.troops ?? troopLimits[mode] ?? 30;
     if (engineer || mountain) troops = Math.min(troops, 20);
-    let secondary = beast?.secondary ?? (mode === 'VTOL' ? microlite ? 0 : 1 : mode === 'UMU' ? motorScuba ? 2 : 1 : 2);
-    if (engineer) secondary = 0;
-    if (mountain || specs.has('paramedics')) secondary = 1;
-    const crewReduction = Number(augments.has('dermal_armor')) + Number(augments.has('tsm_implant'));
-    secondary += crewReduction;
+    const secondary = constructionInfantrySecondaryLimit(entity);
+    const crewReduction = infantryCrewReduction(entity);
     if (entity.squadSize() > squad) add('INFANTRY_MOTIVE_SQUAD_SIZE', `This infantry configuration permits at most ${squad} troopers per squad.`);
     if (entity.squadCount() > squads) add('INFANTRY_MOTIVE_SQUAD_COUNT', `This infantry configuration permits at most ${squads} squads.`);
     // The native entity already reports the universal thirty-trooper ceiling.
@@ -62,10 +101,8 @@ function infantryMessages(entity: InfantryEntity): EntityValidationMessage[] {
         if (crew * entity.secondaryCount() > entity.squadSize()) add('INFANTRY_SECONDARY_CREW', `Secondary weapons require ${crew * entity.secondaryCount()} crew per squad.`);
     }
     if (mechanized && entity.equipment().some(m => m.equipment?.hasFlag('F_ANTI_MEK_GEAR'))) add('INFANTRY_MECHANIZED_ANTI_MEK', 'Mechanized infantry cannot carry anti-Mek gear.');
-    if (entity.equipment().filter(m => m.equipment?.hasFlag('F_ARMOR_KIT')).length > 1) add('INFANTRY_ARMOR_KIT_LIMIT', 'Infantry can carry only one armor kit.');
-    if (augments.has('dermal_armor') && augments.has('dermal_camo_armor')) add('INFANTRY_DERMAL_CONFLICT', 'Dermal armor and dermal camouflage armor cannot be combined.');
+    for (const pair of AUGMENTATION_EXCLUSIONS) if (augments.has(pair.first) && augments.has(pair.second)) add(pair.code, pair.message);
     const glider = augments.has('pl_glider'), flight = augments.has('pl_flight');
-    if (glider && flight) add('INFANTRY_WING_CONFLICT', 'Glider wings and powered-flight wings cannot be combined.');
     if ((glider || flight) && (mechanized || mode === 'Motorized' || mount)) add('INFANTRY_WING_MOTIVE', 'Prosthetic wings cannot be used by motorized, mechanized or beast-mounted infantry.');
     if ((glider || flight) && entity.extraneousPair2()) add('INFANTRY_WING_LIMBS', 'Infantry with prosthetic wings may have only one pair of extraneous limbs.');
     return messages;
@@ -79,14 +116,9 @@ function battleArmorMessages(entity: BattleArmorEntity): EntityValidationMessage
     const has = (flag: EquipmentFlag) => all.some(m => m.equipment?.hasFlag(flag));
     const quad = entity.chassisType().toLowerCase() === 'quad';
     const jump = entity.motiveType() === 'Jump' && entity.propulsionMP() > 0;
-    const myomer = has('F_MASC');
-    const armor = entity.uniformArmor()?.armor.armorType;
     if (has('F_DETACHABLE_WEAPON_PACK') && entity.originalWalkMP() < 2) add('BA_DWP_MOVEMENT', 'Detachable weapon packs require at least two base walk MP.', undefined, 'movement');
     if (has('F_JUMP_BOOSTER') && !jump) add('BA_BOOSTER_PROPULSION', 'Jump boosters require jump propulsion with at least one MP.', undefined, 'movement');
     if (has('F_PARTIAL_WING') && !has('F_MECHANICAL_JUMP_BOOSTER') && !jump) add('BA_WING_PROPULSION', 'Partial wings require jump propulsion or mechanical jump boosters.', undefined, 'movement');
-    if (has('F_PARTIAL_WING') && has('F_JUMP_BOOSTER')) add('BA_WING_BOOSTER_CONFLICT', 'Partial wings and jump boosters cannot be combined.');
-    if (myomer && has('F_MECHANICAL_JUMP_BOOSTER')) add('BA_MYOMER_MECHANICAL_CONFLICT', 'Myomer boosters and mechanical jump boosters cannot be combined.');
-    if (myomer && armor && (armor === 'BA_MIMETIC' || armor.startsWith('BA_STEALTH'))) add('BA_MYOMER_ARMOR_CONFLICT', 'Myomer boosters cannot be combined with mimetic or stealth armor.');
     if (has('F_MAGNETIC_CLAMP') && (quad || entity.weightClass() === 'Assault' || entity.motiveType() === 'UMU')) add('BA_MAGNETIC_CLAMP_CHASSIS', 'Magnetic clamps cannot be used by quad, assault or underwater-propelled battle armor.');
     if (has('F_DETACHABLE_WEAPON_PACK') && ['Ultra Light', 'Light'].includes(entity.weightClass())) add('BA_DWP_WEIGHT_CLASS', 'Detachable weapon packs require medium or heavier battle armor.');
     if (has('F_MODULAR_WEAPON_MOUNT') && quad) add('BA_QUAD_MODULAR_MOUNT', 'Quad battle armor cannot use standard modular weapon mounts.');
@@ -106,7 +138,9 @@ function battleArmorMessages(entity: BattleArmorEntity): EntityValidationMessage
         if (m.isDWP && !(eq instanceof AmmoEquipment) && !parent?.equipment?.hasFlag('F_DETACHABLE_WEAPON_PACK')) add('BA_DWP_ATTACHMENT', 'Detachable-pack equipment must be linked from its weapon pack.', m.location);
         if (m.isDWP && eq instanceof AmmoEquipment && !all.some(w => w.isDWP && w.location === m.location && w.equipment instanceof WeaponEquipment && ammoMatchesWeapon(w.equipment, eq))) add('BA_DWP_AMMO_ATTACHMENT', 'Detachable-pack ammunition requires a matching weapon in a detachable pack.', m.location);
         if (eq.hasFlag('F_DETACHABLE_WEAPON_PACK')) {
-            if (!(entity.getLinkedMount(m)?.equipment instanceof WeaponEquipment)) add('BA_DWP_WEAPON_REQUIRED', 'A detachable weapon pack must carry a weapon.', m.location);
+            const weapon = entity.getLinkedMount(m)?.equipment;
+            if (!(weapon instanceof WeaponEquipment)) add('BA_DWP_WEAPON_REQUIRED', 'A detachable weapon pack must carry a weapon.', m.location);
+            else if (weapon.isInfantryWeapon() || weapon.getWeaponCategory() === 'missile') add('BA_DWP_WEAPON_TYPE', 'Detachable weapon packs cannot carry infantry weapons or missile launchers.', m.location);
             if (parent) add('BA_DWP_NESTED', 'A detachable weapon pack cannot be mounted on other equipment.', m.location);
         }
         if (['F_JUMP_BOOSTER', 'F_PARTIAL_WING', 'F_PARAFOIL'].some(flag => eq.hasFlag(flag as EquipmentFlag)) && (m.baMountLocation ?? 'Body') !== 'Body') add('BA_BODY_ENHANCEMENT', `${eq.name} must be mounted on the suit body.`, m.location);
@@ -117,14 +151,15 @@ function battleArmorMessages(entity: BattleArmorEntity): EntityValidationMessage
             if (eq.hasFlag('F_INF_POINT_BLANK')) add('BA_AP_MELEE', 'Battle armor cannot mount infantry melee weapons.', m.location);
             if (eq.hasFlag('F_INF_SUPPORT') && ((!glove && ap) || (glove && eq.infantry.crew > 1))) add('BA_AP_SUPPORT_WEAPON', 'Support weapons require an armored glove and a crew requirement of one.', m.location);
             if (eq.hasFlag('F_INF_DISPOSABLE') && !(ap && !glove)) {
-                const relevant = suitMounts(entity, m.location === 'Squad' ? 1 : Number(m.location.replace('Trooper ', '')));
+                const relevant = entity.getConstructionEquipmentForTrooper(m.location === 'Squad' ? 1 : Number(m.location.replace('Trooper ', '')));
                 if (!glove || relevant.filter(item => item.equipment?.hasFlag('F_ARMORED_GLOVE')).length < 2) add('BA_DISPOSABLE_ATTACHMENT', 'Disposable weapons require a dedicated anti-personnel mount or two armored gloves.', m.location);
             }
         }
     }
     for (let trooper = 1; trooper <= entity.trooperCount(); trooper++) {
-        const mounts = suitMounts(entity, trooper);
+        const mounts = entity.getConstructionEquipmentForTrooper(trooper);
         const location = `Trooper ${trooper}`;
+        if (constructionBattleArmorCamoCount(entity, location) > 1) add('BA_CAMO_LIMIT', 'Only one camo system is permitted on a suit.', location);
         for (const flag of ['F_PARTIAL_WING', 'F_MAGNETIC_CLAMP', 'F_PARAFOIL', 'F_MECHANICAL_JUMP_BOOSTER', 'F_MASC'] as const) {
             const installed = mounts.filter(m => m.equipment?.hasFlag(flag));
             // Native BA myomer boosters can be represented once per spreadable critical slot.
@@ -148,8 +183,4 @@ function battleArmorMessages(entity: BattleArmorEntity): EntityValidationMessage
         }
     }
     return messages;
-}
-
-function suitMounts(entity: BattleArmorEntity, trooper: number): EntityMountedEquipment[] {
-    return entity.equipment().filter(m => m.location === 'Squad' || m.location === `Trooper ${trooper}`);
 }

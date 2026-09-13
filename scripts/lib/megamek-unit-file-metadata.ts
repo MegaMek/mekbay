@@ -90,7 +90,6 @@ function normalizeMetadataUnitTypeName(rawUnitType: string, context: string, mot
         case 'ProtoMek':
         case 'VTOL':
         case 'Naval':
-        case 'Gun Emplacement':
         case 'Conventional Fighter':
         case 'AeroSpaceFighter':
         case 'Aero':
@@ -108,8 +107,6 @@ function normalizeMetadataUnitTypeName(rawUnitType: string, context: string, mot
         case 'Protomek':
         case 'ProtoMech':
             return 'ProtoMek';
-        case 'GunEmplacement':
-            return 'Gun Emplacement';
         case 'ConvFighter':
             return 'Conventional Fighter';
         case 'Aerospace Fighter':
@@ -164,7 +161,6 @@ function normalizeMetadataNameUnitTypeName(rawUnitType: string, context: string)
         case 'LargeSupportTank':
         case 'SupportVTOL':
         case 'FixedWingSupport':
-        case 'Gun Emplacement':
         case 'Conventional Fighter':
         case 'AeroSpaceFighter':
         case 'Aero':
@@ -183,8 +179,6 @@ function normalizeMetadataNameUnitTypeName(rawUnitType: string, context: string)
         case 'Protomek':
         case 'ProtoMech':
             return 'ProtoMek';
-        case 'GunEmplacement':
-            return 'Gun Emplacement';
         case 'ConvFighter':
             return 'Conventional Fighter';
         case 'Aerospace Fighter':
@@ -229,10 +223,6 @@ function normalizeMetadataUnitTypeFromDirectory(filePath: string, rootPath: stri
             return 'VTOL';
         case 'naval':
             return 'Naval';
-        case 'gunemplacement':
-        case 'gunemplacements':
-        case 'ge':
-            return 'Gun Emplacement';
         case 'convfighter':
             return 'Conventional Fighter';
         case 'fighters':
@@ -341,7 +331,6 @@ function getMegaMekUnitNamePrefix(unitType: string, motionType?: string, isIndus
         case 'LargeSupportTank':
         case 'SupportVTOL':
         case 'FixedWingSupport':
-        case 'Gun Emplacement':
             return 'SV';
         case 'BattleArmor':
             return 'BA';
@@ -467,7 +456,16 @@ function parseMtfUnitFileMetadata(raw: string, filePath: string, rootPath: strin
     };
 }
 
+export function isExcludedMegaMekUnitFile(raw: string, filePath: string, unitFilesRoot: string): boolean {
+    // Deprecated native units have been replaced by BuildingEntity files.
+    const directory = path.relative(unitFilesRoot, filePath).split(path.sep)[0]?.toLowerCase();
+    return ['gunemplacement', 'gunemplacements', 'ge'].includes(directory)
+        || (path.extname(filePath).toLowerCase() === '.blk'
+            && getTaggedText(raw, 'UnitType')?.replace(/\s+/gu, '').toLowerCase() === 'gunemplacement');
+}
+
 export function parseMegaMekUnitFileMetadata(raw: string, filePath: string, unitFilesRoot: string): MegaMekUnitFileMetadata | undefined {
+    if (isExcludedMegaMekUnitFile(raw, filePath, unitFilesRoot)) return undefined;
     switch (path.extname(filePath).toLowerCase()) {
         case '.blk':
             return parseBlkUnitFileMetadata(raw, filePath);

@@ -353,7 +353,7 @@ function formatCrewSkillChange(
 ): string {
     const occurrence = number(data[1]);
     const label = context.crewLabel?.(instanceId, occurrence) ?? crewFallbackLabel(occurrence);
-    const skill = data[2] === 0 ? 'Gunnery' : 'Piloting';
+    const skill = ['Gunnery', 'Piloting', 'Aerospace Gunnery', 'Aerospace Piloting'][number(data[2])] ?? 'Piloting';
     return `${label}: ${skill} skill ${number(data[3])} → ${number(data[4])}`;
 }
 

@@ -25,8 +25,36 @@ import { calculateMountedEquipmentCostBreakdown } from './cost/equipment-total';
 import { calculateEntityCostDetails } from './cost/entity-cost';
 import { amount, buildCostReport, multiplier } from './cost/cost-report';
 import { EquipmentFlag } from '../../equipment-flags.type';
+import { createTestEquipmentRegistry } from '../testing/test-equipment-registry';
 
 describe('entity cost', () => {
+    for (const [scope, expected] of [['Unknown', 140000], ['Clan', 130000]] as const) {
+        it(`prices vehicle ferro-fibrous armor using its ${scope} armor technology`, () => {
+            const innerSphereArmor = new ArmorEquipment({
+                id: 'IS Ferro-Fibrous', name: 'Ferro-Fibrous', type: 'armor',
+                stats: { cost: 20000 }, tech: { base: 'IS' },
+                armor: { type: 'FERRO_FIBROUS', pptMultiplier: 1.12 },
+            });
+            const clanArmor = new ArmorEquipment({
+                id: 'Clan Ferro-Fibrous', name: 'Ferro-Fibrous', type: 'armor',
+                stats: { cost: 20000 }, tech: { base: 'Clan' },
+                armor: { type: 'FERRO_FIBROUS', pptMultiplier: 1.24 },
+            });
+            const entity = new TankEntity(createTestEquipmentRegistry({
+                [innerSphereArmor.id]: innerSphereArmor, [clanArmor.id]: clanArmor,
+            }));
+            entity.techBase.set('Clan');
+            entity.setUniformArmor(new MountedArmor({
+                armor: clanArmor, techBase: 'Clan', technology: { level: 'Standard', scope },
+            }));
+            // Chalchiuhtotolin: the authored Unknown level yields 7 tons, explicit Clan 6.5.
+            entity.setArmorValue('Front', 'front', 124);
+
+            expect(entity.costDetails().steps.find(step => step.type === 'Armor'))
+                .toEqual(jasmine.objectContaining({ amount: expected }));
+        });
+    }
+
     it('applies additive and multiplier steps with running subtotals', () => {
         expect(buildCostReport([
             { type: 'Structure', amount: 100 },
@@ -311,7 +339,7 @@ describe('entity cost', () => {
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
     });
 
-    it('counts CASE II as equipment but not explicit CASE for implicit CASE cost', () => {
+    it('does not charge a second CASE system in a CASE II protected Mek location', () => {
         const entity = new TestBipedMekEntity();
         entity.techBase.set('Clan');
         entity.setEquipment([
@@ -323,6 +351,13 @@ describe('entity cost', () => {
             })),
         ]);
 
+        expect(entity.automaticClanCaseLocations().size).toBe(0);
+        expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(175000);
+
+        entity.setEquipment([...entity.equipment(), mount(new MiscEquipment({
+            id: 'other-explosive', name: 'Other Explosive Equipment', type: 'misc', stats: { explosive: true },
+        })).clone({ allocation: { kind: 'location', location: 'LA' } })]);
+        expect(entity.automaticClanCaseLocations()).toEqual(new Set(['LA']));
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(225000);
     });
 

@@ -4,6 +4,7 @@
 import { isCaseIIEquipment, isStandardCaseEquipment } from '../models/case-equipment.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { CriticalSlotView, EntityMountedEquipment } from '../models/entity/types';
+import type { MekSystemType } from '../models/entity/types/mek';
 import { recordSheetAmmoName } from './record-sheet-ammo.util';
 
 export type MekCriticalCaseLabel = 'CASE' | 'CASE II';
@@ -25,23 +26,7 @@ export function mekCriticalSlotLabel(
     entity: MekEntity,
 ): string {
     if (!slot || slot.type === 'empty') return 'Roll Again';
-    if (slot.type === 'system') {
-        if (slot.systemType === 'Cockpit') {
-            return entity.mountedCockpit().fullName.replace(/^Standard /u, '');
-        }
-        if (slot.systemType === 'Gyro') {
-            return entity.mountedGyro().fullName.replace(/^Standard /u, '');
-        }
-        if (slot.systemType !== 'Engine') return slot.systemType;
-        const engine = entity.mountedEngine();
-        const engineType = engine.type();
-        if (engine.isFusion) {
-            return engineType === 'Fusion'
-                ? 'Fusion Engine'
-                : `${engineType.replace(/ Engine$/u, '')} Fusion Engine`;
-        }
-        return /Engine$/u.test(engineType) ? engineType : `${engineType} Engine`;
-    }
+    if (slot.type === 'system') return mekSystemLabel(slot.systemType, entity);
 
     const labels = new Map<string, { readonly name: string; shots: number | null }>();
     slot.mounts.forEach(mount => {
@@ -61,7 +46,26 @@ export function mekCriticalSlotLabel(
         : `Ammo (${item.name}) ${item.shots}`).join(' / ');
 }
 
-function mekCriticalMountName(entity: MekEntity, mount: EntityMountedEquipment): string {
+/** Configured system name shared by loadout and record-sheet presentations. */
+export function mekSystemLabel(system: MekSystemType, entity: MekEntity): string {
+    if (system === 'Cockpit') {
+        return entity.mountedCockpit().fullName.replace(/^Standard /u, '');
+    }
+    if (system === 'Gyro') {
+        return entity.mountedGyro().fullName.replace(/^Standard /u, '');
+    }
+    if (system !== 'Engine') return system;
+    const engine = entity.mountedEngine();
+    const engineType = engine.type();
+    if (engine.isFusion) {
+        return engineType === 'Fusion'
+            ? 'Fusion Engine'
+            : `${engineType.replace(/ Engine$/u, '')} Fusion Engine`;
+    }
+    return /Engine$/u.test(engineType) ? engineType : `${engineType} Engine`;
+}
+
+export function mekCriticalMountName(entity: MekEntity, mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
     let name = mount.displayName();
     if (!equipment) return name;

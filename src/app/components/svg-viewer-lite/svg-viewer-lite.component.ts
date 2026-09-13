@@ -42,6 +42,8 @@ export class SvgViewerLiteComponent {
     private readonly sheetPaperSize = computed(() => this.paperSize() ?? this.optionsService.options().printAllOptions.paperSize);
     /** Fit the first full page at 100%, or retain the details viewer's fit-width behavior. */
     fitMode = input<'width' | 'page'>('width');
+    /** Show the printable sheet, including when its pages are cloned for export. */
+    printPreview = input(false);
 
     private readonly loadingState = signal(false);
     private readonly loadErrorState = signal<string | null>(null);
@@ -65,6 +67,10 @@ export class SvgViewerLiteComponent {
 
     // Reactive effect: load sheet when unit changes
     constructor() {
+        effect(() => {
+            const printPreview = this.printPreview();
+            for (const svg of this.svgs()) svg.classList.toggle('print-preview', printPreview);
+        });
         effect(() => {
             const unit = this.nativeEntity() ?? this.unit();
             if (!unit) return;
@@ -233,7 +239,6 @@ export class SvgViewerLiteComponent {
         const content = this.contentRef().nativeElement;
         for (const s of svgs) {
             s.classList.add('mekbay-sheet');
-            s.style.pointerEvents = 'none';
             s.style.display = 'block';
             s.style.width = '100%';
             s.style.height = 'auto';

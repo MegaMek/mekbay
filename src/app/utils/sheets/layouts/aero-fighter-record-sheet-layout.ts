@@ -5,7 +5,7 @@ import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { isChassisSystemEquipment, isVstolEquipment } from '../../../models/chassis-equipment.model';
 import { getBayTransporterType, isQuartersBay } from '../../../models/entity/bays/bay-definitions';
-import { fireControlKind } from '../../../models/entity/utils/fire-control';
+import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/fire-control';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { isSingleHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
@@ -30,7 +30,6 @@ drawPageChrome,
 formatNumber,
 formatRecordSheetTonnage,
 formatWholeNumber,
-scalePageBox,
 setAttributes,
 svgElement,
 } from '../record-sheet-svg-rendering';
@@ -40,6 +39,7 @@ drawFighterPilotPanel,
 } from './aero-fighter-record-sheet-controls';
 import {
 type AeroDataInventoryRow,
+aeroPageBox,
 drawAeroArtworkRegion,
 drawAeroDataPanel,
 drawAeroExternalStores,
@@ -82,7 +82,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
         const conventional = entity.entityType === 'ConvFighter'
             || entity.entityType === 'FixedWingSupport';
         const at = (box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }) =>
-            scalePageBox(page, box);
+            aeroPageBox(page, box);
 
         drawPageChrome(svg, this.sheetTitle(entity), page, false);
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 308.357 });
@@ -98,6 +98,8 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 flowCargoAfterInventory: false,
                 showAmmoSummary: true,
                 stationary: false,
+                showQuirks: request.showQuirks,
+                featureText: fighterFeatures(entity).join(', '),
                 ...(entity.entityType === 'FixedWingSupport' ? {
                     featureText: fixedWingSupportFeatures(entity),
                     cargoInFeatures: true,
@@ -139,11 +141,8 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
         if (entity.tracksHeat()) {
             drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
         }
-        drawGeneratedFooter(svg, page, {
-            catalystX: 521,
-            catalystY: 476.987,
-            catalystScale: 1.015,
-        });
+        const catalyst = at({ x: 521, y: 476.987, width: 0, height: 0 });
+        drawGeneratedFooter(svg, page, { catalystX: catalyst.x, catalystY: catalyst.y, catalystScale: 1.015 });
         return svg;
     }
 
@@ -250,15 +249,14 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
 
 /** PrintAero lists support chassis modifications and bulk transport in the footer. */
 function fixedWingSupportFeatures(entity: AeroEntity): string {
-    const features: string[] = entity.entityFeatures().filter(feature => !feature.startsWith('Chassis Mod: ')
-        && !feature.startsWith('Bay: ') && feature !== 'Infantry Compartment');
+    const features = fighterFeatures(entity).filter(feature => !feature.startsWith('Chassis Mod: '));
     const modifications = entity.equipment()
         .filter(mount => isChassisSystemEquipment(mount.equipment) && !isVstolEquipment(mount.equipment))
         .map(mount => mount.equipment!.shortName);
     if (modifications.length > 0) features.push(`${modifications.join(', ')} Chassis ${modifications.length === 1 ? 'Mod' : 'Mods'}`);
-    const controls = entity.equipment().map(mount => fireControlKind(mount.equipment));
-    if (controls.includes('advanced')) features.push('Advanced Fire Control');
-    else if (controls.includes('basic')) features.push('Basic Fire Control');
+    const fireControl = fireControlFeatureFromFlagLookup(flag =>
+        entity.equipment().some(mount => mount.equipment?.hasFlag(flag)));
+    if (fireControl) features.push(fireControl);
     for (const type of ['standard-seats', 'pillion-seats', 'ejection-seats'] as const) {
         const count = entity.transporters().reduce((sum, transporter) => sum + (transporter.kind === 'bay'
             && transporter.configuration.type === type ? Math.trunc(transporter.capacity) : 0), 0);
@@ -281,6 +279,12 @@ function fixedWingSupportFeatures(entity: AeroEntity): string {
         features.push(`${name} (${weight})`);
     }
     return features.join(', ');
+}
+
+/** Cargo is rendered separately; retain the fighter's other construction features. */
+function fighterFeatures(entity: AeroEntity): string[] {
+    return entity.entityFeatures().filter(feature => !feature.startsWith('Bay: ')
+        && feature !== 'Infantry Compartment');
 }
 
 function drawGroundMapStraightMovementTable(svg: SVGSVGElement, box: Box): void {
@@ -373,13 +377,12 @@ function drawFighterDiagramHeader(
     entity: BaseEntity,
     page: RecordSheetLayoutRequest['page'],
 ): void {
-    const origin = scalePageBox(page, { x: 276.4, y: 82.857, width: 83.991, height: 24.25 });
+    const origin = aeroPageBox(page, { x: 276.4, y: 82.857, width: 83.991, height: 24.25 });
     const group = svgElement('g');
     group.setAttribute('class', 'aero-diagram-header fighter-diagram-header');
     group.setAttribute(
         'transform',
-        `translate(${formatNumber(origin.x)} ${formatNumber(origin.y)}) `
-        + `scale(${formatNumber(page.horizontalScale)} ${formatNumber(page.verticalScale)})`,
+        `translate(${formatNumber(origin.x)} ${formatNumber(origin.y)})`,
     );
     const armor = entity.uniformArmor()?.armor;
     const armorName = entity.isSupportVehicle() && armor?.armorType.startsWith('SV_BAR_')

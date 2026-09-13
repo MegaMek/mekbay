@@ -144,6 +144,7 @@ export interface ComponentRuntimeState {
 export interface AmmoRuntimeState {
     readonly shotsSpent: number;
     readonly munitionOverride?: string;
+    readonly hotLoaded?: true;
 }
 
 export interface PendingCombatOverlay extends CBTUnitPendingCombatState {

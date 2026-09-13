@@ -25,6 +25,8 @@ import {
 } from '../c3-network.model';
 import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary } from '../source-hash-canary';
+import type { PinnedCustomUnitSource } from '../pinned-custom-unit-source';
+import { planEmbeddedDesigns, decompressEmbeddedCustomDesigns, type EmbeddedCustomDesign } from '../custom-design-policy';
 import {
     asArmorFaceId,
     asComponentId,
@@ -159,6 +161,7 @@ type DecodedUnitHeader = {
     instanceId: string;
     entity: UnitUuid;
     sourceHashCanary?: ReturnType<typeof asSourceHashCanary>;
+    customSource?: PinnedCustomUnitSource;
     destroyed?: true;
     crew: DecodedCrewPosition[];
     members: readonly AssignedForcePerson[];
@@ -174,7 +177,7 @@ type DecodedGroup = {
 };
 const COMMON_UNIT_FIELDS = ['id', 'uuid', 'sourceHash', 'destroyed', 'state', 'crew'] as const;
 const AS_UNIT_FIELDS = [...COMMON_UNIT_FIELDS, 'updatedTs'] as const;
-const CBT_UNIT_FIELDS = COMMON_UNIT_FIELDS;
+const CBT_UNIT_FIELDS = [...COMMON_UNIT_FIELDS, 'customDesign'] as const;
 const GROUP_FIELDS = ['id', 'name', 'color', 'formationId', 'formationLock', 'formationTarget', 'unitIndices'] as const;
 
 type CompactASNetwork = Readonly<{
@@ -249,9 +252,15 @@ export function encodeForceForStorage(force: SerializedForce): StoredForceRecord
     }
     const cbt = force.cbt;
     const positions = new Map((cbt.encounter.c3Positions ?? []).map(position => [position.unitId, position] as const));
+    const custom = cbt.units.filter(e => e.unit.customSource !== undefined);
+    const plan = planEmbeddedDesigns(custom.map(e => ({ uuid: e.unit.entity, source: e.unit.customSource! })));
+    const customIndexes = new Map(custom.map((e, i) => [e.instanceId, plan.indexes[i]]));
+    const packedUnits = cbt.units.map(entry => packCBTUnit(entry.unit, people.crewByUnit.get(entry.instanceId),
+        positions.get(entry.instanceId), customIndexes.get(entry.instanceId)));
     return Object.freeze({
         ...current,
-        units: cbt.units.map(entry => packCBTUnit(entry.unit, people.crewByUnit.get(entry.instanceId), positions.get(entry.instanceId))),
+        ...(plan.compressed ? { customDesigns: plan.compressed } : {}),
+        units: packedUnits,
         groups: packRoster(cbt.roster, cbt.units),
         cbt: packForce(cbt),
     });
@@ -263,6 +272,8 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     if (root['version'] === undefined) return { ...clone(root), version: 1 } as unknown as SerializedForce;
     if (root['version'] !== 2) throw new Error('Unsupported force persistence version');
     const metadata = unpackMetadata(root);
+    const designs = decompressEmbeddedCustomDesigns(root['customDesigns']);
+    if (metadata.type !== GameSystem.CBT && designs.length) throw new Error('Custom designs require a CBT force');
     const units = array(root['units'], 'force.units');
     const groups = unpackGroups(root['groups'], units.length);
     const unitIds = units.map((unit, index) => {
@@ -274,7 +285,7 @@ export function decodeForceFromStorage(value: unknown): SerializedForce {
     const people = unpackForcePersonnel(root['personnel'], units, unitIds, metadata.type);
     const common = { ...metadata, personnel: people.snapshot };
     if (metadata.type === GameSystem.AS) return unpackASForce(root, common, units, groups);
-    return { ...common, cbt: unpackForce(record(root['cbt'], 'force.cbt'), metadata.instanceId, units, groups, people) };
+    return { ...common, cbt: unpackForce(record(root['cbt'], 'force.cbt'), metadata.instanceId, units, groups, people, designs) };
 }
 
 function packASUnit(unit: ASSerializedUnit, crew: StoredForceCrew | undefined): StoredForceUnit {
@@ -580,7 +591,7 @@ function unpackMetadata(root: Record<string, unknown>): Omit<SerializedForce, 'g
     if (type !== GameSystem.AS && type !== GameSystem.CBT) throw new Error('Unsupported force game system');
     exactKeys(root, [
         'version', 'timestamp', 'instanceId', 'type', 'name', 'note', 'tags',
-        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'units', 'groups', 'personnel',
+        'factionId', 'factionLock', 'eraId', 'eraLock', 'bv', 'pv', 'owned', 'units', 'groups', 'personnel', 'customDesigns',
         type === GameSystem.AS ? 'a' : 'cbt',
     ], 'force');
     return {
@@ -615,7 +626,7 @@ function packForce(force: SerializedCBTForceV2): CompactForce {
     });
 }
 
-function unpackForce(value: Record<string, unknown>, forceId: string, compactUnits: readonly unknown[], groups: readonly DecodedGroup[], people: DecodedForcePersonnel): SerializedCBTForceV2 {
+function unpackForce(value: Record<string, unknown>, forceId: string, compactUnits: readonly unknown[], groups: readonly DecodedGroup[], people: DecodedForcePersonnel, designs: readonly EmbeddedCustomDesign[]): SerializedCBTForceV2 {
     const forcePath = `force.${FORCE_PAYLOAD_FIELD.classicBattleTech}`;
     exactKeys(value, Object.values(CBT_FORCE_FIELD), forcePath);
     const revision = integer(
@@ -624,7 +635,7 @@ function unpackForce(value: Record<string, unknown>, forceId: string, compactUni
     );
     const unitsPath = 'force.units';
     const units = compactUnits.map((entry, index) =>
-        unpackUnitEntry(entry, `${unitsPath}[${index}]`, people));
+        unpackUnitEntry(entry, `${unitsPath}[${index}]`, people, designs));
     requireUniqueIds(units.map(unit => unit.instanceId), unitsPath);
     const c3Positions = compactUnits.flatMap((entry, index): C3UnitPosition[] => {
         const unitPath = `${unitsPath}[${index}]`;
@@ -841,34 +852,44 @@ function historyMutationTargetIndex(messageId: SerializedRuntimeHistoryMessage[0
 function packCBTUnit(
     unit: SerializedCBTUnitV2 | SerializedNonMekUnit,
     crew: StoredForceCrew | undefined, c3Position: C3UnitPosition | undefined,
+    customDesign: number | undefined,
 ): StoredForceUnit {
     const state = isSerializedNonMekUnit(unit) ? packNonMekUnit(unit, c3Position) : packMekUnit(unit, c3Position);
     return compactObject({
         id: packUnitInstanceId(unit.instanceId),
         uuid: packUnitUuid(unit.entity),
         sourceHash: unit.sourceHashCanary,
+        customDesign,
         destroyed: unit.destroyed || undefined,
         crew,
         state: Object.keys(state).length === 0 ? undefined : state,
     }) as unknown as StoredForceUnit;
 }
 
-function unpackUnitEntry(value: unknown, path: string, people: DecodedForcePersonnel): SerializedForceUnitEntryV2 {
+function unpackUnitEntry(value: unknown, path: string, people: DecodedForcePersonnel, designs: readonly EmbeddedCustomDesign[]): SerializedForceUnitEntryV2 {
     const row = record(value, path);
     exactKeys(row, CBT_UNIT_FIELDS, path);
     const instanceId = unpackUnitInstanceId(text(row['id'], path + '.id'), path + '.id');
+    const entity = unpackUnitUuid(row['uuid'], path + '.uuid');
+    const design = row['customDesign'] === undefined ? undefined : designs[integer(row['customDesign'], path + '.customDesign')];
+    if (row['customDesign'] !== undefined && (!design || design.uuid !== entity)) {
+        throw new Error('Invalid embedded custom design reference');
+    }
     const members = people.membersByUnit.get(instanceId) ?? [];
     const destroyed = optionalTrue(row['destroyed'], path + '.destroyed');
     const header: DecodedUnitHeader = {
         instanceId,
-        entity: unpackUnitUuid(row['uuid'], path + '.uuid'),
+        entity,
         ...(row['sourceHash'] === undefined ? {} : { sourceHashCanary: unpackSourceHashCanary(row['sourceHash'], path + '.sourceHash') }),
+        ...(design === undefined ? {} : { customSource: design.source }),
         ...(destroyed ? { destroyed } : {}),
         crew: members.map(({ positionId, person }) => ({
             positionId: asCrewPositionId(positionId),
             name: person.name ?? '',
             gunnery: person.gunnery ?? DEFAULT_GUNNERY_SKILL,
             piloting: person.piloting ?? DEFAULT_PILOTING_SKILL,
+            ...(person.aeroGunnery === undefined ? {} : { aeroGunnery: person.aeroGunnery }),
+            ...(person.aeroPiloting === undefined ? {} : { aeroPiloting: person.aeroPiloting }),
         })),
         members,
     };
@@ -907,7 +928,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, c3Position: C3UnitPosition | und
         [CBT_UNIT_FIELD.componentState]: packRows(unit.componentState, packComponentState),
         [CBT_UNIT_FIELD.ammoState]: packRows(
             unit.ammoState,
-            row => tuple(row.target, row.shotsSpent, row.munitionOverride),
+            row => tuple(row.target, row.shotsSpent, row.munitionOverride, row.hotLoaded),
         ),
         [CBT_UNIT_FIELD.heat]: heatIsPristine ? undefined : packHeat(unit.heat),
         [CBT_UNIT_FIELD.ruleChecks]: unit.ruleChecks.entries.length === 0
@@ -989,7 +1010,8 @@ function unpackMekUnit(value: Record<string, unknown>, path: string, header: Dec
                 (row, rowPath) => ({
                 target: asSavedTargetRef(rowText(row, 0, rowPath)),
                 shotsSpent: rowInteger(row, 1, rowPath),
-                ...(row[2] === undefined ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
+                ...(row[2] == null ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
+                ...(row[3] === undefined ? {} : { hotLoaded: optionalTrue(row[3], `${rowPath}[3]`) }),
                 }),
             ),
         }),
@@ -1077,7 +1099,7 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
         ),
         [CBT_UNIT_FIELD.ammoState]: packRows(
             unit.ammoState,
-            row => tuple(row.componentId, row.shotsSpent, row.munitionOverride),
+            row => tuple(row.componentId, row.shotsSpent, row.munitionOverride, row.hotLoaded),
         ),
         [CBT_UNIT_FIELD.conditions]: unit.conditions?.length ? [...unit.conditions] : undefined,
         [CBT_UNIT_FIELD.heat]: packNonMekHeat(unit.heat),
@@ -1196,7 +1218,8 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string, header: 
                 (row, rowPath) => ({
                 componentId: asComponentId(rowText(row, 0, rowPath)),
                 shotsSpent: rowInteger(row, 1, rowPath),
-                ...(row[2] === undefined ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
+                ...(row[2] == null ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
+                ...(row[3] === undefined ? {} : { hotLoaded: optionalTrue(row[3], `${rowPath}[3]`) }),
                 }),
             ),
         }),

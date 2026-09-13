@@ -21,13 +21,13 @@ describe('shouldCombineReferenceTables', () => {
 describe('ClusterTableDialogComponent', () => {
     const close = jasmine.createSpy('close');
 
-    function createFixture(unit: UnitSummary, gameRules: CBTGameRules = CORE_2026_GAME_RULES) {
+    function createFixture(unit: UnitSummary, gameRules: CBTGameRules = CORE_2026_GAME_RULES, hasHotLoadedAmmo = false) {
         TestBed.resetTestingModule();
         TestBed.configureTestingModule({
             imports: [ClusterTableDialogComponent],
             providers: [
                 { provide: DialogRef, useValue: { close } },
-                { provide: DIALOG_DATA, useValue: { unit, gameRules } },
+                { provide: DIALOG_DATA, useValue: { unit, gameRules, hasHotLoadedAmmo } },
             ],
         });
         const fixture = TestBed.createComponent(ClusterTableDialogComponent);
@@ -163,6 +163,61 @@ describe('ClusterTableDialogComponent', () => {
             result: 'LT(C)',
         }));
         expect(fixture.nativeElement.querySelector('td.rolled-highlight')?.textContent.trim()).toBe('LT(C)');
+    });
+
+    it('keeps the lowest two of three dice, adds signed modifiers, and bounds cluster lookup', () => {
+        const fixture = createFixture(clusterWeaponUnit(), TW_GAME_RULES, true);
+        const component = fixture.componentInstance;
+        component.selectTableOption('cluster-full');
+        fixture.detectChanges();
+        const checkbox = fixture.nativeElement.querySelector('.cluster-roll-options .bt-checkbox') as HTMLInputElement;
+        expect(checkbox.checked).toBeFalse();
+        expect(fixture.nativeElement.textContent).toContain('This unit has ammo bins marked hot-loaded');
+        checkbox.click();
+        const table = component.displayedTables()[0];
+        const column = table.columns[0];
+        const rollers = fixture.debugElement.queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent);
+        const roller = rollers.find(roller => roller.diceCount() === 3)!;
+        spyOn(roller, 'roll');
+        component.setClusterModifier('2');
+        component.rollTableColumn(table, column);
+        component.setClusterModifier('-8'); // A running roll retains the modifier it started with.
+        component.onRollFinished({ results: [6, 3, 2], sum: 11 }, 3);
+        expect(roller.roll).toHaveBeenCalled();
+        expect(component.rolledResult()?.roll).toBe(7);
+        expect(component.rollHistory()[0].dice).toBe('3d6 (lowest two) + 2');
+        component.rollTableColumn(table, column);
+        component.onRollFinished({ results: [2, 2, 6], sum: 10 }, 3);
+        expect(component.rolledResult()?.roll).toBe(2);
+        component.setClusterModifier('20');
+        component.rollTableColumn(table, column);
+        component.onRollFinished({ results: [2, 2, 6], sum: 10 }, 3);
+        expect(component.rolledResult()?.roll).toBe(12);
+    });
+
+    it('limits hot-loading and modifiers to cluster columns in a combined table', () => {
+        const fixture = createFixture(clusterWeaponUnit());
+        const component = fixture.componentInstance;
+        const table = component.tableView().combinedTable!;
+        const location = table.columns.find(column => column.rollable && column.rollSource?.tableKey.includes('locations'))!;
+        const cluster = table.columns.find(column => column.rollable && column.rollSource?.tableKey.startsWith('cluster-'))!;
+        const rollers = fixture.debugElement.queryAll(node => node.componentInstance instanceof DiceRollerComponent)
+            .map(node => node.componentInstance as DiceRollerComponent);
+        new Set(rollers).forEach(roller => spyOn(roller, 'roll'));
+        component.hotLoaded.set(true);
+        component.setClusterModifier('2');
+        component.rollTableColumn(table, location);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        expect(component.rolledResult()?.roll).toBe(7);
+        expect(component.rollHistory()[0].dice).toBe('2d6');
+        component.rollTableColumn(table, cluster);
+        component.onRollFinished({ results: [3, 4, 6], sum: 13 }, 3);
+        expect(component.rolledResult()?.roll).toBe(9);
+        component.hotLoaded.set(false);
+        component.rollTableColumn(table, cluster);
+        component.onRollFinished({ results: [3, 4], sum: 7 }, 2);
+        expect(component.rolledResult()?.roll).toBe(9);
     });
 
     it('rolls the configured one-die physical table and preserves grouped kick cells', () => {

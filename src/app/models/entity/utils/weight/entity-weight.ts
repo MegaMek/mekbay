@@ -24,6 +24,8 @@ import { calculateHandheldWeaponWeightBreakdown } from './handheld-weapon-weight
 import { calculateFixedWingSupportWeightBreakdown } from './fixed-wing-support-weight';
 import { calculateSmallCraftWeightBreakdown } from './small-craft-weight';
 import { calculateAdvancedAerospaceWeightBreakdown } from './advanced-aerospace-weight';
+import type { StaticEmplacementEntity } from '../../entities/misc/static-emplacement-entity';
+import { calculateBuildingWeightBreakdown } from './building-weight';
 
 /**
  * Calculate installed construction mass independently of declared chassis
@@ -40,6 +42,9 @@ export function calculateEntityEffectiveTonnage(entity: BaseEntity): number {
 /** The same family calculation supplies both installed mass and its complete breakdown. */
 export function calculateEntityWeightBreakdown(entity: BaseEntity) {
   switch (entity.entityType) {
+    case 'BuildingEntity':
+    case 'MobileStructure':
+      return calculateBuildingWeightBreakdown(entity as StaticEmplacementEntity);
     case 'JumpShip':
     case 'WarShip':
     case 'SpaceStation':

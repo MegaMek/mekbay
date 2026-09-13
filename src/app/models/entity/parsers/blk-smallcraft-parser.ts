@@ -57,7 +57,6 @@ export function parseBlkSmallCraft(bb: BuildingBlock, ctx: ParseContext): SmallC
 
   // ── Crew ──
   parseBlkCrew(bb, entity);
-  entity.reconcileCrewAndQuarters();
 
   return entity;
 }

@@ -30,6 +30,7 @@ projectWeaponTargetPresentation,
 } from '../../../models/runtime/equipment-panel';
 import { resolveMekHitLocation } from '../../../models/runtime/mek-fall-rules';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from '../../../models/runtime/mek-movement-psr-v2';
 
 import { hasMekRuntime } from '../../../models/cbt-unit-snapshot';
 import {
@@ -54,7 +55,7 @@ import { clusterTableForMekEntity,type MekHitArc } from '../../../utils/record-s
 import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
-import { mountedAmmoDialogData, SetAmmoDialogComponent } from '../../set-ammo-dialog/set-ammo.dialog.component';
+import { mountedAmmoDialogData, SetAmmoDialogComponent, type SetAmmoDialogResult } from '../../set-ammo-dialog/set-ammo.dialog.component';
 import type { PickerChoice,PickerInstance,PickerTargetType } from '../../picker/picker.interface';
 import { isChoicePickerInstance } from '../../picker/picker.interface';
 import {
@@ -139,6 +140,9 @@ export class PageViewerMekInteractionService {
 
     handle(member: CBTMekForceMember, interaction: RecordSheetInteraction, event: Event): void {
         switch (interaction.kind) {
+            case 'movement':
+                void this.selectMovement(member, interaction);
+                return;
             case 'open-equipment':
                 this.overlays.openEquipment(member.id, event, interaction.tab);
                 return;
@@ -201,6 +205,31 @@ export class PageViewerMekInteractionService {
                 void this.dispatchDirect(member, interaction);
                 return;
         }
+    }
+
+    private async selectMovement(
+        member: CBTMekForceMember,
+        interaction: Extract<RecordSheetInteraction, { kind: 'movement' }>,
+    ): Promise<void> {
+        const snapshot = this.currentSnapshot(member, interaction.context);
+        const mode = interaction.mode;
+        if (!snapshot || mode === 'VTOL') return;
+        if (snapshot.movementSelection.selectedMode === mode) {
+            await this.dispatchCommand(member, { type: 'clear-mek-movement' }, interaction.context);
+            return;
+        }
+        const option = snapshot.movementSelection.options.find(option => option.mode === mode);
+        if (!option?.legal) return;
+        const turn = member.force.getMekTurnPanelSnapshot(member.id, snapshot.heatPolicy);
+        if (!turn) return;
+        await this.dispatchCommand(member, {
+            type: 'declare-mek-movement',
+            declaration: {
+                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+                mode, distance: option.minimumMp,
+                boosterComponentIds: mode === 'run' || mode === 'sprint' ? turn.activeBoosterComponentIds : [],
+            },
+        }, interaction.context);
     }
 
     private openRandomHitPicker(
@@ -505,10 +534,11 @@ export class PageViewerMekInteractionService {
             const current = this.currentMekUnit(member, interaction.context);
             const data = current && mountedAmmoDialogData(current, componentId);
             if (!data) return null;
-            const ref = this.dialogs.createDialog<{ name: string; quantity: number } | null>(SetAmmoDialogComponent, { data });
+            const ref = this.dialogs.createDialog<SetAmmoDialogResult | null>(SetAmmoDialogComponent, { data });
             const selection = await firstValueFrom(ref.closed);
             if (selection && this.currentMekUnit(member, interaction.context)) accepted = await this.dispatchCommand(member, {
                 type: 'configure-ammo-source', componentId, munitionKey: selection.name, remaining: selection.quantity,
+                ...(selection.hotLoaded === undefined ? {} : { hotLoaded: selection.hotLoaded }),
             }, interaction.context);
         } else if (value.startsWith('ammo-add:') || value.startsWith('ammo-spend:')) {
             const componentId = value.slice(value.indexOf(':') + 1) as ComponentId;
@@ -835,8 +865,9 @@ export class PageViewerMekInteractionService {
         if (!snapshot || !position) return;
         this.openChoicePicker(member.id, event, {
             values: [8, 7, 6, 5, 4, 3, 2, 1, 0].map(value => ({ label: String(value), value })),
-            selected: position[interaction.skill],
-            title: interaction.skill,
+            selected: position[interaction.skill] ?? (interaction.skill === 'aeroPiloting' ? 5 : 4),
+            title: interaction.skill === 'aeroGunnery' ? 'Aerospace Gunnery'
+                : interaction.skill === 'aeroPiloting' ? 'Aerospace Piloting' : interaction.skill,
             suggestedStyle: 'radial',
             targetType: 'skill',
             onPick: choice => {
@@ -914,7 +945,7 @@ export class PageViewerMekInteractionService {
     private async replaceCrewField(
         member: CBTMekForceMember,
         positionId: MekRecordSheetSnapshot['crew'][number]['positionId'],
-        field: 'gunnery' | 'piloting' | 'name',
+        field: 'gunnery' | 'piloting' | 'aeroGunnery' | 'aeroPiloting' | 'name',
         value: string | number,
         context: UnitEditContext,
     ): Promise<void> {
@@ -1285,10 +1316,12 @@ export class PageViewerMekInteractionService {
     ): void {
         const snapshot = this.currentSnapshot(member, interaction.context);
         if (!snapshot) return;
+        const runtime = member.force.getUnitSnapshot(member.id);
         this.dialogs.createDialog(ClusterTableDialogComponent, {
             data: {
                 unit: member.entity,
                 gameRules: gameRulesFor(snapshot.ruleset),
+                hasHotLoadedAmmo: runtime !== null && [...runtime.state.ammo.keys()].some(id => runtime.query.ammoHotLoaded(id)),
             },
         });
     }

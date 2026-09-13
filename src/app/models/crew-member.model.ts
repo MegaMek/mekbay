@@ -12,8 +12,8 @@ export interface CrewMemberDetails {
     readonly name: string;
     readonly gunnery: number;
     readonly piloting: number;
-    readonly asfGunnery?: number;
-    readonly asfPiloting?: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
 }
 
 export type CrewMemberEffectiveState = 'healthy' | 'ejected' | 'unconscious' | 'dead' | 'vacant';

@@ -5,6 +5,9 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { isPlainRecord } from '../utils/json-value.util';
 import { LoggerService } from './logger.service';
+import type { BaseEntity } from '../models/entity/base-entity';
+import type { UnitSummary } from '../models/unit-summary.model';
+import { resolveUnitSpritePath } from '../utils/unit-sprite-resolver';
 import {
     RepositoryAssetManifestService,
     type RepositoryAssetDescriptor,
@@ -467,9 +470,14 @@ export class SpriteStorageService {
     }
 
     /** Get the active manifest after initialization. */
-    private async getManifest(): Promise<SpriteManifest | null> {
+    public async getManifest(): Promise<SpriteManifest | null> {
         await this.initializationPromise;
         return this.manifest;
+    }
+
+    /** One display lookup for entities, summaries and extracted canvas icons. */
+    public resolveIconPath(unit: BaseEntity | UnitSummary): string {
+        return resolveUnitSpritePath(unit, this.manifest?.assignments, path => !!this.getIconInfo(path));
     }
 
     private async fetchRemoteManifestText(signal?: AbortSignal): Promise<{

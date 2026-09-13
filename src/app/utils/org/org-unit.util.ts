@@ -22,7 +22,7 @@ export function orgUnitFromSummary(summary: UnitSummary): OrgUnit {
 export function orgUnitFromEntity(entity: BaseEntity): OrgUnit {
     const alphaStrike = convertEntityToAlphaStrike(entity);
     return Object.freeze({
-        id: entity.mulId(),
+        mul1id: entity.mulId(),
         uuid: entity.uuid(),
         name: entity.displayName(),
         type: entity.unitType(),

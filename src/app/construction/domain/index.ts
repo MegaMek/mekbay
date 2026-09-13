@@ -3,3 +3,5 @@
 export * from './construction-factory';
 export * from './construction-fields';
 export * from './construction-rules';
+export * from './construction-quirk-rules';
+export * from './construction-armor-allocation';

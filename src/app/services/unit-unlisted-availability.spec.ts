@@ -18,7 +18,7 @@ describe('unlisted unit availability', () => {
         { id: 2, name: 'Late', years: { from: 3050, to: 3099 }, factions: [], units: [] },
     ];
     const none: Faction = { id: MULFACTION_NONE, name: 'None', group: 'Other', img: '', eras: {} };
-    const units = [createEmptyUnit({ id: null, name: 'Local first', year: 3050 }), createEmptyUnit({ id: null, name: 'Local second', year: 3060 })];
+    const units = [createEmptyUnit({ mul1id: null, name: 'Local first', year: 3050 }), createEmptyUnit({ mul1id: null, name: 'Local second', year: 3060 })];
 
     it('keeps separate UUID memberships from the introduction year without synthetic MUL IDs', () => {
         TestBed.configureTestingModule({ providers: [
@@ -46,6 +46,6 @@ describe('unlisted unit availability', () => {
         expect(index.getIndexedUnitIds('era', 'Early')?.size ?? 0).toBe(0);
         expect(index.getFactionEraUnitUuids(['Late'], ['None'])).toEqual(new Set(units.map(unit => unit.uuid)));
         expect(index.getFactionEraUnitUuids(['Early'], ['None']).size).toBe(0);
-        expect(units.every(unit => unit.id === null)).toBeTrue();
+        expect(units.every(unit => unit.mul1id === null)).toBeTrue();
     });
 });

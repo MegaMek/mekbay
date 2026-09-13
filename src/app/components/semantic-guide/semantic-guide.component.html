@@ -1,313 +1,567 @@
 <div class="guide-content" [class.compact]="compact()">
-    <!-- Basic Syntax -->
+  <!-- Basic Syntax -->
+  <section class="guide-section">
+    <h3>Basic Syntax</h3>
+    <p>Combine text search with filters: <code>text field=value</code></p>
+    <div class="example">
+      <code class="allow-select" (click)="appendToSearch('crab pv=20-40')">crab pv=20-40</code>
+      <span class="desc">→ Units with "crab" in chassis or model, PV between 20-40</span>
+    </div>
+  </section>
+
+  <!-- Operators -->
+  <section class="guide-section">
+    <h3>Operators</h3>
+    <table class="operators-table">
+      <tr>
+        <td><code>=</code></td>
+        <td>Include / Equal</td>
+      </tr>
+      <tr>
+        <td><code>==</code></td>
+        <td>Exclusive include - dropdown and semantic text fields only</td>
+      </tr>
+      <tr>
+        <td><code>!=</code></td>
+        <td>Exclude / Not equal</td>
+      </tr>
+      <tr>
+        <td><code>&gt;</code></td>
+        <td>Greater than</td>
+      </tr>
+      <tr>
+        <td><code>&gt;=</code></td>
+        <td>Greater than or equal</td>
+      </tr>
+      <tr>
+        <td><code>&lt;</code></td>
+        <td>Less than</td>
+      </tr>
+      <tr>
+        <td><code>&lt;=</code></td>
+        <td>Less than or equal</td>
+      </tr>
+      <tr>
+        <td><code>&amp;=</code></td>
+        <td>AND (require all) - dropdowns and text searches only</td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- Range Filters -->
+  <section class="guide-section">
+    <h3>Range Filters (Numeric)</h3>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('pv=30')">pv=30</code><span class="desc">→ Exactly 30</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('pv=20-40')">pv=20-40</code
+        ><span class="desc">→ Between 20 and 40</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('pv>=20 pv<=40')">pv&gt;=20 pv&lt;=40</code
+        ><span class="desc">→ Same as above</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('pv!=25')">pv!=25</code
+        ><span class="desc">→ Exclude 25</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('pv=20-40 pv!=30')">pv=20-40 pv!=30</code
+        ><span class="desc">→ 20-40 but not 30</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Dropdown Filters -->
+  <section class="guide-section">
+    <h3>Dropdown Filters</h3>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('type=BM')">type=BM</code
+        ><span class="desc">→ Meks only</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('type=BM,CV')">type=BM,CV</code
+        ><span class="desc">→ Meks OR Combat Vehicles</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('faction==&quot;Draconis Combine&quot;')"
+          >faction=="Draconis Combine"</code
+        ><span class="desc">→ Must match Draconis Combine and no other faction</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('type!=BA')">type!=BA</code
+        ><span class="desc">→ Exclude Battle Armor</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('faction=&quot;Draconis Combine&quot;')"
+          >faction="Draconis Combine"</code
+        ><span class="desc">→ Use quotes for spaces</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="guide-section">
+    <h3>Boolean Filters</h3>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('canon:yes')">canon:yes</code
+        ><span class="desc">&rarr; Canon units</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('canon:no')">canon:no</code
+        ><span class="desc">&rarr; Non-canon units</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('published:yes')">published:yes</code
+        ><span class="desc">&rarr; Has a published record sheet</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('published:no')">published:no</code
+        ><span class="desc">&rarr; No published record sheet</span>
+      </div>
+    </div>
+    <p class="note">
+      <strong>Aliases:</strong> Use <code>yes</code>, <code>true</code>, or <code>y</code> for positive values; use
+      <code>no</code>, <code>false</code>, or <code>n</code> for negative values.
+    </p>
+  </section>
+
+  <!-- Multistate Filters -->
+  @if (multistateFilters().length > 0) {
     <section class="guide-section">
-        <h3>Basic Syntax</h3>
-        <p>Combine text search with filters: <code>text field=value</code></p>
+      <h3>Multistate Filters (OR / AND / NOT)</h3>
+      <p>Some filters support OR, AND, and NOT modes:</p>
+      <div class="filter-list inline">
+        @for (f of multistateFilters(); track f.key) {
+          <code>{{ f.key }}</code>
+        }
+      </div>
+      <div class="examples">
         <div class="example">
-            <code class="allow-select" (click)="appendToSearch('crab pv=20-40')">crab pv=20-40</code>
-            <span class="desc">→ Units with "crab" in chassis or model, PV between 20-40</span>
+          <code class="allow-select" (click)="appendToSearch('specials=ECM,TAG')">specials=ECM,TAG</code
+          ><span class="desc">→ Has ECM OR TAG</span>
         </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('specials&=ECM,TAG')">specials&amp;=ECM,TAG</code
+          ><span class="desc">→ Has ECM AND TAG (must have both)</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('specials!=ECM')">specials!=ECM</code
+          ><span class="desc">→ Does NOT have ECM</span>
+        </div>
+      </div>
     </section>
+  }
 
-    <!-- Operators -->
+  <!-- Countable Filters -->
+  @if (countableFilters().length > 0) {
     <section class="guide-section">
-        <h3>Operators</h3>
-        <table class="operators-table">
-            <tr><td><code>=</code></td><td>Include / Equal</td></tr>
-            <tr><td><code>==</code></td><td>Exclusive include - dropdown and semantic text fields only</td></tr>
-            <tr><td><code>!=</code></td><td>Exclude / Not equal</td></tr>
-            <tr><td><code>&gt;</code></td><td>Greater than</td></tr>
-            <tr><td><code>&gt;=</code></td><td>Greater than or equal</td></tr>
-            <tr><td><code>&lt;</code></td><td>Less than</td></tr>
-            <tr><td><code>&lt;=</code></td><td>Less than or equal</td></tr>
-            <tr><td><code>&amp;=</code></td><td>AND (require all) - dropdowns and text searches only</td></tr>
-        </table>
-    </section>
-
-    <!-- Range Filters -->
-    <section class="guide-section">
-        <h3>Range Filters (Numeric)</h3>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('pv=30')">pv=30</code><span class="desc">→ Exactly 30</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('pv=20-40')">pv=20-40</code><span class="desc">→ Between 20 and 40</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('pv>=20 pv<=40')">pv&gt;=20 pv&lt;=40</code><span class="desc">→ Same as above</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('pv!=25')">pv!=25</code><span class="desc">→ Exclude 25</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('pv=20-40 pv!=30')">pv=20-40 pv!=30</code><span class="desc">→ 20-40 but not 30</span></div>
+      <h3>Quantity Constraints</h3>
+      <p>
+        Some filters support quantity:
+        <span class="filter-list inline">
+          @for (f of countableFilters(); track f.key) {
+            <code>{{ f.key }}</code>
+          }
+        </span>
+      </p>
+      <div class="examples">
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('equipment=ER*:>=2')">equipment=ER*:&gt;=2</code
+          ><span class="desc">→ At least 2 ER weapons</span>
         </div>
-    </section>
-
-    <!-- Dropdown Filters -->
-    <section class="guide-section">
-        <h3>Dropdown Filters</h3>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('type=BM')">type=BM</code><span class="desc">→ Meks only</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('type=BM,CV')">type=BM,CV</code><span class="desc">→ Meks OR Combat Vehicles</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('faction==&quot;Draconis Combine&quot;')">faction=="Draconis Combine"</code><span class="desc">→ Must match Draconis Combine and no other faction</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('type!=BA')">type!=BA</code><span class="desc">→ Exclude Battle Armor</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('faction=&quot;Draconis Combine&quot;')">faction="Draconis Combine"</code><span class="desc">→ Use quotes for spaces</span></div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('equipment=&quot;Medium Laser&quot;:3')"
+            >equipment="Medium Laser":3</code
+          ><span class="desc">→ Exactly 3 Medium Lasers</span>
         </div>
-    </section>
-
-    <section class="guide-section">
-        <h3>Boolean Filters</h3>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('canon:yes')">canon:yes</code><span class="desc">&rarr; Canon units</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('canon:no')">canon:no</code><span class="desc">&rarr; Non-canon units</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('published:yes')">published:yes</code><span class="desc">&rarr; Has a published record sheet</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('published:no')">published:no</code><span class="desc">&rarr; No published record sheet</span></div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('equipment=PPC:2-4')">equipment=PPC:2-4</code
+          ><span class="desc">→ Between 2 and 4 PPCs</span>
         </div>
-        <p class="note"><strong>Aliases:</strong> Use <code>yes</code>, <code>true</code>, or <code>y</code> for positive values; use <code>no</code>, <code>false</code>, or <code>n</code> for negative values.</p>
-    </section>
-
-    <!-- Multistate Filters -->
-    @if (multistateFilters().length > 0) {
-    <section class="guide-section">
-        <h3>Multistate Filters (OR / AND / NOT)</h3>
-        <p>Some filters support OR, AND, and NOT modes:</p>
-        <div class="filter-list inline">
-            @for (f of multistateFilters(); track f.key) {
-                <code>{{ f.key }}</code>
-            }
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('equipment=PPC:!3')">equipment=PPC:!3</code
+          ><span class="desc">→ Not exactly 3 PPCs</span>
         </div>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=ECM,TAG')">specials=ECM,TAG</code><span class="desc">→ Has ECM OR TAG</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials&=ECM,TAG')">specials&amp;=ECM,TAG</code><span class="desc">→ Has ECM AND TAG (must have both)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials!=ECM')">specials!=ECM</code><span class="desc">→ Does NOT have ECM</span></div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('equipment&=AC5:>2,CASE')">equipment&=AC5:>2,CASE</code
+          ><span class="desc">→ More than 2 AC5s and has CASE (must have both)</span>
         </div>
-    </section>
-    }
-
-    <!-- Countable Filters -->
-    @if (countableFilters().length > 0) {
-    <section class="guide-section">
-        <h3>Quantity Constraints</h3>
-        <p>Some filters support quantity: <span class="filter-list inline">@for (f of countableFilters(); track f.key) {<code>{{ f.key }}</code>}</span></p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=ER*:>=2')">equipment=ER*:&gt;=2</code><span class="desc">→ At least 2 ER weapons</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=&quot;Medium Laser&quot;:3')">equipment="Medium Laser":3</code><span class="desc">→ Exactly 3 Medium Lasers</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=PPC:2-4')">equipment=PPC:2-4</code><span class="desc">→ Between 2 and 4 PPCs</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=PPC:!3')">equipment=PPC:!3</code><span class="desc">→ Not exactly 3 PPCs</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment&=AC5:>2,CASE')">equipment&=AC5:>2,CASE</code><span class="desc">→ More than 2 AC5s and has CASE (must have both)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType=AI:>=2')">weaponType=AI:&gt;=2</code><span class="desc">→ At least 2 anti-infantry weapons</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType&=M:>=2,F')">weaponType&amp;=M:&gt;=2,F</code><span class="desc">→ At least 2 missile weapons and at least 1 flak weapon</span></div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('weaponType=AI:>=2')">weaponType=AI:&gt;=2</code
+          ><span class="desc">→ At least 2 anti-infantry weapons</span>
         </div>
-    </section>
-    }
-
-    <!-- Classic BattleTech Weapon Types -->
-    <section class="guide-section">
-        <h3>Classic BattleTech Weapon Types</h3>
-        <p><code>weaponType</code> matches intrinsic weapon properties and supports OR, AND, NOT, and quantity constraints.</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType=AI')">weaponType=AI</code><span class="desc">→ Has an anti-infantry weapon</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType=DB,DE')">weaponType=DB,DE</code><span class="desc">→ Has a direct-fire ballistic OR energy weapon</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType&=M,F')">weaponType&amp;=M,F</code><span class="desc">→ Has both missile and flak weapons</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('weaponType!=OS')">weaponType!=OS</code><span class="desc">→ Excludes units with one-shot weapons</span></div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('weaponType&=M:>=2,F')">weaponType&amp;=M:&gt;=2,F</code
+          ><span class="desc">→ At least 2 missile weapons and at least 1 flak weapon</span>
         </div>
-        <p class="note"><strong>Codes:</strong>
-            <code>A</code> Artillery,
-            <code>AE</code> Area-Effect,
-            <code>AI</code> Anti-Infantry,
-            <code>B</code> Ballistic,
-            <code>C</code> Cluster,
-            <code>DB</code> Direct-Fire Ballistic,
-            <code>DE</code> Direct-Fire Energy,
-            <code>E</code> Energy,
-            <code>F</code> Flak,
-            <code>H</code> Heat-Causing,
-            <code>M</code> Missile,
-            <code>N</code> Nuclear,
-            <code>OS</code> One-Shot,
-            <code>P</code> Pulse,
-            <code>PB</code> Point-Blank,
-            <code>R</code> Rapid-Fire,
-            <code>S</code> Switchable Ammo,
-            <code>V</code> Variable Damage,
-            <code>X</code> Explosive.
-        </p>
+      </div>
     </section>
+  }
 
-    <!-- Alpha Strike Specials -->
-    <section class="guide-section">
-        <h3>Alpha Strike Specials</h3>
-        <p><code>specials</code> can match abilities or sub-abilities inside <code>TUR(...)</code>.</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=FLK1/1/1')">specials=FLK1/1/1</code><span class="desc">→ Matches FLK1/1/1, including inside TUR(...)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=CAR>2')">specials=CAR&gt;2</code><span class="desc">→ CAR value greater than 2</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=FLK2/>2')">specials=FLK2/&gt;2</code><span class="desc">→ FLK short value 2 and medium value greater than 2</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=FLK*/<=2')">specials=FLK*/&lt;=2</code><span class="desc">→ Any FLK short value with medium value 2 or less</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=CAR[2,4]')">specials=CAR[2,4]</code><span class="desc">→ CAR value 2 or 4</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=FLK0*')">specials=FLK0*</code><span class="desc">→ Exact FLK zero-star value (included also by &gt;0)</span></div>
+  <!-- Classic BattleTech Weapon Types -->
+  <section class="guide-section">
+    <h3>Classic BattleTech Weapon Types</h3>
+    <p>
+      <code>weaponType</code> matches intrinsic weapon properties and supports OR, AND, NOT, and quantity constraints.
+    </p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('weaponType=AI')">weaponType=AI</code
+        ><span class="desc">→ Has an anti-infantry weapon</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('weaponType=DB,DE')">weaponType=DB,DE</code
+        ><span class="desc">→ Has a direct-fire ballistic OR energy weapon</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('weaponType&=M,F')">weaponType&amp;=M,F</code
+        ><span class="desc">→ Has both missile and flak weapons</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('weaponType!=OS')">weaponType!=OS</code
+        ><span class="desc">→ Excludes units with one-shot weapons</span>
+      </div>
+    </div>
+    <p class="note">
+      <strong>Codes:</strong> <code>A</code> Artillery, <code>AE</code> Area-Effect, <code>AI</code> Anti-Infantry,
+      <code>B</code> Ballistic, <code>C</code> Cluster, <code>DB</code> Direct-Fire Ballistic,
+      <code>DE</code> Direct-Fire Energy, <code>E</code> Energy, <code>F</code> Flak, <code>H</code> Heat-Causing,
+      <code>M</code> Missile, <code>N</code> Nuclear, <code>OS</code> One-Shot, <code>P</code> Pulse,
+      <code>PB</code> Point-Blank, <code>R</code> Rapid-Fire, <code>S</code> Switchable Ammo, <code>V</code> Variable
+      Damage, <code>X</code> Explosive.
+    </p>
+  </section>
+
+  <!-- Alpha Strike Specials -->
+  <section class="guide-section">
+    <h3>Alpha Strike Specials</h3>
+    <p><code>specials</code> can match abilities or sub-abilities inside <code>TUR(...)</code>.</p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=FLK1/1/1')">specials=FLK1/1/1</code
+        ><span class="desc">→ Matches FLK1/1/1, including inside TUR(...)</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=CAR>2')">specials=CAR&gt;2</code
+        ><span class="desc">→ CAR value greater than 2</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=FLK2/>2')">specials=FLK2/&gt;2</code
+        ><span class="desc">→ FLK short value 2 and medium value greater than 2</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=FLK*/<=2')">specials=FLK*/&lt;=2</code
+        ><span class="desc">→ Any FLK short value with medium value 2 or less</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=CAR[2,4]')">specials=CAR[2,4]</code
+        ><span class="desc">→ CAR value 2 or 4</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=FLK0*')">specials=FLK0*</code
+        ><span class="desc">→ Exact FLK zero-star value (included also by &gt;0)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wildcards -->
+  <section class="guide-section">
+    <h3>Wildcards</h3>
+    <p>Use <code>*</code> as wildcard in any dropdown filter value:</p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('pack=*')">pack=*</code
+        ><span class="desc">→ All units that exist in any Force Pack</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('faction=&quot;Free Worlds*&quot;')"
+          >faction="Free Worlds*"</code
+        ><span class="desc">→ Free Worlds League and similar</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('faction==&quot;Free Worlds*&quot;')"
+          >faction=="Free Worlds*"</code
+        ><span class="desc">→ Matches only Free Worlds-aligned factions and excludes mixed-faction entries</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('faction!=&quot;Free Worlds*&quot;')"
+          >faction!="Free Worlds*"</code
+        ><span class="desc">→ Exclude Free Worlds League and similar</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('era=*Republic')">era=*Republic</code
+        ><span class="desc">→ Any era ending with "Republic"</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('equipment=AC*')">equipment=AC*</code
+        ><span class="desc">→ Any AC (AC2, AC5, etc.)</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('equipment=*Laser*')">equipment=*Laser*</code
+        ><span class="desc">→ Any equipment with "Laser"</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('specials=AC*/4/*')">specials=AC*/4/*</code
+        ><span class="desc">→ Any AC special with a medium damage of 4</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('subtype=*Omni*')">subtype=*Omni*</code
+        ><span class="desc">→ All Omni subtypes</span>
+      </div>
+    </div>
+    <p class="note">
+      <strong>Tip:</strong> Wildcards support <code>=</code> (include), <code>==</code> (exclusive include),
+      <code>!=</code> (exclude), and <code>&amp;=</code> (require all).
+    </p>
+  </section>
+
+  <!-- Virtual Keys -->
+  <section class="guide-section">
+    <h3>Virtual Keys</h3>
+    <p>Combine related filters with slash notation:</p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('dmg=3/2/1')">dmg=3/2/1</code
+        ><span class="desc">→ dmgS=3, dmgM=2, dmgL=1</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('dmg=*/2/*')">dmg=*/2/*</code
+        ><span class="desc">→ dmgM=2 (any short/long)</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('dmg=*/*/*/3')">dmg=*/*/*/3</code
+        ><span class="desc">→ dmgE=3 (any short/medium/long)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Linked Filters (Alpha Strike) -->
+  <section class="guide-section">
+    <h3>Linked Filters (Alpha Strike)</h3>
+    <p>
+      The <code>motive</code> and <code>mv</code> filters work together. When both are active, movement value filtering
+      only applies to the selected motive types:
+    </p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('motive=j')">motive=j</code
+        ><span class="desc">→ Units with Jump movement (or use <code>motive=jump</code>)</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('mv=8-12')">mv=8-12</code
+        ><span class="desc">→ Units with any movement value between 8-12</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('motive=j mv>=6')">motive=j mv>=6</code
+        ><span class="desc">→ Units with Jump movement of 6+</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('motive=w,t mv=4-8')">motive=w,t mv=4-8</code
+        ><span class="desc">→ Units with Wheeled or Tracked movement between 4-8</span>
+      </div>
+    </div>
+    <p class="note">
+      <strong>Tip:</strong> Motive accepts codes (j, w, t, h, v, g) or full names (Jump, Wheeled, Tracked, Hover, VTOL,
+      WiGE).
+    </p>
+    <p class="note">
+      <strong>Note:</strong> Without a motive filter, <code>mv</code> checks any movement mode. With a motive filter,
+      only the selected modes are checked.
+    </p>
+  </section>
+
+  <!-- Boolean Logic & Grouping -->
+  <section class="guide-section">
+    <h3>Boolean Logic &amp; Grouping</h3>
+    <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('type=BM pv>50')">type=BM pv>50</code
+        ><span class="desc">→ Meks AND pv>50 (implicit AND)</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('crab or ares')">crab or ares</code
+        ><span class="desc">→ all units with "chassis" or "model" containing Crab OR Ares</span>
+      </div>
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('(type=BM pv>50) OR (type=CV pv<10)')"
+          >(type=BM pv>50) OR (type=CV pv<10)</code
+        ><span class="desc">→ Meks with pv &gt; 50 OR Vehicles with pv &lt; 10</span>
+      </div>
+    </div>
+    <p class="note">
+      <strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.
+    </p>
+  </section>
+
+  <!-- Escape Sequences -->
+  <section class="guide-section">
+    <h3>Escape Sequences</h3>
+    <p>Use backslash <code>\</code> to include special characters literally in text search:</p>
+    <div class="examples">
+      <div class="example">
+        <code class="allow-select" (click)="appendToSearch('Puma \\(Adder\\)')">Puma \(Adder\)</code
+        ><span class="desc">→ Search for "Puma (Adder)" with literal parentheses</span>
+      </div>
+    </div>
+    <p class="note"><strong>Escapable characters:</strong> <code>( ) = &gt; &lt; ! &amp; " ' \</code></p>
+  </section>
+
+  <!-- Available Fields - Classic BattleTech -->
+  <section class="guide-section fields-section">
+    <h3>Available Fields (Classic BattleTech)</h3>
+
+    <h4>Dropdown Fields</h4>
+    <div class="filter-list">
+      @for (f of cbtDropdownFilters(); track f.key) {
+        <div class="filter-item">
+          <code>{{ f.key }}</code>
+          <span class="filter-label">{{ f.label }}</span>
         </div>
-    </section>
+      }
+    </div>
 
-    <!-- Wildcards -->
-    <section class="guide-section">
-        <h3>Wildcards</h3>
-        <p>Use <code>*</code> as wildcard in any dropdown filter value:</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('pack=*')">pack=*</code><span class="desc">→ All units that exist in any Force Pack</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('faction=&quot;Free Worlds*&quot;')">faction="Free Worlds*"</code><span class="desc">→ Free Worlds League and similar</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('faction==&quot;Free Worlds*&quot;')">faction=="Free Worlds*"</code><span class="desc">→ Matches only Free Worlds-aligned factions and excludes mixed-faction entries</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('faction!=&quot;Free Worlds*&quot;')">faction!="Free Worlds*"</code><span class="desc">→ Exclude Free Worlds League and similar</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('era=*Republic')">era=*Republic</code><span class="desc">→ Any era ending with "Republic"</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=AC*')">equipment=AC*</code><span class="desc">→ Any AC (AC2, AC5, etc.)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('equipment=*Laser*')">equipment=*Laser*</code><span class="desc">→ Any equipment with "Laser"</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('specials=AC*/4/*')">specials=AC*/4/*</code><span class="desc">→ Any AC special with a medium damage of 4</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('subtype=*Omni*')">subtype=*Omni*</code><span class="desc">→ All Omni subtypes</span></div>
+    <h4>Boolean Fields</h4>
+    <div class="filter-list">
+      @for (f of cbtBooleanFilters(); track f.key) {
+        <div class="filter-item">
+          <code>{{ f.key }}</code>
+          <span class="filter-label">{{ f.label }}</span>
         </div>
-        <p class="note"><strong>Tip:</strong> Wildcards support <code>=</code> (include), <code>==</code> (exclusive include), <code>!=</code> (exclude), and <code>&amp;=</code> (require all).</p>
-    </section>
+      }
+    </div>
 
-    <!-- Virtual Keys -->
-    <section class="guide-section">
-        <h3>Virtual Keys</h3>
-        <p>Combine related filters with slash notation:</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('dmg=3/2/1')">dmg=3/2/1</code><span class="desc">→ dmgS=3, dmgM=2, dmgL=1</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('dmg=*/2/*')">dmg=*/2/*</code><span class="desc">→ dmgM=2 (any short/long)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('dmg=*/*/*/3')">dmg=*/*/*/3</code><span class="desc">→ dmgE=3 (any short/medium/long)</span></div>
+    <h4>Range Fields</h4>
+    <div class="filter-list">
+      @for (f of cbtRangeFilters(); track f.key) {
+        <div class="filter-item">
+          <code>{{ f.key }}</code>
+          <span class="filter-label">{{ f.label }}</span>
         </div>
-    </section>
+      }
+    </div>
+  </section>
 
-    <!-- Linked Filters (Alpha Strike) -->
-    <section class="guide-section">
-        <h3>Linked Filters (Alpha Strike)</h3>
-        <p>The <code>motive</code> and <code>mv</code> filters work together. When both are active, movement value filtering only applies to the selected motive types:</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('motive=j')">motive=j</code><span class="desc">→ Units with Jump movement (or use <code>motive=jump</code>)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('mv=8-12')">mv=8-12</code><span class="desc">→ Units with any movement value between 8-12</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('motive=j mv>=6')">motive=j mv>=6</code><span class="desc">→ Units with Jump movement of 6+</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('motive=w,t mv=4-8')">motive=w,t mv=4-8</code><span class="desc">→ Units with Wheeled or Tracked movement between 4-8</span></div>
+  <!-- Available Fields - Alpha Strike -->
+  <section class="guide-section fields-section">
+    <h3>Available Fields (Alpha Strike)</h3>
+
+    <h4>Dropdown Fields</h4>
+    <div class="filter-list">
+      @for (f of asDropdownFilters(); track f.key) {
+        <div class="filter-item">
+          <code>{{ f.key }}</code>
+          <span class="filter-label">{{ f.label }}</span>
         </div>
-        <p class="note"><strong>Tip:</strong> Motive accepts codes (j, w, t, h, v, g) or full names (Jump, Wheeled, Tracked, Hover, VTOL, WiGE).</p>
-        <p class="note"><strong>Note:</strong> Without a motive filter, <code>mv</code> checks any movement mode. With a motive filter, only the selected modes are checked.</p>
-    </section>
+      }
+    </div>
 
-    <!-- Boolean Logic & Grouping -->
-    <section class="guide-section">
-        <h3>Boolean Logic &amp; Grouping</h3>
-        <p>Use <code>OR</code> and <code>AND</code> keywords with parentheses for complex queries:</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('type=BM pv>50')">type=BM pv>50</code><span class="desc">→ Meks AND pv>50 (implicit AND)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('crab or ares')">crab or ares</code><span class="desc">→ all units with "chassis" or "model" containing Crab OR Ares</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('(type=BM pv>50) OR (type=CV pv<10)')">(type=BM pv>50) OR (type=CV pv<10)</code><span class="desc">→ Meks with pv &gt; 50 OR Vehicles with pv &lt; 10</span></div>
+    <h4>Boolean Fields</h4>
+    <div class="filter-list">
+      @for (f of asBooleanFilters(); track f.key) {
+        <div class="filter-item">
+          <code>{{ f.key }}</code>
+          <span class="filter-label">{{ f.label }}</span>
         </div>
-        <p class="note"><strong>Note:</strong> Filters at the same level are AND'd by default. Use <code>OR</code> to combine groups.</p>
-    </section>
+      }
+    </div>
 
-    <!-- Escape Sequences -->
-    <section class="guide-section">
-        <h3>Escape Sequences</h3>
-        <p>Use backslash <code>\</code> to include special characters literally in text search:</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('Puma \\(Adder\\)')">Puma \(Adder\)</code><span class="desc">→ Search for "Puma (Adder)" with literal parentheses</span></div>
+    <h4>Range Fields</h4>
+    <div class="filter-list">
+      @for (f of asRangeFilters(); track f.key) {
+        <div class="filter-item">
+          <code>{{ f.key }}</code>
+          <span class="filter-label">{{ f.label }}</span>
         </div>
-        <p class="note"><strong>Escapable characters:</strong> <code>( ) = &gt; &lt; ! &amp; " ' \</code></p>
-    </section>
+      }
+    </div>
+  </section>
 
-    <!-- Available Fields - Classic BattleTech -->
+  <!-- Semantic-Only Fields (Text Search) -->
+  @if (semanticFilters().length > 0) {
     <section class="guide-section fields-section">
-        <h3>Available Fields (Classic BattleTech)</h3>
-        
-        <h4>Dropdown Fields</h4>
-        <div class="filter-list">
-            @for (f of cbtDropdownFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
+      <h3>Semantic Only Fields</h3>
+      <p>
+        These fields are only available via text input (no UI panel). Text fields use <strong>exact match</strong> by
+        default, unlike the fuzzy text search. Use <code>*</code> wildcards for partial matching:
+      </p>
+      <div class="filter-list inline">
+        @for (f of semanticFilters(); track f.key) {
+          <div class="filter-item">
+            <code>{{ f.key }}</code>
+            <span class="filter-label">{{ f.label }}</span>
+          </div>
+        }
+      </div>
+      <div class="examples">
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('chassis=Crab')">chassis=Crab</code
+          ><span class="desc">→ Exact match: only "Crab" chassis</span>
         </div>
-
-        <h4>Boolean Fields</h4>
-        <div class="filter-list">
-            @for (f of cbtBooleanFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('chassis=*Crab')">chassis=*Crab</code
+          ><span class="desc">→ Ends with "Crab" (Crab, Hermit Crab, King Crab)</span>
         </div>
-
-        <h4>Range Fields</h4>
-        <div class="filter-list">
-            @for (f of cbtRangeFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('chassis=*Crab*')">chassis=*Crab*</code
+          ><span class="desc">→ Contains "Crab" anywhere</span>
         </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('chassis&=*Crab*')">chassis&amp;=*Crab*</code
+          ><span class="desc">→ Must contain "Crab" (AND logic for multiple)</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('chassis!=*Crab*')">chassis!=*Crab*</code
+          ><span class="desc">→ Excludes anything containing "Crab"</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('chassis=*Crab chassis!=Hermit*')"
+            >chassis=*Crab chassis!=Hermit*</code
+          ><span class="desc">→ Contains "Crab" but excludes "Hermit"</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('mul=5,10,11')">mul=5,10,11</code
+          ><span class="desc">→ Units with MUL ID 5, 10, or 11</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('model=*Prime')">model=*Prime</code
+          ><span class="desc">→ Prime variants only</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('model!=*Prime')">model!=*Prime</code
+          ><span class="desc">→ Exclude Prime variants</span>
+        </div>
+      </div>
+      <p class="note">
+        <strong>Note:</strong> <code>chassis</code> and <code>model</code> match exact field values, while plain text
+        search (e.g., <code>crab</code>) does fuzzy matching across both fields.
+      </p>
+      <p>
+        <code>issues</code> filters by the number of unit data issues (errors and warnings). It supports numeric
+        comparisons and ranges:
+      </p>
+      <div class="examples">
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('issues=1')">issues=1</code
+          ><span class="desc">→ Exactly 1 issue</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('issues>0')">issues&gt;0</code
+          ><span class="desc">→ Units with any issues</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('issues=0')">issues=0</code
+          ><span class="desc">→ Units without issues</span>
+        </div>
+        <div class="example">
+          <code class="allow-select" (click)="appendToSearch('issues=2-5')">issues=2-5</code
+          ><span class="desc">→ Between 2 and 5 issues</span>
+        </div>
+      </div>
     </section>
-
-    <!-- Available Fields - Alpha Strike -->
-    <section class="guide-section fields-section">
-        <h3>Available Fields (Alpha Strike)</h3>
-        
-        <h4>Dropdown Fields</h4>
-        <div class="filter-list">
-            @for (f of asDropdownFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
-        </div>
-
-        <h4>Boolean Fields</h4>
-        <div class="filter-list">
-            @for (f of asBooleanFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
-        </div>
-
-        <h4>Range Fields</h4>
-        <div class="filter-list">
-            @for (f of asRangeFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
-        </div>
-    </section>
-
-    <!-- Semantic-Only Fields (Text Search) -->
-    @if (semanticFilters().length > 0) {
-    <section class="guide-section fields-section">
-        <h3>Semantic Only Fields</h3>
-        <p>These fields are only available via text input (no UI panel). Text fields use <strong>exact match</strong> by default, unlike the fuzzy text search. Use <code>*</code> wildcards for partial matching:</p>
-        <div class="filter-list inline">
-            @for (f of semanticFilters(); track f.key) {
-                <div class="filter-item">
-                    <code>{{ f.key }}</code>
-                    <span class="filter-label">{{ f.label }}</span>
-                </div>
-            }
-        </div>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('chassis=Crab')">chassis=Crab</code><span class="desc">→ Exact match: only "Crab" chassis</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('chassis=*Crab')">chassis=*Crab</code><span class="desc">→ Ends with "Crab" (Crab, Hermit Crab, King Crab)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('chassis=*Crab*')">chassis=*Crab*</code><span class="desc">→ Contains "Crab" anywhere</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('chassis&=*Crab*')">chassis&amp;=*Crab*</code><span class="desc">→ Must contain "Crab" (AND logic for multiple)</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('chassis!=*Crab*')">chassis!=*Crab*</code><span class="desc">→ Excludes anything containing "Crab"</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('chassis=*Crab chassis!=Hermit*')">chassis=*Crab chassis!=Hermit*</code><span class="desc">→ Contains "Crab" but excludes "Hermit"</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('mul=5,10,11')">mul=5,10,11</code><span class="desc">→ Units with MUL ID 5, 10, or 11</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('model=*Prime')">model=*Prime</code><span class="desc">→ Prime variants only</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('model!=*Prime')">model!=*Prime</code><span class="desc">→ Exclude Prime variants</span></div>
-        </div>
-        <p class="note"><strong>Note:</strong> <code>chassis</code> and <code>model</code> match exact field values, while plain text search (e.g., <code>crab</code>) does fuzzy matching across both fields.</p>
-        <p><code>issues</code> filters by the number of unit data issues (errors and warnings). It supports numeric comparisons and ranges:</p>
-        <div class="examples">
-            <div class="example"><code class="allow-select" (click)="appendToSearch('issues=1')">issues=1</code><span class="desc">→ Exactly 1 issue</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('issues>0')">issues&gt;0</code><span class="desc">→ Units with any issues</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('issues=0')">issues=0</code><span class="desc">→ Units without issues</span></div>
-            <div class="example"><code class="allow-select" (click)="appendToSearch('issues=2-5')">issues=2-5</code><span class="desc">→ Between 2 and 5 issues</span></div>
-        </div>
-    </section>
-    }
+  }
 </div>

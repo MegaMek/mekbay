@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { BaseEntity } from '../models/entity/base-entity';
+import { BaseEntity } from '../models/entity/base-entity';
+import type { UnitSummary } from '../models/unit-summary.model';
 import {
   getDefaultSpriteAssignmentKeyForFacts,
   resolveUnitSpriteAssignmentPath,
@@ -12,8 +13,22 @@ import {
 
 export type UnitIconResolver = (entity: BaseEntity) => string;
 
-function spriteAssignmentFacts(entity: BaseEntity): UnitSpriteAssignmentFacts {
+function spriteAssignmentFacts(entity: BaseEntity | UnitSummary): UnitSpriteAssignmentFacts {
+  if (!(entity instanceof BaseEntity)) {
+    return {
+      resolvedIconPath: entity.icon,
+      displayName: `${entity.chassis} ${entity.model}`.trim(),
+      fullChassis: entity.chassis,
+      entityType: entity.entityType,
+      weightClass: entity.weightClass === 'Ultra Light/PA(L)/Exoskeleton' ? 'Ultra Light'
+        : entity.weightClass === 'Colossal/Super-Heavy' ? 'Super Heavy' : entity.weightClass,
+      motiveType: entity.moveType,
+      chassisConfig: entity.subtype === 'Land-Air BattleMek' ? 'LAM'
+        : entity.subtype.startsWith('QuadVee') ? 'QuadVee' : entity.moveType,
+    };
+  }
   return {
+    iconPath: entity.iconPath(),
     displayName: entity.displayName(),
     fullChassis: entity.fullChassis(),
     entityType: entity.entityType,
@@ -31,11 +46,14 @@ export function getDefaultSpriteAssignmentKey(entity: BaseEntity): string {
 }
 
 /**
- * Resolves the image path selected by MegaMek's `MekTileset.entryFor`.
- * Exact unit mappings take precedence over chassis mappings and family defaults.
+ * Explicit sprites precede MegaMek's exact, chassis and family assignments.
  */
-export function resolveUnitSpritePath(entity: BaseEntity, assignments: UnitSpriteAssignments | undefined): string {
-  return resolveUnitSpriteAssignmentPath(spriteAssignmentFacts(entity), assignments) ?? '';
+export function resolveUnitSpritePath(
+  entity: BaseEntity | UnitSummary,
+  assignments: UnitSpriteAssignments | undefined,
+  isAvailable?: (path: string) => boolean,
+): string {
+  return resolveUnitSpriteAssignmentPath(spriteAssignmentFacts(entity), assignments, isAvailable) ?? '';
 }
 
 export function createUnitIconResolver(assignments: UnitSpriteAssignments | undefined): UnitIconResolver {

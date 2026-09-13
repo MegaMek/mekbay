@@ -4,10 +4,11 @@
 
 import { WeaponEquipment } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
-import type { EntityMountedEquipment } from '../types';
+import { isMekLocation, type EntityMountedEquipment } from '../types';
 import { isEquipmentLinkSource } from './equipment-link-rules';
 import { isLaserInsulatorEquipment } from '../../laser-insulator.model';
 import { isRiscLaserPulseModule } from '../../risc-laser-mode.model';
+import { isMekEntity } from './entity-type-guards';
 
 /** Reconcile inferred relationships from the entity's current mounted equipment. */
 export function reconcileEquipmentRelationships(entity: BaseEntity): void {
@@ -70,16 +71,29 @@ export function reconcileEquipmentRelationships(entity: BaseEntity): void {
 
   const claimedMachineGuns = new Set<EntityMountedEquipment>();
   const machineGunArrays: { controller: EntityMountedEquipment; mounts: EntityMountedEquipment[] }[] = [];
+  const criticalGrid = isMekEntity(entity) ? entity.criticalSlotGrid() : undefined;
   for (const controller of mounts) {
     const equipment = controller.equipment;
     if (!(equipment instanceof WeaponEquipment) || !equipment.hasFlag('F_MGA')) continue;
-    const members = mounts.filter(candidate => {
+    const candidates = new Set(mounts.filter(candidate => {
       const weapon = candidate.equipment;
       return candidate !== controller && weapon instanceof WeaponEquipment
         && weapon.hasFlag('F_MG') && !weapon.hasFlag('F_MGA')
         && candidate.location === controller.location && weapon.rackSize === equipment.rackSize
         && !claimedMachineGuns.has(candidate);
-    }).slice(0, 4);
+    }));
+    let members: EntityMountedEquipment[] = [];
+    // Native MTF encodes separate arrays through contiguous critical blocks (MekFileParser.linkMGAs).
+    // This is a loading convention, not a construction restriction on MGA placement.
+    const slots = isMekLocation(controller.location) ? criticalGrid?.get(controller.location) : undefined;
+    for (const slot of slots ?? []) {
+      const candidate = slot.type === 'equipment' ? slot.mounts[0] : undefined;
+      if (candidate && candidates.delete(candidate)) {
+        members.push(candidate);
+        if (members.length === 4) break;
+      } else if (members.length > 0) break;
+    }
+    if (members.length === 0) members = [...candidates].slice(0, 4);
     for (const member of members) claimedMachineGuns.add(member);
     if (members.length > 0) machineGunArrays.push({ controller, mounts: members });
   }

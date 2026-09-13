@@ -124,7 +124,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     return this.equipment().some(mount => {
       const weapon = mount.equipment;
       if (mount.baMountLocation !== 'Body' || !(weapon instanceof WeaponEquipment) || !weapon.hasFlag('F_MISSILE')) return false;
-      return this.equipment().some(ammo => ammo.equipment instanceof AmmoEquipment && (ammo.getAmmoShots() ?? 0) > 0
+      return !!weapon.oneShotCount || this.equipment().some(ammo => ammo.equipment instanceof AmmoEquipment && (ammo.getAmmoShots() ?? 0) > 0
         && ammoMatchesWeapon(weapon, ammo.equipment));
     });
   });
@@ -189,6 +189,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   }
 
   override computeJumpMP(options: MovementCalculationOptions): number {
+    if (!options.ignoreBurden && this.isBurdened()) return 0;
     const equipment = this.equipment();
     if (!options.ignoreDWP && equipment.some(mount => mount.isDWP)) return 0;
 

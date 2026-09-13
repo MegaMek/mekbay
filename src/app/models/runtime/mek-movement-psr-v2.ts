@@ -214,6 +214,7 @@ export interface MekMovementPsrProjectionV2 {
     readonly jumpMp: number;
     readonly umuMp: number;
     readonly movementImpaired: boolean;
+    readonly movementImpairment: Readonly<{ walk: boolean; run: boolean; jump: boolean; umu: boolean }>;
     readonly permanentPsrModifier: number;
     readonly permanentPsrModifiers: readonly MekPsrModifier[];
     readonly pilotingTargetNumber: number;
@@ -413,6 +414,7 @@ interface MovementNumbersV2 {
     readonly controlledByDrone: boolean;
     readonly allLimbsDestroyed: boolean;
     readonly movementImpaired: boolean;
+    readonly movementImpairment: MekMovementPsrProjectionV2['movementImpairment'];
     readonly walkMp: number;
     readonly damageWalkMp: number;
     readonly potentialWalkMp: number;
@@ -633,17 +635,26 @@ export function projectMekMovementPsrV2(
         : numbers.permanentPsrModifiers;
     const permanentPsrModifier = numbers.permanentPsrModifier + (sprintSelected ? 2 : 0);
     const pilotingTargetNumber = facts.pilotingSkill + permanentPsrModifier;
-    const movementRequiresPilotCheck = (mode: 'run' | 'sprint' | 'jump'): boolean => {
+    const movementPilotChecks = (
+        mode: 'run' | 'sprint' | 'jump',
+        distance = canonicalState.movement?.mode === mode ? canonicalState.movement.distance : 0,
+    ): readonly MekPilotCheckSeedV2[] => {
         const selected = canonicalState.movement?.mode === mode;
         const declaration = Object.freeze({
             schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
             mode,
-            distance: selected ? canonicalState.movement!.distance : 0,
+            distance,
             boosterComponentIds: selected
                 ? canonicalState.movement!.boosterComponentIds
                 : Object.freeze([] as ComponentId[]),
         });
-        return movementCheckSeeds(profile, facts, pilotingTargetNumber, declaration).length > 0;
+        return movementCheckSeeds(profile, facts, pilotingTargetNumber, declaration);
+    };
+    const movementWarnings = (mode: 'run' | 'sprint' | 'jump') => {
+        const pristineMp = mode === 'jump' ? profile.movement.baseJumpMp : profile.movement.baseRunMp;
+        // Preview actually moving, even when runtime damage or heat currently prevents it.
+        const checks = pristineMp > 0 ? movementPilotChecks(mode, 1) : [];
+        return [...warnings, ...checks.map(check => warning('PILOT_CHECK_REQUIRED', check.reason))];
     };
     const standing = standUpProjection(
         profile,
@@ -665,7 +676,7 @@ export function projectMekMovementPsrV2(
         ),
             destroyed, shutdown, controlled, immobile,
             facts.conditions.has('prone'), canonicalState.carefulStand, [
-                ...warnings,
+                ...movementWarnings('run'),
                 ...(Math.max(numbers.maximumRunMp, numbers.activeRunMp) > numbers.runMp ? [warning(
                     'BOOSTER_FAILURE_CHECK',
                     'Maximum run MP uses MASC-family equipment and requires its own failure checks',
@@ -674,21 +685,21 @@ export function projectMekMovementPsrV2(
                     'HARDENED_RUN_PENALTY',
                     'Hardened armor reduces run MP by one',
                 )] : []),
-            ], Math.max(numbers.runMp, numbers.runningMinimumMp), movementRequiresPilotCheck('run')),
+            ], Math.max(numbers.runMp, numbers.runningMinimumMp), movementPilotChecks('run').length > 0),
         movementAction('sprint', 0, sprintReasons.length === 0
             ? Math.max(numbers.maximumSprintMp, numbers.activeSprintMp)
             : 0,
             destroyed, shutdown, controlled, immobile,
             facts.conditions.has('prone'), canonicalState.carefulStand, [
-                ...warnings,
+                ...movementWarnings('sprint'),
                 ...(numbers.maximumSprintMp > numbers.sprintMp ? [warning(
                     'BOOSTER_FAILURE_CHECK',
                     'Maximum Sprint MP uses MASC-family equipment and requires its own failure checks',
                 )] : []),
-            ], numbers.sprintMp, movementRequiresPilotCheck('sprint'), sprintReasons),
+            ], numbers.sprintMp, movementPilotChecks('sprint').length > 0, sprintReasons),
         movementAction('jump', 0, numbers.jumpMp, destroyed, shutdown, controlled, immobile,
-            facts.conditions.has('prone'), canonicalState.carefulStand, warnings,
-            numbers.jumpMp, movementRequiresPilotCheck('jump')),
+            facts.conditions.has('prone'), canonicalState.carefulStand, movementWarnings('jump'),
+            numbers.jumpMp, movementPilotChecks('jump').length > 0),
         movementAction('UMU', 0, numbers.umuMp, destroyed, shutdown, controlled, immobile,
             facts.conditions.has('prone'), canonicalState.carefulStand, warnings),
         getUpAction(standing, warnings),
@@ -712,6 +723,7 @@ export function projectMekMovementPsrV2(
         jumpMp: numbers.jumpMp,
         umuMp: numbers.umuMp,
         movementImpaired: numbers.movementImpaired,
+        movementImpairment: numbers.movementImpairment,
         permanentPsrModifier,
         permanentPsrModifiers,
         pilotingTargetNumber,
@@ -1564,6 +1576,13 @@ function movementNumbers(
         ? 0
         : Math.max(0, profile.movement.baseUmuMp - lostUmus);
     impaired ||= heatModifier < 0 || lostJets > 0 || wingSlotLoss > 0 || lostUmus > 0;
+    // Compare with the current equipment configuration, not the original design.
+    // Expended modular armor and discarded shields can improve that baseline.
+    const baselineWalk = preDamageWalk + (tsmActive ? 2 : 0);
+    const baselineRun = baselineWalk <= 0 ? 0 : Math.max(0, Math.round(baselineWalk * 1.5) - (hardened ? 1 : 0));
+    const baselineJump = activeLargeShields > 0 ? 0 : Math.max(0,
+        profile.movement.baseJumpMp - activeMediumShields - (modularArmorActive ? 1 : 0));
+    const baselineUmu = activeLargeShields > 0 ? 0 : profile.movement.baseUmuMp;
 
     const drone = profile.droneOperatingSystems.some(group => groupAvailable(group, facts));
     const psr = permanentPsr(profile, facts, legs, drone, hardened, modularArmorActive);
@@ -1572,6 +1591,8 @@ function movementNumbers(
         allLimbsDestroyed: profile.limbs.length > 0
             && profile.limbs.every(limb => facts.locationDestroyed(limb.locationId)),
         movementImpaired: impaired,
+        movementImpairment: Object.freeze({ walk: walk < baselineWalk, run: cappedRun < baselineRun,
+            jump: jump < baselineJump, umu: umu < baselineUmu }),
         walkMp: walk,
         damageWalkMp: damageWalk,
         potentialWalkMp: potentialWalk,
@@ -1777,9 +1798,6 @@ function commonWarnings(
         ));
     }
     if (numbers.controlledByDrone) result.push(warning('DRONE_CONTROLLED', 'The Mek is moving under its drone operating system'));
-    if (facts.destruction.committed.unavailableCriticalSlotIds.length > 0) {
-        result.push(warning('PILOT_CHECK_REQUIRED', 'Committed system damage can require a piloting check'));
-    }
     return Object.freeze(result);
 }
 

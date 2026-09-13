@@ -57,6 +57,7 @@ import { encodeNativeEntity } from './entity/write-entity';
 import { matchNativeMounts } from './entity/utils/native-mount-correspondence';
 import { makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
 import type { NativeUnitSourceHandle } from './native-unit-source-handle';
+import { TestAeroSpaceFighterEntity } from './entity/testing/test-entities';
 
 const dataService = {
     getFactionById: () => null,
@@ -76,7 +77,7 @@ function refitCopy(entity: BaseEntity, uuid = asUnitUuid('019f6767-0dcb-7bb8-992
 const optionsService = {
     options: () => ({
         CBTRules: CORE_2026_RULESET,
-        CBTOptionalRules: { forcedWithdrawal: true, sprinting: false },
+        CBTOptionalRules: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false },
     }),
 } as unknown as OptionsService;
 
@@ -918,7 +919,7 @@ describe('CBTForce V2 encounter persistence', () => {
         const unitId = 'unit:clone:second';
         const stationId = force.getUnitCrewProfile(unitId)!.positions[0].positionId;
         const originalPilot = force.getAssignedPerson(unitId, stationId)!;
-        const reserve = force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, piloting: 3,
+        const reserve = force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, piloting: 3, aeroGunnery: 6, aeroPiloting: 7,
             health: { wounds: 2, unconscious: false, ejected: false } })!;
         expect(await force.detachUnitCrew(unitId)).toBeTrue();
         expect(force.getUnitCrewProfile(unitId)!.positions).toEqual([]);
@@ -931,10 +932,12 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(restored.personnel().people.find(person => person.id === reserve.id)?.health?.wounds).toBe(2);
         expect(await restored.assignPersonToUnit(reserve.id, unitId, stationId)).toBeTrue();
         expect(restored.getAssignedPerson(unitId, stationId)?.id).toBe(reserve.id);
-        expect(restored.getUnitCrewProfile(unitId)!.positions[0]).toEqual(jasmine.objectContaining({ name: 'Reserve', gunnery: 2, piloting: 3 }));
+        expect(restored.getUnitCrewProfile(unitId)!.positions[0]).toEqual(jasmine.objectContaining({ name: 'Reserve', gunnery: 2, piloting: 3, aeroGunnery: 6, aeroPiloting: 7 }));
         expect(mekRuntimeSnapshot(restored, unitId).query.crewState(stationId).wounds).toBe(2);
         expect(restored.getAssignedPerson(unitId, stationId)?.health).toBeUndefined();
         const again = await restored.serializeForPersistence() as SerializedCBTForce;
+        const assignedReload = await reload(decodeForceFromStorage(encodeForceForStorage(again)) as SerializedCBTForce);
+        expect(assignedReload.getUnitCrewProfile(unitId)!.positions[0]).toEqual(jasmine.objectContaining({ gunnery: 2, piloting: 3, aeroGunnery: 6, aeroPiloting: 7 }));
         expect(again.personnel?.people.map(person => person.id)).toEqual(saved.personnel?.people.map(person => person.id));
         expect(await restored.dispatchCanonicalRosterCommand({ kind: 'remove-member', instanceId: unitId })).toEqual(jasmine.objectContaining({ accepted: true }));
         expect(restored.personnel().assignments.some(assignment => assignment.personId === reserve.id)).toBeFalse();
@@ -957,6 +960,29 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(force.getAssignedPerson(unitId, profile.positions[0].positionId)!.name).toBeUndefined();
         const serialized = await force.serializeForPersistence() as SerializedCBTForce;
         expect(serialized.personnel?.people.find(person => person.id === personId)?.name).toBeUndefined();
+    });
+
+    it('uses aerospace ratings on an Aero unit and preserves both sets through crew edits, undo and storage', async () => {
+        const { force, instanceId, reload } = await readyEntityForce({ entity: new TestAeroSpaceFighterEntity() });
+        const positionId = force.getUnitCrewProfile(instanceId)!.positions[0].positionId;
+        const personId = force.getAssignedPerson(instanceId, positionId)!.id;
+        expect(await force.updatePerson(personId, { gunnery: 1, piloting: 2, aeroGunnery: 6, aeroPiloting: 7 })).toBeTrue();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.crew[0])
+            .toEqual(jasmine.objectContaining({ gunnery: 6, piloting: 7 }));
+        const profile = force.getUnitCrewProfile(instanceId)!;
+        expect(await force.replaceUnitCrewProfile(instanceId, profile.positions.map(row => ({ ...row, aeroGunnery: 3 })))).not.toBeNull();
+        expect(force.getAssignedPerson(instanceId, positionId)).toEqual(jasmine.objectContaining({
+            gunnery: 1, piloting: 2, aeroGunnery: 3, aeroPiloting: 7,
+        }));
+        expect(await force.undoRuntimeCommand()).toEqual(jasmine.objectContaining({ accepted: true }));
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.crew[0].gunnery).toBe(6);
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getAssignedPerson(instanceId, positionId)).toEqual(jasmine.objectContaining({
+            gunnery: 1, piloting: 2, aeroGunnery: 6, aeroPiloting: 7,
+        }));
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.crew[0])
+            .toEqual(jasmine.objectContaining({ gunnery: 6, piloting: 7 }));
     });
 
     it('atomically swaps occupied people after combat, preserves damage and pending state, and undoes both stations together', async () => {
@@ -2244,6 +2270,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(await force.synchronizeOptionalRules({
             forcedWithdrawal: true,
             sprinting: true,
+            hotLoadedAmmo: false,
         })).toBeTrue();
         const enabled = mekRuntimeSnapshot(force, instanceId);
         const enabledMovement = enabled.query.mekMovementPsr();
@@ -2257,6 +2284,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(await force.synchronizeOptionalRules({
             forcedWithdrawal: true,
             sprinting: true,
+            hotLoadedAmmo: false,
         })).toBeFalse();
 
         const declared = await force.dispatchUnitCommand(instanceId, {
@@ -2281,6 +2309,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(await force.synchronizeOptionalRules({
             forcedWithdrawal: true,
             sprinting: false,
+            hotLoadedAmmo: false,
         })).toBeTrue();
         expect(mekRuntimeSnapshot(force, instanceId).state.movementPsr.movement).toBeNull();
         expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();

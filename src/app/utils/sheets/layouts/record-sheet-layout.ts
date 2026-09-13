@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import type { PaperdollPipLayout } from '../paperdoll-generator';
 import type {
     CompactRecordSheetKind,
@@ -25,6 +26,8 @@ import {
 export type RecordSheetSvgFormat = RecordSheetPageFormat | 'compact' | 'auto';
 
 export interface RecordSheetLayoutRequest {
+    readonly ruleset?: CBTRuleset;
+    readonly showQuirks?: boolean;
     readonly format: RecordSheetSvgFormat;
     readonly page: RecordSheetPageProfile;
     readonly profile: RecordSheetLayoutProfile;
@@ -163,8 +166,7 @@ export abstract class CompactRecordSheetLayout implements RecordSheetLayout {
     }
 }
 
-/** Safe fallback for explicitly mixed compact blocks. Normal force planning keeps
- * families homogeneous, so no family-specific supplement is applied here. */
+/** Mixed compact blocks share one masthead and footer, without family-specific supplements. */
 export function composeMixedCompactRecordSheetPage(
     blocks: readonly SVGSVGElement[],
     profile: RecordSheetPageProfile,
@@ -174,8 +176,8 @@ export function composeMixedCompactRecordSheetPage(
     drawPageChrome(page, compactPageTitle(blocks), profile, true, {
         titleLines: ['CLASSIC BATTLETECH', 'RECORD SHEET'],
     });
-    const finalBottom = appendCompactBlocks(page, blocks, profile, profile.compactContentY, true);
-    if (finalBottom <= profile.height - profile.margin - 14) drawGeneratedFooter(page, profile);
+    appendCompactBlocks(page, blocks, profile, profile.compactContentY, true);
+    drawGeneratedFooter(page, profile);
     page.setAttribute('data-mekbay-unit-count', String(blocks.length));
     return page;
 }
@@ -186,7 +188,7 @@ function appendCompactBlocks(
     profile: RecordSheetPageProfile,
     startY: number,
     omitVehicleChrome: boolean,
-): number {
+): void {
     let y = startY;
     let previousY = y;
     let previousHeight = 0;
@@ -228,7 +230,6 @@ function appendCompactBlocks(
             : height + profile.compactGap;
         previousKind = kind;
     });
-    return previousY + previousHeight;
 }
 
 /** A composed page is one SVG document, so every copied block must have its own

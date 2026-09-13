@@ -11,7 +11,7 @@ import type { ForceAvailabilityContext } from './force-availability.util';
 
 function createUnit(id: number, year: number): UnitSummary {
     return createEmptyUnit({
-        id,
+        mul1id: id,
         name: `Unit ${id}`,
         chassis: 'Test',
         model: 'Unit',

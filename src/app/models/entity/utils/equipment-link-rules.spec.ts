@@ -71,6 +71,13 @@ describe('equipment link rules', () => {
     expect(isArtemisCompatibleWeapon(compatible)).toBeTrue();
     expect(isArtemisCompatibleWeapon(incompatible)).toBeFalse();
   });
+
+  it('preserves Core 2026 Artemis IV compatibility for Extended LRMs', () => {
+    // Core Rulebook pp.186,192 explicitly includes ELRMs; older TO:AUE differs.
+    const launcher = weapon('Extended LRM', { ammoType: 'EXLRM' }, ['F_ARTEMIS_COMPATIBLE']);
+    expect(isArtemisCompatibleWeapon(launcher.equipment)).toBeTrue();
+    expect(canLinkEquipment(enhancement('artemis', 'F_ARTEMIS'), launcher, { year: 3145 })).toBeTrue();
+  });
 });
 
 function enhancement(id: string, flag: EquipmentFlag, location = 'Front'): EntityMountedEquipment {

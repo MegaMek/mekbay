@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - next
+      - dev
 
 concurrency:
   group: pr-tests-${{ github.event.pull_request.number }}
@@ -36,6 +37,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check deployment scripts
+        run: |
+          for script in scripts/{deploy,activate-release,test-activate-release,test-deploy}.sh; do bash -n "$script"; done
+          bash scripts/test-activate-release.sh
+          bash scripts/test-deploy.sh
 
       - name: Generate metadata
         env:

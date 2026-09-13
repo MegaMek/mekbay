@@ -319,10 +319,8 @@ export function applyMekWeaponFirePlanV2(
     for (const spend of plan.ammoSpends) {
         const current = ammo.get(spend.sourceId);
         ammo.set(spend.sourceId, Object.freeze({
+            ...current,
             shotsSpent: (current?.shotsSpent ?? 0) + spend.amount,
-            ...(current?.munitionOverride === undefined
-                ? {}
-                : { munitionOverride: current.munitionOverride }),
         }));
     }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { GameSystem } from '../common.model';
+import { MAX_EMBEDDED_CUSTOM_DESIGNS, CustomDesignCapacityError, decompressEmbeddedCustomDesigns } from '../custom-design-policy';
 import { canonicalizeForcePersonnel,type ForcePersonnelSnapshot } from '../force-personnel';
 import type { ASSerializedForce,SerializedCBTForce,SerializedForce } from '../force-serialization';
 import { createMekUnit,restoreMekUnit } from './cbt-mek-unit';
@@ -17,10 +18,12 @@ type SerializedCBTUnitV2,
 import { componentIdForMount } from './unit-runtime-index';
 
 import { TestAeroSpaceFighterEntity,TestTankEntity } from '../entity/testing/test-entities';
-import { addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
+import { encodeNativeEntity } from '../entity/write-entity';
 import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './non-mek-unit-persistence';
 import {
 createDirectMekRuntimeFixture,
+createDirectHotLoadedAmmoRuntimeFixture,
 createDirectModularArmorRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 
@@ -43,6 +46,110 @@ UNIT_STATE_INITIALIZER_REVISION,
 } from './unit-state-initializer';
 
 describe('force storage codec', () => {
+    it('keeps omitted aerospace ratings at their defaults independently of ground ratings', () => {
+        const force = damagedForce();
+        const people = force.personnel!.people.map(person => ({ ...person, gunnery: 2, piloting: 3 }));
+        const stored = encodeForceForStorage({ ...force, personnel: { ...force.personnel!, people } });
+        const crew = (storedUnit(stored)['crew'] as Record<string, unknown>[])[0];
+        expect(crew['ag']).toBeUndefined();
+        expect(crew['ap']).toBeUndefined();
+        const independent = decodeForceFromStorage(stored).personnel!.people[0];
+        expect(independent.gunnery).toBe(2);
+        expect(independent.aeroGunnery).toBeUndefined(); // canonical standard 4
+        expect(independent.piloting).toBe(3);
+        expect(independent.aeroPiloting).toBeUndefined(); // canonical standard 5
+        crew['ag'] = null;
+        expect(() => decodeForceFromStorage(stored)).toThrow();
+    });
+    for (const skills of [[4, 5, 4, 5], [2, 3, 4, 5], [4, 5, 2, 3], [2, 3, 6, 7], [3, 4, 3, 4], [0, 0, 0, 0]]) {
+        it(`stores independent sparse skills and round trips ${skills.join('/')}`, () => {
+            const [gunnery, piloting, aeroGunnery, aeroPiloting] = skills;
+            const force = damagedForce();
+            const people = force.personnel!.people.map(person => ({ ...person, gunnery, piloting, aeroGunnery, aeroPiloting }));
+            const stored = encodeForceForStorage({ ...force, personnel: { ...force.personnel!, people } });
+            const crew = (storedUnit(stored)['crew'] as Record<string, unknown>[])[0];
+            for (const [key, index, standard] of [['g', 0, 4], ['p', 1, 5], ['ag', 2, 4], ['ap', 3, 5]] as const) {
+                expect(crew[key]).toBe(skills[index] === standard ? undefined : skills[index]);
+            }
+            const person = decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).personnel!.people[0];
+            expect([person.gunnery ?? 4, person.piloting ?? 5, person.aeroGunnery ?? 4, person.aeroPiloting ?? 5]).toEqual(skills);
+        });
+    }
+
+    it('rejects null Aerospace piloting skills', () => {
+        const stored = encodeForceForStorage(damagedForce());
+        const crew = (storedUnit(stored)['crew'] as Record<string, unknown>[])[0];
+        crew['ap'] = null;
+        expect(() => decodeForceFromStorage(stored)).toThrow();
+    });
+    for (const family of ['mek', 'non-mek'] as const) {
+        it(`preserves full hot-loaded ammo bins in compact ${family} saves`, () => {
+            const fixture = createDirectHotLoadedAmmoRuntimeFixture();
+            const bin = fixture.equipmentComponent('Test Artemis Ammo');
+            const tank = new TestTankEntity(fixture.equipment);
+            tank.uuid.set(fixture.identity);
+            const ammoMount = addTestEquipment(tank, bin.mount.equipment!, { shotsCount: 12 });
+            const runtime = family === 'mek' ? fixture.instance : createNonMekUnit(tank, {
+                instanceId: 'unit:hot-tank', uuid: fixture.identity, deployment: { id: 'default' },
+                scenario: { id: 'megamek', options: { hotLoadedAmmo: true } }, initialStateProfileId: 'pristine',
+            });
+            expect(runtime.dispatch({ type: 'configure-ammo-source',
+                componentId: family === 'mek' ? bin.id : componentIdForMount(ammoMount),
+                munitionKey: 'Test Artemis Ammo', remaining: 12, hotLoaded: true }).changed).toBeTrue();
+            const unit = runtime.serialize();
+            const stored = encodeForceForStorage(forceWithUnit(unit, 'force:hot-loaded', 'Hot-loaded'));
+            const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+            expect(decoded.cbt!.units[0].unit.ammoState).toEqual(unit.ammoState);
+            expect(decoded.cbt!.units[0].unit.ammoState?.[0].hotLoaded).toBeTrue();
+        });
+    }
+    for (const family of ['mek', 'non-mek'] as const) {
+        it(`keeps a ${family} custom native source portable through compact force JSON`, async () => {
+            const fixture = createDirectMekRuntimeFixture();
+            const tank = new TestTankEntity();
+            tank.uuid.set(fixture.identity);
+            const entity = family === 'mek' ? fixture.entity : tank;
+            const runtime = family === 'mek' ? fixture.instance : createNonMekUnit(tank, {
+                instanceId: 'unit:portable-custom-tank', uuid: fixture.identity,
+                deployment: { id: 'default' }, scenario: { id: 'megamek', ruleset: 'core-2026' },
+                initialStateProfileId: 'pristine-non-mek-v1',
+            });
+            const customSource = { format: family === 'mek' ? 'mtf' as const : 'blk' as const,
+                source: encodeNativeEntity(entity) };
+            const unit = { ...runtime.serialize(), customSource };
+            const stored = encodeForceForStorage(forceWithUnit(unit, `force:portable-${family}`, 'Portable custom'));
+            expect(storedUnit(stored)['customDesign']).toBe(0);
+            const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+            expect(decoded.cbt!.units[0].unit.customSource).toEqual(customSource);
+            await expectAsync(validateSerializedCBTForceV2(decoded.cbt)).toBeResolved();
+
+            const missingDesign = JSON.parse(JSON.stringify(stored));
+            delete missingDesign.customDesigns;
+            expect(() => decodeForceFromStorage(missingDesign)).toThrowError('Invalid embedded custom design reference');
+        });
+    }
+
+    it('writes every custom design at the cap and refuses a twenty-first design', () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const original = fixture.instance.serialize();
+        const base = forceWithUnit(original, 'force:custom-cap', 'Custom cap');
+        const makeForce = (count: number): SerializedCBTForce => {
+            const units = Array.from({ length: count }, (_, i) => {
+                const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-' + String(i + 1).padStart(12, '0'));
+                fixture.entity.uuid.set(uuid);
+                const instanceId = 'unit:cap:' + i;
+                const unit = { ...original, entity: uuid, instanceId, customSource: { format: 'mtf' as const, source: encodeNativeEntity(fixture.entity) } };
+                return { instanceId, stateRevision: unit.stateRevision, unit };
+            });
+            return { ...base, personnel: { people: [], assignments: [] }, cbt: { ...base.cbt, units,
+                roster: { ...base.cbt.roster, groups: [{ ...base.cbt.roster.groups[0], members: units.map((row, order) => ({ instanceId: row.instanceId, order })) }] } } };
+        };
+        const stored = encodeForceForStorage(makeForce(MAX_EMBEDDED_CUSTOM_DESIGNS));
+        expect(decompressEmbeddedCustomDesigns(stored['customDesigns'])).toHaveSize(MAX_EMBEDDED_CUSTOM_DESIGNS);
+        expect((stored['units'] as Record<string, unknown>[]).map(u => u['customDesign'])).toEqual(Array.from({ length: MAX_EMBEDDED_CUSTOM_DESIGNS }, (_, i) => i));
+        expect(() => encodeForceForStorage(makeForce(MAX_EMBEDDED_CUSTOM_DESIGNS + 1))).toThrowError(CustomDesignCapacityError);
+    });
+
     it('owns queued Alpha Strike state independently of later source edits', () => {
         const force: ASSerializedForce = {
             version: 2, timestamp: '2026-09-01T12:00:00.000Z',
@@ -861,17 +968,13 @@ describe('force storage codec', () => {
         expect(decodeForceFromStorage(stored)).toEqual(force);
     });
 
-    it('rejects dangling or duplicate roster membership and the unused previous V2 draft', () => {
+    it('rejects dangling or duplicate roster membership', () => {
         const stored = encodeForceForStorage(damagedForce());
         for (const indices of [[1], [0, 0], []]) {
             const invalid = structuredClone(stored);
             (invalid['groups'] as Record<string, unknown>[])[0]!['unitIndices'] = indices;
             expect(() => decodeForceFromStorage(invalid)).toThrow();
         }
-        const oldDraft = { ...stored, cbt: { r: 1, u: stored['units'], g: stored['groups'] } };
-        delete (oldDraft as Record<string, unknown>)['units'];
-        delete (oldDraft as Record<string, unknown>)['groups'];
-        expect(() => decodeForceFromStorage(oldDraft)).toThrow();
     });
 
     it('round-trips reserves and an abandoned CBT unit without manufacturing occupants', async () => {
@@ -928,15 +1031,6 @@ describe('force storage codec', () => {
         expect(decodeForceFromStorage(JSON.parse(JSON.stringify(force)))).toEqual(force);
         const { version: _version, ...preVersionForce } = force;
         expect(decodeForceFromStorage(preVersionForce)).toEqual(force);
-    });
-
-    it('rejects non-current UUID spellings in V2 storage', () => {
-        const force = damagedForce();
-        const stored = structuredClone(encodeForceForStorage(force));
-        const compactUnit = storedUnitState(stored);
-        storedUnit(stored)['uuid'] = force.cbt.units[0]!.unit.entity;
-
-        expect(() => decodeForceFromStorage(stored)).toThrowError(/compact UUID/u);
     });
 
     it('keeps pending and committed Mek crew death distinct on the compact wire', () => {

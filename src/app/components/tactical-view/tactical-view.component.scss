@@ -213,11 +213,6 @@ h1 {
     padding: 0;
 }
 
-.condition-menu-toggle svg {
-    width: 13px;
-    height: 13px;
-}
-
 .state-chip.condition-status-chip {
     display: inline-flex;
     align-items: center;
@@ -297,9 +292,7 @@ h1 {
 }
 
 .nav-arrow-symbol {
-    flex: 0 0 auto;
-    font-size: 2rem;
-    line-height: 1;
+    --chevron-size: 24px;
 }
 
 .nav-unit-name {
@@ -732,16 +725,6 @@ tactical-turn-tracker {
     width: 22px;
     height: 22px;
     padding: 0;
-}
-
-.row-expand-button svg {
-    width: 13px;
-    height: 13px;
-    transition: transform 120ms ease;
-}
-
-.inventory-entry.expanded .row-expand-button svg {
-    transform: rotate(180deg);
 }
 
 .inventory-nested-row {

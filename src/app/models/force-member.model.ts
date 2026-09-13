@@ -3,6 +3,7 @@
 
 import { computed, signal } from '@angular/core';
 import type { CBTForce } from './cbt-force.model';
+import type { CBTRuleset } from './cbt-ruleset.model';
 import type { ASForceUnit } from './as-force-unit.model';
 import type { BaseEntity } from './entity/base-entity';
 import type { UnitSummary } from './unit-summary.model';
@@ -10,6 +11,7 @@ import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import type { ForceViewerBVPVDisplayDamage, RecordSheetPipLayout } from './options.model';
 import type { NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 import { effectiveEntityPilotingSkill } from './entity/utils/battle-value/skill-facts';
+import { crewSkillsForUnit } from './unit-crew-policy';
 
 import type { RecordSheetPageFormat } from '../utils/sheets/record-sheet-layout';
 
@@ -27,6 +29,7 @@ export class CBTForceMember {
     #recordSheetPageFormat: RecordSheetPageFormat = 'letter';
     #recordSheetShowQuirks = true;
     #recordSheetArtwork: string | null = null;
+    #recordSheetRuleset: CBTRuleset | undefined;
     readonly #recordSheetIndex = signal(0);
     readonly #runtime = signal<Readonly<{
         owner: object | null;
@@ -102,8 +105,10 @@ export class CBTForceMember {
         pageFormat: RecordSheetPageFormat = 'letter',
         showQuirks = true,
         fluffImageUrl: string | null = null,
+        ruleset?: CBTRuleset,
     ): Promise<readonly SVGSVGElement[]> {
-        if (this.#recordSheetPipLayout !== pipLayout || this.#recordSheetPageFormat !== pageFormat || this.#recordSheetShowQuirks !== showQuirks || this.#recordSheetArtwork !== fluffImageUrl) {
+        if (this.#recordSheetPipLayout !== pipLayout || this.#recordSheetPageFormat !== pageFormat || this.#recordSheetShowQuirks !== showQuirks || this.#recordSheetArtwork !== fluffImageUrl || this.#recordSheetRuleset !== ruleset) {
+            this.#recordSheetRuleset = ruleset;
             this.#recordSheetArtwork = fluffImageUrl;
             this.#recordSheetShowQuirks = showQuirks;
             this.#recordSheetPipLayout = pipLayout;
@@ -256,9 +261,12 @@ export function forceMemberPilotStats(value: ForceMember): string {
     return value.force.getUnitCrewPolicy(value.id).positions.map(position => {
         const person = value.force.getAssignedPerson(value.id, position.positionId);
         if (!person) return '—';
-        return isCBTForceMember(value)
-            ? `${person.gunnery ?? 4}/${effectiveEntityPilotingSkill(value.entity, person.piloting ?? 5)}`
-            : String(person.gunnery ?? 4);
+        if (!isCBTForceMember(value)) return String(person.gunnery ?? 4);
+        const skill = crewSkillsForUnit(person, value.entity.unitType(), value.entity.unitSubtype());
+        if (value.entity.unitSubtype() === 'Land-Air BattleMek') {
+            return `${person.gunnery ?? 4}/${person.piloting ?? 5} · ASF ${person.aeroGunnery ?? 4}/${person.aeroPiloting ?? 5}`;
+        }
+        return `${skill.gunnery}/${effectiveEntityPilotingSkill(value.entity, skill.piloting)}`;
     }).join(' · ');
 }
 

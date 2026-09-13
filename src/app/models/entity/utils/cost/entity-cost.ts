@@ -32,6 +32,8 @@ import { calculateMekCostReport } from './meks';
 import { calculateProtoMekCostReport } from './protomeks';
 import { calculateSmallCraftCostReport } from './small-craft';
 import { calculateVehicleCostReport } from './vehicles';
+import type { StaticEmplacementEntity } from '../../entities/misc/static-emplacement-entity';
+import { calculateBuildingCostReport } from './buildings';
 
 export interface EntityCostOptions {
   /** Excludes ammunition other than coolant pods. MegaMek's exported cost uses false. */
@@ -46,6 +48,9 @@ export function calculateEntityCostDetails(
   const ignoreAmmo = options.ignoreAmmo ?? false;
   const equipment = calculateMountedEquipmentCostBreakdown(entity, ignoreAmmo);
   const equipmentCost = equipment.total;
+  if (entity.entityType === 'BuildingEntity' || entity.entityType === 'MobileStructure') {
+    return calculateBuildingCostReport(entity as StaticEmplacementEntity, equipment.entries);
+  }
 
   // MegaMek prices a handheld weapon's equipment once as its structure and
   // once as its equipment payload.

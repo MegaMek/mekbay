@@ -98,7 +98,8 @@ export class PageViewerShadowRenderService {
 
             if (!boundSvg && sourceSvg) {
                 boundSvg = sourceSvg.cloneNode(true) as SVGSVGElement;
-                boundSvg.style.pointerEvents = 'none';
+                boundSvg.classList.remove('interactive-sheet');
+                boundSvg.querySelectorAll('[tabindex]').forEach(element => element.removeAttribute('tabindex'));
                 wrapper.insertBefore(boundSvg, wrapper.firstChild);
             }
 

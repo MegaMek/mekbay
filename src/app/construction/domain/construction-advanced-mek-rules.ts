@@ -4,8 +4,12 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { MekEntity, MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
 import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
-import { calculateTechLevel, compareTechLevels, isTechnologyAvailable, type ComponentTechLevel, type EntityValidationMessage, type TechAdvancement } from '../../models/entity/types';
-import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
+import { type EntityValidationMessage, type TechAdvancement } from '../../models/entity/types';
+import { isImprovedJumpJetEquipment } from '../../models/jump-equipment.model';
+import { constructionEngineTechnology, constructionTechnologyEligibility, constructionTechnologyYearLabel } from './construction-technology-rules';
+import { constructionCockpitApplies, constructionEngineApplies, constructionGyroApplies,
+    constructionGyroTechnology, constructionFullHeadEjectionApplies, constructionOmniWeaponRemovesArmActuators } from './construction-system-rules';
+import { constructionEquipmentChassisMessages } from './construction-family-rules';
 
 /** Construction combinations from TestMek.hasIllegalEquipmentCombinations and TestEntity. */
 export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValidationMessage[] {
@@ -14,18 +18,18 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     const add = (code: string, message: string, location?: string, category: EntityValidationMessage['category'] = 'equipment') =>
         messages.push({ severity: 'error', category, code, message, location });
     const mounts = entity.equipment();
+    const selectedSink = entity.heatSinkEquipment();
+    if (selectedSink && !mounts.some(mount => mount.equipmentId === selectedSink.id)) {
+        messages.push(...constructionEquipmentChassisMessages(entity, selectedSink));
+    }
     const has = (...flags: EquipmentFlag[]) => mounts.some(mount => mount.equipment?.hasAnyFlag(flags));
     const misc = mounts.filter(mount => mount.equipment instanceof MiscEquipment);
-    const masc = misc.some(mount => mount.equipment!.hasFlag('F_MASC') && !mount.equipment!.hasFlag('S_SUPERCHARGER'));
     const advancedMyomer = entity.myomerType() !== 'Standard' || has('F_TSM', 'F_INDUSTRIAL_TSM', 'F_SCM');
-    const targeting = has('F_TARGETING_COMPUTER');
+    if (entity.isSuperHeavy() && advancedMyomer) add('MEK_SUPERHEAVY_MYOMER', 'Superheavy Meks cannot use advanced myomers.');
+    if (entity.isIndustrial() && ['Triple Strength', 'Super-Cooled'].includes(entity.myomerType())) add('MEK_INDUSTRIAL_MYOMER_TYPE', 'IndustrialMeks may use standard or industrial triple-strength myomers.');
+    if (!entity.isIndustrial() && entity.myomerType() === 'Industrial Triple Strength') add('MEK_BATTLE_MYOMER_TYPE', 'Industrial triple-strength myomers require an IndustrialMek.');
     const aes = misc.filter(mount => mount.equipment!.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM'));
-    // TestMek: MASC excludes superchargers; unlike MASC, a supercharger can coexist with AES/TSM.
-    if (masc && advancedMyomer) add('MEK_MASC_MYOMER', 'MASC cannot be combined with advanced myomers.');
     if (aes.length) {
-        if (masc) add('MEK_AES_MASC', 'Actuator enhancement systems cannot be combined with MASC.');
-        if (targeting) add('MEK_AES_TARGETING', 'Actuator enhancement systems cannot be combined with targeting computers.');
-        if (advancedMyomer) add('MEK_AES_MYOMER', 'Actuator enhancement systems cannot be combined with advanced myomers.');
         const locations = new Set(aes.map(mount => mount.location));
         for (const location of locations) if (aes.filter(mount => mount.location === location).length > 1) {
             add('MEK_AES_DUPLICATE', 'Only one actuator enhancement system is permitted per location.', location);
@@ -43,24 +47,12 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     const c3 = has('F_C3S', 'F_C3SBS', 'F_C3M', 'F_C3MBS', 'F_C3I');
     const anyC3 = c3 || has('F_NOVA', 'F_NAVAL_C3');
     if (stealth && !has('F_ECM')) add('MEK_STEALTH_ECM', 'Stealth armor requires an ECM suite.');
-    if (has('F_NULL_SIG')) {
-        if (stealth) add('MEK_NULL_STEALTH', 'Null-signature systems cannot be combined with stealth armor.');
-        if (targeting) add('MEK_NULL_TARGETING', 'Null-signature systems cannot be combined with targeting computers.');
-        if (has('F_VOID_SIG')) add('MEK_NULL_VOID', 'Null-signature and void-signature systems cannot be combined.');
-        // Nova CEWS is explicitly exempt from the null-signature restriction.
-        if (c3) add('MEK_NULL_C3', 'Null-signature systems cannot be combined with C3 or C3i.');
-    }
     if (has('F_VOID_SIG')) {
         if (!has('F_ECM')) add('MEK_VOID_ECM', 'Void-signature systems require an ECM suite.');
-        if (stealth) add('MEK_VOID_STEALTH', 'Void-signature systems cannot be combined with stealth armor.');
-        if (targeting) add('MEK_VOID_TARGETING', 'Void-signature systems cannot be combined with targeting computers.');
-        if (anyC3) add('MEK_VOID_C3', 'Void-signature systems cannot be combined with C3, C3i or Nova CEWS.');
     }
-    if (has('F_CHAMELEON_SHIELD') && (stealth || has('F_VOID_SIG'))) add('MEK_CHAMELEON_SIGNATURE', 'Chameleon shields cannot be combined with stealth armor or void-signature systems.');
 
     const repairs = misc.filter(mount => mount.equipment!.hasAnyFlag(['F_HARJEL_II', 'F_HARJEL_III']));
     if (repairs.length) {
-        if (has('F_HARJEL_II') && has('F_HARJEL_III')) add('MEK_HARJEL_GENERATION', 'HarJel II and HarJel III cannot be combined.');
         if (entity.isIndustrial()) add('MEK_HARJEL_INDUSTRIAL', 'IndustrialMeks cannot mount HarJel II or III repair systems.');
         for (const location of new Set(repairs.map(mount => mount.location))) {
             if (repairs.filter(mount => mount.location === location).length > 1) add('MEK_HARJEL_DUPLICATE', 'Only one HarJel repair system is permitted per location.', location);
@@ -72,12 +64,64 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     }
 
     const cockpit = entity.mountedCockpit();
-    if (entity.hasFullHeadEjectionSystem() && ['Torso-Mounted', 'Command Console'].includes(entity.cockpitType())) add('MEK_HEAD_EJECTION_COCKPIT', 'Full-head ejection cannot be combined with a torso cockpit or command console.');
+    const quad = entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee';
+    if (entity.cockpitType() === 'Interface') {
+        if (entity.quirks().some(quirk => quirk.quirk.key === 'cramped_cockpit')) add('MEK_INTERFACE_CRAMPED', 'Interface cockpits cannot have the Cramped Cockpit quirk.');
+    }
+    for (const location of entity.locationOrder) {
+        const local = misc.filter(mount => mount.location === location);
+        if (local.filter(mount => mount.equipment!.hasFlag('F_SHIELD')).length > 1) add('MEK_SHIELD_LOCATION', 'Only one shield is permitted per location.', location);
+        if (['LT', 'RT'].includes(location) && local.filter(mount => mount.equipment!.hasFlag('F_SHOULDER_TURRET')).length > 1) add('MEK_SHOULDER_TURRET_LOCATION', 'Only one shoulder turret is permitted per side torso.', location);
+    }
+    if (entity instanceof MekWithArmsEntity) {
+        for (const [location, side] of [['LA', 'left'], ['RA', 'right']] as const) {
+            if (entity.hasHandActuator()[side] && !entity.hasLowerArmActuator()[side]) add('MEK_HAND_REQUIRES_LOWER_ARM', 'Hand actuators require a lower arm actuator.', location);
+            if (entity.omni() && (entity.hasHandActuator()[side] || entity.hasLowerArmActuator()[side])
+                && entity.getEquipmentAtLocation(location).some(mount => mount.equipment && constructionOmniWeaponRemovesArmActuators(mount.equipment)))
+                add('MEK_OMNI_ARM_ACTUATORS', 'Omni arm-mounted Gauss rifles, autocannons and PPCs require removal of the hand and lower arm actuators.', location);
+        }
+        const replacementLocations = new Map<string, number>();
+        for (const mount of misc) {
+            if (mount.allocation.kind !== 'location') continue;
+            const equipment = mount.equipment as MiscEquipment;
+            const club = equipment.hasFlag('F_CLUB');
+            const replacesHand = equipment.hasAnyFlag(['F_SALVAGE_ARM', 'F_HAND_WEAPON']) || club && equipment.hasAnyFlag([
+                'S_CHAINSAW', 'S_BACKHOE', 'S_DUAL_SAW', 'S_MINING_DRILL', 'S_ROCK_CUTTER', 'S_SPOT_WELDER', 'S_WRECKING_BALL', 'S_FLAIL']);
+            const replacesLowerArm = club && equipment.hasFlag('S_PILE_DRIVER');
+            const requiresHand = club && equipment.hasAnyFlag(['S_CHAIN_WHIP', 'S_HATCHET', 'S_MACE', 'S_SWORD', 'S_VIBRO_SMALL', 'S_VIBRO_MEDIUM', 'S_VIBRO_LARGE']);
+            const requiresLowerArm = replacesHand || club && equipment.hasAnyFlag(['S_LANCE', 'S_RETRACTABLE_BLADE']);
+            const side = mount.location === 'LA' ? 'left' : mount.location === 'RA' ? 'right' : null;
+            const hand = side !== null && entity.hasHandActuator()[side];
+            const lowerArm = side !== null && entity.hasLowerArmActuator()[side];
+            // Match TestMek's ordered checks: replacement first, then prerequisites.
+            if (replacesHand && hand) add('MEK_TOOL_REPLACES_HAND', `${equipment.name} requires removal of the hand actuator.`, mount.location);
+            else if (replacesLowerArm && lowerArm) add('MEK_TOOL_REPLACES_LOWER_ARM', `${equipment.name} requires removal of the lower arm actuator.`, mount.location);
+            else if (requiresHand && !hand) add('MEK_TOOL_REQUIRES_HAND', `${equipment.name} requires a hand actuator.`, mount.location);
+            else if (requiresLowerArm && !lowerArm) add('MEK_TOOL_REQUIRES_LOWER_ARM', `${equipment.name} requires a lower arm actuator.`, mount.location);
+            if (replacesHand) replacementLocations.set(mount.location, (replacementLocations.get(mount.location) ?? 0) + 1);
+        }
+        for (const [location, count] of replacementLocations) if (count > 1) add('MEK_HAND_REPLACEMENT_LIMIT', 'Only one item replacing the hand actuator is permitted per arm.', location);
+    }
+    if (entity.hasFullHeadEjectionSystem() && !constructionFullHeadEjectionApplies(entity)) add('MEK_HEAD_EJECTION_COCKPIT', 'Full-head ejection cannot be combined with a torso cockpit or command console.');
     if (has('F_REMOTE_DRONE_COMMAND_CONSOLE') && entity.cockpitType() === 'Command Console') add('MEK_DRONE_COCKPIT', 'A remote drone command console cannot be combined with a cockpit command console.');
     if (entity.isIndustrial() && cockpit.isIndustrial && anyC3) add('MEK_INDUSTRIAL_C3', 'IndustrialMeks require advanced fire control to mount C3 equipment.');
-    if (entity.isIndustrial() && entity.isSuperHeavy() && entity.mountedEngine().type() !== 'Fusion') add('MEK_SUPERHEAVY_INDUSTRIAL_ENGINE', 'Superheavy IndustrialMeks require a standard or large fusion engine.', undefined, 'engine');
     for (const mount of mounts) {
         const equipment = mount.equipment;
+        if (equipment) messages.push(...constructionEquipmentChassisMessages(entity, equipment, mount));
+        if (equipment instanceof MiscEquipment) {
+            if (equipment.hasFlag('F_LIGHT_FLUID_SUCTION_SYSTEM') && !entity.isIndustrial()) add('MEK_FLUID_SUCTION', 'Light fluid suction systems require an IndustrialMek.', mount.location);
+            if (equipment.hasFlag('F_HEAD_TURRET') && !cockpit.hasTorsoSlots) add('MEK_HEAD_TURRET_COCKPIT', 'Head turrets require a torso-mounted cockpit.', mount.location);
+            if (!quad && equipment.hasAnyFlag(['F_CHAIN_DRAPE_APRON', 'F_CHAIN_DRAPE_PONCHO']) && entity.cockpitType() === 'Torso-Mounted') add('MEK_CHAIN_DRAPE_CONFIGURATION', 'Meks with torso-mounted cockpits can use only cape chain drapes.', mount.location);
+            if (equipment.hasFlag('F_RAM_PLATE')) {
+                for (const torso of ['CT', 'LT', 'RT']) {
+                    if (!entity.structureByLocation().get(torso)?.structure.hasFlag('F_REINFORCED')) add('MEK_RAM_PLATE_STRUCTURE', 'Ram plates require reinforced structure in every torso location.', torso, 'structure');
+                    if (mount.placements?.filter(placement => placement.location === torso).length !== 1) add('MEK_RAM_PLATE_DISTRIBUTION', 'Ram plates require one critical slot in every torso location.', torso);
+                }
+            }
+            if (entity.isIndustrial()) {
+                if (cockpit.isIndustrial && equipment.hasAnyFlag(['F_TARGETING_COMPUTER', 'F_ARTEMIS', 'F_ARTEMIS_PROTO', 'F_ARTEMIS_V', 'F_BAP'])) add('MEK_INDUSTRIAL_FIRE_CONTROL', `${equipment.name} requires advanced fire control on an IndustrialMek.`, mount.location);
+            }
+        }
         if (equipment instanceof WeaponEquipment && equipment.hasFlag('F_TASER') && !entity.mountedEngine().isFusion) add('MEK_TASER_ENGINE', 'Mek tasers require a fusion engine.', mount.location, 'engine');
         if (equipment instanceof WeaponEquipment && ['GAUSS_HEAVY', 'IGAUSS_HEAVY'].includes(equipment.ammoType) && mount.turretMounted) add('MEK_HEAVY_GAUSS_TURRET', 'Heavy Gauss rifles cannot be turret mounted.', mount.location);
         if (equipment?.hasFlag('F_TRACKS')) {
@@ -93,22 +137,24 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     if (entity.chassisConfig === 'LAM') {
         if (entity.omni()) add('LAM_OMNI', 'LAMs cannot be OmniMeks.', undefined, 'structure');
         if (entity.tonnage() > 55) add('LAM_TONNAGE', 'LAMs cannot exceed 55 tons.', undefined, 'weight');
-        if ([...entity.structureByLocation().values()].some(material => (getNumCriticalSlots(entity, material.structure) ?? 0) > 0)) add('LAM_STRUCTURE', 'LAMs cannot use structure that requires critical slots.', undefined, 'structure');
-        if ([...entity.armorByLocation().values()].some(material => material.armor.armorType === 'HARDENED' || (getNumCriticalSlots(entity, material.armor) ?? 0) > 0)) add('LAM_ARMOR', 'LAMs cannot use hardened armor or armor that requires critical slots.', undefined, 'armor');
-        if (cockpit.hasTorsoSlots || cockpit.isPrimitive || cockpit.headLayout.filter(slot => slot === 'Cockpit').length > 1) add('LAM_COCKPIT', 'LAMs require a non-primitive head cockpit occupying one cockpit critical slot.', undefined, 'structure');
-        if (!['Standard', 'Compact', 'Heavy Duty'].includes(entity.gyroType())) add('LAM_GYRO', 'LAMs require a standard, compact or heavy-duty gyro.', undefined, 'structure');
-        if (!['Fusion', 'Compact'].includes(entity.mountedEngine().type())) add('LAM_ENGINE', 'LAMs require a standard or compact fusion engine.', undefined, 'engine');
+        if (!constructionCockpitApplies(entity, entity.cockpitType())) add('LAM_COCKPIT', 'LAMs require a standard or small cockpit.', undefined, 'structure');
+        if (!constructionGyroApplies(entity, entity.gyroType())) add('LAM_GYRO', 'LAMs require a standard, compact or heavy-duty gyro.', undefined, 'structure');
+        if (!constructionEngineApplies(entity, entity.mountedEngine().type(), entity.mountedEngine().techBase)) add('LAM_ENGINE', 'LAMs require a standard or compact fusion engine.', undefined, 'engine');
         if (misc.filter(mount => mount.equipment!.hasFlag('F_BOMB_BAY')).length > 20) add('LAM_BOMB_BAYS', 'LAMs can mount at most twenty bomb bays.');
         if (entity instanceof MekWithArmsEntity && (!entity.hasLowerArmActuator().left || !entity.hasLowerArmActuator().right)) add('LAM_ARM_ACTUATORS', 'LAMs require lower arm actuators in both arms.');
         for (const mount of mounts) {
             const equipment = mount.equipment;
             if (!equipment) continue;
             if (new Set(mount.placements?.map(placement => placement.location) ?? []).size > 1) add('LAM_SPLIT_EQUIPMENT', 'LAM equipment must fit entirely in one location.', mount.location);
-            if (equipment.hasAnyFlag(['F_ARTILLERY', 'F_CLUB', 'F_SHIELD', 'F_MODULAR_ARMOR', 'F_JUMP_BOOSTER', 'F_PARTIAL_WING', 'F_DUMPER', 'F_HEAVY_BRIDGE_LAYER', 'F_MEDIUM_BRIDGE_LAYER', 'F_LIGHT_BRIDGE_LAYER', 'S_SUPERCHARGER', 'S_COMBINE'])) add('LAM_EQUIPMENT', `${equipment.name} cannot be fitted to a LAM.`, mount.location);
+            if (equipment.hasAnyFlag(['F_ARTILLERY', 'F_CLUB', 'F_SHIELD'])) add('LAM_EQUIPMENT', `${equipment.name} cannot be fitted to a LAM.`, mount.location);
         }
     }
 
     if (entity.hasHybridStructure()) {
+        if (entity.frankenMekPilotingModifier() > 0) messages.push({
+            severity: 'warning', category: 'structure', code: 'FRANKEN_MISMATCHED_LEGS',
+            message: `Mismatched donor legs apply +${entity.frankenMekPilotingModifier()} to Piloting Skill Rolls.`,
+        });
         if (entity.omni()) add('FRANKEN_OMNI', 'FrankenMeks cannot be OmniMeks.', undefined, 'structure');
         const centerMass = entity.structureByLocation().get('CT')?.tonnage ?? entity.tonnage();
         for (const [location, structure] of entity.structureByLocation()) {
@@ -119,24 +165,22 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     }
     if (cockpit.isPrimitive) {
         if (entity.omni()) add('PRIMITIVE_OMNI', 'Primitive Meks cannot be OmniMeks.', undefined, 'structure');
-        if ([...entity.structureByLocation().values()].some(material => ![0, 1].includes(material.structure.structureTypeId))) add('PRIMITIVE_STRUCTURE', 'Primitive Meks require standard or industrial structure.', undefined, 'structure');
-        if (['XL', 'XXL', 'Light', 'Compact'].includes(entity.mountedEngine().type()) || entity.mountedEngine().isLarge) add('PRIMITIVE_ENGINE', 'Primitive Meks cannot use XL, XXL, light, compact or large engines.', undefined, 'engine');
+        if (!constructionEngineApplies(entity, entity.mountedEngine().type(), entity.mountedEngine().techBase)) add('PRIMITIVE_ENGINE', 'Primitive Meks cannot use XL, XXL, light, compact or large engines.', undefined, 'engine');
         if (advancedMyomer) add('PRIMITIVE_MYOMER', 'Primitive Meks cannot use advanced myomers.');
-        const permitted = entity.isIndustrial() ? ['COMMERCIAL'] : ['PRIMITIVE', 'INDUSTRIAL'];
-        if ([...entity.armorByLocation().values()].some(material => !permitted.includes(material.armor.armorType))) add('PRIMITIVE_ARMOR', entity.isIndustrial() ? 'Primitive IndustrialMeks require commercial armor.' : 'Primitive BattleMeks require primitive or industrial armor.', undefined, 'armor');
     }
 
+    if (entity.chassisConfig !== 'LAM' && !constructionCockpitApplies(entity, entity.cockpitType())) add('MEK_COCKPIT_CONFIGURATION', 'This cockpit is incompatible with the Mek chassis.', undefined, 'structure');
+    if (entity.chassisConfig !== 'LAM' && !entity.isIndustrial() && !cockpit.isPrimitive
+        && !constructionEngineApplies(entity, entity.mountedEngine().type(), entity.mountedEngine().techBase)) add('MEK_ENGINE_CONFIGURATION', 'This engine is incompatible with the Mek chassis or construction rules.', undefined, 'engine');
     const technologies: { name: string; tech: TechAdvancement; base?: 'IS' | 'Clan' }[] = [
-        { name: 'Cockpit', tech: cockpit.tech }, { name: 'Gyro', tech: entity.mountedGyro().tech },
+        { name: 'Cockpit', tech: cockpit.tech }, { name: 'Gyro', tech: constructionGyroTechnology(entity, entity.gyroType()) },
     ];
-    if (entity.mountedEngine().installed) technologies.push({ name: 'Engine', tech: entity.mountedEngine().getTechAdvancement(), base: entity.mountedEngine().techBase });
-    const allowed: ComponentTechLevel = (['Introductory', 'Standard', 'Advanced', 'Experimental', 'Unofficial'] as const)[entity.rulesLevel() - 1] ?? 'Unofficial';
+    if (entity.mountedEngine().installed) technologies.push({ name: 'Engine', tech: constructionEngineTechnology(entity, entity.mountedEngine().type(), entity.mountedEngine().techBase), base: entity.mountedEngine().techBase });
     for (const { name, tech, base } of technologies) {
-        const bases: ('IS' | 'Clan')[] = base ? [base] : entity.mixedTech() ? tech.techBase === 'All' ? ['IS', 'Clan'] : [tech.techBase] : [entity.techBase()];
-        if (!entity.mixedTech() && ((base && base !== entity.techBase()) || (tech.techBase !== 'All' && tech.techBase !== entity.techBase()))) add('MEK_SYSTEM_TECH_BASE', `${name} requires mixed technology.`, undefined, 'tech');
-        const contexts = bases.map(techBase => ({ year: entity.year(), techBase, faction: entity.faction() === 'None' ? undefined : entity.faction() }));
-        if (!contexts.some(context => isTechnologyAvailable(tech, context))) add('MEK_SYSTEM_TECH_DATE', `${name} technology is unavailable in ${entity.year()}.`, undefined, 'tech');
-        if (!contexts.some(context => compareTechLevels(calculateTechLevel(tech, context), allowed) <= 0)) add('MEK_SYSTEM_TECH_LEVEL', `${name} exceeds the selected rules level in ${entity.year()}.`, undefined, 'tech');
+        const technology = constructionTechnologyEligibility(entity, tech, base);
+        if (!technology.techBase) add('MEK_SYSTEM_TECH_BASE', `${name} requires mixed technology.`, undefined, 'tech');
+        if (!technology.available) add('MEK_SYSTEM_TECH_DATE', `${name} technology is unavailable in ${constructionTechnologyYearLabel(entity)}.`, undefined, 'tech');
+        if (!technology.rulesLevel) add('MEK_SYSTEM_TECH_LEVEL', `${name} exceeds the selected rules level in ${constructionTechnologyYearLabel(entity)}.`, undefined, 'tech');
     }
     return messages;
 }

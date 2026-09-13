@@ -22,7 +22,16 @@ export async function printRecordSheetPages(
         page.style.removeProperty('width');
         page.style.removeProperty('height');
         page.style.removeProperty('transform');
-        return `<div class="record-sheet-print-page">${serializer.serializeToString(page)}</div>`;
+        const template = page.getAttribute('data-mekbay-sheet-kind') === 'building-template';
+        if (template) {
+            // Keep printer points independent of the browser's rounded A4/Letter page viewport.
+            page.style.width = `${page.viewBox.baseVal.width}pt`;
+            page.style.height = `${page.viewBox.baseVal.height}pt`;
+            page.style.maxWidth = 'none';
+            page.style.maxHeight = 'none';
+            page.style.flexShrink = '0';
+        }
+        return `<div class="record-sheet-print-page${template ? ' record-sheet-template-page' : ''}">${serializer.serializeToString(page)}</div>`;
     }).join('');
 
     await printInOverlay({
@@ -50,6 +59,12 @@ export async function printRecordSheetPages(
                 @page {
                     size: ${options.paperSize === 'a4' ? 'A4' : 'Letter'} portrait;
                     margin: ${options.printMargin === 'none' ? '0' : '0.25in'} !important;
+                }
+                /* Tabletop templates already contain printer clearance; a second margin would shrink the hexes. */
+                #record-sheet-print-container .record-sheet-template-page { page: building-template; }
+                @page building-template {
+                    size: ${options.paperSize === 'a4' ? 'A4' : 'Letter'} portrait;
+                    margin: 0 !important;
                 }
             }
         `,

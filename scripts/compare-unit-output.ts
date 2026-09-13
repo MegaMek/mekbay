@@ -26,6 +26,7 @@
  *   npx tsx scripts/compare-unit-output.ts --verbose                # show every mismatch
  *   node --expose-gc --import tsx scripts/compare-unit-output.ts --profile # batch timing/heap
  *   npx tsx scripts/compare-unit-output.ts --fail-on-mismatch       # exit 1 on any failure
+ *   npx tsx scripts/compare-unit-output.ts --output results.json   # every unit and full mismatch values
  *
  * Array order is deliberately ignored at every nesting level. Arrays are
  * compared as multisets, so duplicate values still have to match.
@@ -47,8 +48,7 @@ import {
   formatBoundedDiagnosticValue,
   unorderedStructuralEqual,
 } from './lib/unordered-value-comparison';
-import { isKnownMegaMekCostBug } from './lib/known-megamek-cost-bugs';
-import { nativeUnitSourceDeclaresUuid } from './lib/native-unit-source-identity';
+import { nativeMulIdForComparison, nativeUnitSourceDeclaresUuid } from './lib/native-unit-source-identity';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Types
@@ -70,17 +70,17 @@ interface FieldCheck {
 
 interface CompareResult {
   unitName: string;
+  unitFile: string;
   status: 'match' | 'mismatch' | 'parse-error' | 'build-error' | 'file-missing';
   issues: FieldIssue[];
   error?: string;
-  knownMegaMekCostBug?: true;
 }
 
 interface FieldIssue {
   kind: IssueKind;
   field: string;
-  expected: string;
-  actual: string;
+  expected: unknown;
+  actual: unknown;
   message?: string;
 }
 
@@ -114,7 +114,7 @@ const CHECKED_FIELDS: FieldCheck[] = [
   // Legacy compatibility mirror; as.PV is authoritative.
   { field: 'pv',            compare: 'skip', parity: 'missing' },
   { field: 'type',          compare: 'exact', parity: 'verified' },
-  { field: 'id',            compare: 'exact', parity: 'verified' },
+  { field: 'mul1id',        compare: 'exact', parity: 'verified' },
   { field: 'engine',        compare: 'exact', parity: 'verified' },
   { field: 'engineRating',  compare: 'exact', parity: 'verified' },
   { field: 'armorType',     compare: 'exact', parity: 'verified' },
@@ -216,6 +216,7 @@ const TYPE_FILTER = getArg('type', '');
 const UNIT_FILTER = getArg('unit', '');
 const FIELDS_FILTER = getArg('fields', '');
 const EXCLUDE_FIELDS = getArg('exclude-fields', '');
+const OUTPUT_PATH = getArg('output', '');
 const VERBOSE = hasFlag('verbose');
 const FAIL_ON_MISMATCH = hasFlag('fail-on-mismatch');
 const ALL_NON_AS = hasFlag('all-non-as');
@@ -230,7 +231,7 @@ type ProfileStage =
 const PROFILE_TOTALS = new Map<ProfileStage, { calls: number; elapsedMs: number }>();
 
 const VALUE_OPTIONS = new Set([
-  'oracle', 'unitfiles', 'type', 'unit', 'fields', 'exclude-fields',
+  'oracle', 'unitfiles', 'type', 'unit', 'fields', 'exclude-fields', 'output',
 ]);
 const FLAG_OPTIONS = new Set(['verbose', 'fail-on-mismatch', 'all-non-as', 'profile']);
 
@@ -329,10 +330,10 @@ const STRING_FIELDS = new Set([
   'role', 'subtype', 'techBase', 'techRating', 'type', 'unitFile', 'weightClass',
 ]);
 const NULLABLE_STRING_FIELDS = new Set(['engine', 'engineHSType', 'structureType']);
-const NULLABLE_NUMBER_FIELDS = new Set(['dissipation', 'heat']);
+const NULLABLE_NUMBER_FIELDS = new Set(['dissipation', 'heat', 'mul1id']);
 const NUMBER_FIELDS = new Set([
   'armor', 'armorPer', 'bv', 'cost', 'crewSize', 'dpt', 'engineHS', 'engineRating',
-  'id', 'internal', 'jump', 'jump2', 'offSpeedFactor', 'omni',
+  'mul1id', 'internal', 'jump', 'jump2', 'offSpeedFactor', 'omni',
   'loadoutTons', 'pv', 'run', 'run2', 'squadSize', 'squads', 'su', 'tons', 'umu', 'walk', 'walk2', 'year',
 ]);
 const STRING_ARRAY_FIELDS = new Set(['features', 'published', 'quirks', 'sheets', 'source']);
@@ -750,7 +751,7 @@ function hasOwnPath(value: unknown, field: string): boolean {
 }
 
 function validateOutputField(check: FieldCheck, value: unknown): string | null {
-  return check.field.startsWith('as.') ? null : validateNonAsField(check.field, value);
+  return check.field.startsWith('as.') ? null : validateNonAsField(getOracleFieldName(check.field), value);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -764,7 +765,7 @@ function processUnit(
   builder: UnitMetadataBuilder,
   sourcebooks: ReadonlyMap<string, Sourcebook>,
   quirks: ReadonlyMap<string, Quirk>,
-): CompareResult {
+): Omit<CompareResult, 'unitFile'> {
   const unitName = `${oracle.chassis} ${oracle.model}`.trim();
 
   // Resolve unit file path
@@ -815,7 +816,6 @@ function processUnit(
     // Compare fields
     const compareStartedAt = profileNow();
     const issues: FieldIssue[] = [];
-    let knownMegaMekCostBug = false;
     for (const check of checks) {
       // MegaMek generates a fresh UUID when the native source omits one. The
       // oracle then contains generation-time noise that cannot be reproduced.
@@ -829,10 +829,13 @@ function processUnit(
         }
         continue;
       }
-      const expected = getFieldValue(oracle, check.field);
-      const actual = getFieldValue(metadata, check.field);
+      const oracleField = getOracleFieldName(check.field);
+      const rawExpected = getFieldValue(oracle, oracleField);
+      const expected = check.field === 'mul1id' ? nativeMulIdForComparison(rawExpected) : rawExpected;
+      const rawActual = getFieldValue(metadata, check.field);
+      const actual = check.field === 'mul1id' ? nativeMulIdForComparison(rawActual) : rawActual;
 
-      if (hasOwnPath(oracle, check.field) && (!hasOwnPath(metadata, check.field) || actual === undefined)) {
+      if (hasOwnPath(oracle, oracleField) && (!hasOwnPath(metadata, check.field) || actual === undefined)) {
         issues.push(fieldIssue(
           'missing-output', check.field, expected, actual,
           'required oracle field is absent from generated metadata',
@@ -841,7 +844,7 @@ function processUnit(
       }
 
       if (actual !== undefined) {
-        const schemaError = validateOutputField(check, actual);
+        const schemaError = validateOutputField(check, rawActual);
         if (schemaError) {
           issues.push(fieldIssue('output-schema', check.field, expected, actual, schemaError));
           continue;
@@ -849,10 +852,6 @@ function processUnit(
       }
 
       if (!compareField(check, expected, actual)) {
-        if (check.field === 'cost' && isKnownMegaMekCostBug(oracle.uuid, actual, expected)) {
-          knownMegaMekCostBug = true;
-          continue;
-        }
         issues.push(check.compare === 'componentSet'
           ? componentSetIssue(check.field, expected, actual)
           : fieldIssue('value-mismatch', check.field, expected, actual));
@@ -864,7 +863,6 @@ function processUnit(
       unitName,
       status: issues.length > 0 ? 'mismatch' : 'match',
       issues,
-      ...(knownMegaMekCostBug ? { knownMegaMekCostBug: true as const } : {}),
     };
   } catch (err: any) {
     return {
@@ -891,7 +889,7 @@ function componentSetIssue(field: string, expected: unknown, actual: unknown): F
   }
   return fieldIssue(
     'value-mismatch', field,
-    unmatchedExpected[0], unmatchedActual[0],
+    unmatchedExpected, unmatchedActual,
     `${unmatchedExpected.length} missing, ${unmatchedActual.length} unexpected; `
       + `missing=${formatBoundedDiagnosticValue(unmatchedExpected, 1_000)}; `
       + `unexpected=${formatBoundedDiagnosticValue(unmatchedActual, 1_000)}`,
@@ -908,8 +906,8 @@ function fieldIssue(
   return {
     kind,
     field,
-    expected: formatBoundedDiagnosticValue(expected),
-    actual: formatBoundedDiagnosticValue(actual),
+    expected,
+    actual,
     ...(message === undefined ? {} : { message }),
   };
 }
@@ -928,7 +926,6 @@ function printResults(
   const parseErrors = results.filter(r => r.status === 'parse-error');
   const buildErrors = results.filter(r => r.status === 'build-error');
   const fileMissing = results.filter(r => r.status === 'file-missing');
-  const knownMegaMekCostBugs = results.filter(r => r.knownMegaMekCostBug);
   const unimplemented = selectedChecks.filter(check => check.parity === 'missing');
 
   if (unimplemented.length > 0) {
@@ -961,7 +958,7 @@ function printResults(
           const message = issue.message ? ` (${issue.message})` : '';
           console.log(
             `    ${issue.kind}:${issue.field}${message}: `
-            + `expected=${issue.expected} actual=${issue.actual}`,
+            + `expected=${formatBoundedDiagnosticValue(issue.expected)} actual=${formatBoundedDiagnosticValue(issue.actual)}`,
           );
         }
       }
@@ -973,7 +970,7 @@ function printResults(
           const message = issue.message ? ` (${issue.message})` : '';
           console.log(
             `    ${issue.kind}:${issue.field}${message}: `
-            + `expected=${issue.expected} actual=${issue.actual}`,
+            + `expected=${formatBoundedDiagnosticValue(issue.expected)} actual=${formatBoundedDiagnosticValue(issue.actual)}`,
           );
         }
       }
@@ -1027,7 +1024,6 @@ function printResults(
   console.log(`  Parse errors:    ${parseErrors.length}`);
   console.log(`  Build errors:    ${buildErrors.length}`);
   console.log(`  Missing files:   ${fileMissing.length}`);
-  console.log(`  Known MM costs:  ${knownMegaMekCostBugs.length}`);
 
   const passRate = results.length > 0
     ? ((matches.length / results.length) * 100).toFixed(1)
@@ -1081,7 +1077,7 @@ function main(): void {
     const result = processUnit(
       entry, comparedChecks, equipmentRegistry, builder, sourcebooks, quirks,
     );
-    results.push(result);
+    results.push({ ...result, unitFile: entry.unitFile });
     processed++;
 
     // Progress indicator
@@ -1109,6 +1105,14 @@ function main(): void {
 
   // Report
   printResults(results, selectedChecks, comparedChecks);
+  if (OUTPUT_PATH) {
+    fs.writeFileSync(path.resolve(OUTPUT_PATH), JSON.stringify({
+      oracle: UNITS_JSON_PATH,
+      unitFiles: UNIT_FILES_DIR,
+      comparedFields: comparedChecks.map(check => check.field),
+      results,
+    }, null, 2) + '\n');
+  }
   if (PROFILE) printProfileStages();
 
   // Exit code

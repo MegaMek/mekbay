@@ -56,6 +56,13 @@ export function createDirectMekRuntimeFixture(
     return createFixture(ruleset, instanceId, { gyroType });
 }
 
+export function createDirectHotLoadedAmmoRuntimeFixture(
+    enabled = true,
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, 'unit:hot-loaded-ammo', { hotLoadedAmmo: enabled });
+}
+
 /** Parsed Mek with an exact engine/cockpit combination for movement and damage heat rules. */
 export function createDirectEngineHeatRuntimeFixture(
     engineType: EngineType,
@@ -438,6 +445,7 @@ export function createDirectSpotWelderRuntimeFixture(
 }
 
 interface DirectFixtureOptions {
+    readonly hotLoadedAmmo?: boolean;
     readonly forcedWithdrawal?: boolean;
     readonly sprinting?: boolean;
     readonly includePartialWing?: boolean;
@@ -551,7 +559,7 @@ function directFixtureScenario(options: DirectFixtureOptions): Readonly<{
     id: string;
     options?: Readonly<Record<string, boolean>>;
 }> {
-    if (options.forcedWithdrawal === undefined && options.sprinting === undefined) {
+    if (options.forcedWithdrawal === undefined && options.sprinting === undefined && options.hotLoadedAmmo === undefined) {
         return Object.freeze({ id: 'megamek' });
     }
     return Object.freeze({
@@ -561,6 +569,7 @@ function directFixtureScenario(options: DirectFixtureOptions): Readonly<{
                 ? {}
                 : { forcedWithdrawal: options.forcedWithdrawal }),
             ...(options.sprinting === undefined ? {} : { sprinting: options.sprinting }),
+            ...(options.hotLoadedAmmo === undefined ? {} : { hotLoadedAmmo: options.hotLoadedAmmo }),
         }),
     });
 }
@@ -689,7 +698,7 @@ function directMekEquipmentRegistry() {
     const artemisLauncher = new WeaponEquipment({
         id: 'Test Artemis Launcher', name: 'Test Artemis Launcher', type: 'weapon',
         flags: ['F_MISSILE', 'F_ARTEMIS_COMPATIBLE'], stats: { criticalSlots: 1, bv: 60 },
-        weapon: { ammoType: 'LRM', rackSize: 10, damage: 1, heat: 4, ranges: [7, 14, 21, 28] },
+        weapon: { ammoType: 'LRM', rackSize: 10, damage: 1, heat: 4, minRange: 6, ranges: [7, 14, 21, 28] },
     });
     const artemisV = new MiscEquipment({
         id: 'Test Artemis V', name: 'Test Artemis V', type: 'misc',
@@ -697,11 +706,12 @@ function directMekEquipmentRegistry() {
     });
     const artemisAmmo = new AmmoEquipment({
         id: 'Test Artemis Ammo', name: 'Test Artemis Ammo', type: 'ammo',
-        stats: { bv: 12 },
+        flags: ['F_HOT_LOAD'], stats: { bv: 12, explosive: true },
         ammo: {
             type: 'LRM',
             rackSize: 10,
             shots: 12,
+            damagePerShot: 1,
             munitionType: ['M_ARTEMIS_V_CAPABLE', 'M_SEMIGUIDED'],
         },
     });
@@ -1055,6 +1065,7 @@ function directMekMtf(options: DirectFixtureOptions): string {
         'Test Artemis Launcher',
         'Test Artemis V',
         'Test Artemis Ammo',
+        ...(options.hotLoadedAmmo === undefined ? [] : ['Test Artemis Ammo']),
         'Test C3 Emergency Master',
         ...(options.includeC3Master ? ['Test C3 Master'] : []),
         ...(options.includeBap ? ['Test BAP'] : []),

@@ -41,6 +41,20 @@ describe('CBTForceMember tactical presentation memory', () => {
 });
 
 describe('CBTForceMember record-sheet ownership', () => {
+    it('invalidates sheets for an admitted ruleset change and ignores late results for the old ruleset', async () => {
+        const member = createMember('unit');
+        let finishOld!: (pages: readonly SVGSVGElement[]) => void;
+        const older = member.loadRecordSheets(() => new Promise(resolve => finishOld = resolve), 'classic', 'letter', true, null, 'total-warfare');
+        const core = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        const generateCore = jasmine.createSpy('generateCore').and.resolveTo([core]);
+        await member.loadRecordSheets(generateCore, 'classic', 'letter', true, null, 'core-2026');
+        finishOld([document.createElementNS('http://www.w3.org/2000/svg', 'svg')]);
+        await older;
+        await member.loadRecordSheets(generateCore, 'classic', 'letter', true, null, 'core-2026');
+        expect(generateCore).toHaveBeenCalledTimes(1);
+        expect(member.recordSheet()).toBe(core);
+    });
+
     it('regenerates after toggling quirks and ignores pending sheets using the old option', async () => {
         const member = createMember('unit');
         let finishEnabled!: (pages: readonly SVGSVGElement[]) => void;

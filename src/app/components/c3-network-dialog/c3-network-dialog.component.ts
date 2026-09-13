@@ -39,6 +39,7 @@ import {
 import { GameSystem } from '../../models/common.model';
 import { ToastService } from '../../services/toast.service';
 import { OptionsService } from '../../services/options.service';
+import { viewerWheel } from '../../utils/viewer-wheel';
 import { DialogsService } from '../../services/dialogs.service';
 import { LayoutService } from '../../services/layout.service';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
@@ -1631,11 +1632,19 @@ export class C3NetworkDialogComponent implements AfterViewInit {
 
     protected onWheel(event: WheelEvent) {
         event.preventDefault();
-        const delta = event.deltaY > 0 ? 0.9 : 1.1;
-        const oldZoom = this.zoom();
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * delta));
-
+        event.stopPropagation();
         const svg = this.svgCanvas()?.nativeElement;
+        if (!svg) return;
+        const delta = viewerWheel(event, this.optionsService.options().mouseWheelAction, {
+            width: svg.clientWidth, height: svg.clientHeight,
+        });
+        if (delta.zoom === 1) {
+            this.viewOffset.update(offset => ({ x: offset.x - delta.x, y: offset.y - delta.y }));
+            return;
+        }
+        const oldZoom = this.zoom();
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldZoom * delta.zoom));
+
         if (svg && newZoom !== oldZoom) {
             const rect = svg.getBoundingClientRect();
             const mouseX = event.clientX - rect.left, mouseY = event.clientY - rect.top;

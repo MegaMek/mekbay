@@ -66,8 +66,8 @@ export function encodeEquipmentLine(mount: EntityMountedEquipment, options?: Enc
   if (options?.buildingFacing) {
     // BLKStructureFile uses BLKFile's suffix parser: facing, turret, OmniPod, shots, size.
     if (mount.facing !== undefined) name += [' (F)', ' (FR)', ' (RR)', ' (R)', ' (RL)', ' (FL)'][mount.facing] ?? '';
-    if (mount.turretType) name += ' ' + turretSuffix(mount.turretType);
-    else if (mount.turretMounted) name += ' (T)';
+    if (mount.turretType) name += turretSuffix(mount.turretType);
+    else if (mount.turretMounted) name += '(T)';
   } else if (!blk) {
     if (mount.turretType) {
       name += turretSuffix(mount.turretType);

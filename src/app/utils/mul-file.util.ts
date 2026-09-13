@@ -30,6 +30,7 @@ import type { DataService } from '../services/data.service';
 import { ForceUnitAdmissionService } from '../services/force-unit-admission.service';
 
 import { uuidv7 } from './uuid.util';
+import { crewSkillsForUnit } from '../models/unit-crew-policy';
 
 const DEFAULT_ENTITY_ATTRIBUTES: Readonly<Record<string, string>> = Object.freeze({
     offboard: 'false',
@@ -71,6 +72,8 @@ interface ParsedMulCrewMember {
     readonly name: string;
     readonly gunnerySkill: number;
     readonly pilotingSkill: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
     readonly hits: number;
     readonly ejected: boolean;
 }
@@ -295,6 +298,7 @@ function createEntityRuntimeCrewElement(
         });
     });
     const position = positions[0];
+    const skills = crewSkillsForUnit(position, snapshot.entity.unitType(), snapshot.entity.unitSubtype());
     const pilot = doc.createElement('pilot');
     setAttributes(pilot, {
         size: Math.max(1, positions.length),
@@ -302,8 +306,8 @@ function createEntityRuntimeCrewElement(
         nick: '',
         gender: 'RANDOMIZE',
         clanperson: snapshot.entity.techBase() === 'Clan',
-        gunnery: position?.gunnery ?? DEFAULT_GUNNERY_SKILL,
-        piloting: position?.piloting ?? DEFAULT_PILOTING_SKILL,
+        gunnery: skills.gunnery,
+        piloting: skills.piloting,
         hits: position?.wounds || undefined,
         ejected: position?.ejected ?? false,
         externalId: uuidv7(),
@@ -396,6 +400,8 @@ function createCrewElement(doc: XMLDocument, sheet: MekRecordSheetSnapshot): Ele
         clanperson: clanPerson,
         gunnery: member?.gunnery ?? DEFAULT_GUNNERY_SKILL,
         piloting: member?.piloting ?? DEFAULT_PILOTING_SKILL,
+        gunneryAero: member?.aeroGunnery,
+        pilotingAero: member?.aeroPiloting,
         hits: member?.state.wounds || undefined,
         ejected: member?.state.ejected ?? false,
         externalId: uuidv7(),
@@ -468,8 +474,13 @@ async function applyMulCrew(
         return value ? {
             ...position,
             name: value.name,
-            gunnery: value.gunnerySkill,
-            piloting: value.pilotingSkill,
+            ...(member.entity.unitType() === 'Aero'
+                ? { aeroGunnery: value.gunnerySkill, aeroPiloting: value.pilotingSkill }
+                : { gunnery: value.gunnerySkill, piloting: value.pilotingSkill }),
+            ...(member.entity.unitSubtype() === 'Land-Air BattleMek' ? {
+                aeroGunnery: value.aeroGunnery ?? value.gunnerySkill,
+                aeroPiloting: value.aeroPiloting ?? value.pilotingSkill,
+            } : {}),
         } : position;
     });
     const replaced = await force.replaceUnitCrewProfile(member.id, positions);
@@ -767,6 +778,8 @@ function parseEntityCrew(entity: Element): ParsedMulCrewMember[] {
         name: row.getAttribute('name') ?? '',
         gunnerySkill: parseNumber(row.getAttribute('gunnery'), DEFAULT_GUNNERY_SKILL),
         pilotingSkill: parseNumber(row.getAttribute('piloting'), DEFAULT_PILOTING_SKILL),
+        ...(row.hasAttribute('gunneryAero') ? { aeroGunnery: parseNumber(row.getAttribute('gunneryAero'), DEFAULT_GUNNERY_SKILL) } : {}),
+        ...(row.hasAttribute('pilotingAero') ? { aeroPiloting: parseNumber(row.getAttribute('pilotingAero'), DEFAULT_PILOTING_SKILL) } : {}),
         hits: parseNumber(row.getAttribute('hits'), 0),
         ejected: parseBoolean(row.getAttribute('ejected')),
     }));

@@ -28,4 +28,5 @@ export type EntityType =
   | 'BattleArmor'
   | 'ProtoMek'
   | 'HandheldWeapon'
-  | 'BuildingEntity';
+  | 'BuildingEntity'
+  | 'MobileStructure';

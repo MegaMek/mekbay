@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
 import { createConstructionEntity } from './construction-factory';
@@ -13,6 +13,19 @@ const insulator = new MiscEquipment({ id: 'Test Insulator', name: 'Test Insulato
 const registry = createTestEquipmentRegistry({ [laser.id]: laser, [insulator.id]: insulator });
 
 describe('construction native equipment relationships', () => {
+    it('clears an old DWP ammo link after the weapon loses its attachment flag', () => {
+        const entity = createConstructionEntity('BattleArmor', createTestEquipmentRegistry());
+        const gun = new WeaponEquipment({ id: 'Test MG', name: 'Test MG', type: 'weapon', weapon: { ammoType: 'MG', rackSize: 2 } });
+        const ammunition = new AmmoEquipment({ id: 'Test MG Ammo', name: 'Test MG Ammo', type: 'ammo', ammo: { type: 'MG', rackSize: 2 } });
+        const source = addTestEquipment(entity, gun, { location: 'Squad', isDWP: true });
+        const target = addTestEquipment(entity, ammunition, { location: 'Squad', isDWP: true });
+        entity.linkEquipment(source, target);
+        source.isDWP = false;
+        reconcileConstructionEquipmentRelationships(entity);
+        expect(entity.getLinkedMount(source)).toBeUndefined();
+        expect(entity.getLinkingMount(target)).toBeUndefined();
+    });
+
     it('relinks a BLK enhancement after installation/removal without changing mount identities', () => {
         const entity = createConstructionEntity('Tank', registry);
         const first = addTestEquipment(entity, laser, { location: 'Front' });

@@ -5,8 +5,10 @@ import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,S
 import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
+import type { MotiveModes } from '../../models/motiveModes.model';
 
 export type RecordSheetInteractionPayload =
+    | Readonly<{ kind: 'movement'; mode: MotiveModes }>
     | Readonly<{
         kind: 'armor';
         faceId: ArmorFaceId;
@@ -44,7 +46,7 @@ export type RecordSheetInteractionPayload =
     | Readonly<{
         kind: 'crew-skill';
         positionId: CrewPositionId;
-        skill: 'gunnery' | 'piloting';
+        skill: 'gunnery' | 'piloting' | 'aeroGunnery' | 'aeroPiloting';
     }>
     | Readonly<{
         kind: 'crew-name';

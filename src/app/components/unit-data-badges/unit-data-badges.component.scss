@@ -1,0 +1,33 @@
+:host {
+    display: contents;
+}
+
+.load-issue-badge,
+.unit-update-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 5px;
+    border-radius: 9px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
+    margin-left: 4px;
+    pointer-events: auto;
+}
+
+.load-issue-badge {
+    background: red;
+}
+
+.unit-update-badge {
+    background: #1976d2;
+    font-size: 16px;
+    padding: 0 3px;
+}

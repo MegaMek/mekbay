@@ -12,7 +12,6 @@ import {
   isPpcCapacitorEquipment,
   isPpcEquipment,
 } from '../../../ppc-capacitor.model';
-import { isEcmEquipment } from '../../../ecm-mode.model';
 import { isStandardCaseEquipment } from '../../../case-equipment.model';
 import {
   isBattleArmorManipulatorEquipment,
@@ -59,14 +58,7 @@ export function calculateMountedEquipmentCostBreakdown(
     // support-vehicle infantry ammunition.
     addGrouped(equipment.name, Math.trunc(itemCost));
   }
-  if (entity.entityType === 'SmallCraft') {
-    for (const equipment of entity.implicitSystemEquipment().filter(isEcmEquipment)) {
-      if (!equipment.hasFixedCost()) {
-        throw new Error(`Unable to calculate variable cost for ${equipment.id}`);
-      }
-      addGrouped(equipment.name, Math.trunc(equipment.cost));
-    }
-  }
+  // SO:AA p. 99: implicit military craft ECM is part of the structure, not separately purchased equipment.
   const equipmentEntries = [...grouped.entries()].sort(([left], [right]) =>
     compareJavaHashMapKeys(left, right)).map(([name, value]) =>
     amount(`${value.count} ${name}`, value.cost));
@@ -105,11 +97,13 @@ function javaSpreadHash(value: string): number {
 
 function calculateImplicitClanCaseCost(entity: BaseEntity): number {
   const family = entity.entityType;
-  const isMek = family === 'Mek';
+  // Meks pay only for the protection actually generated at load time. Existing
+  // CASE/CASE II and location opt-outs are already handled by this shared set.
+  if (family === 'Mek') return entity.automaticClanCaseLocations().size * 50000;
   const isVehicle = family === 'Tank' || family === 'Naval' || family === 'VTOL'
     || family === 'SupportTank' || family === 'SupportNaval' || family === 'SupportVTOL'
     || family === 'LargeSupportTank';
-  if (!isMek && !isVehicle) return 0;
+  if (!isVehicle) return 0;
   let sourceCaseCount = 0;
   const explosiveLocations = new Set<string>();
   const optedOut = entity.clanCaseOptOutLocations();
@@ -122,21 +116,12 @@ function calculateImplicitClanCaseCost(entity: BaseEntity): number {
     }
     if (!isExplosiveForConstructionCost(entity, mount)) continue;
     for (const location of mount.getOccupiedLocations()) {
-      if ((location !== 'Unallocated' || isVehicle) && entity.supportsAutomaticClanCaseAt(location) && !optedOut.has(location)) {
+      if (entity.supportsAutomaticClanCaseAt(location) && !optedOut.has(location)) {
         explosiveLocations.add(location);
       }
     }
   }
-  if (!isMek) return Math.max(0, explosiveLocations.size - sourceCaseCount) * 50000;
-
-  // MekFileParser materializes generated Clan CASE before the cost calculator
-  // runs. Reproduce that lifecycle without adding derived mounts to the entity.
-  const generatedLocations = entity.automaticClanCaseLocations();
-  const implicitCount = Math.max(
-    0,
-    explosiveLocations.size - sourceCaseCount - generatedLocations.size,
-  );
-  return (generatedLocations.size + implicitCount) * 50000;
+  return Math.max(0, explosiveLocations.size - sourceCaseCount) * 50000;
 }
 
 /** Mirrors EquipmentType.isExplosive(mount) for pristine construction state. */

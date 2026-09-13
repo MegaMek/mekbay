@@ -29,6 +29,7 @@ export interface RecordSheetSvgGeneratorOptions {
     readonly ruleset?: CBTRuleset;
     readonly fluffImageUrl?: string | null;
     readonly pipLayout?: RecordSheetPipLayout;
+    readonly showQuirks?: boolean;
 }
 
 /** Thin entry point: family layout classes own all sheet composition. */
@@ -57,7 +58,8 @@ export class RecordSheetSvgGenerator {
             ? isMekEntity(entity) && entity.chassisConfig === 'Biped' && entity.tonnage() <= 100
                 ? 'canon' : 'distributed'
             : requestedPipLayout;
-        const request = { format, page, profile, pipLayout } as const;
+        const request = { format, page, profile, pipLayout, ruleset: options.ruleset,
+            showQuirks: options.showQuirks ?? true } as const;
         const pages = layout.generatePages
             ? [...await layout.generatePages(entity, request)]
             : [await layout.generate(entity, request)];

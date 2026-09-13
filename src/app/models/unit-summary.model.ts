@@ -15,7 +15,7 @@ import type {
 } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 13 as const;
+export const UNIT_SUMMARY_VERSION = 23 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -144,7 +144,7 @@ export interface UnitSummary {
   /** Catalog name, not a unique identity. Custom units must be referenced by UUID. */
   name: string;
   /** MegaMek Unit List (MUL) database reference. Not unique; null means absent. */
-  id: number | null;
+  mul1id: number | null;
   chassis: string;
   baseChassis: string;
   clanName?: string;

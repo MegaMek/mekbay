@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { UnitArtworkService } from '../unit-artwork.service';
 import type { EntityType } from '../../models/entity/types';
 import type { BaseEntity } from '../../models/entity/base-entity';
@@ -17,6 +17,8 @@ import {
   type FluffImagePath,
 } from '../../utils/fluff-image-resolver';
 import { FluffImageCatalogService } from './fluff-image-catalog.service';
+import { ProvidedFluffImageService } from './provided-fluff-image.service';
+import { LoggerService } from '../logger.service';
 
 type PresentationUnit = Pick<
   UnitSummary,
@@ -31,20 +33,52 @@ type PresentationUnit = Pick<
 export class UnitFluffImageService {
   private readonly catalog = inject(FluffImageCatalogService);
   private readonly local = inject(UnitArtworkService);
-  readonly revision = this.local.revision.asReadonly();
-  initialize(): Promise<void> { return this.local.initialize(); }
+  private readonly provided = inject(ProvidedFluffImageService);
+  private readonly logger = inject(LoggerService);
+  private readonly ready = signal(false);
+  private initialization?: Promise<void>;
+  readonly revision = computed(() => this.local.revision() + this.provided.revision());
+
+  constructor() { void this.initialize(); }
+
+  initialize(): Promise<void> {
+    return this.initialization ??= Promise.all([this.local.initialize(), this.provided.initialize()])
+      .catch(error => this.logger.warn(`Cannot initialize unit images: ${String(error)}`))
+      .then(() => { this.ready.set(true); });
+  }
 
   resolveUrl(unit: PresentationUnit | null | undefined): string | null {
-    if (!unit) return null;
+    if (!unit || !this.ready()) return null;
 
     return this.local.url(unit.uuid) ?? this.resolveCatalogUrl(unit);
   }
 
   resolveEntityUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    if (!this.ready()) return null;
     return this.local.url(design?.uuid ?? entity.uuid()) ?? this.resolveEntityCatalogUrl(entity, design);
   }
 
+  async loadEntityUrl(entity: BaseEntity, design?: DesignIdentity): Promise<string | null> {
+    await this.initialize();
+    const custom = this.local.url(design?.uuid ?? entity.uuid());
+    if (custom) return custom;
+    const provided = await this.loadEntityCatalogUrl(entity, design);
+    return this.local.url(design?.uuid ?? entity.uuid()) ?? provided;
+  }
+
   resolveEntityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
+    if (!this.ready()) return null;
+    const url = this.entityCatalogUrl(entity, design);
+    return url ? this.provided.resolveUrl(url) : null;
+  }
+
+  async loadEntityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): Promise<string | null> {
+    await this.initialize();
+    const url = this.entityCatalogUrl(entity, design);
+    return url ? this.provided.loadUrl(url) : null;
+  }
+
+  private entityCatalogUrl(entity: BaseEntity, design?: DesignIdentity): string | null {
     const identity: DesignIdentity = design ?? {
       provider: MM_DATA_UNIT_PROVIDER_ID,
       uuid: entity.uuid(),
@@ -73,7 +107,7 @@ export class UnitFluffImageService {
       ...(unit.clanName !== undefined && { clanName: unit.clanName }),
     };
     const resolution = this.catalog.resolveUnitImage(design, facts);
-    return resolution.status === 'matched' ? fluffImageAssetUrl(resolution.asset) : null;
+    return resolution.status === 'matched' ? this.provided.resolveUrl(fluffImageAssetUrl(resolution.asset)) : null;
   }
 }
 

@@ -31,7 +31,6 @@ function addRecordSheetPageFlipControl(
     group.setAttribute('focusable', 'true');
     group.setAttribute('aria-label', `Show record sheet page ${(pageIndex + 1) % pageCount + 1} of ${pageCount}`);
     group.setAttribute('transform', `translate(${viewBox.x + viewBox.width - CONTROL_SIZE} ${viewBox.y + viewBox.height - CONTROL_SIZE})`);
-    group.style.cursor = 'pointer';
 
     const corner = document.createElementNS(SVG_NS, 'polygon');
     corner.setAttribute('points', `0,${CONTROL_SIZE} ${CONTROL_SIZE},0 ${CONTROL_SIZE},${CONTROL_SIZE}`);

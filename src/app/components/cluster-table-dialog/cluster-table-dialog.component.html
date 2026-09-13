@@ -159,6 +159,20 @@
         }
 
         @if (hasRollableTable()) {
+        @if (hasClusterTable()) {
+        <div class="cluster-roll-options">
+            @if (data.hasHotLoadedAmmo) {
+            <label><input class="bt-checkbox" type="checkbox" [checked]="hotLoaded()"
+                (change)="hotLoaded.set($any($event.target).checked)"> Hot-loaded (3d6, lowest two)</label>
+            }
+            <label>Cluster modifier <input class="bt-input" type="number" step="1" [value]="clusterModifier()"
+                (input)="setClusterModifier($any($event.target).value)"></label>
+        </div>
+        @if (data.hasHotLoadedAmmo) {
+        <p class="note" role="note">This unit has ammo bins marked hot-loaded. For hot-loaded attacks, roll 3d6 and keep the lowest two.
+            Apply normal cluster modifiers; smoke, illumination and mine-clearing attacks are unaffected.</p>
+        }
+        }
         <p class="roll-instructions">Click a highlighted column to roll.</p>
         }
     </div>
@@ -221,6 +235,11 @@
         overlayCloseHint="Click to return to the table"
         (finished)="onRollFinished($event, 1)"
     />
+
+    <dice-roller #threeDiceRoller [diceCount]="3" [diceSides]="6"
+        [showInline]="false" [showOverlay]="true" [reserveOverlayResultSpace]="true"
+        [overlayResult]="overlayResultFor(3)" overlayCloseHint="Click to return to the table"
+        (finished)="onRollFinished($event, 3)" />
 
     <footer class="dialog-buttons">
         <button

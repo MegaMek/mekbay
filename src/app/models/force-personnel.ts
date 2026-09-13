@@ -17,9 +17,12 @@ export interface ForcePerson {
     /** Portrait filename without its extension; absent means no portrait. */
     readonly portrait?: string;
     readonly commander?: true;
-    /** Gunnery in CBT and the pilot's Skill rating in Alpha Strike; default 4. */
+    /** Ground Gunnery in CBT and the pilot's Skill rating in Alpha Strike; default 4. */
     readonly gunnery?: number;
+    /** Ground Piloting; default 5. */
     readonly piloting?: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
     readonly abilities?: readonly (string | ASCustomPilotAbility)[];
     /** Unassigned health, or ingress health awaiting successful CBT runtime restoration. */
     readonly health?: CrewMemberRuntimeState;
@@ -211,7 +214,9 @@ export function forcePersonnelCrewAssignment(snapshot: ForcePersonnelSnapshot, u
     return Object.freeze({ schemaVersion: 1, positions: Object.freeze(assignments.map(assignment => {
         const person = people.get(assignment.personId)!;
         return Object.freeze({ positionId: asCrewPositionId(assignment.positionId), name: person.name ?? '',
-            gunnery: person.gunnery ?? 4, piloting: person.piloting ?? 5 });
+            gunnery: person.gunnery ?? 4, piloting: person.piloting ?? 5,
+            ...(person.aeroGunnery === undefined ? {} : { aeroGunnery: person.aeroGunnery }),
+            ...(person.aeroPiloting === undefined ? {} : { aeroPiloting: person.aeroPiloting }) });
     })) });
 }
 
@@ -221,7 +226,7 @@ export function compareCrewPositionIds(left: string, right: string): number {
 }
 
 function canonicalPerson(value: unknown): ForcePerson {
-    const row = record(value, ['id', 'name', 'notes', 'portrait', 'commander', 'gunnery', 'piloting', 'abilities', 'health'], 'person');
+    const row = record(value, ['id', 'name', 'notes', 'portrait', 'commander', 'gunnery', 'piloting', 'aeroGunnery', 'aeroPiloting', 'abilities', 'health'], 'person');
     const person: Record<string, unknown> = { id: identity(row['id'], 'person.id') };
     if (row['name'] !== undefined) {
         const name = boundedText(row['name'], MAX_CREW_NAME_LENGTH, 'person.name');
@@ -239,7 +244,7 @@ function canonicalPerson(value: unknown): ForcePerson {
         if (row['commander'] !== true) throw new Error('Person commander must be a boolean');
         person['commander'] = true;
     }
-    for (const [key, standard] of [['gunnery', 4], ['piloting', 5]] as const) {
+    for (const [key, standard] of [['gunnery', 4], ['piloting', 5], ['aeroGunnery', 4], ['aeroPiloting', 5]] as const) {
         if (row[key] !== undefined) {
             const skill = integer(row[key], 0, 8, `person.${key}`);
             if (skill !== standard) person[key] = skill;

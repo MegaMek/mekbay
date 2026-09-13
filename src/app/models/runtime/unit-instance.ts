@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
+import { mekHotLoadedAmmoEnabled } from './mek-mechanics-context-v2';
+import type { HotLoadExplosionRoll } from './mek-critical-hit-v2';
 
 import type { CBTUnitAttackerTargetingReconciliationPlan } from './attacker-targeting-state';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
@@ -82,6 +84,7 @@ interface MekRuntimeSource {
     readonly ruleset: CBTRuleset;
     readonly statusTopology: RuntimeEquipmentStatusTopology;
     readonly crewAssignment: CrewAssignment;
+    readonly hotLoadedAmmo: boolean;
 }
 
 export type MekUnitCommandResult = Readonly<
@@ -118,6 +121,7 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
         locationId: LocationId,
         results: readonly number[],
         target: 'committed' | 'pending',
+        hotLoadExplosion?: HotLoadExplosionRoll,
     ): MekCriticalRollPlanV2;
     mekDestruction(): MekDestructionProjectionResultV2;
     mekRuleCheck(key: MekRuleCheckKeyV2): MekRuleCheckStateV2 | undefined;
@@ -186,7 +190,7 @@ export type MekBattleValueProjection =
         defensive: number;
         offensive: number;
         manualBattleValue?: number;
-        manualOverrideApplied: false;
+        manualOverrideApplied: boolean;
     }>
     | Readonly<{ kind: 'unsupported'; blockers: readonly Readonly<{ reason: string }>[] }>;
 
@@ -205,7 +209,7 @@ export function createMekRuntimeBinding(
 ): Readonly<{ binding: MekRuntimeBinding; state: MekUnitRuntimeState }> {
     const assignment = canonicalizeCrewAssignment(index.crewPositions,
         crewAssignment ?? createDefaultCrewAssignment(index.crewPositions));
-    const source = Object.freeze({ entity, index, ruleset,
+    const source = Object.freeze({ entity, index, ruleset, hotLoadedAmmo: mekHotLoadedAmmoEnabled(mechanicsContext),
         statusTopology: buildEquipmentStatusTopology(index), crewAssignment: assignment });
     validateState(initialState, source);
     assertMekHeatContextEntityV2(heatContext, entity);
@@ -476,6 +480,7 @@ class MekRuntimeQuery {
                 locationId: LocationId,
                 results: readonly number[],
                 target: 'committed' | 'pending',
+                hotLoadExplosion?: HotLoadExplosionRoll,
             ) => projectMekCriticalRollV2(
                 unit.entity,
                 unit.index,
@@ -484,6 +489,7 @@ class MekRuntimeQuery {
                 locationId,
                 results,
                 target,
+                hotLoadExplosion,
             ),
             mekDestruction: mechanicsProjection,
             mekRuleCheck: (key: MekRuleCheckKeyV2) => {
@@ -655,6 +661,8 @@ class MekRuntimeQuery {
                 componentId,
                 state.ammo.get(componentId)?.munitionOverride,
             ).equipment,
+            ammoHotLoaded: (componentId: ComponentId) => unit.hotLoadedAmmo
+                && state.ammo.get(componentId)?.hotLoaded === true,
             heatState: () => state.heat,
             heatCapability: () => mekHeatCapabilityV2(
                 this.#heatContext,
@@ -1232,6 +1240,7 @@ function reduce(
                 command.locationId,
                 command.results,
                 command.target,
+                command.hotLoadExplosion,
             );
             if (plan.kind === 'invalid') return unchanged(state);
             if (plan.kind === 'not-applied') return unchanged(state);
@@ -1645,12 +1654,16 @@ function reduce(
             );
             if (!loadout) return unchanged(state);
             if (command.remaining > loadout.capacity) return unchanged(state);
+            if (command.hotLoaded !== undefined && typeof command.hotLoaded !== 'boolean') return unchanged(state);
+            if (command.hotLoaded && (!unit.hotLoadedAmmo || !loadout.equipment.hasFlag('F_HOT_LOAD'))) return unchanged(state);
             changed = withAmmoConfiguration(
                 state,
                 unit,
                 command.componentId,
                 loadout.munitionKey,
                 loadout.capacity - command.remaining,
+                loadout.equipment.hasFlag('F_HOT_LOAD')
+                    && (command.hotLoaded ?? state.ammo.get(command.componentId)?.hotLoaded ?? false),
             );
             break;
         }
@@ -2470,6 +2483,7 @@ function projectRuntimeMekDestruction(
         facts: Object.freeze({
             ...projection.facts,
             committed: Object.freeze({ ...projection.facts.committed, destroyed: true }),
+            preview: Object.freeze({ ...projection.facts.preview, destroyed: true }),
         }),
     });
 }
@@ -2627,7 +2641,7 @@ function projectRuntimeMekBattleValue(
         defensive: result.defensive,
         offensive: result.offensive,
         ...(manualBattleValue > 0 ? { manualBattleValue } : {}),
-        manualOverrideApplied: false,
+        manualOverrideApplied: manualBattleValue > 0,
     });
 }
 
@@ -3199,7 +3213,7 @@ function criticalRuntimeView(
             if (!unit.index.slots.has(slotId)) throw new Error(`Unknown critical slot ${slotId}`);
             return criticalHits(state, slotId, perspective);
         },
-        componentStatus: (componentId: ComponentId, perspective: RuntimeStatePerspective) => {
+        componentStatus: (componentId: ComponentId, perspective: RuntimeStatePerspective = 'committed') => {
             if (!unit.index.components.has(componentId)) throw new Error(`Unknown component ${componentId}`);
             return status(perspective).component(componentId).status;
         },
@@ -3224,6 +3238,10 @@ function criticalRuntimeView(
             componentId,
             state.ammo.get(componentId)?.munitionOverride,
         ),
+        ammoEquipment: (componentId: ComponentId) => requireAmmoLoadout(
+            unit, componentId, state.ammo.get(componentId)?.munitionOverride,
+        ).equipment,
+        ammoHotLoaded: (componentId: ComponentId) => unit.hotLoadedAmmo && state.ammo.get(componentId)?.hotLoaded === true,
         remainingAmmo: (componentId: ComponentId) => {
             const ammo = state.ammo.get(componentId);
             return requireAmmoCapacity(unit, componentId, ammo?.munitionOverride) - (ammo?.shotsSpent ?? 0);
@@ -4069,18 +4087,21 @@ function withAmmoConfiguration(
     componentId: ComponentId,
     munitionKey: string,
     shotsSpent: number,
+    hotLoaded: boolean,
 ): MekUnitRuntimeState | null {
     const defaultKey = mekAmmoDefaultMunitionKey(unit.entity, unit.index, componentId);
     if (defaultKey === null) return null;
     const next: AmmoRuntimeState = Object.freeze({
         shotsSpent,
         ...(munitionKey === defaultKey ? {} : { munitionOverride: munitionKey }),
+        ...(hotLoaded ? { hotLoaded: true as const } : {}),
     });
     const current = state.ammo.get(componentId);
     if ((current?.shotsSpent ?? 0) === next.shotsSpent
-        && current?.munitionOverride === next.munitionOverride) return null;
+        && current?.munitionOverride === next.munitionOverride
+        && current?.hotLoaded === next.hotLoaded) return null;
     const ammo = new Map(state.ammo);
-    if (next.shotsSpent === 0 && next.munitionOverride === undefined) ammo.delete(componentId);
+    if (next.shotsSpent === 0 && next.munitionOverride === undefined && !next.hotLoaded) ammo.delete(componentId);
     else ammo.set(componentId, next);
     return { ...state, ammo: new ImmutableIndex(ammo) };
 }
@@ -4800,7 +4821,11 @@ function validateState(
         if (!Number.isSafeInteger(ammo.shotsSpent) || ammo.shotsSpent < 0 || ammo.shotsSpent > capacity) {
             throw new Error(`Invalid spent shots for ammo source ${id}`);
         }
-        if (ammo.shotsSpent === 0 && ammo.munitionOverride === undefined) {
+        if (ammo.hotLoaded !== undefined && (ammo.hotLoaded !== true
+            || !mekAmmoLoadout(entity, index, id, ruleset, ammo.munitionOverride)?.equipment.hasFlag('F_HOT_LOAD'))) {
+            throw new Error(`Invalid hot-loaded ammo source ${id}`);
+        }
+        if (ammo.shotsSpent === 0 && ammo.munitionOverride === undefined && !ammo.hotLoaded) {
             throw new Error(`Empty sparse ammo state for ${id}`);
         }
     }

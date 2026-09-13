@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { MountedArmor, MountedEngine } from '../../../components';
+import { MountedArmor, MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../../../components';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../../equipment.model';
 import type { EquipmentFlag } from '../../../../equipment-flags.type';
 import {
@@ -560,6 +560,24 @@ describe('Alpha Strike core specials', () => {
     expect(alphaStrikeCoreSpecials(fighter, { type: 'AF', hasStandardDamage: true })).toEqual([]);
     expect(alphaStrikeCoreSpecials(new BattleArmorEntity(), { type: 'BA', hasStandardDamage: true })).toEqual(['CAR5']);
     expect(alphaStrikeCoreSpecials(new ProtoMekEntity(), { type: 'PM', hasStandardDamage: true })).toEqual(['ENE']);
+  });
+
+  it('includes automatic CASE supplied by Clan structure on an Inner Sphere chassis', () => {
+    const entity = new BipedMekEntity();
+    entity.techBase.set('IS');
+    entity.mixedTech.set(true);
+    const explosive = new WeaponEquipment({
+      id: 'explosive', name: 'Explosive Weapon', type: 'weapon', stats: { explosive: true },
+      weapon: { explosionDamage: 10, ammoType: 'NA' },
+    });
+    addTestEquipment(entity, explosive, { location: 'RT' });
+    expect(alphaStrikeCoreSpecials(entity, GROUND_CONTEXT)).not.toContain('CASE');
+
+    entity.setStructureAt('RT', new MountedStructure({
+      tonnage: entity.tonnage(), structure: STANDARD_STRUCTURE_EQUIPMENT, techBase: 'Clan',
+    }));
+    expect(entity.automaticClanCaseLocations()).toEqual(new Set(['RT']));
+    expect(alphaStrikeCoreSpecials(entity, GROUND_CONTEXT)).toContain('CASE');
   });
 
   it('converts ECM and probe variants with their implied reconnaissance ability', () => {

@@ -2,7 +2,7 @@
     @if (activeTab() === 'Sheet' || activeTab() === 'Card') {
     <div class="stable-tab-footer sheet-controls">
         <label class="zoom-control">
-            <simple-slider [min]="minZoomPercent()" [max]="maxZoomPercent()" [step]="5"
+            <simple-slider [min]="minZoomPercent()" [max]="maxZoomPercent()" [step]="activeTab() === 'Card' ? 1 : 5"
                 [value]="zoomPercent()" [defaultValue]="100" ariaLabel="Zoom"
                 (valueChange)="setZoomPercent($event)"></simple-slider>
             <output>{{ zoomPercent() }}%</output>

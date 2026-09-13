@@ -7,15 +7,15 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../models/equi
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import type { EntityTransportBay, EntityValidationMessage } from '../../models/entity/types';
 import { chassisEquipmentKind, type ChassisEquipmentKind } from '../../models/chassis-equipment.model';
-import { isSupportVehicleBarArmor } from '../../models/construction-equipment.model';
 import { isDroneOperatingSystemEquipment } from '../../models/drone-operating-system.model';
 import { c3EquipmentTraits } from '../../models/c3-network.model';
 import { supportEquipmentCrewContribution } from '../../models/support-equipment.model';
-import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
+import { getNumCriticalSlots, getSupportVehicleArmorSlots } from '../../models/entity/utils/equipment-helpers';
 import { isQuartersBay } from '../../models/entity/bays/bay-definitions';
 import { calculateSpacecraftEquipmentCrew, calculateSpacecraftRequiredGunners, calculateTransportBayPersonnel } from '../../models/entity/utils/crew-requirements';
 import { calculateSmallCraftMinimumHeatSinks } from '../../models/entity/utils/weight/small-craft-weight';
 import { calculateAdvancedAerospaceMinimumHeatSinks } from '../../models/entity/utils/weight/advanced-aerospace-weight';
+import { constructionSupportEngineApplies } from './construction-system-rules';
 
 type Support = BaseEntity & { structuralTechRating(): number; fuel(): number };
 const has = (entity: BaseEntity, flag: EquipmentFlag) => entity.equipment().some(mount => mount.equipment?.hasFlag(flag));
@@ -63,7 +63,7 @@ export function constructionSupportSlots(entity: Support): { used: number; capac
   used += ammo.size + Number(jumpJets);
   const armor = entity.uniformArmor();
   used += armor ? getNumCriticalSlots(entity, armor.armor) ?? 0
-    : [...entity.armorByLocation().values()].reduce((sum, material) => sum + material.armor.patchworkSlotsMekSV, 0);
+    : [...entity.armorByLocation().values()].reduce((sum, material) => sum + getSupportVehicleArmorSlots(entity, material.armor, material.techRating, true), 0);
   const quarters = new Map<string, number>();
   for (const bay of bays(entity)) {
     if (!isQuartersBay(bay)) used++;
@@ -87,10 +87,6 @@ const modModes: Partial<Record<ChassisEquipmentKind, readonly string[]>> = {
   submersible: ['Naval', 'Hydrofoil', 'Submarine'], tractor: ['Wheeled', 'Tracked', 'Naval', 'Hydrofoil', 'Submarine', 'Rail', 'MagLev'],
   trailer: ['Wheeled', 'Tracked', 'Rail', 'MagLev'], vstol: ['Aerodyne'],
 };
-const incompatibleMods: readonly (readonly [ChassisEquipmentKind, ChassisEquipmentKind])[] = [
-  ['armored-chassis', 'ultra-light'], ['bicycle', 'monocycle'], ['snowmobile', 'dune-buggy'],
-  ['snowmobile', 'amphibious'], ['snowmobile', 'off-road'], ['dune-buggy', 'amphibious'], ['dune-buggy', 'off-road'],
-];
 
 export function constructionSupportVesselMessages(entity: BaseEntity): EntityValidationMessage[] {
   const messages: EntityValidationMessage[] = [];
@@ -105,29 +101,16 @@ export function constructionSupportVesselMessages(entity: BaseEntity): EntityVal
       if ((mod === 'amphibious' && ['Hover', 'Naval', 'Hydrofoil', 'Submarine'].includes(mode)) || (mod === 'armored-chassis' && mode === 'Airship')) add('SUPPORT_MOD_MOTIVE', `${mod} chassis modification is incompatible with ${mode}.`);
       if (['bicycle', 'monocycle', 'ultra-light'].includes(mod) && !small) add('SUPPORT_MOD_SIZE', `${mod} requires a small support vehicle.`);
     }
-    for (const [first, second] of incompatibleMods) if (mods.has(first) && mods.has(second)) add('SUPPORT_MOD_CONFLICT', `${first} and ${second} chassis modifications cannot be combined.`);
     if (mods.has('hydrofoil') && entity.tonnage() > 100) add('SUPPORT_HYDROFOIL_WEIGHT', 'Hydrofoil chassis modification requires a vehicle of at most 100 tons.', 'weight');
     if (mods.has('convertible') && entity instanceof VehicleEntity && entity.hasTurret()) add('SUPPORT_CONVERTIBLE_TURRET', 'Convertible support vehicles cannot have a turret.');
     if ((engine === 'External') !== mods.has('external-power-pickup')) add('SUPPORT_EXTERNAL_POWER', 'External engines and external power pickup chassis modification require each other.', 'engine');
     if (entity instanceof AeroEntity && ['Battery', 'Fuel Cell', 'Solar', 'External'].includes(engine) && !mods.has('propeller')) add('SUPPORT_ELECTRIC_PROPELLER', 'Electric aerospace support engines require the propeller chassis modification.', 'engine');
-    const engineModes: Record<string, readonly string[]> = {
-      Steam: ['Wheeled', 'Tracked', 'Airship', 'Naval', 'Hydrofoil', 'Submarine', 'Rail', 'MagLev'],
-      Solar: ['Wheeled', 'Tracked', 'Airship', 'Aerodyne', 'Naval', 'Hydrofoil', 'Submarine', 'WiGE', 'Station Keeping'],
-      Maglev: ['Rail', 'MagLev'], External: ['Rail', 'MagLev'], None: ['Wheeled', 'Tracked', 'Rail', 'MagLev'],
-    };
-    if (['XL', 'XXL', 'Light', 'Compact'].includes(engine) || engineModes[engine] && !engineModes[engine].includes(mode) || engine === 'ICE' && mode === 'Station Keeping') add('SUPPORT_ENGINE_TYPE', `${engine} is not a legal engine for this support vehicle.`, 'engine');
+    if (!constructionSupportEngineApplies(entity, engine)) add('SUPPORT_ENGINE_TYPE', `${engine} is not a legal engine for this support vehicle.`, 'engine');
     if (engine === 'None' && entity.originalWalkMP() !== 0) add('SUPPORT_UNPOWERED_MOVEMENT', 'An unpowered vehicle must have zero cruise MP.', 'movement');
     const requiresFuel = entity instanceof AeroEntity
       ? !((mods.has('propeller') || mode === 'Airship') && ['Fusion', 'Fission', 'Solar'].includes(engine))
       : ['Steam', 'ICE', 'Battery', 'Fuel Cell'].includes(engine);
     if (requiresFuel && engine !== 'None' && entity.fuel() <= 0) add('SUPPORT_FUEL_REQUIRED', 'This powered support vehicle requires fuel allocation.', 'engine');
-    for (const [location, material] of entity.armorByLocation()) {
-      const armor = material.armor, bar = isSupportVehicleBarArmor(armor);
-      const rating = material.techRating ?? ['A', 'B', 'C', 'D', 'E', 'F'][entity.structuralTechRating()];
-      const perPoint = armor.weightPerPointSV[rating] ?? armor.weightPerPoint;
-      if (!mods.has('armored-chassis') && (!bar || perPoint > 0.05)) add('SUPPORT_ARMORED_CHASSIS_REQUIRED', 'Advanced armor or armor heavier than 50 kg per point requires the armored chassis modification.', 'armor', location);
-      if (bar && (armor.bar < 2 || armor.bar > 10 || perPoint < 0.001)) add('SUPPORT_BAR_TECH', 'BAR armor must be 2–10 and supported by its armor tech rating.', 'armor', location);
-    }
     if (['armored-chassis', 'amphibious', 'environmental-sealing', 'submersible'].some(mod => mods.has(mod as ChassisEquipmentKind))) {
       if (entity.armorLocations.some(location => (entity.armorValues().get(location)?.front ?? 0) < 1)) add('SUPPORT_SEALED_ARMOR', 'This chassis modification requires armor on every armored facing.', 'armor');
     }
@@ -145,14 +128,24 @@ export function constructionSupportVesselMessages(entity: BaseEntity): EntityVal
     if (sponson && entity.jumpMP() > 0) add('SUPPORT_SPONSON_JUMP', 'Support vehicles cannot combine sponson turrets with jump jets.');
     if (pintle && (!small || ['Aerodyne', 'Naval', 'Hydrofoil', 'Submarine'].includes(mode))) add('SUPPORT_PINTLE_SIZE', 'Pintle turrets require a small support vehicle with a compatible movement type.');
     if (entity.equipment().filter(mount => mount.equipment?.hasFlag('F_EXTERNAL_STORES_HARDPOINT')).length > entity.tonnage() / 10) add('SUPPORT_HARDPOINT_LIMIT', 'At most one external stores hardpoint is permitted per ten tons.');
-    for (const location of entity.validLocations) if (entity.getEquipmentAtLocation(location).filter(mount => mount.equipment?.hasFlag('F_MANIPULATOR')).length > 2) add('SUPPORT_MANIPULATOR_LIMIT', 'At most two manipulators are allowed per location.', 'equipment', location);
+    if (!['Naval', 'Hydrofoil', 'Submarine'].includes(mode) && !mods.has('amphibious') && entity.equipment().some(mount => mount.equipment?.hasFlag('F_LIFEBOAT') && mount.equipment.hasAnyFlag(['S_MARITIME_ESCAPE_POD', 'S_MARITIME_LIFEBOAT']))) add('SUPPORT_MARITIME_ESCAPE', 'Maritime escape equipment requires a naval or amphibious support vehicle.');
     if (small) {
       const seating = bays(entity).filter(bay => seatTypes.has(bay.configuration.type)).reduce((sum, bay) => sum + Math.trunc(bay.capacity), 0);
       const required = constructionSupportCrew(entity);
       if (seating < required) add('SUPPORT_CREW_SEATING', `This vehicle requires ${required} crew seats; ${seating} are provided.`, 'general');
     }
   }
-  if (entity instanceof AeroEntity) validateVesselDoors(entity, add);
+  if (entity instanceof AeroEntity) {
+    validateVesselDoors(entity, add);
+    if (!(entity instanceof SmallCraftEntity || entity instanceof JumpShipEntity)) {
+      const lateral = new Map<string, number>();
+      for (const mount of entity.equipment()) if (mount.equipment instanceof WeaponEquipment && ['Left Wing', 'Right Wing'].includes(mount.location)) {
+        const key = `${mount.equipmentId}:${mount.rearMounted}`;
+        lateral.set(key, (lateral.get(key) ?? 0) + (mount.location === 'Left Wing' ? 1 : -1));
+      }
+      if ([...lateral.values()].some(value => value !== 0)) add('FIGHTER_LATERAL_WEAPONS', 'Left and right wing weapon loads must match, including rear-facing weapons.');
+    }
+  }
   if (entity instanceof SmallCraftEntity || entity instanceof JumpShipEntity) validateVessel(entity, add);
   return messages;
 }
@@ -182,7 +175,7 @@ function validateVessel(entity: SmallCraftEntity | JumpShipEntity, add: Add): vo
     const required = base + calculateSpacecraftEquipmentCrew(entity) + calculateSpacecraftRequiredGunners(entity);
     const aboard = entity.crew() - calculateTransportBayPersonnel(entity);
     if (aboard < required) add('VESSEL_CREW_MINIMUM', `This craft requires ${required} vessel crew, excluding bay personnel; ${aboard} are assigned.`, 'general');
-    const officers = Math.ceil(required / (jump ? 6 : 5));
+    const officers = Math.ceil((jump ? Math.max(required, aboard) : required) / (jump ? 6 : 5));
     if (entity.officers() < officers) add('VESSEL_OFFICER_MINIMUM', `At least ${officers} officers are required.`, 'general');
     const occupants = aboard + entity.passengers() + entity.marines() + entity.battleArmor();
     const quarters = bays(entity).filter(bay => crewQuarters.has(bay.configuration.type)).reduce((sum, bay) => sum + Math.trunc(bay.capacity), 0);
@@ -224,7 +217,7 @@ function validateVessel(entity: SmallCraftEntity | JumpShipEntity, add: Add): vo
   const balance = new Map<string, number>(), massDrivers = new Map<string, number>();
   for (const mount of entity.equipment()) if (mount.equipment instanceof WeaponEquipment && !mount.equipment.isInternalRepresentation) {
     const eq = mount.equipment;
-    const pairs = [['FLS', 'FRS'], ['ALS', 'ARS'], ['LBS', 'RBS']];
+    const pairs = [['FLS', 'FRS'], ['ALS', 'ARS'], ['Left Broadside', 'Right Broadside']];
     for (const [left, right] of pairs) if (mount.location === left || mount.location === right) {
       const key = `${left}:${eq.id}:${mount.rearMounted}`;
       balance.set(key, (balance.get(key) ?? 0) + (mount.location === left ? 1 : -1));

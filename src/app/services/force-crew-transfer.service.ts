@@ -14,6 +14,7 @@ import type { CrewAssignmentPosition } from '../models/runtime/crew-assignment';
 import type { Force } from '../models/force.model';
 import { compareCrewPositionIds, type ForcePerson } from '../models/force-personnel';
 import { asCrewPositionId } from '../models/entity/entity-identifiers';
+import { crewSkillsForUnit, unitCrewSkillSet } from '../models/unit-crew-policy';
 
 interface CopiedCrewMember {
     readonly positionId: string;
@@ -46,8 +47,13 @@ export class ForceCrewTransferService {
             if (details) return {
                 ...position,
                 name: details.name,
-                gunnery: details.gunnery,
-                piloting: details.piloting,
+                ...(created.entity.unitType() === 'Aero'
+                    ? { aeroGunnery: details.gunnery, aeroPiloting: details.piloting }
+                    : { gunnery: details.gunnery, piloting: details.piloting }),
+                ...(created.entity.unitSubtype() === 'Land-Air BattleMek' ? {
+                    aeroGunnery: details.aeroGunnery ?? details.gunnery,
+                    aeroPiloting: details.aeroPiloting ?? details.piloting,
+                } : {}),
             };
             return index === 0 && !input.crew?.length && input.alias
                 ? { ...position, name: input.alias }
@@ -70,11 +76,17 @@ export class ForceCrewTransferService {
             // Preserve the existing conversion: AS skill supplies every gunner,
             // while the named pilot occupies the first available station.
             const gunnery = pilot?.profile.gunnery ?? 4;
+            const skillSet = unitCrewSkillSet(target.entity.unitType(), target.entity.unitSubtype());
             const crew: CopiedCrewMember[] = !pilot ? [] : stations.map((station, index) => ({
                 positionId: station.positionId as string,
-                profile: index === 0
+                profile: { ...(index === 0
                     ? { ...pilot.profile, piloting: pilot.profile.piloting ?? station.piloting }
-                    : { gunnery, piloting: station.piloting },
+                    : { gunnery, piloting: station.piloting }),
+                    ...(skillSet !== 'ground' ? {
+                        aeroGunnery: gunnery,
+                        aeroPiloting: pilot.profile.aeroPiloting ?? station.aeroPiloting ?? 5,
+                    } : {}),
+                },
             }));
             if (pilot && crew.length === 0) crew.push({ positionId: 'pilot', profile: pilot.profile });
             await this.replaceCopiedCrew(target, crew);
@@ -85,7 +97,8 @@ export class ForceCrewTransferService {
         }
         await this.replaceCopiedCrew(target, people.map((person, index) => ({
             positionId: index === 0 ? 'pilot' : person.positionId,
-            profile: person.profile,
+            profile: { ...person.profile, gunnery: crewSkillsForUnit(person.profile,
+                source.entity.unitType(), source.entity.unitSubtype()).gunnery },
         })));
     }
 

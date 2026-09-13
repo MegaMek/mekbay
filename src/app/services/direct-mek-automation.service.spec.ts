@@ -11,6 +11,7 @@ import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 
 import {
 createDirectExplosionRuntimeFixture,
+createDirectHotLoadedAmmoRuntimeFixture,
 createDirectMekRuntimeFixture,
 createDirectTripodRuntimeFixture,
 type DirectMekRuntimeFixture,
@@ -71,6 +72,37 @@ describe('DirectMekAutomationService', () => {
         });
         service = TestBed.inject(DirectMekAutomationService);
     });
+
+    for (const manual of [false, true]) {
+    it(`reviews the hot-loaded launcher and secondary explosion for a ${manual ? 'manual' : 'rolled'} critical`, async () => {
+        const fixture = createDirectHotLoadedAmmoRuntimeFixture(true, 'total-warfare');
+        const harness = createHarnessForFixture(fixture, 'total-warfare', 'hot-load-automation');
+        const launcher = fixture.equipmentComponent('Test Artemis Launcher').id;
+        const ammoId = fixture.equipmentComponent('Test Artemis Ammo').id;
+        fixture.instance.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
+            munitionKey: 'Test Artemis Ammo', remaining: 12, hotLoaded: true });
+        const slot = [...fixture.index.slots.values()].find(slot => slot.componentIds.includes(launcher))!;
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, manual ? {
+            type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed',
+        } : {
+            type: 'apply-mek-critical-roll', locationId: slot.locationId, target: 'committed',
+            results: slot.slotIndex < 6 ? [1, slot.slotIndex + 1] : [4, slot.slotIndex - 5],
+        });
+
+        expect(prepared.command).toEqual(jasmine.objectContaining({
+            hotLoadExplosion: { dice: [1, 1], ammoComponentId: ammoId }, applyExplosion: true,
+        }));
+        expect(prepared.criticalPlan?.kind).toBe('applied');
+        if (prepared.criticalPlan?.kind === 'applied') expect(prepared.criticalPlan.explosion?.rawDamage).toBe(130);
+        expect(resolveAutomation.calls.mostRecent().args[1][0].description)
+            .toBe('Apply 130 points of internal explosion damage. Hot-load check: 1 + 1.');
+        expect((await harness.dispatch(prepared.command)).changed).toBeTrue();
+        expect(fixture.instance.query().componentStatus(launcher)).toBe('destroyed');
+        expect(fixture.instance.query().componentStatus(ammoId)).toBe('destroyed');
+    });
+    }
 
     it('reports automatically resolved heat through the shared automation notifier', async () => {
         const harness = createHarness();

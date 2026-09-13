@@ -53,7 +53,7 @@ describe('unit component inspectors', () => {
     });
 
     afterEach(() => {
-        service.destroy();
+        service.hide();
         TestBed.inject(Dialog).closeAll();
     });
 
@@ -82,7 +82,7 @@ describe('unit component inspectors', () => {
         const close = dialog.querySelector<HTMLButtonElement>('.inspector-close')!;
         expect(document.activeElement).toBe(close);
         pointer(trigger(), 'pointerleave', 'mouse');
-        service.hideWithDelay(0);
+        service.inspector.leave();
         panel.dispatchEvent(new Event('scroll'));
         panel.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
         await render();
@@ -121,7 +121,13 @@ describe('unit component inspectors', () => {
         for (const type of ['touch', 'pen']) pointer(trigger(), 'pointerenter', type);
         await render();
         expect(container.querySelector('floating-comp-info')).toBeNull();
-        pointer(trigger(), 'pointerenter', 'mouse');
+        jasmine.clock().withMock(() => {
+            pointer(trigger(), 'pointerenter', 'mouse');
+            jasmine.clock().tick(299);
+            expect(service.inspector.isOpen()).toBeFalse();
+            jasmine.clock().tick(1);
+            expect(service.inspector.isOpen()).toBeTrue();
+        });
         await render();
         expect(container.querySelector('.floating-comp-overlay-panel .floating-comp-info')).not.toBeNull();
         expect(modal()).toBeNull();
@@ -136,7 +142,10 @@ describe('unit component inspectors', () => {
     });
 
     it('closes an existing hover panel when the viewport becomes a phone', async () => {
-        pointer(trigger(), 'pointerenter', 'mouse');
+        jasmine.clock().withMock(() => {
+            pointer(trigger(), 'pointerenter', 'mouse');
+            jasmine.clock().tick(300);
+        });
         await render();
         expect(container.querySelector('floating-comp-info')).not.toBeNull();
         phone.set(true);
@@ -145,6 +154,63 @@ describe('unit component inspectors', () => {
         trigger().click();
         await render();
         expect(modal()).not.toBeNull();
+    });
+
+    it('gives hover panels 300 ms to cross between trigger and panel, pins on click, and closes on dragging', async () => {
+        jasmine.clock().withMock(() => {
+            for (const cancel of ['pointerleave', 'pointerdown', 'pointercancel', 'dragstart']) {
+                pointer(trigger(), 'pointerenter', 'mouse');
+                jasmine.clock().tick(200);
+                pointer(trigger(), cancel, 'mouse');
+                jasmine.clock().tick(300);
+                expect(service.inspector.isOpen()).withContext(cancel).toBeFalse();
+            }
+            pointer(trigger(), 'pointerenter', 'mouse');
+            jasmine.clock().tick(300);
+        });
+        await render();
+        const panel = container.querySelector<HTMLElement>('.floating-comp-overlay-panel')!;
+        panel.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+        expect(service.inspector.isOpen()).toBeTrue();
+        jasmine.clock().withMock(() => {
+            pointer(trigger(), 'pointerleave', 'mouse');
+            jasmine.clock().tick(299);
+            expect(service.inspector.isOpen()).toBeTrue();
+            pointer(panel, 'pointerenter', 'mouse');
+            jasmine.clock().tick(300);
+            expect(service.inspector.isOpen()).toBeTrue();
+            pointer(panel, 'pointerleave', 'mouse');
+            jasmine.clock().tick(200);
+            pointer(trigger(), 'pointerenter', 'mouse');
+            jasmine.clock().tick(300);
+            expect(service.inspector.isOpen()).toBeTrue();
+            pointer(trigger(), 'pointerleave', 'mouse');
+            jasmine.clock().tick(299);
+            expect(service.inspector.isOpen()).toBeTrue();
+            jasmine.clock().tick(1);
+            expect(service.inspector.isOpen()).toBeFalse();
+        });
+        await render();
+        expect(container.querySelector('floating-comp-info')).toBeNull();
+        jasmine.clock().withMock(() => {
+            pointer(trigger(), 'pointerenter', 'mouse');
+            jasmine.clock().tick(300);
+            pointer(trigger(), 'pointerleave', 'mouse');
+            trigger().click();
+            jasmine.clock().tick(600);
+            expect(service.inspector.isPinned()).toBeTrue();
+            pointer(trigger(), 'dragstart', 'mouse');
+            expect(service.inspector.isOpen()).toBeFalse();
+            jasmine.clock().tick(600);
+            expect(service.inspector.isOpen()).toBeFalse();
+        });
+        await render();
+        expect(container.querySelector('floating-comp-info')).toBeNull();
+        trigger().click();
+        await render();
+        pointer(document.body, 'pointerdown', 'mouse');
+        await render();
+        expect(container.querySelector('floating-comp-info')).toBeNull();
     });
 
     it('closes only the component inspector with Escape when opened inside a unit dialog', async () => {

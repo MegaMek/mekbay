@@ -6,17 +6,23 @@ import type { EntityMountedEquipment } from './entity/types/equipment';
 import { isAeroEntity } from './entity/utils/entity-type-guards';
 import type { Equipment } from './equipment.model';
 
-const POWER_GENERATOR_BASE_COST: Readonly<Record<string, number>> = Object.freeze({
-  STEAM: 4000,
-  SOLAR: 8000,
-  FISSION: 15000,
-  FUSION: 10000,
-  COMBUSTION_LIQUID: 5000,
-  COMBUSTION_SOLID: 5000,
-  FUEL_CELL: 7000,
-  EXTERNAL_PCMT: 5000,
-  EXTERNAL: 5000,
+/** MegaMek StructureEngine / TO:AR pp. 132, 208. */
+const POWER_GENERATORS: Readonly<Record<string, { cost: number; buildingWeightMultiplier: number; nuclear?: boolean }>> = Object.freeze({
+  STEAM: { cost: 4000, buildingWeightMultiplier: 3 },
+  SOLAR: { cost: 8000, buildingWeightMultiplier: 3 },
+  FISSION: { cost: 15000, buildingWeightMultiplier: 1.5, nuclear: true },
+  FUSION: { cost: 10000, buildingWeightMultiplier: 1, nuclear: true },
+  COMBUSTION_LIQUID: { cost: 5000, buildingWeightMultiplier: 1.5 },
+  COMBUSTION_SOLID: { cost: 5000, buildingWeightMultiplier: 2 },
+  FUEL_CELL: { cost: 7000, buildingWeightMultiplier: 1 },
+  EXTERNAL_PCMT: { cost: 5000, buildingWeightMultiplier: 0.5 },
+  EXTERNAL: { cost: 5000, buildingWeightMultiplier: 0.5 },
 });
+
+export function powerGeneratorDefinition(equipment: Equipment | undefined) {
+  return equipment?.hasFlag('F_POWER_GENERATOR')
+    ? POWER_GENERATORS[equipment.id.slice(0, -' PowerGenerator'.length)] : undefined;
+}
 
 export type SupportEquipmentKind =
   | 'cargo'
@@ -91,7 +97,7 @@ export function supportEquipmentVariableTonnage(
   if (kind === 'cargo-lifter') return 0.03 * Math.ceil(size * 2);
   if (kind === 'battle-armor-mission-equipment') return nearestKg(size / 1000);
   if (kind === 'dumper') return standardRound(dumperCapacity(entity, mount) * 0.05);
-  if (kind === 'power-generator') return 1;
+  if (kind === 'power-generator') return size;
   return null;
 }
 
@@ -103,8 +109,7 @@ export function supportEquipmentVariableCost(
   const kind = supportEquipmentKind(equipment);
   const size = mount.size ?? 1;
   if (kind === 'power-generator') {
-    const generatorType = equipment!.id.slice(0, -' PowerGenerator'.length);
-    const baseCost = POWER_GENERATOR_BASE_COST[generatorType];
+    const baseCost = powerGeneratorDefinition(equipment)?.cost;
     return baseCost === undefined ? undefined : baseCost * size;
   }
   if (kind === 'cargo-lifter') return 250 * Math.ceil(size * 2);
@@ -133,8 +138,11 @@ export function supportEquipmentCriticalSlots(
       entity,
     ));
   }
-  if (kind === 'cargo') return isAeroEntity(entity) ? 0 : Math.ceil(size);
-  if (kind === 'liquid-cargo' || kind === 'communications') return Math.ceil(size);
+  if (kind === 'cargo' || kind === 'liquid-cargo') {
+    if (entity.isSupportVehicle()) return 1;
+    return kind === 'cargo' && isAeroEntity(entity) ? 0 : Math.ceil(size);
+  }
+  if (kind === 'communications') return Math.ceil(size);
   return null;
 }
 

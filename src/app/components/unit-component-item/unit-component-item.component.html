@@ -8,11 +8,12 @@
         [class.customAmmoLoadout]="compEntry?.customAmmo"
         [class.destroyed-entry]="damaged()"
         [attr.title]="damaged() ? 'Destroyed' : null"
-        (pointerenter)="onPointerEnter($event)" 
+        [inspectorHoverDisabled]="!isInteractive() || layout.isPhone()"
+        [inspectorHover]="floatingOverlayService.inspector"
+        (inspect)="showFloatingOverlay(true)"
         (click)="onCompClick($event)" 
         (keydown.enter)="onCompClick($event)"
-        (keydown.space)="onCompClick($event)"
-        (pointerleave)="onPointerLeave($event)">{{ compEntry?.q }}×{{ compEntry?.customAmmo ? '*' : '' }}{{ compEntry?.n }}@if (compEntry?.rear) { <span class="rear-indicator" title="Rear Mounted">(R)</span>} @if (compEntry?.q2 || compEntry?.t === 'X') {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
+        (keydown.space)="onCompClick($event)">{{ compEntry?.q }}×{{ compEntry?.customAmmo ? '*' : '' }}{{ compEntry?.n }}@if (compEntry?.rear) { <span class="rear-indicator" title="Rear Mounted">(R)</span>} @if (compEntry?.q2 || compEntry?.t === 'X') {<span class="ammo-count"> ({{ compEntry?.q2 }})</span>}</span>
 } @else {
 <div #component
     class="component {{ displayStyle() }}-data {{ typeClass() }}"
@@ -20,11 +21,12 @@
     [attr.tabindex]="isInteractive() ? 0 : null"
     [class.destroyed-entry]="damaged()"
     [attr.title]="damaged() ? 'Destroyed' : null"
-    (pointerenter)="onPointerEnter($event)"
+    [inspectorHoverDisabled]="!isInteractive() || layout.isPhone()"
+    [inspectorHover]="floatingOverlayService.inspector"
+    (inspect)="showFloatingOverlay(true)"
     (click)="onCompClick($event)"
     (keydown.enter)="onCompClick($event)"
-    (keydown.space)="onCompClick($event)"
-    (pointerleave)="onPointerLeave($event)">
+    (keydown.space)="onCompClick($event)">
         <div class="comp-title">
             <span class="comp-qty">{{ compEntry?.q }}×</span>
             <span class="comp-name"><span [class.customAmmoLoadout]="compEntry?.customAmmo">{{ compEntry?.customAmmo ? '*' : '' }}{{ compEntry?.n }}

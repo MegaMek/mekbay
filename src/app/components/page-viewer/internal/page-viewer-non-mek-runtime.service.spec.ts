@@ -4,9 +4,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { asCrewPositionId,asLocationId } from '../../../models/entity/entity-identifiers';
-import { TestInfantryEntity,TestTankEntity } from '../../../models/entity/testing/test-entities';
+import { TestInfantryEntity,TestTankEntity,TestAeroSpaceFighterEntity,TestVtolEntity } from '../../../models/entity/testing/test-entities';
+import type { ChoicePickerConfig } from '../../../services/picker-factory.service';
 import type { CBTForceMember } from '../../../models/force-member.model';
-import type { NonMekRecordSheetCrewPosition } from '../../../models/runtime/non-mek-record-sheet';
+import { createNonMekUnit } from '../../../models/runtime/cbt-non-mek-unit';
+import { projectNonMekRecordSheet,type NonMekRecordSheetCrewPosition } from '../../../models/runtime/non-mek-record-sheet';
 import { createPristineNonMekUnitState } from '../../../models/runtime/non-mek-unit-instance';
 import { DialogsService } from '../../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
@@ -16,9 +18,128 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { PickerFactoryService,type DirectionalPickerConfig } from '../../../services/picker-factory.service';
 import { ToastService } from '../../../services/toast.service';
 import { UnitNameService } from '../../../services/unit-name.service';
+import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { PageViewerNonMekRuntimeService,nonMekCrewStateCommand } from './page-viewer-non-mek-runtime.service';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
+
+describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
+    for (const [makeEntity, field] of [
+        [() => new TestAeroSpaceFighterEntity(), 'aeroGunnery'],
+        [() => new TestVtolEntity(), 'gunnery'],
+    ] as const) {
+        it(`edits ${field} from the SVG without changing the other pair`, async () => {
+            const entity = makeEntity();
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+            entity.uuid.set(uuid);
+            const unit = createNonMekUnit(entity, { instanceId: 'unit', uuid,
+                scenario: { id: 'test' }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            const profile = { schemaVersion: 1 as const, positions: unit.getCrewAssignment().positions.map(row => ({
+                ...row, gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3,
+            })) };
+            const snapshot = { ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), 0, 0, profile),
+                editContext: { owner: unit, state: unit.snapshot() } };
+            const picker = jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: () => {} });
+            TestBed.configureTestingModule({ providers: [PageViewerNonMekRuntimeService,
+                { provide: PickerFactoryService, useValue: { createChoicePicker: picker } },
+                { provide: OptionsService, useValue: { options: () => ({}) } },
+                { provide: PageViewerZoomPanService, useValue: { cancelGesture: () => {} } },
+                ...[LoggerService, UnitNameService, DialogsService, ForcePilotEditorService,
+                    PageViewerOverlayService, OverlayManagerService, ToastService].map(provide => ({ provide, useValue: {} })),
+            ] });
+            const replace = jasmine.createSpy('replaceUnitCrewProfile').and.resolveTo(profile);
+            const member = { kind: 'cbt', id: 'unit', entity, nonMekRecordSheetSnapshot: () => snapshot,
+                force: { getUnitCrewProfile: () => profile, replaceUnitCrewProfile: replace } } as unknown as CBTForceMember;
+            const service = TestBed.inject(PageViewerNonMekRuntimeService);
+            service.handle(member, { kind: 'crew-skill', positionId: profile.positions[0].positionId,
+                skill: 'gunnery', context: snapshot.editContext }, new MouseEvent('click'));
+            const config = picker.calls.mostRecent().args[0] as ChoicePickerConfig;
+            expect(config.selected).toBe(field === 'aeroGunnery' ? 5 : 2);
+            config.onPick({ label: '1', value: 1 });
+            await Promise.resolve();
+            expect(replace.calls.mostRecent().args[1][0]).toEqual({ ...profile.positions[0], [field]: 1 });
+            expect(snapshot.crew[0].piloting).toBe(field === 'aeroGunnery' ? 3 : 6);
+        });
+    }
+    it('sets and clears movement through the owning runtime and rejects a stale sheet interaction', async () => {
+        const entity = new TestTankEntity();
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+        entity.uuid.set(uuid);
+        entity.originalWalkMP.set(5);
+        const unit = createNonMekUnit(entity, { instanceId: 'tank', uuid,
+            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        const context = () => ({ owner: unit, state: unit.snapshot() });
+        const snapshot = () => ({
+            ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), 0, 0, unit.getCrewAssignment()),
+            editContext: context(),
+        });
+        TestBed.configureTestingModule({ providers: [PageViewerNonMekRuntimeService,
+            ...[LoggerService, UnitNameService, DialogsService, ForcePilotEditorService, OptionsService,
+                PageViewerOverlayService, OverlayManagerService, PickerFactoryService, ToastService, PageViewerZoomPanService,
+            ].map(provide => ({ provide, useValue: {} })),
+        ] });
+        const dispatch = jasmine.createSpy().and.callFake(async (_id, command) => unit.dispatch(command));
+        const member = { kind: 'cbt', id: 'tank', entity, nonMekRecordSheetSnapshot: snapshot,
+            force: { dispatchUnitCommand: dispatch, getUnitSnapshot: () => ({
+                entity, index: unit.getIndex(), state: unit.snapshot(), ruleset: unit.ruleset(),
+                crewAssignment: unit.getCrewAssignment(), editContext: context(),
+            }) },
+        } as unknown as CBTForceMember;
+        const service = TestBed.inject(PageViewerNonMekRuntimeService);
+        const initial = context();
+        service.handle(member, { kind: 'movement', mode: 'walk', context: initial }, new Event('click'));
+        await Promise.resolve();
+        expect(unit.snapshot().turn.movement?.mode).toBe('walk');
+        expect(dispatch.calls.mostRecent().args[2]).toBe(initial);
+        service.handle(member, { kind: 'movement', mode: 'walk', context: context() }, new Event('click'));
+        await Promise.resolve();
+        expect(unit.snapshot().turn.movement).toBeNull();
+        service.handle(member, { kind: 'movement', mode: 'run', context: initial }, new Event('click'));
+        await Promise.resolve();
+        expect(dispatch).toHaveBeenCalledTimes(2);
+    });
+
+    for (const readOnly of [false, true]) {
+        it(`owns the gate on every live page, including read-only page navigation, when readOnly=${readOnly}`, () => {
+            const entity = new TestTankEntity();
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+            entity.uuid.set(uuid);
+            const unit = createNonMekUnit(entity, { instanceId: 'tank', uuid,
+                scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            const snapshot = {
+                ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), 0, 0, unit.getCrewAssignment()),
+                editContext: { owner: unit, state: unit.snapshot() },
+            };
+            TestBed.configureTestingModule({ providers: [
+                PageViewerNonMekRuntimeService,
+                { provide: LoggerService, useValue: { warn: () => {} } },
+                { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
+                ...[DialogsService, ForcePilotEditorService, OptionsService, PageViewerOverlayService,
+                    OverlayManagerService, PickerFactoryService, ToastService, PageViewerZoomPanService,
+                ].map(provide => ({ provide, useValue: {} })),
+            ] });
+            const service = TestBed.inject(PageViewerNonMekRuntimeService);
+            const member = {
+                kind: 'cbt', id: 'tank', entity, nonMekRecordSheetSnapshot: () => snapshot,
+                force: { readOnly: () => readOnly, getEquipmentPanelSnapshot: () => null,
+                    changed: new Subject(), sessionChanged: new Subject() },
+            } as unknown as CBTForceMember;
+            const pages = [0, 1].map(() => document.createElementNS('http://www.w3.org/2000/svg', 'svg'));
+            for (const page of pages) {
+                page.innerHTML = '<g class="record-sheet-page-flip-control interactive" tabindex="0"></g>';
+                expect(page.classList.contains('interactive-sheet')).toBeFalse();
+                expect(service.bind(member, page)).toBeTrue();
+                expect(page.classList.contains('interactive-sheet')).toBeTrue();
+                expect(page.classList.contains('read-only')).toBe(readOnly);
+                expect(page.querySelector('.record-sheet-page-flip-control')!.getAttribute('tabindex')).toBe('0');
+            }
+            service.cleanupUnused(new Set(['tank']));
+            expect(pages.every(page => page.classList.contains('interactive-sheet'))).toBeTrue();
+            service.clear();
+            expect(pages.every(page => !page.classList.contains('interactive-sheet'))).toBeTrue();
+        });
+    }
+});
 
 describe('PageViewerNonMekRuntimeService ammo loadout navigation', () => {
     it('routes the current sheet ammo interaction to its member and the ammo tab', () => {

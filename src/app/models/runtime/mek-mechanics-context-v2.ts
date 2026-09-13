@@ -144,6 +144,11 @@ type MekMechanicsContextBindingV2 =
 
 const CONTEXT_BINDINGS = new WeakMap<object, MekMechanicsContextBindingV2>();
 
+export function mekHotLoadedAmmoEnabled(context: MekMechanicsContextV2): boolean {
+    const binding = CONTEXT_BINDINGS.get(context);
+    return binding?.kind === 'supported' && binding.rules.hotLoadedAmmo;
+}
+
 /** Bind profile and scenario compilation outcomes without exposing either authority. */
 export function createMekMechanicsContextV2(
     entity: MekEntity,

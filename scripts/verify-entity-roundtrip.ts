@@ -17,10 +17,11 @@
  * Options:
  *   --input  PATH   Unit file or root directory (default: ..\..\mm-data\data\mekfiles)
  *   --output PATH   Directory to write diff files for failures (default: ..\..\tmp\roundtrip)
- *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
+ *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|buildings|handheld|convfighter
  *   --fail-fast      Stop on the first failure
  *   --profile        Print cumulative timing by verification phase
  *   --verbose        Print every file result, not just failures
+ *   --exclude PATH   Explicit source-relative file to exclude (repeatable)
  */
 
 import * as fs from 'fs';
@@ -30,6 +31,7 @@ import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../sr
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { encodeNativeEntity } from '../src/app/models/entity/write-entity';
 import { loadQuirkResolver } from './quirk-fixture';
+import { nativeVerificationSkip } from './lib/native-verification-scope';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
@@ -42,8 +44,9 @@ function getArg(name: string, defaultValue: string): string {
 }
 const hasFlag = (name: string) => args.includes(`--${name}`);
 
-const INPUT_DIR = path.resolve(getArg('input', String.raw`..\..\mm-data\data\mekfiles`));
-const OUTPUT_DIR = path.resolve(getArg('output', String.raw`..\..\tmp\roundtrip`));
+const INPUT_DIR = path.resolve(getArg('input', path.resolve(__dirname, '../../mm-data/data/mekfiles')));
+const OUTPUT_DIR = path.resolve(getArg('output', path.resolve(__dirname, '../../tmp/roundtrip')));
+const EXCLUDED_PATHS = args.flatMap((arg, index) => arg === '--exclude' && args[index + 1] ? [args[index + 1]] : []);
 const TYPE_FILTER = getArg('type', '');
 const FAIL_FAST = hasFlag('fail-fast');
 const PROFILE = hasFlag('profile');
@@ -95,12 +98,7 @@ function findUnitFiles(dir: string): string[] {
   const results: string[] = [];
 
   function walk(d: string) {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
+    const entries = fs.readdirSync(d, { withFileTypes: true });
     for (const entry of entries) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
@@ -135,7 +133,7 @@ const TYPE_DIR_MAP: Record<string, string[]> = {
   jumpships:     ['jumpships'],
   warship:       ['warship'],
   spacestation:  ['spacestation'],
-  ge:            ['ge'],
+  buildings:     ['advancedbuildings'],
   handheld:      ['handheld'],
   convfighter:   ['convfighter'],
 };
@@ -152,7 +150,7 @@ function matchesTypeFilter(filePath: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Normalisation – strip mount IDs and whitespace jitter for comparison
+// Normalisation – trailing whitespace and blank-line jitter only
 // ═══════════════════════════════════════════════════════════════════════════
 
 function normalise(text: string): string {
@@ -300,9 +298,7 @@ async function verifyFile(
 // ═══════════════════════════════════════════════════════════════════════════
 
 function writeDiffFiles(result: VerifyResult): void {
-  if (!result.write1 && !result.write2) return;
-
-  const relPath = path.relative(INPUT_DIR, result.file).replace(/\\/g, '__');
+  const relPath = relativeUnitPath(result.file).replace(/\//g, '__');
   const base = path.join(OUTPUT_DIR, relPath);
 
   fs.mkdirSync(path.dirname(base), { recursive: true });
@@ -313,6 +309,10 @@ function writeDiffFiles(result: VerifyResult): void {
   if (result.diagnostics?.length) {
     fs.writeFileSync(base + '.diagnostics', result.diagnostics.join('\n') + '\n', 'utf-8');
   }
+}
+
+function relativeUnitPath(file: string): string {
+  return (path.relative(INPUT_DIR, file) || path.basename(file)).replace(/\\/g, '/');
 }
 
 function errorMessage(error: unknown): string {
@@ -344,6 +344,7 @@ async function main(): Promise<void> {
 
   if (files.length === 0) {
     console.log('No files to verify.');
+    process.exitCode = 1;
     return;
   }
 
@@ -358,10 +359,13 @@ async function main(): Promise<void> {
     writeError: 0,
     diff: 0,
     diagnostics: 0,
+    excluded: 0,
+    unsupported: 0,
   };
 
   const byType = new Map<string, { pass: number; fail: number }>();
   const failures: VerifyResult[] = [];
+  const skipped: { file: string; status: 'excluded' | 'unsupported'; reason: string }[] = [];
   const profileTotals: VerifyTimings = { read: 0, parse1: 0, write1: 0, parse2: 0, write2: 0, normalise: 0 };
 
   const startTime = Date.now();
@@ -378,6 +382,14 @@ async function main(): Promise<void> {
       const content = batchContents[batchIndex];
       stats.total++;
 
+      const skip = nativeVerificationSkip(relativeUnitPath(file), content, EXCLUDED_PATHS);
+      if (skip) {
+        stats[skip.status]++;
+        skipped.push({ file: relativeUnitPath(file), ...skip });
+        if (VERBOSE || skip.status === 'excluded') console.log(`  - ${skip.status.toUpperCase()} ${relativeUnitPath(file)}: ${skip.reason}`);
+        continue;
+      }
+
       const result = await verifyFile(file, content, equipmentRegistry);
       stats.diagnostics += result.diagnostics?.length ?? 0;
       if (result.timings) {
@@ -393,8 +405,9 @@ async function main(): Promise<void> {
         case 'pass':
           stats.pass++;
           byType.get(typeKey)!.pass++;
+          if (result.diagnostics?.length) writeDiffFiles(result);
           if (VERBOSE) {
-            console.log(`  ✓ ${path.relative(INPUT_DIR, file)}`);
+            console.log(`  ✓ ${relativeUnitPath(file)}`);
             for (const diagnostic of result.diagnostics ?? []) {
               console.log(`      ! ${diagnostic}`);
             }
@@ -404,21 +417,21 @@ async function main(): Promise<void> {
           stats.parseError++;
           byType.get(typeKey)!.fail++;
           failures.push(result);
-          console.log(`  ✗ PARSE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
+          console.log(`  ✗ PARSE  ${relativeUnitPath(file)}: ${result.error}`);
           writeDiffFiles(result);
           break;
         case 'write-error':
           stats.writeError++;
           byType.get(typeKey)!.fail++;
           failures.push(result);
-          console.log(`  ✗ WRITE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
+          console.log(`  ✗ WRITE  ${relativeUnitPath(file)}: ${result.error}`);
           writeDiffFiles(result);
           break;
         case 'diff':
           stats.diff++;
           byType.get(typeKey)!.fail++;
           failures.push(result);
-          console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}`);
+          console.log(`  ✗ DIFF   ${relativeUnitPath(file)}`);
           writeDiffFiles(result);
           break;
       }
@@ -447,9 +460,16 @@ async function main(): Promise<void> {
   console.log(`  Parse errors: ${stats.parseError}`);
   console.log(`  Write errors: ${stats.writeError}`);
   console.log(`  Diff (unstable): ${stats.diff}`);
+  console.log(`  Known unsupported: ${stats.unsupported}`);
+  console.log(`  Explicitly excluded: ${stats.excluded}`);
   console.log(`  Parser diagnostics retained: ${stats.diagnostics}`);
   console.log(`  Time:         ${elapsed}s`);
-  console.log(`  Pass rate:    ${stats.total > 0 ? ((stats.pass / stats.total) * 100).toFixed(1) : 0}%`);
+  const tested = stats.total - stats.unsupported - stats.excluded;
+  console.log(`  Pass rate (tested): ${tested > 0 ? ((stats.pass / tested) * 100).toFixed(1) : 0}%`);
+  fs.writeFileSync(path.join(OUTPUT_DIR, 'summary.json'), JSON.stringify({
+    input: INPUT_DIR, stats, skipped,
+    failures: failures.map(({ file, write1, write2, ...result }) => ({ file: relativeUnitPath(file), ...result })),
+  }, null, 2) + '\n');
 
   // ── Per-type breakdown ──
   const testedTypes = [...byType.entries()]
@@ -479,6 +499,9 @@ async function main(): Promise<void> {
   if (totalFail > 0) {
     console.log(`${totalFail} failure(s). Diff files written to: ${OUTPUT_DIR}`);
     process.exit(1);
+  } else if (tested === 0) {
+    console.log('No supported, non-excluded files were tested.');
+    process.exitCode = 1;
   } else {
     console.log('All generated outputs are stable after first normalization! ✓');
   }

@@ -14,7 +14,7 @@ import type { CrewLayout } from './crew-card.component';
         <div class="unit-crew" [class.cards]="layout() === 'cards'" (click)="$event.stopPropagation()">
             @for (position of policy().positions; track position.positionId) {
                 <crew-slot [force]="force()" [unitId]="unitId()" [positionId]="position.positionId"
-                    [label]="position.label" [layout]="layout()" />
+                    [label]="position.label" [layout]="layout()" [showHealth]="showHealth()" />
             }
             @if (policy().kind === 'none') { <span class="crew-reason">{{ policy().reason || 'This unit has no crew.' }}</span> }
             @if (policy().kind === 'integrated') { <span class="crew-reason">Integrated crew</span> }
@@ -31,5 +31,6 @@ export class ForceUnitCrewComponent {
     readonly force = input.required<Force>();
     readonly unitId = input.required<string>();
     readonly layout = input<CrewLayout>('rows');
+    readonly showHealth = input(false);
     readonly policy = computed(() => this.force().getUnitCrewPolicy(this.unitId()));
 }

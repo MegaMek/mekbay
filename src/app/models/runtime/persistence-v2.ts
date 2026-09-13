@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentStatus } from '../equipment-status.model';
+import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import type {
     BombastLaserRuntimeState,
@@ -356,6 +357,7 @@ export interface SerializedAmmoStateEntryV2 {
     readonly target: SavedTargetRef;
     readonly shotsSpent: number;
     readonly munitionOverride?: string;
+    readonly hotLoaded?: true;
 }
 
 export interface SerializedCrewStateV2 {
@@ -423,6 +425,7 @@ export interface SerializedCBTUnitV2 {
     readonly instanceId: string;
     readonly entity: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
+    readonly customSource?: PinnedCustomUnitSource;
     readonly baselineRefAtSave: SerializedInstanceBaselineRef;
     readonly blueprintReferences: SavedBlueprintReferenceTableV2;
     readonly deployment: SerializedDeploymentConfigurationV2;
@@ -802,7 +805,7 @@ function validateV2Unit(
 } {
     const record = requireRecord(value, path);
     exactKeys(record, [
-        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
+        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState', 'ammoState', 'crew', 'heat',
         'family', 'ruleChecks', 'movementPsr',
         'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
@@ -812,6 +815,10 @@ function validateV2Unit(
     }
     const instanceId = validateId(record['instanceId'], `${path}.instanceId`);
     const entity = validateSavedIdentity(record['entity'], `${path}.entity`);
+    if (record['customSource'] !== undefined) {
+        try { decodePinnedCustomUnitSource(record['customSource']); }
+        catch { fail('INVALID_SHAPE', `${path}.customSource`, 'must contain a bounded native custom source'); }
+    }
     if (record['sourceHashCanary'] !== undefined) {
         try {
             asSourceHashCanary(requireString(record, 'sourceHashCanary', path));
@@ -1344,10 +1351,13 @@ function validateGaussPower(value: unknown, path: string): void {
 }
 
 function validateAmmoState(entry: Record<string, unknown>, path: string): void {
-    exactKeys(entry, ['target', 'shotsSpent', 'munitionOverride'], path);
+    exactKeys(entry, ['target', 'shotsSpent', 'munitionOverride', 'hotLoaded'], path);
     const shotsSpent = requireSafeNonnegative(entry['shotsSpent'], `${path}.shotsSpent`);
     if (entry['munitionOverride'] !== undefined) validateId(entry['munitionOverride'], `${path}.munitionOverride`);
-    if (shotsSpent === 0 && entry['munitionOverride'] === undefined) {
+    if (entry['hotLoaded'] !== undefined && entry['hotLoaded'] !== true) {
+        fail('INVALID_SHAPE', path, 'hotLoaded must be true when present');
+    }
+    if (shotsSpent === 0 && entry['munitionOverride'] === undefined && !entry['hotLoaded']) {
         fail('INVALID_SHAPE', path, 'sparse ammunition state must contain a fact');
     }
 }

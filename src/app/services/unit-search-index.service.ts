@@ -265,7 +265,7 @@ export class UnitSearchIndexService {
         const currentIds = new Set(units.map(unit => unit.uuid));
         const changed = units.filter(unit => {
             const old = previous.get(unit.uuid);
-            return !old || old.hash !== unit.hash || old.summaryVersion !== unit.summaryVersion || old.id !== unit.id
+            return !old || old.hash !== unit.hash || old.summaryVersion !== unit.summaryVersion || old.mul1id !== unit.mul1id
                 || old.originalUnitUuid !== unit.originalUnitUuid || old.isCustom !== unit.isCustom;
         });
         const removed = previousUnits.filter(unit => !currentIds.has(unit.uuid));
@@ -507,7 +507,7 @@ export class UnitSearchIndexService {
             });
         }
         const noneFaction = factions.find(faction => faction.id === MULFACTION_NONE);
-        for (const unit of units) if (unit.id === null) {
+        for (const unit of units) if (unit.mul1id === null) {
             const availableEras = eras.filter(era => isUnitIntroducedByEra(unit, era));
             for (const era of availableEras) this.addSearchIndexValue('era', era.name, unit.uuid);
             if (noneFaction && availableEras.length) this.addSearchIndexValue('faction', noneFaction.name, unit.uuid);
@@ -718,19 +718,19 @@ export class UnitSearchIndexService {
             unitUuidsByMulId,
             referenceIdsByEraAndFaction,
             noneFactionName: factions.find(faction => faction.id === MULFACTION_NONE)?.name,
-            unlistedUnitsByEra: new Map(eras.map(era => [era.name, new Set(units.filter(unit => unit.id === null && isUnitIntroducedByEra(unit, era)).map(unit => unit.uuid))])),
+            unlistedUnitsByEra: new Map(eras.map(era => [era.name, new Set(units.filter(unit => unit.mul1id === null && isUnitIntroducedByEra(unit, era)).map(unit => unit.uuid))])),
         };
     }
 
     private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, UnitUuid[]> {
         const unitUuidsByMulId = new Map<number, UnitUuid[]>();
         for (const unit of units) {
-            if (unit.id === null) continue;
-            const unitUuids = unitUuidsByMulId.get(unit.id);
+            if (unit.mul1id === null) continue;
+            const unitUuids = unitUuidsByMulId.get(unit.mul1id);
             if (unitUuids) {
                 unitUuids.push(unit.uuid);
             } else {
-                unitUuidsByMulId.set(unit.id, [unit.uuid]);
+                unitUuidsByMulId.set(unit.mul1id, [unit.uuid]);
             }
         }
         return unitUuidsByMulId;

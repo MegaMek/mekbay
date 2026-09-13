@@ -4,6 +4,7 @@
 import { ComponentFixture,TestBed } from '@angular/core/testing';
 import { Subject,of } from 'rxjs';
 import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
+import { createDirectHotLoadedAmmoRuntimeFixture } from '../../../models/runtime/testing/direct-mek-runtime-fixture';
 import type { RecordSheetInteraction } from '../record-sheet-interaction';
 
 import type { CBTEquipmentChoiceCommand } from '../../../models/cbt-force.types';
@@ -48,6 +49,29 @@ describe('PageViewerMekInteractionService', () => {
     let dialogs: jasmine.SpyObj<DialogsService>;
     let overlayManager: ReturnType<typeof overlayManagerStub>;
     let dropdownFixture: ComponentFixture<UnitStateDropdownComponent>;
+
+    it('declares sheet movement using runtime minimum MP and active boosters, toggles it off, and rejects stale edits', async () => {
+        currentSnapshot = { ...currentSnapshot, movementSelection: {
+            selectedMode: null, airborne: false, options: [{ mode: 'run', modifier: 2, legal: true, minimumMp: 1 }],
+        } };
+        force.getMekTurnPanelSnapshot = jasmine.createSpy().and.returnValue({ activeBoosterComponentIds: ['booster'] });
+        service.handle(member, { kind: 'movement', mode: 'run', context: currentSnapshot.editContext }, new Event('click'));
+        await Promise.resolve();
+        expect(force.dispatchUnitCommand.calls.mostRecent().args[1]).toEqual({
+            type: 'declare-mek-movement', declaration: { schemaVersion: 1, mode: 'run', distance: 1,
+                boosterComponentIds: ['booster'] },
+        });
+        const previousContext = editContext(revision - 1);
+        currentSnapshot = { ...currentSnapshot, movementSelection: { ...currentSnapshot.movementSelection, selectedMode: 'run' } };
+        member.bindRuntime(currentSnapshot.editContext.owner, revision);
+        service.handle(member, { kind: 'movement', mode: 'run', context: currentSnapshot.editContext }, new Event('click'));
+        await Promise.resolve();
+        expect(force.dispatchUnitCommand.calls.mostRecent().args[1]).toEqual({ type: 'clear-mek-movement' });
+        member.bindRuntime(currentSnapshot.editContext.owner, revision);
+        service.handle(member, { kind: 'movement', mode: 'run', context: previousContext }, new Event('click'));
+        await Promise.resolve();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledTimes(2);
+    });
 
     beforeEach(() => {
         numericConfig = null;
@@ -696,6 +720,37 @@ describe('PageViewerMekInteractionService', () => {
                 gameRules: jasmine.objectContaining({ id: 'core-2026' }),
             }),
         }));
+    });
+
+    it('keeps hot-load cluster controls after the last flight until the bin designation is cleared', () => {
+        const runtime = createDirectHotLoadedAmmoRuntimeFixture(true);
+        const ammoId = runtime.equipmentComponent('Test Artemis Ammo').id;
+        const weaponId = runtime.equipmentComponent('Test Artemis Launcher').id;
+        runtime.instance.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
+            munitionKey: 'Test Artemis Ammo', remaining: 1, hotLoaded: true });
+        expect(runtime.instance.dispatch({ type: 'fire-weapons', heatPolicy: 'manual', selections: [{
+            weaponId, ammoSourceId: ammoId, expectedMunitionKey: 'Test Artemis Ammo',
+        }] }).changed).toBeTrue();
+        expect(runtime.instance.query().remainingAmmo(ammoId)).toBe(0);
+        force.getUnitSnapshot.and.callFake(() => ({
+            state: runtime.instance.snapshot(), query: runtime.instance.query(),
+        }));
+        const open = () => service.handle(member, {
+            kind: 'reference-table', context: editContext(1),
+        } as RecordSheetInteraction, anchoredMouseEvent());
+
+        open();
+        expect(dialogs.createDialog.calls.mostRecent().args[1]?.data)
+            .toEqual(jasmine.objectContaining({ hasHotLoadedAmmo: true }));
+        runtime.instance.dispatch({ type: 'set-component-status', componentId: ammoId,
+            status: 'destroyed', target: 'committed' });
+        open();
+        expect(dialogs.createDialog.calls.mostRecent().args[1]?.data)
+            .toEqual(jasmine.objectContaining({ hasHotLoadedAmmo: true }));
+        runtime.instance.dispatch({ type: 'reset-ammo-loadout' });
+        open();
+        expect(dialogs.createDialog.calls.mostRecent().args[1]?.data)
+            .toEqual(jasmine.objectContaining({ hasHotLoadedAmmo: false }));
     });
 
     it('rolls and highlights a through-armor hit selected from the directional picker', () => {

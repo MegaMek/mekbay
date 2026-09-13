@@ -129,8 +129,8 @@ function addEquipmentSpecials(
   specials: AlphaStrikeSpecialAbilityCollector,
 ): void {
   const caseEligible = eligibleForCASE(entity, type);
-  if (explosive && caseEligible && entity.techBase() === 'Clan'
-    && ['BM', 'IM', 'SV', 'CV', 'MS'].includes(type)) specials.add('CASE');
+  if (explosive && caseEligible && ['BM', 'IM', 'SV', 'CV', 'MS'].includes(type)
+    && (entity.techBase() === 'Clan' || entity.automaticClanCaseLocations().size > 0)) specials.add('CASE');
 
   for (const mount of entity.equipment()) {
     const equipment = mount.equipment;

@@ -154,7 +154,7 @@ describe('ForceGeneratorService negative era filters', () => {
         const invisibleEra = createEra(2570, 'Age of War');
         const visibleEra = createEra(3067, 'Civil War');
         const faction = createFaction(10, 'Capellan Confederation');
-        const unit = createEmptyUnit({ id: 1, name: 'Vindicator' });
+        const unit = createEmptyUnit({ mul1id: 1, name: 'Vindicator' });
         const availabilityRecord: { e: Record<string, Record<string, [number, number]>> } = {
             e: {
                 '2570': {
@@ -167,9 +167,9 @@ describe('ForceGeneratorService negative era filters', () => {
         };
 
         invisibleEra.units = new Set<number>();
-        visibleEra.units = new Set<number>([unit.id!]);
+        visibleEra.units = new Set<number>([unit.mul1id!]);
         faction.eras = {
-            [visibleEra.id!]: new Set<number>([unit.id!]),
+            [visibleEra.id!]: new Set<number>([unit.mul1id!]),
         };
 
         erasByName.set(invisibleEra.name, invisibleEra);

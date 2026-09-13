@@ -21,6 +21,7 @@ type SystemDamageTrackId,
 import type { EntityType } from '../entity/types';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asSourceHashCanary,type SourceHashCanary } from '../source-hash-canary';
+import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { requireUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import { deserializeUnitCover,serializeUnitCover,type SerializedUnitCover } from '../unit-cover.model';
 import {
@@ -50,7 +51,7 @@ type SerializedInstanceBaselineRef,
 export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 7 as const;
 export const NON_MEK_DEPLOYMENT_SCHEMA_VERSION = 1 as const;
 const SERIALIZED_NON_MEK_UNIT_KEYS = new Set([
-    'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary',
+    'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource',
     'baselineRefAtSave', 'deployment', 'family', 'stateRevision',
     'destroyed', 'locationState', 'componentState', 'damageTrackState',
     'ammoState', 'crewState', 'conditions', 'heat', 'turn',
@@ -72,6 +73,7 @@ export interface SerializedNonMekUnit {
     readonly instanceId: string;
     readonly entity: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
+    readonly customSource?: PinnedCustomUnitSource;
     readonly baselineRefAtSave: SerializedInstanceBaselineRef;
     readonly deployment: SerializedNonMekDeployment;
     readonly family: Readonly<{ readonly kind: 'non-mek'; readonly entityType: NonMekEntityType }>;
@@ -101,6 +103,7 @@ export interface SerializedNonMekUnit {
         readonly componentId: ComponentId;
         readonly shotsSpent: number;
         readonly munitionOverride?: string;
+        readonly hotLoaded?: true;
     }>[];
     readonly crewState?: readonly Readonly<{
         readonly positionId: CrewPositionId;
@@ -177,6 +180,7 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
     const instanceId = requireString(record['instanceId'], 'instanceId');
     const stateRevision = requireInteger(record['stateRevision'], 'stateRevision');
     const entity = parseCurrentUnitUuid(record['entity'], 'entity');
+    if (record['customSource'] !== undefined) decodePinnedCustomUnitSource(record['customSource']);
     if (record['sourceHashCanary'] !== undefined) {
         asSourceHashCanary(requireString(record['sourceHashCanary'], 'sourceHashCanary'));
     }
@@ -288,6 +292,7 @@ export function restoreNonMekRuntime(
     entity: BaseEntity,
     ruleset: CBTRuleset,
     forcedWithdrawal = true,
+    hotLoadedAmmo = false,
 ): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState; baselineRef: InstanceBaselineRef }> {
     if (saved.schemaVersion !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         throw new Error(`Unsupported non-Mek unit schema ${String(saved.schemaVersion)}`);
@@ -356,6 +361,7 @@ export function restoreNonMekRuntime(
         ammo.set(componentId, Object.freeze({
             shotsSpent: entry.shotsSpent,
             ...(entry.munitionOverride === undefined ? {} : { munitionOverride: entry.munitionOverride }),
+            ...(entry.hotLoaded === undefined ? {} : { hotLoaded: entry.hotLoaded }),
         }));
     }
     const crew = new Map<CrewPositionId, NonMekUnitRuntimeState['crew'] extends ReadonlyMap<CrewPositionId, infer T> ? T : never>();
@@ -407,7 +413,7 @@ export function restoreNonMekRuntime(
             initialStateProfile: Object.freeze({ ...saved.baselineRefAtSave.initialStateProfile }),
         }),
         ...createNonMekRuntimeBinding(entity, ruleset, state, forcedWithdrawal,
-            saved.deployment.values.crewAssignment),
+            saved.deployment.values.crewAssignment, hotLoadedAmmo),
     });
 }
 

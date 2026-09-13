@@ -143,6 +143,7 @@ describe('createForcePreviewEntryFromForce', () => {
             id: 'unit-v2',
             force,
             summary: resolvedUnit,
+            entity: { unitType: () => 'Mek', unitSubtype: () => 'BattleMek' },
             rosterGroupId: 'group-v2',
             adjustedBattleValue: () => 1200,
         } as const;

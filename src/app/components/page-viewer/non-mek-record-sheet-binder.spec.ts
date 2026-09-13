@@ -12,7 +12,17 @@ import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-pane
 import { MountedArmor } from '../../models/entity/components/armor';
 import { MountedStructure } from '../../models/entity/components/structure';
 import { TestTankEntity } from '../../models/entity/testing/test-entities';
-import { ArmorEquipment,StructureEquipment } from '../../models/equipment.model';
+import * as testEntities from '../../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
+import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
+import { AmmoEquipment,ArmorEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from '../../models/equipment.model';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../../models/cbt-ruleset.model';
+import { createNonMekRuntimeForTest } from '../../models/runtime/testing/unit-runtime-owner-fixture';
+import { createNonMekUnit } from '../../models/runtime/cbt-non-mek-unit';
+import { projectNonMekEquipmentPanel } from '../../models/runtime/non-mek-equipment-panel';
+import { projectNonMekRecordSheet } from '../../models/runtime/non-mek-record-sheet';
+import { componentIdForMount } from '../../models/runtime/unit-runtime-index';
+import { emptyCBTEncounterSnapshot } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { applyRecordSheetPipMaterials } from '../../utils/sheets/record-sheet-pip-materials';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
@@ -21,6 +31,7 @@ import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-rend
 import { INFANTRY_STRENGTH_CELL_COUNT } from '../../utils/sheets/infantry-strength-projection';
 import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
+import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
 import {
 bindNonMekRecordSheet,
 } from './non-mek-record-sheet-binder';
@@ -30,6 +41,98 @@ import type { RecordSheetInteraction } from './record-sheet-interaction';
 const editContext = createUnitEditContextFixture();
 
 describe('bindNonMekRecordSheet', () => {
+    for (const Family of [testEntities.TestTankEntity, testEntities.TestVtolEntity, testEntities.TestSupportNavalEntity,
+        testEntities.TestAeroSpaceFighterEntity, testEntities.TestFixedWingSupportEntity, testEntities.TestDropShipEntity,
+        testEntities.TestWarShipEntity, testEntities.TestHandheldWeaponEntity]) {
+        it(Family.name + ': binds generated armor counters and preserves their prefixes', async () => {
+            const entity = new Family();
+            for (const code of entity.locationOrder) entity.setArmorValue(code, 'front', 28);
+            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const counters = [...svg.querySelectorAll<SVGElement>('[id^="textArmor_"]')];
+            expect(counters.length).toBeGreaterThan(0);
+            const base = snapshot(3);
+            const locations = entity.damageLocations().map(location => ({
+                locationId: LOCATION_ID, code: location.code, sheetCode: location.sheetCode ?? location.code,
+                maximumInternal: location.internalPoints, remainingInternal: location.internalPoints,
+                previewRemainingInternal: location.internalPoints,
+                armor: [{ faceId: FACE_ID, locationId: LOCATION_ID, face: 'front' as const,
+                    maximum: location.armor.front, remaining: location.armor.front, previewRemaining: location.armor.front }],
+            }));
+            const prefixes = counters.map(counter => counter.getAttribute('data-mekbay-counter-prefix'));
+            const binding = bindNonMekRecordSheet(svg, { ...base, locations });
+            const damaged = locations.map(location => ({ ...location,
+                armor: location.armor.map(face => ({ ...face, previewRemaining: Math.max(0, face.maximum - 3) })),
+            }));
+            binding.render({ ...base, locations: damaged });
+            counters.forEach((counter, index) => {
+                const code = counter.id.slice('textArmor_'.length);
+                const face = damaged.find(location => location.sheetCode === code)?.armor[0];
+                expect(face).withContext(counter.id).toBeDefined();
+                if (!face) return;
+                const count = face.maximum === face.previewRemaining ? String(face.maximum) : face.previewRemaining + '/' + face.maximum;
+                expect(counter.textContent).withContext(counter.id).toBe((prefixes[index] ? prefixes[index] + ' ' : '') + '( ' + count + ' )');
+            });
+            binding.render({ ...base, locations });
+            counters.forEach(counter => expect(counter.textContent).not.toContain('/'));
+            binding.destroy();
+        });
+    }
+
+    it('updates armor and structure counters through preview, commit, depletion and repair without losing thresholds', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<text id="textArmor_FR" data-mekbay-counter-prefix="1">1 ( 3 )</text><text id="textIS_FR">( 2 )</text><g><text id="textArmor_FR" data-mekbay-counter-prefix="1">1 ( 3 )</text></g>');
+        const binding = bindNonMekRecordSheet(svg, snapshot(3));
+        const expectArmor = (value: string) => svg.querySelectorAll('[id="textArmor_FR"]').forEach(node => expect(node.textContent).toBe(value));
+        expectArmor('1 ( 3 )');
+        const base = snapshot(3);
+        const preview = { ...base, locations: base.locations.map(location => ({ ...location,
+            previewRemainingInternal: 1,
+            armor: location.armor.map(face => ({ ...face, previewRemaining: 2 })),
+        })) };
+        binding.render(preview);
+        expectArmor('1 ( 2/3 )');
+        expect(svg.getElementById('textIS_FR')?.textContent).toBe('( 1/2 )');
+        binding.render(snapshot(2));
+        expectArmor('1 ( 2/3 )');
+        binding.render(snapshot(0));
+        expectArmor('1 ( 0/3 )');
+        binding.render(snapshot(3));
+        expectArmor('1 ( 3 )');
+        expect(svg.getElementById('textIS_FR')?.textContent).toBe('( 2 )');
+        binding.destroy();
+    });
+
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`retains normal and boosted vehicle MP through generation, binding and damage in ${ruleset}`, async () => {
+            const entity = new TestTankEntity();
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+            entity.uuid.set(uuid);
+            entity.originalWalkMP.set(5);
+            const booster = addTestEquipment(entity, new MiscEquipment({
+                id: 'Supercharger', name: 'Supercharger', type: 'misc', flags: ['F_MASC', 'S_SUPERCHARGER'],
+            }));
+            const unit = createNonMekRuntimeForTest('boosted-vehicle-sheet', {
+                entity: uuid, ruleset,
+                initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+            }, entity, ruleset);
+            const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset,
+                0, 0, unit.getCrewAssignment()), editContext: { owner: unit, state: unit.snapshot() } });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+            expect(svg.querySelector('#mpRun')?.textContent).toBe('8 [10]');
+            const binding = bindNonMekRecordSheet(svg, recordSheet());
+            expect(recordSheet().movement).toEqual({ walk: 5, run: 8, maxRun: 10, jump: 0, umu: 0 });
+            expect(svg.querySelector('#mpRun')?.textContent).toBe('8 [10]');
+
+            expect(unit.dispatch({ type: 'set-component-status', componentId: componentIdForMount(booster),
+                status: 'destroyed', target: 'committed' }).accepted).toBeTrue();
+            binding.render(recordSheet());
+            expect(svg.querySelector('#mpRun')?.textContent).toBe('8');
+            expect(entity.runMP()).toBe(8);
+            expect(entity.maxRunMP()).toBe(10);
+            binding.destroy();
+        });
+    }
+
     it('preserves generated kilogram units during initial and subsequent identity rendering', () => {
         const svg = sheet();
         const weight = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -184,14 +287,14 @@ describe('bindNonMekRecordSheet', () => {
         const armor = svg.querySelector('[data-mekbay-protection-value="armor"]')!;
         const cf = svg.querySelector('[data-mekbay-protection-value="structure"]')!;
         expect(binding.initialIssues).toEqual([]);
-        expect(armor.textContent).toBe('2');
+        expect(armor.textContent).toBe('( 2/3 )');
         expect(armor.classList.contains('damaged')).toBeTrue();
-        expect(cf.textContent).toBe('2');
+        expect(cf.textContent).toBe('( 2 )');
         const damaged = snapshot(0);
         expect(binding.render({ ...damaged, locations: damaged.locations.map(location => ({ ...location,
             remainingInternal: 1, previewRemainingInternal: 1 })) })).toEqual([]);
-        expect(armor.textContent).toBe('0');
-        expect(cf.textContent).toBe('1');
+        expect(armor.textContent).toBe('( 0/3 )');
+        expect(cf.textContent).toBe('( 1/2 )');
         svg.querySelector('.unitLocation.armor')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         svg.querySelector('.unitLocation.structure')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
         expect(interactions).toEqual([
@@ -199,8 +302,8 @@ describe('bindNonMekRecordSheet', () => {
             jasmine.objectContaining({ kind: 'internal', locationId: LOCATION_ID }),
         ]);
         binding.render(snapshot(3));
-        expect(armor.textContent).toBe('3');
-        expect(cf.textContent).toBe('2');
+        expect(armor.textContent).toBe('( 3 )');
+        expect(cf.textContent).toBe('( 2 )');
         expect(armor.classList.contains('damaged')).toBeFalse();
         expect(cf.classList.contains('damaged')).toBeFalse();
         armor.remove();
@@ -640,6 +743,76 @@ describe('bindNonMekRecordSheet', () => {
         expect(interactions.length).toBe(1);
     });
 
+    for (const [ammoType, minRange, ranges] of [
+        ['LRM', 6, [7, 14, 21, 28]], ['MML', 6, [7, 14, 21, 28]], ['ATM', 4, [5, 10, 15, 20]],
+    ] as const) {
+        it(`refreshes vehicle ${ammoType} minimum range when the selected hot-loaded bin or optional rule changes`, async () => {
+            const normalMinimum = String(minRange);
+            const ammo = new AmmoEquipment({ id: `${ammoType}Ammo`, name: `${ammoType} Ammo`, type: 'ammo',
+                flags: ammoType === 'MML' ? ['F_HOT_LOAD', 'F_MML_LRM'] : ['F_HOT_LOAD'],
+                ammo: { type: ammoType, rackSize: 10, shots: 12, damagePerShot: 1, munitionType: ['M_STANDARD'] } });
+            const launcher = new WeaponEquipment({ id: `${ammoType}10`, name: `${ammoType} 10`, type: 'weapon', flags: ['F_MISSILE'],
+                weapon: { ammoType, rackSize: 10, minRange, ranges: [...ranges] } });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [launcher.id]: launcher }));
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+            entity.uuid.set(uuid);
+            entity.setTonnage(100);
+            const weaponId = componentIdForMount(addTestEquipment(entity, launcher, { location: entity.locationOrder[0] }));
+            const ammoId = componentIdForMount(addTestEquipment(entity, ammo, { shotsCount: 12 }));
+            const coldAmmoId = componentIdForMount(addTestEquipment(entity, ammo, { shotsCount: 12 }));
+            const unit = createNonMekUnit(entity, { instanceId: 'hot-load-vehicle', uuid,
+                scenario: { id: 'megamek', options: { hotLoadedAmmo: true } }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(),
+                0, 0, unit.getCrewAssignment()), editContext: { owner: unit, state: unit.snapshot() } });
+            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(),
+                unit.getCrewAssignment(), emptyCBTEncounterSnapshot(), true, enabled);
+            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${weaponId}"]`)!;
+            const values = ammoType === 'LRM' ? row : row.querySelector('.alternativeMode')!;
+            const minimum = values.querySelector('.range_min')!;
+            const binding = bindNonMekRecordSheet(svg, recordSheet(), undefined, panel());
+            expect(minimum.textContent).toBe(normalMinimum);
+
+            unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: ammo.id, remaining: 12, hotLoaded: true });
+            binding.render(recordSheet(), panel());
+            expect(minimum.textContent).toBe('—');
+            expect(['short', 'medium', 'long'].map(range => values.querySelector(`.range_${range}`)!.textContent))
+                .toEqual(ranges.slice(0, 3).map(String));
+
+            for (const [sourceId, expected] of [[coldAmmoId, normalMinimum], [ammoId, '—']] as const) {
+                unit.installAttackerTargetingSessionState({ ...unit.query().attackerTargetingState(),
+                    components: new Map([[weaponId, { ammo: { munitionKey: ammo.id, preferredSourceId: sourceId } }]]) });
+                binding.render(recordSheet(), panel());
+                expect(minimum.textContent).toBe(expected);
+            }
+            binding.render(recordSheet(), panel(false));
+            expect(minimum.textContent).toBe(normalMinimum);
+            binding.render(recordSheet(), panel());
+            expect(minimum.textContent).toBe('—');
+
+            expect(unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
+                munitionKey: ammo.id, remaining: 0 }).changed).toBeTrue();
+            expect(unit.query().remainingAmmo(ammoId)).toBe(0);
+            expect(unit.query().ammoHotLoaded(ammoId)).toBeTrue();
+            binding.render(recordSheet(), panel());
+            expect(minimum.textContent).toBe(normalMinimum);
+            unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: ammo.id, remaining: 12, hotLoaded: false });
+            binding.render(recordSheet(), panel());
+            expect(minimum.textContent).toBe(normalMinimum);
+            if (ammoType !== 'LRM') {
+                unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: ammo.id, remaining: 12, hotLoaded: true });
+                binding.render(recordSheet(), panel());
+                expect(minimum.textContent).toBe('—');
+                unit.dispatch({ type: 'set-component-mode', componentId: weaponId,
+                    mode: ammoType === 'MML' ? 'SRM' : 'Extended Range' });
+                binding.render(recordSheet(), panel());
+                expect(minimum.textContent).toBe(normalMinimum);
+                expect(row.querySelector(':scope > .range_min')!.textContent).toBe('');
+            }
+            binding.destroy();
+        });
+    }
+
     it('aggregates generated bay-row status directly from its stable component IDs', () => {
         const svg = groupedInventorySheet();
         const firstId = asComponentId('weapon-1');
@@ -674,7 +847,8 @@ describe('bindNonMekRecordSheet', () => {
         expect(row.classList.contains('pending')).toBeTrue();
 
         binding.render(recordSheet(true));
-        expect(row.classList.contains('disabledInventory')).toBeTrue();
+        expect(row.classList.contains('damaged')).toBeTrue();
+        expect(row.classList.contains('disabledInventory')).toBeFalse();
         expect(row.classList.contains('pending')).toBeFalse();
     });
 
@@ -817,7 +991,12 @@ function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapsh
         techBase: 'IS',
         role: 'Brawler',
         movementType: 'Tracked',
-        movement: Object.freeze({ walk: 5, run: 8, jump: 0, umu: 0 }),
+        movementSelection: Object.freeze({ selectedMode: null, airborne: false, options: Object.freeze([
+            { mode: 'stationary' as const, modifier: 0, legal: true, minimumMp: 0 },
+            { mode: 'walk' as const, modifier: 1, legal: true, minimumMp: 0 },
+            { mode: 'run' as const, modifier: 2, legal: true, minimumMp: 0 },
+        ]) }),
+        movement: Object.freeze({ walk: 5, run: 8, maxRun: 8, jump: 0, umu: 0 }),
         armorType: 'Standard',
         structureType: 'Standard',
         crewSize: 1,

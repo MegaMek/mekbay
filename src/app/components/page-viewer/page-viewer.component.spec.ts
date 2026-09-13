@@ -38,6 +38,29 @@ describe('PageViewerComponent rendering', () => {
         }
     });
 
+    it('connects horizontal wheel paging to the existing page navigation and blocks it while drawing', () => {
+        const initialize = jasmine.createSpy('initialize');
+        const drawing = signal(false);
+        Object.assign(viewer, {
+            zoomPanService: { initialize },
+            containerRef: () => ({ nativeElement: document.createElement('div') }),
+            contentRef: () => ({ nativeElement: document.createElement('div') }),
+            canvasService: { isActive: drawing },
+            spaceEvenly: () => false,
+        });
+        const navigate = spyOn(viewer, 'navigateByDirection');
+        viewer['initializeZoomPan']();
+        const wheelNavigate = initialize.calls.mostRecent().args[5] as (direction: 'left' | 'right') => void;
+        wheelNavigate('right');
+        expect(navigate).toHaveBeenCalledOnceWith('right');
+        drawing.set(true);
+        wheelNavigate('left');
+        expect(navigate).toHaveBeenCalledTimes(1);
+        drawing.set(false);
+        wheelNavigate('left');
+        expect(navigate.calls.mostRecent().args).toEqual(['left']);
+    });
+
     it('prunes only transient shadows overlapping active units', () => {
         const transientShadow = document.createElement('div');
         transientShadow.dataset['unitId'] = 'a';

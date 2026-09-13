@@ -49,7 +49,9 @@ validateSerializedCBTForceV2,
 type SerializedCBTEncounterStateV2,
 type SerializedCBTForceV2,
 } from './runtime/persistence-v2';
-import { createUnitInstanceId } from './runtime/runtime-state';
+import { createPristineMekState, createUnitInstanceId, freezeRuntimeState } from './runtime/runtime-state';
+import { queryMekRuntime } from './runtime/unit-instance';
+import { createPristineNonMekUnitState, freezeNonMekUnitState } from './runtime/non-mek-unit-instance';
 import { captureUnitCommand,type CBTUnitCommand } from './runtime/unit-command';
 import { isUnitEditContextCurrent,type UnitEditContext } from './runtime/unit-edit-context';
 import type { UnitConditionKey } from './unit-condition.model';
@@ -548,11 +550,12 @@ export class CBTForce extends Force<never> {
      * commit, so no unit can observe mixed scenario rules.
      */
     public synchronizeOptionalRules(
-        rules: Pick<CBTOptionalRules, 'forcedWithdrawal' | 'sprinting'>,
+        rules: Pick<CBTOptionalRules, 'forcedWithdrawal' | 'sprinting' | 'hotLoadedAmmo'>,
     ): Promise<boolean> {
         const requested = Object.freeze({
             forcedWithdrawal: rules.forcedWithdrawal,
             sprinting: rules.sprinting,
+            hotLoadedAmmo: rules.hotLoadedAmmo,
         });
         return this.enqueueCBTMutation(async () => {
             if (this.readOnly()) return false;
@@ -570,7 +573,8 @@ export class CBTForce extends Force<never> {
                 }),
             });
             if (previousScenario.options?.['forcedWithdrawal'] === requested.forcedWithdrawal
-                && previousScenario.options?.['sprinting'] === requested.sprinting) return false;
+                && previousScenario.options?.['sprinting'] === requested.sprinting
+                && previousScenario.options?.['hotLoadedAmmo'] === requested.hotLoadedAmmo) return false;
 
             let replacements: ReadonlyMap<string, CBTUnit>;
             try {
@@ -1200,28 +1204,41 @@ export class CBTForce extends Force<never> {
     }
 
     /** Total entity + runtime record-sheet projection; no SVG participates. */
-    public getMekRecordSheetSnapshot(instanceId: string): MekRecordSheetSnapshot | null {
+    public getMekRecordSheetSnapshot(instanceId: string, pristine = false): MekRecordSheetSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         if (!unit || !hasMekRuntime(unit)) return null;
+        const owned = this.unitStore.mekUnit(instanceId);
+        if (!owned) return null;
         const registry = this.queryInventoryControlTargetRegistry();
         const heatPolicy = this.currentHeatPolicy();
-        const adjustedBattleValue = this.getUnitAdjustedBattleValue(instanceId);
+        const adjustedBattleValue = pristine
+            ? this.getUnitPristineAdjustedBattleValue(instanceId)
+            : this.getUnitAdjustedBattleValue(instanceId);
         const member = this.memberRegistry.member(instanceId);
+        const pristineBattleValue = member?.pristineBattleValue() ?? this.getUnitPristineBattleValue(instanceId);
         const battleValue = Object.freeze({
-            pristine: member?.pristineBattleValue() ?? this.getUnitPristineBattleValue(instanceId),
-            current: member?.currentBaseBattleValue() ?? this.getUnitCurrentBaseBattleValue(instanceId),
+            pristine: pristineBattleValue,
+            current: pristine ? pristineBattleValue
+                : member?.currentBaseBattleValue() ?? this.getUnitCurrentBaseBattleValue(instanceId),
             adjusted: adjustedBattleValue,
         });
+        // Reproject intact mechanics; resetting sheet fields leaves damage-derived values behind.
+        const state = pristine ? freezeRuntimeState({
+            ...createPristineMekState(),
+            ammo: new Map([...unit.state.ammo].map(([id, ammo]) => [id, { ...ammo, shotsSpent: 0 }])),
+            equipmentRowOrder: unit.state.equipmentRowOrder,
+        }) : unit.state;
+        const query = pristine ? queryMekRuntime(owned.mechanics(), state) : unit.query;
         return Object.freeze({ ...projectMekRecordSheet(
             unit.entity,
             unit.index,
             unit.ruleset,
-            unit.state,
-            unit.query,
+            state,
+            query,
             registry,
             battleValue,
             heatPolicy,
-        ), editContext: unit.editContext });
+        ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
 
     /** Small Entity + runtime projection for force-card condition badges. */
@@ -1233,28 +1250,35 @@ export class CBTForce extends Force<never> {
     }
 
     /** Total non-Mek Entity + sparse-runtime record-sheet projection; no SVG participates. */
-    public getNonMekRecordSheetSnapshot(instanceId: string): NonMekRecordSheetSnapshot | null {
+    public getNonMekRecordSheetSnapshot(instanceId: string, pristine = false): NonMekRecordSheetSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         if (!unit || !hasNonMekRuntime(unit)) return null;
         const owned = this.unitStore.nonMekUnit(instanceId);
         if (!owned) return null;
-        const adjustedBattleValue = this.getUnitAdjustedBattleValue(instanceId);
+        const adjustedBattleValue = pristine
+            ? this.getUnitPristineAdjustedBattleValue(instanceId)
+            : this.getUnitAdjustedBattleValue(instanceId);
         const pristineBattleValue = this.getUnitPristineBattleValue(instanceId);
         if (adjustedBattleValue === null || pristineBattleValue === null) {
             throw new Error(`Non-Mek runtime ${instanceId} has no battle-value projection`);
         }
         const crew = this.getUnitCrewAssignment(instanceId);
         if (!crew) throw new Error(`Non-Mek runtime ${instanceId} has no crew assignment`);
+        const state = pristine ? freezeNonMekUnitState({
+            ...createPristineNonMekUnitState(unit.entity),
+            ammo: new Map([...unit.state.ammo].map(([id, ammo]) => [id, { ...ammo, shotsSpent: 0 }])),
+            equipmentRowOrder: unit.state.equipmentRowOrder,
+        }) : unit.state;
         return Object.freeze({ ...projectNonMekRecordSheet(
             unit.entity,
             unit.index,
-            unit.state,
+            state,
             unit.ruleset,
             adjustedBattleValue,
             pristineBattleValue,
             crew,
             owned.mechanics().forcedWithdrawal,
-        ), editContext: unit.editContext });
+        ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
 
     /** Entity + runtime equipment projection; no summary, SVG, mount, or runtime owner escapes. */
@@ -1286,6 +1310,7 @@ export class CBTForce extends Force<never> {
             crew,
             registry,
             owned.mechanics().forcedWithdrawal,
+            owned.mechanics().hotLoadedAmmo,
         );
     }
 
@@ -1549,7 +1574,8 @@ export class CBTForce extends Force<never> {
                 assignment.unitId !== instanceId || retained.has(assignment.positionId)) };
             for (const position of profile.positions) {
                 const assigned = assignedForcePerson(next, instanceId, position.positionId);
-                const patch = { name: position.name, gunnery: position.gunnery, piloting: position.piloting };
+                const patch = { name: position.name, gunnery: position.gunnery, piloting: position.piloting,
+                    aeroGunnery: position.aeroGunnery, aeroPiloting: position.aeroPiloting };
                 if (assigned) next = updateForcePerson(next, assigned.id, patch);
                 else {
                     const person = createForcePerson(patch);
@@ -1938,10 +1964,13 @@ export class CBTForce extends Force<never> {
             if (assignments.length !== personnel.assignments.length) personnel = Object.freeze({ people: personnel.people, assignments: Object.freeze(assignments) });
             for (const profile of profiles) {
                 const previous = assignedForcePerson(personnel, entry.instanceId, profile.positionId);
-                const patch = { name: profile.name, gunnery: profile.gunnery, piloting: profile.piloting, health: undefined };
+                const patch = { name: profile.name, gunnery: profile.gunnery, piloting: profile.piloting,
+                    aeroGunnery: profile.aeroGunnery, aeroPiloting: profile.aeroPiloting, health: undefined };
                 if (previous) {
                     const same = (previous.name ?? '') === profile.name
-                        && (previous.gunnery ?? 4) === profile.gunnery && (previous.piloting ?? 5) === profile.piloting && previous.health === undefined;
+                        && (previous.gunnery ?? 4) === profile.gunnery && (previous.piloting ?? 5) === profile.piloting
+                        && (previous.aeroGunnery ?? 4) === (profile.aeroGunnery ?? 4)
+                        && (previous.aeroPiloting ?? 5) === (profile.aeroPiloting ?? 5) && previous.health === undefined;
                     if (!same) personnel = updateForcePerson(personnel, previous.id, patch);
                 } else {
                     const person = createForcePerson(patch);

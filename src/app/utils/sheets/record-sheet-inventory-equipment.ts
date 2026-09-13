@@ -4,7 +4,7 @@
 import type { Equipment } from '../../models/equipment.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { EntityMountedEquipment } from '../../models/entity/types/equipment';
-import { isCargoEquipment } from '../../models/support-equipment.model';
+import { isCargoEquipment, supportEquipmentKind } from '../../models/support-equipment.model';
 import { isApolloEquipment } from '../../models/apollo-mode.model';
 import { isArtemisEquipment } from '../../models/artemis-equipment.model';
 import { isExternalStoresHardpointEquipment } from '../../models/aerospace-support-equipment.model';
@@ -48,7 +48,9 @@ export function isMekRecordSheetInventorySupport(
 export function recordSheetInventoryMountName(entity: BaseEntity, mount: EntityMountedEquipment): string {
     const equipment = mount.equipment;
     let name = mount.displayName();
-    if (isCargoEquipment(equipment) && mount.size !== undefined) {
+    const supportKind = supportEquipmentKind(equipment);
+    if ((isCargoEquipment(equipment) || supportKind === 'communications' || supportKind === 'power-generator')
+        && mount.size !== undefined) {
         const size = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(mount.size);
         name = insertInventoryNameSuffix(name, `(${size} ${mount.size === 1 ? 'ton' : 'tons'})`);
     }

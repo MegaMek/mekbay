@@ -8,9 +8,9 @@ import { aerospaceAttackValues } from '../../aerospace-range.util';
 import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import { fullRecordSheetLayoutProfile, type RecordSheetLayoutProfile, type RecordSheetPageFormat } from '../record-sheet-layout';
-import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, recordSheetInventoryWeaponMounts, scalePageBox, type Box } from '../record-sheet-svg-rendering';
+import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, recordSheetInventoryWeaponMounts, type Box } from '../record-sheet-svg-rendering';
 import { drawFighterCriticalPanel, drawFighterPilotPanel } from './aero-fighter-record-sheet-controls';
-import { drawAeroArtworkRegion, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, type AeroDataInventoryRow } from './aero-record-sheet-components';
+import { aeroPageBox, drawAeroArtworkRegion, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, type AeroDataInventoryRow } from './aero-record-sheet-components';
 import { drawLargeAeroDiagramHeader } from './large-aero-record-sheet-layout';
 import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
 
@@ -31,7 +31,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         if (!isAeroEntity(entity) || !this.matches(entity)) throw new Error('Small-craft layout requires a Small Craft entity');
         const page = request.page;
         const svg = createRoot(page.width, page.height, 'smallcraft');
-        const at = (box: Box): Box => scalePageBox(page, box);
+        const at = (box: Box): Box => aeroPageBox(page, box);
         const motive = entity.getMotiveTypeAsString()?.toUpperCase() ?? 'AERODYNE';
         drawPageChrome(svg, `${motive} SMALL CRAFT RECORD SHEET`, page, false);
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 310.143 });
@@ -39,6 +39,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
             panelTitle: 'CRAFT DATA', identity: 'small-craft',
             inventoryRows: this.smallCraftInventoryRows(entity),
             flowCargoAfterInventory: true, showAmmoSummary: true, stationary: false,
+            showQuirks: request.showQuirks,
         });
         await appendRecordSheetEraIcon(svg, dataGroup, entity.year(), {
             x: 158.563 * dataBox.width / 222.4, y: 285.25 * dataBox.height / 310.143,
@@ -56,7 +57,8 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
         drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
         if (entity.tracksHeat()) drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
-        drawGeneratedFooter(svg, page, { catalystX: 527.13, catalystY: 59.25, catalystScale: 1.015 });
+        const catalyst = at({ x: 527.13, y: 59.25, width: 0, height: 0 });
+        drawGeneratedFooter(svg, page, { catalystX: catalyst.x, catalystY: catalyst.y, catalystScale: 1.015 });
         return svg;
     }
 

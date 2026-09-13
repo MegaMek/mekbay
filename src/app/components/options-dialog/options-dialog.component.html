@@ -495,8 +495,8 @@
                 <div class="description">
                   <p>Log out on this device and reset it to a fresh anonymous UUID.</p>
                   <p>
-                    This removes local account data and related caches from this browser, but it does not unlink your
-                    OAuth providers from the MekBay account.
+                    This resets your User Identifier and personal settings. You can choose whether to delete local
+                    forces, local tags, saved searches, and custom units (including local subscription copies). Other saved data and images stay on this device, and your OAuth providers remain linked.
                   </p>
                 </div>
                 <div class="account-logout-actions">
@@ -880,9 +880,13 @@
             <div class="option-section-title">Optional rules</div>
             <div class="option-row">
               <label for="CBTOptionalQuirks">Quirks</label>
-              <input id="CBTOptionalQuirks" class="bt-checkbox" type="checkbox"
+              <input
+                id="CBTOptionalQuirks"
+                class="bt-checkbox"
+                type="checkbox"
                 [checked]="optionsService.options().CBTOptionalRules.quirks"
-                (change)="onCBTOptionalRuleChange('quirks', $event)">
+                (change)="onCBTOptionalRuleChange('quirks', $event)"
+              />
             </div>
             <div class="option-row">
               <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
@@ -915,6 +919,18 @@
                 class="bt-select"
                 [value]="optionsService.options().CBTOptionalRules.extremeRange"
                 (change)="onCBTOptionalRuleChange('extremeRange', $event)"
+              >
+                <option value="true">Enabled</option>
+                <option value="false">Disabled (default)</option>
+              </select>
+            </div>
+            <div class="option-row">
+              <label for="CBTOptionalHotLoadedAmmo">Hot-Loaded Ammo:</label>
+              <select
+                id="CBTOptionalHotLoadedAmmo"
+                class="bt-select"
+                [value]="optionsService.options().CBTOptionalRules.hotLoadedAmmo"
+                (change)="onCBTOptionalRuleChange('hotLoadedAmmo', $event)"
               >
                 <option value="true">Enabled</option>
                 <option value="false">Disabled (default)</option>
@@ -1048,17 +1064,51 @@
             </div>
             <div class="option-col">
               <div class="option-row">
-                <span>Fluff images stored: <strong>{{ artwork.count() }}</strong> ({{ formatBytes(artwork.bytes()) }})</span>
-                <button class="bt-button" [disabled]="purgingArtwork() || !artwork.records().size" (click)="onPurgeArtwork()">PURGE</button>
+                <span
+                  >Fluff images stored: <strong>{{ artwork.count() + providedImages.count() }}</strong> ({{
+                    formatBytes(artwork.bytes() + providedImages.bytes())
+                  }})</span
+                >
               </div>
-              @if (unusedArtworkUuids().length) {
-                <div class="option-row">
-                  <span>Units with unused artwork: <strong>{{ unusedArtworkUuids().length }}</strong></span>
-                  <button class="bt-button" [disabled]="purgingArtwork() || !artworkCollectionReady()" (click)="onPurgeArtwork(true)">PURGE UNUSED</button>
+              <div class="option-row">
+                <span id="purge-local-images-label">Purge local images:</span>
+                <div class="image-purge-actions" role="group" aria-labelledby="purge-local-images-label">
+                  <button
+                    class="bt-button"
+                    [disabled]="purgingArtwork() || !artworkCollectionReady() || !unusedArtworkUuids().length"
+                    (click)="onPurgeArtwork(true)"
+                    title="Delete custom artwork for units absent from your collection"
+                  >
+                    UNUSED
+                  </button>
+                  <button
+                    class="bt-button"
+                    [disabled]="purgingArtwork() || !providedImages.count()"
+                    (click)="onPurgeProvidedImages()"
+                    title="Delete downloaded provided images"
+                  >
+                    PROVIDED
+                  </button>
+                  <button
+                    class="bt-button"
+                    [disabled]="purgingArtwork() || !artwork.records().size"
+                    (click)="onPurgeArtwork()"
+                    title="Delete all custom unit artwork"
+                  >
+                    CUSTOM
+                  </button>
                 </div>
+              </div>
+              <div class="description">
+                <p>
+                  Images stay on this device when you log out or change accounts. Provided images download again
+                  when needed. Unused removes custom artwork for units absent from your collection.
+                  Custom storage includes embedded unit icons.
+                </p>
+              </div>
+              @if (artworkError()) {
+                <p class="error" role="alert">{{ artworkError() }}</p>
               }
-              <div class="description"><p>Artwork stays on this device when you log out or change accounts. Storage includes embedded unit icons.</p></div>
-              @if (artworkError()) { <p class="error" role="alert">{{ artworkError() }}</p> }
             </div>
             <div class="option-row">
               <span
@@ -1067,6 +1117,25 @@
               <button class="bt-button" (click)="onPurgeCanvas()">PURGE</button>
             </div>
             <hr />
+            <div class="option-col">
+              <div class="option-row">
+                <label for="mouseWheelAction">Mouse wheel:</label>
+                <select
+                  id="mouseWheelAction"
+                  class="bt-select"
+                  [value]="optionsService.options().mouseWheelAction"
+                  (change)="onMouseWheelActionChange($event)"
+                  aria-describedby="mouseWheelActionHelp"
+                >
+                  <option value="scroll">Scroll (default)</option>
+                  <option value="zoom">Zoom</option>
+                </select>
+              </div>
+              <div class="description" id="mouseWheelActionHelp">
+                <p>Choose the wheel action in sheet, card, and diagram viewers. Hold Ctrl (or ⌘ on Mac) for the other action.</p>
+                <p>Shift + wheel and horizontal trackpad scrolling move sideways. In the page viewer, scrolling past the edge moves between pages.</p>
+              </div>
+            </div>
             <div class="option-row">
               <label for="pickerStyle">Picker style:</label>
               <select

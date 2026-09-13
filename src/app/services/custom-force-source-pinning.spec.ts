@@ -54,7 +54,9 @@ async function setup(kind: ConstructionUnitKind, custom = true) {
         provideZonelessChangeDetection(), CBTUnitService, NativeEntityService,
         { provide: CustomUnitSyncService, useValue: { fetch } },
         { provide: DialogsService, useValue: { showNotice: notice } },
-        { provide: OptionsService, useValue: { options: () => ({ displayUnitNameFormat: 'innerSphereClan', CBTRules: 'core-2026', CBTOptionalRules: { forcedWithdrawal: true, sprinting: false } }) } },
+        { provide: OptionsService, useValue: { options: () => ({ displayUnitNameFormat: 'innerSphereClan', CBTRules: 'core-2026',
+            CBTOptionalRules: { quirks: true, floatingCriticals: false, forcedWithdrawal: true, extremeRange: false,
+                sprinting: false, hotLoadedAmmo: false, allowMixedTechBaseAmmo: false } }) } },
         { provide: CoreUnitCatalogService, useValue: { getPublishedGeneration: () => ({
             activationId: 'test-generation', manifest: { manifest: { units: custom ? {} : { [UUID]: { hash: current?.hash } } } },
         }) } },

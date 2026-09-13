@@ -108,9 +108,9 @@ describe('UnitAvailabilitySourceService', () => {
     });
 
     it('keeps core availability and same-name custom unknowns separate by UUID', () => {
-        const core = createUnit({ name: 'Collision', id: 1 });
-        const custom = createUnit({ name: core.name, id: -2, isCustom: true });
-        const otherCustom = createUnit({ name: core.name, id: -3, isCustom: true });
+        const core = createUnit({ name: 'Collision', mul1id: 1 });
+        const custom = createUnit({ name: core.name, mul1id: -2, isCustom: true });
+        const otherCustom = createUnit({ name: core.name, mul1id: -3, isCustom: true });
         const era = { id: 100, name: 'Test era', years: { from: 3000, to: 3100 }, units: new Set([1]) } as Era;
         const faction = { id: 10, name: 'Test faction', group: 'Inner Sphere', img: '', eras: { 100: new Set([1]) } } as Faction;
         units.push(core, custom, otherCustom);
@@ -158,7 +158,7 @@ describe('UnitAvailabilitySourceService', () => {
             img: '',
             eras: {},
         } as Faction;
-        const unit = createUnit({ id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' });
+        const unit = createUnit({ mul1id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' });
 
         orderedEras.push(era);
         units.push(unit);
@@ -193,7 +193,7 @@ describe('UnitAvailabilitySourceService', () => {
                 100: new Set([1]),
             },
         } as Faction;
-        const unit = createUnit({ id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' });
+        const unit = createUnit({ mul1id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' });
 
         orderedEras.push(era);
         optionsServiceMock.options.set({ availabilitySource: 'megamek' });
@@ -206,7 +206,7 @@ describe('UnitAvailabilitySourceService', () => {
 
     it('keeps first-unit MUL faction matching independent of catalog membership cardinality', () => {
         const unit = createUnit({
-            id: 10_001,
+            mul1id: 10_001,
             name: 'Atlas',
             type: 'Mek',
             chassis: 'Atlas',
@@ -276,7 +276,7 @@ describe('UnitAvailabilitySourceService', () => {
             eras: {},
         } as Faction;
         const unit = createUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas',
             type: 'Mek',
             chassis: 'Atlas',
@@ -345,9 +345,9 @@ describe('UnitAvailabilitySourceService', () => {
             img: '',
             eras: {},
         } as Faction;
-        const atlas = createUnit({ id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' });
-        const locust = createUnit({ id: 2, name: 'Locust', type: 'Mek', chassis: 'Locust', model: 'LCT-1V' });
-        const missing = createUnit({ id: 3, name: 'Missing', type: 'Mek', chassis: 'Missing', model: 'MIS-1' });
+        const atlas = createUnit({ mul1id: 1, name: 'Atlas', type: 'Mek', chassis: 'Atlas', model: 'AS7-D' });
+        const locust = createUnit({ mul1id: 2, name: 'Locust', type: 'Mek', chassis: 'Locust', model: 'LCT-1V' });
+        const missing = createUnit({ mul1id: 3, name: 'Missing', type: 'Mek', chassis: 'Missing', model: 'MIS-1' });
 
         orderedEras.push(earlyEra, lateEra);
         units.push(atlas, locust, missing);
@@ -465,8 +465,8 @@ describe('UnitAvailabilitySourceService', () => {
     });
 
     it('returns the highest scoped MegaMek score and marks missing data as unknown', () => {
-        const scopedUnit = createUnit({ id: 1, name: 'Scoped Unit', type: 'Mek', chassis: 'Scoped Unit', model: 'SCP-1' });
-        const missingUnit = createUnit({ id: 2, name: 'Missing Unit', type: 'Mek', chassis: 'Missing Unit', model: 'MIS-1' });
+        const scopedUnit = createUnit({ mul1id: 1, name: 'Scoped Unit', type: 'Mek', chassis: 'Scoped Unit', model: 'SCP-1' });
+        const missingUnit = createUnit({ mul1id: 2, name: 'Missing Unit', type: 'Mek', chassis: 'Missing Unit', model: 'MIS-1' });
 
         units.push(scopedUnit, missingUnit);
         megaMekAvailabilityByUnitName.set(scopedUnit.name, {
@@ -510,7 +510,7 @@ describe('UnitAvailabilitySourceService', () => {
             years: { from: 3131, to: 3150 },
         } as Era;
         const unit = createUnit({
-            id: 3,
+            mul1id: 3,
             name: 'BattleMaster C3',
             type: 'Mek',
             chassis: 'BattleMaster',
@@ -596,7 +596,7 @@ describe('UnitAvailabilitySourceService', () => {
             years: { from: 3151 },
         } as Era;
         const unit = createUnit({
-            id: 3,
+            mul1id: 3,
             name: 'BattleMaster C3',
             type: 'Mek',
             chassis: 'BattleMaster',
@@ -650,7 +650,7 @@ describe('UnitAvailabilitySourceService', () => {
             years: { from: 3151 },
         } as Era;
         const unit = createUnit({
-            id: 3,
+            mul1id: 3,
             name: 'BattleMaster C3',
             type: 'Mek',
             chassis: 'BattleMaster',
@@ -665,8 +665,8 @@ describe('UnitAvailabilitySourceService', () => {
             group: 'IS Clan',
             img: '',
             eras: {
-                3131: new Set([unit.id]),
-                3151: new Set([unit.id]),
+                3131: new Set([unit.mul1id]),
+                3151: new Set([unit.mul1id]),
             },
         } as Faction);
         factionsById.set(82, {
@@ -675,7 +675,7 @@ describe('UnitAvailabilitySourceService', () => {
             group: 'IS Clan',
             img: '',
             eras: {
-                3131: new Set([unit.id]),
+                3131: new Set([unit.mul1id]),
             },
         } as Faction);
         factionsById.set(100, {
@@ -684,7 +684,7 @@ describe('UnitAvailabilitySourceService', () => {
             group: 'IS Clan',
             img: '',
             eras: {
-                3151: new Set([unit.id]),
+                3151: new Set([unit.mul1id]),
             },
         } as Faction);
 
@@ -740,7 +740,7 @@ describe('UnitAvailabilitySourceService', () => {
             years: { from: 3151 },
         } as Era;
         const unit = createUnit({
-            id: 3,
+            mul1id: 3,
             name: 'BattleMaster C3',
             type: 'Mek',
             chassis: 'BattleMaster',
@@ -755,7 +755,7 @@ describe('UnitAvailabilitySourceService', () => {
             group: 'IS Clan',
             img: '',
             eras: {
-                3151: new Set([unit.id]),
+                3151: new Set([unit.mul1id]),
             },
         } as Faction);
         factionsById.set(100, {
@@ -764,7 +764,7 @@ describe('UnitAvailabilitySourceService', () => {
             group: 'IS Clan',
             img: '',
             eras: {
-                3151: new Set([unit.id]),
+                3151: new Set([unit.mul1id]),
             },
         } as Faction);
         factionsById.set(120, {
@@ -773,7 +773,7 @@ describe('UnitAvailabilitySourceService', () => {
             group: 'IS Clan',
             img: '',
             eras: {
-                3151: new Set([unit.id]),
+                3151: new Set([unit.mul1id]),
             },
         } as Faction);
 
@@ -839,7 +839,7 @@ describe('UnitAvailabilitySourceService', () => {
             eras: {},
         } as Faction;
         const unit = createUnit({
-            id: 11,
+            mul1id: 11,
             name: 'Salvage Hawk',
             type: 'Mek',
             chassis: 'Salvage Hawk',
@@ -890,14 +890,14 @@ describe('UnitAvailabilitySourceService', () => {
             eras: {},
         } as Faction;
         const returningUnit = createUnit({
-            id: 21,
+            mul1id: 21,
             name: 'Boomerang',
             type: 'Mek',
             chassis: 'Boomerang',
             model: 'BMR-1',
         });
         const goneUnit = createUnit({
-            id: 22,
+            mul1id: 22,
             name: 'Ghost',
             type: 'Mek',
             chassis: 'Ghost',
@@ -931,14 +931,14 @@ describe('UnitAvailabilitySourceService', () => {
 
     it('distinguishes Unknown from Not Available and infers MegaMek availability in MUL mode', () => {
         const knownUnit = createUnit({
-            id: 23,
+            mul1id: 23,
             name: 'Known Unit',
             type: 'Mek',
             chassis: 'Known Unit',
             model: 'KNU-1',
         });
         const unknownUnit = createUnit({
-            id: 24,
+            mul1id: 24,
             name: 'Unknown Unit',
             type: 'Mek',
             chassis: 'Unknown Unit',

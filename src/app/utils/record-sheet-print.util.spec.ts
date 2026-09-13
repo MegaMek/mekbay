@@ -47,6 +47,25 @@ describe('printing displayed record sheet pages', () => {
         expect(print).not.toHaveBeenCalled();
     });
 
+    it('keeps tabletop templates at full scale when ordinary sheets use browser margins', async () => {
+        const template = page('supplemental');
+        template.setAttribute('data-mekbay-sheet-kind', 'building-template');
+        await printRecordSheetPages([page('primary'), template], { paperSize: 'letter', printMargin: 'browserDefined' }, false);
+        const overlay = document.getElementById('record-sheet-print-container')!;
+        const pages = [...overlay.querySelectorAll('.record-sheet-print-page')];
+        expect(pages.map(page => page.classList.contains('record-sheet-template-page'))).toEqual([false, true]);
+        const printed = pages[1].querySelector('svg')!;
+        expect(printed.style.width).toBe('595pt');
+        expect(printed.style.height).toBe('842pt');
+        expect(printed.style.maxWidth).toBe('none');
+        expect(printed.style.flexShrink).toBe('0');
+        const media = [...overlay.querySelector('style')!.sheet!.cssRules]
+            .find(rule => rule instanceof CSSMediaRule && rule.conditionText === 'print') as CSSMediaRule;
+        const pageRules = [...media.cssRules].filter(rule => rule instanceof CSSPageRule) as CSSPageRule[];
+        expect(pageRules.find(rule => rule.selectorText === '')!.style.margin).toBe('0.25in');
+        expect(pageRules.find(rule => rule.selectorText === 'building-template')!.style.margin).toBe('0px');
+    });
+
     it('replaces the page size for Letter → A4 → Letter jobs after cancelling each preview', async () => {
         const sizes: string[] = [];
         const overlays: HTMLElement[] = [];

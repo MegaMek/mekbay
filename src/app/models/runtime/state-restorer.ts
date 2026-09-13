@@ -233,7 +233,7 @@ export async function restoreLegacyUnitState(
             );
             idTranslation[string(critical['id']) ?? `${coordinate.locationCode}:${coordinate.slotIndex}`] = coordinate.id;
             if (mismatch && (hits > 0 || pendingHits !== 0)) {
-                warnings.push(`Applied saved damage to ${coordinate.locationCode} slot ${coordinate.slotIndex} despite an occupant mismatch.`);
+                warnings.push(`Applied saved damage to ${coordinate.locationCode} slot ${coordinate.slotIndex + 1} despite an occupant mismatch.`);
             }
             restoreCriticalAmmo(critical, coordinate.id, unit, ammo, criticalAmmoConsumption, warnings);
             const unsupported = hasUnknownFields(critical, new Set([

@@ -5,7 +5,7 @@
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { Overlay } from '@angular/cdk/overlay';
 import { Dialog } from '@angular/cdk/dialog';
-import { computed, provideZonelessChangeDetection, signal } from '@angular/core';
+import { Component, computed, provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NEVER, Subject, of } from 'rxjs';
 import { GameSystem } from '../../models/common.model';
@@ -30,6 +30,9 @@ import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { calculateDataTableMinWidth } from '../data-table/data-table.component';
 import { UnitSearchComponent } from './unit-search.component';
+
+@Component({ template: '<button type="button">Dialog content</button>' })
+class SearchEscapeTestDialog {}
 
 describe('UnitSearchComponent card virtualization', () => {
     const filteredUnitsSignal = signal<UnitSummary[]>([]);
@@ -181,6 +184,17 @@ describe('UnitSearchComponent card virtualization', () => {
             cancelable: true,
         });
         window.dispatchEvent(event);
+        return event;
+    }
+
+    function dispatchEscape(target: EventTarget = document.body): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', {
+            key: 'Escape',
+            keyCode: 27,
+            bubbles: true,
+            cancelable: true,
+        });
+        target.dispatchEvent(event);
         return event;
     }
 
@@ -352,6 +366,94 @@ describe('UnitSearchComponent card virtualization', () => {
         fixture.componentInstance.selectionCanceled.subscribe(canceled);
         fixture.componentInstance.toggleExpandedView();
         expect(canceled).toHaveBeenCalledOnceWith(undefined);
+    });
+
+    for (const hasForces of [false, true]) {
+        it(`collapses expanded ${hasForces ? 'sidebar' : 'homepage'} search with Escape outside the component`, () => {
+            spyOn(forceWorkspaceStub, 'hasForces').and.returnValue(hasForces);
+            optionsSignal.update(options => ({ ...options, unitSearchViewMode: 'table' }));
+            const fixture = TestBed.createComponent(UnitSearchComponent);
+            const component = fixture.componentInstance;
+            fixture.detectChanges();
+
+            component.openExpandedSearch(new MouseEvent('click', { cancelable: true }));
+            fixture.detectChanges();
+            expect(component.expandedView()).toBeTrue();
+            expect(component.viewMode()).toBe('table');
+
+            const event = dispatchEscape();
+
+            expect(event.defaultPrevented).toBeTrue();
+            expect(component.expandedView()).toBeFalse();
+            expect(component.viewMode()).toBe('list');
+        });
+    }
+
+    it('closes search controls one layer per Escape from inside or outside the component', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        spyOn(component, 'updateAdvPanelPosition');
+        component.expandedView.set(true);
+        component.advOpen.set(true);
+        component.viewModeMenuOpen.set(true);
+        fixture.detectChanges();
+
+        const input = document.createElement('input');
+        fixture.nativeElement.appendChild(input);
+        dispatchEscape(input);
+        expect(component.viewModeMenuOpen()).toBeFalse();
+        expect(component.advOpen()).toBeTrue();
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape();
+        expect(component.advOpen()).toBeFalse();
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape(input);
+        expect(component.expandedView()).toBeFalse();
+    });
+
+    it('closes nested CDK dialogs before collapsing expanded search on a separate Escape', () => {
+        TestBed.overrideProvider(Dialog, { useFactory: () => new Dialog() });
+        TestBed.overrideProvider(Overlay, { useFactory: () => new Overlay() });
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        component.expandedView.set(true);
+        fixture.detectChanges();
+        const dialog = TestBed.inject(Dialog);
+        const outer = dialog.open(SearchEscapeTestDialog);
+        const inner = dialog.open(SearchEscapeTestDialog);
+
+        dispatchEscape(inner.overlayRef.overlayElement);
+        expect(dialog.openDialogs).toEqual([outer]);
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape(outer.overlayRef.overlayElement);
+        expect(dialog.openDialogs).toEqual([]);
+        expect(component.expandedView()).toBeTrue();
+
+        dispatchEscape();
+        expect(component.expandedView()).toBeFalse();
+    });
+
+    it('leaves search open while another dialog owns Escape, even if focus is still in search', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        const component = fixture.componentInstance;
+        component.expandedView.set(true);
+        fixture.detectChanges();
+        openDialogs.push({});
+
+        dispatchEscape(fixture.nativeElement);
+        dispatchEscape();
+
+        expect(component.expandedView()).toBeTrue();
+    });
+
+    it('does not consume Escape when compact search is inactive', () => {
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.detectChanges();
+
+        expect(dispatchEscape().defaultPrevented).toBeFalse();
     });
 
     it('groups card-mode results into width-derived virtual rows', () => {

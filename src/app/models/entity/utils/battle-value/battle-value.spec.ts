@@ -277,7 +277,7 @@ describe('battle value family dispatch', () => {
 
 
 
-  it('calculates from canonical equipment and ignores manual BV', () => {
+  it('keeps the raw calculator available independently of authored BV', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(20);
     entity.originalWalkMP.set(4);
@@ -291,6 +291,36 @@ describe('battle value family dispatch', () => {
     expect(bv).toBeGreaterThan(0);
     expect(bv).not.toBe(9999);
   });
+
+  for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+    it(`uses authored BV and retains its computed evidence under ${ruleset}`, () => {
+      const entity = new TestTankEntity();
+      entity.setTonnage(20);
+      entity.originalWalkMP.set(4);
+      const calculated = getBVCalculator(entity, undefined, ruleset).calculate();
+      entity.manualBV.set(9999);
+
+      expect(calculateBattleValue(entity, undefined, ruleset)).toBe(9999);
+      expect(entity.battleValue()).toBe(9999);
+      const report = calculateBattleValueDetails(entity, undefined, ruleset);
+      expect(report.base).toBe(9999);
+      expect(report.defensive).toBe(calculated.defensive);
+      expect(report.offensive).toBe(calculated.offensive);
+      expect(report.details).toEqual([
+        { type: 'Calculated Battle Value', total: calculated.base, details: calculated.details },
+        { type: 'Manual Battle Value', calculation: 'Overrides calculated BV', total: 9999 },
+      ]);
+
+      const destroyed = { ...entityState(entity), destroyed: true };
+      expect(entity.battleValueFor(destroyed, ruleset)).toBe(9999);
+      expect(getBVCalculator(entity, destroyed, ruleset).calculateBaseBV()).toBe(0);
+      entity.manualBV.set(1234);
+      expect(entity.battleValue()).toBe(1234);
+      entity.manualBV.set(0);
+      expect(calculateBattleValueDetails(entity, undefined, ruleset)).toEqual(calculated);
+      expect(entity.battleValueFor(destroyed, ruleset)).toBe(0);
+    });
+  }
 
   it('calculates ProtoMek melee BV before the fixed-zero equipment fallback', () => {
     const entity = new TestProtoMekEntity();

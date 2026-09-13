@@ -15,7 +15,7 @@ import { buildUnitCargoMetadata } from './unit-cargo-metadata-builder';
 import { buildUnitComponentMetadata } from './unit-component-metadata-builder';
 import { convertEntityToAlphaStrike } from '../models/entity/utils/alpha-strike/alpha-strike-converter';
 import { alphaStrikeUnitType } from '../models/entity/utils/alpha-strike/foundation/unit-classification';
-import type { UnitIconResolver } from './unit-sprite-resolver';
+import { createUnitIconResolver, type UnitIconResolver } from './unit-sprite-resolver';
 import {
   armorTypeDisplayName,
   equipmentFireControlFeature,
@@ -31,7 +31,7 @@ export type UnitMetadata = Omit<UnitSummary,
 
 /** Projects canonical entity data into the metadata fields compared with MegaMek's export. */
 export class UnitMetadataBuilder {
-  constructor(private readonly resolveIcon: UnitIconResolver = () => '') {}
+  constructor(private readonly resolveIcon: UnitIconResolver = createUnitIconResolver(undefined)) {}
 
   /**
    * Build metadata for a single entity.
@@ -57,7 +57,7 @@ export class UnitMetadataBuilder {
       published: entity.published().map(source => source.abbrev),
       rulesRefs: buildUnitRulesRefs(entity),
       type: entity.unitType(),
-      id: entity.mulId(),
+      mul1id: entity.mulId(),
       canon: entity.canon(),
       canAntiMech: this.buildCanAntiMech(entity),
       unitFile: unitFile,

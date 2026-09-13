@@ -6,6 +6,18 @@
   color: var(--text-color, #f5f5f5);
 }
 
+.cluster-roll-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  margin-top: 12px;
+  font-size: 0.85em;
+
+  label { display: flex; align-items: center; gap: 8px; }
+  input[type='number'] { width: 64px; }
+}
+
 .cluster-dialog.history-open {
   height: 92vh;
 }

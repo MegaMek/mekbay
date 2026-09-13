@@ -29,6 +29,8 @@ NonMekRecordSheetDamageTrack,
 NonMekRecordSheetSnapshot,
 } from '../../../models/runtime/non-mek-record-sheet';
 import { isUnitConditionKey,type UnitConditionKey } from '../../../models/unit-condition.model';
+import { projectNonMekMovementCapabilities } from '../../../models/runtime/non-mek-unit-instance';
+import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 
 import {
 crewStateDefinitions,
@@ -124,6 +126,8 @@ export class PageViewerNonMekRuntimeService {
                 : (interaction, event) => this.handle(member, interaction, event),
             equipment,
         );
+        // Read-only viewers still own presentation controls such as page flips.
+        svg.classList.add('interactive-sheet');
         if (!current) {
             current = {
                 member,
@@ -187,6 +191,10 @@ export class PageViewerNonMekRuntimeService {
     handle(member: CBTForceMember, interaction: RecordSheetInteraction, event: Event): void {
         const snapshot = this.snapshot(member);
         if (!snapshot || !isUnitEditContextCurrent(interaction.context, snapshot.editContext)) return;
+        if (interaction.kind === 'movement') {
+            void this.selectMovement(member, interaction, snapshot);
+            return;
+        }
         if (interaction.kind === 'open-equipment') {
             this.overlays.openEquipment(member.id, event, interaction.tab);
             return;
@@ -240,12 +248,80 @@ export class PageViewerNonMekRuntimeService {
             return;
         }
         if (interaction.kind === 'crew-profile') {
-            void this.pilotEditor.editCBTMember(member.force, member.id);
+            const person = member.force.getAssignedPerson(member.id, interaction.positionId);
+            if (person) void this.pilotEditor.editPerson(member.force, person.id);
+            else void this.pilotEditor.editCBTMember(member.force, member.id);
+            return;
+        }
+        if (interaction.kind === 'crew-skill') {
+            this.openCrewSkillPicker(member, interaction, snapshot, event);
             return;
         }
         if (interaction.kind === 'armor' || interaction.kind === 'internal') {
             this.openDamagePicker(member, interaction, snapshot, event);
         }
+    }
+
+    private openCrewSkillPicker(
+        member: CBTForceMember,
+        interaction: Extract<RecordSheetInteraction, { kind: 'crew-skill' }>,
+        snapshot: NonMekRecordSheetSnapshot,
+        event: Event,
+    ): void {
+        const position = snapshot.crew.find(row => row.positionId === interaction.positionId);
+        if (!position || position.effectiveState === 'vacant') return;
+        const aerospace = member.entity.unitType() === 'Aero';
+        const gunnery = interaction.skill === 'gunnery' || interaction.skill === 'aeroGunnery';
+        const field = aerospace ? (gunnery ? 'aeroGunnery' : 'aeroPiloting') : (gunnery ? 'gunnery' : 'piloting');
+        const profile = member.force.getUnitCrewProfile(member.id);
+        const assigned = profile?.positions.find(row => row.positionId === interaction.positionId);
+        if (!assigned) return;
+        this.closePicker();
+        this.zoomPan.cancelGesture();
+        const target = event.currentTarget instanceof Element ? event.currentTarget : null;
+        target?.classList.add('picker-active');
+        const instance = this.pickerFactory.createChoicePicker({
+            selected: assigned[field] ?? (gunnery ? 4 : 5),
+            values: [8, 7, 6, 5, 4, 3, 2, 1, 0].map(value => ({ label: String(value), value })),
+            position: recordSheetEventPosition(event),
+            title: `${aerospace ? 'Aerospace' : 'Ground'} ${gunnery ? 'Gunnery' : 'Piloting'}`,
+            lightTheme: this.options.options().colorScheme === 'night',
+            initialEvent: event instanceof PointerEvent ? event : undefined,
+            suggestedStyle: 'radial', targetType: 'skill',
+            onCancel: () => this.closePicker(),
+            onPick: choice => {
+                this.closePicker();
+                if (!this.snapshot(member, interaction.context)) return;
+                const positions = profile!.positions.map(row => row.positionId === interaction.positionId
+                    ? { ...row, [field]: Number(choice.value) } : row);
+                void member.force.replaceUnitCrewProfile(member.id, positions, interaction.context).then(result => {
+                    if (!result) this.showRejectedEdit();
+                });
+            },
+        });
+        this.picker = { unitId: member.id, instance, target };
+    }
+
+    private async selectMovement(
+        member: CBTForceMember,
+        interaction: Extract<RecordSheetInteraction, { kind: 'movement' }>,
+        snapshot: NonMekRecordSheetSnapshot,
+    ): Promise<void> {
+        const selected = snapshot.movementSelection.selectedMode === interaction.mode;
+        const option = snapshot.movementSelection.options.find(option => option.mode === interaction.mode);
+        if (!selected && !option?.legal) return;
+        const unit = member.force.getUnitSnapshot(member.id);
+        if (!unit || !hasNonMekRuntime(unit)) return;
+        const capabilities = projectNonMekMovementCapabilities(unit.entity, unit.index, unit.state,
+            unit.ruleset, unit.crewAssignment);
+        const result = await member.force.dispatchUnitCommand(member.id, {
+            type: 'set-movement',
+            movement: selected ? null : {
+                mode: interaction.mode, distance: option!.minimumMp,
+                boosterComponentIds: interaction.mode === 'run' ? capabilities.boosterComponentIds : [],
+            },
+        }, interaction.context);
+        if (!result.accepted) this.showRejectedEdit();
     }
 
     private openRandomHitPicker(
@@ -973,7 +1049,10 @@ export class PageViewerNonMekRuntimeService {
         const current = this.bound.get(unitId);
         if (!current) return;
         current.subscription.unsubscribe();
-        for (const page of current.pages.values()) page.binding.destroy();
+        for (const page of current.pages.values()) {
+            page.binding.destroy();
+            page.svg.classList.remove('interactive-sheet');
+        }
         this.bound.delete(unitId);
     }
 }

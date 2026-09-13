@@ -50,6 +50,8 @@ import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 interface SelectedReferenceTableColumn {
     readonly table: ReferenceTableDefinition;
     readonly column: ReferenceTableColumn;
+    readonly diceCount: number;
+    readonly modifier: number;
 }
 
 interface ReferenceRollResult {
@@ -63,6 +65,7 @@ interface ReferenceRollResult {
 export interface ClusterTableDialogData {
     readonly unit: UnitSummary | BaseEntity;
     readonly gameRules?: CBTGameRules;
+    readonly hasHotLoadedAmmo?: boolean;
 }
 
 export function shouldCombineReferenceTables(availableWidth: number, requiredWidth: number): boolean {
@@ -84,6 +87,7 @@ export class ClusterTableDialogComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly twoDiceRoller = viewChild<DiceRollerComponent>('twoDiceRoller');
     private readonly oneDieRoller = viewChild<DiceRollerComponent>('oneDieRoller');
+    private readonly threeDiceRoller = viewChild<DiceRollerComponent>('threeDiceRoller');
     private readonly dialogContent = viewChild<ElementRef<HTMLElement>>('dialogContent');
     private readonly tableSelector = viewChild<ElementRef<HTMLElement>>('tableSelector');
     private readonly rollHistoryList = viewChild<ElementRef<HTMLElement>>('rollHistoryList');
@@ -125,6 +129,8 @@ export class ClusterTableDialogComponent {
     readonly hoveredColumnKey = signal<string | null>(null);
     readonly rollHistory = this.rollHistoryService.entries;
     readonly historyOpen = signal(false);
+    readonly hotLoaded = signal(false);
+    readonly clusterModifier = signal(0);
     readonly rollCount = this.rollHistoryService.count;
     readonly useCombinedTable = signal(this.tableView().combinedTable !== undefined);
     readonly layoutResolved = signal(this.tableView().combinedTable === undefined);
@@ -137,6 +143,8 @@ export class ClusterTableDialogComponent {
         return [view.combinedTable, ...view.tables.filter(table => !sourceKeys.has(table.key))];
     });
     readonly hasRollableTable = computed(() => this.displayedTables().some(table => table.dice !== undefined));
+    readonly hasClusterTable = computed(() => this.displayedTables().some(table =>
+        table.columns.some(column => this.isClusterColumn(table, column))));
 
     constructor() {
         afterRenderEffect(() => {
@@ -190,21 +198,29 @@ export class ClusterTableDialogComponent {
 
     rollTableColumn(table: ReferenceTableDefinition, column: ReferenceTableColumn): void {
         if (!table.dice || !column.rollable) return;
-        const roller = table.dice.count === 1 ? this.oneDieRoller() : this.twoDiceRoller();
-        if (!roller || this.twoDiceRoller()?.isRolling() || this.oneDieRoller()?.isRolling()) return;
-        this.selectedColumn = { table, column };
+        const cluster = this.isClusterColumn(table, column);
+        const diceCount = cluster && this.hotLoaded() ? 3 : table.dice.count;
+        const roller = diceCount === 3 ? this.threeDiceRoller()
+            : diceCount === 1 ? this.oneDieRoller() : this.twoDiceRoller();
+        if (!roller || this.twoDiceRoller()?.isRolling() || this.oneDieRoller()?.isRolling()
+            || this.threeDiceRoller()?.isRolling()) return;
+        this.selectedColumn = { table, column, diceCount, modifier: cluster ? this.clusterModifier() : 0 };
         this.rolledResult.set(null);
         roller.roll();
     }
 
     onRollFinished(
         event: { readonly results: number[]; readonly sum: number },
-        diceCount: 1 | 2,
+        diceCount: 1 | 2 | 3,
     ): void {
         const selection = this.selectedColumn;
-        if (!selection?.table.dice || selection.table.dice.count !== diceCount) return;
+        if (!selection?.table.dice || selection.diceCount !== diceCount) return;
         const dice = selection.table.dice;
-        const result = resolveReferenceTableRoll(selection.table, selection.column.key, event.sum);
+        const rolled = diceCount === 3 ? event.sum - Math.max(...event.results) : event.sum;
+        const modified = rolled + selection.modifier;
+        const lookupRoll = this.isClusterColumn(selection.table, selection.column)
+            ? Math.max(2, Math.min(12, modified)) : modified;
+        const result = resolveReferenceTableRoll(selection.table, selection.column.key, lookupRoll);
         if (!result) return;
 
         this.rolledResult.set({
@@ -215,9 +231,10 @@ export class ClusterTableDialogComponent {
             value: result.value,
         });
         this.rollHistoryService.add({
-            dice: `${dice.count}d${dice.sides}`,
+            dice: `${diceCount}d${dice.sides}${diceCount === 3 ? ' (lowest two)' : ''}`
+                + (selection.modifier ? ` ${selection.modifier > 0 ? '+' : '−'} ${Math.abs(selection.modifier)}` : ''),
             faces: [...event.results],
-            roll: result.roll,
+            roll: modified,
             table: result.source.tableLabel,
             column: selection.column.label,
             result: result.value,
@@ -226,6 +243,15 @@ export class ClusterTableDialogComponent {
 
     rollSourceLabel(table: ReferenceTableDefinition, column: ReferenceTableColumn): string {
         return referenceTableRollSource(table, column).tableLabel;
+    }
+
+    private isClusterColumn(table: ReferenceTableDefinition, column: ReferenceTableColumn): boolean {
+        return referenceTableRollSource(table, column).tableKey.startsWith('cluster-');
+    }
+
+    setClusterModifier(value: string): void {
+        const modifier = Number(value);
+        this.clusterModifier.set(Number.isSafeInteger(modifier) ? modifier : 0);
     }
 
     tableColumnKey(table: ReferenceTableDefinition, column: ReferenceTableColumn): string {
@@ -276,8 +302,8 @@ export class ClusterTableDialogComponent {
         return isReferenceTableCellContinuation(cell);
     }
 
-    overlayResultFor(diceCount: 1 | 2): string | null {
-        return this.selectedColumn?.table.dice?.count === diceCount
+    overlayResultFor(diceCount: 1 | 2 | 3): string | null {
+        return this.selectedColumn?.diceCount === diceCount
             ? this.rolledResult()?.value ?? null
             : null;
     }

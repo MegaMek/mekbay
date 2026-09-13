@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { BaseEntity } from '../../models/entity/base-entity';
@@ -9,14 +9,13 @@ import { DropShipEntity } from '../../models/entity/entities/aero/dropship-entit
 import { JumpShipEntity } from '../../models/entity/entities/largecraft/jumpship-entity';
 import { MekEntity } from '../../models/entity/entities/mek/mek-entity';
 import { VehicleEntity } from '../../models/entity/entities/vehicle/vehicle-entity';
+import { StaticEmplacementEntity } from '../../models/entity/entities/misc/static-emplacement-entity';
 import { AmmoEquipment } from '../../models/equipment.model';
 import { decodeBaySize, getBayConstructionWeight, getBayTransporterType } from '../../models/entity/bays/bay-definitions';
 import { EquipmentBay, EntityMountedEquipment, isEntityMountedWeapon } from '../../models/entity/types/equipment';
 import type { EntityTransporter, EntityTransportBay, TransportBayConfiguration, InfantryTransportType } from '../../models/entity/types/transport';
-import type { EntityQuirk } from '../../models/entity/types/common';
 import { INFANTRY_TRANSPORT_WEIGHTS } from '../../models/entity/types/transport';
 import { inferWeaponBayWeaponGroups, standardWeaponBayDamage, weaponBayDamageLimit, weaponBayGroupingKey } from '../../models/entity/utils/weapon-bay-grouping';
-import { QuirksCatalogService } from '../../services/catalogs/quirks-catalog.service';
 import { InfantryEntity } from '../../models/entity/entities/infantry/infantry-entity';
 import { ConstructionInfantryComponent } from './construction-infantry.component';
 
@@ -40,10 +39,8 @@ const QUARTERS_TONS: Readonly<Record<string, number>> = {
 })
 export class ConstructionExtrasComponent {
     readonly entity = input.required<BaseEntity>();
-    readonly change = output<() => void>();
-    private readonly quirkCatalog = inject(QuirksCatalogService);
+    readonly editRequested = output<() => void>();
     readonly newTransport = signal<TransportChoice>('cargo');
-    readonly quirkQuery = signal('');
     readonly infantryTypes: readonly InfantryTransportType[] = ['Foot', 'Jump', 'Motorized', 'Mechanized'];
     readonly infantry = computed(() => { const entity = this.entity(); return entity instanceof InfantryEntity ? entity : null; });
     readonly isMek = computed(() => this.entity() instanceof MekEntity);
@@ -51,22 +48,15 @@ export class ConstructionExtrasComponent {
     readonly bays = computed(() => this.entity().equipmentBays().filter(bay => bay.kind === 'weapon-bay'));
     readonly bayMounts = computed(() => this.entity().equipment().filter(mount =>
         isEntityMountedWeapon(mount) || mount.equipment instanceof AmmoEquipment));
-    readonly quirks = computed(() => {
-        const used = new Set(this.entity().quirks().map(entry => entry.quirk.key));
-        const query = this.quirkQuery().trim().toLocaleLowerCase();
-        return [...this.quirkCatalog.getQuirksByKey().values()]
-            .filter(quirk => !used.has(quirk.key) && (!query || quirk.name.toLocaleLowerCase().includes(query)))
-            .sort((a, b) => a.name.localeCompare(b.name));
-    });
     readonly transportChoices = computed(() => {
         const entity = this.entity();
         const types: TransportChoice[] = BAY_TYPES.filter(type => {
             // MTF represents Mek cargo through installed equipment, not BLK bays.
             if (entity instanceof MekEntity) return false;
             if (['drop-shuttle', 'naval-repair', 'reinforced-repair'].includes(type)) return entity instanceof JumpShipEntity;
-            return entity instanceof VehicleEntity || entity instanceof AeroEntity || entity instanceof JumpShipEntity;
+            return entity instanceof VehicleEntity || entity instanceof AeroEntity || entity instanceof JumpShipEntity || entity instanceof StaticEmplacementEntity;
         });
-        if (entity instanceof VehicleEntity) types.push('troop-space');
+        if (entity instanceof VehicleEntity || entity instanceof StaticEmplacementEntity) types.push('troop-space');
         if (entity instanceof JumpShipEntity) types.push('docking-collar');
         return types.map(value => ({ value, label: this.choiceLabel(value) }));
     });
@@ -119,7 +109,7 @@ export class ConstructionExtrasComponent {
     mass(bay: EntityTransportBay): number { return getBayConstructionWeight(bay); }
 
     addTransport(): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             const type = this.newTransport();
             if (!this.transportChoices().some(choice => choice.value === type)) throw new Error('Choose a transport type for this chassis.');
             const id = crypto.randomUUID();
@@ -143,7 +133,21 @@ export class ConstructionExtrasComponent {
     }
 
     private updateTransport(id: string, update: (transport: EntityTransporter) => EntityTransporter): void {
-        this.change.emit(() => this.entity().transporters.update(rows => rows.map(row => row.id === id ? update(row) : row)));
+        this.editRequested.emit(() => {
+            const entity = this.entity();
+            entity.transporters.update(rows => rows.map(row => {
+                if (row.id !== id) return row;
+                const next = update(row);
+                if (entity instanceof StaticEmplacementEntity && row.kind === 'bay' && next.kind === 'bay') {
+                    const spaces = entity.baySpace().get(id), previous = getBayConstructionWeight(row);
+                    if (spaces && previous > 0) entity.baySpace.update(values => new Map(values).set(id,
+                        spaces.map(space => ({ ...space, tons: space.tons * getBayConstructionWeight(next) / previous }))));
+                    let keptDoors = 0;
+                    entity.bayDoors.update(doors => doors.filter(door => door.bayId !== id || ++keptDoors <= next.doors));
+                }
+                return next;
+            }));
+        });
     }
 
     setCapacity(transport: EntityTransporter, value: unknown): void {
@@ -178,7 +182,14 @@ export class ConstructionExtrasComponent {
 
     removeTransport(transport: EntityTransporter): void {
         if (transport.kind === 'battle-armor-handles') return;
-        this.change.emit(() => this.entity().transporters.update(rows => rows.filter(row => row.id !== transport.id)));
+        this.editRequested.emit(() => {
+            const entity = this.entity();
+            entity.transporters.update(rows => rows.filter(row => row.id !== transport.id));
+            if (entity instanceof StaticEmplacementEntity) {
+                entity.baySpace.update(values => { const next = new Map(values); next.delete(transport.id); return next; });
+                entity.bayDoors.update(doors => doors.filter(door => door.bayId !== transport.id));
+            }
+        });
     }
 
     private number(value: unknown, min: number, integer = false, max = integer ? 2_147_483_647 : Number.MAX_SAFE_INTEGER): number {
@@ -215,7 +226,7 @@ export class ConstructionExtrasComponent {
     }
 
     assignBay(mount: EntityMountedEquipment, target: string): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             const bays = this.bays();
             if (!target || (target === 'new' && !isEntityMountedWeapon(mount))
                 || (target !== 'new' && (!bays[Number(target)] || !this.canAssign(bays[Number(target)], mount)))) {
@@ -229,7 +240,7 @@ export class ConstructionExtrasComponent {
     }
 
     autoGroupBays(): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             const groups = inferWeaponBayWeaponGroups(this.entity().equipment().filter(isEntityMountedWeapon))
                 .map(weapons => ({ mounts: [...weapons] as EntityMountedEquipment[] }));
             for (const ammo of this.entity().equipment().filter(mount => mount.equipment instanceof AmmoEquipment)) {
@@ -241,15 +252,4 @@ export class ConstructionExtrasComponent {
         });
     }
 
-    addQuirk(key: string): void {
-        const quirk = this.quirkCatalog.getQuirkByKey(key);
-        if (!quirk) return;
-        this.change.emit(() => this.entity().quirks.update(rows => rows.some(row => row.quirk.key === key) ? rows : [...rows, { quirk }]));
-    }
-    removeQuirk(entry: EntityQuirk): void {
-        this.change.emit(() => this.entity().quirks.update(rows => rows.filter(row => row.quirk.key !== entry.quirk.key)));
-    }
-    setQuirkValue(entry: EntityQuirk, value: string): void {
-        this.change.emit(() => this.entity().quirks.update(rows => rows.map(row => row.quirk.key === entry.quirk.key ? { quirk: row.quirk, value: value || undefined } : row)));
-    }
 }

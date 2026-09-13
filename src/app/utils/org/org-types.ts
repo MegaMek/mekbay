@@ -111,7 +111,7 @@ export interface PointRange {
  * organization logic never depends on or synthesizes catalog projections.
  */
 export interface OrgUnit {
-    readonly id: number | null;
+    readonly mul1id: number | null;
     readonly uuid: UnitUuid;
     readonly name: string;
     readonly type: UnitSummary['type'];

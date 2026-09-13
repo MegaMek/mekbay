@@ -22,7 +22,7 @@ function createUnit(id: number, name: string, overrides: TestUnitOverrides = {})
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
-        id,
+        mul1id: id,
         name,
         chassis: name,
         model: 'Prime',

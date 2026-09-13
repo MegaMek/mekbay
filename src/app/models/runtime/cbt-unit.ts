@@ -5,10 +5,11 @@ import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './unit-command';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import type { PinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
-import { cloneNativeUnitSourceHandle,type NativeUnitSourceHandle } from '../native-unit-source-handle';
+import { cloneNativeUnitSourceHandle,pinnedCustomSourceForHandle,type NativeUnitSourceHandle } from '../native-unit-source-handle';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
 import type { CBTUnitCommandResult,CBTUnitQueryPort,CBTUnitRuntimeReadModel,CBTUnitRuntimeState } from './cbt-unit-runtime';
@@ -65,6 +66,7 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
     readonly uuid: UnitUuid;
     readonly baselineRef: InstanceBaselineRef;
     readonly #nativeSource: NativeUnitSourceHandle | undefined;
+    readonly #customSource: PinnedCustomUnitSource | undefined;
     #runtime: BoundRuntime;
     #queryCache: Readonly<{ state: CBTUnitRuntimeState; query: CBTUnitQueryPort }> | undefined;
 
@@ -98,6 +100,8 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
         }
         this.installState(runtime.state);
         this.#nativeSource = input.nativeSource === undefined ? undefined : cloneNativeUnitSourceHandle(input.nativeSource);
+        // Undo checkpoints must share the unchanged design instead of decoding another source string for every command.
+        this.#customSource = pinnedCustomSourceForHandle(this.#nativeSource);
         Object.freeze(this);
     }
 
@@ -201,7 +205,8 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
             state: runtime.state, deployment: runtime.deployment,
         }) : serializeNonMekUnit({ ...shared, uuid: this.uuid, entity: runtime.binding.entity,
             index: runtime.binding.index, state: runtime.state, deployment: runtime.deployment });
-        return saved as UnitSerializedFor<F>;
+        const customSource = this.#customSource;
+        return (customSource ? { ...saved, customSource } : saved) as UnitSerializedFor<F>;
     }
     private installResult(result: CBTUnitCommandResult<CBTUnitRuntimeState> & { readonly prototypeHeat?: readonly PrototypeLaserHeatResult[] }): OwnerResult<F> {
         if (result.accepted && result.changed) this.installState(result.state);

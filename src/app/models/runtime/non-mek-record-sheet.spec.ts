@@ -4,7 +4,7 @@
 import {
 asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
-import { CORE_2026_RULESET } from '../cbt-ruleset.model';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
 import {
 TestAeroSpaceFighterEntity,
 TestBattleArmorEntity,
@@ -15,12 +15,29 @@ TestTankEntity,
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
-import { AmmoEquipment } from '../equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { type InstanceBaselineRef } from './runtime-state';
 
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 
 describe('projectNonMekRecordSheet', () => {
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`projects loaded body-missile burden in ${ruleset}`, () => {
+            const entity = new TestBattleArmorEntity();
+            entity.uuid.set(UUID);
+            entity.motiveType.set('Jump');
+            entity.propulsionMP.set(3);
+            addTestEquipment(entity, new WeaponEquipment({ id: 'Body SRM OS', name: 'Body SRM OS', type: 'weapon',
+                flags: ['F_MISSILE', 'F_ONE_SHOT'], weapon: { ammoType: 'SRM', rackSize: 2 } }),
+                { location: 'Squad', baMountLocation: 'Body' });
+            const runtime = createNonMekRuntimeForTest('unit:burdened-ba-sheet', { ...baseline(), ruleset }, entity, ruleset);
+            const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset,
+                runtime.query().currentBaseBattleValue()!, entity.battleValue());
+            expect(sheet.movement.jump).toBe(0);
+            expect(entity.baseJumpMP()).toBe(3);
+        });
+    }
+
     it('projects the selected ammo loadout name and remaining shots for detached sheet rendering', () => {
         const standard = new AmmoEquipment({
             id: 'Ammo_AC_10',
@@ -182,7 +199,7 @@ describe('projectNonMekRecordSheet', () => {
         expect(snapshot.displayName).toBe('Test Tank T-1');
         expect(snapshot.currentBattleValue).toBe(95);
         expect(snapshot.pristineBattleValue).toBe(100);
-        expect(snapshot.movement).toEqual({ walk: 8, run: 0, jump: 0, umu: 0 });
+        expect(snapshot.movement).toEqual({ walk: 8, run: 0, maxRun: 0, jump: 0, umu: 0 });
         expect(snapshot.crew[0]).toEqual(jasmine.objectContaining({
             positionId: crewPositionId,
             name: 'Morgan Kell',
@@ -265,7 +282,7 @@ describe('projectNonMekRecordSheet', () => {
         );
 
         expect(snapshot.destroyed).toBeTrue();
-        expect(snapshot.movement).toEqual({ walk: 0, run: 0, jump: 0, umu: 0 });
+        expect(snapshot.movement).toEqual({ walk: 0, run: 0, maxRun: 0, jump: 0, umu: 0 });
     });
 
     it('projects conventional-infantry casualties onto the authored soldier grid', () => {
@@ -333,7 +350,7 @@ describe('projectNonMekRecordSheet', () => {
         expect(snapshot.crewStateControlKeys).toEqual(['stunned']);
         expect(snapshot.crewStateDisplayKeys).toEqual(['stunned', 'killed']);
         expect(snapshot.crew[0].effectiveState).toBe('stunned');
-        expect(snapshot.movement).toEqual({ walk: 0, run: 0, jump: 0, umu: 0 });
+        expect(snapshot.movement).toEqual({ walk: 0, run: 0, maxRun: 0, jump: 0, umu: 0 });
     });
 
     it('projects aerospace heat preview, dissipation, and effective destruction', () => {

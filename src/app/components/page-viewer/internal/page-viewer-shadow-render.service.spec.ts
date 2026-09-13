@@ -35,6 +35,8 @@ describe('PageViewerShadowRenderService', () => {
         const wrapper = document.createElement('div');
         wrapper.dataset['shadowKey'] = 'right:2';
         const unitSvg = createSvg();
+        unitSvg.classList.add('mekbay-sheet', 'interactive-sheet');
+        unitSvg.innerHTML = '<g class="interactive" tabindex="0"><rect /></g>';
         const onShadowClick = jasmine.createSpy('onShadowClick');
         const cleanups = service.bindDeclarativeShadowPages({
             wrappers: [wrapper],
@@ -60,6 +62,10 @@ describe('PageViewerShadowRenderService', () => {
 
         expect(cleanups.length).toBe(1);
         expect(wrapper.querySelector('svg')).not.toBeNull();
+        expect(wrapper.querySelector('svg')!.classList.contains('interactive-sheet')).toBeFalse();
+        expect(wrapper.querySelector('[tabindex]')).toBeNull();
+        expect(unitSvg.classList.contains('interactive-sheet')).toBeTrue();
+        expect(unitSvg.querySelector('[tabindex]')).not.toBeNull();
 
         wrapper.click();
 

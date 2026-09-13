@@ -1,0 +1,106 @@
+/* Embedded in each generated SVG, including standalone SVG/PNG exports.
+   Keep this plain CSS: the generator imports it as text, without Sass processing.
+   :where() scopes defaults to sheets without competing with application themes. */
+svg:where(.mekbay-sheet):not(:root),
+:where(.mekbay-sheet) svg:not(:root) {
+  overflow: visible;
+}
+
+:where(.mekbay-sheet) text {
+  font-family: Roboto, Arial, sans-serif;
+}
+
+:where(.mekbay-sheet) .pip {
+  fill: #fff;
+  stroke: #000;
+  stroke-width: .5;
+  vector-effect: non-scaling-stroke;
+}
+
+:where(.mekbay-sheet) .battle-armor-trooper .pip {
+  stroke-width: .9;
+}
+
+:where(.mekbay-sheet) .pip.trooperStatusPip:not(.damaged):not(.pending):not(.fresh) {
+  fill: #3f3f3f;
+}
+
+:where(.mekbay-sheet) .systemHitPip,
+:where(.mekbay-sheet) .structuralIntegrityPip {
+  fill: none;
+  stroke: #000;
+  stroke-width: 1.72;
+}
+
+:where(.mekbay-sheet) .hsPip {
+  fill: #fff;
+  stroke: #000;
+  stroke-width: .9;
+}
+
+:where(.mekbay-sheet) .pip.damaged,
+:where(.mekbay-sheet) .crewHit.damaged,
+:where(.mekbay-sheet) .criticalPip.damaged {
+  fill: #111;
+}
+
+:where(.mekbay-sheet) .crewHit.damaged + .crewHitLabel {
+  fill: #fff;
+}
+
+:where(.mekbay-sheet) .pip.disabled,
+:where(.mekbay-sheet) .inventoryEntry.disabled {
+  opacity: .38;
+}
+
+:where(.mekbay-sheet) .hidden {
+  display: none;
+}
+
+/* Movement controls are live sheet affordances; passive SVGs retain their captions. */
+:where(.mekbay-sheet:not(.interactive-sheet)) :is(.movementControl, .movementStationary) {
+  display: none !important;
+}
+
+:where(.mekbay-sheet:not(.interactive-sheet), .mekbay-sheet.print-preview) .movementCaptionReplaced {
+  display: inline !important;
+}
+
+@media screen {
+  :where(.mekbay-sheet.interactive-sheet:not(.print-preview)) .movementCaptionReplaced {
+    display: none;
+  }
+}
+
+:where(.mekbay-sheet) .inventoryEntry.damaged text,
+:where(.mekbay-sheet) .critSlot.damaged text {
+  text-decoration: line-through;
+}
+
+/* The preview marker survives cloning and SVG/PNG serialization. */
+:where(.mekbay-sheet:not(.interactive-sheet), .mekbay-sheet.print-preview),
+:where(.mekbay-sheet:not(.interactive-sheet), .mekbay-sheet.print-preview) * {
+  /* SVG hit targets can override an inherited pointer-events: none. */
+  pointer-events: none !important;
+}
+
+:where(.mekbay-sheet.print-preview) :is(.screen-only, .edit-only) {
+  display: none !important;
+}
+
+:where(.mekbay-sheet.print-preview) .print-show {
+  display: initial !important;
+}
+
+@media print {
+  :where(.mekbay-sheet) .movementCaptionReplaced {
+    display: inline !important;
+  }
+  :where(.mekbay-sheet) :is(.screen-only, .edit-only) {
+    display: none !important;
+  }
+
+  :where(.mekbay-sheet) .print-show {
+    display: initial !important;
+  }
+}

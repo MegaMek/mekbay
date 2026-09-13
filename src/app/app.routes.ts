@@ -27,13 +27,19 @@ const dataReadyGuard: CanActivateFn = () => {
   );
 };
 
-const constructionUnitResolver: ResolveFn<UnitSummary | CBTForceMember> = async (route) => {
+/** An editor identity change updates the URL without reopening the working design. */
+export const CONSTRUCTION_URL_SYNC = Symbol('construction URL sync');
+
+const constructionUnitResolver: ResolveFn<UnitSummary | CBTForceMember | typeof CONSTRUCTION_URL_SYNC | undefined> = async (route) => {
   const router = inject(Router);
+  if (router.currentNavigation()?.extras.info === CONSTRUCTION_URL_SYNC) return CONSTRUCTION_URL_SYNC;
+  const uuidParam = route.paramMap.get('uuid');
+  if (!uuidParam) return undefined;
   const data = inject(DataService);
   const toast = inject(ToastService);
   const injector = inject(Injector);
   try {
-    const uuid = asUnitUuid(route.paramMap.get('uuid')!);
+    const uuid = asUnitUuid(uuidParam);
     const member = router.currentNavigation()?.extras.info;
     if (member instanceof CBTForceMember && member.entity.uuid() === uuid) {
       if (member.force.readOnly() || member.force.getCBTMember(member.id) !== member) {
@@ -65,17 +71,16 @@ const constructionUnitResolver: ResolveFn<UnitSummary | CBTForceMember> = async 
  */
 export const routes: Routes = [
   {
-    path: 'meklab/:uuid',
+    // Both forms use the same route so saving or starting a draft keeps the editor alive.
+    matcher: segments => {
+      if (segments[0]?.path !== 'meklab' || segments.length > 2) return null;
+      return segments[1]
+        ? { consumed: segments, posParams: { uuid: segments[1] } }
+        : { consumed: segments };
+    },
     canActivate: [dataReadyGuard],
     canDeactivate: [(component: { canDeactivate(): boolean | Promise<boolean> }) => component.canDeactivate()],
     resolve: { unit: constructionUnitResolver },
-    loadComponent: () =>
-      import('./pages/unit-construction-page.component').then((m) => m.UnitConstructionPageComponent),
-  },
-  {
-    path: 'meklab',
-    canActivate: [dataReadyGuard],
-    canDeactivate: [(component: { canDeactivate(): boolean | Promise<boolean> }) => component.canDeactivate()],
     loadComponent: () =>
       import('./pages/unit-construction-page.component').then((m) => m.UnitConstructionPageComponent),
   },

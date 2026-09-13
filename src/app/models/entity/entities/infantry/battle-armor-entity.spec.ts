@@ -3,9 +3,54 @@
 // Author: Drake
 
 import { TestBattleArmorEntity as BattleArmorEntity } from '../../testing/test-entities';
-import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
+import { AmmoEquipment, WeaponEquipment } from '../../../equipment.model';
+import { AS_MOVEMENT_CALCULATION, BV_MOVEMENT_CALCULATION } from '../../types';
 
 describe('BattleArmorEntity movement', () => {
+  it('blocks loaded body missiles while retaining unburdened BV and AS movement', () => {
+    const entity = new BattleArmorEntity();
+    entity.motiveType.set('Jump');
+    entity.propulsionMP.set(3);
+    addTestEquipment(entity, new WeaponEquipment({ id: 'SRM', name: 'SRM', type: 'weapon',
+      flags: ['F_MISSILE'], weapon: { ammoType: 'SRM', rackSize: 2 } }), { location: 'Squad', baMountLocation: 'Body' });
+    const ammo = addTestEquipment(entity, new AmmoEquipment({ id: 'SRM Ammo', name: 'SRM Ammo', type: 'ammo',
+      ammo: { type: 'SRM', rackSize: 2, shots: 2 } }), { location: 'Squad' });
+    expect(entity.isBurdened()).toBeTrue();
+    expect(entity.jumpMP()).toBe(0);
+    expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(3);
+    expect(entity.computeJumpMP(AS_MOVEMENT_CALCULATION)).toBe(3);
+    entity.removeEquipment(ammo);
+    expect(entity.isBurdened()).toBeFalse();
+    expect(entity.jumpMP()).toBe(3);
+  });
+
+  for (const oneShotFlag of ['F_ONE_SHOT', 'F_DOUBLE_ONE_SHOT'] as const) {
+    it(`counts intrinsic ${oneShotFlag} missile ammunition without synthetic mounts`, () => {
+      const entity = new BattleArmorEntity();
+      entity.motiveType.set('Jump');
+      entity.propulsionMP.set(3);
+      addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
+      const weapon = new WeaponEquipment({ id: 'One-shot SRM', name: 'One-shot SRM', type: 'weapon',
+        flags: ['F_MISSILE', oneShotFlag], weapon: { ammoType: 'SRM', rackSize: 2 } });
+      const mount = addTestEquipment(entity, weapon, { location: 'Squad', baMountLocation: 'Body' });
+      expect(entity.equipment().some(item => item.equipment instanceof AmmoEquipment)).toBeFalse();
+      expect(entity.isBurdened()).toBeTrue();
+      expect(entity.jumpMP()).toBe(0);
+      expect(entity.canMakeAntiMekAttacks()).toBeFalse();
+      expect(entity.computeJumpMP(AS_MOVEMENT_CALCULATION)).toBe(3);
+      entity.techBase.set('Clan');
+      expect(entity.isBurdened()).toBeFalse();
+      expect(entity.jumpMP()).toBe(3);
+      expect(entity.canMakeAntiMekAttacks()).toBeTrue();
+      entity.techBase.set('IS');
+      entity.removeEquipment(mount);
+      addTestEquipment(entity, weapon, { location: 'Squad', baMountLocation: 'LA' });
+      expect(entity.isBurdened()).toBeFalse();
+      expect(entity.jumpMP()).toBe(3);
+    });
+  }
+
   it('uses one canonical signal for squad size and trooper count', () => {
     const entity = new BattleArmorEntity();
 

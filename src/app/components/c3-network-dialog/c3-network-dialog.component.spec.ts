@@ -50,6 +50,9 @@ interface SidebarMemberTestApi {
 }
 
 interface C3NetworkDialogTestApi {
+    onWheel(event: WheelEvent): void;
+    zoom: WritableSignal<number>;
+    viewOffset: WritableSignal<{ x: number; y: number }>;
     nodes: WritableSignal<C3Node[]>;
     networks: WritableSignal<SerializedC3NetworkGroup[]>;
     loadNodeIcons(units: TestC3Unit[]): Promise<void>;
@@ -214,6 +217,27 @@ describe('C3NetworkDialogComponent runtime visualization', () => {
             spriteService,
         };
     }
+
+    it('scrolls the SVG diagram on both axes and honors the wheel preference immediately', async () => {
+        const { component, fixture } = await createComponent();
+        fixture.detectChanges();
+        component.zoom.set(1);
+        component.viewOffset.set({ x: 200, y: 200 });
+        component.onWheel(new WheelEvent('wheel', { deltaX: 40, deltaY: 120 }));
+        expect(component.zoom()).toBe(1);
+        expect(component.viewOffset()).toEqual({ x: 160, y: 80 });
+        component.onWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: -60 }));
+        expect(component.zoom()).toBeGreaterThan(1);
+        TestBed.inject(OptionsService).options.update(value => ({ ...value, mouseWheelAction: 'zoom' }));
+        const before = component.zoom();
+        component.onWheel(new WheelEvent('wheel', { deltaY: -60 }));
+        expect(component.zoom()).toBeGreaterThan(before);
+        const zoom = component.zoom();
+        const offset = component.viewOffset();
+        component.onWheel(new WheelEvent('wheel', { ctrlKey: true, deltaY: 50 }));
+        expect(component.zoom()).toBe(zoom);
+        expect(component.viewOffset()).toEqual({ x: offset.x, y: offset.y - 50 });
+    });
 
     it('renders an entity-backed CBT node icon from verified sprite assignments', async () => {
         const { component, fixture, spriteService } = await createComponent();

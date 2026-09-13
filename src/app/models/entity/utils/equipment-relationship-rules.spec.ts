@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { MiscEquipment, WeaponEquipment } from '../../equipment.model';
-import { TestTankEntity } from '../testing/test-entities';
+import { TestBipedMekEntity, TestTankEntity } from '../testing/test-entities';
 import { EntityMountedEquipment } from '../types';
 import { reconcileEquipmentRelationships } from './equipment-relationship-rules';
 
@@ -119,6 +119,37 @@ describe('reconcileEquipmentRelationships', () => {
 
     expect(entity.equipmentBays()).toEqual([]);
   });
+
+  for (const gap of ['array', 'empty'] as const) {
+    it(`preserves native three-gun MGA groups separated by an ${gap} critical`, () => {
+      const entity = new TestBipedMekEntity();
+      const machineGun = new WeaponEquipment({
+        id: 'mg', name: 'Machine Gun', type: 'weapon',
+        weapon: { rackSize: 2 }, flags: ['F_MG'],
+      });
+      const array = new WeaponEquipment({
+        id: 'mga', name: 'Machine Gun Array', type: 'weapon',
+        weapon: { rackSize: 2 }, flags: ['F_MGA'],
+      });
+      const criticalMount = (equipment: WeaponEquipment, id: string, slotIndex: number) =>
+        new EntityMountedEquipment({
+          mountId: id, equipmentId: equipment.id, equipment,
+          allocation: { kind: 'location', location: 'LA', placements: [{ location: 'LA', slotIndex }] },
+          rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
+        });
+      // Black Lanner F and Linebacker I place three MGs, an MGA, three MGs, then an MGA.
+      const mounts = [criticalMount(machineGun, 'mg1', 2), criticalMount(machineGun, 'mg2', 3),
+        criticalMount(machineGun, 'mg3', 4), criticalMount(array, 'array1', gap === 'array' ? 5 : 10),
+        criticalMount(machineGun, 'mg4', 6), criticalMount(machineGun, 'mg5', 7),
+        criticalMount(machineGun, 'mg6', 8), criticalMount(array, 'array2', 9)];
+      entity.setEquipment(mounts);
+
+      reconcileEquipmentRelationships(entity);
+
+      expect(entity.equipmentBays().map(bay => bay.mounts.map(mount => String(mount.mountId))))
+        .toEqual([['mg1', 'mg2', 'mg3'], ['mg4', 'mg5', 'mg6']]);
+    });
+  }
 
   it('installs enhancements with domain-validated enhancement-to-weapon links', () => {
     const entity = new TestTankEntity();

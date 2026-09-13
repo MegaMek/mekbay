@@ -64,6 +64,8 @@ describe('runtime history messages', () => {
             5,
             4,
         ])).toBe('Pilot: Piloting skill 5 → 4');
+        expect(format([RUNTIME_HISTORY_MESSAGE.CREW_SKILL_CHANGED, 'unit:king-crab', 0, 2, 6, 3]))
+            .toBe('Pilot: Aerospace Gunnery skill 6 → 3');
         expect(format([
             RUNTIME_HISTORY_MESSAGE.CREW_CHANGED,
             'unit:king-crab',

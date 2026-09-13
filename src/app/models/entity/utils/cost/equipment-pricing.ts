@@ -31,6 +31,7 @@ import { supportEquipmentVariableCost } from '../../../support-equipment.model';
 import { turretEquipmentVariableCost } from '../../../turret-equipment.model';
 import { isAntiMekGearEquipment } from '../../../infantry-equipment.model';
 import { isDamageInterruptCircuitEquipment } from '../../../utility-equipment.model';
+import { buildingFacility } from '../building-construction';
 
 /** Resolves one mount's database-backed fixed or entity-dependent variable cost. */
 export function getEquipmentCost(
@@ -39,6 +40,8 @@ export function getEquipmentCost(
 ): number | undefined {
   const equipment = mount.equipment;
   if (!equipment) return undefined;
+  const facility = buildingFacility(equipment, mount.size);
+  if (facility) return facility.cost;
   if (equipment.hasFixedCost()) {
     if (!(equipment instanceof WeaponEquipment) || !mount.armored) return equipment.cost;
     const criticalSlots = mount.getNumCriticalSlots(entity);

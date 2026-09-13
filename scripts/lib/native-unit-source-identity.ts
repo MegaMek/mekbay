@@ -3,6 +3,11 @@
 
 import path from 'node:path';
 
+/** Nonpositive native MUL IDs and canonical null both mean no MUL reference. */
+export function nativeMulIdForComparison(value: unknown): unknown {
+  return typeof value === 'number' && value <= 0 ? null : value;
+}
+
 /** Whether a native unit source supplies the stable UUID that its parser preserves. */
 export function nativeUnitSourceDeclaresUuid(source: string, fileName: string): boolean {
   switch (path.extname(fileName).toLowerCase()) {

@@ -459,6 +459,11 @@ export class DataService {
     private async applyUnitCatalogRevision(revision: number): Promise<void> {
         const pending = this.readExactPendingActivation(revision);
         if (!pending || revision <= this.appliedUnitCatalogRevision) return;
+        const setProgress = (progress: RuntimeCatalogProgressState): void => {
+            // Keep the same visibility through summary preparation and indexing.
+            this.runtimeCatalogProgress.set(!pending.showProgress && progress.status === 'running'
+                ? { status: 'idle' } : progress);
+        };
         const units = pending.snapshot.units;
         const startedAt = Date.now();
         const indexPreparationStartedAt = Date.now();
@@ -486,7 +491,7 @@ export class DataService {
                 this.unitRuntimeService.prepareRuntimeCatalog(units);
             const runtimePreparationMs = Math.max(0, Date.now() - runtimePreparationStartedAt);
 
-            this.setRuntimeCatalogProgress({
+            setProgress({
                 status: 'running',
                 completed: 0,
                 total: 5,
@@ -515,7 +520,7 @@ export class DataService {
                 { rebuildTagSearchIndex: false },
             );
             const tagPreparationMs = Math.max(0, Date.now() - tagPreparationStartedAt);
-            this.setRuntimeCatalogProgress({
+            setProgress({
                 status: 'running', completed: 1, total: 5,
                 detail: 'Loaded personal unit tags',
             });
@@ -528,7 +533,7 @@ export class DataService {
             this.unitRuntimeService.applyPublicTagsToUnits(units, { rebuildTagSearchIndex: false });
             this.applyBufferedTagRefreshToUnits(units);
             const summaryFilterPreparationMs = Math.max(0, Date.now() - summaryFilterPreparationStartedAt);
-            this.setRuntimeCatalogProgress({
+            setProgress({
                 status: 'running', completed: 2, total: 5,
                 detail: 'Prepared summary filters and availability memberships',
             });
@@ -549,13 +554,13 @@ export class DataService {
                     pending.customOnly ? this.unitsCatalog.getUnits() : undefined,
                 );
             const searchIndexPreparationMs = Math.max(0, Date.now() - searchIndexPreparationStartedAt);
-            this.setRuntimeCatalogProgress({
+            setProgress({
                 status: 'running', completed: 3, total: 5,
                 detail: pending.customOnly ? 'Updated search indexes for custom designs'
                     : `Indexed ${units.length.toLocaleString()} unit summaries`,
             });
 
-            this.setRuntimeCatalogProgress({
+            setProgress({
                 status: 'running', completed: 4, total: 5,
                 detail: 'Finalizing the shared catalog publication',
             });
@@ -589,7 +594,7 @@ export class DataService {
             this.bumpSearchCorpusVersion();
             this.markDataReady();
 
-            this.setRuntimeCatalogProgress({
+            setProgress({
                 status: 'running', completed: 5, total: 5,
                 detail: 'Unit indexes and shared catalog publication are ready',
             });
@@ -622,7 +627,7 @@ export class DataService {
                 this.logger.warn(`Catalog maintenance acknowledgement failed: ${this.describeError(error)}`);
             }
             await this.yieldBackgroundCatalogWork();
-            this.setRuntimeCatalogProgress({ status: 'idle' });
+            setProgress({ status: 'idle' });
             completed = true;
             this.logger.info(
                 `[Background:runtime-unit-catalog] Finished revision ${revision} in ${Math.max(0, Date.now() - startedAt)} ms.`,
@@ -630,13 +635,13 @@ export class DataService {
         } catch (error) {
             if (!summaryCommitted && this.readExactPendingActivation(revision, pending)) {
                 this.unitsCatalog.rejectPendingActivation(revision, error);
-                this.setRuntimeCatalogProgress({
+                setProgress({
                     status: 'error',
                     detail: this.describeError(error),
                 });
                 this.logger.error(`Failed to prepare application catalog activation: ${this.describeError(error)}`);
             } else if (summaryCommitted) {
-                this.setRuntimeCatalogProgress({
+                setProgress({
                     status: 'error',
                     detail: this.describeError(error),
                 });
@@ -661,10 +666,6 @@ export class DataService {
 
     private yieldBackgroundCatalogWork(): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, 0));
-    }
-
-    private setRuntimeCatalogProgress(progress: RuntimeCatalogProgressState): void {
-        this.runtimeCatalogProgress.set(progress);
     }
 
     private setAuxiliaryCatalogProgress(progress: RuntimeCatalogProgressState): void {
@@ -700,18 +701,18 @@ export class DataService {
             }
         }
 
-        const noneUnits = units.filter((unit) => unit.id !== null && !factionUnitIds.has(unit.id));
+        const noneUnits = units.filter((unit) => unit.mul1id !== null && !factionUnitIds.has(unit.mul1id));
 
         noneFaction.eras = {};
         for (const era of eras) {
             const noneEraUnitIds = new Set<number>();
             for (const unit of noneUnits) {
-                if (unit.id === null || !isUnitIntroducedByEra(unit, era)) {
+                if (unit.mul1id === null || !isUnitIntroducedByEra(unit, era)) {
                     continue;
                 }
 
-                noneEraUnitIds.add(unit.id);
-                (era.units as Set<number>).add(unit.id);
+                noneEraUnitIds.add(unit.mul1id);
+                (era.units as Set<number>).add(unit.mul1id);
             }
 
             if (noneEraUnitIds.size > 0) {

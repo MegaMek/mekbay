@@ -33,7 +33,7 @@ import {
     PPC_CAPACITOR_CHARGED_STATE,
     ppcCapacitorWeaponId,
 } from './component-ppc-capacitor';
-import type { AmmoLoadout } from './mek-ammo';
+import { hotLoadedAmmoForWeapon, type AmmoLoadout } from './mek-ammo';
 import {
     componentCriticalSlotIds,
     mekCriticalSlotHittable,
@@ -66,7 +66,7 @@ export interface MekCriticalRuntimeViewV2 {
     remainingArmor(faceId: ArmorFaceId, perspective: 'committed' | 'preview'): number;
     remainingInternal(locationId: LocationId, perspective: 'committed' | 'preview'): number;
     criticalHits(slotId: CriticalSlotId, perspective: 'committed' | 'preview'): number;
-    componentStatus(componentId: ComponentId, perspective: 'committed' | 'preview'): EquipmentStatus;
+    componentStatus(componentId: ComponentId, perspective?: 'committed' | 'preview'): EquipmentStatus;
     componentMode(componentId: ComponentId): string | undefined;
     componentGaussPower(componentId: ComponentId): MekGaussPowerState;
     componentEscalatingFailure(componentId: ComponentId): EscalatingFailureRuntimeState | undefined;
@@ -74,6 +74,13 @@ export interface MekCriticalRuntimeViewV2 {
     componentBombastLaser(componentId: ComponentId): BombastLaserRuntimeState | undefined;
     ammoLoadout(componentId: ComponentId): AmmoLoadout;
     remainingAmmo(componentId: ComponentId): number;
+    ammoHotLoaded(componentId: ComponentId): boolean;
+    ammoEquipment(componentId: ComponentId): AmmoEquipment | null;
+}
+
+export interface HotLoadExplosionRoll {
+    readonly dice: readonly number[];
+    readonly ammoComponentId?: ComponentId;
 }
 
 export type MekCriticalChanceResult =
@@ -163,6 +170,7 @@ export type MekCriticalRollPlanV2 =
         equipment: string;
         armoredAbsorption: boolean;
         explosion?: MekEquipmentExplosionPlanV2;
+        hotLoadAmmoIds?: readonly ComponentId[];
         pendingExplosion?: MekPendingEquipmentExplosionV2;
     }>;
 
@@ -188,6 +196,7 @@ interface ExplosionSource {
     readonly pilotHits: number;
     readonly destroyComponentIds?: readonly ComponentId[];
     readonly automaticCriticalComponentId?: ComponentId;
+    readonly hotLoaded?: true;
 }
 
 interface DelayedExplosionCandidate {
@@ -306,6 +315,7 @@ export function projectMekCriticalRollV2(
     sourceLocationId: LocationId,
     results: readonly number[],
     target: MekCriticalMutationTarget,
+    hotLoadExplosion?: HotLoadExplosionRoll,
 ): MekCriticalRollPlanV2 {
     const source = index.locations.get(sourceLocationId);
     if (!source) return Object.freeze({ kind: 'invalid', reason: 'unknown-location' });
@@ -335,7 +345,7 @@ export function projectMekCriticalRollV2(
         && isDelayedCriticalExplosion(sourceExplosion)
         ? Object.freeze({ equipment: sourceExplosion.equipment, rawDamage: sourceExplosion.rawDamage })
         : undefined;
-    const explosion = sourceExplosion !== null && pendingExplosion === undefined
+    let explosion = sourceExplosion !== null && pendingExplosion === undefined
         ? resolveExplosionPlan(
             index,
             ruleset,
@@ -346,6 +356,55 @@ export function projectMekCriticalRollV2(
             slot,
         )
         : undefined;
+    const hotLoadAmmoIds = sourceExplosion?.hotLoaded
+        ? Object.freeze([...index.components].flatMap(([id, component]) =>
+            component.mount?.equipment instanceof AmmoEquipment
+                && componentLocationIds(index, id).includes(targetLocationId)
+                && runtime.remainingAmmo(id) > 0
+                && runtime.componentStatus(id, criticalPerspective(target)) !== 'destroyed' ? [id] : []))
+        : undefined;
+    if (hotLoadExplosion !== undefined) {
+        const dice = hotLoadExplosion.dice;
+        if (!hotLoadAmmoIds || !explosion || dice.length !== 2
+            || dice.some(die => !Number.isInteger(die) || die < 1 || die > 6)) {
+            return Object.freeze({ kind: 'invalid', reason: 'invalid-dice' });
+        }
+        if (dice[0] + dice[1] <= 5 && hotLoadAmmoIds.length > 0) {
+            const ammoId = hotLoadExplosion.ammoComponentId;
+            if (ammoId === undefined || !hotLoadAmmoIds.includes(ammoId)) {
+                return Object.freeze({ kind: 'invalid', reason: 'invalid-dice' });
+            }
+            const ammo = runtime.ammoLoadout(ammoId).equipment;
+            const damage = ammo.isExplosive()
+                ? runtime.remainingAmmo(ammoId) * ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo) : 0;
+            const first = explosion;
+            const secondary = resolveExplosionPlan(index, ruleset, {
+                ...runtime,
+                remainingInternal: (id, perspective) => runtime.remainingInternal(id, perspective)
+                    - (first.locations.find(location => location.locationId === id)?.internalDamage ?? 0),
+                remainingArmor: (id, perspective) => runtime.remainingArmor(id, perspective)
+                    - (first.locations.find(location => location.armorFaceId === id)?.armorDamage ?? 0),
+            }, targetLocationId, target, {
+                ...explosionSource(ammo.name, damage, damage > 0 ? gameRulesFor(ruleset).getMekInternalExplosionPilotHits() : 0),
+                destroyComponentIds: [ammoId],
+            });
+            const locations = new Map(first.locations.map(location => [location.locationId, location]));
+            for (const location of secondary.locations) {
+                const previous = locations.get(location.locationId);
+                locations.set(location.locationId, Object.freeze({ ...location,
+                    internalDamage: location.internalDamage + (previous?.internalDamage ?? 0),
+                    armorDamage: location.armorDamage + (previous?.armorDamage ?? 0),
+                }));
+            }
+            explosion = Object.freeze({ ...first,
+                equipment: `${first.equipment} + ${ammo.name}`,
+                rawDamage: first.rawDamage + secondary.rawDamage,
+                pilotHits: first.pilotHits + secondary.pilotHits,
+                locations: Object.freeze([...locations.values()]),
+                destroyComponentIds: Object.freeze([...first.destroyComponentIds, ammoId]),
+            });
+        }
+    }
     return Object.freeze({
         kind: 'applied',
         targetLocationId,
@@ -356,6 +415,7 @@ export function projectMekCriticalRollV2(
         armoredAbsorption: !directHitApplied,
         ...(explosion === undefined ? {} : { explosion }),
         ...(pendingExplosion === undefined ? {} : { pendingExplosion }),
+        ...(hotLoadAmmoIds === undefined ? {} : { hotLoadAmmoIds }),
     });
 }
 
@@ -534,6 +594,16 @@ function criticalExplosionSource(
         }
         if (previousHits > 0) continue;
         if (equipment instanceof WeaponEquipment) {
+            const hotLoadedAmmo = hotLoadedAmmoForWeapon(index, runtime, componentId, criticalPerspective(target));
+            if (hotLoadedAmmo.length > 0) {
+                return {
+                    ...explosionSource(equipment.name,
+                        equipment.rackSize * Math.max(...hotLoadedAmmo.map(ammoExplosionDamagePerShot)),
+                        rules.getMekInternalExplosionPilotHits()),
+                    hotLoaded: true,
+                    destroyComponentIds: [componentId],
+                };
+            }
             if (!weaponExplodes(runtime, componentId, equipment)
                 || (equipment.hasFlag('F_HVAC')
                     && !hasUsableAmmo(index, runtime, equipment))) {
@@ -661,7 +731,7 @@ function delayedExplosionCandidate(
 }
 
 function isDelayedCriticalExplosion(source: ExplosionSource): boolean {
-    return (source.destroyComponentIds?.length ?? 0) > 0;
+    return !source.hotLoaded && (source.destroyComponentIds?.length ?? 0) > 0;
 }
 
 function resolveExplosionPlan(
@@ -909,7 +979,7 @@ function criticalSlotLabel(index: MekRuntimeIndex, slot: MekIndexedCriticalSlot)
     return labels.length === 0 ? null : labels.join(' / ');
 }
 
-function diceForSlotIndex(locationCode: MekLocation, slotIndex: number): number[] {
+export function diceForSlotIndex(locationCode: MekLocation, slotIndex: number): number[] {
     if (criticalRollDiceCount(locationCode) === 1) return [slotIndex + 1];
     return [slotIndex < 6 ? 1 : 4, slotIndex % 6 + 1];
 }

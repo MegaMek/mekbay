@@ -361,7 +361,7 @@ export function evaluateMekHeatScenarioSupport(
             ));
         } else {
             for (const key of Object.keys(options)
-                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting')
+                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting' && key !== 'hotLoadedAmmo')
                 .sort(compareText)) {
                 blockers.push(scenarioBlocker(
                     'SCENARIO_OPTIONS_UNSUPPORTED',
@@ -369,7 +369,7 @@ export function evaluateMekHeatScenarioSupport(
                     `Scenario option ${key} has no explicit bounded heat semantics`,
                 ));
             }
-            for (const key of ['forcedWithdrawal', 'sprinting'] as const) {
+            for (const key of ['forcedWithdrawal', 'sprinting', 'hotLoadedAmmo'] as const) {
                 if (Object.prototype.hasOwnProperty.call(options, key)
                     && typeof options[key] !== 'boolean') {
                     blockers.push(scenarioBlocker(

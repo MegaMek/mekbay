@@ -100,14 +100,19 @@
           <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.33199406px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162644,0,-0.19081282,-0.98162644,533.5791,653.47)"><tspan x="0" y="0">Head</tspan></text>
         </g>
         <g fill="none" id="armorPips">
-          <g transform="translate(42.335,13.18)" class="paperdoll-pip-profile">
-            <rect x="-2.4" width="4.8" y="0" height="3.2" data-fill="armor" data-location="HD"/>
+          <!-- The head's armor bands are separated by internal structure. -->
+          <g transform="translate(42.335,13.18)" class="paperdoll-pip-profile" data-multisection="true">
+            <g>
+              <rect x="-2.4" width="4.8" y="0" height="3.2" data-fill="armor" data-location="HD"/>
               <rect x="-4.3" width="8.6" y="1" height="3.2" data-fill="armor" data-location="HD"/>
               <rect x="-4.95" width="9.9" y="2" height="3.2" data-fill="armor" data-location="HD"/>
-            <rect x="-4" width="8" y="7.8" height="3.2" data-fill="armor" data-location="HD"/>
+            </g>
+            <g>
+              <rect x="-4" width="8" y="7.8" height="3.2" data-fill="armor" data-location="HD"/>
               <rect x="-3.55" width="7.1" y="8.8" height="3.2" data-fill="armor" data-location="HD"/>
               <rect x="-2.9" width="5.8" y="9.8" height="3.2" data-fill="armor" data-location="HD"/>
             </g>
+          </g>
           <g transform="translate(42.335,25.78)" class="paperdoll-pip-profile">
             <rect x="-14.6" width="29.2" y="0" height="3.2" data-fill="armor" data-location="T"/>
             <rect x="-14.25" width="28.5" y="2.6" height="3.2" data-fill="armor" data-location="T"/>

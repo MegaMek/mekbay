@@ -22,7 +22,7 @@ describe('RecordSheetSourceService', () => {
                 { provide: OptionsService, useValue: { options } },
                 {
                     provide: UnitFluffImageService,
-                    useValue: { initialize: async () => undefined, resolveEntityUrl: () => 'https://art.example/tank.png' },
+                    useValue: { initialize: async () => undefined, loadEntityUrl: async () => 'https://art.example/tank.png' },
                 },
             ],
         });

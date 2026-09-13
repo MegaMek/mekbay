@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { FormsModule } from '@angular/forms';
 import { InfantryEntity } from '../../models/entity/entities/infantry/infantry-entity';
 import { INFANTRY_SPECIALIZATION_TO_BIT, PREDEFINED_INFANTRY_MOUNTS, type InfantryMount, type InfantrySpecialization } from '../../models/entity/types/infantry';
+import { setConstructionInfantryAugmentation } from '../domain/construction-infantry-ba-rules';
 
 // MegaMek PilotOptions.MD_ADVANTAGES and ProstheticEnhancementType option IDs.
 const AUGMENTATIONS = [
@@ -28,7 +29,7 @@ type MountNumberKey = 'weight' | 'movementPoints' | 'burstDamage' | 'vehicleDama
 })
 export class ConstructionInfantryComponent {
     readonly entity = input.required<InfantryEntity>();
-    readonly change = output<() => void>();
+    readonly editRequested = output<() => void>();
     readonly augmentations = AUGMENTATIONS;
     readonly specializations = (Object.keys(INFANTRY_SPECIALIZATION_TO_BIT) as InfantrySpecialization[])
         .map(value => ({ value, label: this.label(value) }));
@@ -56,7 +57,7 @@ export class ConstructionInfantryComponent {
     }
 
     setSpecialization(specialization: InfantrySpecialization, selected: boolean): void {
-        this.change.emit(() => this.entity().specializations.update(current => {
+        this.editRequested.emit(() => this.entity().specializations.update(current => {
             const next = new Set(current);
             if (selected) next.add(specialization); else next.delete(specialization);
             return next;
@@ -64,26 +65,25 @@ export class ConstructionInfantryComponent {
     }
 
     setAugmentation(key: string, selected: boolean): void {
-        this.change.emit(() => this.entity().augmentations.update(current => selected
-            ? [...new Set([...current, key])] : current.filter(value => value !== key)));
+        this.editRequested.emit(() => setConstructionInfantryAugmentation(this.entity(), key, selected));
     }
 
     setLimbType(set: (value: string) => void, value: string): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             if (!PROSTHETICS.some(option => option === value)) throw new Error('Choose a prosthetic enhancement.');
             set(value);
         });
     }
 
     setLimbCount(set: (value: number) => void, value: number): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             if (!Number.isInteger(value) || value < 0 || value > 2) throw new Error('Prosthetic enhancement count must be 0, 1, or 2.');
             set(value);
         });
     }
 
     selectMount(choice: string): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             const infantry = this.entity();
             if (!choice) {
                 infantry.mount.set(null);
@@ -98,7 +98,7 @@ export class ConstructionInfantryComponent {
     }
 
     setMountText(key: 'name' | 'size' | 'movementMode', value: string): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             const current = this.entity().mount();
             if (!current) return;
             if (key === 'name' && (!value.trim() || /[,:\r\n]/.test(value))) throw new Error('Beast name cannot be empty or contain commas, colons, or line breaks.');
@@ -109,7 +109,7 @@ export class ConstructionInfantryComponent {
     }
 
     setMountNumber(key: MountNumberKey, value: unknown): void {
-        this.change.emit(() => {
+        this.editRequested.emit(() => {
             const current = this.entity().mount();
             const field = this.mountNumberFields.find(field => field.key === key)!;
             const number = Number(value);

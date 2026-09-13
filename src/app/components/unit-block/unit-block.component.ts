@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { crewSkillsForUnit } from '../../models/unit-crew-policy';
 import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
 import { UpperCasePipe } from '@angular/common';
@@ -45,6 +46,9 @@ import { projectRuntimeUnitNotifications } from '../unit-notification-badges/uni
 import { projectCBTUnitTagEcmCapabilitySummary } from '../../models/runtime/cbt-unit-capability-projection';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import { FormatBvPipe } from '../../pipes/format-bv.pipe';
+import { UnitDataBadgesComponent } from '../unit-data-badges/unit-data-badges.component';
+import { CustomUnitsService } from '../../services/custom-units.service';
+import { buildUnitIssues } from '../../utils/unit-summary-builder';
 
 interface UnitConditionDisplay {
     key: string;
@@ -73,6 +77,7 @@ export interface UnitBlockPilotEditEvent {
         FormatTonsPipe,
         UnitIconComponent,
         UnitNotificationBadgesComponent,
+        UnitDataBadgesComponent,
         TooltipDirective,
         UpperCasePipe,
     ],
@@ -83,6 +88,7 @@ export interface UnitBlockPilotEditEvent {
 export class UnitBlockComponent {
     readonly unitNames = inject(UnitNameService);
     optionsService = inject(OptionsService);
+    private readonly customUnits = inject(CustomUnitsService);
     forceUnit = input<ForceMember>();
     compactMode = input<boolean>(false);
     ctrlHeld = input<boolean>(false);
@@ -118,6 +124,24 @@ export class UnitBlockComponent {
         return member ? (isCBTForceMember(member) ? member.entity : member.getSummary()) : undefined;
     });
 
+    readonly loadIssues = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return [];
+        return isCBTForceMember(member) ? buildUnitIssues(member.entity) : member.getSummary().loadIssues;
+    });
+
+    readonly updateAvailable = computed(() => {
+        const member = this.forceUnit();
+        if (!member) return false;
+        if (isCBTForceMember(member)) {
+            this.runtimeRevision();
+            const source = member.force.getUnitSnapshot(member.id)?.nativeSource;
+            return !!source?.isCustom && this.customUnits.hasUpdate(member.entity.uuid(), source.sourceHash);
+        }
+        const summary = member.getSummary();
+        return !!summary.isCustom && this.customUnits.hasUpdate(summary.uuid, summary.hash);
+    });
+
     destroyed = computed(() => {
         this.runtimeRevision();
         const member = this.forceUnit();
@@ -136,8 +160,9 @@ export class UnitBlockComponent {
         if (!member) return [];
         return member.force.getUnitCrewPolicy(member.id).positions.map(position => {
             const person = member.force.getAssignedPerson(member.id, position.positionId);
+            const selectedSkills = isCBTForceMember(member) ? crewSkillsForUnit(person, member.entity.unitType(), member.entity.unitSubtype()) : undefined;
             const skills = person ? (isCBTForceMember(member)
-                ? `${person.gunnery ?? 4}/${effectiveEntityPilotingSkill(member.entity, person.piloting ?? 5)}`
+                ? `${selectedSkills!.gunnery}/${effectiveEntityPilotingSkill(member.entity, selectedSkills!.piloting)}`
                 : String(person.gunnery ?? 4)) : '—';
             return {
                 positionId: position.positionId,

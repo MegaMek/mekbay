@@ -124,7 +124,7 @@ function refreshSearchCorpusForTest(dataService: DataService): void {
 function prepareUnitForSearch(unit: UnitSummary, index: number): UnitSummary {
     const clone = cloneUnit(unit);
     clone.uuid = `${unit.uuid}__${index}` as UnitSummary['uuid'];
-    clone.id = index + 1;
+    clone.mul1id = index + 1;
     clone.name = `${unit.name}__${index}`;
     clone._nameTags = clone._nameTags ?? [];
     clone._chassisTags = clone._chassisTags ?? [];
@@ -144,7 +144,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     }
 
     const firstUnit = prepareUnitForSearch(firstSource, 0);
-    firstUnit.id = 1;
+    firstUnit.mul1id = 1;
     firstUnit.name = 'Test Mek';
     firstUnit.chassis = 'Test Mek';
     firstUnit.model = 'Prime';
@@ -163,7 +163,7 @@ function buildSmallBundle(payload: BenchmarkBundle): BenchmarkBundle {
     firstUnit._publicTags = [];
 
     const secondUnit = prepareUnitForSearch(secondSource, 1);
-    secondUnit.id = 2;
+    secondUnit.mul1id = 2;
     secondUnit.name = 'Test Tank';
     secondUnit.chassis = 'Test Tank';
     secondUnit.model = 'A';
@@ -228,7 +228,7 @@ function createTestUnit(overrides: TestUnitOverrides = {}): UnitSummary {
     return createEmptyUnit({
         uuid,
         name: 'Test Unit',
-        id: 1,
+        mul1id: 1,
         chassis: 'Test Unit',
         model: 'Prime',
         year: 3050,
@@ -278,7 +278,7 @@ function createTestUnit(overrides: TestUnitOverrides = {}): UnitSummary {
 
 function createStandaloneBundle(): BenchmarkBundle {
     const firstUnit = createTestUnit({
-        id: 1,
+        mul1id: 1,
         name: 'Test Mek',
         chassis: 'Test Mek',
         model: 'Prime',
@@ -295,7 +295,7 @@ function createStandaloneBundle(): BenchmarkBundle {
         _nameTags: [{ tag: 'tag-a', quantity: 1 }],
     });
     const secondUnit = createTestUnit({
-        id: 2,
+        mul1id: 2,
         name: 'Test Tank',
         chassis: 'Test Tank',
         model: 'A',
@@ -403,7 +403,7 @@ function createFormationFactionBundle(): BenchmarkBundle {
 
 function createStrategicCommandBundle(): BenchmarkBundle {
     const firstAerospace = createTestUnit({
-        id: 1,
+        mul1id: 1,
         name: 'Batu Prime',
         chassis: 'Batu',
         type: 'Aero',
@@ -417,7 +417,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
     });
     const secondAerospace = createTestUnit({
-        id: 2,
+        mul1id: 2,
         name: 'Visigoth Prime',
         chassis: 'Visigoth',
         type: 'Aero',
@@ -431,7 +431,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
     });
     const heavyMek = createTestUnit({
-        id: 3,
+        mul1id: 3,
         name: 'Timber Wolf Prime',
         chassis: 'Timber Wolf',
         weightClass: 'Heavy',
@@ -444,7 +444,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
     });
     const battleArmor = createTestUnit({
-        id: 4,
+        mul1id: 4,
         name: 'Elemental Point',
         chassis: 'Elemental',
         type: 'Infantry',
@@ -456,7 +456,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
     });
     const lightMek = createTestUnit({
-        id: 5,
+        mul1id: 5,
         name: 'Adder Prime',
         chassis: 'Adder',
         weightClass: 'Light',
@@ -469,7 +469,7 @@ function createStrategicCommandBundle(): BenchmarkBundle {
         },
     });
     const tank = createTestUnit({
-        id: 6,
+        mul1id: 6,
         name: 'Vedette Tank',
         chassis: 'Vedette',
         type: 'Tank',
@@ -2592,7 +2592,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[0].chassis = 'Available Unit';
         bundle.units.units[0].model = 'AVL-1';
         bundle.units.units[1].name = 'Missing Data Unit';
-        bundle.units.units[1].id = bundle.units.units[0].id;
+        bundle.units.units[1].mul1id = bundle.units.units[0].mul1id;
         bundle.units.units[1].chassis = 'Missing Data Unit';
         bundle.units.units[1].model = 'MIS-1';
         bundle.eras.eras = [{
@@ -2771,7 +2771,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const lowUnit = bundle.units.units[0];
         const highUnit = bundle.units.units[1];
         const unknownUnit = createTestUnit({
-            id: 3,
+            mul1id: 3,
             name: 'Unknown Unit',
             chassis: 'Unknown Unit',
             model: 'UNK-1',
@@ -4453,7 +4453,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[0].as.specials = ['AC1/3/1', 'AFC'];
         bundle.units.units[1].as.specials = ['AC1/4/1', 'TAG'];
         bundle.units.units.push(createTestUnit({
-            id: 3,
+            mul1id: 3,
             name: 'Nested AC',
             as: { ...createTestUnit({}).as, specials: ['TUR(2/2/2,AC1/5/1)', 'TSM'] },
         }));
@@ -4484,7 +4484,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         bundle.units.units[0].as.specials = ['AC1/5/1'];
         bundle.units.units[1].as.specials = ['AC1/1/4'];
         bundle.units.units.push(createTestUnit({
-            id: 3,
+            mul1id: 3,
             name: 'Both AC Ranges',
             as: { ...createTestUnit({}).as, specials: ['AC1/5/4'] },
         }));

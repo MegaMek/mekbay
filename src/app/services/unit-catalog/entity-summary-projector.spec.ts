@@ -23,6 +23,9 @@ ${uuid}
 <UnitType>
 BuildingEntity
 </UnitType>
+<coords>
+0,0,0
+</coords>
 <Name>
 Medium Sniper Turret
 </Name>

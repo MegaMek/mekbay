@@ -3,12 +3,7 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
-import {
-  getAmmoCategory,
-  InfantryWeaponEquipment,
-  MiscEquipment,
-  WeaponEquipment,
-} from '../../../equipment.model';
+import { getAmmoCategory, InfantryWeaponEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
 import {
   type UnitSubtype,
   type EntityDamageLocation,
@@ -22,10 +17,7 @@ import {
   MotiveType,
   WeightClass,
 } from '../../types';
-import {
-  infantryArmorKitProfile,
-  isAntiMekGearEquipment,
-} from '../../../infantry-equipment.model';
+import { infantryArmorKitProfile, isAntiMekGearEquipment } from '../../../infantry-equipment.model';
 import { InfantryBaseEntity } from './infantry-base-entity';
 import { getInfantryTonnage } from '../../utils/infantry-tonnage';
 import {
@@ -38,7 +30,7 @@ import {
 // InfantryEntity - conventional infantry platoons
 // ============================================================================
 
-export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 36;
+export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 30;
 
 export class InfantryEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
@@ -46,28 +38,26 @@ export class InfantryEntity extends InfantryBaseEntity {
   }
 
   override componentLocationLabel(location: string): string {
-    return ({ Infantry: 'TPRS', 'Field Guns': 'FGUN' })[location] ?? super.componentLocationLabel(location);
+    return { Infantry: 'TPRS', 'Field Guns': 'FGUN' }[location] ?? super.componentLocationLabel(location);
   }
   override readonly entityType: EntityType = 'Infantry';
 
   override unitSubtype(): UnitSubtype {
-    const qualifier = this.motiveType() !== 'Beast'
-      && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType()) ? 'Mechanized '
-      : this.motiveType() === 'Motorized' ? 'Motorized '
-      : '';
+    const qualifier =
+      this.motiveType() !== 'Beast' && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType())
+        ? 'Mechanized '
+        : this.motiveType() === 'Motorized'
+          ? 'Motorized '
+          : '';
     return this.withOmniSubtype(`${qualifier}Conventional Infantry`);
   }
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
     const hasFieldEquipment = this.equipment().some(
-      mount => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
+      (mount) => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
     );
     const sources: TechRatingSource[] = [
-      getConventionalInfantryConstructionTech(
-        this.motiveType(),
-        hasFieldEquipment,
-        this.effectiveEncumberingArmor(),
-      ),
+      getConventionalInfantryConstructionTech(this.motiveType(), hasFieldEquipment, this.effectiveEncumberingArmor()),
       getInfantryMotiveTech(this.motiveType()),
       ...getInfantrySpecializationTech(this.specializations()),
     ];
@@ -87,9 +77,7 @@ export class InfantryEntity extends InfantryBaseEntity {
   readonly secondaryCount = signal<number>(0);
   readonly rangeWeapon = computed<InfantryWeaponEquipment | null>(() => {
     const secondaryWeapon = this.secondaryWeapon();
-    return this.secondaryCount() > 1 && secondaryWeapon
-      ? secondaryWeapon
-      : this.primaryWeapon();
+    return this.secondaryCount() > 1 && secondaryWeapon ? secondaryWeapon : this.primaryWeapon();
   });
   readonly armorDivisor = signal<number>(1);
   override motiveType = signal<MotiveType>('Leg');
@@ -179,9 +167,15 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (mount) return mount.movementMode === 'VTOL' ? mount.movementPoints : 0;
     if (this.motiveType() === 'UMU' || this.motiveType() === 'Submarine') return 0;
 
-    let jumpMP = this.augmentations().includes('pl_flight') ? 2 : this.motiveType() === 'Jump'
-      ? 3
-      : this.motiveType() === 'VTOL' ? (this.isMicrolite() ? 6 : 5) : 0;
+    let jumpMP = this.augmentations().includes('pl_flight')
+      ? 2
+      : this.motiveType() === 'Jump'
+        ? 3
+        : this.motiveType() === 'VTOL'
+          ? this.isMicrolite()
+            ? 6
+            : 5
+          : 0;
     if (this.hasSupportWeaponPenalty()) jumpMP = Math.max(jumpMP - 1, 0);
     else if (this.motiveType() === 'VTOL' && this.secondaryCount() > 0) jumpMP = Math.max(jumpMP - 1, 0);
     return jumpMP;
@@ -197,29 +191,33 @@ export class InfantryEntity extends InfantryBaseEntity {
   });
 
   private hasSupportWeaponPenalty(): boolean {
-    return this.secondaryCount() > 1
-      && !this.augmentations().some(augmentation => augmentation === 'tsm_implant' || augmentation === 'dermal_armor')
-      && !this.specializations().has('tag-troops')
-      && !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT');
+    return (
+      this.secondaryCount() > 1 &&
+      !this.augmentations().some((augmentation) => augmentation === 'tsm_implant' || augmentation === 'dermal_armor') &&
+      !this.specializations().has('tag-troops') &&
+      !!this.secondaryWeapon()?.hasFlag('F_INF_SUPPORT')
+    );
   }
 
   private hasFieldArtillery(): boolean {
-    return this.equipment().some(mount =>
-      mount.location === 'Field Guns'
-      && mount.equipment instanceof WeaponEquipment
-      && getAmmoCategory(mount.equipment.ammoType) === 'Artillery'
+    return this.equipment().some(
+      (mount) =>
+        mount.location === 'Field Guns' &&
+        mount.equipment instanceof WeaponEquipment &&
+        getAmmoCategory(mount.equipment.ammoType) === 'Artillery',
     );
   }
 
   readonly hasAntiMekGear = computed(() =>
-    this.equipment().some(mounted => isAntiMekGearEquipment(mounted.equipment)),
+    this.equipment().some((mounted) => isAntiMekGearEquipment(mounted.equipment)),
   );
 
   /** Physical capability is independent of the gear that enables improved anti-Mek skill. */
-  override readonly canMakeAntiMekAttacks = computed(() =>
-    !MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType())
-    && !this.effectiveEncumberingArmor()
-    && !this.equipment().some(mount => mount.location === 'Field Guns'),
+  override readonly canMakeAntiMekAttacks = computed(
+    () =>
+      !MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType()) &&
+      !this.effectiveEncumberingArmor() &&
+      !this.equipment().some((mount) => mount.location === 'Field Guns'),
   );
 
   /**
@@ -237,9 +235,16 @@ export class InfantryEntity extends InfantryBaseEntity {
     if (motive === 'Beast' && mountData) {
       if (mountData.custom) {
         const fields = [
-          mountData.name, mountData.size.toUpperCase().replace(/ /g, '_'), mountData.weight, mountData.movementPoints,
-          mountData.movementMode, mountData.burstDamage, mountData.vehicleDamage,
-          mountData.damageDivisor, mountData.maxWaterDepth, mountData.secondaryGroundMP,
+          mountData.name,
+          mountData.size.toUpperCase().replace(/ /g, '_'),
+          mountData.weight,
+          mountData.movementPoints,
+          mountData.movementMode,
+          mountData.burstDamage,
+          mountData.vehicleDamage,
+          mountData.damageDivisor,
+          mountData.maxWaterDepth,
+          mountData.secondaryGroundMP,
           mountData.uwEndurance,
         ];
         return `Beast:Custom:${fields.join(',')}`;
@@ -273,12 +278,14 @@ export class InfantryEntity extends InfantryBaseEntity {
   }
 
   override damageLocations(): readonly EntityDamageLocation[] {
-    return [{
-      code: 'Infantry',
-      internalPoints: this.structureValues().get('Infantry') ?? 0,
-      armor: locationArmor(0),
-      soldierPips: true,
-    }];
+    return [
+      {
+        code: 'Infantry',
+        internalPoints: this.structureValues().get('Infantry') ?? 0,
+        armor: locationArmor(0),
+        soldierPips: true,
+      },
+    ];
   }
 
   protected override computeWeightClass(): WeightClass {
@@ -293,14 +300,14 @@ export class InfantryEntity extends InfantryBaseEntity {
     const values = new Map<string, number>();
     const strength = this.squadSize() * this.squadCount();
     // Preserve recognizable imported definitions while bounding their usable troop count.
-    values.set('Infantry', Number.isFinite(strength)
-      ? Math.max(0, Math.min(MAX_CONVENTIONAL_INFANTRY_STRENGTH, Math.floor(strength))) : 0);
+    values.set(
+      'Infantry',
+      Number.isFinite(strength) ? Math.max(0, Math.min(MAX_CONVENTIONAL_INFANTRY_STRENGTH, Math.floor(strength))) : 0,
+    );
     return values;
   }
 
-  protected override computeMaxArmor(
-    _structureValues: Map<string, number>,
-  ): Map<string, number> {
+  protected override computeMaxArmor(_structureValues: Map<string, number>): Map<string, number> {
     return new Map(); // Infantry armor is handled differently
   }
 
@@ -311,37 +318,49 @@ export class InfantryEntity extends InfantryBaseEntity {
 
     if (!this.primaryWeapon()) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_PRIMARY_WEAPON',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_PRIMARY_WEAPON',
         message: 'Infantry must have a primary infantry weapon',
       });
     }
     if (!Number.isInteger(this.secondaryCount()) || this.secondaryCount() < 0) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_INVALID_SECONDARY_COUNT',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_INVALID_SECONDARY_COUNT',
         message: 'Infantry secondary weapon count must be a non-negative integer',
       });
     } else if (this.secondaryCount() > 0 && !this.secondaryWeapon()) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_SECONDARY_WEAPON',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_SECONDARY_WEAPON',
         message: 'Infantry with secondary weapons must specify a secondary infantry weapon',
       });
     }
 
     if (!Number.isSafeInteger(this.squadSize()) || this.squadSize() <= 0) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_SQUAD_SIZE',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_SQUAD_SIZE',
         message: 'Infantry squad size must be a positive integer',
       });
     }
     if (!Number.isSafeInteger(this.squadCount()) || this.squadCount() <= 0) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_NO_SQUAD_COUNT',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_NO_SQUAD_COUNT',
         message: 'Infantry squad count must be a positive integer',
       });
     }
     if (this.squadSize() * this.squadCount() > MAX_CONVENTIONAL_INFANTRY_STRENGTH) {
       msgs.push({
-        severity: 'error', category: 'general', code: 'INF_TOO_MANY_TROOPERS',
+        severity: 'error',
+        category: 'general',
+        code: 'INF_TOO_MANY_TROOPERS',
         message: `Conventional infantry cannot exceed ${MAX_CONVENTIONAL_INFANTRY_STRENGTH} troops`,
       });
     }

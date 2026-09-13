@@ -2,13 +2,65 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { WeaponEquipment, createEquipment } from '../../../models/equipment.model';
-import { TestBipedMekEntity, TestQuadVeeEntity, TestSupportTankEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestConvFighterEntity, TestDropShipEntity, TestBipedMekEntity, TestQuadVeeEntity, TestSupportTankEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import { createTestEquipmentRegistry } from '../../../models/entity/testing/test-equipment-registry';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 import { recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 
 describe('record-sheet inventory content parity', () => {
+    it('retains support-vehicle fire control features in both rulesets', async () => {
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            for (const kind of ['BASIC', 'ADVANCED'] as const) {
+                const entity = new TestSupportTankEntity();
+                entity.setTonnage(240);
+                entity.motiveType.set('WiGE');
+                addTestEquipmentWithFlags(entity, `F_${kind}_FIRE_CONTROL`, { location: 'Body' });
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+                const label = kind === 'ADVANCED' ? 'Advanced Fire Control' : 'Basic Fire Control';
+                expect(svg.textContent).toContain(label);
+            }
+        }
+    });
+
+    it('labels DropShip heat arcs according to the hull shape in both rulesets', async () => {
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            for (const motive of ['Aerodyne', 'Spheroid'] as const) {
+                const entity = new TestDropShipEntity();
+                entity.motiveType.set(motive);
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+                expect(svg.getElementById('foreSidesHeat')?.previousElementSibling?.textContent)
+                    .toBe(motive === 'Spheroid' ? 'Left/Right Fore:' : 'Left/Right Wing:');
+            }
+        }
+    });
+
+    it('retains fighter VSTOL and small-cockpit features in both rulesets', async () => {
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            const conventional = new TestConvFighterEntity();
+            conventional.vstol.set(true);
+            const aerospace = new TestAeroSpaceFighterEntity();
+            aerospace.cockpitType.set('Small');
+            for (const [entity, feature] of [[conventional, 'VSTOL Equipment'], [aerospace, 'Small Cockpit']] as const) {
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+                expect(svg.querySelector('.aero-features')?.textContent).toBe(`Features ${feature}`);
+            }
+        }
+    });
+
+    it('prints the mounted communications size in both rulesets and keeps mount modifiers', async () => {
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            const entity = new TestTankEntity();
+            const comms = addTestEquipment(entity, createEquipment({ id: 'Communications Equipment',
+                name: 'Communications Equipment', shortName: 'CommsGear', type: 'misc',
+                flags: ['F_COMMUNICATIONS', 'F_VARIABLE_SIZE'] }), { location: 'TU', size: 3, turretMounted: true });
+            expect(recordSheetInventoryMountName(entity, comms)).toBe('CommsGear (3 tons) (T)');
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+            const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${comms.mountId}"]`);
+            expect(row?.querySelector(':scope > .name')?.textContent).toContain('CommsGear (3 tons)');
+        }
+    });
+
     it('keeps DemolitionMech miscellaneous equipment in source order and prints cargo capacity', async () => {
         const entity = new TestBipedMekEntity();
         entity.chassis.set('DemolitionMech');

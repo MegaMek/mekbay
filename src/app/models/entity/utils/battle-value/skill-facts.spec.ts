@@ -11,6 +11,17 @@ import { AmmoEquipment, WeaponEquipment } from '../../../equipment.model';
 import { adjustEntityBattleValueForSkills, effectiveEntityPilotingSkill, fixedEntityPilotingSkill } from './skill-facts';
 
 describe('Entity crew-skill facts', () => {
+  it('retains a positive manual BV before skill adjustment and restores ordinary adjustment when cleared', () => {
+    const entity = new TestInfantryEntity();
+    entity.manualBV.set(123);
+    expect(adjustEntityBattleValueForSkills(entity, 68, 0, 0)).toBe(123);
+    expect(adjustEntityBattleValueForSkills(entity, 68, 4, 5)).toBe(123);
+    entity.manualBV.set(0);
+    expect(adjustEntityBattleValueForSkills(entity, 68, 4, 5)).toBe(58);
+    entity.manualBV.set(-1);
+    expect(adjustEntityBattleValueForSkills(entity, 68, 4, 5)).toBe(58);
+  });
+
   it('uses the loaded Entity family instead of catalog-summary fields', () => {
     const registry = createTestEquipmentRegistry();
     expect(effectiveEntityPilotingSkill(new BipedMekEntity(registry), 2)).toBe(2);

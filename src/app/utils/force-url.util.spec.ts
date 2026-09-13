@@ -16,9 +16,9 @@ const mixedCatalog = [customUnit, catalogUnit, secondCustomUnit];
 
 describe('parseForceUrl', () => {
     const units = [
-        createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
-        createEmptyUnit({ name: 'BMAtlas_AS7K', id: 144 }),
-        createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 }),
+        createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
+        createEmptyUnit({ name: 'BMAtlas_AS7K', mul1id: 144 }),
+        createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: 1901 }),
     ];
 
     it('decodes case-insensitive native names without constructing runtime owners', () => {
@@ -92,7 +92,7 @@ describe('parseForceUrl', () => {
     });
 
     it('does not let custom units shadow catalog MUL IDs', () => {
-        const custom = createEmptyUnit({ id: 140, isCustom: true });
+        const custom = createEmptyUnit({ mul1id: 140, isCustom: true });
         expect(parseForceUrl('140', [custom, ...units], undefined, 'mulId')[0].units[0].summary).toBe(units[0]);
     });
 });

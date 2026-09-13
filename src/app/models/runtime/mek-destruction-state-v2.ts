@@ -78,7 +78,9 @@ export interface MekCommittedDestructionFactsV2 {
     readonly unavailableCriticalSlotIds: readonly CriticalSlotId[];
 }
 
-export interface MekPreviewCripplingFactsV2 {
+export interface MekPreviewDestructionFactsV2 {
+    /** Destructive damage including queued hits; this never settles runtime destruction early. */
+    readonly destroyed: boolean;
     readonly crippled: boolean;
     /** Pending direct critical hits and direct structural propagation are included. */
     readonly engineUnavailableSlotIds: readonly CriticalSlotId[];
@@ -90,10 +92,10 @@ export interface MekPreviewCripplingFactsV2 {
     readonly torsoCripplingCheckRequired: boolean;
 }
 
-/** Committed unit destruction and preview forced-withdrawal state are deliberately separate. */
+/** Committed unit destruction stays separate from projected destruction and forced withdrawal. */
 export interface MekDestructionFactsV2 {
     readonly committed: MekCommittedDestructionFactsV2;
-    readonly preview: MekPreviewCripplingFactsV2;
+    readonly preview: MekPreviewDestructionFactsV2;
     readonly torsoCripplingCheck?: MekRuleCheckStateV2;
 }
 
@@ -145,9 +147,7 @@ export function projectMekDestructionStateV2(
         committedUnavailableSet.has(slotId));
     const commandConsoleUnavailable = profile.cockpit.commandConsole?.criticalSlotIds.some(slotId =>
         committedUnavailableSet.has(slotId)) ?? false;
-    const destroyed = committedEngine.length >= profile.engine.destructionHitThreshold
-        || (mainCockpitUnavailable
-            && (profile.cockpit.commandConsole === undefined || commandConsoleUnavailable));
+    const destroyed = destroyedFromUnavailableSystems(profile, committedUnavailableSet);
 
     const destroyedLimbs = profile.limbs.filter(limb =>
         locationDirectlyDestroyed(state, limb.locationId, 'preview'));
@@ -188,6 +188,7 @@ export function projectMekDestructionStateV2(
             unavailableCriticalSlotIds: Object.freeze([...committedUnavailable]),
         }),
         preview: Object.freeze({
+            destroyed: destroyedFromUnavailableSystems(profile, previewUnavailableSet),
             crippled,
             engineUnavailableSlotIds: Object.freeze([...previewEngine]),
             destroyedLimbLocationIds: Object.freeze(destroyedLimbs.map(limb => limb.locationId)),
@@ -198,6 +199,13 @@ export function projectMekDestructionStateV2(
         }),
         ...(applicableCheck === undefined ? {} : { torsoCripplingCheck: applicableCheck }),
     });
+}
+
+function destroyedFromUnavailableSystems(profile: MekMechanicsProfile, unavailable: ReadonlySet<CriticalSlotId>): boolean {
+    return profile.engine.criticalSlotIds.filter(slotId => unavailable.has(slotId)).length >= profile.engine.destructionHitThreshold
+        || profile.cockpit.main.criticalSlotIds.some(slotId => unavailable.has(slotId))
+            && (profile.cockpit.commandConsole === undefined
+                || profile.cockpit.commandConsole.criticalSlotIds.some(slotId => unavailable.has(slotId)));
 }
 
 /** Reconcile the persistent check after a damage mutation, without consuming randomness. */

@@ -1,5 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { addInventoryText, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
+import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { BattleArmorEntity } from '../../../models/entity/entities/infantry/battle-armor-entity';
@@ -14,6 +16,7 @@ import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
+    addCrewSkillValue,
     addFrame,
     addText,
     appendLegacyIdentityAnchors,
@@ -87,10 +90,11 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
             }), racks);
         }
         drawBattleArmorReferenceTables(page, profile);
+        const catalyst = scalePageBox(profile, { x: 541.535, y: 698.166, width: 0, height: 0 });
         drawGeneratedFooter(page, profile, {
-            catalystX: 541.535,
-            catalystY: 698.166,
-            catalystScale: 0.898,
+            catalystX: catalyst.x,
+            catalystY: catalyst.y,
+            catalystScale: 0.898 * profile.horizontalScale,
         });
     }
 
@@ -109,33 +113,34 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     group.setAttribute('class', `${group.getAttribute('class') ?? ''} compact-battle-armor-frame`.trim());
     const sx = frameBox.width / 384;
     const sy = frameBox.height / 136.2;
-    const fontScale = Math.min(sx, sy);
+    const fontScale = frameBox.width / 384;
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * fontScale;
 
-    addText(group, 'Type:', x(3.97), y(27.8), { size: font(6.76), weight: 700 });
+    addText(group, 'Type:', x(3.97), y(27.8), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const type = addText(group, entity.displayName(), x(22.3), y(27.8), {
-        size: font(6.76), weight: 700, maxWidth: x(162),
+        size: font(RECORD_SHEET_FONT.inventory), weight: 700, maxWidth: x(162),
     });
     type.id = 'type';
     type.setAttribute('data-mekbay-field', 'display-name');
-    addText(group, 'Gunnery Skill:', x(6.966), y(37.966), { size: font(6.76), weight: 700 });
-    const gunnery = addText(group, '4', x(49.513), y(37.966), { size: font(6.76) });
+    addText(group, 'Gunnery Skill:', x(6.966), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const gunnery = addCrewSkillValue(group, '4', x(49.513), y(37.966), fontScale);
     gunnery.id = 'gunnerySkill0';
-    addText(group, "Anti-'Mech Skill:", x(99.466), y(37.966), { size: font(6.76), weight: 700 });
-    const piloting = addText(group, String(effectiveEntityPilotingSkill(entity, 5)), x(148.855), y(37.966), { size: font(6.76) });
+    addText(group, "Anti-'Mech Skill:", x(99.466), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const piloting = addCrewSkillValue(group, String(effectiveEntityPilotingSkill(entity, 5)), x(148.855), y(37.966), fontScale);
     piloting.id = 'pilotingSkill0';
-    addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(6.76), weight: 700 });
-    const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(6.76) });
+    addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(RECORD_SHEET_FONT.inventory) });
     walk.id = 'mpWalk';
     const secondaryMovement = compactBattleArmorSecondaryMovement(entity);
+    addText(group, '', x(62), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 }).id = 'movementPointsLabel';
     if (secondaryMovement !== undefined) {
         addText(group, secondaryMovement.label, x(99.466), y(45.966), {
-            size: font(6.76), weight: 700,
+            size: font(RECORD_SHEET_FONT.inventory), weight: 700,
         });
         const jump = addText(group, String(secondaryMovement.value), x(132.313), y(45.966), {
-            size: font(6.76),
+            size: font(RECORD_SHEET_FONT.inventory),
         });
         jump.id = 'mpJump';
     }
@@ -150,23 +155,23 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         ['AP:', entity.equipment().some(mount => isAntiPersonnelMountEquipment(mount.equipment)), 162.366, 175.586],
     ];
     flags.forEach(([label, checked, labelX, checkboxX]) => {
-        addText(group, label, x(labelX), y(115.952), { size: font(6.76), weight: 700 });
+        addText(group, label, x(labelX), y(115.952), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
         const capability = svgElement('g');
         capability.setAttribute('class', 'battle-armor-capability');
         capability.setAttribute('data-capability', label.slice(0, -1).toLowerCase());
         drawCheckbox(capability, x(checkboxX), y(109.552), x(8), checked);
         group.appendChild(capability);
     });
-    addText(group, 'Armor:', x(158.966), y(129.166), { size: font(6.76), weight: 700 });
+    addText(group, 'Armor:', x(158.966), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     addText(group, compactArmorDisplayName(entity.uniformArmor()?.armor.name, 'Standard'), x(182.752), y(129.166), {
-        size: font(6.76), maxWidth: x(68),
+        size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(68),
     });
-    addText(group, 'Role:', x(255), y(129.166), { size: font(6.76), weight: 700 });
-    addText(group, entity.role() || '—', x(272.5), y(129.166), { size: font(6.76), maxWidth: x(55) });
-    addText(group, 'BV:', x(332.966), y(129.166), { size: font(6.76), weight: 700 });
+    addText(group, 'Role:', x(255), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    addText(group, entity.role() || '—', x(272.5), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(55) });
+    addText(group, 'BV:', x(332.966), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const singleTrooperBv = new BattleArmorBVCalculator(entity).singleTrooperBattleValue();
     const bv = addText(group, `${formatNumber(adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5))}/${formatNumber(singleTrooperBv)}`,
-        x(346.209), y(129.166), { size: font(6.76), maxWidth: x(31) });
+        x(346.209), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(31) });
     bv.id = 'bv';
     bv.setAttribute('data-mekbay-bv-suffix', `/${formatNumber(singleTrooperBv)}`);
         await appendRecordSheetEraIcon(svg, group, entity.year(), {
@@ -448,24 +453,26 @@ function drawCompactBattleArmorInventory(
         })),
     ];
     const ammo = battleArmorAmmoProfile(entity);
-    const splitDamage = (value: string): readonly string[] => {
-        const match = value.match(/^(.*?)\s+(\[[^\]]+\])$/u);
-        return match?.[1] && value.length > 10
-            ? Object.freeze([match[1], match[2]])
-            : Object.freeze([value]);
-    };
+    const rowLines = (row: { name: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
+        inventoryRowLineCount([[row.name, x(79)], [row.damage, x(31)], [row.minimumRange, x(13)],
+            ...row.ranges.map(value => [value, x(13)] as const)], font(size));
     const firstBaseline = 66.666;
-    const lineStep = 8.406;
-    const rowFont = 6.76;
+    const metrics = fitInventoryText(105.2 - firstBaseline, fontSize => ({
+        lineCount: rows.reduce((sum, row) => sum + rowLines(row, fontSize)
+            + row.alternativeModes.reduce((count, mode) => count + rowLines(mode, fontSize), 0), 0), content: undefined }));
+    const lineStep = metrics.lineStep;
+    const rowFont = metrics.fontSize;
+    const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
+        addInventoryText(parent, value, x, yPos, { ...options, lineHeight: y(lineStep) });
 
-    addText(group, '#', x(7.55), y(56.766), { size: font(6.76), weight: 700, anchor: 'middle' });
-    addText(group, 'Type', x(12.1), y(56.766), { size: font(6.76), weight: 700 });
-    addText(group, 'Dmg', x(94), y(56.766), { size: font(6.76), weight: 700 });
+    addText(group, '#', x(7.55), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle' });
+    addText(group, 'Type', x(12.1), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    addText(group, 'Dmg', x(94), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const rangePositions = [134.04, 149.146, 164.07, 179.54] as const;
     [['Min', rangePositions[0]], ['Sht', rangePositions[1]], ['Med', rangePositions[2]], ['Lng', rangePositions[3]]]
         .forEach(([label, position]) => {
         addText(group, String(label), x(Number(position)), y(56.766), {
-            size: font(6.76), weight: 700, anchor: 'middle',
+            size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle',
         });
     });
 
@@ -480,68 +487,70 @@ function drawCompactBattleArmorInventory(
     let displayLine = 0;
     rows.forEach((row, index) => {
         const baselineValue = firstBaseline + displayLine * lineStep;
-        const damageLines = splitDamage(row.damage);
+        const damageLines = [row.damage];
+        const lineCount = rowLines(row, rowFont);
         const entry = svgElement('g');
         entry.setAttribute('class', 'inventoryEntry');
         entry.setAttribute('id', `generated-ba-inventory-row@${index}`);
         setInventoryComponentIds(entry, row.componentIds);
-        entry.appendChild(transparentRect(x(3.966), y(baselineValue - lineStep), x(182), y(lineStep * damageLines.length),
+        entry.appendChild(transparentRect(x(3.966), y(baselineValue - lineStep), x(182), y(lineStep * lineCount),
             'inventoryEntryButton mainButton'));
         rangeClasses.slice(1).forEach((className, rangeIndex) => entry.appendChild(
             transparentRect(x(rangePositions[rangeIndex + 1] - 7), y(baselineValue - lineStep), x(14), y(lineStep),
                 `inventoryEntryButton ${className}`),
         ));
         const baseline = y(baselineValue);
-        addText(entry, String(row.quantity), x(7.55), baseline, {
+        addCell(entry, String(row.quantity), x(7.55), baseline, {
             class: 'quantity', size: font(rowFont), anchor: 'middle',
         });
-        addText(entry, row.name, x(12.1), baseline, {
+        addCell(entry, row.name, x(12.1), baseline, {
             class: 'name', size: font(rowFont), maxWidth: x(79),
         });
         const damage = svgElement('g');
         damage.setAttribute('class', 'damage');
-        damageLines.forEach((value, damageIndex) => addText(damage, value, x(94),
+        damageLines.forEach((value, damageIndex) => addCell(damage, value, x(94),
             y(baselineValue + damageIndex * lineStep), {
-            size: font(rowFont), maxWidth: x(36),
+            size: font(rowFont), maxWidth: x(31),
         }));
         entry.appendChild(damage);
         const rangeValues = [row.minimumRange, ...row.ranges.slice(0, 3)];
         const rangeTextClasses = ['range_min', 'range_short', 'range_medium', 'range_long'];
-        rangeValues.forEach((value, rangeIndex) => addText(entry, value, x(rangePositions[rangeIndex]), baseline, {
+        rangeValues.forEach((value, rangeIndex) => addCell(entry, value, x(rangePositions[rangeIndex]), baseline, {
             class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(13),
         }));
 
-        let modeLine = displayLine + damageLines.length;
+        let modeLine = displayLine + lineCount;
         row.alternativeModes.forEach(mode => {
-            const modeDamageLines = splitDamage(mode.damage);
+            const modeDamageLines = [mode.damage];
+            const modeLineCount = rowLines(mode, rowFont);
             const modeBaselineValue = firstBaseline + modeLine * lineStep;
             const alternative = svgElement('g');
             alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
             alternative.appendChild(transparentRect(x(3.966), y(modeBaselineValue - lineStep), x(182),
-                y(lineStep * modeDamageLines.length), 'inventoryEntryButton alternativeModeButton'));
+                y(lineStep * modeLineCount), 'inventoryEntryButton alternativeModeButton'));
             rangeClasses.slice(1).forEach((className, rangeIndex) => alternative.appendChild(
                 transparentRect(x(rangePositions[rangeIndex + 1] - 7), y(modeBaselineValue - lineStep), x(14), y(lineStep),
                     `inventoryEntryButton ${className}`),
             ));
-            addText(alternative, mode.name, x(12.1), y(modeBaselineValue), {
+            addCell(alternative, mode.name, x(12.1), y(modeBaselineValue), {
                 class: 'name', size: font(rowFont), maxWidth: x(79),
             });
-            modeDamageLines.forEach((value, damageIndex) => addText(alternative, value, x(94),
-                y(modeBaselineValue + damageIndex * lineStep), { size: font(rowFont), maxWidth: x(36) }));
-            [mode.minimumRange, ...mode.ranges].forEach((value, rangeIndex) => addText(alternative, value,
+            modeDamageLines.forEach((value, damageIndex) => addCell(alternative, value, x(94),
+                y(modeBaselineValue + damageIndex * lineStep), { size: font(rowFont), maxWidth: x(31) }));
+            [mode.minimumRange, ...mode.ranges].forEach((value, rangeIndex) => addCell(alternative, value,
                 x(rangePositions[rangeIndex]), y(modeBaselineValue), {
                     class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(13),
                 }));
             entry.appendChild(alternative);
-            modeLine += modeDamageLines.length;
+            modeLine += modeLineCount;
         });
         inventory.appendChild(entry);
         displayLine = modeLine;
     });
     inventory.setAttribute('data-content-bottom', String(y(firstBaseline + Math.max(0, displayLine - 1) * lineStep)));
     appendRecordSheetAmmoProfile(group, ammo, {
-        x: x(7.55), y: y(104.783), width: x(178), fontSize: font(6.76), lineHeight: y(lineStep),
+        x: x(7.55), y: y(104.783), width: x(178), fontSize: font(RECORD_SHEET_FONT.inventory), lineHeight: y(lineStep),
     });
 }
 
@@ -586,7 +595,7 @@ function drawCompactBattleArmorTroopers(
         row.setAttribute('class', 'battle-armor-trooper');
         row.setAttribute(
             'transform',
-            `translate(${formatNumber(x(188.966))} ${formatNumber(y(rowY))}) scale(${formatNumber(sx)} ${formatNumber(sy)})`,
+            `translate(${formatNumber(x(188.966))} ${formatNumber(y(rowY))}) scale(${formatNumber(Math.min(sx, sy))})`,
         );
         const locationCode = location.sheetCode ?? location.code;
         const outline = svgElement('path');

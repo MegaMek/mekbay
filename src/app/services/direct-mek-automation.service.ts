@@ -34,6 +34,7 @@ type MekHeatAutomationCheck,
 import {
 ammoExplosionDamagePerShot,
 ammoRackSize,
+diceForSlotIndex,
 mekExplosionProtection,
 resolveMekCriticalChance,
 type MekCriticalChanceModifier,
@@ -339,15 +340,36 @@ export class DirectMekAutomationService {
                 ? Object.freeze({ command, deferredPilotHits: 0, cancelled: true })
                 : Object.freeze({ command, deferredPilotHits: 0, pilotCheckFall: fall });
         }
+        if (command.type === 'hit-critical' && command.hits === 1) {
+            const slot = snapshot.index.slots.get(command.slotId);
+            if (slot) {
+                const results = diceForSlotIndex(snapshot.index.locations.get(slot.locationId)!.code, slot.slotIndex);
+                const plan = snapshot.query.mekCriticalRoll(slot.locationId, results, command.target);
+                if (plan.kind === 'applied' && plan.slotId === slot.id && plan.hotLoadAmmoIds !== undefined) {
+                    return this.prepareCommand(force, instanceId, {
+                        type: 'apply-mek-critical-roll', locationId: slot.locationId, results, target: command.target,
+                    });
+                }
+            }
+        }
         if (command.type !== 'apply-mek-critical-roll') {
             return Object.freeze({ command, deferredPilotHits: 0 });
         }
 
-        const plan = snapshot.query.mekCriticalRoll(
+        let hotLoadExplosion = command.hotLoadExplosion;
+        let plan = snapshot.query.mekCriticalRoll(
             command.locationId,
             command.results,
             command.target,
+            hotLoadExplosion,
         );
+        if (plan.kind === 'applied' && plan.hotLoadAmmoIds?.length && !hotLoadExplosion) {
+            const dice = [randomD6(), randomD6()];
+            const ammoComponentId = dice[0] + dice[1] <= 5
+                ? plan.hotLoadAmmoIds[randomIndex(plan.hotLoadAmmoIds.length)] : undefined;
+            hotLoadExplosion = { dice, ...(ammoComponentId ? { ammoComponentId } : {}) };
+            plan = snapshot.query.mekCriticalRoll(command.locationId, command.results, command.target, hotLoadExplosion);
+        }
         if (plan.kind !== 'applied' || (!plan.explosion && !plan.pendingExplosion)) {
             return Object.freeze({ command, deferredPilotHits: 0 });
         }
@@ -357,7 +379,8 @@ export class DirectMekAutomationService {
             id: `explosion:${reviewId}`,
             subject: this.subject(snapshot),
             event: `${plan.equipment} Explosion`,
-            description: `Apply ${rawDamage} points of internal explosion damage.`,
+            description: `Apply ${rawDamage} points of internal explosion damage.`
+                + (hotLoadExplosion ? ` Hot-load check: ${hotLoadExplosion.dice.join(' + ')}.` : ''),
             delta: rawDamage,
             effects: Object.freeze(plan.explosion?.locations.map(location =>
                 `${getMekLocationLabel(location.locationCode) ?? location.locationCode}: `
@@ -385,6 +408,7 @@ export class DirectMekAutomationService {
                 applyExplosion,
                 applyPilotHits: false,
                 settlePendingExplosion: true,
+                ...(hotLoadExplosion === undefined ? {} : { hotLoadExplosion }),
             },
             deferredPilotHits: reviewedPilotHits,
             criticalPlan: plan,

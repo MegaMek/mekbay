@@ -22,12 +22,10 @@ describe('Battle Armor record-sheet presentation', () => {
     it('derives AP capability from installed anti-personnel mounts', async () => {
         const entity = new TestBattleArmorEntity();
         const mount = addTestEquipmentWithFlags(entity, 'F_AP_MOUNT', { location: 'Squad' });
-        expect(entity.apMounts()).toBe(0);
         const equipped = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
         expect(equipped.querySelector('[data-capability="ap"] path')).not.toBeNull();
 
         entity.removeEquipment(mount);
-        entity.apMounts.set(2);
         const unequipped = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
         expect(unequipped.querySelector('[data-capability="ap"] path')).toBeNull();
     });

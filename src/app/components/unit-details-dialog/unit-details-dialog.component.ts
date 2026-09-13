@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { crewSkillsForUnit } from '../../models/unit-crew-policy';
 import { UnitNameService } from '../../services/unit-name.service';
 import { Component, inject, ElementRef, signal, ChangeDetectionStrategy, output, viewChild, effect, computed, type Signal, isSignal, DestroyRef } from '@angular/core';
 import { BaseDialogComponent } from '../base-dialog/base-dialog.component';
@@ -180,8 +181,8 @@ export class UnitDetailsDialogComponent {
     gunnerySkill = computed<number | undefined>(() => {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceMember) {
-            return currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0]?.gunnery
-                ?? DEFAULT_GUNNERY_SKILL;
+            return crewSkillsForUnit(currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0],
+                currentUnit.entity.unitType(), currentUnit.entity.unitSubtype()).gunnery;
         }
         if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();
@@ -191,7 +192,8 @@ export class UnitDetailsDialogComponent {
         const currentUnit = this.unitList()[this.unitIndex()]
         if (currentUnit instanceof CBTForceMember) {
             return effectiveEntityPilotingSkill(currentUnit.entity,
-                currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0]?.piloting ?? DEFAULT_PILOTING_SKILL);
+                crewSkillsForUnit(currentUnit.force.getUnitCrewAssignment(currentUnit.id)?.positions[0],
+                    currentUnit.entity.unitType(), currentUnit.entity.unitSubtype()).piloting);
         }
         if (currentUnit instanceof ASForceUnit) return currentUnit.getPilotSkill();
         const context = this.searchResultContext();

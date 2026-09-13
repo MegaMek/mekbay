@@ -28,6 +28,7 @@ describe('generated Mek shield paperdolls', () => {
                         ['F_SHIELD', arm === 'LA' ? 'S_SHIELD_SMALL' : 'S_SHIELD_LARGE'], { location: arm });
                 }
                 const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'letter' });
+                svg.classList.add('interactive-sheet');
                 mounted = svg;
                 document.body.appendChild(svg);
                 await document.fonts.ready;

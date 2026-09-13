@@ -14,7 +14,7 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
 
     return createEmptyUnit({
         uuid: unitOverrides.uuid ?? unitOverrides.name ?? 'Unit',
-        id: 1,
+        mul1id: 1,
         name: 'Unit',
         chassis: 'Unit',
         model: 'A',
@@ -189,8 +189,8 @@ describe('UnitSearchIndexService', () => {
 
     it('uses UUID postings while expanding duplicate MUL ids for era and faction membership', () => {
         const service = new UnitSearchIndexService();
-        const first = createUnit({ id: 42, uuid: 'duplicate-mul-a', name: 'Duplicate Name' });
-        const second = createUnit({ id: 42, uuid: 'duplicate-mul-b', name: 'Duplicate Name' });
+        const first = createUnit({ mul1id: 42, uuid: 'duplicate-mul-a', name: 'Duplicate Name' });
+        const second = createUnit({ mul1id: 42, uuid: 'duplicate-mul-b', name: 'Duplicate Name' });
         const era = {
             id: 1,
             name: 'Test Era',
@@ -314,7 +314,7 @@ describe('UnitSearchIndexService', () => {
 
         prepareCatalog(service, [
             createUnit({
-                id: 1,
+                mul1id: 1,
                 name: 'Mek A',
                 subtype: 'BattleMek',
                 armor: 10,
@@ -346,7 +346,7 @@ describe('UnitSearchIndexService', () => {
                 },
             }),
             createUnit({
-                id: 2,
+                mul1id: 2,
                 name: 'Mek B',
                 subtype: 'BattleMek',
                 armor: 30,
@@ -378,7 +378,7 @@ describe('UnitSearchIndexService', () => {
                 },
             }),
             createUnit({
-                id: 3,
+                mul1id: 3,
                 name: 'Ship A',
                 type: 'Naval',
                 subtype: 'WarShip',
@@ -411,7 +411,7 @@ describe('UnitSearchIndexService', () => {
                 },
             }),
             createUnit({
-                id: 4,
+                mul1id: 4,
                 name: 'Ship B',
                 type: 'Naval',
                 subtype: 'WarShip',
@@ -612,14 +612,14 @@ describe('UnitSearchIndexService', () => {
         const service = new UnitSearchIndexService();
         const unitSummary = createUnit({
             uuid: 'core-shared-name',
-            id: 101,
+            mul1id: 101,
             name: 'Shared Name',
             type: 'Mek',
             _nameTags: [],
         });
         const custom = createUnit({
             uuid: 'other-shared-name',
-            id: 202,
+            mul1id: 202,
             name: 'Shared Name',
             type: 'Tank',
             _nameTags: [{ tag: 'custom-only', quantity: 1 }],
@@ -627,12 +627,12 @@ describe('UnitSearchIndexService', () => {
         const era = {
             id: 1,
             name: 'Test Era',
-            units: new Set([unitSummary.id]),
+            units: new Set([unitSummary.mul1id]),
         } as unknown as Era;
         const faction = {
             id: 7,
             name: 'Test Faction',
-            eras: { [era.id]: new Set([unitSummary.id]) },
+            eras: { [era.id]: new Set([unitSummary.mul1id]) },
         } as unknown as Faction;
 
         service.rebuildIndexes([unitSummary, custom], [era], [faction]);

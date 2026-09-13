@@ -71,7 +71,7 @@ describe('UnitDetailsFactionTabComponent', () => {
         } as Faction,
     ];
     const unit = createEmptyUnit({
-        id: 1,
+        mul1id: 1,
         name: 'Atlas',
         chassis: 'Atlas',
         model: 'AS7-D',
@@ -266,7 +266,7 @@ describe('UnitDetailsFactionTabComponent', () => {
     it('keeps every era column when the unit has no faction rows', () => {
         const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
         fixture.componentRef.setInput('unit', createEmptyUnit({
-            id: 999,
+            mul1id: 999,
             name: 'No Factions',
             chassis: 'No Factions',
             model: '',
@@ -299,8 +299,8 @@ describe('UnitDetailsFactionTabComponent', () => {
                 group: 'Inner Sphere',
                 img: '',
                 eras: {
-                    3050: new Set([unit.id]),
-                    3151: new Set([unit.id]),
+                    3050: new Set([unit.mul1id]),
+                    3151: new Set([unit.mul1id]),
                 },
             } as Faction,
             {
@@ -309,8 +309,8 @@ describe('UnitDetailsFactionTabComponent', () => {
                 group: 'Inner Sphere',
                 img: '',
                 eras: {
-                    3050: new Set([unit.id]),
-                    3151: new Set([unit.id]),
+                    3050: new Set([unit.mul1id]),
+                    3151: new Set([unit.mul1id]),
                 },
             } as Faction,
             {
@@ -319,7 +319,7 @@ describe('UnitDetailsFactionTabComponent', () => {
                 group: 'Inner Sphere',
                 img: '',
                 eras: {
-                    3050: new Set([unit.id]),
+                    3050: new Set([unit.mul1id]),
                     3151: new Set<number>(),
                 },
             } as Faction,

@@ -1,10 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { formatProtectionCounter, renderProtectionCounter } from '../../utils/sheets/record-sheet-protection-counter';
+
 import type {
 ComponentId,
 } from '../../models/entity/entity-identifiers';
 import type { EntityTechBase } from '../../models/entity/types';
+import { WeaponEquipment } from '../../models/equipment.model';
 import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
 import type { EquipmentPanelComponent,EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import {
@@ -35,7 +38,8 @@ type InfantryStrengthDisplay,
 } from '../../utils/sheets/infantry-strength-display';
 import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import { renderHandheldWeaponAmmoPips } from '../../utils/sheets/layouts/handheld-weapon-record-sheet-layout';
-import { formatRecordSheetTonnage } from '../../utils/sheets/record-sheet-svg-rendering';
+import { formatMovementWithMaximum, formatRecordSheetTonnage, recordSheetAmmoProfiles } from '../../utils/sheets/record-sheet-svg-rendering';
+import { writeSvgTextLines } from '../../utils/svg-text.util';
 import {
 renderRecordSheetConditions,
 renderRecordSheetCrewState,
@@ -44,6 +48,7 @@ renderRecordSheetPips,
 } from './record-sheet-dom';
 import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
+import { bindRecordSheetMovement } from './record-sheet-movement';
 
 export interface NonMekRecordSheetBinding {
     readonly initialIssues: readonly string[];
@@ -63,6 +68,8 @@ export function bindNonMekRecordSheet(
     let current = initial;
     let currentEquipmentPanel = initialEquipmentPanel ?? null;
     let firstRender = true;
+    const renderMovementSelection = bindRecordSheetMovement(svg, () => current.movementSelection,
+        () => current.editContext, abort.signal, onInteraction);
     let infantryDisplay: InfantryStrengthDisplay | undefined;
 
     const bind = (
@@ -100,6 +107,7 @@ export function bindNonMekRecordSheet(
         const issues: string[] = [];
         const markChanges = !firstRender;
         renderIdentity(svg, snapshot);
+        renderMovementSelection(snapshot.movementSelection);
         if (onInteraction) {
             svg.querySelectorAll<SVGElement>('[data-mekbay-random-hit="1"]').forEach(element => {
                 if (element.dataset['mekbayEntityBound'] === '1') return;
@@ -153,6 +161,9 @@ export function bindNonMekRecordSheet(
                 location.previewRemainingInternal,
                 markChanges,
             );
+            renderProtectionCounter(svg, `textIS_${location.sheetCode}`, location.previewRemainingInternal, location.maximumInternal);
+            const integrityId = ({ SI: 'textSI', KF: 'textKFIntegrity', SAIL: 'textSailIntegrity', DC: 'textDockingCollars' } as Record<string, string>)[location.sheetCode];
+            if (integrityId) renderProtectionCounter(svg, integrityId, location.previewRemainingInternal, location.maximumInternal);
             const internalCapacity = internalPips.length + CapitalShipPipRenderer.capacity(internalGrids);
             const numericInternal = renderNumericProtection(svg, 'structure', code, location.maximumInternal, location.previewRemainingInternal);
             if (!numericInternal && location.maximumInternal > 0 && internalCapacity < location.maximumInternal) {
@@ -272,12 +283,19 @@ function renderCrew(
         const piloting = svg.getElementById(`pilotingSkill${occurrence}`);
         if (piloting) piloting.textContent = vacant ? '—' : String(position.piloting);
         svg.querySelectorAll<SVGElement>(
-            `.crewNameButton[crewId="${occurrence}"], .crewSkillButton[crewId="${occurrence}"]`,
+            `.crewNameButton[crewId="${occurrence}"]`,
         ).forEach(button => bind(button, () => Object.freeze({
             kind: 'crew-profile',
             positionId: position.positionId,
             context: current().editContext,
         })));
+        if (!vacant) for (const skill of ['gunnery', 'piloting'] as const) {
+            svg.querySelectorAll<SVGElement>(`.crewSkillButton[crewId="${occurrence}"][skill="${skill}"]`)
+                .forEach(button => bind(button, () => Object.freeze({
+                    kind: 'crew-skill', positionId: position.positionId, skill,
+                    context: current().editContext,
+                })));
+        }
         for (let wounds = 1; wounds <= 6; wounds += 1) {
             const marker = svg.querySelector<SVGElement>(
                 `.crewHit[crewId="${position.occurrence}"][hit="${wounds}"]`,
@@ -477,6 +495,8 @@ function renderCombinedLocation(
         location.previewRemainingInternal === 0 ? 0 : face.previewRemaining,
         markChanges,
     );
+    renderProtectionCounter(svg, `textIS_${location.sheetCode}`, location.previewRemainingInternal, location.maximumInternal);
+    renderProtectionCounter(svg, `textArmor_${location.sheetCode}`, location.previewRemainingInternal === 0 ? 0 : face.previewRemaining, face.maximum);
     const required = location.maximumInternal + face.maximum;
     if (required > 0 && pips.length < required) {
         issues.push(`Missing combined pips for ${location.sheetCode}: ${pips.length}/${required}`);
@@ -540,6 +560,7 @@ function renderArmorFace(
         face.previewRemaining,
         markChanges,
     );
+    renderProtectionCounter(svg, `textArmor_${sheetCode}${rear ? 'R' : ''}`, face.previewRemaining, face.maximum);
     const capacity = pips.length + CapitalShipPipRenderer.capacity(grids);
     const numericArmor = renderNumericProtection(svg, 'armor', code, face.maximum, face.previewRemaining, rearSelector);
     if (!numericArmor && face.maximum > 0 && capacity < face.maximum) {
@@ -569,7 +590,7 @@ function renderNumericProtection(svg: SVGSVGElement, kind: 'structure' | 'armor'
     const values = [...svg.querySelectorAll<SVGTextElement>(
         `[data-mekbay-protection-value="${kind}"][data-loc="${escapedCode}"]${faceSelector}`)];
     for (const value of values) {
-        value.textContent = String(remaining);
+        value.textContent = formatProtectionCounter(remaining, maximum);
         value.classList.toggle('damaged', remaining < maximum);
     }
     return values.length > 0;
@@ -607,6 +628,7 @@ function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot)
         : `${snapshot.currentBattleValue} (${snapshot.pristineBattleValue})`;
     const battleValueSuffix = svg.getElementById('bv')?.getAttribute('data-mekbay-bv-suffix') ?? '';
     const jump = snapshot.movement.umu > 0 ? snapshot.movement.umu : snapshot.movement.jump;
+    const run = formatMovementWithMaximum(snapshot.movement.run, snapshot.movement.maxRun);
     const tonnage = formatRecordSheetTonnage(snapshot.tonnage,
         svg.querySelector('[data-mekbay-weight-unit="kg"]') !== null);
     const fields: Readonly<Record<string, string | number>> = Object.freeze({
@@ -619,7 +641,7 @@ function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot)
         role: snapshot.role,
         movementType: snapshot.movementType,
         mpWalk: snapshot.movement.walk,
-        mpRun: snapshot.movement.run,
+        mpRun: run,
         mpJump: jump,
         mp_2: jump,
         bv: `${battleValue}${battleValueSuffix}`,
@@ -636,7 +658,7 @@ function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot)
         role: snapshot.role,
         bv: battleValue,
         walk: snapshot.movement.walk,
-        run: snapshot.movement.run,
+        run,
         jump,
     });
     for (const [field, value] of Object.entries(semanticFields)) {
@@ -715,7 +737,7 @@ function renderHeat(
 
 function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, issues: string[]): void {
     const rows = [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')];
-    rows.forEach(row => row.classList.remove('disabled', 'disabledInventory', 'pending'));
+    rows.forEach(row => row.classList.remove('damaged', 'disabled', 'disabledInventory', 'pending'));
     const componentsById = new Map(snapshot.components.map(component => [component.componentId, component]));
     for (const row of rows) {
         const components = inventoryComponentIds(row).flatMap(componentId => {
@@ -747,9 +769,11 @@ function renderAmmoProfile(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsh
 
 function renderInventoryComponentStatus(
     row: SVGElement,
-    components: readonly NonMekRecordSheetSnapshot['components'][number][],
+    components: readonly Pick<NonMekRecordSheetSnapshot['components'][number], 'status' | 'previewStatus'>[],
 ): void {
-    const disabled = components.every(component => component.status !== 'available');
+    const destroyed = components.length > 0 && components.every(component => component.status === 'destroyed');
+    const disabled = !destroyed && components.every(component => component.status !== 'available');
+    row.classList.toggle('damaged', destroyed);
     row.classList.toggle('disabled', disabled);
     row.classList.toggle('disabledInventory', disabled);
     row.classList.toggle('pending', components.some(component =>
@@ -791,13 +815,18 @@ function renderInventorySelections(
         } => component.weapon !== undefined);
         if (weapons.length === 0) continue;
 
+        const weapon = weapons[0].weapon;
+        const ammoProfiles = weapons[0].equipment instanceof WeaponEquipment
+            ? recordSheetAmmoProfiles(weapons[0].equipment) : [];
+        if (weapon.aerospace === undefined && ammoProfiles.length === 0) {
+            writeSvgTextLines(row.querySelector(':scope > .range_min'), weapon.minimumRange > 0 ? String(weapon.minimumRange) : '—');
+        }
+
         const componentIds = Object.freeze([...new Set(weapons.flatMap(component =>
             equipmentPanelAttackComponentIds(component)))]);
         row.setAttribute('data-mekbay-component-ids', componentIds.join(' '));
         const unavailable = weapons.every(component => component.status !== 'available');
-        row.classList.toggle('disabled', unavailable);
-        row.classList.toggle('disabledInventory', unavailable);
-        row.classList.toggle('pending', weapons.some(component => component.previewStatus !== component.status));
+        renderInventoryComponentStatus(row, weapons);
 
         const selections = weapons.map(component => component.weapon.selection);
         const selection = selections[0];
@@ -870,6 +899,11 @@ function renderInventorySelections(
             );
             if (mode === undefined) return;
             modeElement.setAttribute('data-mekbay-mode', mode);
+            const profile = ammoProfiles.find(profile => profile.displayName === mode);
+            if (profile && weapon.aerospace === undefined) {
+                const minimumRange = mode === weapons[0].mode ? weapon.minimumRange : profile.minimumRange;
+                writeSvgTextLines(modeElement.querySelector(':scope > .range_min'), minimumRange > 0 ? String(minimumRange) : '—');
+            }
             const modeButton = modeElement.querySelector<SVGElement>(
                 ':scope > .inventoryEntryButton.alternativeModeButton',
             ) ?? modeElement;

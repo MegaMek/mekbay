@@ -17,6 +17,7 @@ import {
   TestWarShipEntity as WarShipEntity,
 } from '../models/entity/testing/test-entities';
 import { getDefaultSpriteAssignmentKey, resolveUnitSpritePath } from './unit-sprite-resolver';
+import { createEmptyUnit } from '../testing/unit-test-helpers';
 
 const assignments: UnitSpriteAssignments = {
   exact: {
@@ -45,6 +46,58 @@ const assignments: UnitSpriteAssignments = {
 };
 
 describe('unit sprite resolver', () => {
+  const thunderbirdAssignments: UnitSpriteAssignments = {
+    ...assignments,
+    chassis: { THUNDERBIRD: 'fighter/Thunderbird THB-D36.png' },
+  };
+
+  it('gives a Mek named Thunderbird its Mek fallback while retaining the aerospace name match', () => {
+    const mek = new BipedMekEntity();
+    mek.chassis.set('thunderbird');
+    mek.model.set('Custom');
+    mek.setTonnage(50);
+    expect(resolveUnitSpritePath(mek, thunderbirdAssignments)).toBe('defaults/default_medium.png');
+    const aero = new AeroEntity();
+    aero.chassis.set('Thunderbird');
+    expect(resolveUnitSpritePath(aero, thunderbirdAssignments)).toBe('fighter/Thunderbird THB-D36.png');
+  });
+
+  it('replaces wrong-type cached summary icons and keeps compatible choices and defaults', () => {
+    const summary = createEmptyUnit({
+      chassis: 'Thunderbird', model: 'Custom', entityType: 'Mek', moveType: 'Biped', weightClass: 'Medium',
+      icon: 'fighter/Thunderbird THB-D36.png',
+    });
+    expect(resolveUnitSpritePath(summary, thunderbirdAssignments)).toBe('defaults/default_medium.png');
+    summary.icon = 'defaults/asf.png';
+    expect(resolveUnitSpritePath(summary, thunderbirdAssignments)).toBe('defaults/default_medium.png');
+    summary.icon = 'meks/Atlas.png';
+    expect(resolveUnitSpritePath(summary, thunderbirdAssignments)).toBe('meks/Atlas.png');
+    summary.icon = 'defaults/default_medium.png';
+    expect(resolveUnitSpritePath(summary, thunderbirdAssignments)).toBe('defaults/default_medium.png');
+  });
+
+  it('prefers an explicit sprite and resumes automatic assignment when cleared', () => {
+    const entity = new BipedMekEntity();
+    entity.chassis.set('Atlas');
+    entity.model.set('AS7-D');
+    entity.iconPath.set('vehicles/custom.png');
+    expect(resolveUnitSpritePath(entity, assignments)).toBe('vehicles/custom.png');
+    expect(resolveUnitSpritePath(entity, undefined)).toBe('vehicles/custom.png');
+    entity.iconPath.set('');
+    expect(resolveUnitSpritePath(entity, assignments)).toBe('meks/Atlas_D.png');
+  });
+
+  it('skips missing sprites through automatic assignment and the unit-type default', () => {
+    const entity = new BipedMekEntity();
+    entity.chassis.set('Atlas');
+    entity.model.set('AS7-D');
+    entity.setTonnage(50);
+    entity.iconPath.set('missing.png');
+    expect(resolveUnitSpritePath(entity, assignments, path => path !== 'missing.png')).toBe('meks/Atlas_D.png');
+    expect(resolveUnitSpritePath(entity, assignments, path => path.startsWith('defaults/')))
+      .toBe('defaults/default_medium.png');
+  });
+
   it('uses exact unit mappings before chassis mappings', () => {
     const entity = new BipedMekEntity();
     entity.chassis.set('Atlas');

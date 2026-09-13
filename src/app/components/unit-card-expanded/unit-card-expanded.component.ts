@@ -51,6 +51,8 @@ import { calculateAdjustedBV } from '../../utils/cbt-common.util';
 import { adjustPointValueForSkill } from '../../utils/pv-skill-adjustment.util';
 import { DataService } from '../../services/data.service';
 import { getProperty } from '../../utils/unit-search-shared.util';
+import { UnitDataBadgesComponent } from '../unit-data-badges/unit-data-badges.component';
+import { CustomUnitsService } from '../../services/custom-units.service';
 
 /**
  * An unit card component for displaying detailed unit information.
@@ -62,6 +64,7 @@ import { getProperty } from '../../utils/unit-search-shared.util';
     imports: [
         UnitIconComponent,
         UnitTagsComponent,
+        UnitDataBadgesComponent,
         UnitComponentItemComponent,
         AlphaStrikeCardComponent,
         AdjustedBV,
@@ -84,6 +87,7 @@ export class UnitCardExpandedComponent {
     private abilityLookup = inject(AsAbilityLookupService);
     private optionsService = inject(OptionsService);
     private dataService = inject(DataService);
+    private readonly customUnits = inject(CustomUnitsService);
     private expandedComponentsPipe = new ExpandedComponentsPipe();
     readonly unitTypeDisplayNames = AS_TYPE_DISPLAY_NAMES;
     readonly megaMekRequisitionIconPath = MEGAMEK_PRODUCTION_ICON_PATH;
@@ -134,9 +138,10 @@ export class UnitCardExpandedComponent {
         return this.isForceUnit(u) ? u.getSummary() : u;
     });
 
-    readonly loadIssuesTooltip = computed<TooltipLine[]>(() => this.resolvedUnit().loadIssues.map(issue => ({
-        value: `${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.message}`,
-    })));
+    readonly updateAvailable = computed(() => {
+        const unit = this.resolvedUnit();
+        return !!unit.isCustom && this.customUnits.hasUpdate(unit.uuid, unit.hash);
+    });
 
     /** Resolved alias - from ForceUnit */
     readonly alias = computed<string | undefined>(() => {

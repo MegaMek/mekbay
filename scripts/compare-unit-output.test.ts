@@ -4,7 +4,14 @@ import {
   formatBoundedDiagnosticValue,
   unorderedStructuralEqual,
 } from './lib/unordered-value-comparison';
-import { nativeUnitSourceDeclaresUuid } from './lib/native-unit-source-identity';
+import { nativeMulIdForComparison, nativeUnitSourceDeclaresUuid } from './lib/native-unit-source-identity';
+
+assert.equal(nativeMulIdForComparison(-1), null);
+assert.equal(nativeMulIdForComparison(123), 123);
+assert.equal(nativeMulIdForComparison(0), null);
+assert.equal(nativeMulIdForComparison(-2), null);
+assert.equal(nativeMulIdForComparison(null), null);
+assert.equal(nativeMulIdForComparison('123'), '123', 'invalid types are not coerced');
 
 assert.equal(isCalculableLoadoutTons(12.5), true);
 assert.equal(isCalculableLoadoutTons(0.001), true);
@@ -14,6 +21,14 @@ assert.equal(isCalculableLoadoutTons(Number.NaN), false);
 assert.equal(isCalculableLoadoutTons(undefined), false);
 assert.equal(getOracleFieldName('loadoutTonnage'), 'loadoutTons');
 assert.equal(getOracleFieldName('tons'), 'tons');
+assert.equal(getOracleFieldName('mul1id'), 'mul1id');
+
+for (const actual of [null, 0, -1, -2]) {
+  for (const expected of [null, 0, -1, -2]) {
+    assert.equal(nativeMulIdForComparison(actual), nativeMulIdForComparison(expected));
+  }
+  assert.notEqual(nativeMulIdForComparison(actual), nativeMulIdForComparison(123));
+}
 
 assert.equal(unorderedStructuralEqual(
   [['TM', 'TW'], ['Core']],

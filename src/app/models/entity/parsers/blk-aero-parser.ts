@@ -96,7 +96,8 @@ export function parseBlkAero(bb: BuildingBlock, ctx: ParseContext): AeroEntity {
 }
 
 function getAeroEngineRating(bb: BuildingBlock, entity: AeroEntity): number {
-  if (entity instanceof FixedWingSupportEntity) return 1;
+  // TM p.126, errata v8 p.6: support ratings use safe thrust and chassis mass, capped at 500.
+  if (entity instanceof FixedWingSupportEntity) return Math.min(500, entity.originalWalkMP() * entity.tonnage());
 
   const tonnage = Math.trunc(entity.tonnage());
   if (entity instanceof ConvFighterEntity) return entity.safeThrust() * tonnage;

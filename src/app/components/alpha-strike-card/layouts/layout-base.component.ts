@@ -398,7 +398,7 @@ export abstract class AsLayoutBaseComponent {
         const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
         if (allEras.length === 0) return [];
 
-        const unitId = u.id;
+        const unitId = u.mul1id;
         const unitYear = u.year;
 
         // Check if unit exists in any era's unit list

@@ -6,6 +6,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { PORTRAIT_SETS, type PortraitSet } from '../../models/portrait.model';
 import { PortraitService } from '../../services/portrait.service';
 import { CrewPortraitComponent } from '../crew-portrait/crew-portrait.component';
+import { scrollToInitialPickerSelection } from '../image-picker-dialog';
 
 export interface PortraitPickerDialogData { readonly portrait?: string; }
 
@@ -45,10 +46,10 @@ export interface PortraitPickerDialogData { readonly portrait?: string; }
                                 <span>{{ category.name }}</span><span class="count">{{ category.portraits.length }}</span>
                             </button>
                             @if (isOpen(category.name)) {
-                                <div class="portrait-grid" [id]="'portrait-choices-' + $index" role="group"
+                                <div class="picker-grid" [id]="'portrait-choices-' + $index" role="group"
                                     [attr.aria-labelledby]="'portrait-category-' + $index">
                                     @for (name of category.portraits; track name) {
-                                        <button type="button" class="portrait-choice" [class.selected]="data.portrait === name"
+                                        <button type="button" class="portrait-choice picker-choice" [class.selected]="data.portrait === name"
                                             [attr.aria-label]="name" [attr.aria-pressed]="data.portrait === name" [title]="name"
                                             (click)="dialogRef.close(name)"><crew-portrait [name]="name" /></button>
                                     }
@@ -64,23 +65,12 @@ export interface PortraitPickerDialogData { readonly portrait?: string; }
             </div>
         </div>
     `,
+    styleUrl: '../image-picker-dialog.scss',
     styles: `
-        .wide-dialog { width: min(720px, 100dvw); }
-        .wide-dialog-body { min-height: 240px; gap: 0; }
         .portrait-tabs { display: flex; flex-shrink: 0; }
         .portrait-tabs button { flex: 1; padding: 12px; border: 0; border-bottom: 2px solid transparent;
             background: #0002; color: var(--text-color-secondary); cursor: pointer; font: inherit; }
         .portrait-tabs button.active { border-bottom-color: var(--bt-yellow); color: var(--text-color); background: #ffffff0a; }
-        .category { border-bottom: 1px solid var(--border-color, #ffffff25); }
-        .category-title { display: flex; align-items: center; gap: 10px; width: 100%; padding: 14px 8px;
-            border: 0; background: transparent; color: var(--text-color); cursor: pointer; text-align: left; font: inherit; }
-        .category-title:hover { background: #ffffff0a; }
-        .count { margin-left: auto; color: var(--text-color-secondary); font-size: .8em; }
-        .portrait-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; padding: 8px 0 16px; }
-        .portrait-choice { display: flex; align-items: center; justify-content: center; padding: 3px; cursor: pointer;
-            border: 2px solid transparent; background: #0003; }
-        .portrait-choice:hover, .portrait-choice.selected { border-color: var(--bt-yellow); background: #ffffff12; }
-        button:focus-visible { outline: 2px solid var(--bt-yellow); outline-offset: -2px; }
     `,
 })
 export class PortraitPickerDialogComponent {
@@ -110,6 +100,8 @@ export class PortraitPickerDialogComponent {
     });
 
     constructor() {
+        if (this.data.portrait) scrollToInitialPickerSelection(() =>
+            !this.loading() && !this.error() && !this.sheetLoading() && !this.sheetError());
         void this.pendingTasks.run(() => this.load());
         effect(onCleanup => {
             if (this.loading() || this.error()) return;

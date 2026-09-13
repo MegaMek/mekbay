@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
+import { hotLoadedAmmoForWeapon } from './mek-ammo';
+import { ammoExplosionDamagePerShot } from './mek-critical-hit-v2';
 
 import type { CBTUnitAttackerTargetingReconciliationPlan } from './attacker-targeting-state';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './unit-command';
@@ -558,6 +560,7 @@ export interface NonMekRuntimeBinding {
     readonly index: NonMekRuntimeIndex;
     readonly ruleset: CBTRuleset;
     readonly forcedWithdrawal: boolean;
+    readonly hotLoadedAmmo: boolean;
     readonly crewAssignment: CrewAssignment;
 }
 
@@ -566,13 +569,14 @@ export function createNonMekRuntimeBinding(
     entity: BaseEntity, ruleset: CBTRuleset,
     initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
     forcedWithdrawal = true, crewAssignment?: CrewAssignment,
+    hotLoadedAmmo = false,
 ): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState }> {
     if (entity.entityType === 'Mek') throw new Error('Meks require slot mechanics');
     if (typeof forcedWithdrawal !== 'boolean') throw new Error('Forced withdrawal gate must be boolean');
     const index = buildNonMekRuntimeIndex(entity);
     const assignment = canonicalizeCrewAssignment(index.crewPositions,
         crewAssignment ?? createDefaultCrewAssignment(index.crewPositions));
-    const binding = Object.freeze({ entity, index, ruleset, forcedWithdrawal, crewAssignment: assignment });
+    const binding = Object.freeze({ entity, index, ruleset, forcedWithdrawal, hotLoadedAmmo, crewAssignment: assignment });
     const state = validateState({ ...initialState, crew: assignedCrewRuntimeState(initialState.crew, assignment) },
         index, entity, ruleset);
     return Object.freeze({ binding, state });
@@ -580,14 +584,38 @@ export function createNonMekRuntimeBinding(
 
 export function queryNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState): CBTUnitQueryPort {
     return createNonMekUnitQuery(binding.entity, binding.index, state,
-        binding.ruleset, binding.forcedWithdrawal, binding.crewAssignment);
+        binding.ruleset, binding.forcedWithdrawal, binding.crewAssignment, binding.hotLoadedAmmo);
 }
 
 export function reduceNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
     command: CBTUnitCommand): NonMekUnitCommandResult {
+    if (command.type === 'configure-ammo-source' && command.hotLoaded && !binding.hotLoadedAmmo) {
+        return Object.freeze({ accepted: true, changed: false, state });
+    }
     try {
-        const next = reduceNonMekUnitState(state, binding.index, binding.entity, binding.ruleset,
+        let next = reduceNonMekUnitState(state, binding.index, binding.entity, binding.ruleset,
             command, binding.crewAssignment);
+        if (next && binding.hotLoadedAmmo && isVehicleEntity(binding.entity)
+            && (command.type === 'set-component-status' || command.type === 'set-component-statuses')
+            && command.status === 'destroyed' && command.applyExplosion !== false) {
+            const query = queryNonMekRuntime(binding, state);
+            const ids = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
+            const perspective = command.target === 'pending' ? 'preview' : 'committed';
+            for (const id of ids) {
+                if (query.componentStatus(id, perspective) === 'destroyed') continue;
+                const ammo = hotLoadedAmmoForWeapon(binding.index, query, id, perspective);
+                if (ammo.length === 0) continue;
+                const mount = binding.index.components.get(id)!.mount;
+                const location = [...binding.index.locations.values()].find(location => location.code === mount.location);
+                if (!location) continue;
+                const remaining = location.internalPoints - (next.locations.get(location.id)?.internalDamage ?? 0)
+                    - (command.target === 'pending' ? next.pendingCombat.locationInternalDamage.get(location.id) ?? 0 : 0);
+                const damage = Math.min(remaining,
+                    (mount.equipment as WeaponEquipment).rackSize * Math.max(...ammo.map(ammoExplosionDamagePerShot)));
+                if (damage > 0) next = changeInternalDamage(next, location.id, location.internalPoints, damage, command.target);
+            }
+            next = validateState(next, binding.index, binding.entity, binding.ruleset);
+        }
         return Object.freeze({ accepted: true, changed: next !== null, state: next ?? state });
     } catch {
         return Object.freeze({ accepted: true, changed: false, state });
@@ -797,10 +825,8 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         const shotsSpent = (current?.shotsSpent ?? 0) + amount;
         if (shotsSpent > loadout.capacity) return unchanged();
         ammo.set(sourceId, Object.freeze({
+            ...current,
             shotsSpent,
-            ...(current?.munitionOverride === undefined
-                ? {}
-                : { munitionOverride: current.munitionOverride }),
         }));
     }
     const weaponsHeat = state.turn.weaponsHeat + (binding.entity.tracksHeat() ? heat : 0);
@@ -897,6 +923,7 @@ function createNonMekUnitQuery(
     ruleset: CBTRuleset,
     forcedWithdrawal: boolean,
     crewAssignment: CrewAssignment,
+    hotLoadedAmmo: boolean,
 ): CBTUnitQueryPort {
     let runtimeProjection: ProjectedNonMekRuntime | undefined;
     const projection = (): ProjectedNonMekRuntime =>
@@ -969,6 +996,7 @@ function createNonMekUnitQuery(
                 state.ammo.get(componentId)?.munitionOverride,
             )?.equipment ?? null;
         },
+        ammoHotLoaded: (componentId: ComponentId) => hotLoadedAmmo && state.ammo.get(componentId)?.hotLoaded === true,
         attackerTargetingState: () => state.attackerTargeting,
         equipmentRowOrder: () => state.equipmentRowOrder,
         hasCondition: (condition: UnitConditionKey) => effectiveConditions().includes(condition),
@@ -1480,7 +1508,7 @@ function reduceNonMekUnitState(
             if (!component || maximum === undefined) throw new Error('Component is not ammunition');
             if ((current?.shotsSpent ?? 0) === shotsSpent) return null;
             const ammo = new Map(state.ammo);
-            if (shotsSpent === 0 && current?.munitionOverride === undefined) ammo.delete(command.componentId);
+            if (shotsSpent === 0 && current?.munitionOverride === undefined && !current?.hotLoaded) ammo.delete(command.componentId);
             else ammo.set(command.componentId, { ...current, shotsSpent });
             candidate = { ...state, ammo };
             break;
@@ -1498,17 +1526,22 @@ function reduceNonMekUnitState(
             const equipment = component.mount.equipment;
             const defaultMunitionKey = equipment?.internalName;
             if (defaultMunitionKey === undefined) throw new Error('Component is not ammunition');
+            const current = state.ammo.get(command.componentId);
+            if (command.hotLoaded !== undefined && typeof command.hotLoaded !== 'boolean') throw new Error('Invalid hot-load setting');
+            if (command.hotLoaded && !loadout.equipment.hasFlag('F_HOT_LOAD')) throw new Error('Ammo cannot be hot-loaded');
+            const hotLoaded = loadout.equipment.hasFlag('F_HOT_LOAD') && (command.hotLoaded ?? current?.hotLoaded ?? false);
             const nextAmmo = Object.freeze({
                 shotsSpent: loadout.capacity - command.remaining,
+                ...(hotLoaded ? { hotLoaded: true as const } : {}),
                 ...(command.munitionKey === defaultMunitionKey
                     ? {}
                     : { munitionOverride: command.munitionKey }),
             });
-            const current = state.ammo.get(command.componentId);
             if ((current?.shotsSpent ?? 0) === nextAmmo.shotsSpent
-                && current?.munitionOverride === nextAmmo.munitionOverride) return null;
+                && current?.munitionOverride === nextAmmo.munitionOverride
+                && current?.hotLoaded === nextAmmo.hotLoaded) return null;
             const ammo = new Map(state.ammo);
-            if (nextAmmo.shotsSpent === 0 && nextAmmo.munitionOverride === undefined) {
+            if (nextAmmo.shotsSpent === 0 && nextAmmo.munitionOverride === undefined && !nextAmmo.hotLoaded) {
                 ammo.delete(command.componentId);
             } else ammo.set(command.componentId, nextAmmo);
             candidate = { ...state, ammo };
@@ -2483,6 +2516,9 @@ function validateState(
             ? entityAmmoLoadout(entity, component.mount, ruleset, ammo.munitionOverride)
             : null;
         if (!loadout) throw new Error(`Runtime ammunition references invalid loadout ${componentId}`);
+        if (ammo.hotLoaded !== undefined && (ammo.hotLoaded !== true || !loadout.equipment.hasFlag('F_HOT_LOAD'))) {
+            throw new Error(`Runtime has invalid hot-loaded ammo ${componentId}`);
+        }
         boundedDamage(ammo.shotsSpent, loadout.capacity);
     }
     for (const [positionId, crew] of state.crew) {

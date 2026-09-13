@@ -2,17 +2,66 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { CrewMember } from '../../../models/crew-member.model';
+import { TestBed } from '@angular/core/testing';
+import { Subject } from 'rxjs';
 import { asComponentId } from '../../../models/entity/entity-identifiers';
-import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import type { CBTMekForceMember } from '../../../models/force-member.model';
+import { projectMekRecordSheet,type MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
+import { createDirectMekRuntimeFixture,emptyCBTEncounterSnapshot } from '../../../models/runtime/testing/direct-mek-runtime-fixture';
 import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
+import { LoggerService } from '../../../services/logger.service';
+import { UnitNameService } from '../../../services/unit-name.service';
 import {
 recordSheetCommand,
 recordSheetDamagePickerRange,
 type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
 import type { DirectRecordSheetInteraction } from '../record-sheet-interaction';
+import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerMekRuntimeService } from './page-viewer-mek-runtime.service';
 
 const editContext = createUnitEditContextFixture();
+
+describe('PageViewerMekRuntimeService sheet interactivity', () => {
+    for (const readOnly of [false, true]) {
+        it(`owns the live sheet gate across replacement and cleanup when readOnly=${readOnly}`, () => {
+            const fixture = createDirectMekRuntimeFixture();
+            const context = { owner: fixture.instance, state: fixture.instance.snapshot() };
+            const snapshot = {
+                ...projectMekRecordSheet(fixture.entity, fixture.index, fixture.instance.ruleset(), context.state,
+                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null),
+                editContext: context,
+            };
+            const interactions = jasmine.createSpyObj<PageViewerMekInteractionService>('interactions', ['handle', 'cleanup', 'clear']);
+            TestBed.configureTestingModule({ providers: [
+                PageViewerMekRuntimeService,
+                { provide: PageViewerMekInteractionService, useValue: interactions },
+                { provide: LoggerService, useValue: { warn: () => {} } },
+                { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
+            ] });
+            const service = TestBed.inject(PageViewerMekRuntimeService);
+            const member = {
+                kind: 'cbt', id: 'mek', entity: fixture.entity, mekRecordSheetSnapshot: () => snapshot,
+                force: { readOnly: () => readOnly, changed: new Subject(), sessionChanged: new Subject() },
+            } as unknown as CBTMekForceMember;
+            const first = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            first.innerHTML = '<g data-mekbay-random-hit="1"></g>';
+            expect(first.classList.contains('interactive-sheet')).toBeFalse();
+            expect(service.bind(member, first)).toBeTrue();
+            expect(first.classList.contains('interactive-sheet')).toBeTrue();
+            expect(first.classList.contains('read-only')).toBe(readOnly);
+            first.querySelector('g')!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+            expect(interactions.handle).toHaveBeenCalledOnceWith(member, jasmine.objectContaining({ kind: 'random-hit' }), jasmine.any(PointerEvent));
+
+            const replacement = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            service.bind(member, replacement);
+            expect(first.classList.contains('interactive-sheet')).toBeFalse();
+            expect(replacement.classList.contains('interactive-sheet')).toBeTrue();
+            service.cleanupUnused(new Set());
+            expect(replacement.classList.contains('interactive-sheet')).toBeFalse();
+        });
+    }
+});
 
 describe('page-viewer published Mek runtime commands', () => {
     const revision = 9 as MekRecordSheetSnapshot['stateRevision'];

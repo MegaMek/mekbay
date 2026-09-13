@@ -280,12 +280,14 @@ export interface MekMechanicsScenarioInput {
     readonly options?: Readonly<{
         readonly forcedWithdrawal?: boolean;
         readonly sprinting?: boolean;
+        readonly hotLoadedAmmo?: boolean;
     }>;
 }
 
 export interface MekMechanicsScenarioRules {
     readonly forcedWithdrawal: boolean;
     readonly sprinting: boolean;
+    readonly hotLoadedAmmo: boolean;
 }
 
 export type MekMechanicsScenarioBlockerCode =
@@ -558,6 +560,7 @@ export function evaluateMekMechanicsScenarioSupport(
     }
     let forcedWithdrawal = true;
     let sprinting = false;
+    let hotLoadedAmmo = false;
     const options = input['options'];
     if (options !== undefined) {
         if (!isPlainRecord(options)) {
@@ -567,7 +570,7 @@ export function evaluateMekMechanicsScenarioSupport(
             ));
         } else {
             for (const key of Object.keys(options)
-                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting')
+                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting' && key !== 'hotLoadedAmmo')
                 .sort(compareText)) {
                 blockers.push(scenarioBlocker(
                     'SCENARIO_OPTIONS_UNSUPPORTED', key,
@@ -588,12 +591,19 @@ export function evaluateMekMechanicsScenarioSupport(
                 ));
                 else sprinting = options['sprinting'];
             }
+            if (Object.prototype.hasOwnProperty.call(options, 'hotLoadedAmmo')) {
+                if (typeof options['hotLoadedAmmo'] !== 'boolean') blockers.push(scenarioBlocker(
+                    'SCENARIO_OPTIONS_UNSUPPORTED', 'hotLoadedAmmo',
+                    'Scenario option hotLoadedAmmo must be an exact boolean',
+                ));
+                else hotLoadedAmmo = options['hotLoadedAmmo'];
+            }
         }
     }
     if (blockers.length > 0) return unsupportedScenario(blockers);
     return Object.freeze({
         kind: 'supported',
-        rules: Object.freeze({ forcedWithdrawal, sprinting }),
+        rules: Object.freeze({ forcedWithdrawal, sprinting, hotLoadedAmmo }),
     });
 }
 

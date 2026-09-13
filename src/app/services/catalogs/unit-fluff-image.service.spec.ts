@@ -14,6 +14,7 @@ import { buildFluffImageCatalog } from './presentation-catalog-builders';
 import { FluffImageCatalogService } from './fluff-image-catalog.service';
 import { UnitFluffImageService } from './unit-fluff-image.service';
 import { UnitArtworkService } from '../unit-artwork.service';
+import { ProvidedFluffImageService } from './provided-fluff-image.service';
 
 describe('UnitFluffImageService', () => {
   const uuid = asUnitUuid('019f583e-a182-7f8d-a210-1cb31c1114cb');
@@ -21,11 +22,12 @@ describe('UnitFluffImageService', () => {
   let service: UnitFluffImageService;
   const override = signal<string | null>(null);
 
-  beforeEach(() => {
+  beforeEach(async () => {
     override.set(null);
-    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(), { provide: UnitArtworkService, useValue: { url: () => override(), revision: signal(0) } }] });
+    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(), { provide: UnitArtworkService, useValue: { initialize: async () => undefined, url: () => override(), revision: signal(0) } }, { provide: ProvidedFluffImageService, useValue: { initialize: async () => undefined, resolveUrl: jasmine.createSpy('resolveUrl').and.callFake((url: string) => url), revision: signal(0) } }] });
     catalogs = TestBed.inject(FluffImageCatalogService);
     service = TestBed.inject(UnitFluffImageService);
+    await service.initialize();
   });
 
   it('uses the provider catalog for units and ignores a stale persisted img field', () => {
@@ -87,6 +89,7 @@ describe('UnitFluffImageService', () => {
     const unit = { uuid, provider: CUSTOM_UNIT_PROVIDER_ID, chassis: 'Atlas', model: '', entityType: 'Mek' } as UnitSummary;
     override.set('blob:local-artwork');
     expect(service.resolveUrl(unit)).toBe('blob:local-artwork');
+    expect(TestBed.inject(ProvidedFluffImageService).resolveUrl).not.toHaveBeenCalled();
     override.set(null);
     expect(service.resolveUrl(unit)).toBe('https://fluff.example.test/images/fluff/Mek/Atlas.png');
   });

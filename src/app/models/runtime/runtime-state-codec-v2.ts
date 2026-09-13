@@ -3,6 +3,7 @@
 
 import type { EquipmentStatus } from '../equipment-status.model';
 import { MAX_CREW_WOUNDS } from '../crew-member.model';
+import { decodePinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import { compareText } from '../../utils/string.util';
 import { ImmutableIndex, ImmutableSet } from '../entity/immutable-collections';
@@ -70,7 +71,7 @@ import { mekComponentModes, type MekComponentModes } from './mek-component-rules
 import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
 import { ecmRuntimeModes } from './component-electronic-suite';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asSourceHashCanary, type SourceHashCanary } from '../source-hash-canary';
 import {
     canonicalizeMekTurnStateV2,
@@ -404,11 +405,15 @@ export function serializeCBTUnitStateV2(
         if (shotsSpent > loadout.capacity) {
             codecFail('INVALID_RUNTIME_STATE', `$.state.ammo.${componentId}.shotsSpent`, 'consumption exceeds the current source capacity');
         }
-        if (shotsSpent > 0 || munitionOverride !== undefined) {
+        if (value.hotLoaded !== undefined && (value.hotLoaded !== true || !loadout.equipment.hasFlag('F_HOT_LOAD'))) {
+            codecFail('INVALID_RUNTIME_STATE', `$.state.ammo.${componentId}.hotLoaded`, 'ammo cannot be hot-loaded');
+        }
+        if (shotsSpent > 0 || munitionOverride !== undefined || value.hotLoaded) {
             ammoState.push({
                 target: target.ref,
                 shotsSpent,
                 ...(munitionOverride === undefined ? {} : { munitionOverride }),
+                ...(value.hotLoaded ? { hotLoaded: true as const } : {}),
             });
         }
     }
@@ -956,7 +961,10 @@ export async function restoreSerializedCBTUnitV2(
         const munitionOverride = optionalBoundedText(entry.munitionOverride, '$.ammoState.munitionOverride');
         const hasSpentShots = requested !== 0;
         const hasMunitionOverride = munitionOverride !== undefined;
-        if (!hasSpentShots && !hasMunitionOverride) {
+        if (entry.hotLoaded !== undefined && entry.hotLoaded !== true) {
+            codecFail('INVALID_SERIALIZED_STATE', '$.ammoState.hotLoaded', 'hotLoaded must be true when present');
+        }
+        if (!hasSpentShots && !hasMunitionOverride && !entry.hotLoaded) {
             codecFail('INVALID_SERIALIZED_STATE', '$.ammoState', 'sparse ammunition state must contain a fact');
         }
         if (target.munitionAtSave !== undefined && target.munitionAtSave !== munitionOverride) {
@@ -1010,12 +1018,14 @@ export async function restoreSerializedCBTUnitV2(
             warned = true;
             warnSkippedState(accumulator, entry.target, 'UNSUPPORTED_MUNITION_CAPABILITY');
         }
-        if (effective > 0 || (munitionOverride !== undefined && supportedMunition)) {
+        const hotLoaded = entry.hotLoaded === true && selectedLoadout?.equipment.hasFlag('F_HOT_LOAD');
+        if (effective > 0 || (munitionOverride !== undefined && supportedMunition) || hotLoaded) {
             ammo.set(
                 currentTarget.componentId,
                 Object.freeze({
                     shotsSpent: effective,
                     ...(munitionOverride !== undefined && supportedMunition ? { munitionOverride } : {}),
+                    ...(hotLoaded ? { hotLoaded: true as const } : {}),
                 }),
             );
         } else if (munitionOverride === undefined) ammo.delete(currentTarget.componentId);
@@ -2436,7 +2446,7 @@ function warnForSlotOccupantMismatch(
     if (expected.some(saved => actual.some(candidate => equipmentKeyMatches(saved, candidate)))) return false;
     warn(accumulator, {
         code: 'SLOT_OCCUPANT_MISMATCH',
-        message: `Applied coordinate-owned damage to ${source.location} slot ${source.slot} despite an occupant mismatch.`,
+        message: `Applied coordinate-owned damage to ${source.location} slot ${source.slot + 1} despite an occupant mismatch.`,
         sourceTargetRef: sourceRef,
         currentTargetRef: current.ref,
         saved: { occupants: expected },
@@ -3061,8 +3071,12 @@ function assertExactSerializedUnitKeys(
             codecFail('INVALID_SERIALIZED_STATE', '$.sourceHashCanary', 'must be a four-character base64url canary');
         }
     }
+    if (saved.customSource !== undefined) {
+        try { decodePinnedCustomUnitSource(saved.customSource); }
+        catch { codecFail('INVALID_SERIALIZED_STATE', '$.customSource', 'must contain a bounded native custom source'); }
+    }
     const allowed = new Set([
-        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
+        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState',
         'ammoState', 'crew', 'heat', 'family',
         'ruleChecks', 'movementPsr',
@@ -3074,8 +3088,7 @@ function assertExactSerializedUnitKeys(
     if (!Object.prototype.hasOwnProperty.call(saved, 'ruleChecks')) {
         codecFail('INVALID_SERIALIZED_STATE', '$.ruleChecks', 'current unit schema requires explicit rule checks');
     }
-    if (saved.schemaVersion === CBT_UNIT_PERSISTENCE_SCHEMA_VERSION
-        && !Object.prototype.hasOwnProperty.call(saved, 'movementPsr')) {
+    if (!Object.prototype.hasOwnProperty.call(saved, 'movementPsr')) {
         codecFail('INVALID_SERIALIZED_STATE', '$.movementPsr', 'current unit schema requires movement/PSR state');
     }
 }

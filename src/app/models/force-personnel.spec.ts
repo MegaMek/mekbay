@@ -84,7 +84,7 @@ describe('force personnel', () => {
 
     it('rejects invalid skills, personal health, identities, and assignment references at ingress', () => {
         const person = createForcePerson({}, 'person:first');
-        for (const patch of [{ gunnery: 9 }, { gunnery: 1.5 }, { health: { wounds: 7, unconscious: false, ejected: false } }]) {
+        for (const patch of [{ gunnery: 9 }, { gunnery: 1.5 }, { aeroGunnery: 9 }, { aeroPiloting: -1 }, { health: { wounds: 7, unconscious: false, ejected: false } }]) {
             expect(() => canonicalizeForcePersonnel({ people: [{ ...person, ...patch }], assignments: [] })).toThrow();
         }
         expect(() => canonicalizeForcePersonnel({ people: [person, person], assignments: [] })).toThrow();

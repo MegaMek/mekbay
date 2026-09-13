@@ -1,3 +1,4 @@
+import { RECORD_SHEET_FONT } from './record-sheet-typography';
 export interface SVGFrameOptions {
     id?: string;
     headerWidth?: number | 'auto';
@@ -65,7 +66,7 @@ export class SvgFrameUtil {
     private static readonly headerTextPadding = 13.2;
     // Top and bottom breathing room used when headerHeight is auto or explicit.
     private static readonly headerTextVerticalPadding = 2.5;
-    private static readonly headerTextFontSize = 10.6;
+    private static readonly headerTextFontSize = RECORD_SHEET_FONT.caption;
     // Used only when the browser cannot measure SVG text, for example before the
     // document body exists. It is an approximate width-per-font-size ratio.
     private static readonly fallbackHeaderTextLengthPerFontSize = 0.8;

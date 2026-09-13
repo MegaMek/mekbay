@@ -27,6 +27,7 @@ import {
     transparentRect,
 } from './record-sheet-svg-rendering';
 import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
+import type { MotiveModes } from '../../models/motiveModes.model';
 
 export interface GeneratedRecordSheetControlOptions {
     readonly ruleset?: CBTRuleset;
@@ -48,7 +49,7 @@ export function renderGeneratedRecordSheetControls(
 ): void {
     const ruleset = options.ruleset ?? 'total-warfare';
     appendUnitConditionPresentation(svg, generatedUnitConditionControls(entity, ruleset));
-    appendMovementPresentation(svg, isMekEntity(entity) && entity.chassisConfig === 'LAM');
+    appendMovementPresentation(svg, entity);
     appendCrewStateMenuIndicators(svg, entity);
     applyRecordSheetPipMaterials(svg, entity);
     appendPipHitAreas(svg);
@@ -255,49 +256,103 @@ function directDefs(svg: SVGSVGElement): SVGDefsElement {
     return defs;
 }
 
-function appendMovementPresentation(svg: SVGSVGElement, tightWarning: boolean): void {
-    const movements = [
-        { id: 'mpWalk', modifier: '+1', psr: false },
-        { id: 'mpRun', modifier: '+2', psr: true },
-        { id: svg.getElementById('mpJump') ? 'mpJump' : 'mp_2', modifier: '+3', psr: true },
-    ] as const;
+function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): void {
+    const lam = isMekEntity(entity) && entity.chassisConfig === 'LAM';
+    const secondaryMode: MotiveModes = entity.umuMP() > 0 ? 'UMU'
+        : entity.motiveType() === 'VTOL' && entity.unitType() !== 'VTOL' ? 'VTOL' : 'jump';
+    const movements: { id: string; mode: MotiveModes; airborne?: boolean }[] = [
+        { id: 'mpWalk', mode: 'walk', ...(lam ? { airborne: false } : {}) },
+        { id: 'mpRun', mode: 'run', ...(lam ? { airborne: false } : {}) },
+        { id: svg.getElementById('mpJump') ? 'mpJump' : 'mp_2', mode: secondaryMode },
+        { id: 'mpGround', mode: 'walk' },
+        { id: 'mpAirMekWalk', mode: 'walk', airborne: false },
+        { id: 'mpAirMekRun', mode: 'run', airborne: false },
+        { id: 'mpAirMekCruise', mode: 'walk', airborne: true },
+        { id: 'mpAirMekFlank', mode: 'run', airborne: true },
+        { id: 'mpSafeThrust', mode: 'walk', airborne: true },
+        { id: 'mpMaxThrust', mode: 'run', airborne: true },
+        { id: 'mpCruise', mode: 'walk' },
+        { id: 'mpFlank', mode: 'run' },
+    ];
+    const caption = svg.getElementById('movementPointsLabel');
+    if (caption) {
+        const stationary = caption.cloneNode(true) as SVGTextElement;
+        stationary.id = 'mpStationary';
+        stationary.textContent = 'Stationary';
+        stationary.removeAttribute('textLength');
+        stationary.removeAttribute('lengthAdjust');
+        stationary.setAttribute('class', 'movementStationary screen-only');
+        stationary.setAttribute('display', 'none');
+        caption.after(stationary);
+        movements.push({ id: stationary.id, mode: 'stationary' });
+    }
     for (const movement of movements) {
         const value = svg.getElementById(movement.id) as SVGTextElement | null;
-        if (!value) continue;
+        if (!value || value.getAttribute('aria-hidden') === 'true') continue;
+        const preceding = value.previousElementSibling;
+        // Some layouts put movement values next to each other, without separate labels.
+        // Preserve their IDs: those IDs also join the runtime values and controls.
+        const label = movement.mode === 'stationary' ? value
+            : svg.getElementById(`${movement.id}-label`) as SVGTextElement | null
+                ?? (preceding?.tagName === 'text' && !preceding.id
+                    && !preceding.hasAttribute('data-mekbay-move-mode') ? preceding as SVGTextElement : value);
+        if (!label || label.tagName !== 'text') continue;
+        if (label !== value) label.id = `${movement.id}-label`;
         value.classList.add('movementType');
-        (value.previousElementSibling as SVGElement | null)?.classList.add('movementType');
+        label.classList.add('movementType');
+        value.setAttribute('data-mekbay-move-mode', movement.mode);
+        if (movement.airborne !== undefined) value.setAttribute('data-mekbay-move-airborne', String(movement.airborne));
         const parent = value.parentElement as SVGElement | null;
         if (!parent) continue;
         const valueX = Number(value.getAttribute('x')) || 0;
         const valueY = Number(value.getAttribute('y')) || 0;
         const fontSize = Number(value.getAttribute('font-size')) || 7.5;
-        const badgeClass = `${movement.id}-rect screen-only`;
+        if ((lam || (isVehicleEntity(entity) && entity.jumpMP() > 0)) && movement.mode !== 'stationary') {
+            value.setAttribute('data-mekbay-move-value-width', String(fontSize * 1.45));
+        }
+        const labelX = Number(label.getAttribute('x')) || 0;
+        const badgeWidth = fontSize * 1.35;
+        // First-column modifiers straddle the frame; secondary movement columns
+        // (LAM modes, jumping vehicles) keep their badges beside their labels.
+        const frameX = Number(parent.getAttribute('data-mekbay-movement-frame-x'));
+        const badgeX = labelX < fontSize * 2 ? frameX - badgeWidth / 2
+            : labelX - badgeWidth - fontSize * .15;
+        const control = svgElement('g');
+        control.setAttribute('class', 'movementControl screen-only');
+        control.setAttribute('data-mekbay-movement-control', movement.id);
+        control.setAttribute('display', 'none');
+        const end = label === value ? labelX + fontSize * 5
+            : valueX + fontSize * (value.getAttribute('text-anchor') === 'middle' ? .6 : 1.2);
+        control.appendChild(transparentRect(badgeX, valueY - fontSize,
+            end - badgeX, fontSize * 1.2, 'movementHitArea'));
+        const badgeGroup = svgElement('g');
+        badgeGroup.setAttribute('class', 'movementModifier no-autocolor');
+        badgeGroup.setAttribute('display', 'none');
         const badge = svgElement('rect');
         badge.id = `${movement.id}-turnState-move-rect`;
         setAttributes(badge, {
-            x: valueX - 7,
+            x: badgeX,
             y: valueY - fontSize,
-            width: 14,
-            height: fontSize + 2,
+            width: badgeWidth,
+            height: fontSize * 1.15,
             fill: '#000',
-            class: badgeClass,
-            display: 'none',
         });
-        const badgeText = addText(parent, movement.modifier, valueX, valueY + 0.5, {
-            size: fontSize,
+        badgeGroup.appendChild(badge);
+        // The binder supplies rule-derived modifiers from the unit runtime.
+        addText(badgeGroup, '', badgeX + badgeWidth / 2, valueY - fontSize * .05, {
+            size: fontSize * .9,
             weight: 700,
             fill: '#fff',
             anchor: 'middle',
-            class: badgeClass,
         });
-        badgeText.setAttribute('display', 'none');
-        parent.insertBefore(badge, badgeText);
+        control.appendChild(badgeGroup);
+        parent.appendChild(control);
 
-        if (!movement.psr) continue;
+        if (!isMekEntity(entity) || !['mpRun', 'mpJump', 'mp_2'].includes(movement.id)) continue;
         const warning = addText(
             parent,
-            tightWarning ? '!!!' : 'PSR!',
-            valueX + (tightWarning ? 4 : 14),
+            lam ? '!!!' : 'PSR!',
+            lam ? badgeX - fontSize * 1.15 : valueX + 14,
             valueY,
             { size: 7, weight: 700, class: 'movePsrWarning movementType screen-only' },
         );

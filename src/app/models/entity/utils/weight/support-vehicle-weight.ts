@@ -152,7 +152,7 @@ function calculateTurretWeight(entity: SupportVehicleEntity, dual: boolean): num
   if (!exists) return 0;
   const baseWeight = dual ? entity.baseChassisTurret2Weight() : entity.baseChassisTurretWeight();
   if (entity.omni() && baseWeight >= 0) return baseWeight;
-  const locations = dual ? ['Rear Turret'] : ['Turret', 'Front Turret'];
+  const locations = dual ? ['Front Turret'] : ['Turret', 'Rear Turret'];
   const raw = entity.equipment().reduce((total, mount) => {
     if (!locations.includes(mount.location) || mount.equipment instanceof AmmoEquipment) return total;
     if (!dual && mount.equipment instanceof ArmorEquipment) return total;

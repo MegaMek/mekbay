@@ -4,11 +4,12 @@
 import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import { MountedEngine } from '../../models/entity/components';
-import { JumpShipEntity, SmallCraftEntity, SupportTankEntity, WarShipEntity } from '../../models/entity/entities';
+import { JumpShipEntity, SmallCraftEntity, SpaceStationEntity, SupportTankEntity, WarShipEntity } from '../../models/entity/entities';
 import type { EntityTransportBay, TransportBayConfiguration } from '../../models/entity/types';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { calculateSpacecraftRequiredGunners } from '../../models/entity/utils/crew-requirements';
-import { constructionSupportCrew, constructionSupportSlots, constructionSupportVesselMessages } from './construction-support-vessel-rules';
+import { constructionSupportCrew, constructionSupportSlots } from './construction-support-vessel-rules';
+import { validateConstruction } from './construction-rules';
 
 const registry = createTestEquipmentRegistry();
 const misc = (id: string, flag: EquipmentFlag, extra: EquipmentFlag[] = []) => new MiscEquipment({ id, name: id, type: 'misc', flags: [flag, ...extra], stats: { criticalSlots: 0, svSlots: 0 } });
@@ -18,7 +19,7 @@ const bay = (type: TransportBayConfiguration, capacity: number, doors = 0): Enti
 function add(entity: SupportTankEntity | SmallCraftEntity | JumpShipEntity, eq: MiscEquipment | WeaponEquipment | AmmoEquipment, location = 'Body') {
   return entity.addEquipment({ equipmentId: eq.id, equipment: eq, allocation: { kind: 'location', location }, rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
 }
-const codes = (entity: SupportTankEntity | SmallCraftEntity | JumpShipEntity) => constructionSupportVesselMessages(entity).map(message => message.code);
+const codes = (entity: SupportTankEntity | SmallCraftEntity | JumpShipEntity) => validateConstruction(entity).messages.map(message => message.code);
 
 describe('support vehicle construction rules', () => {
   it('checks chassis modification exclusions independently of flags permitting the family', () => {
@@ -37,6 +38,19 @@ describe('support vehicle construction rules', () => {
     for (let i = 0; i < 3; i++) add(entity, new AmmoEquipment({ id: `ammo${i}`, name: 'ammo', type: 'ammo', ammo: { type: 'AC', rackSize: 5 } }));
     add(entity, misc('jj1', 'F_JUMP_JET')); add(entity, misc('jj2', 'F_JUMP_JET'));
     expect(constructionSupportSlots(entity)).toEqual({ used: 3, capacity: 7 });
+  });
+
+  it('counts variable cargo bays as one support slot and accepts trailer chassis engines', () => {
+    const entity = new SupportTankEntity(registry); entity.setTonnage(150); entity.motiveType.set('Wheeled');
+    entity.mountedEngine.set(new MountedEngine({ type: 'None', rating: 0, techBase: 'IS' }));
+    expect(codes(entity)).toContain('SUPPORT_ENGINE_TYPE');
+    add(entity, misc('trailer', 'F_TRAILER_MODIFICATION', ['F_CHASSIS_MODIFICATION']));
+    expect(codes(entity)).not.toContain('SUPPORT_ENGINE_TYPE');
+    for (const flag of ['F_CARGO', 'F_LIQUID_CARGO'] as const) {
+      const cargo = new MiscEquipment({ id: flag, name: flag, type: 'misc', flags: [flag], stats: { criticalSlots: 'variable' } });
+      const mount = add(entity, cargo); mount.size = 50;
+    }
+    expect(constructionSupportSlots(entity).used).toBe(2);
   });
 
   it('requires small support seats and lets advanced fire control share the driver', () => {
@@ -78,6 +92,42 @@ describe('support vehicle construction rules', () => {
 });
 
 describe('vessel construction rules', () => {
+  for (const Vessel of [JumpShipEntity, WarShipEntity, SpaceStationEntity]) {
+    it(`counts officers within all assigned non-bay crew on ${Vessel.name}`, () => {
+      const entity = new Vessel(registry);
+      entity.setTonnage(100000);
+      entity.transporters.set([bay({ type: 'fighter', arts: false }, 10, 1)]);
+      entity.crew.set(122); // 20 bay personnel, 102 vessel crew including officers.
+      entity.officers.set(16);
+      expect(codes(entity)).toContain('VESSEL_OFFICER_MINIMUM');
+      entity.officers.set(17);
+      expect(codes(entity)).not.toContain('VESSEL_OFFICER_MINIMUM');
+      expect(entity.crew()).toBe(122);
+      entity.crew.set(123);
+      expect(codes(entity)).toContain('VESSEL_OFFICER_MINIMUM');
+      entity.officers.set(18);
+      expect(codes(entity)).not.toContain('VESSEL_OFFICER_MINIMUM');
+    });
+  }
+
+  for (const Vessel of [WarShipEntity, SpaceStationEntity]) {
+    it(`rounds base crew upward and includes officers in the total on ${Vessel.name}`, () => {
+      const entity = new Vessel(registry);
+      entity.setTonnage(6000);
+      entity.crew.set(46);
+      entity.officers.set(8);
+      expect(codes(entity)).toContain('VESSEL_CREW_MINIMUM');
+      entity.crew.set(47);
+      expect(codes(entity)).not.toContain('VESSEL_CREW_MINIMUM');
+      expect(codes(entity)).not.toContain('VESSEL_OFFICER_MINIMUM');
+      entity.setTonnage(1930000);
+      entity.crew.set(431);
+      entity.officers.set(72);
+      expect(codes(entity)).not.toContain('VESSEL_CREW_MINIMUM');
+      expect(codes(entity)).not.toContain('VESSEL_OFFICER_MINIMUM');
+    });
+  }
+
   it('validates officers and quarters while excluding personnel already accommodated in bays', () => {
     const entity = new SmallCraftEntity(registry); entity.setTonnage(100); entity.crew.set(5); entity.officers.set(0);
     entity.transporters.set([bay({ type: 'fighter', arts: false }, 1, 1), bay({ type: 'crew-quarters' }, 3)]);

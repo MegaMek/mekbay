@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { crewSkillsForUnit, unitCrewSkillSet } from '../../models/unit-crew-policy';
 import { UnitNameService } from '../../services/unit-name.service';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
@@ -338,8 +339,7 @@ export class ForceBudgetOptimizerDialogComponent {
 
         if (isCBTForceMember(member)) {
             const position = member.force.getUnitCrewProfile(member.id)?.positions[0];
-            const gunnery = position?.gunnery ?? 4;
-            const piloting = position?.piloting ?? 5;
+            const { gunnery, piloting } = crewSkillsForUnit(position, member.entity.unitType(), member.entity.unitSubtype());
             const priorities = this.getCBTSkillPriorities(member.entity);
             return {
                 member,
@@ -369,8 +369,9 @@ export class ForceBudgetOptimizerDialogComponent {
             const before = choice.member.force.getUnitCrewProfile(choice.member.id);
             const primary = before?.positions[0];
             if (!before || !primary) return null;
-            const currentGunnery = primary.gunnery;
-            const currentPiloting = primary.piloting;
+            const { gunnery: currentGunnery, piloting: currentPiloting } = crewSkillsForUnit(primary,
+                choice.member.entity.unitType(), choice.member.entity.unitSubtype());
+            const skillSet = unitCrewSkillSet(choice.member.entity.unitType(), choice.member.entity.unitSubtype());
             const personalPiloting = fixedEntityPilotingSkill(choice.member.entity) === null
                 ? choice.piloting : currentPiloting;
             if (currentGunnery === choice.gunnery && currentPiloting === personalPiloting) {
@@ -378,8 +379,8 @@ export class ForceBudgetOptimizerDialogComponent {
             }
             const positions = before.positions.map((position, index) => index === 0 ? {
                 ...position,
-                gunnery: choice.gunnery!,
-                piloting: personalPiloting,
+                ...(skillSet !== 'aerospace' ? { gunnery: choice.gunnery!, piloting: personalPiloting } : {}),
+                ...(skillSet !== 'ground' ? { aeroGunnery: choice.gunnery!, aeroPiloting: personalPiloting } : {}),
             } : position);
             const applied = await choice.member.force.replaceUnitCrewProfile(choice.member.id, positions);
             if (!applied) return null;

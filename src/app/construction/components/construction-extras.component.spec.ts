@@ -26,7 +26,7 @@ describe('construction extras', () => {
         const entity = new DropShipEntity(createTestEquipmentRegistry());
         fixture.componentRef.setInput('entity', entity);
         let mutation: (() => void) | undefined;
-        fixture.componentInstance.change.subscribe(action => mutation = action);
+        fixture.componentInstance.editRequested.subscribe(action => mutation = action);
         fixture.componentInstance.addTransport();
         expect(entity.transporters()).toEqual([]);
         mutation!();
@@ -38,7 +38,7 @@ describe('construction extras', () => {
         const entity = new DropShipEntity(createTestEquipmentRegistry());
         fixture.componentRef.setInput('entity', entity);
         const component = fixture.componentInstance;
-        component.change.subscribe(action => action());
+        component.editRequested.subscribe(action => action());
         component.newTransport.set('crew-quarters');
         component.addTransport();
         component.setCapacity(entity.transporters()[0], 12);

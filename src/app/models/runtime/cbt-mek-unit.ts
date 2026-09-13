@@ -274,6 +274,10 @@ export async function createMekUnit(
                         ...position,
                         gunnery: request.crewSkills!.gunnery,
                         piloting: request.crewSkills!.piloting,
+                        ...(entity.unitSubtype() === 'Land-Air BattleMek' ? {
+                            aeroGunnery: request.crewSkills!.gunnery,
+                            aeroPiloting: request.crewSkills!.piloting,
+                        } : {}),
                     })),
                 },
             },

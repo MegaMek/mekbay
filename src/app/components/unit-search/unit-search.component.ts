@@ -1639,8 +1639,16 @@ export class UnitSearchComponent {
     }
 
     onDocumentKeydown(event: KeyboardEvent) {
+        // CDK may already have closed the top dialog or menu with this Escape.
+        if (event.defaultPrevented) return;
         const topDialog = this.dialog.openDialogs.at(-1);
         if (topDialog && topDialog !== this.containingDialog) return;
+        if (event.key === 'Escape') {
+            if (this.expandedView() || this.advOpen() || this.focused() || this.viewModeMenuOpen()) {
+                this.onKeydown(event);
+            }
+            return;
+        }
         // FILTER Chord
         if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === UnitSearchComponent.CHORD_ACTIVATE_KEY) {
             event.preventDefault();
@@ -1682,6 +1690,10 @@ export class UnitSearchComponent {
             }
         }
         if (event.key === 'Escape') {
+            if (event.defaultPrevented) return;
+            const topDialog = this.dialog.openDialogs.at(-1);
+            if (topDialog && topDialog !== this.containingDialog) return;
+            event.preventDefault();
             event.stopPropagation();
             if (this.viewModeMenuOpen()) {
                 this.closeViewModeMenu();
@@ -1696,7 +1708,7 @@ export class UnitSearchComponent {
                     return;
                 }
                 if (this.expandedView()) {
-                    this.expandedView.set(false);
+                    this.toggleExpandedView();
                     return;
                 }
                 this.focused.set(false);

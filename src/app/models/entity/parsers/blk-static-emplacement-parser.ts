@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { StaticEmplacementEntity } from '../entities/misc/static-emplacement-entity';
-import { BUILDING_ORIGIN, buildingHexKey, buildingLocationName, parseBuildingHex, parseBuildingLocation } from '../types/building';
+import { buildingHexKey, buildingLocationName, parseBuildingHex, parseBuildingLocation, type BuildingHex } from '../types/building';
 import { locationArmor } from '../types';
 import { parseBaseBlk, parseBlkEquipment } from './blk-base-parser';
 import { BuildingBlock } from './building-block';
 import { decodeMotiveType } from './motive-type-codec';
+import { readBuildingDesign } from './building-design-codec';
 import { ParseContext } from './parse-context';
+import { MOBILE_POWER_SYSTEMS, type MobilePowerSystem } from '../entities/misc/mobile-structure-rules';
 
 const EQUIPMENT_TAG_SUFFIX = ' equipment';
 
@@ -29,8 +31,13 @@ export function parseBlkStaticEmplacement(
   bb: BuildingBlock,
   ctx: ParseContext,
 ): StaticEmplacementEntity {
-  const entity = new StaticEmplacementEntity(ctx.equipmentRegistry);
+  const entity = new StaticEmplacementEntity(ctx.equipmentRegistry, bb.getFirstString('UnitType') === 'MobileStructure' ? 'MobileStructure' : 'BuildingEntity');
   parseBaseBlk(bb, entity, ctx);
+  if (bb.exists('crew')) {
+    const crew = Number(bb.getFirstString('crew'));
+    if (Number.isSafeInteger(crew) && crew >= 0 && crew <= 2147483647) entity.crewCount.set(crew);
+    else ctx.error('crew', 'Building crew must be a non-negative whole number.');
+  }
 
   const equipmentTags = equipmentLocations(bb);
 
@@ -40,16 +47,43 @@ export function parseBlkStaticEmplacement(
   const height = bb.exists('height') ? bb.getFirstInt('height') : 1;
   if (!Number.isSafeInteger(height) || height < 1) ctx.error('height', 'Building height must be a positive whole number.');
   entity.height.set(Number.isSafeInteger(height) && height > 0 ? height : 1);
-  const hexes = new Map([[buildingHexKey(BUILDING_ORIGIN), BUILDING_ORIGIN]]);
+  const hexes = new Map<string, BuildingHex>();
   for (const line of bb.getDataAsString('coords')) {
     if (!line.trim()) continue;
     const hex = parseBuildingHex(line);
     if (hex) hexes.set(buildingHexKey(hex), hex);
     else ctx.error('coords', 'Invalid building hex: ' + line + '. Expected whole cube coordinates q,r,s with q+r+s=0.');
   }
+  if (!hexes.size) throw new Error('Building requires a non-empty coords block.');
   entity.coordinates.set([...hexes.values()]);
   if (bb.exists('motion_type')) entity.motiveType.set(decodeMotiveType(bb.getFirstString('motion_type')));
-  if (bb.exists('cruiseMP')) entity.originalWalkMP.set(bb.getFirstInt('cruiseMP'));
+  if (bb.exists('cruiseMP')) entity.originalWalkMP.set(Number(bb.getFirstString('cruiseMP')));
+  if (entity.isMobile()) {
+    for (const field of ['motion_type', 'cruiseMP', 'power_system', 'operating_range'])
+      if (!bb.exists(field)) ctx.error(field, 'Missing Mobile Structure ' + field + ' block.');
+    const power = bb.getFirstString('power_system');
+    if (Object.hasOwn(MOBILE_POWER_SYSTEMS, power)) entity.mobilePowerSystem.set(power as MobilePowerSystem);
+    else ctx.error('power_system', 'Invalid Mobile Structure power system: ' + power);
+    const range = Number(bb.getFirstString('operating_range'));
+    if (Number.isFinite(range) && range >= 0) entity.operatingRange.set(range);
+    else ctx.error('operating_range', 'Operating range must be a non-negative number of kilometers.');
+    if (bb.exists('hex_heights')) {
+      const heights = bb.getDataAsString('hex_heights').map(Number);
+      if (heights.length !== entity.coordinates().length || heights.some(value => !Number.isSafeInteger(value) || value < 1 || value > height))
+        ctx.error('hex_heights', 'Hex heights must be positive whole numbers no greater than maximum height, in coords order.');
+      else entity.hexHeights.set(new Map(entity.coordinates().map((hex, index) => [buildingHexKey(hex), heights[index]])));
+    }
+    if (bb.exists('fuel_locations')) {
+      const allocations = new Map<string, number>();
+      for (const line of bb.getDataAsString('fuel_locations')) {
+        const parts = line.split(';'), hex = parseBuildingHex(parts[0]), tons = Number(parts[1]);
+        if (parts.length !== 2 || !hex || !Number.isFinite(tons) || tons < 0 || !hexes.has(buildingHexKey(hex)) || allocations.has(buildingHexKey(hex)))
+          ctx.error('fuel_locations', 'Fuel allocation needs a unique occupied cube coordinate and non-negative tonnage: ' + line);
+        else allocations.set(buildingHexKey(hex), tons);
+      }
+      entity.fuelLocations.set(allocations);
+    }
+  }
 
   if (bb.exists('armor')) {
     const armor = bb.getFirstInt('armor');
@@ -66,10 +100,11 @@ export function parseBlkStaticEmplacement(
   entity.updateEquipment(mounts => mounts.map(mount => mount.facing === undefined ? mount
     : mount.clone({ facing: buildingFacing[mount.facing] })));
   for (const mount of entity.equipment()) {
-    if (mount.allocation.kind === 'location' && !entity.validLocations.has(mount.location)) {
+    if (mount.allocation.kind !== 'location' || !entity.validLocations.has(mount.location)) {
       ctx.error('equipment', 'Equipment location ' + mount.location + ' is outside the building footprint or height.');
-      entity.updateEquipment(mounts => mounts.map(item => item === mount ? item.clone({ allocation: { kind: 'unallocated' } }) : item));
+      entity.removeEquipment(mount);
     }
   }
+  readBuildingDesign(bb, entity, ctx);
   return entity;
 }

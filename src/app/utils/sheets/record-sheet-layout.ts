@@ -30,6 +30,7 @@ const LETTER_CONTENT_HEIGHT = LETTER_HEIGHT - PAGE_MARGIN * 2;
 const LETTER_COMPACT_CONTENT_Y = 74.357;
 const A4_COMPACT_CONTENT_Y = 72.859;
 const LETTER_COMPACT_GAP = 3;
+const MIXED_COMPACT_FOOTER_SPACE = 14;
 
 function createPageProfile(
     format: RecordSheetPageFormat,
@@ -157,7 +158,10 @@ export function planRecordSheetPages<T>(
                 : lastStart + lastHeight + page.compactGap;
         const candidateBottom = candidateStart + height;
         const candidateContentY = Math.max(pageContentY, ...compactContentYs);
-        const availableHeight = page.height - page.margin - candidateContentY;
+        // Family templates account for their own footer; mixed runs need a shared gutter.
+        const mixedFamilies = compactKinds.some(previous => previous !== kind);
+        const availableHeight = page.height - page.margin - candidateContentY
+            - (mixedFamilies ? MIXED_COMPACT_FOOTER_SPACE : 0);
         if (compactItems.length > 0 && candidateBottom > availableHeight + 0.001) {
             flushCompact();
         }

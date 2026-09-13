@@ -65,6 +65,8 @@ function packPerson(person: ForcePerson, health: CrewMemberRuntimeState | undefi
         ...(person.portrait ? { portrait: person.portrait } : {}),
         ...(person.gunnery === undefined || person.gunnery === 4 ? {} : { g: person.gunnery }),
         ...(person.piloting === undefined || person.piloting === 5 ? {} : { p: person.piloting }),
+        ...(person.aeroGunnery === undefined || person.aeroGunnery === 4 ? {} : { ag: person.aeroGunnery }),
+        ...(person.aeroPiloting === undefined || person.aeroPiloting === 5 ? {} : { ap: person.aeroPiloting }),
         ...(person.commander ? { commander: true } : {}),
         ...(person.abilities?.length ? { abilities: structuredClone(person.abilities) } : {}),
         ...(storedHealth ? { health: storedHealth } : {}),
@@ -109,7 +111,7 @@ export function unpackForcePersonnel(
 }
 
 function unpackPerson(raw: unknown, path: string) {
-    const row = exactRecord(raw, ['id', 'name', 'notes', 'portrait', 'g', 'p', 'commander', 'abilities', 'health'], path);
+    const row = exactRecord(raw, ['id', 'name', 'notes', 'portrait', 'g', 'p', 'ag', 'ap', 'commander', 'abilities', 'health'], path);
     if (typeof row['id'] !== 'string') throw new Error(`${path}.id must be a string`);
     const health = row['health'] === undefined ? undefined : exactRecord(row['health'],
         ['wounds', 'unconscious', 'ejected', 'dead', 'recoveryReadyTurn'], `${path}.health`);
@@ -120,6 +122,8 @@ function unpackPerson(raw: unknown, path: string) {
         ...(row['portrait'] === undefined ? {} : { portrait: row['portrait'] }),
         ...(row['g'] === undefined ? {} : { gunnery: row['g'] }),
         ...(row['p'] === undefined ? {} : { piloting: row['p'] }),
+        ...(row['ag'] === undefined ? {} : { aeroGunnery: row['ag'] }),
+        ...(row['ap'] === undefined ? {} : { aeroPiloting: row['ap'] }),
         ...(row['commander'] === undefined ? {} : { commander: row['commander'] }),
         ...(row['abilities'] === undefined ? {} : { abilities: row['abilities'] }),
         ...(health === undefined ? {} : { health: {

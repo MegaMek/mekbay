@@ -1,0 +1,44 @@
+:host { display: block; min-width: 0; margin: 3px 0 4px; }
+.armor-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 3px; color: var(--text-color-secondary); font-size: 9px; }
+.armor-heading > span { margin-right: auto; font-weight: 600; }
+.armor-value { display: flex; align-items: center; white-space: nowrap; color: var(--text-color-tertiary); font-variant-numeric: tabular-nums; }
+.armor-value input { width: 30px; padding: 2px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--text-color); font: inherit; font-size: 12px; font-weight: 600; text-align: right; appearance: textfield; }
+.armor-value input::-webkit-inner-spin-button, .armor-value input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.armor-value input:hover, .armor-value input:focus { border-bottom-color: var(--bt-yellow); }
+.armor-value span { padding: 0 3px; }
+.armor-heading button { min-height: 20px; width: 20px; padding: 0; flex: 0 0 20px; font-size: 15px; }
+.armor-actions { display: flex; align-items: center; gap: 2px; }
+.armor-heading .armor-repair-button { width: auto; flex-basis: auto; padding-inline: 4px; font-size: 9px; }
+.armor-track { position: relative; height: 10px; margin-top: 2px; border: 1px solid var(--border-color); background: repeating-linear-gradient(135deg, #ffffff0b 0 3px, transparent 3px 7px), var(--background-color); overflow: hidden; }
+.armor-fill, .armor-damage, .armor-reserved, .armor-repair { position: absolute; inset-block: 0; pointer-events: none; }
+.armor-repair { background: var(--success, #83cc8a); }
+.repair-gain { color: var(--success, #83cc8a); padding-left: 2px; }
+.armor-fill { left: 0; background: #d2d2d2; }
+.armor-reserved { right: 0; border-left: 1px solid var(--border-color); box-sizing: border-box; background: var(--background-color-menu); }
+.armor-damage { background: repeating-linear-gradient(135deg, #8e1919 0 3px, #dd4949 3px 6px); }
+.over-limit { border-color: var(--damage-color); }
+.over-limit .armor-fill { background: var(--damaged-highlight-color); }
+.armor-track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+.armor-track input:disabled { cursor: default; }
+.armor-track:focus-within { outline: 2px solid var(--primary-focus-color); outline-offset: 2px; }
+:host:not(.design-locked) .armor-track:hover .armor-fill { background: var(--bt-yellow); }
+.armor-condition { color: var(--damaged-highlight-color); margin-top: 3px; font-size: 9px; }
+@media (pointer: coarse) { .armor-track { height: 20px; } .armor-heading button { min-height: 26px; width: 26px; flex-basis: 26px; } }
+@media (min-width: 1181px) and (max-height: 900px) and (pointer: fine) {
+    .armor-heading > span { font-size: 8px; }
+    .armor-value { font-size: 8px; }
+    .armor-value input { width: 24px; font-size: 11px; }
+    .armor-value span { padding-inline: 1px; }
+    .armor-heading button { width: 18px; min-height: 20px; flex-basis: 18px; }
+    .armor-track { height: 12px; }
+}
+@media (max-width: 580px) {
+    :host { margin-block: 3px; }
+    .armor-heading > span { font-size: 8px; }
+    .armor-value { font-size: 8px; }
+    .armor-value input { width: 24px; padding: 0; font-size: 10px; }
+    .armor-value span { padding-inline: 1px; }
+    .armor-track { height: 20px; }
+    .armor-heading button { min-height: 24px; width: 24px; flex-basis: 24px; font-size: 14px; }
+    .armor-condition { font-size: 8px; }
+}

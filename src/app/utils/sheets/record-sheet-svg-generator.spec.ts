@@ -273,6 +273,27 @@ describe('RecordSheetSvgGenerator', () => {
             .toBeLessThanOrEqual(173.834);
     });
 
+    it('includes Jumping movement for jump-capable tanks and support vehicles', async () => {
+        const wige = new TestTankEntity();
+        wige.motiveType.set('WiGE');
+        for (const entity of [new TestTankEntity(), wige, new TestSupportTankEntity(), new TestLargeSupportTankEntity()]) {
+            entity.setTonnage(20);
+            entity.originalWalkMP.set(10);
+            const withoutJumpJets = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            expect(withoutJumpJets.querySelector('#mpJump:not([aria-hidden="true"])'))
+                .withContext(entity.entityType).toBeNull();
+
+            for (let jet = 0; jet < 5; jet++) addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Body' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const jump = svg.querySelector('#mpJump:not([aria-hidden="true"])')!;
+            expect(jump).withContext(entity.entityType).not.toBeNull();
+            expect(jump.textContent).toBe('5');
+            expect(jump.getAttribute('data-mekbay-field')).toBe('jump');
+            expect(svg.textContent).toContain('Jumping:');
+            expect(jump.getAttribute('y')).toBe(svg.getElementById('mpRun')!.getAttribute('y'));
+        }
+    });
+
     it('keeps paperdoll label ownership in each vehicle layout', async () => {
         const ground = new TestTankEntity();
         const vtol = new TestVtolEntity();
@@ -533,6 +554,29 @@ describe('RecordSheetSvgGenerator', () => {
             .toEqual([...left, ...right].map(mount => mount.mountId));
     });
 
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`rounds capital bay damage after adding fractional lasers (${ruleset})`, async () => {
+            const entity = new TestWarShipEntity();
+            const addBay = (location: string, values: readonly number[]) => {
+                const mounts = values.map((value, index) => addTestEquipment(entity, new WeaponEquipment({
+                    id: `${location}-laser-${index}`, name: 'Naval Laser', shortName: 'NL', type: 'weapon',
+                    weapon: { atClass: 'CAPITAL_LASER', capital: true, heat: 85, av: [value, value, value, value] },
+                }), { location }));
+                entity.addEquipmentBay('weapon-bay', { mounts });
+            };
+            addBay('Nose', [5.5, 5.5, 5.5]);
+            addBay('FLS', [4.5, 4.5, 4.5, 4.5]);
+            addBay('Aft', [5.5, 4.5]);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+            const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
+            expect(rows.map(row => row.querySelector('.range_short')?.textContent)).toEqual(['17', '18', '10']);
+            for (const row of rows) {
+                expect(row.querySelector('.range_extreme')?.textContent)
+                    .toBe(row.querySelector('.range_short')?.textContent);
+            }
+        });
+    }
+
     it('keeps opposite bays separate when equally printed rounds contain different munitions', async () => {
         const entity = new TestWarShipEntity();
         const weapon = new WeaponEquipment({
@@ -660,8 +704,8 @@ describe('RecordSheetSvgGenerator', () => {
             label => label.textContent);
         const leftTorsoIndex = locationLabels.indexOf('Left');
         expect(locationLabels.slice(leftTorsoIndex, leftTorsoIndex + 2)).toEqual(['Left', 'Torso']);
-        expect(svg.querySelector('#textArmor_CT')?.textContent).toMatch(/^\(\d+\)$/u);
-        expect(svg.querySelector('#textIS_CT')?.textContent).toMatch(/^\(\d+\)$/u);
+        expect(svg.querySelector('#textArmor_CT')?.textContent).toMatch(/^\( \d+ \)$/u);
+        expect(svg.querySelector('#textIS_CT')?.textContent).toMatch(/^\( \d+ \)$/u);
         expect(svg.querySelectorAll('.unitConditionBanner[condition]').length)
             .toBe(UNIT_CONDITION_DEFINITIONS.length);
         expect(svg.querySelectorAll('mask[id^="generated_condition_banner_fade_"]').length)
@@ -723,12 +767,13 @@ describe('RecordSheetSvgGenerator', () => {
         expect(children.indexOf(shortButton)).toBeLessThan(children.indexOf(shortText));
         expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(name));
         expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(hitModText));
-        expect(mainButton.getAttribute('x')).toBe('2');
-        expect(mainButton.getAttribute('width')).toBe('177.104');
-        expect(shortButton.getAttribute('x')).toBe('180.304');
-        expect(shortButton.getAttribute('width')).toBe('10.448');
-        expect(hitModRect.getAttribute('x')).toBe('-5');
-        expect(hitModRect.getAttribute('width')).toBe('10');
+        expect(Number(mainButton.getAttribute('x'))).toBeLessThan(Number(name.getAttribute('x')));
+        const shortLeft = Number(shortButton.getAttribute('x'));
+        const shortRight = shortLeft + Number(shortButton.getAttribute('width'));
+        expect(Number(shortText.getAttribute('x'))).toBeGreaterThan(shortLeft);
+        expect(Number(shortText.getAttribute('x'))).toBeLessThan(shortRight);
+        expect(Number(hitModRect.getAttribute('x')) + Number(hitModRect.getAttribute('width')) / 2)
+            .toBeCloseTo(0);
         expect(hitModText.getAttribute('x')).toBe('0');
         expect(hitModText.getAttribute('font-family')).toBe('monospace');
         expect(quantity).not.toBeNull();

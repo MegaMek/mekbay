@@ -460,14 +460,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('uses uncapped force-generator eligible units for preview requests', () => {
         const limitedUnit = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Limited Unit',
             chassis: 'Limited',
             model: 'Prime',
             as: { PV: 25 },
         });
         const extraEligibleUnit = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'Extra Eligible Unit',
             chassis: 'Extra',
             model: 'Prime',
@@ -592,7 +592,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('does not replace the displayed preview when max units are committed on blur', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -685,7 +685,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('does not replace the displayed preview when max budget is committed on blur', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -833,7 +833,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('records successful force generations over websocket when reroll produces a preview', () => {
         const atlas = createEmptyUnit({
-            id: 11,
+            mul1id: 11,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -879,14 +879,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('imports the current force into the locked preview without rerolling', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             as: { PV: 6 },
         });
         const locust = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'Locust LCT-1V',
             chassis: 'Locust',
             model: 'LCT-1V',
@@ -955,14 +955,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('rejects preview units and excludes them from later generation requests', async () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
             bv: 1897,
         });
         const locust = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'Locust LCT-1V',
             chassis: 'Locust',
             model: 'LCT-1V',
@@ -1018,7 +1018,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('marks chassis-only locked preview units as variant-group locked generation slots', async () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1057,7 +1057,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('submits the rendered preview entry without rebuilding its groups', () => {
         const atlas = createEmptyUnit({
-            id: 4,
+            mul1id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1100,7 +1100,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('clears the hovered radar overlay when rerolling a new preview', () => {
         const atlas = createEmptyUnit({
-            id: 3,
+            mul1id: 3,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1120,7 +1120,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('requests the unit search to close when CREATE submits a generated force', () => {
         const atlas = createEmptyUnit({
-            id: 4,
+            mul1id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1659,7 +1659,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('includes the Multi-Era checkbox state in the submitted config', () => {
         const atlas = createEmptyUnit({
-            id: 4,
+            mul1id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1706,7 +1706,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('includes tagged-quantity checkbox states in the submitted config', () => {
         const atlas = createEmptyUnit({
-            id: 4,
+            mul1id: 4,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1873,7 +1873,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('toggles preview units in and out of the locked set', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1913,7 +1913,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('changes a generated preview unit to a selected variant without rerolling', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -1921,7 +1921,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
             as: { PV: 54 },
         });
         const atlasVariant = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'Atlas AS7-K',
             chassis: 'Atlas',
             model: 'AS7-K',
@@ -1970,9 +1970,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('normalizes fixed Piloting when replacing a CBT preview unit', () => {
-        const originalUnit = createEmptyUnit({ id: 1, name: 'Original', crewSize: 1 });
+        const originalUnit = createEmptyUnit({ mul1id: 1, name: 'Original', crewSize: 1 });
         const protoMek = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'ProtoMek',
             type: 'ProtoMek',
             subtype: 'ProtoMek',
@@ -1997,9 +1997,9 @@ describe('SearchForceGeneratorDialogComponent', () => {
     });
 
     it('adds LAM aerospace skills when keeping a pilot during variant replacement', () => {
-        const originalUnit = createEmptyUnit({ id: 1, name: 'Original', crewSize: 1 });
+        const originalUnit = createEmptyUnit({ mul1id: 1, name: 'Original', crewSize: 1 });
         const lam = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'LAM',
             subtype: 'Land-Air BattleMek',
             crewSize: 1,
@@ -2025,14 +2025,14 @@ describe('SearchForceGeneratorDialogComponent', () => {
             name: 'Pilot',
             gunnery: 6,
             piloting: 7,
-            asfGunnery: 6,
-            asfPiloting: 7,
+            aeroGunnery: 6,
+            aeroPiloting: 7,
         }]);
     });
 
     it('creates complete LAM crew when rerolling both unit and pilot', () => {
         const lam = createEmptyUnit({
-            id: 2,
+            mul1id: 2,
             name: 'LAM',
             subtype: 'Land-Air BattleMek',
             crewSize: 2,
@@ -2051,8 +2051,8 @@ describe('SearchForceGeneratorDialogComponent', () => {
         expect(candidates[0].gunnery).toBe(6);
         expect(candidates[0].piloting).toBe(7);
         expect(candidates[0].crew).toEqual([
-            { id: 0, name: '', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
-            { id: 1, name: '', gunnery: 6, piloting: 7, asfGunnery: 6, asfPiloting: 7 },
+            { id: 0, name: '', gunnery: 6, piloting: 7, aeroGunnery: 6, aeroPiloting: 7 },
+            { id: 1, name: '', gunnery: 6, piloting: 7, aeroGunnery: 6, aeroPiloting: 7 },
         ]);
     });
 
@@ -2081,7 +2081,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('recomputes locked unit values when switching from Alpha Strike to CBT', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -2130,7 +2130,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('recomputes locked unit values when switching from CBT to Alpha Strike', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',
@@ -2178,7 +2178,7 @@ describe('SearchForceGeneratorDialogComponent', () => {
 
     it('does not regenerate the preview when a unit lock is toggled', () => {
         const atlas = createEmptyUnit({
-            id: 1,
+            mul1id: 1,
             name: 'Atlas AS7-D',
             chassis: 'Atlas',
             model: 'AS7-D',

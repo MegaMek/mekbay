@@ -1,5 +1,5 @@
 @media screen {
-  .night-mode .mekbay-sheet {
+  .night-mode .mekbay-sheet:not(.print-preview) {
     --svg-bg-color: #141414;
     --svg-fg-color: #fff;
     --svg-fg-color-inv: #000;
@@ -103,6 +103,11 @@
       text {
         fill: var(--damage-color) !important;
       }
+    }
+
+    .disabledInventory,
+    .disabledInventory text {
+      fill: var(--disabled-color) !important;
     }
 
     image {
@@ -221,16 +226,6 @@
     .skillValue,
     .customAmmoLoadout {
       fill: #bbf;
-    }
-
-    .selectable:not(.pip-hit-area):hover,
-    .selectable:not(.pip-hit-area):hover > path {
-      fill: var(--undamaged-night-highlight-color) !important;
-    }
-
-    .selectable.damaged:not(.pip-hit-area):hover,
-    .selectable.damaged:not(.pip-hit-area):hover > path {
-      fill: var(--damaged-highlight-color) !important;
     }
 
     .inventoryEntry {

@@ -5,6 +5,33 @@ import type { UnitType, UnitSubtype } from './entity/types';
 
 export type UnitCrewKind = 'none' | 'integrated' | 'swappable';
 
+export type CrewSkillSet = 'ground' | 'aerospace' | 'both';
+
+/** VTOLs use vehicle gunnery/VTOL piloting in MekHQ, grouped here as Ground. */
+export function unitCrewSkillSet(type: UnitType, subtype: UnitSubtype): CrewSkillSet {
+  if (subtype === 'Land-Air BattleMek') return 'both';
+  return type === 'Aero' ? 'aerospace' : 'ground';
+}
+
+/** Personal ratings; omitted values have the standard 4/5 defaults in each set. */
+export interface CrewSkills {
+  readonly gunnery?: number;
+  readonly piloting?: number;
+  readonly aeroGunnery?: number;
+  readonly aeroPiloting?: number;
+}
+
+/** LAM BV uses the better rating from each pair, matching the crew editor. */
+export function crewSkillsForUnit(skills: CrewSkills | undefined, type: UnitType, subtype: UnitSubtype) {
+  const set = unitCrewSkillSet(type, subtype);
+  const ground = { gunnery: skills?.gunnery ?? 4, piloting: skills?.piloting ?? 5 };
+  const aero = { gunnery: skills?.aeroGunnery ?? 4, piloting: skills?.aeroPiloting ?? 5 };
+  return set === 'aerospace' ? aero : set === 'ground' ? ground : {
+    gunnery: Math.min(ground.gunnery, aero.gunnery),
+    piloting: Math.min(ground.piloting, aero.piloting),
+  };
+}
+
 export function unitTracksPilotWounds(type: UnitType): boolean {
   return type === 'Mek' || type === 'ProtoMek' || type === 'Aero';
 }

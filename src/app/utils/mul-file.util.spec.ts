@@ -28,7 +28,7 @@ describe('MUL file utilities', () => {
             movement: { motiveType: 'Biped' },
             crew: [{
                 positionId: asCrewPositionId('crew:pilot'), positionKey: 'pilot', occurrence: 0,
-                name: 'Morgan', gunnery: 3, piloting: 4,
+                name: 'Morgan', gunnery: 3, piloting: 4, aeroGunnery: 6, aeroPiloting: 7,
                 state: { wounds: 2, unconscious: false, ejected: false },
             }],
             locations: [{
@@ -78,6 +78,8 @@ describe('MUL file utilities', () => {
         expect(xml).toContain('name=\"Morgan\"');
         expect(xml).toContain('gunnery=\"3\"');
         expect(xml).toContain('piloting=\"4\"');
+        expect(xml).toContain('gunneryAero=\"6\"');
+        expect(xml).toContain('pilotingAero=\"7\"');
         expect(xml).toContain('hits=\"2\"');
         expect(xml).toContain('points=\"40\"');
         expect(xml).toContain('points=\"20\"');
@@ -95,6 +97,8 @@ describe('MUL file utilities', () => {
                 entityType: 'Tank',
                 motiveType: () => 'Tracked',
                 techBase: () => 'IS',
+                unitType: () => 'Tank',
+                unitSubtype: () => 'Combat Vehicle',
                 quirks: () => [],
             },
             index: {

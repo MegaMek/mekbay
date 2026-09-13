@@ -91,7 +91,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary 
         summaryVersion: UNIT_SUMMARY_VERSION,
         loadIssues: [],
         name: 'Test Unit',
-        id: -1,
+        mul1id: -1,
         chassis: 'Test',
         baseChassis: unitOverrides.chassis ?? 'Test',
         model: 'TST-1',

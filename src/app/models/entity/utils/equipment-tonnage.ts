@@ -38,6 +38,8 @@ import { supportEquipmentVariableTonnage } from '../../support-equipment.model';
 import { turretEquipmentVariableTonnage } from '../../turret-equipment.model';
 import { isEquipmentForPlatform } from '../../equipment-platform.model';
 import { boobyTrapVariableTonnage } from '../../aerospace-support-equipment.model';
+import { buildingFacility } from './building-construction';
+import type { StaticEmplacementEntity } from '../entities/misc/static-emplacement-entity';
 
 export function getEquipmentTonnage(
     entity: BaseEntity,
@@ -45,6 +47,9 @@ export function getEquipmentTonnage(
 ): number | undefined {
     const equipment = mount.equipment;
     if (!equipment) return undefined;
+    const facility = buildingFacility(equipment, mount.size, entity.entityType === 'BuildingEntity' || entity.entityType === 'MobileStructure'
+        ? (entity as StaticEmplacementEntity).constructionFactor() ?? 0 : 0);
+    if (facility) return facility.tons;
     if (entity.entityType === 'HandheldWeapon' && equipment instanceof AmmoEquipment) {
         const mountedShots = mount.getAmmoShots() ?? 0;
         const capacity = mountedShots > 0 ? mountedShots : equipment.shots;
@@ -180,4 +185,3 @@ function usesKilogramStandard(entity: BaseEntity): boolean {
         || entity.entityType === 'BattleArmor'
         || entity.weightClass() === 'Small Support';
 }
-

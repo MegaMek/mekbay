@@ -1,0 +1,17 @@
+:host { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; background: var(--background-color-menu); color: var(--text-color); font-size: 14px; user-select: text; -webkit-user-select: text; }
+header { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border-color); }
+header > div { display: flex; align-items: baseline; gap: 4px 16px; flex-wrap: wrap; min-width: 0; }
+h2 { margin: 0; font-size: 14px; }
+.report-total { color: var(--bt-yellow); font-size: 1.125em; font-weight: 600; white-space: nowrap; }
+small { font-size: .7em; }
+.report-scroll { flex: 1 1 auto; overflow: auto; min-height: 0; min-width: 0; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; line-height: 1.35; }
+.item-column { width: 42%; }
+.value-column { width: 8.5em; }
+th, td { padding: 3px 8px; text-align: left; border-bottom: 1px solid #ffffff15; overflow-wrap: anywhere; }
+:host table, :host th, :host td, :host h2, :host span, :host small { user-select: text; -webkit-user-select: text; }
+tbody th { font-weight: 500; }
+td:last-child, th:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background-color: var(--background-highlight); }
+thead { color: var(--text-color-secondary); }
+td:nth-child(2) { color: var(--text-color-secondary); }

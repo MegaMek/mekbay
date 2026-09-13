@@ -240,7 +240,7 @@ describe('ForceBuilderService formation filter integration', () => {
         const faction = createFaction(1, 'Mercenary');
         const era = { id: 3151, name: 'ilClan', years: {} } as any;
         const firstUnit = createUnit();
-        const secondUnit = { ...createUnit(), id: 2, name: 'Second Mek' } as UnitSummary;
+        const secondUnit = { ...createUnit(), mul1id: 2, name: 'Second Mek' } as UnitSummary;
 
         service.builder = {
             createNewForce: jasmine.createSpy('createNewForce').and.resolveTo(force),
@@ -1347,7 +1347,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
                 useValue: {
                     options: () => ({
                         CBTRules: 'core-2026',
-                        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+                        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false, hotLoadedAmmo: false },
                     }),
                 },
             }],

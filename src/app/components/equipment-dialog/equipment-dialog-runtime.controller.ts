@@ -533,6 +533,7 @@ export class EquipmentDialogRuntimeController {
         row: EquipmentPanelComponent,
         munitionKey: string,
         remaining: number,
+        hotLoaded?: boolean,
     ): Promise<void> {
         const loadout = row.ammo?.loadouts.find(candidate => candidate.munitionKey === munitionKey);
         if (!row.ammo || !loadout || this.busy()) return;
@@ -542,6 +543,7 @@ export class EquipmentDialogRuntimeController {
             componentId: row.componentId,
             munitionKey,
             remaining: boundedRemaining,
+            ...(hotLoaded === undefined ? {} : { hotLoaded }),
         });
     }
 

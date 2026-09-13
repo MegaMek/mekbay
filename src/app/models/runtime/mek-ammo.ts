@@ -7,6 +7,7 @@ import {
     WeaponEquipment,
     ammoMatchesWeapon,
     findIntrinsicAmmoForWeapon,
+    formatEquipmentName,
 } from '../equipment.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
@@ -19,6 +20,7 @@ import {
 } from '../rules/ammo-capacity-rules';
 import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
 import type { MekRuntimeIndex } from './mek-runtime-index';
+import type { CBTUnitQueryPort, CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 import {
     createAmmoCompatibilityMatch,
     matchesAmmoCompatibility,
@@ -28,6 +30,34 @@ export interface AmmoLoadout {
     readonly munitionKey: string;
     readonly capacity: number;
     readonly equipment: AmmoEquipment;
+}
+
+/** TO: Advanced Rules, Missiles. Compatibility ignores the current firing mode. */
+export function hotLoadedAmmoForWeapon(
+    index: CBTUnitRuntimeIndex,
+    query: Pick<CBTUnitQueryPort, 'ammoHotLoaded' | 'ammoEquipment' | 'remainingAmmo' | 'componentStatus'>,
+    weaponId: ComponentId,
+    perspective: 'committed' | 'preview' = 'committed',
+): readonly AmmoEquipment[] {
+    const weapon = index.components.get(weaponId)?.mount?.equipment;
+    if (!(weapon instanceof WeaponEquipment)) return [];
+    const result: AmmoEquipment[] = [];
+    for (const [sourceId, source] of index.components) {
+        if (!(source.mount?.equipment instanceof AmmoEquipment) && sourceId !== weaponId) continue;
+        if (!query.ammoHotLoaded(sourceId) || query.remainingAmmo(sourceId) <= 0
+            || query.componentStatus(sourceId, perspective) === 'destroyed') continue;
+        const ammo = query.ammoEquipment(sourceId);
+        if (ammo && ammoMatchesWeapon(weapon, ammo)) result.push(ammo);
+    }
+    return result;
+}
+
+/** Shared label and changed-loadout marker for runtime ammo displays. */
+export function ammoLoadoutDisplay(originalMunitionKey: string, equipment: AmmoEquipment, shots?: number) {
+    return {
+        name: formatEquipmentName(equipment, shots),
+        custom: equipment.internalName !== originalMunitionKey,
+    };
 }
 
 export interface MekIntrinsicMagazine {

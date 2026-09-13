@@ -9,6 +9,28 @@ import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 import { compactVehicleSheetTitle } from './vehicle-record-sheet-components';
 
 describe('naval record-sheet presentation', () => {
+    it('uses the shared vehicle charge eligibility for WiGE sheet inventory', async () => {
+        const entity = new TestTankEntity();
+        entity.motiveType.set('WiGE');
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact', ruleset });
+            expect(svg.textContent?.includes('Charge')).withContext(ruleset).toBe(ruleset === 'core-2026');
+        }
+    });
+
+    it('uses the selected ruleset for ground and naval charge descriptions', async () => {
+        for (const entity of [new TestTankEntity(), new TestSupportNavalEntity()]) {
+            entity.setTonnage(10);
+            for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+                const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact', ruleset });
+                const expected = ruleset === 'total-warfare' ? '1/hex' : '2×(TMM+1)';
+                const excluded = ruleset === 'total-warfare' ? '2×(TMM+1)' : '1/hex';
+                expect(svg.textContent).withContext(`${entity.entityType} ${ruleset}`).toContain(expected);
+                expect(svg.textContent).not.toContain(excluded);
+            }
+        }
+    });
+
     it('updates submarine art bounds and random-button framing without changing the contour geometry', async () => {
         const entity = new TestSupportNavalEntity();
         entity.setTonnage(100);

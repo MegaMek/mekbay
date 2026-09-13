@@ -6,6 +6,7 @@ import {
     TestTankEntity,
 } from '../../../models/entity/testing/test-entities';
 import type { CBTForce } from '../../../models/cbt-force.model';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import { CBTForceMember } from '../../../models/force-member.model';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
@@ -20,10 +21,10 @@ import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service
 describe('PageViewerSheetSourceService', () => {
     let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let service: PageViewerSheetSourceService;
-    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; printAllOptions: { paperSize: 'a4' | 'letter' } }>({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' } });
+    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; printAllOptions: { paperSize: 'a4' | 'letter' }; CBTRules: CBTRuleset }>({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
 
     beforeEach(() => {
-        options.set({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' } });
+        options.set({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
         source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
         source.load.and.callFake(async (entity, options) => ({
             svgs: [await RecordSheetSvgGenerator.generate(entity, options)],
@@ -31,7 +32,7 @@ describe('PageViewerSheetSourceService', () => {
         TestBed.configureTestingModule({
             providers: [
                 PageViewerSheetSourceService,
-                { provide: UnitFluffImageService, useValue: { initialize: async () => undefined, resolveEntityUrl: () => null } },
+                { provide: UnitFluffImageService, useValue: { initialize: async () => undefined, loadEntityUrl: async () => null } },
                 { provide: RecordSheetSourceService, useValue: source },
                 { provide: OptionsService, useValue: { options } },
             ],
@@ -47,16 +48,16 @@ describe('PageViewerSheetSourceService', () => {
         await service.load(member);
         expect(member.recordSheet()).not.toBe(letter);
         expect(member.recordSheet()?.getAttribute('viewBox')).toBe('0 0 595.276 841.89');
-        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, format: 'a4', pageFormat: 'a4', fluffImageUrl: null });
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, format: 'a4', pageFormat: 'a4', fluffImageUrl: null, ruleset: 'total-warfare' });
     });
 
     it('regenerates a cached sheet when local artwork changes or is purged', async () => {
         const member = createMember('Tank', new TestTankEntity());
-        const image = spyOn(TestBed.inject(UnitFluffImageService), 'resolveEntityUrl').and.returnValue('blob:first');
+        const image = spyOn(TestBed.inject(UnitFluffImageService), 'loadEntityUrl').and.resolveTo('blob:first');
         await service.load(member); const before = member.recordSheet();
-        image.and.returnValue('blob:replacement');
+        image.and.resolveTo('blob:replacement');
         await service.load(member); expect(member.recordSheet()).not.toBe(before);
-        const replaced = member.recordSheet(); image.and.returnValue(null);
+        const replaced = member.recordSheet(); image.and.resolveTo(null);
         await service.load(member); expect(member.recordSheet()).not.toBe(replaced);
         expect(source.load.calls.mostRecent().args[1]?.fluffImageUrl).toBeNull();
     });
@@ -100,6 +101,23 @@ describe('PageViewerSheetSourceService', () => {
         expect(source.load).toHaveBeenCalledTimes(2);
     });
 
+    it('uses the admitted ruleset independently of global preferences and regenerates when admission changes', async () => {
+        const entity = new TestTankEntity();
+        const member = createMember('Tank', entity);
+        const snapshot = member.force.getUnitSnapshot as jasmine.Spy;
+        snapshot.and.returnValue({ entity, ruleset: 'core-2026' });
+        await service.load(member);
+        const core = member.recordSheet();
+        expect(source.load.calls.mostRecent().args[1]?.ruleset).toBe('core-2026');
+
+        snapshot.and.returnValue({ entity, ruleset: 'total-warfare' });
+        options.update(value => ({ ...value, CBTRules: 'core-2026' }));
+        await service.load(member);
+        expect(source.load.calls.mostRecent().args[1]?.ruleset).toBe('total-warfare');
+        expect(member.recordSheet()).not.toBe(core);
+        expect(source.load).toHaveBeenCalledTimes(2);
+    });
+
     it('retains every generated page and decorates multi-page sheets with flip controls', async () => {
         const member = createMember('Tank', new TestTankEntity());
         const front = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -140,7 +158,7 @@ describe('PageViewerSheetSourceService', () => {
         options.update(value => ({ ...value, recordSheetPipLayout: 'rail' }));
         await service.load(member);
         expect(member.recordSheet()).not.toBe(first);
-        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, format: 'letter', pageFormat: 'letter', fluffImageUrl: null });
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, format: 'letter', pageFormat: 'letter', fluffImageUrl: null, ruleset: 'total-warfare' });
     });
 
     it('allows the member to retry after generation fails', async () => {
@@ -160,7 +178,7 @@ describe('PageViewerSheetSourceService', () => {
 });
 
 function createMember(entityType: 'Mek' | 'Tank', entity: TestQuadMekEntity | TestTankEntity): PageViewerMember {
-    const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ entity });
+    const getUnitSnapshot = jasmine.createSpy('getUnitSnapshot').and.returnValue({ entity, ruleset: 'total-warfare' });
     const force = {
         getUnitSnapshot,
     } as unknown as CBTForce;

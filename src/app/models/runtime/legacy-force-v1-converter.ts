@@ -328,6 +328,7 @@ export async function convertPersistedMekUnitV1(
                 crewAssignment: restoreLegacyCrewAssignment(
                     crewRows,
                     fresh.getIndex().crewPositions,
+                    fresh.getUnit(),
                 ),
             }),
         }),
@@ -447,7 +448,7 @@ export function convertPersistedNonMekUnitV1(
             ...baseline.deployment,
             values: Object.freeze({
                 ...baseline.deployment.values,
-                crewAssignment: restoreLegacyCrewAssignment(crewRows, index.crewPositions),
+                crewAssignment: restoreLegacyCrewAssignment(crewRows, index.crewPositions, fresh.getUnit()),
             }),
         }),
         ...(destroyed ? { destroyed: true as const } : {}),
@@ -478,6 +479,7 @@ export function convertPersistedNonMekUnitV1(
 function restoreLegacyCrewAssignment(
     rows: readonly JsonValue[],
     topology: CrewTopology,
+    entity: BaseEntity,
 ): CrewAssignment {
     const defaults = createDefaultCrewAssignment(topology);
     return Object.freeze({
@@ -489,6 +491,13 @@ function restoreLegacyCrewAssignment(
                 name: boundedLegacyText(row?.['name'], 160) ?? position.name,
                 gunnery: legacySkill(row?.['gunnerySkill']) ?? position.gunnery,
                 piloting: legacySkill(row?.['pilotingSkill']) ?? position.piloting,
+                ...(entity.unitType() === 'Aero' || entity.unitSubtype() === 'Land-Air BattleMek' ? {
+                    // Historical V1 names stay at this ingress boundary only.
+                    aeroGunnery: legacySkill(row?.['asfGunnerySkill']) ?? legacySkill(row?.['asfGunnery'])
+                        ?? legacySkill(row?.['gunnerySkill']) ?? 4,
+                    aeroPiloting: legacySkill(row?.['asfPilotingSkill']) ?? legacySkill(row?.['asfPiloting'])
+                        ?? legacySkill(row?.['pilotingSkill']) ?? 5,
+                } : {}),
             });
         })),
     });

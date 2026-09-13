@@ -24,9 +24,21 @@ import { UserStateService } from '../../services/userState.service';
 import { DisplayNameService } from '../../services/display-name.service';
 import { OptionsDialogComponent } from './options-dialog.component';
 import { UnitArtworkService } from '../../services/unit-artwork.service';
+import { ProvidedFluffImageService } from '../../services/catalogs/provided-fluff-image.service';
 import { CustomUnitsService } from '../../services/custom-units.service';
 
 describe('OptionsDialogComponent', () => {
+    it('saves the wheel action selected in Advanced options', () => {
+        const setOption = jasmine.createSpy('setOption');
+        const component = configureComponent({ options: () => ({}), setOption });
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="scroll">Scroll</option><option value="zoom">Zoom</option>';
+        for (const value of ['zoom', 'scroll']) {
+            select.value = value;
+            component.onMouseWheelActionChange({ target: select } as unknown as Event);
+            expect(setOption.calls.mostRecent().args).toEqual(['mouseWheelAction', value]);
+        }
+    });
     function configureComponent(
         optionsService: object,
         userStateService: object = {
@@ -46,6 +58,7 @@ describe('OptionsDialogComponent', () => {
                 { provide: DataService, useValue: { getUnits: () => [], requireApplicationCatalogReady: async () => undefined, getEquipmentRegistry: () => new EquipmentRegistry({}) } },
                 { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0), listCustomUnits: async () => [] } },
                 { provide: UnitArtworkService, useValue: { initialize: async () => undefined, records: signal(new Map()), count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: ProvidedFluffImageService, useValue: { initialize: async () => undefined, count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
                 { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
@@ -89,6 +102,42 @@ describe('OptionsDialogComponent', () => {
         expect(component.artwork.purge).not.toHaveBeenCalled();
         expect(component.artworkCollectionReady()).toBeFalse(); expect(component.artworkError()).toContain('Catalogue unavailable');
     });
+
+    it('purges provided images independently of custom artwork', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        (component.dialogsService as any).requestConfirmation = jasmine.createSpy('confirm').and.resolveTo(true);
+        await component.onPurgeProvidedImages();
+        expect(component.providedImages.purge).toHaveBeenCalledTimes(1);
+        expect(component.artwork.purge).not.toHaveBeenCalled();
+        expect(component.purgingArtwork()).toBeFalse();
+    });
+
+    it('keeps provided images when the purge is cancelled', async () => {
+        const component = configureComponent({ options: () => ({}) });
+        (component.dialogsService as any).requestConfirmation = jasmine.createSpy('confirm').and.resolveTo(false);
+        await component.onPurgeProvidedImages();
+        expect(component.providedImages.purge).not.toHaveBeenCalled();
+    });
+
+    for (const choice of ['keep', 'delete', 'cancel'] as const) {
+        it(`honors the ${choice} local data choice when logging out`, async () => {
+            const component = configureComponent({ options: () => ({}) });
+            (component.userHasOAuth as any).set(true);
+            (component.dialogsService as any).choose = jasmine.createSpy('choose').and.resolveTo(choice);
+            // Verify the selected storage operation and that a failed transaction prevents session replacement/reload.
+            const clear = jasmine.createSpy('clearLocalSession').and.rejectWith(new Error('Storage unavailable'));
+            (component.dbService as any).clearLocalSession = clear;
+            (TestBed.inject(LoggerService) as any).error = () => undefined;
+            (TestBed.inject(ToastService) as any).showToast = jasmine.createSpy('showToast');
+            const fresh = jasmine.createSpy('createFreshSession');
+            (TestBed.inject(UserStateService) as any).createFreshSession = fresh;
+            await component.onLogout();
+            if (choice === 'cancel') expect(clear).not.toHaveBeenCalled();
+            else expect(clear).toHaveBeenCalledOnceWith(choice === 'delete');
+            expect(fresh).not.toHaveBeenCalled();
+            expect(component.logoutInFlight()).toBeFalse();
+        });
+    }
 
     it('returns from mobile details before closing the dialog', () => {
         const component = configureComponent({ options: () => ({}) });
@@ -273,6 +322,7 @@ describe('OptionsDialogComponent', () => {
                 { provide: DataService, useValue: { getUnits: () => [], getEquipmentRegistry } },
                 { provide: DbService, useValue: { getCanvasStoreSize: () => Promise.resolve(0), listCustomUnits: async () => [] } },
                 { provide: UnitArtworkService, useValue: { initialize: async () => undefined, records: signal(new Map()), count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
+                { provide: ProvidedFluffImageService, useValue: { initialize: async () => undefined, count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
                 { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },

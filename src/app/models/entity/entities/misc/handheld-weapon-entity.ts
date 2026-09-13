@@ -80,7 +80,12 @@ export class HandheldWeaponEntity extends BaseEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    return new Map();
+    return new Map([['Gun', this.maximumArmorPoints()]]);
+  }
+
+  protected override computeMaximumArmorPoints(): number {
+    // TO:AUE: standard armor has no structural cap; construction mass limits it.
+    return Math.floor(this.tonnage() * 16);
   }
 
   // ── Validation ────────────────────────────────────────────────────────

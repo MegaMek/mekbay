@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { normalizeMulId } from '../utils/mul-id';
+import { parseForceGeneratorAvailability } from '../types/force-generator-availability';
 import { BipedMekEntity } from '../entities/mek/biped-mek-entity';
 import { LamEntity } from '../entities/mek/lam-entity';
 import { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
@@ -58,35 +59,41 @@ import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 // ============================================================================
 
 const BIPED_LOCATION_MAP: Record<string, MekLocation> = {
-  'Left Arm:':       'LA',
-  'Right Arm:':      'RA',
-  'Left Torso:':     'LT',
-  'Right Torso:':    'RT',
-  'Center Torso:':   'CT',
-  'Head:':           'HD',
-  'Left Leg:':       'LL',
-  'Right Leg:':      'RL',
-  'Center Leg:':     'CL',
+  'Left Arm:': 'LA',
+  'Right Arm:': 'RA',
+  'Left Torso:': 'LT',
+  'Right Torso:': 'RT',
+  'Center Torso:': 'CT',
+  'Head:': 'HD',
+  'Left Leg:': 'LL',
+  'Right Leg:': 'RL',
+  'Center Leg:': 'CL',
 };
 
 const QUAD_LOCATION_MAP: Record<string, MekLocation> = {
-  'Front Left Leg:':  'FLL',
+  'Front Left Leg:': 'FLL',
   'Front Right Leg:': 'FRL',
-  'Left Torso:':      'LT',
-  'Right Torso:':     'RT',
-  'Center Torso:':    'CT',
-  'Head:':            'HD',
-  'Rear Left Leg:':   'RLL',
-  'Rear Right Leg:':  'RRL',
+  'Left Torso:': 'LT',
+  'Right Torso:': 'RT',
+  'Center Torso:': 'CT',
+  'Head:': 'HD',
+  'Rear Left Leg:': 'RLL',
+  'Rear Right Leg:': 'RRL',
 };
 
 const STRUCTURE_LOCATION_MAP: Record<string, MekLocation> = {
-  'la structure': 'LA', 'fll structure': 'FLL',
-  'ra structure': 'RA', 'frl structure': 'FRL',
-  'lt structure': 'LT', 'rt structure': 'RT', 'ct structure': 'CT',
+  'la structure': 'LA',
+  'fll structure': 'FLL',
+  'ra structure': 'RA',
+  'frl structure': 'FRL',
+  'lt structure': 'LT',
+  'rt structure': 'RT',
+  'ct structure': 'CT',
   'hd structure': 'HD',
-  'll structure': 'LL', 'rll structure': 'RLL',
-  'rl structure': 'RL', 'rrl structure': 'RRL',
+  'll structure': 'LL',
+  'rll structure': 'RLL',
+  'rl structure': 'RL',
+  'rrl structure': 'RRL',
   'cl structure': 'CL',
 };
 
@@ -104,23 +111,23 @@ interface MtfFrankenMekLocationData {
  * uses canonical IDs and ArmorFace only.
  */
 const ARMOR_LABEL_MAP: Record<string, { loc: string; face: 'front' | 'rear' }> = {
-  'la armor':  { loc: 'LA',  face: 'front' },
-  'ra armor':  { loc: 'RA',  face: 'front' },
-  'lt armor':  { loc: 'LT',  face: 'front' },
-  'rt armor':  { loc: 'RT',  face: 'front' },
-  'ct armor':  { loc: 'CT',  face: 'front' },
-  'hd armor':  { loc: 'HD',  face: 'front' },
-  'll armor':  { loc: 'LL',  face: 'front' },
-  'rl armor':  { loc: 'RL',  face: 'front' },
-  'cl armor':  { loc: 'CL',  face: 'front' },
+  'la armor': { loc: 'LA', face: 'front' },
+  'ra armor': { loc: 'RA', face: 'front' },
+  'lt armor': { loc: 'LT', face: 'front' },
+  'rt armor': { loc: 'RT', face: 'front' },
+  'ct armor': { loc: 'CT', face: 'front' },
+  'hd armor': { loc: 'HD', face: 'front' },
+  'll armor': { loc: 'LL', face: 'front' },
+  'rl armor': { loc: 'RL', face: 'front' },
+  'cl armor': { loc: 'CL', face: 'front' },
   'fll armor': { loc: 'FLL', face: 'front' },
   'frl armor': { loc: 'FRL', face: 'front' },
   'rll armor': { loc: 'RLL', face: 'front' },
   'rrl armor': { loc: 'RRL', face: 'front' },
   // Rear armor
-  'rtl armor': { loc: 'LT',  face: 'rear' },
-  'rtr armor': { loc: 'RT',  face: 'rear' },
-  'rtc armor': { loc: 'CT',  face: 'rear' },
+  'rtl armor': { loc: 'LT', face: 'rear' },
+  'rtr armor': { loc: 'RT', face: 'rear' },
+  'rtc armor': { loc: 'CT', face: 'rear' },
 };
 
 // ============================================================================
@@ -128,34 +135,45 @@ const ARMOR_LABEL_MAP: Record<string, { loc: string; face: 'front' | 'rear' }> =
 // ============================================================================
 
 const SYSTEM_NAMES: Record<string, MekSystemType> = {
-  'Shoulder':              'Shoulder',
-  'Upper Arm Actuator':    'Upper Arm Actuator',
-  'Lower Arm Actuator':    'Lower Arm Actuator',
-  'Hand Actuator':         'Hand Actuator',
-  'Hip':                   'Hip',
-  'Upper Leg Actuator':    'Upper Leg Actuator',
-  'Lower Leg Actuator':    'Lower Leg Actuator',
-  'Foot Actuator':         'Foot Actuator',
-  'Life Support':          'Life Support',
-  'Sensors':               'Sensors',
-  'Cockpit':               'Cockpit',
-  'Gyro':                  'Gyro',
-  'Landing Gear':          'Landing Gear',
-  'Avionics':              'Avionics',
-  'Conversion Gear':       'Conversion Gear',
+  Shoulder: 'Shoulder',
+  'Upper Arm Actuator': 'Upper Arm Actuator',
+  'Lower Arm Actuator': 'Lower Arm Actuator',
+  'Hand Actuator': 'Hand Actuator',
+  Hip: 'Hip',
+  'Upper Leg Actuator': 'Upper Leg Actuator',
+  'Lower Leg Actuator': 'Lower Leg Actuator',
+  'Foot Actuator': 'Foot Actuator',
+  'Life Support': 'Life Support',
+  Sensors: 'Sensors',
+  Cockpit: 'Cockpit',
+  Gyro: 'Gyro',
+  'Landing Gear': 'Landing Gear',
+  Avionics: 'Avionics',
+  'Conversion Gear': 'Conversion Gear',
 };
 
 const ENGINE_SLOT_NAMES = [
-  'Fusion Engine', 'XL Engine', 'XXL Engine', 'Light Engine',
-  'Compact Engine', 'No Engine',
+  'Fusion Engine',
+  'XL Engine',
+  'XXL Engine',
+  'Light Engine',
+  'Compact Engine',
+  'No Engine',
   // Large engine variants (rating > 400)
-  'Large Fusion Engine', 'Large XL Engine', 'Large XXL Engine',
-  'Large Light Engine', 'Large Compact Engine',
+  'Large Fusion Engine',
+  'Large XL Engine',
+  'Large XXL Engine',
+  'Large Light Engine',
+  'Large Compact Engine',
   // Full MTF names (robustness - some files may use the full label)
-  'XL Fusion Engine', 'XXL Fusion Engine', 'Light Fusion Engine',
+  'XL Fusion Engine',
+  'XXL Fusion Engine',
+  'Light Fusion Engine',
   'Compact Fusion Engine',
-  'Large XL Fusion Engine', 'Large XXL Fusion Engine',
-  'Large Light Fusion Engine', 'Large Compact Fusion Engine',
+  'Large XL Fusion Engine',
+  'Large XXL Fusion Engine',
+  'Large Light Fusion Engine',
+  'Large Compact Fusion Engine',
 ];
 
 // ============================================================================
@@ -172,7 +190,11 @@ export const MTF_SOURCE_LIMITS = Object.freeze({
 export class MtfSourceLimitError extends Error {
   readonly code = 'NATIVE_SOURCE_LIMIT' as const;
 
-  constructor(readonly limit: keyof typeof MTF_SOURCE_LIMITS, actual: number, maximum: number) {
+  constructor(
+    readonly limit: keyof typeof MTF_SOURCE_LIMITS,
+    actual: number,
+    maximum: number,
+  ) {
     super(`MTF ${limit} exceeded: ${actual} > ${maximum}`);
     this.name = 'MtfSourceLimitError';
   }
@@ -186,8 +208,9 @@ function decodeMtfSource(content: string, ctx: ParseContext): DecodedMtfSource {
   assertMtfLimit('maxLines', lines.length);
   for (const line of lines) assertMtfLimit('maxLineLength', line.length);
   const header = parseHeader(lines, ctx);
-  const equipmentEntries = header.nocritEquipment.length
-    + [...header.locationSlots.values()].reduce((total, slots) => total + slots.length, 0);
+  const equipmentEntries =
+    header.nocritEquipment.length +
+    [...header.locationSlots.values()].reduce((total, slots) => total + slots.length, 0);
   assertMtfLimit('maxEquipmentEntries', equipmentEntries);
   return header;
 }
@@ -205,15 +228,19 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
   // ── Identity & tech ──
   if (header.uuid) entity.uuid.set(asUnitUuid(header.uuid));
+  if (header.refitFromUUID) entity.refitFromUUID.set(asUnitUuid(header.refitFromUUID));
   entity.chassis.set(header.chassis);
   entity.model.set(header.model);
   entity.mulId.set(header.mulId);
   entity.year.set(header.era);
   entity.originalBuildYear.set(header.originalEra === header.era ? -1 : header.originalEra);
-  entity.source.set(header.source.map(source => ctx.resolveSourcebook(source)));
-  entity.published.set(header.published.map(source => ctx.resolveSourcebook(source)));
+  entity.source.set(header.source.map((source) => ctx.resolveSourcebook(source)));
+  entity.published.set(header.published.map((source) => ctx.resolveSourcebook(source)));
   entity.rulesLevel.set(header.rulesLevel);
   entity.role.set(header.role);
+  entity.forceGeneratorAvailability.set(
+    parseForceGeneratorAvailability(header.availability, (message) => ctx.warn('availability', message)),
+  );
   entity.omni.set(header.isOmni);
   entity.techBase.set(header.techBase);
   entity.mixedTech.set(header.mixedTech);
@@ -222,9 +249,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   // ── Physical properties ──
   entity.setTonnage(header.mass);
 
-  const hsInfo = header.heatSinks
-    ? decodeMtfHeatSinks(header.heatSinks)
-    : decodeMtfHeatSinks('10 Single');
+  const hsInfo = header.heatSinks ? decodeMtfHeatSinks(header.heatSinks) : decodeMtfHeatSinks('10 Single');
 
   // ── Engine + Heat Sinks → MountedEngine ──
   {
@@ -233,16 +258,15 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       : { rating: 0, type: 'Fusion' as const, techBase: 'IS' as const };
     const isSuperHeavy = header.mass > 100;
 
-    entity.configureEngine(new MountedEngine({
-      type: engineInfo.type,
-      rating: engineInfo.rating,
-      techBase: engineInfo.techBase,
-      isSuperHeavy,
-    }));
-    const heatSinkEquipment = ctx.resolveEquipment(
-      hsInfo.equipmentId,
-      'heat sinks',
+    entity.configureEngine(
+      new MountedEngine({
+        type: engineInfo.type,
+        rating: engineInfo.rating,
+        techBase: engineInfo.techBase,
+        isSuperHeavy,
+      }),
     );
+    const heatSinkEquipment = ctx.resolveEquipment(hsInfo.equipmentId, 'heat sinks');
     if (heatSinkEquipment instanceof MiscEquipment) {
       entity.heatSinkEquipment.set(heatSinkEquipment);
     }
@@ -254,12 +278,11 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   if (!structure) {
     ctx.error('Structure', `Invalid structure ${structureTechBase} ${structureInfo.name}`);
   }
-  const resolvedGlobalStructure = structure
-    ?? getStructureByName('Standard', entity.techBase(), ctx.equipmentRegistry)
-    ?? STANDARD_STRUCTURE_EQUIPMENT;
-  const defaultStructureTonnage = header.isFrankenMek
-    ? Math.max(10, Math.ceil(header.mass))
-    : header.mass;
+  const resolvedGlobalStructure =
+    structure ??
+    getStructureByName('Standard', entity.techBase(), ctx.equipmentRegistry) ??
+    STANDARD_STRUCTURE_EQUIPMENT;
+  const defaultStructureTonnage = header.isFrankenMek ? Math.max(10, Math.ceil(header.mass)) : header.mass;
   const globalStructure = new MountedStructure({
     tonnage: defaultStructureTonnage,
     structure: resolvedGlobalStructure,
@@ -272,9 +295,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       const location = rawLocation as MekLocation;
       const locationData = header.frankenMekLocations.get(location);
       // MegaMek ignores bare tonnage lines when the global marker is Hybrid.
-      const parsed = structureInfo.hybrid && !locationData?.structureName
-        ? undefined
-        : locationData;
+      const parsed = structureInfo.hybrid && !locationData?.structureName ? undefined : locationData;
       const loadoutTonnage = Math.max(10, parsed?.tonnage ?? defaultStructureTonnage);
       let mounted = globalStructure;
       if (parsed?.structureName) {
@@ -287,9 +308,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         mounted = new MountedStructure({
           tonnage: loadoutTonnage,
           structure: localStructure ?? resolvedGlobalStructure,
-          techBase: localInfo.techBase
-            ?? localStructure?.techBase
-            ?? globalStructure.techBase,
+          techBase: localInfo.techBase ?? localStructure?.techBase ?? globalStructure.techBase,
         });
       }
       entity.setStructureAt(location, mounted.withTonnage(loadoutTonnage));
@@ -319,11 +338,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   {
     let armorType: ArmorType = 'STANDARD';
     let armorTechBase: EntityTechBase = 'IS';
-    let armorEquipment: ArmorEquipment = requireArmorEquipment(
-      'STANDARD',
-      false,
-      ctx.equipmentRegistry,
-    );
+    let armorEquipment: ArmorEquipment = requireArmorEquipment('STANDARD', false, ctx.equipmentRegistry);
 
     if (header.armorType) {
       const armorInfo = decodeMtfArmor(header.armorType);
@@ -331,11 +346,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (armorInfo.patchwork) {
         armorType = 'PATCHWORK';
       } else {
-        const eq = resolveMtfArmorEquipment(
-          armorInfo.type,
-          armorInfo.clanTech,
-          ctx.equipmentRegistry,
-        );
+        const eq = resolveMtfArmorEquipment(armorInfo.type, armorInfo.clanTech, ctx.equipmentRegistry);
         if (eq) {
           armorType = eq.armorType as ArmorType;
           armorEquipment = eq;
@@ -345,10 +356,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       }
     }
 
-    entity.setUniformArmor(new MountedArmor({
-      techBase: armorTechBase,
-      armor: armorEquipment,
-    }));
+    entity.setUniformArmor(
+      new MountedArmor({
+        techBase: armorTechBase,
+        armor: armorEquipment,
+      }),
+    );
 
     if (armorType === 'PATCHWORK') entity.enablePatchworkArmor();
     // The native layout marker and effective per-location materials are independent facts.
@@ -357,22 +370,17 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         const mapping = ARMOR_LABEL_MAP[label.toLowerCase()];
         if (mapping) {
           const isClan = /(?:clan|\(clan\))/i.test(typeStr);
-          const locationArmor = resolveMtfArmorEquipment(
-            typeStr,
-            isClan,
-            ctx.equipmentRegistry,
-          );
+          const locationArmor = resolveMtfArmorEquipment(typeStr, isClan, ctx.equipmentRegistry);
           if (!locationArmor) {
             ctx.error(`${mapping.loc} Armor`, `Invalid armor ${isClan ? 'Clan' : 'IS'} ${typeStr}`);
           }
-          entity.setArmorAt(mapping.loc, new MountedArmor({
-            armor: locationArmor ?? requireArmorEquipment(
-              'STANDARD',
-              isClan,
-              ctx.equipmentRegistry,
-            ),
-            techBase: isClan ? 'Clan' : 'IS',
-          }));
+          entity.setArmorAt(
+            mapping.loc,
+            new MountedArmor({
+              armor: locationArmor ?? requireArmorEquipment('STANDARD', isClan, ctx.equipmentRegistry),
+              techBase: isClan ? 'Clan' : 'IS',
+            }),
+          );
         }
       }
     }
@@ -436,117 +444,117 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         const dedupKey = `${parsed.name}@${locCode}@${memberIndex}`;
         const existingId = parsed.isSplit ? undefined : multiCritMap.get(dedupKey);
 
-      let addedToExisting = false;
-      if (existingId) {
-        const mountIndex = mountedEquipment.findIndex(m => m.mountId === existingId);
-        if (mountIndex >= 0) {
-          const mount = mountedEquipment[mountIndex];
-          // Resolve expected crit count via entity context
-          const criticalSlots = numericCriticalSlotRequirement(mount, entity);
-          const lastPlacement = mount.placements?.[mount.placements.length - 1];
-          const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
-          if (mount.placedCriticalSlotCount < criticalSlots && isConsecutive) {
-            mountedEquipment[mountIndex] = mount.withAddedPlacement({ location: locCode, slotIndex: slotIdx });
+        let addedToExisting = false;
+        if (existingId) {
+          const mountIndex = mountedEquipment.findIndex((m) => m.mountId === existingId);
+          if (mountIndex >= 0) {
+            const mount = mountedEquipment[mountIndex];
+            // Resolve expected crit count via entity context
+            const criticalSlots = numericCriticalSlotRequirement(mount, entity);
+            const lastPlacement = mount.placements?.[mount.placements.length - 1];
+            const isConsecutive = lastPlacement?.location === locCode && lastPlacement.slotIndex === slotIdx - 1;
+            if (mount.placedCriticalSlotCount < criticalSlots && isConsecutive) {
+              mountedEquipment[mountIndex] = mount.withAddedPlacement({ location: locCode, slotIndex: slotIdx });
+              addedToExisting = true;
+            }
+          }
+        }
+
+        // MegaMek loads targeting computers like spreadable equipment even
+        // though the equipment definition itself is not spreadable: one mount
+        // per targeting-computer type owns every critical across all locations.
+        if (!addedToExisting) {
+          const targetingComputerIndex = mountedEquipment.findIndex(
+            (mount) => mount.equipmentId === parsed.name && isTargetingComputerEquipment(mount.equipment),
+          );
+          if (targetingComputerIndex >= 0) {
+            const targetingComputer = mountedEquipment[targetingComputerIndex];
+            mountedEquipment[targetingComputerIndex] = targetingComputer.withAddedPlacement({
+              location: locCode,
+              slotIndex: slotIdx,
+            });
             addedToExisting = true;
           }
         }
-      }
 
-      // MegaMek loads targeting computers like spreadable equipment even
-      // though the equipment definition itself is not spreadable: one mount
-      // per targeting-computer type owns every critical across all locations.
-      if (!addedToExisting) {
-        const targetingComputerIndex = mountedEquipment.findIndex(mount =>
-          mount.equipmentId === parsed.name
-          && isTargetingComputerEquipment(mount.equipment)
-        );
-        if (targetingComputerIndex >= 0) {
-          const targetingComputer = mountedEquipment[targetingComputerIndex];
-          mountedEquipment[targetingComputerIndex] = targetingComputer.withAddedPlacement({
-            location: locCode, slotIndex: slotIdx,
+        // Spreadable equipment: items like Ferro-Fibrous, Endo Steel, and
+        // Fuel Cell Power Generator have crits spread across multiple
+        // (possibly non-adjacent) locations.  All crits merge into one mount
+        // as long as it hasn't reached its expected crit count yet.
+        if (!addedToExisting) {
+          const existingSpreadableIndex = mountedEquipment.findIndex((m) => {
+            if (m.equipmentId !== parsed.name) return false;
+            const eq = m.equipment;
+            if (!eq?.isSpreadable) return false;
+            const expectedCrits = numericCriticalSlotRequirement(m, entity);
+            return m.placedCriticalSlotCount < expectedCrits;
           });
-          addedToExisting = true;
+          if (existingSpreadableIndex >= 0) {
+            const existingSpreadable = mountedEquipment[existingSpreadableIndex];
+            mountedEquipment[existingSpreadableIndex] = existingSpreadable.withAddedPlacement({
+              location: locCode,
+              slotIndex: slotIdx,
+            });
+            addedToExisting = true;
+          }
         }
-      }
 
-      // Spreadable equipment: items like Ferro-Fibrous, Endo Steel, and
-      // Fuel Cell Power Generator have crits spread across multiple
-      // (possibly non-adjacent) locations.  All crits merge into one mount
-      // as long as it hasn't reached its expected crit count yet.
-      if (!addedToExisting) {
-        const existingSpreadableIndex = mountedEquipment.findIndex(m => {
-          if (m.equipmentId !== parsed.name) return false;
-          const eq = m.equipment;
-          if (!eq?.isSpreadable) return false;
-          const expectedCrits = numericCriticalSlotRequirement(m, entity);
-          return m.placedCriticalSlotCount < expectedCrits;
-        });
-        if (existingSpreadableIndex >= 0) {
-          const existingSpreadable = mountedEquipment[existingSpreadableIndex];
-          mountedEquipment[existingSpreadableIndex] = existingSpreadable.withAddedPlacement({
-            location: locCode, slotIndex: slotIdx,
+        // Cross-location split: weapons with 8+ crit slots and explicitly
+        // splittable miscellaneous equipment may span adjacent locations.
+        if (!addedToExisting) {
+          const incompleteIndex = mountedEquipment.findIndex((m) => {
+            if (m.equipmentId !== parsed.name) return false;
+            if (!m.equipment?.canSplit()) return false;
+            const criticalSlots = numericCriticalSlotRequirement(m, entity);
+            return (
+              m.placedCriticalSlotCount < criticalSlots &&
+              m.location !== locCode &&
+              areMekSplitLocationsAdjacent(m.location, locCode)
+            );
           });
-          addedToExisting = true;
+          if (incompleteIndex >= 0) {
+            const incomplete = mountedEquipment[incompleteIndex];
+            // Primary location is the more restrictive one (torso > arm)
+            const primaryLocation = getMekSplitPrimaryLocation(incomplete.location, locCode);
+            const updated = incomplete.withAddedPlacement({ location: locCode, slotIndex: slotIdx }, primaryLocation);
+            mountedEquipment[incompleteIndex] = updated;
+            // Update multiCritMap so further crits in the new primary location
+            // can find this mount (e.g. AC/20 split RT+CT: after merging the
+            // first CT crit the location becomes CT, subsequent CT crits must
+            // still de-duplicate to the same mount).
+            multiCritMap.set(`${updated.equipmentId}@${updated.location}@${memberIndex}`, updated.mountId);
+            addedToExisting = true;
+          }
         }
-      }
 
-      // Cross-location split: weapons with 8+ crit slots and explicitly
-      // splittable miscellaneous equipment may span adjacent locations.
-      if (!addedToExisting) {
-        const incompleteIndex = mountedEquipment.findIndex(m => {
-          if (m.equipmentId !== parsed.name) return false;
-          if (!m.equipment?.canSplit()) return false;
-          const criticalSlots = numericCriticalSlotRequirement(m, entity);
-          return m.placedCriticalSlotCount < criticalSlots
-            && m.location !== locCode
-            && areMekSplitLocationsAdjacent(m.location, locCode);
-        });
-        if (incompleteIndex >= 0) {
-          const incomplete = mountedEquipment[incompleteIndex];
-          // Primary location is the more restrictive one (torso > arm)
-          const primaryLocation = getMekSplitPrimaryLocation(incomplete.location, locCode);
-          const updated = incomplete.withAddedPlacement(
-            { location: locCode, slotIndex: slotIdx }, primaryLocation,
-          );
-          mountedEquipment[incompleteIndex] = updated;
-          // Update multiCritMap so further crits in the new primary location
-          // can find this mount (e.g. AC/20 split RT+CT: after merging the
-          // first CT crit the location becomes CT, subsequent CT crits must
-          // still de-duplicate to the same mount).
-          multiCritMap.set(`${updated.equipmentId}@${updated.location}@${memberIndex}`, updated.mountId);
-          addedToExisting = true;
+        if (!addedToExisting) {
+          // New mount
+          const resolved = ctx.resolveEquipment(parsed.name, locCode, entity.techBase());
+          // MTF uses `(R)` for both rear-mounted equipment and a rear-facing
+          // vehicular grenade launcher. The resolved equipment family is the
+          // only unambiguous discriminator used by MegaMek's native grammar.
+          const rearMarkerIsVglFacing =
+            parsed.rearMounted && parsed.facing === undefined && resolved?.hasFlag('F_VGL') === true;
+
+          const mount = entity.addEquipment({
+            equipmentId: parsed.name,
+            equipment: resolved ?? undefined,
+            allocation: {
+              kind: 'location',
+              location: locCode,
+              placements: [{ location: locCode, slotIndex: slotIdx }],
+            },
+            rearMounted: rearMarkerIsVglFacing ? false : parsed.rearMounted,
+            turretMounted: parsed.turretMounted,
+            omniPodMounted: parsed.omniPod,
+            armored: parsed.armored,
+            facing: rearMarkerIsVglFacing ? 3 : parsed.facing,
+            size: parsed.variableSize,
+          });
+
+          mountedEquipment.push(mount);
+          multiCritMap.set(dedupKey, mount.mountId);
         }
-      }
-
-      if (!addedToExisting) {
-        // New mount
-        const resolved = ctx.resolveEquipment(parsed.name, locCode, entity.techBase());
-        // MTF uses `(R)` for both rear-mounted equipment and a rear-facing
-        // vehicular grenade launcher. The resolved equipment family is the
-        // only unambiguous discriminator used by MegaMek's native grammar.
-        const rearMarkerIsVglFacing = parsed.rearMounted
-          && parsed.facing === undefined
-          && resolved?.hasFlag('F_VGL') === true;
-
-        const mount = entity.addEquipment({
-          equipmentId: parsed.name,
-          equipment: resolved ?? undefined,
-          allocation: {
-            kind: 'location',
-            location: locCode,
-            placements: [{ location: locCode, slotIndex: slotIdx }],
-          },
-          rearMounted: rearMarkerIsVglFacing ? false : parsed.rearMounted,
-          turretMounted: parsed.turretMounted,
-          omniPodMounted: parsed.omniPod,
-          armored: parsed.armored,
-          facing: rearMarkerIsVglFacing ? 3 : parsed.facing,
-          size: parsed.variableSize,
-        });
-
-        mountedEquipment.push(mount);
-        multiCritMap.set(dedupKey, mount.mountId);
-      }
       }
     }
   }
@@ -575,12 +583,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
     const laSlots = header.locationSlots.get('Left Arm:') ?? [];
     const raSlots = header.locationSlots.get('Right Arm:') ?? [];
     entity.hasLowerArmActuator.set({
-      left: laSlots.some(s => s.startsWith('Lower Arm Actuator')),
-      right: raSlots.some(s => s.startsWith('Lower Arm Actuator')),
+      left: laSlots.some((s) => s.startsWith('Lower Arm Actuator')),
+      right: raSlots.some((s) => s.startsWith('Lower Arm Actuator')),
     });
     entity.hasHandActuator.set({
-      left: laSlots.some(s => s.startsWith('Hand Actuator')),
-      right: raSlots.some(s => s.startsWith('Hand Actuator')),
+      left: laSlots.some((s) => s.startsWith('Hand Actuator')),
+      right: raSlots.some((s) => s.startsWith('Hand Actuator')),
     });
   }
 
@@ -588,6 +596,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.fluff.set(header.fluff);
   entity.fluffImageEncoded.set(header.fluffImage);
   entity.iconEncoded.set(header.icon);
+  entity.iconPath.set(header.iconPath);
   if (header.manualBV > 0) entity.manualBV.set(header.manualBV);
   if (header.generator) entity.generator = header.generator;
 
@@ -613,6 +622,7 @@ function assertMtfLimit(limit: keyof typeof MTF_SOURCE_LIMITS, actual: number): 
 
 interface DecodedMtfSource {
   uuid: string;
+  refitFromUUID: string;
   chassis: string;
   model: string;
   mulId: number | null;
@@ -626,6 +636,7 @@ interface DecodedMtfSource {
   published: string[];
   rulesLevel: number;
   role: string;
+  availability: string[];
   isOmni: boolean;
   isFrankenMek: boolean;
   mass: number;
@@ -653,6 +664,7 @@ interface DecodedMtfSource {
   fluff: EntityFluff;
   fluffImage: string;
   icon: string;
+  iconPath: string;
   manualBV: number;
   generator?: string;
   clanName: string;
@@ -665,19 +677,55 @@ interface DecodedMtfSource {
 function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
   const h: DecodedMtfSource = {
     uuid: '',
-    chassis: '', model: '', mulId: null, config: 'Biped',
-    techBase: 'IS', mixedTech: false, techBaseRaw: 'IS',
-    era: 3025, originalEra: -1, source: [], published: [], rulesLevel: 2, role: '',
-    isOmni: false, isFrankenMek: false,
-    mass: 0, engine: '', structure: 'Standard', myomer: 'Standard',
-    gyro: '', cockpit: '', ejection: '', heatSinkKit: '',
-    heatSinks: '', baseChassisHeatSinks: -1, walkMP: 0, jumpMP: 0,
-    armorType: 'Standard', armorValues: new Map(), patchworkTypes: new Map(),
-    quirks: [], weaponQuirks: [],
-    locationSlots: new Map(), nocritEquipment: [], weaponsList: [],
-    faction: 'None', clanCaseOptOut: '',
-    fluff: {}, fluffImage: '', icon: '', manualBV: 0, generator: undefined,
-    clanName: '', lamType: '', motiveType: 'None' as MotiveType, rawHeatSinks: '',
+    refitFromUUID: '',
+    chassis: '',
+    model: '',
+    mulId: null,
+    config: 'Biped',
+    techBase: 'IS',
+    mixedTech: false,
+    techBaseRaw: 'IS',
+    era: 3025,
+    originalEra: -1,
+    source: [],
+    published: [],
+    rulesLevel: 2,
+    role: '',
+    availability: [],
+    isOmni: false,
+    isFrankenMek: false,
+    mass: 0,
+    engine: '',
+    structure: 'Standard',
+    myomer: 'Standard',
+    gyro: '',
+    cockpit: '',
+    ejection: '',
+    heatSinkKit: '',
+    heatSinks: '',
+    baseChassisHeatSinks: -1,
+    walkMP: 0,
+    jumpMP: 0,
+    armorType: 'Standard',
+    armorValues: new Map(),
+    patchworkTypes: new Map(),
+    quirks: [],
+    weaponQuirks: [],
+    locationSlots: new Map(),
+    nocritEquipment: [],
+    weaponsList: [],
+    faction: 'None',
+    clanCaseOptOut: '',
+    fluff: {},
+    fluffImage: '',
+    icon: '',
+    iconPath: '',
+    manualBV: 0,
+    generator: undefined,
+    clanName: '',
+    lamType: '',
+    motiveType: 'None' as MotiveType,
+    rawHeatSinks: '',
     frankenMekLocations: new Map(),
   };
 
@@ -708,7 +756,9 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
 
     // Inside location section
     if (currentLocHeader) {
-      const location = (currentLocHeader in QUAD_LOCATION_MAP ? QUAD_LOCATION_MAP : BIPED_LOCATION_MAP)[currentLocHeader];
+      const location = (currentLocHeader in QUAD_LOCATION_MAP ? QUAD_LOCATION_MAP : BIPED_LOCATION_MAP)[
+        currentLocHeader
+      ];
       const lowerLine = line.toLowerCase();
       if (lowerLine.startsWith('donor:')) {
         updateFrankenMekLocation(h.frankenMekLocations, location, {
@@ -726,7 +776,10 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
       continue;
     }
 
-    if (inWeaponsSection) { h.weaponsList.push(line); continue; }
+    if (inWeaponsSection) {
+      h.weaponsList.push(line);
+      continue;
+    }
 
     // Key:value lines
     const colonIdx = line.indexOf(':');
@@ -736,11 +789,24 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
     const value = line.substring(colonIdx + 1).trim();
 
     switch (key) {
-      case 'uuid':      h.uuid = value; break;
-      case 'generator': h.generator = value; break;
-      case 'chassis':   h.chassis = value; break;
-      case 'model':     h.model = value; break;
-      case 'mul id':    h.mulId = normalizeMulId(value); break;
+      case 'uuid':
+        h.uuid = value;
+        break;
+      case 'refitfromuuid':
+        h.refitFromUUID = value;
+        break;
+      case 'generator':
+        h.generator = value;
+        break;
+      case 'chassis':
+        h.chassis = value;
+        break;
+      case 'model':
+        h.model = value;
+        break;
+      case 'mul id':
+        h.mulId = normalizeMulId(value);
+        break;
       case 'config': {
         const lowerValue = value.toLowerCase();
         h.config = value;
@@ -752,29 +818,71 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
         const lowerValue = value.toLowerCase();
         h.techBaseRaw = value;
         h.mixedTech = lowerValue.startsWith('mixed');
-        if (lowerValue.includes('clan'))                h.techBase = 'Clan';
-        else                                            h.techBase = 'IS';
+        if (lowerValue.includes('clan')) h.techBase = 'Clan';
+        else h.techBase = 'IS';
         break;
       }
-      case 'era':                     h.era = parseMtfInteger(value, 'era', ctx, 3025); break;
-      case 'original era':            h.originalEra = parseMtfInteger(value, 'original era', ctx, -1); break;
-      case 'source':                  h.source = parseMetadataList(value); break;
-      case 'published':               h.published = parseMetadataList(value); break;
-      case 'rules level':             h.rulesLevel = parseMtfInteger(value, 'rules level', ctx, 2); break;
-      case 'role':                    h.role = value; break;
-      case 'mass':                    h.mass = parseMtfInteger(value, 'mass', ctx, 0); break;
-      case 'engine':                  h.engine = value; break;
-      case 'structure':               h.structure = value; break;
-      case 'myomer':                  h.myomer = value; break;
-      case 'gyro':                    h.gyro = value; break;
-      case 'cockpit':                 h.cockpit = value; break;
-      case 'ejection':                h.ejection = value; break;
-      case 'heat sink kit':           h.heatSinkKit = value; break;
-      case 'heat sinks':              h.heatSinks = value; h.rawHeatSinks = value; break;
-      case 'base chassis heat sinks': h.baseChassisHeatSinks = parseMtfInteger(value, 'base chassis heat sinks', ctx, -1); break;
-      case 'walk mp':                 h.walkMP = parseMtfInteger(value, 'walk mp', ctx, 0); break;
-      case 'jump mp':                 h.jumpMP = parseMtfInteger(value, 'jump mp', ctx, 0); break;
-      case 'armor':                   h.armorType = value; break;
+      case 'era':
+        h.era = parseMtfInteger(value, 'era', ctx, 3025);
+        break;
+      case 'original era':
+        h.originalEra = parseMtfInteger(value, 'original era', ctx, -1);
+        break;
+      case 'source':
+        h.source = parseMetadataList(value);
+        break;
+      case 'published':
+        h.published = parseMetadataList(value);
+        break;
+      case 'rules level':
+        h.rulesLevel = parseMtfInteger(value, 'rules level', ctx, 2);
+        break;
+      case 'role':
+        h.role = value;
+        break;
+      case 'availability':
+        h.availability.push(value);
+        break;
+      case 'mass':
+        h.mass = parseMtfInteger(value, 'mass', ctx, 0);
+        break;
+      case 'engine':
+        h.engine = value;
+        break;
+      case 'structure':
+        h.structure = value;
+        break;
+      case 'myomer':
+        h.myomer = value;
+        break;
+      case 'gyro':
+        h.gyro = value;
+        break;
+      case 'cockpit':
+        h.cockpit = value;
+        break;
+      case 'ejection':
+        h.ejection = value;
+        break;
+      case 'heat sink kit':
+        h.heatSinkKit = value;
+        break;
+      case 'heat sinks':
+        h.heatSinks = value;
+        h.rawHeatSinks = value;
+        break;
+      case 'base chassis heat sinks':
+        h.baseChassisHeatSinks = parseMtfInteger(value, 'base chassis heat sinks', ctx, -1);
+        break;
+      case 'walk mp':
+        h.walkMP = parseMtfInteger(value, 'walk mp', ctx, 0);
+        break;
+      case 'jump mp':
+        h.jumpMP = parseMtfInteger(value, 'jump mp', ctx, 0);
+        break;
+      case 'armor':
+        h.armorType = value;
+        break;
       case 'nocrit': {
         // Format: "EquipmentName:LocationAbbr" (e.g. "SmartRoboticControlSystem:None")
         const ncLastColon = value.lastIndexOf(':');
@@ -790,11 +898,22 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
       }
 
       // Armor values - handle patchwork format "ArmorType(TechBase):number"
-      case 'la armor': case 'ra armor': case 'lt armor': case 'rt armor':
-      case 'ct armor': case 'hd armor': case 'll armor': case 'rl armor':
-      case 'cl armor': case 'fll armor': case 'frl armor':
-      case 'rll armor': case 'rrl armor':
-      case 'rtl armor': case 'rtr armor': case 'rtc armor': {
+      case 'la armor':
+      case 'ra armor':
+      case 'lt armor':
+      case 'rt armor':
+      case 'ct armor':
+      case 'hd armor':
+      case 'll armor':
+      case 'rl armor':
+      case 'cl armor':
+      case 'fll armor':
+      case 'frl armor':
+      case 'rll armor':
+      case 'rrl armor':
+      case 'rtl armor':
+      case 'rtr armor':
+      case 'rtc armor': {
         const lastColon = value.lastIndexOf(':');
         if (lastColon > 0) {
           // Patchwork: "Reactive(Inner Sphere):26"
@@ -824,22 +943,45 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
           const slot = parseMtfInteger(parts[2], 'weaponquirk', ctx, NaN);
           if (Number.isNaN(slot)) break;
           h.weaponQuirks.push({
-            name: parts[0], location: parts[1],
-            slot, weaponName: parts[3],
+            name: parts[0],
+            location: parts[1],
+            slot,
+            weaponName: parts[3],
           });
         }
         break;
       }
 
-      case 'bv':      h.manualBV = parseMtfInteger(value, 'bv', ctx, 0); break;
-      case 'weapons':  inWeaponsSection = true; break;
-      case 'clanname': h.clanName = value; break;
-      case 'lam':      h.lamType = value; break;
-      case 'motive':   h.motiveType = decodeMotiveType(value); break;
-      case 'faction':  h.faction = factionFromAbbr(value); break;
-      case 'fluffimage': h.fluffImage = value; break;
-      case 'icon': h.icon = value; break;
-      case 'clancaseoptedoutlocs': h.clanCaseOptOut = value; break;
+      case 'bv':
+        h.manualBV = parseMtfInteger(value, 'bv', ctx, 0);
+        break;
+      case 'weapons':
+        inWeaponsSection = true;
+        break;
+      case 'clanname':
+        h.clanName = value;
+        break;
+      case 'lam':
+        h.lamType = value;
+        break;
+      case 'motive':
+        h.motiveType = decodeMotiveType(value);
+        break;
+      case 'faction':
+        h.faction = factionFromAbbr(value);
+        break;
+      case 'fluffimage':
+        h.fluffImage = value;
+        break;
+      case 'icon':
+        h.icon = value;
+        break;
+      case 'iconpath':
+        h.iconPath = value;
+        break;
+      case 'clancaseoptedoutlocs':
+        h.clanCaseOptOut = value;
+        break;
       default: {
         if (applyMtfFluffField(h.fluff, key, value)) break;
         const structureLocation = STRUCTURE_LOCATION_MAP[key];
@@ -852,10 +994,12 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
             break;
           }
           const tonnage = Number(tonnageText);
-          if (/^[+-]?\d+$/.test(tonnageText)
-              && Number.isInteger(tonnage)
-              && tonnage >= -2_147_483_648
-              && tonnage <= 2_147_483_647) {
+          if (
+            /^[+-]?\d+$/.test(tonnageText) &&
+            Number.isInteger(tonnage) &&
+            tonnage >= -2_147_483_648 &&
+            tonnage <= 2_147_483_647
+          ) {
             update.tonnage = tonnage;
           } else {
             ctx.error(`${structureLocation} structure`, `Invalid structure tonnage "${tonnageText}"`);
@@ -872,12 +1016,7 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
   return h;
 }
 
-function parseMtfInteger(
-  value: string,
-  field: string,
-  ctx: ParseContext,
-  fallback: number,
-): number {
+function parseMtfInteger(value: string, field: string, ctx: ParseContext, fallback: number): number {
   if (!/^[+-]?\d+$/u.test(value)) {
     ctx.error(field, `Invalid integer "${value}"`);
     return fallback;
@@ -915,17 +1054,20 @@ interface DecodedMtfCriticalSlot {
 
 function decodeMtfCriticalSlotLine(raw: string): DecodedMtfCriticalSlot[] {
   const slots = raw.split('|').map(parseMountedCritSlot);
-  const armored = slots.some(slot => slot.armored);
-  const omniPod = slots.some(slot => slot.omniPod);
+  const armored = slots.some((slot) => slot.armored);
+  const omniPod = slots.some((slot) => slot.omniPod);
   // Superheavy sharing applies to the physical slot.  Both canonical mounts
   // carry that state so cost, BV, and serialization cannot observe a half-slot.
-  return slots.map(slot => ({ ...slot, armored, omniPod }));
+  return slots.map((slot) => ({ ...slot, armored, omniPod }));
 }
 
 function parseMountedCritSlot(raw: string): DecodedMtfCriticalSlot {
   let name = raw;
-  let omniPod = false, armored = false, rearMounted = false;
-  let turretMounted = false, isSplit = false;
+  let omniPod = false,
+    armored = false,
+    rearMounted = false;
+  let turretMounted = false,
+    isSplit = false;
   let facing: number | undefined;
   let variableSize: number | undefined;
 
@@ -934,16 +1076,36 @@ function parseMountedCritSlot(raw: string): DecodedMtfCriticalSlot {
   let match;
   while ((match = suffixRe.exec(name)) !== null) {
     switch (match[1].toLowerCase()) {
-      case 'omnipod': omniPod = true; break;
-      case 'armored': armored = true; break;
-      case 'r':       rearMounted = true; break;
-      case 't':       turretMounted = true; break;
-      case 'split':   isSplit = true; break;
-      case 'fl':      facing = 0; break;
-      case 'fr':      facing = 1; break;
-      case 'f':       facing = 2; break;
-      case 'rl':      facing = 4; break;
-      case 'rr':      facing = 5; break;
+      case 'omnipod':
+        omniPod = true;
+        break;
+      case 'armored':
+        armored = true;
+        break;
+      case 'r':
+        rearMounted = true;
+        break;
+      case 't':
+        turretMounted = true;
+        break;
+      case 'split':
+        isSplit = true;
+        break;
+      case 'fl':
+        facing = 0;
+        break;
+      case 'fr':
+        facing = 1;
+        break;
+      case 'f':
+        facing = 2;
+        break;
+      case 'rl':
+        facing = 4;
+        break;
+      case 'rr':
+        facing = 5;
+        break;
     }
   }
   name = name.replace(suffixRe, '').trim();
@@ -959,7 +1121,7 @@ function parseMountedCritSlot(raw: string): DecodedMtfCriticalSlot {
 }
 
 function isEngineSlot(name: string): boolean {
-  return ENGINE_SLOT_NAMES.some(e => name.startsWith(e)) || name === 'Engine';
+  return ENGINE_SLOT_NAMES.some((e) => name.startsWith(e)) || name === 'Engine';
 }
 
 function decodeMtfSystemSlot(name: string): MekSystemType | undefined {
@@ -976,15 +1138,18 @@ function mtfLocationMap(config: string): Readonly<Record<string, MekLocation>> {
 
 function createMekEntity(config: string, equipmentRegistry: EquipmentRegistry): MekEntity {
   const lower = config.toLowerCase();
-  if (lower.includes('lam'))     return new LamEntity(equipmentRegistry);
+  if (lower.includes('lam')) return new LamEntity(equipmentRegistry);
   if (lower.includes('quadvee')) return new QuadVeeEntity(equipmentRegistry);
-  if (lower.includes('quad'))    return new QuadMekEntity(equipmentRegistry);
-  if (lower.includes('tripod'))  return new TripodMekEntity(equipmentRegistry);
+  if (lower.includes('quad')) return new QuadMekEntity(equipmentRegistry);
+  if (lower.includes('tripod')) return new TripodMekEntity(equipmentRegistry);
   return new BipedMekEntity(equipmentRegistry);
 }
 
 function parseMetadataList(value: string): string[] {
-  return value.split(',').map(item => item.trim()).filter(Boolean);
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function numericCriticalSlotRequirement(mount: EntityMountedEquipment, entity: MekEntity): number {

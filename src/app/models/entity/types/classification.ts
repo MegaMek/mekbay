@@ -22,6 +22,7 @@ export type UnitSubtype =
   | 'Combat Vehicle'
   | 'Combat Vehicle Omni'
   | 'Building'
+  | 'Mobile Structure'
   | 'Conventional Fighter'
   | 'Conventional Infantry'
   | 'Fixed Wing Support Vehicle'

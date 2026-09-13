@@ -1,0 +1,394 @@
+// Copyright (C) 2026 The MegaMek Team
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+.installed-inspector-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+
+    &.mobile {
+        background: #0009;
+    }
+}
+
+.installed-inspector {
+    position: fixed;
+    z-index: 40;
+    width: 340px;
+    max-width: calc(100vw - 24px);
+    max-height: min(75dvh, 700px, calc(100dvh - var(--inspector-top, 12px) - 12px));
+    overflow: auto;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 10px 14px;
+    box-shadow: 0 2px 12px #0008;
+    font-size: 0.95em;
+    color: #fff;
+
+    .inspector-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding-right: 36px;
+    }
+
+    .inspector-heading:has(.mount-order-controls) {
+        padding-right: 100px;
+    }
+
+    .inspector-heading h3 {
+        margin: 0;
+        padding-bottom: 4px;
+        font-size: 1.3em;
+        font-weight: bold;
+        line-height: normal;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .inspector-title {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .inspector-subtitle {
+        margin: 0 0 8px;
+        font-size: 0.85em;
+    }
+
+    .basic-info {
+        margin-top: 4px;
+
+        .muted { font-size: inherit; }
+    }
+
+    .equip-label {
+        flex-shrink: 0;
+    }
+
+    .equip-value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .inspector-close {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+    }
+
+    p {
+        line-height: 1.5;
+    }
+
+    fieldset,
+    .split-controls {
+        border: 1px solid #ffffff30;
+        margin: 14px 0;
+        padding: 10px;
+    }
+
+    legend {
+        font-weight: 600;
+        padding-inline: 4px;
+    }
+
+    label {
+        display: flex;
+        gap: 6px;
+        margin-block: 6px;
+        align-items: center;
+    }
+
+    .mount-controls {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+
+        // Share caption and control rows so checkboxes align with the controls.
+        >* {
+            grid-row: span 2;
+        }
+
+        .component-armor-note {
+            grid-column: 1 / -1;
+            margin: 0;
+        }
+
+        label {
+            display: grid;
+            grid-template-rows: subgrid;
+            min-width: 0;
+            text-align: left;
+            color: #bbb;
+            font-size: 10px;
+        }
+
+        select,
+        input:not(.bt-checkbox) {
+            width: 100%;
+            font-size: 10px;
+        }
+
+        .check {
+            grid-template-columns: auto minmax(0, 1fr);
+            column-gap: 4px;
+
+            >* {
+                grid-row: 2;
+            }
+        }
+
+        small {
+            display: block;
+        }
+    }
+
+    .runtime-ammo {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .spread-allocation {
+        margin: 14px 0;
+        padding: 12px;
+        background: #ffffff05;
+        border: 1px solid #ffffff25;
+    }
+
+    &:has(.spread-allocation) {
+        max-height: min(90dvh, 800px, calc(100dvh - var(--inspector-top, 12px) - 12px));
+    }
+
+    .spread-heading,
+    .spread-remainder,
+    .spread-location {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .spread-heading {
+        h4 { margin: 0; font-size: 12px; }
+        span { color: #bbb; font-size: 10px; white-space: nowrap; }
+        b { color: #fff; }
+    }
+
+    .spread-allocation progress {
+        appearance: none;
+        display: block;
+        width: 100%;
+        height: 4px;
+        margin: 10px 0;
+        border: 0;
+        background: #ffffff15;
+        &::-webkit-progress-bar { background: #ffffff15; }
+        &::-webkit-progress-value { background: var(--bt-yellow); }
+        &::-moz-progress-bar { background: var(--bt-yellow); }
+    }
+
+    .spread-remainder {
+        min-height: 26px;
+        font-size: 11px;
+        color: #aaa;
+        .slots-remaining { color: var(--bt-yellow); }
+    }
+
+    .spread-auto { min-height: 26px; padding: 4px 7px; font-size: 9px; }
+    .spread-help { margin: 8px 0; font-size: 10px; color: #aaa; }
+    .spread-location {
+        padding: 2px 0;
+        border-top: 1px solid #ffffff12;
+        label { display: block; margin: 0; font-size: 11px; }
+        small { display: block; font-size: 9px; color: #999; }
+    }
+
+    .spread-stepper {
+        display: grid;
+        grid-template-columns: 28px 36px 28px;
+        gap: 3px;
+        flex-shrink: 0;
+        button, input { min-width: 0; width: 100%; height: 30px; padding: 0; text-align: center; }
+        button { font-size: 16px; }
+        input { font-size: 12px; font-variant-numeric: tabular-nums; appearance: textfield; }
+        input::-webkit-inner-spin-button, input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+    }
+
+    .split-controls label {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .split-controls summary {
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .mount-order-controls {
+        position: absolute;
+        top: 6px;
+        right: 52px;
+        display: flex;
+        gap: 6px;
+    }
+
+    .mount-order-controls button {
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        font-size: 15px;
+    }
+
+    &.mobile {
+        inset: 50% auto auto 50%;
+        transform: translate(-50%, -50%);
+        width: 440px;
+        max-height: 85dvh;
+    }
+}
+
+.critical-grid.fixed-slots {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+
+    >.system-slot,
+    >.slot-target {
+        grid-column: 1;
+        min-width: 0;
+    }
+}
+
+.critical-grid {
+    position: relative;
+}
+
+.construction-drag-placeholder {
+    display: none !important;
+}
+
+.slot-target.preview-covered {
+    visibility: hidden;
+}
+
+.construction-drag-preview {
+    box-sizing: border-box;
+    display: flex;
+    opacity: .9;
+    pointer-events: none;
+}
+
+.construction-drag-preview > .slot-target {
+    width: 100%;
+}
+
+.slot-drop-preview {
+    position: absolute;
+    inset: 0;
+    grid-column: 1;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    border: 2px solid #e7bf5b;
+    background: #514729e8;
+    color: #fff;
+    font-size: 11px;
+    pointer-events: none;
+
+    small {
+        font-size: 9px;
+        color: #eed897;
+    }
+}
+
+.drop-rejected {
+    outline: 2px solid #dd6d62;
+
+    .empty-slot {
+        background: #732d2d60;
+    }
+}
+
+.drop-reason {
+    position: absolute;
+    inset: auto 0 100%;
+    z-index: 4;
+    padding: 8px;
+    color: #fff;
+    background: #692b28;
+    font-size: 11px;
+    pointer-events: none;
+}
+
+.armored-equipment {
+    box-shadow: inset 0 0 0 1px #b6d4e7;
+}
+
+.critical-ticks i.armored-tick {
+    outline: 1px solid #cae7ff;
+    outline-offset: 1px;
+}
+
+.armored-badge {
+    flex-shrink: 0;
+    padding: 1px 3px;
+    color: #cae7ff;
+    border: 1px solid #8eafc5;
+    font-size: 8px;
+    line-height: 1.2;
+    align-self: flex-start;
+}
+
+.single-slot .mounted-name:has(.armored-badge) {
+    flex-direction: row;
+    align-items: center;
+}
+
+.system-name {
+    width: 100%;
+    cursor: pointer;
+    padding-block: 0;
+}
+
+.system-slot:has(.uninstall-mount) .system-name {
+    padding-right: 24px;
+}
+
+.equipment-details {
+    margin: 12px 0;
+    border-block: 1px solid #ffffff30;
+
+    summary {
+        cursor: pointer;
+        color: var(--text-color-secondary);
+        padding: 8px 0;
+        font-size: 0.95em;
+    }
+
+    summary:focus-visible {
+        outline: 2px solid var(--bt-yellow);
+        outline-offset: 2px;
+    }
+}
+
+.component-repair {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--bt-yellow);
+
+    small {
+        color: var(--text-color-secondary);
+        line-height: 1.4;
+    }
+}

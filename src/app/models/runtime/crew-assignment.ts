@@ -17,6 +17,8 @@ export interface CrewAssignmentPosition {
     readonly name: string;
     readonly gunnery: number;
     readonly piloting: number;
+    readonly aeroGunnery?: number;
+    readonly aeroPiloting?: number;
 }
 
 /** Immutable deployment facts; combat wounds and consciousness remain sparse runtime state. */
@@ -89,6 +91,7 @@ export function canonicalizeCrewAssignment(
             record['positions'][index],
             ['positionId', 'name', 'gunnery', 'piloting'],
             path,
+            ['aeroGunnery', 'aeroPiloting'],
         );
         const positionId = boundedPositionId(item['positionId'], `${path}.positionId`);
         if (!expectedById.has(positionId)) throw new Error(`${path}.positionId is not in the entity crew topology`);
@@ -99,6 +102,8 @@ export function canonicalizeCrewAssignment(
             name: boundedText(item['name'], MAX_CREW_NAME_LENGTH, `${path}.name`),
             gunnery: boundedSkill(item['gunnery'], `${path}.gunnery`),
             piloting: boundedSkill(item['piloting'], `${path}.piloting`),
+            ...(item['aeroGunnery'] === undefined ? {} : { aeroGunnery: boundedSkill(item['aeroGunnery'], `${path}.aeroGunnery`) }),
+            ...(item['aeroPiloting'] === undefined ? {} : { aeroPiloting: boundedSkill(item['aeroPiloting'], `${path}.aeroPiloting`) }),
         }));
     }
     return freezeAssignment(expected.flatMap(position => {
@@ -136,13 +141,13 @@ function freezeAssignment(positions: readonly CrewAssignmentPosition[]): CrewAss
     });
 }
 
-function requireExactRecord(value: unknown, keys: readonly string[], path: string): Record<string, unknown> {
+function requireExactRecord(value: unknown, keys: readonly string[], path: string, optional: readonly string[] = []): Record<string, unknown> {
     if (value === null || typeof value !== 'object' || Array.isArray(value)
         || Object.getPrototypeOf(value) !== Object.prototype) {
         throw new Error(`${path} must be a plain object`);
     }
     const record = value as Record<string, unknown>;
-    const actual = Object.keys(record).sort(compareText);
+    const actual = Object.keys(record).filter(key => !optional.includes(key)).sort(compareText);
     const expected = [...keys].sort(compareText);
     if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
         throw new Error(`${path} must contain exactly: ${expected.join(', ')}`);

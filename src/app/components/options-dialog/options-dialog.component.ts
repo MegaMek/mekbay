@@ -17,6 +17,7 @@ import { GameService } from '../../services/game.service';
 import type { GameSystem } from '../../models/common.model';
 import type {
     AutomationMode,
+    MouseWheelAction,
     AvailabilitySource,
     CBTAutomationKey,
     CBTOptionalRules,
@@ -47,6 +48,7 @@ import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { CustomUnitLibraryComponent } from '../custom-unit-library/custom-unit-library.component';
 import { UnitArtworkService } from '../../services/unit-artwork.service';
+import { ProvidedFluffImageService } from '../../services/catalogs/provided-fluff-image.service';
 import { CustomUnitsService } from '../../services/custom-units.service';
 import { asUnitUuid, type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
@@ -176,6 +178,7 @@ export class OptionsDialogComponent {
     gameSystem = inject(GameService);
     dbService = inject(DbService);
     readonly artwork = inject(UnitArtworkService);
+    readonly providedImages = inject(ProvidedFluffImageService);
     private readonly customUnits = inject(CustomUnitsService);
     private readonly catalogStorage = inject(CatalogStorage);
     dialogRef = inject(DialogRef<OptionsDialogComponent>);
@@ -483,6 +486,11 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('unitSearchExpandedViewLayout', value);
     }
 
+    onMouseWheelActionChange(event: Event) {
+        const value = (event.target as HTMLSelectElement).value as MouseWheelAction;
+        this.optionsService.setOption('mouseWheelAction', value);
+    }
+
     onCanvasInputChange(event: Event) {
         const value = (event.target as HTMLSelectElement).value as 'all' | 'touch' | 'pen';
         this.optionsService.setOption('canvasInput', value);
@@ -582,7 +590,7 @@ export class OptionsDialogComponent {
 
     private async refreshArtworkCollection(): Promise<void> {
         this.artworkCollectionReady.set(false);
-        await Promise.all([this.artwork.initialize(), this.customUnits.initialize(), this.dataService.requireApplicationCatalogReady()]);
+        await Promise.all([this.artwork.initialize(), this.providedImages.initialize(), this.customUnits.initialize(), this.dataService.requireApplicationCatalogReady()]);
         // Include persisted designs from every account, including subscriptions not yet projected into search.
         const uuids = new Set<UnitUuid>();
         for (const row of await this.dbService.listCustomUnits()) {
@@ -604,8 +612,8 @@ export class OptionsDialogComponent {
             if (candidates?.length === 0) return;
             const confirmed = await this.dialogsService.requestConfirmation(
                 unusedOnly ? `Delete artwork for ${candidates!.length} units absent from your collection? This cannot be undone.`
-                    : 'Delete all locally stored unit artwork? This cannot be undone.',
-                unusedOnly ? 'Purge unused fluff images' : 'Purge fluff images', 'danger');
+                    : 'Delete all custom unit artwork stored on this device? This cannot be undone.',
+                unusedOnly ? 'Purge unused custom images' : 'Purge custom images', 'danger');
             if (!confirmed) return;
             if (unusedOnly) {
                 // A unit may have been imported or subscribed to while the confirmation was open.
@@ -613,6 +621,21 @@ export class OptionsDialogComponent {
                 const stillUnused = new Set(this.unusedArtworkUuids());
                 await this.artwork.purge(candidates!.filter(uuid => stillUnused.has(uuid)));
             } else await this.artwork.purge();
+        } catch (error) {
+            this.artworkError.set(error instanceof Error ? error.message : String(error));
+        } finally { this.purgingArtwork.set(false); }
+    }
+
+    async onPurgeProvidedImages(): Promise<void> {
+        if (this.purgingArtwork()) return;
+        this.purgingArtwork.set(true);
+        try {
+            const confirmed = await this.dialogsService.requestConfirmation(
+                'Delete downloaded provided images from this device? They will download again when needed.',
+                'Purge provided images', 'danger');
+            if (!confirmed) return;
+            await this.providedImages.purge();
+            this.artworkError.set('');
         } catch (error) {
             this.artworkError.set(error instanceof Error ? error.message : String(error));
         } finally { this.purgingArtwork.set(false); }
@@ -771,20 +794,22 @@ export class OptionsDialogComponent {
             return;
         }
 
-        const confirmed = await this.dialogsService.requestConfirmation(
-            'Are you sure you want to log out on this device? MekBay will remove the local account data stored in this browser, including forces, operations, organizations, tags, subscribed public tags, saved searches and drawings. Your linked OAuth providers will remain attached to your MekBay account. A fresh anonymous User Identifier will then be generated and the app will reload.',
-            'Confirm Logout',
-            'danger'
+        const choice = await this.dialogsService.choose<'keep' | 'delete' | 'cancel'>(
+            'Log Out',
+            'Logging out resets your local User Identifier and personal settings. Would you also like to delete local forces, local tags, saved searches, and custom units (including local subscription copies)? Other saved data and images will stay on this device. Your linked OAuth providers remain attached to your account. The app will reload with a fresh anonymous User Identifier.',
+            [
+                { label: 'KEEP LOCAL DATA', value: 'keep' },
+                { label: 'DELETE LOCAL DATA', value: 'delete', class: 'danger' },
+                { label: 'CANCEL', value: 'cancel' },
+            ],
+            'cancel',
         );
-
-        if (!confirmed) {
-            return;
-        }
+        if (choice === 'cancel') return;
 
         this.logoutInFlight.set(true);
 
         try {
-            await this.dbService.clearLocalUserStores();
+            await this.dbService.clearLocalSession(choice === 'delete');
             await this.userStateService.createFreshSession();
             window.location.reload();
         } catch (error) {

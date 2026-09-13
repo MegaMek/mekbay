@@ -3,6 +3,8 @@
 // Author: Drake
 
 import type { BaseEntity } from '../../base-entity';
+import type { StaticEmplacementEntity } from '../../entities/misc/static-emplacement-entity';
+import { MobileStructureBVCalculator } from './mobile-structure-bv-calculator';
 import type { EntityStateView } from '../../entity-state-view';
 import { CORE_2026_RULESET, type CBTRuleset } from '../../../cbt-ruleset.model';
 import { gameRulesFor } from '../../../rules/game-rules';
@@ -41,6 +43,7 @@ export function getBVCalculator(
     case 'SmallCraft':
     case 'FixedWingSupport': return new AeroBVCalculator(entity as never, state, rules);
     case 'HandheldWeapon': return new HandheldWeaponBVCalculator(entity, state, rules);
+    case 'MobileStructure': return new MobileStructureBVCalculator(entity as StaticEmplacementEntity, state, rules);
     default: return new CombatVehicleBVCalculator(entity, state, rules);
   }
 }
@@ -50,14 +53,26 @@ export function calculateBattleValue(
   state?: EntityStateView,
   ruleset: CBTRuleset = CORE_2026_RULESET,
 ): number {
+  const manual = entity.manualBV();
+  if (manual > 0) return manual;
   return getBVCalculator(entity, state, ruleset).calculateBaseBV();
 }
 
-/** Calculates the numeric BV and its structured report in one traversal. */
+/** Applies authored BV while retaining the calculated report for inspection. */
 export function calculateBattleValueDetails(
   entity: BaseEntity,
   state?: EntityStateView,
   ruleset: CBTRuleset = CORE_2026_RULESET,
 ): BattleValueBreakdown {
-  return getBVCalculator(entity, state, ruleset).calculate();
+  const calculated = getBVCalculator(entity, state, ruleset).calculate();
+  const manual = entity.manualBV();
+  if (manual <= 0) return calculated;
+  return {
+    ...calculated,
+    base: manual,
+    details: [
+      { type: 'Calculated Battle Value', total: calculated.base, details: calculated.details },
+      { type: 'Manual Battle Value', calculation: 'Overrides calculated BV', total: manual },
+    ],
+  };
 }

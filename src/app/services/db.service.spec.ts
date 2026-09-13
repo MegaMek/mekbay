@@ -39,6 +39,65 @@ describe('DbService current force persistence', () => {
         await service.deleteForce(instanceId);
     });
 
+    for (const deletePersonalData of [false, true]) {
+        it(`clears logout identity and preferences while ${deletePersonalData ? 'deleting only forces, tags, searches and custom units' : 'preserving all saved data'}`, async () => {
+            const database = await (service as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            const stores = Array.from(database.objectStoreNames);
+            const key = `logout-test-${crypto.randomUUID()}`;
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    const tx = database.transaction(stores, 'readwrite');
+                    for (const name of stores) tx.objectStore(name).put({ test: key }, key);
+                    tx.objectStore('store').put({ uuid: 'old-account' }, 'user');
+                    tx.objectStore('store').put({ colorScheme: 'dark' }, 'options');
+                    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+                });
+                await service.clearLocalSession(deletePersonalData);
+                expect(await service.getUserData()).toBeFalsy();
+                expect(await service.getOptions()).toBeFalsy();
+                const removed = new Set(deletePersonalData ? ['forceStore', 'tagsStore', 'savedSearchesStore', 'customUnitsStore', 'subscribedCustomUnitsStore', 'customUnitSummariesStore'] : []);
+                await new Promise<void>((resolve, reject) => {
+                    const tx = database.transaction(stores, 'readonly');
+                    for (const name of stores) {
+                        const request = tx.objectStore(name).get(key);
+                        request.onsuccess = () => expect(request.result).withContext(name)
+                            .toEqual(removed.has(name) ? undefined : { test: key });
+                    }
+                    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+                });
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    const tx = database.transaction(stores, 'readwrite');
+                    for (const name of stores) tx.objectStore(name).delete(key);
+                    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+                });
+            }
+        });
+    }
+
+    it('keeps provided images in a dedicated store across catalog and account resets and purges them independently', async () => {
+        const url = `https://art.example/${crypto.randomUUID()}.png`;
+        const uuid = asUnitUuid(crypto.randomUUID());
+        const blob = new Blob(['provided'], { type: 'image/png' });
+        try {
+            await service.saveUnitArtwork(uuid, { fluff: blob });
+            await service.saveProvidedImage(url, blob);
+            await service.clearCatalogCaches();
+            await service.clearLocalSession();
+            const fresh = TestBed.runInInjectionContext(() => new DbService());
+            expect(await (await fresh.listProvidedImages()).get(url)!.text()).toBe('provided');
+            const database = await (fresh as unknown as { dbPromise: Promise<IDBDatabase> }).dbPromise;
+            expect(database.objectStoreNames.contains('providedImagesStore')).toBeTrue();
+            database.close();
+            await service.purgeProvidedImages();
+            expect((await service.listProvidedImages()).size).toBe(0);
+            expect(await (await service.getUnitArtwork(uuid))!.fluff!.text()).toBe('provided');
+        } finally {
+            await service.purgeUnitArtwork([uuid]);
+            await service.purgeProvidedImages();
+        }
+    });
+
     it('stores custom native designs in their own store across updates and cache clearing', async () => {
         const uuid = asUnitUuid(crypto.randomUUID());
         const record: SavedCustomUnit = {

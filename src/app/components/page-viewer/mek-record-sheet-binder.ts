@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { renderProtectionCounter } from '../../utils/sheets/record-sheet-protection-counter';
+
 import type {
 ComponentId,
 } from '../../models/entity/entity-identifiers';
@@ -47,6 +49,7 @@ renderRecordSheetPips,
 } from './record-sheet-dom';
 import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
 import type { RecordSheetInteraction,RecordSheetInteractionHandler } from './record-sheet-interaction';
+import { bindRecordSheetMovement } from './record-sheet-movement';
 
 export interface MekRecordSheetBinding {
     render(snapshot: MekRecordSheetSnapshot): readonly string[];
@@ -87,6 +90,8 @@ export function bindMekRecordSheet(
     const entityUuid = initial.entityUuid;
     let current = initial;
     let firstRender = true;
+    const renderMovementSelection = bindRecordSheetMovement(svg, () => current.movementSelection,
+        () => current.editContext, abort.signal, onInteraction);
 
     const emit = (interaction: RecordSheetInteraction, event: Event): void => {
         event.preventDefault();
@@ -254,7 +259,7 @@ export function bindMekRecordSheet(
             const selector = `${manifest.selectors.criticalSlot}[data-loc="${attributeValue(slot.locationCode)}"][slot="${slot.slotIndex}"]`;
             const element = svg.querySelector<SVGElement>(selector);
             if (!element) {
-                issues.push(`Missing critical-slot layout ${slot.locationCode}:${slot.slotIndex}`);
+                issues.push(`Missing critical-slot layout ${slot.locationCode}, slot ${slot.slotIndex + 1}`);
                 continue;
             }
             element.style.display = '';
@@ -334,12 +339,13 @@ export function bindMekRecordSheet(
             () => current.editContext,
             onInteraction !== undefined,
         );
-        bindEquipmentHover(svg, abort.signal);
+        if (onInteraction || onPresentationInteraction) bindEquipmentHover(svg, abort.signal);
         renderAmmoProfile(svg, snapshot, onInteraction !== undefined);
         renderHeat(svg, snapshot, bindHeat);
         renderLifeSupportPilotDamage(svg, snapshot);
         bindHeatControls(svg, emit, abort.signal, () => current.editContext, onInteraction !== undefined);
         renderMovement(svg, snapshot);
+        renderMovementSelection(snapshot.movementSelection);
         bindHeatSinkControls(svg, emit, abort.signal, () => current.editContext, onInteraction !== undefined);
         bindShutdownControl(svg, emit, abort.signal, () => current.editContext, onInteraction !== undefined);
         bindEquipmentOpeners(svg, emit, abort.signal, () => current.editContext, onInteraction !== undefined);
@@ -372,8 +378,15 @@ export function bindMekRecordSheet(
             ammoProfile?.classList.remove('interactive');
             ammoProfile?.removeAttribute('tabindex');
             ammoProfile?.querySelector('.inventoryEntryButton')?.remove();
-            svg.querySelectorAll<SVGElement>('[data-mekbay-bound="1"]')
-                .forEach(element => { delete element.dataset['mekbayBound']; });
+            svg.querySelectorAll<SVGElement>('[data-mekbay-bound="1"]').forEach(element => {
+                delete element.dataset['mekbayBound'];
+                element.classList.remove('interactive', 'selectable');
+                element.removeAttribute('tabindex');
+            });
+            svg.querySelectorAll<SVGElement>(manifest.selectors.inventoryRow)
+                .forEach(element => element.classList.remove('interactive'));
+            svg.querySelectorAll('.referenceTableControl')
+                .forEach(element => element.classList.remove('referenceTableControl'));
             delete svg.dataset['mekbayReferenceBound'];
         },
     });
@@ -438,32 +451,37 @@ function renderIdentity(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): v
 
 function renderMovement(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): void {
     const projection = snapshot.movement.projection;
+    const underwater = snapshot.movement.secondaryMode === 'UMU';
     const current = projection.kind === 'supported'
         ? Object.freeze({
             walk: projection.walkMp,
             run: projection.runMp,
-            jump: projection.umuMp > 0 ? projection.umuMp : projection.jumpMp,
-            impaired: projection.movementImpaired,
+            jump: underwater ? projection.umuMp : projection.jumpMp,
+            walkMaximum: projection.potentialWalkMp,
+            runMaximum: projection.maximumRunMp,
+            impairment: projection.movementImpairment,
         })
         : Object.freeze({
             walk: snapshot.movement.walkMp,
             run: snapshot.movement.runMp,
             jump: snapshot.movement.jumpMp,
-            impaired: false,
+            walkMaximum: snapshot.movement.walkMp,
+            runMaximum: snapshot.movement.runMp,
+            impairment: { walk: false, run: false, jump: false, umu: false },
         });
     const values = Object.freeze({
-        mpWalk: formatCurrentAndPristine(current.walk, snapshot.movement.walkMp),
-        mpRun: formatCurrentAndPristine(current.run, snapshot.movement.runMp),
-        mpJump: formatCurrentAndPristine(current.jump, snapshot.movement.jumpMp),
-        mp_2: formatCurrentAndPristine(current.jump, snapshot.movement.jumpMp),
+        mpWalk: formatMovementMaximum(current.walk, current.walkMaximum),
+        mpRun: formatMovementMaximum(current.run, current.runMaximum),
+        mpJump: String(current.jump),
+        mp_2: String(current.jump),
     });
     for (const [id, value] of Object.entries(values)) {
         const element = svg.getElementById(id);
         if (!element) continue;
         element.textContent = value;
-        element.classList.toggle('damaged', current.impaired);
-        element.classList.remove('currentMoveMode', 'unusedMoveMode');
-        svg.querySelectorAll<SVGElement>(`.${id}-rect`).forEach(rect => { rect.style.display = 'none'; });
+        const impaired = id === 'mpWalk' ? current.impairment.walk : id === 'mpRun' ? current.impairment.run
+            : underwater ? current.impairment.umu : current.impairment.jump;
+        element.classList.toggle('damaged', impaired);
     }
     svg.querySelectorAll<SVGElement>('[data-mekbay-field="walk"]').forEach(element => {
         element.textContent = values.mpWalk;
@@ -478,27 +496,15 @@ function renderMovement(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): v
     const declared = snapshot.movement.declared.kind === 'supported'
         ? snapshot.movement.declared.mode
         : null;
-    const selectedId = declared === 'walk' || declared === 'stationary' ? 'mpWalk'
-        : declared === 'run' ? 'mpRun'
-            : declared === 'jump' || declared === 'UMU'
-                ? (svg.getElementById('mpJump') ? 'mpJump' : 'mp_2')
-                : null;
-    for (const id of ['mpWalk', 'mpRun', 'mpJump', 'mp_2']) {
-        const element = svg.getElementById(id);
-        if (!element || declared === null) continue;
-        const selected = id === selectedId;
-        element.classList[selected ? 'add' : 'remove']('currentMoveMode');
-        element.classList[selected ? 'remove' : 'add']('unusedMoveMode');
-    }
-
     for (const [mode, id] of [['run', 'mpRun'], ['jump', svg.getElementById('mpJump') ? 'mpJump' : 'mp_2']] as const) {
         const warning = svg.getElementById(`${id}-psr-warning`);
         if (!warning) continue;
         const action = projection.kind === 'supported'
             ? projection.actions.find(candidate => candidate.kind === mode)
             : undefined;
-        const messages = [...(action?.reasons ?? []), ...(action?.warnings ?? [])];
+        const messages = action?.warnings.filter(message => message.code === 'PILOT_CHECK_REQUIRED') ?? [];
         warning.textContent = snapshot.identity.form === 'lam' ? '!!!' : 'PSR!';
+        warning.classList.toggle('currentMoveMode', messages.length > 0 && declared === mode);
         if (messages.length === 0) {
             warning.setAttribute('display', 'none');
             warning.removeAttribute('title');
@@ -510,8 +516,8 @@ function renderMovement(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): v
     }
 }
 
-function formatCurrentAndPristine(current: number, pristine: number): string {
-    return current === pristine ? String(current) : `${current} [${pristine}]`;
+function formatMovementMaximum(current: number, maximum: number): string {
+    return maximum > current ? `${current} [${maximum}]` : String(current);
 }
 
 function renderConditions(
@@ -598,12 +604,17 @@ function renderHeatSinks(
         ? snapshot.heatProjection.projection
         : null;
     const capacity = projection?.capacity ?? null;
-    write(svg, '#hsCount', capacity ?? '');
+    write(svg, '#hsCount', capacity !== null && capacity !== snapshot.heatSinks.count
+        ? `${snapshot.heatSinks.count} (${capacity})`
+        : snapshot.heatSinks.count);
     const profile = svg.querySelector<SVGElement>('#heatProfile');
     if (profile) {
+        const maximum = profile.getAttribute('data-maximum-heat');
         profile.textContent = capacity === null
-            ? ''
-            : `Projected Heat: ${projection!.projected} (Dissipation ${capacity})`;
+            ? maximum === null ? '' : `Maximum Heat: ${maximum}`
+            : maximum === null
+                ? `Projected Heat: ${projection!.projected} (Dissipation ${capacity})`
+                : `Maximum Heat: ${maximum}; Projected: ${projection!.projected} (Dissipation ${capacity})`;
     }
     const partialWing = svg.getElementById('partialWingBonus');
     if (partialWing) {
@@ -682,7 +693,7 @@ function renderLocation(
         location.previewRemainingInternal,
         markChanges,
     );
-    renderDiagramCounter(
+    renderProtectionCounter(
         svg,
         `textIS_${location.code}`,
         location.previewRemainingInternal,
@@ -845,7 +856,7 @@ function renderArmorFace(
         face.previewRemaining,
         markChanges,
     );
-    renderDiagramCounter(
+    renderProtectionCounter(
         svg,
         `textArmor_${face.locationCode}${rear ? 'R' : ''}`,
         face.previewRemaining,
@@ -874,16 +885,6 @@ function renderArmorFace(
     });
 }
 
-function renderDiagramCounter(
-    svg: SVGSVGElement,
-    id: string,
-    current: number,
-    maximum: number,
-): void {
-    const counter = svg.getElementById(id);
-    if (!counter) return;
-    counter.textContent = current === maximum ? `(${maximum})` : `(${current}/${maximum})`;
-}
 
 function updateCriticalSlotPip(
     highlights: RecordSheetDamageHighlights,
@@ -939,10 +940,11 @@ function renderInventory(
         if (!element) return;
         element.style.display = '';
         writeComponentIds(element, row.componentIds);
-        element.classList.add('interactive');
-        element.classList.toggle('damaged', row.status !== 'available');
-        element.classList.toggle('disabled', row.status === 'destroyed' || row.status === 'missing');
-        element.classList.toggle('disabledInventory', row.status === 'destroyed' || row.status === 'missing');
+        element.classList.toggle('interactive', interactive
+            && (row.kind === 'weapon' || (row.kind === 'physical' && row.actionTarget !== undefined)));
+        element.classList.toggle('damaged', row.status === 'destroyed' || row.status === 'missing');
+        element.classList.toggle('disabled', row.status === 'disabled');
+        element.classList.toggle('disabledInventory', row.status === 'disabled');
         element.classList.toggle('selected', row.selected && row.status !== 'destroyed' && row.status !== 'missing');
         element.classList.toggle(
             'selected-alternative-mode',
@@ -1462,7 +1464,8 @@ function renderCrew(
         : 0;
     const allCrewDefault = snapshot.crew.every(position =>
         position.effectiveState !== 'vacant'
-        && position.name.length === 0 && position.gunnery === 4 && position.piloting === 5);
+        && position.name.length === 0 && position.gunnery === 4 && position.piloting === 5
+        && (position.aeroGunnery ?? 4) === 4 && (position.aeroPiloting ?? 5) === 5);
     svg.querySelectorAll<SVGElement>('.skillValue')
         .forEach(element => element.classList.toggle('screen-only', allCrewDefault));
     for (const id of [
@@ -1481,6 +1484,8 @@ function renderCrew(
             write(svg, `#crewName${occurrence}`, displayName);
         }
         write(svg, `#gunnerySkill${occurrence}`, vacant ? '—' : position.gunnery);
+        write(svg, `#aeroGunnerySkill${occurrence}`, vacant ? '—' : position.aeroGunnery ?? 4);
+        write(svg, `#aeroPilotingSkill${occurrence}`, vacant ? '—' : position.aeroPiloting ?? 5);
         if (vacant) write(svg, `#pilotingSkill${occurrence}`, '—');
         else renderPilotingSkillDisplay(
             svg.querySelector<SVGElement>(`#pilotingSkill${occurrence}`),
@@ -1601,8 +1606,11 @@ function bindCrewControls(
         positionId: position.positionId,
         context: context(),
     }), event)));
-    for (const skill of ['gunnery', 'piloting'] as const) {
-        svg.querySelectorAll<SVGElement>(`.crewSkillButton[crewId="${occurrence}"][skill="${skill}"]`)
+    for (const [control, skill] of [
+        ['gunnery', 'gunnery'], ['piloting', 'piloting'],
+        ['aero-gunnery', 'aeroGunnery'], ['aero-piloting', 'aeroPiloting'],
+    ] as const) {
+        svg.querySelectorAll<SVGElement>(`.crewSkillButton[crewId="${occurrence}"][skill="${control}"]`)
             .forEach(button => bindActivation(button, signal, event => emit(Object.freeze({
                 kind: 'crew-skill',
                 positionId: position.positionId,
@@ -1696,7 +1704,7 @@ function bindReferenceTable(
     if (!interactive) return;
     if (svg.dataset['mekbayReferenceBound'] === '1') return;
     svg.dataset['mekbayReferenceBound'] = '1';
-    resolveCenterPanelCursorElements(svg).forEach(element => { element.style.cursor = 'pointer'; });
+    resolveCenterPanelCursorElements(svg).forEach(element => element.classList.add('referenceTableControl'));
     svg.addEventListener('click', event => {
         if (!(event instanceof MouseEvent) || event.button !== 0) return;
         if (!isCenterPanelTarget(svg, event.target)
@@ -2312,9 +2320,9 @@ function resetCrewText(svg: SVGSVGElement): void {
         if (!mappedToAnotherElement) element.textContent = '';
     });
     svg.querySelectorAll<SVGElement>(
-        '[id^="pilotName"], [id^="gunnerySkill"], [id^="pilotingSkill"]',
+        '[id^="pilotName"], [id^="gunnerySkill"], [id^="pilotingSkill"], [id^="aeroGunnerySkill"], [id^="aeroPilotingSkill"]',
     ).forEach(element => {
-        if (/^(?:pilotName|gunnerySkill|pilotingSkill)\d+$/u.test(element.id)) {
+        if (/^(?:pilotName|gunnerySkill|pilotingSkill|aeroGunnerySkill|aeroPilotingSkill)\d+$/u.test(element.id)) {
             element.textContent = '';
         }
     });

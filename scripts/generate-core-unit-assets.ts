@@ -39,8 +39,8 @@ import {
     type ApplicationCatalogDependencyBundle,
 } from '../src/app/services/unit-catalog/application-catalog-dependency-bundle';
 import {
-    EntityCoreUnitSummaryProjector,
-    type CoreUnitSummaryProjector,
+    EntityUnitSummaryProjector,
+    type UnitSummaryProjector,
 } from '../src/app/services/unit-catalog/entity-summary-projector';
 import {
     asSourceHash,
@@ -55,7 +55,7 @@ import {
 import { createUnitSpriteAssignmentContextFromManifestText } from '../src/app/utils/unit-sprite-assignment-resolver';
 import { createUnitIconResolver } from '../src/app/utils/unit-sprite-resolver';
 import { UnitSummaryBuilder } from '../src/app/utils/unit-summary-builder';
-import { isCanonicalUuid, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
+import { isCanonicalUuid, isExcludedMegaMekUnitFile, parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
 import { listUnitFilesRecursive } from './lib/unit-file-discovery';
 
 const {
@@ -77,7 +77,7 @@ const ZIP_ENTRY_DATE = new Date('1984-01-01T00:00:00.000Z');
 const OWNED_STAGE_PREFIX = '.core-unit-assets-stage-';
 
 export interface CoreUnitSummaryGenerationContext {
-    readonly projector: CoreUnitSummaryProjector;
+    readonly projector: UnitSummaryProjector;
     readonly dependencyBundle: ApplicationCatalogDependencyBundle;
 }
 
@@ -149,12 +149,21 @@ function discoverArtifacts(
 
     for (const filePath of listUnitFilesRecursive(unitFilesRoot)) {
         const format: NativeUnitFormat = path.extname(filePath).toLowerCase() === '.mtf' ? 'mtf' : 'blk';
-        assertNativeFormatPath(unitFilesRoot, filePath, format);
         const bytes = fs.readFileSync(filePath);
-        const metadata = parseMegaMekUnitFileMetadata(bytes.toString('utf8'), filePath, unitFilesRoot);
-        const rawUuid = metadata?.uuid?.trim().toLowerCase();
+        const raw = bytes.toString('utf8');
+        const metadata = parseMegaMekUnitFileMetadata(raw, filePath, unitFilesRoot);
+        if (!metadata) {
+            const relativePath = path.relative(unitFilesRoot, filePath).split(path.sep).join('/');
+            skippedFiles.push(relativePath);
+            if (!isExcludedMegaMekUnitFile(raw, filePath, unitFilesRoot)) {
+                warn(`[Core Units] Skipping ${relativePath}: missing metadata`);
+            }
+            continue;
+        }
+        assertNativeFormatPath(unitFilesRoot, filePath, format);
+        const rawUuid = metadata.uuid?.trim().toLowerCase();
 
-        if (!metadata || !isCanonicalUuid(rawUuid)) {
+        if (!isCanonicalUuid(rawUuid)) {
             const relativePath = path.relative(unitFilesRoot, filePath).split(path.sep).join('/');
             skippedFiles.push(relativePath);
             warn(`[Core Units] Skipping ${relativePath}: missing or invalid UUID`);
@@ -296,7 +305,7 @@ async function createProductionSummaryGenerationContext(
     });
 
     return Object.freeze({
-        projector: new EntityCoreUnitSummaryProjector(equipmentRegistry, {
+        projector: new EntityUnitSummaryProjector(equipmentRegistry, {
             parseOptions: {
                 sourcebookResolver: abbrev => sourcebooks.get(abbrev),
                 quirkResolver: key => quirks.get(key),

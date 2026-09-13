@@ -35,7 +35,7 @@ const UUIDS = [
 const SOURCE_HASH = asSourceHash('A'.repeat(27));
 
 function summary(name: string, index: number): UnitSummary {
-    const unit = createEmptyUnit({ uuid: UUIDS[index], name, chassis: name, id: index + 1 });
+    const unit = createEmptyUnit({ uuid: UUIDS[index], name, chassis: name, mul1id: index + 1 });
     return {
         ...unit,
         uuid: UUIDS[index],
@@ -177,6 +177,32 @@ describe('UnitsCatalogService native core projection', () => {
         expect(await service.finalizePendingActivation(revision)).toBeTrue();
         expect(service.commitPendingActivation(revision)).toBeDefined();
         return revision;
+    }
+
+    for (const total of [1, 9, 10]) {
+        it(`reports custom rebuild progress only for a substantial batch (${total} changed units)`, async () => {
+            await initializeAndCommit();
+            const settledState = service.coreState();
+            let finish!: (summaries: readonly UnitSummary[]) => void;
+            spyOn(TestBed.inject(CustomUnitsService), 'prepareSummaries').and.callFake((_dependencies, options) => {
+                options!.onProgress?.({ completed: 0, total });
+                return new Promise(resolve => { finish = resolve; });
+            });
+
+            customRevision.set(1);
+            const preparation = service.prepareCustomChanges();
+            if (total === 10) {
+                expect(service.coreState()).toEqual(jasmine.objectContaining({
+                    status: 'loading', progress: { phase: 'projecting', completed: 0, total },
+                }));
+            } else {
+                expect(service.coreState()).toBe(settledState);
+            }
+
+            finish([]);
+            await preparation;
+            expect(service.pendingActivation()!.showProgress).toBe(total === 10);
+        });
     }
 
     it('cancels superseded preparation and never publishes an older custom snapshot', async () => {

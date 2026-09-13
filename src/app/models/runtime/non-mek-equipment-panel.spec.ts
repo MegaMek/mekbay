@@ -29,6 +29,23 @@ import { type InstanceBaselineRef } from './runtime-state';
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 describe('Entity equipment panel projection', () => {
+    it('omits prohibited TW vehicle charges while retaining the existing Core actions', () => {
+        for (const ruleset of ['total-warfare', 'core-2026'] as const) {
+            for (const motive of ['Tracked', 'VTOL', 'WiGE'] as const) {
+                const entity = new TestTankEntity();
+                entity.uuid.set(UUID);
+                entity.motiveType.set(motive);
+                const runtime = createNonMekRuntimeForTest('unit:charge-eligibility',
+                    { ...baseline(), ruleset }, entity, ruleset);
+                const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset,
+                    runtime.snapshot(), createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+                    { revision: 0, targets: [] });
+                expect(panel.physicalAttacks).withContext(`${ruleset} ${motive}`)
+                    .toHaveSize(ruleset === 'total-warfare' && motive !== 'Tracked' ? 0 : 1);
+            }
+        }
+    });
+
     it('applies the shared Flak modifier to airborne Aero and VTOL/WiGE targets', () => {
         const weapon = new WeaponEquipment({
             id: 'FlakWeapon',
@@ -609,6 +626,27 @@ describe('Entity equipment panel projection', () => {
         expect(weapons[0].weapon?.firingHeat).toBe(40);
         expect(weapons[0].weapon?.aerospace?.attackValues).toEqual([4, 4, 4, 0]);
     });
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`rounds fractional capital damage after aggregating operational bay members (${ruleset})`, () => {
+            const laser = new WeaponEquipment({
+                id: 'NL55', name: 'Naval Laser 55', type: 'weapon',
+                weapon: { atClass: 'CAPITAL_LASER', capital: true, damage: 5.5, heat: 85,
+                    ranges: [12, 24, 40, 50], av: [5.5, 5.5, 5.5, 5.5] },
+            });
+            const entity = new TestJumpShipEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+            entity.uuid.set(UUID);
+            const mounts = Array.from({ length: 3 }, () => addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+            entity.addEquipmentBay('weapon-bay', { mounts });
+            const runtime = createNonMekRuntimeForTest('unit:naval-laser-rounding', { ...baseline(), ruleset }, entity, ruleset);
+            const project = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset, runtime.snapshot(),
+                createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+                Object.freeze({ revision: 0, targets: Object.freeze([]) })).components.find(row => row.weapon !== undefined)!;
+            expect(project().weapon?.aerospace?.attackValues).toEqual([17, 17, 17, 17]);
+            runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(mounts[0].mountId), status: 'destroyed', target: 'committed' });
+            expect(project().weapon?.aerospace?.attackValues).toEqual([11, 11, 11, 11]);
+        });
+    }
 
     it('switches a DropShip projection between bay and grounded individual attacks', () => {
         const laser = new WeaponEquipment({

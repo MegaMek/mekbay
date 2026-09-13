@@ -30,7 +30,7 @@ describe('direct optional Sprint rules', () => {
             options: { sprinting: true, forcedWithdrawal: false },
         })).toEqual({
             kind: 'supported',
-            rules: { sprinting: true, forcedWithdrawal: false },
+            rules: { sprinting: true, forcedWithdrawal: false, hotLoadedAmmo: false },
         });
     });
 

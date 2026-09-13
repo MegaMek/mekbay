@@ -1,0 +1,139 @@
+@use '../construction-topology-panels';
+
+:host {
+  display: block;
+  min-width: 0;
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+details {
+  border-top: 1px solid #ffffff25;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+.row > label:not(.check) {
+  flex: 1;
+}
+.row > .bt-select {
+  flex: 1;
+  width: auto;
+}
+.row > input[type='number'] {
+  width: 75px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  align-self: center;
+}
+.allocations {
+  max-height: 220px;
+  overflow: auto;
+}
+.lift {
+  border-left: 2px solid var(--bt-yellow);
+  padding-left: 10px;
+  margin: 12px 0;
+}
+.lift > .bt-button {
+  margin-top: 12px;
+}
+.door {
+  margin: 12px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #ffffff15;
+}
+.door-editor {
+  position: relative;
+  width: 300px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  margin-inline: auto;
+}
+.door-editor > construction-hex-sides {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 68%;
+  transform: translate(-50%, -50%);
+}
+.door-link {
+  position: absolute;
+  flex-direction: column;
+  gap: 2px;
+  transform: translate(-50%, -50%);
+  padding: 4px 6px;
+  font-size: 10px;
+  min-height: 26px;
+  z-index: 1;
+  max-width: 90px;
+  background: var(--background-color, #292929);
+}
+.door-link small { display: block; font-size: 9px; white-space: nowrap; }
+.door-link.linked { color: var(--bt-yellow); border-color: var(--bt-yellow); }
+.door-height {
+  position: absolute;
+  width: 48px;
+  gap: 3px;
+  text-align: center;
+  transform: translateY(-50%);
+}
+.door-height .bt-input {
+  padding: 5px;
+}
+.door-height[data-facing='0'],
+.door-height[data-facing='3'] {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.door-height[data-facing='0'] {
+  top: 0;
+}
+.door-height[data-facing='3'] {
+  bottom: 0;
+}
+.door-height[data-facing='1'],
+.door-height[data-facing='5'] {
+  top: 27%;
+}
+.door-height[data-facing='2'],
+.door-height[data-facing='4'] {
+  top: 73%;
+}
+.door-height[data-facing='1'],
+.door-height[data-facing='2'] {
+  right: 0;
+}
+.door-height[data-facing='4'],
+.door-height[data-facing='5'] {
+  left: 0;
+}
+.access {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+.access > span {
+  text-align: center;
+}

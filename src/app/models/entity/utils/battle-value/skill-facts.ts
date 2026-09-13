@@ -36,6 +36,7 @@ export function adjustEntityBattleValueForSkills(
   gunnery: number,
   piloting: number,
 ): number {
+  if (entity.manualBV() > 0) return entity.manualBV();
   return adjustCBTBattleValueForSkills(
     base,
     gunnery,

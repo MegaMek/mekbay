@@ -6,7 +6,7 @@ const {
 } = require('./lib/script-paths') as typeof import('./lib/script-paths');
 
 interface SvgExportUnitRecord {
-    id?: number;
+    mul1id?: number | null;
     name?: string;
     chassis?: string;
     model?: string;
@@ -70,7 +70,7 @@ function formatValue(value: unknown): string {
 
 function unitLabel(unit: SvgExportUnitRecord): string {
     const name = unit.name ?? [unit.chassis, unit.model].filter(Boolean).join(' ').trim();
-    const id = unit.id === undefined ? '' : `id=${unit.id}`;
+    const id = unit.mul1id == null ? '' : `mul1id=${unit.mul1id}`;
     const unitFile = unit.unitFile ? ` (${unit.unitFile})` : '';
     return `${name || id || '(unnamed unit)'}${unitFile}`;
 }

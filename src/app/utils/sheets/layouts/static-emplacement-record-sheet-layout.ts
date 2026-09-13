@@ -1,32 +1,30 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { formatProtectionCounter } from '../record-sheet-protection-counter';
+
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { StaticEmplacementEntity } from '../../../models/entity/entities/misc/static-emplacement-entity';
-import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { BUILDING_SIDE_LABELS, buildingLocationName, buildingSheetGrid } from '../../../models/entity/types/building';
 import {
     fullRecordSheetLayoutProfile,
     type RecordSheetLayoutProfile,
     type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-    addFrame, addLine, addText, createRoot, drawGeneratedFooter, drawNotesPanel,
-    drawPageChrome, formatNumber, formatTechBase, makeDistributedPips,
-    recordSheetAmmoProfile, recordSheetInventoryWeapons, scalePageBox,
-    setAttributes, setInventoryComponentIds, svgElement, transparentRect, type Box,
+    addFrame, addLine, addText, createRoot, drawGeneratedFooter,
+    drawPageChrome, formatNumber,
+    scalePageBox,
+    setAttributes, svgElement, transparentRect, type Box,
 } from '../record-sheet-svg-rendering';
+import { buildingInventoryPages, drawBuildingInventory, type BuildingInventoryPage } from './building-sheet-inventory';
+import { buildingTemplatePages } from './building-template';
+import { BUILDING_MAP_KEY as MAP_KEY, buildingMapFeatures, buildingMapDoors, buildingMapFill, buildingDoorPoints, type BuildingMapSymbol as MapSymbol } from '../../building-map-presentation';
+import { SvgFrameUtil } from '../svg-frame.util';
 import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
 
-// MegaMek IBuilding classes and BuildingType values, displayed without changing
-// the parsed construction facts or inventing defaults for older turret files.
-const BUILDING_CLASSES: Readonly<Record<number, string>> = {
-    0: 'Standard', 1: 'Hangar', 2: 'Fortress', 3: 'Gun Emplacement',
-};
-const BUILDING_TYPES: Readonly<Record<number, string>> = {
-    1: 'Light', 2: 'Medium', 3: 'Heavy', 4: 'Hardened', 5: 'Wall',
-};
 
-/** Native static-family design; MegaMekLab does not provide a reference sheet. */
+/** Building sheets show construction, inventory and a structure map. */
 export class StaticEmplacementRecordSheetLayout implements RecordSheetLayout {
     public readonly id = 'static-emplacement';
 
@@ -39,165 +37,279 @@ export class StaticEmplacementRecordSheetLayout implements RecordSheetLayout {
     }
 
     public async generate(entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<SVGSVGElement> {
+        return (await this.generatePages(entity, request))[0];
+    }
+
+    public async generatePages(entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<readonly SVGSVGElement[]> {
         if (!(entity instanceof StaticEmplacementEntity)) {
-            throw new Error('Static-emplacement layout requires a building or gun emplacement');
+            throw new Error('Static-emplacement layout requires a building');
         }
         const page = request.page;
-        const svg = createRoot(page.width, page.height, entity.entityType.toLowerCase());
-        svg.setAttribute('data-mekbay-design-source', 'native');
-        const at = (box: Box) => scalePageBox(page, box);
-        drawPageChrome(svg, `${entity.unitType().toUpperCase()} RECORD SHEET`, page, true, {
-            titleLines: [entity.unitType().toUpperCase(), 'RECORD SHEET'],
+        const data = scalePageBox(page, { x: 18, y: 94, width: 224, height: 347 });
+        const inventory = buildingInventoryPages(entity, data.width, data.height - 103);
+        const protections = entity.coordinates().reduce((sum, hex) => sum + entity.segmentsInHex(hex), 0);
+        const count = Math.max(1, Math.ceil(entity.mapLevels().length / 6), inventory.length, Math.ceil(protections / 36));
+        const sheets = Array.from({ length: count }, (_, index) => {
+            const svg = createRoot(page.width, page.height, entity.entityType.toLowerCase());
+            svg.setAttribute('data-mekbay-design-source', 'native');
+            drawBuildingSheet(svg, entity, request, index, inventory[index]);
+            addText(svg, `Page ${index + 1} / ${count}`, page.width - 18, page.height - 38,
+                { size: 6, anchor: 'end' }).id = 'pageNumber';
+            return svg;
         });
-        drawStaticData(svg, entity, at({ x: 18, y: 78, width: 252, height: 178 }));
-        drawStaticProtection(svg, entity, at({ x: 276, y: 78, width: 318, height: 178 }));
-        drawStaticInventory(svg, entity, at({ x: 18, y: 264, width: 576, height: 392 }));
-        if (entity.crewSlotCount() > 0) {
-            drawStaticCrew(svg, at({ x: 18, y: 664, width: 222, height: 88 }));
-            drawNotesPanel(svg, at({ x: 246, y: 664, width: 348, height: 88 }));
-        } else {
-            drawNotesPanel(svg, at({ x: 18, y: 664, width: 576, height: 88 }));
-        }
-        drawGeneratedFooter(svg, page);
-        return svg;
+        return [...sheets, ...buildingTemplatePages(entity, page)];
     }
 }
 
-function drawStaticData(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box): void {
-    const group = addFrame(svg, entity.staticKind === 'BuildingEntity' ? 'BUILDING DATA' : 'EMPLACEMENT DATA', box);
-    const name = addText(group, entity.displayName(), 9, 31, { size: 10, weight: 700, maxWidth: box.width - 18 });
-    name.id = 'type';
-    name.setAttribute('data-mekbay-field', 'display-name');
-    const classValue = entity.buildingClass();
-    const typeValue = entity.buildingType();
-    const rows: readonly [string, string, string?][] = [
-        ['Year', String(entity.year()), 'year'],
-        ['Tech base', formatTechBase(entity.techBase(), entity.mixedTech()), 'techBase'],
-        ['Building class', classValue === undefined ? '—' : BUILDING_CLASSES[classValue] ?? String(classValue)],
-        ['Construction', typeValue === undefined ? '—' : BUILDING_TYPES[typeValue] ?? String(typeValue)],
-        ['Height', entity.height() === undefined ? '—' : `${entity.height()} ${entity.height() === 1 ? 'level' : 'levels'}`],
-        ['Coordinates', entity.coordinates().join(' / ') || '—'],
-        ['Turret', entity.turret() ? 'Yes' : 'No'],
-        ['Battle Value', formatNumber(entity.battleValue()), 'bv'],
-    ];
-    const step = (box.height - 53) / rows.length;
-    rows.forEach(([label, value, id], index) => {
-        const y = 47 + index * step;
-        addText(group, label, 9, y, { size: 7, weight: 700, maxWidth: 90 });
-        const text = addText(group, value, box.width - 9, y, { size: 7.5, anchor: 'end', maxWidth: box.width - 108 });
-        if (id) text.id = id;
-        if (index < rows.length - 1) addLine(group, 9, y + 4, box.width - 9, y + 4, '#ddd', 0.45);
-    });
+function drawBuildingSheet(svg: SVGSVGElement, entity: StaticEmplacementEntity, request: RecordSheetLayoutRequest, pageIndex: number, inventoryPage: BuildingInventoryPage | undefined): void {
+    const page = request.page;
+    const at = (box: Box) => scalePageBox(page, box);
+    const grid = buildingSheetGrid(entity.coordinates());
+    const floors = entity.height() ?? 1;
+    const locations = new Map(grid.hexes.flatMap(cell => Array.from({ length: floors }, (_, floor) =>
+        [buildingLocationName(cell.hex, floor), entity.displayLocation(buildingLocationName(cell.hex, floor), true)] as const)));
+    drawPageChrome(svg, 'STRUCTURE RECORD SHEET', page, false);
+    drawBuildingData(svg, entity, at({ x: 18, y: 94, width: 224, height: 347 }), inventoryPage);
+    drawBuildingProtection(svg, entity, at({ x: 18, y: 449, width: 224, height: 266 }), locations, pageIndex);
+    const crew = addFrame(svg, 'CREW DATA', at({ x: 18, y: 723, width: 224, height: 33 }));
+    addText(crew, 'Crew:', 9, 26, { size: 7, weight: 700 });
+    addText(crew, String(entity.crew()), 34, 26, { size: 7 });
+    addText(crew, 'Gunnery Skill:', 112, 26, { size: 7, weight: 700 });
+
+    drawBuildingMap(svg, entity, grid, entity.mapLevels().slice(pageIndex * 6, pageIndex * 6 + 6), at({ x: 250, y: 94, width: 344, height: 662 }));
+    drawGeneratedFooter(svg, page, { catalystX: page.width - page.margin - 55 * page.horizontalScale,
+        catalystY: page.margin + 7 * page.verticalScale, catalystScale: page.horizontalScale });
 }
 
-function drawStaticProtection(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box): void {
-    const group = addFrame(svg, 'ARMOR & CONSTRUCTION FACTOR', box);
-    const locations = entity.damageLocations();
-    if (entity.armorValues().size === 0 && entity.constructionFactor() === undefined) {
-        addText(group, 'Armor and construction factor are not specified.', 10, 41,
-            { size: 8, maxWidth: box.width - 20 });
+function drawBuildingData(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box,
+    inventoryPage: BuildingInventoryPage | undefined): void {
+    const group = addFrame(svg, 'STRUCTURE DATA', box, { headerWidth: 112, headerHeight: 12, headerFontSize: 10,
+        bottomLeftNotchWidth: box.width * .45, cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 } });
+    const right = box.width * .64;
+    const field = (label: string, value: string, x: number, y: number, offset: number, width: number, id?: string) => {
+        addText(group, label, x, y, { size: 6.8, weight: 700 });
+        const text = addText(group, value, x + offset, y, { size: 6.8, maxWidth: width });
+        if (id) text.id = id;
+        return text;
+    };
+    field('Description:', entity.displayName(), 9, 31, 45, right - 60, 'type').setAttribute('data-mekbay-field', 'display-name');
+    field('Levels:', entity.isBridge() ? entity.mapLevels().map(level => entity.levelLabel(level)).join(',') : String(entity.height() ?? 1),
+        right, 31, 27, box.width - right - 34);
+    field('MP:', entity.isMobile() ? formatNumber(entity.originalWalkMP()) : '0', 9, 43, 18, 30);
+    field('Movement Type:', entity.isMobile() ? entity.motiveType() : 'Static', 9, 55, 62, right - 76);
+    field('Powerplant Type:', entity.powerSupply().label, 9, 67, 69, right - 84);
+    addText(group, 'Tech Base:', right, 43, { size: 6.8, weight: 700 });
+    for (const [label, y, checked] of [['Clan', 55, entity.techBase() === 'Clan' || entity.mixedTech()],
+        ['Inner Sphere', 67, entity.techBase() !== 'Clan' || entity.mixedTech()]] as const) {
+        addText(group, label, right + 3, y, { size: 6.8 });
+        const checkbox = svgElement('rect');
+        setAttributes(checkbox, { x: box.width - 15, y: y - 6, width: 6, height: 6, rx: 1, fill: 'none', stroke: '#000', 'stroke-width': .8 });
+        group.appendChild(checkbox);
+        if (checked) {
+            const tick = svgElement('path');
+            setAttributes(tick, { d: `M${box.width - 14},${y - 3} l1.5,2 l3.5,-5`, fill: 'none', stroke: '#000', 'stroke-width': 1 });
+            group.appendChild(tick);
+        }
+    }
+    addLine(group, 7, 74, box.width - 9, 74, '#000', 1.3);
+    const inventory = svgElement('g');
+    inventory.setAttribute('transform', 'translate(0 75)');
+    group.appendChild(inventory);
+    drawBuildingInventory(inventory, entity, box.width, box.height - 103, inventoryPage);
+    addLine(group, 7, box.height - 24, box.width - 9, box.height - 24, '#000', 1.3);
+    addText(group, 'Cost:', 10, box.height - 12, { size: 7, weight: 700 });
+    let cost = '—';
+    try { cost = entity.cost().toLocaleString('en-US'); } catch { /* An unresolved design still has a printable inventory. */ }
+    addText(group, cost, 32, box.height - 12, { size: 7, maxWidth: 80 }).id = 'cost';
+    addText(group, 'BV:', 123, box.height - 12, { size: 7, weight: 700 });
+    addText(group, formatNumber(entity.battleValue()), 140, box.height - 12, { size: 7, maxWidth: box.width - 151 }).id = 'bv';
+}
+
+function drawBuildingProtection(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box,
+    locations: ReadonlyMap<string, string>, pageIndex: number): void {
+    const group = addFrame(svg, 'CF & ARMOR', box, { headerWidth: 86, headerHeight: 12, headerFontSize: 10,
+        bottomLeftNotchWidth: box.width * .45, cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 } });
+    // CF and armor belong to the hex, not each floor (TO:AR pp. 127–128).
+    const groundLocations = new Set(entity.coordinates().map(hex => buildingLocationName(hex, 0)));
+    const entries = [...entity.damageLocations()].filter(location => groundLocations.has(location.code)).sort((left, right) =>
+        locations.get(left.code)!.localeCompare(locations.get(right.code)!,
+            'en', { numeric: true })).flatMap(location => {
+                const hex = entity.coordinates().find(hex => buildingLocationName(hex, 0) === location.code)!;
+                return entity.usesHexsides() ? BUILDING_SIDE_LABELS.flatMap((label, side) => entity.hasSide(hex, side)
+                    ? [{ location, label: entity.displayHex(hex) + '/' + label, side }] : [])
+                    : [{ location, label: entity.displayHex(hex), side: -1 }];
+            }).slice(pageIndex * 36, pageIndex * 36 + 36);
+    const rowCount = Math.max(1, Math.ceil(entries.length / 2));
+    const step = Math.min(12, (box.height - 49) / rowCount);
+    const width = (box.width - 25) / 2;
+    for (let column = 0; column < 2; column++) {
+        const x = 9 + column * (width + 7);
+        [entity.usesHexsides() ? 'Hex/Side' : 'Hex', entity.isCastleBrian() ? 'CF*' : 'CF', 'Armor'].forEach((label, index) => addText(group, label, x + [17, 52, 83][index], 30,
+            { size: 6.5, weight: 700, anchor: 'middle' }));
+        for (let row = 0; row < rowCount; row++) {
+            const y = 36 + (row + 1) * step;
+            const entry = entries[column * rowCount + row];
+            if (!entry) continue;
+            const location = entry.location;
+            const code = (location.sheetCode ?? location.code) + (entry.side < 0 ? '' : '-side-' + entry.side);
+            const size = Math.min(7, step * 0.73);
+            addText(group, entry.label, x + 17, y, { size, anchor: 'middle', maxWidth: 34 });
+            const tracks = [
+                ['structure', location.internalPoints, entity.constructionFactor() !== undefined, 52],
+                ['armor', location.armor.front, entity.armorValues().has(location.code), 83],
+            ] as const;
+            for (const [kind, count, specified, offset] of tracks) {
+                const value = addText(group, specified ? formatProtectionCounter(count) : '—', x + offset, y, { size, anchor: 'middle', maxWidth: 28 });
+                value.id = `${kind === 'armor' ? 'textArmor' : 'textIS'}_${code}`;
+                if (specified) setAttributes(value, { 'data-mekbay-protection-value': kind, 'data-loc': code });
+                if (count > 0) {
+                    const hit = transparentRect(x + offset - 14, y - step + 2, 28, step, `unitLocation ${kind}`);
+                    hit.setAttribute('data-loc', code);
+                    group.appendChild(hit);
+                }
+            }
+        }
+    }
+}
+
+function mapKeySymbol(parent: SVGGElement, symbol: MapSymbol, x: number, y: number): void {
+    if (symbol === 'large-door') {
+        const opening = svgElement('g');
+        opening.setAttribute('data-building-symbol', symbol);
+        parent.appendChild(opening);
+        addLine(opening, x, y, x + 12, y, '#000', 2);
+        mapKeySymbol(opening, 'door', x, y);
+        mapKeySymbol(opening, 'door', x + 12, y);
         return;
     }
-    const step = (box.height - 25) / locations.length;
-    const columnWidth = (box.width - 24) / 2;
-    locations.forEach((location, index) => {
-        const code = location.sheetCode ?? location.code;
-        const y = 27 + index * step;
-        addText(group, code, 10, y, { size: 7, weight: 700, maxWidth: box.width - 20 });
-        const tracks = [
-            ['armor', 'Armor', location.armor.front, entity.armorValues().has(location.code)],
-            ['structure', 'CF', location.internalPoints, entity.constructionFactor() !== undefined],
-        ] as const;
-        tracks.forEach(([kind, label, count, specified], column) => {
-            const x = 10 + column * (columnWidth + 4);
-            addText(group, label, x, y + 13, { size: 7, weight: 700 });
-            const value = addText(group, specified ? String(count) : '—', x + columnWidth, y + 13,
-                { size: 7, anchor: 'end' });
-            value.id = `${kind === 'armor' ? 'textArmor' : 'textIS'}_${code}`;
-            const height = Math.max(1, step - 37);
-            // Static panels have no authored rail areas, so all modes use the
-            // distributed fallback just like paperdoll areas without rails.
-            const pips = makeDistributedPips(count, columnWidth, height, kind, code);
-            if (!pips) return;
-            pips.setAttribute('transform', `translate(${formatNumber(x)} ${formatNumber(y + 19)})`);
-            group.appendChild(pips);
-            const hit = transparentRect(x, y + 17, columnWidth, height + 2, `unitLocation ${kind}`);
-            hit.setAttribute('data-loc', code);
-            group.appendChild(hit);
-        });
-    });
+    const marker = svgElement('polygon');
+    const points = !MAP_KEY[symbol].glyph ? [[0, -4], [3.5, 3], [-3.5, 3]]
+        : [[-6, 0], [-3, -4], [3, -4], [6, 0], [3, 4], [-3, 4]];
+    setAttributes(marker, { fill: MAP_KEY[symbol].color, stroke: '#000', 'stroke-width': .8,
+        points: points.map(([dx, dy]) => `${x + dx},${y + dy}`).join(' ') });
+    parent.appendChild(marker);
+    if (!MAP_KEY[symbol].glyph) marker.setAttribute('data-building-symbol', symbol);
+    else addText(parent, MAP_KEY[symbol].glyph, x, y + 2, { size: 6, anchor: 'middle', weight: 700 })
+        .setAttribute('data-building-symbol', symbol);
 }
 
-function drawStaticInventory(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box): void {
-    const group = addFrame(svg, 'WEAPONS & EQUIPMENT', box);
-    const scale = box.width / 576;
-    const xs = [10, 232, 355, 384, 430, 464, 498, 532].map(x => x * scale);
-    ['Equipment', 'Location', 'Heat', 'Damage', 'Min', 'Sht', 'Med', 'Lng'].forEach((label, index) => {
-        addText(group, label, xs[index], 29, { size: 7.2, weight: 700, anchor: index > 1 ? 'middle' : 'start' });
-    });
-    const weapons = new Map(recordSheetInventoryWeapons(entity).map(row => [row.componentIds[0], row]));
-    const mounts = entity.equipment();
-    const lineCount = mounts.reduce((count, mount) => count + 1 + (weapons.get(mount.mountId)?.alternativeModes.length ?? 0), 0);
-    const step = Math.min(11, (box.height - 61) / Math.max(1, lineCount));
-    const fontSize = Math.min(7, step * 0.73);
-    const rows = svgElement('g');
-    setAttributes(rows, { 'data-ammo-inventory': '', 'data-top': 34, 'data-bottom': box.height - 15,
-        'data-content-bottom': 34 + lineCount * step });
-    group.appendChild(rows);
-    let line = 0;
-    mounts.forEach((mount, index) => {
-        const weapon = weapons.get(mount.mountId);
-        const entry = svgElement('g');
-        entry.id = `static-inventory-${index}`;
-        entry.setAttribute('class', 'inventoryEntry');
-        setInventoryComponentIds(entry, [mount.mountId]);
-        rows.appendChild(entry);
-        const drawRow = (parent: SVGGElement, name: string, damage: string, minimumRange: string, ranges: readonly string[]) => {
-            const y = 34 + ++line * step;
-            parent.appendChild(transparentRect(7, y - step + 1, box.width - 14, step, 'inventoryEntryButton mainButton'));
-            addText(parent, name, xs[0], y, { class: 'name', size: fontSize, maxWidth: 216 * scale });
-            addText(parent, mount.getOccupiedLocations().join(' / '), xs[1], y,
-                { class: 'location', size: fontSize, maxWidth: 108 * scale });
-            addText(parent, weapon?.heat ?? '', xs[2], y,
-                { class: 'heat', size: fontSize, anchor: 'middle', maxWidth: 23 * scale });
-            addText(parent, damage, xs[3], y,
-                { class: 'damage', size: fontSize, anchor: 'middle', maxWidth: 42 * scale });
-            [minimumRange, ...ranges].forEach((value, column) => {
-                addText(parent, value, xs[column + 4], y, {
-                    class: ['range_min', 'range_short', 'range_medium', 'range_long'][column],
-                    size: fontSize, anchor: 'middle', maxWidth: 26 * scale,
-                });
-                if (column > 0 && weapon) parent.appendChild(transparentRect(xs[column + 4] - 14 * scale,
-                    y - step + 1, 28 * scale, step, `inventoryEntryButton ${['', 'shrButton', 'medButton', 'lngButton'][column]}`));
-            });
-        };
-        const shots = mount.getAmmoShots();
-        const name = shots === undefined ? mount.displayName() : `${mount.displayName()} (${shots} rounds)`;
-        drawRow(entry, name, weapon?.damage ?? '', weapon?.minimumRange ?? '', weapon?.ranges ?? []);
-        weapon?.alternativeModes.forEach(mode => {
-            const alternative = svgElement('g');
-            setAttributes(alternative, { class: mode.displayOnly ? 'equipmentProfile' : 'alternativeMode', 'data-mekbay-mode': mode.name });
-            entry.appendChild(alternative);
-            drawRow(alternative, mode.name, mode.damage, mode.minimumRange, mode.ranges);
+function drawBuildingMap(svg: SVGSVGElement, entity: StaticEmplacementEntity, grid: ReturnType<typeof buildingSheetGrid>, levels: readonly number[], box: Box): void {
+    const header = SvgFrameUtil.createSVGFrameHeader('STRUCTURE MAP', 139);
+    header.setAttribute('transform', `translate(${formatNumber(box.x + (box.width - 139) / 2)} ${formatNumber(box.y - 24)})`);
+    svg.appendChild(header);
+    const floors = levels.length;
+    if (!floors) return;
+    // A flattened, sheared flat-top grid matches the printed structure-map perspective.
+    const left = -20 - 6 * (grid.rows - 1);
+    const top = -6;
+    const width = 30 * (grid.columns - 1) + 40 + 6 * (grid.rows - 1);
+    const height = 12 * (grid.rows + 0.5);
+    const features = new Map(grid.hexes.flatMap(cell => levels.map(level =>
+        [buildingLocationName(cell.hex, level), buildingMapFeatures(entity, cell.hex, level)] as const)));
+    const symbols = [...new Set([...features.values()].flat())];
+    const keyColumns = Math.max(1, Math.floor(box.width / 110));
+    const keyHeight = symbols.length ? Math.ceil(symbols.length / keyColumns) * 16 + 12 : 0;
+    const scale = Math.min((box.width - 8) / width, (box.height - keyHeight - floors * 18) / (floors * height));
+    const layerHeight = height * scale + 18;
+    const headerGap = Math.min(24, Math.max(0, box.height - keyHeight - floors * layerHeight));
+    // Placement is independent of the 0101 labels. An odd column shift also moves odd rows
+    // so the footprint remains a cube translation on the staggered wireframe.
+    let columnPadding = Math.floor((grid.columns - Math.max(...grid.hexes.map(cell => cell.column)) - 1) / 2);
+    const shiftedRow = (cell: typeof grid.hexes[number]) => cell.row + (columnPadding % 2) * (cell.column % 2);
+    let minRow = Math.min(...grid.hexes.map(shiftedRow));
+    let maxRow = Math.max(...grid.hexes.map(shiftedRow));
+    if (maxRow - minRow + 1 > grid.rows) {
+        // A full-height footprint may only fit with its original column parity.
+        columnPadding--;
+        minRow = Math.min(...grid.hexes.map(shiftedRow));
+        maxRow = Math.max(...grid.hexes.map(shiftedRow));
+    }
+    const rowPadding = Math.floor((grid.rows - (maxRow - minRow + 1)) / 2) - minRow;
+    const occupied = new Map(grid.hexes.map(cell =>
+        [`${cell.column + columnPadding},${shiftedRow(cell) + rowPadding}`, cell]));
+    const center = (column: number, row: number) => {
+        const staggeredRow = row + column % 2 / 2;
+        return { x: (column * 30 - staggeredRow * 6 - left) * scale, y: (staggeredRow * 12 - top) * scale };
+    };
+    const corners = [[-20, 0], [-7, -6], [13, -6], [20, 0], [7, 6], [-13, 6]];
+    for (const [index, floor] of levels.entries()) {
+        const layer = svgElement('g');
+        setAttributes(layer, { class: 'building-map-layer', 'data-building-floor': floor,
+            transform: `translate(${formatNumber(box.x + (box.width - width * scale) / 2)} ${formatNumber(box.y + headerGap + index * layerHeight)})` });
+        svg.appendChild(layer);
+        const outlines = svgElement('g');
+        const footprint = svgElement('g');
+        const annotations = svgElement('g');
+        layer.append(outlines, footprint, annotations);
+        for (let column = 0; column < grid.columns; column++) for (let row = 0; row < grid.rows; row++) {
+            const candidate = occupied.get(`${column},${row}`);
+            const cell = candidate && entity.occupiesMapLevel(candidate.hex, floor) && entity.segmentsInHex(candidate.hex) > 0 ? candidate : undefined;
+            const cellFeatures = cell ? features.get(buildingLocationName(cell.hex, floor)) ?? [] : [];
+            const { x, y } = center(column, row);
+            const polygon = svgElement('polygon');
+            setAttributes(polygon, { class: cell ? 'building-hex occupied' : 'building-hex',
+                points: corners
+                    .map(([dx, dy]) => `${formatNumber(x + dx * scale)},${formatNumber(y + dy * scale)}`).join(' '),
+                fill: buildingMapFill(cellFeatures) ?? 'none',
+                stroke: cell && !entity.usesHexsides() ? '#000' : '#bbb', 'stroke-width': cell && !entity.usesHexsides() ? 1.5 : 0.35,
+                'stroke-linejoin': 'round' });
+            (cell ? footprint : outlines).appendChild(polygon);
+            if (cell) {
+                if (entity.usesHexsides()) for (let side = 0; side < 6; side++) {
+                    if (!entity.hasSide(cell.hex, side)) continue;
+                    const a = corners[(side + 1) % 6], b = corners[(side + 2) % 6];
+                    const line = addLine(annotations, x + a[0] * scale, y + a[1] * scale, x + b[0] * scale, y + b[1] * scale, '#000', 1.8);
+                    setAttributes(line, { 'data-building-side': side, 'data-building-hex': cell.label });
+                }
+                polygon.setAttribute('data-loc', buildingLocationName(cell.hex, floor));
+                polygon.setAttribute('data-building-hex', cell.label);
+                polygon.setAttribute('data-building-features', cellFeatures.join(' '));
+                const glyphs = cellFeatures.filter(symbol => MAP_KEY[symbol].glyph);
+                for (const door of buildingMapDoors(entity, cell.hex, floor)) {
+                    const a = corners[(door.facing + 1) % 6], b = corners[(door.facing + 2) % 6];
+                    const marker = svgElement('polygon');
+                    const project = ([px, py]: readonly number[]) => [20 * px - Math.sqrt(12) * py, Math.sqrt(48) * py] as const;
+                    const points = door.geometry ? door.geometry.arrow.map(project) : buildingDoorPoints(a, b);
+                    if (door.geometry) {
+                        const opening = svgElement('polyline');
+                        setAttributes(opening, { class: 'linked-door-opening', fill: 'none', stroke: '#000', 'stroke-width': 2.5,
+                            'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+                            points: door.geometry.line.map(project).map(([px, py]) => `${x + px * scale},${y + py * scale}`).join(' ') });
+                        annotations.appendChild(opening);
+                    }
+                    setAttributes(marker, { 'data-building-symbol': door.symbol, 'data-building-facing': door.facing,
+                        points: points.map(([px, py]) => `${x + px * scale},${y + py * scale}`).join(' '),
+                        fill: MAP_KEY[door.symbol].color, stroke: '#000', 'stroke-width': .8, 'stroke-linejoin': 'miter' });
+                    annotations.appendChild(marker);
+                }
+                const label = addText(annotations, glyphs.length ? '' : cell.label, x, y + 2.3 * scale,
+                    { size: 6.5 * scale, anchor: 'middle' });
+                if (glyphs.length) {
+                    // A single anchored text run centers the symbols, gap and coordinate as one unit.
+                    glyphs.forEach((symbol, index) => {
+                        const glyph = svgElement('tspan');
+                        setAttributes(glyph, { 'data-building-symbol': symbol, 'font-size': 5.5 * scale, 'font-weight': 700, dx: index ? scale : 0 });
+                        glyph.textContent = MAP_KEY[symbol].glyph;
+                        label.appendChild(glyph);
+                    });
+                    const coordinate = svgElement('tspan');
+                    coordinate.setAttribute('dx', String(1.5 * scale));
+                    coordinate.textContent = cell.label;
+                    label.appendChild(coordinate);
+                }
+            }
+        }
+        addText(layer, `Level: ${entity.levelLabel(floor, true)}`, width * scale, height * scale + 10,
+            { size: 7, weight: 700, anchor: 'end' });
+    }
+    if (symbols.length) {
+        const key = svgElement('g');
+        setAttributes(key, { class: 'building-map-key', transform: `translate(${box.x + 8} ${box.y + headerGap + floors * layerHeight + 6})` });
+        svg.appendChild(key);
+        symbols.forEach((symbol, index) => {
+            const x = index % keyColumns * ((box.width - 16) / keyColumns), y = Math.floor(index / keyColumns) * 16;
+            mapKeySymbol(key, symbol, x + 6, y + 4);
+            addText(key, MAP_KEY[symbol].label, x + (symbol === 'large-door' ? 29 : 17), y + 6, { size: 6.5 });
         });
-    });
-    if (mounts.length === 0) addText(rows, 'No installed equipment.', 10, 47, { size: 8 });
-    appendRecordSheetAmmoProfile(group, recordSheetAmmoProfile(entity), {
-        x: 10, y: box.height - 12, width: box.width - 20, fontSize: 7, lineHeight: 9,
-    });
-}
-
-function drawStaticCrew(svg: SVGSVGElement, box: Box): void {
-    const group = addFrame(svg, 'CREW', box);
-    addText(group, 'Name:', 9, 33, { size: 8, weight: 700 });
-    addText(group, '', 44, 33, { size: 8, maxWidth: box.width - 55 }).id = 'crewName0';
-    const name = transparentRect(7, 21, box.width - 14, 17, 'crewNameButton');
-    setAttributes(name, { crewId: 0, textElement: 'crewName0' });
-    group.appendChild(name);
-    addLine(group, 44, 36, box.width - 11, 36, '#aaa', 0.5);
-    addText(group, 'Gunnery:', 9, 54, { size: 8, weight: 700 });
-    addText(group, '4', 63, 54, { size: 8 }).id = 'gunnerySkill0';
-    const skill = transparentRect(56, 42, 26, 18, 'crewSkillButton');
-    setAttributes(skill, { crewId: 0, skill: 'gunnery' });
-    group.appendChild(skill);
+    }
 }

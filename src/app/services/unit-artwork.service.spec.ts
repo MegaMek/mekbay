@@ -46,7 +46,7 @@ describe('device-local unit artwork storage', () => {
         const row: SavedCustomUnit = { schemaVersion: 1, uuid: first, accountUuid: 'owner', format: 'mtf', source: `uuid:${first}\n`, createdAt: 1, updatedAt: 1 };
         await db.updateCustomUnits([{ uuid: first, accountUuid: 'owner', update: () => row }]);
         await db.updateCustomUnits([{ uuid: first, accountUuid: 'owner', update: () => undefined }]);
-        await db.clearLocalUserStores(); await db.clearCatalogCaches();
+        await db.clearLocalSession(); await db.clearCatalogCaches();
         expect((await db.getUnitArtwork(first))?.fluff?.size).toBe(png.size);
         expect(await db.listCustomUnits()).toEqual([]);
         const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {

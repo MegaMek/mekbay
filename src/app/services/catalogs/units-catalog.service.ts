@@ -36,6 +36,7 @@ export interface PreparedUnitsCatalogActivation {
     readonly core: PreparedCoreCatalogActivation;
     readonly snapshot: UnitsCatalogSnapshot;
     readonly customOnly?: boolean;
+    readonly showProgress: boolean;
 }
 
 /**
@@ -235,11 +236,14 @@ export class UnitsCatalogService {
         this.pendingActivationValue.set(undefined);
         this.summaryPreparationState.set(undefined);
         const controller = new AbortController();
+        let showProgress = !customOnly;
         const promise = this.custom.prepareSummaries(core.dependencies, {
             signal: controller.signal,
             cachedOnly,
             onProgress: progress => {
                 if (controller.signal.aborted) return;
+                showProgress ||= progress.total >= 10;
+                if (!showProgress) return;
                 this.summaryPreparationState.set({
                     status: 'loading', availableUnits: this.snapshotValue().summaries.length,
                     progress: { phase: 'projecting', ...progress },
@@ -252,7 +256,7 @@ export class UnitsCatalogService {
             const snapshot = this.buildSnapshot(core, customOnly, customSummaries);
             this.lastPreparedKey = key;
             const prepared = Object.freeze({
-                revision: snapshot.revision, coreRevision: core.revision, core, snapshot,
+                revision: snapshot.revision, coreRevision: core.revision, core, snapshot, showProgress,
                 ...(customOnly ? { customOnly: true } : {}),
             });
             this.pendingActivationValue.set(prepared);

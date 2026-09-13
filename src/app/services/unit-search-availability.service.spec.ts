@@ -16,10 +16,10 @@ import { UnitSearchIndexService } from './unit-search-index.service';
 
 describe('UnitSearchAvailabilityService', () => {
     const units = [
-        createEmptyUnit({ id: 1, name: 'Atlas', uuid: 'atlas-a' }),
-        createEmptyUnit({ id: 1, name: 'Atlas', uuid: 'atlas-b' }),
-        createEmptyUnit({ id: 2, name: 'Locust', uuid: 'locust' }),
-        createEmptyUnit({ id: 3, name: 'Unknown Mek', uuid: 'unknown' }),
+        createEmptyUnit({ mul1id: 1, name: 'Atlas', uuid: 'atlas-a' }),
+        createEmptyUnit({ mul1id: 1, name: 'Atlas', uuid: 'atlas-b' }),
+        createEmptyUnit({ mul1id: 2, name: 'Locust', uuid: 'locust' }),
+        createEmptyUnit({ mul1id: 3, name: 'Unknown Mek', uuid: 'unknown' }),
     ];
     let eras: Era[];
     let factions: Faction[];

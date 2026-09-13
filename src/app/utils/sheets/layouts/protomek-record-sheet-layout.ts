@@ -1,11 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { addInventoryText, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
+import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { type ProtoMekEntity } from '../../../models/entity/entities/protomek/protomek-entity';
 import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
+import { weaponQuirkLabels } from '../../../models/entity/utils/weapon-quirks';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE,protoMekCriticalReferences,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
@@ -23,6 +26,7 @@ type RecordSheetPageProfile,
 } from '../record-sheet-layout';
 import {
 type Box,
+addCrewSkillValue,
 addFrame,
 addLine,
 addText,
@@ -95,10 +99,10 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
             }
         }
         drawGeneratedFooter(page, profile, {
-            catalystX: 18,
-            catalystY: 744.587,
-            catalystScale: 1.015,
-            footerCenterX: 332.5,
+            catalystX: profile.margin,
+            catalystY: profile.height - profile.margin - 24,
+            catalystScale: 0.9,
+            footerCenterX: (profile.margin + 60 + profile.width - profile.margin) / 2,
         });
     }
 
@@ -118,14 +122,15 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     const identity = at({ x: 3, y: 18, width: 91, height: 68 });
     const identityGroup = svgElement('g');
     identityGroup.setAttribute('transform', `translate(${formatNumber(identity.x)} ${formatNumber(identity.y)})`);
+    identityGroup.setAttribute('data-mekbay-movement-frame-x', formatNumber(-identity.x));
     const identityScale = identity.width / 91;
     const jumpLabel = entity.umuMP() > 0 ? 'Underwater:' : 'Jump:';
     const jumpValue = entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP();
     const movementLines: readonly [string, string, string, string][] = entity.isGlider()
         ? [
-            ['Ground:', '1', 'walk', 'mpGround'],
-            ['Cruise:', String(entity.walkMP()), 'run', 'mpWalk'],
-            ['Flank:', String(entity.runMP()), 'jump', 'mpRun'],
+            ['Ground:', '1', '', 'mpGround'],
+            ['Cruise:', String(entity.walkMP()), 'walk', 'mpWalk'],
+            ['Flank:', String(entity.runMP()), 'run', 'mpRun'],
         ]
         : [
             ['Walk:', String(entity.walkMP()), 'walk', 'mpWalk'],
@@ -142,9 +147,10 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     const baselines = [8.774, 17.548, 26.322, 35.095, 43.869, 51.869, 59.869] as const;
     identityLines.forEach(([label, value, field, id], index) => {
         const baseline = baselines[index] * identityScale;
-        addText(identityGroup, label, (index < 4 ? 3 : 5) * identityScale, baseline, {
+        const labelNode = addText(identityGroup, label, (index < 4 ? 3 : 5) * identityScale, baseline, {
             size: 7.2 * identityScale, weight: 700,
         });
+        if (index === 3) labelNode.id = 'movementPointsLabel';
         if (value) {
             const valueX = index === 0 ? 22.523 : index === 1 ? 23.004 : index === 2 ? 21.702 : 55;
             const valueNode = addText(identityGroup, value, valueX * identityScale, baseline, {
@@ -175,6 +181,17 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         size: 6.2 * footerScale,
         maxWidth: 108 * footerScale,
     });
+    if (request.showQuirks !== false) {
+        const quirks = entity.quirks().map(entry => entry.quirk.name).sort().concat(weaponQuirkLabels(entity));
+        if (quirks.length > 0) {
+            const group = svgElement('g');
+            group.classList.add('unitQuirks');
+            addText(group, `Quirks: ${quirks.join(', ')}`, at({ x: 295, y: 0, width: 1, height: 1 }).x, footerY, {
+                size: 6.084 * footerScale, maxWidth: 274 * footerScale,
+            });
+            svg.appendChild(group);
+        }
+    }
         const eraBox = at({ x: 75.667, y: 66.191, width: 20, height: 20 });
         await appendRecordSheetEraIcon(svg, outer, entity.year(), eraBox);
         appendLegacyIdentityAnchors(outer, entity, at({ x: 0, y: 0, width: 576, height: 139.2 }));
@@ -198,9 +215,10 @@ function drawCompactProtoMekInventory(
         headerFontSize: 8.6,
         cornerAngleDegrees: { topLeft: 45, topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
-    const sx = box.width / 194.833;
+    // Keep the authored columns inside the frame's right border and padding.
+    const sx = (box.width - 6) / 194.833;
     const sy = box.height / 77.405;
-    const fontScale = Math.min(sx, sy);
+    const fontScale = box.width / 194.833;
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * fontScale;
@@ -209,7 +227,7 @@ function drawCompactProtoMekInventory(
         ['Min', 150.365, 'middle'], ['Sht', 161.327, 'middle'], ['Med', 173.045, 'middle'], ['Lng', 185.33, 'middle'],
     ];
     headings.forEach(([label, position, anchor]) => addText(group, label, x(position), y(25.05), {
-        size: font(6.76), weight: 700, anchor,
+        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor, maxWidth: anchor === 'middle' ? x(9.5) : undefined,
     }));
 
     const weapons = recordSheetInventoryWeapons(entity, true);
@@ -256,7 +274,15 @@ function drawCompactProtoMekInventory(
     const rangePositions = [150.365, 161.327, 173.045, 185.33] as const;
     const rangeClasses = ['range_min', 'range_short', 'range_medium', 'range_long'] as const;
     const rangeButtons = ['shrButton', 'medButton', 'lngButton'] as const;
-    const lineStep = 9.126;
+    const rowLines = (row: { name: string; location: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
+        inventoryRowLineCount([[row.name, x(64)], [row.location, x(16)], [row.damage, x(46)],
+            [row.minimumRange, x(11)], ...row.ranges.map(value => [value, x(11)] as const)], font(size));
+    const metrics = fitInventoryText(70.493 - 34.95 - entity.intrinsicWeapons().length * 9.126, fontSize => ({
+        lineCount: regularRows.reduce((sum, row) => sum + rowLines(row, fontSize), 0), content: undefined }));
+    const lineStep = metrics.lineStep;
+    const inventoryFont = font(metrics.fontSize);
+    const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
+        addInventoryText(parent, value, x, yPos, { ...options, size: inventoryFont, lineHeight: y(lineStep) });
     const physical = entity.intrinsicWeapons();
     const physicalBaseline = 70.493;
     const inventory = svgElement('g');
@@ -285,40 +311,36 @@ function drawCompactProtoMekInventory(
         showQuantity = true,
         parent = inventory,
     ): number => {
-        const nameLines = compactProtoMekNameLines(data.name);
+        const lineCount = rowLines(data, metrics.fontSize);
         const entry = svgElement('g');
         entry.setAttribute('class', 'inventoryEntry');
         entry.setAttribute('id', `generated-protomek-inventory-row@${index}`);
         setInventoryComponentIds(entry, data.componentIds);
         entry.appendChild(transparentRect(x(3), y(baselineValue - lineStep * 0.82), box.width - x(6),
-            y(lineStep * nameLines.length),
+            y(lineStep * lineCount),
             'inventoryEntryButton mainButton'));
         rangeButtons.forEach((className, rangeIndex) => entry.appendChild(
             transparentRect(x(rangePositions[rangeIndex + 1] - 5.5), y(baselineValue - lineStep * 0.82),
                 x(11), y(lineStep), `inventoryEntryButton ${className}`),
         ));
         const baseline = y(baselineValue);
-        addText(entry, showQuantity ? String(data.quantity) : '', x(6.725), baseline, {
-            class: 'quantity', size: font(6.76), anchor: 'middle',
+        addCell(entry, showQuantity ? String(data.quantity) : '', x(6.725), baseline, {
+            class: 'quantity', size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle',
         });
-        const nameGroup = svgElement('g');
-        nameGroup.setAttribute('class', 'name');
-        nameLines.forEach((line, lineIndex) => addText(nameGroup, line, x(11.45),
-            y(baselineValue + lineIndex * lineStep), { size: font(6.76), maxWidth: x(72) }));
-        entry.appendChild(nameGroup);
-        addText(entry, data.location, x(87.05), baseline, {
-            class: 'location', size: font(6.76), anchor: 'middle', maxWidth: x(18),
+        addCell(entry, data.name, x(11.45), baseline, { class: 'name', maxWidth: x(64) });
+        addCell(entry, data.location, x(87.05), baseline, {
+            class: 'location', size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(16),
         });
         const damage = svgElement('g');
         damage.setAttribute('class', 'damage');
-        addText(damage, data.damage, x(96.5), baseline, { size: font(6.76), maxWidth: x(50) });
+        addCell(damage, data.damage, x(96.5), baseline, { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(46) });
         entry.appendChild(damage);
         const values = [data.minimumRange, ...data.ranges];
-        values.forEach((value, rangeIndex) => addText(entry, value, x(rangePositions[rangeIndex]), baseline, {
-            class: rangeClasses[rangeIndex], size: font(6.76), anchor: 'middle', maxWidth: x(11),
+        values.forEach((value, rangeIndex) => addCell(entry, value, x(rangePositions[rangeIndex]), baseline, {
+            class: rangeClasses[rangeIndex], size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(11),
         }));
         parent.appendChild(entry);
-        return nameLines.length;
+        return lineCount;
     };
 
     let displayLine = 0;
@@ -339,15 +361,8 @@ function drawCompactProtoMekInventory(
     }, physicalBaseline - (physical.length - index - 1) * lineStep, `physical-${index}`, false, physicalRows));
     appendRecordSheetAmmoProfile(group, ammo, {
         x: x(6.725), y: y(75.191), width: box.width - x(13.45),
-        fontSize: font(6.76), lineHeight: y(lineStep),
+        fontSize: font(RECORD_SHEET_FONT.inventory), lineHeight: y(lineStep),
     });
-}
-
-function compactProtoMekNameLines(value: string): readonly string[] {
-    if (value.length <= 22) return Object.freeze([value]);
-    const breakAt = value.lastIndexOf(' ', 22);
-    if (breakAt <= 0) return Object.freeze([value]);
-    return Object.freeze([value.slice(0, breakAt), value.slice(breakAt + 1)]);
 }
 
 function drawCompactProtoMekCriticals(
@@ -552,13 +567,14 @@ function drawCompactProtoMekPilot(svg: SVGSVGElement, box: Box): void {
     group.appendChild(nameButton);
     const skillButton = transparentRect(x(7), y(22.5), x(83), y(10), 'crewSkillButton');
     skillButton.setAttribute('crewId', '0');
+    skillButton.setAttribute('skill', 'gunnery');
     group.appendChild(skillButton);
-    addText(group, 'Name:', x(9.845), y(21.668), { size: font(6.76), weight: 700 });
-    const name = addText(group, '', x(32.073), y(21.668), { size: font(6.76), maxWidth: x(103.355) });
+    addText(group, 'Name:', x(9.845), y(21.668), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const name = addText(group, '', x(32.073), y(21.668), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(103.355) });
     name.id = 'crewName0';
     addLine(group, x(32.073), y(22.668), x(135.428), y(22.668), '#111', 0.72 * fontScale);
-    addText(group, 'Gunnery Skill:', x(9.845), y(30.941), { size: font(6.76), weight: 700 });
-    const skill = addText(group, '4', x(52.392), y(30.941), { size: font(6.76) });
+    addText(group, 'Gunnery Skill:', x(9.845), y(30.941), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const skill = addCrewSkillValue(group, '4', x(52.392), y(30.941), fontScale);
     skill.id = 'gunnerySkill0';
     addText(group, 'Hits Taken', x(180.47), y(18.723), {
         size: font(5.2), weight: 700, anchor: 'end',

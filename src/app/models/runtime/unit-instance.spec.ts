@@ -11,6 +11,26 @@ import {
 import { asEncounterTargetId, type TargetRegistrySnapshot } from './encounter-runtime';
 
 describe('CBTUnitInstance with a direct MekEntity', () => {
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`uses manual BV while retaining damaged calculation evidence in ${ruleset}`, () => {
+            const { entity, instance, index } = createDirectMekRuntimeFixture(ruleset);
+            entity.manualBV.set(1234);
+            const pristine = instance.query().mekBattleValue();
+            expect(pristine).toEqual(jasmine.objectContaining({
+                kind: 'complete', battleValue: 1234, manualBattleValue: 1234, manualOverrideApplied: true,
+            }));
+            const face = [...index.armorFaces.values()].find(candidate => candidate.maximumPoints > 1)!;
+            expect(instance.dispatch({ type: 'damage-armor', faceId: face.id,
+                amount: face.maximumPoints, target: 'committed' }).accepted).toBeTrue();
+            const damaged = instance.query().mekBattleValue();
+            expect(instance.query().currentBaseBattleValue()).toBe(1234);
+            if (pristine.kind === 'complete' && damaged.kind === 'complete') {
+                expect(damaged.defensive).toBeLessThan(pristine.defensive);
+                expect(damaged.manualOverrideApplied).toBeTrue();
+            }
+        });
+    }
+
     it('uses the exact runtime index supplied by its admission owner', () => {
         const fixture = createDirectMekRuntimeFixture();
 

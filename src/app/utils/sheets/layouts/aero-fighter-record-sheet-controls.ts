@@ -5,6 +5,7 @@ import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entit
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import {
 type Box,
+addCrewSkillValue,
 addFrame,
 addLine,
 addText,
@@ -77,11 +78,11 @@ export function drawFighterPilotPanel(svg: SVGSVGElement, box: Box): void {
     group.appendChild(nameButton);
 
     addText(group, 'Gunnery Skill:', x(3), y(42), { size: font(6.76), weight: 700, maxWidth: x(39.172) });
-    const gunnery = addText(group, '4', x(47.672), y(42), { size: font(6.76), class: 'skillValue' });
+    const gunnery = addCrewSkillValue(group, '4', x(47.672), y(42), font(1));
     gunnery.id = 'gunnerySkill0';
     addLine(group, x(47.672), y(43), x(65.82), y(43), '#000', 0.72);
     addText(group, 'Piloting Skill:', x(69.8), y(42), { size: font(6.76), weight: 700, maxWidth: x(36.72) });
-    const piloting = addText(group, '5', x(114.472), y(42), { size: font(6.76), class: 'skillValue' });
+    const piloting = addCrewSkillValue(group, '5', x(114.472), y(42), font(1));
     piloting.id = 'pilotingSkill0';
     addLine(group, x(114.472), y(43), x(136.6), y(43), '#000', 0.72);
     for (const [skill, left, width] of [['gunnery', 44, 24], ['piloting', 111, 27]] as const) {

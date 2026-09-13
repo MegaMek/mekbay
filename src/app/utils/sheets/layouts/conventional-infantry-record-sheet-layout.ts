@@ -15,6 +15,7 @@ import { INFANTRY_STRENGTH_CELL_COUNT } from '../infantry-strength-projection';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
 type Box,
+addCrewSkillValue,
 addFrame,
 addLine,
 addText,
@@ -78,10 +79,11 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
             }), Array.from({ length: Math.max(0, strength - 1) }, (_, index) => index + 2));
         }
         if (blocks.length <= 3) drawInfantryReferenceTables(page, profile);
+        const catalyst = scalePageBox(profile, { x: 533.966, y: 719.587, width: 0, height: 0 });
         drawGeneratedFooter(page, profile, {
-            catalystX: 533.966,
-            catalystY: 719.587,
-            catalystScale: 1.015,
+            catalystX: catalyst.x,
+            catalystY: catalyst.y,
+            catalystScale: 1.015 * profile.horizontalScale,
         });
     }
 
@@ -121,9 +123,11 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     facts.forEach(([label, value, baseline, id]) => {
         addText(group, label, x(3), y(baseline), { size: font(7.2), weight: 700 });
         if (value) {
-            const node = addText(group, value, x(label === 'Role:' ? 21.702 : 55.8), y(baseline), {
-                size: font(7.2), maxWidth: x(58),
-            });
+            const node = id
+                ? addCrewSkillValue(group, value, x(55.8), y(baseline), fontScale)
+                : addText(group, value, x(label === 'Role:' ? 21.702 : 55.8), y(baseline), {
+                    size: font(7.2), maxWidth: x(58),
+                });
             if (id) node.id = id;
         }
     });
@@ -140,6 +144,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     bv.id = 'bv';
     addText(group, 'Transport Wt:', x(173.4), y(154.786), { size: font(7.2), weight: 700 });
     addText(group, `${entity.tonnage().toFixed(1)} tons`, x(221.502), y(154.786), { size: font(7.2) });
+    addText(group, '', x(387), y(154.786), { size: font(7.2), weight: 700 }).id = 'movementPointsLabel';
     addText(group, 'Movement MP:', x(315.4), y(154.786), { size: font(7.2), weight: 700 });
     infantryMovementRows(entity).forEach((movement, index) => {
         const baseline = 154.786 + index * 11.777;
@@ -405,7 +410,7 @@ function drawCompactInfantryTrack(
     track.setAttribute(
         'transform',
         `translate(${formatNumber(x(left))} ${formatNumber(y(top))}) `
-        + `scale(${formatNumber(x(1))} ${formatNumber(y(1))})`,
+        + `scale(${formatNumber(Math.min(x(1), y(1)))})`,
     );
     const outline = svgElement('path');
     setAttributes(outline, {

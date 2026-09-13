@@ -4,6 +4,9 @@
 
 import { DestroyRef, effect, inject, signal, untracked, type ElementRef } from '@angular/core';
 
+import { OptionsService } from '../../services/options.service';
+import { viewerWheel } from '../../utils/viewer-wheel';
+
 type Point = { x: number; y: number };
 
 type PointerGesture = {
@@ -14,6 +17,7 @@ type PointerGesture = {
 
 /** Shared scrolling and zoom gestures for the sheet and card preview surfaces. */
 export class SvgViewerZoomPan {
+    private readonly optionsService = inject(OptionsService);
     readonly maxZoomPercent = 300;
     readonly zoomPercent = signal(100);
 
@@ -91,14 +95,15 @@ export class SvgViewerZoomPan {
         event.preventDefault();
         event.stopPropagation();
 
-        if (event.shiftKey || event.ctrlKey) {
-            const delta = this.normalizeWheelDelta(event.deltaY || event.deltaX, event.deltaMode);
-            this.panBy(event.shiftKey ? delta : 0, event.shiftKey ? 0 : delta);
-            return;
+        const container = this.containerRef().nativeElement;
+        const delta = viewerWheel(event, this.optionsService.options().mouseWheelAction, {
+            width: container.clientWidth, height: container.clientHeight,
+        });
+        if (delta.zoom === 1) {
+            this.panBy(delta.x, delta.y);
+        } else {
+            this.zoomAt(this.localPoint(event), this.scale * delta.zoom);
         }
-
-        const delta = this.normalizeWheelDelta(event.deltaY, event.deltaMode);
-        this.zoomAt(this.localPoint(event), this.scale * Math.exp(-delta * 0.002));
     };
 
     private readonly onPointerDown = (event: PointerEvent): void => {
@@ -412,12 +417,6 @@ export class SvgViewerZoomPan {
 
     private clientPoint(event: MouseEvent): Point {
         return { x: event.clientX, y: event.clientY };
-    }
-
-    private normalizeWheelDelta(delta: number, deltaMode: number): number {
-        if (deltaMode === WheelEvent.DOM_DELTA_LINE) return delta * 16;
-        if (deltaMode === WheelEvent.DOM_DELTA_PAGE) return delta * this.containerRef().nativeElement.clientHeight;
-        return delta;
     }
 
     private isZoomedIn(): boolean {

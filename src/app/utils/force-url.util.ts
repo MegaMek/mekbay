@@ -91,8 +91,8 @@ export function parseForceUrl(
     for (const unit of allUnits) {
         unitsByUuid.set(unit.uuid, unit);
         if (unit.isCustom) continue;
-        if (lookupMode === 'mulId' && unit.id === null) continue;
-        const key = lookupMode === 'mulId' ? String(unit.id) : unit.name.toLowerCase();
+        if (lookupMode === 'mulId' && unit.mul1id === null) continue;
+        const key = lookupMode === 'mulId' ? String(unit.mul1id) : unit.name.toLowerCase();
         if (!lookup.has(key)) lookup.set(key, unit);
         else if (lookupMode === 'identifier') lookup.set(key, undefined);
     }

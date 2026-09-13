@@ -89,6 +89,7 @@ export type CBTUnitCommand =
     }
     | {
         readonly type: 'apply-mek-critical-roll';
+        readonly hotLoadExplosion?: import('./mek-critical-hit-v2').HotLoadExplosionRoll;
         readonly locationId: LocationId;
         readonly results: readonly number[];
         readonly target: 'committed' | 'pending';
@@ -111,6 +112,8 @@ export type CBTUnitCommand =
         readonly componentId: ComponentId;
         readonly status: EquipmentStatus;
         readonly target: 'committed' | 'pending';
+        /** Allows explosion automation to leave vehicle launcher damage for manual resolution. */
+        readonly applyExplosion?: boolean;
     }
     | {
         readonly type: 'damage-shield';
@@ -181,6 +184,7 @@ export type CBTUnitCommand =
         readonly componentId: ComponentId;
         readonly munitionKey: string;
         readonly remaining: number;
+        readonly hotLoaded?: boolean;
     }
     | {
         readonly type: 'reset-ammo-loadout';
@@ -306,7 +310,7 @@ export type CBTUnitCommand =
     | { readonly type: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
     | { readonly type: 'repair-damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }
     | { readonly type: 'set-sensor-damage-level'; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
-    | { readonly type: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending' }
+    | { readonly type: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending'; readonly applyExplosion?: boolean }
     | { readonly type: 'set-ammo-spent'; readonly componentId: ComponentId; readonly shotsSpent: number }
     | { readonly type: 'set-airborne'; readonly airborne: boolean | null }
     | { readonly type: 'set-movement'; readonly movement: NonMekMovementDeclaration | null }

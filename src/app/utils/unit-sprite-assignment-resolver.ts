@@ -18,13 +18,17 @@ export interface UnitSpriteManifestEvidence {
 }
 
 export const UNIT_SPRITE_ASSIGNMENT_CONTEXT_SCHEMA_VERSION = 1 as const;
-export const UNIT_SPRITE_ASSIGNMENT_RESOLVER_VERSION = 1 as const;
+export const UNIT_SPRITE_ASSIGNMENT_RESOLVER_VERSION = 2 as const;
 
 /**
  * Framework-free facts consumed by MegaMek's canonical mekset assignment
  * precedence. Callers adapt their own entity representation at the boundary.
  */
 export interface UnitSpriteAssignmentFacts {
+  /** An explicitly selected sprite from the native design. */
+  readonly iconPath?: string;
+  /** A previously resolved summary icon, checked against the current unit type. */
+  readonly resolvedIconPath?: string;
   readonly displayName: string;
   readonly fullChassis: string;
   readonly entityType: string;
@@ -182,6 +186,34 @@ function normalizeAssignmentKey(value: string): string {
   return value.toUpperCase();
 }
 
+/** Unit categories are the top-level folders used to build the sprite sheets. */
+export function getUnitSpriteTypes(entityType: string): readonly string[] {
+  switch (entityType) {
+    case 'Mek': return ['meks', 'Color Archive'];
+    case 'ProtoMek': return ['protomeks'];
+    case 'Infantry': return ['Infantry'];
+    case 'BattleArmor': return ['battle armor'];
+    case 'Naval':
+    case 'SupportNaval': return ['sea'];
+    case 'Tank':
+    case 'SupportTank':
+    case 'LargeSupportTank':
+    case 'VTOL':
+    case 'SupportVTOL': return ['vehicles'];
+    case 'Aero': return ['fighter'];
+    case 'ConvFighter':
+    case 'FixedWingSupport': return ['convfighter'];
+    case 'SmallCraft':
+    case 'DropShip': return ['dropships'];
+    case 'JumpShip': return ['jumpships'];
+    case 'WarShip': return ['warships'];
+    case 'SpaceStation': return ['Space Stations'];
+    case 'BuildingEntity':
+    case 'MobileStructure': return ['GunEmplacements'];
+    default: return [];
+  }
+}
+
 function defaultMekKey(facts: UnitSpriteAssignmentFacts): string {
   if (facts.chassisConfig === 'Tripod') return 'default_tripod';
   if (facts.chassisConfig === 'QuadVee') return 'default_quadvee';
@@ -219,7 +251,7 @@ export function getDefaultSpriteAssignmentKeyForFacts(
   if (facts.entityType === 'BattleArmor') return 'default_ba';
   if (facts.entityType === 'Infantry') return 'default_infantry';
   if (facts.entityType === 'ProtoMek') return 'default_proto';
-  if (facts.entityType === 'BuildingEntity') {
+  if (facts.entityType === 'BuildingEntity' || facts.entityType === 'MobileStructure') {
     return 'default_gun_emplacement';
   }
   if (facts.entityType === 'Mek') return defaultMekKey(facts);
@@ -253,22 +285,26 @@ export function getDefaultSpriteAssignmentKeyForFacts(
 }
 
 /**
- * Exact unit mappings precede full-chassis mappings and family defaults.
+ * Explicit icons precede type-compatible name mappings and family defaults.
  * Key normalization intentionally matches Java's case-insensitive lookup
  * without trimming or otherwise changing punctuation/whitespace.
  */
 export function resolveUnitSpriteAssignmentPath(
   facts: UnitSpriteAssignmentFacts,
   assignments: UnitSpriteAssignments | undefined,
+  isAvailable: (path: string) => boolean = () => true,
 ): string | undefined {
-  if (!assignments) return undefined;
-
-  const exactPath = assignments.exact[normalizeAssignmentKey(facts.displayName)];
-  if (exactPath) return exactPath;
-
-  const chassisPath = assignments.chassis[normalizeAssignmentKey(facts.fullChassis)];
-  if (chassisPath) return chassisPath;
-
-  const defaultKey = normalizeAssignmentKey(getDefaultSpriteAssignmentKeyForFacts(facts));
-  return assignments.exact[defaultKey];
+  const spriteTypes = getUnitSpriteTypes(facts.entityType).map(type => type.toLowerCase());
+  const defaultPath = assignments?.exact[normalizeAssignmentKey(getDefaultSpriteAssignmentKeyForFacts(facts))];
+  const matchedPaths = [
+    facts.resolvedIconPath,
+    assignments?.exact[normalizeAssignmentKey(facts.displayName)],
+    assignments?.chassis[normalizeAssignmentKey(facts.fullChassis)],
+  ].filter(path => path && (path === defaultPath || spriteTypes.includes(path.split('/')[0].toLowerCase())));
+  return [
+    facts.iconPath,
+    ...matchedPaths,
+    defaultPath,
+    assignments?.exact['DEFAULT_UNKNOWN'],
+  ].find((path): path is string => !!path && isAvailable(path));
 }

@@ -37,6 +37,31 @@ const CLASSIC_OPTIONS: PersistedForceV1ConversionOptions = {
 };
 
 describe('CBT V1 force converter', () => {
+    for (const legacyFields of [
+        { asfGunnerySkill: 0, asfPilotingSkill: 7 },
+        { asfGunnery: 0, asfPiloting: 7 },
+        {},
+    ] as readonly JsonObject[]) {
+        it(`converts V1 LAM aerospace fields ${JSON.stringify(legacyFields)} to the current names`, async () => {
+            const source: LegacyUnitSourceV1 = {
+                payload: { unit: 'Legacy LAM', state: { crew: [{
+                    id: 0, name: 'LAM Pilot', gunnerySkill: 2, pilotingSkill: 3, hits: 0, state: 0,
+                    ...legacyFields,
+                }] } },
+                identity: { kind: 'resolved', uuid: UUID },
+            };
+            const fresh = await materializeMek({ source, instanceId: 'unit:lam-v1',
+                deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID }, scenario: SCENARIO });
+            spyOn(fresh.getUnit(), 'unitSubtype').and.returnValue('Land-Air BattleMek');
+            const converted = await convertPersistedMekUnitV1(source, fresh, SCENARIO);
+            expect(converted.deployment.values.crewAssignment.positions[0]).toEqual(jasmine.objectContaining({
+                name: 'LAM Pilot', gunnery: 2, piloting: 3,
+                aeroGunnery: Object.keys(legacyFields).length ? 0 : 2,
+                aeroPiloting: Object.keys(legacyFields).length ? 7 : 3,
+            }));
+            expect(JSON.stringify(converted)).not.toMatch(/"asf(?:Gunnery|Piloting)/u);
+        });
+    }
     it('reports discarded Mek movement facts while keeping readable damage and crew', async () => {
         const source = v1Force();
         source.groups![0].units = [source.groups![0].units[0]];

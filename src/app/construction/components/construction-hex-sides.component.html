@@ -1,0 +1,31 @@
+<svg viewBox="-100 -100 200 200" role="group" [attr.aria-label]="label()">
+  <polygon class="hex" points="64,0 32,55.426 -32,55.426 -64,0 -32,-55.426 32,-55.426" />
+  <text class="hex-label" y="-4" aria-hidden="true">{{ hexLabel() }}</text>
+  <text class="caption" y="13" aria-hidden="true">{{ caption() }}</text>
+  @for (side of sides; track side; let index = $index) {
+    <g
+      class="side"
+      [class.selected]="selected(index)"
+      [class.blocked]="blocked(index)"
+      [attr.transform]="'rotate(' + index * 60 + ')'"
+      role="button"
+      [attr.tabindex]="blocked(index) ? -1 : 0"
+      [attr.aria-label]="label() + ' ' + side"
+      [attr.aria-pressed]="selected(index)"
+      [attr.aria-disabled]="blocked(index)"
+      (click)="select(index)"
+      (keydown.enter)="select(index); $event.preventDefault()"
+      (keydown.space)="select(index); $event.preventDefault()"
+    >
+      <title>{{ side }}{{ blocked(index) ? ' · Unavailable' : selected(index) ? ' · Selected' : '' }}</title>
+      <polygon class="hit-area" points="-47,-82 47,-82 20,-34 -20,-34" />
+      <path class="edge" d="M-32-55.426H32" />
+      @if (selected(index) && marker() === 'door') {
+        <polygon class="door-marker" [attr.points]="doorPoints" />
+      }
+      <text class="direction" y="-88" [attr.transform]="'rotate(' + -index * 60 + ' 0 -88)'" aria-hidden="true">
+        {{ side }}
+      </text>
+    </g>
+  }
+</svg>

@@ -24,8 +24,8 @@ import { isDroneOperatingSystemEquipment } from '../models/drone-operating-syste
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { ComponentId,CrewPositionId } from '../models/entity/entity-identifiers';
-import { isAeroEntity } from '../models/entity/utils/entity-type-guards';
-import { AmmoEquipment } from '../models/equipment.model';
+import { isAeroEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
+import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import {
 projectAeroHeatAutomationChecks,
@@ -34,6 +34,7 @@ type AeroHeatAutomationCheck,
 import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
 import { mekConsciousnessTarget,twoD6Total } from '../models/runtime/mek-automation-rules';
 import { ammoExplosionDamagePerShot,ammoRackSize } from '../models/runtime/mek-critical-hit-v2';
+import { hotLoadedAmmoForWeapon } from '../models/runtime/mek-ammo';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
 import type { UnitConditionKey } from '../models/unit-condition.model';
@@ -198,6 +199,34 @@ export class DirectNonMekAutomationService {
         instanceId: string,
         command: CBTUnitCommand,
     ): Promise<PreparedDirectNonMekAutomationCommand> {
+        if ((command.type === 'set-component-status' || command.type === 'set-component-statuses')
+            && command.status === 'destroyed' && command.applyExplosion === undefined) {
+            const snapshot = this.nonMekSnapshot(force, instanceId);
+            if (snapshot && isVehicleEntity(snapshot.entity)) {
+                const ids = command.type === 'set-component-status' ? [command.componentId] : command.componentIds;
+                const perspective = command.target === 'pending' ? 'preview' : 'committed';
+                let damage = 0;
+                const effects: string[] = [];
+                for (const id of ids) {
+                    if (snapshot.query.componentStatus(id, perspective) === 'destroyed') continue;
+                    const ammo = hotLoadedAmmoForWeapon(snapshot.index, snapshot.query, id, perspective);
+                    if (ammo.length === 0) continue;
+                    const mount = snapshot.index.components.get(id)!.mount;
+                    const rawDamage = (mount.equipment as WeaponEquipment).rackSize * Math.max(...ammo.map(ammoExplosionDamagePerShot));
+                    damage += rawDamage;
+                    effects.push(`${mount.displayName()} (${mount.location}): ${rawDamage} internal damage`);
+                }
+                if (damage > 0) {
+                    const event: AutomationReviewEvent = { id: 'hot-loaded-launchers', subject: this.subject(snapshot),
+                        event: 'Hot-loaded launcher explosion', delta: damage, effects,
+                        description: `Apply ${damage} points of internal explosion damage. Vehicles do not roll for a secondary ammo explosion.` };
+                    const accepted = await this.automation.resolve('internalExplosionsCheck', [event],
+                        { title: 'Review Internal Explosion', allowCancel: true });
+                    return accepted === null ? Object.freeze({ command, cancelled: true })
+                        : Object.freeze({ command: { ...command, applyExplosion: accepted.has(event.id) } });
+                }
+            }
+        }
         if (command.type === 'set-crew-state') {
             const snapshot = this.nonMekSnapshot(force, instanceId);
             if (snapshot
@@ -1329,7 +1358,7 @@ export class DirectNonMekAutomationService {
             return [Object.freeze({
                 positionId: position.id,
                 occurrence: position.occurrence,
-                piloting: assignment?.piloting ?? 5,
+                piloting: assignment?.aeroPiloting ?? 5,
                 state: common,
             })];
         });
@@ -1373,7 +1402,7 @@ export class DirectNonMekAutomationService {
         if (!controller && !drone) return null;
         const profile = force.getUnitCrewProfile(snapshot.instanceId);
         const base = controller
-            ? profile?.positions.find(position => position.positionId === controller.positionId)?.piloting ?? 5
+            ? profile?.positions.find(position => position.positionId === controller.positionId)?.aeroPiloting ?? 5
             : 5;
         const wounds = controller?.state.wounds ?? 0;
         const systemDamage = [...snapshot.index.damageTracks.values()].filter(track =>

@@ -92,7 +92,8 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     }
 
     // ── Targeting Computer ──────────────────────────────────────────
-    if (targetingComputerSlots !== null) return targetingComputerSlots;
+    if (targetingComputerSlots !== null) return isSuperHeavyMek && targetingComputerSlots !== undefined
+        ? Math.ceil(targetingComputerSlots / 2) : targetingComputerSlots;
 
     // ── Ferro-Fibrous / Reactive ────────────────────────────────────
     if (armorKind === 'ferro-fibrous' || armorKind === 'reactive') {

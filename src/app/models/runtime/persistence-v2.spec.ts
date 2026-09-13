@@ -94,7 +94,7 @@ describe('V2 force persistence', () => {
         expect(mutable.units[0].unit.stateRevision).toBe(-1);
     });
 
-    it('fails closed on duplicate, orphaned, missing, obsolete-kind, or misordered roster rows', async () => {
+    it('fails closed on duplicate, orphaned, missing, or misordered roster rows', async () => {
         const duplicateGroup = clone(mixedForce());
         duplicateGroup.roster.groups.push({
             ...duplicateGroup.roster.groups[0],
@@ -117,14 +117,6 @@ describe('V2 force persistence', () => {
         const missing = clone(mixedForce());
         missing.roster.groups[0].members.pop();
         await expectCode(validateSerializedCBTForceV2(asForce(missing)), 'MISSING_ROSTER_MEMBER_ID');
-
-        const obsoleteUnitKind = clone(mixedForce());
-        obsoleteUnitKind.units[0].kind = 'ready';
-        await expectCode(validateSerializedCBTForceV2(asForce(obsoleteUnitKind)), 'INVALID_SHAPE');
-
-        const obsoleteRosterKind = clone(mixedForce());
-        obsoleteRosterKind.roster.groups[0].members[0].kind = 'ready';
-        await expectCode(validateSerializedCBTForceV2(asForce(obsoleteRosterKind)), 'INVALID_SHAPE');
 
         const groupOrder = clone(mixedForce());
         groupOrder.roster.groups[0].order = 1;
@@ -220,9 +212,6 @@ describe('V2 force persistence', () => {
         wrongUnitRevision.units[0].stateRevision = 99;
         await expectCode(validateSerializedCBTForceV2(asForce(wrongUnitRevision)), 'REVISION_MISMATCH');
 
-        const obsoleteEncounterRevision = clone(mixedForce());
-        Reflect.set(obsoleteEncounterRevision.encounter, 'encounterRevision', 1);
-        await expectCode(validateSerializedCBTForceV2(asForce(obsoleteEncounterRevision)), 'INVALID_SHAPE');
 
         const missingEncounter = clone(mixedForce());
         delete missingEncounter.encounter;
@@ -286,14 +275,7 @@ describe('V2 force persistence', () => {
         await expectCode(validateSerializedCBTForceV2(asForce(unknownMessage)), 'INVALID_SHAPE');
     });
 
-    it('fails closed on the older crew-less deployment payload instead of inventing a profile', async () => {
-        const oldDeployment = clone(mixedForce());
-        oldDeployment.units[0].unit.deployment = {
-            schemaVersion: 1,
-            values: { id: 'default' },
-        };
-        await expectCode(validateSerializedCBTForceV2(asForce(oldDeployment)), 'INVALID_SHAPE');
-
+    it('requires a crew assignment in the deployment payload', async () => {
         const missingAssignment = clone(mixedForce());
         delete missingAssignment.units[0].unit.deployment.values.crewAssignment;
         await expectCode(validateSerializedCBTForceV2(asForce(missingAssignment)), 'INVALID_SHAPE');

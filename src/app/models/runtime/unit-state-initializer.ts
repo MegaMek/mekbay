@@ -60,6 +60,7 @@ export function scenarioRulesFromOptions(options: CBTApplicationOptions): Scenar
         options: Object.freeze({
             forcedWithdrawal: options.CBTOptionalRules.forcedWithdrawal,
             sprinting: options.CBTOptionalRules.sprinting,
+            hotLoadedAmmo: options.CBTOptionalRules.hotLoadedAmmo,
         }),
     });
 }

@@ -21,6 +21,9 @@ import { UnitDetailsSummaryService } from './unit-details-summary.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { parseEntity } from '../models/entity/parse-entity';
 import type { CBTForceMember } from '../models/force-member.model';
+import { SpriteStorageService } from './sprite-storage.service';
+import { resolveUnitSpritePath } from '../utils/unit-sprite-resolver';
+import type { BaseEntity } from '../models/entity/base-entity';
 
 describe('UnitDetailsSummaryService', () => {
     const uuid = asUnitUuid('019f583e-b5e8-7032-b925-ba6c429a0687');
@@ -51,6 +54,11 @@ describe('UnitDetailsSummaryService', () => {
                 { provide: DataService, useValue: data },
                 { provide: UnitsCatalogService, useValue: catalog },
                 { provide: LoggerService, useValue: logger },
+                { provide: SpriteStorageService, useValue: {
+                    resolveIconPath: (unit: BaseEntity) => resolveUnitSpritePath(unit, {
+                        exact: { DEFAULT_GUN_EMPLACEMENT: 'default-building.png' }, chassis: {},
+                    }),
+                } },
             ],
         });
         service = TestBed.inject(UnitDetailsSummaryService);
@@ -60,6 +68,7 @@ describe('UnitDetailsSummaryService', () => {
         const bytes = new TextEncoder().encode([
             '<UUID>', uuid, '</UUID>',
             '<UnitType>', 'BuildingEntity', '</UnitType>',
+            '<coords>', '0,0,0', '</coords>',
             '<Name>', 'Medium Sniper Turret', '</Name>',
             '<Model>', '(3075)', '</Model>',
             '<year>', '3075', '</year>',
@@ -122,7 +131,7 @@ describe('UnitDetailsSummaryService', () => {
         expect(summary.tons).not.toBe(999);
         expect(summary.hash).toBe(hash);
         expect(summary.isCustom).toBeTrue();
-        expect(summary.icon).toBe('catalog-icon');
+        expect(summary.icon).toBe('default-building.png');
         expect(service.resolveForceMember(member)).toBe(summary);
         expect(catalog.readNativeUnitSource).not.toHaveBeenCalled();
     });
@@ -141,6 +150,13 @@ describe('UnitDetailsSummaryService', () => {
         expect(catalog.readNativeUnitSource).not.toHaveBeenCalled();
     });
 
+    it('uses the pinned design icon instead of the current catalog icon', async () => {
+        const { member } = await forceMember('Pinned icon');
+        member.entity.iconPath.set('meks/Atlas.png');
+        data.getUnitByUuid.and.returnValue(nativeSummary(asSourceHash('A'.repeat(27))));
+        expect(service.resolveForceMember(member).icon).toBe('meks/Atlas.png');
+    });
+
     it('refreshes details for a replacement force entity with the same UUID and roster ID', async () => {
         const first = await forceMember('First');
         const next = await forceMember('Second');
@@ -153,6 +169,7 @@ describe('UnitDetailsSummaryService', () => {
     async function forceMember(model: string) {
         const source = [
             '<UUID>', uuid, '</UUID>', '<UnitType>', 'BuildingEntity', '</UnitType>',
+            '<coords>', '0,0,0', '</coords>',
             '<Name>', 'Medium Sniper Turret', '</Name>', '<Model>', model, '</Model>',
             '<year>', '3075', '</year>', '<type>', 'IS Level 3', '</type>',
         ].join('\n');

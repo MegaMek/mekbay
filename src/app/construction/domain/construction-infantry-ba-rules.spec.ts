@@ -11,6 +11,7 @@ import { parseEntity } from '../../models/entity/parse-entity';
 import { PREDEFINED_INFANTRY_MOUNTS } from '../../models/entity/types/infantry';
 import { createConstructionEntity } from './construction-factory';
 import { constructionInfantryBaMessages } from './construction-infantry-ba-rules';
+import { constructionEquipmentConflictMessages } from './construction-equipment-conflicts';
 
 const misc = (id: string, flags: EquipmentFlag[]) => new MiscEquipment({ id, name: id, type: 'misc', flags: ['F_BA_EQUIPMENT', ...flags], stats: { criticalSlots: 0, tonnage: 0.01 } });
 const rifle = new WeaponEquipment({ id: 'TestRifle', name: 'Test Rifle', type: 'weapon', flags: ['F_INFANTRY'], infantry: { crew: 1 } });
@@ -29,7 +30,7 @@ const myomer = misc('TestMyomer', ['F_MASC']);
 const registry = createTestEquipmentRegistry(Object.fromEntries([rifle, support, gun, ammo, ap, glove, pack, paired, adapter, wing, booster, mechanical, myomer].map(eq => [eq.id, eq])));
 const ba = () => createConstructionEntity('BattleArmor', registry) as BattleArmorEntity;
 const infantry = () => createConstructionEntity('Infantry', registry) as InfantryEntity;
-const codes = (entity: BattleArmorEntity | InfantryEntity) => constructionInfantryBaMessages(entity).map(message => message.code);
+const codes = (entity: BattleArmorEntity | InfantryEntity) => [...constructionInfantryBaMessages(entity), ...constructionEquipmentConflictMessages(entity)].map(message => message.code);
 const add = (entity: BattleArmorEntity, equipment: Equipment, values: Partial<EntityMountedEquipmentInit> = {}) => entity.addEquipment({
     equipment, equipmentId: equipment.id, allocation: { kind: 'location', location: 'Squad' }, baMountLocation: 'Body',
     rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false, ...values,

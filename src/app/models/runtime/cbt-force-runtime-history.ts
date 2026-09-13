@@ -200,24 +200,13 @@ export function crewProfileHistory(
         const previous = beforeById.get(position.positionId);
         if (!previous) continue;
         const occurrence = unit.getIndex().crewPositions.get(position.positionId)?.occurrence ?? 0;
-        if (previous.gunnery !== position.gunnery) {
-            events.push(unitHistory(
-                RUNTIME_HISTORY_MESSAGE.CREW_SKILL_CHANGED,
-                instanceId,
-                occurrence,
-                0,
-                previous.gunnery,
-                position.gunnery,
-            ));
-        }
-        if (previous.piloting !== position.piloting) {
-            events.push(unitHistory(
-                RUNTIME_HISTORY_MESSAGE.CREW_SKILL_CHANGED,
-                instanceId,
-                occurrence,
-                1,
-                previous.piloting,
-                position.piloting,
+        for (const [field, code, standard] of [
+            ['gunnery', 0, 4], ['piloting', 1, 5], ['aeroGunnery', 2, 4], ['aeroPiloting', 3, 5],
+        ] as const) {
+            const oldSkill = previous[field] ?? standard;
+            const newSkill = position[field] ?? standard;
+            if (oldSkill !== newSkill) events.push(unitHistory(
+                RUNTIME_HISTORY_MESSAGE.CREW_SKILL_CHANGED, instanceId, occurrence, code, oldSkill, newSkill,
             ));
         }
     }

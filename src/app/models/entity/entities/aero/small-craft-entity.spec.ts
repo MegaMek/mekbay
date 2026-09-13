@@ -42,7 +42,7 @@ describe('SmallCraftEntity implicit equipment', () => {
     expect(entity.implicitSystemEquipment()).toEqual([]);
   });
 
-  it('charges automatic ECM exactly once for an armed military Small Craft', () => {
+  it('includes integral military ECM in the structure price while charging explicitly mounted ECM', () => {
     const automaticEcm = createEquipment({
       id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
       stats: { cost: 50000 },
@@ -54,7 +54,8 @@ describe('SmallCraftEntity implicit equipment', () => {
     }));
 
     addTestEquipment(entity, weapon, { location: 'Nose' });
-    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
+    expect(entity.implicitSystemEquipment()).toEqual([automaticEcm]);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
 
     addTestEquipment(entity, automaticEcm, { location: 'Nose' });
     expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(50000);
@@ -70,7 +71,7 @@ describe('SmallCraftEntity implicit equipment', () => {
     expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
   });
 
-  it('rejects an unresolved automatic ECM cost', () => {
+  it('does not price integral ECM using the unrelated equipment catalog price', () => {
     const automaticEcm = createEquipment({
       id: 'ISSingle-Hex ECM', name: 'Single-Hex ECM', type: 'misc', flags: ['F_ECM'],
       stats: { cost: 'variable' },
@@ -82,8 +83,7 @@ describe('SmallCraftEntity implicit equipment', () => {
     }));
     addTestEquipment(entity, weapon, { location: 'Nose' });
 
-    expect(() => calculateMountedEquipmentCostBreakdown(entity))
-      .toThrowError(/Unable to calculate variable cost for ISSingle-Hex ECM/);
+    expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
   });
 
   it('materializes and dematerializes auto-filled crew across the tonnage threshold', () => {

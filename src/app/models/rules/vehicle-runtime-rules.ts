@@ -84,6 +84,11 @@ export interface VehicleRuntimeRulesProjection {
     readonly stabilizerAffectedComponentIds: ReadonlySet<ComponentId>;
 }
 
+/** TW p. 149 excludes VTOLs and WiGEs from charging; aerospace is a separate entity family. */
+export function vehicleHasChargeAttack(entity: VehicleEntity, ruleset?: CBTRuleset): boolean {
+    return ruleset !== 'total-warfare' || !['VTOL', 'WiGE'].includes(entity.motiveType());
+}
+
 export function projectVehicleRuntimeRules(
     entity: VehicleEntity,
     index: NonMekRuntimeIndex,

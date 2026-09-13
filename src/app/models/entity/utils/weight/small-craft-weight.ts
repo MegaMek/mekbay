@@ -9,6 +9,7 @@ import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
 import { smallCraftArmorPointsPerTon } from '../large-craft-armor';
 import { isConstructionSystemEquipment } from '../../../construction-equipment.model';
 import { isNavalC3Equipment } from '../../../c3-network.model';
+import { isEcmEquipment } from '../../../ecm-mode.model';
 import {
   usesLargeCraftAerospaceSupportSlot,
   usesSmallCraftAerospaceSupportSlot,
@@ -84,6 +85,8 @@ export function calculateSmallCraftWeightBreakdown(entity: SmallCraftEntity): Sm
     }
   }
   for (const equipment of entity.implicitSystemEquipment()) {
+    // SO:AA p. 99: military craft ECM is integral to the structure, not a design component.
+    if (isEcmEquipment(equipment)) continue;
     if (!equipment.hasFixedTonnage()) {
       throw new Error(`Unable to calculate implicit equipment tonnage for ${equipment.id} on ${entity.displayName()}`);
     }

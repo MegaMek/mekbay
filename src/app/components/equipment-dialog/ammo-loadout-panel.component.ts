@@ -7,7 +7,7 @@ import { firstValueFrom } from 'rxjs';
 import { AmmoEquipment } from '../../models/equipment.model';
 import type { EquipmentStatus } from '../../models/equipment-status.model';
 import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
-import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
+import { SetAmmoDialogComponent, type SetAmmoDialogData, type SetAmmoDialogResult } from '../set-ammo-dialog/set-ammo.dialog.component';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -32,6 +32,7 @@ interface AmmoLoadoutEntryView {
 interface AmmoLoadoutGroupView {
     readonly id: string;
     readonly displayName: string;
+    readonly hotLoaded: boolean;
     readonly locations: readonly AmmoControlGroupLocation[];
     readonly totalAmmo: number;
     readonly remaining: number;
@@ -66,6 +67,7 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                             <span class="chevron" [class.collapsed]="!isExpanded(group)" aria-hidden="true"></span>
                             <span class="ammo-name-wrapper">
                                 <span class="ammo-name">{{ group.displayName }}</span>
+                                @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                 @if (!isExpanded(group)) {
                                     <span class="ammo-location-badges">
                                     @for (location of group.locations; track location.loc + ':' + location.state) {
@@ -87,6 +89,7 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                             }
                             <span class="ammo-name-wrapper">
                                 <span class="ammo-name">{{ group.displayName }}</span>
+                                @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                 <span class="ammo-location-badges">
                                     @for (location of group.locations; track location.loc + ':' + location.state) {
                                         <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.disabled]="isLocationBadgeDisabled(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
@@ -108,6 +111,7 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                                 <div class="ammo-bin" [class.destroyed]="entry.status === 'destroyed'" [class.disabled]="entry.status === 'disabled'" [class.empty]="remainingAmmoBin <= 0">
                                     <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="!entryUsable(entry) || readOnly()">
                                         <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
+                                        @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                         <span class="ammo-location-badges">
                                             <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.disabled]="isEntryLocationBadgeDisabled(entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
                                                 {{ entry.locationLabel }}
@@ -283,6 +287,7 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
         .ammo-location-badge.exposed {
             background: var(--background-warning);
         }
+        .hot-loaded-badge { background: var(--background-warning); margin-right: 4px; }
 
         .ammo-location-badge.destroyed {
             background: var(--damage-color);
@@ -564,7 +569,7 @@ export class AmmoLoadoutPanelComponent {
         const grouped = new Map<string, EquipmentPanelComponent[]>();
         for (const row of rows) {
             if (!row.ammo) continue;
-            const key = `${row.ammo.munitionKey}\u0000${row.ammo.displayName}`;
+            const key = `${row.ammo.munitionKey}\u0000${row.ammo.displayName}\u0000${!!row.ammo.hotLoaded}`;
             const group = grouped.get(key);
             if (group) group.push(row);
             else grouped.set(key, [row]);
@@ -594,6 +599,7 @@ export class AmmoLoadoutPanelComponent {
             return Object.freeze({
                 id: entries.map(entry => entry.id).join('|'),
                 displayName: (first.ammo?.displayName ?? first.label).replace(/ Ammo$/i, ''),
+                hotLoaded: first.ammo?.hotLoaded === true,
                 locations: Object.freeze([...locations.values()].map(location => Object.freeze({ ...location }))),
                 totalAmmo: entries.reduce((sum, entry) => sum + entry.totalAmmo, 0),
                 remaining: entries.reduce((sum, entry) => sum + entry.remaining, 0),
@@ -626,7 +632,7 @@ export class AmmoLoadoutPanelComponent {
             || !(originalAmmo instanceof AmmoEquipment)
             || ammoOptions.length !== commonLoadouts.length) return;
         const maxQuantity = rows.reduce((sum, row) => sum + (row.ammo?.capacity ?? 0), 0);
-        const ref = this.dialogs.createDialog<{ name: string; quantity: number; totalAmmo: number } | null>(
+        const ref = this.dialogs.createDialog<SetAmmoDialogResult | null>(
             SetAmmoDialogComponent,
             {
                 data: {
@@ -639,6 +645,7 @@ export class AmmoLoadoutPanelComponent {
                     ammoOptions,
                     quantity: rows.reduce((sum, row) => sum + (row.ammo?.remaining ?? 0), 0),
                     maxQuantity,
+                    hotLoaded: first.ammo.hotLoaded,
                     unitType: runtime.snapshot().unitType,
                     equipmentRegistry: registry,
                     weaponTechBases: Object.freeze([...new Set(rows.flatMap(row =>
@@ -654,7 +661,7 @@ export class AmmoLoadoutPanelComponent {
             const capacity = row.ammo?.loadouts.find(loadout => loadout.munitionKey === selection.name)?.capacity;
             if (capacity === undefined) return;
             const allocated = Math.min(capacity, remaining);
-            await runtime.configureAmmo(row, selection.name, allocated);
+            await runtime.configureAmmo(row, selection.name, allocated, selection.hotLoaded);
             remaining -= allocated;
         }
     }

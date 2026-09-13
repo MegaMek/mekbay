@@ -20,7 +20,7 @@ import type { Force, UnitGroup } from '../models/force.model';
 import type { ForcePerson } from '../models/force-personnel';
 import { GameSystem } from '../models/common.model';
 import { CrewMember } from '../models/crew-member.model';
-import { unitTracksPilotWounds } from '../models/unit-crew-policy';
+import { unitTracksPilotWounds, unitCrewSkillSet } from '../models/unit-crew-policy';
 import { asCrewPositionId } from '../models/entity/entity-identifiers';
 import { isCBTForceMember } from '../models/force-member.model';
 import { classicSkillFactsForEntity } from '../models/entity/utils/battle-value/skill-facts';
@@ -72,6 +72,7 @@ export class ForcePilotEditorService {
         {
           data: {
             unitId: assignment?.unitId,
+            skillSet: skillFacts ? unitCrewSkillSet(skillFacts.unitType, skillFacts.unitSubtype) : 'both',
             editNotes: true,
             editPortrait: true,
             editWounds: true,
@@ -85,13 +86,15 @@ export class ForcePilotEditorService {
                 wounds: health?.wounds ?? 0,
                 gunnery: person.gunnery ?? 4,
                 piloting: person.piloting ?? 5,
+                aeroGunnery: person.aeroGunnery ?? 4,
+                aeroPiloting: person.aeroPiloting ?? 5,
               },
             ],
             personnelActions: this.actions(force, personId),
             commander: person.commander,
             ...(assignment ? { commanderContext: {} } : {}),
-            labelGunnery: 'Gunnery Skill',
-            labelPiloting: 'Piloting Skill',
+            labelGunnery: 'Ground Gunnery Skill',
+            labelPiloting: 'Ground Piloting Skill',
             skillFacts,
             ...(isCBTForceMember(member) && skillFacts
               ? {
@@ -122,6 +125,8 @@ export class ForcePilotEditorService {
         portrait: edited.portrait,
         gunnery: edited.gunnery,
         piloting: edited.piloting,
+        aeroGunnery: edited.aeroGunnery,
+        aeroPiloting: edited.aeroPiloting,
         commander: result.commander ? true : undefined,
       });
       if (applied && edited.wounds !== undefined && edited.wounds !== (health?.wounds ?? 0)) {

@@ -151,7 +151,6 @@ describe('UnitDetailsCardTabComponent', () => {
         await settleLayout();
         const component = fixture.componentInstance;
         const container = viewport(fixture);
-        const originalWidth = cardRect(fixture).width;
         component.setZoomPercent(64.33);
         await settleLayout();
         component.setZoomPercent(0);
@@ -159,7 +158,7 @@ describe('UnitDetailsCardTabComponent', () => {
         expect(cardRect(fixture).width).toBeCloseTo(container.clientWidth / 2, 0);
         expect(component.isZoomPanActive()).toBeFalse();
 
-        container.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, cancelable: true }));
+        container.dispatchEvent(new WheelEvent('wheel', { ctrlKey: true, deltaY: 10000, cancelable: true }));
         expect(component.zoomPercent()).toBe(component.minZoomPercent);
         const pointer = (type: string, pointerId: number, clientX: number) => container.dispatchEvent(new PointerEvent(type, {
             pointerId, pointerType: 'touch', isPrimary: pointerId === 1, clientX, clientY: 250,
@@ -177,7 +176,7 @@ describe('UnitDetailsCardTabComponent', () => {
         component.resetZoom();
         await settleLayout();
         expect(component.zoomPercent()).toBe(100);
-        expect(cardRect(fixture).width).toBeCloseTo(originalWidth, 0);
+        expect(cardRect(fixture).height).toBeCloseTo(container.clientHeight, 0);
     });
 
     it('raises the zoom to the new minimum on resize and recalculates it when the unit changes', async () => {
@@ -242,6 +241,7 @@ describe('UnitDetailsCardTabComponent', () => {
     it('resets from the full-card-set fit on touch double-tap and ignores its synthetic double-click', async () => {
         const fixture = createComponent(900, 500);
         const component = fixture.componentInstance;
+        await settleLayout();
         component.setZoomPercent(50);
         await settleLayout();
         const container = viewport(fixture);
@@ -271,7 +271,7 @@ describe('UnitDetailsCardTabComponent', () => {
         expect(fixture.componentInstance.minZoomPercent).toBe(100);
         fixture.componentInstance.setZoomPercent(50);
         await settleLayout();
-        container.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, cancelable: true }));
+        container.dispatchEvent(new WheelEvent('wheel', { ctrlKey: true, deltaY: 10000, cancelable: true }));
         expect(fixture.componentInstance.zoomPercent()).toBe(100);
         expect(cardRect(fixture).width).toBeCloseTo(container.clientWidth, 0);
 
@@ -303,14 +303,14 @@ describe('UnitDetailsCardTabComponent', () => {
         expect(container.scrollTop).toBeGreaterThan(0);
     });
 
-    it('zooms at the cursor with an unmodified wheel and resets to a full card', async () => {
+    it('zooms at the cursor with Ctrl+wheel and resets to a full card', async () => {
         const fixture = createComponent();
         await settleLayout();
         const container = viewport(fixture);
         const bounds = container.getBoundingClientRect();
         const before = cardRect(fixture);
         const cursor = { clientX: bounds.left + container.clientWidth / 2, clientY: before.top + before.height * 0.7 };
-        const wheel = new WheelEvent('wheel', { ...cursor, deltaY: -200, bubbles: true, cancelable: true });
+        const wheel = new WheelEvent('wheel', { ctrlKey: true, ...cursor, deltaY: -200, bubbles: true, cancelable: true });
 
         container.dispatchEvent(wheel);
         const after = cardRect(fixture);
@@ -355,11 +355,11 @@ describe('UnitDetailsCardTabComponent', () => {
         expect(getComputedStyle(container).touchAction).toBe('none');
     });
 
-    it('keeps the second card reachable at 100% with Ctrl+wheel', async () => {
+    it('keeps the second card reachable at 100% with unmodified scrolling', async () => {
         const fixture = createComponent(500, 500);
         await settleLayout();
         const container = viewport(fixture);
-        container.dispatchEvent(new WheelEvent('wheel', { ctrlKey: true, deltaY: 10000, cancelable: true }));
+        container.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, cancelable: true }));
 
         const second = fixture.nativeElement.querySelectorAll('svg.card-svg')[1].getBoundingClientRect();
         expect(second.top).toBeGreaterThanOrEqual(container.getBoundingClientRect().top - 1);
@@ -465,7 +465,7 @@ describe('UnitDetailsCardTabComponent rendered card fit', () => {
     });
 
     for (const unitType of ['BM', 'SC'] as const) {
-        it(`fits real ${unitType} cards without a vertical scrollbar at 100%, including fractional viewport heights`, async () => {
+        it(`fits a real ${unitType} card at 100% and all cards at minimum zoom, including fractional viewport heights`, async () => {
             const fixture = TestBed.createComponent(UnitDetailsCardTabComponent);
             fixture.componentRef.setInput('unit', createEmptyUnit({ as: { TP: unitType } }));
             for (const [width, height] of [[1000, 300], [1000, 699.59375], [1000, 315.5], [1000, 315.75], [900, 500], [320, 500]]) {
@@ -484,6 +484,21 @@ describe('UnitDetailsCardTabComponent rendered card fit', () => {
                     .toBe(0);
                 expect(card.bottom).toBeLessThanOrEqual(bounds.bottom - (container.offsetHeight - container.clientHeight) + 0.01);
                 expect(fixture.componentInstance.zoomPercent()).toBe(100);
+
+                fixture.componentInstance.setZoomPercent(0);
+                for (let frame = 0; frame < 4; frame++) {
+                    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+                }
+                expect(container.scrollWidth).toBe(container.clientWidth);
+                expect(container.scrollHeight).toBe(container.clientHeight);
+                for (const svg of cards.querySelectorAll('svg.card-svg')) {
+                    const card = svg.getBoundingClientRect();
+                    expect(card.left).toBeGreaterThanOrEqual(bounds.left - 0.01);
+                    expect(card.top).toBeGreaterThanOrEqual(bounds.top - 0.01);
+                    expect(card.right).toBeLessThanOrEqual(bounds.right + 0.01);
+                    expect(card.bottom).toBeLessThanOrEqual(bounds.bottom + 0.01);
+                }
+                fixture.componentInstance.resetZoom();
             }
         });
     }

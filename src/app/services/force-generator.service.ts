@@ -498,8 +498,8 @@ export function normalizeGeneratedCBTCrew(
             gunnery: memberGunnery,
             piloting: memberPiloting,
             ...(isLandAirMek ? {
-                asfGunnery: existing?.asfGunnery ?? memberGunnery,
-                asfPiloting: existing?.asfPiloting ?? memberPiloting,
+                aeroGunnery: existing?.aeroGunnery ?? memberGunnery,
+                aeroPiloting: existing?.aeroPiloting ?? memberPiloting,
             } : {}),
         };
     });
@@ -511,8 +511,8 @@ export function getGeneratedCBTCrewSkill(
     fallback: number,
 ): number {
     if (!crew?.length) return fallback;
-    const asfSkill = skillType === 'gunnery' ? 'asfGunnery' : 'asfPiloting';
-    return Math.min(...crew.flatMap((member) => [member[skillType], member[asfSkill]]
+    const aeroSkill = skillType === 'gunnery' ? 'aeroGunnery' : 'aeroPiloting';
+    return Math.min(...crew.flatMap((member) => [member[skillType], member[aeroSkill]]
         .filter((skill): skill is number => skill !== undefined)));
 }
 
@@ -4091,10 +4091,10 @@ export class ForceGeneratorService implements OnDestroy {
         if (!useMegaMekAvailability) {
             const unitsByMulId = new Map<number, UnitSummary[]>();
             for (const unit of eligibleUnits) {
-                if (unit.id === null) continue;
-                const matchingUnits = unitsByMulId.get(unit.id) ?? [];
+                if (unit.mul1id === null) continue;
+                const matchingUnits = unitsByMulId.get(unit.mul1id) ?? [];
                 matchingUnits.push(unit);
-                unitsByMulId.set(unit.id, matchingUnits);
+                unitsByMulId.set(unit.mul1id, matchingUnits);
             }
             for (const { eraId, factionId } of scopeState.pairs) {
                 const faction = this.dataService.getFactionById(factionId);

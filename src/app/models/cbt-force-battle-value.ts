@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { isC3EmergencyMasterOperatingTurnsFried } from './c3-emergency-master.model';
+import { crewSkillsForUnit } from './unit-crew-policy';
 import { projectEncounterNetworksToC3Editor } from './c3-network-presentation';
 import {
 C3Role,
@@ -113,6 +114,9 @@ export function calculateCBTForceBattleValues(
     );
 
     return new Map(input.units.flatMap(row => {
+        // Native manual BV is the final value, before crew, TAG or network adjustments.
+        const manual = row.unit.getUnit().manualBV();
+        if (manual > 0) return [[row.unit.instanceId, Object.freeze({ base: manual, tag: 0, c3: 0, skills: 0, adjustedPreSkill: manual, adjusted: manual })] as const];
         if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 0, adjusted: 0 })] as const];
         const base = row.baseBattleValue;
         if (base === null) return [];
@@ -121,13 +125,15 @@ export function calculateCBTForceBattleValues(
         const c3 = ruleset === 'total-warfare' ? tax.totalWar(view) : tax.core2026(view);
         const preSkill = base + tag + c3;
         const primary = row.unit.getCrewAssignment().positions[0];
+        const entity = row.unit.getUnit();
+        const skill = crewSkillsForUnit(primary, entity.unitType(), entity.unitSubtype());
         const unroundedAdjusted = primary === undefined
             ? preSkill
             : unroundedEntityBattleValueForSkills(
                 row.unit.getUnit(),
                 preSkill,
-                primary.gunnery,
-                primary.piloting,
+                skill.gunnery,
+                skill.piloting,
             );
         const skills = unroundedAdjusted - preSkill;
         const adjusted = Math.round(unroundedAdjusted);

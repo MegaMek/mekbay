@@ -1,45 +1,17 @@
 @media screen {
-  .mekbay-sheet {
+  .mekbay-sheet:not(.print-preview) {
     #heatScale text {
       pointer-events: none;
     }
 
     .critSlot {
-      &.equipment-hover-secondary > .critSlot-bg-rect {
-        fill: var(--equipment-hover-secondary-color);
-        stroke: var(--equipment-hover-secondary-color);
-        stroke-width: 0.35px;
-      }
-
       text {
         pointer-events: none;
       }
 
-      .critSlot-bg-rect {
-        &:hover {
-          fill: var(--highlight-color);
-        }
-      }
-
       &.willDamage .critSlot-bg-rect {
         fill: #f669 !important;
-
-        &:hover {
-          fill: #f999 !important;
-        }
       }
-    }
-
-    .critGroup.flooded .critSlot-bg-rect:hover {
-      fill: #99f;
-    }
-
-    .critGroup.disabledLocation .critSlot-bg-rect:hover {
-      fill: #999;
-    }
-
-    .picker-active.critSlot text {
-      text-decoration: underline !important;
     }
 
     .heatEffect.hot {
@@ -63,39 +35,6 @@
     .skillValue,
     .customAmmoLoadout {
       fill: #00f;
-    }
-
-    /* Armor and structure highlight */
-    .unitLocation.selectable:is(:focus-visible, .picker-active),
-    .unitLocation.selectable:is(:focus-visible, .picker-active) > path {
-      fill: var(--undamaged-highlight-color) !important;
-    }
-
-    .unitLocation.selectable.damaged:is(:focus-visible, .picker-active),
-    .unitLocation.selectable.damaged:is(:focus-visible, .picker-active) > path {
-      fill: var(--damaged-highlight-color) !important;
-    }
-
-    .selectable,
-    .selectable > path {
-      cursor: pointer;
-      touch-action: none;
-      transition: fill ease-out 0.2s;
-    }
-
-    .selectable:not(.pip-hit-area):hover,
-    .selectable:not(.pip-hit-area):hover > path {
-      fill: var(--undamaged-highlight-color) !important;
-    }
-
-    .selectable.damaged:not(.pip-hit-area):hover,
-    .selectable.damaged:not(.pip-hit-area):hover > path {
-      fill: var(--damaged-highlight-color) !important;
-    }
-
-    .pip-hit-area:hover {
-      fill: transparent !important;
-      stroke: transparent !important;
     }
 
     .critLoc.willChange:not(.damaged) {
@@ -167,8 +106,6 @@
     }
 
     .unitConditionButton {
-      cursor: pointer;
-
       text {
         pointer-events: none;
       }
@@ -182,20 +119,16 @@
       }
     }
 
-    &.read-only .edit-only {
-      display: none;
-    }
-
-    .locationConditionControl {
-      cursor: pointer;
-
-      text {
-        pointer-events: none;
+    &.read-only {
+      .edit-only {
+        display: none;
       }
     }
 
-    .locationConditionHitArea {
-      pointer-events: all;
+    .locationConditionControl {
+      text {
+        pointer-events: none;
+      }
     }
 
     .unitConditionBanner {
@@ -270,18 +203,6 @@
     }
 
     .inventoryEntry {
-      &.equipment-hover-secondary > .inventoryEntryButton {
-        fill: var(--equipment-hover-secondary-color);
-      }
-
-      &:hover > .inventoryEntryButton {
-        fill: var(--highlight-color);
-      }
-
-      &:active > .inventoryEntryButton {
-        filter: brightness(1.03);
-      }
-
       &.selected:not(.selected-alternative-mode):not(.selected-range-short):not(.selected-range-medium):not(
           .selected-range-long
         ):not(.selected-range-extreme)
@@ -340,42 +261,8 @@
       }
     }
 
-    #ammoProfile:hover > .inventoryEntryButton {
-      fill: var(--highlight-color);
-    }
-
-    .inventoryEntry > .alternativeMode {
-      &:hover > .inventoryEntryButton {
-        fill: var(--highlight-color);
-      }
-
-      &:active > .inventoryEntryButton {
-        filter: brightness(1.03);
-      }
-    }
-
-    .locationConditionText {
-      text-decoration: underline dotted;
-    }
-
-    .locationConditionControl:hover .locationConditionText {
-      text-decoration-style: solid;
-    }
-
     .heat.hot {
       fill: var(--heat-color) !important;
-    }
-
-    g.hsPips.interactive {
-      .changeActiveHeatsinksCountButton {
-        transition: stroke 0.2s;
-        stroke-width: 1px;
-        stroke: transparent;
-
-        &:hover {
-          stroke: var(--highlight-color);
-        }
-      }
     }
 
     .pip.hsPip {
@@ -383,7 +270,7 @@
     }
 
     .currentMoveMode {
-      font-weight: bold;
+      font-weight: bold !important;
     }
 
     .unusedMoveMode {
@@ -391,11 +278,15 @@
     }
 
     .movePsrWarning {
-      fill: var(--danger);
+      fill: var(--svg-fg-color, #000);
       font-family: Roboto, sans-serif;
       font-size: 7px;
       font-weight: 700;
       pointer-events: none;
+
+      &.currentMoveMode {
+        fill: var(--danger);
+      }
     }
 
     .applyHeatButtonFrame {
@@ -440,16 +331,6 @@
 
     .heatApplicationAvailable #applyHeatButton.interactive {
       display: block;
-
-      path {
-        transition: filter 0.2s;
-      }
-
-      &:hover {
-        path {
-          filter: brightness(1.2);
-        }
-      }
     }
   }
 }

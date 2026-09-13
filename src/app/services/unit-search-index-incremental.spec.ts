@@ -8,7 +8,7 @@ import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { UnitSearchIndexService, type PreparedUnitSearchIndexes } from './unit-search-index.service';
 
 function custom(name: string, id: number): UnitSummary {
-    return createEmptyUnit({ name, chassis: name, uuid: name, id, hash: name, origin: 'user', isCustom: true,
+    return createEmptyUnit({ name, chassis: name, uuid: name, mul1id: id, hash: name, origin: 'user', isCustom: true,
         comp: [{ id: name, n: name, q: 1, p: 1, l: 'RA', t: 'E', md: '5' }],
         as: { specials: ['IF1', 'TUR(2/2/1, AC2/2/1)'], MVm: { j: 8 } } });
 }
@@ -26,7 +26,7 @@ function comparable(index: PreparedUnitSearchIndexes) {
 }
 
 describe('incremental custom search indexes', () => {
-    const core = () => createEmptyUnit({ name: 'Core', chassis: 'Core', uuid: 'core', id: 10, hash: 'core',
+    const core = () => createEmptyUnit({ name: 'Core', chassis: 'Core', uuid: 'core', mul1id: 10, hash: 'core',
         comp: [{ id: 'core-only', n: 'Core-only weapon', q: 1, p: 1, l: 'RA', t: 'E', md: '7' }] });
     const eras = (ids: number[]) => [{ id: 1, name: 'Early', units: new Set(ids), factions: new Set([1]), years: { to: 3050 } }] as Era[];
     const factions = (ids: number[]) => [{ id: 1, name: 'Faction', eras: { 1: new Set(ids) } }] as unknown as Faction[];

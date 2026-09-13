@@ -20,6 +20,7 @@ function ammoRow(
         readonly exposed?: boolean;
         readonly capacity?: number;
         readonly munitionKey?: string;
+        readonly hotLoaded?: boolean;
     } = {},
 ): EquipmentPanelComponent {
     const displayName = options.displayName ?? 'AC/20 Ammo';
@@ -44,6 +45,7 @@ function ammoRow(
             displayName,
             remaining,
             capacity,
+            hotLoaded: options.hotLoaded,
             loadouts: [{ munitionKey, displayName, capacity, profile: {} }],
         },
     } as unknown as EquipmentPanelComponent;
@@ -86,6 +88,17 @@ function createComponent(
 }
 
 describe('AmmoLoadoutPanelComponent', () => {
+    it('keeps ordinary and hot-loaded bins separate and labels the hot-loaded group', () => {
+        const { fixture, component } = createComponent([
+            ammoRow('ammo:normal', 'LT', 5),
+            ammoRow('ammo:hot', 'RT', 5, 'available', { hotLoaded: true }),
+        ]);
+        expect(component.groups().map(group => group.hotLoaded)).toEqual(jasmine.arrayWithExactContents([false, true]));
+        const badges = fixture.nativeElement.querySelectorAll('.hot-loaded-badge');
+        expect(badges.length).toBe(1);
+        expect(badges[0].textContent.trim()).toBe('HOT-LOADED');
+    });
+
     it('recomputes visible groups from live entries while open', () => {
         let liveRows: readonly EquipmentPanelComponent[] = [
             ammoRow('ammo:left', 'LT', 5, 'available', { displayName: 'Ultra AC/20 Ammo' }),

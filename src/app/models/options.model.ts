@@ -10,6 +10,7 @@ export const OPTION_VALUES = {
     colorScheme: ['default', 'night'],
     pickerStyle: ['default', 'radial', 'linear'],
     canvasInput: ['all', 'touch', 'pen'],
+    mouseWheelAction: ['scroll', 'zoom'],
     swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
     unitDisplayName: ['chassisModel', 'alias', 'both'],
     displayUnitNameFormat: ['innerSphereClan', 'clanInnerSphere'],
@@ -30,6 +31,7 @@ export const OPTION_VALUES = {
 
 type OptionValue<K extends keyof typeof OPTION_VALUES> = (typeof OPTION_VALUES)[K][number];
 
+export type MouseWheelAction = OptionValue<'mouseWheelAction'>;
 export type AvailabilitySource = OptionValue<'availabilitySource'>;
 export type RecordSheetDoubleTapZoomResetMode = OptionValue<'recordSheetDoubleTapZoomReset'>;
 export type RecordSheetPipLayout = OptionValue<'recordSheetPipLayout'>;
@@ -92,6 +94,7 @@ export interface CBTOptionalRules {
     forcedWithdrawal: boolean;
     extremeRange: boolean;
     sprinting: boolean;
+    hotLoadedAmmo: boolean;
     allowMixedTechBaseAmmo: boolean;
 }
 
@@ -99,6 +102,7 @@ export interface Options {
     colorScheme: ColorScheme;
     pickerStyle: OptionValue<'pickerStyle'>;
     canvasInput: OptionValue<'canvasInput'>;
+    mouseWheelAction: MouseWheelAction;
     swipeToNextSheet: OptionValue<'swipeToNextSheet'>;
     syncZoomBetweenSheets: boolean;
     unitDisplayName: OptionValue<'unitDisplayName'>;

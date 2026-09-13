@@ -103,6 +103,25 @@
               ],
               "outputHashing": "all"
             },
+            "dev": {
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public",
+                  "output": "."
+                },
+                {
+                  "glob": "{LICENSE,NOTICE,THIRD-PARTY-NOTICES.md}",
+                  "input": ".",
+                  "output": "legal"
+                },
+                {
+                  "glob": "icon-192x192.png",
+                  "input": "public/icons/dev",
+                  "output": "icons"
+                }
+              ]
+            },
             "development": {
               "assets": [
                 {

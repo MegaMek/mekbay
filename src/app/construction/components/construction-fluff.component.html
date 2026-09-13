@@ -1,0 +1,111 @@
+<div class="fluff-grid">
+  <section
+    class="framed-borders fluff-panel"
+    [attr.inert]="!textEditable() ? '' : null"
+    [class.design-locked]="!textEditable()"
+  >
+    <h2>Fluff</h2>
+    @for (field of narratives; track field.key) {
+      <label
+        >{{ field.label
+        }}<textarea
+          class="bt-input"
+          rows="5"
+          [ngModel]="textValue(field.key)"
+          (ngModelChange)="setText(field.key, $event)"
+        ></textarea>
+      </label>
+    }
+  </section>
+  <div class="fluff-side">
+    <section class="framed-borders fluff-panel">
+      <h2>Fluff image</h2>
+      @if (imageUrl(); as url) {
+        <img class="fluff-image" [src]="url" [alt]="entity().displayName() + ' fluff image'" />
+      } @else {
+        <div class="artwork-placeholder">No fluff image</div>
+      }
+      <input
+        #imageFile
+        type="file"
+        hidden
+        accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+        (change)="chooseImage($event)"
+      />
+      <div class="image-actions">
+        <button type="button" class="bt-button" [disabled]="disabled() || loadingImage()" (click)="imageFile.click()">
+          {{ loadingImage() ? 'Loading…' : 'CHOOSE IMAGE' }}
+        </button>
+        @if (hasCustomImage()) {
+          <button
+            type="button"
+            class="bt-button"
+            [disabled]="disabled() || loadingImage()"
+            (click)="imageChange.emit(null)"
+          >
+            REMOVE CUSTOM IMAGE
+          </button>
+        }
+      </div>
+      <p class="muted">Custom images are saved on this device and kept when you log out.</p>
+      @if (imageError()) {
+        <p class="image-error" role="alert">{{ imageError() }}</p>
+      }
+    </section>
+    @if (hasSystems()) {
+      <section
+        class="framed-borders fluff-panel"
+        [attr.inert]="!textEditable() ? '' : null"
+        [class.design-locked]="!textEditable()"
+      >
+        <h2>Manufacturing</h2>
+        <label
+          >Manufacturer<input
+            class="bt-input"
+            [ngModel]="entity().fluff().manufacturer ?? ''"
+            (ngModelChange)="setText('manufacturer', $event)"
+        /></label>
+        <label
+          >Primary factory<input
+            class="bt-input"
+            [ngModel]="entity().fluff().primaryFactory ?? ''"
+            (ngModelChange)="setText('primaryFactory', $event)"
+        /></label>
+        @if (spacecraft()) {
+          <div class="dimensions">
+            @for (field of dimensions; track field.key) {
+              <label
+                >{{ field.label
+                }}<input
+                  class="bt-input"
+                  [ngModel]="entity().fluff()[field.key] ?? ''"
+                  (ngModelChange)="setText(field.key, $event)"
+              /></label>
+            }
+          </div>
+        }
+        <div class="systems">
+          @for (system of systems(); track system.key) {
+            <fieldset>
+              <legend>{{ system.label }}</legend>
+              <label
+                >Manufacturer<input
+                  class="bt-input"
+                  [attr.aria-label]="system.label + ' manufacturer'"
+                  [ngModel]="entity().fluff().systemManufacturers?.[system.key] ?? ''"
+                  (ngModelChange)="setSystem('systemManufacturers', system.key, $event)"
+              /></label>
+              <label
+                >Model<input
+                  class="bt-input"
+                  [attr.aria-label]="system.label + ' model'"
+                  [ngModel]="entity().fluff().systemModels?.[system.key] ?? ''"
+                  (ngModelChange)="setSystem('systemModels', system.key, $event)"
+              /></label>
+            </fieldset>
+          }
+        </div>
+      </section>
+    }
+  </div>
+</div>

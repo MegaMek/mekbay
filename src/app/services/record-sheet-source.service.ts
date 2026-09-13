@@ -46,7 +46,7 @@ export class RecordSheetSourceService {
             pipLayout: generatorOptions.pipLayout ?? currentOptions.recordSheetPipLayout,
             showQuirks: currentOptions.CBTOptionalRules?.quirks !== false,
             fluffImageUrl: generatorOptions.fluffImageUrl === undefined
-                ? this.fluffImages.resolveEntityUrl(entity, context.design) : generatorOptions.fluffImageUrl,
+                ? await this.fluffImages.loadEntityUrl(entity, context.design) : generatorOptions.fluffImageUrl,
         });
         svgs.forEach(svg => {
             svg.dataset['mekbaySheetSource'] = 'generated';

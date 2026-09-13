@@ -33,6 +33,7 @@ import type { SystemDamageKind } from '../rules/system-damage-rules';
 import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { UnitType } from '../unit-summary.model';
+import { crewSkillsForUnit } from '../unit-crew-policy';
 import { projectComponentLocationStatuses } from './component-status-projection';
 import type { CrewAssignment } from './crew-assignment';
 import { entityAmmoLoadout } from './mek-ammo';
@@ -41,6 +42,9 @@ import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import { hasVacantNonMekCrew,type NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import { systemDamagePresentation } from './system-damage-presentation';
 import type { UnitEditContext } from './unit-edit-context';
+import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
+import { nonMekAttackMovementModifier, projectNonMekMovementCapabilities } from './non-mek-unit-instance';
+import type { RecordSheetMovementSelection } from './record-sheet-movement';
 
 export interface NonMekRecordSheetArmorFace {
     readonly faceId: ArmorFaceId;
@@ -118,9 +122,11 @@ export interface NonMekRecordSheetSnapshot {
     readonly mixedTech?: boolean;
     readonly role: string;
     readonly movementType: string;
+    readonly movementSelection: RecordSheetMovementSelection;
     readonly movement: Readonly<{
         readonly walk: number;
         readonly run: number;
+        readonly maxRun: number;
         readonly jump: number;
         readonly umu: number;
     }>;
@@ -267,14 +273,15 @@ export function projectNonMekRecordSheet(
         .map(position => {
             const runtimeState = state.crew.get(position.id);
             const assignment = crewAssignment?.positions.find(candidate => candidate.positionId === position.id);
+            const skills = crewSkillsForUnit(assignment, entity.unitType(), entity.unitSubtype());
             const member = crewAssignment !== undefined && !assignment ? CrewMember.vacant : CrewMember.from(runtimeState);
             const effectiveState = member.effectiveState();
             return Object.freeze({
                 positionId: position.id,
                 occurrence: position.occurrence,
                 name: assignment?.name ?? '',
-                gunnery: assignment?.gunnery ?? 4,
-                piloting: effectiveEntityPilotingSkill(entity, assignment?.piloting ?? 5),
+                gunnery: skills.gunnery,
+                piloting: effectiveEntityPilotingSkill(entity, skills.piloting),
                 state: member.toRuntimeState(),
                 effectiveState: effectiveState === 'dead'
                     ? 'killed'
@@ -304,6 +311,9 @@ export function projectNonMekRecordSheet(
     const movementBlocked = destroyed
         || protoMekRules?.computedConditions.includes('immobile') === true
         || conditions.has('immobile');
+    const capabilities = projectNonMekMovementCapabilities(entity, index, state, ruleset, crewAssignment);
+    const airborne = state.turn.airborne === true;
+    const movementModes = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
     return Object.freeze({
         entityUuid: entity.uuid(),
         ...(isInfantryEntity(entity) ? { infantry: projectConventionalInfantryCombat(entity) } : {}),
@@ -317,10 +327,22 @@ export function projectNonMekRecordSheet(
         mixedTech: entity.mixedTech(),
         role: entity.role(),
         movementType: entity.getMotiveTypeAsString() ?? '',
+        movementSelection: Object.freeze({
+            selectedMode: state.turn.movement?.mode ?? null,
+            airborne,
+            options: Object.freeze(movementModes.map(mode => ({
+                mode, modifier: nonMekAttackMovementModifier(entity, mode),
+                legal: capabilities.canTakeActiveActions
+                    && (mode === 'stationary' || capabilities.maximum[mode] > 0),
+                minimumMp: capabilities.minimum[mode],
+            }))),
+        }),
         movement: Object.freeze({
             walk: movementBlocked ? 0 : vehicleRules?.movement.walk
                 ?? entity.computeWalkMP(STANDARD_MOVEMENT_CALCULATION),
-            run: movementBlocked ? 0 : vehicleRules?.movement.maxRun
+            run: movementBlocked ? 0 : vehicleRules?.movement.run
+                ?? entity.computeRunMP(STANDARD_MOVEMENT_CALCULATION),
+            maxRun: movementBlocked ? 0 : vehicleRules?.movement.maxRun
                 ?? entity.computeRunMP(STANDARD_MOVEMENT_CALCULATION),
             jump: movementBlocked ? 0 : entity.computeJumpMP(STANDARD_MOVEMENT_CALCULATION),
             umu: movementBlocked ? 0 : entity.umuMP(),

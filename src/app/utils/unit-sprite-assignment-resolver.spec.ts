@@ -56,6 +56,17 @@ describe('framework-free unit sprite assignment resolver', () => {
       .toBe('default_quadvee');
   });
 
+  it('skips another unit type at both exact-name and chassis-name precedence levels', () => {
+    const mismatchedExact = { ...assignments, exact: { ...assignments.exact, 'ATLAS AS7-D': 'fighter/Atlas.png' } };
+    expect(resolveUnitSpriteAssignmentPath(facts, mismatchedExact)).toBe('meks/Atlas.png');
+    expect(resolveUnitSpriteAssignmentPath(facts, {
+      ...mismatchedExact, chassis: { ATLAS: 'vehicles/Atlas.png' },
+    })).toBe('defaults/default_assault.png');
+    expect(resolveUnitSpriteAssignmentPath(facts, {
+      ...assignments, exact: { ...assignments.exact, 'ATLAS AS7-D': 'MEKS/Atlas.png' },
+    })).toBe('MEKS/Atlas.png');
+  });
+
   it('keeps the gun-emplacement sprite default for buildings', () => {
     const staticFacts = {
       ...facts,

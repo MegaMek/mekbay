@@ -51,6 +51,7 @@ export class PageViewerMekRuntimeService {
             readOnly ? undefined : handleInteraction,
             handleInteraction,
         );
+        svg.classList.add('interactive-sheet');
         const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
             if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
         });
@@ -92,6 +93,7 @@ export class PageViewerMekRuntimeService {
         if (!current) return;
         current.subscription.unsubscribe();
         current.binding.destroy();
+        current.svg.classList.remove('interactive-sheet');
         this.bound.delete(unitId);
         this.interactions.cleanup(unitId);
     }

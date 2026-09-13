@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { formatProtectionCounter } from '../record-sheet-protection-counter';
+
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { systemDamageControls,systemDamageLocationControls } from '../../../models/runtime/system-damage-presentation';
@@ -24,7 +26,7 @@ addReferenceShade,
 canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 import {
-appendHiddenVehicleDamageTracks,
+appendVehicleDamageTrackBindings,
 compactVehicleSheetTitle,
 drawCompactVehicleChrome,
 drawCompactVehicleCrewPanel,
@@ -89,6 +91,8 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             dataBox,
             {
                 includePhysicalAttacks: true,
+                ruleset: request.ruleset,
+                showQuirks: request.showQuirks,
                 lastDetailBaseline: 254.58,
                 verticalContentScale: 0.992,
                 footerBaselineOffset: 3,
@@ -123,7 +127,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             width: 20 * dataBox.width / 220.4,
             height: 20 * dataBox.height / 283,
         });
-        const diagramBox = at({ x: 387, y: 3, width: 189, height: 731 });
+        const diagramBox = { x: Number(svg.getAttribute('width')) - 189, y: 3, width: 189, height: 731 };
         const submarine = this.isSubmarine(entity);
         const diagram = await drawCompactVehicleDiagram(
             svg,
@@ -173,16 +177,18 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             }
             return 0;
         };
-        const twoLine = (label: string, value: number, x: number, y: number, gap = 9.525): void => {
+        const twoLine = (label: string, code: string, value: number, x: number, y: number, gap = 9.525): void => {
             addText(labels, label, x, y, { size: 7.74, weight: 700, anchor: 'middle' });
-            addText(labels, `( ${value} )`, x, y + gap, { size: 7.74, weight: 700, anchor: 'middle' });
+            addText(labels, formatProtectionCounter(value), x, y + gap, { size: 7.74, weight: 700, anchor: 'middle' }).id = `textArmor_${code}`;
         };
-        const vertical = (label: string, value: number, x: number, y: number, angle: number): void => {
-            const text = addText(labels, `${label}( ${value} )`, x, y, {
+        const vertical = (label: string, code: string, value: number, x: number, y: number, angle: number): void => {
+            const text = addText(labels, `${label} ${formatProtectionCounter(value)}`, x, y, {
                 size: 7.74,
                 weight: 700,
                 anchor: 'middle',
             });
+            text.id = `textArmor_${code}`;
+            text.setAttribute('data-mekbay-counter-prefix', label);
             text.setAttribute('transform', `rotate(${angle} ${x} ${y})`);
         };
         const points = submarine ? {
@@ -206,13 +212,13 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             turretGap: 8.335,
             rearY: 683.264,
         };
-        twoLine('Front Armor', armor('FR', 'F'), points.centerX, points.frontY,
+        twoLine('Front Armor', 'FR', armor('FR', 'F'), points.centerX, points.frontY,
             submarine ? 8.811 : 9.525);
         if (usesSixSideVehicleHull(entity)) {
             this.drawSuperheavySideLabels(labels, armor, submarine);
         } else {
-            vertical('Left Side Armor', armor('LS', 'L'), points.leftX, points.leftY, -90);
-            vertical('Right Side Armor', armor('RS', 'R'), points.rightX, points.rightY, 90);
+            vertical('Left Side Armor', 'LS', armor('LS', 'L'), points.leftX, points.leftY, -90);
+            vertical('Right Side Armor', 'RS', armor('RS', 'R'), points.rightX, points.rightY, 90);
         }
         if (isVehicleEntity(entity) && entity.hasDualTurret()) {
             const scale = submarine ? 0.95 : 1.027;
@@ -225,14 +231,14 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
                 const turret = svgElement('g');
                 turret.setAttribute('transform', `matrix(${scale} 0 0 ${scale} ${offsetX} ${offsetY}) translate(-399.18801 -40.430276)`);
                 addText(turret, label, x, y, { size: 7.74, weight: 700, anchor: 'middle' });
-                addText(turret, `( ${armor(code)} )`, x, y + 8.116,
+                addText(turret, formatProtectionCounter(armor(code)), x, y + 8.116,
                     { size: 7.74, weight: 700, anchor: 'middle' }).id = `textArmor_${code}`;
                 labels.appendChild(turret);
             }
         } else if (armor('TU', 'T1', 'T') > 0) {
-            twoLine('Turret Armor', armor('TU', 'T1', 'T'), points.centerX, points.turretY, points.turretGap);
+            twoLine('Turret Armor', 'TU', armor('TU', 'T1', 'T'), points.centerX, points.turretY, points.turretGap);
         }
-        twoLine('Rear Armor', armor('RR', 'R'), points.centerX, points.rearY,
+        twoLine('Rear Armor', 'RR', armor('RR', 'R'), points.centerX, points.rearY,
             submarine ? 8.811 : 9.525);
         group.appendChild(labels);
     }
@@ -266,7 +272,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
                 name.textContent = label;
                 const counter = svgElement('tspan');
                 setAttributes(counter, { x: counterX, y: 0, id: `textArmor_${location}` });
-                counter.textContent = `( ${armor(location)} )`;
+                counter.textContent = formatProtectionCounter(armor(location));
                 text.append(name, counter);
             }
             parent.appendChild(text);
@@ -363,7 +369,7 @@ function drawNavalCriticalPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box
     stabilizers.forEach((control, index) => drawNavalLabeledDamage(group,
         control.label, control.id, 6 + (index % columns) * 138 / columns,
         index < columns ? 63.031 : 73.037));
-    appendHiddenVehicleDamageTracks(svg, entity);
+    appendVehicleDamageTrackBindings(svg, entity);
 }
 
 function drawNavalDamageTrack(

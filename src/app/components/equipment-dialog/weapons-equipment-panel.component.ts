@@ -358,7 +358,7 @@ export class WeaponsEquipmentPanelComponent {
     private ammoOptions(sources: readonly EquipmentPanelAmmoSource[]): EquipmentPanelAmmoOption[] {
         const groups = new Map<string, EquipmentPanelAmmoSource[]>();
         for (const source of sources) {
-            const key = `${source.munitionKey}\u0000${source.location}\u0000${source.label}`;
+            const key = `${source.munitionKey}\u0000${source.location}\u0000${source.label}\u0000${!!source.hotLoaded}`;
             const group = groups.get(key);
             if (group) group.push(source);
             else groups.set(key, [source]);
@@ -383,7 +383,7 @@ export class WeaponsEquipmentPanelComponent {
                 sourceIds: Object.freeze(group.map(source => source.componentId)),
                 label: `${(locationsByName.get(first.label)?.size ?? 0) > 1 && first.location
                     ? `[${first.location}] `
-                    : ''}${first.label} (${remaining}/${total})`,
+                    : ''}${first.label}${first.hotLoaded ? ' · HOT-LOADED' : ''} (${remaining}/${total})`,
                 remaining,
                 total,
                 destroyed: group.every(source => source.status === 'destroyed'),

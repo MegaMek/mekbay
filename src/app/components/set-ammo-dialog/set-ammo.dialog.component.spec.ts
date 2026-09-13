@@ -47,14 +47,14 @@ function createAmmo(
 describe('SetAmmoDialogComponent', () => {
     let overlayContainerElement: HTMLElement;
 
-    function configureDialog(data: SetAmmoDialogData, allowMixedTechBaseAmmo = false) {
+    function configureDialog(data: SetAmmoDialogData, allowMixedTechBaseAmmo = false, hotLoadedAmmo = false) {
         TestBed.configureTestingModule({
             imports: [SetAmmoDialogComponent],
             providers: [
                 { provide: DIALOG_DATA, useValue: data },
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false) } },
-                { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo } }) } },
+                { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo, hotLoadedAmmo } }) } },
             ],
         });
 
@@ -93,6 +93,23 @@ describe('SetAmmoDialogComponent', () => {
         buttons[0].click();
         expect(input.value).toBe('0');
     });
+
+    for (const enabled of [false, true]) {
+        it(`shows a per-bin hot-load checkbox only when enabled (${enabled})`, () => {
+            const ammo = new AmmoEquipment({ id: 'LRMAmmo', name: 'LRM Ammo', type: 'ammo', flags: ['F_HOT_LOAD'],
+                ammo: { type: 'LRM', rackSize: 10, shots: 12 } });
+            const fixture = configureDialog({ currentAmmo: ammo, originalAmmo: ammo, originalTotalAmmo: 12,
+                ammoOptions: [ammo], quantity: 12, maxQuantity: 12, hotLoaded: true }, false, enabled);
+            const checkbox = fixture.nativeElement.querySelector('.hot-load-option .bt-checkbox') as HTMLInputElement | null;
+            expect(checkbox !== null).toBe(enabled);
+            if (checkbox) {
+                expect(checkbox.checked).toBeTrue();
+                checkbox.click();
+                fixture.componentInstance.submit();
+                expect(TestBed.inject(DialogRef).close).toHaveBeenCalledWith(jasmine.objectContaining({ hotLoaded: false }));
+            }
+        });
+    }
 
     it('renders ammo options in rows that can wrap long names', () => {
         const standardAmmo = createAmmo('Clan Ultra AC/20 Ammo');

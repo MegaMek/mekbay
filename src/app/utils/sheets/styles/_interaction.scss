@@ -1,0 +1,173 @@
+// Only live viewers opt into interaction; generated sheets remain passive.
+@media screen {
+  // Opt-in qualifiers must not outrank existing damage/selection styles.
+  .mekbay-sheet:where(.interactive-sheet):not(.print-preview) {
+    touch-action: none;
+
+    .interactive,
+    .selectable {
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .referenceTableControl {
+      cursor: pointer;
+    }
+
+    .movementControl {
+      pointer-events: none;
+
+      &:where(.interactive) {
+        pointer-events: all;
+      }
+
+      &:where(.interactive):is(:hover, :focus-visible) .movementHitArea {
+        fill: var(--bt-yellow);
+        fill-opacity: .25;
+      }
+    }
+
+    .interactive,
+    .inventoryEntry:where(.interactive) .inventoryEntryButton,
+    .locationConditionControl:where(.interactive) .locationConditionHitArea {
+      pointer-events: all;
+    }
+
+    .critGroup.flooded,
+    .critGroup.detached,
+    .critGroup.disabledLocation,
+    .critGroup.flooded .locationConditionControl,
+    .critGroup.detached .locationConditionControl,
+    .critGroup.disabledLocation .locationConditionControl,
+    .critGroup.flooded .locationConditionText,
+    .critGroup.detached .locationConditionText,
+    .critGroup.disabledLocation .locationConditionText {
+      pointer-events: all;
+    }
+
+    .mek-random-hit-button:where(.interactive) {
+      &.picker-active .mek-random-hit-area,
+      &:focus-visible .mek-random-hit-area {
+        fill: var(--bt-yellow) !important;
+        stroke-width: 2;
+      }
+    }
+
+    .mek-random-hit-result-through-armor {
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .critSlot {
+      &.equipment-hover-secondary > .critSlot-bg-rect {
+        fill: var(--equipment-hover-secondary-color);
+        stroke: var(--equipment-hover-secondary-color);
+        stroke-width: 0.35px;
+      }
+
+      &:where(.interactive) .critSlot-bg-rect:hover {
+        fill: var(--highlight-color);
+      }
+
+      &:where(.interactive).willDamage .critSlot-bg-rect:hover {
+        fill: #f999 !important;
+      }
+    }
+
+    .critGroup.flooded .critSlot:where(.interactive) .critSlot-bg-rect:hover {
+      fill: #99f;
+    }
+
+    .critGroup.disabledLocation .critSlot:where(.interactive) .critSlot-bg-rect:hover {
+      fill: #999;
+    }
+
+    .picker-active.critSlot text {
+      text-decoration: underline !important;
+    }
+
+    .unitLocation.selectable:is(:focus-visible, .picker-active),
+    .unitLocation.selectable:is(:focus-visible, .picker-active) > path {
+      fill: var(--undamaged-highlight-color) !important;
+    }
+
+    .unitLocation.selectable.damaged:is(:focus-visible, .picker-active),
+    .unitLocation.selectable.damaged:is(:focus-visible, .picker-active) > path {
+      fill: var(--damaged-highlight-color) !important;
+    }
+
+    .selectable,
+    .selectable > path {
+      transition: fill ease-out 0.2s;
+    }
+
+    .selectable:not(.pip-hit-area):hover,
+    .selectable:not(.pip-hit-area):hover > path {
+      fill: var(--undamaged-highlight-color) !important;
+
+      .night-mode & {
+        fill: var(--undamaged-night-highlight-color) !important;
+      }
+    }
+
+    .selectable.damaged:not(.pip-hit-area):hover,
+    .selectable.damaged:not(.pip-hit-area):hover > path {
+      fill: var(--damaged-highlight-color) !important;
+    }
+
+    .pip-hit-area:hover {
+      fill: transparent !important;
+      stroke: transparent !important;
+    }
+
+    .inventoryEntry.equipment-hover-secondary > .inventoryEntryButton {
+      fill: var(--equipment-hover-secondary-color);
+    }
+
+    .inventoryEntry:where(.interactive) {
+      &:hover > .inventoryEntryButton,
+      > .alternativeMode:hover > .inventoryEntryButton {
+        fill: var(--highlight-color);
+      }
+
+      &:active > .inventoryEntryButton,
+      > .alternativeMode:active > .inventoryEntryButton {
+        filter: brightness(1.03);
+      }
+    }
+
+    #ammoProfile:where(.interactive):hover > .inventoryEntryButton {
+      fill: var(--highlight-color);
+    }
+
+    .locationConditionControl:where(.interactive) {
+      .locationConditionText {
+        text-decoration: underline dotted;
+      }
+
+      &:hover .locationConditionText {
+        text-decoration-style: solid;
+      }
+    }
+
+    g.hsPips.interactive .changeActiveHeatsinksCountButton {
+      transition: stroke 0.2s;
+      stroke-width: 1px;
+      stroke: transparent;
+
+      &:hover {
+        stroke: var(--highlight-color);
+      }
+    }
+
+    .heatApplicationAvailable #applyHeatButton.interactive {
+      path {
+        transition: filter 0.2s;
+      }
+
+      &:hover path {
+        filter: brightness(1.2);
+      }
+    }
+  }
+}

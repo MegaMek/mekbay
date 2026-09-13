@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
+import { recordSheetInventoryMountName } from '../../utils/sheets/record-sheet-inventory-equipment';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asComponentId, type ComponentId, type LocationId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
@@ -47,6 +48,7 @@ import {
 import { componentLocationIds, equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
     entityWeaponTechBasesForAmmo,
+    hotLoadedAmmoForWeapon,
     mekAmmoDefaultMunitionKey,
     mekAmmoLoadouts,
     mekIntrinsicMagazine,
@@ -139,6 +141,7 @@ export interface EquipmentPanelAmmoSource {
     readonly munitionKey: string;
     readonly remaining: number;
     readonly capacity: number;
+    readonly hotLoaded?: boolean;
     readonly loadouts: readonly EquipmentPanelAmmoLoadout[];
 }
 
@@ -236,6 +239,7 @@ export interface EquipmentPanelComponent {
         readonly remaining: number;
         readonly capacity: number;
         readonly loadouts: readonly EquipmentPanelAmmoLoadout[];
+        readonly hotLoaded?: boolean;
         readonly weaponTechBases?: readonly EquipmentTechBase[];
     }>;
 }
@@ -757,6 +761,17 @@ export function selectedAmmoEquipment(
     return null;
 }
 
+export function selectedAmmoIsHotLoaded(
+    ammoSources: readonly EquipmentPanelAmmoSource[],
+    selection?: AttackerAmmoSelection,
+): boolean {
+    const source = ammoSources.find(source => source.remaining > 0 && source.status === 'available'
+        && (selection?.preferredSourceId === undefined || source.componentId === selection.preferredSourceId)
+        && (selection?.munitionKey === undefined || source.munitionKey === selection.munitionKey)
+        && source.loadouts.some(loadout => loadout.munitionKey === source.munitionKey));
+    return source?.hotLoaded === true;
+}
+
 export function equipmentWeaponToHitModifier(
     row: EquipmentPanelComponent,
     target: TargetingTarget | null = null,
@@ -1126,7 +1141,7 @@ export function projectMekEquipmentComponents(
                 : 1;
             const modeDefinition = mekComponentModes(entity, index, componentId, ruleset);
             const baseLabel = component.kind === 'equipment'
-                ? component.mount.displayName()
+                ? recordSheetInventoryMountName(entity, component.mount)
                 : component.systemType;
             const rapidFireShotCount = equipment instanceof WeaponEquipment
                 ? rapidFireAutocannonShotCount(equipment, mode)
@@ -1317,7 +1332,8 @@ export function projectMekEquipmentComponents(
                         ? {}
                         : { artemisVModifier: artemisVToHit.modifier }),
                     ranges: Object.freeze([...(ammoProfile?.ranges ?? equipment.ranges)]),
-                    minimumRange: ammoProfile?.minimumRange ?? equipment.minimumRange,
+                    minimumRange: selectedAmmoIsHotLoaded(ammoSources, selected?.ammo)
+                        ? 0 : ammoProfile?.minimumRange ?? equipment.minimumRange,
                     ...(selected?.selection === undefined ? {} : { selection: selected.selection }),
                     ...(selected?.ammo === undefined ? {} : { ammoSelection: selected.ammo }),
                     ammoSources,
@@ -1491,6 +1507,7 @@ function installedWeaponFacts(
         types,
         ppcCapacitorChargedForWeapon(entity, index, query, componentId),
     );
+    if (hotLoadedAmmoForWeapon(index, query, componentId).length > 0) types = new Set([...types, 'X']);
     return Object.freeze({
         equipment,
         effectiveWeaponTypes: Object.freeze([...types]),
@@ -1563,10 +1580,11 @@ function compatibleAmmoSources(
                 munitionKey: current.munitionKey,
                 remaining: status === 'available' ? query.remainingAmmo(sourceId) : 0,
                 capacity: query.ammoCapacity(sourceId),
+                hotLoaded: query.ammoHotLoaded(sourceId),
                 loadouts: freezeLoadouts(loadouts),
             });
         })
-        .filter((row): row is EquipmentPanelAmmoSource => row !== null)
+        .filter(row => row !== null)
         .sort((left, right) => compareText(left.componentId, right.componentId)));
 }
 
@@ -1590,6 +1608,7 @@ function ammoSnapshot(
         displayName: selected.equipment.shortName || selected.equipment.name,
         remaining: query.remainingAmmo(componentId),
         capacity: query.ammoCapacity(componentId),
+        hotLoaded: query.ammoHotLoaded(componentId),
         loadouts: freezeLoadouts(loadouts),
         weaponTechBases: entityWeaponTechBasesForAmmo(entity, selected.equipment),
     });

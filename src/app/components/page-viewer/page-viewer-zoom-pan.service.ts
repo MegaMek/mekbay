@@ -13,6 +13,8 @@ import {
 } from '@angular/core';
 import { recordSheetPageProfile, type RecordSheetPageFormat } from '../../utils/sheets/record-sheet-layout';
 import { LayoutService } from '../../services/layout.service';
+import { OptionsService } from '../../services/options.service';
+import { viewerWheel } from '../../utils/viewer-wheel';
 import type { RecordSheetDoubleTapZoomResetMode } from '../../models/options.model';
 
 /*
@@ -37,7 +39,8 @@ const POINTER_MOVE_THRESHOLD = 5;
 const SWIPE_THRESHOLD = 10;
 const DOUBLE_TAP_DELAY = 300;
 const DOUBLE_TAP_DISTANCE = 30;
-const WHEEL_LINE_DELTA_PX = 16;
+const WHEEL_PAGE_THRESHOLD_PX = 80;
+const WHEEL_GESTURE_IDLE_MS = 180;
 
 export interface ViewState {
     scale: number;
@@ -68,6 +71,12 @@ export interface NonInteractiveSelectors {
 @Injectable()
 export class PageViewerZoomPanService {
     private layoutService = inject(LayoutService);
+    private readonly optionsService = inject(OptionsService);
+    private onWheelNavigate?: (direction: 'left' | 'right') => void;
+    private wheelPageDelta = 0;
+    private wheelLastTime = -Infinity;
+    private wheelDirection = 0;
+    private wheelPageNavigated = false;
 
     private readonly pageProfile = signal(recordSheetPageProfile());
     readonly pageWidth = computed(() => this.pageProfile().width);
@@ -190,11 +199,14 @@ export class PageViewerZoomPanService {
         contentRef: ElementRef<HTMLDivElement>,
         swipeCallbacks?: SwipeCallbacks,
         nonInteractiveSelectors?: NonInteractiveSelectors,
-        spaceEvenly = false
+        spaceEvenly = false,
+        onWheelNavigate?: (direction: 'left' | 'right') => void
     ): void {
         this.containerRef = containerRef;
         this.contentRef = contentRef;
         this.swipeCallbacks = swipeCallbacks;
+        this.onWheelNavigate = onWheelNavigate;
+        this.wheelLastTime = -Infinity;
         this.nonInteractiveSelectors = nonInteractiveSelectors?.selectors ?? [];
         this.spaceEvenly = spaceEvenly;
         this.setupEventListeners();
@@ -423,52 +435,56 @@ export class PageViewerZoomPanService {
         }
     }
 
-    // ========== Mouse Wheel Zoom ==========
+    // ========== Mouse Wheel Navigation ==========
 
     private onWheel(event: WheelEvent): void {
         event.preventDefault();
+        event.stopPropagation();
+        if (this.pointers.size > 0) return;
 
-        if (event.shiftKey || event.ctrlKey) {
-            this.panFromWheel(event.shiftKey ? 'x' : 'y', event);
+        const delta = viewerWheel(event, this.optionsService.options().mouseWheelAction, this.containerDimensions);
+        if (delta.zoom === 1) {
+            this.panFromWheel(delta.x, delta.y);
             return;
         }
 
-        const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
-        let newScale = this.scale() * zoomFactor;
-        newScale = Math.max(this.minScale(), Math.min(this.maxScale, newScale));
-
+        this.wheelLastTime = -Infinity;
+        const newScale = Math.max(this.minScale(), Math.min(this.maxScale, this.scale() * delta.zoom));
         if (newScale === this.scale()) return;
 
-        // Zoom centered on mouse position
         const rect = this.containerRef.nativeElement.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-
-        this.zoomToPoint(mouseX, mouseY, newScale);
+        this.zoomToPoint(event.clientX - rect.left, event.clientY - rect.top, newScale);
     }
 
-    private panFromWheel(axis: 'x' | 'y', event: WheelEvent): void {
-        const delta = this.normalizeWheelDelta(event);
-        if (delta === 0) return;
-
-        const translate = this.translate();
-        this.translate.set(axis === 'x'
-            ? { x: translate.x - delta, y: translate.y }
-            : { x: translate.x, y: translate.y - delta });
+    private panFromWheel(x: number, y: number): void {
+        const before = this.translate();
+        this.translate.set({ x: before.x - x, y: before.y - y });
         this.clampPan();
         this.scheduleTransform();
-    }
 
-    private normalizeWheelDelta(event: WheelEvent): number {
-        const rawDelta = event.deltaY || event.deltaX;
-
-        switch (event.deltaMode) {
-            case WheelEvent.DOM_DELTA_LINE:
-                return rawDelta * WHEEL_LINE_DELTA_PX;
-            case WheelEvent.DOM_DELTA_PAGE:
-                return rawDelta * this.containerDimensions.height;
-            default:
-                return rawDelta;
+        const now = performance.now();
+        const direction = Math.sign(x);
+        if (now - this.wheelLastTime > WHEEL_GESTURE_IDLE_MS || direction !== this.wheelDirection) {
+            this.wheelPageDelta = 0;
+            this.wheelPageNavigated = false;
+        }
+        this.wheelLastTime = now;
+        this.wheelDirection = direction;
+        // Scroll the visible content first, then use only the horizontal overflow to turn a page.
+        if (!this.onWheelNavigate || this.totalPages <= this.actualDisplayedPages() || Math.abs(x) <= Math.abs(y)) {
+            this.wheelPageDelta = 0;
+            return;
+        }
+        const overflow = x - (before.x - this.translate().x);
+        if (Math.abs(overflow) < 0.5) {
+            this.wheelPageDelta = 0;
+            return;
+        }
+        this.wheelPageDelta += overflow;
+        // One page per gesture prevents trackpad momentum from skipping several units.
+        if (!this.wheelPageNavigated && Math.abs(this.wheelPageDelta) >= WHEEL_PAGE_THRESHOLD_PX) {
+            this.wheelPageNavigated = true;
+            this.onWheelNavigate(this.wheelPageDelta > 0 ? 'right' : 'left');
         }
     }
 

@@ -8,7 +8,8 @@
  * Parses every .mtf / .blk file from the input folder, writes each one out
  * to the output folder preserving the original directory structure and file
  * name, then compares the written output against the original file. The only
- * ignored rows are rows that literally start with `#` or `generator:`.
+ * ignored rows are rows that literally start with `#` or `generator:`;
+ * fluff values use the native parser's whitespace trimming.
  *
  * Usage:
  *   npx tsx scripts/compare-entity-output.ts [--input PATH] [--output PATH] [--type TYPE] [--fail-fast] [--verbose]
@@ -16,8 +17,9 @@
  * Options:
  *   --input  PATH   Root directory of unit files (default: sibling mm-data/data/mekfiles)
  *   --output PATH   Directory to write generated files (default: .tmp/entity-compare-all)
- *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|ge|handheld|convfighter
+ *   --type   TYPE   Filter by entity type: meks|fighters|vehicles|battlearmor|infantry|protomeks|dropships|smallcraft|jumpships|warship|spacestation|buildings|handheld|convfighter
  *   --name   TEXT   Filter by chassis/model name (space-separated tokens, all must match, case-insensitive)
+ *   --exclude PATH  Exclude an exact path relative to --input (repeatable; reported separately)
  *   --fail-fast      Stop on the first failure
  *   --verbose        Print every file result, not just failures
  */
@@ -28,9 +30,9 @@ import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
 import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../src/app/models/equipment.model';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { encodeNativeEntity } from '../src/app/models/entity/write-entity';
-import type { BaseEntity } from '../src/app/models/entity/base-entity';
 import { loadQuirkResolver } from './quirk-fixture';
 import { nativeEntityComparisonRows } from './lib/native-entity-comparison';
+import { nativeVerificationSkip } from './lib/native-verification-scope';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLI argument parsing
@@ -53,6 +55,7 @@ const OUTPUT_DIR = path.resolve(getArg(
 ));
 const TYPE_FILTER = getArg('type', '');
 const NAME_FILTER = getArg('name', '');
+const EXCLUDED_PATHS = args.flatMap((arg, index) => arg === '--exclude' && args[index + 1] ? [args[index + 1]] : []);
 const NAME_TOKENS = NAME_FILTER
   ? NAME_FILTER.toLowerCase().split(/\s+/).filter(Boolean)
   : [];
@@ -99,12 +102,7 @@ function findUnitFiles(dir: string): string[] {
   const results: string[] = [];
 
   function walk(d: string) {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
+    const entries = fs.readdirSync(d, { withFileTypes: true });
     for (const entry of entries) {
       const full = path.join(d, entry.name);
       if (entry.isDirectory()) {
@@ -139,7 +137,7 @@ const TYPE_DIR_MAP: Record<string, string[]> = {
   jumpships:     ['jumpships'],
   warship:       ['warship'],
   spacestation:  ['spacestation'],
-  ge:            ['ge'],
+  buildings:     ['advancedbuildings'],
   handheld:      ['handheld'],
   convfighter:   ['convfighter'],
 };
@@ -156,24 +154,18 @@ function matchesTypeFilter(filePath: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Comment-stripping comparison
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════════════════
 // Single-file processing
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface CompareResult {
   file: string;
-  status: 'match' | 'skipped' | 'diff' | 'parse-error' | 'write-error';
+  status: 'match' | 'excluded' | 'unsupported' | 'diff' | 'parse-error' | 'write-error';
   entityType?: string;
   error?: string;
   /** First differing row index after removing the two explicitly ignored row forms. */
   firstDiffLine?: number;
   expectedLine?: string;
   actualLine?: string;
-  /** The parsed entity, available for diagnostic inspection on diff. */
-  entity?: BaseEntity;
   /** Parser and encoder evidence retained even when the file is skipped or blocked. */
   diagnostics?: readonly string[];
 }
@@ -198,6 +190,8 @@ async function processFile(
   const fileName = path.basename(filePath);
   const content = contentOverride ?? fs.readFileSync(filePath, 'utf-8');
   const diagnostics: string[] = [];
+  const skip = nativeVerificationSkip(path.relative(INPUT_DIR, filePath), content, EXCLUDED_PATHS);
+  if (skip) return { file: filePath, status: skip.status, error: skip.reason };
 
   // ── Parse ──
   let entity;
@@ -254,7 +248,6 @@ async function processFile(
         firstDiffLine: i,
         expectedLine: oLine,
         actualLine: wLine,
-        entity,
         diagnostics,
       };
     }
@@ -283,6 +276,7 @@ async function main(): Promise<void> {
   console.log(`Output: ${OUTPUT_DIR}`);
   if (TYPE_FILTER) console.log(`Filter: ${TYPE_FILTER}`);
   if (NAME_FILTER) console.log(`Name:   ${NAME_FILTER}`);
+  for (const excluded of EXCLUDED_PATHS) console.log(`Exclude: ${excluded}`);
   console.log('');
 
   // Load equipment
@@ -297,6 +291,7 @@ async function main(): Promise<void> {
 
   if (files.length === 0) {
     console.log('No files to verify.');
+    process.exitCode = 1;
     return;
   }
 
@@ -308,11 +303,12 @@ async function main(): Promise<void> {
     parseError: 0,
     writeError: 0,
     skipped: 0,
+    excluded: 0,
+    unsupported: 0,
     diagnostics: 0,
   };
 
   const byType = new Map<string, { match: number; diff: number }>();
-  const failures: CompareResult[] = [];
 
   const startTime = Date.now();
 
@@ -332,11 +328,11 @@ async function main(): Promise<void> {
     if (!byType.has(typeKey)) byType.set(typeKey, { match: 0, diff: 0 });
 
     switch (result.status) {
-      case 'skipped':
-        stats.skipped++;
-        if (VERBOSE) {
-          console.log(`  - ${path.relative(INPUT_DIR, file)} (${result.error})`);
-          printDiagnostics(result);
+      case 'excluded':
+      case 'unsupported':
+        stats[result.status]++;
+        if (VERBOSE || result.status === 'excluded') {
+          console.log(`  - ${result.status.toUpperCase()} ${path.relative(INPUT_DIR, file)} (${result.error})`);
         }
         break;
       case 'match':
@@ -350,35 +346,26 @@ async function main(): Promise<void> {
       case 'diff':
         stats.diff++;
         byType.get(typeKey)!.diff++;
-        failures.push(result);
         console.log(`  ✗ DIFF   ${path.relative(INPUT_DIR, file)}  (line ${result.firstDiffLine})`);
         console.log(`           megamek: ${truncate(result.expectedLine ?? '', 100)}`);
         console.log(`           mekbay:   ${truncate(result.actualLine ?? '', 100)}`);
-        if (result.entity) {
-          // const reasons = result.entity.mixedTechReasons();
-          // if (reasons.length > 0) {
-          //   console.log(`           mixedTech: ${reasons.join('; ')}`);
-          // }
-        }
         printDiagnostics(result);
         break;
       case 'parse-error':
         stats.parseError++;
         byType.get(typeKey)!.diff++;
-        failures.push(result);
         console.log(`  ✗ PARSE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
         printDiagnostics(result);
         break;
       case 'write-error':
         stats.writeError++;
         byType.get(typeKey)!.diff++;
-        failures.push(result);
         console.log(`  ✗ WRITE  ${path.relative(INPUT_DIR, file)}: ${result.error}`);
         printDiagnostics(result);
         break;
     }
 
-    if (FAIL_FAST && result.status !== 'match' && result.status !== 'skipped') {
+    if (FAIL_FAST && ['diff', 'parse-error', 'write-error'].includes(result.status)) {
       console.log('\n--fail-fast: stopping at first failure');
       break;
     }
@@ -395,9 +382,11 @@ async function main(): Promise<void> {
   console.log('\n═══════════════════════════════════════════════════════════════');
   console.log('  Summary');
   console.log('═══════════════════════════════════════════════════════════════');
-  const tested = stats.total - stats.skipped;
+  const tested = stats.total - stats.skipped - stats.excluded - stats.unsupported;
   console.log(`  Total:        ${stats.total}`);
   console.log(`  Skipped:      ${stats.skipped}`);
+  console.log(`  Excluded:     ${stats.excluded}`);
+  console.log(`  Unsupported:  ${stats.unsupported}`);
   console.log(`  Tested:       ${tested}`);
   console.log(`  Match:        ${stats.match}`);
   console.log(`  Diff:         ${stats.diff}`);
@@ -427,9 +416,10 @@ async function main(): Promise<void> {
     console.log(`${totalFail} file(s) differ from original. Output written to: ${OUTPUT_DIR}`);
     process.exit(1);
   } else if (tested === 0) {
-    console.log('No capability-enabled native encode cells were tested; unsupported cells were skipped.');
+    console.log('No supported, non-excluded files were tested.');
+    process.exitCode = 1;
   } else {
-    console.log('All files match exactly after excluding # and generator: rows! ✓');
+    console.log('All tested files match after excluding # and generator: rows and trimming fluff values. ✓');
   }
 }
 

@@ -146,7 +146,7 @@ function main(): void {
   console.log(`  Unit type:         ${entity.unitType()}`);
   console.log(`  Unit subtype:      ${entity.unitSubtype()}`);
   console.log(`  UUID:              ${entity.uuid()}`);
-  console.log(`  MUL ID:            ${entity.mulId() >= 0 ? entity.mulId() : '<none>'}`);
+  console.log(`  MUL ID:            ${entity.mulId() ?? '<none>'}`);
   const originalYear = entity.originalBuildYear();
   console.log(
     `  Year:              ${entity.year()}${originalYear > 0 ? ` (original: ${originalYear})` : ''}`,

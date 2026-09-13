@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { formatProtectionCounter } from '../record-sheet-protection-counter';
+
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
@@ -82,7 +84,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             svg,
             entity,
             dataBox,
-            { includePhysicalAttacks: !airborne, lastDetailBaseline: 251.58 },
+            { includePhysicalAttacks: !airborne, lastDetailBaseline: 251.58,
+                showQuirks: request.showQuirks, ruleset: request.ruleset },
         );
         drawCompactVehicleCrewPanel(
             svg,
@@ -112,7 +115,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             width: 20 * dataBox.width / 220.4,
             height: 20 * dataBox.height / 283,
         });
-        const diagramBox = at({ x: 387, y: 3, width: 189, height: 350 });
+        const diagramBox = { x: Number(svg.getAttribute('width')) - 189, y: 3, width: 189, height: 350 };
         const diagram = await drawCompactVehicleDiagram(
             svg,
             entity,
@@ -121,6 +124,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 pipLayout: request.pipLayout,
                 assetUrl: this.paperdollAsset(entity, family),
                 motiveArtId: this.motiveArtId(entity, family),
+                // WiGE hulls leave room beside the nose for a control close to the armor.
+                randomHitTransform: family === 'wige' ? 'translate(18 88) scale(0.9)' : undefined,
             },
         );
         this.drawDiagramLabels(diagram, entity, diagramBox, family);
@@ -207,9 +212,9 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         const rearY = superheavy ? dualTurret ? 280.91 : 282.91 : dualTurret ? 301.512 : noTurret ? 273.91 : 269.91;
         const valueGap = superheavy || dualTurret ? 9.636 : 9.275;
         this.appendLabelTspan(frontRear, 'Front Armor', 0, frontY);
-        this.appendLabelTspan(frontRear, `( ${armor('FR', 'F')} )`, 0, frontY + valueGap).id = 'textArmor_FR';
+        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, frontY + valueGap).id = 'textArmor_FR';
         this.appendLabelTspan(frontRear, 'Rear Armor', 0, rearY);
-        this.appendLabelTspan(frontRear, `( ${armor('RR', 'R')} )`, 0, rearY + valueGap).id = 'textArmor_RR';
+        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, rearY + valueGap).id = 'textArmor_RR';
         labels.appendChild(frontRear);
 
         if (superheavy) {
@@ -218,6 +223,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             this.appendVerticalArmorLabel(
                 labels,
                 'Left Side Armor',
+                'LS',
                 armor('LS', 'L'),
                 dualTurret
                     ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 .998 1 0 412.894 529.791)'
@@ -229,6 +235,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             this.appendVerticalArmorLabel(
                 labels,
                 'Right Side Armor',
+                'RS',
                 armor('RS', 'R'),
                 dualTurret
                     ? 'matrix(.96 0 0 .96 14.791 32.25) matrix(1 0 0 -1 -406.254 751.728) matrix(0 -.998 -1 0 575.029 619.724)'
@@ -250,7 +257,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 'font-weight': superheavy ? 700 : 600,
             });
             this.appendLabelTspan(turretText, 'Turret Armor', 0, superheavy ? 8.431 : 0);
-            this.appendLabelTspan(turretText, `( ${turret} )`, superheavy ? 50.58 : 0,
+            this.appendLabelTspan(turretText, formatProtectionCounter(turret), superheavy ? 50.58 : 0,
                 superheavy ? 8.431 : 8.116).id = 'textArmor_TU';
             labels.appendChild(turretText);
         }
@@ -281,7 +288,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             });
             for (const [label, location, labelX, valueX] of side.parts) {
                 this.appendLabelTspan(text, label, labelX, 0);
-                this.appendLabelTspan(text, `( ${armor(location)} )`, valueX, 0).id = `textArmor_${location}`;
+                this.appendLabelTspan(text, formatProtectionCounter(armor(location)), valueX, 0).id = `textArmor_${location}`;
             }
             parent.appendChild(text);
         }
@@ -305,7 +312,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         });
         this.appendLabelTspan(rear, superheavy ? 'Rear' : 'Rear Turret', 0, 0);
         if (superheavy) this.appendLabelTspan(rear, 'Turret Armor', 0, 8.431);
-        this.appendLabelTspan(rear, `( ${rearArmor} )`, superheavy ? 50.58 : 0, 8.431).id = 'textArmor_RT';
+        this.appendLabelTspan(rear, formatProtectionCounter(rearArmor), superheavy ? 50.58 : 0, 8.431).id = 'textArmor_RT';
         parent.appendChild(rear);
 
         const front = svgElement('text');
@@ -321,7 +328,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         this.appendLabelTspan(front, 'Front', 0, superheavy ? 2 : 0);
         this.appendLabelTspan(front, superheavy ? 'Turret Armor' : 'Turret', superheavy ? 0 : -1.422,
             superheavy ? 10.431 : 8.431);
-        this.appendLabelTspan(front, `( ${frontArmor} )`, superheavy ? 0 : -1.738,
+        this.appendLabelTspan(front, formatProtectionCounter(frontArmor), superheavy ? 0 : -1.738,
             superheavy ? 18.862 : 16.862).id = 'textArmor_FT';
         parent.appendChild(front);
     }
@@ -345,7 +352,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 const text = svgElement('text');
                 text.setAttribute('transform', transform);
                 this.appendLabelTspan(text, name, 0, 0);
-                this.appendLabelTspan(text, `( ${armor(code)} )`, counterX, 0).id = `textArmor_${code}`;
+                this.appendLabelTspan(text, formatProtectionCounter(armor(code)), counterX, 0).id = `textArmor_${code}`;
                 authored.appendChild(text);
             }
             for (const [names, code, x, y, gap] of [
@@ -357,7 +364,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 const text = svgElement('text');
                 setAttributes(text, { transform: `translate(${x} ${y})`, 'text-anchor': 'middle' });
                 names.forEach((name, index) => this.appendLabelTspan(text, name, 0, index * gap));
-                this.appendLabelTspan(text, `( ${armor(code)} )`, 0, names.length * gap).id = `textArmor_${code}`;
+                this.appendLabelTspan(text, formatProtectionCounter(armor(code)), 0, names.length * gap).id = `textArmor_${code}`;
                 authored.appendChild(text);
             }
             labels.appendChild(authored);
@@ -373,14 +380,15 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'text-anchor': 'middle',
         });
         this.appendLabelTspan(frontRear, 'Front Armor', 0, 0);
-        this.appendLabelTspan(frontRear, `( ${armor('FR', 'F')} )`, 0, 9.275);
+        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
         this.appendLabelTspan(frontRear, 'Rear Armor', 0, 280.185);
-        this.appendLabelTspan(frontRear, `( ${armor('RR', 'R')} )`, 0, 289.46);
+        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 289.46).id = 'textArmor_RR';
         labels.appendChild(frontRear);
 
         this.appendVerticalArmorLabel(
             labels,
             'Left Side Armor',
+            'LS',
             armor('LS', 'L'),
             'matrix(0 -1.063 1.063 0 28.56281 257.95151)',
             57.383,
@@ -388,6 +396,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         this.appendVerticalArmorLabel(
             labels,
             'Right Side Armor',
+            'RS',
             armor('RS', 'R'),
             'matrix(0 1.063 -1.063 0 158.723971 186.155427)',
             62.585,
@@ -403,7 +412,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         });
         this.appendLabelTspan(rotor, 'Rotor', 0, 0);
         this.appendLabelTspan(rotor, 'Armor', 0, 8.116);
-        this.appendLabelTspan(rotor, `( ${armor('RO', 'Rotor')} )`, 0, 16.232);
+        this.appendLabelTspan(rotor, formatProtectionCounter(armor('RO', 'Rotor')), 0, 16.232).id = 'textArmor_RO';
         labels.appendChild(rotor);
         group.appendChild(labels);
     }
@@ -425,13 +434,14 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'text-anchor': 'middle',
         });
         this.appendLabelTspan(frontRear, 'Front Armor', 0, 0);
-        this.appendLabelTspan(frontRear, `( ${armor('FR', 'F')} )`, 0, 9.275);
+        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
         this.appendLabelTspan(frontRear, 'Rear Armor', 0, 267.81);
-        this.appendLabelTspan(frontRear, `( ${armor('RR', 'R')} )`, 0, 277.085);
+        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 277.085).id = 'textArmor_RR';
         labels.appendChild(frontRear);
         this.appendVerticalArmorLabel(
             labels,
             'Left Side Armor',
+            'LS',
             armor('LS', 'L'),
             'matrix(0 -1.036 1.036 0 5.399632 238.054744)',
             56.783,
@@ -439,6 +449,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         this.appendVerticalArmorLabel(
             labels,
             'Right Side Armor',
+            'RS',
             armor('RS', 'R'),
             'matrix(0 1.036 -1.036 0 183.623748 161.437364)',
             61.185,
@@ -447,13 +458,14 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         if (turret > 0) {
             const turretText = svgElement('text');
             setAttributes(turretText, {
-                transform: 'matrix(1.036 0 0 1.036 69 157)',
+                transform: 'matrix(1.036 0 0 1.036 157.338356 131.517684)',
                 'font-family': 'Roboto',
                 'font-size': 6.77,
                 'font-weight': 600,
+                'text-anchor': 'middle',
             });
             this.appendLabelTspan(turretText, 'Turret Armor', 0, 0);
-            this.appendLabelTspan(turretText, `( ${turret} )`, 0, 8.116);
+            this.appendLabelTspan(turretText, formatProtectionCounter(turret), 0, 8.116).id = 'textArmor_TU';
             labels.appendChild(turretText);
         }
         group.appendChild(labels);
@@ -462,6 +474,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
     private appendVerticalArmorLabel(
         parent: SVGElement,
         label: string,
+        code: string,
         value: number,
         transform: string,
         valueX: number,
@@ -480,7 +493,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             name.setAttribute('textLength', formatNumber(labelWidth));
             name.setAttribute('lengthAdjust', 'spacingAndGlyphs');
         }
-        this.appendLabelTspan(text, `( ${value} )`, valueX, 0);
+        this.appendLabelTspan(text, formatProtectionCounter(value), valueX, 0).id = `textArmor_${code}`;
         parent.appendChild(text);
     }
 

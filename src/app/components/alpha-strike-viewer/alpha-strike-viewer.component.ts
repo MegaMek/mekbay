@@ -5,6 +5,7 @@
 import { Component, ChangeDetectionStrategy, inject, computed, effect, type ElementRef, viewChildren, signal, viewChild } from '@angular/core';
 import { AlphaStrikeCardComponent } from '../alpha-strike-card/alpha-strike-card.component';
 import { OptionsService } from '../../services/options.service';
+import { viewerWheel } from '../../utils/viewer-wheel';
 import { ASForceUnit } from '../../models/as-force-unit.model';
 import { ASForce } from '../../models/as-force.model';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -383,9 +384,22 @@ export class AlphaStrikeViewerComponent {
         return Math.max(1, Math.floor((availableWidth + CELL_GAP) / (minCellWidth + CELL_GAP)));
     }
     
-    // Ctrl+Wheel to change column count
+    // Wheel zoom changes the column count; scrolling stays within the card list.
     onWheel(event: WheelEvent): void {
-        if (!event.ctrlKey) return;
+        if (event.defaultPrevented) return;
+        const container = this.viewerContainer()?.nativeElement;
+        if (!container) return;
+        const delta = viewerWheel(event, this.optionsService.options().mouseWheelAction, {
+            width: container.clientWidth, height: container.clientHeight,
+        });
+        if (delta.zoom === 1) {
+            this.wheelState = null;
+            if (event.ctrlKey || event.metaKey || event.shiftKey) {
+                event.preventDefault();
+                container.scrollBy({ left: delta.x, top: delta.y, behavior: 'instant' });
+            }
+            return;
+        }
         event.preventDefault();
 
         const deltaY = event.deltaY;

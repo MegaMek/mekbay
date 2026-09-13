@@ -1,6 +1,6 @@
 // Heat value, day color, night color. The existing SVG heat attribute selects a row.
 @media screen {
-  .mekbay-sheet .heat {
+  .mekbay-sheet:not(.print-preview) .heat {
     @each $heat, $day, $night in (
       0 #ffffff #000000,
       1 #ffffee #090900,

@@ -28,7 +28,7 @@ import {
 } from '../models/runtime/force-storage-codec';
 
 const DB_NAME = 'mekbay';
-const DB_VERSION = 22;
+const DB_VERSION = 23;
 const DB_STORE = 'store';
 const EQUIPMENT_KEY = 'equipment';
 const FACTIONS_KEY = 'factions';
@@ -45,6 +45,7 @@ const SAVED_SEARCHES_STORE = 'savedSearchesStore';
 const PUBLIC_TAGS_STORE = 'publicTagsStore';
 const ORGANIZATIONS_STORE = 'organizationsStore';
 const UNIT_ARTWORK_STORE = 'unitArtworkStore';
+const PROVIDED_IMAGES_STORE = 'providedImagesStore';
 const CUSTOM_UNITS_STORE = 'customUnitsStore';
 const SUBSCRIBED_CUSTOM_UNITS_STORE = 'subscribedCustomUnitsStore';
 const CUSTOM_UNIT_SUMMARIES_STORE = 'customUnitSummariesStore';
@@ -339,6 +340,7 @@ export class DbService {
                 this.createStoreIfMissing(db, transaction, OPERATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, ORGANIZATIONS_STORE);
                 this.createStoreIfMissing(db, transaction, UNIT_ARTWORK_STORE);
+                this.createStoreIfMissing(db, transaction, PROVIDED_IMAGES_STORE);
                 this.createStoreIfMissing(db, transaction, CUSTOM_UNITS_STORE);
                 this.createStoreIfMissing(db, transaction, SUBSCRIBED_CUSTOM_UNITS_STORE);
                 this.createStoreIfMissing(db, transaction, CUSTOM_UNIT_SUMMARIES_STORE);
@@ -429,6 +431,51 @@ export class DbService {
 
     /** Local artwork outlives account sessions. A null change means the entire store changed. */
     readonly unitArtworkChanges = new Subject<readonly UnitUuid[] | null>();
+
+    async listProvidedImages(): Promise<ReadonlyMap<string, Blob>> {
+        const db = await this.dbPromise;
+        if (!db) return new Map();
+        return new Promise((resolve, reject) => {
+            const rows = new Map<string, Blob>();
+            const tx = db.transaction(PROVIDED_IMAGES_STORE, 'readonly');
+            const request = tx.objectStore(PROVIDED_IMAGES_STORE).openCursor();
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) return;
+                if (typeof cursor.key === 'string' && cursor.value instanceof Blob && cursor.value.size > 0) {
+                    rows.set(cursor.key, cursor.value);
+                }
+                cursor.continue();
+            };
+            tx.oncomplete = () => resolve(rows);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Provided image read was aborted.'));
+        });
+    }
+
+    async saveProvidedImage(url: string, blob: Blob): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable; provided image was not saved.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(PROVIDED_IMAGES_STORE, 'readwrite');
+            tx.objectStore(PROVIDED_IMAGES_STORE).put(blob, url);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Provided image save was aborted.'));
+        });
+    }
+
+    async purgeProvidedImages(): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) throw new Error('Local storage is unavailable.');
+        await new Promise<void>((resolve, reject) => {
+            const tx = db.transaction(PROVIDED_IMAGES_STORE, 'readwrite');
+            tx.objectStore(PROVIDED_IMAGES_STORE).clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error ?? new Error('Provided image purge was aborted.'));
+        });
+    }
 
     async listUnitArtwork(): Promise<ReadonlyMap<UnitUuid, UnitArtwork>> {
         const db = await this.dbPromise;
@@ -1366,28 +1413,23 @@ export class DbService {
         });
     }
 
-    /**
-     * Clear all local per-user object stores while preserving shared data kept in the general store.
-     * The persisted USER_KEY entry is removed as part of the reset.
-     */
-    public async clearLocalUserStores(): Promise<void> {
+    /** Logout clears identity and preferences; forces, tags, searches and custom units are removed only on request. */
+    public async clearLocalSession(deletePersonalData = false): Promise<void> {
         const db = await this.dbPromise;
-        if (!db) return; // Degraded mode
-
-        const storesToClear = Array.from(db.objectStoreNames).filter(storeName => storeName !== DB_STORE && storeName !== UNIT_ARTWORK_STORE);
-        const transactionStores = [DB_STORE, ...storesToClear];
-
+        if (!db) return;
         return new Promise<void>((resolve, reject) => {
-            const transaction = db.transaction(transactionStores, 'readwrite');
-
-            transaction.objectStore(DB_STORE).delete(USER_KEY);
-
-            for (const storeName of storesToClear) {
-                transaction.objectStore(storeName).clear();
-            }
-
+            const personalStores = deletePersonalData ? [
+                FORCE_STORE, TAGS_STORE, SAVED_SEARCHES_STORE, CUSTOM_UNITS_STORE,
+                SUBSCRIBED_CUSTOM_UNITS_STORE, CUSTOM_UNIT_SUMMARIES_STORE,
+            ] : [];
+            const transaction = db.transaction([DB_STORE, ...personalStores], 'readwrite');
+            const store = transaction.objectStore(DB_STORE);
+            store.delete(USER_KEY);
+            store.delete(OPTIONS_KEY);
+            for (const name of personalStores) transaction.objectStore(name).clear();
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
+            transaction.onabort = () => reject(transaction.error ?? new Error('Logout was aborted.'));
         });
     }
 

@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { formatChassisName } from '../../utils/unit-display-name.util';
+import type { ForceGeneratorAvailability } from './types/force-generator-availability';
 import { Signal, computed, signal } from '@angular/core';
 import {
   armoredComponentStaticTechLevel,
@@ -33,15 +34,8 @@ import { SourcebookReference } from '../sourcebook.model';
 import { isLaserInsulatorEquipment } from '../laser-insulator.model';
 import { isBombastLaserEquipment } from '../bombast-laser-mode.model';
 import { isRiscLaserPulseModule } from '../risc-laser-mode.model';
-import {
-  PPC_CAPACITOR_HEAT_BONUS,
-  isPpcCapacitorEquipment,
-  isPpcEquipment,
-} from '../ppc-capacitor.model';
-import {
-  isCaseIIEquipment,
-  isStandardCaseEquipment,
-} from '../case-equipment.model';
+import { PPC_CAPACITOR_HEAT_BONUS, isPpcCapacitorEquipment, isPpcEquipment } from '../ppc-capacitor.model';
+import { isCaseIIEquipment, isStandardCaseEquipment } from '../case-equipment.model';
 import { isChassisSystemEquipment } from '../chassis-equipment.model';
 import { isBlueShieldEquipment } from '../escalating-equipment.model';
 import { c3SystemTypeForEquipment } from '../c3-network.model';
@@ -101,10 +95,7 @@ import { EquipmentRegistry } from '../equipment-lookup';
 import { getBayTransporterType, isQuartersBay } from './bays/bay-definitions';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 import { calculateEntityCostDetails } from './utils/cost/entity-cost';
-import {
-  calculateBattleValueDetails,
-  getOffensiveSpeedFactor,
-} from './utils/battle-value';
+import { calculateBattleValueDetails, getOffensiveSpeedFactor } from './utils/battle-value';
 import { reconcileEquipmentRelationships } from './utils/equipment-relationship-rules';
 import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
 import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
@@ -160,10 +151,12 @@ export abstract class BaseEntity implements EntityTechnology {
   private parsedLoadIssues: readonly EntityLoadIssue[] = [];
 
   constructor(protected readonly equipmentRegistry: EquipmentRegistry) {
-    this.setUniformArmor(new MountedArmor({
-      armor: requireArmorEquipment('STANDARD', false, equipmentRegistry),
-      techBase: 'IS',
-    }));
+    this.setUniformArmor(
+      new MountedArmor({
+        armor: requireArmorEquipment('STANDARD', false, equipmentRegistry),
+        techBase: 'IS',
+      }),
+    );
   }
 
   // ── Identity (immutable after construction) ─────────────────────────────
@@ -193,7 +186,7 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   setLoadIssues(issues: readonly EntityLoadIssue[]): void {
-    this.parsedLoadIssues = Object.freeze(issues.map(issue => Object.freeze({ ...issue })));
+    this.parsedLoadIssues = Object.freeze(issues.map((issue) => Object.freeze({ ...issue })));
   }
 
   protected withOmniSubtype(subtype: string): UnitSubtype {
@@ -241,14 +234,12 @@ export abstract class BaseEntity implements EntityTechnology {
     for (const mountedArmor of this.armorByLocation().values()) {
       armorEquipment.set(mountedArmor.armor.id, mountedArmor.armor);
     }
-    sources.push(...[...armorEquipment.values()].map(armor => armor.tech));
+    sources.push(...[...armorEquipment.values()].map((armor) => armor.tech));
     const structures = new Map<string, MountedStructure>();
     for (const structure of this.structureByLocation().values()) {
       structures.set(structure.structure.id, structure);
     }
-    sources.push(...[...structures.values()].map(structure =>
-      getStructureTechAdvancement(structure.structure)
-    ));
+    sources.push(...[...structures.values()].map((structure) => getStructureTechAdvancement(structure.structure)));
     const omniTech = this.omniTechAdvancement();
     if (this.omni() && omniTech) sources.push(omniTech);
     if (this.hasPatchworkArmor()) sources.push(PATCHWORK_ARMOR_TECH);
@@ -267,10 +258,9 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   private staticTechLevelSources(): TechRatingSource[] {
-    const sources: TechRatingSource[] = this.equipment()
-      .flatMap(mount => mount.equipment && this.mountedEquipmentContributesStaticTech(mount.equipment)
-        ? [mount.equipment.tech]
-        : []);
+    const sources: TechRatingSource[] = this.equipment().flatMap((mount) =>
+      mount.equipment && this.mountedEquipmentContributesStaticTech(mount.equipment) ? [mount.equipment.tech] : [],
+    );
     const systemSources = [...this.baseSystemTechAdvancements()];
     const engine = this.mountedEngine();
     if (engine.installed && !this.usesLargeEngineTechnology()) {
@@ -286,26 +276,27 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Complete construction technology sources, shared by the rating and construction summary. */
   techRatingSources(): readonly TechRatingSource[] {
-    const sources: TechRatingSource[] = this.equipment()
-      .flatMap(mount => mount.equipment ? [mount.equipment.tech] : []);
-    sources.push(...this.implicitSystemEquipment().map(equipment => equipment.tech));
+    const sources: TechRatingSource[] = this.equipment().flatMap((mount) =>
+      mount.equipment ? [mount.equipment.tech] : [],
+    );
+    sources.push(...this.implicitSystemEquipment().map((equipment) => equipment.tech));
     if (this.entityType === 'Mek' && this.automaticClanCaseLocations().size > 0) {
       const clanCase = this.equipmentRegistry.findForTechBase('CLCASE', 'Clan');
       if (clanCase) sources.push(clanCase.tech);
     }
     sources.push(...this.baseSystemTechAdvancements());
     sources.push(...this.entityTechAdvancements());
-    return sources.filter(source => {
+    return sources.filter((source) => {
       if (!('advancement' in source)) return true;
-      const equipment = this.equipment().find(mount => mount.equipment?.tech === source)?.equipment;
+      const equipment = this.equipment().find((mount) => mount.equipment?.tech === source)?.equipment;
       return equipment == null || this.mountedEquipmentContributesTech(equipment);
     });
   }
 
   /** Mirror CompositeTechLevel's blank-progression early return. */
   private mountedEquipmentContributesTech(equipment: Equipment): boolean {
-    if (this.mixedTech() || this.techBase() !== 'IS' || equipment.techBase !== 'Clan'
-      || equipment.type === 'ammo') return true;
+    if (this.mixedTech() || this.techBase() !== 'IS' || equipment.techBase !== 'Clan' || equipment.type === 'ammo')
+      return true;
     const dates = equipment.tech.advancement;
     if (!dates || !('is' in dates || 'clan' in dates)) return true;
     if (dates.is != null) return true;
@@ -321,6 +312,8 @@ export abstract class BaseEntity implements EntityTechnology {
 
   // ── Identity ──
   readonly uuid = signal<UnitUuid>(asUnitUuid(uuidv7()));
+  /** Source design of a custom refit; absent for original or unlinked designs. */
+  readonly refitFromUUID = signal<UnitUuid | undefined>(undefined);
   readonly chassis = signal<string>('');
   readonly model = signal<string>('');
   readonly clanName = signal<string>('');
@@ -347,7 +340,8 @@ export abstract class BaseEntity implements EntityTechnology {
   // ── Meta ──
   readonly source = signal<SourcebookReference[]>([]);
   readonly published = signal<SourcebookReference[]>([]);
-  readonly canon = computed(() => [...this.source(), ...this.published()].some(source => source.canon));
+  readonly forceGeneratorAvailability = signal<readonly ForceGeneratorAvailability[]>([]);
+  readonly canon = computed(() => [...this.source(), ...this.published()].some((source) => source.canon));
   generator?: string; // software who created the file
   /** Native text formatting needed only for exact parse/write round trips. */
   nativeSourceTrailingNewlines = 0;
@@ -400,14 +394,10 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly uniformArmor = computed<MountedArmor | null>(() => {
     if (this.explicitPatchworkArmor()) return null;
     const layout = this.armorLayout();
-    return layout
-      ? uniformLocationComponent(layout, this.armorLocations, (left, right) => left.equals(right))
-      : null;
+    return layout ? uniformLocationComponent(layout, this.armorLocations, (left, right) => left.equals(right)) : null;
   });
   /** Native Patchwork remains meaningful even when its location materials currently match. */
-  readonly hasPatchworkArmor = computed(() =>
-    this.armorLayout() !== null && this.uniformArmor() === null
-  );
+  readonly hasPatchworkArmor = computed(() => this.armorLayout() !== null && this.uniformArmor() === null);
   /**
    * Armor per location.  Keys are canonical location IDs ("CT", "LT", etc.).
    * Each value is `{ front, rear }`.  For locations without rear armour the
@@ -425,35 +415,30 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Common effective structure, or null when location structures differ. */
   readonly uniformStructure = computed<MountedStructure | null>(() => {
     const layout = this.structureLayout();
-    return layout
-      ? uniformLocationComponent(layout, this.locationOrder, (left, right) => left.equals(right))
-      : null;
+    return layout ? uniformLocationComponent(layout, this.locationOrder, (left, right) => left.equals(right)) : null;
   });
   /** Common structure material, ignoring location tonnage used by wire formats. */
   readonly uniformStructureMaterial = computed<MountedStructure | null>(() => {
     const layout = this.structureLayout();
     return layout
-      ? uniformLocationComponent(
-        layout,
-        this.locationOrder,
-        (left, right) => left.hasSameMaterialAs(right),
-      )
+      ? uniformLocationComponent(layout, this.locationOrder, (left, right) => left.hasSameMaterialAs(right))
       : null;
   });
   /** Database-resolved systems derived from entity state but not serialized as mounts. */
   readonly implicitSystemEquipment = computed<readonly Equipment[]>(() => {
     const equipment = this.computeImplicitSystemEquipment();
-    return [...new Map(equipment.map(item => [item.id, item])).values()];
+    return [...new Map(equipment.map((item) => [item.id, item])).values()];
   });
 
   readonly #locationMetadata = signal<ReadonlyMap<string, EntityLocationMetadata>>(new Map());
   readonly locationMetadata = this.#locationMetadata.asReadonly();
 
-  readonly clanCaseOptOutLocations = computed<ReadonlySet<string>>(() => new Set(
-    [...this.#locationMetadata()]
-      .filter(([, metadata]) => metadata.clanCaseOptOut)
-      .map(([location]) => location),
-  ));
+  readonly clanCaseOptOutLocations = computed<ReadonlySet<string>>(
+    () =>
+      new Set(
+        [...this.#locationMetadata()].filter(([, metadata]) => metadata.clanCaseOptOut).map(([location]) => location),
+      ),
+  );
 
   /** Family eligibility; ProtoMeks explicitly exclude automatic CASE. */
   protected readonly allowsImplicitClanCase = computed<boolean>(() => true);
@@ -472,9 +457,11 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly automaticClanCaseLocations = computed<ReadonlySet<string>>(() => {
     if (!this.allowsImplicitClanCase()) return BaseEntity.#NO_IMPLICIT_CLAN_CASE;
 
-    const protectedLocations = new Set(this.equipment()
-      .filter(mount => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
-      .flatMap(mount => mount.getOccupiedLocations()));
+    const protectedLocations = new Set(
+      this.equipment()
+        .filter((mount) => isStandardCaseEquipment(mount.equipment) || isCaseIIEquipment(mount.equipment))
+        .flatMap((mount) => mount.getOccupiedLocations()),
+    );
     const optedOut = this.clanCaseOptOutLocations();
     const locations = new Set<string>();
     for (const mount of this.equipment()) {
@@ -482,8 +469,12 @@ export abstract class BaseEntity implements EntityTechnology {
       if (!equipment || isStandardCaseEquipment(equipment) || isCaseIIEquipment(equipment)) continue;
       if (!this.isMountedEquipmentExplosive(mount)) continue;
       for (const location of mount.getOccupiedLocations()) {
-        if (location !== 'Unallocated' && this.supportsAutomaticClanCaseAt(location)
-          && !protectedLocations.has(location) && !optedOut.has(location)) {
+        if (
+          location !== 'Unallocated' &&
+          this.supportsAutomaticClanCaseAt(location) &&
+          !protectedLocations.has(location) &&
+          !optedOut.has(location)
+        ) {
           locations.add(location);
         }
       }
@@ -505,9 +496,11 @@ export abstract class BaseEntity implements EntityTechnology {
     if (equipment instanceof MiscEquipment && isRiscLaserPulseModule(equipment)) {
       return this.getLinkedMount(mount)?.equipment instanceof WeaponEquipment;
     }
-    if (equipment instanceof WeaponEquipment && [
-      'AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC',
-    ].includes(equipment.ammoType)) return false;
+    if (
+      equipment instanceof WeaponEquipment &&
+      ['AC_ROTARY', 'AC', 'LAC', 'AC_IMP', 'AC_PRIMITIVE', 'PAC'].includes(equipment.ammoType)
+    )
+      return false;
     if (equipment instanceof MiscEquipment && isBlueShieldEquipment(equipment)) return false;
     return equipment.isExplosive();
   }
@@ -523,7 +516,8 @@ export abstract class BaseEntity implements EntityTechnology {
       if (!equipment || isStandardCaseEquipment(equipment)) continue;
       if (!this.isMountedEquipmentExplosive(mount)) continue;
       for (const location of mount.getOccupiedLocations()) {
-        if (location !== 'Unallocated' && this.supportsAutomaticClanCaseAt(location) && !optedOut.has(location)) locations.add(location);
+        if (location !== 'Unallocated' && this.supportsAutomaticClanCaseAt(location) && !optedOut.has(location))
+          locations.add(location);
       }
     }
     return locations;
@@ -533,14 +527,13 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly #equipment = signal<EntityMountedEquipment[]>([]);
   readonly equipment = this.#equipment.asReadonly();
   #nextMountSequence = 1;
-  readonly #equipmentById = computed(() => new Map(
-    this.#equipment().map(mount => [mount.mountId, mount]),
-  ));
+  readonly #equipmentById = computed(() => new Map(this.#equipment().map((mount) => [mount.mountId, mount])));
   readonly #equipmentRelationships = signal(new EquipmentRelationships());
 
   /** Resolved aggregates whose members are canonical mounts from `equipment`. */
   readonly equipmentBays = computed<readonly EquipmentBay[]>(() =>
-    this.#equipmentRelationships().resolveBays(this.#equipmentById()));
+    this.#equipmentRelationships().resolveBays(this.#equipmentById()),
+  );
 
   /** Full construction-cost calculation, derived only from canonical entity state. */
   readonly costDetails = computed(() => calculateEntityCostDetails(this, { ignoreAmmo: false }));
@@ -550,9 +543,9 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** One reactive traversal supplies both pristine BV and its structured report. */
   readonly #battleValueCalculation = computed(() => calculateBattleValueDetails(this));
-  /** Pristine-entity BV, equivalent to Java calculateBV(false, true). */
+  /** Pristine BV, honoring an authored override like Java Entity.calculateBattleValue. */
   readonly battleValue = computed(() => this.#battleValueCalculation().base);
-  /** Structured, Java-export-shaped details computed from canonical entity state. */
+  /** Calculated evidence and any authored override used by the effective BV. */
   readonly battleValueDetails = computed(() => this.#battleValueCalculation().details);
 
   /** Current BV from this same entity calculator plus an external runtime state view. */
@@ -575,7 +568,7 @@ export abstract class BaseEntity implements EntityTechnology {
       throw new Error(`Unknown location "${location}"`);
     }
     const next = new Map(this.#locationMetadata());
-    if (Object.values(metadata).every(value => value === undefined || value === false)) next.delete(location);
+    if (Object.values(metadata).every((value) => value === undefined || value === false)) next.delete(location);
     else next.set(location, { ...metadata });
     this.#locationMetadata.set(next);
   }
@@ -584,7 +577,7 @@ export abstract class BaseEntity implements EntityTechnology {
     const next = new Map(this.#locationMetadata());
     for (const [location, metadata] of next) {
       const updated = { ...metadata, clanCaseOptOut: undefined };
-      if (Object.values(updated).every(value => value === undefined || value === false)) next.delete(location);
+      if (Object.values(updated).every((value) => value === undefined || value === false)) next.delete(location);
       else next.set(location, updated);
     }
     for (const location of locations) {
@@ -595,9 +588,12 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   locationHasCaseProtection(location: string): boolean {
-    return this.implicitClanCaseLocations().has(location)
-      || this.equipment().some(mount => mount.getOccupiedLocations().includes(location)
-        && isStandardCaseEquipment(mount.equipment));
+    return (
+      this.implicitClanCaseLocations().has(location) ||
+      this.equipment().some(
+        (mount) => mount.getOccupiedLocations().includes(location) && isStandardCaseEquipment(mount.equipment),
+      )
+    );
   }
 
   reconcileEquipmentRelationships(): void {
@@ -624,40 +620,40 @@ export abstract class BaseEntity implements EntityTechnology {
   }
   /** Composite technology rating and four-era availability code. */
   readonly obsoleteYears = computed<readonly number[]>(() => {
-    const obsolete = this.quirks().find(quirk => quirk.quirk.key === 'obsolete');
+    const obsolete = this.quirks().find((quirk) => quirk.quirk.key === 'obsolete');
     if (!obsolete) return [];
     const value = obsolete.value?.trim() ?? '';
     if (!value || value.toLowerCase() === 'unknown') return [];
-    return value.split(',')
-      .map(part => Number.parseInt(part.trim(), 10))
+    return value
+      .split(',')
+      .map((part) => Number.parseInt(part.trim(), 10))
       .filter(Number.isFinite);
   });
 
-  readonly techRating = computed(() => calculateCompositeTechRating(
-    this.techRatingSources(),
-    {
+  readonly techRating = computed(() =>
+    calculateCompositeTechRating(this.techRatingSources(), {
       techBase: this.techBase(),
       year: this.year(),
       obsoleteYears: this.obsoleteYears(),
-    },
-  ));
+    }),
+  );
   readonly staticTechLevel = computed(() => {
     const componentLevel = calculateCompositeStaticTechLevel(this.staticTechLevelSources());
-    return this.equipment().some(mount => mount.armored)
+    return this.equipment().some((mount) => mount.armored)
       ? armoredComponentStaticTechLevel(componentLevel)
       : componentLevel;
   });
   /** All Weapons installed on the entity. */
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
-    this.equipment().filter(isEntityMountedWeapon)
+    this.equipment().filter(isEntityMountedWeapon),
   );
   readonly rangedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
-    this.mountedWeapons().filter(mount => !mount.isPhysicalWeapon())
+    this.mountedWeapons().filter((mount) => !mount.isPhysicalWeapon()),
   );
   /** Weapon capabilities supplied by the entity rather than installed equipment. */
   readonly intrinsicWeapons = computed<readonly IntrinsicWeapon[]>(() => this.computeIntrinsicWeapons());
   readonly physicalWeapons = computed<readonly PhysicalWeapon[]>(() => {
-    const mounted = this.equipment().filter(mount => mount.isPhysicalWeapon());
+    const mounted = this.equipment().filter((mount) => mount.isPhysicalWeapon());
     return [...mounted, ...this.intrinsicWeapons()];
   });
   /** Canonical export features supplied by this entity's construction. */
@@ -670,9 +666,9 @@ export abstract class BaseEntity implements EntityTechnology {
 
   // ── Transporters / Bays ──
   transporters = signal<EntityTransporter[]>([]);
-  dockingCollarCount = computed(() => this.transporters()
-    .filter(transporter => transporter.kind === 'docking-collar')
-    .length);
+  dockingCollarCount = computed(
+    () => this.transporters().filter((transporter) => transporter.kind === 'docking-collar').length,
+  );
 
   // ── Quirks ──
   quirks = signal<EntityQuirk[]>([]);
@@ -685,6 +681,8 @@ export abstract class BaseEntity implements EntityTechnology {
   manualBV = signal<number>(0);
 
   // ── Icon / Fluff image ──
+  /** Explicit sprite tileset path; empty means automatic assignment. */
+  iconPath = signal<string>('');
   iconEncoded = signal<string>('');
   fluffImageEncoded = signal<string>('');
 
@@ -707,7 +705,7 @@ export abstract class BaseEntity implements EntityTechnology {
   });
 
   c3System = computed<C3SystemType>(() => {
-    return c3SystemTypeForEquipment(this.equipment().map(mount => mount.equipment));
+    return c3SystemTypeForEquipment(this.equipment().map((mount) => mount.equipment));
   });
 
   /**
@@ -734,12 +732,12 @@ export abstract class BaseEntity implements EntityTechnology {
   protected onTonnageChanged(tonnage: number): void {
     const layout = this.structureLayout();
     if (!layout) return;
-    this.structureLayout.set(createLocationComponentLayout(
-      layout.defaultComponent.withTonnage(tonnage),
-      [...layout.overrides].map(([location, structure]) =>
-        [location, structure.withTonnage(tonnage)] as const
+    this.structureLayout.set(
+      createLocationComponentLayout(
+        layout.defaultComponent.withTonnage(tonnage),
+        [...layout.overrides].map(([location, structure]) => [location, structure.withTonnage(tonnage)] as const),
       ),
-    ));
+    );
   }
 
   protected computeTonnage(): number {
@@ -787,7 +785,7 @@ export abstract class BaseEntity implements EntityTechnology {
         if (isTechAvailableForBase(oppositeEngTech.dates, oppositeBase, year)) {
           reasons.push(
             `Engine ${engine.type} (techBase All): not available for ${chassisTechBase} at year ${year}, ` +
-            `but available for ${oppositeBase}`,
+              `but available for ${oppositeBase}`,
           );
           if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
           mixed = true;
@@ -798,11 +796,11 @@ export abstract class BaseEntity implements EntityTechnology {
     // ── Equipment tech-base & advancement checks ──────────────────────
     for (const m of this.equipment()) {
       if (!m.equipment) continue;
-      if ((m.equipment.techBase === 'Clan' && chassisTechBase === 'IS') ||
-          (m.equipment.techBase === 'IS' && chassisTechBase === 'Clan')) {
-        reasons.push(
-          `Equipment "${m.equipment.name}" tech base ${m.equipment.techBase} ≠ chassis ${chassisTechBase}`,
-        );
+      if (
+        (m.equipment.techBase === 'Clan' && chassisTechBase === 'IS') ||
+        (m.equipment.techBase === 'IS' && chassisTechBase === 'Clan')
+      ) {
+        reasons.push(`Equipment "${m.equipment.name}" tech base ${m.equipment.techBase} ≠ chassis ${chassisTechBase}`);
         if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
         mixed = true;
       }
@@ -815,11 +813,13 @@ export abstract class BaseEntity implements EntityTechnology {
         if (adv.is && adv.clan) {
           const chassisSide = isClan ? adv.clan : adv.is;
           const oppositeSide = isClan ? adv.is : adv.clan;
-          if (!isTechAvailableForBase(chassisSide, chassisTechBase, year) &&
-              isTechAvailableForBase(oppositeSide, oppositeBase, year)) {
+          if (
+            !isTechAvailableForBase(chassisSide, chassisTechBase, year) &&
+            isTechAvailableForBase(oppositeSide, oppositeBase, year)
+          ) {
             reasons.push(
               `Equipment "${m.equipment.name}" (techBase All): not available for ${chassisTechBase} ` +
-              `at year ${year}, but available for ${oppositeBase}`,
+                `at year ${year}, but available for ${oppositeBase}`,
             );
             if (!COLLECT_ALL_MIXED_TECH_REASONS) return { mixed: true, reasons };
             mixed = true;
@@ -849,14 +849,12 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly offensiveSpeedFactor = computed(() => getOffensiveSpeedFactor(this));
 
   /** Installed underwater maneuvering units, derived from canonical equipment mounts. */
-  readonly installedUmuMP = computed(() => this.equipment().filter(
-    mount => isUmuEquipment(mount.equipment),
-  ).length);
+  readonly installedUmuMP = computed(() => this.equipment().filter((mount) => isUmuEquipment(mount.equipment)).length);
 
   /** Usable UMU movement; large shields prevent mounted UMUs from functioning. */
-  readonly umuMP = computed(() => this.equipment().some(
-    mount => resolveShieldSize(mount.equipment) === 'large',
-  ) ? 0 : this.installedUmuMP());
+  readonly umuMP = computed(() =>
+    this.equipment().some((mount) => resolveShieldSize(mount.equipment) === 'large') ? 0 : this.installedUmuMP(),
+  );
 
   /** Whether this construction uses the heat scale. */
   tracksHeat(): boolean {
@@ -864,17 +862,18 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   /** Maximum static equipment heat, independent of combat state. */
-  readonly heatGeneration = computed(() => this.tracksHeat() ? this.computeHeatGeneration() : -1);
+  readonly heatGeneration = computed(() => (this.tracksHeat() ? this.computeHeatGeneration() : -1));
 
   protected computeHeatGeneration(): number {
     let heat = 0;
     for (const mount of this.equipment()) {
       if (mount.equipment instanceof WeaponEquipment) {
-        const multiplier = mount.equipment.ammoType === 'AC_ROTARY'
-          ? 6
-          : mount.equipment.ammoType === 'AC_ULTRA' || mount.equipment.ammoType === 'AC_ULTRA_THB'
-            ? 2
-            : 1;
+        const multiplier =
+          mount.equipment.ammoType === 'AC_ROTARY'
+            ? 6
+            : mount.equipment.ammoType === 'AC_ULTRA' || mount.equipment.ammoType === 'AC_ULTRA_THB'
+              ? 2
+              : 1;
         heat += mount.equipment.heat * multiplier;
       } else if (mount.equipment instanceof MiscEquipment) {
         heat += mount.equipment.operatingHeat;
@@ -888,7 +887,7 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   /** Normal undamaged heat dissipation. */
-  readonly heatDissipation = computed(() => this.tracksHeat() ? this.computeHeatDissipation(true) : -1);
+  readonly heatDissipation = computed(() => (this.tracksHeat() ? this.computeHeatDissipation(true) : -1));
 
   /** Canonical undamaged heat capacity, including systems such as radical heat sinks. */
   heatCapacity(includeRadical = true): number {
@@ -917,15 +916,21 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly engineHeatSinkType = computed<string | null>(() => null);
 
   /** Number of independently tracked crew positions, not physical complement. */
-  readonly crewSlotCount = computed<number>(() => this.entityType === 'HandheldWeapon' || this.entityType === 'BuildingEntity' ? 0 : 1);
+  readonly crewSlotCount = computed<number>(() =>
+    this.entityType === 'HandheldWeapon' ||
+    this.entityType === 'BuildingEntity' ||
+    this.entityType === 'MobileStructure'
+      ? 0
+      : 1,
+  );
 
   protected hasEquipmentFlag(flag: EquipmentFlag): boolean {
-    return this.equipment().some(mount => mount.equipment?.hasFlag(flag));
+    return this.equipment().some((mount) => mount.equipment?.hasFlag(flag));
   }
 
   protected hasCoolantPod(): boolean {
-    return this.equipment().some(mount =>
-      mount.equipment instanceof AmmoEquipment && mount.equipment.ammoType === 'COOLANT_POD'
+    return this.equipment().some(
+      (mount) => mount.equipment instanceof AmmoEquipment && mount.equipment.ammoType === 'COOLANT_POD',
     );
   }
 
@@ -938,16 +943,14 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   computeJumpMP(_options: MovementCalculationOptions): number {
-    return this.equipment().filter(mount => isJumpJetEquipment(mount.equipment)).length;
+    return this.equipment().filter((mount) => isJumpJetEquipment(mount.equipment)).length;
   }
 
   /** Effective tonnage per location. */
   structureTonnages = computed<Map<string, number>>(() => this.computeStructureTonnages());
 
   /** Internal structure points per location, derived from the effective structure configuration. */
-  structureValues = computed<Map<string, number>>(() =>
-    this.computeStructureValues(this.tonnage())
-  );
+  structureValues = computed<Map<string, number>>(() => this.computeStructureValues(this.tonnage()));
 
   totalInternalPoints = computed(() => this.computeTotalInternalPoints());
 
@@ -959,9 +962,7 @@ export abstract class BaseEntity implements EntityTechnology {
     return total;
   }
 
-  maxArmorValues = computed<Map<string, number>>(() =>
-    this.computeMaxArmor(this.structureValues())
-  );
+  maxArmorValues = computed<Map<string, number>>(() => this.computeMaxArmor(this.structureValues()));
 
   totalArmorPoints = computed(() => {
     let sum = 0;
@@ -990,16 +991,17 @@ export abstract class BaseEntity implements EntityTechnology {
     const idx = new Map<string, EntityMountedEquipment[]>();
     for (const m of this.equipment()) {
       let arr = idx.get(m.location);
-      if (!arr) { arr = []; idx.set(m.location, arr); }
+      if (!arr) {
+        arr = [];
+        idx.set(m.location, arr);
+      }
       arr.push(m);
     }
     return idx;
   });
 
   /** Set of unresolved mount IDs - rebuilt only when equipment changes */
-  protected unresolvedMounts = computed(() =>
-    this.equipment().filter(m => !m.equipment)
-  );
+  protected unresolvedMounts = computed(() => this.equipment().filter((m) => !m.equipment));
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  TIERED VALIDATION - independent computed slices
@@ -1011,9 +1013,12 @@ export abstract class BaseEntity implements EntityTechnology {
     const expected = this.computeExpectedEngineRating();
     if (expected !== null && this.mountedEngine().rating !== expected) {
       msgs.push({
-        severity: 'warning', category: 'engine', code: 'ENGINE_RATING_MISMATCH',
-        message: `Engine rating ${this.mountedEngine().rating} ≠ expected ${expected} `
-          + `(walkMP=${this.walkMP()} × tonnage=${this.tonnage()})`,
+        severity: 'warning',
+        category: 'engine',
+        code: 'ENGINE_RATING_MISMATCH',
+        message:
+          `Engine rating ${this.mountedEngine().rating} ≠ expected ${expected} ` +
+          `(walkMP=${this.walkMP()} × tonnage=${this.tonnage()})`,
       });
     }
     return msgs;
@@ -1027,14 +1032,20 @@ export abstract class BaseEntity implements EntityTechnology {
       const total = la.front + la.rear;
       if (total > maxTotal) {
         msgs.push({
-          severity: 'error', category: 'armor', code: 'ARMOR_EXCEEDS_MAX',
-          message: `${loc} armor ${total} exceeds maximum ${maxTotal}`, location: loc,
+          severity: 'error',
+          category: 'armor',
+          code: 'ARMOR_EXCEEDS_MAX',
+          message: `${loc} armor ${total} exceeds maximum ${maxTotal}`,
+          location: loc,
         });
       }
       if (la.rear > 0 && !this.hasRearArmor(loc)) {
         msgs.push({
-          severity: 'error', category: 'armor', code: 'ARMOR_REAR_INVALID',
-          message: `${loc} does not support rear armor`, location: loc,
+          severity: 'error',
+          category: 'armor',
+          code: 'ARMOR_REAR_INVALID',
+          message: `${loc} does not support rear armor`,
+          location: loc,
         });
       }
     }
@@ -1043,11 +1054,12 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Unresolved equipment names */
   protected equipmentValidation = computed<EntityValidationMessage[]>(() =>
-    this.unresolvedMounts().map(m => ({
-      severity: 'error' as const, category: 'equipment' as const,
+    this.unresolvedMounts().map((m) => ({
+      severity: 'error' as const,
+      category: 'equipment' as const,
       code: 'EQUIPMENT_UNRESOLVED',
       message: `Equipment "${m.equipmentId}" could not be resolved`,
-    }))
+    })),
   );
 
   /** Override in subclasses for type-specific rules */
@@ -1061,7 +1073,7 @@ export abstract class BaseEntity implements EntityTechnology {
       ...this.equipmentValidation(),
       ...this.typeSpecificValidation(),
     ];
-    return { valid: messages.every(m => m.severity !== 'error'), messages };
+    return { valid: messages.every((m) => m.severity !== 'error'), messages };
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1085,7 +1097,7 @@ export abstract class BaseEntity implements EntityTechnology {
   damageLocations(): readonly EntityDamageLocation[] {
     const structure = this.structureValues();
     const armor = this.armorValues();
-    return this.locationOrder.map(code => ({
+    return this.locationOrder.map((code) => ({
       code,
       sheetCode: this.componentLocationLabel(code),
       internalPoints: structure.get(code) ?? 0,
@@ -1108,9 +1120,7 @@ export abstract class BaseEntity implements EntityTechnology {
   protected abstract computeStructureValues(tonnage: number): Map<string, number>;
 
   protected computeStructureTonnages(): Map<string, number> {
-    return new Map([...this.structureByLocation()].map(([location, structure]) =>
-      [location, structure.tonnage]
-    ));
+    return new Map([...this.structureByLocation()].map(([location, structure]) => [location, structure.tonnage]));
   }
 
   /** Return the effective structure material installed at a location. */
@@ -1129,7 +1139,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Install an effective structure definition at one active location. */
   setStructureAt(location: string, structure: MountedStructure): void {
     this.assertStructureLocation(location);
-    this.structureLayout.update(layout => {
+    this.structureLayout.update((layout) => {
       if (!layout) throw new Error(`No structure installed for ${this.entityType}`);
       return withLocationComponent(layout, location, structure, (left, right) => left.equals(right));
     });
@@ -1199,8 +1209,12 @@ export abstract class BaseEntity implements EntityTechnology {
   canLinkEquipment(source: EntityMountedEquipment, target: EntityMountedEquipment): boolean {
     const currentSource = this.findCurrentMount(source);
     const currentTarget = this.findCurrentMount(target);
-    if (!currentSource || !currentTarget
-      || !isCompatibleEquipmentLink(currentSource, currentTarget, { year: this.year() })) return false;
+    if (
+      !currentSource ||
+      !currentTarget ||
+      !isCompatibleEquipmentLink(currentSource, currentTarget, { year: this.year() })
+    )
+      return false;
     const existingSource = this.getLinkingMount(currentTarget);
     return !existingSource || existingSource.mountId === currentSource.mountId;
   }
@@ -1208,7 +1222,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Compatible, currently available targets for an installed enhancement. */
   getCompatibleLinkTargets(source: EntityMountedEquipment): readonly EntityMountedEquipment[] {
     const currentSource = this.requireCurrentMount(source);
-    return this.equipment().filter(target => this.canLinkEquipment(currentSource, target));
+    return this.equipment().filter((target) => this.canLinkEquipment(currentSource, target));
   }
 
   /** Create or replace an enhancement-to-weapon link after validating domain rules. */
@@ -1218,29 +1232,26 @@ export abstract class BaseEntity implements EntityTechnology {
     if (!this.canLinkEquipment(currentSource, currentTarget)) {
       throw new Error('Equipment link must connect a compatible weapon enhancement to a weapon in the same location');
     }
-    this.#equipmentRelationships.update(relationships => relationships.withLink(currentSource, currentTarget));
+    this.#equipmentRelationships.update((relationships) => relationships.withLink(currentSource, currentTarget));
   }
 
   unlinkEquipment(source: EntityMountedEquipment): void {
     const currentSource = this.requireCurrentMount(source);
-    this.#equipmentRelationships.update(relationships => relationships.withoutLink(currentSource));
+    this.#equipmentRelationships.update((relationships) => relationships.withoutLink(currentSource));
   }
 
   addEquipmentBay(kind: EquipmentBayKind, input: EquipmentBayInput): void {
     this.requireBayMounts(input);
-    this.#equipmentRelationships.update(relationships => relationships.withBay(kind, input));
+    this.#equipmentRelationships.update((relationships) => relationships.withBay(kind, input));
   }
 
   replaceEquipmentBays(kind: EquipmentBayKind, inputs: readonly EquipmentBayInput[]): void {
     for (const input of inputs) this.requireBayMounts(input);
-    this.#equipmentRelationships.update(relationships => relationships.withBays(kind, inputs));
+    this.#equipmentRelationships.update((relationships) => relationships.withBays(kind, inputs));
   }
 
   /** Install equipment, optionally linking a new enhancement to an existing weapon. */
-  addEquipment(
-    input: EntityMountedEquipmentInput,
-    options: AddEquipmentOptions = {},
-  ): EntityMountedEquipment {
+  addEquipment(input: EntityMountedEquipmentInput, options: AddEquipmentOptions = {}): EntityMountedEquipment {
     const mount = this.createEquipmentMount(input);
 
     let relationships = this.#equipmentRelationships();
@@ -1260,7 +1271,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Install a decoded inventory in one update, preserving existing mounts and relationships. */
   addEquipmentBatch(inputs: readonly EntityMountedEquipmentInput[]): readonly EntityMountedEquipment[] {
     if (inputs.length === 0) return [];
-    const mounts = inputs.map(input => this.createEquipmentMount(input));
+    const mounts = inputs.map((input) => this.createEquipmentMount(input));
     this.#equipment.set([...this.#equipment(), ...mounts]);
     return mounts;
   }
@@ -1273,19 +1284,17 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Replace all mounts and discard relationships to identities no longer present. */
   setEquipment(equipment: readonly EntityMountedEquipment[]): void {
     const mounts = [...equipment];
-    const mountIds = mounts.map(mount => mount.mountId);
+    const mountIds = mounts.map((mount) => mount.mountId);
     if (new Set(mountIds).size !== mountIds.length) {
       throw new Error('Equipment mount IDs must be unique within an entity');
     }
     for (const mount of mounts) mount.assertCanAttachToEntity(this);
     for (const mount of mounts) mount.attachToEntity(this);
-    this.#equipmentRelationships.update(relationships => relationships.withMounts(mounts));
+    this.#equipmentRelationships.update((relationships) => relationships.withMounts(mounts));
     this.#equipment.set(mounts);
   }
 
-  updateEquipment(
-    update: (equipment: readonly EntityMountedEquipment[]) => readonly EntityMountedEquipment[],
-  ): void {
+  updateEquipment(update: (equipment: readonly EntityMountedEquipment[]) => readonly EntityMountedEquipment[]): void {
     this.setEquipment(update(this.#equipment()));
   }
 
@@ -1293,8 +1302,8 @@ export abstract class BaseEntity implements EntityTechnology {
   removeEquipment(mount: EntityMountedEquipment): void {
     const removed = this.findCurrentMount(mount);
     if (!removed) return;
-    this.#equipment.update(equipment => equipment.filter(candidate => candidate.mountId !== removed.mountId));
-    this.#equipmentRelationships.update(relationships => relationships.withoutMount(removed));
+    this.#equipment.update((equipment) => equipment.filter((candidate) => candidate.mountId !== removed.mountId));
+    this.#equipmentRelationships.update((relationships) => relationships.withoutMount(removed));
   }
 
   /** Move equipment to a new location, optionally with new placements */
@@ -1305,21 +1314,23 @@ export abstract class BaseEntity implements EntityTechnology {
   ): EntityMountedEquipment {
     const previous = this.requireCurrentMount(mount);
     const replacement = previous.clone({
-        allocation: {
-          kind: 'location',
-          location: newLocation,
-          placements: newPlacements ?? previous.placements,
-        },
-      });
+      allocation: {
+        kind: 'location',
+        location: newLocation,
+        placements: newPlacements ?? previous.placements,
+      },
+    });
     let relationships = this.#equipmentRelationships();
     const linked = relationships.linkedMount(previous, this.#equipmentById());
     const linking = relationships.linkingMount(previous, this.#equipmentById());
     const linkContext = { year: this.year() };
-    if ((linked && !isCompatibleEquipmentLink(replacement, linked, linkContext))
-      || (linking && !isCompatibleEquipmentLink(linking, replacement, linkContext))) {
+    if (
+      (linked && !isCompatibleEquipmentLink(replacement, linked, linkContext)) ||
+      (linking && !isCompatibleEquipmentLink(linking, replacement, linkContext))
+    ) {
       relationships = relationships.withoutLinksFor(previous);
     }
-    this.#equipment.set(this.#equipment().map(mount => mount === previous ? replacement : mount));
+    this.#equipment.set(this.#equipment().map((mount) => (mount === previous ? replacement : mount)));
     this.#equipmentRelationships.set(relationships);
     return replacement;
   }
@@ -1349,7 +1360,7 @@ export abstract class BaseEntity implements EntityTechnology {
 
   /** Set armor for a specific location and face, always creating new Map */
   setArmorValue(loc: string, face: ArmorFace, value: number): void {
-    this.armorValues.update(armorValues => {
+    this.armorValues.update((armorValues) => {
       const updated = new Map(armorValues);
       const previous = updated.get(loc) ?? locationArmor(0);
       updated.set(loc, { ...previous, [face]: value });
@@ -1392,7 +1403,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Install armor at one location; patchwork status is derived automatically. */
   setArmorAt(location: string, armor: MountedArmor): void {
     this.assertArmorLocation(location);
-    this.armorLayout.update(layout => {
+    this.armorLayout.update((layout) => {
       if (!layout) throw new Error(`No armor material installed for ${this.entityType}`);
       return withLocationComponent(layout, location, armor, (left, right) => left.equals(right));
     });
@@ -1407,10 +1418,13 @@ export abstract class BaseEntity implements EntityTechnology {
     if (armor.armorType === 'PATCHWORK') {
       throw new Error('Patchwork is an entity layout, not an installable location armor');
     }
-    this.setArmorAt(location, new MountedArmor({
-      armor,
-      techBase,
-    }));
+    this.setArmorAt(
+      location,
+      new MountedArmor({
+        armor,
+        techBase,
+      }),
+    );
   }
 
   private assertArmorLocation(location: string): void {

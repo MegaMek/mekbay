@@ -1,0 +1,88 @@
+name: CI/CD Dev Release
+run-name: Deploy MekBay to dev.mekbay.com
+on:
+  push:
+    branches:
+      - dev
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Get latest code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0    # fetch full history so commit count is accurate. 
+          # TODO: reimplement it with an API call to GitHub so we don't have to use depth: 0 in checkout
+
+      - name: Checkout mm-data
+        uses: actions/checkout@v5
+        with:
+          repository: MegaMek/mm-data
+          path: mm-data
+          fetch-depth: 1
+
+      - name: Use Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+
+      - name: Install NPM and Build Angular Project
+        env:
+          MM_DATA_PATH: mm-data
+        run: |  
+          npm ci
+          npm run build:dev
+
+      - name: Verify script typechecks
+        run: npm run typecheck:scripts
+
+      - name: Check deployment scripts
+        run: |
+          for script in scripts/{deploy,activate-release,test-activate-release,test-deploy}.sh; do bash -n "$script"; done
+          bash scripts/test-activate-release.sh
+          bash scripts/test-deploy.sh
+
+      - name: Install SSH password helper
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
+
+      - name: Upload and activate release
+        id: deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_PATH: /var/www/mekbay_dev-deploy
+          DEPLOY_RETENTION_DAYS: '1'
+        run: bash scripts/deploy.sh
+
+      - name: Check public release
+        if: steps.deploy.outputs.deployed == 'true'
+        env:
+          DEPLOY_URL: https://dev.mekbay.com
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if marker=$(curl --fail --silent --show-error --max-time 30 "$DEPLOY_URL/release.txt?run=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT") && [ "$marker" = "$GITHUB_SHA" ]; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo 'Public release does not match the deployed commit' >&2
+              exit 1
+            fi
+            sleep 3
+          done
+          for asset in ngsw.json ngsw-worker.js; do
+            curl --fail --silent --show-error --head --max-time 30 "$DEPLOY_URL/$asset" | grep -Ei '^cache-control:.*no-cache'
+          done
+
+      - name: Verify deployed generated core assets
+        if: steps.deploy.outputs.deployed == 'true'
+        run: npm run validate:deployed-core-assets -- --base-url https://dev.mekbay.com/

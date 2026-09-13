@@ -33,6 +33,14 @@ export interface SetAmmoDialogData {
     gameRules?: CBTGameRules;
     equipmentRegistry?: EquipmentRegistry;
     weaponTechBases?: readonly EquipmentTechBase[];
+    hotLoaded?: boolean;
+}
+
+export interface SetAmmoDialogResult {
+    name: string;
+    quantity: number;
+    totalAmmo: number;
+    hotLoaded?: boolean;
 }
 
 /** Dialog data for one runtime bin, shared by construction and record-sheet actions. */
@@ -55,6 +63,7 @@ export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: Comp
         originalTotalAmmo: original.capacity,
         ammoOptions: loadouts.map(loadout => loadout.equipment),
         quantity: source.query.remainingAmmo(componentId), maxQuantity: selected.capacity,
+        hotLoaded: source.state.ammo.get(componentId)?.hotLoaded === true,
         unitType: source.entity.unitType(), gameRules: gameRulesFor(source.ruleset),
         equipmentRegistry: source.entity.getEquipmentRegistry(),
         weaponTechBases: entityWeaponTechBasesForAmmo(source.entity, original.equipment),
@@ -118,6 +127,16 @@ export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: Comp
                     </div>
                 </div>
             </div>
+            @if (canHotLoad()) {
+                <div class="hot-load-option">
+                    <label><input class="bt-checkbox" type="checkbox" [checked]="hotLoaded()"
+                        (change)="hotLoaded.set($any($event.target).checked)"> Hot-loaded</label>
+                    <small>No minimum range. Cluster hits: roll 3d6, keep the lowest two; apply normal modifiers.
+                        Compatible launchers explode if critically hit while hot-loaded rounds remain.
+                        Designate before play for ’Mechs and one-person vehicle crews. Other vehicles announce in the End Phase;
+                        change this setting after the following End Phase.</small>
+                </div>
+            }
             <div class="ammo-info-section">
                 <div class="ammo-info-items">
                     @for (item of selectedAmmoInfoItems(); track item.label) {
@@ -151,6 +170,9 @@ export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: Comp
     </div>
     `,
     styles: [`
+        .hot-load-option { display: grid; gap: 6px; margin-bottom: 12px; }
+        .hot-load-option label { display: flex; align-items: center; gap: 8px; }
+        .hot-load-option small { color: var(--text-color-secondary); font-size: 0.8em; line-height: 1.3; }
         @container (max-width: 400px) {
             .ammo-quantity {
                 align-self: center;
@@ -285,12 +307,15 @@ export class SetAmmoDialogComponent {
     private dialogsService = inject(DialogsService)
     private readonly optionsService = inject(OptionsService, { optional: true });
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
-    public dialogRef = inject<DialogRef<{name: string; quantity: number, totalAmmo: number} | null, SetAmmoDialogComponent>>(DialogRef);
+    public dialogRef = inject<DialogRef<SetAmmoDialogResult | null, SetAmmoDialogComponent>>(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
     readonly defaultGameRules = CORE_2026_GAME_RULES;
     public totalKgAvailable: number;
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
+    hotLoaded = signal(this.data.hotLoaded ?? false);
+    canHotLoad = computed(() => this.optionsService?.options().CBTOptionalRules?.hotLoadedAmmo === true
+        && this.selectedAmmo().hasFlag('F_HOT_LOAD'));
     allowMixedTechBaseAmmo = computed(() => this.optionsService?.options().CBTOptionalRules?.allowMixedTechBaseAmmo ?? false);
     ammoOptions = computed(() => {
         const options = this.data.ammoOptions;
@@ -372,7 +397,9 @@ export class SetAmmoDialogComponent {
         if (!selectedAmmo) {
             selectedAmmo = this.data.originalAmmo;
         }
-        this.dialogRef.close({ name: selectedAmmo.internalName, quantity: num, totalAmmo: num });
+        this.dialogRef.close({ name: selectedAmmo.internalName, quantity: num, totalAmmo: num,
+            ...(this.canHotLoad() ? { hotLoaded: this.hotLoaded() } : {}),
+        });
     }
 
     close() {

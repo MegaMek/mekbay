@@ -92,11 +92,11 @@ describe('portrait selection', () => {
         expect(fixture.componentInstance.value()).toBeUndefined();
     });
 
-    it('keeps the helmet without fetching for an empty portrait and crops a selected portrait at the requested size', async () => {
+    it('leaves missing portraits empty and crops a selected portrait at the requested size', async () => {
         const fixture = TestBed.createComponent(CrewPortraitComponent);
         await fixture.whenStable();
         expect(service.loadPortrait).not.toHaveBeenCalled();
-        expect(fixture.nativeElement.querySelector('.placeholder')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.sheet')).toBeNull();
         const imageUrl = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
         service.sheetUrl.and.returnValue(imageUrl);
         fixture.componentRef.setInput('width', 64);
@@ -105,9 +105,9 @@ describe('portrait selection', () => {
         expect(fixture.componentInstance.sprite()).toEqual({ url: imageUrl, width: 130, height: 162, left: -65.5, top: -0.5 });
         fixture.nativeElement.querySelector('.sheet').dispatchEvent(new Event('load'));
         await fixture.whenStable();
-        expect(fixture.nativeElement.querySelector('.placeholder')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.sheet').style.visibility).toBe('visible');
         fixture.componentRef.setInput('name', 'Missing_M_1');
         await fixture.whenStable();
-        expect(fixture.nativeElement.querySelector('.placeholder')).not.toBeNull();
+        expect(fixture.nativeElement.querySelector('.sheet')).toBeNull();
     });
 });

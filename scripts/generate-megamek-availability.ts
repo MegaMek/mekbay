@@ -107,6 +107,7 @@ type CompactEraAvailability = Record<string, CompactAvailabilityValue>;
 type CompactWeightedEraAvailability = Record<string, CompactWeightedValue>;
 
 type UnitType =
+    | 'Advanced Building'
     | 'Aero'
     | 'Handheld Weapon'
     | 'Infantry'
@@ -231,6 +232,7 @@ const LOGGED_MISSING_UNIVERSE_FACTION_KEYS = new Set<string>();
 const LOGGED_MISSING_MUL_MAPPING_KEYS = new Set<string>();
 
 const COMPILED_UNIT_TYPE_BY_XML_UNIT_TYPE: Record<string, UnitType> = {
+    'Advanced Building': 'Advanced Building',
     Mek: 'Mek',
     Tank: 'Tank',
     BattleArmor: 'Infantry',

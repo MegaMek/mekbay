@@ -58,6 +58,18 @@ describe('UnitSummaryBuilder', () => {
     expect(summary.dissipation).toBe(mek().heatDissipation());
   });
 
+  it('serializes the MUL reference as mul1id for standard and static summaries', () => {
+    for (const entity of [mek(), staticEntity()]) {
+      entity.mulId.set(123);
+      const summary = new UnitSummaryBuilder().build(entity, {
+        entryKey,
+        format: entity instanceof StaticEmplacementEntity ? 'blk' : 'mtf',
+      });
+      expect(summary.mul1id).toBe(123);
+      expect(Object.hasOwn(summary, 'id')).toBeFalse();
+    }
+  });
+
   it('generates nullable heat measurements from the native capability', () => {
     for (const [entity, tracksHeat] of [
       [new TestTankEntity(), false],
@@ -178,5 +190,16 @@ describe('UnitSummaryBuilder', () => {
     expect(summary.dissipation).toBeNull();
     expect(entity.fluff().overview).toBe('Catalog prose remains available.');
     expect(Object.prototype.hasOwnProperty.call(summary, 'fluff')).toBeFalse();
+  });
+
+  it('uses authored BV in ordinary and static catalog summaries', () => {
+    for (const entity of [mek(), staticEntity()]) {
+      entity.manualBV.set(1234);
+      const summary = new UnitSummaryBuilder().build(entity, {
+        entryKey,
+        format: entity.entityType === 'Mek' ? 'mtf' : 'blk',
+      });
+      expect(summary.bv).withContext(entity.entityType).toBe(1234);
+    }
   });
 });

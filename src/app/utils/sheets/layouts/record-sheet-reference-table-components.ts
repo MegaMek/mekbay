@@ -16,7 +16,8 @@ export function canonicalReferenceContent(
     canonicalHeight: number,
 ): SVGGElement {
     const content = svgElement('g');
-    content.setAttribute('transform', `scale(${box.width / canonicalWidth} ${box.height / canonicalHeight})`);
+    const scale = Math.min(1, box.width / canonicalWidth, box.height / canonicalHeight);
+    content.setAttribute('transform', `scale(${scale})`);
     group.appendChild(content);
     return content;
 }

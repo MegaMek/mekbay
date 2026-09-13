@@ -459,9 +459,9 @@ export class UnitSearchAvailabilityService {
         selectedFactionIds?: ReadonlySet<number>,
     ): ReadonlySet<number> {
         const availableIds = new Set<number>();
-        const contextUnitIds = new Set(contextUnits.map(unit => unit.id).filter((id): id is number => id !== null));
+        const contextUnitIds = new Set(contextUnits.map(unit => unit.mul1id).filter((id): id is number => id !== null));
         if (!selectedFactionIds || selectedFactionIds.has(MULFACTION_NONE)) {
-            const unlisted = contextUnits.filter(unit => unit.id === null);
+            const unlisted = contextUnits.filter(unit => unit.mul1id === null);
             for (const era of this.dataService.getEras()) {
                 if (target === 'faction' && selectedEraIds && !selectedEraIds.has(era.id)) continue;
                 if (unlisted.some(unit => isUnitIntroducedByEra(unit, era))) availableIds.add(target === 'era' ? era.id : MULFACTION_NONE);
@@ -519,12 +519,12 @@ export class UnitSearchAvailabilityService {
         return false;
     }
 
-    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'id' | 'year'>, factionId: number, eraId: number): boolean {
-        if (unit.id === null) {
+    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'mul1id' | 'year'>, factionId: number, eraId: number): boolean {
+        if (unit.mul1id === null) {
             const era = this.dataService.getEras().find(era => era.id === eraId);
             return factionId === MULFACTION_NONE && !!era && isUnitIntroducedByEra(unit, era);
         }
-        return unit.id !== null && this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.id);
+        return unit.mul1id !== null && this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.mul1id);
     }
 
     private membershipContainsUnitId(

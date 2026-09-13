@@ -28,6 +28,21 @@ describe('OptionsService theme migration', () => {
 
     afterEach(() => TestBed.resetTestingModule());
 
+    it('defaults old saves to scrolling and persists the wheel zoom preference across reloads', async () => {
+        savedOptions = {};
+        let service = await createService();
+        expect(service.options().mouseWheelAction).toBe('scroll');
+        await service.setOption('mouseWheelAction', 'zoom');
+        savedOptions = dbService.saveOptions.calls.mostRecent().args[0];
+        TestBed.resetTestingModule();
+        service = await createService();
+        expect(service.options().mouseWheelAction).toBe('zoom');
+        TestBed.resetTestingModule();
+        savedOptions = { mouseWheelAction: 'invalid' };
+        service = await createService();
+        expect(service.options().mouseWheelAction).toBe('scroll');
+    });
+
     it('updates paper size immediately, preserves the other print settings, and reloads it from storage', async () => {
         savedOptions = { printAllOptions: { paperSize: 'letter', printPilotData: false, printMargin: 'none' } };
         const service = await createService();
@@ -289,6 +304,7 @@ describe('OptionsService theme migration', () => {
             extremeRange: false,
             sprinting: false,
             allowMixedTechBaseAmmo: false,
+            hotLoadedAmmo: false,
         });
     });
 
@@ -308,6 +324,7 @@ describe('OptionsService theme migration', () => {
                 floatingCriticals: true,
                 sprinting: true,
                 allowMixedTechBaseAmmo: true,
+                hotLoadedAmmo: true,
             },
         };
 
@@ -320,6 +337,7 @@ describe('OptionsService theme migration', () => {
             extremeRange: true,
             sprinting: true,
             allowMixedTechBaseAmmo: true,
+            hotLoadedAmmo: true,
         });
     });
 

@@ -20,6 +20,23 @@ const STANDARD_ARMOR = new ArmorEquipment({
 const STANDARD_ARMOR_REGISTRY = equipmentRegistry({});
 
 describe('MTF parser identity', () => {
+  it('preserves repeated force-generator availability and reports inverted years', () => {
+    const source = minimalMtf().replace('Config:Biped',
+      'Config:Biped\navailability:2810-2839 CLAN:4\navailability:2840- CLAN:4\navailability:3100-3000 FS:5');
+    const context = new ParseContext('availability.mtf', STANDARD_ARMOR_REGISTRY);
+    const entity = parseMtf(source, context);
+    expect(entity.forceGeneratorAvailability()).toEqual([
+      { startYear: 2810, endYear: 2839, availabilityCodes: 'CLAN:4' },
+      { startYear: 2840, endYear: 0, availabilityCodes: 'CLAN:4' },
+    ]);
+    expect(context.warnings).toContain(jasmine.objectContaining({ field: 'availability',
+      message: 'Availability end year 3000 is before start year 3100' }));
+    const written = writeMtf(entity);
+    expect(written).toContain('availability:2810-2839 CLAN:4\navailability:2840- CLAN:4');
+    expect(parseMtf(written, new ParseContext('availability.mtf', STANDARD_ARMOR_REGISTRY))
+      .forceGeneratorAvailability()).toEqual(entity.forceGeneratorAvailability());
+  });
+
   it('preserves an earlier original era and treats an era equal to introduction as unset', () => {
     const source = minimalMtf().replace('Config:Biped', 'Config:Biped\nera:3050\noriginal era:2750');
     const entity = parseMtf(source, new ParseContext('oem.mtf', STANDARD_ARMOR_REGISTRY));

@@ -50,7 +50,7 @@ describe('SvgViewerLiteComponent', () => {
     let recordSheets: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
-    const options = signal({ CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic' as RecordSheetPipLayout,
+    const options = signal({ mouseWheelAction: 'scroll' as 'scroll' | 'zoom', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic' as RecordSheetPipLayout,
         printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
@@ -69,7 +69,7 @@ describe('SvgViewerLiteComponent', () => {
             svg.setAttribute('viewBox', '0 0 612 792');
             return { svgs: [svg] };
         });
-        options.set({ CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
+        options.set({ mouseWheelAction: 'scroll', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {
@@ -521,10 +521,10 @@ describe('SvgViewerLiteComponent', () => {
         expect(prevented).toBeFalse();
     });
 
-    it('pans vertically with Ctrl+wheel and horizontally with Shift+wheel without changing zoom', async () => {
+    it('pans vertically with wheel and horizontally with Shift+wheel without changing zoom', async () => {
         const { container, fixture } = await createViewer();
 
-        wheel(container, { ctrlKey: true, deltaY: 180 });
+        wheel(container, { deltaY: 180 });
         expect(container.scrollTop).toBe(180);
 
         setLayout(container, { scrollWidth: 1600 });
@@ -533,16 +533,16 @@ describe('SvgViewerLiteComponent', () => {
         expect(fixture.componentInstance.zoomPercent()).toBe(100);
     });
 
-    it('zooms around the cursor and creates horizontal overflow on an unmodified wheel', async () => {
+    it('zooms around the cursor and creates horizontal overflow on Ctrl+wheel', async () => {
         const { container, content } = await createViewer();
 
-        wheel(container, { clientX: 760, clientY: 270, deltaY: -240 });
+        wheel(container, { ctrlKey: true, clientX: 760, clientY: 270, deltaY: -240 });
         const scale = parseFloat(content.style.width) / 100;
         setLayout(container, {
             scrollWidth: Math.round(1000 * scale),
             scrollHeight: Math.round(1400 * scale),
         });
-        wheel(container, { clientX: 760, clientY: 270, deltaY: -1 });
+        wheel(container, { ctrlKey: true, clientX: 760, clientY: 270, deltaY: -1 });
 
         expect(scale).toBeGreaterThan(1);
         expect(container.scrollWidth).toBeGreaterThan(container.clientWidth);
@@ -555,14 +555,15 @@ describe('SvgViewerLiteComponent', () => {
         setLayout(container, { scrollWidth: 2000, scrollHeight: 3000, scrollLeft: 500, scrollTop: 800 });
 
         wheel(container, { shiftKey: true, ctrlKey: true, deltaY: 120, deltaX: 40 });
-        expect(container.scrollLeft).toBe(620);
+        expect(container.scrollLeft).toBe(540);
         expect(container.scrollTop).toBe(800);
 
-        wheel(container, { ctrlKey: true, deltaY: 0, deltaX: 2, deltaMode: WheelEvent.DOM_DELTA_LINE });
-        expect(container.scrollTop).toBe(832);
+        wheel(container, { deltaY: 0, deltaX: 2, deltaMode: WheelEvent.DOM_DELTA_LINE });
+        expect(container.scrollLeft).toBe(572);
+        expect(container.scrollTop).toBe(800);
         wheel(container, { shiftKey: true, deltaY: 1, deltaMode: WheelEvent.DOM_DELTA_PAGE });
         expect(container.scrollLeft).toBe(1000);
-        wheel(container, { ctrlKey: true, deltaY: -10, deltaMode: WheelEvent.DOM_DELTA_PAGE });
+        wheel(container, { deltaY: -10, deltaMode: WheelEvent.DOM_DELTA_PAGE });
         expect(container.scrollTop).toBe(0);
         expect(fixture.componentInstance.zoomPercent()).toBe(100);
     });
@@ -571,8 +572,26 @@ describe('SvgViewerLiteComponent', () => {
         const { container, fixture } = await createViewer();
         wheel(container, { metaKey: true, deltaY: -120 });
         expect(fixture.componentInstance.zoomPercent()).toBeGreaterThan(100);
-        wheel(container, { deltaY: 10000 });
+        wheel(container, { ctrlKey: true, deltaY: 10000 });
         expect(fixture.componentInstance.zoomPercent()).toBe(100);
+    });
+
+    it('switches an existing preview back to wheel zoom and Ctrl scrolling immediately', async () => {
+        const { container, fixture } = await createViewer();
+        options.update(value => ({ ...value, mouseWheelAction: 'zoom' }));
+        wheel(container, { deltaY: -120 });
+        const zoom = fixture.componentInstance.zoomPercent();
+        expect(zoom).toBeGreaterThan(100);
+        setLayout(container, { scrollWidth: 2000, scrollHeight: 3000, scrollLeft: 100, scrollTop: 100 });
+        wheel(container, { ctrlKey: true, deltaY: 120 });
+        wheel(container, { deltaX: 40 });
+        expect(fixture.componentInstance.zoomPercent()).toBe(zoom);
+        expect(container.scrollTop).toBe(220);
+        expect(container.scrollLeft).toBe(140);
+        options.update(value => ({ ...value, mouseWheelAction: 'scroll' }));
+        wheel(container, { deltaX: 20, deltaY: 30 });
+        expect(container.scrollTop).toBe(250);
+        expect(container.scrollLeft).toBe(160);
     });
 
     it('toggles zoom on mouse double-click at the input position', async () => {
@@ -606,7 +625,7 @@ describe('SvgViewerLiteComponent', () => {
     it('pans with one touch while zoomed in and reports live zoom-pan activity', async () => {
         const { container, content, fixture } = await createViewer();
 
-        wheel(container, { deltaY: -240 });
+        wheel(container, { ctrlKey: true, deltaY: -240 });
         const scale = parseFloat(content.style.width) / 100;
         setLayout(container, { scrollWidth: Math.round(1000 * scale), scrollHeight: Math.round(1400 * scale) });
 
@@ -694,7 +713,7 @@ describe('SvgViewerLiteComponent', () => {
     it('switches cleanly between one-finger pan and two-finger pinch', async () => {
         const { container, content } = await createViewer();
 
-        wheel(container, { deltaY: -120 });
+        wheel(container, { ctrlKey: true, deltaY: -120 });
         let scale = parseFloat(content.style.width) / 100;
         setLayout(container, { scrollWidth: Math.round(1000 * scale), scrollHeight: Math.round(1400 * scale) });
 
@@ -719,7 +738,7 @@ describe('SvgViewerLiteComponent', () => {
     it('clears stale touch pointers when a new primary touch gesture starts', async () => {
         const { container, content } = await createViewer();
 
-        wheel(container, { deltaY: -120 });
+        wheel(container, { ctrlKey: true, deltaY: -120 });
         const scale = parseFloat(content.style.width) / 100;
         setLayout(container, { scrollWidth: Math.round(1000 * scale), scrollHeight: Math.round(1400 * scale) });
 

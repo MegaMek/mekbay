@@ -40,7 +40,7 @@ describe('generated paperdoll pointer targets', () => {
         const viewBox = svg.viewBox.baseVal;
         const scale = Math.min((window.innerWidth - 20) / viewBox.width,
             (window.innerHeight - 20) / viewBox.height);
-        svg.classList.add('mekbay-sheet');
+        svg.classList.add('mekbay-sheet', 'interactive-sheet');
         Object.assign(svg.style, {
             position: 'fixed', left: '10px', top: '10px', zIndex: '2147483647',
             width: `${viewBox.width * scale}px`, height: `${viewBox.height * scale}px`,
@@ -128,11 +128,11 @@ describe('generated paperdoll pointer targets', () => {
             entity.hasTurret.set(true);
             return entity;
         } },
-        { name: 'WiGE with dual turrets', create: () => {
-            const entity = tank(2);
+        ...([0, 1, 2] as const).map(turrets => ({ name: `WiGE with ${turrets} turrets`, create: () => {
+            const entity = tank(turrets);
             entity.motiveType.set('WiGE');
             return entity;
-        } },
+        } })),
         ...(['biped', 'quad', 'glider'] as const).map(chassis => ({
             name: `${chassis} ProtoMek`, create: () => proto(chassis),
         })),
@@ -169,6 +169,24 @@ describe('generated paperdoll pointer targets', () => {
             const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
             mount(svg);
             expectPipsHitContours(svg, name);
+        });
+    }
+
+    for (const chassis of ['biped', 'glider'] as const) {
+        it(`keeps ${chassis} ProtoMek head armor out of the structure band at every legal count`, async () => {
+            // TechManual p. 82: a nine-ton ProtoMek has two head structure points and up to six armor.
+            for (const pipLayout of ['classic', 'distributed'] as const) {
+                for (let headArmor = 1; headArmor <= 6; headArmor++) {
+                    const entity = proto(chassis);
+                    entity.setArmorValue('Head', 'front', headArmor);
+                    const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact', pipLayout });
+                    expect(svg.querySelectorAll('.pip.armor[data-loc="HD"]').length).toBe(headArmor);
+                    expect(svg.querySelectorAll('.pip.structure[data-loc="HD"]').length).toBe(2);
+                    mount(svg);
+                    expectPipsHitContours(svg, `${chassis}, ${pipLayout}, ${headArmor} head armor`);
+                    svg.remove();
+                }
+            }
         });
     }
 

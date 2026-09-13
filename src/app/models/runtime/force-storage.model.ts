@@ -8,6 +8,9 @@ export interface StoredForcePerson {
     readonly id: string;
     readonly g?: number;
     readonly p?: number;
+    /** Aerospace skills independently default to 4/5. */
+    readonly ag?: number;
+    readonly ap?: number;
     readonly name?: string;
     readonly notes?: string;
     readonly portrait?: string;
@@ -30,6 +33,7 @@ export interface StoredForceUnit {
     readonly id: string;
     readonly uuid: string;
     readonly sourceHash?: string;
+    readonly customDesign?: number;
     readonly destroyed?: true;
     readonly updatedTs?: number;
     readonly crew?: StoredForceCrew;
@@ -48,6 +52,7 @@ export interface StoredForceGroup {
 }
 
 export interface StoredForceV2 {
+    readonly customDesigns?: import('../custom-design-policy').CompressedCustomDesignTable;
     readonly version: 2;
     readonly instanceId: string;
     readonly timestamp: number;

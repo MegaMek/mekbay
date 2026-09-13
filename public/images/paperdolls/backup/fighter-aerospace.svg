@@ -405,7 +405,7 @@
             <rect x="20.52" width="258.27" y="115.6" height="6.8" data-fill="armor" data-location="LWG"/>
             <rect x="20.58" width="34.16" y="122.4" height="6.8" data-fill="armor" data-location="LWG"/>
           </g>
-          <g transform="matrix(-1.,0.,0.,1.,108.25,245.134)">
+          <g transform="matrix(-1,0,0,1,108.25,245.134)">
             <rect x="-3.2" width="32.15" y="40.8" height="6.8"/>
             <rect x="2.6" width="36.37" y="47.6" height="6.8"/>
             <rect x="4.45" width="43.6" y="54.4" height="6.8"/>

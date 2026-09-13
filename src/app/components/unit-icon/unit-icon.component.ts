@@ -3,13 +3,11 @@
 // Author: Drake
 
 import { UnitNameService } from '../../services/unit-name.service';
-import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, DestroyRef } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, signal, effect, computed, PendingTasks } from '@angular/core';
 
 import { SpriteStorageService, type SpriteIconInfo } from '../../services/sprite-storage.service';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { BaseEntity } from '../../models/entity/base-entity';
-import { MM_DATA_UNIT_PROVIDER_ID } from '../../services/unit-catalog/unit-catalog.types';
-import { resolveUnitSpritePath } from '../../utils/unit-sprite-resolver';
 
 interface SpriteData {
   url: string;
@@ -25,6 +23,7 @@ const DEFAULT_HEIGHT = 72;
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="icon-container"
+         role="img" [attr.aria-label]="displayAlt()"
          [class]="styleClass()"
          [style.width.px]="containerWidth()"
          [style.height.px]="containerHeight()">
@@ -36,8 +35,8 @@ const DEFAULT_HEIGHT = 72;
              [style.background-position]="'-' + sprite.info.x + 'px -' + sprite.info.y + 'px'"
              [style.transform]="'scale(' + scale() + ')'">
         </div>
-      } @else if (!isLoading()) {
-        <img [src]="FALLBACK" [alt]="displayAlt()" draggable="false">
+      } @else {
+        <img [src]="FALLBACK" alt="" draggable="false">
       }
     </div>
   `,
@@ -61,14 +60,16 @@ const DEFAULT_HEIGHT = 72;
   `]
 })
 export class UnitIconComponent {
-    readonly unitNames = inject(UnitNameService);
+  readonly unitNames = inject(UnitNameService);
   private spriteService = inject(SpriteStorageService);
-  private destroyed = false;
+  private pendingTasks = inject(PendingTasks);
   
   isLoading = this.spriteService.loading;
   
   // Inputs
   unit = input<UnitSummary | BaseEntity | undefined | null>(null);
+  /** Direct tileset preview, used by the icon picker. */
+  iconPath = input<string>();
   alt = input<string | undefined>(undefined);
   styleClass = input<string>('');
   
@@ -89,7 +90,7 @@ export class UnitIconComponent {
     return this.unitNames.name(u);
   });
 
-  displayAlt = computed(() => this.alt() || this.unitLabel());
+  displayAlt = computed(() => this.alt() || this.unitLabel() || this.iconPath() || 'Unit icon');
 
   /** Container width: explicit input or sprite's natural width */
   containerWidth = computed(() => {
@@ -118,46 +119,25 @@ export class UnitIconComponent {
   });
 
   constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-    });
-    
-    effect(() => {
+    effect(onCleanup => {
       const unit = this.unit();
       const loading = this.isLoading();
-
-      if (!unit || loading) {
+      const path = this.iconPath() ?? (unit ? this.spriteService.resolveIconPath(unit) : '');
+      let current = true;
+      onCleanup(() => { current = false; });
+      if (!path || loading) {
         this.spriteData.set(null);
         return;
       }
-      if (unit instanceof BaseEntity) {
-        this.spriteService.getVerifiedAssignmentContext(MM_DATA_UNIT_PROVIDER_ID)
-          .then(context => this.loadPath(
-            resolveUnitSpritePath(unit, context?.assignments),
-            unit,
-          ))
-          .catch(() => this.spriteData.set(null));
-        return;
-      }
-      this.loadPath(unit.icon, unit);
-    });
-  }
-
-  private loadPath(path: string, expectedUnit: UnitSummary | BaseEntity): void {
-    if (!path || this.destroyed || this.unit() !== expectedUnit) {
-      this.spriteData.set(null);
-      return;
-    }
-    const cached = this.spriteService.getCachedSpriteInfo(path);
-    if (cached) {
+      const cached = this.spriteService.getCachedSpriteInfo(path);
       this.spriteData.set(cached);
-      return;
-    }
-    this.spriteService.getSpriteInfo(path).then(info => {
-      if (this.destroyed || this.unit() !== expectedUnit) return;
-      this.spriteData.set(info);
-    }).catch(() => {
-      if (this.unit() === expectedUnit) this.spriteData.set(null);
+      if (!cached) {
+        void this.pendingTasks.run(() => this.spriteService.getSpriteInfo(path).then(info => {
+          if (current) this.spriteData.set(info);
+        }).catch(() => {
+          if (current) this.spriteData.set(null);
+        }));
+      }
     });
   }
 }

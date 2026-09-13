@@ -13,6 +13,7 @@ import { LoggerService } from './logger.service';
 import { EntityUnitSummaryProjector } from './unit-catalog/entity-summary-projector';
 import { asSourceHash, makeUnitFileName, CUSTOM_UNIT_PROVIDER_ID, MM_DATA_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
+import { SpriteStorageService } from './sprite-storage.service';
 
 /** Resolves the active details entry */
 @Injectable({ providedIn: 'root' })
@@ -20,6 +21,7 @@ export class UnitDetailsSummaryService {
     private readonly data = inject(DataService);
     private readonly catalog = inject(UnitsCatalogService);
     private readonly logger = inject(LoggerService);
+    private readonly sprites = inject(SpriteStorageService);
     private readonly forceSummaries = new WeakMap<BaseEntity, {
         readonly catalogSummary: UnitSummary | undefined;
         readonly summary: UnitSummary;
@@ -35,7 +37,7 @@ export class UnitDetailsSummaryService {
         const snapshot = member.force.getUnitSnapshot(member.id);
         const source = snapshot?.entity === entity ? snapshot.nativeSource : undefined;
         const custom = source?.isCustom === true || catalogSummary?.isCustom === true;
-        const rebuilt = new UnitSummaryBuilder(() => catalogSummary?.icon ?? '').build(entity, {
+        const rebuilt = new UnitSummaryBuilder(unit => this.sprites.resolveIconPath(unit)).build(entity, {
             entryKey: {
                 origin: custom ? 'user' : 'megamek',
                 design: { provider: custom ? CUSTOM_UNIT_PROVIDER_ID : MM_DATA_UNIT_PROVIDER_ID, uuid: entity.uuid() },

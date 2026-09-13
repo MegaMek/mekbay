@@ -55,6 +55,21 @@ BOOBY_TRAP_DETONATED_MODE,
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 describe('NonMekUnitInstance', () => {
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`keeps authored manual BV after non-Mek damage in ${ruleset}`, () => {
+            const entity = new TestTankEntity();
+            entity.uuid.set(UUID);
+            entity.manualBV.set(321);
+            entity.setArmorValue('Front', 'front', 20);
+            const runtime = createNonMekRuntimeForTest('unit:manual-bv', { ...baseline(), ruleset }, entity, ruleset);
+            const face = [...runtime.getIndex().armorFaces.values()].find(candidate => candidate.maximumPoints > 1)!;
+            expect(runtime.query().currentBaseBattleValue()).toBe(321);
+            expect(runtime.dispatch({ type: 'damage-armor', faceId: face.id,
+                amount: face.maximumPoints, target: 'committed' }).accepted).toBeTrue();
+            expect(runtime.query().currentBaseBattleValue()).toBe(321);
+        });
+    }
+
     it('binds every non-Mek family directly to its concrete entity', () => {
         const entities: BaseEntity[] = [
             new TestTankEntity(),

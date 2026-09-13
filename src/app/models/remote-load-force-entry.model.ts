@@ -179,7 +179,7 @@ function storedGroups(root: Record<string, unknown>, system: GameSystem): Remote
         }
         return {
             uuid: asUnitUuid(unpackUuid(unit['uuid'], 'force.units[' + index + '].uuid')),
-            ...(typeof unit['customDesign'] === 'number' || isRecord(unit['customSource']) ? { embeddedCustom: true as const } : {}),
+            ...(typeof unit['customDesign'] === 'number' ? { embeddedCustom: true as const } : {}),
             ...(typeof pilot?.['name'] === 'string' ? { alias: pilot['name'] } : {}),
             ...(system === GameSystem.AS ? {
                 ...(pilot ? { skill: typeof pilot['g'] === 'number' ? pilot['g'] : 4 } : {}),

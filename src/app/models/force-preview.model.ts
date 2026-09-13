@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { crewSkillsForUnit } from './unit-crew-policy';
 import { GameSystem } from './common.model';
 import type { Era } from './eras.model';
 import type { Faction } from './factions.model';
@@ -193,8 +194,9 @@ export function createForcePreviewUnitFromForceMember(
             lockKey: member.id,
         };
         if (crew.length > 0) {
-            assignForcePreviewUnitField(previewUnit, 'gunnery', Math.min(...crew.map(position => position.gunnery)));
-            assignForcePreviewUnitField(previewUnit, 'piloting', Math.min(...crew.map(position => position.piloting)));
+            const skills = crew.map(position => crewSkillsForUnit(position, member.entity.unitType(), member.entity.unitSubtype()));
+            assignForcePreviewUnitField(previewUnit, 'gunnery', Math.min(...skills.map(position => position.gunnery)));
+            assignForcePreviewUnitField(previewUnit, 'piloting', Math.min(...skills.map(position => position.piloting)));
         }
         if (member.force.isUnitCommander(member.id)) {
             assignForcePreviewUnitField(previewUnit, 'commander', true);
@@ -236,13 +238,15 @@ function createCBTForcePreviewGroups(
             if (member.commander === true) preview.commander = true;
             const positions = entry.unit.deployment.values.crewAssignment.positions;
             if (positions.length > 0) {
-                preview.gunnery = Math.min(...positions.map(position => position.gunnery));
-                preview.piloting = Math.min(...positions.map(position => position.piloting));
+                const skills = positions.map(position => crewSkillsForUnit(position, preview.unit?.type ?? 'Mek', preview.unit?.subtype ?? 'BattleMek'));
+                preview.gunnery = Math.min(...skills.map(position => position.gunnery));
+                preview.piloting = Math.min(...skills.map(position => position.piloting));
                 preview.crew = positions.map((position, index) => ({
                     id: index,
                     name: position.name,
-                    gunnery: position.gunnery,
-                    piloting: position.piloting,
+                    gunnery: preview.unit?.type === 'Aero' ? position.aeroGunnery ?? 4 : position.gunnery,
+                    piloting: preview.unit?.type === 'Aero' ? position.aeroPiloting ?? 5 : position.piloting,
+                    ...(preview.unit?.subtype === 'Land-Air BattleMek' ? { aeroGunnery: position.aeroGunnery ?? 4, aeroPiloting: position.aeroPiloting ?? 5 } : {}),
                 }));
             }
             return preview;

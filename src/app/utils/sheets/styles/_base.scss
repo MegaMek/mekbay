@@ -2,13 +2,21 @@
   background-color: #fff;
   display: block;
   box-sizing: content-box;
-  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 
   text.disabled-text {
     fill: #aaa;
+  }
+
+  .inventoryEntry > text,
+  .inventoryEntry > g:not(.alternativeMode) text,
+  .hitMod-rect,
+  .hitMod-text,
+  .targetTn-rect,
+  .targetTn-text {
+    pointer-events: none;
   }
 
   .inventoryEntry > *:not(.inventoryEntryButton):not(.inventoryEntry):not(.alternativeMode) {
@@ -41,10 +49,9 @@
     overflow: hidden;
   }
 
-  .interactive {
-    cursor: pointer;
-    touch-action: none;
-    pointer-events: all;
+  .crewStateBanner,
+  .unitConditionBanner {
+    pointer-events: none;
   }
 
   .critGroup.locationDestroyed text {
@@ -121,21 +128,8 @@
     text-decoration: line-through;
   }
 
-  .critGroup.flooded,
-  .critGroup.detached,
-  .critGroup.disabledLocation,
-  .critGroup.flooded .locationConditionControl,
-  .critGroup.detached .locationConditionControl,
-  .critGroup.disabledLocation .locationConditionControl,
-  .critGroup.flooded .locationConditionText,
-  .critGroup.detached .locationConditionText,
-  .critGroup.disabledLocation .locationConditionText {
-    pointer-events: all;
-  }
-
   .pip {
     stroke-linecap: square;
-    vector-effect: non-scaling-stroke;
 
     &.damaged {
       fill: var(--damage-color) !important;
@@ -169,16 +163,6 @@
 
   .soldierPip.damaged {
     filter: opacity(0.3) !important;
-  }
-
-  .mek-random-hit-button {
-    cursor: pointer;
-
-    &.picker-active .mek-random-hit-area,
-    &:focus-visible .mek-random-hit-area {
-      fill: var(--bt-yellow) !important;
-      stroke-width: 2;
-    }
   }
 
   .random-hit-location-highlight {
@@ -221,8 +205,6 @@
       stroke: #000;
       stroke-width: 4;
       paint-order: stroke fill;
-      cursor: pointer;
-      pointer-events: auto;
     }
   }
 

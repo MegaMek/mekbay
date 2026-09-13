@@ -8,8 +8,6 @@ import {
     isCBTMekForceMember,
     type CBTForceMember,
 } from '../models/force-member.model';
-import type { NonMekRecordSheetSnapshot } from '../models/runtime/non-mek-record-sheet';
-import type { MekRecordSheetSnapshot } from '../models/runtime/mek-record-sheet';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../models/mek-sheet-binding';
 import { bindMekRecordSheet } from '../components/page-viewer/mek-record-sheet-binder';
 import { bindNonMekRecordSheet } from '../components/page-viewer/non-mek-record-sheet-binder';
@@ -114,14 +112,14 @@ export class CBTPrintUtil {
         const generatorOptions = {
             format: profile.compact ? 'compact' : paperSize,
             pageFormat: paperSize,
+            ruleset: ready.ruleset,
         } as const;
         const sheets = await recordSheetSource.load(entity, generatorOptions);
         const compact = profile.compact;
 
         if (isCBTMekForceMember(member)) {
-            const current = member.force.getMekRecordSheetSnapshot(member.id);
-            if (!current) throw new Error(`CBT Mek ${member.id} is no longer admitted`);
-            const snapshot = clean ? this.pristinePrintSnapshot(current) : current;
+            const snapshot = member.force.getMekRecordSheetSnapshot(member.id, clean);
+            if (!snapshot) throw new Error(`CBT Mek ${member.id} is no longer admitted`);
             return sheets.svgs.map(svg => {
                 const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot);
                 binding.render(snapshot);
@@ -142,9 +140,8 @@ export class CBTPrintUtil {
             });
         }
 
-        const current = member.force.getNonMekRecordSheetSnapshot(member.id);
-        if (!current) throw new Error(`CBT Entity ${member.id} is no longer admitted`);
-        const snapshot = clean ? this.pristineEntityPrintSnapshot(current) : current;
+        const snapshot = member.force.getNonMekRecordSheetSnapshot(member.id, clean);
+        if (!snapshot) throw new Error(`CBT Entity ${member.id} is no longer admitted`);
         return sheets.svgs.map(svg => {
             const binding = bindNonMekRecordSheet(svg, snapshot);
             binding.render(snapshot);
@@ -160,91 +157,6 @@ export class CBTPrintUtil {
                 pageContentY: profile.pageContentY,
                 pristineBattleValue: snapshot.pristineBattleValue,
             });
-        });
-    }
-
-    private static pristinePrintSnapshot(
-        snapshot: MekRecordSheetSnapshot,
-    ): MekRecordSheetSnapshot {
-        return Object.freeze({
-            ...snapshot,
-            destroyed: false,
-            crippled: false,
-            conditions: Object.freeze([]),
-            locations: Object.freeze(snapshot.locations.map(location => Object.freeze({
-                ...location,
-                committedRemainingInternal: location.maximumInternal,
-                previewRemainingInternal: location.maximumInternal,
-                conditions: Object.freeze([]),
-                armor: Object.freeze(location.armor.map(face => Object.freeze({
-                    ...face,
-                    committedRemaining: face.maximum,
-                    previewRemaining: face.maximum,
-                }))),
-            }))),
-            criticalSlots: Object.freeze(snapshot.criticalSlots.map(slot => Object.freeze({
-                ...slot,
-                committedHits: 0,
-                previewHits: 0,
-                components: Object.freeze(slot.components.map(component => Object.freeze({
-                    ...component,
-                    status: 'available' as const,
-                    ...(component.ammo === undefined ? {} : {
-                        ammo: Object.freeze({ ...component.ammo, remaining: component.ammo.capacity }),
-                    }),
-                }))),
-            }))),
-            crew: Object.freeze(snapshot.crew.map(position => Object.freeze({
-                ...position,
-                state: Object.freeze({ wounds: 0, unconscious: false, ejected: false }),
-            }))),
-        });
-    }
-
-    private static pristineEntityPrintSnapshot(
-        snapshot: NonMekRecordSheetSnapshot,
-    ): NonMekRecordSheetSnapshot {
-        return Object.freeze({
-            ...snapshot,
-            destroyed: false,
-            conditions: Object.freeze([]),
-            currentBattleValue: snapshot.pristineBattleValue,
-            heat: Object.freeze({
-                ...snapshot.heat,
-                current: 0,
-                pending: null,
-                heatsinksOff: 0,
-            }),
-            locations: Object.freeze(snapshot.locations.map(location => Object.freeze({
-                ...location,
-                remainingInternal: location.maximumInternal,
-                previewRemainingInternal: location.maximumInternal,
-                armor: Object.freeze(location.armor.map(face => Object.freeze({
-                    ...face,
-                    remaining: face.maximum,
-                    previewRemaining: face.maximum,
-                }))),
-            }))),
-            components: Object.freeze(snapshot.components.map(component => Object.freeze({
-                ...component,
-                status: 'available' as const,
-                previewStatus: 'available' as const,
-                ...(component.ammo === undefined ? {} : {
-                    ammo: Object.freeze({ ...component.ammo, remaining: component.ammo.capacity }),
-                }),
-            }))),
-            damageTracks: Object.freeze(snapshot.damageTracks.map(track => Object.freeze({
-                ...track,
-                committedHits: 0,
-                previewHits: 0,
-                committedHitTimestamps: Object.freeze([]),
-                pendingHitTimestamps: Object.freeze([]),
-            }))),
-            crew: Object.freeze(snapshot.crew.map(position => Object.freeze({
-                ...position,
-                state: Object.freeze({ wounds: 0, unconscious: false, ejected: false }),
-                effectiveState: 'healthy' as const,
-            }))),
         });
     }
 
@@ -324,7 +236,7 @@ export class CBTPrintUtil {
 
         const bvElement = svg.getElementById('bv');
         if (bvElement && baseBv !== undefined) {
-            bvElement.textContent = baseBv.toString();
+            bvElement.textContent = `${baseBv}${bvElement.getAttribute('data-mekbay-bv-suffix') ?? ''}`;
         }
 
         svg.querySelectorAll<SVGElement>('[id^="crewNameButton"]').forEach((crewNameButton) => {

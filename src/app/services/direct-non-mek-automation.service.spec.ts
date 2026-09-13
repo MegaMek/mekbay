@@ -10,13 +10,14 @@ import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
-import { TestAeroSpaceFighterEntity } from '../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestTankEntity } from '../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import {
 addTestEquipment,
 addTestEquipmentWithFlags,
 } from '../models/entity/testing/test-mounted-equipment';
-import { AmmoEquipment } from '../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import { createNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
 import { createDefaultCrewAssignment } from '../models/runtime/crew-assignment';
 import type { UnitConditionKey } from '../models/unit-condition.model';
 
@@ -73,6 +74,46 @@ describe('DirectNonMekAutomationService', () => {
             ],
         });
         service = TestBed.inject(DirectNonMekAutomationService);
+    });
+
+    it('reviews vehicle launcher explosions and honors declined or cancelled automation', async () => {
+        const ammo = new AmmoEquipment({ id: 'LRMAmmo', name: 'LRM Ammo', type: 'ammo', flags: ['F_HOT_LOAD'],
+            ammo: { type: 'LRM', rackSize: 10, shots: 12, damagePerShot: 1 } });
+        const launcher = new WeaponEquipment({ id: 'LRM10', name: 'LRM 10', type: 'weapon',
+            weapon: { ammoType: 'LRM', rackSize: 10 } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ammo.id]: ammo, [launcher.id]: launcher }));
+        entity.uuid.set(UUID);
+        entity.setTonnage(200);
+        const weaponId = componentIdForMount(addTestEquipment(entity, launcher, { location: entity.locationOrder[0] }));
+        const ammoId = componentIdForMount(addTestEquipment(entity, ammo, { shotsCount: 12 }));
+        const runtime = createNonMekUnit(entity, { instanceId: 'hot-load-vehicle', uuid: UUID,
+            scenario: { id: 'megamek', options: { hotLoadedAmmo: true } },
+            deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        runtime.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
+            munitionKey: ammo.id, remaining: 12, hotLoaded: true });
+        const locationId = [...runtime.getIndex().locations.values()]
+            .find(location => location.code === entity.locationOrder[0])!.id;
+        const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
+            index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
+            editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
+        }) } as unknown as CBTForce;
+        const command = { type: 'set-component-status', componentId: weaponId,
+            status: 'destroyed', target: 'pending' } as const;
+
+        const accepted = await service.prepareCommand(force, runtime.instanceId, command);
+        expect(accepted.command).toEqual({ ...command, applyExplosion: true });
+        expect(resolveAutomation.calls.mostRecent().args[0]).toBe('internalExplosionsCheck');
+        expect(resolveAutomation.calls.mostRecent().args[1][0].delta).toBe(10);
+        resolveAutomation.and.resolveTo(null);
+        expect((await service.prepareCommand(force, runtime.instanceId, command)).cancelled).toBeTrue();
+        resolveAutomation.and.resolveTo(new Set());
+        const declined = await service.prepareCommand(force, runtime.instanceId, command);
+        runtime.dispatch(declined.command);
+        expect(runtime.query().remainingInternal(locationId, 'preview')).toBe(20);
+        runtime.dispatch({ ...command, status: 'available' });
+        runtime.dispatch(accepted.command);
+        expect(runtime.query().remainingInternal(locationId, 'preview')).toBe(10);
+        expect(runtime.query().remainingAmmo(ammoId)).toBe(12);
     });
 
     it('reports automatically resolved aerospace heat through the shared notifier', async () => {
