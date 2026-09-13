@@ -1417,7 +1417,10 @@ export class UnitConstructionComponent {
   };
 
   constructor() {
+    // Clear the previous choice before click handlers can select or install equipment.
+    document.addEventListener('click', this.cancelPlacementOnOutsideClick, true);
     this.destroyRef.onDestroy(() => {
+      document.removeEventListener('click', this.cancelPlacementOnOutsideClick, true);
       this.inspector.close();
       this.endDrag();
     });
@@ -2360,15 +2363,10 @@ export class UnitConstructionComponent {
     if (!(entity instanceof MekEntity) || !mount || !this.canEditMount(mount)) return;
     const previousCount = this.selectedSpread()?.locations.find((item) => item.id === location)?.count ?? 0;
     if (previousCount === count) return;
-    const placement = this.placementSelection();
     this.change(
       () => this.finishEquipmentEdit(setConstructionSpreadSlots(entity, mount, location, count, slotIndex)),
       this.canEditMount(mount),
     );
-    // Keep an explicitly chosen pool active while the user allocates its remaining slots.
-    if (placement?.kind === 'mount' && placement.mountId === mount.mountId && count > previousCount && this.selectedSpread()?.remaining) {
-      this.placementSelection.set(placement);
-    }
   }
   autoAllocateSpread(): void {
     const entity = this.entity(),
@@ -2887,6 +2885,18 @@ export class UnitConstructionComponent {
   @HostListener('document:pointerdown', ['$event']) inspectorPointerDown(event: PointerEvent): void {
     const panel = this.inspectorPanel()?.nativeElement;
     if (panel && !this.mobileEquipment()) this.inspector.closeOutside(event.target, panel);
+  }
+  private readonly cancelPlacementOnOutsideClick = (event: MouseEvent): void => {
+    if (!this.placementSelection()) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('.inspector-close, .inspector-place, .installed-inspector-backdrop, .empty-slot.placement-ready')) return;
+    // Keep the inspector's edit context available to the control being clicked.
+    this.placementSelection.set(null);
+  };
+  @HostListener('document:contextmenu', ['$event']) cancelPlacementOnRightClick(event: MouseEvent): void {
+    if (!this.canPlaceSelectedEquipment()) return;
+    event.preventDefault();
+    this.cancelPlacement();
   }
   @HostListener('document:keydown', ['$event']) keydown(event: KeyboardEvent): void {
     if (this.cdkDialog.openDialogs.at(-1) !== this.dialogRef) return;
