@@ -4,12 +4,10 @@
 import type { StaticEmplacementEntity } from '../../../models/entity/entities/misc/static-emplacement-entity';
 import { buildingConnectedComponents, buildingHexKey, buildingNeighbors, type BuildingHex } from '../../../models/entity/types/building';
 import { BUILDING_MAP_KEY, buildingDoorPoints, buildingMapDoors, buildingMapFeatures, buildingMapFill } from '../../building-map-presentation';
+import { TABLETOP_HEX_CORNERS, TABLETOP_HEX_FLAT_TO_FLAT as FLAT_TO_FLAT, TABLETOP_HEX_RADIUS as RADIUS } from '../../tabletop-hex';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import { addLine, addText, createRoot, setAttributes, svgElement, type Box } from '../record-sheet-svg-rendering';
 
-// Physical printer points (72 per inch), independent of page format and record-sheet scaling.
-const FLAT_TO_FLAT = 90;
-const RADIUS = FLAT_TO_FLAT / Math.sqrt(3);
 const PADDING = 18;
 const CAPTION = 18;
 const GAP = 12;
@@ -229,8 +227,7 @@ function drawFloor(svg: SVGSVGElement, entity: StaticEmplacementEntity, placemen
     const visibleHexes = new Set(floor.hexes.map(buildingHexKey));
     const footprintHexes = new Set(entity.coordinates().map(buildingHexKey));
     layer.append(footprint, annotations);
-    const corners = [[RADIUS, 0], [RADIUS / 2, FLAT_TO_FLAT / 2], [-RADIUS / 2, FLAT_TO_FLAT / 2],
-        [-RADIUS, 0], [-RADIUS / 2, -FLAT_TO_FLAT / 2], [RADIUS / 2, -FLAT_TO_FLAT / 2]];
+    const corners = TABLETOP_HEX_CORNERS;
     for (const hex of floor.hexes) {
         const x = PADDING - floor.bounds.x + centerX(hex);
         const y = PADDING - floor.bounds.y + centerY(hex);

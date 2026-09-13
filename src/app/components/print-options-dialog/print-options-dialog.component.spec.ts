@@ -20,7 +20,7 @@ describe('PrintOptionsDialogComponent', () => {
         expect((fixture.nativeElement.querySelector('#printPilotData') as HTMLSelectElement).value).toBe('true');
         expect((fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement).value).toBe('a4');
         expect(fixture.nativeElement.querySelector('#ASPrintCardSize')).toBeNull();
-        expect(actionLabels(fixture.nativeElement)).toEqual(['SHEETS', 'SUMMARY', 'DISMISS']);
+        expect(actionLabels(fixture.nativeElement)).toEqual(['SHEETS', 'SUMMARY', 'UNITS', 'DISMISS']);
     });
 
     it('shows Alpha Strike card options without CBT-only controls', async () => {
@@ -28,9 +28,9 @@ describe('PrintOptionsDialogComponent', () => {
         fixture.detectChanges();
 
         expect(fixture.nativeElement.querySelector('#printPilotData')).toBeNull();
-        expect(fixture.nativeElement.querySelector('#printPaperSize')).toBeNull();
+        expect((fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement).value).toBe('letter');
         expect((fixture.nativeElement.querySelector('#ASPrintCardSize') as HTMLSelectElement).value).toBe('standard');
-        expect(actionLabels(fixture.nativeElement)).toEqual(['CARDS', 'SUMMARY', 'DISMISS']);
+        expect(actionLabels(fixture.nativeElement)).toEqual(['CARDS', 'SUMMARY', 'UNITS', 'DISMISS']);
     });
 
     it('saves changes immediately and returns the shared options for sheet/card printing', async () => {
@@ -58,7 +58,7 @@ describe('PrintOptionsDialogComponent', () => {
 
         expect(optionsService.options().printAllOptions.paperSize).toBe('a4');
         expect(dialogRef.close).not.toHaveBeenCalled();
-        actionButtons(fixture.nativeElement)[2].click();
+        actionButtons(fixture.nativeElement)[3].click();
         await fixture.whenStable();
 
         expect(dialogRef.close).toHaveBeenCalledOnceWith(null);
@@ -96,6 +96,20 @@ describe('PrintOptionsDialogComponent', () => {
         expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
+    it('prints unit tiles with the selected paper size without closing the dialog', async () => {
+        const { fixture, dialogRef, printUnits, optionsService } = await createComponent(GameSystem.AS);
+        fixture.detectChanges();
+        const paperSize = fixture.nativeElement.querySelector('#printPaperSize') as HTMLSelectElement;
+        paperSize.value = 'a4';
+        paperSize.dispatchEvent(new Event('change'));
+        actionButtons(fixture.nativeElement)[2].click();
+        await fixture.whenStable();
+
+        expect(printUnits).toHaveBeenCalledOnceWith(optionsService.options().printAllOptions);
+        expect(optionsService.options().printAllOptions.paperSize).toBe('a4');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
     it('ignores duplicate summary requests while printing is in progress', async () => {
         const { fixture, printSummary } = await createComponent(GameSystem.AS);
         let finish!: () => void;
@@ -116,6 +130,7 @@ describe('PrintOptionsDialogComponent', () => {
 async function createComponent(gameSystem: GameSystem, overrides: Partial<PrintAllOptions> = {}) {
     const dialogRef = { close: jasmine.createSpy('close') };
     const printSummary = jasmine.createSpy('printSummary').and.resolveTo();
+    const printUnits = jasmine.createSpy('printUnits').and.resolveTo();
     const dbService = {
         getOptions: jasmine.createSpy('getOptions').and.resolveTo({
             printAllOptions: {
@@ -136,7 +151,7 @@ async function createComponent(gameSystem: GameSystem, overrides: Partial<PrintA
         imports: [PrintOptionsDialogComponent],
         providers: [
             { provide: DialogRef, useValue: dialogRef },
-            { provide: DIALOG_DATA, useValue: { gameSystem, printSummary } },
+            { provide: DIALOG_DATA, useValue: { gameSystem, printSummary, printUnits } },
             OptionsService,
             { provide: DbService, useValue: dbService },
         ],
@@ -149,6 +164,7 @@ async function createComponent(gameSystem: GameSystem, overrides: Partial<PrintA
         fixture: TestBed.createComponent(PrintOptionsDialogComponent),
         dialogRef,
         printSummary,
+        printUnits,
         optionsService,
         dbService,
     };

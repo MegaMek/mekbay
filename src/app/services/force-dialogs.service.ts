@@ -26,6 +26,7 @@ import { ASPrintUtil } from '../utils/asprint.util';
 import { ASSummaryPrintUtil } from '../utils/as-summary-print.util';
 import { CBTPrintUtil } from '../utils/cbtprint.util';
 import { CBTSummaryPrintUtil } from '../utils/cbt-summary-print.util';
+import { printUnitTiles } from '../utils/unit-tiles-print.util';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
 import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService, type DialogRef } from './dialogs.service';
@@ -33,6 +34,7 @@ import { ForceFormationService } from './force-formation.service';
 import { LoggerService } from './logger.service';
 import { OptionsService } from './options.service';
 import { RecordSheetSourceService } from './record-sheet-source.service';
+import { SpriteStorageService } from './sprite-storage.service';
 import { ToastService } from './toast.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 
@@ -94,6 +96,10 @@ export class ForceDialogsService {
             disableClose: false,
             data: {
                 gameSystem: force instanceof CBTForce ? GameSystem.CBT : GameSystem.AS,
+                printUnits: (printOptions: PrintAllOptions) => printUnitTiles(
+                    force.members(), this.injector.get(SpriteStorageService), printOptions,
+                    this.options.options().displayUnitNameFormat,
+                ),
                 printSummary: async (printOptions: PrintAllOptions) => {
                     if (force instanceof CBTForce) {
                         await CBTSummaryPrintUtil.print(force, printOptions, true, this.options.options().displayUnitNameFormat);

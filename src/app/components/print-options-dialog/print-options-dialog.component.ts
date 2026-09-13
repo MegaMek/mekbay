@@ -12,6 +12,7 @@ import { OptionsService } from '../../services/options.service';
 export interface PrintOptionsDialogData {
     gameSystem: GameSystem;
     printSummary: (printOptions: PrintAllOptions) => Promise<void>;
+    printUnits: (printOptions: PrintAllOptions) => Promise<void>;
 }
 
 @Component({
@@ -38,7 +39,6 @@ export interface PrintOptionsDialogData {
                     </div>
                 </div>
 
-                @if (isCBT()) {
                 <div class="option-col">
                     <div class="option-row">
                         <label for="printPaperSize">Paper size:</label>
@@ -54,6 +54,7 @@ export interface PrintOptionsDialogData {
                     </div>
                 </div>
 
+                @if (isCBT()) {
                 <div class="option-col">
                     <div class="option-row">
                         <label for="printPilotData">Pilot data:</label>
@@ -119,7 +120,7 @@ export interface PrintOptionsDialogData {
                         </select>
                     </div>
                     <div class="description">
-                        <p>None is recommended for record sheets. Summaries always include a small page margin. If headers and footers appear, turn them off in the browser's print dialog.</p>
+                        <p>None is recommended for record sheets. Summaries and unit tiles always include a small page margin. If headers and footers appear, turn them off in the browser's print dialog.</p>
                     </div>
                 </div>
             </div>
@@ -127,6 +128,7 @@ export interface PrintOptionsDialogData {
         <div class="wide-dialog-actions">
             <button class="bt-button primary" [disabled]="isPrinting()" (click)="onPrint()">{{ isCBT() ? 'SHEETS' : 'CARDS' }}</button>
             <button class="bt-button" [disabled]="isPrinting()" (click)="onPrintSummary()">SUMMARY</button>
+            <button class="bt-button" [disabled]="isPrinting()" (click)="onPrintUnits()">UNITS</button>
             <button class="bt-button" [disabled]="isPrinting()" (click)="onClose()">DISMISS</button>
         </div>
     </div>
@@ -246,6 +248,10 @@ export class PrintOptionsDialogComponent {
 
     protected async onPrintSummary(): Promise<void> {
         await this.runPrint(printOptions => this.data.printSummary(printOptions));
+    }
+
+    protected async onPrintUnits(): Promise<void> {
+        await this.runPrint(printOptions => this.data.printUnits(printOptions));
     }
 
     private async runPrint(action: (printOptions: PrintAllOptions) => void | Promise<void>): Promise<void> {

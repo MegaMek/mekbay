@@ -22,7 +22,7 @@ export async function printRecordSheetPages(
         page.style.removeProperty('width');
         page.style.removeProperty('height');
         page.style.removeProperty('transform');
-        const template = page.getAttribute('data-mekbay-sheet-kind') === 'building-template';
+        const template = ['building-template', 'unit-tiles'].includes(page.getAttribute('data-mekbay-sheet-kind') ?? '');
         if (template) {
             // Keep printer points independent of the browser's rounded A4/Letter page viewport.
             page.style.width = `${page.viewBox.baseVal.width}pt`;
