@@ -6,6 +6,43 @@
   [class.drawer-open]="equipmentDrawerActive() || detailsOverlayOpen()"
   [class.dragging]="dragging() !== null"
 >
+  @let placing = canPlaceSelectedEquipment();
+  @let placementActive = placing || !!dragging();
+  @let placementName =
+    dragging()
+      ? dragLabel()
+      : placing && placementEquipment()
+        ? equipmentLabel(placementEquipment()!)
+        : 'selected equipment';
+  <ng-template #placementArrow>
+    <svg
+      class="placement-arrow"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path class="placement-arrow-shaft" d="M10 2v10m-4-4 4 4 4-4" />
+      <path d="M3 13v4h14v-4" />
+    </svg>
+  </ng-template>
+  <ng-template #emptySlotContent let-index let-ready="ready">
+    @if (index !== undefined) {
+      <small>{{ index + 1 }}</small>
+    }
+    <span>{{
+      ready ? (dragging() ? 'DROP HERE' : 'ADD HERE') : index !== undefined ? 'EMPTY SLOT' : 'DROP EQUIPMENT HERE'
+    }}</span>
+    @if (ready) {
+      <ng-container [ngTemplateOutlet]="placementArrow" />
+    } @else {
+      <b aria-hidden="true">+</b>
+    }
+  </ng-template>
   <ng-template #techMismatch let-base>
     <span
       class="tech-warning"
@@ -31,7 +68,7 @@
       class="mounted-name"
       [inspectorHoverDisabled]="!mount || mobileEquipment() || !!dragging()"
       [inspectorHover]="inspector"
-      (inspect)="mount && selectMount(mount, $event, location, true)"
+      (inspect)="mount && inspectMount(mount, $event, location, true)"
       (click)="mount && selectMount(mount, mountedName, location)"
       [title]="
         label +
@@ -210,7 +247,7 @@
         [class.tech-incompatible]="equipmentTechMismatch(equipment)"
         [class.armored-equipment]="mount?.armored"
         [class.hovered-equipment]="mount && hoveredMountId() === mount.mountId"
-        [class.selected-equipment]="mount && selectedMountId() === mount.mountId"
+        [class.selected-equipment]="inspectorOpen() && mount && selectedMountId() === mount.mountId"
         [class.damaged-equipment]="mount && !!mountCondition(mount.mountId)"
         [class.destroyed-equipment]="mount && mountCondition(mount.mountId) === 'Destroyed'"
       >
@@ -460,6 +497,7 @@
     cdkDropListGroup
   >
     <ng-template #locationEquipment let-location>
+      @let placementReady = placementActive && (!dragging() || !dropPlans().get(location.id)?.issue);
       <div
         class="critical-grid"
         [attr.data-location]="location.id"
@@ -485,7 +523,10 @@
         @for (preview of dropPreview(); track preview.location + ':' + preview.index) {
           @if (preview.location === location.id) {
             <div class="slot-drop-preview" [style.grid-row]="preview.index + 1 + ' / span ' + preview.span">
-              {{ dragLabel() }}<small>{{ preview.span }} slot{{ preview.span === 1 ? '' : 's' }}</small>
+              <span class="drop-preview-label"><ng-container [ngTemplateOutlet]="placementArrow" />DROP HERE</span>
+              @if (preview.span > 1) {
+                <small>{{ dragLabel() }} · {{ preview.span }} slots</small>
+              }
             </div>
           }
         }
@@ -567,7 +608,7 @@
                         [class.tech-incompatible]="equipmentTechMismatch(group.mount.equipment)"
                         [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
                         [inspectorHover]="inspector"
-                        (inspect)="selectMount(group.mount, $event, location.id, true)"
+                        (inspect)="inspectMount(group.mount, $event, location.id, true)"
                         (click)="selectMount(group.mount, integralName, location.id)"
                         [title]="'Integral equipment · ' + group.quantity + ' × ' + group.mount.displayName(true)"
                       >
@@ -621,7 +662,7 @@
                   [class.hovered-equipment]="hoveredMountId() === mount.mountId"
                   (mouseenter)="hoveredMountId.set(mount.mountId)"
                   (mouseleave)="hoveredMountId.set(null)"
-                  [class.selected-equipment]="selectedMountId() === mount.mountId"
+                  [class.selected-equipment]="inspectorOpen() && selectedMountId() === mount.mountId"
                   [class.damaged-equipment]="!!mountCondition(mount.mountId)"
                   [class.destroyed-equipment]="mountCondition(mount.mountId) === 'Destroyed'"
                   cdkDrag
@@ -675,12 +716,15 @@
               } @else {
                 <button
                   class="empty-slot"
-                  [disabled]="!dragging() && !canPlaceSelectedEquipment()"
+                  [class.placement-ready]="placementReady"
+                  [disabled]="!placementReady"
                   (click)="clickSlot(location.id, location.slotCapacity === null ? undefined : row.index)"
-                  [attr.aria-label]="'Install selected equipment in ' + location.label + ', slot ' + (row.index + 1)"
+                  [attr.aria-label]="'Install ' + placementName + ' in ' + location.label + ', slot ' + (row.index + 1)"
                 >
-                  <small>{{ row.index + 1 }}</small
-                  ><span>EMPTY SLOT</span><b>+</b>
+                  <ng-container
+                    [ngTemplateOutlet]="emptySlotContent"
+                    [ngTemplateOutletContext]="{ $implicit: row.index, ready: placementReady }"
+                  />
                 </button>
               }
             </div>
@@ -690,11 +734,15 @@
           <div class="slot-target">
             <button
               class="empty-slot inventory-drop"
-              [disabled]="!dragging() && !canPlaceSelectedEquipment()"
+              [class.placement-ready]="placementReady"
+              [disabled]="!placementReady"
               (click)="clickSlot(location.id)"
-              [attr.aria-label]="'Install selected equipment in ' + location.label"
+              [attr.aria-label]="'Install ' + placementName + ' in ' + location.label"
             >
-              <span>DROP EQUIPMENT HERE</span><b>+</b>
+              <ng-container
+                [ngTemplateOutlet]="emptySlotContent"
+                [ngTemplateOutletContext]="{ ready: placementReady }"
+              />
             </button>
           </div>
         }
@@ -985,7 +1033,7 @@
                 (cdkDragMoved)="dragMoved($event)"
                 (cdkDragEnded)="dragEnded()"
                 [cdkDragStartDelay]="{ touch: 200, mouse: 0 }"
-                [class.selected]="selectedEquipment()?.id === eq.id"
+                [class.selected]="placementSourceSelected(eq.id)"
                 [cdkDragPreviewContainer]="constructionShell"
               >
                 <ng-template cdkDragPlaceholder
@@ -1009,13 +1057,14 @@
                   [class]="equipmentClass(eq)"
                   [title]="equipmentLabel(eq)"
                   [attr.aria-label]="equipmentLabel(eq)"
+                  [attr.aria-pressed]="placementSourceSelected(eq.id)"
                   cdkDragHandle
                   (pointerdown)="captureDragPreviewOrigin($event)"
                   [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
                   [inspectorHover]="inspector"
-                  (inspect)="selectEquipment(eq, $event, true)"
+                  (inspect)="inspectEquipment(eq, $event, true)"
                   (click)="selectEquipment(eq, equipmentName)"
-                  (dblclick)="install(eq)"
+                  (dblclick)="installSelected()"
                 >
                   <span class="equipment-heading">
                     <span class="equipment-name">
@@ -1803,14 +1852,17 @@
                 (cdkDragMoved)="dragMoved($event)"
                 (cdkDragEnded)="dragEnded()"
                 [class]="equipmentClass(mount.equipment)"
+                [class.placement-selected]="placementSourceSelected(mount.equipmentId, mount.mountId)"
               >
                 <button
                   #unallocatedName
                   class="unallocated-name"
+                  [attr.aria-pressed]="placementSourceSelected(mount.equipmentId, mount.mountId)"
                   [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
                   [inspectorHover]="inspector"
-                  (inspect)="selectMount(mount, $event, undefined, true)"
+                  (inspect)="inspectMount(mount, $event, undefined, true)"
                   (click)="selectMount(mount, unallocatedName)"
+                  (dblclick)="installSelected()"
                 >
                   <span class="equipment-title"
                     ><span class="equipment-label">{{ mount.displayName(true) }}</span>
@@ -2064,7 +2116,7 @@
       [cdkTrapFocusAutoCapture]="inspector.isPinned()"
       (pointerenter)="$event.pointerType === 'mouse' && inspector.enter()"
       (pointerleave)="$event.pointerType === 'mouse' && inspector.leave()"
-      (keydown.escape)="$event.stopPropagation(); closeInstalledInspector()"
+      (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); cancelPlacement()"
     >
       <button
         type="button"

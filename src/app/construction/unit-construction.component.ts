@@ -214,6 +214,7 @@ interface DragEquipment {
   readonly sourceSlotIndex?: number;
   readonly slotCount?: number;
 }
+type PlacementSelection = { kind: 'equipment'; equipment: Equipment } | { kind: 'mount'; mountId: string };
 interface DropLocation {
   readonly location: string;
   readonly slotIndex?: number;
@@ -463,6 +464,18 @@ export class UnitConstructionComponent {
   readonly selectedLocation = signal('RT');
   readonly selectedEquipment = signal<Equipment | null>(null);
   readonly selectedMountId = signal<string | null>(null);
+  // Inspecting by hover must not replace equipment explicitly chosen for placement.
+  private readonly placementSelection = signal<PlacementSelection | null>(null);
+  private readonly placementMount = computed(() => {
+    const selection = this.placementSelection();
+    return selection?.kind === 'mount'
+      ? this.entity().equipment().find((mount) => mount.mountId === selection.mountId) ?? null
+      : null;
+  });
+  readonly placementEquipment = computed(() => {
+    const selection = this.placementSelection();
+    return selection?.kind === 'equipment' ? selection.equipment : this.placementMount()?.equipment ?? null;
+  });
   readonly selectedMountLocation = signal('');
   readonly hoveredMountId = signal<string | null>(null);
   readonly hoveredSystemId = signal<string | null>(null);
@@ -695,12 +708,32 @@ export class UnitConstructionComponent {
   canRemoveMount(mount: EntityMountedEquipment): boolean {
     return mount.allocation.kind !== 'engine' && !this.requiredMount(mount) && this.canEditMount(mount);
   }
-  canPlaceSelectedEquipment(): boolean {
-    const mount = this.selectedMount(),
-      equipment = this.selectedEquipment();
-    return mount
-      ? (this.isMountUnallocated(mount) || !!this.spreadAllocation(mount)?.remaining) && this.canEditMount(mount)
-      : !!equipment && this.canInstall(equipment);
+  readonly canPlaceSelectedEquipment = computed(() => {
+    const selection = this.placementSelection();
+    if (!selection) return false;
+    const mount = this.placementMount();
+    return selection.kind === 'mount'
+      ? !!mount && this.canPlaceMount(mount)
+      : this.canInstall(selection.equipment);
+  });
+  private canPlaceMount(mount: EntityMountedEquipment): boolean {
+    return !!mount.equipment &&
+      (this.isMountUnallocated(mount) || !!this.spreadAllocation(mount)?.remaining) && this.canEditMount(mount);
+  }
+  placementSourceSelected(equipmentId: string, mountId?: string): boolean {
+    const drag = this.dragging();
+    if (!drag && !this.canPlaceSelectedEquipment()) return false;
+    const sourceMountId = drag ? drag.mountId : this.placementMount()?.mountId;
+    return mountId !== undefined
+      ? sourceMountId === mountId
+      : sourceMountId === undefined && (drag?.equipmentId ?? this.placementEquipment()?.id) === equipmentId;
+  }
+  cancelPlacement(): void {
+    this.placementSelection.set(null);
+    this.selectedEquipment.set(null);
+    this.selectedMountId.set(null);
+    this.selectedSystem.set(null);
+    this.closeInstalledInspector();
   }
   canReorderMount(mount: EntityMountedEquipment): boolean {
     return mount.allocation.kind !== 'engine' && (this.designEditing() || this.reconfiguring());
@@ -1811,7 +1844,11 @@ export class UnitConstructionComponent {
         }),
     );
   }
-  selectEquipment(eq: Equipment, anchor?: HTMLElement, byHover = false): void {
+  selectEquipment(eq: Equipment, anchor?: HTMLElement): void {
+    this.inspectEquipment(eq, anchor);
+    this.placementSelection.set(this.canInstall(eq) ? { kind: 'equipment', equipment: eq } : null);
+  }
+  inspectEquipment(eq: Equipment, anchor?: HTMLElement, byHover = false): void {
     if (anchor && !this.inspector.open(anchor, byHover)) return;
     this.selectedEquipment.set(eq);
     this.selectedMountId.set(null);
@@ -1819,7 +1856,15 @@ export class UnitConstructionComponent {
     if (!anchor) this.inspector.close();
     if (anchor) this.positionInstalledInspector(anchor);
   }
-  selectMount(mount: EntityMountedEquipment, anchor?: HTMLElement, location?: string, byHover = false): void {
+  selectMount(mount: EntityMountedEquipment, anchor?: HTMLElement, location?: string): void {
+    this.inspectMount(mount, anchor, location);
+    this.placementSelection.set(this.canPlaceMount(mount) ? { kind: 'mount', mountId: mount.mountId } : null);
+  }
+  private finishEquipmentEdit(mount: EntityMountedEquipment): void {
+    this.placementSelection.set(null);
+    this.inspectMount(mount);
+  }
+  inspectMount(mount: EntityMountedEquipment, anchor?: HTMLElement, location?: string, byHover = false): void {
     if (anchor && !this.inspector.open(anchor, byHover)) return;
     const locations = mount.getOccupiedLocations();
     const currentLocation = this.selectedMountLocation();
@@ -1863,6 +1908,7 @@ export class UnitConstructionComponent {
   inspectSystem(location: string, row: SlotRow, anchor: HTMLElement, byHover = false): void {
     if (!row.system || !row.componentId) return;
     if (!this.inspector.open(anchor, byHover)) return;
+    if (!byHover) this.placementSelection.set(null);
     this.selectedMountId.set(null);
     this.selectedSystem.set({ location, system: row.system, componentId: row.componentId });
     this.positionInstalledInspector(anchor);
@@ -1997,7 +2043,7 @@ export class UnitConstructionComponent {
     if (mount)
       this.change(
         () =>
-          this.selectMount(
+          this.finishEquipmentEdit(
             splitConstructionEquipment(
               this.entity(),
               mount,
@@ -2040,6 +2086,7 @@ export class UnitConstructionComponent {
   startDrag(data: DragEquipment): void {
     this.dragSequence++;
     this.inspector.close();
+    this.placementSelection.set(null);
     this.dragging.set(data);
     this.dragTarget.set(null);
     this.dragBounds.clear();
@@ -2145,13 +2192,21 @@ export class UnitConstructionComponent {
   }
   install(eq: Equipment, location = this.selectedLocation(), slotIndex?: number): void {
     this.change(
-      () => this.selectMount(installConstructionEquipment(this.entity(), eq, location, slotIndex)),
+      () => this.finishEquipmentEdit(installConstructionEquipment(this.entity(), eq, location, slotIndex)),
       this.canInstall(eq),
     );
   }
+  installSelected(): void {
+    const version = this.historyVersion();
+    this.clickSlot(this.selectedLocation());
+    if (this.historyVersion() !== version) this.closeInstalledInspector();
+  }
   clickSlot(location: string, slotIndex?: number): void {
+    if (this.dragging() || !this.canPlaceSelectedEquipment()) return;
     this.selectedLocation.set(location);
-    const mount = this.selectedMount();
+    const selection = this.placementSelection()!;
+    const mount = this.placementMount();
+    if (mount) this.inspectMount(mount);
     const spread = mount && this.spreadAllocation(mount);
     if (mount && spread?.remaining) {
       this.setSpreadSlots(location, (spread.locations.find((item) => item.id === location)?.count ?? 0) + 1, slotIndex);
@@ -2161,8 +2216,7 @@ export class UnitConstructionComponent {
       this.moveSelected(location, slotIndex);
       return;
     }
-    const selected = this.selectedEquipment();
-    if (selected && !this.selectedMount()) this.install(selected, location, slotIndex);
+    if (selection.kind === 'equipment') this.install(selection.equipment, location, slotIndex);
   }
   onTopologyDrop(event: CdkDragDrop<unknown, unknown, DragEquipment>): void {
     if (!event.isPointerOverContainer) return;
@@ -2239,7 +2293,7 @@ export class UnitConstructionComponent {
       } else if (mount) placed = moveConstructionEquipment(entity, mount, destination.location);
       else placed = installConstructionEquipment(entity, equipment, destination.location, destination.slotIndex);
       reorderConstructionEquipment(entity, destination.location, placed.mountId, this.dragTarget()?.beforeMountId);
-      this.selectMount(entity.equipment().find((item) => item.mountId === placed.mountId)!);
+      this.finishEquipmentEdit(entity.equipment().find((item) => item.mountId === placed.mountId)!);
     }, this.reconfiguring());
   }
   onUnallocatedDrop(event: { item: { data: DragEquipment }; isPointerOverContainer?: boolean }): void {
@@ -2248,18 +2302,18 @@ export class UnitConstructionComponent {
     if (!data?.mountId) {
       const equipment = this.registry.findEquipment(data?.equipmentId);
       if (equipment) this.change(
-        () => this.selectMount(installConstructionEquipment(this.entity(), equipment)),
+        () => this.finishEquipmentEdit(installConstructionEquipment(this.entity(), equipment)),
         this.canInstall(equipment),
       );
-      return;
+    } else {
+      const mount = this.entity()
+        .equipment()
+        .find((item) => item.mountId === data.mountId);
+      if (!mount) return;
+      if (this.spreadAllocation(mount)) {
+        if (data.sourceLocation) this.uninstallBlock(mount, data.sourceLocation, data.slotCount, data.sourceSlotIndex);
+      } else this.uninstall(mount);
     }
-    const mount = this.entity()
-      .equipment()
-      .find((item) => item.mountId === data?.mountId);
-    if (!mount) return;
-    if (this.spreadAllocation(mount)) {
-      if (data.sourceLocation) this.uninstallBlock(mount, data.sourceLocation, data.slotCount, data.sourceSlotIndex);
-    } else this.uninstall(mount);
   }
   onWarehouseDrop(event: { item: { data: DragEquipment }; isPointerOverContainer?: boolean }): void {
     if (event.isPointerOverContainer === false) return;
@@ -2282,7 +2336,7 @@ export class UnitConstructionComponent {
     }
     this.change(
       () =>
-        this.selectMount(
+        this.finishEquipmentEdit(
           applyConstructionSpreadPlacements(
             entity,
             mount,
@@ -2304,11 +2358,17 @@ export class UnitConstructionComponent {
     const entity = this.entity(),
       mount = this.selectedMount();
     if (!(entity instanceof MekEntity) || !mount || !this.canEditMount(mount)) return;
-    if (this.selectedSpread()?.locations.find((item) => item.id === location)?.count === count) return;
+    const previousCount = this.selectedSpread()?.locations.find((item) => item.id === location)?.count ?? 0;
+    if (previousCount === count) return;
+    const placement = this.placementSelection();
     this.change(
-      () => this.selectMount(setConstructionSpreadSlots(entity, mount, location, count, slotIndex)),
+      () => this.finishEquipmentEdit(setConstructionSpreadSlots(entity, mount, location, count, slotIndex)),
       this.canEditMount(mount),
     );
+    // Keep an explicitly chosen pool active while the user allocates its remaining slots.
+    if (placement?.kind === 'mount' && placement.mountId === mount.mountId && count > previousCount && this.selectedSpread()?.remaining) {
+      this.placementSelection.set(placement);
+    }
   }
   autoAllocateSpread(): void {
     const entity = this.entity(),
@@ -2317,7 +2377,7 @@ export class UnitConstructionComponent {
       return;
     this.change(
       () =>
-        this.selectMount(
+        this.finishEquipmentEdit(
           applyConstructionSpreadPlacements(entity, mount, constructionSpreadAutoPlacements(entity, mount)),
         ),
       this.canEditMount(mount),
@@ -2326,7 +2386,7 @@ export class UnitConstructionComponent {
   uninstall(mount: EntityMountedEquipment, event?: Event): void {
     event?.stopPropagation();
     if (!this.canUninstallMount(mount)) return;
-    this.change(() => this.selectMount(uninstallConstructionEquipment(this.entity(), mount)), this.canEditMount(mount));
+    this.change(() => this.finishEquipmentEdit(uninstallConstructionEquipment(this.entity(), mount)), this.canEditMount(mount));
     this.closeInstalledInspector();
   }
   remove(mount: EntityMountedEquipment, event?: Event): void {
@@ -2354,7 +2414,7 @@ export class UnitConstructionComponent {
     if (values.size !== undefined) {
       if (!Number.isFinite(values.size) || values.size <= 0) return;
       this.change(
-        () => this.selectMount(resizeConstructionEquipment(this.entity(), mount, values.size!)),
+        () => this.finishEquipmentEdit(resizeConstructionEquipment(this.entity(), mount, values.size!)),
         this.canEditMount(mount),
       );
       return;
@@ -2379,7 +2439,7 @@ export class UnitConstructionComponent {
     const mount = this.selectedMount();
     if (mount)
       this.change(
-        () => this.selectMount(moveConstructionEquipment(this.entity(), mount, location, slotIndex)),
+        () => this.finishEquipmentEdit(moveConstructionEquipment(this.entity(), mount, location, slotIndex)),
         this.canEditMount(mount),
       );
   }
@@ -2433,6 +2493,7 @@ export class UnitConstructionComponent {
     this.runtimePreview.set(previous.runtime);
     this.setArtworkDraft(previous.artwork);
     this.selectedMountId.set(null);
+    this.placementSelection.set(null);
     this.historyVersion.update((value) => value + 1);
   }
   private canRestoreHistory(entry: ConstructionHistoryEntry | undefined): boolean {
@@ -2476,6 +2537,7 @@ export class UnitConstructionComponent {
     this.selectedLocation.set(entity.validLocations.has('RT') ? 'RT' : [...entity.validLocations][0]);
     this.selectedEquipment.set(null);
     this.selectedMountId.set(null);
+    this.placementSelection.set(null);
     this.undoStack = [];
     this.redoStack = [];
     this.historyVersion.update((value) => value + 1);
@@ -2831,7 +2893,7 @@ export class UnitConstructionComponent {
     if (this.inspectorOpen() && event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      this.closeInstalledInspector();
+      this.cancelPlacement();
       return;
     }
     if (this.equipmentDrawerActive() && event.key === 'Escape') {
@@ -2851,6 +2913,12 @@ export class UnitConstructionComponent {
       event.preventDefault();
       event.stopPropagation();
       this.closeDetails();
+      return;
+    }
+    if (this.canPlaceSelectedEquipment() && event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.cancelPlacement();
       return;
     }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {

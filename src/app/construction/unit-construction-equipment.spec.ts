@@ -15,7 +15,7 @@ import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-e
 import { buildingLocationName } from '../models/entity/types/building';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { parseEntity } from '../models/entity/parse-entity';
-import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { ArmorEquipment, type Equipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import { MountedArmor, MountedEngine, MountedStructure, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
 import { MekEntity } from '../models/entity/entities';
 import { EquipmentCatalogService } from '../services/catalogs/equipment-catalog.service';
@@ -134,6 +134,67 @@ describe('construction equipment warehouse', () => {
         editor.category.set('misc');
         editor.showIncompatibleEquipment.set(false);
         expect(editor.filteredEquipment()).toEqual([]);
+    });
+
+    it('marks the chosen warehouse item and cancels placement with Escape in the inspector or workspace', async () => {
+        Object.assign(TestBed.inject(Dialog), { openDialogs: [TestBed.inject(DialogRef)] });
+        editor.query.set(sortBeta.name);
+        await renderWarehouse();
+        const root = fixture.nativeElement as HTMLElement;
+        const source = root.querySelector<HTMLButtonElement>('.warehouse-equipment')!;
+        const before = editor.entity().equipment().length;
+        for (const cancel of ['inspector', 'workspace']) {
+            source.click();
+            fixture.detectChanges();
+            await fixture.whenStable();
+            expect(source.getAttribute('aria-pressed')).toBe('true');
+            expect(source.closest('.warehouse-item')?.classList.contains('selected')).toBeTrue();
+            const slot = root.querySelector<HTMLButtonElement>('[data-location="RT"] .empty-slot')!;
+            expect(slot.textContent).toContain('ADD HERE');
+            expect(slot.getAttribute('aria-label')).toContain(sortBeta.name);
+            if (cancel === 'inspector') {
+                const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+                root.querySelector('.installed-inspector')!.dispatchEvent(event);
+                expect(event.defaultPrevented).toBeTrue();
+            } else {
+                editor.closeInstalledInspector();
+                fixture.detectChanges();
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            }
+            fixture.detectChanges();
+            expect(editor.canPlaceSelectedEquipment()).toBeFalse();
+            expect(editor.inspectorOpen()).toBeFalse();
+            expect(source.getAttribute('aria-pressed')).toBe('false');
+            expect(root.querySelector('.placement-ready')).toBeNull();
+            expect(slot.textContent).toContain('EMPTY SLOT');
+            expect(slot.disabled).toBeTrue();
+            editor.clickSlot('RT');
+            expect(editor.entity().equipment().length).toBe(before);
+        }
+    });
+
+    it('keeps hover inspection separate from the equipment chosen for slot placement', async () => {
+        editor.query.set('Warehouse sort');
+        await renderWarehouse();
+        const root = fixture.nativeElement as HTMLElement;
+        const source = (eq: Equipment) => root.querySelector<HTMLButtonElement>(`.warehouse-equipment[aria-label="${eq.name}"]`)!;
+        editor.inspectEquipment(sortAlpha, source(sortAlpha), true);
+        fixture.detectChanges();
+        expect(editor.canPlaceSelectedEquipment()).toBeFalse();
+        expect(root.querySelector('.placement-ready')).toBeNull();
+        source(sortBeta).click();
+        editor.closeInstalledInspector();
+        editor.inspectEquipment(sortGamma, source(sortGamma), true);
+        fixture.detectChanges();
+        expect(editor.selectedEquipment()).toBe(sortGamma);
+        expect(source(sortBeta).getAttribute('aria-pressed')).toBe('true');
+        expect(source(sortGamma).getAttribute('aria-pressed')).toBe('false');
+        root.querySelector<HTMLButtonElement>('[data-location="RT"] .empty-slot')!.click();
+        fixture.detectChanges();
+        expect(editor.selectedMount()?.equipmentId).toBe(sortBeta.id);
+        expect(editor.selectedMount()?.location).toBe('RT');
+        expect(editor.canPlaceSelectedEquipment()).toBeFalse();
+        expect(root.querySelector('.placement-ready')).toBeNull();
     });
 
     it('preserves the optional destination filter without conflating it with the unit family', () => {
