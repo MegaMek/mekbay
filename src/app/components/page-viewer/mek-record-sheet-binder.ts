@@ -41,6 +41,7 @@ import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-am
 import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 import { isMekRecordSheetInventorySupport } from '../../utils/sheets/record-sheet-inventory-equipment';
 import { getSvgTextLines,measureSvgTextCanvas,writeSvgTextLines } from '../../utils/svg-text.util';
+import { positionMekCriticalExtraHitPip } from '../../utils/sheets/mek-critical-slot-rendering';
 import {
 renderRecordSheetConditions,
 renderRecordSheetCrewState,
@@ -282,7 +283,9 @@ export function bindMekRecordSheet(
                 element.removeAttribute('hittable');
                 element.classList.remove('interactive');
                 element.removeAttribute('tabindex');
-                element.querySelectorAll(':scope > .critSlot-bg-rect').forEach(background => background.remove());
+                if (slot.components.length === 0) {
+                    element.querySelectorAll(':scope > .critSlot-bg-rect').forEach(background => background.remove());
+                }
             }
             const armoredHitCapacity = slot.armored ? 1 : 0;
             const extraHit = slot.hitCapacity - armoredHitCapacity > 1;
@@ -307,6 +310,7 @@ export function bindMekRecordSheet(
                     return;
                 }
                 pip.removeAttribute('display');
+                if (labelElement) positionMekCriticalExtraHitPip(labelElement, pip);
                 updateCriticalSlotPip(
                     highlights,
                     pip,
@@ -1040,6 +1044,9 @@ function renderInventory(
 
 /** Cross-highlights an inventory row and every critical slot backed by the same Entity component. */
 function bindEquipmentHover(svg: SVGSVGElement, signal: AbortSignal): void {
+    svg.querySelectorAll<SVGElement>('.inventoryEntry, .critSlot').forEach(element => {
+        element.classList.toggle('equipment-hover-source', readComponentIds(element).size > 0);
+    });
     if (svg.dataset['mekbayEquipmentHoverBound'] === '1') return;
     svg.dataset['mekbayEquipmentHoverBound'] = '1';
     let highlighted: SVGElement[] = [];
@@ -1050,8 +1057,10 @@ function bindEquipmentHover(svg: SVGSVGElement, signal: AbortSignal): void {
     };
     const source = (target: EventTarget | null): SVGElement | null => {
         if (!(target instanceof Element)) return null;
-        const element = target.closest<SVGElement>('.inventoryEntry, .critSlot');
-        return element?.hasAttribute(COMPONENT_IDS_ATTRIBUTE) && svg.contains(element) ? element : null;
+        const element = target.closest<SVGElement>(
+            `.inventoryEntry[${COMPONENT_IDS_ATTRIBUTE}], .critSlot[${COMPONENT_IDS_ATTRIBUTE}]`,
+        );
+        return element && svg.contains(element) ? element : null;
     };
     const update = (element: SVGElement | null): void => {
         clear();
@@ -1069,6 +1078,8 @@ function bindEquipmentHover(svg: SVGSVGElement, signal: AbortSignal): void {
     svg.addEventListener('pointerout', event => update(source(event.relatedTarget)), { signal });
     signal.addEventListener('abort', () => {
         clear();
+        svg.querySelectorAll('.equipment-hover-source')
+            .forEach(element => element.classList.remove('equipment-hover-source'));
         delete svg.dataset['mekbayEquipmentHoverBound'];
     }, { once: true });
 }

@@ -173,6 +173,70 @@ describe('construction equipment warehouse', () => {
         }
     });
 
+    it('cancels pending placement on outside clicks and right-click without consuming equipment', async () => {
+        editor.query.set(sortBeta.name);
+        await renderWarehouse();
+        const root = fixture.nativeElement as HTMLElement;
+        const source = root.querySelector<HTMLButtonElement>('.warehouse-equipment')!;
+        const before = editor.entity().equipment().length;
+        for (const action of ['outside', 'inspector-control', 'right-click-open', 'right-click-closed']) {
+            source.click();
+            fixture.detectChanges();
+            if (action === 'outside' || action === 'right-click-closed') {
+                root.querySelector<HTMLButtonElement>('.inspector-close')!.click();
+                fixture.detectChanges();
+                expect(editor.canPlaceSelectedEquipment()).toBeTrue();
+                expect(source.getAttribute('aria-pressed')).toBe('true');
+            }
+            if (action.startsWith('right-click')) {
+                const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+                root.querySelector('.empty-slot.placement-ready span')!.dispatchEvent(event);
+                expect(event.defaultPrevented).toBeTrue();
+                expect(editor.inspectorOpen()).toBeFalse();
+            } else if (action === 'inspector-control') {
+                root.querySelector<HTMLSelectElement>('[aria-label="Install equipment location"]')!.click();
+                expect(editor.inspectorOpen()).toBeTrue();
+                expect(editor.selectedEquipment()).toBe(sortBeta);
+            } else {
+                // A stopped bubble must not prevent outside-click cancellation.
+                const outside = root.querySelector<HTMLElement>('.workshop-header')!;
+                outside.addEventListener('click', event => event.stopPropagation(), { once: true });
+                outside.click();
+            }
+            fixture.detectChanges();
+            expect(editor.canPlaceSelectedEquipment()).withContext(action).toBeFalse();
+            expect(source.getAttribute('aria-pressed')).toBe('false');
+            expect(root.querySelector('.placement-ready')).toBeNull();
+            expect(editor.entity().equipment().length).toBe(before);
+        }
+        const contextMenu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+        root.dispatchEvent(contextMenu);
+        expect(contextMenu.defaultPrevented).toBeFalse();
+    });
+
+    it('keeps placement active through the mobile inspector close controls until ADD HERE consumes it', async () => {
+        TestBed.inject(LayoutService).windowWidth.set(600);
+        editor.query.set(sortBeta.name);
+        const root = fixture.nativeElement as HTMLElement;
+        for (const selector of ['.inspector-close', '.inspector-place', '.installed-inspector-backdrop']) {
+            editor.equipmentDrawerOpen.set(true);
+            await renderWarehouse();
+            const source = root.querySelector<HTMLButtonElement>('.warehouse-equipment')!;
+            source.click();
+            fixture.detectChanges();
+            root.querySelector<HTMLElement>(selector)!.click();
+            fixture.detectChanges();
+            expect(editor.inspectorOpen()).toBeFalse();
+            expect(editor.canPlaceSelectedEquipment()).withContext(selector).toBeTrue();
+        }
+        root.querySelector<HTMLElement>('[data-location="RT"] .empty-slot.placement-ready span')!.click();
+        fixture.detectChanges();
+        expect(editor.selectedMount()?.equipmentId).toBe(sortBeta.id);
+        expect(editor.selectedMount()?.location).toBe('RT');
+        expect(editor.canPlaceSelectedEquipment()).toBeFalse();
+        expect(root.querySelector('.placement-ready')).toBeNull();
+    });
+
     it('keeps hover inspection separate from the equipment chosen for slot placement', async () => {
         editor.query.set('Warehouse sort');
         await renderWarehouse();

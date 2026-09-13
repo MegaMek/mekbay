@@ -122,6 +122,10 @@
     fill: #66f;
   }
 
+  .critGroup .critical-equipment-bracket {
+    fill: none !important;
+  }
+
   .critGroup.detached .critSlot text,
   .critGroup.flooded .critSlot text,
   .critGroup.disabledLocation .critSlot text {

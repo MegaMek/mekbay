@@ -222,6 +222,7 @@ describe('construction editor document lifecycle', () => {
   it('shows only native refit references and confirms unlinking before changing the draft', async () => {
     await editor.openUnit({ uuid: customUuid, origin: 'user', originalUnitUuid: coreUuid } as UnitSummary);
     expect(editor.refitReference()).toBeNull();
+    core.uuid.set(customUuid);
     core.refitFromUUID.set(coreUuid);
     await editor.openUnit({ uuid: customUuid, origin: 'user' } as UnitSummary);
     expect(editor.refitReference()?.uuid).toBe(coreUuid);
@@ -246,6 +247,23 @@ describe('construction editor document lifecycle', () => {
     expect(editor.entity().refitFromUUID()).toBeUndefined();
     expect(editor.refitReference()).toBeNull();
     expect(editor.dirty()).toBeFalse();
+  });
+
+  it('restores native refit lineage through unlink, undo, redo, and save-as', async () => {
+    core.uuid.set(customUuid);
+    core.refitFromUUID.set(coreUuid);
+    await editor.openUnit({ uuid: customUuid, origin: 'user' } as UnitSummary);
+    await editor.unlinkRefitSource();
+    expect(editor.originalUuid()).toBeUndefined();
+    editor.undo();
+    expect(editor.originalUuid()).toBe(coreUuid);
+    editor.redo();
+    expect(editor.originalUuid()).toBeUndefined();
+    editor.undo();
+    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Restored lineage');
+    await editor.save(true);
+    expect(save.calls.mostRecent().args[1].originalUnitUuid).toBe(coreUuid);
+    expect(editor.entity().refitFromUUID()).toBe(coreUuid);
   });
 
   it('never displays a self-reference from a native source', async () => {
@@ -299,6 +317,7 @@ describe('construction editor document lifecycle', () => {
   });
 
   it('opens a custom design clean and updates its UUID after an entity edit', async () => {
+    core.uuid.set(customUuid);
     core.refitFromUUID.set(coreUuid);
     await editor.openUnit({ uuid: customUuid, origin: 'user', originalUnitUuid: coreUuid } as UnitSummary);
     expect(editor.routeUuid()).toBe(customUuid);
@@ -406,7 +425,7 @@ describe('construction editor document lifecycle', () => {
     expect(core.mulId()).toBe(1234);
     expect(editor.designSummary()).toEqual(
       jasmine.objectContaining({
-        id: -1,
+        mul1id: -1,
         origin: 'user',
         isCustom: true,
         canon: false,

@@ -126,14 +126,14 @@ describe('building construction topology', () => {
     expect(entity.locationOrder).toEqual([buildingLocationName(origin, 0)]);
   });
 
-  it('discards unallocated equipment when geometry is rebuilt', () => {
+  it('preserves tray equipment and its options when geometry is rebuilt', () => {
     const entity = create();
     setConstructionBuildingTopology(entity, [origin, east], 2);
     const mount = addTestEquipment(entity, gun, { location: buildingLocationName(east, 1), facing: 4, turretType: 'sponson' });
-    uninstallConstructionEquipment(entity, mount);
+    const unallocated = uninstallConstructionEquipment(entity, mount);
     setConstructionBuildingTopology(entity, [origin], 1);
     transformConstructionBuilding(entity, hex => ({ q: -hex.r, r: hex.q + hex.r }), facing => (facing + 1) % 6);
-    expect(entity.equipment()).toEqual([]);
+    expect(entity.equipment()).toEqual([unallocated]);
     expect(encodeNativeEntity(entity)).not.toContain(gun.id);
     expect(parseEntity(encodeNativeEntity(entity), 'unallocated.blk', registry).entity.equipment()).toEqual([]);
   });

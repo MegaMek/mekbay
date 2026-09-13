@@ -138,7 +138,7 @@ import { getWeaponTypeCSSClass } from '../utils/equipment.util';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { MAX_UNIT_SOURCE_BYTES } from '../services/unit-catalog/core-unit-manifest';
-import { encodeNativeEntity } from '../models/entity/write-entity';
+import { encodeNativeEntity, nativeEntityFormat } from '../models/entity/write-entity';
 import { ConstructionExtrasComponent } from './components/construction-extras.component';
 import { ConstructionFluffComponent } from './components/construction-fluff.component';
 import { ConstructionQuirksComponent } from './components/construction-quirks.component';
@@ -360,7 +360,9 @@ export class UnitConstructionComponent {
   readonly foreignDesign = signal(false);
   private draftUuid?: UnitUuid;
   private readonly customPolicy = inject(ForceCustomDesignsService);
-  readonly originalUuid = signal<UnitUuid | undefined>(undefined);
+  // An unmodified core design has no native refit parent yet; retain its source identity for the first save.
+  private readonly coreSourceUuid = signal<UnitUuid | undefined>(undefined);
+  readonly originalUuid = computed(() => this.entity().refitFromUUID() ?? this.coreSourceUuid());
   readonly refitReference = computed(() => {
     this.data.searchCorpusVersion();
     const uuid = this.entity().refitFromUUID();
@@ -675,7 +677,7 @@ export class UnitConstructionComponent {
   private readonly baselineOmniSource = computed(() => {
     if (!this.omniReconfiguration()) return null;
     const source = this.baselineSource(),
-      format = this.entity() instanceof MekEntity ? 'mtf' : 'blk';
+      format = nativeEntityFormat(this.entity());
     const entity = untracked(() => this.customUnits.parseDraft(source, format));
     return constructionOmniBaseSource(entity);
   });
@@ -800,7 +802,7 @@ export class UnitConstructionComponent {
         origins = this.mountOrigins(),
         changes = this.runtimePreview()?.changes;
       return untracked(() => {
-        const draft = this.customUnits.parseDraft(source, entity instanceof MekEntity ? 'mtf' : 'blk');
+        const draft = this.customUnits.parseDraft(source, nativeEntityFormat(entity));
         return { member, draft, origins: this.forceConstruction.remapOrigins(entity, draft, origins), changes };
       });
     },
@@ -1202,7 +1204,7 @@ export class UnitConstructionComponent {
         design: { provider: CUSTOM_UNIT_PROVIDER_ID, uuid: entity.uuid() },
         sourceRevision: '',
       },
-      format: entity instanceof MekEntity ? 'mtf' : 'blk',
+      format: nativeEntityFormat(entity),
     });
     return { ...summary, mul1id: -1, isCustom: true, canon: false };
   });
@@ -1214,7 +1216,7 @@ export class UnitConstructionComponent {
     const uuid = entity.uuid();
     // Parsing initializes new signals; only the source design belongs to this computation.
     return untracked(() => {
-      const snapshot = this.customUnits.parseDraft(source, entity instanceof MekEntity ? 'mtf' : 'blk');
+      const snapshot = this.customUnits.parseDraft(source, nativeEntityFormat(entity));
       snapshot.uuid.set(uuid);
       return snapshot;
     });
@@ -1686,8 +1688,6 @@ export class UnitConstructionComponent {
         const issues = constructionReconfigurationIssues(entity);
         if (issues.length) throw new Error(issues.join(' '));
       }
-      // Keep the installed design representable by the native design codec.
-      encodeNativeEntity(entity);
       const survivingIds = new Set(entity.equipment().map((mount) => mount.mountId));
       this.mountOrigins.update((origins) => new Map([...origins].filter(([id]) => survivingIds.has(id))));
       this.recordChange(previous);
@@ -1755,7 +1755,7 @@ export class UnitConstructionComponent {
     )
       return;
     this.change(() => entity.refitFromUUID.set(undefined));
-    this.originalUuid.set(undefined);
+    this.coreSourceUuid.set(undefined);
   }
   setSources(field: 'source' | 'published', value: SourcebookReference[]): void {
     this.change(() => this.entity()[field].set(value));
@@ -2470,7 +2470,7 @@ export class UnitConstructionComponent {
     };
   }
   private parseHistoryEntity(source: string, unallocated: readonly EntityMountedEquipment[]): BaseEntity {
-    const entity = this.customUnits.parseDraft(source, this.entity() instanceof MekEntity ? 'mtf' : 'blk');
+    const entity = this.customUnits.parseDraft(source, nativeEntityFormat(this.entity()));
     const heatSinkCount = entity instanceof MekEntity ? entity.heatSinkCount() : 0;
     // Optional inventory belongs to this editing session; native saves retain only installed equipment.
     entity.updateEquipment((mounts) => mounts.filter((mount) => mount.allocation.kind !== 'unallocated'));
@@ -2524,6 +2524,7 @@ export class UnitConstructionComponent {
   }
   private replaceDesign(entity: BaseEntity): void {
     ensureConstructionMaterialEquipment(entity);
+    this.coreSourceUuid.set(undefined);
     this.draftUuid = undefined;
     this.foreignDesign.set(false);
     this.forceMember.set(null);
@@ -2549,7 +2550,6 @@ export class UnitConstructionComponent {
     try {
       this.replaceDesign(createConstructionEntity(this.newType(), this.registry));
       this.savedUuid.set(undefined);
-      this.originalUuid.set(undefined);
       this.newDesign.set(true);
     } catch (error) {
       this.reportError(error);
@@ -2570,7 +2570,7 @@ export class UnitConstructionComponent {
       this.foreignDesign.set(custom && !copy && !this.customUnits.isOwned(unit.uuid));
       this.savedUuid.set(custom && !copy && !this.foreignDesign() ? unit.uuid : undefined);
       const originalUuid = entity.refitFromUUID() ?? (!custom || copy ? unit.uuid : undefined);
-      this.originalUuid.set(originalUuid);
+      this.coreSourceUuid.set(!custom && !copy ? unit.uuid : undefined);
       if (copy) {
         entity.refitFromUUID.set(originalUuid);
         entity.model.set(`${entity.model()} Custom`.trim());
@@ -2600,9 +2600,7 @@ export class UnitConstructionComponent {
           (!record && member.force.getUnitSnapshot(member.id)?.nativeSource?.isCustom === true),
       );
       this.savedUuid.set(this.foreignDesign() ? undefined : record?.uuid);
-      this.originalUuid.set(
-        entity.refitFromUUID() ?? (record || this.foreignDesign() ? undefined : member.entity.uuid()),
-      );
+      this.coreSourceUuid.set(record || this.foreignDesign() ? undefined : member.entity.uuid());
     } catch (error) {
       this.reportError(error);
     } finally {
@@ -2658,7 +2656,6 @@ export class UnitConstructionComponent {
   }
   cloneToOwn(): void {
     if (this.busy() || !this.foreignDesign()) return;
-    this.originalUuid.set(this.entity().uuid());
     this.entity().refitFromUUID.set(this.entity().uuid());
     this.draftUuid = asUnitUuid(uuidv7());
     this.entity().uuid.set(this.draftUuid);
@@ -2700,7 +2697,7 @@ export class UnitConstructionComponent {
               member.force,
               {
                 uuid: proposed.uuid(),
-                source: { format: proposed instanceof MekEntity ? 'mtf' : 'blk', source: encodeNativeEntity(proposed) },
+                source: { format: nativeEntityFormat(proposed), source: encodeNativeEntity(proposed) },
               },
               member.id,
             ))
@@ -2717,7 +2714,7 @@ export class UnitConstructionComponent {
         this.savedUuid.set(record.uuid);
         this.entity().uuid.set(record.uuid);
         this.entity().refitFromUUID.set(record.originalUnitUuid);
-        this.originalUuid.set(record.originalUnitUuid);
+        this.coreSourceUuid.set(undefined);
         await this.data.refreshCustomUnits();
         if (member)
           updated = await this.forceConstruction.applySavedConstruction(
@@ -2802,7 +2799,7 @@ export class UnitConstructionComponent {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `${entity.displayName().replace(/[<>:"/\\|?*]/g, '_')}.${entity instanceof MekEntity ? 'mtf' : 'blk'}`;
+      anchor.download = `${entity.displayName().replace(/[<>:"/\\|?*]/g, '_')}.${nativeEntityFormat(entity)}`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -2835,7 +2832,6 @@ export class UnitConstructionComponent {
       encodeNativeEntity(entity);
       this.replaceDesign(entity);
       this.savedUuid.set(undefined);
-      this.originalUuid.set(undefined);
       this.unsavedImport.set(true);
       this.newDesign.set(true);
       this.artworkDraft.set(artwork);

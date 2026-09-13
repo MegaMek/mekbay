@@ -649,7 +649,7 @@ describe('Mek record-sheet binder', () => {
         expect(interactions.length).toBe(9);
     });
 
-    it('does not bind or retain a hit target for an unhittable critical slot', () => {
+    it('allows hover without binding damage actions for an unhittable critical slot', () => {
         const svg = sheet();
         const critical = svg.querySelector<SVGElement>('.critSlot')!;
         critical.insertAdjacentHTML('afterbegin', '<rect class="critSlot-bg-rect"></rect>');
@@ -669,7 +669,8 @@ describe('Mek record-sheet binder', () => {
         expect(critical.classList).not.toContain('interactive');
         expect(critical.hasAttribute('tabindex')).toBeFalse();
         expect(critical.hasAttribute('hittable')).toBeFalse();
-        expect(critical.querySelector(':scope > .critSlot-bg-rect')).toBeNull();
+        expect(critical.classList).toContain('equipment-hover-source');
+        expect(critical.querySelector(':scope > .critSlot-bg-rect')).not.toBeNull();
         critical.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([]);
     });
@@ -802,34 +803,89 @@ describe('Mek record-sheet binder', () => {
 
     it('cross-highlights inventory rows and critical slots by authoritative component ID', () => {
         const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<g class="critSlot" data-loc="RT" slot="0"><text></text></g>');
         const base = snapshot();
         const linked = {
             ...base,
-            criticalSlots: [{
+            equipment: [...base.equipment, {
+                ...base.equipment[0], componentId: asComponentId('other-weapon-component'),
+            }],
+            criticalSlots: [
+                ['CT', 0, 'weapon-component'],
+                ['CT', 1, 'weapon-component'],
+                ['RT', 0, 'weapon-component'],
+                ['CT', 2, 'other-weapon-component'],
+            ].map(([locationCode, slotIndex, componentId]) => ({
                 ...base.criticalSlots[0],
+                locationCode, slotIndex,
+                slotId: asCriticalSlotId(`slot-${locationCode}-${slotIndex}`),
                 components: [{
                     ...base.criticalSlots[0]!.components[0],
-                    componentId: asComponentId('weapon-component'),
+                    componentId: asComponentId(String(componentId)),
                     label: 'AC/20',
                     ammo: undefined,
                 }],
-            }],
+            })),
         } as MekRecordSheetSnapshot;
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, linked, undefined, () => {});
         const inventory = svg.querySelector<SVGElement>('.inventoryEntry')!;
         const critical = svg.querySelector<SVGElement>('.critSlot')!;
+        const sameMountSlots = [...svg.querySelectorAll<SVGElement>('.critSlot')]
+            .filter(slot => slot.getAttribute('data-mekbay-component-ids') === '["weapon-component"]');
+        const otherMountSlots = svg.querySelector<SVGElement>('.critSlot[slot="2"]')!;
+        const otherInventory = svg.querySelectorAll<SVGElement>('.inventoryEntry')[1];
 
         inventory.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
-        expect(critical.classList).toContain('equipment-hover-secondary');
+        expect(sameMountSlots.length).toBe(3);
+        sameMountSlots.forEach(slot => expect(slot.classList).toContain('equipment-hover-secondary'));
         expect(inventory.classList).not.toContain('equipment-hover-secondary');
+        expect(otherMountSlots.classList).not.toContain('equipment-hover-secondary');
+        expect(otherInventory.classList).not.toContain('equipment-hover-secondary');
 
         inventory.dispatchEvent(new MouseEvent('pointerout', { bubbles: true }));
         critical.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
         expect(inventory.classList).toContain('equipment-hover-secondary');
         expect(critical.classList).not.toContain('equipment-hover-secondary');
+        sameMountSlots.filter(slot => slot !== critical)
+            .forEach(slot => expect(slot.classList).toContain('equipment-hover-secondary'));
+        expect(otherMountSlots.classList).not.toContain('equipment-hover-secondary');
+        expect(otherInventory.classList).not.toContain('equipment-hover-secondary');
 
         binding.destroy();
-        expect(svg.querySelectorAll('.equipment-hover-secondary').length).toBe(0);
+        expect(svg.querySelectorAll('.equipment-hover-secondary, .equipment-hover-source').length).toBe(0);
+    });
+
+    it('links non-clickable equipment and preserves hover areas on non-hittable occupied slots', () => {
+        const svg = sheet();
+        svg.querySelector('.critSlot')!.insertAdjacentHTML('afterbegin', '<rect class="critSlot-bg-rect"/>');
+        const base = snapshot();
+        const component = { ...base.equipment[0], label: 'Equipment', weapon: undefined,
+            equipment: new MiscEquipment({ id: 'equipment', name: 'Equipment', type: 'misc' }) };
+        const onEdit = jasmine.createSpy('onEdit');
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, {
+            ...base, equipment: [component], criticalSlots: [{
+                ...base.criticalSlots[0], hittable: false, components: [{
+                    componentId: component.componentId, label: component.label, status: 'available',
+                }],
+            }],
+        }, onEdit);
+        const inventory = svg.querySelector('.inventoryEntry')!;
+        const critical = svg.querySelector('.critSlot')!;
+        const hitArea = critical.querySelector('.critSlot-bg-rect')!;
+        expect(hitArea).not.toBeNull();
+        for (const element of [inventory, critical]) {
+            expect(element.classList).toContain('equipment-hover-source');
+            expect(element.classList).not.toContain('interactive');
+            element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        }
+        expect(onEdit).not.toHaveBeenCalled();
+        inventory.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        expect(critical.classList).toContain('equipment-hover-secondary');
+        hitArea.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }));
+        expect(inventory.classList).toContain('equipment-hover-secondary');
+        critical.dispatchEvent(new MouseEvent('pointerout', { bubbles: true }));
+        expect(svg.querySelector('.equipment-hover-secondary')).toBeNull();
+        binding.destroy();
     });
 
     it('cross-highlights exact system IDs without conflating location-scoped actuators', () => {
@@ -1736,7 +1792,7 @@ function sheet(): SVGSVGElement {
         <circle class="structure pip damaged pending" data-loc="CT"></circle>
         <g class="critSlot" data-loc="CT" slot="0" uid="forged-component" totalAmmo="999">
             <circle class="pip armoredLocPip"></circle>
-            <circle class="pip extraHitPip" display="none"></circle>
+            <rect class="pip extraHitPip" display="none"></rect>
             <text>FORGED LABEL</text>
         </g>
         <g class="critSlot damaged" data-loc="CT" slot="1" uid="forged-extra"><text>FORGED EXTRA CRITICAL</text></g>

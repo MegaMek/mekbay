@@ -174,6 +174,12 @@ export function combatVehicleSlotBudget(entity: VehicleEntity): { capacity: numb
   return { capacity: 5 + Math.floor(entity.tonnage() / 5), used };
 }
 
+/** TechManual p. 163, Structure Weights: total suit limits converted from kg to tons. */
+export function battleArmorSuitMassCapacity(entity: BattleArmorEntity): number {
+  const limits: Readonly<Record<string, number>> = { 'Ultra Light': 0.4, Light: 0.75, Medium: 1, Heavy: 1.5, Assault: 2 };
+  return limits[entity.weightClass()] ?? 0;
+}
+
 export function battleArmorMountCapacity(entity: BattleArmorEntity, location: string): number {
   const quad = entity.chassisType().toLowerCase() === 'quad';
   const index = ['Ultra Light', 'Light', 'Medium', 'Heavy', 'Assault'].indexOf(entity.weightClass());
@@ -287,9 +293,9 @@ export function constructionFamilyMessages(entity: BaseEntity): EntityValidation
       : entity.motiveType() === 'UMU' ? Math.min(5, 6 - index) : maxWalk;
     if (entity.originalWalkMP() > maxWalk) add('BA_WALK_LIMIT', `This suit permits at most ${maxWalk} base walk MP.`, 'movement');
     if (entity.propulsionMP() > maxPropulsion) add('BA_PROPULSION_LIMIT', `This suit permits at most ${maxPropulsion} propulsion MP.`, 'movement');
-    const maximumArmor = [2, 6, 10, 14, 18][index] ?? 0;
+    const maximumArmor = entity.maxArmorValues().get('Squad') ?? 0;
     if ((entity.armorValues().get('Squad')?.front ?? 0) > maximumArmor) add('BA_ARMOR_MAXIMUM', `Each suit permits at most ${maximumArmor} armor points.`, 'armor', 'Squad');
-    const suitLimit = [0.4, 0.75, 1, 1.5, 2][index] ?? 0;
+    const suitLimit = battleArmorSuitMassCapacity(entity);
     try {
       for (const suit of calculateBattleArmorWeightBreakdown(entity).suits) if (suit.exact > suitLimit + 0.00001) add('BA_SUIT_OVERWEIGHT', `Trooper ${suit.trooper + 1} weighs ${suit.exact} t; suit limit is ${suitLimit} t.`, 'weight');
     } catch { /* Unresolved equipment mass is reported by the aggregate validator. */ }

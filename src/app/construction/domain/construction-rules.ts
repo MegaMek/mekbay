@@ -434,7 +434,7 @@ export interface ConstructionLocation {
 }
 
 export function constructionSlotCapacity(entity: BaseEntity, location: string): number | null {
-  if (entity instanceof MekEntity) return location === 'HD' || entity.locationIsLeg(location) ? 6 : 12;
+  if (entity instanceof MekEntity) return entity.criticalSlotCapacity(location);
   if (entity instanceof ProtoMekEntity) {
     return constructionProtoMekSlotCapacity(entity, location);
   }
@@ -475,8 +475,7 @@ export function getConstructionLocations(entity: BaseEntity): ConstructionLocati
       label: entity instanceof StaticEmplacementEntity ? entity.displayLocation(id) : getMekLocationLabel(id) ?? id,
       armor: armor?.front ?? 0,
       rearArmor: armor?.rear ?? 0,
-      maxArmor:
-        entity instanceof BattleArmorEntity ? battleArmorMaximumArmor(entity) : (entity.maxArmorValues().get(id) ?? 0),
+      maxArmor: entity.maxArmorValues().get(entity instanceof BattleArmorEntity ? 'Squad' : id) ?? 0,
       structure: entity.structureValues().get(id) ?? 0,
       slots,
       slotCapacity: capacity,
@@ -1195,7 +1194,7 @@ export function resizeConstructionEquipment(
 export function validateConstruction(entity: BaseEntity): EntityValidationResult {
   const messages: EntityValidationMessage[] = [...entity.validationResult().messages].filter(
     (message) =>
-      !(entity instanceof BattleArmorEntity && message.category === 'armor') &&
+      !(entity instanceof BattleArmorEntity && message.code === 'ARMOR_EXCEEDS_MAX' && message.location === 'Squad') &&
       !(entity.entityType === 'SpaceStation' && message.code === 'AERO_NO_THRUST'),
   );
   messages.push(...constructionFamilyMessages(entity));
@@ -1236,7 +1235,7 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
     );
   if (entity instanceof MekEntity && (entity.tonnage() < 10 || entity.tonnage() > 200 || entity.tonnage() % 5 !== 0))
     add('weight', 'MEK_CHASSIS_WEIGHT', 'Mek chassis weight must be 10–200 tons in 5-ton increments.');
-  const totalArmor = [...entity.armorValues().values()].reduce((total, armor) => total + armor.front + armor.rear, 0);
+  const totalArmor = entity.totalArmorPoints();
   if (totalArmor > entity.maximumArmorPoints())
     add('armor', 'ARMOR_TOTAL_EXCEEDED', `Total armor ${totalArmor} exceeds ${entity.maximumArmorPoints()} points.`);
   for (const [location, armor] of entity.armorValues()) {
@@ -1361,14 +1360,6 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
     ).values(),
   ];
   return { valid: !unique.some((message) => message.severity === 'error'), messages: unique };
-}
-
-function battleArmorMaximumArmor(entity: BattleArmorEntity): number {
-  return (
-    ({ 'Ultra Light': 2, Light: 6, Medium: 10, Heavy: 14, Assault: 18 } as Record<string, number>)[
-      entity.weightClass()
-    ] ?? 0
-  );
 }
 
 function availableMekPlacements(

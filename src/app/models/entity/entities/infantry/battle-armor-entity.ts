@@ -207,14 +207,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   }
 
   protected override computeMaximumArmorPoints(): number {
-    const maxPerTrooper: Partial<Record<WeightClass, number>> = {
-      'Ultra Light': 2,
-      'Light': 6,
-      'Medium': 10,
-      'Heavy': 14,
-      'Assault': 18,
-    };
-    return (maxPerTrooper[this.weightClass()] ?? 0) * this.trooperCount();
+    return (this.maxArmorValues().get('Squad') ?? 0) * this.trooperCount();
   }
 
   override totalArmorPoints = computed(() => {
@@ -275,11 +268,11 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   protected override computeMaxArmor(
     _structureValues: Map<string, number>,
   ): Map<string, number> {
-    // BA armor points depend on weight class
+    // TechManual p. 169, Battle Armor Protection Table: maximum points per suit.
     const maxPerTrooper: Partial<Record<WeightClass, number>> = {
       'Ultra Light': 2, 'Light': 6, 'Medium': 10, 'Heavy': 14, 'Assault': 18,
     };
-    const mx = maxPerTrooper[this.weightClass()] ?? 8;
+    const mx = maxPerTrooper[this.weightClass()] ?? 0;
     const maxArmor = new Map<string, number>([['Squad', mx]]);
     for (let i = 1; i <= this.trooperCount(); i++) {
       maxArmor.set(`Trooper ${i}`, mx);

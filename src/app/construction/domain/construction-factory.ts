@@ -6,6 +6,7 @@ import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import { MiscEquipment } from '../../models/equipment.model';
 import { MountedEngine, MountedStructure, getStructureByName } from '../../models/entity/components';
 import type { EntityType } from '../../models/entity/types';
+import { battleArmorSuitMassCapacity } from './construction-family-rules';
 import { BipedMekEntity } from '../../models/entity/entities/mek/biped-mek-entity';
 import { QuadMekEntity } from '../../models/entity/entities/mek/quad-mek-entity';
 import { TripodMekEntity } from '../../models/entity/entities/mek/tripod-mek-entity';
@@ -191,7 +192,7 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
       for (const mount of entity.equipment().filter((mount) => mount.allocation.kind === 'unallocated')) {
         for (const [locationIndex, location] of locations.entries()) {
           const slots = entity.criticalSlotGrid().get(location) ?? [];
-          const maxSlots = location === 'HD' || entity.locationIsLeg(location) ? 6 : 12;
+          const maxSlots = entity.criticalSlotCapacity(location);
           const index = slots.slice(0, maxSlots).findIndex((slot) => slot.type === 'empty');
           if (index < 0) continue;
           entity.moveEquipment(mount, location, [{ location, slotIndex: index }]);
@@ -302,8 +303,7 @@ export function getConstructionMass(entity: BaseEntity): number | null {
 
 export function getConstructionMassCapacity(entity: BaseEntity): number {
   if (entity instanceof BattleArmorEntity) {
-    const limit: Record<string, number> = { 'Ultra Light': 0.4, Light: 0.75, Medium: 1, Heavy: 1.5, Assault: 2 };
-    return (limit[entity.weightClass()] ?? 1) * entity.trooperCount();
+    return battleArmorSuitMassCapacity(entity) * entity.trooperCount();
   }
   return entity.tonnage();
 }

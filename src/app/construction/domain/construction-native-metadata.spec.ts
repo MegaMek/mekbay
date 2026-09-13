@@ -30,17 +30,21 @@ describe('construction native metadata', () => {
     });
   }
 
-  it('keeps the compatibility K-F boom marker synchronized with the native collar', () => {
+  it('writes the native collar and reads legacy K-F boom-only input', () => {
     const entity = createConstructionEntity('DropShip', registry) as DropShipEntity;
     for (const collar of ['Standard', 'Prototype', 'No Boom'] as const) {
       entity.collarType.set(collar);
       const native = encodeNativeEntity(entity);
-      expect(native).toContain('<kf_boom>\n' + (collar === 'No Boom' ? '0' : '1') + '\n</kf_boom>');
+      expect(native).toContain('<collartype>');
+      expect(native).not.toContain('<kf_boom>');
       const loaded = parseEntity(native, 'boom.blk', registry).entity as DropShipEntity;
       expect(loaded.collarType()).toBe(collar);
       expect(loaded.kfBoomAttached()).toBe(collar !== 'No Boom');
     }
-    const markerOnly = encodeNativeEntity(entity).replace(/<collartype>[\s\S]*?<\/collartype>\n/, '');
-    expect((parseEntity(markerOnly, 'boom.blk', registry).entity as DropShipEntity).collarType()).toBe('No Boom');
+    const withoutCollar = encodeNativeEntity(entity).replace(/<collartype>[\s\S]*?<\/collartype>\n/, '');
+    for (const [marker, collar] of [[0, 'No Boom'], [1, 'Standard']] as const) {
+      const markerOnly = `${withoutCollar}\n<kf_boom>\n${marker}\n</kf_boom>\n`;
+      expect((parseEntity(markerOnly, 'boom.blk', registry).entity as DropShipEntity).collarType()).toBe(collar);
+    }
   });
 });

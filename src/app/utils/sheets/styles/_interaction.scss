@@ -29,6 +29,8 @@
 
     .interactive,
     .inventoryEntry:where(.interactive) .inventoryEntryButton,
+    .equipment-hover-source > .inventoryEntryButton,
+    .equipment-hover-source > .critSlot-bg-rect,
     .locationConditionControl:where(.interactive) .locationConditionHitArea {
       pointer-events: all;
     }
@@ -65,7 +67,7 @@
         stroke-width: 0.35px;
       }
 
-      &:where(.interactive) .critSlot-bg-rect:hover {
+      &:where(.interactive, .equipment-hover-source) .critSlot-bg-rect:hover {
         fill: var(--highlight-color);
       }
 
@@ -124,7 +126,7 @@
       fill: var(--equipment-hover-secondary-color);
     }
 
-    .inventoryEntry:where(.interactive) {
+    .inventoryEntry:where(.interactive, .equipment-hover-source) {
       &:hover > .inventoryEntryButton,
       > .alternativeMode:hover > .inventoryEntryButton {
         fill: var(--highlight-color);

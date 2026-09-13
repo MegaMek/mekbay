@@ -263,22 +263,24 @@
 }
 
 .warehouse-equipment {
+  --equipment-border-width: 1px;
+  --equipment-accent-width: 4px;
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
   min-width: 0;
   height: 100%;
-  border-left-width: 4px;
+  border-width: var(--equipment-border-width);
+  border-left-width: var(--equipment-accent-width);
   padding: 0;
   text-align: left;
   cursor: grab;
 }
 
-.warehouse-equipment:hover,
+.warehouse-equipment:hover:not(:disabled),
 .warehouse-equipment.inspector-active {
-  background: color-mix(in srgb, var(--type-color, #aaa) 13%, #242427);
-  border-color: #ffffff70;
+  background-image: linear-gradient(#ffffff18, #ffffff18);
 }
 
 .equipment-heading {
@@ -1242,7 +1244,8 @@ tech-base-badge {
   // Keep the placement marker visible when focus returns from the inspector.
   content: '';
   position: absolute;
-  inset: 0;
+  inset: calc(-1 * var(--equipment-border-width));
+  left: calc(-1 * var(--equipment-accent-width));
   pointer-events: none;
 }
 

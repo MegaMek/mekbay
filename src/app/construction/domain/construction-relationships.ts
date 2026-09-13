@@ -1,12 +1,11 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 import type { BaseEntity } from '../../models/entity/base-entity';
-import { MekEntity } from '../../models/entity/entities/mek/mek-entity';
 import { parseEntity } from '../../models/entity/parse-entity';
 import type { EntityMountedEquipment } from '../../models/entity/types/equipment';
 import { isEquipmentLinkSource } from '../../models/entity/utils/equipment-link-rules';
 import { matchNativeMounts } from '../../models/entity/utils/native-mount-correspondence';
-import { encodeNativeEntity } from '../../models/entity/write-entity';
+import { encodeNativeEntity, nativeEntityFormat } from '../../models/entity/write-entity';
 
 /** Native slot/bay order owns inferred links; preserve the editor's mount identities. */
 export function reconcileConstructionEquipmentRelationships(entity: BaseEntity): void {
@@ -20,7 +19,7 @@ export function reconcileConstructionEquipmentRelationships(entity: BaseEntity):
         entity.replaceEquipmentBays('machine-gun-array', []);
         return;
     }
-    const parsed = parseEntity(encodeNativeEntity(entity), entity instanceof MekEntity ? 'construction.mtf' : 'construction.blk', entity.getEquipmentRegistry()).entity;
+    const parsed = parseEntity(encodeNativeEntity(entity), `construction.${nativeEntityFormat(entity)}`, entity.getEquipmentRegistry()).entity;
     const originalIds = matchNativeMounts(entity, parsed);
     const originalById = new Map(originals.map(mount => [mount.mountId, mount]));
     const originalByParsed = new Map<EntityMountedEquipment, EntityMountedEquipment>();

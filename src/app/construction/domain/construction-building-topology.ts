@@ -82,7 +82,7 @@ export function setConstructionBuildingTopology(
     field.set(values);
   }
   const mounts = entity.equipment().flatMap(mount => {
-    if (mount.allocation.kind !== 'location') return [];
+    if (mount.allocation.kind !== 'location') return [mount];
     const old = parseBuildingLocation(mount.location);
     const hex = old && (movedHexes.get(buildingHexKey(old.hex)) ?? old.hex);
     if (!hex || !keys.has(buildingHexKey(hex)) || old!.floor >= targetHeight(hex)) {

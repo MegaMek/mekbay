@@ -5,7 +5,7 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { MekEntity, MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
 import { VehicleEntity } from '../../models/entity/entities/vehicle/vehicle-entity';
 import { parseEntity } from '../../models/entity/parse-entity';
-import { encodeNativeEntity } from '../../models/entity/write-entity';
+import { encodeNativeEntity, nativeEntityFormat } from '../../models/entity/write-entity';
 import { getConstructionFields } from './construction-fields';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment } from '../../models/equipment.model';
 import { getMekHeatSinkType } from '../../models/entity/types/heat-sink';
@@ -59,7 +59,7 @@ export function constructionReconfigurationIssues(entity: BaseEntity): readonly 
 
 /** Normalize only the permitted pod changes; the native codec remains the design source of truth. */
 export function constructionOmniBaseSource(entity: BaseEntity): string {
-    const format = entity instanceof MekEntity ? 'mtf' : 'blk';
+    const format = nativeEntityFormat(entity);
     const source = encodeNativeEntity(entity);
     return untracked(() => {
         const base = parseEntity(source, `omni-base.${format}`, entity.getEquipmentRegistry()).entity;

@@ -35,7 +35,7 @@ button:where(:not(.bt-button, .close-button)) {
     background 0.12s,
     border-color 0.12s;
 }
-button:where(:not(.bt-button, .close-button)):hover:not(:disabled) {
+button:where(:not(.bt-button, .close-button, .warehouse-equipment)):hover:not(:disabled) {
   background: #ffffff18;
   border-color: #ffffff70;
 }

@@ -27,6 +27,11 @@ import { writeBlkStaticEmplacement } from './writers/blk-static-emplacement-writ
 import { writeBlkVehicle } from './writers/blk-vehicle-writer';
 import { writeMtf } from './writers/mtf-writer';
 
+/** File metadata and detached parses must follow the native writer's family routing. */
+export function nativeEntityFormat(entity: BaseEntity): 'mtf' | 'blk' {
+  return entity instanceof MekEntity ? 'mtf' : 'blk';
+}
+
 /** Serialize an entity in its only native MegaMek format: MTF for Meks, BLK otherwise. */
 export function encodeNativeEntity(entity: BaseEntity, eol: 'lf' | 'crlf' = 'lf'): string {
   const text = entity instanceof MekEntity ? writeMtf(entity) : writeBlk(entity);

@@ -23,7 +23,7 @@ describe('BLK base parser', () => {
 
   it('preserves an existing UUID', () => {
     const uuid = '019f6767-0dcb-7bb8-992f-aef08202f5e1';
-    const entity = identityEntity();
+    const entity = new TankEntity();
 
     parseBaseBlk(new BuildingBlock(`<UUID>\n${uuid}\n</UUID>`), entity, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
 
@@ -31,7 +31,7 @@ describe('BLK base parser', () => {
   });
 
   it('keeps the generated UUID when the file does not provide one', () => {
-    const entity = identityEntity();
+    const entity = new TankEntity();
     const generatedUuid = entity.uuid();
 
     parseBaseBlk(new BuildingBlock(''), entity, new ParseContext('test.blk', EMPTY_EQUIPMENT_REGISTRY));
@@ -189,15 +189,6 @@ describe('BLK base parser', () => {
     ]);
   });
 });
-
-function identityEntity(): BaseEntity {
-  return {
-    uuid: signal('generated-uuid'),
-    chassis: signal(''),
-    model: signal(''),
-    fluff: signal({}),
-  } as BaseEntity;
-}
 
 function armorEquipment(
   id: string,

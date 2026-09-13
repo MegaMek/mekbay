@@ -171,6 +171,32 @@ describe('generated record-sheet styles', () => {
         }
     });
 
+    it('enables equipment hover without edit actions and keeps previews passive', async () => {
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        stage.appendChild(svg);
+        const row = svg.querySelector('.inventoryEntry')!;
+        const button = row.querySelector('.inventoryEntryButton')!;
+        const critical = svg.querySelector('.critSlot[hittable]')!;
+        const criticalBackground = critical.querySelector('.critSlot-bg-rect')!;
+        row.classList.add('equipment-hover-source', 'style-test-hover');
+        critical.classList.add('equipment-hover-source', 'equipment-hover-secondary');
+        expect(row.classList.contains('interactive')).toBeFalse();
+        for (const night of [false, true]) {
+            stage.classList.toggle('night-mode', night);
+            svg.classList.add('interactive-sheet');
+            for (const target of [button, criticalBackground]) {
+                expect(getComputedStyle(target).pointerEvents).toBe('all');
+                expect(getComputedStyle(target).fill).not.toBe('rgba(0, 0, 0, 0)');
+            }
+            svg.classList.add('print-preview');
+            for (const target of [button, criticalBackground]) {
+                expect(getComputedStyle(target).pointerEvents).toBe('none');
+                expect(getComputedStyle(target).fill).toBe('rgba(0, 0, 0, 0)');
+            }
+            svg.classList.remove('print-preview', 'interactive-sheet');
+        }
+    });
+
     it('keeps selected weapon ranges visible when their live controls are hovered', async () => {
         const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
         svg.classList.add('interactive-sheet');

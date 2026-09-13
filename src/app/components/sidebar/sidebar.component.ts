@@ -12,7 +12,7 @@ import { SidebarFooterComponent } from '../sidebar-footer/sidebar-footer.compone
 import { CdkMenuModule } from '@angular/cdk/menu';
 import { ForceBuilderViewerComponent } from '../force-builder-viewer/force-builder-viewer.component';
 import { SwipeDirective, type SwipeEndEvent, type SwipeStartEvent } from '../../directives/swipe.directive';
-import { BUILD_BRANCH } from '../../build-meta';
+import { BUILD_BADGE_LABEL } from '../../build-meta';
 import { DialogsService } from '../../services/dialogs.service';
 import { ConnectionStatusBadgeComponent } from '../connection-status-badge/connection-status-badge.component';
 
@@ -36,7 +36,7 @@ export class SidebarComponent {
     elRef = inject(ElementRef<HTMLElement>);
     layout = inject(LayoutService);
     options = inject(OptionsService);
-    protected isNextBuild = BUILD_BRANCH !== 'main';
+    protected readonly buildBadgeLabel = BUILD_BADGE_LABEL;
     private dialogsService = inject(DialogsService);
     unitSearchPortal = input<Portal<HTMLElement>>();
     unitSearchComponent = input<UnitSearchComponent>();

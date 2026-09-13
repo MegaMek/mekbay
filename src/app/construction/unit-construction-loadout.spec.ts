@@ -902,7 +902,7 @@ describe('construction component blocks', () => {
     expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
     f.editor.selectMount(f.editor.selectedMount()!);
     f.editor.clickSlot('RA', 10);
-    expect(f.editor.canPlaceSelectedEquipment()).toBeTrue();
+    expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
     f.editor.undo();
     expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
     f.editor.redo();
@@ -921,6 +921,8 @@ describe('construction component blocks', () => {
     f.editor.selectMount(f.editor.unallocated()[0]);
     f.editor.clickSlot('RA', 10);
     expect(f.editor.selectedMount()?.placements).toEqual([{ location: 'RA', slotIndex: 10 }]);
+    expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
+    f.editor.selectMount(f.editor.unallocated()[0]);
     f.editor.clickSlot('LT', 8);
     const manual = [...f.editor.selectedMount()!.placements!];
     expect(f.editor.selectedSpread()?.remaining).toBe(12);
@@ -935,9 +937,10 @@ describe('construction component blocks', () => {
     const f = await create({ material: 'endo', missingMaterial: true, gyro: 'Compact' });
     f.editor.selectMount(f.editor.unallocated()[0]);
     f.editor.setSpreadSlots('LT', 3);
-    f.editor.clickSlot('CT', 10);
-    f.editor.clickSlot('CT', 11);
-    f.editor.clickSlot('CT', 5);
+    for (const slotIndex of [10, 11, 5]) {
+      f.editor.selectMount(f.editor.unallocated()[0]);
+      f.editor.clickSlot('CT', slotIndex);
+    }
     f.view.detectChanges();
     const mountId = f.editor.selectedMount()!.mountId;
     const torso = f.editor.selectedMount()!.placements!.filter((p) => p.location === 'LT');

@@ -734,7 +734,7 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelectorAll('.critSlot[hittable="1"] > .critSlot-bg-rect').length)
             .toBe(hittableSlots.length);
         expect(svg.querySelectorAll('.critSlot:not([hittable]) > .critSlot-bg-rect').length).toBe(0);
-        expect(svg.querySelectorAll('.critSlot > .extraHitPip[display="none"]').length).toBe(66);
+        expect(svg.querySelector('.critSlot > .extraHitPip')).toBeNull();
         const emptySlot = svg.querySelector('[data-mekbay-empty-slot="1"]');
         expect(emptySlot?.querySelector('text')?.textContent).toBe('Roll Again');
         expect(emptySlot?.hasAttribute('hittable')).toBeFalse();

@@ -5,9 +5,8 @@ import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core'
 import { decodeSavedCustomUnit, type SavedCustomUnit } from '../models/custom-unit.model';
 import { MAX_OWNED_CUSTOM_UNITS, CUSTOM_UNIT_LIBRARY_FULL_MESSAGE } from '../models/custom-design-policy';
 import type { BaseEntity } from '../models/entity/base-entity';
-import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import { parseEntity } from '../models/entity/parse-entity';
-import { encodeNativeEntity } from '../models/entity/write-entity';
+import { encodeNativeEntity, nativeEntityFormat } from '../models/entity/write-entity';
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../models/unit-summary.model';
 import { sha1Base64Url } from '../utils/sha1.util';
 import { uuidv7 } from '../utils/uuid.util';
@@ -165,7 +164,7 @@ export class CustomUnitsService {
     return this.parse(
       encodeNativeEntity(entity),
       entity.uuid(),
-      entity instanceof MekEntity ? 'mtf' : 'blk',
+      nativeEntityFormat(entity),
       this.requireDependencies(),
     );
   }
@@ -213,7 +212,7 @@ export class CustomUnitsService {
         ...(originalUnitUuid ? { originalUnitUuid } : {}),
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
-        format: detached instanceof MekEntity ? 'mtf' : 'blk',
+        format: nativeEntityFormat(detached),
         source: encodeNativeEntity(detached),
         accountUuid: account,
         owned: true,

@@ -21,6 +21,11 @@ svg:where(.mekbay-sheet):not(:root),
   stroke-width: .9;
 }
 
+:where(.mekbay-sheet) .critSlot > .pip {
+  stroke-width: .7;
+  vector-effect: none;
+}
+
 :where(.mekbay-sheet) .pip.trooperStatusPip:not(.damaged):not(.pending):not(.fresh) {
   fill: #3f3f3f;
 }

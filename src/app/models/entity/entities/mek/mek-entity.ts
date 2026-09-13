@@ -190,6 +190,12 @@ export abstract class MekEntity extends BaseEntity {
     return isMekLegLocation(this.chassisConfig, location);
   }
 
+  /** Total Warfare, Critical Hit Table: usable slots, independent of the padded native grid. */
+  criticalSlotCapacity(location: string): number {
+    if (!this.validLocations.has(location)) return 0;
+    return location === 'HD' || this.locationIsLeg(location) ? 6 : 12;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS - user / parser inputs
   // ═══════════════════════════════════════════════════════════════════════════
@@ -802,7 +808,7 @@ export abstract class MekEntity extends BaseEntity {
    * Returns a plan so construction can preview exactly the same layout it commits.
    */
   planEquipmentOrder(location: string, order?: readonly string[], mounts: readonly EntityMountedEquipment[] = this.equipment()): Map<string, readonly MountPlacement[]> {
-    const capacity = location === 'HD' || this.locationIsLeg(location) ? 6 : 12;
+    const capacity = this.criticalSlotCapacity(location);
     const systems = this.getSystemSlotsForLocation(location);
     let free = Array.from({ length: capacity }, (_, index) => index).filter(index => systems[index]?.type !== 'system');
     const local = mounts.filter(mount => mount.placements?.some(p => p.location === location))

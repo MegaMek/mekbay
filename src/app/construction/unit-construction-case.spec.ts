@@ -17,7 +17,7 @@ import { LayoutService } from '../services/layout.service';
 import { NativeEntityService } from '../services/native-entity.service';
 import { ToastService } from '../services/toast.service';
 import { UnitNameService } from '../services/unit-name.service';
-import { formatUnitChassis } from '../utils/unit-display-name.util';
+import { formatUnitChassis, formatUnitName } from '../utils/unit-display-name.util';
 import { UnitSearchIndexService } from '../services/unit-search-index.service';
 import { ConstructionForceService } from './construction-force.service';
 import { UnitConstructionComponent } from './unit-construction.component';
@@ -56,7 +56,7 @@ describe('construction CASE installation with the real equipment catalog', () =>
         { provide: DataService, useValue: { getUnitByUuid: () => undefined, searchCorpusVersion: signal(0) } },
         { provide: DialogsService, useValue: {} },
         { provide: NativeEntityService, useValue: {} },
-        { provide: UnitNameService, useValue: { chassis: formatUnitChassis } },
+        { provide: UnitNameService, useValue: { chassis: formatUnitChassis, name: formatUnitName } },
         { provide: UnitSearchIndexService, useValue: new UnitSearchIndexService() },
         { provide: ConstructionForceService, useValue: { damage: () => null } },
       ],

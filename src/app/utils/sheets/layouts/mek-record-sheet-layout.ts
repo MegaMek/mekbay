@@ -18,6 +18,8 @@ import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { resolveShieldProfile } from '../../../models/entity/utils/physical-weapon';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
+import { mekCriticalDamageThreshold } from '../../../models/runtime/equipment-status-kernel';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
 import { recordSheetHeatEffects,type RecordSheetHeatEffect } from '../../../models/runtime/heat-effect-presentation';
@@ -28,6 +30,7 @@ import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,recordSheetPh
 import { MekPaperdollGenerator, type MekStructureTonnage } from '../mek-paperdoll-generator';
 import type { PaperdollOptions, PaperdollPipLayout } from '../paperdoll-generator';
 import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
+import { positionMekCriticalExtraHitPip } from '../mek-critical-slot-rendering';
 import { appendRecordSheetAmmoProfile,measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import { isMekRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
@@ -142,7 +145,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
             );
         }
         await drawMekPaperdolls(svg, entity, at({ x: 402.966, y: 18, width: 173, height: 543 }), request.pipLayout);
-        await drawMekCriticalPanel(svg, entity, { x: 18.966, y: 389, width: 377.7 + widthDelta, height: 363 + heightDelta });
+        await drawMekCriticalPanel(svg, entity, { x: 18.966, y: 389, width: 377.7 + widthDelta, height: 363 + heightDelta }, request.ruleset);
         drawHeatPanel(svg, entity, at({ x: 402.966, y: 571.5 + heightDelta, width: 159.5, height: 180.5 }));
         drawHeatScale(svg, at({ x: 574.546, y: 386 + heightDelta, width: 19.454, height: 366 }));
         const catalyst = entity.chassisConfig === 'Tripod'
@@ -1693,12 +1696,14 @@ function drawMekSchematicRegion(
     group.appendChild(target);
 }
 
-export async function drawMekCriticalPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): Promise<void> {
+export async function drawMekCriticalPanel(
+    svg: SVGSVGElement, entity: MekEntity, box: Box, ruleset: CBTRuleset = 'total-warfare',
+): Promise<void> {
     const group = addFrame(svg, 'CRITICAL TABLE', box, {
         id: 'criticalHitTable',
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
-    await drawCanonicalMekCriticalContents(group, entity, box);
+    await drawCanonicalMekCriticalContents(group, entity, box, ruleset);
 }
 
 interface CanonicalCriticalLocationLayout {
@@ -1769,6 +1774,7 @@ async function drawCanonicalMekCriticalContents(
     group: SVGGElement,
     entity: MekEntity,
     box: Box,
+    ruleset: CBTRuleset,
 ): Promise<void> {
     const sx = box.width / 377.7;
     const sy = box.height / 363;
@@ -1840,10 +1846,22 @@ async function drawCanonicalMekCriticalContents(
         }
         const slots = grid.get(location) ?? [];
         const slotCount = mekCriticalTableRowCount(location);
+        const slotBaseline = (slotIndex: number): number => locationLayout.firstBaseline
+            + slotIndex * locationLayout.step + (slotCount === 12 && slotIndex >= 6 ? 5.15 : 0);
+        const equipmentRuns = new Map<string, { first: number; last: number }[]>();
         for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
             const slot = slots[slotIndex];
-            const secondBlockOffset = slotCount === 12 && slotIndex >= 6 ? 5.15 : 0;
-            const baseline = locationLayout.firstBaseline + slotIndex * locationLayout.step + secondBlockOffset;
+            const baseline = slotBaseline(slotIndex);
+            if (slot?.type === 'equipment') {
+                for (const mount of slot.mounts) {
+                    if (mount.equipment?.hittable !== true) continue;
+                    const runs = equipmentRuns.get(mount.mountId) ?? [];
+                    const previous = runs.at(-1);
+                    if (previous?.last === slotIndex - 1) previous.last = slotIndex;
+                    else runs.push({ first: slotIndex, last: slotIndex });
+                    equipmentRuns.set(mount.mountId, runs);
+                }
+            }
             const number = slotCount === 12 ? slotIndex % 6 + 1 : slotIndex + 1;
             addText(criticalGroup, `${number}.`, x(locationLayout.numberX), y(baseline), {
                 size: font(7),
@@ -1869,6 +1887,8 @@ async function drawCanonicalMekCriticalContents(
                 || slot?.type === 'equipment' && slot.mounts.some(mount => mount.equipment?.hittable === true);
             if (hittable) {
                 slotGroup.setAttribute('hittable', '1');
+            }
+            if (slot && slot.type !== 'empty') {
                 slotGroup.appendChild(transparentRect(
                     x(locationLayout.numberX - locationLayout.textX - 2),
                     1,
@@ -1877,29 +1897,51 @@ async function drawCanonicalMekCriticalContents(
                     'critSlot-bg-rect',
                 ));
             }
-            addText(slotGroup, mekCriticalSlotLabel(slot, entity), 0, y(locationLayout.step), {
+            const extraHit = slot?.type === 'equipment' && slot.mounts.some(mount =>
+                mount.placedCriticalSlotCount === 1 && mount.equipment
+                && mekCriticalDamageThreshold(ruleset, mount.equipment.flags) === 2);
+            const textX = slot?.armored ? font(7) : 0;
+            const label = addText(slotGroup, mekCriticalSlotLabel(slot, entity), textX, y(locationLayout.step), {
                 size: font(7),
                 weight: hittable ? 700 : undefined,
                 fill: hittable ? undefined : '#3f3f3f',
-                maxWidth: x(locationLayout.rightEdge - locationLayout.textX - 5),
+                maxWidth: x(locationLayout.rightEdge - locationLayout.textX - 5) - textX - (extraHit ? font(7) : 0),
             });
             if (slot?.armored) {
-                slotGroup.appendChild(circle(
-                    x(locationLayout.rightEdge - locationLayout.textX - 8),
-                    y(locationLayout.step / 2),
-                    font(1.7),
+                const armorPip = circle(
+                    font(2.8),
+                    y(locationLayout.step) - font(2.6),
+                    font(2.8),
                     'armoredLocPip pip',
-                ));
+                );
+                slotGroup.appendChild(armorPip);
             }
-            const extraHitPip = circle(
-                x(locationLayout.rightEdge - locationLayout.textX - 3.5),
-                y(locationLayout.step / 2),
-                font(1.7),
-                'extraHitPip pip',
-            );
-            extraHitPip.setAttribute('display', 'none');
-            slotGroup.appendChild(extraHitPip);
+            if (extraHit) {
+                const extraHitPip = svgElement('rect');
+                setAttributes(extraHitPip, {
+                    class: 'extraHitPip pip',
+                    y: y(locationLayout.step) - font(5.4),
+                    width: font(5.6), height: font(5.6),
+                });
+                positionMekCriticalExtraHitPip(label, extraHitPip);
+                slotGroup.appendChild(extraHitPip);
+            }
             criticalGroup.appendChild(slotGroup);
+        }
+        for (const runs of equipmentRuns.values()) {
+            for (const run of runs) {
+                if (run.first === run.last) continue;
+                const bracket = svgElement('path');
+                const top = slotBaseline(run.first) - locationLayout.step * 0.6;
+                setAttributes(bracket, {
+                    class: 'critical-equipment-bracket',
+                    d: `M ${formatNumber(x(locationLayout.textX - 1))} ${formatNumber(y(top))}`
+                        + ` h ${formatNumber(x(-1.88))}`
+                        + ` v ${formatNumber(y(slotBaseline(run.last) - top))} h ${formatNumber(x(1.88))}`,
+                    fill: 'none', stroke: '#000', 'stroke-width': font(0.72), 'pointer-events': 'none',
+                });
+                criticalGroup.appendChild(bracket);
+            }
         }
         group.appendChild(criticalGroup);
     });

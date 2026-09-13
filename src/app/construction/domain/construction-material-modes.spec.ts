@@ -186,11 +186,6 @@ describe('native construction material modes', () => {
 
   it('reserves Patchwork armor criticals locally even while every material matches', () => {
     const entity = createConstructionEntity('Biped', registry);
-    // The factory packs its two external sinks into the left leg; leave one
-    // local critical free in each leg for this fully armored Patchwork layout.
-    const leftLegSinks = entity.equipment().filter(mount => mount.location === 'LL');
-    expect(leftLegSinks.length).toBe(2);
-    entity.moveEquipment(leftLegSinks[1], 'RL', [{ location: 'RL', slotIndex: 4 }]);
     entity.mixedTech.set(true);
     const ferro = getConstructionArmorOptions(entity).find(armor => armor.armorType === 'FERRO_FIBROUS' && armor.techBase === 'Clan')!;
     setConstructionArmorMaterial(entity, ferro);
