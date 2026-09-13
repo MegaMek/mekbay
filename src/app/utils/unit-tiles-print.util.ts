@@ -86,12 +86,12 @@ export async function printUnitTiles(
                     preserveAspectRatio: 'xMidYMid meet', 'clip-path': `url(#${clip.id})`,
                 });
                 tile.appendChild(icon);
-                addText(tile, forceMemberModel(member), 0, 26, { size: 6, anchor: 'middle', maxWidth: 64 });
+                addText(tile, forceMemberModel(member), 0, 26, { size: 6.5, anchor: 'middle', maxWidth: 64 });
                 const chassis = svgElement('g');
                 setAttributes(chassis, { 'text-anchor': 'middle', 'font-weight': 700 });
                 tile.appendChild(chassis);
                 addWrappedText(chassis, formatUnitChassis(forceMemberPresentationUnit(member), nameFormat), 0, 33, 55,
-                    { size: 6.5, lineHeight: 7, maxLines: 2 });
+                    { size: 7, lineHeight: 7.5, maxLines: 2 });
             }
         }
         sheets.push(svg);
