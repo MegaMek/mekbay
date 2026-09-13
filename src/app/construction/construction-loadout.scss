@@ -1237,7 +1237,7 @@ tech-base-badge {
 .warehouse-item.selected .warehouse-equipment::after,
 .unallocated-equipment.placement-selected {
   outline: 2px solid var(--bt-yellow);
-  outline-offset: 2px;
+  outline-offset: 1px;
 }
 
 .warehouse-item.selected .warehouse-equipment::after {
