@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
+import sharp, { type OverlayOptions } from 'sharp';
 import { PORTRAIT_SETS, type PortraitManifest, type PortraitPosition, type PortraitSheet } from '../src/app/models/portrait.model';
 import { writeDeterministicFile } from './lib/deterministic-output';
 import { loadOptionalEnvFile, resolveMmDataRoot } from './lib/script-paths';
@@ -69,7 +69,7 @@ export async function generatePortraitSheets(sourceRoot: string, outputDir: stri
             const page = images.slice(offset, offset + SHEET_CAPACITY);
             const sheet = `${set.toLowerCase()}-${Math.floor(offset / SHEET_CAPACITY) + 1}`;
             const layout = portraitSheetLayout(page.length);
-            const composite: sharp.OverlayOptions[] = [];
+            const composite: OverlayOptions[] = [];
             for (const [index, portrait] of page.entries()) {
                 sourceBytes += fs.statSync(portrait.file).size;
                 const x = (index % layout.columns) * CELL_WIDTH + PADDING;

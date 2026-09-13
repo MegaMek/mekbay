@@ -34,7 +34,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import sharp from 'sharp';
+import sharp, { type OverlayOptions } from 'sharp';
 import { writeDeterministicFile } from './lib/deterministic-output';
 import { loadMeksetAssignments } from './lib/mekset-assignments';
 import { loadOptionalEnvFile, resolveMmDataRoot } from './lib/script-paths';
@@ -195,7 +195,7 @@ async function generateSpriteForType(
 
   console.log(`[SpriteMap] Creating ${unitType} sprite: ${spriteWidth}x${spriteHeight} (${images.length} icons, ${cols}x${rows} grid)`);
 
-  const compositeOps: sharp.OverlayOptions[] = [];
+  const compositeOps: OverlayOptions[] = [];
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i]!;

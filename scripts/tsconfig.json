@@ -2,14 +2,18 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "types": ["node", "js-yaml"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "noPropertyAccessFromIndexSignature": false,
     "noEmit": true
   },
+  "files": [
+    "../src/pako.d.ts",
+    "../src/types/qrcode.d.ts"
+  ],
   "include": [
     "./**/*.ts"
   ]
