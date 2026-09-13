@@ -423,11 +423,11 @@
                                         alt="MekBay Logo"
                                         fetchpriority="high"
                                     />
-                                    @if (!isMainBuild) {
+                                    @if (buildBadgeLabel) {
                                     <span
                                         class="next-badge"
                                         (click)="showNextDialog()"
-                                        >NEXT</span
+                                        >{{ buildBadgeLabel }}</span
                                     >
                                     }
                                 </div>

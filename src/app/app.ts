@@ -31,7 +31,7 @@ import { DialogsService } from './services/dialogs.service';
 import { UnitSearchFiltersService } from './services/unit-search-filters.service';
 import { DomPortal, PortalModule } from '@angular/cdk/portal';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
-import { APP_VERSION_STRING, BUILD_BRANCH } from './build-meta';
+import { APP_VERSION_STRING, BUILD_BADGE_LABEL } from './build-meta';
 import { LoggerService } from './services/logger.service';
 import { isAndroid, isIOS, isRunningStandalone } from './utils/platform.util';
 import { GameService } from './services/game.service';
@@ -128,7 +128,7 @@ export class App {
 
     protected GameSystem = GameSystem;
     protected buildInfo = APP_VERSION_STRING;
-    protected isMainBuild = BUILD_BRANCH === 'main';
+    protected readonly buildBadgeLabel = BUILD_BADGE_LABEL;
     private updateCheckTimeoutId: number | null = null;
     private initialServicesFrameId: number | null = null;
     private initialServicesTimeoutId: number | null = null;
