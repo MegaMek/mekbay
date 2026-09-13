@@ -708,7 +708,7 @@ h2 {
 }
 .workshop-body {
   display: grid;
-  grid-template-columns: clamp(440px, 32vw, 560px) minmax(0, 1fr);
+  grid-template-columns: 400px minmax(0, 1fr);
   min-height: 0;
   flex: 1;
   overflow: hidden;
