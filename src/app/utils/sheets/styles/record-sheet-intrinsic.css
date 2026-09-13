@@ -53,6 +53,10 @@ svg:where(.mekbay-sheet):not(:root),
   fill: #fff;
 }
 
+:where(.mekbay-sheet) .crewHitLabel {
+  pointer-events: none;
+}
+
 :where(.mekbay-sheet) .pip.disabled,
 :where(.mekbay-sheet) .inventoryEntry.disabled {
   opacity: .38;
@@ -60,6 +64,20 @@ svg:where(.mekbay-sheet):not(:root),
 
 :where(.mekbay-sheet) .hidden {
   display: none;
+}
+
+:where(.mekbay-sheet) .crew-vacancy {
+  display: none;
+}
+
+:where(.mekbay-sheet) .crew-frame-vacant > :not(.sheet-frame-decoration):not(.crew-vacancy),
+:where(.mekbay-sheet) .crew-position-vacant > :not(.crew-vacancy) {
+  display: none !important;
+}
+
+:where(.mekbay-sheet) .crew-frame-vacant > .crew-vacancy,
+:where(.mekbay-sheet) .crew-position-vacant > .crew-vacancy {
+  display: inline;
 }
 
 /* Movement controls are live sheet affordances; passive SVGs retain their captions. */

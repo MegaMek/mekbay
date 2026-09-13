@@ -5,7 +5,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
   DestroyRef,
   type ElementRef,
   inject,
@@ -118,8 +117,12 @@ export function getSyntheticCrewSkill(
   const aeroSkill = skillType === 'gunnery' ? 'aeroGunnery' : 'aeroPiloting';
   const skills = [
     ...crew.flatMap((member) =>
-      (skillSet === 'ground' ? [member[skillType]] : skillSet === 'aerospace' ? [member[aeroSkill]]
-        : [member[skillType], member[aeroSkill]]).filter((skill): skill is number => skill !== undefined),
+      (skillSet === 'ground'
+        ? [member[skillType]]
+        : skillSet === 'aerospace'
+          ? [member[aeroSkill]]
+          : [member[skillType], member[aeroSkill]]
+      ).filter((skill): skill is number => skill !== undefined),
     ),
     ...additionalSkills,
   ];
@@ -205,24 +208,26 @@ export class EditPilotDialogComponent {
   }
 
   readonly hasBvPreview = this.data.preSkillBv != null && this.data.skillFacts != null;
-  readonly syntheticGunnery = computed(() =>
-    getSyntheticCrewSkill(this.crewSnapshot(), 'gunnery', this.data.additionalGunnerySkills, this.data.skillSet),
-  );
-  readonly syntheticPiloting = computed(() =>
-    getSyntheticCrewSkill(this.crewSnapshot(), 'piloting', this.data.additionalPilotingSkills, this.data.skillSet),
-  );
-  /** 9x9 BV matrix: matrix[gunnery][piloting] = adjusted BV */
-  bvMatrix = computed<number[][]>(() => {
+  /** Preview changing only the selected skill pair, retaining the other skills. */
+  private buildBvMatrix(skillSet: 'ground' | 'aerospace'): number[][] {
     if (!this.hasBvPreview) return [];
+    const crew = this.crewSnapshot();
+    const gunneryField = skillSet === 'ground' ? 'gunnery' : 'aeroGunnery';
+    const pilotingField = skillSet === 'ground' ? 'piloting' : 'aeroPiloting';
     return SKILL_VALUES.map((gunnery) =>
-      SKILL_VALUES.map((piloting) =>
-        this.calculateBv(
-          Math.min(gunnery, ...(this.data.additionalGunnerySkills ?? [])),
-          Math.min(piloting, ...(this.data.additionalPilotingSkills ?? [])),
-        ),
-      ),
+      SKILL_VALUES.map((piloting) => {
+        const candidateCrew = crew.map((member) => ({
+          ...member,
+          ...(member[gunneryField] === undefined ? {} : { [gunneryField]: gunnery }),
+          ...(member[pilotingField] === undefined || this.data.disablePiloting ? {} : { [pilotingField]: piloting }),
+        }));
+        return this.calculateBv(
+          getSyntheticCrewSkill(candidateCrew, 'gunnery', this.data.additionalGunnerySkills, this.data.skillSet),
+          getSyntheticCrewSkill(candidateCrew, 'piloting', this.data.additionalPilotingSkills, this.data.skillSet),
+        );
+      }),
     );
-  });
+  }
 
   constructor() {
     this.destroyRef.onDestroy(() => {
@@ -288,7 +293,7 @@ export class EditPilotDialogComponent {
     );
   }
 
-  toggleMatrixView(): void {
+  toggleMatrixView(skillSet: 'ground' | 'aerospace'): void {
     this.closeSkillDropdowns();
     this.overlayManager.closeManagedOverlay('skill-matrix');
 
@@ -298,25 +303,26 @@ export class EditPilotDialogComponent {
       closeOnOutsideClick: true,
     });
 
-    componentRef.setInput('matrix', this.bvMatrix());
+    componentRef.setInput('matrix', this.buildBvMatrix(skillSet));
     componentRef.setInput('showBv', this.hasBvPreview);
-    componentRef.setInput('selectedGunnery', this.syntheticGunnery());
-    componentRef.setInput('selectedPiloting', this.syntheticPiloting());
+    const crew = this.crewSnapshot();
+    componentRef.setInput('selectedGunnery', getSyntheticCrewSkill(crew, 'gunnery', [], skillSet));
+    componentRef.setInput('selectedPiloting', getSyntheticCrewSkill(crew, 'piloting', [], skillSet));
 
     outputToObservable(componentRef.instance.selected)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((cell: SkillMatrixCell) => {
-        this.setAllCrewSkills(cell);
+        this.setAllCrewSkills(cell, skillSet);
         this.overlayManager.closeManagedOverlay('skill-matrix');
       });
   }
 
-  setAllCrewSkills(cell: SkillMatrixCell): void {
+  setAllCrewSkills(cell: SkillMatrixCell, skillSet: 'ground' | 'aerospace'): void {
+    const gunneryField = skillSet === 'ground' ? 'gunnery' : 'aeroGunnery';
+    const pilotingField = skillSet === 'ground' ? 'piloting' : 'aeroPiloting';
     for (const member of this.crew) {
-      if (this.showGroundSkills) member.gunnery.set(cell.gunnery);
-      if (this.showAerospaceSkills) member.aeroGunnery?.set(cell.gunnery);
-      if (this.showGroundSkills && !this.data.disablePiloting) member.piloting.set(cell.piloting);
-      if (this.showAerospaceSkills && !this.data.disablePiloting) member.aeroPiloting?.set(cell.piloting);
+      member[gunneryField]?.set(cell.gunnery);
+      if (!this.data.disablePiloting) member[pilotingField]?.set(cell.piloting);
     }
   }
 

@@ -11,7 +11,6 @@
                 <unit-icon [unit]="currentUnit" [size]="56"></unit-icon>
             </div>
             <div class="header-content">
-            @if (currentUnit.isCustom) { <custom-unit-actions [unit]="currentUnit" /> }
                 <div class="header-row reverse-wrap">
                     <div class="header-model allow-select">{{ currentUnit.model }}</div>
                     <div class="header-details">
@@ -125,6 +124,9 @@
                     </button>
                 </div>
                 <unit-construction-button [unit]="currentUnit"></unit-construction-button>
+                @if (currentUnit.isCustom) {
+                    <custom-unit-actions [unit]="currentUnit" />
+                }
                 </ng-container>
         </unit-details-footer>
     </base-panel>

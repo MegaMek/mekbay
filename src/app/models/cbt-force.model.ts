@@ -16,6 +16,8 @@ import { affectedPersonnelUnitIds,planPersonnelCrewEdits } from './cbt-force-per
 import { GameSystem } from './common.model';
 import type { CrewMemberRuntimeState } from './crew-member.model';
 import { asCrewPositionId } from './entity/entity-identifiers';
+import { COCKPIT_CREW_ROLES } from './entity/components/cockpit-data';
+import { isMekEntity } from './entity/utils/entity-type-guards';
 import { forceMemberAdjustedValue,type CBTForceMember,type ForceMember } from './force-member.model';
 import { addForcePerson,assignedForcePerson,assignForcePerson,cloneForcePersonnel,createForcePerson,detachForcePersonnel,EMPTY_FORCE_PERSONNEL,forcePersonnelCrewAssignment,removeUnitPersonnel,restoreForcePersonnelEdit,transferForcePersonnel,updateForcePerson,type ForcePersonnelSnapshot } from './force-personnel';
 import type { SerializedCBTForce,SerializedForce } from './force-serialization';
@@ -1548,7 +1550,9 @@ export class CBTForce extends Force<never> {
         const positions = kind === 'none' ? [] : [...unit.getIndex().crewPositions.values()]
             .sort((left, right) => left.occurrence - right.occurrence)
             .map(position => ({ positionId: position.id as string,
-                label: kind === 'integrated' ? 'Squad' : entity.entityType === 'Mek' && position.occurrence === 0 ? 'Pilot' : 'Crew ' + (position.occurrence + 1) }));
+                label: kind === 'integrated' ? 'Squad' : isMekEntity(entity)
+                    ? COCKPIT_CREW_ROLES[entity.mountedCockpit().crewType][position.occurrence]
+                    : 'Crew ' + (position.occurrence + 1) }));
         return { kind, positions, canEdit, ...(!canEdit ? { reason: 'This force is read-only or no longer active.' } : {}) };
     }
 

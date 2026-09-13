@@ -53,6 +53,25 @@
     }
 }
 
+// unit-block normally uses display: contents; a drop target needs its own bounds.
+unit-block.crew-drop-target {
+    display: block;
+    min-width: 0;
+}
+
+.crew-drop-target.cdk-drop-list-receiving {
+    outline: 1px dashed var(--bt-yellow);
+    outline-offset: -1px;
+}
+
+.crew-drop-target.cdk-drop-list-dragging {
+    background: var(--bt-yellow-background);
+}
+
+.crew-drop-target .cdk-drag-placeholder {
+    display: none;
+}
+
 // Force-level drop list container
 .forces-drop-list {
     display: flex;

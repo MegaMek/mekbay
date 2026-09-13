@@ -508,47 +508,54 @@ export function drawGenericCrewPanel(svg: SVGSVGElement, entity: BaseEntity, box
   const count = Math.max(1, entity.crewSlotCount());
   const rowHeight = Math.max(25, Math.min(43, (box.height - 22) / count));
   for (let occurrence = 0; occurrence < count; occurrence++) {
-    const y = 27 + occurrence * rowHeight;
-    const name = addText(group, '', 9, y, { size: 7.2, weight: 700, maxWidth: box.width - 18 });
+    const position = svgElement('g');
+    setAttributes(position, {
+      transform: `translate(0 ${16 + occurrence * rowHeight})`,
+      'data-mekbay-crew-position': occurrence,
+      'data-mekbay-crew-width': box.width,
+      'data-mekbay-crew-height': rowHeight,
+    });
+    group.appendChild(position);
+    const y = 11;
+    const name = addText(position, '', 9, y, { size: 7.2, weight: 700, maxWidth: box.width - 18 });
     name.id = `crewName${occurrence}`;
     const nameButton = transparentRect(6, y - 10, box.width - 12, 13, 'crewNameButton');
     nameButton.setAttribute('crewId', String(occurrence));
     nameButton.setAttribute('textElement', name.id);
-    group.appendChild(nameButton);
-    addText(group, 'GUNNERY', 9, y + 11, { size: 5.7, weight: 700 });
-    const gunnery = addCrewSkillValue(group, '4', 47, y + 11);
+    position.appendChild(nameButton);
+    addText(position, 'GUNNERY', 9, y + 11, { size: 5.7, weight: 700 });
+    const gunnery = addCrewSkillValue(position, '4', 47, y + 11);
     gunnery.id = `gunnerySkill${occurrence}`;
     const gunButton = transparentRect(39, y + 2, 17, 13, 'crewSkillButton');
     gunButton.setAttribute('crewId', String(occurrence));
     gunButton.setAttribute('skill', 'gunnery');
-    group.appendChild(gunButton);
-    addText(group, 'PILOTING', 60, y + 11, { size: 5.7, weight: 700 });
-    const piloting = addCrewSkillValue(group, '5', 96, y + 11);
+    position.appendChild(gunButton);
+    addText(position, 'PILOTING', 60, y + 11, { size: 5.7, weight: 700 });
+    const piloting = addCrewSkillValue(position, '5', 96, y + 11);
     piloting.id = `pilotingSkill${occurrence}`;
     const pilotButton = transparentRect(90, y + 2, 17, 13, 'crewSkillButton');
     pilotButton.setAttribute('crewId', String(occurrence));
     pilotButton.setAttribute('skill', 'piloting');
-    group.appendChild(pilotButton);
-    const hitStart = Math.max(113, box.width - 50);
-    for (let hit = 1; hit <= 6; hit++) {
-      const pip = circle(hitStart + (hit - 1) * 7, y + 8, 2.4, 'crewHit pip');
-      pip.setAttribute('crewId', String(occurrence));
-      pip.setAttribute('hit', String(hit));
-      group.appendChild(pip);
-    }
+    position.appendChild(pilotButton);
+    drawCrewHitGrid(position, occurrence, {
+      x: 52, y: y + 15, cellWidth: (box.width - 58) / 6,
+      cellHeight: Math.min(7, (rowHeight - 20) / 2),
+      labelX: 6, labelWidth: 44, fontScale: Math.min(7, (rowHeight - 20) / 2) / 9,
+    });
     const state = transparentRect(6, y - 11, box.width - 12, rowHeight - 1, 'crewStateButton');
     state.setAttribute('crewId', String(occurrence));
-    group.appendChild(state);
+    position.insertBefore(state, name);
     const banner = svgElement('g');
     banner.id = `crewState${occurrence}`;
     banner.setAttribute('class', 'crewStateBanner');
     banner.setAttribute('display', 'none');
-    group.appendChild(banner);
+    position.appendChild(banner);
   }
 }
 
+/** The shared wound track; aerospace crews retain their applicable modifier rows. */
 export function drawCrewHitGrid(
-  group: SVGGElement,
+  parent: SVGGElement,
   crewId: number,
   options: {
     readonly x: number;
@@ -558,58 +565,74 @@ export function drawCrewHitGrid(
     readonly labelX: number;
     readonly labelWidth: number;
     readonly fontScale: number;
+    readonly mode?: 'pilot' | 'aero-pilot' | 'vessel-crew';
   },
 ): void {
-  const { x, y, cellWidth, cellHeight, labelX, labelWidth, fontScale } = options;
-  addText(group, 'Hits Taken', labelX + labelWidth, y + cellHeight * 0.72, {
-    size: 5.2 * fontScale,
-    weight: 700,
-    anchor: 'end',
-    maxWidth: labelWidth,
-  });
-  addText(group, 'Consciousness #', labelX + labelWidth, y + cellHeight * 1.72, {
-    size: 4.6 * fontScale,
-    weight: 700,
-    anchor: 'end',
-    maxWidth: labelWidth,
-  });
-  const consciousness = ['3', '5', '7', '10', '11', 'Dead'];
+  const { x, y, cellWidth, cellHeight, labelX, labelWidth, fontScale, mode = 'pilot' } = options;
+  const group = svgElement('g');
+  group.setAttribute('class', 'crew-hit-grid');
+  parent.appendChild(group);
+  const baseline = y + cellHeight * 7 / 9;
   for (let index = 0; index < 6; index++) {
     const cellX = x + index * cellWidth;
     const hit = svgElement('rect');
     setAttributes(hit, {
-      x: cellX,
-      y,
-      width: cellWidth,
-      height: cellHeight,
-      class: 'crewHit pip',
+      x: cellX, y, width: cellWidth, height: cellHeight,
+      class: 'crewHit', fill: '#fff', stroke: 'none',
+      id: `crew_damage_${crewId}_${index + 1}`, crewId, hit: index + 1,
     });
-    hit.setAttribute('crewId', String(crewId));
-    hit.setAttribute('hit', String(index + 1));
     group.appendChild(hit);
-    addText(group, String(index + 1), cellX + cellWidth / 2, y + cellHeight * 0.72, {
-      size: 4.4 * fontScale,
-      anchor: 'middle',
-      class: 'crew-hit-label',
-    }).style.pointerEvents = 'none';
-    const lower = svgElement('rect');
-    setAttributes(lower, {
-      x: cellX,
-      y: y + cellHeight,
-      width: cellWidth,
-      height: cellHeight,
-      fill: '#fff',
-      stroke: '#111',
-      'stroke-width': 0.45,
-      class: 'crew-consciousness-cell',
+    addText(group, String(index + 1), cellX + cellWidth / 2, baseline, {
+      size: 5.8 * fontScale, weight: 700, anchor: 'middle', class: 'crewHitLabel',
     });
-    group.appendChild(lower);
-    addText(group, consciousness[index], cellX + cellWidth / 2, y + cellHeight * 1.72, {
-      size: (index === 5 ? 3.7 : 4.2) * fontScale,
-      anchor: 'middle',
-      maxWidth: cellWidth - 1,
-    }).style.pointerEvents = 'none';
   }
+
+  // Captions, numbers and borders must never intercept a wound-cell click.
+  const decoration = svgElement('g');
+  decoration.setAttribute('pointer-events', 'none');
+  group.appendChild(decoration);
+  const modifiers = ['+1', '+2', '+3', '+4', '+5'];
+  const rows = [
+    { label: 'Hits Taken', values: ['1', '2', '3', '4', '5', '6'] },
+    mode === 'vessel-crew'
+      ? { label: 'Modifier', values: [...modifiers, 'Incp.'] }
+      : { label: 'Consciousness #', values: ['3', '5', '7', '10', '11', 'Dead'] },
+  ];
+  if (mode === 'aero-pilot') rows.push({ label: 'Modifier', values: modifiers });
+  rows.forEach((row, rowIndex) => {
+    const rowBaseline = baseline + rowIndex * cellHeight;
+    addText(decoration, row.label, labelX + labelWidth, rowBaseline, {
+      size: 5.2 * fontScale, weight: 700, anchor: 'end', maxWidth: labelWidth,
+    });
+    if (rowIndex === 0) return;
+    row.values.forEach((value, index) => addText(
+      decoration, value, x + (index + 0.5) * cellWidth, rowBaseline,
+      { size: 5.8 * fontScale, weight: 700, anchor: 'middle', maxWidth: cellWidth - fontScale },
+    ));
+  });
+
+  const right = x + cellWidth * 6;
+  const bottom = y + cellHeight * rows.length;
+  const lastRight = x + cellWidth * rows[rows.length - 1].values.length;
+  const radius = 1.015 * fontScale;
+  const grid = svgElement('path');
+  const step = lastRight < right ? `V ${bottom - cellHeight} H ${lastRight}` : '';
+  setAttributes(grid, {
+    d: `M ${x + radius} ${y} H ${right - radius} Q ${right} ${y} ${right} ${y + radius} ${step}`
+      + ` V ${bottom - radius} Q ${lastRight} ${bottom} ${lastRight - radius} ${bottom}`
+      + ` H ${x + radius} Q ${x} ${bottom} ${x} ${bottom - radius}`
+      + ` V ${y + radius} Q ${x} ${y} ${x + radius} ${y} Z`,
+    fill: 'none', stroke: '#111', 'stroke-width': 0.8 * fontScale,
+  });
+  decoration.appendChild(grid);
+  rows.forEach((row, rowIndex) => {
+    const rowY = y + rowIndex * cellHeight;
+    if (rowIndex > 0) addLine(decoration, x, rowY, x + row.values.length * cellWidth, rowY, '#111', 0.8 * fontScale);
+    for (let divider = 1; divider < row.values.length; divider++) {
+      const dividerX = x + divider * cellWidth;
+      addLine(decoration, dividerX, rowY, dividerX, rowY + cellHeight, '#111', 0.8 * fontScale);
+    }
+  });
 }
 
 export function drawDamagePanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
@@ -722,7 +745,6 @@ interface DiagramHeadingOptions {
   readonly titleWidth?: number;
   readonly titleX?: number;
   readonly titleY?: number;
-  readonly titleTextLength?: number;
   readonly ribbonWidth?: number;
   readonly ribbonX?: number;
   readonly ribbonY?: number;
@@ -754,29 +776,21 @@ export function addDiagramHeading(
     'transform',
     `translate(${formatNumber(options.titleX ?? (width - titleWidth) / 2)} ${formatNumber(options.titleY ?? y)})`,
   );
-  const titleText = titleFrame.querySelector('text');
-  if (titleText && options.titleTextLength !== undefined) {
-    titleText.setAttribute('textLength', formatNumber(options.titleTextLength));
-    titleText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-  }
   group.appendChild(titleFrame);
 
   const ribbonWidth = options.ribbonWidth ?? Math.min(124, width * 0.72);
   const ribbonX = options.ribbonX ?? (width - ribbonWidth) / 2;
   const ribbonY = options.ribbonY ?? y;
   const ribbonCut = options.ribbonCut ?? 5.625;
-  const ribbon = svgElement('polygon');
-  ribbon.setAttribute(
-    'points',
-    `${formatNumber(ribbonX)},${formatNumber(ribbonY + 13)} ` +
-      `${formatNumber(ribbonX + ribbonWidth - ribbonCut)},${formatNumber(ribbonY + 13)} ` +
-      `${formatNumber(ribbonX + ribbonWidth)},${formatNumber(ribbonY + 18.625)} ` +
-      `${formatNumber(ribbonX + ribbonWidth - ribbonCut)},${formatNumber(ribbonY + 24.25)} ` +
-      `${formatNumber(ribbonX)},${formatNumber(ribbonY + 24.25)} ` +
-      `${formatNumber(ribbonX - ribbonCut)},${formatNumber(ribbonY + 18.625)}`,
-  );
-  ribbon.setAttribute('fill', '#c7c7c7');
-  if (options.showSubtitleRibbon !== false) group.appendChild(ribbon);
+  if (options.showSubtitleRibbon !== false) {
+    const ribbon = SvgFrameUtil.createSVGFrameHeader('', ribbonWidth + ribbonCut, {
+      headerHeight: 6.25,
+      headerAngleDegrees: Math.atan2(5.625, ribbonCut) * 180 / Math.PI,
+      headerFill: '#c7c7c7',
+    });
+    ribbon.setAttribute('transform', `translate(${formatNumber(ribbonX - ribbonCut)} ${formatNumber(ribbonY + 13)})`);
+    group.appendChild(ribbon);
+  }
   const subtitleText = addText(group, subtitle, options.subtitleX ?? width / 2, options.subtitleY ?? y + 21.5, {
     size: options.subtitleFontSize ?? 8.6,
     weight: 700,
@@ -970,61 +984,33 @@ export function drawClusterHitsReference(
   presentation: 'auto' | 'full-width' = 'auto',
 ): void {
   const profile = clusterHitsReferenceProfile(box, rackColumns.length, presentation);
-  const group = svgElement('g');
+  const group = addFrame(svg, 'CLUSTER HITS TABLE', box, {
+    fullWidthHeader: true,
+  });
   group.setAttribute('class', 'referenceTable');
-  group.setAttribute(
-    'transform',
-    `translate(${formatNumber(box.x)} ${formatNumber(box.y)}) ` +
-      `scale(${formatNumber(box.width / profile.width)} ${formatNumber(box.height / profile.height)})`,
-  );
   group.setAttribute('data-mekbay-reference', 'cluster-hits');
-  const shadow = svgElement('path');
-  setAttributes(shadow, {
-    d: clusterHitsFramePath(profile.width, profile.height, true),
-    fill: '#c7c7c7',
-    stroke: '#c7c7c7',
-    'stroke-width': 1.6,
-  });
-  group.appendChild(shadow);
-  const outline = svgElement('path');
-  setAttributes(outline, {
-    d: clusterHitsFramePath(profile.width, profile.height, false),
-    fill: '#fff',
-    stroke: '#000',
-    'stroke-width': 1.6,
-  });
-  group.appendChild(outline);
-
-  const header = svgElement('g');
-  header.setAttribute('transform', 'translate(2.5 3)');
-  const ribbon = svgElement('path');
-  ribbon.setAttribute(
-    'd',
-    `M 0 5.625 l 3.749 -5.625 h ${formatNumber(profile.width - 14.95)} ` +
-      'l 3.749 5.625 l -3.749 5.625 h ' +
-      `${formatNumber(-(profile.width - 14.95))} Z`,
-  );
-  header.appendChild(ribbon);
-  addText(header, 'CLUSTER HITS TABLE', (profile.width - 7.452) / 2, 8.438, {
-    size: 6.76,
-    weight: 700,
-    anchor: 'middle',
-    fill: '#fff',
-  });
-  group.appendChild(header);
-
   const table = svgElement('g');
-  table.setAttribute('transform', 'translate(3 22.5)');
+  // Scale grid coordinates, not the text: numbers retain their physical size
+  // and proportions while the frame keeps the utility's standard geometry.
+  const tableTop = 27;
+  const scaleX = box.width / profile.width;
+  const scaleY = (box.height - tableTop) / (profile.height - 22.5);
+  table.setAttribute('transform', `translate(${formatNumber(3 * scaleX)} ${tableTop})`);
   const safeRackCount = Math.max(1, rackColumns.length);
-  const columnWidth = (profile.width - profile.rollColumnX * 2 - 6) / safeRackCount;
-  addText(table, '2D6', profile.rollColumnX, 0, {
-    size: profile.fontSize,
+  const rollColumnX = profile.rollColumnX * scaleX;
+  const columnWidth = (profile.width - profile.rollColumnX * 2 - 6) * scaleX / safeRackCount;
+  const rowHeight = profile.rowHeight * scaleY;
+  const firstShadeY = profile.firstShadeY * scaleY;
+  // Numeral glyphs fit within 0.8 em; reserve that height even in short tables.
+  const fontSize = Math.min(RECORD_SHEET_FONT.body, rowHeight / 0.8);
+  addText(table, '2D6', rollColumnX, 0, {
+    size: fontSize,
     weight: 700,
     anchor: 'middle',
   });
   rackColumns.forEach((rack, index) =>
-    addText(table, String(rack), profile.rollColumnX + (index + 1) * columnWidth, 0, {
-      size: profile.fontSize,
+    addText(table, String(rack), rollColumnX + (index + 1) * columnWidth, 0, {
+      size: fontSize,
       weight: 700,
       anchor: 'middle',
       maxWidth: columnWidth - 1,
@@ -1032,31 +1018,31 @@ export function drawClusterHitsReference(
   );
   for (let roll = 2; roll <= 12; roll++) {
     const rowIndex = roll - 2;
-    const baseline = (rowIndex + 1) * profile.rowHeight;
+    const baseline = firstShadeY + (rowIndex + 0.5) * rowHeight + fontSize * 0.35;
     if (rowIndex % 2 === 0) {
       const shade = svgElement('rect');
       setAttributes(shade, {
-        x: 1,
-        y: profile.firstShadeY + rowIndex * profile.rowHeight,
-        width: profile.width - 11,
-        height: profile.rowHeight,
+        x: scaleX,
+        y: firstShadeY + rowIndex * rowHeight,
+        width: (profile.width - 11) * scaleX,
+        height: rowHeight,
         fill: '#bbb',
         class: 'tableshading',
       });
       table.appendChild(shade);
     }
-    addText(table, String(roll), profile.rollColumnX, baseline, {
-      size: profile.fontSize,
+    addText(table, String(roll), rollColumnX, baseline, {
+      size: fontSize,
       anchor: 'middle',
     });
     rackColumns.forEach((rack, index) => {
       const result = addText(
         table,
         String(clusterHits(roll, rack)),
-        profile.rollColumnX + (index + 1) * columnWidth,
+        rollColumnX + (index + 1) * columnWidth,
         baseline,
         {
-          size: profile.fontSize,
+          size: fontSize,
           anchor: 'middle',
           maxWidth: columnWidth - 1,
         },
@@ -1066,7 +1052,6 @@ export function drawClusterHitsReference(
     });
   }
   group.appendChild(table);
-  svg.appendChild(group);
 }
 
 interface ClusterHitsReferenceProfile {
@@ -1075,7 +1060,6 @@ interface ClusterHitsReferenceProfile {
   readonly rollColumnX: number;
   readonly rowHeight: number;
   readonly firstShadeY: number;
-  readonly fontSize: number;
 }
 
 /** MML uses three responsive geometries for its cluster table. Keeping the
@@ -1093,7 +1077,6 @@ function clusterHitsReferenceProfile(
       rollColumnX: 157.19,
       rowHeight: 7.193,
       firstShadeY: 1.796,
-      fontSize: 5.4,
     };
   }
   if (rackCount >= 15) {
@@ -1103,7 +1086,6 @@ function clusterHitsReferenceProfile(
       rollColumnX: 37.671,
       rowHeight: 9.679,
       firstShadeY: 2.906,
-      fontSize: 5.8,
     };
   }
   if (box.width > 250) {
@@ -1113,7 +1095,6 @@ function clusterHitsReferenceProfile(
       rollColumnX: 39.961,
       rowHeight: 6.979,
       firstShadeY: 1.856,
-      fontSize: 4.9,
     };
   }
   return {
@@ -1122,20 +1103,7 @@ function clusterHitsReferenceProfile(
     rollColumnX: 40.865,
     rowHeight: 5.932,
     firstShadeY: 1.333,
-    fontSize: 4.9,
   };
-}
-
-function clusterHitsFramePath(width: number, height: number, shadow: boolean): string {
-  const x = shadow ? 2 : 0;
-  const top = shadow ? 10.214 : 8.214;
-  const horizontal = width - (shadow ? 12.95 : 13.95);
-  const vertical = height - (shadow ? 18.428 : 19.428);
-  return (
-    `M ${formatNumber(x)} ${formatNumber(top)} l 5.475 -8.214 ` +
-    `h ${formatNumber(horizontal)} l 5.475 8.214 v ${formatNumber(vertical)} ` +
-    `l -5.475 8.214 h ${formatNumber(-horizontal)} l -5.475 -8.214 Z`
-  );
 }
 
 /** Footer text and optional logo, with logo coordinates supplied in physical page space. */
@@ -1264,17 +1232,12 @@ export function drawNotesPanel(svg: SVGSVGElement, box: Box): void {
   for (let y = 35; y < box.height - 8; y += 17) addLine(group, 9, y, box.width - 9, y, '#bbb', 0.45);
 }
 
-interface RecordSheetHeaderProfile {
-  readonly width: number;
-  readonly textLength: number;
-}
-
-const RECORD_SHEET_HEADER_PROFILES: Readonly<Record<string, RecordSheetHeaderProfile>> = Object.freeze({
-  "'MECH DATA": Object.freeze({ width: 75.854, textLength: 59.869 }),
-  'WARRIOR DATA': Object.freeze({ width: 93.635, textLength: 76.034 }),
-  'CRITICAL TABLE': Object.freeze({ width: 93.055, textLength: 75.506 }),
-  'HEAT DATA': Object.freeze({ width: 69.498, textLength: 54.091 }),
-  'GROUND MAP STRAIGHT MOVEMENT': Object.freeze({ width: 178.308, textLength: 150.488 }),
+const RECORD_SHEET_HEADER_WIDTHS: Readonly<Record<string, number>> = Object.freeze({
+  "'MECH DATA": 75.854,
+  'WARRIOR DATA': 93.635,
+  'CRITICAL TABLE': 93.055,
+  'HEAT DATA': 69.498,
+  'GROUND MAP STRAIGHT MOVEMENT': 178.308,
 });
 
 export function addFrame(
@@ -1287,32 +1250,20 @@ export function addFrame(
     Object.keys(options).length > 0
       ? options
       : { cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 } };
-  const headerProfile = RECORD_SHEET_HEADER_PROFILES[title];
-  const resolvedOptions = headerProfile
+  const headerWidth = RECORD_SHEET_HEADER_WIDTHS[title];
+  const resolvedOptions = headerWidth !== undefined
     ? {
         ...defaults,
-        headerWidth: headerProfile.width,
+        headerWidth,
         headerHeight: 10,
         headerFontSize: RECORD_SHEET_FONT.caption,
         headerAngleDegrees: 56.31,
       }
     : defaults;
   const frame = SvgFrameUtil.createSVGFrame(title, box.width, box.height, resolvedOptions);
+  for (const decoration of frame.children) decoration.classList.add('sheet-frame-decoration');
   frame.setAttribute('data-mekbay-frame-width', formatNumber(box.width));
   frame.setAttribute('data-mekbay-frame-height', formatNumber(box.height));
-  if (headerProfile) {
-    const header = Array.from(frame.children).find(
-      (child): child is SVGGElement => child.tagName.toLowerCase() === 'g',
-    );
-    const headerText = header?.querySelector('text');
-    if (header) header.setAttribute('transform', 'translate(2.5 3)');
-    if (headerText) {
-      headerText.setAttribute('x', formatNumber(headerProfile.width / 2));
-      headerText.setAttribute('y', '11.25');
-      headerText.setAttribute('textLength', formatNumber(headerProfile.textLength));
-      headerText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-    }
-  }
   frame.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
   svg.appendChild(frame);
   return frame;

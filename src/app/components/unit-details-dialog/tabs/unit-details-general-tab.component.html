@@ -1,310 +1,464 @@
 <!-- General Tab Content -->
 <div class="tab-content tab-general">
-    <!-- Basic Info -->
-    <div class="basic-info-block allow-select">
-        <div><strong>{{ unit().type }}@if (unit().subtype != unit().type) {
-            <span> - {{ unit().subtype }}</span>
-            } - {{
-        unit().weightClass }}</strong></div>
-        <div>
-            <span class="muted">{{ valueLabel() }}: </span>
-            <strong>{{ displayedValue() }}</strong>
-        </div>
-        @if (!forceMember() && showAdjustedPilotSkills()) {
-            <div><span class="muted">Gunnery / Piloting: </span><strong class="pilot-skill-value">{{ gunnerySkill() }} / {{ pilotingSkill() }}</strong></div>
+  <!-- Basic Info -->
+  <div class="basic-info-block allow-select">
+    <div>
+      <strong
+        >{{ unit().type }}
+        @if (unit().subtype != unit().type) {
+          <span> - {{ unit().subtype }}</span>
         }
-        <div><span class="muted">Rules: </span><strong>{{ unit().level }}</strong></div>
-        <div><span class="muted">Tech: </span><strong>{{ unit()._techBaseDisplay }} | {{ unit().techRating }}</strong></div>
-        @if (unit().year) {
-            <div><span class="muted">Intro Year: </span><strong>{{ unit().year }}</strong>
-            @if (unit()._era?.img) {
-                <img [src]="unit()._era?.img" class="era-icon" title="{{ unit()._era?.name }}" />
-            }
-        </div>
+        - {{ unit().weightClass }}</strong
+      >
+    </div>
+    <div>
+      <span class="muted">{{ valueLabel() }}: </span>
+      <strong>{{ displayedValue() }}</strong>
+    </div>
+    @if (!forceMember() && showAdjustedPilotSkills()) {
+      <div>
+        <span class="muted">Gunnery / Piloting: </span
+        ><strong class="pilot-skill-value">{{ gunnerySkill() }} / {{ pilotingSkill() }}</strong>
+      </div>
     }
-    <div><span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit().cost) }}</strong></div>
+    <div>
+      <span class="muted">Rules: </span><strong>{{ unit().level }}</strong>
+    </div>
+    <div>
+      <span class="muted">Tech: </span><strong>{{ unit()._techBaseDisplay }} | {{ unit().techRating }}</strong>
+    </div>
+    @if (unit().year) {
+      <div>
+        <span class="muted">Intro Year: </span><strong>{{ unit().year }}</strong>
+        @if (unit()._era?.img) {
+          <img [src]="unit()._era?.img" class="era-icon" title="{{ unit()._era?.name }}" />
+        }
+      </div>
+    }
+    <div>
+      <span class="muted">C-Bill Cost: </span><strong>{{ formatThousands(unit().cost) }}</strong>
+    </div>
     @if (unit().armorType) {
-        <div><span class="muted">Armor Type: </span><strong>{{ formatArmorType(unit().armorType) }}</strong>
-    </div>
-}
-@if (unit().structureType) {
-    <div><span class="muted">Structure Type: </span><strong>{{ formatStructureType(unit().structureType)
-}}</strong></div>
-}
-@if (unit().engine) {
-<div><span class="muted">Engine: </span><strong>@if (unit().engineRating) {
-<span>{{
-unit().engineRating }} </span>
-}{{ unit().engine }}</strong></div>
-}
-@if (unit().moveType && unit().moveType != 'None') {
-<div><span class="muted">Motive Type: </span><strong>{{
-unit().moveType }}</strong></div>
-}
-@if (unit().walk || unit().run || unit().jump || unit().umu) {
-<div><span class="muted">Movement: </span>
-<strong>{{ unit().walk }} / {{ unit().run
-}}@if (unit().run2 != unit().run) {
-<span> [{{ unit().run2 }}]</span>
-}
-@if (unit().jump) { / {{ unit().jump }}}
-@if (unit().umu) { / {{ unit().umu }}}
-</strong></div>
-}
-@if (unit().c3 && unit().c3 != 'None') {
-<div><span class="muted">Network: </span><strong>{{ unit().c3 }}</strong></div>
-}
-</div>
-@if (forceMember(); as member) {
-    <force-unit-crew class="instance-crew" [force]="member.force" [unitId]="member.id" layout="cards" [showHealth]="true" />
-}
-@if (unit().quirks && unit().quirks.length > 0) {
-<div class="quirks-block">
-<div class="quirks">
-    <div class="muted">Quirks: </div>
-    @for (quirk of unit().quirks; let i = $index; track i) {
-        <quirk-badge [name]="quirk" [quirk]="getQuirk(quirk)" />
+      <div>
+        <span class="muted">Armor Type: </span><strong>{{ formatArmorType(unit().armorType) }}</strong>
+      </div>
     }
-</div>
-</div>
-}
-<!-- Stat Progress Bars -->
-<div class="stat-bars-columns">
-@for (spec of (unit() | statBarSpecs); let i = $index; track i) {
-<div class="stat-bar-row" [tooltip]="spec.description ?? null">
-    <div class="stat-bar">
-        <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+    @if (unit().structureType) {
+      <div>
+        <span class="muted">Structure Type: </span><strong>{{ formatStructureType(unit().structureType) }}</strong>
+      </div>
+    }
+    @if (unit().engine) {
+      <div>
+        <span class="muted">Engine: </span
+        ><strong>
+          @if (unit().engineRating) {
+            <span>{{ unit().engineRating }} </span>
+          }
+          {{ unit().engine }}</strong
+        >
+      </div>
+    }
+    @if (unit().moveType && unit().moveType != 'None') {
+      <div>
+        <span class="muted">Motive Type: </span><strong>{{ unit().moveType }}</strong>
+      </div>
+    }
+    @if (unit().walk || unit().run || unit().jump || unit().umu) {
+      <div>
+        <span class="muted">Movement: </span>
+        <strong
+          >{{ unit().walk }} / {{ unit().run }}
+          @if (unit().run2 != unit().run) {
+            <span> [{{ unit().run2 }}]</span>
+          }
+          @if (unit().jump) {
+            / {{ unit().jump }}
+          }
+          @if (unit().umu) {
+            / {{ unit().umu }}
+          }
+        </strong>
+      </div>
+    }
+    @if (unit().c3 && unit().c3 != 'None') {
+      <div>
+        <span class="muted">Network: </span><strong>{{ unit().c3 }}</strong>
+      </div>
+    }
+  </div>
+  @if (unit().quirks && unit().quirks.length > 0) {
+    <div class="quirks-block">
+      <div class="quirks">
+        <div class="muted">Quirks:</div>
+        @for (quirk of unit().quirks; let i = $index; track i) {
+          <quirk-badge [name]="quirk" [quirk]="getQuirk(quirk)" />
+        }
+      </div>
     </div>
-    <span class="stat-label">{{ spec.label }}</span>
-    <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
-</div>
-}
-</div>
-<!-- Weapon Type Summary Bar -->
-<div class="type-summary-bar">
-@for (type of typeSummary(); track type.code) {
-<div class="type-summary-rect" [style.border-color]="type.color" [title]="type.name">
-    <div [style.background-color]="type.color" class="icon">
-        <img class="type-icon" [src]="type.img" />
+  }
+  <!-- Stat Progress Bars -->
+  <div class="stat-bars-columns">
+    @for (spec of unit() | statBarSpecs; let i = $index; track i) {
+      <div class="stat-bar-row" [tooltip]="spec.description ?? null">
+        <div class="stat-bar">
+          <div class="stat-bar-fill" [style.width.%]="spec.percent"></div>
+        </div>
+        <span class="stat-label">{{ spec.label }}</span>
+        <span class="stat-value">{{ spec.valueText ?? spec.value }}</span>
+      </div>
+    }
+  </div>
+  @if (forceMember(); as member) {
+    <section class="crew-section" aria-label="Crew">
+      <force-unit-crew
+        class="instance-crew"
+        [force]="member.force"
+        [unitId]="member.id"
+        layout="slots"
+        [showHealth]="true"
+      />
+    </section>
+  }
+  <!-- Weapon Type Summary Bar -->
+  <div class="type-summary-bar">
+    @for (type of typeSummary(); track type.code) {
+      <div class="type-summary-rect" [style.border-color]="type.color" [title]="type.name">
+        <div [style.background-color]="type.color" class="icon">
+          <img class="type-icon" [src]="type.img" />
+        </div>
+        <div class="type-count" [class.empty]="type.count === 0">{{ type.count }}</div>
+      </div>
+    }
+  </div>
+  @if (componentViewModeAvailable()) {
+    <div class="component-view-mode" aria-label="Component view mode">
+      <mode-switch
+        leftLabel="Weapons"
+        rightLabel="Details"
+        [selectedRight]="showFilteredComponents()"
+        ariaLabel="Component view mode"
+        switchAriaLabel="Toggle component details view"
+        (selectedRightChange)="setComponentViewMode($event)"
+      ></mode-switch>
     </div>
-    <div class="type-count" [class.empty]="type.count === 0">{{ type.count }}</div>
-</div>
-}
-</div>
-@if (componentViewModeAvailable()) {
-<div class="component-view-mode" aria-label="Component view mode">
-    <mode-switch leftLabel="Weapons" rightLabel="Details" [selectedRight]="showFilteredComponents()"
-        ariaLabel="Component view mode" switchAriaLabel="Toggle component details view"
-        (selectedRightChange)="setComponentViewMode($event)"></mode-switch>
-</div>
-}
-<!-- Components Grid -->
-<!-- Matrix layout (3x3) when supported and defined for unit.type -->
-@if (componentLayout().mode === 'matrix') {
-<div class="components-matrix" [style.grid-template-areas]="gridAreas()">
-@for (area of matrixAreas(); let i = $index; track area.area) {
-    <div class="component-rect" [style.grid-area]="area.area">
-        <div class="comp-loc" [class.has-case]="area.caseLabel">{{ area.label }}@if (area.caseLabel) {
-            <span class="case-label">{{ area.caseLabel }}</span>
-        }</div>
-        <div class="comp-list">
+  }
+  <!-- Components Grid -->
+  <!-- Matrix layout (3x3) when supported and defined for unit.type -->
+  @if (componentLayout().mode === 'matrix') {
+    <div class="components-matrix" [style.grid-template-areas]="gridAreas()">
+      @for (area of matrixAreas(); let i = $index; track area.area) {
+        <div class="component-rect" [style.grid-area]="area.area">
+          <div class="comp-loc" [class.has-case]="area.caseLabel">
+            {{ area.label }}
+            @if (area.caseLabel) {
+              <span class="case-label">{{ area.caseLabel }}</span>
+            }
+          </div>
+          <div class="comp-list">
             <!-- Bays (matrix) -->
             @if (area.bays.length > 0) {
-                <div class="bay">
-                    @for (bay of area.bays; let i = $index; track i) {
-                        <unit-component-item [unit]="unit()" [comp]="bay" [damaged]="isComponentDestroyed(bay)" displayStyle="small"></unit-component-item>
-                    }
-                </div>
-            } @else {
-                <!-- Normal components (matrix) -->
-                @for (comp of area.components; let i = $index; track i) {
-                    <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
+              <div class="bay">
+                @for (bay of area.bays; let i = $index; track i) {
+                  <unit-component-item
+                    [unit]="unit()"
+                    [comp]="bay"
+                    [damaged]="isComponentDestroyed(bay)"
+                    displayStyle="small"
+                  ></unit-component-item>
                 }
+              </div>
+            } @else {
+              <!-- Normal components (matrix) -->
+              @for (comp of area.components; let i = $index; track i) {
+                <unit-component-item
+                  [unit]="unit()"
+                  [comp]="comp"
+                  [damaged]="isComponentDestroyed(comp)"
+                  [displayStyle]="getComponentDisplayStyle(comp)"
+                ></unit-component-item>
+              }
             }
+          </div>
         </div>
+      }
     </div>
-}
-</div>
-} @else {
-<!-- Non-matrix layouts -->
-@if (componentLayout().mode === 'bays') {
-<div class="components-container">
-@for (group of groupedBays(); let i = $index; track group.l) {
-    <div class="component-rect">
-        <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">[</span>}{{ group.l }}@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">]</span>}</div>
-        <div class="bay">
-            @for (bay of group.bays; let j = $index; track j) {
-                <unit-component-item [unit]="unit()" [comp]="bay" [damaged]="isComponentDestroyed(bay)" displayStyle="small"></unit-component-item>
-            }
-        </div>
-    </div>
-}
-</div>
-} @else {
-<div class="components-container">
-@if (componentLayout().mode === 'phoneGrouped') {
-@for (group of componentLocationGroups(); let i = $index; track group.key) {
-    <div class="component-rect">
-        <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">[</span>}{{ group.l }}@if (getCaseLabel(group.l); as caseType) {<span class="case-bracket">]</span>}</div>
-        <div class="comp-list">
-            @for (comp of group.components; let j = $index; track j) {
-                <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
-            }
-        </div>
-    </div>
-}
-} @else {
-@for (comp of components(); let i = $index; track i) {
-    <div class="component-rect" [class.additional-component-rect]="isAdditionalComponent(comp)">
-        <div class="comp-loc" [class.has-case]="getCaseLabel(comp.l)">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span>}{{ comp.l }}@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">]</span>}</div>
-        <div class="comp-list">
-            <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" [displayStyle]="getComponentDisplayStyle(comp)"></unit-component-item>
-        </div>
-    </div>
-}
-}
-</div>
-}
-}
-@if (componentLayout().showAmmoSummary) {
-@if ((conditionComponents() | filterAmmo); as ammoList) {
-@if (ammoList.length > 0) {
-<div class="ammo-list"><span class="info-label muted">Ammo: </span>
-@for (comp of ammoList; let last = $last; let i = $index; track i) {
-    <span class="ammo-entry">@if (getCaseLabel(comp.l); as caseType) {<span class="case-bracket">[</span><unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" displayStyle="text"></unit-component-item><span class="case-bracket">]</span>} @else {<unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" displayStyle="text"></unit-component-item>}@if(!last){,&#32;}</span>
-}
-</div>
-}
-}
-}
-@if (componentLayout().showAdditionalSummary && additionalComponentSummary().length > 0) {
-<div class="additional-components-list" [class.weapons-additional-components-list]="!showFilteredComponents()"><span class="info-label muted">Additional components: </span>
-@for (comp of additionalComponentSummary(); let last = $last; let i = $index; track i) {
-    <span class="additional-components-entry" [class.destroyed-entry]="isComponentDestroyed(comp)">
-        @if (additionalComponentSummaryInteractive()) {
-            <unit-component-item [unit]="unit()" [comp]="comp" [damaged]="isComponentDestroyed(comp)" displayStyle="text"></unit-component-item>
+  } @else {
+    <!-- Non-matrix layouts -->
+    @if (componentLayout().mode === 'bays') {
+      <div class="components-container">
+        @for (group of groupedBays(); let i = $index; track group.l) {
+          <div class="component-rect">
+            <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">
+              @if (getCaseLabel(group.l); as caseType) {
+                <span class="case-bracket">[</span>
+              }
+              {{ group.l }}
+              @if (getCaseLabel(group.l); as caseType) {
+                <span class="case-bracket">]</span>
+              }
+            </div>
+            <div class="bay">
+              @for (bay of group.bays; let j = $index; track j) {
+                <unit-component-item
+                  [unit]="unit()"
+                  [comp]="bay"
+                  [damaged]="isComponentDestroyed(bay)"
+                  displayStyle="small"
+                ></unit-component-item>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="components-container">
+        @if (componentLayout().mode === 'phoneGrouped') {
+          @for (group of componentLocationGroups(); let i = $index; track group.key) {
+            <div class="component-rect">
+              <div class="comp-loc" [class.has-case]="getCaseLabel(group.l)">
+                @if (getCaseLabel(group.l); as caseType) {
+                  <span class="case-bracket">[</span>
+                }
+                {{ group.l }}
+                @if (getCaseLabel(group.l); as caseType) {
+                  <span class="case-bracket">]</span>
+                }
+              </div>
+              <div class="comp-list">
+                @for (comp of group.components; let j = $index; track j) {
+                  <unit-component-item
+                    [unit]="unit()"
+                    [comp]="comp"
+                    [damaged]="isComponentDestroyed(comp)"
+                    [displayStyle]="getComponentDisplayStyle(comp)"
+                  ></unit-component-item>
+                }
+              </div>
+            </div>
+          }
         } @else {
+          @for (comp of components(); let i = $index; track i) {
+            <div class="component-rect" [class.additional-component-rect]="isAdditionalComponent(comp)">
+              <div class="comp-loc" [class.has-case]="getCaseLabel(comp.l)">
+                @if (getCaseLabel(comp.l); as caseType) {
+                  <span class="case-bracket">[</span>
+                }
+                {{ comp.l }}
+                @if (getCaseLabel(comp.l); as caseType) {
+                  <span class="case-bracket">]</span>
+                }
+              </div>
+              <div class="comp-list">
+                <unit-component-item
+                  [unit]="unit()"
+                  [comp]="comp"
+                  [damaged]="isComponentDestroyed(comp)"
+                  [displayStyle]="getComponentDisplayStyle(comp)"
+                ></unit-component-item>
+              </div>
+            </div>
+          }
+        }
+      </div>
+    }
+  }
+  @if (componentLayout().showAmmoSummary) {
+    @if (conditionComponents() | filterAmmo; as ammoList) {
+      @if (ammoList.length > 0) {
+        <div class="ammo-list">
+          <span class="info-label muted">Ammo: </span>
+          @for (comp of ammoList; let last = $last; let i = $index; track i) {
+            <span class="ammo-entry">
+              @if (getCaseLabel(comp.l); as caseType) {
+                <span class="case-bracket">[</span
+                ><unit-component-item
+                  [unit]="unit()"
+                  [comp]="comp"
+                  [damaged]="isComponentDestroyed(comp)"
+                  displayStyle="text"
+                ></unit-component-item
+                ><span class="case-bracket">]</span>
+              } @else {
+                <unit-component-item
+                  [unit]="unit()"
+                  [comp]="comp"
+                  [damaged]="isComponentDestroyed(comp)"
+                  displayStyle="text"
+                ></unit-component-item>
+              }
+              @if (!last) {
+                ,&#32;
+              }
+            </span>
+          }
+        </div>
+      }
+    }
+  }
+  @if (componentLayout().showAdditionalSummary && additionalComponentSummary().length > 0) {
+    <div class="additional-components-list" [class.weapons-additional-components-list]="!showFilteredComponents()">
+      <span class="info-label muted">Additional components: </span>
+      @for (comp of additionalComponentSummary(); let last = $last; let i = $index; track i) {
+        <span class="additional-components-entry" [class.destroyed-entry]="isComponentDestroyed(comp)">
+          @if (additionalComponentSummaryInteractive()) {
+            <unit-component-item
+              [unit]="unit()"
+              [comp]="comp"
+              [damaged]="isComponentDestroyed(comp)"
+              displayStyle="text"
+            ></unit-component-item>
+          } @else {
             {{ comp.q }}×{{ comp.n }}
+          }
+        </span>
+        @if (!last) {
+          ,&#32;
         }
-    </span>@if(!last){,&#32;}
-}
-</div>
-}
-@if (unit().capital; as capital) {
-  @if (capital.gravDecks && capital.gravDecks.length > 0) {
-<div class="grav-list allow-select">
-<span class="muted">Grav Decks: </span>
-@for (deck of capital.gravDecks; let last = $last; let i = $index; track i) {
-    <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>@if (!last) {, }
-}
-</div>
-}
-}
-@if (unit().cargo; as cargo) {
-  @if (cargo.length > 0) {
-<div class="cargo-container allow-select">
-<span class="info-label muted">Cargo: </span>
-<div class="cargo-list">
-@for (cargoItem of cargo; let last = $last; let i = $index; track i) {
-    <span class="cargo-box">
-        <div class="cargo-caption">Bay {{ cargoItem.n }}:</div>
-        <div class="cargo-content">{{ cargoItem.type }} ({{ cargoItem.capacity }})</div>
-        <div class="cargo-doors">({{ cargoItem.doors }} door{{ cargoItem.doors !== 1 ? 's' : '' }})</div>
-    </span>
-}
-</div>
-</div>
-}
-}@if (features().length > 0) {
-<div class="features-list allow-select">
-<span class="muted">Features: </span>
-@for (feature of features(); let last = $last; let i = $index; track i) {
-    <span class="feature-item">{{ feature }}</span>@if (!last) {, }
-}
-</div>
-}
-<div class="spanner"></div>
-<div class="bottom-info allow-select">
-<div class="bottom-left">
-@if (sourceList().length > 0) {
-<span class="label muted">Sources:</span>
-@for (src of sourceList(); let index = $index; track index) {
-<span class="source-entry">
-@if (src.title) {
-<a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
-@if (src.sourceAnnotations.length > 0) {
-&nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
-}
-} @else {
-<span>{{ src.abbrev }}</span>
-@if (src.sourceAnnotations.length > 0) {
-&nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
-}
-}
-</span>
-}
-}
-@if (forcePacks().length > 0) {
-<span class="label muted">Force Packs: </span>
-@for (pack of forcePacks(); let i = $index; track i) {
-    <span>{{ pack }}</span>
-}
-}
-@if (rulesRefBadgeGroups().length > 0) {
-<span class="label muted">Rulebooks:</span>
-<div class="rules-ref-badges">
-@for (badgeGroup of visibleRulesRefBadgeGroups(); let groupIndex = $index; track groupIndex) {
-    @if (groupIndex > 0) {
-        <span class="rules-ref-operator">||</span>
-    }
-    <span class="rules-ref-bucket">
-    @for (badge of badgeGroup; let badgeIndex = $index; track badge.label) {
-        @if (badgeIndex > 0) {
-            <span class="rules-ref-operator">+</span>
+      }
+    </div>
+  }
+  @if (unit().capital; as capital) {
+    @if (capital.gravDecks && capital.gravDecks.length > 0) {
+      <div class="grav-list allow-select">
+        <span class="muted">Grav Decks: </span>
+        @for (deck of capital.gravDecks; let last = $last; let i = $index; track i) {
+          <span class="deck-entry">Deck #{{ i + 1 }} ({{ deck }}-meters)</span>
+          @if (!last) {
+            ,
+          }
         }
-        <span class="rules-ref-badge" [class.base-rules-ref]="badge.isBase">{{ badge.label }}</span>
+      </div>
     }
-    </span>
-}
-@if (hasHiddenRulesRefBadgeGroups()) {
-    <span class="rules-ref-operator">||</span>
-    <button type="button" class="rules-ref-more" (click)="showAllRulesRefBadgeGroups()"
-        aria-label="Show all rulebook alternatives">(more...)</button>
-}
-</div>
-}
-</div>
-<div class="bottom-right">
-@if (sarnaWikiUrl(); as wikiUrl) {
-<a class="sarna-link" target="_BLANK" rel="noopener noreferrer" [href]="wikiUrl" [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unitNames.chassis(unit()))">
-    <img class="sarna-logo" src="/images/sarna.png" alt="Sarna">
-    SARNA
-</a>
-}
-@if ((unit().mul1id ?? 0) > 0) {
-<span class="label muted">MUL ID: </span><a
-class="mul-link" target=_BLANK href="http://masterunitlist.info/Unit/Details/{{unit().mul1id}}">{{
-unit().mul1id }}</a>
-}
-</div>
-</div>
+  }
+  @if (unit().cargo; as cargo) {
+    @if (cargo.length > 0) {
+      <div class="cargo-container allow-select">
+        <span class="info-label muted">Cargo: </span>
+        <div class="cargo-list">
+          @for (cargoItem of cargo; let last = $last; let i = $index; track i) {
+            <span class="cargo-box">
+              <div class="cargo-caption">Bay {{ cargoItem.n }}:</div>
+              <div class="cargo-content">{{ cargoItem.type }} ({{ cargoItem.capacity }})</div>
+              <div class="cargo-doors">({{ cargoItem.doors }} door{{ cargoItem.doors !== 1 ? 's' : '' }})</div>
+            </span>
+          }
+        </div>
+      </div>
+    }
+  }
+  @if (features().length > 0) {
+    <div class="features-list allow-select">
+      <span class="muted">Features: </span>
+      @for (feature of features(); let last = $last; let i = $index; track i) {
+        <span class="feature-item">{{ feature }}</span>
+        @if (!last) {
+          ,
+        }
+      }
+    </div>
+  }
+  <div class="spanner"></div>
+  <div class="bottom-info allow-select">
+    <div class="bottom-left">
+      @if (sourceList().length > 0) {
+        <span class="label muted">Sources:</span>
+        @for (src of sourceList(); let index = $index; track index) {
+          <span class="source-entry">
+            @if (src.title) {
+              <a class="source-link" (click)="openSourcebooksDialog(index)">{{ src.title }}</a>
+              @if (src.sourceAnnotations.length > 0) {
+                &nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
+              }
+            } @else {
+              <span>{{ src.abbrev }}</span>
+              @if (src.sourceAnnotations.length > 0) {
+                &nbsp;<span class="source-note">({{ src.sourceAnnotations.join(', ') }})</span>
+              }
+            }
+          </span>
+        }
+      }
+      @if (forcePacks().length > 0) {
+        <span class="label muted">Force Packs: </span>
+        @for (pack of forcePacks(); let i = $index; track i) {
+          <span>{{ pack }}</span>
+        }
+      }
+      @if (rulesRefBadgeGroups().length > 0) {
+        <span class="label muted">Rulebooks:</span>
+        <div class="rules-ref-badges">
+          @for (badgeGroup of visibleRulesRefBadgeGroups(); let groupIndex = $index; track groupIndex) {
+            @if (groupIndex > 0) {
+              <span class="rules-ref-operator">||</span>
+            }
+            <span class="rules-ref-bucket">
+              @for (badge of badgeGroup; let badgeIndex = $index; track badge.label) {
+                @if (badgeIndex > 0) {
+                  <span class="rules-ref-operator">+</span>
+                }
+                <span class="rules-ref-badge" [class.base-rules-ref]="badge.isBase">{{ badge.label }}</span>
+              }
+            </span>
+          }
+          @if (hasHiddenRulesRefBadgeGroups()) {
+            <span class="rules-ref-operator">||</span>
+            <button
+              type="button"
+              class="rules-ref-more"
+              (click)="showAllRulesRefBadgeGroups()"
+              aria-label="Show all rulebook alternatives"
+            >
+              (more...)
+            </button>
+          }
+        </div>
+      }
+    </div>
+    <div class="bottom-right">
+      @if (sarnaWikiUrl(); as wikiUrl) {
+        <a
+          class="sarna-link"
+          target="_BLANK"
+          rel="noopener noreferrer"
+          [href]="wikiUrl"
+          [title]="'Open Sarna wiki page for ' + (sarnaPageTitle() || unitNames.chassis(unit()))"
+        >
+          <img class="sarna-logo" src="/images/sarna.png" alt="Sarna" />
+          SARNA
+        </a>
+      }
+      @if ((unit().mul1id ?? 0) > 0) {
+        <span class="label muted">MUL ID: </span
+        ><a class="mul-link" target="_BLANK" href="http://masterunitlist.info/Unit/Details/{{ unit().mul1id }}">{{
+          unit().mul1id
+        }}</a>
+      }
+    </div>
+  </div>
 </div>
 
 @if (unit().loadIssues.length) {
-<div class="unit-load-issues-footer">
+  <div class="unit-load-issues-footer">
     <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
-        <button class="unit-load-issues-toggle" type="button" (click)="toggleLoadIssues()"
-            [attr.aria-expanded]="loadIssuesOpen()">
-            <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
-            <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
-        </button>
-        @if (loadIssuesOpen()) {
+      <button
+        class="unit-load-issues-toggle"
+        type="button"
+        (click)="toggleLoadIssues()"
+        [attr.aria-expanded]="loadIssuesOpen()"
+      >
+        <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
+        <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
+      </button>
+      @if (loadIssuesOpen()) {
         <ul class="unit-load-issues-list allow-select">
-            @for (issue of unit().loadIssues; track $index) {
-            <li><strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong> {{ issue.message }}</li>
-            }
+          @for (issue of unit().loadIssues; track $index) {
+            <li>
+              <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong> {{ issue.message }}
+            </li>
+          }
         </ul>
-        }
+      }
     </section>
-</div>
+  </div>
 }

@@ -21,7 +21,8 @@ import { CrewCardComponent, type CrewLayout } from './crew-card.component';
             </div>
             <div class="reserve-list" [class.cards]="layout() === 'cards'" [class.compact]="layout() === 'compact'"
                 cdkDropList [id]="dropId" [cdkDropListConnectedTo]="connectedLists()" [cdkDropListDisabled]="!canEdit()"
-                [cdkDropListSortingDisabled]="true" [cdkDropListEnterPredicate]="canDrop" (cdkDropListDropped)="drop($event)">
+                [cdkDropListOrientation]="layout() === 'rows' ? 'vertical' : 'mixed'"
+                [cdkDropListEnterPredicate]="canDrop" (cdkDropListDropped)="drop($event)">
                 @for (person of people(); track person.id) {
                     <crew-card [force]="force()" [person]="person" [layout]="layout()" [canEdit]="canEdit()" [canMove]="canEdit()"
                         (edited)="crew.edit(force(), person.id)" (deleted)="crew.delete(force(), person.id)" />
@@ -35,8 +36,9 @@ import { CrewCardComponent, type CrewLayout } from './crew-card.component';
         .reserve-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
         .count { color: var(--text-color-secondary); margin-left: 6px; }
         .add { font-size: .75em; padding: 4px 8px; margin-left: auto; }
-        .reserve-list { display: flex; flex-direction: column; gap: 5px; min-height: 4px; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+        .reserve-list { display: flex; flex-direction: column; gap: 4px; min-height: 36px; }
+        .cards { flex-flow: row wrap; gap: 8px; }
+        .cards crew-card { flex: 0 1 280px; max-width: 280px; }
         .compact { display: flex; flex-flow: row wrap; }
         .compact { gap: 2px; }
         .compact crew-card { flex: 0 0 36px; }
@@ -51,9 +53,8 @@ export class ForceReserveCrewComponent {
     readonly people = computed(() => this.crew.reserves(this.force()));
     readonly hasReserves = computed(() => this.people().length > 0);
     readonly canEdit = computed(() => this.force().canEditPersonnel());
-    readonly connectedLists = computed(() => [...this.crew.connectedDropLists(this.force())]);
-    readonly canDrop = (drag: CdkDrag<CrewDragData>): boolean => this.canEdit()
-        && drag.data?.kind === 'force-person' && drag.data.force === this.force();
+    readonly connectedLists = computed(() => [...this.crew.connectedDropLists()]);
+    readonly canDrop = (drag: CdkDrag<CrewDragData>): boolean => this.crew.canDropPerson(drag.data, this.force());
 
     constructor() {
         effect(onCleanup => {
@@ -62,6 +63,7 @@ export class ForceReserveCrewComponent {
     }
 
     drop(event: CdkDragDrop<unknown, unknown, CrewDragData>): void {
-        if (this.canDrop(event.item)) void this.crew.moveToReserves(this.force(), event.item.data.personId);
+        if (event.isPointerOverContainer && this.canDrop(event.item))
+            void this.crew.dropInReserves(this.force(), event.item.data, event.currentIndex);
     }
 }

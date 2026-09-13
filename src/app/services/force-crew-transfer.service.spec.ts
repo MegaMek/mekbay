@@ -127,6 +127,7 @@ describe('ForceCrewTransferService cross-system conversion', () => {
             { name: 'Commander', piloting: 7, health: { wounds: 4, unconscious: true, ejected: false } },
         ]);
         const stations = unit.force.getUnitCrewProfile(unit.id)!.positions;
+        expect(unit.force.getUnitCrewPolicy(unit.id).positions.map(position => position.label)).toEqual(['Pilot', 'Commander']);
         const first = unit.force.getAssignedPerson(unit.id, stations[0].positionId)!;
         const second = unit.force.getAssignedPerson(unit.id, stations[1].positionId)!;
         expect(await unit.force.assignPersonToUnit(first.id, unit.id, stations[1].positionId)).toBeTrue();
@@ -180,6 +181,56 @@ describe('ForceCrewTransferService cross-system conversion', () => {
         expect(target.force.getUnitSnapshot(target.id)!.query.crewState(crew[0].positionId).wounds).toBe(1);
         expect(target.force.getUnitSnapshot(target.id)!.query.remainingArmor(faceId)).toBe(originalArmor);
         expect(target.force.personnel().people.length).toBe(1);
+    });
+
+    it('persists reserve sorting in AS and CBT without changing assigned people', async () => {
+        for (const unit of [createAlphaStrikeUnit(), await createClassicUnit()]) {
+            const force = unit.force;
+            const assignments = force.personnel().assignments;
+            const assigned = [...force.personnel().people];
+            const first = force.addUnassignedPerson({ name: 'First' })!;
+            const second = force.addUnassignedPerson({ name: 'Second' })!;
+            const third = force.addUnassignedPerson({ name: 'Third' })!;
+            expect(await force.reorderReservePerson(third.id, 0)).toBeTrue();
+            expect(force.personnel().people).toEqual([...assigned, third, first, second]);
+            expect(force.personnel().assignments).toBe(assignments);
+            expect(await force.reorderReservePerson(third.id, 2)).toBeTrue();
+            expect((await force.serializeForPersistence()).personnel!.people).toEqual([...assigned, first, second, third]);
+            expect(await force.reorderReservePerson(assigned[0].id, 0)).toBeFalse();
+        }
+    });
+
+    it('moves reserves between AS and CBT owners with the same identity and personal facts', async () => {
+        const source = createAlphaStrikeUnit().force;
+        const target = (await createClassicUnit()).force;
+        const person = source.addUnassignedPerson({ name: 'Transfer', portrait: 'Doctor_M_8',
+            gunnery: 2, piloting: 3, aeroGunnery: 1, aeroPiloting: 2, notes: 'Notes', commander: true,
+            abilities: ['ace'], health: { wounds: 2, unconscious: false, ejected: false } })!;
+        const sourceAssignments = source.personnel().assignments;
+        const targetAssignments = target.personnel().assignments;
+        expect(source.transferReservePersonTo(target, person.id)).toBeTrue();
+        expect(source.personnel().people.some(candidate => candidate.id === person.id)).toBeFalse();
+        expect(target.personnel().people.find(candidate => candidate.id === person.id)).toBe(person);
+        expect(source.personnel().assignments).toEqual(sourceAssignments);
+        expect(target.personnel().assignments).toBe(targetAssignments);
+        expect((await target.serializeForPersistence()).personnel!.people).toContain(person);
+        expect(source.transferReservePersonTo(target, person.id)).toBeFalse();
+        expect(target.transferReservePersonTo(source, person.id)).toBeTrue();
+        expect(source.personnel().people.filter(candidate => candidate.id === person.id)).toEqual([person]);
+        expect(target.personnel().people.some(candidate => candidate.id === person.id)).toBeFalse();
+    });
+
+    it('rejects transfers of assigned crew and transfers involving read-only owners without changes', async () => {
+        const source = createAlphaStrikeUnit().force;
+        const target = (await createClassicUnit()).force;
+        const reserve = source.addUnassignedPerson({ name: 'Reserve' })!;
+        const beforeSource = source.personnel();
+        const beforeTarget = target.personnel();
+        expect(source.transferReservePersonTo(target, beforeSource.assignments[0].personId)).toBeFalse();
+        spyOn(target, 'canEditPersonnel').and.returnValue(false);
+        expect(source.transferReservePersonTo(target, reserve.id)).toBeFalse();
+        expect(source.personnel()).toBe(beforeSource);
+        expect(target.personnel()).toBe(beforeTarget);
     });
 
     it('does not allocate people when preparing a detached AS replacement', async () => {

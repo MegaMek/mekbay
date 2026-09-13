@@ -37,6 +37,7 @@ import { ForceRadarPanelComponent } from '../force-radar-panel/force-radar-panel
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { ForceUnitCrewComponent } from '../force-crew/force-unit-crew.component';
 import { ForceReserveCrewComponent } from '../force-crew/force-reserve-crew.component';
+import { CrewDropTargetDirective } from '../force-crew/crew-drop-target.directive';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 import type { TagClickEvent } from '../unit-tags/unit-tags.component';
 import { AbilityInfoDialogComponent, type AbilityInfoDialogData } from '../ability-info-dialog/ability-info-dialog.component';
@@ -113,6 +114,7 @@ export const DEFAULT_OVERVIEW_STATE: OverviewState = {
         ForceRadarPanelComponent,
         ForceUnitCrewComponent,
         ForceReserveCrewComponent,
+        CrewDropTargetDirective,
         UnitIconComponent,
         DataTableComponent,
         TooltipDirective,

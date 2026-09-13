@@ -3,10 +3,10 @@
 
 import type { BaseEntity } from '../../models/entity/base-entity';
 import {
-    isAeroEntity,
-    isMekEntity,
-    isProtoMekEntity,
-    isVehicleEntity,
+  isAeroEntity,
+  isMekEntity,
+  isProtoMekEntity,
+  isVehicleEntity,
 } from '../../models/entity/utils/entity-type-guards';
 import { isDroneOperatingSystemEquipment } from '../../models/drone-operating-system.model';
 import { MEK_UNIT_CONDITION_CONTROLS } from '../../models/mek-record-sheet-controls';
@@ -14,24 +14,18 @@ import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import { gameRulesFor } from '../../models/rules/game-rules';
 import {
-    NARC_CONDITION_COLOR,
-    UNIT_CONDITION_DEFINITIONS,
-    unitConditionControls,
-    type UnitConditionControl,
+  NARC_CONDITION_COLOR,
+  UNIT_CONDITION_DEFINITIONS,
+  unitConditionControls,
+  type UnitConditionControl,
 } from '../../models/unit-status-presentation';
-import {
-    addText,
-    readViewBox,
-    setAttributes,
-    svgElement,
-    transparentRect,
-} from './record-sheet-svg-rendering';
+import { addText, readViewBox, setAttributes, svgElement, transparentRect } from './record-sheet-svg-rendering';
 import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 export interface GeneratedRecordSheetControlOptions {
-    readonly ruleset?: CBTRuleset;
-    readonly fluffImageUrl?: string | null;
+  readonly ruleset?: CBTRuleset;
+  readonly fluffImageUrl?: string | null;
 }
 
 const UNIT_CONDITION_BANNER_FADE_WIDTH = 48;
@@ -43,604 +37,634 @@ let unitConditionBannerFadeMaskSequence = 0;
  * This is the sole record-sheet control contract; the generated sheet owns it natively.
  */
 export function renderGeneratedRecordSheetControls(
-    svg: SVGSVGElement,
-    entity: BaseEntity,
-    options: GeneratedRecordSheetControlOptions = {},
+  svg: SVGSVGElement,
+  entity: BaseEntity,
+  options: GeneratedRecordSheetControlOptions = {},
 ): void {
-    const ruleset = options.ruleset ?? 'total-warfare';
-    appendUnitConditionPresentation(svg, generatedUnitConditionControls(entity, ruleset));
-    appendMovementPresentation(svg, entity);
-    appendCrewStateMenuIndicators(svg, entity);
-    applyRecordSheetPipMaterials(svg, entity);
-    appendPipHitAreas(svg);
-    appendPaperdollRandomHitButtons(svg, entity);
-    appendGeneratedFluffImage(svg, entity, options.fluffImageUrl);
+  const ruleset = options.ruleset ?? 'total-warfare';
+  appendUnitConditionPresentation(svg, generatedUnitConditionControls(entity, ruleset));
+  appendMovementPresentation(svg, entity);
+  appendCrewStateMenuIndicators(svg, entity);
+  appendCrewVacancyPresentation(svg);
+  applyRecordSheetPipMaterials(svg, entity);
+  appendPipHitAreas(svg);
+  appendPaperdollRandomHitButtons(svg, entity);
+  appendGeneratedFluffImage(svg, entity, options.fluffImageUrl);
 }
 
 export function generatedUnitConditionControls(
-    entity: BaseEntity,
-    ruleset: CBTRuleset = 'total-warfare',
+  entity: BaseEntity,
+  ruleset: CBTRuleset = 'total-warfare',
 ): readonly UnitConditionControl[] {
-    if (isMekEntity(entity)) return MEK_UNIT_CONDITION_CONTROLS;
-    if (!isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return [];
+  if (isMekEntity(entity)) return MEK_UNIT_CONDITION_CONTROLS;
+  if (!isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return [];
 
-    const drone = entity.equipment().some(mount => isDroneOperatingSystemEquipment(mount.equipment));
-    const keys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
-    if (gameRulesFor(ruleset).supportsSkidding) keys.push('skidding');
-    keys.push('jammed');
-    if (drone) keys.push('disconnected');
-    return unitConditionControls(keys);
+  const drone = entity.equipment().some((mount) => isDroneOperatingSystemEquipment(mount.equipment));
+  const keys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
+  if (gameRulesFor(ruleset).supportsSkidding) keys.push('skidding');
+  keys.push('jammed');
+  if (drone) keys.push('disconnected');
+  return unitConditionControls(keys);
 }
 
-function appendUnitConditionPresentation(
-    svg: SVGSVGElement,
-    controls: readonly UnitConditionControl[],
-): void {
-    appendConditionButtons(svg, controls);
-    appendConditionBanners(svg);
+function appendUnitConditionPresentation(svg: SVGSVGElement, controls: readonly UnitConditionControl[]): void {
+  appendConditionButtons(svg, controls);
+  appendConditionBanners(svg);
 }
 
-function appendConditionButtons(
-    svg: SVGSVGElement,
-    controls: readonly UnitConditionControl[],
-): void {
-    const buttons = [
-        ...controls
-            .filter(control => control.placement === 'button')
-            .map(control => ({
-                key: control.key,
-                label: control.label,
-                color: control.color,
-                width: Math.max(30, control.label.length * 5.5),
-            })),
-        ...(controls.some(control => control.placement === 'menu')
-            ? [{ key: 'menu', label: '...', color: '#666', width: 14 }]
-            : []),
-    ];
-    if (buttons.length === 0) return;
+function appendConditionButtons(svg: SVGSVGElement, controls: readonly UnitConditionControl[]): void {
+  const buttons = [
+    ...controls
+      .filter((control) => control.placement === 'button')
+      .map((control) => ({
+        key: control.key,
+        label: control.label,
+        color: control.color,
+        width: Math.max(30, control.label.length * 5.5),
+      })),
+    ...(controls.some((control) => control.placement === 'menu')
+      ? [{ key: 'menu', label: '...', color: '#666', width: 14 }]
+      : []),
+  ];
+  if (buttons.length === 0) return;
 
-    const type = svg.getElementById('type');
-    const panel = type?.closest<SVGGElement>('[data-mekbay-frame-width]') ?? null;
-    const parent: SVGElement = panel ?? svg;
-    const viewBox = readViewBox(svg);
-    const panelWidth = Number(panel?.dataset['mekbayFrameWidth']) || viewBox.width;
-    const gap = 2;
-    const height = 12;
-    const totalWidth = buttons.reduce((sum, button) => sum + button.width, 0)
-        + gap * Math.max(0, buttons.length - 1);
-    let x = panelWidth - totalWidth - 16;
-    const y = panel ? (isGeneratedMek(svg) ? -0.5 : 2) : 54;
+  const type = svg.getElementById('type');
+  const panel = type?.closest<SVGGElement>('[data-mekbay-frame-width]') ?? null;
+  const parent: SVGElement = panel ?? svg;
+  const viewBox = readViewBox(svg);
+  const panelWidth = Number(panel?.dataset['mekbayFrameWidth']) || viewBox.width;
+  const gap = 2;
+  const height = 12;
+  const totalWidth = buttons.reduce((sum, button) => sum + button.width, 0) + gap * Math.max(0, buttons.length - 1);
+  let x = panelWidth - totalWidth - 16;
+  const y = panel ? 3 : 54;
 
-    const wrapper = svgElement('g');
-    wrapper.id = 'unit_condition_wrapper';
-    wrapper.setAttribute('class', 'screen-only unitConditionWrapper');
-    for (const button of buttons) {
-        const group = svgElement('g');
-        group.id = `unit_condition_button_${button.key}`;
-        group.setAttribute('class', 'unitConditionButton');
-        group.setAttribute('condition', button.key);
-        group.setAttribute('active-color', button.color);
-        group.style.setProperty('--unit-condition-active-color', button.color);
-        const rect = svgElement('rect');
-        setAttributes(rect, {
-            x,
-            y,
-            width: button.width,
-            height,
-            fill: '#fff',
-            stroke: '#000',
-            'stroke-width': 1.2,
-        });
-        const label = addText(group, button.label, x + button.width / 2, y + height / 2 + 0.5, {
-            size: 6.5,
-            weight: 700,
-            anchor: 'middle',
-            class: 'conditionText no-autocolor',
-        });
-        label.setAttribute('dominant-baseline', 'middle');
-        group.insertBefore(rect, label);
-        wrapper.appendChild(group);
-        x += button.width + gap;
-    }
-    parent.appendChild(wrapper);
+  const wrapper = svgElement('g');
+  wrapper.id = 'unit_condition_wrapper';
+  wrapper.setAttribute('class', 'screen-only unitConditionWrapper');
+  for (const button of buttons) {
+    const group = svgElement('g');
+    group.id = `unit_condition_button_${button.key}`;
+    group.setAttribute('class', 'unitConditionButton');
+    group.setAttribute('condition', button.key);
+    group.setAttribute('active-color', button.color);
+    group.style.setProperty('--unit-condition-active-color', button.color);
+    const rect = svgElement('rect');
+    setAttributes(rect, {
+      x,
+      y,
+      width: button.width,
+      height,
+      fill: '#fff',
+      stroke: '#000',
+      'stroke-width': 1.2,
+    });
+    const label = addText(group, button.label, x + button.width / 2, y + height / 2 + 0.5, {
+      size: 6.5,
+      weight: 700,
+      anchor: 'middle',
+      class: 'conditionText no-autocolor',
+    });
+    label.setAttribute('dominant-baseline', 'middle');
+    group.insertBefore(rect, label);
+    wrapper.appendChild(group);
+    x += button.width + gap;
+  }
+  parent.appendChild(wrapper);
 }
 
 function appendConditionBanners(svg: SVGSVGElement): void {
-    const viewBox = readViewBox(svg);
-    const bannerX = viewBox.x;
-    const bannerY = viewBox.y + 7;
-    const defs = directDefs(svg);
-    const fadeMaskSequence = ++unitConditionBannerFadeMaskSequence;
-    const fadeMasks = new Map<boolean, string>();
-    const wrapper = svgElement('g');
-    wrapper.id = 'condition_banner_wrapper';
-    wrapper.setAttribute('class', 'screen-only unitConditionBannerWrapper');
+  const viewBox = readViewBox(svg);
+  const bannerX = viewBox.x;
+  const bannerY = viewBox.y + 7;
+  const defs = directDefs(svg);
+  const fadeMaskSequence = ++unitConditionBannerFadeMaskSequence;
+  const fadeMasks = new Map<boolean, string>();
+  const wrapper = svgElement('g');
+  wrapper.id = 'condition_banner_wrapper';
+  wrapper.setAttribute('class', 'screen-only unitConditionBannerWrapper');
 
-    for (const condition of UNIT_CONDITION_DEFINITIONS) {
-        const width = condition.important ? 270 : 200;
-        const height = condition.important ? 32 : 24;
-        const fontSize = (condition.important ? 32 : 24) * (condition.bannerFontScaling || 1);
-        const important = condition.important === true;
-        let maskId = fadeMasks.get(important);
-        if (maskId === undefined) {
-            maskId = `generated_condition_banner_fade_${fadeMaskSequence}_${important ? 'important' : 'normal'}`;
-            appendConditionFadeMask(defs, maskId, bannerX, bannerY, width, height);
-            fadeMasks.set(important, maskId);
-        }
-        const banner = svgElement('g');
-        banner.id = `unit_condition_banner_${condition.key}`;
-        banner.setAttribute('class', 'unitConditionBanner no-autocolor');
-        banner.setAttribute('condition', condition.key);
-        banner.setAttribute('condition-color', condition.color);
-        banner.setAttribute('transform', 'translate(0 0)');
-        banner.setAttribute('display', 'none');
-
-        const background = svgElement('rect');
-        setAttributes(background, {
-            x: bannerX,
-            y: bannerY,
-            width,
-            height,
-            fill: condition.color,
-            mask: `url(#${maskId})`,
-            class: 'unitConditionBannerRect',
-        });
-        const label = addText(
-            banner,
-            condition.bannerLabel ?? condition.label,
-            bannerX + 6,
-            bannerY + height / 2 + 2,
-            {
-                size: fontSize,
-                weight: 700,
-                fill: condition.bannerTextColor ?? '#fff',
-                class: 'unitConditionBannerText',
-            },
-        );
-        label.setAttribute('dominant-baseline', 'middle');
-        label.setAttribute('font-family', 'Roboto, sans-serif');
-        label.setAttribute('font-weight', 'bold');
-        label.setAttribute('text-anchor', 'start');
-        banner.insertBefore(background, label);
-        wrapper.appendChild(banner);
+  for (const condition of UNIT_CONDITION_DEFINITIONS) {
+    const width = condition.important ? 270 : 200;
+    const height = condition.important ? 32 : 24;
+    const fontSize = (condition.important ? 32 : 24) * (condition.bannerFontScaling || 1);
+    const important = condition.important === true;
+    let maskId = fadeMasks.get(important);
+    if (maskId === undefined) {
+      maskId = `generated_condition_banner_fade_${fadeMaskSequence}_${important ? 'important' : 'normal'}`;
+      appendConditionFadeMask(defs, maskId, bannerX, bannerY, width, height);
+      fadeMasks.set(important, maskId);
     }
-    svg.appendChild(wrapper);
+    const banner = svgElement('g');
+    banner.id = `unit_condition_banner_${condition.key}`;
+    banner.setAttribute('class', 'unitConditionBanner no-autocolor');
+    banner.setAttribute('condition', condition.key);
+    banner.setAttribute('condition-color', condition.color);
+    banner.setAttribute('transform', 'translate(0 0)');
+    banner.setAttribute('display', 'none');
+
+    const background = svgElement('rect');
+    setAttributes(background, {
+      x: bannerX,
+      y: bannerY,
+      width,
+      height,
+      fill: condition.color,
+      mask: `url(#${maskId})`,
+      class: 'unitConditionBannerRect',
+    });
+    const label = addText(banner, condition.bannerLabel ?? condition.label, bannerX + 6, bannerY + height / 2 + 2, {
+      size: fontSize,
+      weight: 700,
+      fill: condition.bannerTextColor ?? '#fff',
+      class: 'unitConditionBannerText',
+    });
+    label.setAttribute('dominant-baseline', 'middle');
+    label.setAttribute('font-family', 'Roboto, sans-serif');
+    label.setAttribute('font-weight', 'bold');
+    label.setAttribute('text-anchor', 'start');
+    banner.insertBefore(background, label);
+    wrapper.appendChild(banner);
+  }
+  svg.appendChild(wrapper);
 }
 
 function appendConditionFadeMask(
-    defs: SVGDefsElement,
-    id: string,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
+  defs: SVGDefsElement,
+  id: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
 ): void {
-    const mask = svgElement('mask');
-    mask.id = id;
-    setAttributes(mask, { maskUnits: 'userSpaceOnUse', x, y, width, height });
+  const mask = svgElement('mask');
+  mask.id = id;
+  setAttributes(mask, { maskUnits: 'userSpaceOnUse', x, y, width, height });
 
-    const solidArea = svgElement('rect');
-    setAttributes(solidArea, { x, y, width, height, fill: '#fff' });
-    mask.appendChild(solidArea);
+  const solidArea = svgElement('rect');
+  setAttributes(solidArea, { x, y, width, height, fill: '#fff' });
+  mask.appendChild(solidArea);
 
-    const fadeWidth = Math.min(UNIT_CONDITION_BANNER_FADE_WIDTH, width);
-    const fadeStart = x + width - fadeWidth;
-    const stripeExtension = fadeWidth;
-    const firstStripeX = fadeStart - height - UNIT_CONDITION_BANNER_FADE_STRIPE_GAP;
-    const lastStripeX = x + width + height + UNIT_CONDITION_BANNER_FADE_STRIPE_GAP;
-    for (let stripeX = firstStripeX;
-        stripeX <= lastStripeX;
-        stripeX += UNIT_CONDITION_BANNER_FADE_STRIPE_GAP) {
-        const progress = Math.max(0, Math.min(1, (stripeX + height - fadeStart) / fadeWidth));
-        if (progress <= 0) continue;
+  const fadeWidth = Math.min(UNIT_CONDITION_BANNER_FADE_WIDTH, width);
+  const fadeStart = x + width - fadeWidth;
+  const stripeExtension = fadeWidth;
+  const firstStripeX = fadeStart - height - UNIT_CONDITION_BANNER_FADE_STRIPE_GAP;
+  const lastStripeX = x + width + height + UNIT_CONDITION_BANNER_FADE_STRIPE_GAP;
+  for (let stripeX = firstStripeX; stripeX <= lastStripeX; stripeX += UNIT_CONDITION_BANNER_FADE_STRIPE_GAP) {
+    const progress = Math.max(0, Math.min(1, (stripeX + height - fadeStart) / fadeWidth));
+    if (progress <= 0) continue;
 
-        const stripe = svgElement('path');
-        setAttributes(stripe, {
-            d: `M ${stripeX - stripeExtension} ${y + height + stripeExtension} L ${stripeX + height + stripeExtension} ${y - stripeExtension}`,
-            stroke: '#000',
-            'stroke-width': (0.4 + progress * 4.8).toFixed(2),
-            'stroke-linecap': 'butt',
-        });
-        mask.appendChild(stripe);
-    }
+    const stripe = svgElement('path');
+    setAttributes(stripe, {
+      d: `M ${stripeX - stripeExtension} ${y + height + stripeExtension} L ${stripeX + height + stripeExtension} ${y - stripeExtension}`,
+      stroke: '#000',
+      'stroke-width': (0.4 + progress * 4.8).toFixed(2),
+      'stroke-linecap': 'butt',
+    });
+    mask.appendChild(stripe);
+  }
 
-    defs.appendChild(mask);
+  defs.appendChild(mask);
 }
 
 function directDefs(svg: SVGSVGElement): SVGDefsElement {
-    const existing = Array.from(svg.children)
-        .find(child => child.tagName.toLowerCase() === 'defs') as SVGDefsElement | undefined;
-    if (existing) return existing;
-    const defs = svgElement('defs');
-    svg.insertBefore(defs, svg.firstChild);
-    return defs;
+  const existing = Array.from(svg.children).find((child) => child.tagName.toLowerCase() === 'defs') as
+    SVGDefsElement | undefined;
+  if (existing) return existing;
+  const defs = svgElement('defs');
+  svg.insertBefore(defs, svg.firstChild);
+  return defs;
 }
 
 function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): void {
-    const lam = isMekEntity(entity) && entity.chassisConfig === 'LAM';
-    const secondaryMode: MotiveModes = entity.umuMP() > 0 ? 'UMU'
-        : entity.motiveType() === 'VTOL' && entity.unitType() !== 'VTOL' ? 'VTOL' : 'jump';
-    const movements: { id: string; mode: MotiveModes; airborne?: boolean }[] = [
-        { id: 'mpWalk', mode: 'walk', ...(lam ? { airborne: false } : {}) },
-        { id: 'mpRun', mode: 'run', ...(lam ? { airborne: false } : {}) },
-        { id: svg.getElementById('mpJump') ? 'mpJump' : 'mp_2', mode: secondaryMode },
-        { id: 'mpGround', mode: 'walk' },
-        { id: 'mpAirMekWalk', mode: 'walk', airborne: false },
-        { id: 'mpAirMekRun', mode: 'run', airborne: false },
-        { id: 'mpAirMekCruise', mode: 'walk', airborne: true },
-        { id: 'mpAirMekFlank', mode: 'run', airborne: true },
-        { id: 'mpSafeThrust', mode: 'walk', airborne: true },
-        { id: 'mpMaxThrust', mode: 'run', airborne: true },
-        { id: 'mpCruise', mode: 'walk' },
-        { id: 'mpFlank', mode: 'run' },
-    ];
-    const caption = svg.getElementById('movementPointsLabel');
-    if (caption) {
-        const stationary = caption.cloneNode(true) as SVGTextElement;
-        stationary.id = 'mpStationary';
-        stationary.textContent = 'Stationary';
-        stationary.removeAttribute('textLength');
-        stationary.removeAttribute('lengthAdjust');
-        stationary.setAttribute('class', 'movementStationary screen-only');
-        stationary.setAttribute('display', 'none');
-        caption.after(stationary);
-        movements.push({ id: stationary.id, mode: 'stationary' });
+  const lam = isMekEntity(entity) && entity.chassisConfig === 'LAM';
+  const secondaryMode: MotiveModes =
+    entity.umuMP() > 0 ? 'UMU' : entity.motiveType() === 'VTOL' && entity.unitType() !== 'VTOL' ? 'VTOL' : 'jump';
+  const movements: { id: string; mode: MotiveModes; airborne?: boolean }[] = [
+    { id: 'mpWalk', mode: 'walk', ...(lam ? { airborne: false } : {}) },
+    { id: 'mpRun', mode: 'run', ...(lam ? { airborne: false } : {}) },
+    { id: svg.getElementById('mpJump') ? 'mpJump' : 'mp_2', mode: secondaryMode },
+    { id: 'mpGround', mode: 'walk' },
+    { id: 'mpAirMekWalk', mode: 'walk', airborne: false },
+    { id: 'mpAirMekRun', mode: 'run', airborne: false },
+    { id: 'mpAirMekCruise', mode: 'walk', airborne: true },
+    { id: 'mpAirMekFlank', mode: 'run', airborne: true },
+    { id: 'mpSafeThrust', mode: 'walk', airborne: true },
+    { id: 'mpMaxThrust', mode: 'run', airborne: true },
+    { id: 'mpCruise', mode: 'walk' },
+    { id: 'mpFlank', mode: 'run' },
+  ];
+  const caption = svg.getElementById('movementPointsLabel');
+  if (caption) {
+    const stationary = caption.cloneNode(true) as SVGTextElement;
+    stationary.id = 'mpStationary';
+    stationary.textContent = 'Stationary';
+    stationary.removeAttribute('textLength');
+    stationary.removeAttribute('lengthAdjust');
+    stationary.setAttribute('class', 'movementStationary screen-only');
+    stationary.setAttribute('display', 'none');
+    caption.after(stationary);
+    movements.push({ id: stationary.id, mode: 'stationary' });
+  }
+  for (const movement of movements) {
+    const value = svg.getElementById(movement.id) as SVGTextElement | null;
+    if (!value || value.getAttribute('aria-hidden') === 'true') continue;
+    const preceding = value.previousElementSibling;
+    // Some layouts put movement values next to each other, without separate labels.
+    // Preserve their IDs: those IDs also join the runtime values and controls.
+    const label =
+      movement.mode === 'stationary'
+        ? value
+        : ((svg.getElementById(`${movement.id}-label`) as SVGTextElement | null) ??
+          (preceding?.tagName === 'text' && !preceding.id && !preceding.hasAttribute('data-mekbay-move-mode')
+            ? (preceding as SVGTextElement)
+            : value));
+    if (!label || label.tagName !== 'text') continue;
+    if (label !== value) label.id = `${movement.id}-label`;
+    value.classList.add('movementType');
+    label.classList.add('movementType');
+    value.setAttribute('data-mekbay-move-mode', movement.mode);
+    if (movement.airborne !== undefined) value.setAttribute('data-mekbay-move-airborne', String(movement.airborne));
+    const parent = value.parentElement as SVGElement | null;
+    if (!parent) continue;
+    const valueX = Number(value.getAttribute('x')) || 0;
+    const valueY = Number(value.getAttribute('y')) || 0;
+    const fontSize = Number(value.getAttribute('font-size')) || 7.5;
+    if ((lam || (isVehicleEntity(entity) && entity.jumpMP() > 0)) && movement.mode !== 'stationary') {
+      value.setAttribute('data-mekbay-move-value-width', String(fontSize * 1.45));
     }
-    for (const movement of movements) {
-        const value = svg.getElementById(movement.id) as SVGTextElement | null;
-        if (!value || value.getAttribute('aria-hidden') === 'true') continue;
-        const preceding = value.previousElementSibling;
-        // Some layouts put movement values next to each other, without separate labels.
-        // Preserve their IDs: those IDs also join the runtime values and controls.
-        const label = movement.mode === 'stationary' ? value
-            : svg.getElementById(`${movement.id}-label`) as SVGTextElement | null
-                ?? (preceding?.tagName === 'text' && !preceding.id
-                    && !preceding.hasAttribute('data-mekbay-move-mode') ? preceding as SVGTextElement : value);
-        if (!label || label.tagName !== 'text') continue;
-        if (label !== value) label.id = `${movement.id}-label`;
-        value.classList.add('movementType');
-        label.classList.add('movementType');
-        value.setAttribute('data-mekbay-move-mode', movement.mode);
-        if (movement.airborne !== undefined) value.setAttribute('data-mekbay-move-airborne', String(movement.airborne));
-        const parent = value.parentElement as SVGElement | null;
-        if (!parent) continue;
-        const valueX = Number(value.getAttribute('x')) || 0;
-        const valueY = Number(value.getAttribute('y')) || 0;
-        const fontSize = Number(value.getAttribute('font-size')) || 7.5;
-        if ((lam || (isVehicleEntity(entity) && entity.jumpMP() > 0)) && movement.mode !== 'stationary') {
-            value.setAttribute('data-mekbay-move-value-width', String(fontSize * 1.45));
-        }
-        const labelX = Number(label.getAttribute('x')) || 0;
-        const badgeWidth = fontSize * 1.35;
-        // First-column modifiers straddle the frame; secondary movement columns
-        // (LAM modes, jumping vehicles) keep their badges beside their labels.
-        const frameX = Number(parent.getAttribute('data-mekbay-movement-frame-x'));
-        const badgeX = labelX < fontSize * 2 ? frameX - badgeWidth / 2
-            : labelX - badgeWidth - fontSize * .15;
-        const control = svgElement('g');
-        control.setAttribute('class', 'movementControl screen-only');
-        control.setAttribute('data-mekbay-movement-control', movement.id);
-        control.setAttribute('display', 'none');
-        const end = label === value ? labelX + fontSize * 5
-            : valueX + fontSize * (value.getAttribute('text-anchor') === 'middle' ? .6 : 1.2);
-        control.appendChild(transparentRect(badgeX, valueY - fontSize,
-            end - badgeX, fontSize * 1.2, 'movementHitArea'));
-        const badgeGroup = svgElement('g');
-        badgeGroup.setAttribute('class', 'movementModifier no-autocolor');
-        badgeGroup.setAttribute('display', 'none');
-        const badge = svgElement('rect');
-        badge.id = `${movement.id}-turnState-move-rect`;
-        setAttributes(badge, {
-            x: badgeX,
-            y: valueY - fontSize,
-            width: badgeWidth,
-            height: fontSize * 1.15,
-            fill: '#000',
-        });
-        badgeGroup.appendChild(badge);
-        // The binder supplies rule-derived modifiers from the unit runtime.
-        addText(badgeGroup, '', badgeX + badgeWidth / 2, valueY - fontSize * .05, {
-            size: fontSize * .9,
-            weight: 700,
-            fill: '#fff',
-            anchor: 'middle',
-        });
-        control.appendChild(badgeGroup);
-        parent.appendChild(control);
+    const labelX = Number(label.getAttribute('x')) || 0;
+    const badgeWidth = fontSize * 1.35;
+    // First-column modifiers straddle the frame; secondary movement columns
+    // (LAM modes, jumping vehicles) keep their badges beside their labels.
+    const frameX = Number(parent.getAttribute('data-mekbay-movement-frame-x'));
+    const badgeX = labelX < fontSize * 2 ? frameX - badgeWidth / 2 : labelX - badgeWidth - fontSize * 0.15;
+    const control = svgElement('g');
+    control.setAttribute('class', 'movementControl screen-only');
+    control.setAttribute('data-mekbay-movement-control', movement.id);
+    control.setAttribute('display', 'none');
+    const end =
+      label === value
+        ? labelX + fontSize * 5
+        : valueX + fontSize * (value.getAttribute('text-anchor') === 'middle' ? 0.6 : 1.2);
+    control.appendChild(transparentRect(badgeX, valueY - fontSize, end - badgeX, fontSize * 1.2, 'movementHitArea'));
+    const badgeGroup = svgElement('g');
+    badgeGroup.setAttribute('class', 'movementModifier no-autocolor');
+    badgeGroup.setAttribute('display', 'none');
+    const badge = svgElement('rect');
+    badge.id = `${movement.id}-turnState-move-rect`;
+    setAttributes(badge, {
+      x: badgeX,
+      y: valueY - fontSize,
+      width: badgeWidth,
+      height: fontSize * 1.15,
+      fill: '#000',
+    });
+    badgeGroup.appendChild(badge);
+    // The binder supplies rule-derived modifiers from the unit runtime.
+    addText(badgeGroup, '', badgeX + badgeWidth / 2, valueY - fontSize * 0.05, {
+      size: fontSize * 0.9,
+      weight: 700,
+      fill: '#fff',
+      anchor: 'middle',
+    });
+    control.appendChild(badgeGroup);
+    parent.appendChild(control);
 
-        if (!isMekEntity(entity) || !['mpRun', 'mpJump', 'mp_2'].includes(movement.id)) continue;
-        const warning = addText(
-            parent,
-            lam ? '!!!' : 'PSR!',
-            lam ? badgeX - fontSize * 1.15 : valueX + 14,
-            valueY,
-            { size: 7, weight: 700, class: 'movePsrWarning movementType screen-only' },
-        );
-        warning.id = `${movement.id}-psr-warning`;
-        warning.setAttribute('display', 'none');
-    }
+    if (!isMekEntity(entity) || !['mpRun', 'mpJump', 'mp_2'].includes(movement.id)) continue;
+    const warning = addText(parent, lam ? '!!!' : 'PSR!', lam ? badgeX - fontSize * 1.15 : valueX + 14, valueY, {
+      size: 7,
+      weight: 700,
+      class: 'movePsrWarning movementType screen-only',
+    });
+    warning.id = `${movement.id}-psr-warning`;
+    warning.setAttribute('display', 'none');
+  }
+}
+
+function appendCrewVacancyPresentation(svg: SVGSVGElement): void {
+  const frames = new Map<SVGGElement, Set<string>>();
+  svg.querySelectorAll<SVGElement>('.crewNameButton[crewId], .crewSkillButton[crewId]').forEach(control => {
+    const frame = control.closest<SVGGElement>('[data-mekbay-frame-width]');
+    if (!frame) return;
+    const occurrences = frames.get(frame) ?? new Set<string>();
+    occurrences.add(control.getAttribute('crewId')!);
+    frames.set(frame, occurrences);
+  });
+  for (const [frame, occurrences] of frames) {
+    frame.setAttribute('data-mekbay-crew-stations', [...occurrences].join(' '));
+    appendCrewVacancyLabel(frame, [...occurrences][0], Number(frame.dataset['mekbayFrameWidth']),
+      Number(frame.dataset['mekbayFrameHeight']), 18);
+  }
+  svg.querySelectorAll<SVGGElement>('[data-mekbay-crew-position]').forEach(position => {
+    appendCrewVacancyLabel(position, position.dataset['mekbayCrewPosition']!,
+      Number(position.dataset['mekbayCrewWidth']), Number(position.dataset['mekbayCrewHeight']), 0);
+  });
+}
+
+function appendCrewVacancyLabel(parent: SVGGElement, occurrence: string, width: number, height: number, top: number): void {
+  const label = svgElement('g');
+  setAttributes(label, { class: 'crew-vacancy crewNameButton', crewId: occurrence, 'aria-label': 'Vacant crew station' });
+  label.appendChild(transparentRect(3, top, width - 6, height - top - 3, ''));
+  const text = addText(label, 'VACANT', width / 2, (top + height - 3) / 2, {
+    size: Math.min(12, (height - top) / 2), weight: 700, anchor: 'middle', maxWidth: width - 12,
+  });
+  text.setAttribute('dominant-baseline', 'central');
+  parent.appendChild(label);
 }
 
 function appendCrewStateMenuIndicators(svg: SVGSVGElement, entity: BaseEntity): void {
-    const drone = entity.equipment().some(mount => isDroneOperatingSystemEquipment(mount.equipment));
-    const hasCrewStateControls = isMekEntity(entity) || isProtoMekEntity(entity)
-        || isVehicleEntity(entity) && !drone;
-    if (!hasCrewStateControls) return;
+  const drone = entity.equipment().some((mount) => isDroneOperatingSystemEquipment(mount.equipment));
+  const hasCrewStateControls = isMekEntity(entity) || isProtoMekEntity(entity) || (isVehicleEntity(entity) && !drone);
+  if (!hasCrewStateControls) return;
 
-    const occurrences = new Set<string>();
-    svg.querySelectorAll<SVGElement>('[id^="pilotName"], [id^="crewName"]').forEach(name => {
-        const match = /^(?:pilotName|crewName)(\d+)$/u.exec(name.id);
-        if (match) occurrences.add(match[1]);
+  const occurrences = new Set<string>();
+  svg.querySelectorAll<SVGElement>('[id^="pilotName"], [id^="crewName"]').forEach((name) => {
+    const match = /^(?:pilotName|crewName)(\d+)$/u.exec(name.id);
+    if (match) occurrences.add(match[1]);
+  });
+  svg.querySelectorAll<SVGElement>('.crewStateButton[crewId]').forEach((control) => {
+    const occurrence = control.getAttribute('crewId');
+    if (occurrence !== null) occurrences.add(occurrence);
+  });
+  for (const occurrence of occurrences) {
+    if (svg.getElementById(`generated_crew_state_menu_${occurrence}`)) continue;
+    const name = svg.getElementById(`pilotName${occurrence}`) ?? svg.getElementById(`crewName${occurrence}`);
+    if (!name) continue;
+    const parent = name.parentElement as SVGElement | null;
+    if (!parent) continue;
+    const frame = name.closest<SVGGElement>('[data-mekbay-frame-width]');
+    const width = Number(frame?.dataset['mekbayFrameWidth']) || 145.6;
+    const nameY = Number(name.getAttribute('y')) || 12;
+    const control = svgElement('g');
+    control.id = `generated_crew_state_menu_${occurrence}`;
+    control.setAttribute('class', 'crewStateButton unitConditionButton screen-only edit-only');
+    control.setAttribute('crewId', occurrence);
+    control.setAttribute('data-mekbay-control-id', 'menu');
+    const x = Math.max(0, width - 16);
+    const rect = transparentRect(x, nameY - 8, 10, 10, 'crew-state-menu-hit-area');
+    rect.setAttribute('fill', '#fff');
+    rect.setAttribute('stroke', '#000');
+    rect.setAttribute('stroke-width', '0.72');
+    const text = addText(control, '...', x + 5, nameY - 2.5, {
+      size: 6.5,
+      weight: 700,
+      anchor: 'middle',
+      class: 'conditionText no-autocolor',
     });
-    svg.querySelectorAll<SVGElement>('.crewStateButton[crewId]').forEach(control => {
-        const occurrence = control.getAttribute('crewId');
-        if (occurrence !== null) occurrences.add(occurrence);
-    });
-    for (const occurrence of occurrences) {
-        if (svg.getElementById(`generated_crew_state_menu_${occurrence}`)) continue;
-        const name = svg.getElementById(`pilotName${occurrence}`)
-            ?? svg.getElementById(`crewName${occurrence}`);
-        if (!name) continue;
-        const parent = name.parentElement as SVGElement | null;
-        if (!parent) continue;
-        const frame = name.closest<SVGGElement>('[data-mekbay-frame-width]');
-        const width = Number(frame?.dataset['mekbayFrameWidth']) || 145.6;
-        const nameY = Number(name.getAttribute('y')) || 12;
-        const control = svgElement('g');
-        control.id = `generated_crew_state_menu_${occurrence}`;
-        control.setAttribute('class', 'crewStateButton unitConditionButton screen-only edit-only');
-        control.setAttribute('crewId', occurrence);
-        control.setAttribute('data-mekbay-control-id', 'menu');
-        const x = Math.max(0, width - 16);
-        const rect = transparentRect(x, nameY - 8, 10, 10, 'crew-state-menu-hit-area');
-        rect.setAttribute('fill', '#fff');
-        rect.setAttribute('stroke', '#000');
-        rect.setAttribute('stroke-width', '0.72');
-        const text = addText(control, '...', x + 5, nameY - 2.5, {
-            size: 6.5,
-            weight: 700,
-            anchor: 'middle',
-            class: 'conditionText no-autocolor',
-        });
-        control.insertBefore(rect, text);
-        parent.appendChild(control);
-        ensureGeneratedCrewStateBanners(svg, parent, occurrence, x - 64, nameY - 8);
-    }
+    control.insertBefore(rect, text);
+    parent.appendChild(control);
+    ensureGeneratedCrewStateBanners(svg, parent, occurrence, x - 64, nameY - 8);
+  }
 }
 
 function ensureGeneratedCrewStateBanners(
-    svg: SVGSVGElement,
-    parent: SVGElement,
-    occurrence: string,
-    x: number,
-    y: number,
+  svg: SVGSVGElement,
+  parent: SVGElement,
+  occurrence: string,
+  x: number,
+  y: number,
 ): void {
-    const existing = [...svg.querySelectorAll<SVGGElement>(`.crewStateBanner[crewId="${occurrence}"]`)];
-    const banners = existing.length > 0 ? existing : [svgElement('g')];
-    for (const banner of banners) {
-        banner.setAttribute('crewId', occurrence);
-        banner.classList.add('crewStateBanner', 'unitConditionBanner', 'screen-only', 'no-autocolor');
-        banner.setAttribute('display', 'none');
-        if (!banner.parentNode) parent.appendChild(banner);
-        if (!banner.querySelector(':scope > .unitConditionBannerRect')) {
-            const background = svgElement('rect');
-            setAttributes(background, {
-                x,
-                y,
-                width: 64,
-                height: 10,
-                fill: '#666',
-                class: 'unitConditionBannerRect',
-            });
-            banner.appendChild(background);
-        }
-        if (!banner.querySelector(':scope > .unitConditionBannerText')) {
-            const label = addText(banner, '', x + 61, y + 6, {
-                size: 8,
-                weight: 700,
-                fill: '#fff',
-                anchor: 'end',
-                class: 'unitConditionBannerText',
-            });
-            label.setAttribute('dominant-baseline', 'middle');
-        }
+  const existing = [...svg.querySelectorAll<SVGGElement>(`.crewStateBanner[crewId="${occurrence}"]`)];
+  const banners = existing.length > 0 ? existing : [svgElement('g')];
+  for (const banner of banners) {
+    banner.setAttribute('crewId', occurrence);
+    banner.classList.add('crewStateBanner', 'unitConditionBanner', 'screen-only', 'no-autocolor');
+    banner.setAttribute('display', 'none');
+    if (!banner.parentNode) parent.appendChild(banner);
+    if (!banner.querySelector(':scope > .unitConditionBannerRect')) {
+      const background = svgElement('rect');
+      setAttributes(background, {
+        x,
+        y,
+        width: 64,
+        height: 10,
+        fill: '#666',
+        class: 'unitConditionBannerRect',
+      });
+      banner.appendChild(background);
     }
+    if (!banner.querySelector(':scope > .unitConditionBannerText')) {
+      const label = addText(banner, '', x + 61, y + 6, {
+        size: 8,
+        weight: 700,
+        fill: '#fff',
+        anchor: 'end',
+        class: 'unitConditionBannerText',
+      });
+      label.setAttribute('dominant-baseline', 'middle');
+    }
+  }
 }
 
 function appendPipHitAreas(svg: SVGSVGElement): void {
-    const key = (element: SVGElement): string =>
-        `${element.classList.contains('armor') ? 'armor' : 'structure'}:${element.getAttribute('data-loc')}:${element.hasAttribute('data-rear')}`;
-    const contours = new Set([...svg.querySelectorAll<SVGElement>('.unitLocation.armor, .unitLocation.structure')].map(key));
-    const groups = new Map<Element, Map<string, { pips: SVGElement[]; outlines: string[] }>>();
-    svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure').forEach(pip => {
-        if (pip.closest('[data-mekbay-paperdoll]')) {
-            pip.setAttribute('pointer-events', 'none');
-            return;
-        }
-        if (contours.has(key(pip))) return;
-        const outline = pip instanceof SVGCircleElement
-            ? `M ${pip.cx.baseVal.value - pip.r.baseVal.value} ${pip.cy.baseVal.value}`
-                + `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${pip.r.baseVal.value * 2} 0`
-                + `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${-pip.r.baseVal.value * 2} 0z`
-            : pip instanceof SVGPolygonElement ? `M ${pip.getAttribute('points')} Z` : null;
-        if (outline === null) {
-            // Preserve the existing target geometry for an uncommon custom pip shape.
-            appendHitArea(pip.cloneNode(false) as SVGElement, pip);
-            return;
-        }
-        const parent = pip.parentElement!;
-        const byLocation = groups.get(parent) ?? new Map();
-        groups.set(parent, byLocation);
-        const location = `${key(pip)}:${pip.getAttribute('transform') ?? ''}`;
-        const group = byLocation.get(location) ?? { pips: [], outlines: [] };
-        byLocation.set(location, group);
-        group.pips.push(pip);
-        group.outlines.push(outline);
-    });
-    groups.forEach(byLocation => byLocation.forEach(({ pips, outlines }) => {
-        const first = pips[0];
-        const hitArea = svgElement('path');
-        hitArea.setAttribute('class', first.getAttribute('class') ?? '');
-        hitArea.setAttribute('data-loc', first.getAttribute('data-loc')!);
-        if (first.hasAttribute('data-rear')) hitArea.setAttribute('data-rear', first.getAttribute('data-rear')!);
-        if (first.hasAttribute('transform')) hitArea.setAttribute('transform', first.getAttribute('transform')!);
-        hitArea.setAttribute('d', outlines.join(' '));
-        appendHitArea(hitArea, pips[pips.length - 1]);
-    }));
-
-    function appendHitArea(hitArea: SVGElement, after: SVGElement): void {
-        hitArea.removeAttribute('id');
-        hitArea.removeAttribute('style');
-        hitArea.classList.remove('pip', 'damaged', 'pending', 'fresh', 'hidden');
-        hitArea.classList.add('pip-hit-area', 'screen-only');
-        hitArea.setAttribute('fill', 'transparent');
-        hitArea.setAttribute('stroke', 'transparent');
-        hitArea.setAttribute('stroke-width', '15');
-        hitArea.setAttribute('pointer-events', 'all');
-        after.after(hitArea);
+  const key = (element: SVGElement): string =>
+    `${element.classList.contains('armor') ? 'armor' : 'structure'}:${element.getAttribute('data-loc')}:${element.hasAttribute('data-rear')}`;
+  const contours = new Set(
+    [...svg.querySelectorAll<SVGElement>('.unitLocation.armor, .unitLocation.structure')].map(key),
+  );
+  const groups = new Map<Element, Map<string, { pips: SVGElement[]; outlines: string[] }>>();
+  svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure').forEach((pip) => {
+    if (pip.closest('[data-mekbay-paperdoll]')) {
+      pip.setAttribute('pointer-events', 'none');
+      return;
     }
+    if (contours.has(key(pip))) return;
+    const outline =
+      pip instanceof SVGCircleElement
+        ? `M ${pip.cx.baseVal.value - pip.r.baseVal.value} ${pip.cy.baseVal.value}` +
+          `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${pip.r.baseVal.value * 2} 0` +
+          `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${-pip.r.baseVal.value * 2} 0z`
+        : pip instanceof SVGPolygonElement
+          ? `M ${pip.getAttribute('points')} Z`
+          : null;
+    if (outline === null) {
+      // Preserve the existing target geometry for an uncommon custom pip shape.
+      appendHitArea(pip.cloneNode(false) as SVGElement, pip);
+      return;
+    }
+    const parent = pip.parentElement!;
+    const byLocation = groups.get(parent) ?? new Map();
+    groups.set(parent, byLocation);
+    const location = `${key(pip)}:${pip.getAttribute('transform') ?? ''}`;
+    const group = byLocation.get(location) ?? { pips: [], outlines: [] };
+    byLocation.set(location, group);
+    group.pips.push(pip);
+    group.outlines.push(outline);
+  });
+  groups.forEach((byLocation) =>
+    byLocation.forEach(({ pips, outlines }) => {
+      const first = pips[0];
+      const hitArea = svgElement('path');
+      hitArea.setAttribute('class', first.getAttribute('class') ?? '');
+      hitArea.setAttribute('data-loc', first.getAttribute('data-loc')!);
+      if (first.hasAttribute('data-rear')) hitArea.setAttribute('data-rear', first.getAttribute('data-rear')!);
+      if (first.hasAttribute('transform')) hitArea.setAttribute('transform', first.getAttribute('transform')!);
+      hitArea.setAttribute('d', outlines.join(' '));
+      appendHitArea(hitArea, pips[pips.length - 1]);
+    }),
+  );
+
+  function appendHitArea(hitArea: SVGElement, after: SVGElement): void {
+    hitArea.removeAttribute('id');
+    hitArea.removeAttribute('style');
+    hitArea.classList.remove('pip', 'damaged', 'pending', 'fresh', 'hidden');
+    hitArea.classList.add('pip-hit-area', 'screen-only');
+    hitArea.setAttribute('fill', 'transparent');
+    hitArea.setAttribute('stroke', 'transparent');
+    hitArea.setAttribute('stroke-width', '15');
+    hitArea.setAttribute('pointer-events', 'all');
+    after.after(hitArea);
+  }
 }
 
 function appendPaperdollRandomHitButtons(svg: SVGSVGElement, entity: BaseEntity): void {
-    if (!isMekEntity(entity) && !isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return;
-    svg.querySelectorAll<SVGGElement>('[data-mekbay-paperdoll][data-random-hit-transform]').forEach(layer => {
-        if (layer.querySelector('[data-mekbay-random-hit]')
-            || !layer.querySelector('.unitLocation.armor:not([data-rear])')) return;
-        const button = svgElement('g');
-        setAttributes(button, {
-            class: 'mek-random-hit-button screen-only',
-            'data-mekbay-random-hit': '1',
-            role: 'button',
-            'aria-label': 'Roll random hit location',
-            'pointer-events': 'all',
-            transform: layer.getAttribute('data-random-hit-transform')!,
-        });
-        const hitArea = svgElement('circle');
-        setAttributes(hitArea, { class: 'mek-random-hit-area', cx: 14, cy: 14, r: 15, fill: 'transparent' });
-        const icon = svgElement('image');
-        setAttributes(icon, { x: 3, y: 3, width: 22, height: 22, 'pointer-events': 'none', href: '/images/random-black.svg' });
-        button.append(hitArea, icon);
-        layer.appendChild(button);
+  if (!isMekEntity(entity) && !isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return;
+  svg.querySelectorAll<SVGGElement>('[data-mekbay-paperdoll][data-random-hit-transform]').forEach((layer) => {
+    if (layer.querySelector('[data-mekbay-random-hit]') || !layer.querySelector('.unitLocation.armor:not([data-rear])'))
+      return;
+    const button = svgElement('g');
+    setAttributes(button, {
+      class: 'mek-random-hit-button screen-only',
+      'data-mekbay-random-hit': '1',
+      role: 'button',
+      'aria-label': 'Roll random hit location',
+      'pointer-events': 'all',
+      transform: layer.getAttribute('data-random-hit-transform')!,
     });
+    const hitArea = svgElement('circle');
+    setAttributes(hitArea, { class: 'mek-random-hit-area', cx: 14, cy: 14, r: 15, fill: 'transparent' });
+    const icon = svgElement('image');
+    setAttributes(icon, {
+      x: 3,
+      y: 3,
+      width: 22,
+      height: 22,
+      'pointer-events': 'none',
+      href: '/images/random-black.svg',
+    });
+    button.append(hitArea, icon);
+    layer.appendChild(button);
+  });
 }
 
 function appendGeneratedFluffImage(
-    svg: SVGSVGElement,
-    entity: BaseEntity,
-    resolvedUrl: string | null | undefined,
+  svg: SVGSVGElement,
+  entity: BaseEntity,
+  resolvedUrl: string | null | undefined,
 ): void {
-    if (svg.getElementById('fluff-image-injected') || svg.querySelector('.fixed-fluff-image')) return;
-    const encoded = entity.fluffImageEncoded().trim();
-    const source = resolvedUrl ?? (encoded
-        ? encoded.startsWith('data:') ? encoded : `data:image/png;base64,${encoded}`
-        : null);
-    if (!source) return;
+  if (svg.getElementById('fluff-image-injected') || svg.querySelector('.fixed-fluff-image')) return;
+  const encoded = entity.fluffImageEncoded().trim();
+  const source =
+    resolvedUrl ?? (encoded ? (encoded.startsWith('data:') ? encoded : `data:image/png;base64,${encoded}`) : null);
+  if (!source) return;
 
-    const artwork = svg.querySelector<SVGGElement>('[data-mekbay-fluff-art]');
-    if (artwork) {
-        const fallbackIds = [...artwork.querySelectorAll('use')]
-            .map(use => use.getAttribute('href')?.slice(1)).filter((id): id is string => !!id);
-        const image = svgElement('image');
-        setAttributes(image, {
-            class: artwork.hasAttribute('data-mekbay-masthead-art')
-                ? 'fixed-fluff-image masthead-fluff-image' : 'fixed-fluff-image',
-            x: artwork.getAttribute('data-image-x')!,
-            y: artwork.getAttribute('data-image-y')!,
-            width: artwork.getAttribute('data-image-width')!,
-            height: artwork.getAttribute('data-image-height')!,
-            preserveAspectRatio: 'xMidYMid meet',
-            href: source,
-        });
-        artwork.replaceChildren(image);
-        const remainingReferences = new Set([...svg.querySelectorAll('use')].map(use => use.getAttribute('href')));
-        for (const id of fallbackIds) {
-            if (!remainingReferences.has(`#${id}`)) svg.getElementById(id)?.remove();
-        }
-        return;
-    }
-
-    const boxes = Array.from(svg.querySelectorAll<SVGGElement>('.referenceTable[data-mekbay-region="center-panel"]'))
-        .map(frameBox)
-        .filter((box): box is { x: number; y: number; width: number; height: number } => box !== null);
-    if (boxes.length === 0) return;
-    const left = Math.min(...boxes.map(box => box.x));
-    const top = Math.min(...boxes.map(box => box.y));
-    const right = Math.max(...boxes.map(box => box.x + box.width));
-    const bottom = Math.max(...boxes.map(box => box.y + box.height));
+  const artwork = svg.querySelector<SVGGElement>('[data-mekbay-fluff-art]');
+  if (artwork) {
+    const fallbackIds = [...artwork.querySelectorAll('use')]
+      .map((use) => use.getAttribute('href')?.slice(1))
+      .filter((id): id is string => !!id);
     const image = svgElement('image');
-    image.id = 'fluff-image-injected';
     setAttributes(image, {
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
-        preserveAspectRatio: 'xMidYMid meet',
+      class: artwork.hasAttribute('data-mekbay-masthead-art')
+        ? 'fixed-fluff-image masthead-fluff-image'
+        : 'fixed-fluff-image',
+      x: artwork.getAttribute('data-image-x')!,
+      y: artwork.getAttribute('data-image-y')!,
+      width: artwork.getAttribute('data-image-width')!,
+      height: artwork.getAttribute('data-image-height')!,
+      preserveAspectRatio: 'xMidYMid meet',
+      href: source,
     });
-    image.setAttribute('href', source);
-    image.style.display = 'none';
-    svg.appendChild(image);
+    artwork.replaceChildren(image);
+    const remainingReferences = new Set([...svg.querySelectorAll('use')].map((use) => use.getAttribute('href')));
+    for (const id of fallbackIds) {
+      if (!remainingReferences.has(`#${id}`)) svg.getElementById(id)?.remove();
+    }
+    return;
+  }
+
+  const boxes = Array.from(svg.querySelectorAll<SVGGElement>('.referenceTable[data-mekbay-region="center-panel"]'))
+    .map(frameBox)
+    .filter((box): box is { x: number; y: number; width: number; height: number } => box !== null);
+  if (boxes.length === 0) return;
+  const left = Math.min(...boxes.map((box) => box.x));
+  const top = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.width));
+  const bottom = Math.max(...boxes.map((box) => box.y + box.height));
+  const image = svgElement('image');
+  image.id = 'fluff-image-injected';
+  setAttributes(image, {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+    preserveAspectRatio: 'xMidYMid meet',
+  });
+  image.setAttribute('href', source);
+  image.style.display = 'none';
+  svg.appendChild(image);
 }
 
 function frameBox(frame: SVGGElement): { x: number; y: number; width: number; height: number } | null {
-    const width = Number(frame.dataset['mekbayFrameWidth']);
-    const height = Number(frame.dataset['mekbayFrameHeight']);
-    const transform = frame.getAttribute('transform') ?? '';
-    const translate = /translate\(\s*([-+\d.eE]+)[,\s]+([-+\d.eE]+)\s*\)/u.exec(transform);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || !translate) return null;
-    return {
-        x: Number(translate[1]),
-        y: Number(translate[2]),
-        width,
-        height,
-    };
+  const width = Number(frame.dataset['mekbayFrameWidth']);
+  const height = Number(frame.dataset['mekbayFrameHeight']);
+  const transform = frame.getAttribute('transform') ?? '';
+  const translate = /translate\(\s*([-+\d.eE]+)[,\s]+([-+\d.eE]+)\s*\)/u.exec(transform);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || !translate) return null;
+  return {
+    x: Number(translate[1]),
+    y: Number(translate[2]),
+    width,
+    height,
+  };
 }
 
 function isGeneratedMek(svg: SVGSVGElement): boolean {
-    return svg.dataset['mekbaySheetKind'] === 'mek'
-        || svg.dataset['mekbayLayout'] === 'mek';
+  return svg.dataset['mekbaySheetKind'] === 'mek' || svg.dataset['mekbayLayout'] === 'mek';
 }
 
 /** Native Mek critical-heading controls are authored by the Mek layout itself. */
 export function appendGeneratedMekCriticalHeadingControls(
-    criticalGroup: SVGGElement,
-    heading: SVGTextElement,
-    location: string,
-    box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  criticalGroup: SVGGElement,
+  heading: SVGTextElement,
+  location: string,
+  box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
 ): SVGGElement {
-    heading.classList.add('locationConditionText');
-    heading.setAttribute('data-loc', location);
-    const control = svgElement('g');
-    control.setAttribute('class', 'locationConditionControl');
-    control.setAttribute('data-loc', location);
-    control.setAttribute('pointer-events', 'all');
-    const hitArea = transparentRect(box.x, box.y, box.width, box.height, 'locationConditionHitArea');
-    criticalGroup.insertBefore(control, heading);
-    control.appendChild(hitArea);
+  heading.classList.add('locationConditionText');
+  heading.setAttribute('data-loc', location);
+  const control = svgElement('g');
+  control.setAttribute('class', 'locationConditionControl');
+  control.setAttribute('data-loc', location);
+  control.setAttribute('pointer-events', 'all');
+  const hitArea = transparentRect(box.x, box.y, box.width, box.height, 'locationConditionHitArea');
+  criticalGroup.insertBefore(control, heading);
+  control.appendChild(hitArea);
 
-    const narc = svgElement('g');
-    narc.setAttribute('class', 'locationNarcBanner screen-only');
-    narc.setAttribute('data-loc', location);
-    narc.setAttribute('display', 'none');
-    const background = svgElement('rect');
-    setAttributes(background, {
-        x: box.x + 2,
-        y: box.y - 9,
-        width: 40,
-        height: 8,
-        fill: '#fff',
-        stroke: NARC_CONDITION_COLOR,
-        'stroke-width': 0.9,
-        class: 'no-autocolor',
-    });
-    const label = addText(narc, 'NARC: 0', box.x + 23, box.y - 3, {
-        size: 6.5,
-        weight: 700,
-        fill: NARC_CONDITION_COLOR,
-        anchor: 'middle',
-        class: 'no-autocolor',
-    });
-    narc.insertBefore(background, label);
-    control.appendChild(narc);
-    control.appendChild(heading);
-    return control;
+  const narc = svgElement('g');
+  narc.setAttribute('class', 'locationNarcBanner screen-only');
+  narc.setAttribute('data-loc', location);
+  narc.setAttribute('display', 'none');
+  const background = svgElement('rect');
+  setAttributes(background, {
+    x: box.x + 2,
+    y: box.y - 9,
+    width: 40,
+    height: 8,
+    fill: '#fff',
+    stroke: NARC_CONDITION_COLOR,
+    'stroke-width': 0.9,
+    class: 'no-autocolor',
+  });
+  const label = addText(narc, 'NARC: 0', box.x + 23, box.y - 3, {
+    size: 6.5,
+    weight: 700,
+    fill: NARC_CONDITION_COLOR,
+    anchor: 'middle',
+    class: 'no-autocolor',
+  });
+  narc.insertBefore(background, label);
+  control.appendChild(narc);
+  control.appendChild(heading);
+  return control;
 }

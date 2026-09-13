@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { CdkDrag, CdkDragHandle } from '@angular/cdk/drag-drop';
+import { CdkDrag } from '@angular/cdk/drag-drop';
 import type { Force } from '../../models/force.model';
 import type { ForcePerson } from '../../models/force-personnel';
 import { GameSystem } from '../../models/common.model';
@@ -11,22 +11,24 @@ import type { CrewSkillSet } from '../../models/unit-crew-policy';
 import type { CrewDragData } from '../../services/crew-assignment.service';
 import { CrewPortraitComponent } from '../crew-portrait/crew-portrait.component';
 
-export type CrewLayout = 'compact' | 'cards' | 'rows';
+export type CrewLayout = 'compact' | 'cards' | 'rows' | 'slots';
 
 @Component({
   selector: 'crew-card',
-  imports: [CdkDrag, CdkDragHandle, CrewPortraitComponent],
+  imports: [CdkDrag, CrewPortraitComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
       class="crew-card"
       [class.compact]="layout() === 'compact'"
       [class.card-layout]="layout() === 'cards'"
+      [class.row-layout]="layout() === 'rows'"
+      [class.slot-layout]="layout() === 'slots'"
       cdkDrag
+      cdkDragRootElement="crew-card"
       [cdkDragData]="dragData()"
       [cdkDragDisabled]="!canMove()"
-      (mousedown)="$event.stopPropagation()"
-      (touchstart)="$event.stopPropagation()"
+      [cdkDragStartDelay]="{ touch: 200, mouse: 0 }"
       (click)="$event.stopPropagation()"
     >
       <button
@@ -34,15 +36,13 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
         type="button"
         [disabled]="!canEdit()"
         (click)="edited.emit()"
-        cdkDragHandle
-        [cdkDragHandleDisabled]="layout() !== 'compact'"
         [attr.aria-label]="'Edit ' + displayName() + ', ' + skillLabel()"
         [attr.title]="displayName() + ' · ' + skillLabel()"
       >
         @if (person().portrait) {
           <crew-portrait
             [name]="person().portrait"
-            [width]="layout() === 'compact' ? 28 : layout() === 'cards' ? 48 : 32"
+            [width]="layout() === 'cards' ? 40 : 28"
           />
         } @else {
           <img src="/images/helmet.svg" width="28" height="28" alt="" />
@@ -62,7 +62,8 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
             }
           </span>
           @if (wounds() !== undefined) {
-            <span class="crew-wounds-label">Wounds: {{ wounds()! }} / {{ maxCrewWounds }}</span>
+            <span class="crew-health">
+            <span class="crew-wounds-label">Wounds {{ wounds()! }}/{{ maxCrewWounds }}</span>
             <span
               class="wounds-bar"
               role="meter"
@@ -75,20 +76,12 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
                 <span class="wounds-segment" [class.filled]="segment <= wounds()!" aria-hidden="true"></span>
               }
             </span>
+            </span>
           }
         </span>
       </button>
       @if (canMove() && layout() !== 'compact') {
-        <div class="crew-actions">
-          <button
-            type="button"
-            class="icon-action drag-handle"
-            cdkDragHandle
-            title="Move crew"
-            [attr.aria-label]="'Drag ' + displayName()"
-          >
-            ⠿
-          </button>
+        <div class="crew-actions" (mousedown)="$event.stopPropagation()" (touchstart)="$event.stopPropagation()">
           @if (assigned()) {
             <button
               type="button"
@@ -133,7 +126,7 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
         gap: 8px;
         min-width: 0;
         flex: 1;
-        padding: 8px;
+        padding: 5px 8px;
         color: inherit;
         border: 0;
         background: transparent;
@@ -146,7 +139,7 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
       .crew-main:not(:disabled):hover {
         background: #ffffff0a;
       }
-      .crew-main img {
+      .crew-main img, crew-portrait {
         flex-shrink: 0;
       }
       .crew-profile {
@@ -166,16 +159,22 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
         font-size: 0.75em;
         white-space: nowrap;
       }
+      .crew-health {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 3px;
+      }
       .crew-wounds-label {
         color: var(--text-color-secondary);
         font-size: 0.75em;
-        margin-top: 4px;
+        white-space: nowrap;
       }
       .wounds-bar {
         display: flex;
         gap: 3px;
-        width: 100%;
-        min-width: 90px;
+        width: 72px;
+        flex-shrink: 0;
       }
       .wounds-segment {
         flex: 1;
@@ -208,10 +207,6 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
         color: var(--text-color);
         background: #ffffff10;
       }
-      .drag-handle {
-        cursor: grab;
-        touch-action: none;
-      }
       .delete:hover {
         color: #ff6868;
       }
@@ -231,22 +226,53 @@ export type CrewLayout = 'compact' | 'cards' | 'rows';
       .compact .crew-profile {
         display: none;
       }
-      .card-layout {
+      .card-layout, .slot-layout {
+        align-items: center;
+        min-height: 58px;
+        box-sizing: border-box;
+      }
+      .card-layout .crew-main, .slot-layout .crew-main {
+        padding: 8px;
+      }
+      .card-layout .crew-actions, .slot-layout .crew-actions {
         flex-direction: column;
+        border-left: 1px solid #ffffff12;
       }
-      .card-layout .crew-main {
-        padding: 12px;
+      .card-layout .icon-action, .slot-layout .icon-action {
+        height: 24px;
       }
-      .card-layout .crew-actions {
-        justify-content: flex-end;
-        border-top: 1px solid #ffffff12;
+      .card-layout .crew-profile, .slot-layout .crew-profile {
+        flex: 1;
+        overflow: hidden;
       }
-      .cdk-drag-preview {
+      .card-layout .crew-skills, .slot-layout .crew-skills {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row-layout .crew-profile {
+        flex: 1;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        overflow: hidden;
+      }
+      .row-layout .crew-name {
+        flex: 1;
+        min-width: 36px;
+      }
+      .row-layout .crew-skills {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row-layout .crew-health {
+        margin: 0;
+      }
+      :host(.cdk-drag-preview) {
         box-sizing: border-box;
         background: var(--background-color, #252a31);
         box-shadow: 0 6px 20px #0008;
       }
-      .cdk-drag-placeholder {
+      :host(.cdk-drag-placeholder) {
         opacity: 0.25;
       }
     `,

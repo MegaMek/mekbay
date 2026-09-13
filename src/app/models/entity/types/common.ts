@@ -61,6 +61,8 @@ export interface EntityValidationMessage {
   code: string;
   message: string;
   location?: string;
+  /** A specific mounted item responsible for this issue, when known. */
+  mountId?: string;
 }
 
 export interface EntityValidationResult {

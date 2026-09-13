@@ -11,6 +11,9 @@ import { ConstructionBreakdownComponent } from './components/construction-breakd
 import { STANDARD_ARMOR_EQUIPMENT, STANDARD_STRUCTURE_EQUIPMENT } from '../models/entity/components';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { parseEntity } from '../models/entity/parse-entity';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
+import { WeaponEquipment } from '../models/equipment.model';
+import { createConstructionEntity } from './domain/construction-factory';
 import { EquipmentCatalogService } from '../services/catalogs/equipment-catalog.service';
 import { CustomUnitsService } from '../services/custom-units.service';
 import { DataService } from '../services/data.service';
@@ -63,6 +66,107 @@ describe('responsive construction details', () => {
     const button = (label: string) => root().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
     const report = () => fixture.debugElement.query(By.directive(ConstructionBreakdownComponent))?.componentInstance as ConstructionBreakdownComponent | undefined;
     const render = async () => { fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges(); };
+    const clickIssue = async (code: string, mountId?: string) => {
+        root().querySelector<HTMLButtonElement>('.validation-toggle')!.click(); await render();
+        const index = editor.validation().messages.findIndex(message => message.code === code && (!mountId || message.mountId === mountId));
+        expect(index).withContext(code).toBeGreaterThanOrEqual(0);
+        sidebar()!.querySelectorAll<HTMLButtonElement>('.validation-panel button')[index].click();
+        await render();
+    };
+
+    for (const pixels of [1920, 390]) {
+        it(`navigates from an issue to the chassis input and transfers focus at ${pixels}px`, async () => {
+            width.set(pixels);
+            editor.entity().chassis.set('');
+            editor.panel.set('fluff');
+            await render();
+            const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
+            await clickIssue('CHASSIS_REQUIRED');
+            const target = root().querySelector('[data-field-id="chassis"]')!;
+            expect(editor.panel()).toBe('systems');
+            expect(sidebar()).toBeNull();
+            expect(root().querySelector('.construction-workspace')?.hasAttribute('inert')).toBeFalse();
+            expect(document.activeElement).toBe(target.querySelector('input'));
+            expect(scroll.calls.mostRecent().object).toBe(target);
+        });
+
+        it(`navigates an Artemis coverage issue to the uncovered launcher at ${pixels}px`, async () => {
+            width.set(pixels);
+            const entity = createConstructionEntity('Tank', registry);
+            const launcher = new WeaponEquipment({ id: 'Test LRM', name: 'Test LRM', type: 'weapon',
+                stats: { tonnage: 1 }, flags: ['F_ARTEMIS_COMPATIBLE'], weapon: { ammoType: 'LRM' } });
+            const covered = addTestEquipment(entity, launcher, { location: 'Front' });
+            const uncovered = addTestEquipment(entity, launcher, { location: 'Rear' });
+            const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Front' });
+            entity.linkEquipment(artemis, covered);
+            editor.entity.set(entity);
+            editor.panel.set('systems');
+            await render();
+            const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
+            await clickIssue('ARTEMIS_COVERAGE', uncovered.mountId);
+            const target = root().querySelector(`[data-mount-id="${uncovered.mountId}"]`)!;
+            expect(editor.panel()).toBe('loadout');
+            expect(editor.selectedLocation()).toBe('Rear');
+            expect(sidebar()).toBeNull();
+            expect(target.contains(document.activeElement)).toBeTrue();
+            expect(scroll.calls.mostRecent().object).toBe(target);
+            const warning = () => target.querySelector('.equipment-warning-icon');
+            expect(warning()?.previousElementSibling?.classList.contains('equipment-label')).toBeTrue();
+            expect(warning()?.getAttribute('aria-label')).toContain('one Artemis system for every compatible weapon');
+            expect(warning()?.querySelector('title')?.textContent ?? '').toBe(warning()?.getAttribute('aria-label') ?? '');
+            expect(root().querySelector(`[data-mount-id="${covered.mountId}"] .equipment-warning-icon`)?.getAttribute('aria-label') ?? '').not.toContain('Artemis');
+            const missingSystem = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location: 'Rear' });
+            entity.linkEquipment(missingSystem, uncovered);
+            await render();
+            expect(warning()?.getAttribute('aria-label') ?? '').not.toContain('Artemis');
+        });
+    }
+
+    it('keeps duplicate unallocated equipment issues distinct and expands the tray for the chosen mount', async () => {
+        const equipment = new WeaponEquipment({ id: 'Unallocated laser', name: 'Unallocated laser', type: 'weapon', stats: { tonnage: 1 } });
+        addTestEquipment(editor.entity(), equipment, { allocation: { kind: 'unallocated' } });
+        const second = addTestEquipment(editor.entity(), equipment, { allocation: { kind: 'unallocated' } });
+        await render();
+        editor.unallocatedOpen.set(false);
+        editor.panel.set('systems');
+        await render();
+        expect(editor.validation().messages.filter(message => message.code === 'UNALLOCATED_EQUIPMENT').length).toBe(2);
+        await clickIssue('UNALLOCATED_EQUIPMENT', second.mountId);
+        expect(editor.panel()).toBe('loadout');
+        expect(root().querySelector<HTMLDetailsElement>('.unallocated-panel')!.open).toBeTrue();
+        expect(document.activeElement).toBe(root().querySelector(`[data-mount-id="${second.mountId}"] .unallocated-name`));
+        expect(root().querySelector(`[data-mount-id="${second.mountId}"] .equipment-warning-icon`)?.getAttribute('aria-label'))
+            .toContain('has not been assigned a location');
+    });
+
+    it('reveals the OEM year control when its issue is clicked', async () => {
+        editor.entity().originalBuildYear.set(editor.entity().year() + 1);
+        editor.oemYearExpanded.set(false);
+        await render();
+        await clickIssue('OEM_YEAR_AFTER_INTRODUCTION');
+        expect(editor.oemYearVisible()).toBeTrue();
+        expect(document.activeElement).toBe(root().querySelector('#construction-oem-year'));
+    });
+
+    it('opens the weight breakdown for a design-wide overweight issue', async () => {
+        addTestEquipment(editor.entity(), new WeaponEquipment({ id: 'Heavy test weapon', name: 'Heavy test weapon', type: 'weapon', stats: { tonnage: 1000 } }),
+            { allocation: { kind: 'unallocated' } });
+        await render();
+        await clickIssue('OVERWEIGHT');
+        expect(editor.detailsView()).toBe('weight');
+        expect(report()?.data().title).toBe('Weight breakdown');
+        expect(sidebar()!.contains(document.activeElement)).toBeTrue();
+    });
+
+    it('switches to the loadout and focuses the affected armor location', async () => {
+        await render();
+        editor.panel.set('systems');
+        editor.navigateToIssue({ code: 'INVALID_ARMOR_VALUE', category: 'armor', severity: 'error', message: 'Invalid armor', location: 'LA' });
+        await render();
+        expect(editor.panel()).toBe('loadout');
+        expect(editor.selectedLocation()).toBe('LA');
+        expect(document.activeElement).toBe(root().querySelector('.location-card[data-location="LA"] construction-armor-control input'));
+    });
 
     it('switches reports and issues inside one sidebar and toggles the active view closed without desktop dialogs', async () => {
         await render();

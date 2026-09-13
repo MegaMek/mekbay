@@ -31,6 +31,7 @@ NonMekRecordSheetSnapshot,
 import { isUnitConditionKey,type UnitConditionKey } from '../../../models/unit-condition.model';
 import { projectNonMekMovementCapabilities } from '../../../models/runtime/non-mek-unit-instance';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
+import { gameRulesFor } from '../../../models/rules/game-rules';
 
 import {
 crewStateDefinitions,
@@ -44,6 +45,7 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { PickerFactoryService } from '../../../services/picker-factory.service';
 import { ToastService } from '../../../services/toast.service';
 import { UnitNameService } from '../../../services/unit-name.service';
+import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
 import type { PickerChoice,PickerInstance } from '../../picker/picker.interface';
@@ -125,6 +127,7 @@ export class PageViewerNonMekRuntimeService {
                 ? undefined
                 : (interaction, event) => this.handle(member, interaction, event),
             equipment,
+            (interaction, event) => this.handle(member, interaction, event),
         );
         // Read-only viewers still own presentation controls such as page flips.
         svg.classList.add('interactive-sheet');
@@ -191,6 +194,18 @@ export class PageViewerNonMekRuntimeService {
     handle(member: CBTForceMember, interaction: RecordSheetInteraction, event: Event): void {
         const snapshot = this.snapshot(member);
         if (!snapshot || !isUnitEditContextCurrent(interaction.context, snapshot.editContext)) return;
+        if (interaction.kind === 'reference-table') {
+            const runtime = member.force.getUnitSnapshot(member.id);
+            if (!runtime) return;
+            this.dialogs.createDialog(ClusterTableDialogComponent, {
+                data: {
+                    unit: member.entity,
+                    gameRules: gameRulesFor(runtime.ruleset),
+                    hasHotLoadedAmmo: [...runtime.state.ammo.keys()].some(id => runtime.query.ammoHotLoaded(id)),
+                },
+            });
+            return;
+        }
         if (interaction.kind === 'movement') {
             void this.selectMovement(member, interaction, snapshot);
             return;

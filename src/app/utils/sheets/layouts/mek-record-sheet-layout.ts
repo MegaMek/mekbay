@@ -937,6 +937,9 @@ function appendMmlMekCrewOccurrence(
 ): void {
     const block = svgElement('g');
     block.setAttribute('class', 'mek-crew-position');
+    block.setAttribute('data-mekbay-crew-position', String(occurrence));
+    block.setAttribute('data-mekbay-crew-width', '139.6');
+    block.setAttribute('data-mekbay-crew-height', '52');
     if (occurrence > 0) block.setAttribute('transform', `translate(0 ${occurrence * 52})`);
 
     const roleLabel = addText(block, `${role}:`, 3, 12, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
@@ -978,6 +981,7 @@ function appendMmlMekCrewOccurrence(
     const blankGunnery = svgElement('path');
     setAttributes(blankGunnery, {
         id: `blankGunnerySkill${occurrence}`,
+        class: 'skillBlank hidden',
         d: 'M 48.632 25 H 67.17',
         stroke: '#000', 'stroke-width': 0.72, 'stroke-linejoin': 'round', fill: 'none',
     });
@@ -992,6 +996,7 @@ function appendMmlMekCrewOccurrence(
     const blankPiloting = svgElement('path');
     setAttributes(blankPiloting, {
         id: `blankPilotingSkill${occurrence}`,
+        class: 'skillBlank hidden',
         d: 'M 116.932 25 H 139.6',
         stroke: '#000', 'stroke-width': 0.72, 'stroke-linejoin': 'round', fill: 'none',
     });
@@ -999,47 +1004,10 @@ function appendMmlMekCrewOccurrence(
 
     const damage = svgElement('g');
     damage.id = `crewDamage${occurrence}`;
-    const damageOutline = svgElement('path');
-    setAttributes(damageOutline, {
-        d: 'M 49.91 33.015 C 49.91 32.455 50.365 32 50.925 32 h 87.66 c .56 0 1.015 .455 1.015 1.015 v 17.97 c 0 .56 -.455 1.015 -1.015 1.015 h -87.66 c -.56 0 -1.015 -.455 -1.015 -1.015 z',
-        fill: 'none', stroke: '#000', 'stroke-linejoin': 'round',
+    drawCrewHitGrid(damage, occurrence, {
+        x: 49.91, y: 32, cellWidth: 89.69 / 6, cellHeight: 10,
+        labelX: 3, labelWidth: 43.91, fontScale: 1,
     });
-    damage.appendChild(damageOutline);
-    const damageGrid = svgElement('path');
-    setAttributes(damageGrid, {
-        d: 'M 49.91 42 H 139.6 M 64.858 32 V 52 M 79.807 32 V 52 M 94.755 32 v 20 m 14.948 -20 v 20 m 14.949 -20 v 20',
-        fill: 'none', stroke: '#000', 'stroke-width': 0.58, 'stroke-linecap': 'round',
-    });
-    damage.appendChild(damageGrid);
-    const hitX = [57.384, 72.333, 87.281, 102.229, 117.178, 132.126] as const;
-    const consciousness = ['3', '5', '7', '10', '11', 'Dead'] as const;
-    hitX.forEach((center, index) => {
-        const hitNumber = addText(damage, String(index + 1), center, 39, {
-            size: 5.8, weight: 700, anchor: 'middle',
-        });
-        hitNumber.id = `crew_damage_${occurrence}_${index + 1}`;
-        const hitControl = svgElement('g');
-        hitControl.setAttribute('class', 'crewHit');
-        hitControl.setAttribute('crewId', String(occurrence));
-        hitControl.setAttribute('hit', String(index + 1));
-        const firstCross = addLine(hitControl, center - 5, 33.2, center + 5, 41.2, 'red', 1.5);
-        firstCross.setAttribute('class', 'crew-x');
-        firstCross.setAttribute('opacity', '0');
-        const secondCross = addLine(hitControl, center + 5, 33.2, center - 5, 41.2, 'red', 1.5);
-        secondCross.setAttribute('class', 'crew-x');
-        secondCross.setAttribute('opacity', '0');
-        hitControl.appendChild(transparentRect(center - 7, 32.2, 14, 10, 'crew-hit-target'));
-        damage.appendChild(hitControl);
-        const lower = addText(damage, consciousness[index], center, 49, {
-            size: 5.8, weight: 700, anchor: 'middle',
-        });
-        if (index === 5) {
-            lower.setAttribute('textLength', '10.948');
-            lower.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-        }
-    });
-    addText(damage, 'Hits Taken', 46.91, 39, { size: 5.2, weight: 700, anchor: 'end' });
-    addText(damage, 'Consciousness #', 46.91, 49, { size: 5.2, weight: 700, anchor: 'end' });
     block.appendChild(damage);
 
     const gunButton = transparentRect(38.632, 15.3, 30, 12, 'crewSkillButton');
@@ -1126,14 +1094,14 @@ export async function drawMekPaperdolls(svg: SVGSVGElement, entity: MekEntity, b
     addDiagramHeading(group, 'ARMOR DIAGRAM',
         mekArmorSubtitle(entity),
         173, 0, {
-            titleWidth: 84, titleX: 54.004, titleY: -0.197, titleTextLength: 69.539,
+            titleWidth: 84, titleX: 54.004, titleY: -0.197,
             ribbonX: 36.004, ribbonY: 0, ribbonWidth: 123.749, ribbonCut: 3.749,
             subtitleX: 96, subtitleY: 21.5, subtitleId: 'armorType',
         });
     addDiagramHeading(group, 'INTERNAL STRUCTURE DIAGRAM',
         constructionMaterialSubtitle(entity.uniformStructureMaterial()?.structure.name, 'Structure', 'Hybrid Structure'),
         173, 370, {
-            titleWidth: 142.791, titleX: 13.745, titleY: 352.888, titleTextLength: 126.662,
+            titleWidth: 142.791, titleX: 13.745, titleY: 352.888,
             ribbonX: 25.723, ribbonY: 354.03, ribbonWidth: 122.512, ribbonCut: 3.712,
             subtitleX: 86.034, subtitleY: 375.445, subtitleId: 'structureType',
             subtitleHorizontalScale: 0.990245,
@@ -1298,7 +1266,6 @@ interface ProfiledMekDiagramHeading {
     readonly titleWidth: number;
     readonly titleX: number;
     readonly titleY: number;
-    readonly titleTextLength: number;
     readonly ribbonX: number;
     readonly ribbonY: number;
     readonly ribbonWidth: number;
@@ -1348,7 +1315,6 @@ const STANDARD_PROFILED_ARMOR_HEADING: ProfiledMekDiagramHeading = Object.freeze
     titleWidth: 83.991,
     titleX: 54.004,
     titleY: 0,
-    titleTextLength: 69.539,
     ribbonX: 36.004,
     ribbonY: 0,
     ribbonWidth: 123.749,
@@ -1361,7 +1327,6 @@ const STANDARD_PROFILED_STRUCTURE_HEADING: ProfiledMekDiagramHeading = Object.fr
     titleWidth: 148.233,
     titleX: 11.883062,
     titleY: 353,
-    titleTextLength: 127.941,
     ribbonX: 25.983062,
     ribbonY: 354,
     ribbonWidth: 123.749,
@@ -1400,7 +1365,6 @@ const PROFILED_MEK_PAPERDOLLS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | '
             titleWidth: 83.991,
             titleX: 53.123571,
             titleY: 2.473206,
-            titleTextLength: 69.539,
             ribbonX: 35.123571,
             ribbonY: 2.473206,
             ribbonWidth: 123.749,
@@ -1412,7 +1376,6 @@ const PROFILED_MEK_PAPERDOLLS: Readonly<Record<'Quad' | 'Tripod' | 'QuadVee' | '
             titleWidth: 148.233,
             titleX: 11.883062,
             titleY: 355,
-            titleTextLength: 127.941,
             ribbonX: 25.983062,
             ribbonY: 356,
             ribbonWidth: 123.749,
@@ -2492,21 +2455,6 @@ function addMekReferenceFrame(
     });
     group.setAttribute('class', 'referenceTable');
     group.setAttribute('data-mekbay-region', 'center-panel');
-    Array.from(group.children)
-        .filter((child): child is SVGPathElement => child.tagName.toLowerCase() === 'path')
-        .slice(0, 2)
-        .forEach(path => path.setAttribute('stroke-width', formatNumber(1.6)));
-    const header = Array.from(group.children)
-        .find((child): child is SVGGElement => child.tagName.toLowerCase() === 'g');
-    const titleText = header?.querySelector<SVGTextElement>('.svg-frame-title');
-    if (header) header.setAttribute('transform', 'translate(2.5 3)');
-    if (titleText) {
-        titleText.setAttribute('x', formatNumber(70.574));
-        titleText.setAttribute('y', formatNumber(8.438));
-        titleText.setAttribute('letter-spacing', '0');
-        titleText.removeAttribute('textLength');
-        titleText.removeAttribute('lengthAdjust');
-    }
     return group;
 }
 

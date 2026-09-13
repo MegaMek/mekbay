@@ -6,6 +6,7 @@ import { Component, type ElementRef, type AfterViewInit, signal, output, compute
 import type { NumericPickerComponent, NumericPickerResult, PickerPosition } from '../picker/picker.interface';
 import { vibrate } from '../../utils/vibrate.util';
 import { LayoutService } from '../../services/layout.service';
+import { AutoFitTextDirective } from '../../directives/auto-fit-text.directive';
 
 /*
  * 
@@ -34,6 +35,7 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
 
 @Component({
     selector: 'rotating-picker',
+    imports: [AutoFitTextDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     host: {
         '(keydown)': 'onKeyDown($event)',
@@ -62,7 +64,12 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
                             stroke-width="2"
                         />
                     </svg>
-                    <div class="title-text" [style.font-size]="titleFontSize()">{{ title() }}</div>
+                    <div class="title-text"
+                        [mbAutoFitText]="title()"
+                        [mbAutoFitTextMinCharacters]="0"
+                        [mbAutoFitTextMinScale]="0.1"
+                        [mbAutoFitTextObserveWidth]="false"
+                    >{{ title()?.toUpperCase() }}</div>
                 </div>
             }
 
@@ -190,16 +197,18 @@ const KEYBOARD_INPUT_TIMEOUT = 1000; // 1 second timeout for number concatenatio
         }
         .title-text {
             position: absolute;
-            left: 22px;
+            left: 24px;
             top: 0;
-            width: 94px;
+            width: 90px;
             height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 1;
+            font-size: 16px;
             font-weight: bold;
-            text-transform: uppercase;
+            line-height: 1;
+            white-space: nowrap;
             letter-spacing: 0.05em;
             color: #fff;
             background: transparent;
@@ -349,17 +358,6 @@ export class RotatingPickerComponent implements AfterViewInit, NumericPickerComp
     readonly radius = computed(() => this.diameter() / 2);
     readonly innerRadius = computed(() => this.radius() * 0.4);
     readonly notchIndices = computed(() => Array.from({ length: 24 }, (_, i) => i));
-
-    readonly titleFontSize = computed(() => {
-        const t = this.title();
-        if (!t) return '1em';
-        const maxWidth = 90; // available width inside the hex
-        const avgCharWidth = 10; // px per char at base size
-        const estimatedWidth = t.length * avgCharWidth;
-        const scaleFactor = Math.min(1, maxWidth / estimatedWidth);
-        const finalSize = Math.max(0.5, scaleFactor); // minimum 0.5em
-        return `${finalSize}em`;
-    });
 
     readonly isOverThreshold = computed(() => {
         const thresh = this.threshold();

@@ -12,18 +12,33 @@ import { constructionCanUpdateDesign } from '../../construction/domain/construct
     selector: 'custom-unit-actions',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `@if (unit().isCustom) {
-        <div class="actions">
-            @if (!sync.library.isOwned(unit().uuid)) {
-                <button class="bt-button" [disabled]="busy()" (click)="toggleSubscription()">{{ record()?.subscribed ? 'Unsubscribe' : 'Subscribe' }}</button>
-            }
-            @if (updateAvailable()) {
+        @if (!sync.library.isOwned(unit().uuid)) {
+            <button type="button" class="modal-btn bt-button" [disabled]="busy()" (click)="toggleSubscription()">{{ record()?.subscribed ? 'Unsubscribe' : 'Subscribe' }}</button>
+        }
+        @if (updateAvailable()) {
+            <button type="button" class="modal-btn bt-button" [disabled]="busy() || !canUpdate()" (click)="update()">Update design</button>
+            <div class="update-status" role="status">
                 <span class="update-badge">Update available</span>
-                <button class="bt-button" [disabled]="busy() || !canUpdate()" (click)="update()">Update design</button>
                 @if (!canUpdate()) { <span>Fully repair this unit and finish pending changes to update.</span> }
-            }
-        </div>
+            </div>
+        }
     }`,
-    styles: [`.actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:6px 0; font-size:.85rem; } .update-badge { border:1px solid var(--bt-yellow, #dab25a); color:var(--bt-yellow, #dab25a); border-radius:3px; padding:3px 7px; }`],
+    styles: `
+        :host { display: contents; }
+        .modal-btn { width: auto; padding: 8px 16px; text-transform: uppercase; }
+        .update-status {
+            order: 1;
+            flex: 1 0 100%;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: .85rem;
+            text-align: center;
+        }
+        .update-badge { border: 1px solid var(--bt-yellow); color: var(--bt-yellow); border-radius: 3px; padding: 3px 7px; }
+    `,
 })
 export class CustomUnitActionsComponent {
     readonly unit = input.required<UnitSummary>();

@@ -268,10 +268,10 @@ describe('construction CASE installation with the real equipment catalog', () =>
       expect(select().classList.contains('warning')).toBeTrue();
       expect(select().getAttribute('aria-invalid')).not.toBe('true');
       expect(select().getAttribute('aria-describedby')).toBe('case-warning-RT');
-      const icon = card().querySelector('.installed-equipment .case-warning-icon');
+      const icon = card().querySelector('.installed-equipment .equipment-warning-icon');
       expect(icon?.previousElementSibling?.classList.contains('equipment-label')).toBeTrue();
       expect(icon?.getAttribute('aria-label')).toContain('no explosives');
-      expect(card().querySelector('.location-title .case-warning-icon')).toBeNull();
+      expect(card().querySelector('.location-title .equipment-warning-icon')).toBeNull();
       expect(card().querySelector('.case-warning')?.textContent).toContain('no explosives');
       expect(editor.warnings()).toContain(
         jasmine.objectContaining({ code: 'CASE_WITHOUT_EXPLOSIVES', location: 'RT' }),
@@ -284,7 +284,7 @@ describe('construction CASE installation with the real equipment catalog', () =>
       expect(select().value).toBe(value);
       expect(select().classList.contains('warning')).toBeFalse();
       expect(card().querySelector('.case-warning')).toBeNull();
-      expect(card().querySelector('.case-warning-icon')).toBeNull();
+      expect(card().querySelector('.equipment-warning-icon')).toBeNull();
       expect(editor.warnings().some((message) => message.code === 'CASE_WITHOUT_EXPLOSIVES')).toBeFalse();
 
       removeWeapon();
@@ -353,7 +353,7 @@ describe('construction CASE installation with the real equipment catalog', () =>
     await prepare('Clan');
     expect(select().value).toBe('case');
     expect(protection()).toEqual([]);
-    expect(card().querySelector('.case-warning-icon')).toBeNull();
+    expect(card().querySelector('.equipment-warning-icon')).toBeNull();
     expect(card().querySelector('.case-warning')).toBeNull();
     await choose('none');
     expect(editor.entity().automaticClanCaseLocations().has('RT')).toBeFalse();
@@ -386,7 +386,7 @@ describe('construction CASE installation with the real equipment catalog', () =>
     );
     await render();
     expect(select()).toBeNull();
-    expect(card().querySelector('.case-warning-icon')).toBeNull();
+    expect(card().querySelector('.equipment-warning-icon')).toBeNull();
     const slots = () => editor.locations().find((location) => location.id === 'RT')!.slots;
     const occupied = () => slots().filter((slot) => slot.mount || slot.system).length;
     const before = occupied();
@@ -400,13 +400,13 @@ describe('construction CASE installation with the real equipment catalog', () =>
     expect(editor.unallocated()).not.toContain(mount);
     expect(select().value).toBe('case');
     expect(card().querySelector('.slotless-case .equipment-label')?.textContent).toBe('CASE');
-    expect(card().querySelector('.slotless-case .case-warning-icon')).not.toBeNull();
-    expect(card().querySelector('.location-title .case-warning-icon')).toBeNull();
+    expect(card().querySelector('.slotless-case .equipment-warning-icon')).not.toBeNull();
+    expect(card().querySelector('.location-title .equipment-warning-icon')).toBeNull();
     expect(editor.validation().valid).toBeTrue();
     await choose('none');
     expect(protection()).toEqual([]);
     expect(card().querySelector('.slotless-case')).toBeNull();
-    expect(card().querySelector('.case-warning-icon')).toBeNull();
+    expect(card().querySelector('.equipment-warning-icon')).toBeNull();
     expect(select()).toBeNull();
   });
 });

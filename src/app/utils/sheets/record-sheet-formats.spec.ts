@@ -119,6 +119,24 @@ describe('record-sheet physical paper formats', () => {
             }
         });
 
+        it(`fits taller infantry cluster tables on lone-unit ${format} pages and omits them for two units`, async () => {
+            for (const Factory of [TestBattleArmorEntity, TestInfantryEntity]) {
+                const block = await RecordSheetSvgGenerator.generate(new Factory(), { format: 'compact', pageFormat: format });
+                const page = RecordSheetSvgGenerator.composeCompactPage([block], format);
+                stage.replaceChildren(page);
+                const cluster = page.querySelector<SVGGElement>('[data-mekbay-reference="cluster-hits"]')!;
+                expect(Number(cluster.getAttribute('data-mekbay-frame-height')))
+                    .toBeCloseTo(180 * recordSheetPageProfile(format).verticalScale, 3);
+                expect(cluster.getBoundingClientRect().top)
+                    .toBeGreaterThan(page.querySelector<SVGGElement>('.compact-sheet-block')!.getBoundingClientRect().bottom);
+                expect(cluster.getBoundingClientRect().bottom)
+                    .toBeLessThan(page.querySelector<SVGGraphicsElement>('#footer')!.getBoundingClientRect().top);
+                const pair = RecordSheetSvgGenerator.composeCompactPage([block, block.cloneNode(true) as SVGSVGElement], format);
+                expect(pair.querySelectorAll('.compact-sheet-block').length).toBe(2);
+                expect(pair.querySelector('[data-mekbay-reference="cluster-hits"]')).toBeNull();
+            }
+        });
+
         it(`retains a clear footer when multiple small-unit families share ${format} pages`, async () => {
             const entities = [new TestInfantryEntity(), new TestBattleArmorEntity(), new TestTankEntity(),
                 new TestProtoMekEntity(), new TestInfantryEntity(), new TestBattleArmorEntity()];

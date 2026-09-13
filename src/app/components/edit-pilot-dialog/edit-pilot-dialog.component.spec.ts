@@ -127,7 +127,7 @@ describe('CBT multi-crew pilot dialog logic', () => {
     });
   });
 
-  it('applies a matrix selection to every crew member', () => {
+  it('applies a matrix selection to only the requested skill pair for every crew member', () => {
     const harness = {
       crew: CREW.map((member) => ({
         gunnery: signal(member.gunnery),
@@ -136,15 +136,29 @@ describe('CBT multi-crew pilot dialog logic', () => {
         aeroPiloting: signal(8),
       })),
       data: { disablePiloting: false },
-      showGroundSkills: true, showAerospaceSkills: true,
     };
 
-    EditPilotDialogComponent.prototype.setAllCrewSkills.call(harness as never, { gunnery: 2, piloting: 3, bv: 0 });
+    EditPilotDialogComponent.prototype.setAllCrewSkills.call(
+      harness as never,
+      { gunnery: 2, piloting: 3, bv: 0 },
+      'ground',
+    );
 
     expect(harness.crew.map((member) => member.gunnery())).toEqual([2, 2, 2]);
     expect(harness.crew.map((member) => member.piloting())).toEqual([3, 3, 3]);
-    expect(harness.crew.map((member) => member.aeroGunnery())).toEqual([2, 2, 2]);
-    expect(harness.crew.map((member) => member.aeroPiloting())).toEqual([3, 3, 3]);
+    expect(harness.crew.map((member) => member.aeroGunnery())).toEqual([8, 8, 8]);
+    expect(harness.crew.map((member) => member.aeroPiloting())).toEqual([8, 8, 8]);
+
+    EditPilotDialogComponent.prototype.setAllCrewSkills.call(
+      harness as never,
+      { gunnery: 4, piloting: 5, bv: 0 },
+      'aerospace',
+    );
+
+    expect(harness.crew.map((member) => member.gunnery())).toEqual([2, 2, 2]);
+    expect(harness.crew.map((member) => member.piloting())).toEqual([3, 3, 3]);
+    expect(harness.crew.map((member) => member.aeroGunnery())).toEqual([4, 4, 4]);
+    expect(harness.crew.map((member) => member.aeroPiloting())).toEqual([5, 5, 5]);
   });
 
   it('preserves fixed Piloting when applying a matrix selection', () => {
@@ -152,15 +166,27 @@ describe('CBT multi-crew pilot dialog logic', () => {
       crew: CREW.map((member) => ({
         gunnery: signal(member.gunnery),
         piloting: signal(member.piloting),
+        aeroGunnery: signal(8),
+        aeroPiloting: signal(7),
       })),
       data: { disablePiloting: true },
-      showGroundSkills: true, showAerospaceSkills: true,
     };
 
-    EditPilotDialogComponent.prototype.setAllCrewSkills.call(harness as never, { gunnery: 1, piloting: 0, bv: 0 });
+    EditPilotDialogComponent.prototype.setAllCrewSkills.call(
+      harness as never,
+      { gunnery: 1, piloting: 0, bv: 0 },
+      'ground',
+    );
+    EditPilotDialogComponent.prototype.setAllCrewSkills.call(
+      harness as never,
+      { gunnery: 2, piloting: 0, bv: 0 },
+      'aerospace',
+    );
 
     expect(harness.crew.map((member) => member.gunnery())).toEqual([1, 1, 1]);
     expect(harness.crew.map((member) => member.piloting())).toEqual([2, 5, 4]);
+    expect(harness.crew.map((member) => member.aeroGunnery())).toEqual([2, 2, 2]);
+    expect(harness.crew.map((member) => member.aeroPiloting())).toEqual([7, 7, 7]);
   });
 
   it('generates a name for only the requested crew member and prevents duplicate requests', async () => {
@@ -250,16 +276,69 @@ describe('Pilot dialog skill previews and reserve controls', () => {
       fixture.detectChanges();
       expect(!!fixture.nativeElement.querySelector('#classic-crew-gunnery-0')).toBe(skillSet !== 'aerospace');
       expect(!!fixture.nativeElement.querySelector('#classic-crew-aero-gunnery-0')).toBe(skillSet !== 'ground');
-      expect(fixture.componentInstance.syntheticGunnery()).toBe(skillSet === 'aerospace' ? 5 : 2);
-      expect(fixture.componentInstance.syntheticPiloting()).toBe(skillSet === 'ground' ? 6 : 3);
-      fixture.componentInstance.setAllCrewSkills({ gunnery: 1, piloting: 2, bv: 0 });
+      fixture.componentInstance.setAllCrewSkills(
+        { gunnery: 1, piloting: 2, bv: 0 },
+        skillSet === 'aerospace' ? 'aerospace' : 'ground',
+      );
       await fixture.componentInstance.submit();
-      expect(close.calls.mostRecent().args[0].crew[0]).toEqual(jasmine.objectContaining({
-        gunnery: skillSet === 'aerospace' ? 2 : 1,
-        piloting: skillSet === 'aerospace' ? 6 : 2,
-        aeroGunnery: skillSet === 'ground' ? 5 : 1,
-        aeroPiloting: skillSet === 'ground' ? 3 : 2,
-      }));
+      expect(close.calls.mostRecent().args[0].crew[0]).toEqual(
+        jasmine.objectContaining({
+          gunnery: skillSet === 'aerospace' ? 2 : 1,
+          piloting: skillSet === 'aerospace' ? 6 : 2,
+          aeroGunnery: skillSet === 'aerospace' ? 1 : 5,
+          aeroPiloting: skillSet === 'aerospace' ? 2 : 3,
+        }),
+      );
+    });
+  }
+
+  for (const skillSet of ['ground', 'aerospace'] as const) {
+    it(`opens the ${skillSet} matrix with its own ratings and previews and changes only that pair`, async () => {
+      data.skillSet = 'both';
+      data.labelGunnery = 'Ground Gunnery Skill';
+      data.labelPiloting = 'Ground Piloting Skill';
+      data.crew = [
+        {
+          id: 0,
+          name: 'Alex',
+          gunnery: skillSet === 'ground' ? 6 : 3,
+          piloting: skillSet === 'ground' ? 7 : 4,
+          aeroGunnery: skillSet === 'aerospace' ? 6 : 3,
+          aeroPiloting: skillSet === 'aerospace' ? 7 : 4,
+        },
+      ];
+      const fixture = TestBed.createComponent(EditPilotDialogComponent);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      const groups = root.querySelectorAll('fieldset');
+      expect([...groups].map((group) => group.querySelector('legend')?.textContent)).toEqual(['Ground', 'Aerospace']);
+      for (const group of groups) {
+        expect([...group.querySelectorAll('label')].map((label) => label.textContent?.trim())).toEqual([
+          'Gunnery Skill',
+          'Piloting Skill',
+        ]);
+        expect(group.querySelectorAll('.skill-matrix-toggle').length).toBe(1);
+      }
+      const groupName = skillSet === 'ground' ? 'Ground' : 'Aerospace';
+      root.querySelector<HTMLButtonElement>(`[aria-label="${groupName} Skill Matrix"]`)!.click();
+      await fixture.whenStable();
+      const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+      const cells = overlay.querySelectorAll<HTMLElement>('.matrix-cell');
+      expect(cells[6 * 9 + 7].classList.contains('active')).toBeTrue();
+      // The unchanged pair (3/4) still determines BV when this pair becomes worse.
+      expect(cells[8 * 9 + 8].textContent?.trim()).toBe((1584).toLocaleString());
+      cells[1 * 9 + 2].click();
+      await fixture.whenStable();
+      expect(overlay.querySelector('.matrix-panel')).toBeNull();
+      await fixture.componentInstance.submit();
+      expect(close.calls.mostRecent().args[0].crew[0]).toEqual(
+        jasmine.objectContaining({
+          gunnery: skillSet === 'ground' ? 1 : 3,
+          piloting: skillSet === 'ground' ? 2 : 4,
+          aeroGunnery: skillSet === 'aerospace' ? 1 : 3,
+          aeroPiloting: skillSet === 'aerospace' ? 2 : 4,
+        }),
+      );
     });
   }
 

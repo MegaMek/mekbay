@@ -52,6 +52,16 @@
       >TECH!</span
     >
   </ng-template>
+  <ng-template #equipmentWarningIcon let-mount let-location="location">
+    @if (mount && equipmentWarning(mount, location); as warning) {
+      <svg class="equipment-warning-icon" viewBox="0 0 24 24" role="img" [attr.aria-label]="warning" focusable="false">
+        <title>{{ warning }}</title>
+        <path d="M12 2 23 22H1Z" fill="currentColor" />
+        <path d="M12 8v6" stroke="#222" stroke-width="2" stroke-linecap="round" />
+        <circle cx="12" cy="18" r="1.2" fill="#222" />
+      </svg>
+    }
+  </ng-template>
   <ng-template
     #equipmentBlockContent
     let-equipment="equipment"
@@ -93,14 +103,10 @@
         }</span
       ><span class="equipment-title"
         ><span class="equipment-label" [class.customAmmoLoadout]="display.custom">{{ label }}</span>
-        @if (mount && installedCaseWarning(mount, location); as warning) {
-          <svg class="case-warning-icon" viewBox="0 0 24 24" role="img" [attr.aria-label]="warning" focusable="false">
-            <title>{{ warning }}</title>
-            <path d="M12 2 23 22H1Z" fill="currentColor" />
-            <path d="M12 8v6" stroke="#222" stroke-width="2" stroke-linecap="round" />
-            <circle cx="12" cy="18" r="1.2" fill="#222" />
-          </svg>
-        }
+        <ng-container
+          [ngTemplateOutlet]="equipmentWarningIcon"
+          [ngTemplateOutletContext]="{ $implicit: mount, location }"
+        />
         @if (showTechBases() && equipment && equipment.techBase !== 'All') {
           <tech-base-badge [techBase]="equipment.techBase" />
         }
@@ -476,8 +482,10 @@
   <ng-template #validationList>
     @for (message of validation().messages; track $index) {
       <button
+        type="button"
         [class.error]="message.severity === 'error'"
-        (click)="message.location && selectedLocation.set(message.location)"
+        (click)="navigateToIssue(message)"
+        title="Go to issue"
       >
         <b>{{ message.severity === 'error' ? '!' : 'i' }}</b
         ><span>{{ message.message }}</span
@@ -604,6 +612,7 @@
                     @for (group of row.integralEquipment; track group.mount.equipmentId) {
                       <button
                         #integralName
+                        [attr.data-mount-id]="group.mount.mountId"
                         [class]="equipmentClass(group.mount.equipment)"
                         [class.tech-incompatible]="equipmentTechMismatch(group.mount.equipment)"
                         [inspectorHoverDisabled]="mobileEquipment() || !!dragging()"
@@ -613,6 +622,10 @@
                         [title]="'Integral equipment · ' + group.quantity + ' × ' + group.mount.displayName(true)"
                       >
                         <span class="integral-quantity">{{ group.quantity }}×</span>{{ group.mount.displayName(true) }}
+                        <ng-container
+                          [ngTemplateOutlet]="equipmentWarningIcon"
+                          [ngTemplateOutletContext]="{ $implicit: group.mount, location: location.id }"
+                        />
                         @if (showTechBases() && group.mount.equipment && group.mount.equipment.techBase !== 'All') {
                           <tech-base-badge [techBase]="group.mount.equipment.techBase" />
                         }
@@ -1187,7 +1200,7 @@
               <construction-summary [entity]="entity()" />
             </section>
             @for (group of fieldGroups(); track group.name) {
-              <section #systemPanel class="system-panel framed-borders">
+              <section #systemPanel class="system-panel framed-borders" [attr.data-system-group]="group.name">
                 <h2>{{ group.name === 'Systems' && building() ? 'Structure & Systems' : group.name }}</h2>
                 @if (group.name === 'Systems' && building(); as buildingEntity) {
                   <construction-building-structure
@@ -1203,7 +1216,7 @@
                 >
                   @for (field of group.fields; track field.id) {
                     @if (field.id === 'year') {
-                      <div class="year-fields">
+                      <div class="year-fields" data-field-id="year">
                         <div class="year-heading">
                           <label for="construction-introduction-year">{{ field.label }}</label>
                           <button
@@ -1230,7 +1243,7 @@
                           [disabled]="!canEditField(field)"
                         />
                         @if (oemYearVisible()) {
-                          <label class="oem-year-field" [tooltip]="oemYearField().hint ?? null"
+                          <label class="oem-year-field" data-field-id="originalBuildYear" [tooltip]="oemYearField().hint ?? null"
                             >OEM year
                             <input
                               id="construction-oem-year"
@@ -1249,6 +1262,7 @@
                       </div>
                     } @else {
                       <label
+                        [attr.data-field-id]="field.id"
                         [class.full-row]="field.id === 'chassis' || field.id === 'model' || field.id === 'clanName'"
                         [class.checkbox-field]="field.kind === 'boolean'"
                         [title]="field.hint ?? ''"
@@ -1349,7 +1363,7 @@
               </div>
             </section>
             @if (armorOptions().length || structureOptions().length) {
-              <section #systemPanel class="system-panel framed-borders">
+              <section #systemPanel class="system-panel framed-borders" data-system-group="Materials">
                 <h2>Materials</h2>
                 <div class="system-fields">
                   @if (armorOptions().length) {
@@ -1842,6 +1856,7 @@
               @let spread = spreadAllocation(mount);
               <div
                 class="unallocated-equipment"
+                [attr.data-mount-id]="mount.mountId"
                 [class.tech-incompatible]="equipmentTechMismatch(mount.equipment)"
                 cdkDrag
                 (pointerdown)="captureDragPreviewOrigin($event)"
@@ -1866,6 +1881,10 @@
                 >
                   <span class="equipment-title"
                     ><span class="equipment-label">{{ mount.displayName(true) }}</span>
+                    <ng-container
+                      [ngTemplateOutlet]="equipmentWarningIcon"
+                      [ngTemplateOutletContext]="{ $implicit: mount }"
+                    />
                     @if (showTechBases() && mount.equipment && mount.equipment.techBase !== 'All') {
                       <tech-base-badge [techBase]="mount.equipment.techBase" />
                     }
@@ -2131,6 +2150,10 @@
             <div class="inspector-title">
               <h3 class="equipment-title">
                 <span>{{ mount.displayName(true) }}</span>
+                <ng-container
+                  [ngTemplateOutlet]="equipmentWarningIcon"
+                  [ngTemplateOutletContext]="{ $implicit: mount, location: selectedMountLocation() }"
+                />
                 @if (showTechBases() && eq.techBase !== 'All') {
                   <tech-base-badge [techBase]="eq.techBase" />
                 }

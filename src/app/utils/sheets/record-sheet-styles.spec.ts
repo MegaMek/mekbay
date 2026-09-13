@@ -3,12 +3,21 @@
 
 import {
     TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestBipedMekEntity,
-    TestInfantryEntity, TestLamEntity, TestProtoMekEntity, TestVtolEntity, TestWarShipEntity,
+    TestConvFighterEntity, TestDropShipEntity, TestFixedWingSupportEntity, TestInfantryEntity,
+    TestJumpShipEntity, TestLamEntity, TestProtoMekEntity, TestQuadMekEntity, TestQuadVeeEntity,
+    TestSmallCraftEntity, TestSpaceStationEntity, TestTripodMekEntity, TestVtolEntity, TestWarShipEntity,
 } from '../../models/entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';
 import { CapitalShipPipRenderer } from './capital-ship-pip-renderer';
+import { renderRecordSheetCrewVacancies } from '../../components/page-viewer/record-sheet-dom';
 import { RecordSheetSvgGenerator } from './record-sheet-svg-generator';
-import { createRoot } from './record-sheet-svg-rendering';
+import { createRoot, drawGenericCrewPanel } from './record-sheet-svg-rendering';
+
+const WOUND_SHEET_FACTORIES = [
+    TestBipedMekEntity, TestQuadMekEntity, TestQuadVeeEntity, TestTripodMekEntity, TestLamEntity,
+    TestProtoMekEntity, TestAeroSpaceFighterEntity, TestConvFighterEntity, TestFixedWingSupportEntity,
+    TestSmallCraftEntity, TestDropShipEntity, TestJumpShipEntity, TestWarShipEntity, TestSpaceStationEntity,
+];
 
 describe('generated record-sheet styles', () => {
     let stage: HTMLDivElement;
@@ -29,6 +38,67 @@ describe('generated record-sheet styles', () => {
         hoverStyle.remove();
         stage.remove();
     });
+
+    for (const Factory of [TestBipedMekEntity, TestLamEntity, TestVtolEntity,
+        TestProtoMekEntity, TestAeroSpaceFighterEntity, TestWarShipEntity]) {
+        it(`replaces the vacant ${Factory.name} crew frame with a centered label, including in print`, async () => {
+            const svg = await RecordSheetSvgGenerator.generate(new Factory());
+            stage.appendChild(svg);
+            const frame = svg.querySelector<SVGGElement>('[data-mekbay-crew-stations]')!;
+            const originalText = visibleText(frame);
+            expect(originalText).not.toContain('VACANT');
+            renderRecordSheetCrewVacancies(svg, [{ occurrence: 0, effectiveState: 'vacant' }]);
+            const preview = svg.cloneNode(true) as SVGSVGElement;
+            preview.classList.add('print-preview');
+            stage.appendChild(preview);
+            for (const sheet of [svg, preview]) {
+                const crewFrame = sheet.querySelector<SVGGElement>('[data-mekbay-crew-stations]')!;
+                const decorationText = [...crewFrame.querySelectorAll('.sheet-frame-decoration text')]
+                    .map(text => text.textContent!.trim()).filter(Boolean);
+                expect(visibleText(crewFrame)).toEqual([...decorationText, 'VACANT']);
+                const label = crewFrame.querySelector<SVGTextElement>(':scope > .crew-vacancy text')!;
+                expect(getComputedStyle(label).fontWeight).toBe('700');
+                const bounds = label.getBBox();
+                // Font side bearings can offset the visible glyphs slightly from the centered text anchor.
+                expect(Math.abs(bounds.x + bounds.width / 2 - Number(crewFrame.dataset['mekbayFrameWidth']) / 2)).toBeLessThan(0.5);
+            }
+            renderRecordSheetCrewVacancies(svg, [{ occurrence: 0, effectiveState: 'healthy' }]);
+            expect(visibleText(frame)).toEqual(originalText);
+        });
+    }
+
+    it('clears only a vacant multi-crew station, then clears the whole frame when all stations are vacant', async () => {
+        const entity = new TestTripodMekEntity();
+        entity.cockpitType.set('Tripod');
+        const svg = await RecordSheetSvgGenerator.generate(entity);
+        stage.appendChild(svg);
+        const frame = svg.querySelector<SVGGElement>('[data-mekbay-crew-stations]')!;
+        const positions = [...frame.querySelectorAll<SVGGElement>('[data-mekbay-crew-position]')];
+        expect(positions.length).toBe(2);
+        const occupiedText = visibleText(positions[1]);
+        renderRecordSheetCrewVacancies(svg, [
+            { occurrence: 0, effectiveState: 'vacant' }, { occurrence: 1, effectiveState: 'healthy' },
+        ]);
+        expect(visibleText(positions[0])).toEqual(['VACANT']);
+        expect(visibleText(positions[1])).toEqual(occupiedText);
+        renderRecordSheetCrewVacancies(svg, [
+            { occurrence: 0, effectiveState: 'vacant' }, { occurrence: 1, effectiveState: 'vacant' },
+        ]);
+        expect(visibleText(frame).filter(text => text === 'VACANT')).toEqual(['VACANT']);
+        expect(visibleText(positions[0])).toEqual([]);
+        expect(visibleText(positions[1])).toEqual([]);
+        renderRecordSheetCrewVacancies(svg, [
+            { occurrence: 0, effectiveState: 'healthy' }, { occurrence: 1, effectiveState: 'healthy' },
+        ]);
+        expect(visibleText(positions[1])).toEqual(occupiedText);
+        expect(visibleText(frame)).not.toContain('VACANT');
+    });
+
+    function visibleText(parent: SVGElement): string[] {
+        return [...parent.querySelectorAll('text')]
+            .filter(text => text.getBoundingClientRect().width > 0)
+            .map(text => text.textContent!.trim()).filter(Boolean);
+    }
 
     for (const Factory of [TestBipedMekEntity, TestAeroSpaceFighterEntity,
         TestBattleArmorEntity, TestInfantryEntity, TestVtolEntity, TestWarShipEntity]) {
@@ -171,6 +241,29 @@ describe('generated record-sheet styles', () => {
         }
     });
 
+    it('highlights only the capital block backdrop beneath its grid, shadow and damage layers', async () => {
+        const entity = new TestWarShipEntity();
+        entity.setArmorValue('Nose', 'front', 101);
+        const svg = await RecordSheetSvgGenerator.generate(entity);
+        svg.classList.add('interactive-sheet');
+        stage.appendChild(svg);
+        const grid = svg.querySelector('.capital-pip-grid.armor[data-loc="NOS"]')!;
+        const backdrops = [...grid.querySelectorAll<SVGElement>('.capital-pip-backdrop')];
+        const layers = [...grid.querySelectorAll<SVGElement>('.capital-pip-state, .capital-pip-grid-lines, .capital-pip-shadow')];
+        backdrops[0].classList.add('selectable');
+        backdrops[0].style.transition = 'none';
+        for (const night of [false, true]) {
+            stage.classList.toggle('night-mode', night);
+            const initial = backdrops.map(path => getComputedStyle(path).fill);
+            const colors = layers.map(path => [getComputedStyle(path).fill, getComputedStyle(path).stroke]);
+            backdrops[0].classList.add('style-test-hover');
+            expect(getComputedStyle(backdrops[0]).fill).not.toBe(initial[0]);
+            expect(getComputedStyle(backdrops[1]).fill).toBe(initial[1]);
+            expect(layers.map(path => [getComputedStyle(path).fill, getComputedStyle(path).stroke])).toEqual(colors);
+            backdrops[0].classList.remove('style-test-hover');
+        }
+    });
+
     it('enables equipment hover without edit actions and keeps previews passive', async () => {
         const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
         stage.appendChild(svg);
@@ -214,18 +307,64 @@ describe('generated record-sheet styles', () => {
         }
     });
 
-    it('keeps ProtoMek crew-hit numbers readable against live damage colors', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestProtoMekEntity());
-        stage.appendChild(svg);
-        const hit = svg.querySelector('.crewHit')!;
-        const label = hit.nextElementSibling!;
-        hit.classList.add('damaged');
-        for (const night of [false, true]) {
-            stage.classList.toggle('night-mode', night);
-            expect(getComputedStyle(hit).fill).toBe('rgb(255, 0, 0)');
-            expect(getComputedStyle(label).fill).toBe('rgb(255, 255, 255)');
-        }
+    for (const Factory of WOUND_SHEET_FACTORIES) {
+        it(`keeps ${Factory.name} wound numbers readable and clickable in both themes`, async () => {
+            const entity = new Factory();
+            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const tracks = svg.querySelectorAll<SVGGElement>('.crew-hit-grid');
+            expect(tracks.length).toBe(entity.crewSlotCount());
+            verifyWoundClicks(svg);
+        });
+    }
+
+    it('keeps the generic crew-state target behind the shared wound cells', () => {
+        const svg = createRoot(200, 200, 'generic');
+        drawGenericCrewPanel(svg, new TestBipedMekEntity(), { x: 0, y: 0, width: 150, height: 160 });
+        verifyWoundClicks(svg);
     });
+
+    function verifyWoundClicks(svg: SVGSVGElement): void {
+        stage.style.cssText = 'position: fixed; left: 0; top: 0; width: 600px; height: 180px; z-index: 10000';
+        svg.style.cssText = 'width: 600px; height: 180px; overflow: hidden';
+        svg.classList.add('interactive-sheet');
+        stage.appendChild(svg);
+        svg.querySelectorAll('.crewHit, .crewStateButton, .crewNameButton, .crewSkillButton')
+            .forEach(control => control.classList.add('interactive'));
+        for (const track of svg.querySelectorAll<SVGGElement>('.crew-hit-grid')) {
+            // Zoom the actual sheet to each crew position, retaining surrounding hit targets.
+            const bounds = track.getBBox();
+            const matrix = svg.getScreenCTM()!.inverse().multiply(track.getScreenCTM()!);
+            const start = new DOMPoint(bounds.x, bounds.y).matrixTransform(matrix);
+            const end = new DOMPoint(bounds.x + bounds.width, bounds.y + bounds.height).matrixTransform(matrix);
+            svg.setAttribute('viewBox', `${start.x - 2} ${start.y - 2} ${end.x - start.x + 4} ${end.y - start.y + 4}`);
+            const hits = [...track.querySelectorAll<SVGRectElement>('.crewHit')];
+            expect(hits.length).toBe(6);
+            for (const night of [false, true]) {
+                stage.classList.toggle('night-mode', night);
+                for (const [index, hit] of hits.entries()) {
+                    const label = hit.nextElementSibling!;
+                    expect(label.textContent).toBe(String(index + 1));
+                    expect(getComputedStyle(label).pointerEvents).toBe('none');
+                    const originalFill = getComputedStyle(hit).fill;
+                    const originalLabel = getComputedStyle(label).fill;
+                    hit.classList.add('damaged');
+                    expect(getComputedStyle(hit).fill).toBe('rgb(255, 0, 0)');
+                    expect(getComputedStyle(label).fill).toBe('rgb(255, 255, 255)');
+                    const rect = label.getBoundingClientRect();
+                    const target = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+                    expect(target).withContext(`crew ${hit.getAttribute('crewId')}, wound ${index + 1}`).toBe(hit);
+                    const clicked = jasmine.createSpy('wound click');
+                    hit.addEventListener('click', clicked);
+                    target?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                    expect(clicked).toHaveBeenCalledTimes(1);
+                    hit.removeEventListener('click', clicked);
+                    hit.classList.remove('damaged');
+                    expect(getComputedStyle(hit).fill).toBe(originalFill);
+                    expect(getComputedStyle(label).fill).toBe(originalLabel);
+                }
+            }
+        }
+    }
 
     it('underlines the generated heading when its location control is hovered', async () => {
         const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
@@ -332,17 +471,20 @@ describe('standalone record-sheet styles', () => {
         expect(view.getComputedStyle(pip).fill).toBe('rgb(63, 63, 63)');
     });
 
-    it('preserves crew-hit label contrast without the live damage theme', async () => {
-        const sheet = mountExport(await RecordSheetSvgGenerator.generate(new TestProtoMekEntity()));
-        const hit = sheet.querySelector('.crewHit')!;
-        const label = hit.nextElementSibling!;
-        hit.classList.add('damaged');
-        expect(view.getComputedStyle(hit).fill).toBe('rgb(17, 17, 17)');
-        expect(view.getComputedStyle(label).fill).toBe('rgb(255, 255, 255)');
-        hit.classList.remove('damaged');
-        expect(view.getComputedStyle(hit).fill).toBe('rgb(255, 255, 255)');
-        expect(view.getComputedStyle(label).fill).toBe('rgb(0, 0, 0)');
-    });
+    for (const Factory of WOUND_SHEET_FACTORIES) {
+        it(`preserves ${Factory.name} wound contrast in standalone exports`, async () => {
+            const sheet = mountExport(await RecordSheetSvgGenerator.generate(new Factory()));
+            for (const hit of sheet.querySelectorAll('.crewHit')) {
+                const label = hit.nextElementSibling!;
+                hit.classList.add('damaged');
+                expect(view.getComputedStyle(hit).fill).toBe('rgb(17, 17, 17)');
+                expect(view.getComputedStyle(label).fill).toBe('rgb(255, 255, 255)');
+                hit.classList.remove('damaged');
+                expect(view.getComputedStyle(hit).fill).toBe('rgb(255, 255, 255)');
+                expect(view.getComputedStyle(label).fill).toBe('rgb(0, 0, 0)');
+            }
+        });
+    }
 
     it('preserves capital damage colors and transparent hit targets through their attributes', () => {
         const source = createRoot(200, 200, 'warship');

@@ -31,16 +31,19 @@ export type CockpitCrewType =
   | 'Superheavy Tripod'
   | 'QuadVee';
 
+/** Tracked station roles, matching MegaMek CrewType. */
+export const COCKPIT_CREW_ROLES: Readonly<Record<CockpitCrewType, readonly string[]>> = {
+  'Single': ['Pilot'],
+  'Dual': ['Pilot', 'Gunner'],
+  'Command Console': ['Pilot', 'Commander'],
+  'Tripod': ['Pilot', 'Gunner'],
+  'Superheavy Tripod': ['Pilot', 'Gunner', 'Tech Officer'],
+  'QuadVee': ['Pilot', 'Gunner'],
+};
+
 /** Canonical Mek crew-position count for one cockpit crew configuration. */
 export function crewPositionCountForCockpitCrewType(crewType: CockpitCrewType): number {
-  switch (crewType) {
-    case 'Superheavy Tripod': return 3;
-    case 'Dual':
-    case 'Command Console':
-    case 'Tripod':
-    case 'QuadVee': return 2;
-    case 'Single': return 1;
-  }
+  return COCKPIT_CREW_ROLES[crewType].length;
 }
 
 /** Resolve and validate the canonical crew-position count for a published Mek cockpit. */

@@ -21,7 +21,7 @@
             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
             @if (!miniMode()) {
                 @let forceCollapsed = isForceCollapsed(slotForce);
-                <div class="force-slot-header" #forceSlotHeader cdkDragHandle [class.blink]="blinkingForces().has(slotForce)">
+                <div class="force-slot-header" #forceSlotHeader cdkDragHandle [class.blink]="blinkingForces().has(slotForce)" [crewDropForce]="slotForce">
                     @if (slotForce.groups().length > 1) {
                     <button class="btn-toggle-collapse" (click)="toggleForceCollapsed($event, slotForce)" [title]="forceCollapsed ? 'Expand force' : 'Collapse force'">
                         <span class="chevron" [class.collapsed]="forceCollapsed" aria-hidden="true"></span>
@@ -152,6 +152,7 @@
                             cdkDragLockAxis="y" cdkDragBoundary=".scrollable-content"
                             [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
                             <unit-block class="selectable" [forceUnit]="member" [compactMode]="compactMode() || miniMode()"
+                                [crewDropForce]="slotForce" [crewDropUnit]="member.id"
                                 [ctrlHeld]="ctrlHeld()"
                                 [class.miniMode]="miniMode()"
                                 [class.friendly]="showAlignment && slot.alignment === 'friendly'"
@@ -189,7 +190,7 @@
                 }
             </div>
             @if (!miniMode()) {
-                <force-reserve-crew [force]="slotForce" [layout]="compactMode() ? 'compact' : 'cards'" />
+                <force-reserve-crew [force]="slotForce" layout="rows" />
             }
         </div>
         }

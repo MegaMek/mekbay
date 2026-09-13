@@ -41,6 +41,89 @@ import type { RecordSheetInteraction } from './record-sheet-interaction';
 const editContext = createUnitEditContextFixture();
 
 describe('bindNonMekRecordSheet', () => {
+    for (const Family of [testEntities.TestBattleArmorEntity, testEntities.TestInfantryEntity,
+        testEntities.TestProtoMekEntity, testEntities.TestTankEntity, testEntities.TestVtolEntity,
+        testEntities.TestSupportTankEntity, testEntities.TestSupportVtolEntity,
+        testEntities.TestLargeSupportTankEntity, testEntities.TestSupportNavalEntity,
+        testEntities.TestHandheldWeaponEntity]) {
+        it(`${Family.name}: opens the cluster reference from its header, cells and frame, including read-only sheets`, async () => {
+            const entity = new Family();
+            if (entity instanceof testEntities.TestInfantryEntity) {
+                entity.squadSize.set(5);
+                entity.squadCount.set(1);
+            }
+            addTestEquipment(entity, new WeaponEquipment({ id: 'SRM 2', name: 'SRM 2', type: 'weapon',
+                flags: ['F_MISSILE'], weapon: { damage: '2/Msl', rackSize: 2, ammoType: 'SRM', ranges: [3, 6, 9] },
+            }));
+            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const table = svg.querySelector<SVGElement>('[data-mekbay-reference="cluster-hits"]')!;
+            expect(table).not.toBeNull();
+            const onInteraction = jasmine.createSpy('onInteraction');
+            const initial = snapshot(3);
+            const binding = bindNonMekRecordSheet(svg, initial, onInteraction);
+            const targets = [table.querySelector('text')!, table.querySelector('[data-cluster-rack]')!,
+                table.querySelector('path')!];
+            svg.classList.add('interactive-sheet');
+            svg.style.cssText = 'position:fixed;top:0;left:0;width:400px;height:auto;z-index:9999';
+            document.body.append(svg);
+            try {
+                for (const target of targets) {
+                    const box = target.getBoundingClientRect();
+                    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)!;
+                    expect(table.contains(hit)).toBeTrue();
+                    hit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
+            } finally {
+                svg.remove();
+            }
+            expect(onInteraction).toHaveBeenCalledTimes(3);
+            expect(onInteraction).toHaveBeenCalledWith({ kind: 'reference-table', context: initial.editContext }, jasmine.any(MouseEvent));
+
+            const next = { ...initial, stateRevision: 8, editContext: editContext(8) };
+            binding.render(next);
+            table.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            expect(onInteraction.calls.mostRecent().args[0]).toEqual({ kind: 'reference-table', context: next.editContext });
+            table.dispatchEvent(new MouseEvent('click', { button: 2, bubbles: true }));
+            table.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            expect(onInteraction).toHaveBeenCalledTimes(4);
+            binding.destroy();
+            expect(table.classList.contains('interactive')).toBeFalse();
+            expect(table.hasAttribute('tabindex')).toBeFalse();
+
+            const onPresentation = jasmine.createSpy('onPresentation');
+            const readOnly = bindNonMekRecordSheet(svg, next, undefined, undefined, onPresentation);
+            targets[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            table.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+            expect(onPresentation).toHaveBeenCalledTimes(2);
+            expect(onInteraction).toHaveBeenCalledTimes(4);
+            readOnly.destroy();
+            targets[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            expect(onPresentation).toHaveBeenCalledTimes(2);
+        });
+    }
+
+    it('shows the mapped name blank only when the crew name is empty', () => {
+        const svg = stateSheet();
+        svg.insertAdjacentHTML('beforeend', '<path id="blankCrewName0"></path>');
+        svg.querySelector('.crewNameButton')!.setAttribute('textElement', 'crewName0');
+        svg.querySelector('.crewNameButton')!.setAttribute('blankElement', 'blankCrewName0');
+        const original = stateSnapshot(0);
+        const binding = bindNonMekRecordSheet(svg, original);
+        const blank = svg.querySelector<SVGElement>('#blankCrewName0')!;
+        const name = svg.querySelector<SVGElement>('#crewName0')!;
+        expect(blank.style.visibility).toBe('hidden');
+        expect(name.style.visibility).toBe('visible');
+        for (const emptyName of ['', '   ']) {
+            binding.render({ ...original, crew: original.crew.map(position => ({ ...position, name: emptyName })) });
+            expect(blank.style.visibility).toBe('visible');
+            expect(name.style.visibility).toBe('hidden');
+        }
+        binding.render(original);
+        expect(blank.style.visibility).toBe('hidden');
+        expect(name.style.visibility).toBe('visible');
+        binding.destroy();
+    });
+
     for (const Family of [testEntities.TestTankEntity, testEntities.TestVtolEntity, testEntities.TestSupportNavalEntity,
         testEntities.TestAeroSpaceFighterEntity, testEntities.TestFixedWingSupportEntity, testEntities.TestDropShipEntity,
         testEntities.TestWarShipEntity, testEntities.TestHandheldWeaponEntity]) {
@@ -228,22 +311,26 @@ describe('bindNonMekRecordSheet', () => {
 
     it('renders an empty station without stale names, ratings or injury controls', () => {
         const svg = stateSheet();
+        svg.insertAdjacentHTML('beforeend', '<g data-mekbay-crew-stations="0"><g class="crew-vacancy crewNameButton" crewId="0"><text>VACANT</text></g></g>');
+        const frame = svg.querySelector('[data-mekbay-crew-stations]')!;
         const original = stateSnapshot(1);
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, {
             ...original,
             crew: original.crew.map(position => ({ ...position, name: '', effectiveState: 'vacant' })),
         }, interaction => interactions.push(interaction));
-        expect(svg.querySelector('#crewName0')?.textContent).toBe('VACANT');
+        expect(svg.querySelector('#crewName0')?.textContent).toBe('');
+        expect(frame.classList.contains('crew-frame-vacant')).toBeTrue();
         expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('—');
         expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('—');
         const marker = svg.querySelector<SVGElement>('.crewHit[hit="2"]')!;
         expect(marker.style.display).toBe('none');
         marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([]);
-        svg.querySelector('.crewNameButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        frame.querySelector('.crew-vacancy')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions.at(-1)?.kind).toBe('crew-profile');
         binding.render(original);
+        expect(frame.classList.contains('crew-frame-vacant')).toBeFalse();
         expect(marker.style.display).toBe('');
         expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('4');
         binding.destroy();
@@ -498,6 +585,36 @@ describe('bindNonMekRecordSheet', () => {
             binding.destroy();
             jasmine.clock().uninstall();
         }
+    });
+
+    it('binds every generated capital block backdrop to its armor or integrity location', async () => {
+        const entity = new testEntities.TestWarShipEntity();
+        entity.setArmorValue('Nose', 'front', 101);
+        entity.structuralIntegrity.set(150);
+        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const locations = entity.damageLocations().map(location => ({
+            locationId: asLocationId(location.code), code: location.code, sheetCode: location.sheetCode ?? location.code,
+            maximumInternal: location.internalPoints, remainingInternal: location.internalPoints,
+            previewRemainingInternal: location.internalPoints,
+            armor: [{ faceId: asArmorFaceId(location.code), locationId: asLocationId(location.code), face: 'front' as const,
+                maximum: location.armor.front, remaining: location.armor.front, previewRemaining: location.armor.front }],
+        }));
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, { ...snapshot(3), locations }, interaction => interactions.push(interaction));
+        const backdrops = [...svg.querySelectorAll<SVGElement>('.capital-pip-backdrop')];
+        expect(backdrops.length).toBeGreaterThan(2);
+        for (const backdrop of backdrops) {
+            const location = locations.find(location => location.sheetCode === backdrop.getAttribute('data-loc'))!;
+            expect(backdrop.dataset['mekbayEntityBound']).toBe('1');
+            backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            expect(interactions.at(-1)).toEqual(jasmine.objectContaining({
+                kind: backdrop.classList.contains('armor') ? 'armor' : 'internal',
+                locationId: location.locationId,
+            }));
+        }
+        expect(interactions.length).toBe(backdrops.length);
+        expect(svg.querySelector('.capital-pip-grid[data-mekbay-entity-bound], .capital-pip-state[data-mekbay-entity-bound]')).toBeNull();
+        binding.destroy();
     });
 
     it('keeps dense capital paperdoll blocks inert when a location contour is missing', () => {

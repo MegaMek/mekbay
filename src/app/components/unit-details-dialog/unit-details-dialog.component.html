@@ -26,7 +26,6 @@
             </div>
         </div>
         <div class="header-row-tags">
-                @if (headerUnit().isCustom) { <custom-unit-actions [unit]="headerUnit()" [member]="constructionMember()" /> }
             <unit-tags class="header-tags" [unit]="headerUnit()" [mode]="'full'"
                 (tagClick)="onTagClick($event)"></unit-tags>
 
@@ -164,6 +163,9 @@
             (click)="onChange()">CHANGE</button>
         }
         <unit-construction-button [unit]="unit" [forceMember]="constructionMember()"></unit-construction-button>
+        @if (unit.isCustom) {
+        <custom-unit-actions [unit]="unit" [member]="constructionMember()" />
+        }
         <button class="modal-btn bt-button" (click)="onClose()">DISMISS</button>
             </ng-container>
     </unit-details-footer>

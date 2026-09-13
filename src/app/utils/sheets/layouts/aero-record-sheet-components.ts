@@ -16,6 +16,7 @@ import {
 type PaperdollPipLayout,
 PaperdollGenerator,
 } from '../paperdoll-generator';
+import { CapitalShipPipRenderer } from '../capital-ship-pip-renderer';
 import {
 type Box,
 addFrame,
@@ -770,6 +771,7 @@ function drawAeroDamagePanel(
         location,
         armorBoxes[index] ?? armorBoxes[armorBoxes.length - 1],
         'armor',
+        capital,
     ));
 
     const systemY = capital ? height - 102 : height - 92;
@@ -781,7 +783,7 @@ function drawAeroDamagePanel(
             y: systemY,
             width: systemWidth - 4,
             height: 56,
-        }, 'structure');
+        }, 'structure', capital);
     });
     addText(group, entity.uniformArmor()?.armor.name ?? 'PATCHWORK ARMOR', width / 2, 19, {
         size: 6, weight: 700, anchor: 'middle', maxWidth: width - 30,
@@ -821,6 +823,7 @@ function drawAeroDamageRegion(
     location: EntityDamageLocation,
     box: Box | undefined,
     kind: 'armor' | 'structure',
+    capital: boolean,
 ): void {
     if (!box) return;
     const code = location.sheetCode ?? location.code;
@@ -846,7 +849,9 @@ function drawAeroDamageRegion(
     addText(region, code.toUpperCase(), box.x + box.width / 2, box.y + 9, {
         size: 5.5, weight: 700, anchor: 'middle', maxWidth: box.width - 6,
     });
-    const pips = makePips(value, box.width - 8, box.height - 17, kind, code);
+    const pips = capital
+        ? CapitalShipPipRenderer.createPips(value, box.width - 8, box.height - 17, kind, code)
+        : makePips(value, box.width - 8, box.height - 17, kind, code);
     if (pips) {
         pips.setAttribute('transform', `translate(${formatNumber(box.x + 4)} ${formatNumber(box.y + 13)})`);
         region.appendChild(pips);

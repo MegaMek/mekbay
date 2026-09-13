@@ -81,7 +81,8 @@ describe('generated paperdoll pointer targets', () => {
             expect([...coveredLocations]).withContext(`${name}: button does not cover damage locations or stores`).toEqual([]);
         }
         const pips = [...svg.querySelectorAll<SVGGraphicsElement>(
-            '[data-mekbay-paperdoll] .pip.armor, [data-mekbay-paperdoll] .pip.structure',
+            '[data-mekbay-paperdoll] .pip.armor, [data-mekbay-paperdoll] .pip.structure, '
+            + '[data-mekbay-paperdoll] .capital-pip-backdrop',
         )];
         expect(pips.length).withContext(name).toBeGreaterThan(0);
         expect(svg.querySelector('[data-mekbay-paperdoll] .pip-hit-area')).toBeNull();
@@ -97,7 +98,7 @@ describe('generated paperdoll pointer targets', () => {
                 .matrixTransform(pip.getScreenCTM()!);
             const hit = document.elementFromPoint(center.x, center.y);
             const target = hit?.closest('.unitLocation');
-            if (getComputedStyle(pip).pointerEvents !== 'none') {
+            if (!pip.classList.contains('capital-pip-backdrop') && getComputedStyle(pip).pointerEvents !== 'none') {
                 failures.push(`${expected}: pip intercepts pointers`);
             }
             if (!target?.classList.contains(type) || target.getAttribute('data-loc') !== location

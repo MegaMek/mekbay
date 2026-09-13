@@ -32,6 +32,7 @@ type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
 addCrewSkillValue,
+drawCrewHitGrid,
 addDiagramHeading,
 addFrame,
 addLine,
@@ -167,7 +168,8 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         }), 450, {
             assetUrl: this.paperdollAsset(entity),
             capitalFallback: capital,
-            pipLayout: request.pipLayout,
+            // Capital armor and integrity tracks always use square tables.
+            pipLayout: capital ? 'capital-grid' : request.pipLayout,
         });
         drawLargeAeroDiagramHeader(svg, capital, page);
         drawAeroMovementCompass(svg, at({ x: 249.651, y: 456.4, width: 90, height: 50 }));
@@ -870,41 +872,6 @@ function capitalAeroDataPanelTitle(entity: AeroEntity): string {
     }
 }
 
-interface LargeAeroReferenceHeader {
-    readonly width: number;
-    readonly textLength: number;
-}
-
-function addLargeAeroReferenceFrame(
-    svg: SVGSVGElement,
-    title: string,
-    box: Box,
-    header: LargeAeroReferenceHeader,
-): SVGGElement {
-    const group = addFrame(svg, title, box, {
-        headerWidth: header.width,
-        // SvgFrameUtil adds the same 2.5px padding above and below explicit
-        // content height, so 10 produces MegaMekLab's 15px title tab.
-        headerHeight: 10,
-        headerFontSize: 10.6,
-        headerAngleDegrees: 56.31,
-        cornerAngleDegrees: { topLeft: 56.31, topRight: 45, bottomRight: 45, bottomLeft: 45 },
-    });
-    const headerGroup = Array.from(group.children).find(
-        (child): child is SVGGElement => child.tagName.toLowerCase() === 'g'
-            && child.querySelector('.svg-frame-title') !== null,
-    );
-    const headerText = headerGroup?.querySelector<SVGTextElement>('.svg-frame-title');
-    if (headerGroup) headerGroup.setAttribute('transform', 'translate(2.5 3)');
-    if (headerText) {
-        headerText.setAttribute('x', formatNumber(header.width / 2));
-        headerText.setAttribute('y', '11.25');
-        headerText.setAttribute('textLength', formatNumber(header.textLength));
-        headerText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-    }
-    return group;
-}
-
 function drawLargeAeroReverseMovementCompass(svg: SVGSVGElement, box: Box): void {
     const group = createLargeAeroReverseMovementCompassArt();
     appendLargeAeroReverseReferenceArt(
@@ -922,11 +889,17 @@ function drawLargeAeroReverseDataPanel(
     box: Box,
     content: LargeAeroPageContent,
 ): void {
-    const group = addLargeAeroReferenceFrame(
+    const group = addFrame(
         svg,
         `${capitalAeroDataPanelTitle(entity)} (Cont.)`,
         box,
-        { width: 93.209, textLength: 75.646 },
+        {
+            headerWidth: 93.209,
+            headerHeight: 10,
+            headerFontSize: 10.6,
+            headerAngleDegrees: 56.31,
+            cornerAngleDegrees: { topLeft: 56.31, topRight: 45, bottomRight: 45, bottomLeft: 45 },
+        },
     );
     group.setAttribute('data-mekbay-region', 'aero-data-continuation');
     const sx = box.width / 278.5;
@@ -1229,7 +1202,6 @@ export function drawLargeAeroDiagramHeader(
             titleWidth: 83.991,
             titleX: 0,
             titleY: 0,
-            titleTextLength: 69.539,
             ribbonX: -18,
             ribbonY: 0,
             ribbonWidth: 123.749,
@@ -1358,32 +1330,10 @@ function drawLargeAeroPilotPanel(svg: SVGSVGElement, entity: AeroEntity, box: Bo
         group.appendChild(button);
     }
 
-    const table = svgElement('rect');
-    setAttributes(table, {
-        x: x(48.86), y: y(35.979), width: x(87.74), height: y(20), rx: x(1.015),
-        fill: 'none', stroke: '#000', 'stroke-width': 1,
+    drawCrewHitGrid(group, 0, {
+        x: x(48.86), y: y(35.979), cellWidth: x(87.74 / 6), cellHeight: y(10),
+        labelX: x(3), labelWidth: x(42.86), fontScale: font(1), mode: 'vessel-crew',
     });
-    group.appendChild(table);
-    addLine(group, x(48.86), y(45.979), x(136.6), y(45.979), '#000', 0.58);
-    const columns = [56.172, 70.795, 85.418, 100.042, 114.665, 129.288];
-    columns.slice(1).forEach(column => addLine(
-        group, x(column - 7.312), y(35.979), x(column - 7.312), y(55.979), '#000', 0.58,
-    ));
-    columns.forEach((column, index) => {
-        addText(group, String(index + 1), x(column), y(42.979), {
-            size: font(5.8), weight: 700, anchor: 'middle',
-        });
-        addText(group, index === 5 ? 'Incp.' : `+${index + 1}`, x(column), y(52.979), {
-            size: font(5.8), weight: 700, anchor: 'middle', maxWidth: x(13),
-        });
-        const hit = transparentRect(x(column - 7.2), y(35.979), x(14.4), y(10), 'crewHit');
-        hit.id = `crew_damage_0_${index + 1}`;
-        hit.setAttribute('crewId', '0');
-        hit.setAttribute('hit', String(index + 1));
-        group.appendChild(hit);
-    });
-    addText(group, 'Hits Taken', x(45.86), y(42.979), { size: font(5.2), weight: 700, anchor: 'end' });
-    addText(group, 'Modifier', x(45.86), y(52.979), { size: font(5.2), weight: 700, anchor: 'end' });
 
     const personnel = largeAeroPersonnel(entity);
     const facts: readonly [string, number, number, number, string][] = [

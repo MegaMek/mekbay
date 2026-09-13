@@ -12,8 +12,8 @@ import { isCaseEquipment } from '../../models/case-equipment.model';
 /** Shared construction combinations from TestEntity.hasIllegalEquipmentCombinations. */
 export function constructionEquipmentMessages(entity: BaseEntity): EntityValidationMessage[] {
     const messages: EntityValidationMessage[] = [];
-    const add = (code: string, message: string, location?: string, category: EntityValidationMessage['category'] = 'equipment') =>
-        messages.push({ severity: 'error', category, code, message, location });
+    const add = (code: string, message: string, location?: string, category: EntityValidationMessage['category'] = 'equipment', mountId?: string) =>
+        messages.push({ severity: 'error', category, code, message, location, ...(mountId ? { mountId } : {}) });
     const mounts = entity.equipment();
     const misc = mounts.filter(mount => mount.equipment instanceof MiscEquipment);
     const weapons = mounts.filter(mount => mount.equipment instanceof WeaponEquipment);
@@ -47,7 +47,7 @@ export function constructionEquipmentMessages(entity: BaseEntity): EntityValidat
         for (const mount of weapons) {
             const weapon = mount.equipment as WeaponEquipment;
             const standardFlamer = weapon.hasFlag('F_FLAMER') && weapon.ammoType === 'NA' && !weapon.hasFlag('F_BA_WEAPON');
-            if (['GAUSS_HEAVY', 'IGAUSS_HEAVY'].includes(weapon.ammoType) || standardFlamer || weapon.hasFlag('F_HYPER')) add('WEAPON_ENGINE', `${weapon.name} requires a fusion or fission engine.`, mount.location, 'engine');
+            if (['GAUSS_HEAVY', 'IGAUSS_HEAVY'].includes(weapon.ammoType) || standardFlamer || weapon.hasFlag('F_HYPER')) add('WEAPON_ENGINE', `${weapon.name} requires a fusion or fission engine.`, mount.location, 'engine', mount.mountId);
         }
     }
 
@@ -58,7 +58,7 @@ export function constructionEquipmentMessages(entity: BaseEntity): EntityValidat
         const equipment = mount.equipment!;
         if (equipment.hasFlag('F_COMMUNICATIONS')) {
             const tons = mount.size ?? mount.getTonnage(entity) ?? 0;
-            if (!Number.isInteger(tons) || tons < 1 || tons > 15) add('COMMUNICATIONS_SIZE', 'Additional communications must total 1–15 whole tons.', mount.location);
+            if (!Number.isInteger(tons) || tons < 1 || tons > 15) add('COMMUNICATIONS_SIZE', 'Additional communications must total 1–15 whole tons.', mount.location, 'equipment', mount.mountId);
         }
         const allocated = mount.allocation.kind === 'location';
         // Vehicle/ProtoMek Body is native location zero and absent from the armor order.
@@ -74,7 +74,7 @@ export function constructionEquipmentMessages(entity: BaseEntity): EntityValidat
         }
         if (isWeaponEnhancement(mount) && !isArtemisEquipment(equipment) && !equipment.hasFlag('F_APOLLO')) {
             const target = entity.getLinkedMount(mount);
-            if (!target || !entity.canLinkEquipment(mount, target)) add('WEAPON_ENHANCEMENT_LINK', `${equipment.name} requires a compatible weapon in the same location.`, mount.location);
+            if (!target || !entity.canLinkEquipment(mount, target)) add('WEAPON_ENHANCEMENT_LINK', `${equipment.name} requires a compatible weapon in the same location.`, mount.location, 'equipment', mount.mountId);
         }
     }
     for (const [location, count] of physical) if (count > 1) add('PHYSICAL_TOOL_LOCATION', 'Physical weapons and tools cannot share this location.', location);
@@ -84,8 +84,8 @@ export function constructionEquipmentMessages(entity: BaseEntity): EntityValidat
         add('MODULAR_ARMOR_LOCATION', `Only one modular armor mount is permitted on the ${rear === 'true' ? 'rear' : 'front'} of this location.`, location);
     }
     for (const mount of mounts) if (mount.omniPodMounted) {
-        if (!entity.omni()) add('OMNI_POD_CHASSIS', `${mount.equipment?.name ?? mount.equipmentId} is pod mounted on a non-Omni unit.`, mount.location);
-        else if (mount.equipment?.omniFixedOnly) add('OMNI_FIXED_EQUIPMENT', `${mount.equipment.name} must be fixed equipment.`, mount.location);
+        if (!entity.omni()) add('OMNI_POD_CHASSIS', `${mount.equipment?.name ?? mount.equipmentId} is pod mounted on a non-Omni unit.`, mount.location, 'equipment', mount.mountId);
+        else if (mount.equipment?.omniFixedOnly) add('OMNI_FIXED_EQUIPMENT', `${mount.equipment.name} must be fixed equipment.`, mount.location, 'equipment', mount.mountId);
     }
     if (!entity.omni() && entity.transporters().some(transporter => transporter.omni)) add('OMNI_POD_TRANSPORT', 'Pod-mounted transport requires an Omni unit.');
 
@@ -95,11 +95,22 @@ export function constructionEquipmentMessages(entity: BaseEntity): EntityValidat
         ['Apollo', misc.filter(mount => mount.equipment!.hasFlag('F_APOLLO')), weapons.filter(mount => (mount.equipment as WeaponEquipment).ammoType === 'MRM')],
     ] as const) {
         if (!sources.length) continue;
-        if (sources.length !== compatible.length) add(`${name.toUpperCase()}_COVERAGE`, `There must be one ${name} system for every compatible weapon.`);
-        else if (compatible.some(weapon => {
+        const uncovered = compatible.filter(weapon => {
             const source = entity.getLinkingMount(weapon);
             return !source || !sources.includes(source) || !entity.canLinkEquipment(source, weapon);
-        })) add(`${name.toUpperCase()}_LINK`, `${name} must be linked to each compatible weapon in the same location.`);
+        });
+        if (sources.length !== compatible.length) {
+            const unused = sources.filter(source => {
+                const weapon = entity.getLinkedMount(source);
+                return !weapon || !compatible.includes(weapon) || !entity.canLinkEquipment(source, weapon);
+            });
+            const targets = sources.length < compatible.length ? uncovered : unused;
+            for (const target of targets.length ? targets : sources) {
+                add(`${name.toUpperCase()}_COVERAGE`, `There must be one ${name} system for every compatible weapon. (${target.displayName()})`, target.location, 'equipment', target.mountId);
+            }
+        } else for (const target of uncovered) {
+            add(`${name.toUpperCase()}_LINK`, `${name} must be linked to each compatible weapon in the same location. (${target.displayName()})`, target.location, 'equipment', target.mountId);
+        }
     }
     return messages;
 }

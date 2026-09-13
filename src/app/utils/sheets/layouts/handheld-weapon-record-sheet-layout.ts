@@ -4,6 +4,7 @@
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
+import { SvgFrameUtil } from '../svg-frame.util';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { WeaponEquipment } from '../../../models/equipment.model';
@@ -104,7 +105,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         const extra = large ? LARGE_HEIGHT - STANDARD_HEIGHT : 0;
         const group = svgElement('g');
         group.setAttribute('class', 'handheld-weapon-strip');
-        group.setAttribute('transform', `scale(${formatNumber(Math.min(1, Number(svg.getAttribute('width')) / BLOCK_WIDTH))}) translate(-2.110329 0.33320985)`);
+        group.setAttribute('transform', `scale(${formatNumber(Math.min(1, Number(svg.getAttribute('width')) / BLOCK_WIDTH))})`);
         svg.appendChild(group);
         drawHandheldFrames(group, extra);
 
@@ -267,25 +268,27 @@ export function renderHandheldWeaponAmmoPips(
     return true;
 }
 
-/** HHW strips have a plain name notch; these four generated contours are their entire frame. */
+/** Preserve the reference's raised label lips and stepped inventory bottom. */
 function drawHandheldFrames(group: SVGGElement, extra: number): void {
-    const contour = (points: readonly (readonly [number, number])[], dx: number, dy: number,
-        fill: string, stroke?: string, width?: number) => {
-        const path = svgElement('path');
-        setAttributes(path, { d: points.map(([x, y], index) =>
-            `${index === 0 ? 'M' : 'L'}${formatNumber(dx + x * 1.0317376)} ${formatNumber(dy - y * 1.0317376 + (y < 10 ? extra : 0))}`).join(' ') + ' Z',
-            fill, stroke, 'stroke-width': width, 'stroke-linejoin': 'miter' });
-        group.appendChild(path);
-    };
-    const outer = [[0, 0], [-5.668, -8.502], [-331.654, -8.502], [-337.323, 0], [-547.087, 0],
-        [-552.757, 8.505], [-552.757, 53.861], [-547.087, 62.365], [-342.993, 62.365],
-        [-337.324, 53.861], [-7.086, 53.86], [0, 45.356]] as const;
-    contour(outer, 577.8292, 69.428561, '#c7c8ca');
-    contour(outer, 573.44225, 65.041811, '#fff', '#000', 2.06348);
-    contour([[0, -0.166], [-3.322, -5.149], [-195.576, -5.149], [-201.26, 3.376],
-        [-201.26, 38.267], [-195.59, 46.771], [-150.59, 46.771], [-144.541, 37.428], [-6.125, 37.428], [0, 29.759]],
-        437.44736, 62.114671, 'none', '#000', 1.03174);
-    contour([[0, -0.166], [-3.322, -5.149], [-110.999, -5.149], [-116.702, 3.405],
-        [-116.702, 38.267], [-111.032, 46.771], [-66.032, 46.771], [-59.983, 37.428], [-6.125, 37.428], [0, 29.759]],
-        566.62711, 62.114671, 'none', '#000', 1.03174);
+    const gap = 6;
+    const inventoryWidth = 216;
+    const armorWidth = 210;
+    const armorX = inventoryWidth + gap * 2;
+    const ammoX = armorX + armorWidth + gap;
+    const panelTop = gap * 2;
+    const height = STANDARD_HEIGHT + extra;
+    group.appendChild(SvgFrameUtil.createSVGFrame('', BLOCK_WIDTH, height, {
+        headerStyle: 'outline',
+        headerWidth: inventoryWidth,
+        bottomLeftNotchWidth: inventoryWidth,
+    }));
+    for (const [x, width] of [[armorX, armorWidth], [ammoX, BLOCK_WIDTH - ammoX - gap]]) {
+        const panel = SvgFrameUtil.createSVGFrame('', width, height - panelTop - gap, {
+            headerStyle: 'outline',
+            headerWidth: 54,
+            variant: 'nested',
+        });
+        panel.setAttribute('transform', `translate(${formatNumber(x)} ${panelTop})`);
+        group.appendChild(panel);
+    }
 }

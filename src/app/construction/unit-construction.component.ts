@@ -46,7 +46,7 @@ import { BaseEntity } from '../models/entity/base-entity';
 import { asComponentId, type ComponentId } from '../models/entity/entity-identifiers';
 import { EntityMountedEquipment, type EntityMountedEquipmentInit } from '../models/entity/types/equipment';
 import { MekEntity, type MekStructureDonor } from '../models/entity/entities/mek/mek-entity';
-import { isMekLocation } from '../models/entity/types';
+import { isMekLocation, type EntityValidationMessage } from '../models/entity/types';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { VehicleEntity } from '../models/entity/entities/vehicle/vehicle-entity';
 import {
@@ -658,6 +658,85 @@ export class UnitConstructionComponent {
     // Wait until the overlay's background is no longer inert before restoring focus.
     afterNextRender(() => trigger?.focus({ preventScroll: true }), { injector: this.injector });
   }
+  navigateToIssue(message: EntityValidationMessage): void {
+    // Navigation owns the next focus target, instead of restoring the issues toggle.
+    this.detailsTrigger = null;
+    this.detailsView.set(null);
+    this.equipmentDrawerOpen.set(false);
+    this.inspector.close();
+    this.placementSelection.set(null);
+
+    const mount = message.mountId
+      ? this.entity().equipment().find((item) => item.mountId === message.mountId)
+      : undefined;
+    const location = [message.location, mount?.location, ...(mount?.getOccupiedLocations() ?? [])]
+      .find((id) => id && this.locations().some((item) => item.id === id));
+    const fieldByCode: Readonly<Record<string, string>> = {
+      CHASSIS_REQUIRED: 'chassis',
+      OEM_YEAR_AFTER_INTRODUCTION: 'originalBuildYear',
+      MEK_CHASSIS_WEIGHT: 'tonnage',
+      OMNI_CHASSIS: 'omni',
+      PROTO_GLIDER_SPEED: 'walkMP',
+      PROTO_QUAD_SPEED: 'walkMP',
+    };
+    const field = fieldByCode[message.code];
+    let selector: string;
+    let fallback = '.construction-workspace';
+    if (mount) {
+      this.panel.set('loadout');
+      if (location) this.selectedLocation.set(location);
+      const unallocated = this.isMountUnallocated(mount);
+      if (unallocated) this.unallocatedOpen.set(true);
+      const scope = unallocated ? '.unallocated-panel ' : location ? `.location-card[data-location="${CSS.escape(location)}"] ` : '';
+      selector = `${scope}[data-mount-id="${CSS.escape(mount.mountId)}"]`;
+    } else if (field) {
+      this.panel.set('systems');
+      if (field === 'originalBuildYear') this.oemYearExpanded.set(true);
+      selector = `[data-field-id="${field}"]`;
+    } else if (message.code.includes('QUIRK')) {
+      this.panel.set('quirks');
+      selector = 'construction-quirks';
+    } else if (message.code.startsWith('MATERIAL_') && message.category !== 'crit') {
+      this.panel.set('systems');
+      selector = '[data-system-group="Materials"]';
+    } else if (location) {
+      this.panel.set('loadout');
+      this.selectedLocation.set(location);
+      fallback = `.location-card[data-location="${CSS.escape(location)}"]`;
+      selector = message.category === 'armor'
+        ? `${fallback} .location-defense`
+        : fallback;
+    } else if (message.code === 'OVERWEIGHT') {
+      this.detailsView.set('weight');
+      selector = 'construction-breakdown';
+      fallback = '#construction-details';
+    } else if (['equipment', 'crit', 'armor'].includes(message.category) || message.code === 'MASS_UNRESOLVED') {
+      this.panel.set('loadout');
+      if ((message.category === 'crit' || message.code === 'MASS_UNRESOLVED') && this.unallocated().length) {
+        this.unallocatedOpen.set(true);
+        selector = '.unallocated-panel';
+      } else selector = '.location-grid';
+    } else {
+      this.panel.set('systems');
+      const group: Partial<Record<EntityValidationMessage['category'], string>> = {
+        general: 'Chassis', tech: 'Chassis', weight: 'Chassis', movement: 'Movement',
+      };
+      selector = message.category === 'heat' ? '[data-field-id="heatSinks"]'
+        : `[data-system-group="${group[message.category] ?? 'Systems'}"]`;
+    }
+    afterNextRender(() => {
+      const shell = this.constructionShell()?.nativeElement;
+      const target = shell?.querySelector<HTMLElement>(selector) ?? shell?.querySelector<HTMLElement>(fallback);
+      if (!target) return;
+      // Prefer the invalid armor facing, then an editable control or equipment name.
+      const focus = target.querySelector<HTMLElement>('input:out-of-range:not(:disabled), [aria-invalid="true"]:not(:disabled)')
+        ?? target.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled), button:not(:disabled), summary')
+        ?? target;
+      if (focus === target && !target.matches('button, input, select, summary, [tabindex]')) target.tabIndex = -1;
+      focus.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }, { injector: this.injector });
+  }
   readonly equipmentDrawerOpen = signal(false);
   readonly mobileEquipment = computed(() => this.layout.windowWidth() <= 900);
   readonly equipmentDrawerActive = computed(() => this.mobileEquipment() && this.equipmentDrawerOpen() && !this.dragging());
@@ -1265,6 +1344,16 @@ export class UnitConstructionComponent {
   readonly validation = computed(() => validateConstruction(this.entity()));
   readonly errors = computed(() => this.validation().messages.filter((message) => message.severity === 'error'));
   readonly warnings = computed(() => this.validation().messages.filter((message) => message.severity === 'warning'));
+  private readonly mountIssueMessages = computed(() => {
+    const messages = new Map<string, string[]>();
+    for (const message of this.validation().messages) {
+      if (!message.mountId || message.severity === 'info') continue;
+      const issues = messages.get(message.mountId) ?? [];
+      issues.push(message.message);
+      messages.set(message.mountId, issues);
+    }
+    return messages;
+  });
   readonly showTechBases = computed(
     () =>
       this.entity().mixedTech() ||
@@ -1394,10 +1483,14 @@ export class UnitConstructionComponent {
   readonly removableUnallocated = computed(() =>
     this.unallocated().filter((mount) => this.isMountUnallocated(mount) && this.canRemoveMount(mount)),
   );
-  installedCaseWarning(mount: EntityMountedEquipment, location = mount.location): string | undefined {
-    return mount.allocation.kind === 'location' && caseEquipmentKind(mount.equipment)
+  equipmentWarning(mount: EntityMountedEquipment, location = mount.location): string {
+    const caseWarning = mount.allocation.kind === 'location' && caseEquipmentKind(mount.equipment)
       ? this.locationCase().get(location)?.warning
       : undefined;
+    return [...new Set([
+      ...(this.mountIssueMessages().get(mount.mountId) ?? []),
+      ...(caseWarning ? [caseWarning] : []),
+    ])].join('\n');
   }
   readonly selectedMountInstallIssues = computed(() => {
     const mount = this.selectedMount();

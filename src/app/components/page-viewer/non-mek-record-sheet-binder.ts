@@ -42,12 +42,14 @@ import { formatMovementWithMaximum, formatRecordSheetTonnage, recordSheetAmmoPro
 import { writeSvgTextLines } from '../../utils/svg-text.util';
 import {
 renderRecordSheetConditions,
+renderRecordSheetCrewName,
 renderRecordSheetCrewState,
+renderRecordSheetCrewVacancies,
 renderRecordSheetDestroyed,
 renderRecordSheetPips,
 } from './record-sheet-dom';
 import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
-import type { RecordSheetInteraction } from './record-sheet-interaction';
+import type { RecordSheetInteraction, RecordSheetInteractionHandler } from './record-sheet-interaction';
 import { bindRecordSheetMovement } from './record-sheet-movement';
 
 export interface NonMekRecordSheetBinding {
@@ -59,8 +61,9 @@ export interface NonMekRecordSheetBinding {
 export function bindNonMekRecordSheet(
     svg: SVGSVGElement,
     initial: NonMekRecordSheetSnapshot,
-    onInteraction?: (interaction: RecordSheetInteraction, event: Event) => void,
+    onInteraction?: RecordSheetInteractionHandler,
     initialEquipmentPanel?: EquipmentPanelSnapshot | null,
+    onPresentationInteraction: RecordSheetInteractionHandler | undefined = onInteraction,
 ): NonMekRecordSheetBinding {
     const abort = new AbortController();
     const highlights = new RecordSheetDamageHighlights();
@@ -71,6 +74,25 @@ export function bindNonMekRecordSheet(
     const renderMovementSelection = bindRecordSheetMovement(svg, () => current.movementSelection,
         () => current.editContext, abort.signal, onInteraction);
     let infantryDisplay: InfantryStrengthDisplay | undefined;
+
+    const referenceTables = onPresentationInteraction
+        ? [...svg.querySelectorAll<SVGElement>('[data-mekbay-reference="cluster-hits"]')]
+        : [];
+    for (const table of referenceTables) {
+        table.classList.add('interactive', 'referenceTableControl');
+        table.setAttribute('tabindex', '0');
+        const activate = (event: Event): void => {
+            event.preventDefault();
+            event.stopPropagation();
+            onPresentationInteraction?.(Object.freeze({ kind: 'reference-table', context: current.editContext }), event);
+        };
+        table.addEventListener('click', event => {
+            if (event instanceof MouseEvent && event.button === 0) activate(event);
+        }, { signal: abort.signal });
+        table.addEventListener('keydown', event => {
+            if (event instanceof KeyboardEvent && (event.key === 'Enter' || event.key === ' ')) activate(event);
+        }, { signal: abort.signal });
+    }
 
     const bind = (
         element: SVGElement,
@@ -229,6 +251,10 @@ export function bindNonMekRecordSheet(
         destroy: () => {
             abort.abort();
             highlights.destroy();
+            for (const table of referenceTables) {
+                table.classList.remove('interactive', 'referenceTableControl');
+                table.removeAttribute('tabindex');
+            }
             svg.querySelector('#ammoProfile > .inventoryEntryButton')?.remove();
             svg.querySelectorAll<SVGElement>('[data-mekbay-entity-bound="1"]').forEach(element => {
                 delete element.dataset['mekbayEntityBound'];
@@ -271,13 +297,15 @@ function renderCrew(
     current: () => NonMekRecordSheetSnapshot,
 ): void {
     const displays = crewStateDefinitions(snapshot.crewStateDisplayKeys);
+    renderRecordSheetCrewVacancies(svg, snapshot.crew);
     for (const position of snapshot.crew) {
         const occurrence = position.occurrence;
         const vacant = position.effectiveState === 'vacant';
-        const nameButton = svg.querySelector<SVGElement>(`.crewNameButton[crewId="${occurrence}"]`);
-        const mappedName = nameButton?.getAttribute('textElement');
-        const name = mappedName ? svg.getElementById(mappedName) : svg.getElementById(`crewName${occurrence}`);
-        if (name) name.textContent = vacant ? 'VACANT' : position.name;
+        const displayName = vacant ? '' : position.name;
+        if (!renderRecordSheetCrewName(svg, occurrence, displayName)) {
+            const name = svg.getElementById(`crewName${occurrence}`);
+            if (name) name.textContent = displayName;
+        }
         const gunnery = svg.getElementById(`gunnerySkill${occurrence}`);
         if (gunnery) gunnery.textContent = vacant ? '—' : String(position.gunnery);
         const piloting = svg.getElementById(`pilotingSkill${occurrence}`);

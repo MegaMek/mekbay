@@ -40,8 +40,26 @@
 }
 
 .crew-skills {
+  min-width: 0;
   margin: 0;
+  padding: 0;
+  border: 0;
   gap: 8px;
+}
+
+.dual-skills > .crew-skills {
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border-color);
+  background: #0002;
+}
+
+.skill-group-title {
+  padding: 0 6px;
+  color: var(--text-color);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .crew-wounds {
@@ -97,15 +115,20 @@
     align-self: end;
   }
   > .crew-skill-note,
-  > pilot-notes-field,
-  &.dual-skills > .aerospace-skills {
+  > pilot-notes-field {
     grid-column: 1 / -1;
+  }
+
+  &.dual-skills > pilot-portrait-field {
+    grid-row: 1 / span 3;
+    align-self: start;
   }
 }
 
 @container (max-width: 420px) {
   .crew-member-editor.with-portrait {
-    > pilot-portrait-field {
+    > pilot-portrait-field,
+    &.dual-skills > pilot-portrait-field {
       grid-row: 1;
     }
     > .crew-skills {
@@ -140,7 +163,8 @@
     &.with-portrait {
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 
-      > pilot-portrait-field {
+      > pilot-portrait-field,
+      &.dual-skills > pilot-portrait-field {
         grid-column: 2;
         grid-row: 1;
         justify-self: center;

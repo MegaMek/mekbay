@@ -3,7 +3,9 @@
 
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
-import { asCrewPositionId,asLocationId } from '../../../models/entity/entity-identifiers';
+import { asComponentId,asCrewPositionId,asLocationId } from '../../../models/entity/entity-identifiers';
+import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../../../models/cbt-ruleset.model';
+import { gameRulesFor } from '../../../models/rules/game-rules';
 import { TestInfantryEntity,TestTankEntity,TestAeroSpaceFighterEntity,TestVtolEntity } from '../../../models/entity/testing/test-entities';
 import type { ChoicePickerConfig } from '../../../services/picker-factory.service';
 import type { CBTForceMember } from '../../../models/force-member.model';
@@ -19,11 +21,61 @@ import { PickerFactoryService,type DirectionalPickerConfig } from '../../../serv
 import { ToastService } from '../../../services/toast.service';
 import { UnitNameService } from '../../../services/unit-name.service';
 import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
+import { drawClusterHitsReference } from '../../../utils/sheets/record-sheet-svg-rendering';
+import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { PageViewerNonMekRuntimeService,nonMekCrewStateCommand } from './page-viewer-non-mek-runtime.service';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
 describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
+    for (const [ruleset, readOnly] of [[CORE_2026_RULESET, false], [TOTAL_WARFARE_RULESET, true]] as const) {
+        it(`opens cluster tables with current rules and ammo in ${ruleset}, readOnly=${readOnly}`, () => {
+            const entity = new TestTankEntity();
+            const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+            entity.uuid.set(uuid);
+            const unit = createNonMekUnit(entity, { instanceId: 'tank', uuid,
+                scenario: { id: 'test' }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+            const snapshot = {
+                ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset, 0, 0, unit.getCrewAssignment()),
+                editContext: { owner: unit, state: unit.snapshot() },
+            };
+            const dialogs = { createDialog: jasmine.createSpy('createDialog') };
+            const ammoId = asComponentId('ammo-bin');
+            const ammoHotLoaded = jasmine.createSpy('ammoHotLoaded').and.returnValue(true);
+            TestBed.configureTestingModule({ providers: [PageViewerNonMekRuntimeService,
+                { provide: DialogsService, useValue: dialogs },
+                { provide: LoggerService, useValue: { warn: () => {} } },
+                { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
+                ...[ForcePilotEditorService, OptionsService, PageViewerOverlayService, OverlayManagerService,
+                    PickerFactoryService, ToastService, PageViewerZoomPanService].map(provide => ({ provide, useValue: {} })),
+            ] });
+            const member = { kind: 'cbt', id: 'tank', entity, nonMekRecordSheetSnapshot: () => snapshot,
+                force: { readOnly: () => readOnly, getEquipmentPanelSnapshot: () => null,
+                    changed: new Subject(), sessionChanged: new Subject(),
+                    getUnitSnapshot: () => ({ ruleset, state: { ammo: new Map([[ammoId, {}]]) }, query: { ammoHotLoaded } }),
+                },
+            } as unknown as CBTForceMember;
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            drawClusterHitsReference(svg, { x: 0, y: 0, width: 200, height: 180 }, [2]);
+            const service = TestBed.inject(PageViewerNonMekRuntimeService);
+            expect(service.bind(member, svg)).toBeTrue();
+            const click = () => svg.querySelector('text')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            click();
+            expect(dialogs.createDialog).toHaveBeenCalledOnceWith(ClusterTableDialogComponent, {
+                data: { unit: entity, gameRules: gameRulesFor(ruleset), hasHotLoadedAmmo: true },
+            });
+            expect(ammoHotLoaded).toHaveBeenCalledWith(ammoId);
+            ammoHotLoaded.and.returnValue(false);
+            click();
+            expect(dialogs.createDialog.calls.mostRecent().args[1].data.hasHotLoadedAmmo).toBeFalse();
+            service.handle(member, { kind: 'reference-table', context: { ...snapshot.editContext, owner: {} } }, new MouseEvent('click'));
+            expect(dialogs.createDialog).toHaveBeenCalledTimes(2);
+            service.clear();
+            click();
+            expect(dialogs.createDialog).toHaveBeenCalledTimes(2);
+        });
+    }
+
     for (const [makeEntity, field] of [
         [() => new TestAeroSpaceFighterEntity(), 'aeroGunnery'],
         [() => new TestVtolEntity(), 'gunnery'],

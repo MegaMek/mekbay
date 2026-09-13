@@ -86,7 +86,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
                 ? battleArmorClusterRacks(entity)
                 : parseClusterRacks(blocks[0]);
             drawClusterHitsReference(page, scalePageBox(profile, {
-                x: 18.9, y: 221.486, width: 382.1, height: 110.7,
+                x: 18.9, y: 221.486, width: 382.1, height: 180,
             }), racks);
         }
         drawBattleArmorReferenceTables(page, profile);
@@ -108,7 +108,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         svg.setAttribute('data-mekbay-numbered-title-prefix', `BATTLE ARMOR: ${formation} `);
         const group = addFrame(svg, `BATTLE ARMOR: ${formation} 1`, frameBox, {
         bottomLeftNotchWidth: 145,
-        cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 45 },
     });
     group.setAttribute('class', `${group.getAttribute('class') ?? ''} compact-battle-armor-frame`.trim());
     const sx = frameBox.width / 384;
@@ -598,6 +598,8 @@ function drawCompactBattleArmorTroopers(
             `translate(${formatNumber(x(188.966))} ${formatNumber(y(rowY))}) scale(${formatNumber(Math.min(sx, sy))})`,
         );
         const locationCode = location.sheetCode ?? location.code;
+        // This trooper-specific outline has a taller badge around the number and
+        // suit artwork, with shoulders above and below the narrower armor track.
         const outline = svgElement('path');
         setAttributes(outline, {
             d: 'M 0 2.4 l 2.25 -2.4 h 20 l 2.25 2.4 h 161.25 l 2.25 2.4 v 6.767 l -2.25 2.4 h -161.25 l -2.25 2.4 h -20 l -2.25 -2.4 Z',

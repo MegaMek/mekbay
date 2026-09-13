@@ -11,10 +11,11 @@
         }
         <div class="crew-list">
           @for (member of crew; let index = $index; track member.id) {
+            @let dualSkills = showGroundSkills && showAerospaceSkills && member.aeroGunnery && member.aeroPiloting;
             <section
               class="crew-member-editor"
               [class.with-portrait]="data.editPortrait"
-              [class.dual-skills]="showGroundSkills && showAerospaceSkills && member.aeroGunnery"
+              [class.dual-skills]="dualSkills"
               [attr.aria-label]="crewNameLabel(index).replace(' Name', '')"
             >
               @if (data.editPortrait) {
@@ -62,10 +63,13 @@
                 </div>
               </div>
               @if (showGroundSkills) {
-                <div class="form-row no-stack crew-skills">
+                <fieldset class="form-row no-stack crew-skills">
+                  @if (dualSkills) {
+                    <legend class="skill-group-title">Ground</legend>
+                  }
                   <div class="form-fields">
                     <label class="field-label" [for]="'classic-crew-gunnery-' + member.id">{{
-                      data.labelGunnery || 'Gunnery Skill'
+                      dualSkills ? 'Gunnery Skill' : data.labelGunnery || 'Gunnery Skill'
                     }}</label>
                     <div #gunneryTrigger>
                       <button
@@ -83,33 +87,16 @@
                     <button
                       type="button"
                       class="bt-button square primary skill-matrix-toggle"
-                      title="Skill Matrix"
-                      aria-label="Skill Matrix"
-                      (click)="toggleMatrixView()"
+                      [attr.title]="dualSkills ? 'Ground Skill Matrix' : 'Skill Matrix'"
+                      [attr.aria-label]="dualSkills ? 'Ground Skill Matrix' : 'Skill Matrix'"
+                      (click)="toggleMatrixView('ground')"
                     >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
-                        xmlns="http://www.w3.org/2000/svg"
-                        aria-hidden="true"
-                      >
-                        <rect x="1" y="1" width="4" height="4" rx="0.5" />
-                        <rect x="6" y="1" width="4" height="4" rx="0.5" />
-                        <rect x="11" y="1" width="4" height="4" rx="0.5" />
-                        <rect x="1" y="6" width="4" height="4" rx="0.5" />
-                        <rect x="6" y="6" width="4" height="4" rx="0.5" />
-                        <rect x="11" y="6" width="4" height="4" rx="0.5" />
-                        <rect x="1" y="11" width="4" height="4" rx="0.5" />
-                        <rect x="6" y="11" width="4" height="4" rx="0.5" />
-                        <rect x="11" y="11" width="4" height="4" rx="0.5" />
-                      </svg>
+                      <ng-container [ngTemplateOutlet]="matrixIcon" />
                     </button>
                   }
                   <div class="form-fields" [class.disabled]="!!data.disablePiloting">
                     <label class="field-label" [for]="'classic-crew-piloting-' + member.id">{{
-                      data.labelPiloting || 'Piloting Skill'
+                      dualSkills ? 'Piloting Skill' : data.labelPiloting || 'Piloting Skill'
                     }}</label>
                     <div #pilotingTrigger>
                       <button
@@ -124,14 +111,17 @@
                       </button>
                     </div>
                   </div>
-                </div>
+                </fieldset>
               }
               @if (showAerospaceSkills && member.aeroGunnery && member.aeroPiloting) {
-                <div class="form-row no-stack crew-skills aerospace-skills">
+                <fieldset class="form-row no-stack crew-skills aerospace-skills">
+                  @if (dualSkills) {
+                    <legend class="skill-group-title">Aerospace</legend>
+                  }
                   <div class="form-fields">
-                    <label class="field-label" [for]="'classic-crew-aero-gunnery-' + member.id"
-                      >Aerospace Gunnery Skill</label
-                    >
+                    <label class="field-label" [for]="'classic-crew-aero-gunnery-' + member.id">{{
+                      dualSkills ? 'Gunnery Skill' : 'Aerospace Gunnery Skill'
+                    }}</label>
                     <div #aeroGunneryTrigger>
                       <button
                         [id]="'classic-crew-aero-gunnery-' + member.id"
@@ -144,21 +134,21 @@
                       </button>
                     </div>
                   </div>
-                  @if (!showGroundSkills && index === 0 && !data.disablePiloting) {
+                  @if (index === 0 && !data.disablePiloting) {
                     <button
                       type="button"
-                      class="bt-button primary skill-matrix-toggle"
-                      title="Skill Matrix"
-                      aria-label="Skill Matrix"
-                      (click)="toggleMatrixView()"
+                      class="bt-button square primary skill-matrix-toggle"
+                      [attr.title]="dualSkills ? 'Aerospace Skill Matrix' : 'Skill Matrix'"
+                      [attr.aria-label]="dualSkills ? 'Aerospace Skill Matrix' : 'Skill Matrix'"
+                      (click)="toggleMatrixView('aerospace')"
                     >
-                      ▦
+                      <ng-container [ngTemplateOutlet]="matrixIcon" />
                     </button>
                   }
                   <div class="form-fields" [class.disabled]="!!data.disablePiloting">
-                    <label class="field-label" [for]="'classic-crew-aero-piloting-' + member.id"
-                      >Aerospace Piloting Skill</label
-                    >
+                    <label class="field-label" [for]="'classic-crew-aero-piloting-' + member.id">{{
+                      dualSkills ? 'Piloting Skill' : 'Aerospace Piloting Skill'
+                    }}</label>
                     <div #aeroPilotingTrigger>
                       <button
                         [id]="'classic-crew-aero-piloting-' + member.id"
@@ -172,7 +162,7 @@
                       </button>
                     </div>
                   </div>
-                </div>
+                </fieldset>
               }
               @if (data.fixedPiloting !== undefined) {
                 <p class="crew-skill-note">
@@ -217,6 +207,27 @@
     <button (click)="close()" class="bt-button">DISMISS</button>
   </div>
 </div>
+
+<ng-template #matrixIcon>
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
+    <rect x="1" y="1" width="4" height="4" rx="0.5" />
+    <rect x="6" y="1" width="4" height="4" rx="0.5" />
+    <rect x="11" y="1" width="4" height="4" rx="0.5" />
+    <rect x="1" y="6" width="4" height="4" rx="0.5" />
+    <rect x="6" y="6" width="4" height="4" rx="0.5" />
+    <rect x="11" y="6" width="4" height="4" rx="0.5" />
+    <rect x="1" y="11" width="4" height="4" rx="0.5" />
+    <rect x="6" y="11" width="4" height="4" rx="0.5" />
+    <rect x="11" y="11" width="4" height="4" rx="0.5" />
+  </svg>
+</ng-template>
 
 <ng-template #pilotActions>
   <div class="pilot-actions" role="group" aria-label="Pilot actions">

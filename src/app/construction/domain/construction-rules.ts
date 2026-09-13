@@ -1215,7 +1215,8 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
     message: string,
     location?: string,
     severity: EntityValidationMessage['severity'] = 'error',
-  ) => messages.push({ category, code, message, location, severity });
+    mountId?: string,
+  ) => messages.push({ category, code, message, location, severity, ...(mountId ? { mountId } : {}) });
   if (!entity.chassis().trim()) add('general', 'CHASSIS_REQUIRED', 'Enter a chassis name.');
   if (entity.omni() && !constructionOmniApplies(entity)) add('structure', 'OMNI_CHASSIS', 'This chassis cannot use Omni technology.');
   if (entity.originalBuildYear() > entity.year())
@@ -1279,7 +1280,7 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
     const eq = mount.equipment;
     if (!eq) continue;
     if (mount.allocation.kind === 'unallocated') {
-      add('crit', 'UNALLOCATED_EQUIPMENT', `${eq.name} has not been assigned a location.`);
+      add('crit', 'UNALLOCATED_EQUIPMENT', `${eq.name} has not been assigned a location.`, undefined, 'error', mount.mountId);
       continue;
     }
     // Materials have already been checked above; their critical-slot mounts are the same technology.
@@ -1289,28 +1290,29 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
           ...constructionEquipmentPlatformIssues(entity, eq),
           ...equipmentLocationIssues(entity, eq, mount.location, mount),
         ])
-          add('equipment', 'MOUNT_PLACEMENT', `${eq.name}: ${issue}`, mount.location);
+          add('equipment', 'MOUNT_PLACEMENT', `${eq.name}: ${issue}`, mount.location, 'error', mount.mountId);
       }
       if (entity.mountedEquipmentContributesStaticTech(eq)) {
         const technology = constructionTechnologyEligibility(entity, eq.tech);
         if (!technology.techBase)
-          add('tech', 'TECH_BASE_MISMATCH', `${eq.name} requires mixed technology.`, mount.location);
+          add('tech', 'TECH_BASE_MISMATCH', `${eq.name} requires mixed technology.`, mount.location, 'error', mount.mountId);
         if (!technology.available)
           add(
             'tech',
             'TECH_UNAVAILABLE',
             `${eq.name} is unavailable in ${constructionTechnologyYearLabel(entity)}.`,
             mount.location,
+            'error', mount.mountId,
           );
         if (!technology.rulesLevel)
-          add('tech', 'TECH_LEVEL_EXCEEDED', `${eq.name} exceeds the selected rules level.`, mount.location);
+          add('tech', 'TECH_LEVEL_EXCEEDED', `${eq.name} exceeds the selected rules level.`, mount.location, 'error', mount.mountId);
       }
     }
     if (entity instanceof MekEntity && mount.allocation.kind === 'location') {
       const required =
         eq.type === 'armor' || eq.type === 'structure' ? undefined : getNumCriticalSlots(entity, eq, mount.size ?? 1);
       if (required !== undefined && (mount.placements?.length ?? 0) !== required)
-        add('crit', 'CRIT_ALLOCATION_COUNT', `${eq.name} requires ${required} critical slots.`, mount.location);
+        add('crit', 'CRIT_ALLOCATION_COUNT', `${eq.name} requires ${required} critical slots.`, mount.location, 'error', mount.mountId);
       for (const placement of mount.placements ?? [])
         if (
           placement.slotIndex < 0 ||
@@ -1321,6 +1323,7 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
             'CRIT_OUT_OF_BOUNDS',
             `${eq.name} is outside the physical critical-slot grid.`,
             placement.location,
+            'error', mount.mountId,
           );
       const occupied = [...new Set(mount.placements?.map((placement) => placement.location) ?? [])];
       if (!eq.isSpreadable)
@@ -1330,19 +1333,19 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
             .map((p) => p.slotIndex)
             .sort((a, b) => a - b);
           if (slots.some((slot, index) => index > 0 && slot !== slots[index - 1] + 1))
-            add('crit', 'CRIT_CONTIGUOUS', `${eq.name} requires one contiguous block in ${location}.`, location);
+            add('crit', 'CRIT_CONTIGUOUS', `${eq.name} requires one contiguous block in ${location}.`, location, 'error', mount.mountId);
         }
       if (
         occupied.length > 1 &&
         !eq.isSpreadable &&
         (!eq.canSplit() || occupied.length > 2 || !areMekSplitLocationsAdjacent(occupied[0], occupied[1]))
       )
-        add('crit', 'CRIT_SPLIT_LOCATION', `${eq.name} has an invalid location split.`, mount.location);
+        add('crit', 'CRIT_SPLIT_LOCATION', `${eq.name} has an invalid location split.`, mount.location, 'error', mount.mountId);
       const distribution = requiredMekDistribution(entity, eq);
       if (distribution)
         for (const [location, count] of distribution) {
           if (mount.placements?.filter((placement) => placement.location === location).length !== count)
-            add('crit', 'CRIT_DISTRIBUTION', `${eq.name} requires ${count} critical slots in ${location}.`, location);
+            add('crit', 'CRIT_DISTRIBUTION', `${eq.name} requires ${count} critical slots in ${location}.`, location, 'error', mount.mountId);
         }
     }
   }
@@ -1356,7 +1359,7 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
   }
   const unique = [
     ...new Map(
-      messages.map((message) => [`${message.code}|${message.location ?? ''}|${message.message}`, message]),
+      messages.map((message) => [`${message.code}|${message.location ?? ''}|${message.mountId ?? ''}|${message.message}`, message]),
     ).values(),
   ];
   return { valid: !unique.some((message) => message.severity === 'error'), messages: unique };

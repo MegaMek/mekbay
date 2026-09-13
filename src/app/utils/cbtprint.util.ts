@@ -216,20 +216,8 @@ export class CBTPrintUtil {
             skillValue.classList.toggle('screen-only', !printPilotData);
         });
 
-        const skillBlanks = [
-            'blankPilotingSkill0',
-            'blankGunnerySkill0',
-            'blankAsfGunnerySkill0',
-            'blankAsfPilotingSkill0',
-            'blankPilotingSkill1',
-            'blankGunnerySkill1',
-            'blankPilotingSkill2',
-            'blankGunnerySkill2',
-            'blankPilotingSkill3',
-            'blankGunnerySkill3'
-        ];
-        skillBlanks.forEach((id) => {
-            svg.getElementById(id)?.classList.toggle('print-show', !printPilotData);
+        svg.querySelectorAll('.skillBlank').forEach(blank => {
+            blank.classList.toggle('print-show', !printPilotData);
         });
 
         if (printPilotData) return;
@@ -239,7 +227,7 @@ export class CBTPrintUtil {
             bvElement.textContent = `${baseBv}${bvElement.getAttribute('data-mekbay-bv-suffix') ?? ''}`;
         }
 
-        svg.querySelectorAll<SVGElement>('[id^="crewNameButton"]').forEach((crewNameButton) => {
+        svg.querySelectorAll<SVGElement>('.crewNameButton').forEach((crewNameButton) => {
             const nameId = crewNameButton.getAttribute('textElement');
             const blankId = crewNameButton.getAttribute('blankElement');
             if (nameId) {

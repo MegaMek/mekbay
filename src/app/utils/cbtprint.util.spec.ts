@@ -1,7 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestInfantryEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestBipedMekEntity, TestInfantryEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
+import { renderRecordSheetCrewName } from '../components/page-viewer/record-sheet-dom';
 import { CBTForce } from '../models/cbt-force.model';
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
 import { CBTForceMember } from '../models/force-member.model';
@@ -19,6 +20,35 @@ import { recordSheetPageProfile } from './sheets/record-sheet-layout';
 
 describe('bulk record sheet pagination and printing', () => {
     afterEach(() => window.dispatchEvent(new Event('afterprint')));
+
+    for (const printPilotData of [true, false]) {
+        for (const name of ['', 'Morgan']) {
+            it(`shows only missing-field blanks with pilot data ${printPilotData} and name "${name}"`, async () => {
+                const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+                renderRecordSheetCrewName(svg, 0, name);
+                document.body.appendChild(svg);
+                try {
+                    const skills = [...svg.querySelectorAll('.skillValue')];
+                    const blanks = [...svg.querySelectorAll('.skillBlank')];
+                    expect(skills.length).toBe(2);
+                    expect(blanks.length).toBe(2);
+                    for (const blank of blanks) expect(getComputedStyle(blank).display).toBe('none');
+                    (CBTPrintUtil as unknown as { applyPilotDataPrintOption: (svg: SVGSVGElement, show: boolean) => void })
+                        .applyPilotDataPrintOption(svg, printPilotData);
+                    svg.classList.add('print-preview');
+                    for (const skill of skills) expect(getComputedStyle(skill).display === 'none').toBe(!printPilotData);
+                    for (const blank of blanks) expect(getComputedStyle(blank).display === 'none').toBe(printPilotData);
+                    const showName = printPilotData && name.length > 0;
+                    expect(getComputedStyle(svg.getElementById('pilotName0')!).visibility)
+                        .toBe(showName ? 'visible' : 'hidden');
+                    expect(getComputedStyle(svg.getElementById('blankCrewName0')!).visibility)
+                        .toBe(showName ? 'hidden' : 'visible');
+                } finally {
+                    svg.remove();
+                }
+            });
+        }
+    }
 
     it('retains generated per-trooper battle value when printing without pilot data', async () => {
         const entity = new TestBattleArmorEntity();
@@ -173,6 +203,10 @@ describe('bulk record sheet pagination and printing', () => {
                 const overlay = document.getElementById('record-sheet-print-container')!;
                 const pages = [...overlay.querySelectorAll('svg')];
                 expect(pages.map(page => page.querySelectorAll('.compact-sheet-block').length)).toEqual([capacity, 1]);
+                if (Factory === TestBattleArmorEntity || Factory === TestInfantryEntity) {
+                    expect(pages[0].querySelector('[data-mekbay-reference="cluster-hits"]')).toBeNull();
+                    expect(pages[1].querySelector('[data-mekbay-reference="cluster-hits"]')).not.toBeNull();
+                }
                 expect(pages[0].getAttribute('width')).toBe(String(recordSheetPageProfile(format).width));
                 expect(pages[0].getAttribute('height')).toBe(String(recordSheetPageProfile(format).height));
                 expect(overlay.querySelector(':scope > style')!.textContent).toContain('margin: 0 !important');

@@ -32,8 +32,40 @@ export class CrewAssignmentService {
         });
     }
 
-    connectedDropLists(force: Force): readonly string[] {
-        return this.dropLists().get(force) ?? [];
+    connectedDropLists(): readonly string[] {
+        return [...this.dropLists()].flatMap(([force, ids]) => force.canEditPersonnel() ? ids : []);
+    }
+
+    canDropPerson(data: CrewDragData | undefined, target: Force): boolean {
+        return data?.kind === 'force-person' && target.canEditPersonnel() && data.force.canEditPersonnel()
+            && data.force.personnel().people.some(person => person.id === data.personId)
+            && (data.force === target || !data.force.personnel().assignments.some(assignment => assignment.personId === data.personId));
+    }
+
+    firstVacantPosition(force: Force, unitId: string): string | undefined {
+        const policy = force.getUnitCrewPolicy(unitId);
+        if (!policy.canEdit || policy.kind !== 'swappable') return undefined;
+        return policy.positions.find(position => !force.getAssignedPerson(unitId, position.positionId))?.positionId;
+    }
+
+    async dropOnUnit(force: Force, data: CrewDragData, unitId: string, positionId = this.firstVacantPosition(force, unitId)): Promise<void> {
+        if (positionId === undefined || !this.canDropPerson(data, force)) return;
+        if (data.force === force) return this.assign(force, data.personId, unitId, positionId);
+        if (!data.force.transferReservePersonTo(force, data.personId)) return this.report(false);
+        const assigned = await force.assignPersonToUnit(data.personId, unitId, positionId);
+        if (!assigned) force.transferReservePersonTo(data.force, data.personId);
+        this.report(assigned);
+    }
+
+    async dropInReserves(force: Force, data: CrewDragData, index: number): Promise<void> {
+        if (!this.canDropPerson(data, force)) return;
+        if (data.force !== force) {
+            if (!data.force.transferReservePersonTo(force, data.personId)) return this.report(false);
+        } else {
+            const assignment = force.personnel().assignments.find(candidate => candidate.personId === data.personId);
+            if (assignment && !await force.unassignPerson(assignment.unitId, assignment.positionId)) return this.report(false);
+        }
+        this.report(await force.reorderReservePerson(data.personId, index));
     }
 
     reserves(force: Force): readonly ForcePerson[] {
@@ -53,11 +85,6 @@ export class CrewAssignmentService {
 
     async unassign(force: Force, unitId: string, positionId: string): Promise<void> {
         this.report(await force.unassignPerson(unitId, positionId));
-    }
-
-    async moveToReserves(force: Force, personId: string): Promise<void> {
-        const assignment = force.personnel().assignments.find(candidate => candidate.personId === personId);
-        if (assignment) await this.unassign(force, assignment.unitId, assignment.positionId);
     }
 
     async create(force: Force, unitId?: string, positionId?: string): Promise<void> {

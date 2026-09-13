@@ -12,6 +12,37 @@ import { HandheldWeaponRecordSheetLayout, renderHandheldWeaponAmmoPips } from '.
 describe('HandheldWeaponRecordSheetLayout', () => {
     const layout = new HandheldWeaponRecordSheetLayout();
 
+    it('preserves the reference title lips and bottom step on short and large strips', async () => {
+        for (const armor of [8, 66]) {
+            const entity = new TestHandheldWeaponEntity();
+            entity.chassis.set('ER Medium Laser Weapon');
+            entity.setTonnage(6.5);
+            entity.setArmorValue('Gun', 'front', armor);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            document.body.appendChild(svg);
+            try {
+                const frames = [...svg.querySelectorAll<SVGPathElement>('.handheld-weapon-strip > g > path[stroke="#000"]')];
+                expect(frames.length).toBe(3);
+                for (const border of frames) {
+                    const bounds = border.getBBox();
+                    // The label sits on a raised lip, with the body top below it.
+                    expect(border.isPointInFill(new DOMPoint(15, 3))).toBeTrue();
+                    expect(border.isPointInFill(new DOMPoint(bounds.width - 20, 3))).toBeFalse();
+                    expect(border.isPointInFill(new DOMPoint(bounds.width - 20, 16))).toBeTrue();
+                }
+                const outer = frames[0];
+                const bounds = outer.getBBox();
+                // The inventory floor is raised; armor and ammunition extend lower.
+                expect(outer.isPointInFill(new DOMPoint(15, bounds.height - 3))).toBeFalse();
+                expect(outer.isPointInFill(new DOMPoint(bounds.width - 20, bounds.height - 3))).toBeTrue();
+                expect(svg.querySelector('.handheld-weapon-strip .svg-frame-title')).toBeNull();
+                expect(frames.map(border => border.getAttribute('stroke-width'))).toEqual(['1.932', '0.966', '0.966']);
+            } finally {
+                svg.remove();
+            }
+        }
+    });
+
     it('generates the short inventory/armor/ammo strip with the live GUN and component contracts', async () => {
         const entity = new TestHandheldWeaponEntity();
         entity.chassis.set('AP Gauss Weapon');

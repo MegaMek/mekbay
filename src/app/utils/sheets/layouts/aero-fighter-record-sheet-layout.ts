@@ -398,7 +398,6 @@ function drawFighterDiagramHeader(
             titleWidth: 83.991,
             titleX: 0,
             titleY: 0,
-            titleTextLength: 69.539,
             ribbonX: -18,
             ribbonY: 0,
             ribbonWidth: 123.749,

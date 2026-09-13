@@ -693,6 +693,19 @@ h2 {
 .validation-panel button.error {
   color: #f2a197;
 }
+.validation-panel button:hover,
+.validation-panel button:focus-visible {
+  background: #ffffff0d;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.installed-equipment:focus-within,
+.unallocated-equipment:focus-within,
+.location-card:focus-within,
+.system-panel:focus-within {
+  outline: 2px solid var(--bt-yellow);
+  outline-offset: 2px;
+}
 .validation-panel button b {
   width: 13px;
   text-align: center;

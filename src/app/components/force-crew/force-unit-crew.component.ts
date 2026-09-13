@@ -11,7 +11,7 @@ import type { CrewLayout } from './crew-card.component';
     imports: [CrewSlotComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="unit-crew" [class.cards]="layout() === 'cards'" (click)="$event.stopPropagation()">
+        <div class="unit-crew" [class.slots]="layout() === 'slots'" (click)="$event.stopPropagation()">
             @for (position of policy().positions; track position.positionId) {
                 <crew-slot [force]="force()" [unitId]="unitId()" [positionId]="position.positionId"
                     [label]="position.label" [layout]="layout()" [showHealth]="showHealth()" />
@@ -23,7 +23,8 @@ import type { CrewLayout } from './crew-card.component';
     styles: [`
         :host { display: block; min-width: 0; }
         .unit-crew { display: flex; flex-direction: column; gap: 5px; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+        .slots { flex-flow: row wrap; gap: 8px; justify-content: var(--crew-justify-content, flex-start); }
+        .slots crew-slot { flex: 0 1 var(--crew-slot-width, 220px); max-width: var(--crew-slot-width, 220px); }
         .crew-reason { color: var(--text-color-secondary); font-size: .75em; padding: 4px; }
     `],
 })

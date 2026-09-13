@@ -230,9 +230,6 @@
     fill: var(--damage-color) !important;
   }
 
-  .crewHit.damaged .crew-x {
-    opacity: 1 !important;
-  }
 }
 
 @keyframes random-hit-location-pulse {

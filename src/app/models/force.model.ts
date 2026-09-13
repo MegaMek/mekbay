@@ -660,6 +660,42 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return person;
     }
 
+    /** Reserve order is the order of people in the persisted roster. Assigned slots stay in place. */
+    public reorderReservePerson(personId: string, index: number): boolean | Promise<boolean> {
+        return this.applyPersonnelEdit(before => {
+            const assigned = new Set(before.assignments.map(assignment => assignment.personId));
+            const reserves = before.people.filter(person => !assigned.has(person.id));
+            const previousIndex = reserves.findIndex(person => person.id === personId);
+            if (previousIndex < 0) return null;
+            const targetIndex = Math.max(0, Math.min(index, reserves.length - 1));
+            const [person] = reserves.splice(previousIndex, 1);
+            reserves.splice(targetIndex, 0, person);
+            let reserveIndex = 0;
+            return { people: before.people.map(person => assigned.has(person.id) ? person : reserves[reserveIndex++]),
+                assignments: before.assignments };
+        });
+    }
+
+    /** Reserves have no runtime station; move ownership together before publishing either force. */
+    public transferReservePersonTo(target: Force, personId: string): boolean {
+        if (target === this || !this.canEditPersonnel() || !target.canEditPersonnel()
+            || this.forceOwnerOperationDepth > 0 || target.forceOwnerOperationDepth > 0) return false;
+        const sourcePersonnel = this.personnel();
+        const targetPersonnel = target.personnel();
+        const person = sourcePersonnel.people.find(person => person.id === personId);
+        if (!person || sourcePersonnel.assignments.some(assignment => assignment.personId === personId)
+            || targetPersonnel.people.some(person => person.id === personId)) return false;
+        const nextTarget = addForcePerson(targetPersonnel, person);
+        const nextSource = removeForcePerson(sourcePersonnel, personId);
+        this.reserveForceOwnerMutationIntent();
+        target.reserveForceOwnerMutationIntent();
+        this.commitUnassignedPersonnelEdit(nextSource);
+        target.commitUnassignedPersonnelEdit(nextTarget);
+        this.emitChangedFromReservedIntent();
+        target.emitChangedFromReservedIntent();
+        return true;
+    }
+
     /** Caller owns the surrounding admission, load, or mutation transaction. */
     protected installPersonnel(snapshot: ForcePersonnelSnapshot): void {
         // Queued loads capture with structuredClone, which discards frozen descriptors.

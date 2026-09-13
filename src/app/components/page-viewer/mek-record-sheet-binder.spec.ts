@@ -18,6 +18,27 @@ import type { RecordSheetInteraction } from './record-sheet-interaction';
 const editContext = createUnitEditContextFixture();
 
 describe('Mek record-sheet binder', () => {
+    it('keeps default skills printable even when the crew name is empty', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', `
+            <text id="gunnerySkill0" class="skillValue"></text>
+            <text id="pilotingSkill0" class="skillValue"></text>
+            <path id="blankGunnerySkill0" class="skillBlank hidden"></path>
+            <path id="blankPilotingSkill0" class="skillBlank hidden"></path>`);
+        const original = snapshot();
+        const unnamed = { ...original, crew: original.crew.map(position => ({
+            ...position, name: '', gunnery: 4, piloting: 5,
+        })) };
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, unnamed);
+        for (const skill of svg.querySelectorAll('.skillValue')) {
+            expect(skill.classList.contains('screen-only')).toBeFalse();
+        }
+        for (const blank of svg.querySelectorAll('.skillBlank')) {
+            expect(blank.classList.contains('print-show')).toBeFalse();
+        }
+        binding.destroy();
+    });
+
     it('renders and binds both LAM skill pairs independently and updates aerospace values', () => {
         const svg = sheet();
         svg.insertAdjacentHTML('beforeend', `<text id="gunnerySkill0"></text><text id="pilotingSkill0"></text>
@@ -123,6 +144,8 @@ describe('Mek record-sheet binder', () => {
 
     it('clears departed crew data, shows the vacant station, and restores its controls on assignment', () => {
         const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<g data-mekbay-crew-stations="0"><g class="crew-vacancy crewNameButton" crewId="0"><text>VACANT</text></g></g>');
+        const frame = svg.querySelector('[data-mekbay-crew-stations]')!;
         const original = snapshot();
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, original,
@@ -132,15 +155,17 @@ describe('Mek record-sheet binder', () => {
             crew: original.crew.map(position => ({ ...position, name: '', effectiveState: 'vacant' })),
         });
 
-        expect(svg.querySelector('#crewName0')?.textContent).toBe('VACANT');
+        expect(svg.querySelector('#crewName0')?.textContent).toBe('');
+        expect(frame.classList.contains('crew-frame-vacant')).toBeTrue();
         const marker = svg.querySelector<SVGElement>('.crewHit[crewId="0"][hit="2"]')!;
         expect(marker.style.display).toBe('none');
         marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([]);
-        svg.querySelector('.crewNameButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        frame.querySelector('.crew-vacancy')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions.at(-1)?.kind).toBe('crew-name');
 
         binding.render(original);
+        expect(frame.classList.contains('crew-frame-vacant')).toBeFalse();
         expect(svg.querySelector('#crewName0')?.textContent).toBe(original.crew[0].name);
         expect(marker.style.display).toBe('');
         marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));

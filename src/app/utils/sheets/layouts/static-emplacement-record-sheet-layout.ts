@@ -71,7 +71,9 @@ function drawBuildingSheet(svg: SVGSVGElement, entity: StaticEmplacementEntity, 
     drawPageChrome(svg, 'STRUCTURE RECORD SHEET', page, false);
     drawBuildingData(svg, entity, at({ x: 18, y: 94, width: 224, height: 347 }), inventoryPage);
     drawBuildingProtection(svg, entity, at({ x: 18, y: 449, width: 224, height: 266 }), locations, pageIndex);
-    const crew = addFrame(svg, 'CREW DATA', at({ x: 18, y: 723, width: 224, height: 33 }));
+    const crew = addFrame(svg, 'CREW DATA', at({ x: 18, y: 723, width: 224, height: 33 }), {
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 0, bottomRight: 0 },
+    });
     addText(crew, 'Crew:', 9, 26, { size: 7, weight: 700 });
     addText(crew, String(entity.crew()), 34, 26, { size: 7 });
     addText(crew, 'Gunnery Skill:', 112, 26, { size: 7, weight: 700 });

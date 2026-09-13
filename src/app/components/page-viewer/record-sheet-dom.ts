@@ -96,6 +96,40 @@ export function renderRecordSheetConditions(
         .forEach(button => { button.style.display = ''; });
 }
 
+/** Vacancy hides the authored station contents without destroying controls or print geometry. */
+export function renderRecordSheetCrewVacancies(
+    svg: SVGSVGElement,
+    crew: readonly { readonly occurrence: number; readonly effectiveState?: string }[],
+): void {
+    const vacant = new Set(crew.filter(position => position.effectiveState === 'vacant').map(position => String(position.occurrence)));
+    svg.querySelectorAll<SVGElement>('[data-mekbay-crew-stations]').forEach(frame => {
+        const stations = frame.dataset['mekbayCrewStations']!.split(' ');
+        frame.classList.toggle('crew-frame-vacant', stations.every(occurrence => vacant.has(occurrence)));
+    });
+    svg.querySelectorAll<SVGElement>('[data-mekbay-crew-position]').forEach(position => {
+        position.classList.toggle('crew-position-vacant', vacant.has(position.dataset['mekbayCrewPosition']!));
+    });
+}
+
+/** A crew name replaces its writing line whenever a value is present. */
+export function renderRecordSheetCrewName(svg: SVGSVGElement, occurrence: number, name: string): boolean {
+    let rendered = false;
+    const hasName = name.trim().length > 0;
+    svg.querySelectorAll<SVGElement>(`.crewNameButton[crewId="${occurrence}"]`).forEach(button => {
+        const textId = button.getAttribute('textElement');
+        const blankId = button.getAttribute('blankElement');
+        const text = textId ? svg.getElementById(textId) : null;
+        const blank = blankId ? svg.getElementById(blankId) : null;
+        if (text) {
+            text.textContent = name;
+            (text as SVGElement).style.visibility = hasName ? 'visible' : 'hidden';
+            rendered = true;
+        }
+        if (blank) (blank as SVGElement).style.visibility = hasName ? 'hidden' : 'visible';
+    });
+    return rendered;
+}
+
 /** Shared crew-state button/banner presentation for every Entity family. */
 export function renderRecordSheetCrewState(
     svg: SVGSVGElement,

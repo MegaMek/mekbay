@@ -1,5 +1,26 @@
 # Record-sheet styling
 
+## Framing
+
+`svg-frame.util.ts` owns panel outlines, shadows, ribbon shapes, header spacing,
+and title fitting. Layouts provide bounds and supported shape options, then
+position the returned group. Do not copy frame paths or overwrite the utility's
+header transforms or text coordinates.
+
+The default `panel` variant uses the standard 1.932-point black border and grey
+shadow. The `nested` variant uses a 0.966-point border without a shadow for
+internal content boxes. Stroke widths are fixed by the utility, not by callers.
+Use `showHeader: false` for an untitled frame and `fullWidthHeader: true` for a
+header spanning the panel.
+Use `maxHeaderWidth` to let a tab grow with its title up to a layout limit, then
+compress longer text horizontally at the same font size. Short titles retain
+their natural width. `fullWidthHeader` takes precedence over this limit.
+Use `headerStyle: 'outline'` to retain a raised title lip without a filled ribbon.
+Preserve the reference silhouette, including lips and bottom notches; standard
+angles and border weights do not replace the reference shape.
+Unit-specific outlines such as Battle Armor trooper rows stay in their family
+layout to preserve their distinctive badge and armor-track silhouette.
+
 ## Ownership and loading
 
 The application stylesheet imports `styles/record-sheet.scss` once with

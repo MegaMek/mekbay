@@ -80,6 +80,27 @@ describe('record-sheet movement controls', () => {
         expect(getComputedStyle(sheet.svg.getElementById('mpWalk-label')!).opacity).toBe('1');
     });
 
+    it('keeps Stationary visible while shutdown disables selection and startup restores it', async () => {
+        const sheet = await mek(createDirectMekRuntimeFixture());
+        const stationary = sheet.svg.getElementById('mpStationary')!;
+        const stationaryControl = control(sheet.svg, 'mpStationary');
+        const caption = sheet.svg.getElementById('movementPointsLabel')!;
+        for (const shutdown of [false, true, false]) {
+            expect(sheet.fixture.instance.dispatch({ type: 'set-mek-shutdown-state', shutdown }).accepted).toBeTrue();
+            sheet.render();
+            expect(getComputedStyle(stationary).display).not.toBe('none');
+            expect(getComputedStyle(caption).display).toBe('none');
+            expect(badge(sheet.svg, 'mpStationary').getAttribute('display')).toBe('inline');
+            expect(badge(sheet.svg, 'mpStationary').textContent).toBe('+0');
+            expect(stationaryControl.getAttribute('aria-disabled')).toBe(String(shutdown));
+            expect(stationaryControl.hasAttribute('tabindex')).toBe(!shutdown);
+            sheet.interactions.calls.reset();
+            stationaryControl.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            stationaryControl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            expect(sheet.interactions).toHaveBeenCalledTimes(shutdown ? 0 : 2);
+        }
+    });
+
     it('supports click and keyboard selection with current context and rejects preview controls', async () => {
         const sheet = await mek();
         control(sheet.svg, 'mpWalk').dispatchEvent(new MouseEvent('click', { bubbles: true }));

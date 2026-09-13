@@ -99,17 +99,18 @@
 .footer {
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
+    grid-template-columns: minmax(32px, 1fr) minmax(0, max-content) minmax(32px, 1fr);
     align-items: center;
     gap: 12px;
 }
 
 .footer-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    min-width: max-content;
+    min-width: 0;
     padding-inline: 4px;
 }
 

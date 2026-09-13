@@ -54,7 +54,7 @@ export function bindRecordSheetMovement(
         if (entries.length === 0) return;
         const stationary = selection.options.find(option => option.mode === 'stationary');
         const showStationary = onInteraction !== undefined && !svg.classList.contains('print-preview')
-            && (stationary?.legal === true || selection.selectedMode === 'stationary');
+            && (stationary !== undefined || selection.selectedMode === 'stationary');
         svg.getElementById('movementPointsLabel')?.classList.toggle('movementCaptionReplaced', showStationary);
         svg.getElementById('movementPointsLabel')?.classList.toggle('print-only', showStationary);
         for (const entry of entries) {

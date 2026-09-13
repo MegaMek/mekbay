@@ -97,12 +97,14 @@ describe('shared construction equipment combinations', () => {
     it('requires Artemis on every compatible launcher and a link in the matching location', () => {
         const entity = design();
         const first = weapon(entity, ['F_ARTEMIS_COMPATIBLE'], 'LRM');
-        weapon(entity, ['F_ARTEMIS_COMPATIBLE'], 'SRM', 'Rear');
+        const uncovered = weapon(entity, ['F_ARTEMIS_COMPATIBLE'], 'SRM', 'Rear');
         const artemis = misc(entity, ['F_ARTEMIS']);
         entity.linkEquipment(artemis, first);
         expect(codes(entity)).toContain('ARTEMIS_COVERAGE');
+        expect(constructionEquipmentMessages(entity)).toContain(jasmine.objectContaining({ code: 'ARTEMIS_COVERAGE', location: 'Rear', mountId: uncovered.mountId }));
         const misplaced = misc(entity, ['F_ARTEMIS']);
         expect(codes(entity)).toContain('ARTEMIS_LINK');
+        expect(constructionEquipmentMessages(entity)).toContain(jasmine.objectContaining({ code: 'ARTEMIS_LINK', location: 'Rear', mountId: uncovered.mountId }));
         entity.removeEquipment(misplaced);
         misc(entity, ['F_ARTEMIS'], 'Rear');
         entity.reconcileEquipmentRelationships();
@@ -110,6 +112,16 @@ describe('shared construction equipment combinations', () => {
         expect(codes(entity)).not.toContain('ARTEMIS_COVERAGE');
         misc(entity, ['F_ARTEMIS_V'], 'Rear');
         expect(codes(entity)).toContain('ARTEMIS_GENERATION');
+    });
+
+    it('points excess Artemis coverage at the unused system', () => {
+        const entity = design();
+        const launcher = weapon(entity, ['F_ARTEMIS_COMPATIBLE'], 'LRM');
+        const artemis = misc(entity, ['F_ARTEMIS']);
+        entity.linkEquipment(artemis, launcher);
+        const excess = misc(entity, ['F_ARTEMIS'], 'Rear');
+        expect(constructionEquipmentMessages(entity).filter(message => message.code === 'ARTEMIS_COVERAGE'))
+            .toEqual([jasmine.objectContaining({ location: 'Rear', mountId: excess.mountId })]);
     });
 
     it('requires Apollo for every MRM and validates detached laser/PPC enhancements', () => {

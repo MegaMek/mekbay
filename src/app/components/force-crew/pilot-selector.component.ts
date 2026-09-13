@@ -133,13 +133,14 @@ export class PilotSelectorPanelComponent {
             [attr.aria-expanded]="open()" [attr.aria-label]="'Assign ' + label()"
             (click)="$event.stopPropagation(); toggle()" (keydown.arrowdown)="$event.preventDefault(); show()">
             <img src="/images/helmet.svg" width="24" height="24" alt="" />
-            <span>{{ label() }}<small>Vacant · Assign crew</small></span><span aria-hidden="true">＋</span>
+            <span>No {{ label() }}<small>Assign crew</small></span>
         </button>
     `,
     styles: [`
         :host { display: block; width: 100%; }
-        .vacancy { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; cursor: pointer;
-            border: 1px dashed var(--border-color, #ffffff40); color: var(--text-color-secondary); background: #0002; text-align: left; }
+        .vacancy { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 58px; box-sizing: border-box; padding: 8px; cursor: pointer;
+            border: 1px dashed var(--border-color, #ffffff40); color: var(--text-color-secondary); background: #0006; text-align: left; }
+        .vacancy img { opacity: .4; }
         .vacancy:disabled { cursor: default; opacity: .65; }
         .vacancy > span:first-of-type { flex: 1; }
         small { display: block; font-size: .75em; margin-top: 2px; }

@@ -1,4 +1,4 @@
-<div class="dialog-header">
+<div class="dialog-header" [crewDropForce]="data.force">
     <div class="dialog-header-main">
         <div class="dialog-header-icons">
             @if (forceFaction()?.img; as factionImg) {
@@ -110,7 +110,7 @@
             id="force-groups"
             [class.compact]="viewMode() === 'compact'" 
             [class.single-group]="hasSingleGroup()" 
-            [class.as-table-mode]="isTableMode()"
+            [class.table-mode]="isTableMode()"
             cdkDropList 
             [cdkDropListData]="groups()" 
             cdkDropListOrientation="vertical"
@@ -118,7 +118,7 @@
             [cdkDropListDisabled]="!canDragDrop()"
             (cdkDropListDropped)="dropGroup($event)">
             @if (isTableMode()) {
-                <mb-data-table class="force-as-table"
+                <mb-data-table class="force-unit-table"
                     [rows]="forceTableRows()"
                     [columns]="forceTableColumns()"
                     [itemSize]="48"
@@ -286,30 +286,29 @@
                                     (cdkDragStarted)="onUnitDragStart()"
                                     (cdkDragMoved)="onUnitDragMoved($event)"
                                     (cdkDragEnded)="onUnitDragEnd()"
-                                    [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0">
+                                    [cdkDragStartDelay]="{ touch: 200, mouse: 0 }">
                                     <div class="crew-unit-summary">
-                                        @if (canDragDrop()) {
-                                            <span cdkDragHandle class="unit-drag-handle" title="Drag to move unit" aria-label="Drag to move unit">⠿</span>
-                                        }
-                                        <button type="button" class="crew-unit-name" longPress
-                                            (shortPress)="onUnitClick(vm, $event)"
-                                            (longPress)="toggleUnitSelection(member, $event)">
+                                        <button type="button" class="crew-unit-name"
+                                            (click)="onUnitClick(vm, $event)"
+                                            (contextmenu)="toggleUnitSelection(member, $event)">
                                             <unit-icon [unit]="vm.unit" [size]="32" />
                                             <span class="crew-unit-title">
                                                 <strong>{{ memberAlias(member) || unitNames.chassis(vm.unit) + ' ' + vm.unit.model }}</strong>
                                                 <span class="muted">@if (memberAlias(member)) {<span>{{ unitNames.chassis(vm.unit) }} {{ vm.unit.model }} · </span>}{{ vm.unit.tons }} t · {{ vm.unit.role }}</span>
                                             </span>
                                         </button>
-                                        <span class="crew-unit-value"><span class="muted">{{ isAlphaStrike() ? 'PV' : 'BV' }}</span> {{ displayedBvPv([member]) }}</span>
-                                        @if (!isReadOnly()) {
-                                            <button type="button" class="crew-row-action" (click)="repairUnit($event, member)" title="Repair unit" aria-label="Repair unit">↺</button>
-                                            @if (vm.unit.c3 && vm.unit.c3 !== 'None') {
-                                                <button type="button" class="crew-row-action" (click)="openC3Network($event, member)" title="Configure force networks" aria-label="Configure force networks">C3</button>
+                                        <force-unit-crew class="overview-crew" [force]="data.force" [unitId]="member.id" layout="slots" />
+                                        <div class="crew-unit-actions" (mousedown)="$event.stopPropagation()" (touchstart)="$event.stopPropagation()">
+                                            <span class="crew-unit-value"><span class="muted">{{ isAlphaStrike() ? 'PV' : 'BV' }}</span> {{ displayedBvPv([member]) }}</span>
+                                            @if (!isReadOnly()) {
+                                                <button type="button" class="crew-row-action" (click)="repairUnit($event, member)" title="Repair unit" aria-label="Repair unit">↺</button>
+                                                @if (vm.unit.c3 && vm.unit.c3 !== 'None') {
+                                                    <button type="button" class="crew-row-action" (click)="openC3Network($event, member)" title="Configure force networks" aria-label="Configure force networks">C3</button>
+                                                }
+                                                <button type="button" class="crew-row-action danger" (click)="removeUnit($event, member)" title="Delete unit and its assigned crew" aria-label="Delete unit and its assigned crew">×</button>
                                             }
-                                            <button type="button" class="crew-row-action danger" (click)="removeUnit($event, member)" title="Delete unit and its assigned crew" aria-label="Delete unit and its assigned crew">×</button>
-                                        }
+                                        </div>
                                     </div>
-                                    <force-unit-crew [force]="data.force" [unitId]="member.id" layout="rows" />
                                 </div>
                             }
                         } @else {
@@ -352,7 +351,7 @@
                 </div>
             }
             }
-            <force-reserve-crew [force]="data.force" layout="rows" />
+            <force-reserve-crew class="overview-reserves" [force]="data.force" layout="cards" />
         </div>
     }
 </div>

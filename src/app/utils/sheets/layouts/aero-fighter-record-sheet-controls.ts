@@ -6,10 +6,10 @@ import { systemDamageControls } from '../../../models/runtime/system-damage-pres
 import {
 type Box,
 addCrewSkillValue,
+drawCrewHitGrid,
 addFrame,
 addLine,
 addText,
-formatNumber,
 setAttributes,
 svgElement,
 transparentRect,
@@ -92,30 +92,10 @@ export function drawFighterPilotPanel(svg: SVGSVGElement, box: Box): void {
         group.appendChild(button);
     }
 
-    const table = svgElement('path');
-    table.setAttribute('d', `M${formatNumber(x(48.86))} ${formatNumber(y(51.015))} Q${formatNumber(x(48.86))} ${formatNumber(y(50))} ${formatNumber(x(49.875))} ${formatNumber(y(50))} H${formatNumber(x(135.585))} Q${formatNumber(x(136.6))} ${formatNumber(y(50))} ${formatNumber(x(136.6))} ${formatNumber(y(51.015))} V${formatNumber(y(68.985))} Q${formatNumber(x(136.6))} ${formatNumber(y(70))} ${formatNumber(x(135.585))} ${formatNumber(y(70))} H${formatNumber(x(121.977))} V${formatNumber(y(78.985))} Q${formatNumber(x(121.977))} ${formatNumber(y(80))} ${formatNumber(x(120.962))} ${formatNumber(y(80))} H${formatNumber(x(49.875))} Q${formatNumber(x(48.86))} ${formatNumber(y(80))} ${formatNumber(x(48.86))} ${formatNumber(y(78.985))} Z`);
-    setAttributes(table, { fill: 'none', stroke: '#000', 'stroke-width': 1 });
-    group.appendChild(table);
-    addLine(group, x(48.86), y(60), x(136.6), y(60), '#000', 0.58);
-    addLine(group, x(48.86), y(70), x(121.977), y(70), '#000', 0.58);
-    const columns = [56.172, 70.795, 85.418, 100.042, 114.665, 129.288];
-    columns.slice(1).forEach(column => addLine(group, x(column - 7.312), y(50), x(column - 7.312), y(80), '#000', 0.58));
-    const consciousness = ['3', '5', '7', '10', '11', 'Dead'];
-    columns.forEach((column, index) => {
-        addText(group, String(index + 1), x(column), y(57), { size: font(5.8), weight: 700, anchor: 'middle' });
-        addText(group, consciousness[index], x(column), y(67), { size: font(5.8), weight: 700, anchor: 'middle' });
-        if (index < 5) addText(group, `+${index + 1}`, x(column), y(77), {
-            size: font(5.8), weight: 700, anchor: 'middle',
-        });
-        const hit = transparentRect(x(column - 7.2), y(50), x(14.4), y(10), 'crewHit');
-        hit.id = `crew_damage_0_${index + 1}`;
-        hit.setAttribute('crewId', '0');
-        hit.setAttribute('hit', String(index + 1));
-        group.appendChild(hit);
+    drawCrewHitGrid(group, 0, {
+        x: x(48.86), y: y(50), cellWidth: x(87.74 / 6), cellHeight: y(10),
+        labelX: x(3), labelWidth: x(42.86), fontScale: font(1), mode: 'aero-pilot',
     });
-    addText(group, 'Hits Taken', x(45.86), y(57), { size: font(5.2), weight: 700, anchor: 'end' });
-    addText(group, 'Consciousness #', x(45.86), y(67), { size: font(5.2), weight: 700, anchor: 'end' });
-    addText(group, 'Modifier', x(45.86), y(77), { size: font(5.2), weight: 700, anchor: 'end' });
     const state = transparentRect(x(2), y(17), x(138), y(70), 'crewStateButton');
     state.setAttribute('crewId', '0');
     group.insertBefore(state, group.children[2] ?? null);

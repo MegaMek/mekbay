@@ -268,6 +268,18 @@ export class PaperdollGenerator {
         this.applySilhouetteStyles(sourceGroup, type, options);
         this.replacePlaceholders(sourceGroup, values.armor, values.structure, options);
         sourceGroup.querySelectorAll('.pip-hit-area').forEach(element => element.remove());
+        if (options.pipLayout === 'capital-grid') {
+            // Runtime block outlines replace the authored rectangular armor hit areas.
+            // Keep the clipped hull contours selectable as well.
+            sourceGroup.querySelectorAll('.unitLocation.armor:not([clip-path])').forEach(element => element.remove());
+            sourceGroup.querySelectorAll<SVGElement>('.capital-pip-grid').forEach(grid => {
+                const kind = grid.classList.contains('armor') ? 'armor' : 'structure';
+                grid.querySelectorAll<SVGElement>('.capital-pip-backdrop').forEach(backdrop => {
+                    backdrop.classList.add('unitLocation', kind);
+                    backdrop.setAttribute('data-loc', grid.getAttribute('data-loc')!);
+                });
+            });
+        }
         // The painted location contours own interaction; labels, details and pips
         // must let pointer events reach those contours below them.
         sourceGroup.setAttribute('pointer-events', 'none');

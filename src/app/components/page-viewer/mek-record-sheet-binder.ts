@@ -44,7 +44,9 @@ import { getSvgTextLines,measureSvgTextCanvas,writeSvgTextLines } from '../../ut
 import { positionMekCriticalExtraHitPip } from '../../utils/sheets/mek-critical-slot-rendering';
 import {
 renderRecordSheetConditions,
+renderRecordSheetCrewName,
 renderRecordSheetCrewState,
+renderRecordSheetCrewVacancies,
 renderRecordSheetDestroyed,
 renderRecordSheetPips,
 } from './record-sheet-dom';
@@ -1470,28 +1472,15 @@ function renderCrew(
     interactive: boolean,
 ): void {
     const context = (): UnitEditContext => currentSnapshot().editContext;
+    renderRecordSheetCrewVacancies(svg, snapshot.crew);
     const permanentPsrModifier = snapshot.movement.projection.kind === 'supported'
         ? snapshot.movement.projection.permanentPsrModifier
         : 0;
-    const allCrewDefault = snapshot.crew.every(position =>
-        position.effectiveState !== 'vacant'
-        && position.name.length === 0 && position.gunnery === 4 && position.piloting === 5
-        && (position.aeroGunnery ?? 4) === 4 && (position.aeroPiloting ?? 5) === 5);
-    svg.querySelectorAll<SVGElement>('.skillValue')
-        .forEach(element => element.classList.toggle('screen-only', allCrewDefault));
-    for (const id of [
-        'blankPilotingSkill0', 'blankGunnerySkill0', 'blankAsfGunnerySkill0',
-        'blankAsfPilotingSkill0', 'blankPilotingSkill1', 'blankGunnerySkill1',
-        'blankPilotingSkill2', 'blankGunnerySkill2', 'blankPilotingSkill3',
-        'blankGunnerySkill3',
-    ]) {
-        svg.getElementById(id)?.classList.toggle('print-show', allCrewDefault);
-    }
     for (const position of snapshot.crew) {
         const occurrence = position.occurrence;
         const vacant = position.effectiveState === 'vacant';
-        const displayName = vacant ? 'VACANT' : position.name;
-        if (!renderCrewName(svg, occurrence, displayName)) {
+        const displayName = vacant ? '' : position.name;
+        if (!renderRecordSheetCrewName(svg, occurrence, displayName)) {
             write(svg, `#crewName${occurrence}`, displayName);
         }
         write(svg, `#gunnerySkill${occurrence}`, vacant ? '—' : position.gunnery);
@@ -1575,23 +1564,6 @@ function renderPilotingSkillDisplay(
     label.textContent = controlRollLabel;
     suffix.appendChild(label);
     element.appendChild(suffix);
-}
-
-function renderCrewName(svg: SVGSVGElement, occurrence: number, name: string): boolean {
-    let rendered = false;
-    svg.querySelectorAll<SVGElement>(`.crewNameButton[crewId="${occurrence}"]`).forEach(button => {
-        const textId = button.getAttribute('textElement');
-        const blankId = button.getAttribute('blankElement');
-        const text = textId ? svg.getElementById(textId) : null;
-        const blank = blankId ? svg.getElementById(blankId) : null;
-        if (text) {
-            text.textContent = name;
-            (text as SVGElement).style.visibility = name ? 'visible' : 'hidden';
-            rendered = true;
-        }
-        if (blank) (blank as SVGElement).style.visibility = name ? 'hidden' : 'visible';
-    });
-    return rendered;
 }
 
 function renderCrewState(

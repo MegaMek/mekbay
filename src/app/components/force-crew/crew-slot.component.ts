@@ -19,6 +19,7 @@ import { PilotSelectorComponent } from './pilot-selector.component';
   template: `
     <div
       class="crew-slot"
+      [class.slot-layout]="layout() === 'slots'"
       cdkDropList
       [id]="dropId"
       [cdkDropListConnectedTo]="connectedLists()"
@@ -29,6 +30,7 @@ import { PilotSelectorComponent } from './pilot-selector.component';
       (click)="$event.stopPropagation()"
       [attr.title]="policy().reason"
     >
+      @if (layout() === 'slots') { <span class="slot-label">{{ label() }}</span> }
       @if (person(); as occupant) {
         <crew-card
           [force]="force()"
@@ -65,6 +67,18 @@ import { PilotSelectorComponent } from './pilot-selector.component';
       }
       .crew-slot {
         min-height: 36px;
+      }
+      .slot-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .slot-label {
+        padding: 0 4px;
+        color: var(--text-color-secondary);
+        font-size: .65rem;
+        text-transform: uppercase;
+        letter-spacing: .04em;
       }
       .cdk-drop-list-receiving {
         outline: 1px dashed var(--bt-yellow);
@@ -107,16 +121,16 @@ export class CrewSlotComponent {
     return snapshot?.crew.find((position) => position.positionId === this.positionId())?.state.wounds;
   });
   readonly canMove = computed(() => this.policy().kind === 'swappable' && this.policy().canEdit);
-  readonly connectedLists = computed(() => [...this.crew.connectedDropLists(this.force())]);
+  readonly connectedLists = computed(() => [...this.crew.connectedDropLists()]);
   readonly canDrop = (drag: CdkDrag<CrewDragData>): boolean =>
-    this.canMove() && drag.data?.kind === 'force-person' && drag.data.force === this.force();
+    this.canMove() && this.crew.canDropPerson(drag.data, this.force());
 
   constructor() {
     effect((onCleanup) => onCleanup(this.crew.registerDropList(this.force(), this.dropId)));
   }
 
   drop(event: CdkDragDrop<unknown, unknown, CrewDragData>): void {
-    if (this.canDrop(event.item))
-      void this.crew.assign(this.force(), event.item.data.personId, this.unitId(), this.positionId());
+    if (event.isPointerOverContainer && this.canDrop(event.item))
+      void this.crew.dropOnUnit(this.force(), event.item.data, this.unitId(), this.positionId());
   }
 }

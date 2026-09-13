@@ -27,6 +27,7 @@ type RecordSheetPageProfile,
 import {
 type Box,
 addCrewSkillValue,
+drawCrewHitGrid,
 addFrame,
 addLine,
 addText,
@@ -576,45 +577,10 @@ function drawCompactProtoMekPilot(svg: SVGSVGElement, box: Box): void {
     addText(group, 'Gunnery Skill:', x(9.845), y(30.941), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const skill = addCrewSkillValue(group, '4', x(52.392), y(30.941), fontScale);
     skill.id = 'gunnerySkill0';
-    addText(group, 'Hits Taken', x(180.47), y(18.723), {
-        size: font(5.2), weight: 700, anchor: 'end',
+    drawCrewHitGrid(group, 0, {
+        x: x(182.47), y: y(11.723), cellWidth: x(87.05 / 6), cellHeight: y(9),
+        labelX: x(140), labelWidth: x(40.47), fontScale,
     });
-    addText(group, 'Consciousness #', x(180.47), y(27.723), {
-        size: font(5.2), weight: 700, anchor: 'end',
-    });
-    const consciousness = ['3', '5', '7', '10', '11', 'Dead'] as const;
-    const gridX = 182.47;
-    const cellWidth = 14.508333;
-    for (let hit = 1; hit <= 6; hit++) {
-        const cellX = gridX + (hit - 1) * cellWidth;
-        const cx = cellX + cellWidth / 2;
-        const cell = svgElement('rect');
-        setAttributes(cell, {
-            x: x(cellX), y: y(11.723), width: x(cellWidth), height: y(9),
-            class: 'crewHit', fill: '#fff', stroke: 'none',
-        });
-        cell.id = `crew_damage_0_${hit}`;
-        cell.setAttribute('crewId', '0');
-        cell.setAttribute('hit', String(hit));
-        group.appendChild(cell);
-        addText(group, String(hit), x(cx), y(18.723), {
-            class: 'crewHitLabel', size: font(5.8), weight: 700, anchor: 'middle',
-        });
-        addText(group, consciousness[hit - 1], x(cx), y(27.723), {
-            size: font(5.8), weight: 700, anchor: 'middle',
-        });
-    }
-    const grid = svgElement('rect');
-    setAttributes(grid, {
-        x: x(gridX), y: y(11.723), width: x(87.05), height: y(18), rx: x(1.015),
-        fill: 'none', stroke: '#111', 'stroke-width': 0.8 * fontScale,
-    });
-    group.appendChild(grid);
-    addLine(group, x(gridX), y(20.723), x(gridX + 87.05), y(20.723), '#111', 0.8 * fontScale);
-    for (let divider = 1; divider < 6; divider++) {
-        const dividerX = gridX + divider * cellWidth;
-        addLine(group, x(dividerX), y(11.723), x(dividerX), y(29.723), '#111', 0.8 * fontScale);
-    }
 }
 
 function drawProtoMekMastheadIcon(

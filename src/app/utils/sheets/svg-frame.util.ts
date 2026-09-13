@@ -1,7 +1,11 @@
 import { RECORD_SHEET_FONT } from './record-sheet-typography';
 export interface SVGFrameOptions {
     id?: string;
+    /** Nested content panels use the standard thin border without a shadow. */
+    variant?: 'panel' | 'nested';
     headerWidth?: number | 'auto';
+    /** Cap the tab width before compressing its title; fullWidthHeader takes precedence. */
+    maxHeaderWidth?: number;
     headerFontSize?: number;
     headerHeight?: number | 'auto';
     /** Header-side angle, independent from the adaptive outer-frame corners. */
@@ -11,6 +15,9 @@ export interface SVGFrameOptions {
     fullWidthHeader?: boolean;
     /** Draw only the adaptive frame outline, without a title tab. */
     showHeader?: boolean;
+    /** Preserve the raised title lip without drawing a filled ribbon or title text. */
+    headerStyle?: 'filled' | 'outline';
+    headerFill?: string;
 }
 
 export interface SVGFrameCornerAngleOptions {
@@ -35,6 +42,8 @@ interface SVGFrameHeaderCuts {
 }
 
 interface SVGFrameGeometry {
+    frameContract: number;
+    headerFill: string;
     headerWidth: number;
     headerFontSize: number;
     headerHeight: number;
@@ -48,6 +57,10 @@ interface SVGFrameGeometry {
     showHeader: boolean;
 }
 
+/** Single source of truth for record-sheet frame and ribbon geometry.
+ * Callers position the complete group and pass options; they must not rewrite
+ * frame paths, ribbon offsets, or title positioning after creation.
+ */
 export class SvgFrameUtil {
 
     // The frame corners use this baseline to keep all 0-90 degree cuts in the
@@ -62,6 +75,7 @@ export class SvgFrameUtil {
     private static readonly headerBorderInset = 3;
     // The inner black path is drawn on a slightly smaller box than the grey path.
     private static readonly innerFrameContract = 1.5;
+    private static readonly frameStrokeWidth = 1.932;
     // Horizontal breathing room added around auto-sized header text.
     private static readonly headerTextPadding = 13.2;
     // Top and bottom breathing room used when headerHeight is auto or explicit.
@@ -80,23 +94,26 @@ export class SvgFrameUtil {
         }
         const geometry = this.createFrameGeometry(title, width, options);
 
-        const outerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        outerPath.setAttribute('fill', '#fff');
-        outerPath.setAttribute('stroke-width', '5.2');
-        outerPath.setAttribute('d', this.createSVGFramePath(width, height, geometry, true));
-        outerPath.setAttribute('stroke-linejoin', 'round');
-        outerPath.setAttribute('stroke', '#c7c7c7');
-        group.appendChild(outerPath);
+        const nested = options.variant === 'nested';
+        if (!nested) {
+            const outerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            outerPath.setAttribute('fill', '#fff');
+            outerPath.setAttribute('stroke-width', '5.2');
+            outerPath.setAttribute('d', this.createSVGFramePath(width, height, geometry, true));
+            outerPath.setAttribute('stroke-linejoin', 'round');
+            outerPath.setAttribute('stroke', '#c7c7c7');
+            group.appendChild(outerPath);
+        }
 
         const innerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         innerPath.setAttribute('fill', '#fff');
-        innerPath.setAttribute('stroke-width', '1.932');
-        innerPath.setAttribute('d', this.createSVGFramePath(width - 1.5, height - 1.5, geometry, false));
+        innerPath.setAttribute('stroke-width', String(nested ? this.frameStrokeWidth / 2 : this.frameStrokeWidth));
+        innerPath.setAttribute('d', this.createSVGFramePath(width - geometry.frameContract, height - geometry.frameContract, geometry, false));
         innerPath.setAttribute('stroke-linejoin', 'round');
         innerPath.setAttribute('stroke', '#000');
         group.appendChild(innerPath);
 
-        if (geometry.showHeader) {
+        if (geometry.showHeader && options.headerStyle !== 'outline') {
             const header = this.createSVGFrameHeaderGroup(title, geometry);
             group.appendChild(header);
         }
@@ -206,7 +223,7 @@ export class SvgFrameUtil {
         // least enough room for both slopes and a 1px flat top.
         const resolvedHeaderWidth = Math.max(geometry.headerWidth, this.createHeaderMinWidth(geometry.headerCuts));
         const naturalTextLength = Math.max(geometry.headerTextLength, 1);
-        // A fixed header width may be smaller than the title. In that case SVG
+        // A fixed or capped header width may be smaller than the title. SVG
         // textLength squeezes the title into the safe text area.
         const maxTextLength = Math.max(resolvedHeaderWidth - this.headerTextPadding, 1);
         const headerMiddle = resolvedHeaderWidth / 2;
@@ -219,13 +236,15 @@ export class SvgFrameUtil {
         // their x space.
         const headerTopWidth = Math.max(resolvedHeaderWidth - headerLeftCut.x - headerRightCut.x, 1);
         const headerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        headerPath.setAttribute('fill', geometry.headerFill);
         headerPath.setAttribute('d', `M 0 ${headerMiddleY} l ${headerLeftCut.x} -${headerLeftCut.y} h ${headerTopWidth} l ${headerRightCut.x} ${headerRightCut.y} l -${headerRightCut.x} ${headerRightCut.y} h -${headerTopWidth} Z`);
         header.appendChild(headerPath);
+        if (!title) return header;
 
         const headerText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         headerText.setAttribute('x', headerMiddle.toString());
-    // SVG text y is a baseline, not the visual middle. The 0.35 factor moves
-    // the baseline down so the text's visible box sits near the tab center.
+        // SVG text y is a baseline, not the visual middle. The 0.35 factor moves
+        // the baseline down so the text's visible box sits near the tab center.
         headerText.setAttribute('y', (geometry.headerHeight / 2 + geometry.headerFontSize * 0.35).toString());
         headerText.setAttribute('fill', '#fff');
         headerText.setAttribute('class', 'svg-frame-title');
@@ -249,6 +268,7 @@ export class SvgFrameUtil {
         const cornerCuts = this.createCornerCuts(cornerAngles);
         const fullWidthHeader = options.fullWidthHeader ?? false;
         const showHeader = options.showHeader ?? true;
+        const frameContract = options.variant === 'nested' ? 0 : this.innerFrameContract;
         const headerFontSize = this.createHeaderFontSize(options.headerFontSize);
         const headerHeight = this.createHeaderHeight(options.headerHeight, headerFontSize);
         const headerCuts = this.createHeaderCuts(
@@ -268,7 +288,7 @@ export class SvgFrameUtil {
         // Full-width headers also need to stop early on the right side by the
         // same visual gap.
         const fullWidthHeaderRightInset = this.createHeaderSideInsetX(cornerCuts.topRight, headerMiddleY, this.headerBorderInset);
-        const fullWidthHeaderWidth = Math.max(width - this.innerFrameContract - headerOffsetX - fullWidthHeaderRightInset, headerMinWidth);
+        const fullWidthHeaderWidth = Math.max(width - frameContract - headerOffsetX - fullWidthHeaderRightInset, headerMinWidth);
         // Auto width means text width plus padding. Numeric width means caller is
         // deliberately fixing the tab, and long text will be squeezed later.
         const headerWidth = options.headerWidth === undefined || options.headerWidth === 'auto'
@@ -276,9 +296,11 @@ export class SvgFrameUtil {
             : options.headerWidth;
 
         return {
+            frameContract,
+            headerFill: options.headerFill ?? '#000',
             headerWidth: fullWidthHeader
                 ? fullWidthHeaderWidth
-                : Math.max(headerWidth, headerMinWidth),
+                : Math.max(Math.min(headerWidth, options.maxHeaderWidth ?? Infinity), headerMinWidth),
             headerFontSize,
             headerHeight,
             headerTextLength,

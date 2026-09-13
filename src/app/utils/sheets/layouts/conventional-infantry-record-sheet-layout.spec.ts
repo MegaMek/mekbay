@@ -7,6 +7,29 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment, type InfantryWeaponEquip
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 
 describe('conventional infantry sheet presentation', () => {
+    it('compresses long unit titles before they overlap the armor label on each page format', async () => {
+        const entity = infantry();
+        entity.chassis.set('Mountaineer 45th Cerulean Mountain Infantry; 3rd Davion Guards');
+        entity.model.set('');
+        for (const format of ['compact', 'letter', 'a4'] as const) {
+            const svg = await RecordSheetSvgGenerator.generate(entity, { format });
+            document.body.appendChild(svg);
+            try {
+                const frame = svg.querySelector('.compact-infantry-frame')!;
+                const title = frame.querySelector<SVGTextElement>('.svg-frame-title')!;
+                const ribbon = title.parentElement!.querySelector('path')!;
+                const armorLabel = [...frame.querySelectorAll('text')].find(text => text.textContent === 'Armor Type:')!;
+                expect(title.textContent).toBe(entity.displayName());
+                expect(title.getAttribute('lengthAdjust')).toBe('spacingAndGlyphs');
+                expect(ribbon.getBoundingClientRect().right).withContext(format)
+                    .toBeLessThan(armorLabel.getBoundingClientRect().left);
+                expect(title.getBBox().width).toBeLessThan(ribbon.getBBox().width);
+            } finally {
+                svg.remove();
+            }
+        }
+    });
+
     it('uses the armor kit divisor and prints capped-primary burst notes and capable anti-Mek skill', async () => {
         const entity = infantry();
         entity.primaryWeapon.set(new WeaponEquipment({ id: 'Mauser', name: 'Mauser', type: 'weapon',
