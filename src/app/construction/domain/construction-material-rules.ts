@@ -5,7 +5,7 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { JumpShipEntity, MekEntity, VehicleEntity } from '../../models/entity/entities';
 import { ArmorEquipment, StructureEquipment } from '../../models/equipment.model';
 import { isSupportVehicleBarArmor, structureConstructionKind } from '../../models/construction-equipment.model';
-import type { EntityValidationMessage, TechRating } from '../../models/entity/types';
+import { STRUCTURE_TYPE, type EntityValidationMessage, type TechRating } from '../../models/entity/types';
 import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
 import { getStructureTechAdvancement, STANDARD_STRUCTURE_EQUIPMENT } from '../../models/entity/components/structure';
 import { getSupportComponentTech } from '../../models/entity/components/construction-tech-data';
@@ -74,7 +74,9 @@ export function constructionMaterialMessages(entity: BaseEntity, material: Armor
       add('SUPERHEAVY_STRUCTURE', 'Superheavy Meks require standard, industrial, endo-steel or endo-composite structure.');
     }
     if (entity.chassisConfig === 'LAM' && (getNumCriticalSlots(entity, material) ?? 0) > 0) add('LAM_STRUCTURE', 'LAMs cannot use structure that requires critical slots.');
-    if (entity.mountedCockpit().isPrimitive && ![0, 1].includes(material.structureTypeId)) add('PRIMITIVE_STRUCTURE', 'Primitive Meks require standard or industrial structure.');
+    if (entity.mountedCockpit().isPrimitive
+        && material.structureTypeId !== STRUCTURE_TYPE.STANDARD
+        && material.structureTypeId !== STRUCTURE_TYPE.INDUSTRIAL) add('PRIMITIVE_STRUCTURE', 'Primitive Meks require standard or industrial structure.');
   }
   return messages;
 }
@@ -94,7 +96,7 @@ export function getConstructionStructureOptions(entity: BaseEntity, showIncompat
   const existing = [...entity.structureByLocation().values()].map(item => item.structure);
   const candidates = [...existing, ...Object.values(entity.getEquipmentRegistry().equipment)
     .filter((eq): eq is StructureEquipment => eq instanceof StructureEquipment)];
-  if (!candidates.some(eq => eq.structureTypeId === 0)) candidates.push(STANDARD_STRUCTURE_EQUIPMENT);
+  if (!candidates.some(eq => eq.structureTypeId === STRUCTURE_TYPE.STANDARD)) candidates.push(STANDARD_STRUCTURE_EQUIPMENT);
   return [...new Map(candidates.map(eq => [eq.id, eq])).values()]
     .filter(eq => showIncompatible || !constructionMaterialMessages(entity, eq).length);
 }

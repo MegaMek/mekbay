@@ -1112,9 +1112,10 @@ describe('Mek record-sheet binder', () => {
         expect(svg.getElementById('textIS_CT')?.textContent).toBe('( 3 )');
     });
 
-    it('preserves Fancy material capacities and fallback damage before and after fresh damage expires', () => {
+    it('marks separate hardened and reinforced halves before and after fresh damage expires', () => {
         jasmine.clock().install();
         const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<text id="textArmor_CT"></text><text id="textIS_CT"></text>');
         svg.querySelectorAll('.unitLocation.armor, .unitLocation.structure').forEach(zone => zone.remove());
         [...svg.querySelectorAll('.pip.armor')].slice(4).forEach(pip => pip.remove());
         [...svg.querySelectorAll('.pip.structure')].slice(3).forEach(pip => pip.remove());
@@ -1131,31 +1132,34 @@ describe('Mek record-sheet binder', () => {
             ...base,
             locations: base.locations.map(location => ({
                 ...location,
-                committedRemainingInternal: 3,
-                previewRemainingInternal: 3,
+                maximumInternal: 6,
+                committedRemainingInternal: 6,
+                previewRemainingInternal: 6,
                 armor: location.armor.map(face => ({
-                    ...face, committedRemaining: 3, previewRemaining: 3,
+                    ...face, maximum: 8, committedRemaining: 7, previewRemaining: 7,
                 })),
             })),
         };
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, initial, () => undefined);
         try {
             const pips = [...svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure')];
-            expect(pips.length).toBe(7);
+            expect(pips.length).toBe(14);
             expect(pips.every(pip => pip.tagName === 'polygon' && pip.style.display !== 'none')).toBeTrue();
-            expect(svg.querySelector('.half')).toBeNull();
+            expect(svg.querySelectorAll('.half').length).toBe(7);
             expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(1);
+            expect(svg.getElementById('textArmor_CT')?.textContent).toBe('( 3.5/4 )');
             const pending: MekRecordSheetSnapshot = {
                 ...initial,
                 locations: initial.locations.map(location => ({
                     ...location,
-                    previewRemainingInternal: 2,
-                    armor: location.armor.map(face => ({ ...face, previewRemaining: 2 })),
+                    previewRemainingInternal: 5,
+                    armor: location.armor.map(face => ({ ...face, previewRemaining: 6 })),
                 })),
             };
             binding.render(pending);
             expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(2);
             expect(svg.querySelectorAll('.structure.pip.damaged').length).toBe(1);
+            expect(svg.getElementById('textIS_CT')?.textContent).toBe('( 2.5/3 )');
             expect(svg.querySelectorAll('.armor.pip.pending, .structure.pip.pending').length).toBe(2);
             expect(svg.querySelectorAll('.armor.pip.fresh, .structure.pip.fresh').length).toBe(2);
 

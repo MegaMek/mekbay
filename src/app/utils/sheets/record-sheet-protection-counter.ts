@@ -11,7 +11,8 @@ export function renderProtectionCounter(root: SVGSVGElement, id: string, current
     for (const counter of root.querySelectorAll<SVGElement>(`#${CSS.escape(id)}`)) {
         if (counter.textContent === '—') continue;
         const prefix = counter.getAttribute('data-mekbay-counter-prefix');
-        const text = formatProtectionCounter(current, maximum);
+        const damagePerPoint = Number(counter.getAttribute('data-mekbay-damage-per-point') ?? 1);
+        const text = formatProtectionCounter(current / damagePerPoint, maximum / damagePerPoint);
         counter.textContent = prefix ? `${prefix} ${text}` : text;
     }
 }

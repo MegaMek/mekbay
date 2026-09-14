@@ -4,6 +4,7 @@
 
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import type { MekEntity } from '../../entities/mek/mek-entity';
+import { STRUCTURE_TYPE } from '../../types/structure';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import { ceilToHalfTon, ceilToWholeTon } from './weight-rounding';
 import { flamerRequiresPower } from '../../../flamer-mode.model';
@@ -27,13 +28,13 @@ export interface MekWeightBreakdown {
 }
 
 const STRUCTURE_DIVISORS: Readonly<Record<number, { normal: number; superHeavy: number }>> = {
-  0: { normal: 10, superHeavy: 5 },
-  1: { normal: 5, superHeavy: 2.5 },
-  2: { normal: 20, superHeavy: 10 },
-  3: { normal: 20, superHeavy: 20 },
-  4: { normal: 5, superHeavy: 5 },
-  5: { normal: 20, superHeavy: 20 },
-  6: { normal: 10 / 0.75, superHeavy: 10 / 1.5 },
+  [STRUCTURE_TYPE.STANDARD]: { normal: 10, superHeavy: 5 },
+  [STRUCTURE_TYPE.INDUSTRIAL]: { normal: 5, superHeavy: 2.5 },
+  [STRUCTURE_TYPE.ENDO_STEEL]: { normal: 20, superHeavy: 10 },
+  [STRUCTURE_TYPE.ENDO_STEEL_PROTOTYPE]: { normal: 20, superHeavy: 20 },
+  [STRUCTURE_TYPE.REINFORCED]: { normal: 5, superHeavy: 5 },
+  [STRUCTURE_TYPE.COMPOSITE]: { normal: 20, superHeavy: 20 },
+  [STRUCTURE_TYPE.ENDO_COMPOSITE]: { normal: 10 / 0.75, superHeavy: 10 / 1.5 },
 };
 
 const HYBRID_STRUCTURE_FRACTIONS: Readonly<Record<string, number>> = {
@@ -85,7 +86,7 @@ export function calculateMekStructureWeight(entity: MekEntity): number {
 }
 
 function fullStructureWeight(entity: MekEntity, tonnage: number, typeId: number): number {
-  const divisor = STRUCTURE_DIVISORS[typeId] ?? STRUCTURE_DIVISORS[0];
+  const divisor = STRUCTURE_DIVISORS[typeId] ?? STRUCTURE_DIVISORS[STRUCTURE_TYPE.STANDARD];
   const tripodMultiplier = entity.motiveType() === 'Tripod' ? 1.1 : 1;
   return ceilToHalfTon(tonnage * tripodMultiplier / (tonnage > 100 ? divisor.superHeavy : divisor.normal));
 }

@@ -11,7 +11,7 @@ import { constructionEngineTechnology, constructionTechnologyEligibility, constr
 import { constructionEngineCompatible } from './construction-system-rules';
 import { constructionEquipmentEligibilityIssues, equipmentPlacementIssues, installConstructionEquipment, setConstructionArmorMaterial, validateConstruction } from './construction-rules';
 import { getConstructionArmorOptions } from './construction-material-rules';
-import { CONSTRUCTION_INTRO_YEAR_MARGIN } from './construction-config';
+import { CONSTRUCTION_INTRO_YEAR_MARGIN, CONSTRUCTION_VALIDATE_EXTINCTION } from './construction-config';
 
 const registry = createTestEquipmentRegistry({});
 describe('construction introduction-year margin', () => {
@@ -53,15 +53,38 @@ describe('construction introduction-year margin', () => {
     expect(arrowDateIssues().length).toBe(1);
   });
 
-  it('does not move extinction or reintroduction dates by the introduction margin', () => {
+  it('honors configured extinction checks without moving their boundaries by the introduction margin', () => {
     const entity = createConstructionEntity('Biped', registry);
     const technology = { base: 'IS', level: 'Standard', rating: 'C', availability: ['C', 'C', 'C', 'C'], advancement: { is: {
       production: 2700, extinct: 2800, reintroduced: 3100,
     } } } as const;
     for (const [year, available] of [[2799, true], [2800, true], [2801, false], [3099, false], [3100, true]] as const) {
       entity.year.set(year);
-      expect(constructionTechnologyEligibility(entity, technology).available).withContext(`${year}`).toBe(available);
+      expect(constructionTechnologyEligibility(entity, technology).available).withContext(`${year}`)
+        .toBe(available || !CONSTRUCTION_VALIDATE_EXTINCTION);
     }
+  });
+});
+
+describe('construction extinction policy', () => {
+  it('applies the policy to AV1-OBLO C3i eligibility and validation without changing its catalog history', () => {
+    const c3i = new MiscEquipment({ id: 'ISC3iUnit', name: 'Improved C3 Computer (C3I)', type: 'misc',
+      flags: ['F_MEK_EQUIPMENT', 'F_C3I', 'ANY_C3'], stats: { tonnage: 2.5, criticalSlots: 2 },
+      tech: { base: 'IS', level: 'Standard', advancement: { is: { prototype: '~3052', common: '3058', extinct: '3085' } },
+        factions: { prototype: ['CS'], production: ['CS'] } } });
+    const entity = createConstructionEntity('Biped', createTestEquipmentRegistry({ [c3i.id]: c3i }));
+    entity.year.set(3127);
+    expect(c3i.isAvailableIn(3127, 'IS')).toBeFalse();
+    expect(constructionEquipmentEligibilityIssues(entity, c3i)).toEqual(
+      CONSTRUCTION_VALIDATE_EXTINCTION ? ['Not available in 3127.'] : []);
+    entity.year.set(3085);
+    installConstructionEquipment(entity, c3i, 'LT');
+    entity.year.set(3127);
+    const c3iDateIssues = () => validateConstruction(entity).messages.filter(message =>
+      message.code === 'TECH_UNAVAILABLE' && message.message.startsWith(c3i.name));
+    expect(c3iDateIssues().length).toBe(CONSTRUCTION_VALIDATE_EXTINCTION ? 1 : 0);
+    entity.year.set(3000);
+    expect(c3iDateIssues().length).toBe(1);
   });
 });
 
@@ -219,17 +242,19 @@ describe('OEM technology interval', () => {
     expect(validateConstruction(entity).messages.filter(message => message.code.startsWith('TECH_'))).toEqual([]);
   });
 
-  it('respects extinction boundaries and later reintroduction', () => {
+  it('applies configured extinction checks across the OEM interval and later reintroduction', () => {
     const entity = design();
     entity.originalBuildYear.set(2800);
     expect(constructionEquipmentEligibilityIssues(entity, laser)).toEqual([]);
     entity.originalBuildYear.set(2801);
-    expect(constructionEquipmentEligibilityIssues(entity, laser)).toContain('Not available in 2801–3050.');
+    expect(constructionEquipmentEligibilityIssues(entity, laser)).toEqual(
+      CONSTRUCTION_VALIDATE_EXTINCTION ? ['Not available in 2801–3050.'] : []);
     entity.year.set(3100);
     expect(constructionEquipmentEligibilityIssues(entity, laser)).toEqual([]);
     entity.originalBuildYear.set(-1);
     entity.year.set(3050);
-    expect(constructionEquipmentEligibilityIssues(entity, laser)).toContain('Not available in 3050.');
+    expect(constructionEquipmentEligibilityIssues(entity, laser)).toEqual(
+      CONSTRUCTION_VALIDATE_EXTINCTION ? ['Not available in 3050.'] : []);
   });
 
   it('enforces the static rules level even after a technology becomes common', () => {
@@ -247,9 +272,13 @@ describe('OEM technology interval', () => {
       is: { prototype: 2700 }, clan: { common: 2600, extinct: 2650 },
     } };
     expect(constructionTechnologyEligibility(entity, technology)).toEqual({ techBase: true, available: true, rulesLevel: true });
-    expect(constructionTechnologyEligibility(entity, technology, 'Clan')).toEqual({ techBase: true, available: false, rulesLevel: true });
+    expect(constructionTechnologyEligibility(entity, technology, 'Clan')).toEqual({ techBase: true,
+      available: !CONSTRUCTION_VALIDATE_EXTINCTION, rulesLevel: true });
     expect(constructionTechnologyEligibility(entity, { ...technology, advancement: {
       ...technology.advancement, is: { prototype: 3100 },
+    } }).available).toBe(!CONSTRUCTION_VALIDATE_EXTINCTION);
+    expect(constructionTechnologyEligibility(entity, { ...technology, advancement: {
+      is: { prototype: 3100 }, clan: { common: 3100 },
     } }).available).toBeFalse();
   });
 
@@ -287,7 +316,7 @@ describe('OEM technology interval', () => {
     expect(unavailable()).toEqual([]);
     entity.originalBuildYear.set(-1);
     const codes = unavailable().map(message => message.code);
-    expect(codes).toContain('MATERIAL_TECH_UNAVAILABLE');
-    expect(codes).toContain('SYSTEM_TECH_DATE');
+    expect(codes.includes('MATERIAL_TECH_UNAVAILABLE')).toBe(CONSTRUCTION_VALIDATE_EXTINCTION);
+    expect(codes.includes('SYSTEM_TECH_DATE')).toBe(CONSTRUCTION_VALIDATE_EXTINCTION);
   });
 });

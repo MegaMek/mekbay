@@ -106,9 +106,11 @@ reflective and reactive armor. Other materials use circles. These are
 MegaMekLab's `PipType.forAT` / `forST` mappings. Trooper-status and shield-capacity
 pips remain circles, shield absorption remains diamonds, and capital square
 tables retain their separate `PrintCapitalShip` arrangement.
-Each pip represents one construction armor/internal point, including Hardened
-and Reinforced materials. The runtime stores integer damage against those exact
-capacities, so the generator does not add duplicate half-pip layers.
+Each pip represents one construction armor/internal point. Hardened Armor and
+Reinforced Structure diamonds are split into two independently marked halves.
+Their runtime damage capacities are twice the construction values, with integer
+damage per half. Counters retain construction-point units and show half points
+when needed. Construction values and saved damage amounts remain unchanged.
 
 `RECORD_SHEET_FRESH_DAMAGE_DURATION_MS` in `record-sheet-damage-highlights.ts`
 defaults to 3000 milliseconds. A positive value clears the latest damage/repair

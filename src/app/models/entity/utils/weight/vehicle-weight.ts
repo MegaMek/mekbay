@@ -5,6 +5,7 @@
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../../equipment.model';
 import { getBayConstructionWeight, isQuartersBay } from '../../bays/bay-definitions';
 import type { VehicleEntity } from '../../entities/vehicle/vehicle-entity';
+import { STRUCTURE_TYPE } from '../../types/structure';
 import { calculateHeatNeutralRequirement, calculatePowerAmplifierWeight } from '../cost/common';
 import { getEquipmentEngineWeight } from '../equipment-engine-weight';
 import { resolveLabArmorEquipment } from './armor-weight';
@@ -84,8 +85,8 @@ export function calculateVehicleWeightBreakdown(entity: VehicleEntity): VehicleW
 }
 
 export function calculateVehicleStructureWeight(entity: VehicleEntity): number {
-  const structureType = entity.uniformStructure()?.structure.structureTypeId ?? 0;
-  let divisor = structureType === 1 ? 20 : 10;
+  const structureType = entity.uniformStructure()?.structure.structureTypeId ?? STRUCTURE_TYPE.STANDARD;
+  let divisor = structureType === STRUCTURE_TYPE.INDUSTRIAL ? 20 : 10;
   const navalSuperHeavy = entity.isSuperHeavy()
     && ['Naval', 'Submarine'].includes(entity.motiveType());
   if (entity.isSuperHeavy() && !navalSuperHeavy) divisor /= 2;

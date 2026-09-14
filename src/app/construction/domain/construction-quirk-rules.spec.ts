@@ -8,6 +8,10 @@ import { MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { createConstructionEntity } from './construction-factory';
 import { constructionQuirkApplies, constructionQuirkMessages } from './construction-quirk-rules';
+import { CONSTRUCTION_VALIDATE_QUIRKS } from './construction-config';
+import { validateConstruction } from './construction-rules';
+import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
+import { weaponQuirkAddress } from '../../models/entity/utils/weapon-quirks';
 
 const registry = createTestEquipmentRegistry({});
 const addQuirk = (entity: BaseEntity, key: string) => entity.quirks.update(items => [...items,
@@ -19,9 +23,10 @@ describe('source-based unit quirk legality', () => {
     addQuirk(entity, 'fast_reload');
     expect(constructionQuirkMessages(entity)).toEqual([]);
     addQuirk(entity, 'distracting');
-    expect(constructionQuirkMessages(entity).map(issue => issue.message)).toEqual([
+    expect(constructionQuirkApplies(entity, 'distracting')).toBeFalse();
+    expect(constructionQuirkMessages(entity).map(issue => issue.message)).toEqual(CONSTRUCTION_VALIDATE_QUIRKS ? [
       'distracting is incompatible with this chassis, installed systems or selected quirks.',
-    ]);
+    ] : []);
   });
   it('checks fist requirements independently for each arm and excludes quads', () => {
     const entity = createConstructionEntity('Biped', registry) as MekWithArmsEntity;
@@ -58,7 +63,7 @@ describe('source-based unit quirk legality', () => {
     addQuirk(entity, 'imp_target_long');
     addQuirk(entity, 'overhead_arms');
     addQuirk(entity, 'low_arms');
-    expect(constructionQuirkMessages(entity).length).toBe(4);
+    expect(constructionQuirkMessages(entity).length).toBe(CONSTRUCTION_VALIDATE_QUIRKS ? 4 : 0);
     expect(constructionQuirkApplies(entity, 'imp_target_short')).toBeFalse();
   });
 
@@ -105,5 +110,33 @@ describe('source-based unit quirk legality', () => {
       expect(constructionQuirkApplies(entity, 'no_eject')).toBeFalse();
     }
     expect(constructionQuirkApplies(createConstructionEntity('Infantry', registry), 'easy_maintain')).toBeFalse();
+  });
+});
+
+describe('construction quirk validation policy', () => {
+  it('controls unit and weapon quirk issues while preserving assignments and other construction errors', () => {
+    const laser = new WeaponEquipment({ id: 'Quirk Test Laser', name: 'Quirk Test Laser', type: 'weapon',
+      flags: ['F_MEK_WEAPON', 'F_ENERGY', 'F_LASER'], stats: { tonnage: 1, criticalSlots: 1 },
+      weapon: { heat: 3, damage: 5, ammoType: 'NA' } });
+    const entity = createConstructionEntity('Biped', createTestEquipmentRegistry({ [laser.id]: laser })) as MekWithArmsEntity;
+    entity.chassis.set('');
+    entity.hasHandActuator.update(hands => ({ ...hands, left: false }));
+    addQuirk(entity, 'battle_fists_la');
+    const mount = addTestEquipment(entity, laser, { allocation: { kind: 'location', location: 'RT',
+      placements: [{ location: 'RT', slotIndex: 0 }] } });
+    entity.weaponQuirks.set([
+      { name: 'ammo_feed_problems', ...weaponQuirkAddress(entity, mount) },
+      { name: 'accurate', weaponName: 'Missing laser', location: 'RA', slot: 4 },
+    ]);
+    const quirks = entity.quirks(), weaponQuirks = entity.weaponQuirks();
+    const quirkCodes = ['QUIRK_NOT_APPLICABLE', 'WEAPON_QUIRK_NOT_APPLICABLE', 'WEAPON_QUIRK_UNMATCHED'];
+    expect(constructionQuirkApplies(entity, 'battle_fists_la')).toBeFalse();
+    expect(constructionQuirkMessages(entity).map(issue => issue.code)).toEqual(CONSTRUCTION_VALIDATE_QUIRKS ? quirkCodes : []);
+    const result = validateConstruction(entity);
+    expect(result.messages.filter(issue => quirkCodes.includes(issue.code)).map(issue => issue.code))
+      .toEqual(CONSTRUCTION_VALIDATE_QUIRKS ? quirkCodes : []);
+    expect(result.messages.some(issue => issue.code === 'CHASSIS_REQUIRED')).toBeTrue();
+    expect(entity.quirks()).toEqual(quirks);
+    expect(entity.weaponQuirks()).toEqual(weaponQuirks);
   });
 });

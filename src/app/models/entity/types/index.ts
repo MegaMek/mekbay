@@ -16,6 +16,7 @@ export * from './engine';
 export * from './cockpit';
 export * from './heat-sink';
 export * from './armor';
+export * from './structure';
 export * from './aero';
 export * from './locations';
 export * from './mek';

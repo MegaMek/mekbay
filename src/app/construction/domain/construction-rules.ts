@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../models/entity/base-entity';
+import { STRUCTURE_TYPE } from '../../models/entity/types/structure';
 import { buildingHexKey, parseBuildingLocation } from '../../models/entity/types/building';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import { mekLocationId, mekSystemComponentId } from '../../models/entity/mek-entity-conventions';
@@ -1488,8 +1489,8 @@ export function ensureConstructionMaterialEquipment(entity: BaseEntity): void {
 function hybridStructureCriticals(entity: MekEntity, location: string): number {
   const material = entity.structureAt(location);
   const type = material.structure.structureTypeId;
-  if (type !== 2 && type !== 6) return 0;
-  if (type === 6 || material.techBase === 'Clan') return location === 'HD' ? 0 : 1;
+  if (type !== STRUCTURE_TYPE.ENDO_STEEL && type !== STRUCTURE_TYPE.ENDO_COMPOSITE) return 0;
+  if (type === STRUCTURE_TYPE.ENDO_COMPOSITE || material.techBase === 'Clan') return location === 'HD' ? 0 : 1;
   return location === 'HD' || location === 'CT' || entity.locationIsLeg(location)
     ? 1
     : location === 'LT' || location === 'RT'

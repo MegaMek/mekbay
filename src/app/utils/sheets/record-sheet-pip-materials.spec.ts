@@ -64,8 +64,10 @@ describe('record-sheet Fancy Pips', () => {
 
         for (const loc of ['Front', 'FR']) {
             const pips = svg.querySelectorAll<SVGPolygonElement>(`.pip[data-loc="${loc}"]`);
-            expect(pips.length).toBe(1);
-            expect(pips[0].points.numberOfItems).toBe(4);
+            expect(pips.length).toBe(2);
+            expect(pips[0].points.numberOfItems).toBe(3);
+            expect(pips[1].points.numberOfItems).toBe(3);
+            expect(pips[1].classList.contains('half')).toBeTrue();
         }
         expect(svg.querySelector<SVGPolygonElement>('[data-loc="LS"]')?.points.numberOfItems).toBe(5);
         expect(svg.querySelector('[data-loc="RS"]')?.getAttribute('stroke-dasharray')).toBe('1.8 .85');
@@ -81,9 +83,9 @@ describe('record-sheet Fancy Pips', () => {
             `<circle class="pip structure" data-loc="${loc}" cx="${i * 10}" cy="20" r="3"/>`).join(''));
         applyRecordSheetPipMaterials(svg, entity);
 
-        expect(svg.querySelector<SVGPolygonElement>('[data-loc="CT"]')?.points.numberOfItems).toBe(4);
-        expect(svg.querySelectorAll('[data-loc="CT"]').length).toBe(1);
-        expect(svg.querySelectorAll('.half').length).toBe(0);
+        expect(svg.querySelector<SVGPolygonElement>('[data-loc="CT"]')?.points.numberOfItems).toBe(3);
+        expect(svg.querySelectorAll('[data-loc="CT"]').length).toBe(2);
+        expect(svg.querySelectorAll('.half').length).toBe(1);
         expect(svg.querySelector('[data-loc="LT"]')?.getAttribute('stroke-dasharray')).toBe('1.8 .85');
         expect(svg.querySelectorAll('[data-loc="LT"].half').length).toBe(0);
         expect(svg.querySelector('[data-loc="RT"]')?.tagName).toBe('circle');

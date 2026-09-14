@@ -7,6 +7,7 @@ import { createTestEquipmentRegistry } from '../../models/entity/testing/test-eq
 import { createConstructionEntity } from './construction-factory';
 import { constructionMaterialMessages, getConstructionArmorOptions, getConstructionStructureOptions } from './construction-material-rules';
 import { setConstructionArmorMaterial, setConstructionStructure, validateConstruction } from './construction-rules';
+import { CONSTRUCTION_VALIDATE_EXTINCTION } from './construction-config';
 
 describe('construction material eligibility', () => {
   const tech = { base: 'All', level: 'Standard', rating: 'D', advancement: { is: { common: '2500' }, clan: { common: '2500' } } } as const;
@@ -42,9 +43,13 @@ describe('construction material eligibility', () => {
     setConstructionArmorMaterial(entity, historical);
     expect(validateConstruction(entity).messages.some(message => message.code === 'MATERIAL_TECH_UNAVAILABLE')).toBeFalse();
     entity.originalBuildYear.set(-1);
-    expect(getConstructionArmorOptions(entity)).not.toContain(historical);
+    expect(getConstructionArmorOptions(entity).includes(historical)).toBe(!CONSTRUCTION_VALIDATE_EXTINCTION);
     expect(getConstructionArmorOptions(entity, true)).toContain(historical);
-    expect(() => setConstructionArmorMaterial(entity, historical)).toThrowError(/unavailable/);
+    if (CONSTRUCTION_VALIDATE_EXTINCTION) {
+      expect(() => setConstructionArmorMaterial(entity, historical)).toThrowError(/unavailable/);
+    } else {
+      expect(() => setConstructionArmorMaterial(entity, historical)).not.toThrow();
+    }
     expect(entity.uniformArmor()?.armor).toBe(historical);
   });
 

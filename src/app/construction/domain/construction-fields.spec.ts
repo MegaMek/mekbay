@@ -14,6 +14,7 @@ import { constructionAdvancedMekMessages } from './construction-advanced-mek-rul
 import { constructionTechnologyEligibility, constructionTechnologyMessages } from './construction-technology-rules';
 import { constructionInfantryBaMessages } from './construction-infantry-ba-rules';
 import { PREDEFINED_INFANTRY_MOUNTS } from '../../models/entity/types/infantry';
+import { CONSTRUCTION_VALIDATE_EXTINCTION } from './construction-config';
 
 const sink = new MiscEquipment({ id: 'Historical double sink', name: 'Historical double sink', type: 'misc',
   flags: ['F_DOUBLE_HEAT_SINK'], stats: { tonnage: 1, criticalSlots: 3 },
@@ -178,7 +179,7 @@ describe('construction system choices', () => {
   it('uses the OEM interval for heat sinks and keeps the metadata controls unrestricted', () => {
     const entity = design();
     entity.year.set(3050);
-    expect(allowed(entity, 'heatSinkType')).not.toContain(sink.id);
+    expect(allowed(entity, 'heatSinkType').includes(sink.id)).toBe(!CONSTRUCTION_VALIDATE_EXTINCTION);
     entity.originalBuildYear.set(2750);
     expect(allowed(entity, 'heatSinkType')).toContain(sink.id);
     expect(allowed(entity, 'rulesLevel')).toEqual([1, 2, 3, 4, 5]);

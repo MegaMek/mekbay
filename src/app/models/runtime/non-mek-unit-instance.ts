@@ -1172,11 +1172,13 @@ function projectNonMekStateViewFromProjection(
             const faceRow = locationRow?.armorFaceIds
                 .map(id => index.armorFaces.get(id))
                 .find(row => row?.face === face);
-            return faceRow ? entityRemainingArmor(index, state, faceRow.id, 'committed') : 0;
+            return faceRow ? Math.ceil(entityRemainingArmor(index, state, faceRow.id, 'committed')
+                / (entity.armorByLocation().get(location)?.damagePerPoint ?? 1)) : 0;
         },
         structureRemaining: (location: string) => {
             const row = [...index.locations.values()].find(candidate => candidate.code === location);
-            return row ? entityRemainingInternal(index, state, row.id, 'committed') : 0;
+            return row ? Math.ceil(entityRemainingInternal(index, state, row.id, 'committed')
+                / (entity.structureByLocation().get(location)?.damagePerPoint ?? 1)) : 0;
         },
         ammoRemaining: (mountId: string) => {
             const component = index.components.get(mountId as ComponentId);

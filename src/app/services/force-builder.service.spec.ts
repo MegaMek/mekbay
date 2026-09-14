@@ -1379,6 +1379,7 @@ describe('ForceBuilderService production V2 unit selection', () => {
         service.injector = { get: () => ({ requestClosePanels }) };
         service.logger = jasmine.createSpyObj('LoggerService', ['info', 'error']);
         service.toastService = jasmine.createSpyObj('ToastService', ['showToast']);
+        service.unitNames = jasmine.createSpyObj('UnitNameService', { name: unit.name });
         const unitAdmission = Object.create(ForceUnitAdmissionService.prototype) as any;
         service.unitAdmission = unitAdmission;
         service.formations = {

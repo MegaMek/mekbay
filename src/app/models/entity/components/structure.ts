@@ -4,7 +4,7 @@
 
 import { StructureEquipment } from '../../equipment.model';
 import { EquipmentRegistry } from '../../equipment-lookup';
-import { EntityTechBase, EquipmentTechBase, type TechRatingSource } from '../types';
+import { EntityTechBase, EquipmentTechBase, STRUCTURE_TYPE, type TechRatingSource } from '../types';
 import { structureTechAdvancement } from './structure-tech-data';
 
 /**
@@ -25,7 +25,7 @@ export const STANDARD_STRUCTURE_EQUIPMENT = new StructureEquipment({
   type: 'structure',
   aliases: ['Standard Structure', 'IS Standard Structure', 'Clan Standard Structure'],
   tech: { base: 'All' },
-  structure: { typeId: 0 },
+  structure: { typeId: STRUCTURE_TYPE.STANDARD },
 });
 
 export interface MountedStructureOptions {
@@ -49,6 +49,11 @@ export class MountedStructure {
     this.structure = options.structure;
     this.techBase = options.techBase ?? options.structure.techBase;
     Object.freeze(this);
+  }
+
+  /** Integer damage marks needed to remove one construction point. */
+  get damagePerPoint(): number {
+    return this.structure.structureTypeId === STRUCTURE_TYPE.REINFORCED ? 2 : 1;
   }
 
   /** Complete effective equality: material and donor/chassis tonnage. */

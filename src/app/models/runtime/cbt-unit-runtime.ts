@@ -19,6 +19,7 @@ export type RuntimeStatePerspective = 'committed' | 'preview';
 export interface CBTRuntimeLocation {
     readonly id: LocationId;
     readonly code: string;
+    /** Damage capacity: Reinforced Structure uses two marks per construction point. */
     readonly internalPoints: number;
     readonly armorFaceIds: readonly ArmorFaceId[];
 }
@@ -28,6 +29,7 @@ export interface CBTRuntimeArmorFace {
     readonly id: ArmorFaceId;
     readonly locationId: LocationId;
     readonly face: 'front' | 'rear';
+    /** Damage capacity: Hardened Armor uses two marks per construction point. */
     readonly maximumPoints: number;
 }
 

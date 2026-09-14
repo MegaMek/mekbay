@@ -813,7 +813,7 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelector('linearGradient[id^="generated_condition_banner_fade_"]')).toBeNull();
     });
 
-    it('authors material symbols without duplicating construction point capacities', async () => {
+    it('splits hardened armor and reinforced structure into two damage halves per construction point', async () => {
         const entity = new TestBipedMekEntity();
         entity.setTonnage(50);
         entity.setArmorValue('CT', 'front', 10);
@@ -841,10 +841,10 @@ describe('RecordSheetSvgGenerator', () => {
         const ctStructure = svg.querySelectorAll('.pip.structure[data-loc="CT"]:not(.half)');
 
         expect(ctArmor.length).toBe(10);
-        expect(svg.querySelectorAll('.pip.armor[data-loc="CT"].half').length).toBe(0);
+        expect(svg.querySelectorAll('.pip.armor[data-loc="CT"].half').length).toBe(10);
         expect(svg.querySelectorAll('.pip.armor[data-loc="LT"].half').length).toBe(0);
         expect(ctStructure.length).toBe(entity.structureValues().get('CT')!);
-        expect(svg.querySelectorAll('.pip.structure[data-loc="CT"].half').length).toBe(0);
+        expect(svg.querySelectorAll('.pip.structure[data-loc="CT"].half').length).toBe(ctStructure.length);
         expect(svg.querySelectorAll('.pip.structure[data-loc="LT"].half').length).toBe(0);
         expect(ctArmor[0].tagName).toBe('polygon');
         expect(ctStructure[0].tagName).toBe('polygon');

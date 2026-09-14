@@ -279,6 +279,31 @@ describe('ForcePersistenceService cloud acknowledgements', () => {
         expect(persistence.hasPendingForceSaves()).toBeFalse();
     });
 
+    it('drains an obsolete debounced save when rapid edits retire the force before its next autosave', async () => {
+        await persistence.saveForce(force);
+        await force.addGroup('Edit after the pending save');
+        const retirement = force.beginWholeOwnerRetirement()!;
+        expect(await retirement.ready).toBeTrue();
+        const fingerprint = force.captureWholeOwnerAuthorityFingerprint();
+        let drained: boolean | undefined;
+        const drain = persistence.drainForceAuthorityPersistence(force, fingerprint)
+            .then(result => { drained = result; });
+
+        try {
+            // A timer cannot detect this regression: the old drain spins in
+            // microtasks, preventing both timers and user input from running.
+            for (let turn = 0; turn < 30 && drained === undefined; turn++) await Promise.resolve();
+            expect(drained).toBeTrue();
+            expect(persistence.hasPendingForceSaves()).toBeFalse();
+            expect(ws.sendAndWaitForResponse).not.toHaveBeenCalled();
+        } finally {
+            // Also lets the pre-fix test fail without hanging the test browser.
+            await (persistence as any).flushSaveForceCloud(force.instanceId());
+            await drain;
+            force.cancelWholeOwnerRetirement(retirement.token);
+        }
+    });
+
     it('does not send an obsolete snapshot when the page hides before the next autosave is prepared', async () => {
         await persistence.saveForce(force);
         await force.addGroup('Second lance');

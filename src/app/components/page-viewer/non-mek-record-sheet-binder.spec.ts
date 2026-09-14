@@ -538,7 +538,7 @@ describe('bindNonMekRecordSheet', () => {
         ]);
     });
 
-    it('preserves Fancy material capacities and fallback damage before and after fresh damage expires', () => {
+    it('marks separate hardened and reinforced halves before and after fresh damage expires', () => {
         jasmine.clock().install();
         const svg = pipOnlySheet();
         const entity = new TestTankEntity();
@@ -549,20 +549,24 @@ describe('bindNonMekRecordSheet', () => {
             id: 'Reinforced', name: 'Reinforced', type: 'structure', structure: { typeId: 4 },
         }) }));
         applyRecordSheetPipMaterials(svg, entity);
-        const base = snapshot(2);
+        const initial = snapshot(2);
+        const base = { ...initial, locations: initial.locations.map(location => ({
+            ...location, maximumInternal: 4, remainingInternal: 4, previewRemainingInternal: 4,
+            armor: location.armor.map(face => ({ ...face, maximum: 6, remaining: 5, previewRemaining: 5 })),
+        })) };
         const binding = bindNonMekRecordSheet(svg, base, () => undefined);
         try {
             const pips = [...svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure')];
-            expect(pips.length).toBe(5);
+            expect(pips.length).toBe(10);
             expect(pips.every(pip => pip.tagName === 'polygon' && pip.style.display !== 'none')).toBeTrue();
-            expect(svg.querySelector('.half')).toBeNull();
+            expect(svg.querySelectorAll('.half').length).toBe(5);
             expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(1);
             const pending: NonMekRecordSheetSnapshot = {
                 ...base,
                 locations: base.locations.map(location => ({
                     ...location,
-                    previewRemainingInternal: 1,
-                    armor: location.armor.map(face => ({ ...face, previewRemaining: 1 })),
+                    previewRemainingInternal: 3,
+                    armor: location.armor.map(face => ({ ...face, previewRemaining: 4 })),
                 })),
             };
             binding.render(pending);

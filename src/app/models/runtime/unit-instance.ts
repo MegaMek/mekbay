@@ -2566,14 +2566,16 @@ function projectRuntimeMekBattleValue(
     );
     const armorRemaining = new Map<ArmorFaceId, number>();
     for (const face of runtimeIndex.armorFaces.values()) {
-        armorRemaining.set(face.id, Math.max(0, face.maximumPoints - armorDamage(state, face.id, 'committed')));
+        const damagePerPoint = runtimeIndex.locations.get(face.locationId)!.armor.damagePerPoint;
+        armorRemaining.set(face.id, Math.ceil(Math.max(0,
+            face.maximumPoints - armorDamage(state, face.id, 'committed')) / damagePerPoint));
     }
     const internalRemaining = new Map<LocationId, number>();
     for (const location of runtimeIndex.locations.values()) {
-        internalRemaining.set(location.id, Math.max(
+        internalRemaining.set(location.id, Math.ceil(Math.max(
             0,
             location.internalPoints - internalDamage(state, location.id, 'committed'),
-        ));
+        ) / location.structure.damagePerPoint));
     }
     const locationIdByCode = new Map<string, LocationId>(
         [...runtimeIndex.locations.values()].map(location => [location.code, location.id] as const),
@@ -2860,12 +2862,13 @@ function committedMekDamageMutations(
         const beforeRemaining = face.maximumPoints - armorDamage(before, face.id, 'committed');
         const afterRemaining = face.maximumPoints - armorDamage(after, face.id, 'committed');
         if (afterRemaining >= beforeRemaining) continue;
+        const damagePerPoint = unit.index.locations.get(face.locationId)!.armor.damagePerPoint;
         mutations.push(Object.freeze({
             kind: 'armor',
             faceId: face.id,
-            beforeRemaining,
-            afterRemaining,
-            receivedDamage: beforeRemaining - afterRemaining,
+            beforeRemaining: Math.ceil(beforeRemaining / damagePerPoint),
+            afterRemaining: Math.ceil(afterRemaining / damagePerPoint),
+            receivedDamage: Math.ceil(beforeRemaining / damagePerPoint) - Math.ceil(afterRemaining / damagePerPoint),
         }));
     }
     for (const location of unit.index.locations.values()) {
@@ -2880,11 +2883,12 @@ function committedMekDamageMutations(
         mutations.push(Object.freeze({
             kind: 'internal',
             locationId: location.id,
-            beforeRemaining,
-            afterRemaining,
+            beforeRemaining: Math.ceil(beforeRemaining / location.structure.damagePerPoint),
+            afterRemaining: Math.ceil(afterRemaining / location.structure.damagePerPoint),
             beforeDestroyed,
             afterDestroyed,
-            receivedDamage: beforeRemaining - afterRemaining,
+            receivedDamage: Math.ceil(beforeRemaining / location.structure.damagePerPoint)
+                - Math.ceil(afterRemaining / location.structure.damagePerPoint),
         }));
     }
     for (const slot of unit.index.slots.values()) {

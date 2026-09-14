@@ -24,6 +24,8 @@ export function buildUnitRuntimeIndex(entity: BaseEntity): CBTUnitRuntimeIndex &
 } {
     const locations = new Map<LocationId, CBTRuntimeLocation>();
     const armorFaces = new Map<ArmorFaceId, CBTRuntimeArmorFace>();
+    const armor = entity.armorByLocation();
+    const structure = entity.structureByLocation();
     for (const location of entity.damageLocations()) {
         const id = entity.entityType === 'Mek'
             ? mekLocationId(location.code) : asLocationId(`location:${location.code}`);
@@ -35,10 +37,11 @@ export function buildUnitRuntimeIndex(entity: BaseEntity): CBTUnitRuntimeIndex &
             const faceId = asArmorFaceId(`armor:${id}:${face}`);
             faces.push(faceId);
             armorFaces.set(faceId, Object.freeze({ id: faceId, locationId: id,
-                face, maximumPoints: location.armor[face] }));
+                face, maximumPoints: location.armor[face] * (armor.get(location.code)?.damagePerPoint ?? 1) }));
         }
         locations.set(id, Object.freeze({ id, code: location.code,
-            internalPoints: location.internalPoints, armorFaceIds: Object.freeze(faces) }));
+            internalPoints: location.internalPoints * (structure.get(location.code)?.damagePerPoint ?? 1),
+            armorFaceIds: Object.freeze(faces) }));
     }
     const components = new Map<ComponentId, CBTRuntimeEquipment>();
     for (const mount of entity.equipment()) {

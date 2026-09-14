@@ -8,6 +8,7 @@ import { WeaponEquipment } from '../../models/equipment.model';
 import type { EntityValidationMessage } from '../../models/entity/types';
 import { weaponQuirkDefinition, weaponQuirkMount } from '../../models/entity/utils/weapon-quirks';
 import { constructionWeaponQuirkApplies } from './construction-weapon-quirks';
+import { CONSTRUCTION_VALIDATE_QUIRKS } from './construction-config';
 
 const MEK_EXCLUSIONS = new Set(['atmo_flyer', 'atmo_instability', 'docking_arms', 'fragile_fuel', 'internal_bomb',
   'trailer_hitch', 'large_dropper', 'weak_undercarriage', 'vtol_rotor_coaxial', 'vtol_rotor_dual', 'power_reverse', 'unstreamlined']);
@@ -36,6 +37,7 @@ export function constructionQuirkApplies(entity: BaseEntity, key: string): boole
   if (key === 'gas_hog') return entity.mountedEngine().installed && ['ICE', 'Fuel Cell'].includes(entity.mountedEngine().type());
   if (entity instanceof MekEntity) {
     const quad = entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee';
+    // Battlefists requires hand actuators: BMM p. 83; Campaign Operations p. 225.
     if (key === 'battle_fists_la' || key === 'battle_fists_ra') return entity instanceof MekWithArmsEntity &&
       entity.hasHandActuator()[key.endsWith('_la') ? 'left' : 'right'];
     if (key === 'barrel_fists_la' || key === 'barrel_fists_ra') {
@@ -73,6 +75,7 @@ export function constructionQuirkApplies(entity: BaseEntity, key: string): boole
 }
 
 export function constructionQuirkMessages(entity: BaseEntity): EntityValidationMessage[] {
+  if (!CONSTRUCTION_VALIDATE_QUIRKS) return [];
   const messages: EntityValidationMessage[] = entity.quirks().filter(entry => !constructionQuirkApplies(entity, entry.quirk.key)).map(entry => ({
     category: 'general', code: 'QUIRK_NOT_APPLICABLE', severity: 'error',
     message: `${entry.quirk.name} is incompatible with this chassis, installed systems or selected quirks.`,

@@ -30,6 +30,7 @@ import { formatUnitChassis } from '../utils/unit-display-name.util';
 import { UnitSearchIndexService } from '../services/unit-search-index.service';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
+import { CONSTRUCTION_VALIDATE_EXTINCTION } from './domain/construction-config';
 
 describe('construction equipment warehouse', () => {
     const tech = { base: 'All', level: 'Standard', advancement: { is: { common: '2500' }, clan: { common: '2500' } } } as const;
@@ -329,7 +330,7 @@ describe('construction equipment warehouse', () => {
     it('filters date, technology and rules level without filtering free slots, including retained OEM technology', () => {
         editor.query.set('technology');
         editor.entity().year.set(3000);
-        expect(editor.filteredEquipment()).toEqual([]);
+        expect(editor.filteredEquipment()).toEqual(CONSTRUCTION_VALIDATE_EXTINCTION ? [] : [retained]);
         editor.entity().originalBuildYear.set(2600);
         // Both end years are unavailable; the legal interval is inside the OEM-to-introduction range.
         expect(editor.filteredEquipment()).toEqual([retained]);

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { EntityFluff, type EntityMountedEquipment } from '../types';
+import { EntityFluff, STRUCTURE_TYPE, type EntityMountedEquipment } from '../types';
 import {
   encodeBlkArmorTechLevel,
   encodeBlkArmorTechRating,
@@ -228,8 +228,8 @@ export function writeSupportVehicleBarRating(w: BuildingBlockWriter, entity: Bas
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
   const uniformStructure = entity.uniformStructureMaterial();
   const structureTypeId: number =
-    uniformStructure?.structure.structureTypeId ?? (entity.structureByLocation().size > 0 ? 0 : -1);
-  if (structureTypeId !== 0) {
+    uniformStructure?.structure.structureTypeId ?? (entity.structureByLocation().size > 0 ? STRUCTURE_TYPE.STANDARD : -1);
+  if (structureTypeId !== STRUCTURE_TYPE.STANDARD) {
     w.addBlock('internal_type', structureTypeId);
   }
 }

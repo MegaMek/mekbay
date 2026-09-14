@@ -16,6 +16,7 @@ import {
 import { infantryDamageDivisor } from '../../battle-value/infantry-rules';
 import { modularArmorPoints } from '../../../../modular-armor.model';
 import { supportVehicleBarRating } from '../../../entities/support-vehicle';
+import { STRUCTURE_TYPE } from '../../../types/structure';
 
 const AS_MEK_STRUCTURE: readonly (readonly number[])[] = [
   [1,1,2,2,3,3,3,4,4,5,5,5,6,6,6,7,7,8,8,8,8,9,9,10,10,10,11,11,11,12,12,13,13,13,14,14,14,15,15],
@@ -61,8 +62,8 @@ export function alphaStrikeStructure(entity: BaseEntity): number {
     const weightIndex = Math.trunc(entity.tonnage() / 5) - 2;
     let structure = AS_MEK_STRUCTURE[mekEngineIndex(entity)]?.[weightIndex] ?? -1;
     const typeId = entity.uniformStructureMaterial()?.structure.structureTypeId;
-    if (typeId === 5) structure = Math.ceil(structure * 0.5);
-    else if (typeId === 4) structure *= 2;
+    if (typeId === STRUCTURE_TYPE.COMPOSITE) structure = Math.ceil(structure * 0.5);
+    else if (typeId === STRUCTURE_TYPE.REINFORCED) structure *= 2;
     return structure;
   }
   if (entity instanceof WarShipEntity) return entity.structuralIntegrity();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import {
+  STRUCTURE_TYPE,
   approx,
   type TechAdvancement,
   type TechRatingSource,
@@ -25,5 +26,5 @@ export function structureTechAdvancement(
   structureTypeId: number,
   catalogTech: TechRatingSource,
 ): TechRatingSource {
-  return structureTypeId === 0 ? STANDARD_STRUCTURE_TECH : catalogTech;
+  return structureTypeId === STRUCTURE_TYPE.STANDARD ? STANDARD_STRUCTURE_TECH : catalogTech;
 }

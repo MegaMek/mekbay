@@ -22,6 +22,7 @@ import { UnitSearchIndexService } from '../services/unit-search-index.service';
 import { ConstructionForceService } from './construction-force.service';
 import { UnitConstructionComponent } from './unit-construction.component';
 import { MekEntity } from '../models/entity/entities';
+import { CONSTRUCTION_VALIDATE_EXTINCTION } from './domain/construction-config';
 import {
   applyConstructionSpreadPlacements,
   constructionSpreadAllocation,
@@ -128,7 +129,7 @@ describe('construction CASE installation with the real equipment catalog', () =>
     return material.id;
   }
 
-  it('hides CASE when the design year or rules level makes every CASE choice unavailable', async () => {
+  it('honors rules level and configured extinction checks for CASE choices', async () => {
     await prepare('IS');
     editor.setField(
       editor.fields().find((field) => field.id === 'year')!,
@@ -145,7 +146,7 @@ describe('construction CASE installation with the real equipment catalog', () =>
       2,
     );
     await render();
-    expect(select()).toBeNull();
+    expect(select() === null).toBe(CONSTRUCTION_VALIDATE_EXTINCTION);
     editor.setField(
       editor.fields().find((field) => field.id === 'year')!,
       3151,

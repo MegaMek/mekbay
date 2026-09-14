@@ -12,7 +12,7 @@ import type { SourceHashCanary } from './source-hash-canary';
 import type { CatalogEntryOrigin, UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 25 as const;
+export const UNIT_SUMMARY_VERSION = 26 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 

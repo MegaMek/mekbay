@@ -904,6 +904,14 @@ export class ForcePersistenceService {
             if (debounce?.fence.generation === generation) {
                 stablePasses = 0;
                 if (debounce.force !== force) return false;
+                if (!this.isForceSaveFenceCurrent(force, debounce.fence)) {
+                    // A rapid edit can obsolete the debounce before its next
+                    // autosave runs. Consume it through the normal stale-save
+                    // cleanup; immediate saves leave obsolete entries queued,
+                    // which would make this drain spin forever in microtasks.
+                    await this.flushSaveForceCloud(instanceId);
+                    continue;
+                }
                 try {
                     // Retirement is an explicit flush boundary. Waiting for the
                     // debounce timer would leave an old AS write capable of

@@ -106,6 +106,11 @@ export class MountedArmor {
     return this.armor.armorType as MountedArmorType;
   }
 
+  /** Integer damage marks needed to remove one construction point. */
+  get damagePerPoint(): number {
+    return this.type === 'HARDENED' ? 2 : 1;
+  }
+
   /** Semantic equality for effective location armor; never rely on object identity. */
   equals(other: MountedArmor): boolean {
     return this.armor.id === other.armor.id

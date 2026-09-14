@@ -7,7 +7,7 @@ import { DROPSHIP_COLLAR_TECH, getEngineTechAdvancement, getSupportComponentTech
 import { MIXED_TECH, OMNI_TECH, OMNI_VEHICLE_TECH, PATCHWORK_ARMOR_TECH } from '../../models/entity/components/entity-system-tech-data';
 import { compareTechLevels, getTechIntroductionYear, getTechMilestoneYear, isTechExtinct, type ComponentTechLevel,
   type EngineType, type EntityTechBase, type EntityValidationMessage, type TechFactions, type TechRatingSource } from '../../models/entity/types';
-import { CONSTRUCTION_INTRO_YEAR_MARGIN } from './construction-config';
+import { CONSTRUCTION_INTRO_YEAR_MARGIN, CONSTRUCTION_VALIDATE_EXTINCTION } from './construction-config';
 
 export interface ConstructionTechnologyEligibility {
   readonly techBase: boolean;
@@ -43,7 +43,7 @@ export function constructionTechnologyEligibility(entity: BaseEntity,
     const introductionYear = getTechIntroductionYear(technology, context);
     if (introductionYear == null) continue;
     // The verifier tolerance stacks with approximation and faction adjustments.
-    // Extinction and reintroduction still use the actual construction year.
+    // When enabled, extinction and reintroduction use the actual construction year.
     const firstAvailableYear = introductionYear - CONSTRUCTION_INTRO_YEAR_MARGIN;
     const years = new Set([start, end]);
     if (firstAvailableYear >= start && firstAvailableYear <= end) years.add(firstAvailableYear);
@@ -53,7 +53,9 @@ export function constructionTechnologyEligibility(entity: BaseEntity,
     }
     for (const year of years) {
       const atYear = { ...context, year };
-      if (year >= firstAvailableYear && !isTechExtinct(technology, atYear)) return { techBase: compatibleBase, available: true, rulesLevel };
+      if (year >= firstAvailableYear && (!CONSTRUCTION_VALIDATE_EXTINCTION || !isTechExtinct(technology, atYear))) {
+        return { techBase: compatibleBase, available: true, rulesLevel };
+      }
     }
   }
   return { techBase: compatibleBase, available: false, rulesLevel };

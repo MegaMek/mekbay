@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { BaseEntity } from './entity/base-entity';
+import { STRUCTURE_TYPE } from './entity/types/structure';
 import {
     ComponentTechLevel,
     CompoundTechLevel,
@@ -425,7 +426,7 @@ const ARMOR_DEFAULTS: ArmorData = {
 };
 
 const STRUCTURE_DEFAULTS: StructureData = {
-    typeId: 0
+    typeId: STRUCTURE_TYPE.STANDARD
 };
 
 const WIRE_TECH_DEFAULTS: WireEquipmentTechData = {
