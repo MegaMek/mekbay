@@ -11,8 +11,60 @@ import { constructionEngineTechnology, constructionTechnologyEligibility, constr
 import { constructionEngineCompatible } from './construction-system-rules';
 import { constructionEquipmentEligibilityIssues, equipmentPlacementIssues, installConstructionEquipment, setConstructionArmorMaterial, validateConstruction } from './construction-rules';
 import { getConstructionArmorOptions } from './construction-material-rules';
+import { CONSTRUCTION_INTRO_YEAR_MARGIN } from './construction-config';
 
 const registry = createTestEquipmentRegistry({});
+describe('construction introduction-year margin', () => {
+  for (const [label, dates, introductionYear] of [
+    ['production without prototype', { production: 3000 }, 3000],
+    ['prototype before production', { prototype: 2980, production: 3000 }, 2980],
+    ['common without prototype or production', { common: 3000 }, 3000],
+    ['approximate prototype', { prototype: approx(3000), production: 3020 }, 2995],
+    ['approximate production', { production: approx(3000) }, 2995],
+    ['approximate common', { common: approx(3000) }, 2995],
+  ] as const) {
+    it(`applies the configured tolerance to ${label}, including its exact boundary`, () => {
+      const entity = createConstructionEntity('Biped', registry);
+      const technology = { base: 'IS', level: 'Standard', rating: 'C', availability: ['C', 'C', 'C', 'C'],
+        advancement: { is: dates } } as const;
+      entity.year.set(introductionYear - CONSTRUCTION_INTRO_YEAR_MARGIN - 1);
+      expect(constructionTechnologyEligibility(entity, technology).available).toBeFalse();
+      entity.year.set(introductionYear - CONSTRUCTION_INTRO_YEAR_MARGIN);
+      expect(constructionTechnologyEligibility(entity, technology).available).toBeTrue();
+    });
+  }
+
+  it('accepts the Atlas C 3 Arrow IV in construction while preserving its actual introduction date', () => {
+    const arrow = new WeaponEquipment({ id: 'CLArrowIV', name: 'Arrow IV', type: 'weapon',
+      flags: ['F_MEK_WEAPON', 'F_ARTILLERY', 'F_ARROW_IV'], stats: { tonnage: 12, criticalSlots: 12 },
+      tech: { base: 'Clan', level: 'Advanced', advancement: { clan: { production: '2844' } },
+        factions: { prototype: ['CHH'] } } });
+    const entity = createConstructionEntity('Biped', createTestEquipmentRegistry({ [arrow.id]: arrow }));
+    entity.techBase.set('Clan');
+    entity.rulesLevel.set(3);
+    entity.year.set(2842);
+    expect(arrow.isAvailableIn(2842, 'Clan')).toBeFalse();
+    expect(constructionEquipmentEligibilityIssues(entity, arrow)).toEqual([]);
+    installConstructionEquipment(entity, arrow, 'LT');
+    const arrowDateIssues = () => validateConstruction(entity).messages.filter(message =>
+      message.code === 'TECH_UNAVAILABLE' && message.message.startsWith('Arrow IV'));
+    expect(arrowDateIssues()).toEqual([]);
+    entity.year.set(2838);
+    expect(arrowDateIssues().length).toBe(1);
+  });
+
+  it('does not move extinction or reintroduction dates by the introduction margin', () => {
+    const entity = createConstructionEntity('Biped', registry);
+    const technology = { base: 'IS', level: 'Standard', rating: 'C', availability: ['C', 'C', 'C', 'C'], advancement: { is: {
+      production: 2700, extinct: 2800, reintroduced: 3100,
+    } } } as const;
+    for (const [year, available] of [[2799, true], [2800, true], [2801, false], [3099, false], [3100, true]] as const) {
+      entity.year.set(year);
+      expect(constructionTechnologyEligibility(entity, technology).available).withContext(`${year}`).toBe(available);
+    }
+  });
+});
+
 describe('construction system technology', () => {
   it('accepts KGC-000 Star League equipment at its static Standard rules level without duplicate warnings', () => {
     const caseEquipment = new MiscEquipment({ id: 'ISCASE', name: 'CASE', type: 'misc',
@@ -201,15 +253,15 @@ describe('OEM technology interval', () => {
     } }).available).toBeFalse();
   });
 
-  it('uses canonical approximation and faction dissemination dates as interval boundaries', () => {
+  it('applies the margin after canonical approximation and faction dissemination dates', () => {
     const entity = design();
     entity.faction.set('FS');
     entity.originalBuildYear.set(2790);
-    entity.year.set(2802);
+    entity.year.set(2802 - CONSTRUCTION_INTRO_YEAR_MARGIN);
     const technology = { ...laser.tech, advancement: { is: { prototype: approx(2800), production: 2810, common: 2850 } },
       factions: { prototype: ['DC'], production: ['DC'] } };
     expect(constructionTechnologyEligibility(entity, technology)).toEqual({ techBase: true, available: false, rulesLevel: true });
-    entity.year.set(2803);
+    entity.year.set(2803 - CONSTRUCTION_INTRO_YEAR_MARGIN);
     expect(constructionTechnologyEligibility(entity, technology)).toEqual({ techBase: true, available: true, rulesLevel: true });
   });
 

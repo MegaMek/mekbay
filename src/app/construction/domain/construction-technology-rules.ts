@@ -5,8 +5,9 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { AeroEntity, DropShipEntity, InfantryEntity, MekEntity, VehicleEntity } from '../../models/entity/entities';
 import { DROPSHIP_COLLAR_TECH, getEngineTechAdvancement, getSupportComponentTech } from '../../models/entity/components';
 import { MIXED_TECH, OMNI_TECH, OMNI_VEHICLE_TECH, PATCHWORK_ARMOR_TECH } from '../../models/entity/components/entity-system-tech-data';
-import { compareTechLevels, getTechMilestoneYear, isTechnologyAvailable, type ComponentTechLevel,
+import { compareTechLevels, getTechIntroductionYear, getTechMilestoneYear, isTechExtinct, type ComponentTechLevel,
   type EngineType, type EntityTechBase, type EntityValidationMessage, type TechFactions, type TechRatingSource } from '../../models/entity/types';
+import { CONSTRUCTION_INTRO_YEAR_MARGIN } from './construction-config';
 
 export interface ConstructionTechnologyEligibility {
   readonly techBase: boolean;
@@ -39,15 +40,20 @@ export function constructionTechnologyEligibility(entity: BaseEntity,
   const start = entity.effectiveOriginalBuildYear(), end = entity.year();
   for (const techBase of bases) {
     const context = { techBase, faction: entity.faction() === 'None' ? undefined : entity.faction() };
-    // Availability changes only at its canonical, faction-adjusted milestones.
+    const introductionYear = getTechIntroductionYear(technology, context);
+    if (introductionYear == null) continue;
+    // The verifier tolerance stacks with approximation and faction adjustments.
+    // Extinction and reintroduction still use the actual construction year.
+    const firstAvailableYear = introductionYear - CONSTRUCTION_INTRO_YEAR_MARGIN;
     const years = new Set([start, end]);
-    for (const milestone of ['prototype', 'production', 'common', 'extinct', 'reintroduced'] as const) {
+    if (firstAvailableYear >= start && firstAvailableYear <= end) years.add(firstAvailableYear);
+    for (const milestone of ['extinct', 'reintroduced'] as const) {
       const year = getTechMilestoneYear(technology, milestone, context);
       if (year != null && year >= start && year <= end) years.add(year);
     }
     for (const year of years) {
       const atYear = { ...context, year };
-      if (isTechnologyAvailable(technology, atYear)) return { techBase: compatibleBase, available: true, rulesLevel };
+      if (year >= firstAvailableYear && !isTechExtinct(technology, atYear)) return { techBase: compatibleBase, available: true, rulesLevel };
     }
   }
   return { techBase: compatibleBase, available: false, rulesLevel };
