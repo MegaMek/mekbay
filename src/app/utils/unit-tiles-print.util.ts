@@ -13,7 +13,7 @@ import { TABLETOP_HEX_CORNERS, TABLETOP_HEX_FLAT_TO_FLAT, TABLETOP_HEX_RADIUS } 
 import { formatUnitChassis } from './unit-display-name.util';
 import { resolveUnitSpritePath } from './unit-sprite-resolver';
 
-/** Full-size tabletop counters, sharing flat edges in vertical cutting strips. */
+/** Full-size tabletop counters with a small cutting allowance in vertical strips. */
 export async function printUnitTiles(
     members: readonly ForceMember[],
     sprites: Pick<SpriteStorageService, 'getVerifiedAssignmentContext' | 'getExtractedIconUrl'>,
@@ -34,8 +34,11 @@ export async function printUnitTiles(
     const width = TABLETOP_HEX_RADIUS * 2;
     const height = TABLETOP_HEX_FLAT_TO_FLAT;
     const stripGap = 8;
+    const tileGap = 0.5 * 72 / 25.4; // 0.5 mm cutting allowance, in printer points.
+    const rowStep = height + tileGap;
     const columns = Math.floor((page.contentWidth + stripGap) / (width + stripGap));
-    const rows = Math.floor(page.contentHeight / height);
+    const rows = Math.floor((page.contentHeight + tileGap) / rowStep);
+    const stripHeight = rows * rowStep - tileGap;
     const perPage = columns * rows;
     const left = (page.width - columns * width - (columns - 1) * stripGap) / 2;
     const points = TABLETOP_HEX_CORNERS.map(corner => corner.join(',')).join(' ');
@@ -60,7 +63,7 @@ export async function printUnitTiles(
             const count = Math.min(rows, members.length - offset - column * rows);
             if (column > 0) {
                 const x = -stripGap / 2;
-                addLine(strip, x, 0, x, rows * height, '#999', 0.3).setAttribute('stroke-dasharray', '2 2');
+                addLine(strip, x, 0, x, stripHeight, '#999', 0.3).setAttribute('stroke-dasharray', '2 2');
             }
 
             for (let row = 0; row < count; row++) {
@@ -69,7 +72,7 @@ export async function printUnitTiles(
                 const tile = svgElement('g');
                 setAttributes(tile, {
                     class: 'unit-tile', 'data-unit-id': member.id,
-                    transform: `translate(${width / 2} ${(row + 0.5) * height})`,
+                    transform: `translate(${width / 2} ${height / 2 + row * rowStep})`,
                 });
                 strip.appendChild(tile);
                 const hex = svgElement('polygon');

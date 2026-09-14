@@ -12,7 +12,7 @@ describe('unit tile printing', () => {
     afterEach(() => window.dispatchEvent(new Event('afterprint')));
 
     for (const paperSize of ['letter', 'a4'] as const) {
-        it(`prints every instance in strips with shared hex sides across ${paperSize} pages`, async () => {
+        it(`prints every instance in strips with 0.5 mm gaps across ${paperSize} pages`, async () => {
             const members = Array.from({ length: 81 }, (_, i) => asMember(`unit-${i}`));
             const print = spyOn(window, 'print').and.stub();
             await printUnitTiles(members, sprites(), { paperSize, printMargin: 'browserDefined' });
@@ -35,19 +35,21 @@ describe('unit tile printing', () => {
                     const stripTiles = [...strip.querySelectorAll<SVGGElement>('.unit-tile')];
                     expect(position.e).toBeGreaterThanOrEqual(profile.margin);
                     expect(position.f).toBeGreaterThanOrEqual(profile.margin);
-                    expect(position.f + stripTiles.length * 90).toBeLessThanOrEqual(profile.height - profile.margin);
+                    const lastTileY = stripTiles.at(-1)!.transform.baseVal.getItem(0).matrix.f;
+                    expect(position.f + lastTileY + 45).toBeLessThanOrEqual(profile.height - profile.margin);
                     expect(position.e + 180 / Math.sqrt(3))
                         .toBeLessThanOrEqual(profile.width - profile.margin);
                     for (let i = 1; i < stripTiles.length; i++) {
                         const previous = stripTiles[i - 1], current = stripTiles[i];
                         const a = previous.transform.baseVal.getItem(0).matrix;
                         const b = current.transform.baseVal.getItem(0).matrix;
-                        // Both endpoints of the bottom side coincide with the next tile's top side.
+                        // The facing flat sides remain aligned, with 0.5 mm between their cut lines.
                         for (const [bottom, top] of [[1, 5], [2, 4]]) {
                             const p = previous.querySelector('polygon')!.points.getItem(bottom);
                             const q = current.querySelector('polygon')!.points.getItem(top);
                             expect(a.e + p.x).toBeCloseTo(b.e + q.x, 5);
-                            expect(a.f + p.y).toBeCloseTo(b.f + q.y, 5);
+                            const gapMm = (b.f + q.y - a.f - p.y) * 25.4 / 72;
+                            expect(gapMm).toBeCloseTo(0.5, 4);
                         }
                     }
                 }
