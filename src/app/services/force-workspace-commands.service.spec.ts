@@ -1,14 +1,14 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injector } from '@angular/core';
+import { Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 
 import { ASForce } from '../models/as-force.model';
 import { CBTForce } from '../models/cbt-force.model';
 import { GameSystem } from '../models/common.model';
-import { CBTForceMember } from '../models/force-member.model';
+import { CBTForceMember, type ForceMember } from '../models/force-member.model';
 import type { ForceSlot } from '../models/force-slot.model';
 import { createEmptyUnit, createTestMekEntity } from '../testing/unit-test-helpers';
 import { AsAbilityLookupService } from './as-ability-lookup.service';
@@ -190,23 +190,84 @@ describe('ForceWorkspaceCommandsService unit cloning', () => {
     });
 });
 
+describe('ForceWorkspaceCommandsService last-unit removal', () => {
+    for (const withReserve of [false, true]) {
+        it(`removes the last AS unit ${withReserve ? 'without deleting its reserves or force' : 'and deletes the empty force'}`, async () => {
+            const { builder, dataService, injector, persistence, service, workspace } = createHarness();
+            const force = new ASForce('Removal test', dataService, injector);
+            const member = force.addUnit(createEmptyUnit(), await force.addGroup());
+            const reserve = withReserve ? force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, notes: 'Keep me' }) : null;
+            workspace.selectedUnit.set(member);
+
+            await service.removeUnit(member, true);
+
+            if (reserve) {
+                expect(builder.deleteAndRemoveForce).not.toHaveBeenCalled();
+                expect(force.members()).toEqual([]);
+                expect(force.personnel()).toEqual({ people: [reserve], assignments: [] });
+                expect(force.canEditPersonnel()).toBeTrue();
+                expect(workspace.selectedUnit()).toBeNull();
+                expect(persistence.deleteCanvasDataOfUnit).toHaveBeenCalledOnceWith(member);
+                const saved = await force.serializeForPersistence();
+                expect(saved.personnel).toEqual(force.personnel());
+            } else {
+                expect(builder.deleteAndRemoveForce).toHaveBeenCalledOnceWith(force);
+            }
+        });
+
+        it(`removes the last CBT unit ${withReserve ? 'without deleting its reserves or force' : 'and deletes the empty force'}`, async () => {
+            const { builder, dataService, injector, service, workspace } = createHarness();
+            const force = new CBTForce('Removal test', dataService, injector);
+            const group = await force.addGroup();
+            const member = new CBTForceMember('last-unit', force, createTestMekEntity());
+            const members = signal([member]);
+            spyOn(force, 'getCBTMembers').and.callFake(members);
+            spyOn(force, 'getCBTMember').and.returnValue(member);
+            spyOn(force, 'getRosterGroupId').and.returnValue(group.id);
+            const remove = spyOn(force, 'removeCBTMember').and.callFake(async () => {
+                members.set([]);
+                return { accepted: true, changed: true, forceRevision: 1 };
+            });
+            const reserve = withReserve ? force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, notes: 'Keep me' }) : null;
+            workspace.selectedUnit.set(member);
+
+            await service.removeUnit(member, true);
+
+            if (reserve) {
+                expect(builder.deleteAndRemoveForce).not.toHaveBeenCalled();
+                expect(remove).toHaveBeenCalledOnceWith(member.id);
+                expect(force.members()).toEqual([]);
+                expect(force.personnel()).toEqual({ people: [reserve], assignments: [] });
+                expect(force.canEditPersonnel()).toBeTrue();
+                expect(workspace.selectedUnit()).toBeNull();
+            } else {
+                expect(builder.deleteAndRemoveForce).toHaveBeenCalledOnceWith(force);
+                expect(remove).not.toHaveBeenCalled();
+            }
+        });
+    }
+});
+
 function createHarness() {
     const dataService = jasmine.createSpyObj<DataService>('DataService', ['getUnitByUuid']);
     const builder = jasmine.createSpyObj<ForceBuilderService>(
         'ForceBuilderService',
-        ['removeLoadedForce', 'addLoadedForce'],
+        ['removeLoadedForce', 'addLoadedForce', 'deleteAndRemoveForce'],
     );
     builder.removeLoadedForce.and.resolveTo(true);
     builder.addLoadedForce.and.returnValue(true);
+    builder.deleteAndRemoveForce.and.resolveTo();
     const workspace = jasmine.createSpyObj<ForceWorkspaceStateService>(
         'ForceWorkspaceStateService',
         ['getForceSlot', 'selectUnit'],
+        { selectedUnit: signal<ForceMember | null>(null) },
     );
+    workspace.selectUnit.and.callFake(member => workspace.selectedUnit.set(member));
     const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['createDialog']);
     dialogs.createDialog.and.returnValue({ closed: of('convert') } as never);
     const persistence = jasmine.createSpyObj<ForcePersistenceService>(
         'ForcePersistenceService',
-        ['saveForceAndWaitForCloud'],
+        ['saveForceAndWaitForCloud', 'deleteCanvasDataOfUnit'],
     );
     persistence.saveForceAndWaitForCloud.and.resolveTo();
     const admission = jasmine.createSpyObj<ForceUnitAdmissionService>(
@@ -220,7 +281,7 @@ function createHarness() {
     crewTransfers.transferCrossSystem.and.resolveTo();
     const formations = jasmine.createSpyObj<ForceFormationService>(
         'ForceFormationService',
-        ['assignFormationIfNeeded'],
+        ['assignFormationIfNeeded', 'generateFactionAndForceNameIfNeeded'],
     );
     formations.assignFormationIfNeeded.and.resolveTo();
 

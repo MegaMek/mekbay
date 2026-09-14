@@ -875,6 +875,25 @@ describe('CBTForce V2 encounter persistence', () => {
         const restored = await reload(decodeForceFromStorage(wire) as SerializedCBTForce);
         expect(restored.totalBv()).toBe(saved.bv!);
     });
+    it('keeps reserves editable and saved after the last unit is removed', async () => {
+        const { force, reload } = await readyCloneForce();
+        const reserve = force.addUnassignedPerson({ name: 'Reserve', gunnery: 2, notes: 'Keep me',
+            health: { wounds: 2, unconscious: false, ejected: false } })!;
+
+        for (const member of force.members()) {
+            expect((await force.removeCBTMember(member.id)).accepted).toBeTrue();
+        }
+
+        expect(force.members()).toEqual([]);
+        expect(force.personnel()).toEqual({ people: [reserve], assignments: [] });
+        expect(force.canEditPersonnel()).toBeTrue();
+        const restored = await reload(await force.serializeForPersistence() as SerializedCBTForce);
+        expect(restored.members()).toEqual([]);
+        expect(restored.personnel()).toEqual(force.personnel());
+        expect(restored.canEditPersonnel()).toBeTrue();
+        expect(restored.addUnassignedPerson({ name: 'Another reserve' })).not.toBeNull();
+    });
+
     it('advances the CBT persistence revision for reserve-only edits and reuses it on unchanged saves', async () => {
         const force = await loadForce();
         const before = force.getCBTForceV2Revision()!;

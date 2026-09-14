@@ -24,6 +24,7 @@ import {
     resolveForceMemberCatalogSummary,
 } from '../models/force-member.model';
 import type { UnitSummary } from '../models/unit-summary.model';
+import { removeUnitPersonnel } from '../models/force-personnel';
 import {
     ConfirmDialogComponent,
     type ConfirmDialogData,
@@ -357,8 +358,8 @@ export class ForceWorkspaceCommandsService {
         const idx = currentUnits.indexOf(unitToRemove);
         if (idx < 0) return;
 
-        // If this is the last unit, switch force/selection BEFORE removal
-        if (isLastUnit) {
+        // Retire the force only when deleting this unit also leaves no personnel.
+        if (isLastUnit && removeUnitPersonnel(targetForce.personnel(), new Set([unitId])).people.length === 0) {
             await this.builder.deleteAndRemoveForce(targetForce);
             return;
         }
@@ -375,6 +376,7 @@ export class ForceWorkspaceCommandsService {
             this.workspace.selectedUnit.set(newSelected);
         }
 
+        if (isLastUnit) return;
         this.formations.generateFactionAndForceNameIfNeeded(targetForce);
         if (targetForce.groups().includes(ownerGroup)) {
             await this.formations.assignFormationIfNeeded(ownerGroup);
@@ -693,7 +695,7 @@ export class ForceWorkspaceCommandsService {
         }
         if (!force.isWholeOwnerAuthorityFingerprintCurrent(authority)
             || force.getCBTMember(member.id) !== member) return;
-        if (members.length === 1) {
+        if (members.length === 1 && removeUnitPersonnel(force.personnel(), new Set([member.id])).people.length === 0) {
             await this.builder.deleteAndRemoveForce(force);
             return;
         }
@@ -706,6 +708,7 @@ export class ForceWorkspaceCommandsService {
             const remaining = force.members();
             this.workspace.selectUnit(remaining[Math.max(0, index - 1)] ?? remaining[0] ?? null);
         }
+        if (members.length === 1) return;
         this.formations.generateFactionAndForceNameIfNeeded(force);
         if (force.groups().includes(group)) await this.formations.assignFormationIfNeeded(group);
     }
