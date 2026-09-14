@@ -12,6 +12,7 @@ computed,
 effect,
 inject,
 signal,
+viewChild,
 } from '@angular/core';
 import type { CBTUnitCommand } from '../../models/runtime/unit-command';
 import { type UnitEditContext } from '../../models/runtime/unit-edit-context';
@@ -19,20 +20,13 @@ import { InventoryControlOpforService } from '../../services/inventory-control-o
 import { UnitNameService } from '../../services/unit-name.service';
 import type { DirectRecordSheetInteraction } from '../page-viewer/record-sheet-interaction';
 
-import type {
-CBTEquipmentChoice,
-CBTEquipmentInteraction,
-} from '../../models/cbt-force.types';
+
 import {
 isCBTForceMember,
 isCBTMekForceMember,
 type CBTForceMember,
 } from '../../models/force-member.model';
-import type {
-EquipmentPanelComponent,
-EquipmentPanelTarget,
-MekPhysicalAttackRow,
-} from '../../models/runtime/equipment-panel';
+import type { EquipmentPanelTarget } from '../../models/runtime/equipment-panel';
 import type {
 MekRecordSheetArmorFace,
 MekRecordSheetCrewPosition,
@@ -42,7 +36,6 @@ MekRecordSheetSnapshot,
 } from '../../models/runtime/mek-record-sheet';
 import type {
 NonMekRecordSheetArmorFace,
-NonMekRecordSheetComponent,
 NonMekRecordSheetCrewPosition,
 NonMekRecordSheetDamageTrack,
 NonMekRecordSheetLocation,
@@ -73,7 +66,6 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
-import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 import {
 mekCriticalLocationCells,
 mekDamageLocationOrder,
@@ -89,37 +81,16 @@ import { composeMekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-
 import { PageViewerZoomPanService } from '../page-viewer/page-viewer-zoom-pan.service';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
+import { WeaponsEquipmentPanelComponent } from '../equipment-dialog/weapons-equipment-panel.component';
+import { AmmoLoadoutPanelComponent } from '../equipment-dialog/ammo-loadout-panel.component';
 import { TacticalArmorLayoutDirective } from './tactical-armor-layout.directive';
 import { TacticalPipMatrixDirective } from './tactical-pip-matrix.directive';
+import { TacticalHeatScaleComponent } from './tactical-heat-scale.component';
 import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component';
 
 interface MekCriticalGroup {
     readonly code: MekLocation;
     readonly slots: readonly MekRecordSheetCriticalSlot[];
-}
-
-type TacticalInventoryGroupId = 'ranged' | 'physical' | 'equipment';
-
-interface TacticalInventoryRow {
-    readonly id: string;
-    readonly component?: EquipmentPanelComponent;
-    readonly physical?: MekPhysicalAttackRow;
-    readonly interaction?: CBTEquipmentInteraction;
-    readonly label: string;
-    readonly location: string;
-    readonly damage: string;
-    readonly heat: string;
-    readonly range: string;
-    readonly status: string;
-    readonly mode?: string;
-    readonly ammo?: Readonly<{ remaining: number; capacity: number }>;
-}
-
-interface TacticalInventoryGroup {
-    readonly id: TacticalInventoryGroupId;
-    readonly title: string;
-    readonly skill?: Readonly<{ label: string; value: number }>;
-    readonly rows: readonly TacticalInventoryRow[];
 }
 
 interface TacticalConditionStatus {
@@ -151,7 +122,7 @@ const CREW_POSITION_LABELS = Object.freeze(['Pilot', 'Gunner', 'Officer'] as con
         PageViewerMekInteractionService,
         PageViewerNonMekRuntimeService,
     ],
-    imports: [TacticalArmorLayoutDirective, TacticalPipMatrixDirective, TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
+    imports: [TacticalHeatScaleComponent, WeaponsEquipmentPanelComponent, AmmoLoadoutPanelComponent, TacticalArmorLayoutDirective, TacticalPipMatrixDirective, TacticalTurnTrackerComponent, UnitIconComponent, TooltipDirective],
     templateUrl: './tactical-view.component.html',
     styleUrl: './tactical-view.component.scss',
 })
@@ -214,6 +185,9 @@ export class TacticalViewComponent {
     });
     protected readonly pendingDamage = computed(() => this.options.options().trackPhaseAndTurn);
     protected readonly equipmentRuntime = signal<EquipmentDialogRuntimeController | null>(null);
+    protected readonly weaponsPanel = viewChild(WeaponsEquipmentPanelComponent);
+    protected readonly turnTracker = viewChild(TacticalTurnTrackerComponent);
+    protected readonly ammoLoadoutExpanded = signal(false);
     protected readonly conditionMenuExpanded = signal(false);
 
     protected readonly mekSnapshot = computed<MekRecordSheetSnapshot | null>(() => {
@@ -344,33 +318,6 @@ export class TacticalViewComponent {
         }
         return Object.freeze(cells);
     });
-    protected readonly inventoryGroups = computed<readonly TacticalInventoryGroup[]>(() => {
-        const runtime = this.equipmentRuntime();
-        if (!runtime) return Object.freeze([]);
-        const snapshot = runtime.snapshot();
-        const groups: TacticalInventoryGroup[] = [
-            {
-                id: 'ranged',
-                title: 'Ranged',
-                skill: Object.freeze({ label: 'Gunnery', value: snapshot.crew.gunnery }),
-                rows: Object.freeze(runtime.weapons().map(component => this.inventoryComponentRow(runtime, component))),
-            },
-            {
-                id: 'physical',
-                title: 'Physical',
-                skill: Object.freeze({ label: 'Piloting', value: snapshot.crew.piloting }),
-                rows: Object.freeze(snapshot.physicalAttacks.map(attack => this.inventoryPhysicalRow(runtime, attack))),
-            },
-            {
-                id: 'equipment',
-                title: 'Equipment',
-                rows: Object.freeze(runtime.equipment().map(component => this.inventoryComponentRow(runtime, component))),
-            },
-        ];
-        return Object.freeze(groups.filter(group => group.rows.length > 0));
-    });
-    protected readonly inventoryRowCount = computed(() => this.inventoryGroups()
-        .reduce((count, group) => count + group.rows.length, 0));
     protected readonly targets = computed<readonly EquipmentPanelTarget[]>(() =>
         this.equipmentRuntime()?.snapshot().targets ?? Object.freeze([]));
     protected readonly supportsTargeting = computed(() => {
@@ -378,22 +325,11 @@ export class TacticalViewComponent {
         const member = this.member();
         return member !== null && member.force.getAttackerTargeting(member.id) !== null;
     });
-    protected readonly inventoryDetailRowIds = computed(() => this.inventoryGroups()
-        .flatMap(group => group.rows)
-        .filter(row => this.rowHasNestedControls(row))
-        .map(row => row.id));
-    protected readonly allInventoryRowsExpanded = computed(() => {
-        const ids = this.inventoryDetailRowIds();
-        const member = this.member();
-        return member !== null
-            && ids.length > 0
-            && ids.every(id => member.isTacticalInventoryRowExpanded(id));
-    });
-
     constructor() {
         effect(() => {
             const member = this.member();
             this.conditionMenuExpanded.set(false);
+            this.ammoLoadoutExpanded.set(false);
             this.automationToasts.setVisibleUnitIds(
                 this.automationToastVisibilityOwner,
                 member ? [member.id] : [],
@@ -428,6 +364,12 @@ export class TacticalViewComponent {
             active: () => this.member() !== null,
             handle: event => this.handleShortcut(event),
         }, this.destroyRef);
+    }
+
+    protected jumpToSection(id: string): void {
+        const section = this.host.nativeElement.querySelector('#' + id) as HTMLElement | null;
+        section?.scrollIntoView({ block: 'start' });
+        section?.focus({ preventScroll: true });
     }
 
     protected previousUnit(): void {
@@ -540,14 +482,6 @@ export class TacticalViewComponent {
         void this.pilotEditor.editCBTMember(member.force, member.id);
     }
 
-    protected percentage(remaining: number, maximum: number): number {
-        return maximum <= 0 ? 0 : Math.max(0, Math.min(100, remaining / maximum * 100));
-    }
-
-    protected formatStatus(status: string): string {
-        return status.replaceAll('-', ' ').toUpperCase();
-    }
-
     protected mekArmorRemaining(face: MekRecordSheetArmorFace): number {
         return this.pendingDamage() ? face.previewRemaining : face.committedRemaining;
     }
@@ -562,10 +496,6 @@ export class TacticalViewComponent {
         return this.pendingDamage() ? slot.previewHits : slot.committedHits;
     }
 
-    protected mekHeat(snapshot: MekRecordSheetSnapshot): number {
-        return Math.max(0, snapshot.heat.pendingOverride ?? snapshot.heat.current);
-    }
-
     protected nonMekArmorRemaining(face: NonMekRecordSheetArmorFace): number {
         return this.pendingDamage() ? face.previewRemaining : face.remaining;
     }
@@ -578,90 +508,8 @@ export class TacticalViewComponent {
         return this.pendingDamage() ? track.previewHits : track.committedHits;
     }
 
-    protected nonMekHeat(snapshot: NonMekRecordSheetSnapshot): number {
-        return Math.max(0, snapshot.heat.pending ?? snapshot.heat.current);
-    }
-
-    protected equipmentLocation(component: MekRecordSheetSnapshot['equipment'][number]): string {
-        return formatEquipmentLocationCodes(component.locations.map(location => location.code));
-    }
-
-    protected equipmentRanges(component: MekRecordSheetSnapshot['equipment'][number]): string {
-        return component.weapon?.ranges.slice(0, 4).join('/') ?? '—';
-    }
-
     protected criticalLabel(slot: MekRecordSheetCriticalSlot): string {
         return slot.components.map(component => component.label).join(' / ') || `Slot ${slot.slotIndex + 1}`;
-    }
-
-    protected rowHasNestedControls(row: TacticalInventoryRow): boolean {
-        return row.interaction?.choices.some(choice => choice.displayType !== 'label') === true
-            || (this.supportsTargeting() && (
-                row.component?.weapon?.selectable === true
-                || (row.physical?.available === true && row.physical.selectable)
-            ));
-    }
-
-    protected inventoryRowExpanded(row: TacticalInventoryRow): boolean {
-        return this.rowHasNestedControls(row)
-            && this.member()?.isTacticalInventoryRowExpanded(row.id) === true;
-    }
-
-    protected toggleInventoryRow(row: TacticalInventoryRow): void {
-        const member = this.member();
-        if (!member || !this.rowHasNestedControls(row)) return;
-        member.setTacticalInventoryRowExpanded(
-            row.id,
-            !member.isTacticalInventoryRowExpanded(row.id),
-        );
-    }
-
-    protected toggleAllInventoryRows(): void {
-        const member = this.member();
-        if (!member) return;
-        const ids = this.inventoryDetailRowIds();
-        member.setTacticalInventoryRowsExpanded(this.allInventoryRowsExpanded() ? [] : ids);
-    }
-
-    protected inventoryTargetSelection(row: TacticalInventoryRow): string {
-        const runtime = this.equipmentRuntime();
-        if (!runtime) return '';
-        if (row.component) return runtime.selectedTarget(row.component);
-        const selection = row.physical?.selection;
-        if (!selection) return '';
-        return selection.kind === 'target' ? selection.targetId : 'selected';
-    }
-
-    protected async selectInventoryTarget(row: TacticalInventoryRow, targetId: string): Promise<void> {
-        const runtime = this.equipmentRuntime();
-        if (!runtime || this.readOnly()) return;
-        if (row.component) await runtime.selectTarget(row.component, targetId);
-        else if (row.physical) await runtime.selectPhysicalTarget(row.physical, targetId);
-    }
-
-    protected async chooseEquipmentInteraction(
-        row: TacticalInventoryRow,
-        choice: CBTEquipmentChoice,
-    ): Promise<void> {
-        const runtime = this.equipmentRuntime();
-        if (!runtime || !row.interaction || choice.disabled) return;
-        await runtime.chooseInteraction(row.interaction, choice.command);
-    }
-
-    protected choiceBackground(choice: CBTEquipmentChoice): string | null {
-        if (choice.disabled) return choice.colors?.disabled ?? null;
-        if (!choice.active) return choice.colors?.normal ?? null;
-        return choice.selectionTone === 'muted'
-            ? choice.colors?.mutedSelected ?? null
-            : choice.colors?.selected ?? null;
-    }
-
-    protected choiceTextColor(choice: CBTEquipmentChoice): string | null {
-        if (choice.disabled) return choice.colors?.disabledText ?? null;
-        if (!choice.active) return choice.colors?.normalText ?? null;
-        return choice.selectionTone === 'muted'
-            ? choice.colors?.mutedSelectedText ?? null
-            : choice.colors?.selectedText ?? null;
     }
 
     protected criticalIntermediatePips(slot: MekRecordSheetCriticalSlot): readonly number[] {
@@ -816,14 +664,21 @@ export class TacticalViewComponent {
         }, delta);
     }
 
-    protected async adjustMekHeat(delta: 1 | -1): Promise<void> {
-        const snapshot = this.mekSnapshot();
-        if (!snapshot) return;
-        await this.dispatchMekInteraction({
-            kind: 'heat',
-            heat: Math.max(0, this.mekHeat(snapshot) + delta),
-            context: snapshot.editContext,
-        });
+    protected async setHeat(heat: number): Promise<void> {
+        const mek = this.mekSnapshot();
+        if (mek) {
+            await this.dispatchMekInteraction({ kind: 'heat', heat, context: mek.editContext });
+        } else if (this.nonMekSnapshot()?.heat.tracked) {
+            await this.sendNonMekCommand({
+                type: this.pendingDamage() ? 'set-pending-heat' : 'set-heat', heat,
+            });
+        }
+    }
+
+    protected async applyHeat(): Promise<void> {
+        const mek = this.mekSnapshot();
+        if (mek) await this.dispatchMekInteraction({ kind: 'apply-heat', context: mek.editContext });
+        else await this.sendNonMekCommand({ type: 'apply-heat', policy: 'automatic' });
     }
 
     protected async setMekCrewWounds(position: MekRecordSheetCrewPosition, wounds: number): Promise<void> {
@@ -855,27 +710,6 @@ export class TacticalViewComponent {
             unconscious: state === 'unconscious' ? !current.state.unconscious : current.state.unconscious,
             ejected: state === 'ejected' ? !current.state.ejected : current.state.ejected,
         }, snapshot.editContext);
-    }
-
-    protected async adjustMekAmmo(
-        component: MekRecordSheetSnapshot['equipment'][number],
-        deltaRemaining: 1 | -1,
-    ): Promise<void> {
-        const snapshot = this.mekSnapshot();
-        const current = snapshot?.equipment.find(candidate => candidate.componentId === component.componentId);
-        if (!snapshot || !current?.ammo) return;
-        await this.sendMekCommand(deltaRemaining < 0
-            ? {
-                type: 'spend-ammo',
-                componentId: current.componentId,
-                amount: 1,
-            }
-            : {
-                type: 'configure-ammo-source',
-                componentId: current.componentId,
-                munitionKey: current.ammo.munitionKey,
-                remaining: Math.min(current.ammo.capacity, current.ammo.remaining + 1),
-            }, snapshot.editContext);
     }
 
     protected async toggleNonMekCondition(key: UnitConditionKey): Promise<void> {
@@ -943,40 +777,6 @@ export class TacticalViewComponent {
             }, snapshot.editContext);
     }
 
-    protected async adjustNonMekHeat(delta: 1 | -1): Promise<void> {
-        const snapshot = this.nonMekSnapshot();
-        if (!snapshot?.heat.tracked) return;
-        await this.sendNonMekCommand({
-            type: this.damageTarget() === 'pending' ? 'set-pending-heat' : 'set-heat',
-            heat: Math.max(0, this.nonMekHeat(snapshot) + delta),
-
-        }, snapshot.editContext);
-    }
-
-    protected async adjustNonMekAmmo(component: NonMekRecordSheetComponent, deltaRemaining: 1 | -1): Promise<void> {
-        const snapshot = this.nonMekSnapshot();
-        const current = snapshot?.components.find(candidate => candidate.componentId === component.componentId);
-        if (!snapshot || !current?.ammo) return;
-        const remaining = Math.max(0, Math.min(current.ammo.capacity, current.ammo.remaining + deltaRemaining));
-        await this.sendNonMekCommand({
-            type: 'set-ammo-spent',
-            componentId: current.componentId,
-            shotsSpent: current.ammo.capacity - remaining,
-        }, snapshot.editContext);
-    }
-
-    protected async toggleNonMekComponent(component: NonMekRecordSheetComponent): Promise<void> {
-        const snapshot = this.nonMekSnapshot();
-        const current = snapshot?.components.find(candidate => candidate.componentId === component.componentId);
-        if (!snapshot || !current) return;
-        await this.sendNonMekCommand({
-            type: 'set-component-status',
-            componentId: current.componentId,
-            status: current.previewStatus === 'available' ? 'destroyed' : 'available',
-            target: this.damageTarget(),
-        }, snapshot.editContext);
-    }
-
     protected async setNonMekCrewWounds(
         position: NonMekRecordSheetCrewPosition,
         wounds: number,
@@ -1016,57 +816,6 @@ export class TacticalViewComponent {
             ejected: selected === 'ejected' ? !active : current.state.ejected,
             ...(selected === 'killed' ? { dead: !active } : {}),
         }, snapshot.editContext);
-    }
-
-    private inventoryComponentRow(
-        runtime: EquipmentDialogRuntimeController,
-        component: EquipmentPanelComponent,
-    ): TacticalInventoryRow {
-        const ammoSources = component.weapon?.ammoSources ?? [];
-        const ammo = ammoSources.length === 0
-            ? undefined
-            : Object.freeze({
-                remaining: ammoSources.reduce((total, source) => total + source.remaining, 0),
-                capacity: ammoSources.reduce((total, source) => total + source.capacity, 0),
-            });
-        const ranges = component.weapon?.ranges.slice(0, 3) ?? [];
-        return Object.freeze({
-            id: component.componentId,
-            component,
-            ...(runtime.interaction(component) === undefined
-                ? {}
-                : { interaction: runtime.interaction(component) }),
-            label: component.label,
-            location: runtime.locations(component),
-            damage: component.weapon?.damageText ?? '—',
-            heat: component.weapon === undefined
-                ? '—'
-                : `${component.weapon.heat}${component.weapon.heatSuffix ?? ''}`,
-            range: ranges.length === 0 ? '—' : ranges.join('/'),
-            status: component.previewStatus,
-            ...(component.mode === undefined || component.mode === component.defaultMode
-                ? {}
-                : { mode: component.mode }),
-            ...(ammo === undefined ? {} : { ammo }),
-        });
-    }
-
-    private inventoryPhysicalRow(
-        runtime: EquipmentDialogRuntimeController,
-        attack: MekPhysicalAttackRow,
-    ): TacticalInventoryRow {
-        return Object.freeze({
-            id: `physical:${attack.target.kind === 'component'
-                ? attack.target.componentId
-                : attack.target.actionId}`,
-            physical: attack,
-            label: attack.label,
-            location: formatEquipmentLocationCodes(attack.locationCodes, ', '),
-            damage: runtime.physicalDamage(attack),
-            heat: attack.firingHeat > 0 ? String(attack.firingHeat) : '—',
-            range: '—',
-            status: attack.available ? 'available' : 'disabled',
-        });
     }
 
     private handleShortcut(event: KeyboardEvent): boolean {

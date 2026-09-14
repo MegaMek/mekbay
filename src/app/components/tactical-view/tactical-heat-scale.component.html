@@ -1,0 +1,50 @@
+<section class="heat-panel framed-borders" aria-label="Heat">
+    <div class="heat-heading">
+        <h2>Heat</h2>
+        <label class="heat-value">Level <input #heatInput type="number" min="0" max="1000000" step="1" aria-label="Heat level" [value]="displayedHeat()" [disabled]="readOnly()" (change)="setNumericHeat($event)" /></label>
+        <span class="cooling">Cooling <strong>{{ cooling() }}</strong></span>
+        @if (state().pending !== undefined) {
+            <button class="bt-button apply-heat" type="button" [disabled]="readOnly()" (click)="applyHeat.emit()">Apply {{ state().pending }}</button>
+        }
+    </div>
+    <div class="heat-legend" aria-label="Heat markers">
+        @for (marker of markers(); track marker.id) {
+            <span class="legend-item" [attr.data-tone]="marker.tone" [attr.data-marker]="marker.id">
+                <span class="legend-symbol" aria-hidden="true"></span>{{ marker.label }} <strong>{{ marker.value }}</strong>
+            </span>
+        }
+    </div>
+    <div class="heat-track" role="slider" tabindex="0" aria-label="Heat scale" aria-valuemin="0" aria-valuemax="1000000" [attr.aria-valuenow]="displayedHeat()" [attr.aria-disabled]="readOnly()"
+        [style.--projection-color]="state().projection! > state().current ? '#e35845' : '#5bb7e5'"
+        [attr.aria-valuetext]="'Heat ' + displayedHeat()" (pointerdown)="startDrag($event)" (pointermove)="moveDrag($event)" (pointerup)="finishDrag($event)" (pointercancel)="cancelDrag()" (lostpointercapture)="cancelDrag()" (keydown)="keyDown($event)">
+        @for (cell of cells(); track cell.heat) {
+            <button type="button" class="heat-slot" tabindex="-1" [attr.data-heat]="cell.heat" [class.hot]="cell.heat <= displayedHeat()" [class.threshold]="cell.effects" [class.preview]="preview() === cell.heat"
+                [attr.heat]="cell.heat" [disabled]="readOnly()"
+                [class.projection-range]="state().automaticProjection && cell.heat >= Math.min(state().current, state().projection!) && cell.heat <= Math.max(state().current, state().projection!)"
+                [attr.aria-label]="'Heat ' + cell.heat + (cell.effects ? ': ' + cell.effects : '')" [title]="cell.effects || 'Heat ' + cell.heat" (click)="selectCell($event, cell.heat)">
+                {{ cell.heat }}
+                @for (marker of markersAt(cell.heat); track marker.id) {
+                    <span class="heat-marker" [attr.data-marker]="marker.id" [attr.data-tone]="marker.tone" aria-hidden="true"></span>
+                }
+            </button>
+        }
+        <button type="button" class="heat-slot overflow-slot" tabindex="-1" [class.hot]="displayedHeat() > 30" [disabled]="readOnly()" aria-label="Enter heat above 30" title="Enter heat above 30" (click)="enterOverflow()">30+
+            @for (marker of markersAt(31); track marker.id) { <span class="heat-marker" [attr.data-marker]="marker.id" [attr.data-tone]="marker.tone" aria-hidden="true"></span> }
+        </button>
+        @if (preview() !== null) {
+            <div class="drag-feedback" role="status" [style.--preview-x]="previewX() + 'px'" [class.cooling-preview]="previewDelta().startsWith('-')">
+                <strong>{{ preview() }} <span>({{ previewDelta() }})</span></strong>
+                @for (effect of effects(); track effect.label) { <span>{{ effect.label }}{{ effect.secondaryLabel }}</span> }
+            </div>
+        }
+    </div>
+    <div class="heat-effects" aria-live="polite">
+        @for (effect of effects(); track effect.label) { <span>{{ effect.label }}{{ effect.secondaryLabel }}</span> }
+        @empty { <span class="no-effects">No heat effects</span> }
+    </div>
+    @if (summaryRows().length) {
+        <details class="heat-sources"><summary>Heat breakdown</summary>
+            <div class="source-list">@for (source of summaryRows(); track $index) { <span [class.selected]="source.selectedOnly" [class.underwater]="source.underwater">{{ source.label }} <strong>{{ source.value > 0 ? '+' : '' }}{{ source.value }}@if (source.selectedValue !== undefined) { <small> ({{ source.selectedValue > 0 ? '+' : '' }}{{ source.selectedValue }} selected)</small> }</strong></span> }</div>
+        </details>
+    }
+</section>

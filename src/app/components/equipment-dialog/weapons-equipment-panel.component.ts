@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injector, input, signal } from '@angular/core';
 import { DragDropModule, type CdkDragDrop, type CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Overlay } from '@angular/cdk/overlay';
@@ -210,7 +211,7 @@ interface EquipmentPanelGroup {
 
 @Component({
     selector: 'weapons-equipment-panel',
-    imports: [DragDropModule, MultilineDropdownComponent, TooltipDirective],
+    imports: [NgTemplateOutlet, DragDropModule, MultilineDropdownComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './weapons-equipment-panel.component.html',
     styleUrl: './weapons-equipment-panel.component.scss'
@@ -224,6 +225,26 @@ export class WeaponsEquipmentPanelComponent {
     readonly outOfRangeTooltip: TooltipLine[] = [{ value: 'OUT OF RANGE', isHeader: true }];
     readonly invalidTargetTypeTooltip: TooltipLine[] = [{ value: 'INVALID TARGET', isHeader: true }];
     readonly runtime = input.required<EquipmentDialogRuntimeController>();
+    readonly tactical = input(false);
+    readonly expandedControls = signal<ReadonlySet<string>>(new Set());
+
+    toggleControls(row: EquipmentPanelRow): void {
+        this.expandedControls.update(current => {
+            const next = new Set(current);
+            if (next.has(row.id)) next.delete(row.id);
+            else next.add(row.id);
+            return next;
+        });
+    }
+
+    activateRow(event: MouseEvent, row: EquipmentPanelRow): void {
+        if (!this.tactical() || !this.isSelectable(row) || this.readOnly()) return;
+        const target = event.target as HTMLElement;
+        if (target.closest('button, input, select, multiline-dropdown, [data-tooltip-host]')) return;
+        if (this.hasTargets()) this.onRowTargetSelectorClick(event, row);
+        else this.toggleSelected(row);
+    }
+
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
     readonly usesAerospaceWeaponValues = computed(() => this.runtime().snapshot().unitType === 'Aero');
     readonly showsGroundExtremeRange = computed(() => !this.usesAerospaceWeaponValues()

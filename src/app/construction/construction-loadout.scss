@@ -1,3 +1,5 @@
+@use '../styles/wedged-panel' as wedge;
+
 .warehouse {
   position: relative;
   display: flex;
@@ -527,40 +529,7 @@ tech-base-badge {
   padding-top: 0;
 }
 
-.location-card {
-  --wedge-left: 12px;
-  --wedge-right: 12px;
-  --location-border: var(--border-color);
-  position: relative;
-  isolation: isolate;
-  min-width: 0;
-  padding: 1px;
-  background: var(--location-border);
-  clip-path: polygon(
-    var(--wedge-left) 0,
-    calc(100% - var(--wedge-right)) 0,
-    100% var(--wedge-right),
-    100% 100%,
-    0 100%,
-    0 var(--wedge-left)
-  );
-}
-
-.location-card::before {
-  content: '';
-  position: absolute;
-  inset: 1px;
-  z-index: -1;
-  background: var(--background-color);
-  clip-path: polygon(
-    max(0px, calc(var(--wedge-left) - 0.6px)) 0,
-    calc(100% - max(0px, calc(var(--wedge-right) - 0.6px))) 0,
-    100% max(0px, calc(var(--wedge-right) - 0.6px)),
-    100% 100%,
-    0 100%,
-    0 max(0px, calc(var(--wedge-left) - 0.6px))
-  );
-}
+.location-card { @include wedge.panel; }
 
 .mek-grid [data-location='RA'],
 .mek-grid [data-location='RT'],

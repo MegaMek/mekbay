@@ -53,9 +53,7 @@
                             </svg>
                         } @else {
                             <span>{{ moveMode.label }}</span>
-                            @if (moveModeModifierLabel(mode); as modifierLabel) {
-                                <span class="modifier-badge">{{ modifierLabel }}</span>
-                            }
+                            <span class="modifier-badge" [class.empty-modifier]="!moveModeModifierLabel(mode)">{{ moveModeModifierLabel(mode) }}</span>
                         }
                     </button>
                 }
@@ -164,9 +162,7 @@
                 (click)="toggleSpotting()"
             >
                 <span>Spotting</span>
-                @if (spottingModifierLabel(); as modifierLabel) {
-                    <span class="modifier-badge">{{ modifierLabel }}</span>
-                }
+                <span class="modifier-badge" [class.empty-modifier]="!spottingModifierLabel()">{{ spottingModifierLabel() }}</span>
             </button>
         </div>
     </section>
@@ -180,42 +176,9 @@
         <div class="cover-control">
             <span class="cover-label">
                 <span>Cover</span>
-                @if (coverModifierLabel(); as modifierLabel) {
-                    <span class="modifier-badge large defense">{{ modifierLabel }}</span>
-                }
+                <span class="modifier-badge large defense" [class.empty-modifier]="!coverModifierLabel()">{{ coverModifierLabel() }}</span>
             </span>
-            <div class="cover-choices" role="group" aria-label="Unit cover">
-                <button
-                    type="button"
-                    class="bt-button cover-button"
-                    aria-label="Light cover"
-                    [class.selected]="cover() === 'light'"
-                    [attr.aria-pressed]="cover() === 'light'"
-                    (click)="selectCover('light')"
-                >
-                    <svg viewBox="0 0 512 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
-                </button>
-                <button
-                    type="button"
-                    class="bt-button cover-button heavy-cover-button"
-                    aria-label="Heavy cover"
-                    [class.selected]="cover() === 'heavy'"
-                    [attr.aria-pressed]="cover() === 'heavy'"
-                    (click)="selectCover('heavy')"
-                >
-                    <svg viewBox="0 0 724 512" aria-hidden="true"><path d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/><path transform="translate(212 0)" d="M326.039,229.594c20.662,10.332,58.534-9.176,58.534-9.176C301.915,128.572,256.001,0,256.001,0s-45.916,128.572-128.573,220.418c0,0,37.872,19.509,58.538,9.176c0,0-20.666,79.215-113.64,183.691c82.642,22.948,144.634-14.936,144.634-14.936V512h78.083V398.348c0,0,61.992,37.884,144.634,14.936C346.701,308.809,326.039,229.594,326.039,229.594z"/></svg>
-                </button>
-                <cover-level-picker
-                    kind="water"
-                    [value]="waterDepth()"
-                    (valueChange)="selectWaterDepth($event)"
-                />
-                <cover-level-picker
-                    kind="building"
-                    [value]="buildingLevel()"
-                    (valueChange)="selectBuildingLevel($event)"
-                />
-            </div>
+            <cover-choices [cover]="cover()" [waterDepth]="waterDepth()" [buildingLevel]="buildingLevel()" (coverChange)="selectCover($event)" (waterDepthChange)="selectWaterDepth($event)" (buildingLevelChange)="selectBuildingLevel($event)" />
         </div>
     </section>
 

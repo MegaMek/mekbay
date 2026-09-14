@@ -56,16 +56,29 @@ export class TacticalArmorLayoutDirective implements OnDestroy {
         this.updateLayout();
     });
     private resizeObserver: ResizeObserver | null = null;
+    private layoutFrame: number | null = null;
+    private observedWidth = -1;
 
     ngOnDestroy(): void {
         this.resizeObserver?.disconnect();
+        if (this.layoutFrame !== null) cancelAnimationFrame(this.layoutFrame);
         this.afterRenderRef.destroy();
     }
 
     private observeWidth(): void {
         if (this.resizeObserver || typeof ResizeObserver === 'undefined') return;
 
-        const resizeObserver = new ResizeObserver(() => this.updateLayout());
+        const resizeObserver = new ResizeObserver(entries => {
+            const width = entries[0]?.contentRect.width;
+            if (width === undefined || width === this.observedWidth) return;
+            this.observedWidth = width;
+            if (this.layoutFrame !== null) return;
+            // Wrapping changes the observed panel's height. Write after this delivery cycle.
+            this.layoutFrame = requestAnimationFrame(() => {
+                this.layoutFrame = null;
+                this.updateLayout();
+            });
+        });
         this.resizeObserver = resizeObserver;
         resizeObserver.observe(this.host.nativeElement);
     }

@@ -4,14 +4,14 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 
 import { TooltipDirective } from '../../directives/tooltip.directive';
-import { CoverLevelPickerComponent } from '../cover-level-picker/cover-level-picker.component';
+import { CoverChoicesComponent } from '../cover-level-picker/cover-choices.component';
 import { HexSliderComponent } from '../hex-slider/hex-slider.component';
 import { TurnTrackerControls } from '../page-viewer/overlay/turn-tracker-controls';
 
 /** Tactical View presentation for the shared turn-control state and commands. */
 @Component({
     selector: 'tactical-turn-tracker',
-    imports: [CoverLevelPickerComponent, HexSliderComponent, TooltipDirective],
+    imports: [CoverChoicesComponent, HexSliderComponent, TooltipDirective],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './tactical-turn-tracker.component.html',
     styleUrl: './tactical-turn-tracker.component.scss',

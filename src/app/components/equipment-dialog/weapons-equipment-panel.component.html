@@ -1,4 +1,4 @@
-<div class="weapons-equipment-panel"
+<div class="weapons-equipment-panel" [class.tactical-inventory]="tactical()"
     [class.hide-actions-column]="!hasActionsColumn()"
     [class.hide-heat-column]="!tracksHeat()"
     [class.has-targets]="hasTargets()"
@@ -7,20 +7,7 @@
     <div class="weapon-equipment-grid">
             @for (group of groups(); track group.id) {
                 <section class="weapon-equipment-section">
-                    <h3>
-                        <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
-                        <span class="section-title">
-                            <span class="section-title-text">{{ group.title }}</span>
-                            @if (sectionSkill(group); as skill) {
-                                <span class="section-skill">{{ skill.label }} <span class="value">{{ skill.value }}</span></span>
-                            }
-                        </span>
-                        <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
-                    </h3>
-                    <div class="weapon-equipment-header">
-                        <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
-                        <span></span>
-                        <span class="select-header">
+                    <ng-template #groupSelection>
                             @if (group.id === 'ranged') {
                                 @if (hasTargets()) {
                                     @let selectedGroupTarget = groupTargetSelection(group);
@@ -46,6 +33,23 @@
                                         (change)="toggleGroupSelectableRows(group)">
                                 }
                             }
+                    </ng-template>
+                    <h3>
+                        <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
+                        <span class="section-title">
+                            <span class="mobile-group-selection"><ng-container [ngTemplateOutlet]="groupSelection" /></span>
+                            <span class="section-title-text">{{ group.title }}</span>
+                            @if (sectionSkill(group); as skill) {
+                                <span class="section-skill">{{ skill.label }} <span class="value">{{ skill.value }}</span></span>
+                            }
+                        </span>
+                        <span class="grid-fill grid-fill-right" aria-hidden="true"></span>
+                    </h3>
+                    <div class="weapon-equipment-header">
+                        <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
+                        <span></span>
+                        <span class="select-header">
+                            <ng-container [ngTemplateOutlet]="groupSelection" />
                         </span>
                         @if (hasTargets()) {
                             <span class="tn-header">TN</span>
@@ -85,7 +89,7 @@
                         @for (row of group.rows; track row.id) {
                             @let rowTarget = targetState(row);
                             @let rowPresentation = rowPresentationState(row);
-                            <div class="weapon-equipment-row" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!isRowSortable(group, row) || readOnly()" [class.mga-array-row]="isMachineGunArrayRow(row)" [class.mga-member-row]="isMachineGunArrayMemberRow(row)" [class.mga-member-controlled]="isMachineGunArrayMemberControlled(row)" [class.destroying-entry]="rowPresentation === 'destroying'" [class.repairing-entry]="rowPresentation === 'repairing'" [class.destroyed-entry]="rowPresentation === 'destroyed'" [class.disabled-entry]="rowPresentation === 'disabled'" [class.operation-disabled-entry]="rowPresentation === null && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
+                            <div class="weapon-equipment-row" [class.row-selected]="tactical() && isSelected(row)" [class.controls-expanded]="expandedControls().has(row.id)" (click)="activateRow($event, row)" cdkDrag cdkDragLockAxis="y" cdkDragBoundary=".weapon-equipment-section" cdkDragPreviewContainer="parent" [cdkDragStartDelay]="layoutService.isTouchInput() ? 200 : 0" [cdkDragDisabled]="!isRowSortable(group, row) || readOnly()" [class.mga-array-row]="isMachineGunArrayRow(row)" [class.mga-member-row]="isMachineGunArrayMemberRow(row)" [class.mga-member-controlled]="isMachineGunArrayMemberControlled(row)" [class.destroying-entry]="rowPresentation === 'destroying'" [class.repairing-entry]="rowPresentation === 'repairing'" [class.destroyed-entry]="rowPresentation === 'destroyed'" [class.disabled-entry]="rowPresentation === 'disabled'" [class.operation-disabled-entry]="rowPresentation === null && row.disabled" (pointerdown)="cacheDragPreviewCellWidths($event)" (cdkDragStarted)="onDragStarted($event)">
                                 <span class="grid-fill grid-fill-left" aria-hidden="true"></span>
                                 <span class="grouped-cells group-identity">
                                     <div class="drag-cell">
@@ -109,7 +113,7 @@
                                                     {{ rowTarget.target?.letter ?? '' }}
                                                 </button>
                                             } @else {
-                                                <input type="checkbox" class="bt-checkbox" [checked]="isSelected(row)" [disabled]="readOnly() || (!isSelected(row) && (row.disabled || row.destroyed))" (change)="toggleSelected(row)">
+                                                <input type="checkbox" class="bt-checkbox" [attr.aria-label]="'Select ' + row.display.name + ' in ' + row.display.location" [checked]="isSelected(row)" [disabled]="readOnly() || (!isSelected(row) && (row.disabled || row.destroyed))" (change)="toggleSelected(row)">
                                             }
                                         }
                                     </div>
@@ -122,6 +126,13 @@
                                     }
                                     <div class="name-cell">
                                         <span class="equipment-name">{{ row.display.name }}</span>
+                                        @if (tactical() && rowHasActions(row)) {
+                                            <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-expanded]="expandedControls().has(row.id)" [attr.aria-label]="'Ammo and controls for ' + row.display.name" (click)="toggleControls(row)">
+                                                @if (row.tracksAmmo) { <span class="current-ammo" [title]="ammoState(row).text">{{ ammoState(row).text || 'No ammo' }}</span> }
+                                                @else { <span>Controls</span> }
+                                                <span class="chevron" [class.collapsed]="!expandedControls().has(row.id)" aria-hidden="true"></span>
+                                            </button>
+                                        }
                                         @if (machineGunArraySummary(row); as summary) {
                                             <span class="mga-membership-badge mga-array-summary">{{ summary }}</span>
                                         }

@@ -5,14 +5,14 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, signal } from '@angular/core';
 
 import { TooltipDirective } from '../../../directives/tooltip.directive';
-import { CoverLevelPickerComponent } from '../../cover-level-picker/cover-level-picker.component';
+import { CoverChoicesComponent } from '../../cover-level-picker/cover-choices.component';
 import { HexSliderComponent } from '../../hex-slider/hex-slider.component';
 import { TurnTrackerControls } from './turn-tracker-controls';
 
 /** Compact turn-summary overlay presentation. */
 @Component({
     selector: 'page-turn-summary-panel',
-    imports: [HexSliderComponent, TooltipDirective, CoverLevelPickerComponent],
+    imports: [HexSliderComponent, TooltipDirective, CoverChoicesComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     templateUrl: './page-turn-summary-panel.component.html',
     styleUrl: './page-turn-summary-panel.component.scss',

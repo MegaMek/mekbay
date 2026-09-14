@@ -18,6 +18,7 @@ equipmentWeaponToHitModifier,
 projectTargetingTarget,
 projectWeaponTargetPresentation,
 } from '../../models/runtime/equipment-panel';
+import { recordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
 import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
 import type { MekHeatProjectionV2 } from '../../models/runtime/mek-heat-state-v2';
 import type {
@@ -1735,11 +1736,10 @@ function renderHeat(
 
     const pending = snapshot.heat.pendingOverride;
     const hasPending = pending !== undefined;
-    const automatic = snapshot.heatPolicy === 'automatic';
     const projection = snapshot.heatProjection.kind === 'supported'
         ? snapshot.heatProjection.projection
         : null;
-    const showProjection = automatic && !hasPending && projection?.hasPendingResolution === true;
+    const showProjection = recordSheetHeatScale(snapshot).automaticProjection;
     const panel = svg.querySelector<SVGElement>('#heatDataPanel');
     panel?.classList.toggle('dirtyHeat', hasPending);
     panel?.classList.toggle('heatApplicationAvailable', hasPending);
@@ -1794,35 +1794,13 @@ function renderHeatArrows(
     highestHeat: number,
     showProjection: boolean,
 ): void {
-    const pending = snapshot.heat.pendingOverride;
-    const projection = snapshot.heatProjection.kind === 'supported'
-        ? snapshot.heatProjection.projection
-        : null;
-    updateHeatArrow(svg, highestHeat, 'now-arrow', snapshot.heat.current, 'current');
-    updateHeatArrow(
-        svg,
-        highestHeat,
-        'next-arrow',
-        pending,
-        pending !== undefined && pending >= snapshot.heat.current ? 'hot' : 'cold',
-    );
-    const target = pending ?? (showProjection ? projection?.projected : undefined);
-    updateHeatArrow(
-        svg,
-        highestHeat,
-        'faded-arrow',
-        snapshot.heat.previous !== snapshot.heat.current && snapshot.heat.previous !== target
-            ? snapshot.heat.previous
-            : undefined,
-        'previous',
-    );
-    updateHeatArrow(
-        svg,
-        highestHeat,
-        'projection-arrow',
-        showProjection ? projection?.projected : undefined,
-        (projection?.delta ?? 0) > 0 ? 'projection-hot' : 'projection-cold',
-    );
+    const scale = recordSheetHeatScale(snapshot);
+    updateHeatArrow(svg, highestHeat, 'now-arrow', scale.current, 'current');
+    updateHeatArrow(svg, highestHeat, 'next-arrow', scale.pending,
+        scale.pending !== undefined && scale.pending >= scale.current ? 'hot' : 'cold');
+    updateHeatArrow(svg, highestHeat, 'faded-arrow', scale.previous, 'previous');
+    updateHeatArrow(svg, highestHeat, 'projection-arrow', showProjection ? scale.projection : undefined,
+        (scale.projection ?? scale.current) > scale.current ? 'projection-hot' : 'projection-cold');
 }
 
 type HeatArrowStyle = 'current' | 'hot' | 'cold' | 'previous' | 'projection-hot' | 'projection-cold';
@@ -1897,59 +1875,19 @@ function renderHeatProjectionGraphics(
     showProjection: boolean,
 ): void {
     const heatScale = svg.querySelector<SVGGElement>('#heatScale');
-    const projection = snapshot.heatProjection.kind === 'supported'
-        ? snapshot.heatProjection.projection
-        : null;
     if (!heatScale) return;
-    if (!projection) {
-        clearHeatProjectionPreview(heatScale);
-        return;
-    }
-    if (showProjection) {
-        renderHeatProjectionBar(svg, heatScale, snapshot.heat.current, projection.projected, highestHeat);
+    const scale = recordSheetHeatScale(snapshot);
+    if (showProjection && scale.projection !== undefined) {
+        renderHeatProjectionBar(svg, heatScale, scale.current, scale.projection, highestHeat);
         heatScale.querySelector('#heat-projection-target-marker')?.remove();
         heatScale.querySelector('#heat-selected-weapons-target-marker')?.remove();
         return;
     }
     clearHeatProjectionPreview(heatScale);
-    if (snapshot.heatPolicy === 'automatic') {
-        heatScale.querySelector('#heat-projection-target-marker')?.remove();
-        heatScale.querySelector('#heat-selected-weapons-target-marker')?.remove();
-        return;
-    }
-    const hasCommittedHeat = projection.sources.some(source => source.value > 0);
-    updateHeatTargetMarker(
-        svg,
-        heatScale,
-        hasCommittedHeat || projection.projected !== snapshot.heat.current ? projection.projected : undefined,
-        highestHeat,
-        'heat-projection-target-marker',
-        projection.delta > 0 ? '#d12020' : '#2070d1',
-    );
-    const selected = snapshot.equipment.filter(row =>
-        row.status === 'available'
-        && row.weapon?.selectable === true
-        && row.weapon.selection !== undefined);
-    if (selected.length === 0) {
-        heatScale.querySelector('#heat-selected-weapons-target-marker')?.remove();
-        return;
-    }
-    const selectedIds = new Set(selected.map(row => row.componentId));
-    const sources = projection.sources.filter(source =>
-        source.id !== 'weapons'
-        && (source.replacedByFiringEntryId === undefined || !selectedIds.has(source.replacedByFiringEntryId)));
-    const generated = sources.reduce((total, source) => total + source.value, 0)
-        + selected.reduce((total, row) => total + (row.weapon?.firingHeat ?? 0), 0);
-    const selectedProjection = snapshot.heat.current + generated
-        - Math.min(projection.remainingDissipation, snapshot.heat.current + generated);
-    updateHeatTargetMarker(
-        svg,
-        heatScale,
-        selectedProjection,
-        highestHeat,
-        'heat-selected-weapons-target-marker',
-        'orange',
-    );
+    updateHeatTargetMarker(svg, heatScale, scale.projection, highestHeat,
+        'heat-projection-target-marker', (scale.projection ?? scale.current) > scale.current ? '#d12020' : '#2070d1');
+    updateHeatTargetMarker(svg, heatScale, scale.selectedWeapons, highestHeat,
+        'heat-selected-weapons-target-marker', 'orange');
 }
 
 function renderHeatProjectionBar(

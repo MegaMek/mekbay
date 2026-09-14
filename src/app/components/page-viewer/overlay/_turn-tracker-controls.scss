@@ -1,0 +1,396 @@
+.summary-section,
+.summary-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.phase-actions,
+.turn-actions {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+}
+
+.section-title {
+    margin: 0;
+    font-size: 1em;
+    font-weight: 500;
+    text-align: center;
+}
+
+.summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+}
+
+.button-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    align-items: center;
+    gap: 4px;
+}
+
+.button-row > .bt-button {
+    width: 100%;
+    min-width: 0;
+}
+
+.tooltip-row {
+    cursor: help;
+}
+
+.tooltip-row .summary-caption {
+    text-decoration: underline dotted #999;
+}
+
+.bt-button {
+    min-height: 30px;
+    padding: 0 8px;
+    outline: none;
+    transition: none;
+}
+
+.phase-button,
+.turn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
+.phase-button {
+    cursor: pointer;
+    opacity: 1;
+    margin-inline: auto;
+    width: fit-content;
+    border: 0;
+    padding: 8px;
+    text-align: center;
+    font-weight: bold;
+    transition: background-color 0.2s;
+    font-size: 0.9em;
+    flex-direction: row;
+    background-color: #a00;
+    color: #fff;
+
+    span {
+        line-height: 1.1;
+        white-space: normal;
+    }
+
+    &:hover {
+        background-color: #f00;
+    }
+}
+
+.turn-action-icon {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+}
+
+.turn-summary.render-ready .bt-button {
+    transition: border 0.2s ease-in-out, background 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.bt-button.selected .modifier-badge {
+    background-color: #000;
+}
+
+.bt-button.warning {
+    background-color: #ffcc00;
+    color: #222;
+}
+
+.bt-button.warning:hover {
+    background-color: #ffdd33;
+}
+
+.bt-button.full-danger {
+    background-color: var(--danger);
+    color: #fff;
+}
+
+.bt-button.full-danger:hover {
+    background-color: #ff4444;
+}
+
+.bt-button.large-action {
+    min-height: 40px;
+}
+
+.move-button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    gap: 4px;
+    padding: 2px;
+
+    &.stationary {
+        max-width: 40px;
+    }
+
+    &.stationary-only {
+        width: 100%;
+        max-width: none;
+    }
+}
+
+.move-mode-row.crowded {
+    flex-wrap: wrap;
+    align-items: stretch;
+
+    .move-button {
+        flex: 1 0 calc(33.333% - 3px);
+        max-width: none;
+    }
+}
+
+.immobile-status {
+    min-height: 40px;
+    justify-content: center;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-color-secondary);
+}
+
+.spotting-button {
+    gap: 4px;
+}
+
+.move-slider {
+    --hex-slider-track-height: 12px;
+    --hex-slider-track-overhang: 14px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.stand-attempts-summary {
+    justify-content: center;
+    padding: 4px;
+}
+
+.stand-attempts-link {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--text-color-secondary);
+    font: inherit;
+    font-size: 0.82em;
+    font-variant-numeric: tabular-nums;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+        color: var(--text-color);
+    }
+}
+
+.equipment-track-row {
+    gap: 2px;
+}
+
+.equipment-track-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: break-spaces;
+    font-size: 0.9em;
+    font-weight: 500;
+    line-height: 1;
+}
+
+.equipment-track-row.damaged .equipment-track-label {
+    color: var(--danger);
+}
+
+.equipment-track-row.damaged .equipment-track-choices {
+    border-color: #800;
+    background-color: #f002;
+}
+
+.equipment-track-choices,
+.equipment-track-status {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    border: 2px solid #666;
+}
+
+.equipment-track-status.failed {
+    border-color: #800;
+}
+
+.equipment-track-button {
+    min-width: 28px;
+    padding: 1px;
+    border-color: transparent;
+    border-radius: 0;
+    background-color: var(--picker-choice-normal-color);
+    background-image: none;
+    color: var(--picker-choice-normal-text-color);
+}
+
+.equipment-track-button.selected {
+    background-color: var(--picker-choice-selected-color, var(--bt-yellow-background-bright));
+    color: var(--picker-choice-selected-text-color);
+}
+
+.equipment-track-button.muted-selected {
+    background-color: var(--picker-choice-muted-selected-color, var(--bt-yellow-background));
+    color: var(--picker-choice-muted-selected-text-color, var(--picker-choice-selected-text-color));
+}
+
+.equipment-track-button:disabled {
+    cursor: not-allowed;
+    background-color: var(--picker-choice-disabled-color);
+    color: var(--picker-choice-disabled-text-color);
+}
+
+.equipment-track-button:not(:last-child):not(.selected) {
+    border-right: 1px solid #444;
+}
+
+.cover-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 2px 0;
+}
+
+.cover-label {
+    flex: 0 0 68px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    color: var(--text-color-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+cover-choices { flex: 1 1 auto; min-width: 0; }
+
+.modifier,
+.modifier-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.bt-button[disabled] .modifier-badge {
+    opacity: 0.4;
+}
+
+.modifier {
+    min-width: 40px;
+    min-height: 18px;
+    padding: 2px 4px;
+    background-color: rgba(0, 0, 0, 0.7);
+    font-weight: 700;
+}
+
+.modifier.important {
+    min-height: 28px;
+    border-color: #aaa;
+    font-size: 1.1em;
+}
+
+.modifier.heat {
+    border-color: #a00;
+}
+
+.modifier.warning {
+    border-color: #ffa500;
+    background-color: var(--bt-yellow-background);
+    color: #fff;
+}
+
+.modifier.danger {
+    border-color: #f00;
+    background-color: #a00;
+    color: #fff;
+}
+
+.modifier.bonus {
+    border-color: #54ef59;
+    background-color: #304730;
+}
+
+.modifier.defense {
+    border-color: var(--primary-focus-color-highlight);
+    background-color: #227;
+}
+
+.modifier-badge {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: var(--text-color);
+    font-size: 0.78em;
+    font-weight: 800;
+
+    &.large {
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        font-size: 1.1em;
+    }
+}
+
+.modifier-badge.defense {
+    border-color: var(--primary-focus-color-highlight);
+    background-color: #227;
+}
+
+.modifier-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.modifier-list .modifier {
+    padding: 1px 4px;
+}
+
+.psr-row {
+    flex-wrap: wrap;
+    white-space: normal;
+}
+
+.psr-reason {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.psr-value {
+    flex: 0 0 auto;
+}
+
+.selected-weapon-heat {
+    color: orange;
+}
+
+.underwater-heat {
+    color: #64b5f6;
+}
+
+.modifier.underwater-heat {
+    border-color: #1565c0;
+}
+
+.empty-modifier { visibility: hidden; }

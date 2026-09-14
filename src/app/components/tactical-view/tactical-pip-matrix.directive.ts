@@ -73,9 +73,12 @@ export class TacticalPipMatrixDirective implements OnDestroy {
     });
     private resizeObserver: ResizeObserver | null = null;
     private observedStrip: HTMLElement | null = null;
+    private layoutFrame: number | null = null;
+    private observedWidth = -1;
 
     ngOnDestroy(): void {
         this.resizeObserver?.disconnect();
+        if (this.layoutFrame !== null) cancelAnimationFrame(this.layoutFrame);
         this.afterRenderRef.destroy();
     }
 
@@ -86,9 +89,20 @@ export class TacticalPipMatrixDirective implements OnDestroy {
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
         this.observedStrip = strip;
+        this.observedWidth = -1;
         if (!strip || typeof ResizeObserver === 'undefined') return;
 
-        const resizeObserver = new ResizeObserver(() => this.updateRows());
+        const resizeObserver = new ResizeObserver(entries => {
+            const width = entries[0]?.contentRect.width;
+            if (width === undefined || width === this.observedWidth) return;
+            this.observedWidth = width;
+            if (this.layoutFrame !== null) return;
+            // Pip rows resize the parent strip; never write during observer delivery.
+            this.layoutFrame = requestAnimationFrame(() => {
+                this.layoutFrame = null;
+                this.updateRows();
+            });
+        });
         this.resizeObserver = resizeObserver;
         resizeObserver.observe(strip);
     }
@@ -110,7 +124,9 @@ export class TacticalPipMatrixDirective implements OnDestroy {
             groupWidth,
             columnGap,
         );
-        matrix.style.setProperty('--pip-rows', `${rows}`);
+        if (matrix.style.getPropertyValue('--pip-rows') !== `${rows}`) {
+            matrix.style.setProperty('--pip-rows', `${rows}`);
+        }
     }
 }
 

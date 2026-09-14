@@ -278,6 +278,49 @@ function createComponent(runtime: EquipmentDialogRuntimeController) {
 }
 
 describe('WeaponsEquipmentPanelComponent', () => {
+    it('selects a tactical weapon from its name while leaving secondary controls independent', () => {
+        const harness = createRuntime();
+        const { fixture, component } = createComponent(harness.runtime);
+        fixture.componentRef.setInput('tactical', true);
+        fixture.detectChanges();
+        const row = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
+        (row.querySelector('.equipment-name') as HTMLElement).click();
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith(harness.weaponRow, 'selected');
+        harness.selectTarget.calls.reset();
+        (row.querySelector('.secondary-controls-toggle') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        expect(harness.selectTarget).not.toHaveBeenCalled();
+        expect(component.expandedControls().has(harness.weaponRow.componentId)).toBeTrue();
+        expect(row.classList.contains('controls-expanded')).toBeTrue();
+    });
+
+    it('does not toggle a tactical selection twice when a checkbox or range is clicked', () => {
+        const harness = createRuntime();
+        const { fixture } = createComponent(harness.runtime);
+        fixture.componentRef.setInput('tactical', true);
+        fixture.detectChanges();
+        const row = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
+        (row.querySelector('.select-cell input') as HTMLInputElement).click();
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith(harness.weaponRow, 'selected');
+        harness.selectTarget.calls.reset();
+        (row.querySelector('.range-short') as HTMLButtonElement).click();
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith(harness.weaponRow, 'range:short');
+    });
+
+    it('keeps row activation opt-in and prevents changes in a read-only tactical view', () => {
+        const harness = createRuntime();
+        const { fixture } = createComponent(harness.runtime);
+        let name = fixture.nativeElement.querySelector('.equipment-name') as HTMLElement;
+        name.click();
+        expect(harness.selectTarget).not.toHaveBeenCalled();
+        fixture.componentRef.setInput('tactical', true);
+        spyOn(harness.runtime.member.force, 'readOnly').and.returnValue(true);
+        fixture.detectChanges();
+        name = fixture.nativeElement.querySelector('.equipment-name') as HTMLElement;
+        name.click();
+        expect(harness.selectTarget).not.toHaveBeenCalled();
+    });
+
     it('groups a linked MGA under its controller and exposes one logical fire/ammo control', () => {
         const harness = createMachineGunArrayRuntime();
         const { fixture, component } = createComponent(harness.runtime);
