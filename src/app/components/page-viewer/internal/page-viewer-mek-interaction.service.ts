@@ -1229,7 +1229,6 @@ export class PageViewerMekInteractionService {
                 values.push({
                     label: groupLabel,
                     value: selectedValue,
-                    active: options.some(candidate => candidate.active),
                     disabled: options.every(candidate => candidate.disabled),
                     displayType: 'dropdown',
                     ...(choice.selectionTone === undefined ? {} : { selectionTone: choice.selectionTone }),

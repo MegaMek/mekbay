@@ -8,7 +8,7 @@ export interface SVGFrameOptions {
     maxHeaderWidth?: number;
     headerFontSize?: number;
     headerHeight?: number | 'auto';
-    /** Header-side angle, independent from the adaptive outer-frame corners. */
+    /** Angle shared by both header sides and their border; defaults to the top-left corner angle. */
     headerAngleDegrees?: number;
     bottomLeftNotchWidth?: number;
     cornerAngleDegrees?: number | SVGFrameCornerAngleOptions;
@@ -36,11 +36,6 @@ interface SVGFrameCornerCut {
     y: number;
 }
 
-interface SVGFrameHeaderCuts {
-    left: SVGFrameCornerCut;
-    right: SVGFrameCornerCut;
-}
-
 interface SVGFrameGeometry {
     frameContract: number;
     headerFill: string;
@@ -49,7 +44,7 @@ interface SVGFrameGeometry {
     headerHeight: number;
     headerTextLength: number;
     headerOffsetX: number;
-    headerCuts: SVGFrameHeaderCuts;
+    headerCut: SVGFrameCornerCut;
     bottomLeftNotchWidth: number;
     cornerAngles: Record<SVGFrameCorner, number>;
     cornerCuts: Record<SVGFrameCorner, SVGFrameCornerCut>;
@@ -147,7 +142,7 @@ export class SvgFrameUtil {
         // the top edge. For a square corner, this is just topY.
         const upperInsetY = topY + topLeft.y;
         const tabStartX = topLeft.x + xOffset;
-        const headerRightCut = geometry.headerCuts.right;
+        const headerRightCut = geometry.headerCut;
         // The tab joins the frame path, so its right sloped side needs the same
         // border gap math as the real header geometry.
         const headerRightInset = this.createParallelInsetX(headerRightCut, this.headerBorderInset);
@@ -219,25 +214,19 @@ export class SvgFrameUtil {
         const header = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         header.setAttribute('transform', `translate(${geometry.headerOffsetX} ${this.headerBorderInset})`);
 
-        // If the requested width is too small for the angled sides, keep at
-        // least enough room for both slopes and a 1px flat top.
-        const resolvedHeaderWidth = Math.max(geometry.headerWidth, this.createHeaderMinWidth(geometry.headerCuts));
+        const resolvedHeaderWidth = geometry.headerWidth;
         const naturalTextLength = Math.max(geometry.headerTextLength, 1);
         // A fixed or capped header width may be smaller than the title. SVG
         // textLength squeezes the title into the safe text area.
         const maxTextLength = Math.max(resolvedHeaderWidth - this.headerTextPadding, 1);
         const headerMiddle = resolvedHeaderWidth / 2;
-        const headerLeftCut = geometry.headerCuts.left;
-        const headerRightCut = geometry.headerCuts.right;
+        const headerCut = geometry.headerCut;
         // Header path coordinates are local to the header group. The middle y is
         // the point of each side tip; the top is y=0 and the bottom is height.
         const headerMiddleY = geometry.headerHeight / 2;
-        // The top flat segment is what remains after the two side slopes take
-        // their x space.
-        const headerTopWidth = Math.max(resolvedHeaderWidth - headerLeftCut.x - headerRightCut.x, 1);
         const headerPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         headerPath.setAttribute('fill', geometry.headerFill);
-        headerPath.setAttribute('d', `M 0 ${headerMiddleY} l ${headerLeftCut.x} -${headerLeftCut.y} h ${headerTopWidth} l ${headerRightCut.x} ${headerRightCut.y} l -${headerRightCut.x} ${headerRightCut.y} h -${headerTopWidth} Z`);
+        headerPath.setAttribute('d', `M 0 ${headerMiddleY} L ${headerCut.x} 0 H ${resolvedHeaderWidth - headerCut.x} L ${resolvedHeaderWidth} ${headerMiddleY} L ${resolvedHeaderWidth - headerCut.x} ${geometry.headerHeight} H ${headerCut.x} Z`);
         header.appendChild(headerPath);
         if (!title) return header;
 
@@ -271,24 +260,20 @@ export class SvgFrameUtil {
         const frameContract = options.variant === 'nested' ? 0 : this.innerFrameContract;
         const headerFontSize = this.createHeaderFontSize(options.headerFontSize);
         const headerHeight = this.createHeaderHeight(options.headerHeight, headerFontSize);
-        const headerCuts = this.createHeaderCuts(
-            cornerAngles,
-            fullWidthHeader,
-            headerHeight,
-            options.headerAngleDegrees,
-        );
-        // Header tips sit halfway down the header, so the side-gap math needs
-        // that tip y-position rather than only the top edge.
-        const headerMiddleY = Math.max(headerCuts.left.y, headerCuts.right.y);
-        const headerMinWidth = this.createHeaderMinWidth(headerCuts);
+        const headerAngle = this.createCornerAngle(options.headerAngleDegrees ?? cornerAngles.topLeft);
+        const headerCut = this.createHeaderCut(headerAngle, headerHeight);
+        // Both sides use the same cut, with at least a 1px flat top and bottom.
+        const headerMinWidth = 2 * headerCut.x + 1;
         const headerTextLength = showHeader ? this.measureHeaderTextLength(title, headerFontSize) : 0;
-        // Move the header right far enough that its left tip is headerBorderInset
-        // away from the sloped frame border.
-        const headerOffsetX = this.createHeaderSideInsetX(cornerCuts.topLeft, headerMiddleY, this.headerBorderInset);
-        // Full-width headers also need to stop early on the right side by the
-        // same visual gap.
-        const fullWidthHeaderRightInset = this.createHeaderSideInsetX(cornerCuts.topRight, headerMiddleY, this.headerBorderInset);
-        const fullWidthHeaderWidth = Math.max(width - frameContract - headerOffsetX - fullWidthHeaderRightInset, headerMinWidth);
+        // The border slopes reach the header's centerline and stay parallel to
+        // its upper edges. Unrelated frame corners retain their own cuts.
+        if (showHeader) {
+            cornerCuts.topLeft = this.createHeaderCut(headerAngle, headerHeight + 2 * this.headerBorderInset);
+            if (fullWidthHeader) cornerCuts.topRight = cornerCuts.topLeft;
+        }
+        // At the common tip height, a perpendicular inset becomes this x gap.
+        const headerOffsetX = this.headerBorderInset * Math.hypot(headerCut.x, headerCut.y) / headerCut.y;
+        const fullWidthHeaderWidth = Math.max(width - frameContract - 2 * headerOffsetX, headerMinWidth);
         // Auto width means text width plus padding. Numeric width means caller is
         // deliberately fixing the tab, and long text will be squeezed later.
         const headerWidth = options.headerWidth === undefined || options.headerWidth === 'auto'
@@ -305,7 +290,7 @@ export class SvgFrameUtil {
             headerHeight,
             headerTextLength,
             headerOffsetX,
-            headerCuts,
+            headerCut,
             bottomLeftNotchWidth: Math.max(options.bottomLeftNotchWidth ?? 0, 0),
             cornerAngles,
             cornerCuts,
@@ -380,51 +365,6 @@ export class SvgFrameUtil {
         // not enough. This converts a perpendicular gap from the slope into the
         // horizontal x offset needed at the top edge.
         return inset * (Math.hypot(cut.x, cut.y) - cut.x) / cut.y;
-    }
-
-    private static createHeaderSideInsetX(frameCut: SVGFrameCornerCut, headerMiddleY: number, inset: number): number {
-        // With a square frame corner, the header can simply start inset pixels
-        // from the side.
-        if (frameCut.x <= 0 || frameCut.y <= 0) {
-            return inset;
-        }
-
-        // The risky point is the side tip of the header, not its top-left corner.
-        // Work out where that tip lands vertically inside the frame corner cut.
-        const headerTipY = inset + headerMiddleY;
-        if (headerTipY >= frameCut.y) {
-            // If the tip is below the frame corner slope, it only needs the plain
-            // side inset because the frame side is vertical there.
-            return inset;
-        }
-
-        // While the tip is inside the sloped frame corner, push it right until it
-        // is inset pixels away from that sloped border.
-        return (inset * Math.hypot(frameCut.x, frameCut.y) + frameCut.x * (frameCut.y - headerTipY)) / frameCut.y;
-    }
-
-    private static createHeaderMinWidth(headerCuts: SVGFrameHeaderCuts): number {
-        // Minimum header width is both side slopes plus a tiny flat top. Without
-        // this, very small widths can make the path fold back on itself.
-        return headerCuts.left.x + headerCuts.right.x + 1;
-    }
-
-    private static createHeaderCuts(
-        cornerAngles: SVGFrameGeometry['cornerAngles'],
-        fullWidthHeader: boolean,
-        headerHeight: number,
-        headerAngleDegrees?: number,
-    ): SVGFrameHeaderCuts {
-        const fixedHeaderAngle = headerAngleDegrees === undefined
-            ? undefined
-            : this.createCornerAngle(headerAngleDegrees);
-        return {
-            left: this.createHeaderCut(fixedHeaderAngle ?? cornerAngles.topLeft, headerHeight),
-            right: this.createHeaderCut(
-                fixedHeaderAngle ?? (fullWidthHeader ? cornerAngles.topRight : cornerAngles.topLeft),
-                headerHeight,
-            ),
-        };
     }
 
     private static createHeaderCut(angleDegrees: number, headerHeight: number): SVGFrameCornerCut {
