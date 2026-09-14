@@ -6,10 +6,9 @@
 
 import type { CompositionConfig, PatternCompositionConfig } from './org-composition.util';
 
-export const orgSolveMetrics: {
-    active: MutableOrgSolveMetrics | null;
-    last: OrgSolveMetrics | null;
-} = { active: null, last: null };
+let lastOrgSolveMetrics: OrgSolveMetrics | null = null;
+
+export type OrgSolveStopReason = 'deadline' | 'pattern-visits' | 'composition-visits' | 'iteration-limit';
 
 const SOLVER_TIME_BUDGET_MS = 750;
 
@@ -37,14 +36,18 @@ export interface MutableOrgSolveMetrics {
     regularPromotionSuccessorCacheMisses: number;
     regularPromotionSuccessorStates: number;
     composedPlanMetrics: Map<string, MutableComposedPlanMetric>;
-    timedOut: boolean;
+}
+
+interface OrgSolveSession {
+    readonly deadline: number;
+    stopReason: OrgSolveStopReason | null;
+    readonly metrics: MutableOrgSolveMetrics | null;
 }
 
 export interface SolverGuard {
-    readonly deadline: number;
+    readonly session: OrgSolveSession;
     patternVisits: number;
     compositionVisits: number;
-    timedOut: boolean;
 }
 
 type ComposedPlannerKind = 'single-role-fast-path' | 'exact-counted' | 'pattern-counted';
@@ -94,11 +97,10 @@ export function createMutableOrgSolveMetrics(): MutableOrgSolveMetrics {
         regularPromotionSuccessorCacheMisses: 0,
         regularPromotionSuccessorStates: 0,
         composedPlanMetrics: new Map<string, MutableComposedPlanMetric>(),
-        timedOut: false,
     };
 }
 
-export function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null): OrgSolveMetrics | null {
+function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null, stopReason: OrgSolveStopReason | null): OrgSolveMetrics | null {
     if (!metrics) {
         return null;
     }
@@ -137,12 +139,13 @@ export function snapshotOrgSolveMetrics(metrics: MutableOrgSolveMetrics | null):
                 totalCandidates: metric.totalCandidates,
             }))
             .sort((left, right) => right.totalMs - left.totalMs || right.calls - left.calls || left.ruleType.localeCompare(right.ruleType)),
-        timedOut: metrics.timedOut,
+        timedOut: stopReason === 'deadline',
+        stopReason,
     };
 }
 
 export function getLastOrgSolveMetrics(): OrgSolveMetrics | null {
-    return orgSolveMetrics.last;
+    return lastOrgSolveMetrics;
 }
 
 export interface OrgSolveMetrics {
@@ -170,15 +173,37 @@ export interface OrgSolveMetrics {
     readonly regularPromotionSuccessorStates: number;
     readonly composedPlanMetrics: readonly ComposedPlanMetric[];
     readonly timedOut: boolean;
+    readonly stopReason: OrgSolveStopReason | null;
 }
 
-export function createSolverGuard(): SolverGuard {
+export function createSolverGuard(metrics: MutableOrgSolveMetrics | null = null): SolverGuard {
     return {
-        deadline: Date.now() + SOLVER_TIME_BUDGET_MS,
+        session: { deadline: getSolveTimestampMs() + SOLVER_TIME_BUDGET_MS, stopReason: null, metrics },
         patternVisits: 0,
         compositionVisits: 0,
-        timedOut: false,
     };
+}
+
+/** Visit quotas bound an individual search; the deadline and stop status belong to the whole solve. */
+export function forkSolverGuard(parent: SolverGuard): SolverGuard {
+    return { session: parent.session, patternVisits: 0, compositionVisits: 0 };
+}
+
+/** One deadline and metrics lifecycle covers preprocessing and every nested search. */
+export function runOrgSolve<T>(solve: (guard: SolverGuard) => T): T {
+    const metrics = createMutableOrgSolveMetrics();
+    const guard = createSolverGuard(metrics);
+    const startedAt = getSolveTimestampMs();
+    lastOrgSolveMetrics = null;
+    let completed = false;
+    try {
+        const result = solve(guard);
+        completed = true;
+        return result;
+    } finally {
+        metrics.totalSolveMs = Math.max(0, getSolveTimestampMs() - startedAt);
+        lastOrgSolveMetrics = completed ? snapshotOrgSolveMetrics(metrics, guard.session.stopReason) : null;
+    }
 }
 
 export function getSolveTimestampMs(): number {
@@ -208,12 +233,13 @@ export function addMetricDuration(metrics: MutableOrgSolveMetrics | null, key: k
 }
 
 export function recordComposedPlanMetric(
+    guard: SolverGuard,
     config: Pick<CompositionConfig | PatternCompositionConfig, 'ruleType' | 'ruleKind' | 'index'>,
     planner: ComposedPlannerKind,
     startedAtMs: number,
     candidateCount: number,
 ): void {
-    const metrics = orgSolveMetrics.active;
+    const metrics = guard.session.metrics;
     if (!metrics) {
         return;
     }
@@ -241,12 +267,21 @@ export function recordComposedPlanMetric(
 }
 
 export function shouldAbortSearch(guard: SolverGuard): boolean {
-    if (guard.timedOut) {
-        return true;
+    if (guard.session.stopReason === 'deadline' || getSolveTimestampMs() > guard.session.deadline) stopOrgSearch(guard, 'deadline');
+    return guard.session.stopReason === 'deadline';
+}
+
+/** Exhausting enumeration must still allow inexpensive count-based promotions. */
+export function visitOrgSearch(guard: SolverGuard, kind: 'pattern' | 'composition'): boolean {
+    const visits = kind === 'pattern' ? ++guard.patternVisits : ++guard.compositionVisits;
+    if (visits > 50_000) {
+        stopOrgSearch(guard, `${kind}-visits`);
+        return false;
     }
-    if (Date.now() > guard.deadline) {
-        guard.timedOut = true;
-        return true;
-    }
-    return false;
+    return !shouldAbortSearch(guard);
+}
+
+export function stopOrgSearch(guard: SolverGuard, reason: OrgSolveStopReason): void {
+    // A local search limit still allows independent alternatives within the shared deadline.
+    if (reason === 'deadline' || !guard.session.stopReason) guard.session.stopReason = reason;
 }

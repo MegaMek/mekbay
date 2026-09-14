@@ -608,7 +608,7 @@ describe('org-solver.util', () => {
             createBattleMekGroup('Lance A', 'Lance', 1, 4),
             createBattleMekGroup('Lance B', 'Lance', 1, 4),
         ].map((group) => compileGroupFacts(group));
-        const scalarReads = spyOn(groups[0].unitScalarSums, 'entries').and.callThrough();
+        const scalarReads = spyOn(groups[0].unitTagCounts, 'entries').and.callThrough();
 
         // Abstraction
         const result = evaluateComposedCountRule(rule, groups);

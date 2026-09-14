@@ -20,6 +20,8 @@ import {
     getSolveTimestampMs,
     recordComposedPlanMetric,
     shouldAbortSearch,
+    stopOrgSearch,
+    visitOrgSearch,
     type SolverGuard,
 } from './org-solve-session';
 import type {
@@ -32,8 +34,6 @@ import type {
     OrgRuleRegistry,
     OrgUnitBucketName,
 } from './org-types';
-
-const MAX_COMPOSITION_SEARCH_VISITS = 50_000;
 
 const MAX_COMPOSED_GROUPS_PER_CONFIG = 2_000;
 
@@ -248,8 +248,7 @@ export function canAssignGroupsToRoles(
     const roleCounts = new Array(childRoles.length).fill(0);
 
     function visit(groupIndex: number): boolean {
-        guard.compositionVisits += 1;
-        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+        if (!visitOrgSearch(guard, 'composition')) {
             return false;
         }
         if (groupIndex >= selectedGroups.length) {
@@ -323,7 +322,6 @@ export function getGroupFactsSignatureKey(group: GroupFacts): string {
         serializeReadonlyMap(group.unitTypeCounts),
         serializeReadonlyMap(group.unitClassCounts),
         serializeReadonlyMap(group.unitTagCounts),
-        serializeReadonlyMap(group.unitScalarSums),
         serializeNestedReadonlyMap(group.descendantUnitBucketCounts),
     ].join('||');
     signatureByGroupFacts.set(group, signature);
@@ -418,8 +416,7 @@ function canAssignSignatureCountsToRoles(
     }
 
     function visit(entryIndex: number): boolean {
-        guard.compositionVisits += 1;
-        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+        if (!visitOrgSearch(guard, 'composition')) {
             return false;
         }
 
@@ -462,8 +459,7 @@ function enumerateAbstractSelections(
     }
 
     function visit(entryIndex: number, remainingCount: number): void {
-        guard.compositionVisits += 1;
-        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+        if (!visitOrgSearch(guard, 'composition')) {
             return;
         }
 
@@ -600,8 +596,7 @@ function enumerateAbstractSelectionsViaRoleInventory(
         remainingCount: number,
         next: () => void,
     ): void {
-        guard.compositionVisits += 1;
-        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+        if (!visitOrgSearch(guard, 'composition')) {
             return;
         }
 
@@ -625,8 +620,7 @@ function enumerateAbstractSelectionsViaRoleInventory(
     }
 
     function visit(entryIndex: number, remainingCount: number): void {
-        guard.compositionVisits += 1;
-        if (guard.compositionVisits > MAX_COMPOSITION_SEARCH_VISITS || shouldAbortSearch(guard)) {
+        if (!visitOrgSearch(guard, 'composition')) {
             return;
         }
 
@@ -705,12 +699,13 @@ function takeGreedySignatureCounts(
 function planSimpleSingleRoleCompositionsFromEntries(
     entries: readonly CountedCompositionEntry[],
     config: CompositionConfig,
+    guard: SolverGuard,
     allowedModifierKeys?: ReadonlySet<string>,
 ): readonly AbstractCompositionCandidate[] {
     const startedAtMs = getSolveTimestampMs();
     const [role] = config.childRoles;
     if (!role) {
-        recordComposedPlanMetric(config, 'single-role-fast-path', startedAtMs, 0);
+        recordComposedPlanMetric(guard, config, 'single-role-fast-path', startedAtMs, 0);
         return [];
     }
 
@@ -723,7 +718,7 @@ function planSimpleSingleRoleCompositionsFromEntries(
             continue;
         }
 
-        while (sumSignatureCounts(availableCounts) >= step.count && candidates.length < MAX_COMPOSED_GROUPS_PER_CONFIG) {
+        while (sumSignatureCounts(availableCounts) >= step.count && candidates.length < MAX_COMPOSED_GROUPS_PER_CONFIG && !shouldAbortSearch(guard)) {
             const selection = takeGreedySignatureCounts(availableCounts, step.count);
             if (!selection) {
                 break;
@@ -737,9 +732,12 @@ function planSimpleSingleRoleCompositionsFromEntries(
             });
             availableCounts = availableCounts.map((count, index) => count - (selection[index] ?? 0));
         }
+        if (candidates.length >= MAX_COMPOSED_GROUPS_PER_CONFIG && sumSignatureCounts(availableCounts) >= step.count) {
+            stopOrgSearch(guard, 'iteration-limit');
+        }
     }
 
-    recordComposedPlanMetric(config, 'single-role-fast-path', startedAtMs, candidates.length);
+    recordComposedPlanMetric(guard, config, 'single-role-fast-path', startedAtMs, candidates.length);
     return candidates;
 }
 
@@ -751,12 +749,12 @@ function planCountedCompositionsFromEntries(
 ): readonly AbstractCompositionCandidate[] {
     const startedAtMs = getSolveTimestampMs();
     if (entries.length === 0) {
-        recordComposedPlanMetric(config, 'exact-counted', startedAtMs, 0);
+        recordComposedPlanMetric(guard, config, 'exact-counted', startedAtMs, 0);
         return [];
     }
 
     if (isSimpleSingleRoleConfig(config)) {
-        return planSimpleSingleRoleCompositionsFromEntries(entries, config, allowedModifierKeys);
+        return planSimpleSingleRoleCompositionsFromEntries(entries, config, guard, allowedModifierKeys);
     }
 
     const initialCounts = entries.map((entry) => entry.availableCount);
@@ -811,6 +809,7 @@ function planCountedCompositionsFromEntries(
                 ];
 
                 if (candidate.length > MAX_COMPOSED_GROUPS_PER_CONFIG) {
+                    stopOrgSearch(guard, 'iteration-limit');
                     continue;
                 }
 
@@ -830,7 +829,7 @@ function planCountedCompositionsFromEntries(
     }
 
     const result = visit(initialCounts);
-    recordComposedPlanMetric(config, 'exact-counted', startedAtMs, result.length);
+    recordComposedPlanMetric(guard, config, 'exact-counted', startedAtMs, result.length);
     return result;
 }
 
@@ -1087,6 +1086,9 @@ function planPatternComposedConfig(
                 availableCounts = availableCounts.map((count, index) => count - (selection[index] ?? 0));
                 producedGroups += 1;
             }
+            if (producedGroups >= MAX_COMPOSED_GROUPS_PER_CONFIG && sumSignatureCounts(availableCounts) >= step.count) {
+                stopOrgSearch(guard, 'iteration-limit');
+            }
         }
 
         entries.push(...bucketEntries);
@@ -1099,7 +1101,7 @@ function planPatternComposedConfig(
         planBucketGroupSet(bucketGroups);
     }
 
-    recordComposedPlanMetric(config, 'pattern-counted', startedAtMs, candidates.length);
+    recordComposedPlanMetric(guard, config, 'pattern-counted', startedAtMs, candidates.length);
     return { entries, candidates, groupsByEntryId };
 }
 
@@ -1143,7 +1145,7 @@ export function planComposedPatternRuleInternal(
 
     const config = buildPatternCompositionConfig(rule);
     const planned = planPatternComposedConfig(rule, groupFacts, config, registry, guard, allowedModifierKeys);
-    if (negativeComposedPlanKeys && cacheKey && planned.candidates.length === 0 && !guard.timedOut) {
+    if (negativeComposedPlanKeys && cacheKey && planned.candidates.length === 0 && !guard.session.stopReason) {
         negativeComposedPlanKeys.add(cacheKey);
     }
 
@@ -1211,7 +1213,7 @@ export function planComposedCountRuleInternal(
         return compareAbstractCompositionPlans(right.candidates, left.candidates);
     })[0];
 
-    if (negativeComposedPlanKeys && cacheKey && (best?.candidates.length ?? 0) === 0 && !guard.timedOut) {
+    if (negativeComposedPlanKeys && cacheKey && (best?.candidates.length ?? 0) === 0 && !guard.session.stopReason) {
         negativeComposedPlanKeys.add(cacheKey);
     }
 

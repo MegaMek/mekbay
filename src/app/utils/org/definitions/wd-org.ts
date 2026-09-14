@@ -71,7 +71,6 @@ export const WD_LANCE: OrgComposedCountRule = {
     commandRank: 'Lieutenant',
     tier: 1,
     childRoles: [{ matches: ['Unit'] }],
-    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const WD_STAR: OrgComposedCountRule = {
@@ -88,7 +87,6 @@ export const WD_STAR: OrgComposedCountRule = {
     commandRank: 'Lieutenant',
     tier: 1,
     childRoles: [{ matches: ['Point'] }],
-    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const WD_BINARY: OrgComposedCountRule = {
@@ -99,7 +97,6 @@ export const WD_BINARY: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 1.8,
     childRoles: [{ matches: ['Star'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const WD_TRINARY: OrgComposedCountRule = {
@@ -110,7 +107,6 @@ export const WD_TRINARY: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2,
     childRoles: [{ matches: ['Star'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const WD_CLUSTER: OrgComposedCountRule = {
@@ -132,7 +128,6 @@ export const WD_COMPANY: OrgComposedCountRule = {
         { matches: ['Lance'], min: 1 },
         { matches: ['Lance', 'Star'] },
     ],
-    childBucketBy: 'promotionBasic',
 };
 
 export const WD_BATTALION: OrgComposedCountRule = {
@@ -146,7 +141,6 @@ export const WD_BATTALION: OrgComposedCountRule = {
         { matches: ['Company'], min: 1 },
         { matches: ['Company', 'Binary', 'Trinary'] },
     ],
-    childBucketBy: 'promotionBasic',
 };
 
 export const WD_CORE_ORG: OrgDefinition = {
@@ -174,8 +168,4 @@ export const WD_CORE_ORG: OrgDefinition = {
         IS_REGIMENT,
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

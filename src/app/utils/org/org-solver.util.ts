@@ -21,7 +21,7 @@ import {
     planComposedPatternRuleInternal,
     resolvePlannedCompositionCandidates,
 } from './org-composition.util';
-import { compileUnitFactsList } from './org-facts.util';
+import { collectGroupUnitAllocations, compileUnitFacts, compileUnitFactsList } from './org-facts.util';
 import {
     copyReadonlyCountMap,
     createAbstractComposedGroupRecord,
@@ -31,6 +31,7 @@ import {
     createConcretePlannedGroupRecord,
     getCompiledGroupFacts,
     getCompiledGroupFactsList,
+    getPartialUnitAllocations,
     getRuleDisplayName,
     makeGroupName,
     type PlannedGroupRecord,
@@ -65,16 +66,14 @@ import {
 } from './org-rule-metadata.util';
 import {
     addMetricDuration,
-    createMutableOrgSolveMetrics,
-    createSolverGuard,
     getSolveTimestampMs,
     type MutableOrgSolveMetrics,
-    orgSolveMetrics,
     shouldAbortSearch,
-    snapshotOrgSolveMetrics,
+    stopOrgSearch,
+    runOrgSolve,
+    forkSolverGuard,
     type SolverGuard,
 } from './org-solve-session';
-import { getRepeatCountForTierDelta } from './org-tier.util';
 import {
     EMPTY_RESULT,
     type GroupFacts,
@@ -99,8 +98,6 @@ import {
 const MAX_PROMOTION_LOOP_ITERATIONS = 64;
 
 const MAX_EXACT_LEAF_PARTITION_UNITS = 32;
-
-const CROSSGRADE_FOREIGN_GROUPS = false;
 
 export interface OrgDefinitionEvaluationResult {
     readonly unitFacts: readonly UnitFacts[];
@@ -386,6 +383,7 @@ function getResolveContext(definition: OrgDefinition): ResolveContext {
 function resolveWholeLeafCandidateRecord(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
+    guard: SolverGuard,
 ): PlannedGroupRecord | null {
     const registry = context.definition.registry;
     let best: PlannedGroupRecord | null = null;
@@ -417,7 +415,7 @@ function resolveWholeLeafCandidateRecord(
             continue;
         }
 
-        const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry);
+        const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry, guard);
         if (materialized.records.length === 1 && materialized.leftoverUnitFacts.length === 0) {
             const candidate = materialized.records[0];
             if (!best || compareGroupFactsScore(candidate.facts, best.facts) < 0) {
@@ -432,6 +430,7 @@ function resolveWholeLeafCandidateRecord(
 function resolveExactLeafPartitionCandidateStates(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
+    guard: SolverGuard,
 ): ResolvedState[] {
     const registry = context.definition.registry;
     const candidates: ResolvedState[] = [];
@@ -448,17 +447,17 @@ function resolveExactLeafPartitionCandidateStates(
         seenPartitionStateKeys.add(partitionState.signature.key);
         candidates.push({ canonicalState: partitionState, leftoverUnits: [], leftoverUnitAllocations: [] });
 
-        const repairedPartitionState = repairSubRegularGroupsForPromotionState(partitionState, context);
-        const assimilatedPartitionState = preAssimilateUnderRegularGroupState(repairedPartitionState, context, createSolverGuard());
-        const promotedPartitionState = searchBestRegularPromotionPoolStateFromState(assimilatedPartitionState, context, createSolverGuard());
-        const improvedPartitionState = runLeftoverImprovementLoopState(promotedPartitionState, context, createSolverGuard());
+        const repairedPartitionState = repairSubRegularGroupsForPromotionState(partitionState, context, guard);
+        const assimilatedPartitionState = preAssimilateUnderRegularGroupState(repairedPartitionState, context, forkSolverGuard(guard));
+        const promotedPartitionState = searchBestRegularPromotionPoolStateFromState(assimilatedPartitionState, context, forkSolverGuard(guard));
+        const improvedPartitionState = runLeftoverImprovementLoopState(promotedPartitionState, context, forkSolverGuard(guard));
 
         candidates.push({ canonicalState: promotedPartitionState, leftoverUnits: [], leftoverUnitAllocations: [] });
         if (improvedPartitionState.signature.key !== promotedPartitionState.signature.key) {
             candidates.push({ canonicalState: improvedPartitionState, leftoverUnits: [], leftoverUnitAllocations: [] });
         }
 
-        const wholeComposedState = resolveWholeComposedCandidateState(improvedPartitionState, context, createSolverGuard());
+        const wholeComposedState = resolveWholeComposedCandidateState(improvedPartitionState, context, forkSolverGuard(guard));
         if (wholeComposedState) {
             candidates.push({ canonicalState: wholeComposedState, leftoverUnits: [], leftoverUnitAllocations: [] });
         }
@@ -466,7 +465,7 @@ function resolveExactLeafPartitionCandidateStates(
 
     for (const rule of allLeafRules) {
         if (rule.kind === 'leaf-pattern') {
-            const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry);
+            const materialized = materializeLeafPatternWithCandidateRecords(rule, unitFacts, registry, guard);
             if (materialized.records.length === 0 || materialized.leftoverUnitFacts.length > 0) {
                 continue;
             }
@@ -494,6 +493,7 @@ function materializeLeafRulesByStageRecords(
     unitFacts: readonly UnitFacts[],
     context: ResolveContext,
     stage: RuleExecutionStage,
+    guard: SolverGuard,
 ): { records: PlannedGroupRecord[]; leftover: UnitFacts[]; leftoverUnitAllocations: GroupUnitAllocation[] } {
     const registry = context.definition.registry;
     let remaining = [...unitFacts];
@@ -521,7 +521,7 @@ function materializeLeafRulesByStageRecords(
             if (!metadata.participatesInRegularStage || stage === 'sub-regular') {
                 continue;
             }
-            const materialized = materializeLeafPatternWithCandidateRecords(rule, remaining, registry);
+            const materialized = materializeLeafPatternWithCandidateRecords(rule, remaining, registry, guard);
             records.push(...materialized.records);
             remaining = [...materialized.leftoverUnitFacts];
             continue;
@@ -659,6 +659,7 @@ function attachLeftoverUnits(
     if (leftoverUnits.length === 0 && leftoverUnitAllocations.length === 0) {
         return groups;
     }
+    const allocations = [...(getPartialUnitAllocations(leftoverUnits) ?? []), ...leftoverUnitAllocations];
     const attachedLeftoverUnits = Array.from(new Set([
         ...leftoverUnits.map((facts) => facts.unit),
         ...leftoverUnitAllocations.map((allocation) => allocation.unit),
@@ -667,7 +668,7 @@ function attachLeftoverUnits(
         return [{
             ...EMPTY_RESULT,
             leftoverUnits: attachedLeftoverUnits,
-            leftoverUnitAllocations: [...leftoverUnitAllocations],
+            leftoverUnitAllocations: allocations,
         }];
     }
     const sorted = [...groups].sort(compareGroupScore);
@@ -675,7 +676,7 @@ function attachLeftoverUnits(
     return [{
         ...top,
         leftoverUnits: attachedLeftoverUnits,
-        leftoverUnitAllocations: [...leftoverUnitAllocations],
+        leftoverUnitAllocations: allocations,
     }, ...rest];
 }
 
@@ -1062,7 +1063,6 @@ function createUpdatedParentRecord(
     const unitTypeCounts = copyReadonlyCountMap(baseFacts.unitTypeCounts);
     const unitClassCounts = copyReadonlyCountMap(baseFacts.unitClassCounts);
     const unitTagCounts = copyReadonlyCountMap(baseFacts.unitTagCounts);
-    const unitScalarSums = copyReadonlyCountMap(baseFacts.unitScalarSums);
     const descendantUnitBucketCounts = copyReadonlyNestedCountMap(baseFacts.descendantUnitBucketCounts);
 
     for (const childRecord of addedChildren) {
@@ -1081,7 +1081,6 @@ function createUpdatedParentRecord(
         incrementMutableCountMap(unitTypeCounts, child.unitTypeCounts);
         incrementMutableCountMap(unitClassCounts, child.unitClassCounts);
         incrementMutableCountMap(unitTagCounts, child.unitTagCounts);
-        incrementMutableCountMap(unitScalarSums, child.unitScalarSums);
         incrementMutableNestedCountMap(descendantUnitBucketCounts, child.descendantUnitBucketCounts);
     }
 
@@ -1095,7 +1094,6 @@ function createUpdatedParentRecord(
         unitTypeCounts,
         unitClassCounts,
         unitTagCounts,
-        unitScalarSums,
         descendantUnitBucketCounts,
     };
 
@@ -1128,6 +1126,7 @@ function createUpdatedParentRecord(
 function repairSubRegularGroupsForPromotionState(
     initialState: CanonicalGroupPoolState,
     context: ResolveContext,
+    guard: SolverGuard,
 ): CanonicalGroupPoolState {
     let state = initialState;
 
@@ -1149,7 +1148,7 @@ function repairSubRegularGroupsForPromotionState(
             rule,
             childState.groupFacts,
             context.definition.registry,
-            createSolverGuard(),
+            forkSolverGuard(guard),
             undefined,
             context.negativeComposedPlanKeys,
         );
@@ -1407,7 +1406,7 @@ function searchBestRegularPromotionPoolStateFromState(
     context: ResolveContext,
     guard: SolverGuard,
 ): CanonicalGroupPoolState {
-    const metrics = orgSolveMetrics.active;
+    const metrics = guard.session.metrics;
     const cachedResult = context.exactRegularPromotionResultBySignature.get(initialState.signature.key);
     if (cachedResult) {
         if (metrics) {
@@ -1422,7 +1421,7 @@ function searchBestRegularPromotionPoolStateFromState(
     }
 
     function finalize(result: CanonicalGroupPoolState): CanonicalGroupPoolState {
-        if (!guard.timedOut) {
+        if (!guard.session.stopReason) {
             context.exactRegularPromotionResultBySignature.set(initialState.signature.key, result);
         }
         return result;
@@ -1516,7 +1515,7 @@ function searchBestRegularPromotionPoolStateFromState(
 
     visit(initialState);
 
-    if (!guard.timedOut) {
+    if (!guard.session.stopReason) {
         for (const state of stateBySignature.values()) {
             context.exactRegularPromotionResultBySignature.set(state.signature.key, resolveExactResultForState(state));
         }
@@ -1541,6 +1540,7 @@ function searchBestRegularPromotionPoolStateFromState(
         currentState = nextState;
     }
 
+    stopOrgSearch(guard, 'iteration-limit');
     return finalize(currentState);
 }
 
@@ -1581,6 +1581,7 @@ function runLeftoverImprovementLoopState(
         state = searchBestRegularPromotionPoolStateFromState(subRegularized, context, guard);
     }
 
+    if (iteration >= MAX_PROMOTION_LOOP_ITERATIONS) stopOrgSearch(guard, 'iteration-limit');
     return state;
 }
 
@@ -1743,24 +1744,6 @@ function normalizeTopLevelGroups(groups: readonly GroupSizeResult[]): GroupSizeR
     return [...groups].sort(compareGroupScore);
 }
 
-function collectAllGroupUnits(group: GroupSizeResult): OrgUnit[] {
-    const result: OrgUnit[] = [];
-
-    if (group.units) {
-        result.push(...group.units);
-    }
-    if (group.leftoverUnits) {
-        result.push(...group.leftoverUnits);
-    }
-    if (group.children) {
-        for (const child of group.children) {
-            result.push(...collectAllGroupUnits(child));
-        }
-    }
-
-    return result;
-}
-
 function isNativeGroupForContext(group: GroupSizeResult, context: ResolveContext): boolean {
     return (group.type !== null && context.knownGroupTypes.has(group.type))
         || (group.countsAsType !== null && context.knownGroupTypes.has(group.countsAsType));
@@ -1781,8 +1764,7 @@ function isStableNativeRegularGroupInput(group: GroupSizeResult, context: Resolv
 }
 
 function isTransparentForeignTypedGroup(group: GroupSizeResult, context: ResolveContext): boolean {
-    return !CROSSGRADE_FOREIGN_GROUPS
-        && group.type !== null
+    return group.type !== null
         && group.type !== 'Force'
         && !isNativeGroupForContext(group, context);
 }
@@ -1792,11 +1774,10 @@ function finalizeResolvedCandidates(
     regularPoolState: CanonicalGroupPoolState,
     context: ResolveContext,
     metrics: MutableOrgSolveMetrics,
-    solveStartedAtMs: number,
     guard: SolverGuard,
 ): GroupSizeResult[] {
     let phaseStartedAtMs = getSolveTimestampMs();
-    const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, createSolverGuard());
+    const wholeComposedState = resolveWholeComposedCandidateState(regularPoolState, context, forkSolverGuard(guard));
     addMetricDuration(metrics, 'wholeComposedMs', phaseStartedAtMs);
 
     const allResolvedStates = [...candidateStates];
@@ -1810,32 +1791,7 @@ function finalizeResolvedCandidates(
     phaseStartedAtMs = getSolveTimestampMs();
     const materialized = materializeResolvedState(bestState);
     addMetricDuration(metrics, 'finalMaterializationMs', phaseStartedAtMs);
-
-    if (orgSolveMetrics.active) {
-        orgSolveMetrics.active.timedOut = guard.timedOut;
-    }
-    addMetricDuration(metrics, 'totalSolveMs', solveStartedAtMs);
-    orgSolveMetrics.last = snapshotOrgSolveMetrics(orgSolveMetrics.active);
-    orgSolveMetrics.active = null;
-
     return materialized;
-}
-
-function createSyntheticGroupForRule(
-    rule: OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule,
-    modifierStep: ModifierStep,
-): GroupSizeResult {
-    return {
-        name: makeGroupName(getRuleDisplayName(rule), modifierStep.modifierKey),
-        type: rule.type,
-        displayName: rule.displayName,
-        modifierKey: modifierStep.modifierKey,
-        countsAsType: rule.countsAs ?? null,
-        tier: modifierStep.tier,
-        provenance: 'produced-group',
-        tag: rule.tag,
-        priority: rule.priority,
-    };
 }
 
 function markGroupsWithProvenance(
@@ -1846,66 +1802,6 @@ function markGroupsWithProvenance(
         ...group,
         provenance,
     }));
-}
-
-function getCrossgradeCandidates(
-    context: ResolveContext,
-): Array<{ rule: OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule; step: ModifierStep }> {
-    const candidateRules = context.composedCountRules.length > 0
-        ? context.composedCountRules
-        : context.definition.rules.filter((rule): rule is OrgLeafCountRule | OrgLeafPatternRule | OrgComposedCountRule =>
-            rule.kind === 'leaf-count' || rule.kind === 'leaf-pattern' || rule.kind === 'composed-count',
-        );
-
-    return candidateRules.flatMap((rule) =>
-        getRuleStageMetadata(context, rule).descriptor.stepsAscending.map((step) => ({ rule, step })),
-    );
-}
-
-function crossgradeTierOnlyForeignGroup(
-    group: GroupSizeResult,
-    context: ResolveContext,
-): GroupSizeResult[] {
-    const candidates = getCrossgradeCandidates(context);
-    if (candidates.length === 0) {
-        return [group];
-    }
-
-    const highestTier = Math.max(...candidates.map((candidate) => candidate.step.tier));
-    if (group.tier - highestTier > 0.0001) {
-        const highestCandidates = candidates.filter((candidate) => Math.abs(candidate.step.tier - highestTier) < 0.0001);
-        const chosen = highestCandidates
-            .map((candidate) => createSyntheticGroupForRule(candidate.rule, candidate.step))
-            .sort(compareGroupScore)[0];
-
-        if (!chosen) {
-            return [group];
-        }
-
-        const repeatCount = getRepeatCountForTierDelta(group.tier, chosen.tier);
-        return Array.from({ length: repeatCount }, () => ({ ...chosen }));
-    }
-
-    const chosen = candidates
-        .sort((left, right) => {
-            const leftDistance = Math.abs(left.step.tier - group.tier);
-            const rightDistance = Math.abs(right.step.tier - group.tier);
-
-            if (leftDistance !== rightDistance) {
-                return leftDistance - rightDistance;
-            }
-
-            if (left.rule.tier !== right.rule.tier) {
-                return right.rule.tier - left.rule.tier;
-            }
-
-            return compareGroupScore(
-                createSyntheticGroupForRule(left.rule, left.step),
-                createSyntheticGroupForRule(right.rule, right.step),
-            );
-        })[0];
-
-    return chosen ? [createSyntheticGroupForRule(chosen.rule, chosen.step)] : [group];
 }
 
 function applyForeignDisplayName(
@@ -1925,6 +1821,7 @@ function applyForeignDisplayName(
 function preprocessGroupsForDefinition(
     definition: OrgDefinition,
     groupResults: readonly GroupSizeResult[],
+    guard: SolverGuard,
 ): GroupSizeResult[] {
     const context = getResolveContext(definition);
     const normalized: GroupSizeResult[] = [];
@@ -1937,20 +1834,8 @@ function preprocessGroupsForDefinition(
 
         const foreignDisplayName = group.foreignDisplayName ?? group.name;
 
-        // Concrete foreign org groups should crossgrade as completed parents.
-        // Generic wrappers like Force, or type-less foreign buckets, still need
-        // descendant-unit re-evaluation under the target definition.
-        if (group.type && group.type !== 'Force') {
-            if (CROSSGRADE_FOREIGN_GROUPS) {
-                normalized.push(...applyForeignDisplayName(crossgradeTierOnlyForeignGroup(group, context), foreignDisplayName));
-            } else {
-                normalized.push(group);
-            }
-            continue;
-        }
-
-        const descendantUnits = collectAllGroupUnits(group);
-        const reevaluatedGroups = resolveWithDefinition(definition, descendantUnits, []);
+        const allocations = collectGroupUnitAllocations(group);
+        const reevaluatedGroups = resolveWithDefinition(definition, [], [], forkSolverGuard(guard), allocations);
         if (reevaluatedGroups.length === 0) {
             normalized.push(...applyForeignDisplayName([EMPTY_RESULT], foreignDisplayName));
             continue;
@@ -1966,20 +1851,30 @@ function resolveWithDefinition(
     definition: OrgDefinition,
     units: readonly OrgUnit[],
     groups: readonly GroupSizeResult[],
+    guard: SolverGuard,
+    allocations?: readonly GroupUnitAllocation[],
 ): GroupSizeResult[] {
-    orgSolveMetrics.active = createMutableOrgSolveMetrics();
-    orgSolveMetrics.last = null;
-    const solveStartedAtMs = getSolveTimestampMs();
-    const metrics = orgSolveMetrics.active;
-
+    const metrics = guard.session.metrics!;
     const context = getResolveContext(definition);
-    const guard = createSolverGuard();
 
     let phaseStartedAtMs = getSolveTimestampMs();
-    const compiledUnits = compileUnitFactsList(units);
+    const compiledUnits = allocations
+        ? allocations.map(allocation => compileUnitFacts(allocation.unit, allocation.squads))
+        : compileUnitFactsList(units);
+    // Leftovers are additional input, not members of an already solved group.
+    // Detach them before normalization can replace a group or promotion can nest it.
+    const inputGroups = groups.map(group => {
+        if (!group.leftoverUnits?.length && !group.leftoverUnitAllocations?.length) return group;
+        const { leftoverUnits, leftoverUnitAllocations, ...organized } = group;
+        const leftovers = collectGroupUnitAllocations({
+            ...EMPTY_RESULT, units: leftoverUnits, unitAllocations: leftoverUnitAllocations,
+        });
+        compiledUnits.push(...leftovers.map(allocation => compileUnitFacts(allocation.unit, allocation.squads)));
+        return organized;
+    });
     addMetricDuration(metrics, 'factCompilationMs', phaseStartedAtMs);
 
-    const wholeLeafRecord = groups.length === 0 ? resolveWholeLeafCandidateRecord(compiledUnits, context) : null;
+    const wholeLeafRecord = groups.length === 0 ? resolveWholeLeafCandidateRecord(compiledUnits, context, guard) : null;
     const shouldEvaluateExactLeafPartitions = groups.length === 0 && compiledUnits.length <= MAX_EXACT_LEAF_PARTITION_UNITS;
     if (metrics && groups.length === 0 && !shouldEvaluateExactLeafPartitions) {
         metrics.exactLeafPartitionSkipped = true;
@@ -1987,7 +1882,7 @@ function resolveWithDefinition(
 
     phaseStartedAtMs = getSolveTimestampMs();
     const exactLeafPartitionStates = shouldEvaluateExactLeafPartitions
-        ? resolveExactLeafPartitionCandidateStates(compiledUnits, context)
+        ? resolveExactLeafPartitionCandidateStates(compiledUnits, context, guard)
         : [];
     addMetricDuration(metrics, 'exactLeafPartitionMs', phaseStartedAtMs);
     if (metrics) {
@@ -1995,11 +1890,11 @@ function resolveWithDefinition(
     }
 
     phaseStartedAtMs = getSolveTimestampMs();
-    const normalizedInputGroups = normalizeCIFormationGroups(groups, context.ciFormationRules);
+    const normalizedInputGroups = normalizeCIFormationGroups(inputGroups, context.ciFormationRules);
     addMetricDuration(metrics, 'inputNormalizationMs', phaseStartedAtMs);
 
     phaseStartedAtMs = getSolveTimestampMs();
-    const regularLeafResult = materializeLeafRulesByStageRecords(compiledUnits, context, 'regular');
+    const regularLeafResult = materializeLeafRulesByStageRecords(compiledUnits, context, 'regular', guard);
     addMetricDuration(metrics, 'regularLeafAllocationMs', phaseStartedAtMs);
 
     const leftoverUnits = [...regularLeafResult.leftover];
@@ -2015,28 +1910,28 @@ function resolveWithDefinition(
 
     if (!canSkipInitialGroupRepair) {
         phaseStartedAtMs = getSolveTimestampMs();
-        initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context);
+        initialPoolState = repairSubRegularGroupsForPromotionState(initialPoolState, context, guard);
         addMetricDuration(metrics, 'initialRepairMs', phaseStartedAtMs);
 
         phaseStartedAtMs = getSolveTimestampMs();
-        initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, guard);
+        initialPoolState = preAssimilateUnderRegularGroupState(initialPoolState, context, forkSolverGuard(guard));
         addMetricDuration(metrics, 'initialAssimilationMs', phaseStartedAtMs);
     }
 
     phaseStartedAtMs = getSolveTimestampMs();
-    const wholeComposedFromInitialState = resolveWholeComposedCandidateState(initialPoolState, context, createSolverGuard());
+    const wholeComposedFromInitialState = resolveWholeComposedCandidateState(initialPoolState, context, forkSolverGuard(guard));
     addMetricDuration(metrics, 'wholeComposedMs', phaseStartedAtMs);
 
     phaseStartedAtMs = getSolveTimestampMs();
-    const initialImprovedPoolState = runLeftoverImprovementLoopState(initialPoolState, context, createSolverGuard());
+    const initialImprovedPoolState = runLeftoverImprovementLoopState(initialPoolState, context, forkSolverGuard(guard));
     addMetricDuration(metrics, 'leftoverImprovementMs', phaseStartedAtMs);
 
     phaseStartedAtMs = getSolveTimestampMs();
-    const regularPoolState = searchBestRegularPromotionPoolStateFromState(initialPoolState, context, createSolverGuard());
+    const regularPoolState = searchBestRegularPromotionPoolStateFromState(initialPoolState, context, forkSolverGuard(guard));
     addMetricDuration(metrics, 'regularPromotionMs', phaseStartedAtMs);
 
     phaseStartedAtMs = getSolveTimestampMs();
-    const improvedRegularPoolState = runLeftoverImprovementLoopState(regularPoolState, context, createSolverGuard());
+    const improvedRegularPoolState = runLeftoverImprovementLoopState(regularPoolState, context, forkSolverGuard(guard));
     addMetricDuration(metrics, 'leftoverImprovementMs', phaseStartedAtMs);
 
     const candidateStates: ResolvedState[] = [
@@ -2051,7 +1946,7 @@ function resolveWithDefinition(
 
     if (leftoverUnits.length > 0) {
         phaseStartedAtMs = getSolveTimestampMs();
-        const subRegularLeafResult = materializeLeafRulesByStageRecords(leftoverUnits, context, 'sub-regular');
+        const subRegularLeafResult = materializeLeafRulesByStageRecords(leftoverUnits, context, 'sub-regular', guard);
         const fallbackInitialState = createCanonicalGroupPoolStateFromRecords([
             ...regularPoolState.groups,
             ...subRegularLeafResult.records,
@@ -2073,52 +1968,35 @@ function resolveWithDefinition(
 
     candidateStates.push(...exactLeafPartitionStates);
 
-    return finalizeResolvedCandidates(candidateStates, regularPoolState, context, metrics, solveStartedAtMs, guard);
+    return finalizeResolvedCandidates(candidateStates, regularPoolState, context, metrics, guard);
 }
 
 export function resolveFromUnits(
     units: readonly OrgUnit[],
     faction: Faction,
     era: Era | null = null,
-    _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-    const definition = resolveOrgDefinition(faction, era);
-    return resolveWithDefinition(definition, units, []);
+    return runOrgSolve(guard => resolveWithDefinition(resolveOrgDefinition(faction, era), units, [], guard));
 }
 
 export function resolveFromGroups(
     groupResults: readonly GroupSizeResult[],
     faction: Faction,
     era: Era | null = null,
-    _hierarchicalAggregation: boolean = false,
 ): GroupSizeResult[] {
-    const definition = resolveOrgDefinition(faction, era);
-    const context = getResolveContext(definition);
-    if (groupResults.length === 1 && isStableSingleGroupResolveResult(groupResults[0], context)) {
-        return [groupResults[0]];
-    }
-
-    const markedGroups = markGroupsWithProvenance(groupResults, 'input-group');
-    if (!CROSSGRADE_FOREIGN_GROUPS) {
-        const passthroughGroups = markedGroups.filter((group) => isTransparentForeignTypedGroup(group, context));
-        const groupsNeedingResolution = markedGroups.filter((group) => !isTransparentForeignTypedGroup(group, context));
-
-        if (groupsNeedingResolution.length === 0) {
-            return passthroughGroups;
+    return runOrgSolve(guard => {
+        const definition = resolveOrgDefinition(faction, era);
+        const context = getResolveContext(definition);
+        if (groupResults.length === 1 && isStableSingleGroupResolveResult(groupResults[0], context)) {
+            return [groupResults[0]];
         }
-
+        const markedGroups = markGroupsWithProvenance(groupResults, 'input-group');
+        const passthroughGroups = markedGroups.filter(group => isTransparentForeignTypedGroup(group, context));
+        const groupsNeedingResolution = markedGroups.filter(group => !isTransparentForeignTypedGroup(group, context));
+        if (groupsNeedingResolution.length === 0) return passthroughGroups;
         const resolvedGroups = resolveWithDefinition(
-            definition,
-            [],
-            preprocessGroupsForDefinition(definition, groupsNeedingResolution),
+            definition, [], preprocessGroupsForDefinition(definition, groupsNeedingResolution, guard), guard,
         );
-
-        if (passthroughGroups.length === 0) {
-            return resolvedGroups;
-        }
-
-        return [...resolvedGroups, ...passthroughGroups].sort(compareGroupScore);
-    }
-
-    return resolveWithDefinition(definition, [], preprocessGroupsForDefinition(definition, markedGroups));
+        return passthroughGroups.length === 0 ? resolvedGroups : [...resolvedGroups, ...passthroughGroups].sort(compareGroupScore);
+    });
 }

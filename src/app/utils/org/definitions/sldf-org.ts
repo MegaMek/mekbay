@@ -57,7 +57,6 @@ export const SLDF_DIVISION: OrgComposedCountRule = {
     commandRank: 'Major General',
     tier: 6,
     childRoles: [{ matches: ['Brigade'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_CORPS: OrgComposedCountRule = {
@@ -67,7 +66,6 @@ export const SLDF_CORPS: OrgComposedCountRule = {
     commandRank: 'Major General',
     tier: 7,
     childRoles: [{ matches: ['Division'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_ARMY: OrgComposedCountRule = {
@@ -77,7 +75,6 @@ export const SLDF_ARMY: OrgComposedCountRule = {
     commandRank: 'General',
     tier: 8,
     childRoles: [{ matches: ['Corps'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_ARMY_GROUP: OrgComposedCountRule = {
@@ -87,7 +84,6 @@ export const SLDF_ARMY_GROUP: OrgComposedCountRule = {
     commandRank: 'General',
     tier: 9,
     childRoles: [{ matches: ['Army'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_GROUP: OrgComposedCountRule = {
@@ -121,7 +117,6 @@ export const SLDF_NAVAL_DIVISION: OrgComposedCountRule = {
     commandRank: 'Rear Admiral',
     tier: 2,
     childRoles: [{ matches: ['Flotilla'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_NAVAL_SQUADRON: OrgComposedCountRule = {
@@ -131,7 +126,6 @@ export const SLDF_NAVAL_SQUADRON: OrgComposedCountRule = {
     commandRank: 'Vice Admiral',
     tier: 3,
     childRoles: [{ matches: ['Naval Division'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_FLEET: OrgComposedCountRule = {
@@ -141,7 +135,6 @@ export const SLDF_FLEET: OrgComposedCountRule = {
     commandRank: 'Admiral',
     tier: 4,
     childRoles: [{ matches: ['Naval Squadron'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SLDF_CORE_ORG: OrgDefinition = {
@@ -169,8 +162,4 @@ export const SLDF_CORE_ORG: OrgDefinition = {
         SLDF_FLEET
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

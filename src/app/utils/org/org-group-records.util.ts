@@ -4,14 +4,11 @@
 
 /** Lazy group records and shared group-fact construction and materialization. */
 
-import type { ASUnitTypeCode } from '../../models/unit-summary.model';
 import {
     compileGroupFacts,
-    DEFAULT_ORG_RULE_REGISTRY,
     getCIMoveClass,
     getCISquadCount,
-    getNormalizedOrgUnitType,
-    getUnitBucketValue,
+    summarizeGroupUnitFacts,
 } from './org-facts.util';
 import type { ModifierStep } from './org-rule-metadata.util';
 import type {
@@ -28,10 +25,7 @@ import type {
     OrgRuleDefinition,
     OrgUnit,
     OrgUnitBucketName,
-    UnitClassKey,
     UnitFacts,
-    UnitFactTag,
-    UnitNumericScalarName,
 } from './org-types';
 
 let nextSyntheticGroupFactId = -1;
@@ -66,15 +60,6 @@ export interface CISquadAllocation {
     readonly squads: number;
 }
 
-const ABSTRACT_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
-    'classKey',
-    'ciMoveClass',
-    'ciMoveClassTroopers',
-    'flightType',
-    'infantryTroopers',
-    'transport',
-];
-
 const compiledGroupFactsByGroup = new WeakMap<GroupSizeResult, GroupFacts>();
 
 export function getCompiledGroupFacts(group: GroupSizeResult): GroupFacts {
@@ -106,6 +91,14 @@ export function getRuleDisplayName(rule: Pick<OrgRuleDefinition, 'type' | 'displ
     return rule.displayName ?? rule.type;
 }
 
+export function getPartialUnitAllocations(units: readonly UnitFacts[]): GroupUnitAllocation[] | undefined {
+    if (!units.some(facts => facts.squads !== getCISquadCount(facts.unit))) return undefined;
+    return units.map(facts => ({
+        unit: facts.unit,
+        squads: facts.unit.as.TP === 'CI' ? facts.squads : undefined,
+    }));
+}
+
 export function createLeafGroup(
     rule: OrgLeafCountRule | OrgLeafPatternRule,
     modifierStep: ModifierStep,
@@ -121,6 +114,7 @@ export function createLeafGroup(
         tier: modifierStep.tier,
         provenance: 'produced-group',
         units: units.map((facts) => facts.unit),
+        unitAllocations: getPartialUnitAllocations(units),
         formationMatchingIgnoredUnits: formationMatchingIgnoredUnits.length > 0
             ? [...formationMatchingIgnoredUnits]
             : undefined,
@@ -149,6 +143,7 @@ export function createLeafFragmentGroup(
         isFragment: true,
         provenance: 'produced-group',
         units: units.map((facts) => facts.unit),
+        unitAllocations: getPartialUnitAllocations(units),
         tag: rule.tag,
         priority: rule.priority,
     };
@@ -220,35 +215,6 @@ function buildAbstractGroupFactsFromUnits(
     groupTemplate: GroupSizeResult,
     units: readonly UnitFacts[],
 ): GroupFacts {
-    const unitTypeCounts = new Map<ASUnitTypeCode, number>();
-    const unitClassCounts = new Map<UnitClassKey, number>();
-    const unitTagCounts = new Map<UnitFactTag, number>();
-    const unitScalarSums = new Map<UnitNumericScalarName, number>();
-    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>();
-
-    for (const bucketName of ABSTRACT_UNIT_BUCKET_NAMES) {
-        descendantUnitBucketCounts.set(bucketName, new Map<OrgBucketValue, number>());
-    }
-
-    for (const facts of units) {
-        const unitType = getNormalizedOrgUnitType(facts.unit);
-        unitTypeCounts.set(unitType, (unitTypeCounts.get(unitType) ?? 0) + 1);
-        unitClassCounts.set(facts.classKey, (unitClassCounts.get(facts.classKey) ?? 0) + 1);
-        for (const tag of facts.tags) {
-            unitTagCounts.set(tag, (unitTagCounts.get(tag) ?? 0) + 1);
-        }
-        for (const [key, value] of Object.entries(facts.scalars)) {
-            if (typeof value === 'number') {
-                unitScalarSums.set(key as UnitNumericScalarName, (unitScalarSums.get(key as UnitNumericScalarName) ?? 0) + value);
-            }
-        }
-        for (const bucketName of ABSTRACT_UNIT_BUCKET_NAMES) {
-            const bucketCounts = descendantUnitBucketCounts.get(bucketName)!;
-            const bucketValue = getUnitBucketValue(bucketName, facts, DEFAULT_ORG_RULE_REGISTRY) as OrgBucketValue;
-            bucketCounts.set(bucketValue, (bucketCounts.get(bucketValue) ?? 0) + 1);
-        }
-    }
-
     return {
         groupFactId: allocateSyntheticGroupFactId(),
         group: groupTemplate,
@@ -262,11 +228,7 @@ function buildAbstractGroupFactsFromUnits(
         priority: groupTemplate.priority,
         directChildCount: 0,
         childTypeCounts: new Map(),
-        unitTypeCounts,
-        unitClassCounts,
-        unitTagCounts,
-        unitScalarSums,
-        descendantUnitBucketCounts,
+        ...summarizeGroupUnitFacts(units),
     };
 }
 
@@ -588,7 +550,6 @@ export function createAbstractComposedGroupRecord(
         unitTypeCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitTypeCounts),
         unitClassCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitClassCounts),
         unitTagCounts: sumReadonlyCountMaps(childFacts, (child) => child.unitTagCounts),
-        unitScalarSums: sumReadonlyCountMaps(childFacts, (child) => child.unitScalarSums),
         descendantUnitBucketCounts: sumReadonlyNestedCountMaps(childFacts, (child) => child.descendantUnitBucketCounts),
     };
     const record: PlannedGroupRecord = {

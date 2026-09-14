@@ -284,11 +284,6 @@ export type BuiltInChildTypeCountKey =
     | `countsAs:${OrgType}`
     | `tag:${OrgGroupTag}`;
 export type OrgChildTypeCountKey = BuiltInChildTypeCountKey;
-export type BuiltInUnitNumericScalarName =
-    | 'id'
-    | 'tons'
-    | 'troopers';
-export type UnitNumericScalarName = BuiltInUnitNumericScalarName;
 export type OrgBucketValue = BuiltInUnitBucketValue | BuiltInGroupBucketValue;
 export type OrgPatternAliasName = string;
 export type OrgPatternReferenceName = OrgBucketName | OrgPatternAliasName;
@@ -321,6 +316,8 @@ export interface UnitFactScalars {
 export interface UnitFacts {
     readonly unit: OrgUnit;
     readonly factId: number;
+    /** Squad quantity available to this solve, including partial allocations. */
+    readonly squads: number;
     readonly classKey: UnitClassKey;
     readonly tags: ReadonlySet<UnitFactTag>;
     readonly scalars: UnitFactScalars;
@@ -348,7 +345,6 @@ export interface GroupFacts {
     readonly unitTypeCounts: ReadonlyMap<ASUnitTypeCode, number>;
     readonly unitClassCounts: ReadonlyMap<UnitClassKey, number>;
     readonly unitTagCounts: ReadonlyMap<UnitFactTag, number>;
-    readonly unitScalarSums: ReadonlyMap<UnitNumericScalarName, number>;
     readonly descendantUnitBucketCounts: ReadonlyMap<OrgUnitBucketName, ReadonlyMap<OrgBucketValue, number>>;
 }
 
@@ -392,7 +388,6 @@ export interface OrgChildRoleSpec {
 export interface OrgComposedCountAlternativeSpec {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly modifiers: Record<string, number | OrgTypeModifier>;
-    readonly childBucketBy?: OrgGroupBucketName;
     readonly childMatchBucketBy?: OrgGroupBucketName;
 }
 
@@ -492,7 +487,6 @@ export interface OrgLeafPatternRule extends OrgRuleMetadata {
 export interface OrgComposedCountRule extends OrgRuleMetadata {
     readonly kind: 'composed-count';
     readonly childRoles: readonly OrgChildRoleSpec[];
-    readonly childBucketBy?: OrgGroupBucketName;
     readonly childMatchBucketBy?: OrgGroupBucketName;
     readonly requireRegularForPromotion?: boolean;
     readonly alternativeCompositions?: readonly OrgComposedCountAlternativeSpec[];
@@ -518,7 +512,6 @@ export interface OrgComposedPatternRule extends OrgRuleMetadata {
     readonly childRoles: readonly OrgChildRoleSpec[];
     readonly bucketBy: OrgUnitBucketName;
     readonly patterns: readonly OrgPatternSpec[];
-    readonly childBucketBy?: OrgGroupBucketName;
     readonly childMatchBucketBy?: OrgGroupBucketName;
     readonly constraints?: readonly OrgConstraintSpec[];
 }
@@ -550,8 +543,4 @@ export interface OrgRuleRegistry {
 export interface OrgDefinition {
     readonly rules: readonly OrgRuleDefinition[];
     readonly registry: OrgRuleRegistry;
-    readonly distanceFactor: number;
-    readonly minDistance: number;
-    readonly groupDistanceFactor: number;
-    readonly groupMinDistance: number;
 }

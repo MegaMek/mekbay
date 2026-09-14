@@ -62,7 +62,3 @@ export function getAggregatedTier(groupTiers: ReadonlyArray<number>): number {
         baseTier + getTierDeltaForEquivalentGroupCount(equivalentBaseGroups),
     );
 }
-
-export function getRepeatCountForTierDelta(sourceTier: number, targetTier: number): number {
-    return Math.max(1, Math.floor(getEquivalentGroupCountAtTier(sourceTier, targetTier)));
-}

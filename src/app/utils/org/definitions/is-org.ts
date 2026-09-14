@@ -29,7 +29,6 @@ export const IS_SQUADRON: OrgComposedCountRule = {
     commandRank: 'Captain',
     tier: 2,
     childRoles: [{ matches: ['Flight'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_WING: OrgComposedCountRule = {
@@ -40,7 +39,6 @@ export const IS_WING: OrgComposedCountRule = {
     tier: 3,
     priority: 1,
     childRoles: [{ matches: ['Squadron'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_BA_SQUAD: OrgLeafCountRule = {
@@ -62,7 +60,6 @@ export const IS_BA_PLATOON: OrgComposedCountRule = {
     commandRank: 'Lieutenant',
     tier: 1,
     childRoles: [{ matches: ['Squad'], onlyUnitTypes: ['BA'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_PLATOON: OrgCIFormationRule = {
@@ -105,7 +102,6 @@ export const IS_AIR_LANCE: OrgComposedCountRule = {
         { matches: ['Flight'], min: 1 },
         { matches: ['Lance'], min: 1, onlyUnitTypes: ['BM'] },
     ],
-    childBucketBy: 'promotionWithUnitKinds',
 };
 
 export const IS_UNIT: OrgLeafCountRule = {
@@ -136,7 +132,6 @@ export const IS_COMPANY: OrgComposedCountRule = {
     tier: 2,
     dynamicTier: 1,
     childRoles: [{ matches: ['Lance', 'Flight'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_BATTALION: OrgComposedCountRule = {
@@ -147,7 +142,6 @@ export const IS_BATTALION: OrgComposedCountRule = {
     tier: 3,
     dynamicTier: 1,
     childRoles: [{ matches: ['Company', 'Squadron'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_REGIMENT: OrgComposedCountRule = {
@@ -158,7 +152,6 @@ export const IS_REGIMENT: OrgComposedCountRule = {
     tier: 4,
     dynamicTier: 1,
     childRoles: [{ matches: ['Battalion', 'Wing'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_BRIGADE: OrgComposedCountRule = {
@@ -169,7 +162,6 @@ export const IS_BRIGADE: OrgComposedCountRule = {
     tier: 5,
     dynamicTier: 1,
     childRoles: [{ matches: ['Regiment'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const IS_CORE_ORG: OrgDefinition = {
@@ -189,8 +181,4 @@ export const IS_CORE_ORG: OrgDefinition = {
         IS_BRIGADE,
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

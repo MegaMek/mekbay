@@ -95,7 +95,6 @@ export const CLAN_STAR: OrgComposedCountRule = {
     commandRank: 'Star Commander',
     tier: 1,
     childRoles: [{ matches: ['Point'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CLAN_NOVA: OrgComposedPatternRule = {
@@ -164,7 +163,6 @@ export const CLAN_BINARY: OrgComposedCountRule = {
     commandRank: 'Star Captain',
     tier: 1.8,
     childRoles: [{ matches: ['Star'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CLAN_TRINARY: OrgComposedCountRule = {
@@ -174,7 +172,6 @@ export const CLAN_TRINARY: OrgComposedCountRule = {
     commandRank: 'Star Captain',
     tier: 2,
     childRoles: [{ matches: ['Star'] }],
-    childBucketBy: 'promotionBasic',
     alternativeCompositions: [
         {
             modifiers: { '': 2 },
@@ -182,7 +179,6 @@ export const CLAN_TRINARY: OrgComposedCountRule = {
                 { matches: ['Binary'], min: 1 },
                 { matches: ['Star'], min: 1 },
             ],
-            childBucketBy: 'promotionBasic',
         },
     ],
 };
@@ -195,7 +191,6 @@ export const CLAN_SUPERNOVA_BINARY: OrgComposedCountRule = {
     commandRank: 'Nova Captain',
     tier: 2.1,
     childRoles: [{ matches: ['Nova'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CLAN_SUPERNOVA_TRINARY: OrgComposedCountRule = {
@@ -206,7 +201,6 @@ export const CLAN_SUPERNOVA_TRINARY: OrgComposedCountRule = {
     commandRank: 'Nova Captain',
     tier: 2.5,
     childRoles: [{ matches: ['Nova'] }],
-    childBucketBy: 'promotionBasic',
     alternativeCompositions: [
         {
             modifiers: { '': 2 },
@@ -214,7 +208,6 @@ export const CLAN_SUPERNOVA_TRINARY: OrgComposedCountRule = {
                 { matches: ['Supernova Binary'], min: 1 },
                 { matches: ['Nova'], min: 1 },
             ],
-            childBucketBy: 'promotionBasic',
         },
     ],
 };
@@ -226,7 +219,6 @@ export const CLAN_CLUSTER: OrgComposedCountRule = {
     commandRank: 'Star Colonel',
     tier: 3,
     childRoles: [{ matches: ['Binary', 'Trinary'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CLAN_GALAXY: OrgComposedCountRule = {
@@ -236,7 +228,6 @@ export const CLAN_GALAXY: OrgComposedCountRule = {
     commandRank: 'Galaxy Commander',
     tier: 4,
     childRoles: [{ matches: ['Cluster'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const CLAN_CORE_ORG: OrgDefinition = {
@@ -255,8 +246,4 @@ export const CLAN_CORE_ORG: OrgDefinition = {
         CLAN_GALAXY,
     ],
     registry: DEFAULT_ORG_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.25,
-    groupMinDistance: 1,
 };

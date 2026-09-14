@@ -4,7 +4,7 @@
 
 /** Pattern bounds, enumeration, matching, and scoring shared by leaf and composition rules. */
 
-import { shouldAbortSearch, type SolverGuard } from './org-solve-session';
+import { visitOrgSearch, type SolverGuard } from './org-solve-session';
 import type {
     OrgBucketValue,
     OrgPatternBucketMatcher,
@@ -12,8 +12,6 @@ import type {
     OrgPatternScoreTerm,
     OrgPatternSpec,
 } from './org-types';
-
-const MAX_PATTERN_ENUMERATION_VISITS = 50_000;
 
 export interface PatternCandidate {
     readonly allocation: ReadonlyMap<string, number>;
@@ -211,8 +209,7 @@ export function enumeratePatternCandidates(
     const working = new Map<string, number>();
 
     function visit(bucketIndex: number, remaining: number): void {
-        guard.patternVisits += 1;
-        if (guard.patternVisits > MAX_PATTERN_ENUMERATION_VISITS || shouldAbortSearch(guard)) {
+        if (!visitOrgSearch(guard, 'pattern')) {
             return;
         }
         if (remaining < 0) {

@@ -25,7 +25,6 @@ import type {
     TransportBucketValue,
     UnitClassKey,
     UnitFactTag,
-    UnitNumericScalarName,
     UnitFacts,
     OrgUnit,
     OrgTransportSpecial,
@@ -288,7 +287,7 @@ function getGroupCIMoveClassBucketValue(facts: GroupFacts): CIMoveClassBucketVal
     return `CI:${moveClassTags[0].slice('ci:'.length)}` as CIMoveClassBucketValue;
 }
 
-export function compileUnitFacts(unit: OrgUnit): UnitFacts {
+export function compileUnitFacts(unit: OrgUnit, squads: number = getCISquadCount(unit)): UnitFacts {
     const tags = new Set<UnitFactTag>();
 
     tags.add(getUnitClassKey(unit));
@@ -303,6 +302,7 @@ export function compileUnitFacts(unit: OrgUnit): UnitFacts {
     return {
         unit,
         factId: allocateUnitFactId(),
+        squads,
         classKey: getUnitClassKey(unit),
         tags,
         scalars: {
@@ -323,7 +323,7 @@ export function compileUnitFacts(unit: OrgUnit): UnitFacts {
 }
 
 export function compileUnitFactsList(units: ReadonlyArray<OrgUnit>): UnitFacts[] {
-    return units.map(compileUnitFacts);
+    return units.map(unit => compileUnitFacts(unit));
 }
 
 export function buildUnitFactsMap(units: ReadonlyArray<OrgUnit>): WeakMap<OrgUnit, UnitFacts> {
@@ -378,15 +378,6 @@ export function compileGroupFacts(
     groupUnitCache?: WeakMap<GroupSizeResult, OrgUnit[]>,
 ): GroupFacts {
     const childTypeCounts = new Map<OrgChildTypeCountKey, number>();
-    const unitTypeCounts = new Map<OrgUnit['as']['TP'], number>();
-    const unitClassCounts = new Map<UnitClassKey, number>();
-    const unitTagCounts = new Map<UnitFactTag, number>();
-    const unitScalarSums = new Map<UnitNumericScalarName, number>();
-    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>();
-
-    for (const bucketName of ORG_UNIT_BUCKET_NAMES) {
-        descendantUnitBucketCounts.set(bucketName, new Map<OrgBucketValue, number>());
-    }
 
     for (const child of group.children ?? []) {
         incrementCount(childTypeCounts, child.type ?? 'null');
@@ -407,29 +398,7 @@ export function compileGroupFacts(
     }
 
     const allocations = directAllocations ?? groupUnits.map((unit) => ({ unit }));
-
-    for (const allocation of allocations) {
-        const facts = unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit);
-        const normalizedUnitType = getNormalizedOrgUnitType(facts.unit);
-
-        incrementCount(unitTypeCounts, normalizedUnitType);
-        incrementCount(unitClassCounts, facts.classKey);
-        for (const tag of facts.tags) {
-            incrementCount(unitTagCounts, tag);
-        }
-        for (const [key, value] of Object.entries(facts.scalars)) {
-            if (typeof value === 'number') {
-                incrementCount(unitScalarSums, key as UnitNumericScalarName, value);
-            }
-        }
-
-        incrementCount(descendantUnitBucketCounts.get('classKey')!, facts.classKey);
-        incrementCount(descendantUnitBucketCounts.get('ciMoveClass')!, getCIMoveClassBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('ciMoveClassTroopers')!, getCIMoveClassTrooperBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('flightType')!, getFlightTypeBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('infantryTroopers')!, getInfantryTrooperBucketValue(facts));
-        incrementCount(descendantUnitBucketCounts.get('transport')!, getTransportBucketValue(facts));
-    }
+    const unitFacts = allocations.map(allocation => unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit));
 
     return {
         groupFactId: allocateGroupFactId(),
@@ -444,12 +413,55 @@ export function compileGroupFacts(
         priority: group.priority,
         directChildCount: group.children?.length ?? 0,
         childTypeCounts,
-        unitTypeCounts,
-        unitClassCounts,
-        unitTagCounts,
-        unitScalarSums,
-        descendantUnitBucketCounts,
+        ...summarizeGroupUnitFacts(unitFacts),
     };
+}
+
+/** The same unit aggregates are used by concrete groups and lazy planned groups. */
+export function summarizeGroupUnitFacts(units: readonly UnitFacts[]): Pick<GroupFacts,
+    'unitTypeCounts' | 'unitClassCounts' | 'unitTagCounts' | 'descendantUnitBucketCounts'
+> {
+    const unitTypeCounts = new Map<OrgUnit['as']['TP'], number>();
+    const unitClassCounts = new Map<UnitClassKey, number>();
+    const unitTagCounts = new Map<UnitFactTag, number>();
+    const descendantUnitBucketCounts = new Map<OrgUnitBucketName, Map<OrgBucketValue, number>>(
+        ORG_UNIT_BUCKET_NAMES.map(name => [name, new Map<OrgBucketValue, number>()]),
+    );
+    for (const facts of units) {
+        incrementCount(unitTypeCounts, getNormalizedOrgUnitType(facts.unit));
+        incrementCount(unitClassCounts, facts.classKey);
+        for (const tag of facts.tags) incrementCount(unitTagCounts, tag);
+        for (const bucketName of ORG_UNIT_BUCKET_NAMES) {
+            const value = getUnitBucketValue(bucketName, facts, DEFAULT_ORG_RULE_REGISTRY) as OrgBucketValue;
+            incrementCount(descendantUnitBucketCounts.get(bucketName)!, value);
+        }
+    }
+    return { unitTypeCounts, unitClassCounts, unitTagCounts, descendantUnitBucketCounts };
+}
+
+/** Preserve infantry quantities while ignoring the units aliases of allocations. */
+export function collectGroupUnitAllocations(group: GroupSizeResult): GroupUnitAllocation[] {
+    const byUnit = new Map<OrgUnit, GroupUnitAllocation>();
+    function add(allocations: readonly GroupUnitAllocation[] = [], units: readonly OrgUnit[] = []): void {
+        const allocated = new Set(allocations.map(allocation => allocation.unit));
+        const entries: GroupUnitAllocation[] = [...allocations, ...units.filter(unit => !allocated.has(unit)).map(unit => ({ unit }))];
+        for (const allocation of entries) {
+            const unit = allocation.unit;
+            if (isCI(unit)) {
+                const squads = allocation.squads ?? getCISquadCount(unit);
+                byUnit.set(unit, { unit, squads: (byUnit.get(unit)?.squads ?? 0) + squads });
+            } else {
+                byUnit.set(unit, { unit });
+            }
+        }
+    }
+    function visit(current: GroupSizeResult): void {
+        add(current.unitAllocations, current.units);
+        add(current.leftoverUnitAllocations, current.leftoverUnits);
+        for (const child of current.children ?? []) visit(child);
+    }
+    visit(group);
+    return [...byUnit.values()];
 }
 
 export function createOrgRuleRegistry(

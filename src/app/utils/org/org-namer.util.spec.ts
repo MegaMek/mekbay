@@ -269,7 +269,7 @@ describe('org-namer.util', () => {
 			modifierKey: 'Under-Strength ',
 			tier: underStrengthBattalionTier,
 		}));
-		const promoted = resolveFromGroups(battalions, innerSphereFaction, null, true);
+		const promoted = resolveFromGroups(battalions, innerSphereFaction);
 		const result = getOrgFromForceCollection([], innerSphereFaction, null, battalions);
 
 		expect(promoted.length).toBe(1);

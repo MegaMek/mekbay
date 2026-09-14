@@ -34,7 +34,7 @@ import {
     type ModifierStep,
     type RuleModifierDescriptor,
 } from './org-rule-metadata.util';
-import { createSolverGuard, shouldAbortSearch, type SolverGuard } from './org-solve-session';
+import { createSolverGuard, forkSolverGuard, shouldAbortSearch, stopOrgSearch, type SolverGuard } from './org-solve-session';
 import type {
     GroupFacts,
     GroupSizeResult,
@@ -145,7 +145,7 @@ export function groupUnitsByPreferredType(units: readonly UnitFacts[]): Map<stri
 }
 
 function createCISquadAllocation(facts: UnitFacts): CISquadAllocation {
-    return { unit: facts.unit, squads: getCISquadCount(facts.unit) };
+    return { unit: facts.unit, squads: facts.squads };
 }
 
 function getCIEntryDescriptor(
@@ -738,6 +738,7 @@ function materializeLeafPatternsShared(
         selections.push(chosenSelection);
     }
 
+    if (iterations >= MAX_PATTERN_GREEDY_ITERATIONS) stopOrgSearch(guard, 'iteration-limit');
     return selections;
 }
 
@@ -831,14 +832,15 @@ export function materializeLeafPatternWithCandidateRecords(
     rule: OrgLeafPatternRule,
     unitFacts: readonly UnitFacts[],
     registry: OrgRuleRegistry,
+    parentGuard: SolverGuard,
 ): { records: PlannedGroupRecord[]; leftoverUnitFacts: UnitFacts[] } {
+    const guard = forkSolverGuard(parentGuard);
     const eligibleUnits = unitFacts.filter((facts) => matchesUnitSelectors(facts, rule.unitSelector, registry));
     const ineligibleUnits = unitFacts.filter((facts) => !matchesUnitSelectors(facts, rule.unitSelector, registry));
     const unitsByBucket = groupUnitsByBucket(eligibleUnits, rule.bucketBy, registry);
     const descriptor = getRuleModifierDescriptor(rule);
     const selectedFactIds = new Set<number>();
     const records: PlannedGroupRecord[] = [];
-    const guard = createSolverGuard();
 
     const selections = materializeLeafPatternsShared(rule.patterns, unitsByBucket, guard);
     for (const selection of selections) {

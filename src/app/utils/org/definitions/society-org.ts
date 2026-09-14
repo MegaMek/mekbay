@@ -101,7 +101,6 @@ export const SOCIETY_TREY: OrgComposedCountRule = {
     modifiers: { '': 3 },
     tier: 0.8,
     childRoles: [{ matches: ['Un'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SOCIETY_SEPT: OrgComposedCountRule = {
@@ -110,7 +109,6 @@ export const SOCIETY_SEPT: OrgComposedCountRule = {
     modifiers: { '': 7 },
     tier: 1.6,
     childRoles: [{ matches: ['Un'] }],
-    childBucketBy: 'promotionBasic',
 };
 
 export const SOCIETY_CORE_ORG: OrgDefinition = {
@@ -125,8 +123,4 @@ export const SOCIETY_CORE_ORG: OrgDefinition = {
         SOCIETY_SEPT,
     ],
     registry: SOCIETY_RULE_REGISTRY,
-    distanceFactor: 0.2,
-    minDistance: 2,
-    groupDistanceFactor: 0.5,
-    groupMinDistance: 1,
 };
