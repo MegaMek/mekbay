@@ -9,26 +9,36 @@ import type { Era } from './eras.model';
 import type { TechBase, UnitTechBaseDisplay } from './tech.model';
 import type { WeaponType } from './weapon-types.model';
 import type { SourceHashCanary } from './source-hash-canary';
-import type {
-  CatalogEntryOrigin,
-  UnitProviderId,
-  UnitUuid,
-} from '../services/unit-catalog/unit-catalog.types';
+import type { CatalogEntryOrigin, UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 24 as const;
+export const UNIT_SUMMARY_VERSION = 25 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
 export const CBT_WEIGHT_CLASSES = [
-  'Ultra Light/PA(L)/Exoskeleton', 'Light', 'Medium', 'Heavy', 'Assault',
-  'Colossal/Super-Heavy', 'Small Craft', 'Small DropShip', 'Small JumpShip',
-  'Small Space Station', 'Small Support Vehicle', 'Small WarShip',
-  'Medium DropShip', 'Medium Support Vehicle', 'Large DropShip',
-  'Large JumpShip', 'Large Space Station', 'Large Support Vehicle', 'Large WarShip',
+  'Ultra Light/PA(L)/Exoskeleton',
+  'Light',
+  'Medium',
+  'Heavy',
+  'Assault',
+  'Colossal/Super-Heavy',
+  'Small Craft',
+  'Small DropShip',
+  'Small JumpShip',
+  'Small Space Station',
+  'Small Support Vehicle',
+  'Small WarShip',
+  'Medium DropShip',
+  'Medium Support Vehicle',
+  'Large DropShip',
+  'Large JumpShip',
+  'Large Space Station',
+  'Large Support Vehicle',
+  'Large WarShip',
 ] as const;
 
-export type WeightClass = typeof CBT_WEIGHT_CLASSES[number];
+export type WeightClass = (typeof CBT_WEIGHT_CLASSES)[number];
 
 export const CBT_WEIGHT_CLASS_ORDINALS = new Map<WeightClass, number>(
   CBT_WEIGHT_CLASSES.map((weightClass, index) => [weightClass, index] as const),
@@ -66,7 +76,25 @@ export interface PublicTagInfo {
   subscribed: boolean;
 }
 
-export type ASUnitTypeCode = 'BM' | 'IM' | 'CV' | 'SV' | 'PM' | 'BA' | 'CI' | 'AF' | 'CF' | 'SC' | 'WS' | 'SS' | 'JS' | 'DA' | 'DS' | 'MS' | 'BD' | 'XX';
+export type ASUnitTypeCode =
+  | 'BM'
+  | 'IM'
+  | 'CV'
+  | 'SV'
+  | 'PM'
+  | 'BA'
+  | 'CI'
+  | 'AF'
+  | 'CF'
+  | 'SC'
+  | 'WS'
+  | 'SS'
+  | 'JS'
+  | 'DA'
+  | 'DS'
+  | 'MS'
+  | 'BD'
+  | 'XX';
 
 export interface AlphaStrikeArcStats {
   STD: { dmgM: string; dmgL: string; dmgE: string; dmgS: string };
