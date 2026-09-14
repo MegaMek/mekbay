@@ -13,14 +13,15 @@ import { applyForceUnitOwnerC3Position, type ForceUnit } from './force-unit.mode
 import { GameSystem } from './common.model';
 import { C3NetworkEditor } from './c3-network-editor';
 import { Sanitizer } from '../utils/sanitizer.util';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { LoggerService } from '../services/logger.service';
 import { type Faction } from './factions.model';
 import type { Era } from './eras.model';
-import { type FormationTypeDefinition, type FormationMatch, formationNameMatchesGroupName, isNoFormation, NO_FORMATION } from '../utils/formation-type.model';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
-import { composeFormationDisplayName } from '../utils/formation-namer.util';
+import { type FormationTypeDefinition, formationNameMatchesGroupName, isNoFormation, NO_FORMATION } from '../utils/formation/formation-type.model';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
+import { composeFormationDisplayName } from '../utils/formation/formation-namer.util';
 import type { OrgSizeResult } from '../utils/org/org-types';
-import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-namer.util';
+import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-analysis.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 import { MULFACTION_EXTINCT } from './mulfactions.model';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
@@ -38,7 +39,7 @@ import {
 import {
     formationUnitTechBaseFacts,
     type FormationUnitLike,
-} from '../utils/formation-unit-facts.util';
+} from '../utils/formation/formation-facts.util';
 import type { ForceMember } from './force-member.model';
 
 
@@ -194,7 +195,7 @@ export function resolveSerializedFormation(
     gameSystem: GameSystem,
 ): FormationTypeDefinition | null {
     if (formationId) {
-        return LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem);
+        return FormationAnalyzer.getDefinitionById(formationId, gameSystem);
     }
 
     return formationLock ? NO_FORMATION : null;
@@ -289,7 +290,7 @@ export function getEraUnitValidationSummary(
     }
 
     for (const unit of units) {
-        const displayName = unit.name;
+        const displayName = formatUnitName(unit);
         const unitKey = availabilityContext.getUnitKey(unit);
         const isTrackedInAnyEra = trackedUnitIds.has(unitKey);
 
@@ -502,32 +503,31 @@ export class UnitGroup<TUnit extends ForceUnit = ForceUnit> {
     });
 
     /**
-     * Formation validation.
-     * Returns the FormationMatch if the current formation is valid, or null.
+     * Validity and per-unit diagnostics for the selected formation.
      */
-    private _formationMatch = computed<FormationMatch | null>(() => {
+    formationAnalysis = computed(() => {
         const formation = this.activeFormation();
         if (!formation) return null;
-        return LanceTypeIdentifierUtil.isFormationValidForGroup(formation, this);
+        return FormationAnalyzer.analyzeFormationForGroup(formation, this);
     });
 
     hasValidFormation = computed<boolean>(() => {
         const formation = this.activeFormation();
         if (!formation) return true;
-        return this._formationMatch() !== null;
+        return this.formationAnalysis()?.evaluation.valid ?? false;
     });
 
     /** Whether the current formation required organization-level unit filtering. */
     isFormationRequirementsFiltered = computed<boolean>(() => {
-        return this._formationMatch()?.requirementsFiltered ?? false;
+        return this.formationAnalysis()?.requirementsFiltered ?? false;
     });
 
     formationRequirementsFilterNotice = computed<string | null>(() => {
-        return this._formationMatch()?.requirementsFilterNotice ?? null;
+        return this.formationAnalysis()?.requirementsFilterNotice ?? null;
     });
 
     formationRequirementsFilterCompositionName = computed<string | null>(() => {
-        return this._formationMatch()?.requirementsFilterCompositionName ?? null;
+        return this.formationAnalysis()?.requirementsFilterCompositionName ?? null;
     });
 }
 

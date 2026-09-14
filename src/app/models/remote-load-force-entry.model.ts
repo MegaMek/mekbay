@@ -4,9 +4,12 @@
 import { GameSystem } from './common.model';
 import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { unpackUuid } from './runtime/compact-uuid';
+import { decodeCustomDesignPreviews } from './custom-design-policy';
+import type { CustomDesignPreview } from './pinned-custom-unit-source';
 
 export interface RemoteLoadForceUnit {
     embeddedCustom?: true;
+    customPreview?: CustomDesignPreview;
     unit?: string;
     uuid?: UnitUuid;
     alias?: string;
@@ -49,7 +52,7 @@ export type RemoteLoadForceListUnitV2 = readonly [uuid: string, details?: {
     readonly commander?: true;
     readonly destroyed?: true;
     readonly vacant?: true;
-    readonly embeddedCustom?: true;
+    readonly customDesign?: number;
 }];
 
 export interface RemoteLoadForceListGroupV2 {
@@ -64,6 +67,7 @@ export interface RemoteLoadForceListEntryV2 extends Omit<RemoteLoadForceEntry, '
     readonly timestamp: number;
     readonly type: GameSystem;
     readonly groups: readonly RemoteLoadForceListGroupV2[];
+    readonly customDesigns?: { readonly previews: readonly CustomDesignPreview[] };
 }
 
 export type RemoteLoadForceWireEntry = RemoteLoadForceEntry | RemoteLoadForceListEntryV2;
@@ -80,6 +84,8 @@ export function decodeRemoteLoadForceEntry(value: unknown): RemoteLoadForceEntry
     const type = root['type'] === GameSystem.AS ? GameSystem.AS : GameSystem.CBT;
     const timestamp = typeof root['timestamp'] === 'number'
         ? new Date(root['timestamp']).toISOString() : root['timestamp'];
+    const previews = version === 2 && root['customDesigns'] !== undefined
+        ? decodeCustomDesignPreviews(record(root['customDesigns'], 'custom designs')['previews']) : undefined;
     let reserveCount = 0;
     if (version === 2) {
         reserveCount = Array.isArray(root['personnel']) ? root['personnel'].length : 0;
@@ -104,22 +110,22 @@ export function decodeRemoteLoadForceEntry(value: unknown): RemoteLoadForceEntry
         ...(typeof root['owned'] === 'boolean' ? { owned: root['owned'] } : {}),
         reserveCount,
         groups: version === 1 ? legacyGroups(root)
-            : root['units'] === undefined ? currentListGroups(root, type) : storedGroups(root, type),
+            : root['units'] === undefined ? currentListGroups(root, type, previews) : storedGroups(root, type, previews),
     };
 }
 
-function currentListGroups(root: Record<string, unknown>, system: GameSystem): RemoteLoadForceGroup[] {
+function currentListGroups(root: Record<string, unknown>, system: GameSystem, previews: readonly CustomDesignPreview[] | undefined): RemoteLoadForceGroup[] {
     return array(root['groups'], 'force.groups').map(value => {
         const group = record(value, 'force group');
         return {
             ...(typeof group['name'] === 'string' ? { name: group['name'] } : {}),
             ...(typeof group['formationId'] === 'string' ? { formationId: group['formationId'] } : {}),
-            units: array(group['units'], 'force group units').map(value => currentListUnit(value, system)),
+            units: array(group['units'], 'force group units').map(value => currentListUnit(value, system, previews)),
         };
     });
 }
 
-function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUnit {
+function currentListUnit(value: unknown, system: GameSystem, previews: readonly CustomDesignPreview[] | undefined): RemoteLoadForceUnit {
     const row = array(value, 'force-list unit');
     if (row.length < 1 || row.length > 2 || typeof row[0] !== 'string') {
         throw new Error('Invalid force-list unit tuple');
@@ -134,7 +140,7 @@ function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUni
                 throw new Error('Invalid force-list unit ' + key);
             }
         }
-        for (const key of ['commander', 'destroyed', 'vacant', 'embeddedCustom']) {
+        for (const key of ['commander', 'destroyed', 'vacant']) {
             if (details[key] !== undefined && typeof details[key] !== 'boolean') {
                 throw new Error('Invalid force-list unit ' + key);
             }
@@ -142,7 +148,7 @@ function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUni
     }
     const unit: RemoteLoadForceUnit = {
         uuid: asUnitUuid(unpackUuid(row[0], 'force-list unit UUID')),
-        ...(details?.['embeddedCustom'] === true ? { embeddedCustom: true } : {}),
+        ...customDesignPreviewFields(details?.['customDesign'], previews),
         state: { destroyed: details?.['destroyed'] === true },
     };
     if (details?.['vacant'] === true) return unit;
@@ -157,7 +163,7 @@ function currentListUnit(value: unknown, system: GameSystem): RemoteLoadForceUni
 }
 
 /** Local IndexedDB records expose the same preview facts without decoding runtime state. */
-function storedGroups(root: Record<string, unknown>, system: GameSystem): RemoteLoadForceGroup[] {
+function storedGroups(root: Record<string, unknown>, system: GameSystem, previews: readonly CustomDesignPreview[] | undefined): RemoteLoadForceGroup[] {
     const units = array(root['units'], 'force.units').map((value, index): RemoteLoadForceUnit => {
         const unit = record(value, 'force.units[' + index + ']');
         if (typeof unit['uuid'] !== 'string') throw new Error('Missing force-list unit UUID');
@@ -179,7 +185,7 @@ function storedGroups(root: Record<string, unknown>, system: GameSystem): Remote
         }
         return {
             uuid: asUnitUuid(unpackUuid(unit['uuid'], 'force.units[' + index + '].uuid')),
-            ...(typeof unit['customDesign'] === 'number' ? { embeddedCustom: true as const } : {}),
+            ...customDesignPreviewFields(unit['customDesign'], previews),
             ...(typeof pilot?.['name'] === 'string' ? { alias: pilot['name'] } : {}),
             ...(system === GameSystem.AS ? {
                 ...(pilot ? { skill: typeof pilot['g'] === 'number' ? pilot['g'] : 4 } : {}),
@@ -201,6 +207,14 @@ function storedGroups(root: Record<string, unknown>, system: GameSystem): Remote
             }),
         };
     });
+}
+
+function customDesignPreviewFields(index: unknown, previews: readonly CustomDesignPreview[] | undefined): Pick<RemoteLoadForceUnit, 'embeddedCustom' | 'customPreview'> {
+    if (index === undefined) return {};
+    if (!Number.isSafeInteger(index) || (index as number) < 0 || (previews && !previews[index as number])) {
+        throw new Error('Invalid custom design preview reference');
+    }
+    return { embeddedCustom: true, ...(previews ? { customPreview: previews[index as number] } : {}) };
 }
 
 /** Legacy previews never migrate, materialize, or overwrite a unit. */

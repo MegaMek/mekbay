@@ -3,15 +3,19 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { type FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { type FormationTypeDefinition, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import { GameSystem } from '../../models/common.model';
+import type { FormationEvaluation } from '../../utils/formation/formation-requirement.model';
+import type { FormationUnitLike } from '../../utils/formation/formation-facts.util';
 
 
 export interface FormationDisplayItem {
     definition: FormationTypeDefinition;
     displayName: string;
     isValid: boolean;
+    evaluation?: FormationEvaluation;
+    units?: readonly FormationUnitLike[];
     /** Whether this formation required organization-level requirement filtering. */
     requirementsFiltered: boolean;
     /** Optional org composition name that caused requirement filtering. */
@@ -112,7 +116,7 @@ export interface FormationDropdownPointerHoverEvent {
                             </div>
                             @if (expandedId() === item.definition.id) {
                                 <div class="formation-option-details">
-                                    <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
+                                    <formation-info [formation]="item.definition" [evaluation]="item.evaluation" [units]="item.units ?? []" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="true" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                                 </div>
                             }
                         </div>
@@ -124,7 +128,7 @@ export interface FormationDropdownPointerHoverEvent {
                 }
 
                 @if (otherFormations().length > 0) {
-                    <div class="section-label">Invalid Formations</div>
+                    <div class="section-label">Incomplete or Invalid Formations</div>
                     @for (item of otherFormations(); let optionIndex = $index; track item.definition.id) {
                         <div class="formation-option-wrapper not-matching"
                              role="option"
@@ -151,7 +155,7 @@ export interface FormationDropdownPointerHoverEvent {
                             </div>
                             @if (expandedId() === item.definition.id) {
                                 <div class="formation-option-details">
-                                    <formation-info [formation]="item.definition" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
+                                    <formation-info [formation]="item.definition" [evaluation]="item.evaluation" [units]="item.units ?? []" [gameSystem]="gameSystem()" [showTitle]="false" [isValid]="false" [requirementsFiltered]="item.requirementsFiltered" [requirementsFilterCompositionName]="item.requirementsFilterCompositionName" [requirementsFilterNotice]="item.requirementsFilterNotice"></formation-info>
                                 </div>
                             }
                         </div>

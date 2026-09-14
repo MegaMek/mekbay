@@ -28,10 +28,13 @@ import { uuidv7 } from '../utils/uuid.util';
 import type { CrewMemberDetails } from './crew-member.model';
 import type { SerializedCBTForceV2 } from './runtime/persistence-v2';
 import { assignedForcePerson, type ForcePerson } from './force-personnel';
+import type { CustomDesignPreview } from './pinned-custom-unit-source';
+import type { Options } from './options.model';
 
 export interface ForcePreviewUnit {
     unit: UnitSummary | undefined;
     embeddedCustom?: true;
+    customPreview?: CustomDesignPreview;
     alias?: string;
     destroyed: boolean;
     skill?: number;
@@ -40,6 +43,25 @@ export interface ForcePreviewUnit {
     crew?: CrewMemberDetails[];
     commander?: boolean;
     lockKey?: string;
+}
+
+interface ForcePreviewUnitDisplay {
+    name: (Pick<UnitSummary, 'chassis' | 'model' | 'clanName'> & { baseChassis?: string }) | undefined;
+    iconPath?: string;
+    showName: boolean;
+}
+
+/** Both saved-force views use the pinned identity, even if the catalog has a newer revision. */
+export function getForcePreviewUnitDisplay(entry: ForcePreviewUnit, mode: Options['unitDisplayName']): ForcePreviewUnitDisplay {
+    const showName = mode === 'chassisModel' || mode === 'both' || !entry.alias;
+    if (!entry.embeddedCustom) return { name: entry.unit, showName };
+    const [chassis = '', model = '', clanName = '', iconPath = ''] = entry.customPreview ?? [];
+    const unknown = !chassis && !clanName;
+    return {
+        name: { chassis: unknown ? 'Unknown' : chassis, model, clanName },
+        iconPath,
+        showName: unknown || showName,
+    };
 }
 
 export interface ForcePreviewGroup {
@@ -151,6 +173,7 @@ export function createForcePreviewUnit(
             : raw.unit === undefined ? undefined : getUnitByIdentifier(raw.unit),
         destroyed: raw.state?.destroyed ?? false,
         ...(raw.embeddedCustom ? { embeddedCustom: true } : {}),
+        ...(raw.customPreview ? { customPreview: raw.customPreview } : {}),
         lockKey: uuidv7(),
     };
 
@@ -188,8 +211,10 @@ export function createForcePreviewUnitFromForceMember(
 ): ForcePreviewUnit {
     if (isCBTForceMember(member)) {
         const crew = member.force.getUnitCrewAssignment(member.id)?.positions ?? [];
+        const customSource = member.force.getUnitCustomSource(member.id);
         const previewUnit: ForcePreviewUnit = {
             unit: resolveCBTSummary?.(member),
+            ...(customSource ? { embeddedCustom: true as const, customPreview: customSource.preview } : {}),
             destroyed: member.force.getUnitDestroyed(member.id) ?? false,
             lockKey: member.id,
         };
@@ -232,6 +257,7 @@ function createCBTForcePreviewGroups(
             const preview: ForcePreviewUnit = {
                 unit: resolver.getUnitByUuid(identity),
                 ...(entry.unit.customSource ? { embeddedCustom: true } : {}),
+                ...(entry.unit.customSource?.preview ? { customPreview: entry.unit.customSource.preview } : {}),
                 destroyed: entry.unit.destroyed === true,
                 lockKey: member.instanceId,
             };

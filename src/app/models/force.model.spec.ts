@@ -21,7 +21,7 @@ import type { UnitSummary } from './unit-summary.model';
 import type { DataService } from '../services/data.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import type { ForceAvailabilityContext } from '../utils/force-availability.util';
-import { NO_FORMATION } from '../utils/formation-type.model';
+import { NO_FORMATION } from '../utils/formation/formation-type.model';
 import { C3NetworkType } from './c3-network.model';
 import type { PreparedCBTForcePersistenceV2 } from './runtime/force-persistence-boundary';
 import {
@@ -300,7 +300,13 @@ describe('getEraUnitValidationSummary', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const earlierEra = createEra(3000, 3000, 3024);
         const extinctFaction = createFaction(3, 'Extinct');
-        const unit = createUnit(101, 'Shadow Hawk SHD-2H', 3020);
+        const unit = createEmptyUnit({
+            mul1id: 101,
+            name: 'BMShadowHawk_SHD2H',
+            chassis: 'Shadow Hawk',
+            model: 'SHD-2H',
+            year: 3020,
+        });
 
         const visibilityByEra = new Map<number, ReadonlySet<string>>([
             [earlierEra.id, new Set([unit.uuid])],
@@ -329,7 +335,7 @@ describe('getEraUnitValidationSummary', () => {
         );
 
         expect(summary.extinctTrackedUnits).toBe(1);
-        expect(summary.extinctTrackedUnitNames).toEqual([unit.name]);
+        expect(summary.extinctTrackedUnitNames).toEqual(['Shadow Hawk SHD-2H']);
         expect(summary.invalidTrackedUnits).toBe(0);
     });
 });

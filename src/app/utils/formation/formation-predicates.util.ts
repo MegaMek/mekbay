@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem } from '../models/common.model';
-import { isClan } from './org/org-registry.util';
+import { GameSystem } from '../../models/common.model';
+import { isClan } from '../org/org-registry.util';
 import type { FormationFactKey, FormationPredicateId } from './formation-requirement.model';
-import { formationCanDealDamage, type FormationUnitFacts } from './formation-unit-facts.util';
+import { formationCanDealDamage, type FormationUnitFacts } from './formation-facts.util';
 
 type FormationPredicate = (facts: FormationUnitFacts, gameSystem: GameSystem) => boolean;
 

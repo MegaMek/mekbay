@@ -65,6 +65,9 @@ jobs:
       - name: Verify script typechecks
         run: npm run typecheck:scripts
 
+      - name: Verify SEO documents and route coverage
+        run: npm run test:seo
+
       - name: Verify entity/runtime architecture boundaries
         run: npm run test:convergence-architecture && npm run test:equipment-status-architecture && npm run typecheck:equipment-status-profile
 
@@ -76,4 +79,4 @@ jobs:
       # Assets were generated above; invoke the production target directly so
       # the expensive mm-data and sprite generation is not repeated.
       - name: Build production application
-        run: npm exec -- ng build --configuration=production
+        run: npm exec -- ng build --configuration=production && npm run postbuild

@@ -8,7 +8,7 @@ import { alphaStrikeUnitType } from '../../models/entity/utils/alpha-strike/foun
 import { alphaStrikeMovement } from '../../models/entity/utils/alpha-strike/foundation/movement';
 import { collectAlphaStrikeInfantrySpecials } from '../../models/entity/utils/alpha-strike/specials/core-specials';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import type { FormationUnitLike } from '../formation-unit-facts.util';
+import type { FormationUnitLike } from '../formation/formation-facts.util';
 import type { OrgEntityUnit, OrgUnit } from './org-types';
 
 /** Catalog rows already contain exactly the structural facts the solver needs. */

@@ -3,17 +3,17 @@
 // Author: Drake
 
 import { signal } from '@angular/core';
-import { GameSystem } from '../models/common.model';
-import { type Faction } from '../models/factions.model';
-import type { ASForceUnit } from '../models/as-force-unit.model';
-import type { UnitGroup } from '../models/force.model';
-import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
-import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
+import { GameSystem } from '../../models/common.model';
+import { type Faction } from '../../models/factions.model';
+import type { ASForceUnit } from '../../models/as-force-unit.model';
+import type { UnitGroup } from '../../models/force.model';
+import type { UnitSummary, UnitSubtype } from '../../models/unit-summary.model';
+import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { FormationAbilityAssignmentUtil } from './formation-ability-assignment.util';
-import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import { FormationAnalyzer } from './formation-analysis.util';
 import type { FormationTypeDefinition } from './formation-type.model';
-import type { GroupSizeResult } from './org/org-types';
-import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
+import type { GroupSizeResult } from '../org/org-types';
+import { MULFACTION_MERCENARY, type FactionAffinity } from '../../models/mulfactions.model';
 
 function createUnit(
     id: number,
@@ -123,7 +123,7 @@ function createGroup(
 }
 
 function getFormation(id: string): FormationTypeDefinition {
-    const formation = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.AS);
+    const formation = FormationAnalyzer.getDefinitionById(id, GameSystem.AS);
     if (!formation) {
         throw new Error(`Formation ${id} not found`);
     }

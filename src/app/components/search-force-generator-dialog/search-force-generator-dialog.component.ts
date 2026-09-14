@@ -50,10 +50,10 @@ import { WsService } from '../../services/ws.service';
 import type { AdvFilterOptions, DropdownFilterOptions } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { resolveDropdownNamesFromFilter } from '../../utils/filter-name-resolution.util';
-import { getFormationDefinitions } from '../../utils/formation-blueprints';
-import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
-import { getFormationDropdownDisplayName, type FormationTypeDefinition } from '../../utils/formation-type.model';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { getFormationDefinitions } from '../../utils/formation/formation-definitions';
+import { FormationSolver } from '../../utils/formation/formation-solver.util';
+import { getFormationDropdownDisplayName, type FormationTypeDefinition } from '../../utils/formation/formation-type.model';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import { type HighlightToken, tokenizeForHighlight } from '../../utils/semantic-filter-ast.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeMultiStateSelection } from '../../utils/unit-search-shared.util';
@@ -317,8 +317,8 @@ export class SearchForceGeneratorDialogComponent {
     readonly targetFormationStateCycle = ['or'] as const;
     readonly targetFormationOptions = computed<DropdownOption[]>(() => {
         const definitions = getFormationDefinitions(this.gameSystem())
-            .filter((definition) => FormationRequirementEngine.hasBlueprint(definition.id))
-            .filter((definition) => LanceTypeIdentifierUtil.getDefinitionById(definition.id, this.gameSystem()) !== null)
+            .filter((definition) => FormationSolver.hasBlueprint(definition.id))
+            .filter((definition) => FormationAnalyzer.getDefinitionById(definition.id, this.gameSystem()) !== null)
             .filter((definition) => this.isTargetFormationAvailableForSelectedFactions(definition));
 
         return definitions
@@ -348,7 +348,7 @@ export class SearchForceGeneratorDialogComponent {
     });
     readonly targetFormationAvailabilityDefinition = computed<FormationTypeDefinition | null>(() => {
         for (const targetFormation of this.targetFormations()) {
-            const definition = LanceTypeIdentifierUtil.getDefinitionById(targetFormation.formationId, this.gameSystem());
+            const definition = FormationAnalyzer.getDefinitionById(targetFormation.formationId, this.gameSystem());
             if (definition?.exclusiveFaction?.length) {
                 return definition;
             }
@@ -1136,7 +1136,7 @@ export class SearchForceGeneratorDialogComponent {
     ): DropdownOption[] {
         return options.map((option) => ({
             ...option,
-            available: option.available !== false && LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+            available: option.available !== false && FormationAnalyzer.isFormationAvailableForFaction(
                 definition,
                 this.dataService.getFactionByName(option.name) ?? option.name,
             ),
@@ -1187,7 +1187,7 @@ export class SearchForceGeneratorDialogComponent {
         }
 
         return positiveFactionNames.some((factionName) => (
-            LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+            FormationAnalyzer.isFormationAvailableForFaction(
                 definition,
                 this.dataService.getFactionByName(factionName) ?? factionName,
             )

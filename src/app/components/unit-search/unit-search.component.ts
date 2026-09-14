@@ -48,7 +48,7 @@ import { SyntaxInputComponent } from '../syntax-input/syntax-input.component';
 import { formatASDamageValue, isASDamageFilterKey } from '../../utils/as-damage.util';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { GameSystem } from '../../models/common.model';
-import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS } from '../../services/unit-search-filters.model';
+import { AS_TYPE_DISPLAY_NAMES, DROPDOWN_FILTERS, RANGE_FILTERS, FORMATION_TARGET_FILTER_KEY } from '../../services/unit-search-filters.model';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { UnitDetailsPanelComponent } from '../unit-details-panel/unit-details-panel.component';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
@@ -72,6 +72,9 @@ import { SimpleSliderComponent } from '../simple-slider/simple-slider.component'
 import { normalizeBoundedInteger, normalizeBoundedIntegerInput } from '../../utils/bounded-integer-input.util';
 import { LoadingSpinnerComponent } from '../loading-spinner/loading-spinner.component';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
+import { FormationDiagnosticsComponent } from '../formation-info/formation-diagnostics.component';
+import { isCBTForceMember } from '../../models/force-member.model';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 
 /** Grouped chassis entry for compact view */
 export interface ChassisGroup extends UnitVariantGroupIdentity {
@@ -113,7 +116,7 @@ interface ActiveVariantGroupFilter extends UnitVariantGroupIdentity {
 @Component({
     selector: 'unit-search',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DecimalPipe, NgTemplateOutlet, ScrollingModule, OverlayModule, LongPressDirective, LoadingSpinnerComponent, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent],
+    imports: [DecimalPipe, NgTemplateOutlet, ScrollingModule, OverlayModule, LongPressDirective, LoadingSpinnerComponent, TooltipDirective, UnitIconComponent, UnitTagsComponent, SyntaxInputComponent, UnitSearchAdvancedFiltersComponent, UnitDetailsPanelComponent, UnitCardExpandedComponent, AlphaStrikeCardComponent, DataTableComponent, VariableSizeVirtualScrollDirective, RangeSliderComponent, SimpleSliderComponent, FormationDiagnosticsComponent],
     templateUrl: './unit-search.component.html',
     styleUrls: [
         './unit-search.component.scss',
@@ -1104,6 +1107,19 @@ export class UnitSearchComponent {
     private advPanelDragStartWidth = 0;
 
     constructor() {
+        // Formation search must follow the group even while the advanced panel is closed.
+        effect(() => {
+            const active = this.filtersService.filterState()[FORMATION_TARGET_FILTER_KEY]?.interactedWith
+                || this.filtersService.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY);
+            const selected = active ? this.forceWorkspace.selectedUnit() : null;
+            const group = selected && (isCBTForceMember(selected)
+                ? selected.force.groups().find(group => group.id === selected.rosterGroupId)
+                : selected.getGroup());
+            const units = group
+                ? FormationAnalyzer.getRequirementsFilterContextForGroup(group).filteredUnits ?? group.formationUnits()
+                : [];
+            untracked(() => this.filtersService.setFormationTargetExistingUnits(units));
+        });
         this.keyboardShortcutService.register({
             id: 'unit-search-results',
             dialogRef: this.containingDialog ?? undefined,
@@ -1419,7 +1435,6 @@ export class UnitSearchComponent {
 
     trackByUnitId(index: number) {
         // Track by index to force position-based recycling in virtual scroll
-        // Tracking by unit.name causes orphaned DOM nodes for who knows what reason...
         return index;
     }
 

@@ -2,7 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { OrgTypeModifier } from './org-types';
+
 export const ORG_TIER_GROUPING_FACTOR = 3;
+
+export function getModifierCount(value: number | OrgTypeModifier): number {
+    return typeof value === 'number' ? value : value.count;
+}
+
+export function getModifierTier(
+    baseTier: number,
+    regularCount: number,
+    modifierValue: number | OrgTypeModifier,
+    dynamicTier?: number,
+): number {
+    if (typeof modifierValue !== 'number' && modifierValue.tier !== undefined) {
+        return modifierValue.tier;
+    }
+
+    return getDynamicTierForModifier(baseTier, regularCount, getModifierCount(modifierValue), dynamicTier ?? 0);
+}
 
 function floorToTwoDecimals(value: number): number {
     return Math.floor(value * 100) / 100;

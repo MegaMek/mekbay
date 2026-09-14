@@ -1286,7 +1286,7 @@ export class CollectionDialogComponent {
     }
 
     private getQuickAddModelSearchText(unit: UnitSummary): string {
-        return `${unit.chassis ?? ''} ${unit.model ?? ''} ${unit.name ?? ''}`;
+        return this.unitNames.name(unit);
     }
 
     private getQuickAddChassisSearchText(option: ChassisOption): string {

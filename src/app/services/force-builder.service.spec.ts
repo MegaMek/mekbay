@@ -10,9 +10,9 @@ import { Force, type UnitGroup } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import { createForcePreviewEntryData } from '../models/force-preview.model';
 import type { UnitSummary } from '../models/unit-summary.model';
-import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import type { FormationTypeDefinition } from '../utils/formation/formation-type.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
 import { ForceBuilderService } from './force-builder.service';
 import { ForceImportService } from './force-import.service';
 import { ForceWorkspaceCommandsService } from './force-workspace-commands.service';
@@ -183,7 +183,7 @@ describe('ForceBuilderService formation filter integration', () => {
     it('restores group formations from generated force preview entries', async () => {
         const lightFireFormation = createFormation('light-fire-lance');
         const automaticFormation = createFormation('automatic-lance');
-        spyOn(LanceTypeIdentifierUtil, 'getDefinitionById').and.callFake((formationId: string) => (
+        spyOn(FormationAnalyzer, 'getDefinitionById').and.callFake((formationId: string) => (
             formationId === lightFireFormation.id ? lightFireFormation : null
         ));
 

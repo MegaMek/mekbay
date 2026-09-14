@@ -29,7 +29,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MekBay" />
   <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
-  <script type="application/ld+json">
+  <script id="mekbay-page-schema" type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
@@ -100,7 +100,16 @@
       color: #aaa;
       background: linear-gradient(225deg, #333333 0%, #101010 100%);
       font: 14px/1.4 Arial, sans-serif;
+      overflow: auto;
     }
+
+    .mekbay-seo-intro {
+      max-width: 640px;
+      text-align: center;
+    }
+
+    .mekbay-seo-intro h1 { font-size: 22px; }
+    .mekbay-seo-intro a { color: #ddd; }
 
     .mekbay-bootstrap-shell img {
       width: min(256px, 70vw);
@@ -144,9 +153,16 @@
 </head>
 <body>
   <app-root>
-    <div class="mekbay-bootstrap-shell" role="status" aria-live="polite" aria-label="Loading MekBay">
+    <div class="mekbay-bootstrap-shell">
       <img src="images/logo.png" width="512" height="109" alt="MekBay" fetchpriority="high">
-      <span>Loading MekBay…</span>
+      <span role="status" aria-live="polite">Loading MekBay…</span>
+      <!-- seo-content:start -->
+      <section class="mekbay-seo-intro">
+        <h1>MekBay</h1>
+        <p>Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.</p>
+        <nav aria-label="MekBay tools"><a href="/">MekBay</a> · <a href="/?expanded=true">BattleTech Unit Search</a> · <a href="/forcegenerator">BattleTech Force Generator</a> · <a href="/meklab">MekLab: BattleTech Unit Designer</a></nav>
+      </section>
+      <!-- seo-content:end -->
     </div>
   </app-root>
   <noscript>Please enable JavaScript to continue using this application.</noscript>  

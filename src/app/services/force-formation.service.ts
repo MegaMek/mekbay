@@ -13,10 +13,10 @@ import { isCBTForceMember } from '../models/force-member.model';
 import { MULFACTION_EXTINCT, MULFACTION_MERCENARY } from '../models/mulfactions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { ForceNamerUtil } from '../utils/force-namer.util';
-import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
+import { FormationAbilityAssignmentUtil } from '../utils/formation/formation-ability-assignment.util';
 import { getPositiveDropdownNamesFromFilter } from '../utils/filter-name-resolution.util';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
-import type { FormationTypeDefinition } from '../utils/formation-type.model';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
+import type { FormationTypeDefinition } from '../utils/formation/formation-type.model';
 import { getSelectedPositiveDropdownNames } from '../utils/unit-search-shared.util';
 import { DataService } from './data.service';
 import { DialogsService } from './dialogs.service';
@@ -96,7 +96,7 @@ export class ForceFormationService {
             this.reconcileASFormationAssignments(group);
             return;
         }
-        const best = LanceTypeIdentifierUtil.getBestMatchForGroup(group);
+        const best = FormationAnalyzer.getBestMatchForGroup(group);
         if (best?.definition.id !== group.formation()?.id) {
             await group.force.updateGroup(group, { formation: best?.definition ?? null });
             if (best) group.formationHistory.add(best.definition.id);
@@ -120,6 +120,8 @@ export class ForceFormationService {
                 formationDisplayName: group.formationDisplayName(),
                 unitCount: group.formationUnits().length,
                 isValid: group.hasValidFormation(),
+                evaluation: group.formationAnalysis()?.evaluation,
+                units: group.formationAnalysis()?.units,
                 requirementsFiltered: group.isFormationRequirementsFiltered(),
                 requirementsFilterCompositionName: group.formationRequirementsFilterCompositionName(),
                 requirementsFilterNotice: group.formationRequirementsFilterNotice(),

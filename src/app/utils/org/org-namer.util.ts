@@ -2,23 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { type Force, UnitGroup } from '../../models/force.model';
-import type { Era } from '../../models/eras.model';
-import { type Faction } from '../../models/factions.model';
-import { isForcePreviewEntry, type ForcePreviewEntry, type ForcePreviewGroup } from '../../models/force-preview.model';
-import type { UnitSummary } from '../../models/unit-summary.model';
-import { resolveOrgDefinition } from './org-registry.util';
-import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
-import { resolveFromGroups, resolveFromUnits } from './org-solver.util';
-import { type GroupSizeResult, type OrgDefinition, type OrgSizeResult } from './org-types';
-import { MULFACTION_MERCENARY } from '../../models/mulfactions.model';
-import { orgUnitFromFormationUnit } from './org-unit.util';
+/** Display names and tier aggregation for solved organizations. */
 
-/**
- * 
- * This module provides utilities for generating human-readable organizational names and summaries 
- * based on the structure of forces and groups.
- */
+import { DEFAULT_ORG_DEFINITION } from './org-registry.util';
+import { getAggregatedTier, getModifierCount, getModifierTier } from './org-tier.util';
+import type { GroupSizeResult, OrgDefinition, OrgSizeResult } from './org-types';
+
 export interface OrgNamingOptions {
 	readonly displayOnlyTopLevel?: boolean;
 	readonly displayTierCutoff?: number;
@@ -37,112 +26,15 @@ interface ModifierSortKey {
 	readonly modifierKey: string;
 }
 
-const DEFAULT_FACTION: Faction = {
-	id: MULFACTION_MERCENARY,
-	name: 'Mercenary',
-	group: 'Mercenary',
-	img: '',
-	eras: {},
-};
-
-// Public API
-
-export function getOrgFromGroup(group: UnitGroup, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: ForcePreviewGroup, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromGroup(group: UnitGroup | ForcePreviewGroup, options: OrgNamingOptions = {}): OrgSizeResult {
-	const resolvedOptions = options;
-
-	if (group instanceof UnitGroup) {
-		const force = group.force;
-		const resolvedFaction = force.faction() ?? DEFAULT_FACTION;
-		const resolvedEra = force.era();
-		const allUnits = group.formationUnits().map(orgUnitFromFormationUnit);
-		const rawGroups = resolveFromUnits(allUnits, resolvedFaction, resolvedEra);
-		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
-	}
-
-	const force = group.force ?? null;
-	const resolvedFaction = force?.faction ?? DEFAULT_FACTION;
-	const resolvedEra = force?.era ?? null;
-	const units = group.units
-		.filter((unit): unit is typeof unit & { unit: UnitSummary } => unit.unit !== undefined)
-		.map((unit) => unit.unit);
-	const rawGroups = resolveFromUnits(units, resolvedFaction, resolvedEra);
-	return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
-}
-
-export function getOrgFromForce(force: Force, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(entry: ForcePreviewEntry, options?: OrgNamingOptions): OrgSizeResult;
-export function getOrgFromForce(forceOrEntry: Force | ForcePreviewEntry, options: OrgNamingOptions = {}): OrgSizeResult {
-	const resolvedOptions = options;
-
-	if (isForcePreviewEntry(forceOrEntry)) {
-		const resolvedFaction = forceOrEntry.faction ?? DEFAULT_FACTION;
-		const resolvedEra = forceOrEntry.era ?? null;
-		const groupResults = forceOrEntry.groups
-			.filter((group) => group.units.some((unit) => unit.unit !== undefined))
-			.flatMap((group) => getGroupResultsFromForcePreviewGroup(group, resolvedFaction, resolvedEra));
-		const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
-		return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
-	}
-
-	const resolvedFaction = forceOrEntry.faction() ?? DEFAULT_FACTION;
-	const resolvedEra = forceOrEntry.era();
-	const groupResults = forceOrEntry.groups()
-		.filter((group) => group.formationUnits().length > 0)
-		.flatMap((group) => group.organizationalResult().groups);
-	const rawGroups = resolveFromGroups(groupResults, resolvedFaction, resolvedEra);
-	return getResolvedOrgResult(rawGroups, resolvedFaction, resolvedEra, resolvedOptions);
-}
-
-export function getOrgFromForceCollection(
-	entries: readonly ForcePreviewEntry[],
-	faction: Faction | null | undefined,
-	era: Era | null = null,
-	childGroupResults?: readonly GroupSizeResult[],
-	options: OrgNamingOptions = {},
-): OrgSizeResult {
-	const resolvedFaction = faction ?? DEFAULT_FACTION;
-	const inputGroups = childGroupResults
-		? [...childGroupResults]
-		: entries.flatMap((entry) => getOrgFromForce(entry).groups);
-	const finalGroups = inputGroups.length > 1
-		? resolveFromGroups(inputGroups, resolvedFaction, era)
-		: [...inputGroups];
-	return getResolvedOrgResult(finalGroups, resolvedFaction, era, options);
-}
-
 export function getOrgFromResolvedGroups(
 	groups: readonly GroupSizeResult[],
 	options: OrgNamingOptions = {},
-): OrgSizeResult {
-	return getResolvedOrgResult(groups, DEFAULT_FACTION, null, options);
-}
-
-// Internal utilities
-
-function getGroupResultsFromForcePreviewGroup(
-	group: ForcePreviewGroup,
-	faction: Faction,
-	era: Era | null | undefined,
-): GroupSizeResult[] {
-	const units = group.units
-		.filter((entry): entry is typeof entry & { unit: UnitSummary } => entry.unit !== undefined)
-		.map((entry) => entry.unit);
-	return resolveFromUnits(units, faction, era);
-}
-
-function getResolvedOrgResult(
-	groups: readonly GroupSizeResult[],
-	faction: Faction,
-	era: Era | null | undefined,
-	options: OrgNamingOptions = {},
+	definition: OrgDefinition = DEFAULT_ORG_DEFINITION,
 ): OrgSizeResult {
 	if (groups.length === 0) {
 		return toOrgSizeResult('Force', 0, []);
 	}
 
-	const definition = resolveOrgDefinition(faction, era);
 	const displayBuckets = getDisplayBuckets(groups, definition);
 	const filteredBuckets = getDisplayBucketsForOptions(displayBuckets, options);
 	const displayWasTruncated = filteredBuckets.length < displayBuckets.length;
@@ -223,23 +115,6 @@ function getGroupDisplayLabel(group: GroupSizeResult): string {
 	}
 
 	return group.name;
-}
-
-function getModifierCount(value: number | { count: number; tier?: number }): number {
-	return typeof value === 'number' ? value : value.count;
-}
-
-function getModifierTier(
-	baseTier: number,
-	regularCount: number,
-	modifierValue: number | { count: number; tier?: number },
-	dynamicTier?: number,
-): number {
-	if (typeof modifierValue !== 'number' && modifierValue.tier !== undefined) {
-		return modifierValue.tier;
-	}
-
-	return getDynamicTierForModifier(baseTier, regularCount, getModifierCount(modifierValue), dynamicTier ?? 0);
 }
 
 function getDisplayBucketModifierSortKey(

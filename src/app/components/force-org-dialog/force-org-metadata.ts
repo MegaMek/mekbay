@@ -7,7 +7,7 @@ import { GameSystem } from '../../models/common.model';
 import type { Era } from '../../models/eras.model';
 import type { Faction, FactionId } from '../../models/factions.model';
 import type { GroupSizeResult, OrgSizeResult } from '../../utils/org/org-types';
-import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-namer.util';
+import { getOrgFromForce, getOrgFromForceCollection } from '../../utils/org/org-analysis.util';
 
 export interface PreviewOrgExtras {
     targetGroupId: string;

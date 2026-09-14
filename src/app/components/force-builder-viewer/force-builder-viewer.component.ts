@@ -25,8 +25,8 @@ import { UnitBlockComponent, type UnitBlockPilotEditEvent } from '../unit-block/
 import { CompactModeService } from '../../services/compact-mode.service';
 import { ToastService } from '../../services/toast.service';
 import { formatSummaryMovement } from '../../models/pilot-abilities.model';
-import { getFormationDefinition } from '../../utils/formation-blueprints';
-import { formationInheritsParentEffects } from '../../utils/formation-type.model';
+import { getFormationDefinition } from '../../utils/formation/formation-definitions';
+import { formationInheritsParentEffects } from '../../utils/formation/formation-type.model';
 import { DataService } from '../../services/data.service';
 import { UnitAvailabilitySourceService } from '../../services/unit-availability-source.service';
 import { LobbyService } from '../../services/lobby.service';

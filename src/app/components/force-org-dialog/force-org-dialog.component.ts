@@ -31,7 +31,7 @@ import { GameSystem } from '../../models/common.model';
 import type { LoadedOrganization, SerializedOrganization, OrgPlacedForce, OrgGroupData } from '../../models/organization.model';
 import { ForceEntryPreviewDialogComponent } from '../force-entry-preview-dialog/force-entry-preview-dialog.component';
 import { ShareForceOrgDialogComponent } from '../share-force-org-dialog/share-force-org-dialog.component';
-import { getOrgFromForce } from '../../utils/org/org-namer.util';
+import { getOrgFromForce } from '../../utils/org/org-analysis.util';
 import { FactionId, getFactionImg } from '../../models/factions.model';
 import { CompactFilterMenuComponent } from '../compact-filter-menu/compact-filter-menu.component';
 import { uuidv4 } from '../../utils/uuid.util';

@@ -385,17 +385,25 @@ assert.doesNotMatch(
     'the Classic member registry must build members only from admitted runtime Entity owners',
 );
 
-const orgFacts = source(join(app, 'utils', 'org', 'org-facts.util.ts'));
-const orgSolver = source(join(app, 'utils', 'org', 'org-solver.util.ts'));
-const orgNamer = source(join(app, 'utils', 'org', 'org-namer.util.ts'));
-const orgUnit = source(join(app, 'utils', 'org', 'org-unit.util.ts'));
+const orgRules = [
+    'org-facts.util.ts',
+    'org-solver.util.ts',
+    'org-leaf-rules.util.ts',
+    'org-composition.util.ts',
+    'org-group-records.util.ts',
+    'org-patterns.util.ts',
+    'org-rule-metadata.util.ts',
+    'org-solve-session.ts',
+].map((file) => source(join(app, 'utils', 'org', file))).join('\n');
+const orgAnalysis = source(join(app, 'utils', 'org', 'org-analysis.util.ts'));
+const orgUnit = source(join(app, 'utils', 'org', 'org-unit-adapter.util.ts'));
 assert.doesNotMatch(
-    [orgFacts, orgSolver].join('\n'),
+    orgRules,
     /\bUnitSummary\b/u,
     'organization rules must consume neutral structural facts, not catalog rows',
 );
-assert.match(orgNamer, /formationUnits\(\)\.map\(orgUnitFromFormationUnit\)/u);
-assert.doesNotMatch(orgNamer, /formationUnits\(\)[\s\S]{0,100}getSummary\(/u);
+assert.match(orgAnalysis, /formationUnits\(\)\.map\(orgUnitFromFormationUnit\)/u);
+assert.doesNotMatch(orgAnalysis, /formationUnits\(\)[\s\S]{0,100}getSummary\(/u);
 assert.match(orgUnit, /const entity = unit\.getFormationEntity\?\.\(\);[\s\S]{0,80}if \(entity\) return orgUnitFromEntity\(entity\);/u);
 assert.doesNotMatch(orgUnit, /convertEntityToAlphaStrike\(|\.battleValue\(/u);
 assert.doesNotMatch(orgUnit, /as UnitSummary|satisfies UnitSummary/u);

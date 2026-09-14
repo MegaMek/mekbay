@@ -214,6 +214,19 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
+  it('exposes crawlable tool links on the home page and in its mobile menu', () => {
+    fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    for (const route of ['/meklab', '/forcegenerator']) {
+      expect(fixture.nativeElement.querySelector(`a.home-action-button[href="${route}"]`)).toBeTruthy();
+    }
+    fixture.componentInstance.openHomeActionsPanel();
+    fixture.detectChanges();
+    for (const route of ['/meklab', '/forcegenerator']) {
+      expect(fixture.nativeElement.querySelector(`a.home-panel-action[href="${route}"]`)).toBeTruthy();
+    }
+  });
+
   it('opens the unit selected by a shareUnit identifier after catalog startup', () => {
     const identifier = '01890f3a-9d5b-7c24-8b2e-6f8a10d31234';
     const unit = createEmptyUnit({ uuid: identifier, name: 'BMKingCrab_KGC000Custom', isCustom: true });

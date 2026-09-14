@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem, Rulebook } from '../models/common.model';
+import { GameSystem, Rulebook } from '../../models/common.model';
 import { resolveFormationTypeDefinition, type FormationTypeDefinition, type FormationTypeDefinitionSource } from './formation-type.model';
 import type { FormationConstraint, FormationPredicateId, FormationRequirementBlueprint, FormationRequirementBlueprintSource } from './formation-requirement.model';
 

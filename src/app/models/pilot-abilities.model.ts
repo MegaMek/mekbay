@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Rulebook, type RulesReference } from './common.model';
-import { GameSystem } from '../models/common.model';
+import { GameSystem } from './common.model';
 import type { ASUnitTypeCode } from './unit-summary.model';
 import { formatMovement } from '../utils/as-common.util';
 

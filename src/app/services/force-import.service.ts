@@ -44,7 +44,7 @@ import { ForceUnitAdmissionService } from './force-unit-admission.service';
 import { GameService } from './game.service';
 import { ToastService } from './toast.service';
 import type { ResolvedPack } from '../utils/force-pack.util';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
 
 /** Owns force generation and import workflows; ForceBuilder only owns the live workspace. */
 @Injectable({ providedIn: 'root' })
@@ -104,7 +104,7 @@ export class ForceImportService {
             for (const groupEntry of entry.groups) {
                 const targetGroup = await force.addGroup(groupEntry.name || undefined);
                 const previewFormation = groupEntry.formationId
-                    ? LanceTypeIdentifierUtil.getDefinitionById(groupEntry.formationId, entry.type)
+                    ? FormationAnalyzer.getDefinitionById(groupEntry.formationId, entry.type)
                     : null;
                 await force.updateGroup(targetGroup, {
                     formation: previewFormation,

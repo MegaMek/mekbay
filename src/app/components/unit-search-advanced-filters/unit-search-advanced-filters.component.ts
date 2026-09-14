@@ -2,20 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, signal, untracked } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, Injector, input, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
 import { FormatNumberPipe } from '../../pipes/format-number.pipe';
 import { GameSystem } from '../../models/common.model';
 import { UnitsCatalogService } from '../../services/catalogs/units-catalog.service';
 import { DialogsService } from '../../services/dialogs.service';
-import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
-import { isCBTForceMember } from '../../models/force-member.model';
 import { OptionsService } from '../../services/options.service';
 import { BOOLEAN_FILTERS, DROPDOWN_FILTERS, RANGE_FILTERS, type RangeFilterConfig } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
-import type { FormationSearchTarget } from '../../utils/formation-requirement.model';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
 import { isFilterAvailableForAvailabilitySource } from '../../utils/unit-search-filter-config.util';
 import { normalizeUnitSearchRange, rangeFilterAllowsFloatingValues } from '../../utils/unit-search-range-dialog.util';
 import { isBaseRulesRef } from '../../utils/rules-ref.util';
@@ -52,7 +48,6 @@ export class UnitSearchAdvancedFiltersComponent {
 
     readonly filtersService = inject(UnitSearchFiltersService);
     private readonly unitsCatalog = inject(UnitsCatalogService);
-    private readonly forceWorkspace = inject(ForceWorkspaceStateService);
     private readonly optionsService = inject(OptionsService);
     private readonly dialogsService = inject(DialogsService);
     private readonly destroyRef = inject(DestroyRef);
@@ -167,30 +162,6 @@ export class UnitSearchAdvancedFiltersComponent {
             this.scheduleNextControlBatch();
         });
 
-        effect(() => {
-            if (!this.showFormationTargetFilter()) {
-                return;
-            }
-
-            const existingUnits = this.selectedFormationTargetGroupUnits();
-            untracked(() => this.filtersService.setFormationTargetExistingUnits(existingUnits));
-        });
-
-        effect(() => {
-            if (!this.showFormationTargetFilter()) {
-                return;
-            }
-
-            const currentTarget = this.filtersService.formationTarget();
-            if (!currentTarget) {
-                return;
-            }
-
-            const nextTarget = this.buildFormationSearchTarget(currentTarget.formationId);
-            if (!this.formationTargetsEqual(currentTarget, nextTarget)) {
-                untracked(() => this.filtersService.setFormationTarget(nextTarget));
-            }
-        });
     }
 
     private scheduleNextControlBatch(): void {
@@ -235,7 +206,7 @@ export class UnitSearchAdvancedFiltersComponent {
 
     onFormationTargetSelectionChange(selection: MultiStateSelection | readonly string[]): void {
         const formationId = this.getSelectedFormationId(selection);
-        this.filtersService.selectFormationTarget(formationId ? this.buildFormationSearchTarget(formationId) : null);
+        this.filtersService.selectFormationTarget(formationId || null);
     }
 
     private getSelectedFormationId(selection: MultiStateSelection | readonly string[]): string {
@@ -244,50 +215,6 @@ export class UnitSearchAdvancedFiltersComponent {
         }
 
         return Object.values(selection).find((option) => option.state !== false)?.name ?? '';
-    }
-
-    private buildFormationSearchTarget(formationId: string): FormationSearchTarget | null {
-        if (!formationId || !this.formationTargetOptions().some((option) => option.name === formationId)) {
-            return null;
-        }
-
-        const gameSystem = this.filterGameSystem();
-        const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem);
-        if (!definition) {
-            return null;
-        }
-
-        return {
-            formationId,
-            existingUnits: this.selectedFormationTargetGroupUnits(),
-            gameSystem,
-            minUnits: definition.minUnits,
-            maxUnits: definition.maxUnits,
-        };
-    }
-
-    private selectedFormationTargetGroupUnits() {
-        const selectedUnit = this.forceWorkspace.selectedUnit();
-        return !selectedUnit || isCBTForceMember(selectedUnit)
-            ? []
-            : selectedUnit.getGroup()?.units() ?? [];
-    }
-
-    private formationTargetsEqual(left: FormationSearchTarget | null, right: FormationSearchTarget | null): boolean {
-        if (left === right) {
-            return true;
-        }
-
-        if (!left || !right) {
-            return false;
-        }
-
-        return left.formationId === right.formationId
-            && left.gameSystem === right.gameSystem
-            && left.minUnits === right.minUnits
-            && left.maxUnits === right.maxUnits
-            && left.existingUnits.length === right.existingUnits.length
-            && left.existingUnits.every((unit, index) => unit === right.existingUnits[index]);
     }
 
     async openRangeValueDialog(filterKey: string, currentValue: number[], availableRange: [number, number]): Promise<void> {

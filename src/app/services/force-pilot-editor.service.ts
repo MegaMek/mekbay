@@ -25,7 +25,7 @@ import { asCrewPositionId } from '../models/entity/entity-identifiers';
 import { isCBTForceMember } from '../models/force-member.model';
 import { classicSkillFactsForEntity } from '../models/entity/utils/battle-value/skill-facts';
 import { fixedCBTPilotingSkill } from '../models/entity/utils/battle-value/rules';
-import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
+import { FormationAbilityAssignmentUtil } from '../utils/formation/formation-ability-assignment.util';
 import { DialogsService } from './dialogs.service';
 import { ToastService } from './toast.service';
 

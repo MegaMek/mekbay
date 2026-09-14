@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem, Rulebook } from '../models/common.model';
+import { GameSystem, Rulebook } from '../../models/common.model';
 import {
     FORMATION_RUNTIME_DEFINITIONS,
     getFormationBlueprint,
     getFormationDefinition,
     getFormationDefinitions,
-} from './formation-blueprints';
+} from './formation-definitions';
 import type {
     FormationAssignmentEffectGroup,
     FormationSharedPoolEffectGroup,

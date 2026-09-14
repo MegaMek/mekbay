@@ -21,7 +21,7 @@ import type { MegaMekFactionRecord } from '../models/megamek/factions.model';
 import type { MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
-import { getForcePacks } from '../models/forcepacks.model';
+import { getForcePacks, type ForcePack } from '../models/forcepacks.model';
 import { MegaMekAvailabilityCatalogService } from './catalogs/megamek-availability-catalog.service';
 import { MegaMekFactionsCatalogService } from './catalogs/megamek-factions-catalog.service';
 import { MegaMekRulesetsCatalogService } from './catalogs/megamek-rulesets-catalog.service';
@@ -998,9 +998,9 @@ export class DataService {
         for (const pack of getForcePacks()) {
             const lookupKeys = new Set<string>();
 
-            const processUnits = (unitList: Array<{ name: string }>) => {
+            const processUnits = (unitList: ForcePack['units']) => {
                 for (const pu of unitList) {
-                    const unit = this.getUnitByIdentifier(pu.name);
+                    const unit = this.getUnitByUuid(pu.uuid);
                     if (unit) {
                         const key = getUnitVariantGroupKey(unit);
                         lookupKeys.add(key);

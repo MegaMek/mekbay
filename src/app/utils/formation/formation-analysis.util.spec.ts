@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem } from '../models/common.model';
-import { type Faction } from '../models/factions.model';
-import { MULFACTION_MERCENARY, type FactionAffinity } from '../models/mulfactions.model';
-import type { ForceUnit } from '../models/force-unit.model';
-import type { UnitGroup } from '../models/force.model';
-import type { UnitSummary, UnitSubtype } from '../models/unit-summary.model';
-import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-helpers';
+import { GameSystem } from '../../models/common.model';
+import { type Faction } from '../../models/factions.model';
+import { MULFACTION_MERCENARY, type FactionAffinity } from '../../models/mulfactions.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { UnitGroup } from '../../models/force.model';
+import type { UnitSummary, UnitSubtype } from '../../models/unit-summary.model';
+import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import type { FormationTypeDefinition } from './formation-type.model';
-import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
-import type { GroupSizeResult } from './org/org-types';
+import { FormationAnalyzer } from './formation-analysis.util';
+import { FormationSolver } from './formation-solver.util';
+import type { GroupSizeResult } from '../org/org-types';
 
 const NOVA_REQUIREMENTS_FILTER_NOTICE = 'Battle Armor child groups are ignored for formation requirements. Mounted infantry in a Nova Formation may make weapon attacks. These mounted attacks use the attacker movement modifier of the transport along with an additional +2 Target Number modifier for being mounted.';
 
@@ -121,12 +122,12 @@ function createTestGroup(
 }
 
 function realFormation(id: string): FormationTypeDefinition {
-    const definition = LanceTypeIdentifierUtil.getDefinitionById(id, GameSystem.AS);
+    const definition = FormationAnalyzer.getDefinitionById(id, GameSystem.AS);
     expect(definition).not.toBeNull();
     return definition!;
 }
 
-describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () => {
+describe('FormationAnalyzer organization-aware requirement filtering', () => {
     it('uses Nova org metadata to ignore only the Battle Armor child star', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
         const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
@@ -146,9 +147,10 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const matches = LanceTypeIdentifierUtil.identifyFormationsForGroup(group);
+        const matches = FormationAnalyzer.analyzeFormationsForGroup(group);
         const match = matches.find(candidate => candidate.definition.id === 'ranger-lance');
 
+        expect(match?.evaluation.valid).toBeTrue();
         expect(match).toEqual(jasmine.objectContaining({
             definition: realFormation('ranger-lance'),
             requirementsFiltered: true,
@@ -176,9 +178,11 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const definition = realFormation('order-lance');
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
+        // This case isolates organizational exclusions from faction eligibility.
+        const definition = { ...realFormation('order-lance'), exclusiveFaction: undefined };
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
 
+        expect(match?.evaluation.valid).toBeTrue();
         expect(match).toEqual(jasmine.objectContaining({
             definition,
             requirementsFiltered: true,
@@ -207,8 +211,9 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         );
 
         const definition = realFormation('order-lance');
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
 
+        expect(match?.evaluation.valid).toBeTrue();
         expect(match).toEqual(jasmine.objectContaining({
             definition,
             requirementsFiltered: true,
@@ -237,8 +242,9 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
         );
 
         const definition = realFormation('ranger-lance');
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
 
+        expect(match?.evaluation.valid).toBeTrue();
         expect(match).toEqual(jasmine.objectContaining({
             definition,
             requirementsFiltered: true,
@@ -264,9 +270,11 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const definition = realFormation('order-lance');
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(definition, group);
+        // This case isolates organizational exclusions from faction eligibility.
+        const definition = { ...realFormation('order-lance'), exclusiveFaction: undefined };
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
 
+        expect(match?.evaluation.valid).toBeTrue();
         expect(match).toEqual(jasmine.objectContaining({
             definition,
             requirementsFiltered: true,
@@ -298,15 +306,18 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
             faction,
         );
 
-        const match = LanceTypeIdentifierUtil.isFormationValidForGroup(realFormation('order-lance'), group);
+        const definition = { ...realFormation('order-lance'), exclusiveFaction: undefined };
+        const match = FormationAnalyzer.analyzeFormationForGroup(definition, group);
 
-        expect(match).toBeNull();
+        expect(match?.evaluation.status).toBe('invalid');
+        expect(match?.requirementsFiltered).toBeFalse();
+        expect(match?.units).toBe(group.units());
     });
 });
 
-describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
+describe('FormationAnalyzer CBT weight-class validation', () => {
     it('uses direct formation members when the legacy group graph is empty', () => {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CBT);
+        const definition = FormationAnalyzer.getDefinitionById('medium-battle-lance', GameSystem.CBT);
         const units = [1, 2, 3].map(index => createForceUnit(createUnit(
             index,
             `Medium-${index}`,
@@ -324,11 +335,11 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
         } as unknown as UnitGroup<ForceUnit>;
 
         expect(definition).not.toBeNull();
-        expect(LanceTypeIdentifierUtil.isFormationValidForGroup(definition!, group)).not.toBeNull();
+        expect(FormationAnalyzer.analyzeFormationForGroup(definition!, group)?.evaluation.valid).toBeTrue();
     });
 
     it('matches medium battle lance for classic medium meks without requiring vehicles', () => {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById('medium-battle-lance', GameSystem.CBT);
+        const definition = FormationAnalyzer.getDefinitionById('medium-battle-lance', GameSystem.CBT);
 
         expect(definition).not.toBeNull();
 
@@ -338,11 +349,11 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
             createForceUnit(createUnit(3, 'Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CBT),
         ];
 
-        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CBT)).toBeTrue();
+        expect(FormationSolver.evaluateDefinition(definition!, units, GameSystem.CBT)?.valid).toBeTrue();
     });
 
     it('matches light battle lance for classic light meks using the real CBT light class', () => {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById('light-battle-lance', GameSystem.CBT);
+        const definition = FormationAnalyzer.getDefinitionById('light-battle-lance', GameSystem.CBT);
 
         expect(definition).not.toBeNull();
 
@@ -353,11 +364,23 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
             createForceUnit(createUnit(14, 'Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CBT),
         ];
 
-        expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CBT)).toBeTrue();
+        expect(FormationSolver.evaluateDefinition(definition!, units, GameSystem.CBT)?.valid).toBeTrue();
     });
 });
 
-describe('LanceTypeIdentifierUtil formation priority weights', () => {
+describe('formation analysis eligibility', () => {
+    it('reports partial formations and rejects faction-ineligible selected formations consistently', () => {
+        const unit = createUnit(1, 'Panther', 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' });
+        const group = createTestGroup([unit], [], createFaction('Draconis Combine', 'Inner Sphere'));
+        const partial = FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), group);
+        expect(partial?.evaluation.status).toBe('partial');
+        const foreign = createTestGroup([unit, unit, unit], [], createFaction('Mercenary', 'Mercenary'));
+        expect(FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), foreign)?.evaluation.status).toBe('invalid');
+        expect(FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), foreign)?.evaluation.failedConstraintIds).toContain('eligibility');
+    });
+});
+
+describe('FormationAnalyzer formation priority weights', () => {
     it('prefers higher-priority formations using the shared match weight rules', () => {
         const battleFormation = {
             id: 'battle-lance',
@@ -380,16 +403,22 @@ describe('LanceTypeIdentifierUtil formation priority weights', () => {
             exclusiveFaction: ['Dragoons'],
         } as FormationTypeDefinition;
 
-        spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.returnValue([
-            { definition: battleFormation, requirementsFiltered: false },
-            { definition: parentFormation, requirementsFiltered: false },
-            { definition: exclusiveFormation, requirementsFiltered: false },
-        ]);
+        expect(FormationAnalyzer.getFormationPriorityWeight(battleFormation, 'Wolf\'s Dragoons')).toBe(1);
+        expect(FormationAnalyzer.getFormationPriorityWeight(parentFormation, 'Wolf\'s Dragoons')).toBe(3);
+        expect(FormationAnalyzer.getFormationPriorityWeight(exclusiveFormation, 'Wolf\'s Dragoons')).toBe(5);
+    });
 
-        expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(battleFormation, 'Wolf\'s Dragoons')).toBe(1);
-        expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(parentFormation, 'Wolf\'s Dragoons')).toBe(3);
-        expect(LanceTypeIdentifierUtil.getFormationPriorityWeight(exclusiveFormation, 'Wolf\'s Dragoons')).toBe(5);
-        expect(LanceTypeIdentifierUtil.getBestMatch([], 'Inner Sphere', 'Wolf\'s Dragoons', GameSystem.AS))
-            .toEqual(jasmine.objectContaining({ definition: exclusiveFormation }));
+    it('uses the same valid analysis for automatic selection and group diagnostics', () => {
+        const units = Array.from({ length: 3 }, (_, index) => createUnit(
+            index + 1, `Panther-${index}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' },
+        ));
+        const group = createTestGroup(units, [], createFaction('Draconis Combine', 'Inner Sphere'));
+        const best = FormationAnalyzer.getBestMatchForGroup(group);
+        expect(best?.definition.id).toBe('order-lance');
+        const analysis = FormationAnalyzer.analyzeFormationsForGroup(group)
+            .find(match => match.definition.id === best?.definition.id);
+        expect(analysis?.evaluation.valid).toBeTrue();
+        expect(FormationAnalyzer.analyzeFormationForGroup(realFormation('order-lance'), group)).toEqual(analysis!);
+        expect(best).toEqual(analysis!);
     });
 });

@@ -30,6 +30,7 @@ import type { DataService } from '../services/data.service';
 import { ForceUnitAdmissionService } from '../services/force-unit-admission.service';
 
 import { uuidv7 } from './uuid.util';
+import { formatUnitName } from './unit-display-name.util';
 import { crewSkillsForUnit } from '../models/unit-crew-policy';
 
 const DEFAULT_ENTITY_ATTRIBUTES: Readonly<Record<string, string>> = Object.freeze({
@@ -210,7 +211,7 @@ export async function parseMulForce(
             await applyMulLocations(force, member, parseEntityLocations(entity), issues);
         } catch (error) {
             if (admitted) await force.removeCBTMember(admitted.id);
-            issues.push({ severity: 'error', message: `Could not import ${summary.name}: ${errorMessage(error)}` });
+            issues.push({ severity: 'error', message: `Could not import ${formatUnitName(summary)}: ${errorMessage(error)}` });
         }
     }
     if (force.getRuntimeInstanceIds().length === 0) {
@@ -817,9 +818,8 @@ function createUnitLookup(units: readonly UnitSummary[]): Map<string, UnitSummar
     const result = new Map<string, UnitSummary>();
     for (const unit of units) {
         if (unit.isCustom) continue;
-        for (const key of [unitLookupKey(unit.chassis, unit.model), normalizeUnitLookup(unit.name)]) {
-            if (!result.has(key)) result.set(key, unit);
-        }
+        const key = unitLookupKey(unit.chassis, unit.model);
+        if (!result.has(key)) result.set(key, unit);
     }
     for (const unit of units) result.set(unit.uuid, unit);
     return result;

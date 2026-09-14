@@ -58,10 +58,10 @@
                                 </a>
                             </div>
                             <div class="right home-actions">
-                                <button
-                                    type="button"
+                                <a
+                                    [routerLink]="['/meklab']"
+                                    queryParamsHandling="preserve"
                                     class="home-button home-action-button"
-                                    (click)="showUnitConstruction()"
                                     aria-label="Unit Construction"
                                 >
                                     <svg
@@ -95,11 +95,11 @@
                                     <span class="home-action-label"
                                         >Unit Construction</span
                                     >
-                                </button>
-                                <button
-                                    type="button"
+                                </a>
+                                <a
+                                    [routerLink]="['/forcegenerator']"
+                                    queryParamsHandling="preserve"
                                     class="home-button home-action-button"
-                                    (click)="showForceGeneratorDialog()"
                                     aria-label="Force Generator"
                                 >
                                     <svg
@@ -117,7 +117,7 @@
                                     <span class="home-action-label"
                                         >Force Generator</span
                                     >
-                                </button>
+                                </a>
                                 <button
                                     type="button"
                                     class="home-button home-action-button"
@@ -246,10 +246,11 @@
                                 </button>
                             </div>
                             <div class="home-actions-panel-list">
-                                <button
-                                    type="button"
+                                <a
+                                    [routerLink]="['/meklab']"
+                                    queryParamsHandling="preserve"
                                     class="home-panel-action"
-                                    (click)="showUnitConstruction(); closeHomeActionsPanel()"
+                                    (click)="closeHomeActionsPanel()"
                                 >
                                     <svg
                                         width="28"
@@ -276,11 +277,12 @@
                                         />
                                     </svg>
                                     <span>Unit Construction</span>
-                                </button>
-                                <button
-                                    type="button"
+                                </a>
+                                <a
+                                    [routerLink]="['/forcegenerator']"
+                                    queryParamsHandling="preserve"
                                     class="home-panel-action"
-                                    (click)="showForceGeneratorDialog(); closeHomeActionsPanel()"
+                                    (click)="closeHomeActionsPanel()"
                                 >
                                     <svg
                                         fill="currentColor"
@@ -293,7 +295,7 @@
                                         ></path>
                                     </svg>
                                     <span>Force Generator</span>
-                                </button>
+                                </a>
                                 <button
                                     type="button"
                                     class="home-panel-action"

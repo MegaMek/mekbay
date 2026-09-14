@@ -22,6 +22,7 @@ import {
 import { MeasureClampOverflowDirective } from '../../directives/measure-clamp-overflow.directive';
 import {
     getForcePreviewResolvedUnits,
+    getForcePreviewUnitDisplay,
     getForcePreviewUnitPilotStats,
     type ForcePreviewEntry,
     type ForcePreviewGroup,
@@ -33,13 +34,13 @@ import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceTaggingService } from '../../services/force-tagging.service';
 import { OptionsService } from '../../services/options.service';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import {
     NOTE_PREVIEW_LINE_COUNT,
     hasVisibleNoteText,
 } from '../../utils/note-preview.util';
-import { formationNameMatchesGroupName, NO_FORMATION_ID, type FormationTypeDefinition } from '../../utils/formation-type.model';
-import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-namer.util';
+import { formationNameMatchesGroupName, NO_FORMATION_ID, type FormationTypeDefinition } from '../../utils/formation/formation-type.model';
+import { getOrgFromForce, getOrgFromGroup } from '../../utils/org/org-analysis.util';
 import { FormationInfoDialogComponent, type FormationInfoDialogData } from '../formation-info-dialog/formation-info-dialog.component';
 import { UnitDetailsDialogComponent, type UnitDetailsDialogData } from '../unit-details-dialog/unit-details-dialog.component';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
@@ -206,15 +207,12 @@ export interface ForcePreviewUnitMenuActionEvent {
                                     </div>
                                 }
                                 <div class="unit-content">
-                                    <unit-icon [unit]="unitEntry.unit" [size]="32"></unit-icon>
-                                    @if (!unitEntry.unit && unitEntry.embeddedCustom) {
-                                    <div class="unit-model">Custom design</div>
-                                    <div class="unit-chassis">Included in force</div>
-                                    } @else if (unitDisplayName === 'chassisModel'
-                                        || unitDisplayName === 'both'
-                                        || !unitEntry.alias) {
-                                    <div class="unit-model">{{ unitEntry.unit?.model | cleanModelString }}</div>
-                                    <div class="unit-chassis">{{ unitNames.chassis(unitEntry.unit) }}</div>
+                                    @let display = getUnitDisplay(unitEntry, unitDisplayName);
+                                    <unit-icon [unit]="unitEntry.unit" [iconPath]="display.iconPath" [size]="32"
+                                        [alt]="unitNames.name(display.name)"></unit-icon>
+                                    @if (display.showName) {
+                                    <div class="unit-model">{{ display.name?.model | cleanModelString }}</div>
+                                    <div class="unit-chassis">{{ unitNames.chassis(display.name) }}</div>
                                     }
                                     @if (unitDisplayName === 'alias' || unitDisplayName === 'both') {
                                     <div class="unit-alias"
@@ -823,6 +821,7 @@ export interface ForcePreviewUnitMenuActionEvent {
 })
 export class ForcePreviewPanelComponent {
     readonly unitNames = inject(UnitNameService);
+    readonly getUnitDisplay = getForcePreviewUnitDisplay;
     private readonly dialogsService = inject(DialogsService);
     private readonly forceTaggingService = inject(ForceTaggingService);
     readonly optionsService = inject(OptionsService);
@@ -1034,7 +1033,7 @@ export class ForcePreviewPanelComponent {
             return null;
         }
 
-        return LanceTypeIdentifierUtil.getDefinitionById(group.formationId, gameSystem);
+        return FormationAnalyzer.getDefinitionById(group.formationId, gameSystem);
     }
 
     private getPreviewFormationDisplayName(

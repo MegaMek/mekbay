@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { FormationTypeDefinition } from './formation-type.model';
-import type { UnitGroup } from '../models/force.model';
+import type { UnitGroup } from '../../models/force.model';
 
 /** Appends `*` when organization-level units were excluded from formation requirements. */
 export function composeFormationDisplayName(

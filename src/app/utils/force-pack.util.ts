@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from '../models/unit-summary.model';
-import { getForcePacks } from '../models/forcepacks.model';
+import { getForcePacks, type ForcePack } from '../models/forcepacks.model';
 import type { DataService } from '../services/data.service';
 import { getUnitVariantGroupKey } from './unit-variant.util';
 
@@ -23,15 +23,15 @@ export type ResolvedPack = {
 };
 
 export function resolveForcePackUnits(
-    unitList: Array<{ name: string }>,
+    unitList: ForcePack['units'],
     dataService: DataService
 ): PackUnitEntry[] {
     return unitList.map(u => {
-        const found = dataService.getUnitByIdentifier(u.name);
+        const found = dataService.getUnitByUuid(u.uuid);
 
         return {
             chassis: found?.chassis ?? 'NOT FOUND',
-            model: found?.model ?? u.name,
+            model: found?.model ?? u.uuid,
             unit: found ?? null
         } as PackUnitEntry;
     });

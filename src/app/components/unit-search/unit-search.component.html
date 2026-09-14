@@ -526,7 +526,16 @@
                 </div>          
             }
             } @else {
-            <div class="results-status no-results">No results</div>
+                @if (filtersService.formationTargetBlocker(); as blocker) {
+                <div class="formation-search-blocker" role="status">
+                    <strong>Formation blocked by selected group</strong>
+                    <p>The selected group cannot form {{ blocker.formationName }} by adding units.</p>
+                    <formation-diagnostics [evaluation]="blocker.evaluation" [units]="blocker.units" filter="blocked" />
+                    <p>Change this group or choose a different formation.</p>
+                </div>
+                } @else {
+                <div class="results-status no-results">No results</div>
+                }
             }
         </div>
     </div>

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { GameSystem } from '../models/common.model';
-import type { FormationUnitLike } from './formation-unit-facts.util';
+import type { GameSystem } from '../../models/common.model';
+import type { FormationUnitLike } from './formation-facts.util';
 
 export type FormationPredicateId =
     | 'anti-air-equipment'
@@ -86,6 +86,7 @@ export type FormationFactKey = 'asSize' | 'cbtWeightClass' | 'chassis';
 
 export type FormationConstraint =
     | FormationAllConstraint
+    | FormationRoleConstraint
     | FormationCompoundConstraint
     | FormationConditionalConstraint
     | FormationCountConstraint
@@ -118,6 +119,11 @@ export interface FormationAllConstraint extends FormationConstraintBase {
 export interface FormationCompoundConstraint extends FormationConstraintBase {
     readonly kind: 'all-of' | 'any-of';
     readonly constraints: readonly FormationConstraint[];
+}
+
+export interface FormationRoleConstraint extends FormationConstraintBase {
+    readonly kind: 'all-role';
+    readonly role: string;
 }
 
 export interface FormationConditionalConstraint extends FormationConstraintBase {
@@ -153,7 +159,7 @@ export interface FormationSameValueConstraint extends FormationConstraintBase {
 
 export interface FormationConstraintEvaluation {
     readonly constraintId: string;
-    readonly kind?: FormationConstraint['kind'];
+    readonly kind: FormationConstraint['kind'] | 'unit-count-min' | 'unit-count-max' | 'eligibility';
     readonly label: string;
     readonly satisfied: boolean;
     readonly predicate?: FormationPredicateId;
@@ -161,15 +167,28 @@ export interface FormationConstraintEvaluation {
     readonly required?: number;
     readonly reason?: string;
     readonly childEvaluations?: readonly FormationConstraintEvaluation[];
+    /** Lower bound; future units may meet overlapping requirements. */
+    readonly minimumAdditions: number;
+    /** Proven impossible by adding units within the supplied size bounds. */
+    readonly blocked: boolean;
+    /** Roster indices keep duplicate models distinct for highlighting. */
+    readonly matchingUnitIndexes?: readonly number[];
+    readonly nonMatchingUnitIndexes?: readonly number[];
+    /** Quotas alone do not blame noncontributing units. */
+    readonly mismatchingUnitIndexes?: readonly number[];
+    readonly valueGroups?: readonly { readonly value: string | number | undefined; readonly unitIndexes: readonly number[] }[];
 }
 
 export interface FormationEvaluation {
     readonly formationId: string;
     readonly valid: boolean;
     readonly unitCount: number;
-    readonly shortCircuitedByIdealRole: boolean;
+    readonly qualifiedByIdealRole: boolean;
     readonly constraints: readonly FormationConstraintEvaluation[];
     readonly failedConstraintIds: readonly string[];
+    /** Partial means not yet valid and not proven impossible by addition. */
+    readonly status: 'valid' | 'partial' | 'invalid';
+    readonly minimumAdditions: number;
 }
 
 export interface FormationDeficit {
@@ -177,23 +196,6 @@ export interface FormationDeficit {
     readonly label: string;
     readonly needed: number;
     readonly predicate?: FormationPredicateId;
-}
-
-export interface FormationConditionalForbiddenPredicate {
-    readonly when: FormationPredicateId;
-    readonly predicate: FormationPredicateId;
-}
-
-export interface FormationCandidatePredicateFilter {
-    readonly requiredPredicates: readonly FormationPredicateId[];
-    readonly helpfulPredicates: readonly FormationPredicateId[];
-    readonly forbiddenPredicates: readonly FormationPredicateId[];
-    readonly conditionalForbiddenPredicates: readonly FormationConditionalForbiddenPredicate[];
-}
-
-export interface FormationTargetRange {
-    readonly minUnits: number;
-    readonly maxUnits?: number;
 }
 
 export interface FormationSearchDecision {
@@ -211,11 +213,4 @@ export interface FormationSearchTarget {
     readonly gameSystem: GameSystem;
     readonly minUnits?: number;
     readonly maxUnits?: number;
-}
-
-export interface FormationGenerationState {
-    readonly evaluation: FormationEvaluation;
-    readonly remainingSlots: number;
-    readonly remainingDeficits: readonly FormationDeficit[];
-    readonly completable: boolean;
 }

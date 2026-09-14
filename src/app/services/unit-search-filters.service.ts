@@ -30,6 +30,7 @@ import type { DropdownOption, MultiStateSelection } from '../components/multi-se
 import { getForcePacks } from '../models/forcepacks.model';
 import { matchesSearch, parseSearchQuery, type SearchTokensGroup } from '../utils/search.util';
 import { OptionsService } from './options.service';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { LoggerService } from './logger.service';
 import { GameSystem } from '../models/common.model';
 import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
@@ -64,12 +65,12 @@ import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-me
 import { calculateAdjustedBV, getEffectivePilotingSkill } from '../utils/cbt-common.util';
 import { isValidBvNormalizationSettings } from '../utils/bv-normalization.util';
 import { isValidPvNormalizationSettings } from '../utils/pv-normalization.util';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
-import { FormationRequirementEngine } from '../utils/formation-requirement-engine.util';
-import type { FormationSearchTarget } from '../utils/formation-requirement.model';
-import type { FormationUnitLike } from '../utils/formation-unit-facts.util';
-import { getFormationDefinitions } from '../utils/formation-blueprints';
-import { getFormationDropdownDisplayName, getFormationNameMatchStrings, type FormationTypeDefinition } from '../utils/formation-type.model';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
+import { FormationSolver } from '../utils/formation/formation-solver.util';
+import type { FormationSearchTarget } from '../utils/formation/formation-requirement.model';
+import type { FormationUnitLike } from '../utils/formation/formation-facts.util';
+import { getFormationDefinitions } from '../utils/formation/formation-definitions';
+import { getFormationDropdownDisplayName, getFormationNameMatchStrings, type FormationTypeDefinition } from '../utils/formation/formation-type.model';
 import { UserStateService } from './userState.service';
 import { PublicTagsService } from './public-tags.service';
 import { TagsService } from './tags.service';
@@ -144,7 +145,6 @@ interface UnitSearchClosePanelsRequest {
 
 @Injectable({ providedIn: 'root' })
 export class UnitSearchFiltersService {
-    private static readonly FORMATION_SEARCH_ASSIGNED_SKILL = 0;
 
     dataService = inject(DataService);
     private readonly searchIndex = inject(UnitSearchIndexService);
@@ -314,6 +314,36 @@ export class UnitSearchFiltersService {
             ? this.createFormationSearchTarget(formationId, this.gameService.currentGameSystem())
             : null;
     });
+    readonly formationTargetBlocker = computed(() => {
+        const gameSystem = this.gameService.currentGameSystem();
+        const manualTarget = this.formationTarget();
+        const targets: FormationSearchTarget[] = manualTarget ? [manualTarget] : [];
+        if (!manualTarget) {
+            // An OR/negated query can still return units through another branch.
+            const parsed = this.semanticParsedAST();
+            if (this.isComplexQuery() || parsed.errors.length) return null;
+            for (const token of getCommittedSemanticTokens(parsed.tokens)) {
+                if (!FORMATION_TARGET_SEMANTIC_FIELDS.has(token.field)
+                    || !['=', '==', '&='].includes(token.operator) || token.values.length !== 1) continue;
+                const definition = this.resolveFormationTargetDefinition(token.values[0], gameSystem);
+                const target = definition && this.createFormationSearchTarget(definition.id, gameSystem);
+                if (target) targets.push(target);
+            }
+        }
+        for (const target of targets) {
+            if (!target.existingUnits.length) continue;
+            const definition = FormationAnalyzer.getDefinitionById(target.formationId, gameSystem);
+            if (!definition || !FormationSolver.hasBlueprint(definition.id)) continue;
+            const evaluation = this.prepareFormationTargetSearch(definition, target).current;
+            if (evaluation.status !== 'invalid') continue;
+            return {
+                formationName: definition.name,
+                evaluation,
+                units: target.existingUnits,
+            };
+        }
+        return null;
+    });
     private advOptionsTelemetryPublishVersion = 0;
     private lastAdvOptionsTelemetryLogKey = '';
     private lastSearchTelemetryLogKey = '';
@@ -352,15 +382,12 @@ export class UnitSearchFiltersService {
         this.formationTargetExistingUnitsState.set(existingUnits);
     }
 
-    selectFormationTarget(target: FormationSearchTarget | null): void {
+    selectFormationTarget(formationId: string | null): void {
+        const target = formationId ? this.createFormationSearchTarget(formationId, this.gameService.currentGameSystem()) : null;
         const shouldSyncToText = this.autoConvertToSemantic() || this.semanticFilterKeys().has(FORMATION_TARGET_FILTER_KEY);
         const conf = getAdvancedFilterConfigByKey(FORMATION_TARGET_FILTER_KEY);
 
         if (shouldSyncToText && conf) {
-            if (target) {
-                this.formationTargetExistingUnitsState.set(target.existingUnits);
-            }
-
             const semanticValue = target
                 ? this.getFormationTargetSemanticValue(target.formationId, target.gameSystem)
                 : '';
@@ -618,7 +645,7 @@ export class UnitSearchFiltersService {
         const candidateFactionNames = (positiveFactionNames.length > 0 ? positiveFactionNames : allFactionNames)
             .filter((factionName) => !excludedFactionNames.has(factionName));
         const compatibleFactionNames = [...new Set(candidateFactionNames)].filter((factionName) => (
-            LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+            FormationAnalyzer.isFormationAvailableForFaction(
                 definition,
                 this.dataService.getFactionByName(factionName) ?? factionName,
             )
@@ -1194,7 +1221,7 @@ export class UnitSearchFiltersService {
         );
 
         return formationId
-            ? LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem)
+            ? FormationAnalyzer.getDefinitionById(formationId, gameSystem)
             : null;
     }
 
@@ -1217,7 +1244,7 @@ export class UnitSearchFiltersService {
     ): boolean {
         return !definition?.exclusiveFaction?.length
             || factionNames.length === 0
-            || factionNames.some((factionName) => LanceTypeIdentifierUtil.isFormationAvailableForFaction(
+            || factionNames.some((factionName) => FormationAnalyzer.isFormationAvailableForFaction(
                 definition,
                 this.dataService.getFactionByName(factionName) ?? factionName,
             ));
@@ -1315,21 +1342,16 @@ export class UnitSearchFiltersService {
             return units;
         }
 
-        const definition = LanceTypeIdentifierUtil.getDefinitionById(target.formationId, target.gameSystem);
-        if (!definition || !FormationRequirementEngine.hasBlueprint(definition.id)) {
-            return units;
+        const definition = FormationAnalyzer.getDefinitionById(target.formationId, target.gameSystem);
+        if (!definition || !FormationSolver.hasBlueprint(definition.id)) {
+            return [];
         }
 
-        const existingUnits = this.createFormationSearchUnits(target.existingUnits);
+        const search = this.prepareFormationTargetSearch(definition, target);
+        if (search.current.status === 'invalid') return [];
         const applyTargetFilter = () => units.filter(unit => {
             const candidate = this.createFormationCandidateUnit(unit, target);
-            return FormationRequirementEngine.evaluateSearchCandidate(
-                definition,
-                existingUnits,
-                candidate,
-                target.gameSystem,
-                { maxUnits: target.maxUnits ?? definition.maxUnits },
-            ).allowed;
+            return search.evaluateCandidate(candidate).allowed;
         });
 
         if (!telemetryStages) {
@@ -1348,34 +1370,14 @@ export class UnitSearchFiltersService {
     private createFormationCandidateUnit(unit: UnitSummary, target: FormationSearchTarget): FormationUnitLike {
         const baseForce = target.existingUnits[0]?.force ?? {
             faction: () => null,
-            era: () => null,
-            techBase: () => '',
-            gameSystem: target.gameSystem,
         };
 
-        return this.createFormationSearchUnit({
+        return {
             force: baseForce,
             getFormationSummary: () => unit,
-        });
-    }
-
-    private createFormationSearchUnits(units: readonly FormationUnitLike[]): readonly FormationUnitLike[] {
-        return units.map(unit => this.createFormationSearchUnit(unit));
-    }
-
-    private createFormationSearchUnit(unit: FormationUnitLike): FormationUnitLike {
-        return {
-            force: unit.force,
-            ...(unit.getFormationEntity
-                ? { getFormationEntity: () => unit.getFormationEntity!() }
-                : { getFormationSummary: () => unit.getFormationSummary!() }),
-            pilotSkill: () => UnitSearchFiltersService.FORMATION_SEARCH_ASSIGNED_SKILL,
-            gunnerySkill: () => UnitSearchFiltersService.FORMATION_SEARCH_ASSIGNED_SKILL,
+            pilotSkill: () => this.pilotGunnerySkill(),
+            gunnerySkill: () => this.pilotGunnerySkill(),
         };
-    }
-
-    private getFormationTargetExistingUnits(): readonly FormationUnitLike[] {
-        return this.formationTargetExistingUnitsState();
     }
 
     private getFormationTargetDefinitions(gameSystem: GameSystem): FormationTypeDefinition[] {
@@ -1383,11 +1385,11 @@ export class UnitSearchFiltersService {
         const seen = new Set<string>();
 
         for (const definition of getFormationDefinitions(gameSystem)) {
-            if (!FormationRequirementEngine.hasBlueprint(definition.id)) {
+            if (!FormationSolver.hasBlueprint(definition.id)) {
                 continue;
             }
 
-            const resolved = LanceTypeIdentifierUtil.getDefinitionById(definition.id, gameSystem);
+            const resolved = FormationAnalyzer.getDefinitionById(definition.id, gameSystem);
             if (!resolved || seen.has(resolved.id)) {
                 continue;
             }
@@ -1412,7 +1414,7 @@ export class UnitSearchFiltersService {
     }
 
     private resolveFormationTargetDefinition(value: string, gameSystem: GameSystem): FormationTypeDefinition | null {
-        return LanceTypeIdentifierUtil.resolveDefinition(value, gameSystem);
+        return FormationAnalyzer.resolveDefinition(value, gameSystem);
     }
 
     private getFormationTargetIdFromState(state: FilterState[string] | undefined, gameSystem: GameSystem): string | null {
@@ -1424,7 +1426,7 @@ export class UnitSearchFiltersService {
     }
 
     private createFormationSearchTarget(formationId: string, gameSystem: GameSystem): FormationSearchTarget | null {
-        const definition = LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem);
+        const definition = FormationAnalyzer.getDefinitionById(formationId, gameSystem);
         if (!definition) {
             return null;
         }
@@ -1439,31 +1441,27 @@ export class UnitSearchFiltersService {
     }
 
     private getFormationTargetSemanticValue(formationId: string, gameSystem: GameSystem): string {
-        return LanceTypeIdentifierUtil.getDefinitionById(formationId, gameSystem)?.name ?? formationId;
+        return FormationAnalyzer.getDefinitionById(formationId, gameSystem)?.name ?? formationId;
     }
 
-    private unitMatchesFormationTarget(unit: UnitSummary, formationName: string, gameSystem: GameSystem): boolean {
+    private prepareFormationTargetSearch(definition: FormationTypeDefinition, target: FormationSearchTarget) {
+        const faction = target.existingUnits[0]?.force.faction();
+        return FormationSolver.prepareSearch(definition, target.existingUnits, target.gameSystem, {
+            minUnits: target.minUnits, maxUnits: target.maxUnits,
+            unavailableReason: faction ? FormationAnalyzer.getFormationUnavailableReason(definition, undefined, faction) : undefined,
+        });
+    }
+
+    private prepareFormationTargetMatcher(formationName: string, gameSystem: GameSystem): (unit: UnitSummary) => boolean {
         const definition = this.resolveFormationTargetDefinition(formationName, gameSystem);
-        if (!definition || !FormationRequirementEngine.hasBlueprint(definition.id)) {
-            return false;
+        if (!definition || !FormationSolver.hasBlueprint(definition.id)) {
+            return () => false;
         }
 
-        const target: FormationSearchTarget = {
-            formationId: definition.id,
-            existingUnits: this.getFormationTargetExistingUnits(),
-            gameSystem,
-            minUnits: definition.minUnits,
-            maxUnits: definition.maxUnits,
-        };
-        const existingUnits = this.createFormationSearchUnits(target.existingUnits);
-        const candidate = this.createFormationCandidateUnit(unit, target);
-        return FormationRequirementEngine.evaluateSearchCandidate(
-            definition,
-            existingUnits,
-            candidate,
-            gameSystem,
-            { maxUnits: target.maxUnits ?? definition.maxUnits },
-        ).allowed;
+        const target = this.createFormationSearchTarget(definition.id, gameSystem)!;
+        const search = this.prepareFormationTargetSearch(definition, target);
+        if (search.current.status === 'invalid') return () => false;
+        return unit => search.evaluateCandidate(this.createFormationCandidateUnit(unit, target)).allowed;
     }
 
     constructor() {
@@ -1902,6 +1900,7 @@ export class UnitSearchFiltersService {
             ? null
             : this.unitAvailabilitySource.getMegaMekAvailabilityScoreResolver(megaMekRaritySortContext);
 
+        const formationMatchers = new Map<string, (unit: UnitSummary) => boolean>();
         const execution = executeUnitSearch({
             units: this.units,
             parsedQuery: executionParsedQuery,
@@ -1924,7 +1923,14 @@ export class UnitSearchFiltersService {
             unitMatchesAvailabilityFrom: (unit: UnitSummary, availabilityFromName: string, scope?: AvailabilityFilterScope) => this.availabilityQueries.unitMatchesAvailabilityFrom(unit, availabilityFromName, scope, this.useAllScopedMegaMekAvailabilityOptions()),
             unitMatchesAvailabilityRarity: (unit: UnitSummary, rarityName: string, scope?: AvailabilityFilterScope) => this.availabilityQueries.unitMatchesAvailabilityRarity(unit, rarityName, scope, this.useAllScopedMegaMekAvailabilityOptions()),
             unitBelongsToForcePack: (unit: UnitSummary, packName: string) => this.unitBelongsToForcePack(unit, packName),
-            unitMatchesFormationTarget: (unit: UnitSummary, formationName: string) => this.unitMatchesFormationTarget(unit, formationName, this.gameService.currentGameSystem()),
+            unitMatchesFormationTarget: (unit: UnitSummary, formationName: string) => {
+                let matcher = formationMatchers.get(formationName);
+                if (!matcher) {
+                    matcher = this.prepareFormationTargetMatcher(formationName, this.gameService.currentGameSystem());
+                    formationMatchers.set(formationName, matcher);
+                }
+                return matcher(unit);
+            },
             getAllEraNames: () => this.dataService.getEras().map(era => era.name),
             getAllFactionNames: () => this.dataService.getFactions().map(faction => faction.name),
             getAllAvailabilityFromNames: () => [...MEGAMEK_AVAILABILITY_FROM_FILTER_OPTIONS],
@@ -2530,7 +2536,7 @@ export class UnitSearchFiltersService {
             return normalizedMatch;
         }
         if (normalization) {
-            throw new Error(`Missing ${normalization.kind.toUpperCase()} normalization match for ${unit.name}.`);
+            throw new Error(`Missing ${normalization.kind.toUpperCase()} normalization match for ${formatUnitName(unit, this.optionsService.options().displayUnitNameFormat)}.`);
         }
 
         const gunnery = this.pilotGunnerySkill();

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ASForceUnit } from '../models/as-force-unit.model';
-import { GameSystem } from '../models/common.model';
-import type { Force, UnitGroup } from '../models/force.model';
-import { getAbilityDetails, PILOT_ABILITIES } from '../models/pilot-abilities.model';
-import { getFormationDefinition } from './formation-blueprints';
+import type { ASForceUnit } from '../../models/as-force-unit.model';
+import { GameSystem } from '../../models/common.model';
+import type { Force, UnitGroup } from '../../models/force.model';
+import { getAbilityDetails, PILOT_ABILITIES } from '../../models/pilot-abilities.model';
+import { getFormationDefinition } from './formation-definitions';
 import { clearInvalidFormationTargetSelection, resolveFormationTargetGroup } from './formation-target.util';
-import { LanceTypeIdentifierUtil } from './lance-type-identifier.util';
+import { FormationAnalyzer } from './formation-analysis.util';
 import {
     formationHasTargetCopyEffect,
     formationInheritsParentEffects,
@@ -755,7 +755,7 @@ export class FormationAbilityAssignmentUtil {
                 .filter((descriptor): descriptor is FormationEffectDescriptor => descriptor !== null),
         ];
         const formationUnitCount = group.units().length;
-        const filterContext = LanceTypeIdentifierUtil.getRequirementsFilterContextForGroup(group);
+        const filterContext = FormationAnalyzer.getRequirementsFilterContextForGroup(group);
         const baseEligibleUnits = (filterContext.filteredUnits as ASForceUnit[] | undefined) ?? group.units();
         const requestedAssignments = getRequestedAssignments(group, options);
         const commanderUnitId = getCurrentCommanderUnitId(group, options);

@@ -19,7 +19,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ToastService } from '../../services/toast.service';
 import { Pipe, type PipeTransform } from "@angular/core";
 import type { Force } from '../../models/force.model';
-import { getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
+import { getForcePreviewUnitDisplay, getForcePreviewUnitPilotStats } from '../../models/force-preview.model';
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import type { ForcePreviewGroup } from '../../models/force-preview.model';
 import type { LoadOperationEntry } from '../../models/operation.model';
@@ -46,12 +46,12 @@ import { ForceAddModePickerDialogComponent, type ForceAddModePickerData, type Fo
 import { FactionImgPipe } from '../../pipes/faction-img.pipe';
 import { CleanModelStringPipe } from '../../pipes/clean-model-string.pipe';
 import { sanitizeForceTags } from '../../models/force-serialization';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import {
     NOTE_PREVIEW_LINE_COUNT,
     hasVisibleNoteText,
 } from '../../utils/note-preview.util';
-import { NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { NO_FORMATION_ID } from '../../utils/formation/formation-type.model';
 import { SessionPersistenceService } from '../../services/session-persistence.service';
 import { ForceTagsComponent, type ForceTagClickEvent } from '../force-tags/force-tags.component';
 import { ForceTaggingService } from '../../services/force-tagging.service';
@@ -132,6 +132,7 @@ const DEFAULT_OPERATION_SORT_DIRECTION: SortDirection = 'desc';
 })
 export class ForceLoadDialogComponent {
     readonly unitNames = inject(UnitNameService);
+    readonly getUnitDisplay = getForcePreviewUnitDisplay;
     private dialogRef = inject(DialogRef<ForceLoadDialogResult>);
     private dialogData: ForceLoadDialogData | null = inject(DIALOG_DATA, { optional: true });
     private dataService = inject(DataService);
@@ -1401,7 +1402,7 @@ export class ForceLoadDialogComponent {
 
     getGroupName(group: ForcePreviewGroup): string {
         if (!group.name) {
-            return LanceTypeIdentifierUtil.getFormationName(group.formationId) || '';
+            return FormationAnalyzer.getFormationName(group.formationId) || '';
         }
         return group.name;
     }
@@ -1410,7 +1411,7 @@ export class ForceLoadDialogComponent {
         if (!group.formationId) return null;
         if (group.formationId === NO_FORMATION_ID) return null;
         if (!group.name) return null; // We handle it in getGroupName
-        const formationName = LanceTypeIdentifierUtil.getFormationName(group.formationId);
+        const formationName = FormationAnalyzer.getFormationName(group.formationId);
         if (formationName && group.name.includes(formationName)) {
             return null;
         }

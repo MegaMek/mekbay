@@ -54,6 +54,7 @@ import {
     WD_UNIT,
 } from './definitions';
 import {
+    collectGroupUnits,
     compileGroupFacts,
     compileUnitFactsList,
     DEFAULT_ORG_RULE_REGISTRY,
@@ -65,20 +66,24 @@ import {
 import {
     evaluateComposedCountRule,
     evaluateComposedPatternRule,
-    evaluateCIFormationRule,
-    evaluateFactionOrgDefinition as evaluateFactionOrgDefinitionForFixture,
-    evaluateLeafCountRule,
-    evaluateLeafPatternRule,
-    evaluateOrgDefinition,
-    getLastOrgSolveMetrics,
     materializeComposedCountRule,
     materializeComposedPatternRule,
+} from './org-composition.util';
+import {
+    evaluateCIFormationRule,
+    evaluateLeafCountRule,
+    evaluateLeafPatternRule,
     materializeCIFormationRule,
     materializeLeafCountRule,
     materializeLeafPatternRule,
+} from './org-leaf-rules.util';
+import {
+    evaluateFactionOrgDefinition as evaluateFactionOrgDefinitionForFixture,
+    evaluateOrgDefinition,
     resolveFromGroups as resolveFromGroupsForFixture,
     resolveFromUnits as resolveFromUnitsForFixture,
 } from './org-solver.util';
+import { getLastOrgSolveMetrics } from './org-solve-session';
 import type {
     GroupSizeResult,
     OrgComposedCountRule,
@@ -3954,5 +3959,25 @@ describe('org-solver.util performance guards', () => {
 
     it('resolves 5x the Blunder Brigade 7415 Wolf\'s Dragoons force within the performance guardrail', () => {
         expectBlunderBrigadeSolveWithinGuardrail(5, "Wolf's Dragoons");
+    });
+
+    it('solves all 457 Blunder Brigade units and their force organization within the performance guardrail', () => {
+        let groups: GroupSizeResult[] = [];
+        let result: GroupSizeResult[] = [];
+        const measurement = measureMedianScenarioMs(() => {
+            groups = buildBlunderBrigadeGroupResults(10);
+            result = resolveFromGroups("Wolf's Dragoons", 'Mercenary', groups);
+        });
+
+        const inputUnits = new Set(groups.flatMap(collectGroupUnits));
+        const outputUnits = new Set(result.flatMap(collectGroupUnits));
+        expect(inputUnits.size).toBe(457);
+        expect(outputUnits.size).toBe(inputUnits.size);
+        expect([...inputUnits].every(unit => outputUnits.has(unit))).toBeTrue();
+        expect(result.map(group => group.name)).toEqual(['Reinforced Regiment', 'Regiment', 'Regiment']);
+        expect(getLastOrgSolveMetrics()?.timedOut).toBeFalse();
+        expect(measurement.medianMs)
+            .withContext(`full-roster durations=${measurement.durations.join(',')}`)
+            .toBeLessThan(BLUNDER_BRIGADE_MAX_SOLVE_MS);
     });
 });

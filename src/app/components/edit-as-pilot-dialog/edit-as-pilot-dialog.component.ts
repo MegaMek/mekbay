@@ -26,7 +26,7 @@ import {
     type FormationEffectPreview,
     type FormationSharedPoolPreview,
     type FormationWideAbilityDescriptor,
-} from '../../utils/formation-ability-assignment.util';
+} from '../../utils/formation/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
 import { PilotNameCatalogService } from '../../services/catalogs/pilot-name-catalog.service';
 import { LoggerService } from '../../services/logger.service';

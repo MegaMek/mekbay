@@ -24,12 +24,16 @@ import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { SavedSearchesService } from '../../services/saved-searches.service';
 import { TaggingService } from '../../services/tagging.service';
-import { MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
+import { FORMATION_TARGET_FILTER_KEY, MEGAMEK_RARITY_PRODUCTION_SORT_KEY } from '../../services/unit-search-filters.model';
 import { UnitSearchFiltersService } from '../../services/unit-search-filters.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../testing/unit-test-helpers';
 import { UnitCardExpandedComponent } from '../unit-card-expanded/unit-card-expanded.component';
 import { calculateDataTableMinWidth } from '../data-table/data-table.component';
 import { UnitSearchComponent } from './unit-search.component';
+import { CBTForceMember, type ForceMember } from '../../models/force-member.model';
+import type { CBTForce } from '../../models/cbt-force.model';
+import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import type { FormationUnitLike } from '../../utils/formation/formation-facts.util';
 
 @Component({ template: '<button type="button">Dialog content</button>' })
 class SearchEscapeTestDialog {}
@@ -82,6 +86,8 @@ describe('UnitSearchComponent card virtualization', () => {
         searchTokens: () => [],
         isComplexQuery: () => false,
         filterState: () => ({}),
+        semanticFilterKeys: signal(new Set<string>()),
+        setFormationTargetExistingUnits: jasmine.createSpy('setFormationTargetExistingUnits'),
         advOptions: () => advOptionsSignal(),
         resetFilters: jasmine.createSpy('resetFilters'),
         setSearchText: jasmine.createSpy('setSearchText'),
@@ -120,6 +126,7 @@ describe('UnitSearchComponent card virtualization', () => {
     };
 
     const forceWorkspaceStub = {
+        selectedUnit: signal<ForceMember | null>(null),
         smartCurrentForce: () => null,
         hasForces: () => false,
     };
@@ -207,6 +214,9 @@ describe('UnitSearchComponent card virtualization', () => {
     beforeEach(async () => {
         openDialogs = [];
         filteredUnitsSignal.set([]);
+        forceWorkspaceStub.selectedUnit.set(null);
+        filtersServiceStub.semanticFilterKeys.set(new Set());
+        filtersServiceStub.setFormationTargetExistingUnits.calls.reset();
         optionsSignal.set({
             ASUseHex: false,
             colorScheme: 'default',
@@ -338,6 +348,29 @@ describe('UnitSearchComponent card virtualization', () => {
                 },
             })
             .compileComponents();
+    });
+
+    it('keeps formation search context current without opening the advanced panel', () => {
+        const members = signal<readonly FormationUnitLike[]>([]);
+        const force = { getRosterGroupId: () => 'selected', groups: () => [group] } as unknown as CBTForce;
+        const group = { id: 'selected', force, organizationalResult: () => ({ groups: [] }), formationUnits: members };
+        const first = new CBTForceMember('first', force, new TestBipedMekEntity());
+        const second = new CBTForceMember('second', force, new TestBipedMekEntity());
+        members.set([first]);
+        forceWorkspaceStub.selectedUnit.set(first);
+        filtersServiceStub.semanticFilterKeys.set(new Set([FORMATION_TARGET_FILTER_KEY]));
+        const fixture = TestBed.createComponent(UnitSearchComponent);
+        fixture.detectChanges();
+        expect(filtersServiceStub.advOpen()).toBeFalse();
+        expect(filtersServiceStub.setFormationTargetExistingUnits).toHaveBeenCalledWith([first]);
+
+        members.set([first, second]);
+        fixture.detectChanges();
+        expect(filtersServiceStub.setFormationTargetExistingUnits.calls.mostRecent().args[0]).toEqual([first, second]);
+
+        forceWorkspaceStub.selectedUnit.set(null);
+        fixture.detectChanges();
+        expect(filtersServiceStub.setFormationTargetExistingUnits.calls.mostRecent().args[0]).toEqual([]);
     });
 
     it('uses the same filtered results in selection mode without opening details or adding to a force', async () => {

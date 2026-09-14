@@ -122,6 +122,7 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
     getNativeSource(): NativeUnitSourceHandle | undefined {
         return this.#nativeSource === undefined ? undefined : cloneNativeUnitSourceHandle(this.#nativeSource);
     }
+    getCustomSource(): PinnedCustomUnitSource | undefined { return this.#customSource; }
     matchesEntity(entity: BaseEntity): boolean { return entity === this.getUnit(); }
     ruleset(): CBTRuleset {
         const runtime = this.#runtime;

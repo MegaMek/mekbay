@@ -9,10 +9,38 @@ import {
     createForcePreviewEntryFromSerializedForce,
     createForcePreviewUnitFromSerializedUnit,
     getForcePreviewResolvedUnits,
+    getForcePreviewUnitDisplay,
     getForcePreviewUnitPilotStats,
     isForcePreviewEntry,
 } from './force-preview.model';
 import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { UnitSummary } from './unit-summary.model';
+
+describe('force preview display', () => {
+    const catalog = { chassis: 'New catalog name', model: 'New model', icon: 'meks/new.png' } as UnitSummary;
+
+    it('uses the pinned identity instead of a changed catalog entry', () => {
+        const entry = { unit: catalog, destroyed: false, embeddedCustom: true as const, alias: 'Pilot',
+            customPreview: ['Mad Cat', 'Custom A', 'Timber Wolf', 'meks/pinned.png'] as const };
+        const display = getForcePreviewUnitDisplay(entry, 'both');
+        expect(display.name).toEqual({ chassis: 'Mad Cat', model: 'Custom A', clanName: 'Timber Wolf' });
+        expect(display.iconPath).toBe('meks/pinned.png');
+        expect(display.showName).toBeTrue();
+        expect(getForcePreviewUnitDisplay(entry, 'alias').showName).toBeFalse();
+    });
+
+    it('shows Unknown for missing custom metadata even when a catalog entry and pilot alias exist', () => {
+        const entry = { unit: catalog, destroyed: false, embeddedCustom: true as const, alias: 'Pilot' };
+        const display = getForcePreviewUnitDisplay(entry, 'alias');
+        expect(display.name?.chassis).toBe('Unknown');
+        expect(display.iconPath).toBe('');
+        expect(display.showName).toBeTrue();
+        const standard = getForcePreviewUnitDisplay({ ...entry, embeddedCustom: undefined }, 'alias');
+        expect(standard.name).toBe(catalog);
+        expect(standard.iconPath).toBeUndefined();
+        expect(standard.showName).toBeFalse();
+    });
+});
 
 describe('createForcePreviewUnitFromSerializedUnit', () => {
     const getUnitByIdentifier = (name: string) => ({
@@ -134,6 +162,7 @@ describe('createForcePreviewEntryFromForce', () => {
                 positions: [{ positionId: 'crew:pilot', name: 'Ace', gunnery: 3, piloting: 4 }],
             }),
             getUnitDestroyed: () => true,
+            getUnitCustomSource: () => undefined,
             isUnitCommander: () => true,
             getUnitAdjustedBattleValue: () => 1200,
             getUnitPristineBattleValue: () => 1143,

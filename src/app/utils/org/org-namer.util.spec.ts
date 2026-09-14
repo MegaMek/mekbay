@@ -3,7 +3,8 @@
 // Author: Drake
 
 import type { Faction } from '../../models/factions.model';
-import { getOrgFromForceCollection, getOrgFromResolvedGroups } from './org-namer.util';
+import { getOrgFromResolvedGroups } from './org-namer.util';
+import { getOrgFromForceCollection } from './org-analysis.util';
 import { getAggregatedTier, getDynamicTierForModifier } from './org-tier.util';
 import { resolveFromGroups } from './org-solver.util';
 import type { GroupSizeResult } from './org-types';

@@ -83,7 +83,7 @@ export class UnitArtworkService {
             await this.db.saveUnitArtwork(uuid, artwork, true);
             await this.changes;
         }
-        return { format: pin.format, source: extracted.source };
+        return { ...pin, source: extracted.source };
     }
 
     private refresh(keys: readonly UnitUuid[] | null): Promise<void> {

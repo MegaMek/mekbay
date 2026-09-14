@@ -9,6 +9,7 @@ import type { CBTDirectUnitAdmissionResult } from '../models/cbt-force.types';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { Force, UnitGroup } from '../models/force.model';
 import type { UnitSummary } from '../models/unit-summary.model';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { DEFAULT_FORCE_DEPLOYMENT_ID } from '../models/runtime/unit-state-initializer';
 import {
     MM_DATA_UNIT_PROVIDER_ID,
@@ -61,7 +62,7 @@ export class ForceUnitAdmissionService {
         request: ForceUnitAdmissionRequest,
     ): Promise<CBTForceMember> {
         if (!(request.force instanceof CBTForce) || !isNativeCBTSummary(request.summary)) {
-            throw new Error(`CBT runtime is not available for "${request.summary.name}"`);
+            throw new Error(`CBT runtime is not available for "${formatUnitName(request.summary)}"`);
         }
 
         return this.admitCBT({
@@ -114,7 +115,7 @@ export class ForceUnitAdmissionService {
 
     private async createAlphaStrikeUnit(request: ForceUnitAdmissionRequest): Promise<ASForceUnit> {
         if (!(request.force instanceof ASForce)) {
-            throw new Error(`Alpha Strike runtime is not available for "${request.summary.name}"`);
+            throw new Error(`Alpha Strike runtime is not available for "${formatUnitName(request.summary)}"`);
         }
         const targetGroup = request.group === undefined
             ? undefined

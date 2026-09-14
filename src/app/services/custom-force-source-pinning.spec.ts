@@ -12,6 +12,7 @@ import { createTestEquipmentRegistry } from '../models/entity/testing/test-equip
 import { encodeNativeEntity } from '../models/entity/write-entity';
 import { decodePinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
 import { pinnedCustomSourceForHandle } from '../models/native-unit-source-handle';
+import { createForcePreviewUnitFromForceMember } from '../models/force-preview.model';
 import { CBTUnitStore } from '../models/cbt-unit-store';
 import { CBT_FORCE_PERSISTENCE_SCHEMA_VERSION, asForceId, emptyRuntimeHistory, type SerializedCBTForceV2, type SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
 import type { SerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
@@ -27,16 +28,19 @@ import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
+import { SpriteStorageService } from './sprite-storage.service';
+import { resolveUnitSpritePath } from '../utils/unit-sprite-resolver';
 import { asSourceHash, asUnitUuid, makeUnitFileName, type StoredCoreContent } from './unit-catalog/unit-catalog.types';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 const SCENARIO = { id: 'pinning', ruleset: 'core-2026' as const };
 
-async function setup(kind: ConstructionUnitKind, custom = true) {
+async function setup(kind: ConstructionUnitKind, custom = true, iconPath = '') {
     const registry = createTestEquipmentRegistry();
     const entity = createConstructionEntity(kind, registry);
     entity.uuid.set(UUID);
     entity.model.set('Original revision');
+    entity.iconPath.set(iconPath);
     const location = kind === 'Biped' ? 'CT' : 'Front';
     entity.armorValues.update(values => new Map(values).set(location, { front: 20, rear: 0 }));
     const format = kind === 'Biped' ? 'mtf' : 'blk';
@@ -52,6 +56,9 @@ async function setup(kind: ConstructionUnitKind, custom = true) {
     const notice = jasmine.createSpy('notice').and.resolveTo();
     TestBed.configureTestingModule({ providers: [
         provideZonelessChangeDetection(), CBTUnitService, NativeEntityService,
+        { provide: SpriteStorageService, useValue: { resolveIconPath: (unit: typeof entity) =>
+            resolveUnitSpritePath(unit, { exact: { DEFAULT_MEDIUM: 'meks/automatic.png',
+                DEFAULT_TRACKED: 'vehicles/automatic.png', DEFAULT_UNKNOWN: 'unknown.png' }, chassis: {} }) } },
         { provide: CustomUnitSyncService, useValue: { fetch } },
         { provide: DialogsService, useValue: { showNotice: notice } },
         { provide: OptionsService, useValue: { options: () => ({ displayUnitNameFormat: 'innerSphereClan', CBTRules: 'core-2026',
@@ -74,6 +81,35 @@ async function setup(kind: ConstructionUnitKind, custom = true) {
 }
 
 describe('portable custom force source pinning', () => {
+    it('reads live preview metadata without copying source bytes or capturing runtime state', async () => {
+        await setup('Biped');
+        const force = new CBTForce('Preview', TestBed.inject(DataService), TestBed.inject(Injector));
+        const member = await new ForceUnitAdmissionService().admitCBT({ force, uuid: UUID });
+        const source = force.getUnitCustomSource(member.id)!;
+        spyOn(force, 'getUnitSnapshot').and.throwError('Preview must not capture a full unit snapshot');
+        const preview = createForcePreviewUnitFromForceMember(member);
+        expect(preview.customPreview).toBe(source.preview);
+        expect(preview.embeddedCustom).toBeTrue();
+        expect(Object.isFrozen(source)).toBeTrue();
+        expect(Object.isFrozen(source.preview)).toBeTrue();
+    });
+    for (const [kind, icon, expectedIcon] of [
+        ['Biped', '', 'meks/automatic.png'],
+        ['Tank', '', 'vehicles/automatic.png'],
+        ['Biped', 'meks/selected.png', 'meks/selected.png'],
+    ] as const) {
+        it(`pins the resolved sprite key for ${kind} ${icon ? 'explicit' : 'automatic'} selection`, async () => {
+            const fixture = await setup(kind, true, icon);
+            const unit = await fixture.service.create({ uuid: UUID, instanceId: 'unit:icon', deployment: { id: 'test' }, scenario: SCENARIO });
+            const pin = unit.serialize().customSource!;
+            expect(pin.preview).toEqual([unit.getUnit().chassis(), unit.getUnit().model(), unit.getUnit().clanName(), expectedIcon]);
+            expect(unit.getUnit().iconPath()).toBe(icon);
+            fixture.clearLocal();
+            const restored = await fixture.service.restore(unit.serialize(), SCENARIO);
+            expect(restored.unit.serialize().customSource?.preview).toEqual(pin.preview);
+            expect(pin.source).not.toContain('icon:');
+        });
+    }
     for (const kind of ['Biped', 'Tank'] as const) {
         it(`retains ${kind} source and damage after the same custom UUID is revised and deleted`, async () => {
             const fixture = await setup(kind);

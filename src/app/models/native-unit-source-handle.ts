@@ -7,7 +7,7 @@ import type {
     UnitFileName,
 } from '../services/unit-catalog/unit-catalog.types';
 import type { SourceHashCanary } from './source-hash-canary';
-import type { PinnedCustomUnitSource } from './pinned-custom-unit-source';
+import type { CustomDesignPreview, PinnedCustomUnitSource } from './pinned-custom-unit-source';
 
 /** Exact detached native bytes owned by one loaded unit runtime. */
 export interface NativeUnitSourceHandle {
@@ -18,6 +18,7 @@ export interface NativeUnitSourceHandle {
     readonly bytes: ArrayBuffer;
     /** Custom source bytes must travel with a saved force rather than follow catalog updates. */
     readonly isCustom?: true;
+    readonly customPreview?: CustomDesignPreview;
 }
 
 export function cloneNativeUnitSourceHandle(
@@ -32,10 +33,12 @@ export function cloneNativeUnitSourceHandle(
         ...(source.sourceHash === undefined ? {} : { sourceHash: source.sourceHash }),
         bytes: source.bytes.slice(0),
         ...(source.isCustom ? { isCustom: true as const } : {}),
+        ...(source.customPreview ? { customPreview: Object.freeze([...source.customPreview]) as CustomDesignPreview } : {}),
     });
 }
 
 export function pinnedCustomSourceForHandle(source: NativeUnitSourceHandle | undefined): PinnedCustomUnitSource | undefined {
     if (!source?.isCustom) return undefined;
-    return Object.freeze({ format: source.format, source: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(source.bytes) });
+    return Object.freeze({ format: source.format, source: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(source.bytes),
+        ...(source.customPreview ? { preview: source.customPreview } : {}) });
 }

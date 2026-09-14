@@ -318,6 +318,19 @@
     text-align: center;
 }
 
+.formation-search-blocker {
+    --formation-failure-color: var(--text-color);
+    margin: 12px;
+    padding: 12px;
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    color: var(--text-color);
+    line-height: 1.4;
+    overflow-y: auto;
+
+    strong { color: var(--danger); }
+    p { margin: 8px 0 0; }
+}
+
 .card-view-viewport {
     --card-columns: 1;
 }

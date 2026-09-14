@@ -21,8 +21,8 @@ import {
     type FormationAssignmentPreview,
     type FormationEffectPreview,
     type FormationSharedPoolPreview,
-} from './formation-ability-assignment.util';
-import type { FormationWideAbility } from './formation-type.model';
+} from './formation/formation-ability-assignment.util';
+import type { FormationWideAbility } from './formation/formation-type.model';
 
 export interface ASPrintFormationApplication {
     abilityNames: string[];
@@ -443,7 +443,7 @@ function collectUnitNames(groups: UnitGroup<ASForceUnit>[], nameFormat: DisplayU
     for (const group of groups) {
         for (const unit of group.units()) {
             const unitData = unit.getSummary();
-            const baseName = formatUnitName(unitData, nameFormat) || unitData.name || unit.id;
+            const baseName = formatUnitName(unitData, nameFormat) || unit.id;
             unitNames.set(unit.id, baseName);
         }
     }

@@ -4,9 +4,11 @@
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
-import type { FormationTypeDefinition } from '../../utils/formation-type.model';
+import type { FormationTypeDefinition } from '../../utils/formation/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
 import type { GameSystem } from '../../models/common.model';
+import type { FormationEvaluation } from '../../utils/formation/formation-requirement.model';
+import type { FormationUnitLike } from '../../utils/formation/formation-facts.util';
 
 /*
  *
@@ -24,6 +26,8 @@ export interface FormationInfoDialogData {
     unitCount?: number;
     /** Whether the formation is valid for the current group composition */
     isValid?: boolean;
+    evaluation?: FormationEvaluation;
+    units?: readonly FormationUnitLike[];
     /** Whether organization-level units were ignored while checking requirements */
     requirementsFiltered?: boolean;
     /** Optional org composition name that caused requirement filtering */
@@ -51,7 +55,7 @@ export interface FormationInfoDialogResult {
         <div class="content">
             <h2 dialog-title>{{ data.formationDisplayName || data.formation.name }}</h2>
             <div dialog-content>
-                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [requirementsFiltered]="data.requirementsFiltered ?? false" [requirementsFilterCompositionName]="data.requirementsFilterCompositionName" [requirementsFilterNotice]="data.requirementsFilterNotice" [showTitle]="false"></formation-info>
+                <formation-info [formation]="data.formation" [gameSystem]="data.gameSystem" [unitCount]="data.unitCount" [isValid]="data.isValid" [evaluation]="data.evaluation" [units]="data.units ?? []" [requirementsFiltered]="data.requirementsFiltered ?? false" [requirementsFilterCompositionName]="data.requirementsFilterCompositionName" [requirementsFilterNotice]="data.requirementsFilterNotice" [showTitle]="false"></formation-info>
                 @if (data.formationTargetOptions) {
                     <div class="formation-target">
                         <label for="formation-target-group">Supported formation</label>

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { ForceUnit } from '../models/force-unit.model';
-import type { UnitGroup } from '../models/force.model';
+import type { ForceUnit } from '../../models/force-unit.model';
+import type { UnitGroup } from '../../models/force.model';
 import { formationHasTargetCopyEffect } from './formation-type.model';
 
 /** A target must be a different, non-empty formation that does not itself copy another formation. */

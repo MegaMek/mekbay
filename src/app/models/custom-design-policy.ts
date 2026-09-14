@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { deflate, Inflate } from 'pako';
 import { assertImageFreeUnitSource } from './entity/native-unit-artwork';
-import type { PinnedCustomUnitSource } from './pinned-custom-unit-source';
-import { decodePinnedCustomUnitSource } from './pinned-custom-unit-source';
+import { decodeCustomDesignPreview, decodePinnedCustomUnitSource, type CustomDesignPreview, type PinnedCustomUnitSource } from './pinned-custom-unit-source';
 import { asUnitUuid, type UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { MAX_UNIT_SOURCE_BYTES } from '../services/unit-catalog/core-unit-manifest';
 
@@ -18,7 +17,7 @@ export class CustomDesignCapacityError extends Error {}
 export const CUSTOM_DESIGN_COUNT_LIMIT_MESSAGE = 'A force can include up to ' + MAX_EMBEDDED_CUSTOM_DESIGNS + ' different custom designs. Remove a design or add this unit to another force.';
 export const CUSTOM_DESIGN_SIZE_LIMIT_MESSAGE = 'The custom designs in this force are too large to save together. Remove a custom design or move it to another force.';
 export interface CompressedCustomDesign { uuid: UnitUuid; format: 'mtf' | 'blk'; data: string }
-export interface CompressedCustomDesignTable { encoding: 'deflate'; data: string }
+export interface CompressedCustomDesignTable { encoding: 'deflate'; data: string; previews?: readonly CustomDesignPreview[] }
 export interface EmbeddedCustomDesign { uuid: UnitUuid; source: PinnedCustomUnitSource }
 
 function deflateText(source: string): string {
@@ -61,7 +60,17 @@ export function decompressCustomDesign(value: unknown): EmbeddedCustomDesign {
 /** One transport block for the entire force table; callers retain its small decoded index. */
 export function compressEmbeddedCustomDesigns(designs: readonly EmbeddedCustomDesign[]): CompressedCustomDesignTable {
     designs.forEach(({ source }) => assertImageFreeUnitSource(source.source, source.format));
-    return { encoding: 'deflate', data: deflateText(JSON.stringify(designs.map(({ uuid, source }) => ({ uuid, ...source })))) };
+    return { encoding: 'deflate', data: deflateText(JSON.stringify(designs.map(({ uuid, source }) => ({ uuid, format: source.format, source: source.source })))),
+        ...(designs.some(({ source }) => source.preview !== undefined)
+            ? { previews: designs.map(({ source }): CustomDesignPreview => source.preview ? [...source.preview] : ['', '', '', '']) } : {}),
+    };
+}
+
+/** List readers use this without inflating the source table. */
+export function decodeCustomDesignPreviews(value: unknown): readonly CustomDesignPreview[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.length > MAX_EMBEDDED_CUSTOM_DESIGNS) throw new Error('Invalid custom design previews');
+    return value.map(decodeCustomDesignPreview);
 }
 
 export function decompressEmbeddedCustomDesigns(value: unknown): readonly EmbeddedCustomDesign[] {
@@ -69,14 +78,18 @@ export function decompressEmbeddedCustomDesigns(value: unknown): readonly Embedd
     if (new TextEncoder().encode(JSON.stringify(value)).byteLength > MAX_EMBEDDED_CUSTOM_BYTES) throw new Error('Embedded custom designs are too large');
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid embedded custom design table');
     const packed = value as Record<string, unknown>;
-    if (Object.keys(packed).some(k => k !== 'encoding' && k !== 'data') || packed['encoding'] !== 'deflate' || typeof packed['data'] !== 'string') throw new Error('Invalid embedded custom design table');
+    if (Object.keys(packed).some(k => !['encoding', 'data', 'previews'].includes(k)) || packed['encoding'] !== 'deflate' || typeof packed['data'] !== 'string') throw new Error('Invalid embedded custom design table');
+    const previews = decodeCustomDesignPreviews(packed['previews']);
     const rows: unknown = JSON.parse(inflateText(packed['data'], MAX_EMBEDDED_CUSTOM_EXPANDED_BYTES));
     if (!Array.isArray(rows) || rows.length > MAX_EMBEDDED_CUSTOM_DESIGNS) throw new Error('Too many embedded custom designs');
-    const designs = rows.map(raw => {
+    if (previews && previews.length !== rows.length) throw new Error('Custom design previews do not match the source table');
+    const designs = rows.map((raw, index) => {
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid embedded custom design');
         const row = raw as Record<string, unknown>;
         if (Object.keys(row).some(k => !['uuid', 'format', 'source'].includes(k)) || typeof row['uuid'] !== 'string') throw new Error('Invalid embedded custom design');
-        return { uuid: asUnitUuid(row['uuid']), source: decodePinnedCustomUnitSource({ format: row['format'], source: row['source'] }) };
+        const source = decodePinnedCustomUnitSource({ format: row['format'], source: row['source'] });
+        return { uuid: asUnitUuid(row['uuid']), source: previews
+            ? Object.freeze({ ...source, preview: previews[index] }) : source };
     });
     if (new Set(designs.map(designKey)).size !== designs.length) throw new Error('Duplicate embedded custom design');
     return designs;

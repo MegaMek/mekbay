@@ -3,11 +3,26 @@
 import { compressCustomDesign, decompressCustomDesign, planEmbeddedDesigns, compressEmbeddedCustomDesigns, decompressEmbeddedCustomDesigns, MAX_EMBEDDED_CUSTOM_DESIGNS, MAX_EMBEDDED_CUSTOM_EXPANDED_BYTES, CustomDesignCapacityError } from './custom-design-policy';
 import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { MAX_UNIT_SOURCE_BYTES } from '../services/unit-catalog/core-unit-manifest';
+import { inflate } from 'pako';
 
 const uuid = (index: number) => asUnitUuid(`019f6767-0dcb-7bb8-992f-${String(index).padStart(12, '0')}`);
 const design = (index: number) => ({ uuid: uuid(index), source: { format: 'mtf' as const, source: `uuid:${uuid(index)}\nchassis:Test\nmodel:Revision ${index}\n${'Left Arm:\n-Empty-\n'.repeat(30)}` } });
 
 describe('force custom design storage policy', () => {
+    it('deduplicates preview tuples with pinned designs and keeps them outside the compressed sources', () => {
+        const original = { ...design(1), source: { ...design(1).source,
+            preview: ['Mad Cat', 'Custom A', 'Timber Wolf', 'meks/custom.png'] as const } };
+        const revised = { ...original, source: { ...original.source, source: original.source.source + '\nrevision',
+            preview: ['Mad Cat', 'Custom B', 'Timber Wolf', 'meks/revised.png'] as const } };
+        const plan = planEmbeddedDesigns([original, revised, original]);
+        expect(plan.indexes).toEqual([0, 1, 0]);
+        expect(plan.compressed!.previews).toEqual([original.source.preview, revised.source.preview]);
+        expect(decompressEmbeddedCustomDesigns(plan.compressed)).toEqual([original, revised]);
+        const packedSources = new TextDecoder().decode(inflate(Uint8Array.from(atob(plan.compressed!.data), c => c.charCodeAt(0))));
+        expect(packedSources).not.toContain('preview');
+        expect(packedSources).not.toContain('meks/custom.png');
+        expect(() => decompressEmbeddedCustomDesigns({ ...plan.compressed, previews: [] })).toThrowError(/match/);
+    });
     it('stores one compressed source for 100 instances of the same design', () => {
         const source = design(1);
         const plan = planEmbeddedDesigns(Array.from({ length: 100 }, () => source));

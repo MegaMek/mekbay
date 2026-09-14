@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { Injectable,inject } from '@angular/core';
+import { Injectable,Injector,inject } from '@angular/core';
 import { createMekUnit,restoreMekUnit } from '../models/runtime/cbt-mek-unit';
 import { createNonMekUnit,restoreNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
 import { UnitNameService } from './unit-name.service';
@@ -27,6 +27,7 @@ nativeSourceHandleForLoadedEntity,
 } from './native-entity.service';
 import type { UnitUuid } from './unit-catalog/unit-catalog.types';
 import type { PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
+import { SpriteStorageService } from './sprite-storage.service';
 
 export interface CreateCBTUnitRequest {
     readonly uuid: UnitUuid;
@@ -60,13 +61,15 @@ export interface CBTUnitRestoreResult {
 export class CBTUnitService {
     private readonly unitNames = inject(UnitNameService);
     private readonly entities = inject(NativeEntityService);
+    private readonly injector = inject(Injector);
 
     public async create(request: CreateCBTUnitRequest): Promise<CBTUnit> {
         const loaded = request.customSource === undefined
             ? await this.entities.load(request.uuid)
             : await this.entities.loadPinnedCustom(request.uuid, request.customSource);
         const uuid = loaded.source.uuid;
-        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded);
+        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded,
+            entity => this.injector.get(SpriteStorageService).resolveIconPath(entity), request.customSource?.preview?.[3]);
         if (loaded.entity instanceof MekEntity) {
             return createMekUnit({
                 uuid: request.uuid,
@@ -101,7 +104,8 @@ export class CBTUnitService {
             ? await this.entities.load(saved.entity)
             : await this.entities.loadPinnedCustom(saved.entity, saved.customSource);
         const uuid = loaded.source.uuid;
-        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded);
+        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded,
+            entity => this.injector.get(SpriteStorageService).resolveIconPath(entity), saved.customSource?.preview?.[3]);
         const unitName = this.unitNames.name(loaded.entity);
         const warnings: CBTUnitRestoreWarning[] = [];
         const warn = (code: CBTUnitRestoreWarningCode, message: string): void => {

@@ -115,10 +115,11 @@ describe('force storage codec', () => {
                 initialStateProfileId: 'pristine-non-mek-v1',
             });
             const customSource = { format: family === 'mek' ? 'mtf' as const : 'blk' as const,
-                source: encodeNativeEntity(entity) };
+                source: encodeNativeEntity(entity), preview: [entity.chassis(), entity.model(), entity.clanName(), 'meks/custom.png'] as const };
             const unit = { ...runtime.serialize(), customSource };
             const stored = encodeForceForStorage(forceWithUnit(unit, `force:portable-${family}`, 'Portable custom'));
             expect(storedUnit(stored)['customDesign']).toBe(0);
+            expect((stored['customDesigns'] as { previews: unknown }).previews).toEqual([customSource.preview]);
             const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
             expect(decoded.cbt!.units[0].unit.customSource).toEqual(customSource);
             await expectAsync(validateSerializedCBTForceV2(decoded.cbt)).toBeResolved();

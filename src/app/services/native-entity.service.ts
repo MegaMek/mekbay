@@ -17,9 +17,10 @@ import { CoreUnitCatalogService } from './unit-catalog/core-unit-catalog.service
 import { DataService } from './data.service';
 import { asSourceHash, makeUnitFileName, type UnitUuid } from './unit-catalog/unit-catalog.types';
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
-import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
+import { decodePinnedCustomUnitSource, type CustomDesignPreview, type PinnedCustomUnitSource } from '../models/pinned-custom-unit-source';
 import { validateNativeUnitSource } from './unit-catalog/native-unit-source';
 import { sha1Base64Url } from '../utils/sha1.util';
+import type { UnitIconResolver } from '../utils/unit-sprite-resolver';
 
 interface PreparedEntityRepository {
     readonly inputsKey: string;
@@ -118,6 +119,8 @@ export class NativeEntityService {
 
 export async function nativeSourceHandleForLoadedEntity(
     loaded: LoadedEntity,
+    resolveIcon: UnitIconResolver,
+    savedIcon?: string,
 ): Promise<NativeUnitSourceHandle | undefined> {
     if (loaded.source.file === undefined) return undefined;
     const hashCanary = await nativeSourceHashCanary(new TextDecoder().decode(loaded.source.bytes), loaded.source.format);
@@ -127,6 +130,9 @@ export async function nativeSourceHandleForLoadedEntity(
         sourceHash: loaded.source.sourceHash,
         sourceHashCanary: hashCanary,
         bytes: loaded.source.bytes.slice(0),
-        ...(loaded.source.isCustom ? { isCustom: true as const } : {}),
+        ...(loaded.source.isCustom ? { isCustom: true as const,
+            customPreview: Object.freeze([loaded.entity.chassis(), loaded.entity.model(), loaded.entity.clanName(),
+                savedIcon ?? resolveIcon(loaded.entity)]) as CustomDesignPreview,
+        } : {}),
     });
 }

@@ -6,14 +6,38 @@ import { decodeRemoteLoadForceEntry } from './remote-load-force-entry.model';
 import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 describe('remote force-list wire decoder', () => {
-    it('keeps the embedded marker in both cloud and local previews without loading source bodies', () => {
+    it('reads packed custom previews in cloud and local lists without loading source bodies', () => {
         const base = { version: 2, instanceId: 'force', timestamp: 0, type: GameSystem.CBT, name: 'Custom force' };
         const uuid = 'AZ9nZw3Le7iZL67wggL14g';
-        const cloud = decodeRemoteLoadForceEntry({ ...base, groups: [{ units: [[uuid, { embeddedCustom: true }]] }] });
-        const local = decodeRemoteLoadForceEntry({ ...base, units: [{ uuid, customDesign: 0 }], groups: [{ unitIndices: [0] }] });
+        const customDesigns = { previews: [['Mad Cat', 'Custom A', 'Timber Wolf', 'meks/custom.png']] } as const;
+        const cloud = decodeRemoteLoadForceEntry({ ...base, customDesigns, groups: [{ units: [[uuid, { customDesign: 0 }]] }] });
+        const local = decodeRemoteLoadForceEntry({ ...base, customDesigns: { ...customDesigns, encoding: 'deflate', data: 'not read' }, units: [{ uuid, customDesign: 0 }], groups: [{ unitIndices: [0] }] });
         expect(cloud.groups![0].units[0].embeddedCustom).toBeTrue();
         expect(local.groups![0].units[0].embeddedCustom).toBeTrue();
+        expect(cloud.groups![0].units[0].customPreview).toEqual(customDesigns.previews[0]);
+        expect(local.groups![0].units[0].customPreview).toEqual(customDesigns.previews[0]);
         expect(JSON.stringify(local)).not.toContain('source');
+    });
+
+    it('retains an unresolved custom marker when preview metadata is absent', () => {
+        const base = { version: 2, instanceId: 'force', timestamp: 0, name: 'Custom force' };
+        const uuid = 'AZ9nZw3Le7iZL67wggL14g';
+        for (const fields of [
+            { units: [{ uuid, customDesign: 0 }], groups: [{ unitIndices: [0] }] },
+            { groups: [{ units: [[uuid, { customDesign: 0, vacant: true }]] }] },
+        ]) {
+            const unit = decodeRemoteLoadForceEntry({ ...base, ...fields }).groups![0].units[0];
+            expect(unit.embeddedCustom).toBeTrue();
+            expect(unit.customPreview).toBeUndefined();
+        }
+    });
+
+    it('rejects malformed preview tuples and references', () => {
+        const base = { version: 2, instanceId: 'force', timestamp: 0, name: 'Custom',
+            units: [{ uuid: 'AZ9nZw3Le7iZL67wggL14g', customDesign: 0 }], groups: [{ unitIndices: [0] }] };
+        for (const previews of [[], [['name']], [['name', '', '', 5]], [['name', '', '', 'data:image/png;base64,abc']]]) {
+            expect(() => decodeRemoteLoadForceEntry({ ...base, customDesigns: { previews } })).toThrow();
+        }
     });
 
     it('decodes compact V2 unit summaries without full force state', () => {

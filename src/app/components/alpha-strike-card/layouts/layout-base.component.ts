@@ -15,7 +15,7 @@ import { PILOT_ABILITIES, type PilotAbility, type ASCustomPilotAbility } from '.
 import { type CriticalHitsVariant, getLayoutForUnitType } from '../card-layout.config';
 import { adjustPointValueForSkill } from '../../../utils/pv-skill-adjustment.util';
 import { formatMovement, formatMovementWithAlternate } from '../../../utils/as-common.util';
-import { FormationAbilityAssignmentUtil, type FormationWideAbilityDescriptor } from '../../../utils/formation-ability-assignment.util';
+import { FormationAbilityAssignmentUtil, type FormationWideAbilityDescriptor } from '../../../utils/formation/formation-ability-assignment.util';
 import type { SpecialAbilityState } from '../../../models/as-special-ability-state.model';
 import { DEFAULT_GUNNERY_SKILL } from '../../../models/crew-member.model';
 

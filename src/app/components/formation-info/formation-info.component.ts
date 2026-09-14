@@ -3,12 +3,15 @@
 // Author: Drake
 
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup, type FormationWideAbility } from '../../utils/formation-type.model';
-import { getFormationDefinition } from '../../utils/formation-blueprints';
+import type { FormationEvaluation } from '../../utils/formation/formation-requirement.model';
+import type { FormationUnitLike } from '../../utils/formation/formation-facts.util';
+import { FormationDiagnosticsComponent } from './formation-diagnostics.component';
+import { formationInheritsParentEffects, type FormationTypeDefinition, type FormationEffectGroup, type FormationWideAbility } from '../../utils/formation/formation-type.model';
+import { getFormationDefinition } from '../../utils/formation/formation-definitions';
 import { type PilotAbility, PILOT_ABILITIES, getAbilityDetails, formatSummaryMovement } from '../../models/pilot-abilities.model';
 import { type CommandAbility, COMMAND_ABILITIES } from '../../models/command-abilities.model';
 import { GameSystem, formatRulesReference, type RulesReference } from '../../models/common.model';
-import { getInheritedFormationEffectGroups, resolveFormationSharedPoolLevel } from '../../utils/formation-ability-assignment.util';
+import { getInheritedFormationEffectGroups, resolveFormationSharedPoolLevel } from '../../utils/formation/formation-ability-assignment.util';
 import { OptionsService } from '../../services/options.service';
 
 /*
@@ -39,6 +42,7 @@ export interface ResolvedEffectGroup {
 
 @Component({
     selector: 'formation-info',
+    imports: [FormationDiagnosticsComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         @if (formation(); as def) {
@@ -76,6 +80,9 @@ export interface ResolvedEffectGroup {
                         </div>
                     } @else {
                         <div class="requirements-text" [innerHTML]="reqText"></div>
+                    }
+                    @if (evaluation(); as result) {
+                        <formation-diagnostics [evaluation]="result" [units]="units()"></formation-diagnostics>
                     }
                 </div>
             }
@@ -158,6 +165,7 @@ export interface ResolvedEffectGroup {
         }
     `,
     styles: [`
+        formation-diagnostics { margin-top: 8px; }
         :host {
             display: block;
         }
@@ -197,17 +205,18 @@ export interface ResolvedEffectGroup {
         }
 
         .requirements-section {
+            --formation-failure-color: var(--text-color);
             padding: 8px 10px;
             background: rgba(255, 255, 255, 0.04);
             border-left: 3px solid var(--text-color-tertiary);
         }
 
         .requirements-section.requirements-unmet {
-            border-left-color: red;
+            border-left-color: var(--danger);
             background: rgba(255, 0, 0, 0.08);
 
             .requirements-label {
-                color: red;
+                color: var(--danger);
             }
         }
 
@@ -382,6 +391,8 @@ export interface ResolvedEffectGroup {
 })
 export class FormationInfoComponent {
     private readonly optionsService = inject(OptionsService);
+    evaluation = input<FormationEvaluation | undefined>(undefined);
+    units = input<readonly FormationUnitLike[]>([]);
     formation = input<FormationTypeDefinition | null>(null);
     /** Game system of the owning force: determines which ability summaries to display. */
     gameSystem = input<GameSystem>(GameSystem.AS);

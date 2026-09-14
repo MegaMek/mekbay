@@ -15,7 +15,7 @@ import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from
  * Adapted from MekHQ's RandomCompanyNameGenerator / BackgroundsController.
  *
  * Formation (group-level) naming lives in formation-namer.util.ts.
- * ForceType lives in org-definitions.util.ts, solver in org-solver.util.ts.
+ * Organization rules and solving live in utils/org.
  */
 
 // ─── Public Types ──────────────────────────────────────────────────────────────

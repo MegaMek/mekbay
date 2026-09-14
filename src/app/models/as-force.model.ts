@@ -9,10 +9,11 @@ import { type ASSerializedForce, AS_SERIALIZED_FORCE_SCHEMA, type SerializedForc
 import { GameSystem } from './common.model';
 import { Force, MAX_UNITS, resolveSerializedFormation, UnitGroup } from './force.model';
 import { Sanitizer } from '../utils/sanitizer.util';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { ASForceUnit } from './as-force-unit.model';
 import { C3NetworkEditor } from './c3-network-editor';
 import { C3Network } from './c3-network.model';
-import { FormationAbilityAssignmentUtil } from '../utils/formation-ability-assignment.util';
+import { FormationAbilityAssignmentUtil } from '../utils/formation/formation-ability-assignment.util';
 import { DialogsService } from '../services/dialogs.service';
 import { sourceHashCanaryChanged } from './source-hash-canary';
 import { detachForcePersonnel, remapForcePersonnelUnits, type ForcePerson } from './force-personnel';
@@ -180,7 +181,7 @@ export class ASForce extends Force<ASForceUnit> {
                         serializedUnit.sourceHashCanary,
                         currentSummary.sourceHashCanary,
                     )) {
-                        warnings.add(`Unit "${currentSummary.name}" source file has changed since this force was last used.`);
+                        warnings.add(`Unit "${formatUnitName(currentSummary)}" source file has changed since this force was last used.`);
                     }
                     try {
                         if (!currentSummary) {

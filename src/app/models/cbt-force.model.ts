@@ -1201,6 +1201,11 @@ export class CBTForce extends Force<never> {
         return this.unitStore.unitSnapshot(instanceId);
     }
 
+    /** Immutable custom source metadata; does not copy native bytes or capture runtime state. */
+    public getUnitCustomSource(instanceId: string) {
+        return this.unitStore.cbtUnit(instanceId)?.getCustomSource();
+    }
+
     public getUnitUuid(instanceId: string): UnitUuid | null {
         return this.unitStore.cbtUnit(instanceId)?.uuid ?? null;
     }

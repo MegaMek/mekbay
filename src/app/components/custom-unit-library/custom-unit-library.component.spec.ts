@@ -32,7 +32,7 @@ describe('custom unit libraries in Options', () => {
     it('lists owned designs and subscriber counts, and respects a declined deletion', async () => {
         const fixture = TestBed.createComponent(CustomUnitLibraryComponent); fixture.detectChanges();
         expect(fixture.nativeElement.textContent).toContain('Owned Atlas');
-        expect(fixture.nativeElement.textContent).toContain('42 subscribers');
+        expect(fixture.nativeElement.querySelector('subscriber-count').getAttribute('aria-label')).toBe('42 subscribers');
         expect(fixture.nativeElement.textContent).not.toContain('Shared Jenner');
         await fixture.componentInstance.remove(own);
         expect(remove).not.toHaveBeenCalled();

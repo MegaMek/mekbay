@@ -5,6 +5,7 @@
 import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import type { UnitSummary } from '../../models/unit-summary.model';
+import { formatUnitName } from '../../utils/unit-display-name.util';
 import { materializeUnitSummaryView } from '../../utils/unit-summary-view';
 import { LoggerService } from '../logger.service';
 import { CustomUnitsService } from '../custom-units.service';
@@ -344,7 +345,7 @@ export class UnitsCatalogService {
             throw new Error('Core catalog generation changed while opening the native unit source');
         }
         const summary = this.snapshotValue().summaries.find(unit => unit.uuid === uuid);
-        const unitLabel = summary ? ` for unit "${summary.name}"` : '';
+        const unitLabel = summary ? ` for unit "${formatUnitName(summary)}"` : '';
         this.logger.info(
             `Opening native ${loaded.format.toUpperCase()} unit file "${loaded.file}"${unitLabel} (${uuid}).`,
         );

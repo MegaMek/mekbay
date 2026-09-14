@@ -1156,7 +1156,7 @@ export class DbService {
                 }
                 const clean = await preparation;
                 return { ...entry, unit: { ...entry.unit, sourceHashCanary: clean.sourceHashCanary,
-                    customSource: { format: pin.format, source: clean.source } } };
+                    customSource: { ...pin, source: clean.source } } };
             }));
             force = { ...force, cbt: { ...force.cbt, units } };
         }

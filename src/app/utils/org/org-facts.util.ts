@@ -31,6 +31,23 @@ import type {
     OrgTransportSpecial,
 } from './org-types';
 
+export function getCISquadCount(unit: OrgUnit): number {
+    const squads = unit.squads ?? 1;
+    return Number.isFinite(squads) ? Math.max(0, Math.floor(squads)) : 0;
+}
+
+export function getUnitBucketValue(
+    bucketBy: OrgUnitBucketName | undefined,
+    facts: UnitFacts,
+    registry: OrgRuleRegistry,
+): string {
+    if (!bucketBy) {
+        return '__all__';
+    }
+    const bucketFn = registry.unitBuckets[bucketBy];
+    return bucketFn ? `${bucketFn(facts) as string | number | boolean}` : '__all__';
+}
+
 const ORG_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
     'classKey',
     'ciMoveClass',
@@ -271,7 +288,7 @@ function getGroupCIMoveClassBucketValue(facts: GroupFacts): CIMoveClassBucketVal
     return `CI:${moveClassTags[0].slice('ci:'.length)}` as CIMoveClassBucketValue;
 }
 
-export function compileUnitFacts(unit: OrgUnit, index?: number): UnitFacts {
+export function compileUnitFacts(unit: OrgUnit): UnitFacts {
     const tags = new Set<UnitFactTag>();
 
     tags.add(getUnitClassKey(unit));
@@ -306,14 +323,14 @@ export function compileUnitFacts(unit: OrgUnit, index?: number): UnitFacts {
 }
 
 export function compileUnitFactsList(units: ReadonlyArray<OrgUnit>): UnitFacts[] {
-    return units.map((unit, index) => compileUnitFacts(unit, index));
+    return units.map(compileUnitFacts);
 }
 
 export function buildUnitFactsMap(units: ReadonlyArray<OrgUnit>): WeakMap<OrgUnit, UnitFacts> {
     const factsMap = new WeakMap<OrgUnit, UnitFacts>();
 
-    for (const [index, unit] of units.entries()) {
-        factsMap.set(unit, compileUnitFacts(unit, index));
+    for (const unit of units) {
+        factsMap.set(unit, compileUnitFacts(unit));
     }
 
     return factsMap;
@@ -391,8 +408,8 @@ export function compileGroupFacts(
 
     const allocations = directAllocations ?? groupUnits.map((unit) => ({ unit }));
 
-    for (const [index, allocation] of allocations.entries()) {
-        const facts = unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit, index);
+    for (const allocation of allocations) {
+        const facts = unitFactsMap?.get(allocation.unit) ?? compileUnitFacts(allocation.unit);
         const normalizedUnitType = getNormalizedOrgUnitType(facts.unit);
 
         incrementCount(unitTypeCounts, normalizedUnitType);

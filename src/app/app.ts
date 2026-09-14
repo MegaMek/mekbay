@@ -44,7 +44,7 @@ import { CatalogRefreshStatusComponent } from './components/catalog-refresh-stat
 import { projectBackgroundCatalogProgress } from './models/startup-progress.model';
 
 import { GameSystem } from './models/common.model';
-import { Router, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { UrlService } from './services/url.service';
 import { SeoService } from './services/seo.service';
 
@@ -81,7 +81,8 @@ declare global {
     PortalModule,
     LoadingSpinnerComponent,
     CatalogRefreshStatusComponent,
-    RouterOutlet
+    RouterOutlet,
+    RouterLink
 ],
     templateUrl: './app.html',
     styleUrl: './app.scss',
@@ -633,14 +634,6 @@ export class App {
 
     showCollectionDialog(): void {
         void this.router.navigate(['/collection'], { queryParamsHandling: 'preserve' });
-    }
-
-    showUnitConstruction(): void {
-        void this.router.navigate(['/meklab'], { queryParamsHandling: 'preserve' });
-    }
-
-    showForceGeneratorDialog(): void {
-        void this.forceImport.showSearchForceGeneratorDialog();
     }
 
     joinLobby(): void {

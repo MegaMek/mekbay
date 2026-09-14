@@ -26,7 +26,9 @@ describe('ASForce source hash canary', () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
         const summary = createEmptyUnit({
             uuid,
-            name: 'Atlas AS7-D',
+            name: 'BMAtlas_AS7D',
+            chassis: 'Atlas',
+            model: 'AS7-D',
             hash: 'BBBBBBBBBBBBBBBBBBBBBBBBBBA',
             sourceHashCanary: asSourceHashCanary('BBBB'),
         });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { GameSystem, type RulesReference } from '../models/common.model';
+import { GameSystem, type RulesReference } from '../../models/common.model';
 
 export interface FormationWideAbility {
     readonly id: string;

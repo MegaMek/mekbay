@@ -11,8 +11,7 @@ import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 /*
  *
- * Pure type / interface definitions for the force-org system.
- * No runtime code — only types and interfaces live here.
+ * Organization contracts and the empty organization result.
  */
 
 export const EMPTY_RESULT: GroupSizeResult = {

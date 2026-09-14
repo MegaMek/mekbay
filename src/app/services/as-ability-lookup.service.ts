@@ -6,6 +6,7 @@ import { inject, Injectable } from '@angular/core';
 import { AS_SPECIAL_ABILITIES, type ASSpecialAbility } from '../models/as-abilities.model';
 import { type AlternateMunition, getAlternateMunitionsForAbility } from '../models/as-alternate-munitions.model';
 import type { UnitSummary } from '../models/unit-summary.model';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import { LoggerService } from './logger.service';
 
 /**
@@ -397,7 +398,7 @@ export class AsAbilityLookupService {
                 // Check if main ability was matched
                 if (!parsed.ability) {
                     const existing = unmatchedAbilities.get(abilityText) || [];
-                    existing.push(unit.name);
+                    existing.push(formatUnitName(unit));
                     unmatchedAbilities.set(abilityText, existing);
                 } else {
                     matchedAbilities++;
@@ -411,7 +412,7 @@ export class AsAbilityLookupService {
                             if (!this.isDamagePattern(sub.originalText)) {
                                 const key = `${abilityText} -> ${sub.originalText}`;
                                 const existing = unmatchedAbilities.get(key) || [];
-                                existing.push(unit.name);
+                                existing.push(formatUnitName(unit));
                                 unmatchedAbilities.set(key, existing);
                             }
                         }

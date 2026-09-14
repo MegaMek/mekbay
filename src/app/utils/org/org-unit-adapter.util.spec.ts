@@ -3,7 +3,7 @@
 
 import { createEmptyUnit, createTestMekEntity } from '../../testing/unit-test-helpers';
 import { compileUnitFacts } from './org-facts.util';
-import { orgUnitFromEntity, orgUnitFromFormationUnit, orgUnitFromSummary } from './org-unit.util';
+import { orgUnitFromEntity, orgUnitFromFormationUnit, orgUnitFromSummary } from './org-unit-adapter.util';
 import { convertEntityToAlphaStrike } from '../../models/entity/utils/alpha-strike/alpha-strike-converter';
 import { TestBattleArmorEntity } from '../../models/entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';

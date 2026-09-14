@@ -16,7 +16,8 @@ import type { AvailabilitySource } from '../models/options.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { ForcePreviewEntry } from '../models/force-preview.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
+import { FormationSolver } from '../utils/formation/formation-solver.util';
 import { DataService } from './data.service';
 import type { ForceGenerationContext, ForceGenerationPreview } from './force-generator.service';
 import {
@@ -1399,6 +1400,47 @@ describe('ForceGeneratorService', () => {
         expect(preview.units.every(generatedUnit => generatedUnit.skill === 4)).toBeTrue();
         expect(preview.targetFormationId).toBe('artillery-fire-lance');
         expect(preview.explanationLines.join('\n')).not.toContain('Result note: Target formation achieved');
+    });
+
+    it('completes CBT vehicle pairs nested under the Battle Lance qualification alternative', () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Capellan Confederation');
+        registerEraAndFaction(era, faction);
+        const candidates = Array.from({ length: 2 }, (_, index) => createUnit({
+            mul1id: index + 1, name: `Heavy Vehicle ${index}`, role: 'Sniper', type: 'Tank',
+            weightClass: 'Heavy', tons: 70, bv: 100, as: { TP: 'CV', SZ: 3, PV: 10 },
+        }));
+        for (const unit of candidates) { units.push(unit); addMegaMekAvailability(unit, faction, era); }
+        spyOn(Math, 'random').and.returnValue(0);
+        const preview = service.buildPreview({ eligibleUnits: candidates, context: createContext(faction, era), gameSystem: GameSystem.CBT,
+            budgetRange: { min: 0, max: 0 }, minUnitCount: 4, maxUnitCount: 4, gunnery: 4, piloting: 5, targetFormationId: 'battle-lance' });
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(4);
+        const roster = preview.units.map(generated => ({ force: { faction: () => faction }, getFormationSummary: () => generated.unit }));
+        expect(FormationSolver.evaluateDefinition(FormationAnalyzer.getDefinitionById('battle-lance', GameSystem.CBT)!, roster, GameSystem.CBT)?.valid).toBeTrue();
+    });
+
+    for (const role of ['Juggernaut', 'Sniper']) it(`builds an Assault Lance through the ${role} qualification path`, () => {
+        const era = createEra(3150, 'ilClan');
+        const faction = createFaction(10, 'Capellan Confederation');
+        registerEraAndFaction(era, faction);
+        const candidates = Array.from({ length: 4 }, (_, index) => createUnit({
+            mul1id: index + 1, name: `${role} ${index}`, role,
+            as: { TP: 'BM', PV: 40, SZ: role === 'Juggernaut' ? 1 : 3, Arm: role === 'Juggernaut' ? 1 : 8,
+                dmg: { _dmgS: 4, _dmgM: 4, _dmgL: 3 } },
+        }));
+        for (const unit of candidates) { units.push(unit); addMegaMekAvailability(unit, faction, era); }
+        spyOn(Math, 'random').and.returnValue(0);
+        const preview = service.buildPreview({
+            eligibleUnits: candidates, context: createContext(faction, era), gameSystem: GameSystem.AS,
+            budgetRange: { min: 160, max: 160 }, minUnitCount: 4, maxUnitCount: 4,
+            gunnery: 4, piloting: 5, targetFormationId: 'assault-lance',
+        });
+        expect(preview.error).toBeNull();
+        expect(preview.units.length).toBe(4);
+        expect(preview.targetFormationId).toBe('assault-lance');
+        const formationUnits = preview.units.map(generated => ({ force: { faction: () => faction }, getFormationSummary: () => generated.unit }));
+        expect(FormationSolver.evaluateDefinition(FormationAnalyzer.getDefinitionById('assault-lance', GameSystem.AS)!, formationUnits, GameSystem.AS)?.valid).toBeTrue();
     });
 
     it('builds separate target formation groups when two requested formations fit the unit cap', () => {
@@ -4687,26 +4729,26 @@ describe('ForceGeneratorService', () => {
             minUnits: 4,
         } as any;
 
-        spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.callFake((forceUnits) => {
+        spyOn(FormationAnalyzer, 'getBestMatch').and.callFake((forceUnits) => {
             const unitNames = forceUnits.map((unit) =>
                 unit.getFormationEntity?.().displayName()
                 ?? unit.getFormationSummary?.().name
                 ?? '');
             if (unitNames.length !== 4) {
-                return [];
+                return null;
             }
 
             if (unitNames.every((name) => name.startsWith('A-'))) {
-                return [{ definition: eliteFormation, requirementsFiltered: false }];
+                return { definition: eliteFormation, requirementsFiltered: false };
             }
             if (unitNames.every((name) => name.startsWith('B-'))) {
-                return [{ definition: reconFormation, requirementsFiltered: false }];
+                return { definition: reconFormation, requirementsFiltered: false };
             }
             if (unitNames.every((name) => name.startsWith('C-'))) {
-                return [{ definition: battleFormation, requirementsFiltered: false }];
+                return { definition: battleFormation, requirementsFiltered: false };
             }
 
-            return [{ definition: supportFormation, requirementsFiltered: false }];
+            return { definition: supportFormation, requirementsFiltered: false };
         });
 
         const entry = createForceEntry(service, {
@@ -4779,23 +4821,23 @@ describe('ForceGeneratorService', () => {
             minUnits: 5,
         } as any;
 
-        spyOn(LanceTypeIdentifierUtil, 'identifyFormations').and.callFake((forceUnits) => {
+        spyOn(FormationAnalyzer, 'getBestMatch').and.callFake((forceUnits) => {
             const unitNames = forceUnits.map((unit) =>
                 unit.getFormationEntity?.().displayName()
                 ?? unit.getFormationSummary?.().name
                 ?? '');
             if (unitNames.length !== 5) {
-                return [];
+                return null;
             }
 
             if (unitNames.every((name) => name.startsWith('X-'))) {
-                return [{ definition: clanFormation, requirementsFiltered: false }];
+                return { definition: clanFormation, requirementsFiltered: false };
             }
             if (unitNames.every((name) => name.startsWith('Y-'))) {
-                return [{ definition: hunterFormation, requirementsFiltered: false }];
+                return { definition: hunterFormation, requirementsFiltered: false };
             }
 
-            return [{ definition: supportFormation, requirementsFiltered: false }];
+            return { definition: supportFormation, requirementsFiltered: false };
         });
 
         const entry = createForceEntry(service, {

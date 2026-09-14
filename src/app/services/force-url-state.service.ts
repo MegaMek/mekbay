@@ -11,7 +11,8 @@ import type { Force } from '../models/force.model';
 import type { ForceLoadingProgress } from '../models/force-loading-progress.model';
 import type { ForceMember } from '../models/force-member.model';
 import type { ForceAlignment, ForceSlot } from '../models/force-slot.model';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
+import { formatUnitName } from '../utils/unit-display-name.util';
 import {
     buildMultiForceQueryParams,
     parseForceUrl,
@@ -320,7 +321,7 @@ export class ForceUrlStateService {
         for (const parsedGroup of parseForceUrl(unitsParam, this.dataService.getUnits(), this.logger, lookupMode)) {
             const group = await force.addGroup(parsedGroup.name || undefined);
             if (parsedGroup.formationId) {
-                const formation = LanceTypeIdentifierUtil.getDefinitionById(parsedGroup.formationId, force.gameSystem);
+                const formation = FormationAnalyzer.getDefinitionById(parsedGroup.formationId, force.gameSystem);
                 if (formation) {
                     await force.updateGroup(group, { formation, formationLock: true });
                 }
@@ -335,7 +336,7 @@ export class ForceUrlStateService {
                         ...(unit.pilotingSkill === undefined ? {} : { pilotingSkill: unit.pilotingSkill }),
                     }));
                 } catch (error) {
-                    this.logger.warn(`Force URL startup: unit "${unit.summary.name}" was deferred: ${error}`);
+                    this.logger.warn(`Force URL startup: unit "${formatUnitName(unit.summary)}" was deferred: ${error}`);
                 }
             }
             if (force.membersInGroup(group).length === 0) {

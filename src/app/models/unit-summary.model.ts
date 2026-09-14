@@ -144,7 +144,7 @@ export interface UnitSummary {
   /** Source parsing diagnostics and construction validation errors, exposed by the semantic issues filter. */
   loadIssues: readonly EntityLoadIssue[];
 
-  /** Catalog name, not a unique identity. Custom units must be referenced by UUID. */
+  /** Legacy key for V1 decoding, old URL fallback and unit tags. Use UnitNameService/formatUnitName for display. */
   name: string;
   /** MegaMek Unit List (MUL) database reference. Not unique; null means absent. */
   mul1id: number | null;

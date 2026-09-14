@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import type { Faction } from '../models/factions.model';
-import type { BaseEntity } from '../models/entity/base-entity';
-import { isEcmEquipment } from '../models/ecm-mode.model';
-import { isBapEquipment } from '../models/bap-equipment.model';
-import { CBT_WEIGHT_CLASS_ORDINALS, type UnitSummary } from '../models/unit-summary.model';
-import { isGroundMovementMode } from './as-common.util';
-import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import type { Faction } from '../../models/factions.model';
+import { GameSystem } from '../../models/common.model';
+import type { BaseEntity } from '../../models/entity/base-entity';
+import { isEcmEquipment } from '../../models/ecm-mode.model';
+import { isBapEquipment } from '../../models/bap-equipment.model';
+import { CBT_WEIGHT_CLASS_ORDINALS, type UnitSummary } from '../../models/unit-summary.model';
+import { isGroundMovementMode } from '../as-common.util';
+import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 
 const CBT_LIGHT_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Light') ?? 1;
 const CBT_MEDIUM_WEIGHT_CLASS = CBT_WEIGHT_CLASS_ORDINALS.get('Medium') ?? 2;
@@ -86,7 +87,7 @@ export function formationUnitTechBaseFacts(unit: FormationUnitLike): Readonly<{
     return Object.freeze({ techBase: summary.techBase, mixed: summary.mixed });
 }
 
-export function asGetMaxGroundMove(unit: UnitSummary): number {
+function asGetMaxGroundMove(unit: UnitSummary): number {
     const movementModes = unit.as?.MVm;
     if (!movementModes) return 0;
 
@@ -99,37 +100,7 @@ export function asGetMaxGroundMove(unit: UnitSummary): number {
     return maxMove;
 }
 
-export function asGetJumpMove(unit: UnitSummary): number {
-    return unit.as?.MVm?.['j'] ?? 0;
-}
-
-export function cbtCanDealDamage(unit: UnitSummary, minDamage: number, atRange: number): boolean {
-    if (!unit.comp || unit.comp.length === 0) return false;
-
-    let totalDamageAtRange = 0;
-    for (const component of unit.comp) {
-        if (!component.r) continue;
-
-        let maxRange = 0;
-        for (const rangeText of component.r.split('/')) {
-            const parsedRange = parseInt(rangeText);
-            if (parsedRange > maxRange) maxRange = parsedRange;
-        }
-        if (maxRange < atRange) continue;
-
-        if (component.md) {
-            const damage = parseInt(component.md);
-            if (!isNaN(damage)) {
-                totalDamageAtRange += damage * component.q;
-                if (totalDamageAtRange >= minDamage) return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-export function cbtHasAutocannon(unit: UnitSummary): boolean {
+function cbtHasAutocannon(unit: UnitSummary): boolean {
     return unit.comp?.some(component => (
         component.n?.includes('AC/')
         || component.n?.includes('LB ')
@@ -137,11 +108,12 @@ export function cbtHasAutocannon(unit: UnitSummary): boolean {
     )) || false;
 }
 
-export function cbtHasArtillery(unit: UnitSummary): boolean {
+function cbtHasArtillery(unit: UnitSummary): boolean {
     return unit.comp?.some(component => component.t === 'A') || false;
 }
 
-export function compileFormationUnitFacts(forceUnit: FormationUnitLike): FormationUnitFacts {
+export function compileFormationUnitFacts(forceUnit: FormationUnitLike, gameSystem = GameSystem.CBT): FormationUnitFacts {
+    const classic = gameSystem === GameSystem.CBT;
     const entity = forceUnit.getFormationEntity?.();
     const summary = entity ? undefined : forceUnit.getFormationSummary?.();
     if (!entity && !summary) throw new Error('Formation unit has neither Entity nor catalog facts');
@@ -151,9 +123,10 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
     const pilotSkill = forceUnit.pilotSkill?.();
     const gunnerySkill = forceUnit.gunnerySkill?.();
     const asGroundMove = summary ? asGetMaxGroundMove(summary) : 0;
-    const asJumpMove = summary ? asGetJumpMove(summary) : 0;
-    const weapons = entity
-        ? entity.rangedWeapons().map(mount => Object.freeze({
+    const asJumpMove = summary?.as?.MVm?.['j'] ?? 0;
+    const rangedWeapons = classic ? entity?.rangedWeapons() ?? [] : [];
+    const weapons = !classic ? [] : entity
+        ? rangedWeapons.map(mount => Object.freeze({
             maxRange: Math.max(0, ...mount.equipment.ranges),
             maximumDamage: entity.resolveMountedWeaponDamage(mount).maximum,
         }))
@@ -168,8 +141,8 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
                 }))
                 : [];
         });
-    const equipment = entity?.equipment().map(mount => mount.equipment) ?? [];
-    const summaryComponents = summary?.comp ?? [];
+    const equipment = classic ? entity?.equipment().map(mount => mount.equipment) ?? [] : [];
+    const summaryComponents = classic ? summary?.comp ?? [] : [];
 
     return {
         forceUnit,
@@ -188,7 +161,7 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
         asMediumDamage: summary?.as?.dmg?._dmgM ?? 0,
         asLongDamage: summary?.as?.dmg?._dmgL ?? 0,
         asSpecials: summary?.as?.specials ?? [],
-        cbtArmor: entity
+        cbtArmor: !classic ? 0 : entity
             ? entity.damageLocations().reduce((total, location) =>
                 total + location.armor.front + location.armor.rear, 0)
             : summary!.armor,
@@ -201,17 +174,17 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
         cbtIsLightOrMedium: cbtWeightClass <= CBT_MEDIUM_WEIGHT_CLASS,
         cbtIsHeavyOrLarger: cbtWeightClass >= CBT_HEAVY_WEIGHT_CLASS,
         cbtIsAssaultOrLarger: cbtWeightClass >= CBT_ASSAULT_WEIGHT_CLASS,
-        cbtHasAutocannon: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_AC'))
-            : cbtHasAutocannon(summary!),
-        cbtHasArtillery: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_ARTILLERY'))
-            : cbtHasArtillery(summary!),
+        cbtHasAutocannon: classic && (entity
+            ? rangedWeapons.some(mount => mount.equipment.hasFlag('F_AC'))
+            : cbtHasAutocannon(summary!)),
+        cbtHasArtillery: classic && (entity
+            ? rangedWeapons.some(mount => mount.equipment.hasFlag('F_ARTILLERY'))
+            : cbtHasArtillery(summary!)),
         cbtHasLrm: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_LRM'))
+            ? rangedWeapons.some(mount => mount.equipment.hasFlag('F_LRM'))
             : summaryComponents.some(component => component.n?.includes('LRM')),
         cbtHasSrm: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_SRM'))
+            ? rangedWeapons.some(mount => mount.equipment.hasFlag('F_SRM'))
             : summaryComponents.some(component => component.n?.includes('SRM')),
         cbtHasEcm: entity
             ? equipment.some(isEcmEquipment)
@@ -220,7 +193,7 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike): Formati
             ? equipment.some(isBapEquipment)
             : summaryComponents.some(component => isBapEquipment(component.eq)),
         cbtHasTag: entity
-            ? entity.rangedWeapons().some(mount => mount.equipment.hasFlag('F_TAG'))
+            ? rangedWeapons.some(mount => mount.equipment.hasFlag('F_TAG'))
             : summaryComponents.some(component => component.eq?.hasFlag('F_TAG') === true),
         cbtQuirks: entity
             ? Object.freeze(entity.quirks().flatMap(quirk => [quirk.quirk.key, quirk.quirk.name]))

@@ -5,7 +5,7 @@
 import type { LoadForceEntry } from '../../models/load-force-entry.model';
 import { sanitizeForceTags } from '../../models/force-serialization';
 import { GameSystem } from '../../models/common.model';
-import { getOrgFromForce } from '../../utils/org/org-namer.util';
+import { getOrgFromForce } from '../../utils/org/org-analysis.util';
 import { naturalCompare } from '../../utils/sort.util';
 
 export const SIDEBAR_FILTER_ALL = 'all';

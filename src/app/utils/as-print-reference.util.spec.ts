@@ -6,8 +6,8 @@ import { AS_SPECIAL_ABILITIES, type ASSpecialAbility } from '../models/as-abilit
 import type { AbilitySelection, ASForceUnit } from '../models/as-force-unit.model';
 import type { UnitGroup } from '../models/force.model';
 import type { ParsedAbility } from '../services/as-ability-lookup.service';
-import type { FormationAssignmentPreview } from './formation-ability-assignment.util';
-import type { FormationAssignmentEffectGroup, FormationTypeDefinition } from './formation-type.model';
+import type { FormationAssignmentPreview } from './formation/formation-ability-assignment.util';
+import type { FormationAssignmentEffectGroup, FormationTypeDefinition } from './formation/formation-type.model';
 import {
     collectASPrintRulesReferenceData,
     getASPrintRulesReferenceStyles,

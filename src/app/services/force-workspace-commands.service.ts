@@ -44,7 +44,7 @@ import { LayoutService } from './layout.service';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
 import { UnitSearchFiltersService } from './unit-search-filters.service';
-import { LanceTypeIdentifierUtil } from '../utils/lance-type-identifier.util';
+import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
 
 /** Owns force/member mutations; the workspace service owns only slots and selection. */
 @Injectable({ providedIn: 'root' })
@@ -78,17 +78,17 @@ export class ForceWorkspaceCommandsService {
         }
 
         const startedAt = Date.now();
-        this.logger.info(`[Background:cbt-unit-admission] Started for "${unit.name}".`);
+        this.logger.info(`[Background:cbt-unit-admission] Started for "${this.unitNames.name(unit)}".`);
         try {
             const result = await this.addUnitCore(unit, gunnerySkill, pilotingSkill, group, gameSystemOverride);
             this.logger.info(
-                `[Background:cbt-unit-admission] ${result ? 'Finished' : 'Stopped'} for "${unit.name}" in ${Math.max(0, Date.now() - startedAt)} ms.`,
+                `[Background:cbt-unit-admission] ${result ? 'Finished' : 'Stopped'} for "${this.unitNames.name(unit)}" in ${Math.max(0, Date.now() - startedAt)} ms.`,
             );
             return result;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(
-                `[Background:cbt-unit-admission] Failed for "${unit.name}" after ${Math.max(0, Date.now() - startedAt)} ms: ${message}`,
+                `[Background:cbt-unit-admission] Failed for "${this.unitNames.name(unit)}" after ${Math.max(0, Date.now() - startedAt)} ms: ${message}`,
             );
             throw error;
         }
@@ -124,7 +124,7 @@ export class ForceWorkspaceCommandsService {
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(
-                `[Background:cbt-unit-admission] Admission rejected for "${unit.name}": ${message}`,
+                `[Background:cbt-unit-admission] Admission rejected for "${this.unitNames.name(unit)}": ${message}`,
             );
             this.toastService.showToast(message, 'error');
             return null;
@@ -560,7 +560,7 @@ export class ForceWorkspaceCommandsService {
                 const groupColor = sourceGroup.color;
                 const sourceFormation = sourceGroup.formation();
                 const convertedFormation = sourceFormation
-                    ? LanceTypeIdentifierUtil.getDefinitionById(sourceFormation.id, newForce.gameSystem)
+                    ? FormationAnalyzer.getDefinitionById(sourceFormation.id, newForce.gameSystem)
                     : null;
                 const groupPatch: ForceGroupPatch = {
                     ...(groupName ? { name: groupName } : {}),

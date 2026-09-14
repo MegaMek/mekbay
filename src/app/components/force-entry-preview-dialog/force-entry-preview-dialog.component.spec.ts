@@ -24,6 +24,7 @@ import { ForcePreviewPanelComponent } from '../force-preview-panel/force-preview
 import { ForceEntryPreviewDialogComponent } from './force-entry-preview-dialog.component';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { ForceAddModePickerDialogComponent } from '../force-add-mode-picker-dialog/force-add-mode-picker-dialog.component';
+import { UnitIconComponent } from '../unit-icon/unit-icon.component';
 
 describe('ForceEntryPreviewDialogComponent', () => {
     function createUnitEntries(count: number) {
@@ -100,6 +101,29 @@ describe('ForceEntryPreviewDialogComponent', () => {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
+
+    it('shows saved custom names and a sprite key without a catalog unit', async () => {
+        const force = createForceEntry({ groups: [{ units: [{ unit: undefined, destroyed: false, embeddedCustom: true,
+            customPreview: ['Mad Cat', 'Custom A', 'Timber Wolf', 'meks/custom.png'] }] }] });
+        const { fixture } = await render(force);
+        expect(fixture.nativeElement.querySelector('.unit-model').textContent.trim()).toBe('Custom A');
+        expect(fixture.nativeElement.querySelector('.unit-chassis').textContent.trim()).toBe('Mad Cat (Timber Wolf)');
+        const icon = fixture.debugElement.query(By.directive(UnitIconComponent)).componentInstance as UnitIconComponent;
+        expect(icon.iconPath()).toBe('meks/custom.png');
+        expect(icon.unit()).toBeUndefined();
+        TestBed.inject(OptionsService).options.update(options => ({ ...options, displayUnitNameFormat: 'clanInnerSphere' }));
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('.unit-chassis').textContent.trim()).toBe('Timber Wolf (Mad Cat)');
+    });
+
+    it('shows Unknown and the missing icon when the custom preview is absent', async () => {
+        const force = createForceEntry({ groups: [{ units: [{ unit: undefined, destroyed: false, embeddedCustom: true }] }] });
+        const { fixture } = await render(force);
+        expect(fixture.nativeElement.querySelector('.unit-chassis').textContent.trim()).toBe('Unknown');
+        const icon = fixture.debugElement.query(By.directive(UnitIconComponent)).componentInstance as UnitIconComponent;
+        expect(icon.iconPath()).toBe('');
+        expect(fixture.nativeElement.querySelector('unit-icon img').getAttribute('src')).toBe('/images/unknown.png');
+    });
 
     it('appends one count-only Reserves display after unit groups', async () => {
         const force = createForceEntry({ groups: [{ name: 'Lance', units: createUnitEntries(2) }], reserveCount: 3 });

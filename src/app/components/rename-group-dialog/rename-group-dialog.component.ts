@@ -2,23 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, type ElementRef, inject, Injector, type OnDestroy, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, type ComponentRef, DestroyRef, effect, type ElementRef, inject, Injector, type OnDestroy, signal, untracked, viewChild } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { takeUntilDestroyed, outputToObservable } from '@angular/core/rxjs-interop';
-import { OptionsService } from '../../services/options.service';
 import type { UnitGroup } from '../../models/force.model';
-import { formatSummaryMovement } from '../../models/pilot-abilities.model';
-import { formationHasTargetCopyEffect, formationInheritsParentEffects, type FormationTypeDefinition, isNoFormation, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation-type.model';
+import { formationHasTargetCopyEffect, type FormationTypeDefinition, isNoFormation, NO_FORMATION, NO_FORMATION_ID } from '../../utils/formation/formation-type.model';
 import { FormationInfoComponent } from '../formation-info/formation-info.component';
+import { FormationDiagnosticsComponent } from '../formation-info/formation-diagnostics.component';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { AUTOMATIC_FORMATION_KEY, FormationDropdownPanelComponent, type FormationDisplayItem, type FormationDropdownActiveOption, type FormationDropdownActiveTarget, type FormationDropdownPointerHoverEvent } from './formation-dropdown-panel.component';
-import { composeFormationDisplayName } from '../../utils/formation-namer.util';
-import { LanceTypeIdentifierUtil } from '../../utils/lance-type-identifier.util';
-import { getFormationDefinition, getFormationDefinitions } from '../../utils/formation-blueprints';
-import { FormationRequirementEngine } from '../../utils/formation-requirement-engine.util';
+import { composeFormationDisplayName } from '../../utils/formation/formation-namer.util';
+import { FormationAnalyzer } from '../../utils/formation/formation-analysis.util';
 import { DropdownPointerActivationGuard, nextDropdownTarget, nextDropdownTargetInCurrentLane, scrollActiveOptionIntoView } from '../../utils/dropdown-interaction.utils';
-import { getFormationTargetCandidates, resolveFormationTargetGroup } from '../../utils/formation-target.util';
+import { getFormationTargetCandidates, resolveFormationTargetGroup } from '../../utils/formation/formation-target.util';
 
 
 
@@ -39,7 +36,7 @@ export interface RenameGroupDialogResult {
 @Component({
   selector: 'rename-group-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormationInfoComponent],
+  imports: [FormationInfoComponent, FormationDiagnosticsComponent],
   host: {
     class: 'fullscreen-dialog-host glass'
   },
@@ -132,21 +129,18 @@ export interface RenameGroupDialogResult {
           @if (selectedFormation(); as formation) {
             @if (!isNoFormation(formation)) {
             @if (!isSelectedFormationValid()) {
-            <div class="formation-warning">
-              @if (getRequirementsText(formation); as reqText) {
-                <div class="formation-warning-body">
-                  <strong class="formation-warning-title">Missing requirements:</strong>
-                  @if (getParentRequirementsText(formation); as parentReqText) {
-                    <span class="formation-warning-req"><strong>{{ getParentFormationName(formation) }}: </strong><span [innerHTML]="parentReqText"></span></span>
-                    <span class="formation-warning-req"><strong>{{ formation.name }}: </strong><span [innerHTML]="reqText"></span></span>
-                  } @else {
-                    <span class="formation-warning-req" [innerHTML]="reqText"></span>
-                  }
-                </div>
-              } @else {
-              <span>Formation does not match the current group composition</span>
-              }
-            </div>
+              <div class="formation-warning">
+                <strong class="formation-warning-title">Missing requirements:</strong>
+                @if (selectedFormationDisplayItem()?.evaluation; as evaluation) {
+                  <formation-diagnostics
+                    [evaluation]="evaluation"
+                    [units]="selectedFormationDisplayItem()?.units ?? []"
+                    filter="failed">
+                  </formation-diagnostics>
+                } @else {
+                  <span>Formation does not match the current group composition</span>
+                }
+              </div>
             }
             <details class="selected-formation-accordion">
               <summary class="selected-formation-summary">
@@ -154,7 +148,17 @@ export interface RenameGroupDialogResult {
                 <span class="chevron" aria-hidden="true"></span>
               </summary>
               <div class="selected-formation-details">
-                <formation-info [formation]="formation" [gameSystem]="data.group.force.gameSystem" [unitCount]="data.group.formationUnits().length" [isValid]="isSelectedFormationValid()" [requirementsFiltered]="isSelectedFormationRequirementsFiltered()" [requirementsFilterCompositionName]="selectedFormationRequirementsFilterCompositionName()" [requirementsFilterNotice]="selectedFormationRequirementsFilterNotice()"></formation-info>
+                <formation-info
+                  [formation]="formation"
+                  [evaluation]="selectedFormationDisplayItem()?.evaluation"
+                  [units]="selectedFormationDisplayItem()?.units ?? []"
+                  [gameSystem]="data.group.force.gameSystem"
+                  [unitCount]="data.group.formationUnits().length"
+                  [isValid]="isSelectedFormationValid()"
+                  [requirementsFiltered]="selectedFormationDisplayItem()?.requirementsFiltered ?? false"
+                  [requirementsFilterCompositionName]="selectedFormationDisplayItem()?.requirementsFilterCompositionName"
+                  [requirementsFilterNotice]="selectedFormationDisplayItem()?.requirementsFilterNotice">
+                </formation-info>
               </div>
             </details>
             }
@@ -275,36 +279,24 @@ export interface RenameGroupDialogResult {
             overflow-y: auto;
         }
 
-        .formation-warning {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 10px;
-            margin-top: 4px;
-            font-size: 0.85em;
-            background: rgba(255, 0, 0, 0.08);
-            border-left: 3px solid red;
-        }
-
-        .formation-warning-title {
-            color: red;
-        }
-
-        .formation-warning-body {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .formation-warning-req {
-            display: block;
-        }
-
         .formation-hint {
             font-size: 0.85em;
             color: var(--bt-yellow);
             margin: 4px 0 0;
             text-align: center;
+        }
+
+        .formation-warning {
+            --formation-failure-color: var(--text-color);
+            padding: 6px 10px;
+            margin-top: 4px;
+            font-size: 0.85em;
+            background: rgba(255, 0, 0, 0.08);
+            border-left: 3px solid var(--danger);
+        }
+
+        .formation-warning-title {
+            color: var(--danger);
         }
 
         .name-input-wrapper {
@@ -350,7 +342,6 @@ export class RenameGroupDialogComponent implements OnDestroy {
 
   public dialogRef: DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent> = inject<DialogRef<RenameGroupDialogResult | null, RenameGroupDialogComponent>>(DialogRef);
   readonly data: RenameGroupDialogData = inject(DIALOG_DATA);
-  private optionsService = inject(OptionsService);
   private overlayManager = inject(OverlayManagerService);
   private injector = inject(Injector);
   private destroyRef = inject(DestroyRef);
@@ -383,48 +374,27 @@ export class RenameGroupDialogComponent implements OnDestroy {
   activeFormationTarget = signal<FormationDropdownActiveTarget>('entry');
 
   /** All formation definitions with validity flag. */
-  formationDisplayList: FormationDisplayItem[] = (() => {
-    const validMatches = LanceTypeIdentifierUtil.identifyFormationsForGroup(this.data.group);
-    const validMap = new Map(validMatches.map(m => [m.definition.id, m]));
-    return getFormationDefinitions(this.data.group.force.gameSystem)
-      .filter(def => FormationRequirementEngine.hasBlueprint(def.id))
-      .map(def => {
-        const match = validMap.get(def.id);
-        return {
-          definition: def,
-          displayName: composeFormationDisplayName(def, this.data.group, match?.requirementsFiltered ?? false),
-          isValid: !!match,
-          requirementsFiltered: match?.requirementsFiltered ?? false,
-          requirementsFilterCompositionName: match?.requirementsFilterCompositionName,
-          requirementsFilterNotice: match?.requirementsFilterNotice,
-        };
-      });
-  })();
+  formationDisplayList = computed<FormationDisplayItem[]>(() => {
+    return FormationAnalyzer.analyzeFormationsForGroup(this.data.group).map(match => ({
+      definition: match.definition,
+      displayName: composeFormationDisplayName(match.definition, this.data.group, match.requirementsFiltered),
+      isValid: match.evaluation.valid,
+      evaluation: match.evaluation,
+      units: match.units,
+      requirementsFiltered: match.requirementsFiltered,
+      requirementsFilterCompositionName: match.requirementsFilterCompositionName,
+      requirementsFilterNotice: match.requirementsFilterNotice,
+    }));
+  });
+
+  selectedFormationDisplayItem = computed(() =>
+    this.formationDisplayList().find(item => item.definition.id === this.selectedFormation()?.id));
 
   /** Whether the currently selected formation is valid for the group. */
   isSelectedFormationValid = computed<boolean>(() => {
     const sel = this.selectedFormation();
     if (!sel || isNoFormation(sel)) return true;
-    return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid);
-  });
-
-  /** Whether the currently selected formation required organization-level filtering. */
-  isSelectedFormationRequirementsFiltered = computed<boolean>(() => {
-    const sel = this.selectedFormation();
-    if (!sel || isNoFormation(sel)) return false;
-    return this.formationDisplayList.some(f => f.definition.id === sel.id && f.isValid && f.requirementsFiltered);
-  });
-
-  selectedFormationRequirementsFilterNotice = computed<string | undefined>(() => {
-    const sel = this.selectedFormation();
-    if (!sel || isNoFormation(sel)) return undefined;
-    return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterNotice;
-  });
-
-  selectedFormationRequirementsFilterCompositionName = computed<string | undefined>(() => {
-    const sel = this.selectedFormation();
-    if (!sel || isNoFormation(sel)) return undefined;
-    return this.formationDisplayList.find(f => f.definition.id === sel.id && f.isValid)?.requirementsFilterCompositionName;
+    return this.selectedFormationDisplayItem()?.isValid ?? false;
   });
 
   /** Placeholder name based on the currently selected formation. */
@@ -434,13 +404,19 @@ export class RenameGroupDialogComponent implements OnDestroy {
       return composeFormationDisplayName(
         sel,
         this.data.group,
-        this.isSelectedFormationRequirementsFiltered(),
+        this.selectedFormationDisplayItem()?.requirementsFiltered ?? false,
       );
     }
     return this.data.group.organizationalName() ?? 'Group';
   });
 
-  constructor() { }
+  constructor() {
+    effect(() => {
+      if (!this.formationDropdownOpen()) return;
+      this.formationDisplayList();
+      untracked(() => this.syncFormationPanelInputs(false));
+    });
+  }
 
   /** Clear the name input */
   clearName(): void {
@@ -474,31 +450,9 @@ export class RenameGroupDialogComponent implements OnDestroy {
   /** Expose isNoFormation to the template */
   isNoFormation = isNoFormation;
 
-  /** Get requirements text for a formation definition. */
-  getRequirementsText(formation: FormationTypeDefinition): string | null {
-    if (!formation.requirements) return null;
-    const requirements = formation.requirements;
-    return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
-  }
-
-  /** Get parent formation requirements text */
-  getParentRequirementsText(formation: FormationTypeDefinition): string | null {
-    if (!formationInheritsParentEffects(formation) || !formation.parent) return null;
-    const parent = getFormationDefinition(formation.parent, this.data.group.force.gameSystem);
-    if (!parent?.requirements) return null;
-    const requirements = parent.requirements;
-    return requirements ? formatSummaryMovement(requirements, this.optionsService.options().ASUseHex) : null;
-  }
-
-  /** Get parent formation name */
-  getParentFormationName(formation: FormationTypeDefinition): string {
-    if (!formationInheritsParentEffects(formation) || !formation.parent) return '';
-    return getFormationDefinition(formation.parent, this.data.group.force.gameSystem)?.name ?? '';
-  }
-
   /** Compose a display name for a formation definition */
   getDisplayName(definition: FormationTypeDefinition): string {
-    return composeFormationDisplayName(definition, this.data.group, this.isSelectedFormationRequirementsFiltered());
+    return composeFormationDisplayName(definition, this.data.group, this.selectedFormationDisplayItem()?.requirementsFiltered ?? false);
   }
 
   submit(): void {
@@ -516,7 +470,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
   }
 
   fillRandomFormation(): void {
-    const validList = this.formationDisplayList.filter(item => item.isValid);
+    const validList = this.formationDisplayList().filter(item => item.isValid);
     if (validList.length === 0) {
       this.selectedFormation.set(null);
       return;
@@ -653,7 +607,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
     const panelRef = this.formationPanelRef;
     if (!panelRef) return;
 
-    panelRef.setInput('formations', this.formationDisplayList);
+    panelRef.setInput('formations', this.formationDisplayList());
     panelRef.setInput('selectedFormationId', this.selectedFormation()?.id ?? null);
     panelRef.setInput('gameSystem', this.data.group.force.gameSystem);
     panelRef.setInput('label', 'Select formation');
@@ -732,8 +686,8 @@ export class RenameGroupDialogComponent implements OnDestroy {
   }
 
   private allFormationOptionTargets(): FormationDropdownActiveOption[] {
-    const valid = this.sortFormationDisplayItems(this.formationDisplayList.filter(item => item.isValid));
-    const invalid = this.sortFormationDisplayItems(this.formationDisplayList.filter(item => !item.isValid));
+    const valid = this.sortFormationDisplayItems(this.formationDisplayList().filter(item => item.isValid));
+    const invalid = this.sortFormationDisplayItems(this.formationDisplayList().filter(item => !item.isValid));
     return [
       { selectionKey: AUTOMATIC_FORMATION_KEY, target: 'entry' },
       { selectionKey: NO_FORMATION_ID, target: 'entry' },
@@ -772,7 +726,7 @@ export class RenameGroupDialogComponent implements OnDestroy {
   private formationForKey(selectionKey: string): FormationTypeDefinition | null {
     if (selectionKey === AUTOMATIC_FORMATION_KEY) return null;
     if (selectionKey === NO_FORMATION_ID) return NO_FORMATION;
-    return this.formationDisplayList.find(item => item.definition.id === selectionKey)?.definition ?? null;
+    return this.formationDisplayList().find(item => item.definition.id === selectionKey)?.definition ?? null;
   }
 
   close(value: RenameGroupDialogResult | null = null): void {

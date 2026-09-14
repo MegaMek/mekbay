@@ -38,6 +38,8 @@ import { createEmptyUnit, type TestUnitOverrides } from '../testing/unit-test-he
 import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
+import { TestConvFighterEntity, TestFixedWingSupportEntity } from '../models/entity/testing/test-entities';
+import { getForcePacks } from '../models/forcepacks.model';
 
 const originalJasmineTimeoutInterval = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 jasmine.DEFAULT_TIMEOUT_INTERVAL = 60000;
@@ -978,6 +980,10 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek']);
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+        service.setFormationTarget({ formationId: 'order-lance', gameSystem: GameSystem.AS,
+            existingUnits: [{ ...existingForceUnit, force: { faction: () => CLAN_WOLF_TEST_FACTION } }],
+        });
+        expect(service.filteredUnits()).toEqual([]);
     });
 
     it('clears the active formation target when filters are reset', () => {
@@ -997,6 +1003,69 @@ describe('UnitSearchFiltersService search telemetry', () => {
 
         expect(service.formationTarget()).toBeNull();
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
+    });
+
+    it('explains an existing support aircraft blocker and clears it when the group or filter changes', () => {
+        const bundle = createStandaloneBundle();
+        bundle.units.units = [createEmptyUnit({ name: 'Interceptor', type: 'Aero', subtype: 'Aerospace Fighter', role: 'Interceptor' })];
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.CBT);
+        const support = new TestFixedWingSupportEntity();
+        support.chassis.set('Mustang Fighter');
+        support.role.set('Attack Fighter');
+        const member = { force: { faction: () => null }, getFormationEntity: () => support };
+        const target = { formationId: 'aerospace-superiority-squadron', existingUnits: [member], gameSystem: GameSystem.CBT };
+        const projectCandidate = spyOn<any>(service, 'createFormationCandidateUnit').and.callThrough();
+        service.setFormationTarget(target);
+
+        expect(service.filteredUnits()).toEqual([]);
+        expect(projectCandidate).not.toHaveBeenCalled();
+        const blocker = service.formationTargetBlocker()!;
+        expect(blocker.formationName).toBe('Aerospace Superiority');
+        expect(blocker.units).toEqual([member]);
+        expect(blocker.evaluation.constraints.filter(c => c.blocked).map(c => c.constraintId))
+            .toEqual(['aerospace-superiority-all-aerospace']);
+        service.setSearchText('formation="Aerospace Superiority"');
+        expect(service.filteredUnits()).toEqual([]);
+        expect(projectCandidate).not.toHaveBeenCalled();
+        service.setSearchText('');
+        service.setFormationTarget(target);
+
+        const fighter = new TestConvFighterEntity();
+        fighter.role.set('Attack Fighter');
+        service.setFormationTargetExistingUnits([{ ...member, getFormationEntity: () => fighter }]);
+        expect(service.formationTargetBlocker()).toBeNull();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Interceptor']);
+
+        service.setFormationTargetExistingUnits([]);
+        expect(service.formationTargetBlocker()).toBeNull();
+        service.setFormationTarget(target);
+        expect(service.formationTargetBlocker()).not.toBeNull();
+        service.resetFilters();
+        expect(service.formationTargetBlocker()).toBeNull();
+    });
+
+    it('explains positive semantic formation blockers without blaming the group for negations or alternatives', () => {
+        const bundle = createStandaloneBundle();
+        const { service } = createService(bundle);
+        service.setFormationTargetExistingUnits([createFormationExistingForceUnit(bundle.units.units[0])]);
+        for (const operator of ['=', '==', '&=']) {
+            service.setSearchText(`formation${operator}"Aerospace Superiority"`);
+            expect(service.filteredUnits()).withContext(operator).toEqual([]);
+            expect(service.formationTargetBlocker()?.units[0].getFormationSummary?.()).withContext(operator).toBe(bundle.units.units[0]);
+        }
+        for (const query of [
+            'formation!="Aerospace Superiority"',
+            'formation="Aerospace Superiority" OR formation=Order',
+            'formation="Aerospace Superiority",Order',
+            'formation="Aerospace*"',
+            'formation="Aerospace Superiority',
+            'formation=Unknown',
+            'missing unit name',
+        ]) {
+            service.setSearchText(query);
+            expect(service.formationTargetBlocker()).withContext(query).toBeNull();
+        }
     });
 
     it('resets BV normalization skill controls to unrestricted defaults', () => {
@@ -1055,7 +1124,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         expect(service.forceGeneratorEligibleUnits().map(unit => unit.name)).toEqual(['Test Mek', 'Test Tank']);
     });
 
-    it('does not let unassigned catalog skills block Strategic Command formation filtering', () => {
+    it('preserves existing crew skills and uses planned candidate skills in formation filtering', () => {
         const bundle = createStrategicCommandBundle();
         const { service, gameServiceStub } = createService(bundle);
         const existingUnits = [
@@ -1070,11 +1139,39 @@ describe('UnitSearchFiltersService search telemetry', () => {
             gameSystem: GameSystem.AS,
         });
 
-        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+        expect(service.filteredUnits()).toEqual([]);
 
         service.setSearchText('formation="Strategic Command"');
 
+        expect(service.filteredUnits()).toEqual([]);
+        service.setFormationTargetExistingUnits(existingUnits.map(unit => ({ ...unit, pilotSkill: () => 3, gunnerySkill: () => 3 })));
+        // Existing crews now qualify; the prospective unit still uses the selected skill.
+        expect(service.filteredUnits()).toEqual([]);
+        service.setPilotSkills(3, 4);
         expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+    });
+
+    it('refreshes the blocker and semantic search when an existing crew changes in place', () => {
+        const bundle = createStrategicCommandBundle();
+        const { service, gameServiceStub } = createService(bundle);
+        gameServiceStub.currentGameSystem.set(GameSystem.AS);
+        const skill = signal(4);
+        const members = [0, 1].map(index => ({
+            ...createFormationExistingForceUnit(bundle.units.units[index], GameSystem.AS, { faction: CLAN_WOLF_TEST_FACTION }),
+            pilotSkill: skill,
+        }));
+        service.setFormationTargetExistingUnits(members);
+        service.setPilotSkills(3, 4);
+        service.setSearchText('formation="Strategic Command"');
+        expect(service.filteredUnits()).toEqual([]);
+        expect(service.formationTargetBlocker()).not.toBeNull();
+
+        skill.set(3);
+        expect(service.formationTargetBlocker()).toBeNull();
+        expect(service.filteredUnits().map(unit => unit.name)).toEqual(['Elemental Point', 'Timber Wolf Prime']);
+        skill.set(4);
+        expect(service.filteredUnits()).toEqual([]);
+        expect(service.formationTargetBlocker()).not.toBeNull();
     });
 
     it('limits faction dropdown availability by manual and semantic formation targets', () => {
@@ -1349,6 +1446,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
         const bundle = buildSmallBundle(benchmarkBundle);
         const [battleMekPeacekeeper, industrialPeacekeeper] = bundle.units.units;
 
+        battleMekPeacekeeper.uuid = getForcePacks().find(pack => pack.name === FORCE_PACK_NAME)!.units[0].uuid;
         battleMekPeacekeeper.name = 'BMPeacekeeper_PKP1A';
         battleMekPeacekeeper.chassis = 'Peacekeeper';
         battleMekPeacekeeper.model = 'PKP-1A';
