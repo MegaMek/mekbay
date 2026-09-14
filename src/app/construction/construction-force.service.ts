@@ -26,7 +26,9 @@ export type { ConstructionMountOrigins } from '../models/runtime/unit-constructi
 
 /** Read-only projection of the source runtime onto the mutable construction draft. */
 export interface ConstructionDamageProjection {
+    /** Construction points, including half points for double-damage materials. */
     armorDamage(location: string, face?: 'front' | 'rear'): number;
+    /** Construction points, including half points for Reinforced Structure. */
     internalDamage(location: string): number;
     mountStatus(mountId: string): EquipmentStatus;
     mountHits(mountId: string): number;
@@ -92,11 +94,13 @@ export class ConstructionForceService {
             armorDamage: (location, face = 'front') => {
                 const loc = locations.get(location);
                 const armor = loc?.armorFaceIds.map(id => source!.index.armorFaces.get(id)).find(armor => armor?.face === face);
-                return armor ? armor.maximumPoints - source!.query.remainingArmor(armor.id, 'preview') : 0;
+                return armor ? (armor.maximumPoints - source!.query.remainingArmor(armor.id, 'preview'))
+                    / (source!.entity.armorByLocation().get(location)?.damagePerPoint ?? 1) : 0;
             },
             internalDamage: location => {
                 const loc = locations.get(location);
-                return loc ? loc.internalPoints - source!.query.remainingInternal(loc.id, 'preview') : 0;
+                return loc ? (loc.internalPoints - source!.query.remainingInternal(loc.id, 'preview'))
+                    / (source!.entity.structureByLocation().get(location)?.damagePerPoint ?? 1) : 0;
             },
             mountStatus: mountId => {
                 const original = origins.get(mountId as MountId);

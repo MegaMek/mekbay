@@ -484,10 +484,12 @@
       <button
         type="button"
         [class.error]="message.severity === 'error'"
+        [class.warning]="message.severity === 'warning'"
+        [class.notice]="message.severity === 'info'"
         (click)="navigateToIssue(message)"
         title="Go to issue"
       >
-        <b>{{ message.severity === 'error' ? '!' : 'i' }}</b
+        <b [attr.aria-label]="message.severity === 'info' ? 'Notice' : message.severity">{{ message.severity === 'error' ? '!' : message.severity === 'warning' ? '⚠' : 'i' }}</b
         ><span>{{ message.message }}</span
         ><small>{{ message.location || message.category }}</small>
       </button>
@@ -1957,20 +1959,20 @@
         [class.details-overlay]="detailsOverlayOpen()"
         [attr.role]="detailsOverlayOpen() ? 'dialog' : null"
         [attr.aria-modal]="detailsOverlayOpen() ? true : null"
-        [attr.aria-label]="showValidation() ? 'Construction issues' : breakdown()?.title || 'Construction details'"
+        [attr.aria-label]="showValidation() ? 'Construction checks' : breakdown()?.title || 'Construction details'"
         [cdkTrapFocus]="detailsOverlayOpen()"
         [cdkTrapFocusAutoCapture]="detailsOverlayOpen()"
         (keydown.escape)="$event.stopPropagation(); closeDetails()"
       >
         @if (showValidation()) {
           <header class="details-heading">
-            <h2>Construction issues</h2>
+            <h2>Construction checks</h2>
             <button
               type="button"
               class="close-button"
               cdkFocusInitial
               (click)="closeDetails()"
-              aria-label="Close construction issues"
+              aria-label="Close construction checks"
             ></button>
           </header>
           <section class="validation-panel" aria-label="Construction validation">
@@ -2057,7 +2059,9 @@
       </button>
       <button
         class="validation-toggle"
-        [class.has-errors]="errors().length"
+        [class.has-errors]="validationSeverity() === 'error'"
+        [class.has-warnings]="validationSeverity() === 'warning'"
+        [class.has-notices]="validationSeverity() === 'info'"
         [class.active]="showValidation()"
         [attr.aria-expanded]="showValidation()"
         aria-controls="construction-details"
@@ -2073,17 +2077,17 @@
           aria-hidden="true"
           focusable="false"
         >
-          @if (errors().length) {
+          @if (validationSeverity() === 'error' || validationSeverity() === 'warning') {
             <path d="M10.3 3.9 2.2 18a2 2 0 0 0 1.7 3h16.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
             <path d="M12 9v4m0 4h.01" />
+          } @else if (validationSeverity() === 'info') {
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v6m0-10h.01" />
           } @else {
             <path d="m5 12 4 4L19 6" />
           }
         </svg>
-        <span
-          >{{ errors().length ? errors().length + ' issues' : 'Checks passed'
-          }}{{ warnings().length ? ' · ' + warnings().length + ' warnings' : '' }}</span
-        >
+        <span>{{ validationLabel() }}</span>
       </button>
     </div>
     <span class="storage-note">{{

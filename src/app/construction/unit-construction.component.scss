@@ -270,6 +270,16 @@ h2 {
   background: red;
   border-color: #e45a63;
 }
+.footer-status .validation-toggle.has-warnings {
+  color: black;
+  background: orange;
+  border-color: black;
+}
+.footer-status .validation-toggle.has-notices {
+  color: #a8d6ff;
+  background: #20364b;
+  border-color: #a8d6ff;
+}
 .footer-status .validation-toggle.has-errors:hover,
 .footer-status .validation-toggle.has-errors.active {
   background: rgb(211, 0, 0);
@@ -692,6 +702,12 @@ h2 {
 }
 .validation-panel button.error {
   color: #f2a197;
+}
+.validation-panel button.warning {
+  color: var(--bt-yellow);
+}
+.validation-panel button.notice {
+  color: #a8d6ff;
 }
 .validation-panel button:hover,
 .validation-panel button:focus-visible {

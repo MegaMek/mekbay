@@ -1341,9 +1341,16 @@ export class UnitConstructionComponent {
         };
       });
   });
-  readonly validation = computed(() => validateConstruction(this.entity()));
+  readonly validation = computed(() => validateConstruction(this.entity(), this.optionsService.options().CBTOptionalRules?.quirks !== false));
   readonly errors = computed(() => this.validation().messages.filter((message) => message.severity === 'error'));
   readonly warnings = computed(() => this.validation().messages.filter((message) => message.severity === 'warning'));
+  readonly notices = computed(() => this.validation().messages.filter((message) => message.severity === 'info'));
+  readonly validationSeverity = computed(() => this.errors().length ? 'error' : this.warnings().length ? 'warning' : this.notices().length ? 'info' : 'clear');
+  readonly validationLabel = computed(() => {
+    const [count, label] = this.errors().length ? [this.errors().length, 'issue'] as const
+      : this.warnings().length ? [this.warnings().length, 'warning'] as const : [this.notices().length, 'notice'] as const;
+    return count ? `${count} ${label}${count === 1 ? '' : 's'}` : 'Checks passed';
+  });
   private readonly mountIssueMessages = computed(() => {
     const messages = new Map<string, string[]>();
     for (const message of this.validation().messages) {

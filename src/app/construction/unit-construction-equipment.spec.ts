@@ -31,6 +31,8 @@ import { UnitSearchIndexService } from '../services/unit-search-index.service';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
 import { CONSTRUCTION_VALIDATE_EXTINCTION } from './domain/construction-config';
+import type { EntityValidationResult } from '../models/entity/types';
+import { MekWithArmsEntity } from '../models/entity/entities/mek/mek-entity';
 
 describe('construction equipment warehouse', () => {
     const tech = { base: 'All', level: 'Standard', advancement: { is: { common: '2500' }, clan: { common: '2500' } } } as const;
@@ -121,6 +123,40 @@ describe('construction equipment warehouse', () => {
         editor.entity.set(createConstructionEntity('Tank', registry));
         expect(editor.filteredEquipment()).toContain(tankEquipment);
         expect(editor.filteredEquipment()).not.toContain(weapons[0]);
+    });
+
+    it('changes quirk errors to warnings and back when the optional rule changes', () => {
+        const entity = editor.entity() as MekWithArmsEntity;
+        entity.hasHandActuator.update(hands => ({ ...hands, left: false }));
+        entity.quirks.set([{ quirk: { key: 'battle_fists_la', name: 'Battle Fists (LA)', description: '', type: 'positive' } }]);
+        const options = TestBed.inject(OptionsService).options;
+        for (const enabled of [true, false, true]) {
+            options.update(current => ({ ...current, CBTOptionalRules: { ...current.CBTOptionalRules, quirks: enabled } }));
+            expect(editor.validation().messages.find(issue => issue.code === 'QUIRK_NOT_APPLICABLE')?.severity)
+                .toBe(enabled ? 'error' : 'warning');
+        }
+    });
+
+    it('shows the worst validation severity on the button, including notices and warnings without errors', async () => {
+        const checks = signal<EntityValidationResult>({ valid: true, messages: [] });
+        spyOn(editor, 'validation').and.callFake(checks);
+        for (const [severities, severity, label, cssClass] of [
+            [['info', 'warning', 'error'], 'error', '1 issue', 'has-errors'],
+            [['info', 'warning'], 'warning', '1 warning', 'has-warnings'],
+            [['info'], 'info', '1 notice', 'has-notices'],
+            [[], 'clear', 'Checks passed', ''],
+        ] as const) {
+            checks.set({ valid: !severities.some(value => value === 'error'), messages: severities.map((value, index) => ({
+                severity: value, category: 'general', code: `TEST_${index}`, message: `Message ${index}`,
+            })) });
+            await renderWarehouse();
+            const button = fixture.nativeElement.querySelector('.validation-toggle') as HTMLButtonElement;
+            expect(editor.validationSeverity()).toBe(severity);
+            expect(button.textContent?.trim()).toBe(label);
+            for (const candidate of ['has-errors', 'has-warnings', 'has-notices']) {
+                expect(button.classList.contains(candidate)).withContext(`${severity}: ${candidate}`).toBe(candidate === cssClass);
+            }
+        }
     });
 
     it('can show incompatible equipment while keeping search and category filters active', () => {

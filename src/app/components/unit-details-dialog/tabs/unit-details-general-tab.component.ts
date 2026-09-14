@@ -44,6 +44,7 @@ import { BASE_RULES_REFS } from '../../../utils/rules-ref.util';
 import { forceMemberAdjustedValue, isCBTForceMember, type ForceMember } from '../../../models/force-member.model';
 import { ForceUnitCrewComponent } from '../../force-crew/force-unit-crew.component';
 import { QuirkBadgeComponent } from '../../quirk-badge/quirk-badge.component';
+import { filterQuirkIssues } from '../../../construction/domain/construction-quirk-policy';
 
 type SourceListEntry = Sourcebook & { sourceAnnotations: string[] };
 type ComponentDetailsDisplayStyle = 'normal' | 'additional';
@@ -266,6 +267,7 @@ export class UnitDetailsGeneralTabComponent {
     });
 
     private readonly collapsedLoadIssuesUnit = signal<UnitSummary | null>(null);
+    readonly visibleLoadIssues = computed(() => filterQuirkIssues(this.unit().loadIssues, this.optionsService.options().CBTOptionalRules?.quirks !== false));
     readonly loadIssuesOpen = computed(() => this.collapsedLoadIssuesUnit() !== this.unit());
 
     toggleLoadIssues(): void {

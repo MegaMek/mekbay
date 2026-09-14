@@ -14,7 +14,8 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import type { BaseEntity } from '../models/entity/base-entity';
-import { MountedEngine } from '../models/entity/components';
+import { MountedArmor, MountedEngine, MountedStructure } from '../models/entity/components';
+import { STRUCTURE_TYPE } from '../models/entity/types/structure';
 import type { GyroType } from '../models/entity/components/gyro-data';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../models/entity/types/mek';
@@ -131,6 +132,14 @@ describe('construction component blocks', () => {
     stats: { criticalSlots: 12, spreadable: true, tonnage: 'variable' },
     armor: { type: 'STEALTH' },
   });
+  const hardened = new ArmorEquipment({
+    id: 'Hardened Armor', name: 'Hardened', type: 'armor',
+    flags: ['F_HARDENED_ARMOR', 'F_MEK_EQUIPMENT'], armor: { type: 'HARDENED' },
+  });
+  const reinforced = new StructureEquipment({
+    id: 'Reinforced Structure', name: 'Reinforced', type: 'structure',
+    flags: ['F_REINFORCED', 'F_MEK_EQUIPMENT'], structure: { typeId: STRUCTURE_TYPE.REINFORCED },
+  });
   const registry = createTestEquipmentRegistry({
     [ac.id]: ac,
     [splitAc.id]: splitAc,
@@ -141,6 +150,8 @@ describe('construction component blocks', () => {
     [endo.id]: endo,
     [stealth.id]: stealth,
     [srm.id]: srm,
+    [hardened.id]: hardened,
+    [reinforced.id]: reinforced,
   });
 
   async function create(
@@ -153,6 +164,7 @@ describe('construction component blocks', () => {
       editDesign?: boolean;
       originalBuildYear?: number;
       armor?: boolean;
+      doubleDamageProtection?: boolean;
       material?: 'endo' | 'stealth';
       missingMaterial?: boolean;
       materialAlias?: boolean;
@@ -203,6 +215,10 @@ describe('construction component blocks', () => {
     if (options.armor) {
       entity.setArmorValue('LT', 'front', 12);
       entity.setArmorValue('LT', 'rear', 6);
+    }
+    if (options.doubleDamageProtection) {
+      entity.setArmorAt('LT', new MountedArmor({ armor: hardened }));
+      entity.setStructureAt('LT', new MountedStructure({ structure: reinforced, tonnage: entity.tonnage() }));
     }
     const instance = await createMekUnit(
       { uuid: entity.uuid(), instanceId: 'unit:construction-blocks' },
@@ -1279,6 +1295,71 @@ describe('construction component blocks', () => {
     expect(input.disabled).toBeTrue();
     expect(f.root.querySelector('.oem-year-toggle')!.getAttribute('aria-expanded')).toBe('true');
   });
+
+  for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+    it(`shows construction points and repair gains for hardened armor and reinforced structure in ${ruleset}`, async () => {
+      const f = await create({ editDesign: false, armor: true, doubleDamageProtection: true, ruleset });
+      const index = f.instance.getIndex();
+      const location = [...index.locations.values()].find(location => location.code === 'LT')!;
+      const other = [...index.locations.values()].find(location => location.code === 'RT')!;
+      const front = location.armorFaceIds.map(id => index.armorFaces.get(id)!).find(face => face.face === 'front')!;
+      const rear = location.armorFaceIds.map(id => index.armorFaces.get(id)!).find(face => face.face === 'rear')!;
+      const member = f.editor.forceMember()!;
+      const structure = f.entity.structureValues().get('LT')!;
+      const totalStructure = f.entity.totalInternalPoints();
+      const totalArmor = f.entity.totalArmorPoints();
+      const searchIndex = TestBed.inject(UnitSearchIndexService);
+      const reference = { ...f.editor.designSummary(), origin: 'megamek' as const, isCustom: false };
+      searchIndex.commitPreparedCatalogIndexes(searchIndex.prepareCatalogIndexes([reference], [], []));
+      for (const command of [
+        { type: 'damage-internal', locationId: location.id, amount: 2, target: 'committed' },
+        { type: 'damage-internal', locationId: other.id, amount: 1, target: 'committed' },
+        { type: 'damage-armor', faceId: front.id, amount: 3, target: 'committed' },
+        { type: 'damage-armor', faceId: rear.id, amount: 1, target: 'pending' },
+      ] satisfies CBTUnitCommand[]) {
+        expect((await f.force.dispatchUnitCommand(member.id, command)).accepted).toBeTrue();
+      }
+      f.view.detectChanges();
+      await f.view.whenStable();
+      expect(f.editor.internalRemaining('LT', structure)).toBe(structure - 1);
+      expect(f.editor.internalRemaining('RT', f.entity.structureValues().get('RT')!))
+        .toBe(f.entity.structureValues().get('RT')! - 1);
+      expect(f.editor.armorDamage('LT')).toBe(1.5);
+      expect(f.editor.armorDamage('LT', 'rear')).toBe(0.5);
+      const defense = f.root.querySelector<HTMLElement>('[data-location="LT"] .location-defense')!;
+      expect([...defense.querySelectorAll('.armor-condition')].map(row => row.textContent!.trim()))
+        .toEqual(['10.5 intact · 1.5 damaged', '5.5 intact · 0.5 damaged']);
+      expect(f.editor.summaryStats().find(stat => stat.label === 'Armor')?.value).toBe(totalArmor - 2);
+      expect(f.editor.summaryStats().find(stat => stat.label === 'Structure')?.value).toBe(totalStructure - 2);
+
+      await f.force.dispatchUnitCommand(member.id,
+        { type: 'damage-internal', locationId: location.id, amount: 1, target: 'pending' });
+      expect(f.editor.internalRemaining('LT', structure)).toBe(structure - 1.5);
+      await f.editor.repairDefense('LT', 'internal');
+      await f.editor.repairDefense('LT', 'front');
+      f.view.detectChanges();
+      await f.view.whenStable();
+      expect(f.editor.internalRemaining('LT', structure)).toBe(structure);
+      expect(f.editor.internalRepair('LT', structure)).toBe(1.5);
+      expect(f.editor.armorDamage('LT')).toBe(0);
+      expect(f.editor.armorRepair('LT')).toBe(1.5);
+      expect(f.editor.armorDamage('LT', 'rear')).toBe(0.5);
+      expect(defense.querySelector('.structure-label .repair-gain')?.textContent).toBe('+1.5');
+      expect(f.editor.summaryStats().find(stat => stat.label === 'Armor')).toEqual(jasmine.objectContaining({
+        value: totalArmor - 0.5, pendingRepair: 1.5,
+      }));
+      expect(f.editor.summaryStats().find(stat => stat.label === 'Structure')).toEqual(jasmine.objectContaining({
+        value: totalStructure - 1, pendingRepair: 1.5,
+      }));
+      f.editor.undo();
+      expect(f.editor.armorDamage('LT')).toBe(1.5);
+      expect(f.editor.armorRepair('LT')).toBe(0);
+      f.editor.redo();
+      expect(f.editor.armorRepair('LT')).toBe(1.5);
+      expect(f.instance.query().remainingInternal(location.id, 'preview')).toBe(structure * 2 - 3);
+      expect(f.instance.query().remainingArmor(front.id, 'preview')).toBe(21);
+    });
+  }
 
   it('repairs individual armor facings and structure while locked, retaining other damage and undo history', async () => {
     const f = await create({ editDesign: false, armor: true });

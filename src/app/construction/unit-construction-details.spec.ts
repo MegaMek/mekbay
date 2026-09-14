@@ -309,7 +309,7 @@ describe('responsive construction details', () => {
             const columns = editor.locationColumns();
             for (const dismiss of ['close', 'backdrop', 'escape']) {
                 trigger.focus({ preventScroll: true }); trigger.click(); await render();
-                const close = button('Close construction issues');
+                const close = button('Close construction checks');
                 expect(document.activeElement).toBe(close);
                 expect(close.classList.contains('close-button')).toBeTrue();
                 expect(close.getBoundingClientRect().width).toBe(40);

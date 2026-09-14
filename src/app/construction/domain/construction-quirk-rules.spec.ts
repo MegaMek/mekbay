@@ -136,6 +136,13 @@ describe('construction quirk validation policy', () => {
     expect(result.messages.filter(issue => quirkCodes.includes(issue.code)).map(issue => issue.code))
       .toEqual(CONSTRUCTION_VALIDATE_QUIRKS ? quirkCodes : []);
     expect(result.messages.some(issue => issue.code === 'CHASSIS_REQUIRED')).toBeTrue();
+    const disabled = validateConstruction(entity, false);
+    const disabledQuirks = disabled.messages.filter(issue => quirkCodes.includes(issue.code));
+    expect(disabledQuirks.map(issue => issue.severity)).toEqual(CONSTRUCTION_VALIDATE_QUIRKS ? ['warning', 'warning', 'warning'] : []);
+    expect(disabledQuirks.every(issue => issue.message.endsWith('(Quirks are disabled.)'))).toBeTrue();
+    expect(disabled.messages.filter(issue => !quirkCodes.includes(issue.code)))
+      .toEqual(result.messages.filter(issue => !quirkCodes.includes(issue.code)));
+    expect(validateConstruction(entity, true)).toEqual(result);
     expect(entity.quirks()).toEqual(quirks);
     expect(entity.weaponQuirks()).toEqual(weaponQuirks);
   });

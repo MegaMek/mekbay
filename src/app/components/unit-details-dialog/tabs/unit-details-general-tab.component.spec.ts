@@ -20,8 +20,32 @@ import { DialogsService } from '../../../services/dialogs.service';
 import { LayoutService } from '../../../services/layout.service';
 import { OptionsService } from '../../../services/options.service';
 import { GameService } from '../../../services/game.service';
+import { signal } from '@angular/core';
 
 describe('UnitDetailsGeneralTabComponent', () => {
+    it('filters quirk issues reactively while retaining other cached unit issues', () => {
+        const options = signal({ CBTOptionalRules: { quirks: true } });
+        TestBed.configureTestingModule({ providers: [
+            ...[UnitNameService, DataService, DialogsService, LayoutService, GameService].map(provide => ({ provide, useValue: {} })),
+            { provide: OptionsService, useValue: { options } },
+        ] });
+        TestBed.overrideComponent(UnitDetailsGeneralTabComponent, { set: { template: '', imports: [] } });
+        const fixture = TestBed.createComponent(UnitDetailsGeneralTabComponent);
+        const issues = [
+            { code: 'MEK_INTERFACE_CRAMPED', severity: 'error', field: 'equipment', message: 'Cramped cockpit conflict.' },
+            { code: 'WEAPON_QUIRK_UNMATCHED', severity: 'warning', field: 'general', message: 'Missing weapon.' },
+            { code: 'QUIRK_NOT_FOUND', severity: 'error', field: 'quirk', message: 'Unknown quirk.' },
+            { code: 'ENGINE_RATING_MISMATCH', severity: 'error', field: 'engine', message: 'Wrong engine rating.' },
+        ] as const;
+        fixture.componentRef.setInput('unit', { loadIssues: issues } as unknown as UnitSummary);
+        expect(fixture.componentInstance.visibleLoadIssues()).toEqual(issues);
+        options.set({ CBTOptionalRules: { quirks: false } });
+        expect(fixture.componentInstance.visibleLoadIssues()).toEqual([issues[3]]);
+        options.set({ CBTOptionalRules: { quirks: true } });
+        expect(fixture.componentInstance.visibleLoadIssues()).toEqual(issues);
+        expect(fixture.componentInstance.unit().loadIssues).toBe(issues);
+    });
+
     describe('equipment condition', () => {
         it('always shows current ammo and damage for a force member, and pristine catalog components otherwise', () => {
             const { instance, entity, index, equipmentComponent } = createDirectMekRuntimeFixture();

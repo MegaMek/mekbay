@@ -438,7 +438,7 @@
   </div>
 </div>
 
-@if (unit().loadIssues.length) {
+@if (visibleLoadIssues().length) {
   <div class="unit-load-issues-footer">
     <section class="unit-load-issues framed-borders error" aria-label="Unit data issues">
       <button
@@ -448,11 +448,11 @@
         [attr.aria-expanded]="loadIssuesOpen()"
       >
         <span class="chevron" [class.collapsed]="!loadIssuesOpen()" aria-hidden="true"></span>
-        <span class="unit-load-issues-title">Unit data issues ({{ unit().loadIssues.length }})</span>
+        <span class="unit-load-issues-title">Unit data issues ({{ visibleLoadIssues().length }})</span>
       </button>
       @if (loadIssuesOpen()) {
         <ul class="unit-load-issues-list allow-select">
-          @for (issue of unit().loadIssues; track $index) {
+          @for (issue of visibleLoadIssues(); track $index) {
             <li>
               <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong> {{ issue.message }}
             </li>
