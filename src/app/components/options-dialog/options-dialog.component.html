@@ -644,16 +644,16 @@
           <div class="settings-view-content">
             <div class="option-col">
               <div class="option-row">
-                <label for="CBTRules">Rules:</label>
-                <select
-                  id="CBTRules"
-                  class="bt-select"
-                  [value]="optionsService.options().CBTRules"
-                  (change)="onCBTRulesChange($event)"
-                >
-                  <option value="total-warfare">Total Warfare (default)</option>
-                  <option value="core-2026">Core 2026</option>
-                </select>
+                <span>Rules:</span>
+                <mode-switch
+                  class="rules-mode-switch"
+                  leftLabel="Total Warfare"
+                  rightLabel="Core 2026"
+                  ariaLabel="Classic BattleTech rules"
+                  switchAriaLabel="Switch Classic BattleTech rules"
+                  [selectedRight]="optionsService.options().CBTRules === 'core-2026'"
+                  (selectedRightChange)="onCBTRulesChange($event)"
+                ></mode-switch>
               </div>
               <div class="description">
                 <p>
@@ -685,15 +685,16 @@
             </div>
             <div class="option-col">
               <div class="option-row">
-                <span id="classicUnitViewModeLabel">Default unit view:</span>
-                <mode-switch
-                  leftLabel="Sheet"
-                  rightLabel="Tactical"
-                  ariaLabel="Default Classic BattleTech unit view"
-                  switchAriaLabel="Switch default Classic BattleTech unit view"
-                  [selectedRight]="optionsService.options().cbtUnitViewMode === 'tactical'"
-                  (selectedRightChange)="onCBTUnitViewModeChange($event)"
-                ></mode-switch>
+                <label for="cbtUnitViewMode">Default unit view:</label>
+                <select
+                  id="cbtUnitViewMode"
+                  class="bt-select"
+                  [value]="optionsService.options().cbtUnitViewMode"
+                  (change)="onCBTUnitViewModeChange($event)"
+                >
+                  <option value="sheet">Sheet (default)</option>
+                  <option value="tactical">Tactical</option>
+                </select>
               </div>
               <div class="description">
                 <p>
@@ -868,89 +869,21 @@
                 </div>
               }
             </div>
-            <div class="option-section-title">Optional rules</div>
-            <div class="option-row">
-              <label for="CBTOptionalQuirks">Quirks</label>
-              <input
-                id="CBTOptionalQuirks"
-                class="bt-checkbox"
-                type="checkbox"
-                [checked]="optionsService.options().CBTOptionalRules.quirks"
-                (change)="onCBTOptionalRuleChange('quirks', $event)"
-              />
-            </div>
-            <div class="option-row">
-              <label for="CBTOptionalFloatingCritical">Floating criticals:</label>
-              <select
-                id="CBTOptionalFloatingCritical"
-                class="bt-select"
-                [value]="optionsService.options().CBTOptionalRules.floatingCriticals"
-                (change)="onCBTOptionalRuleChange('floatingCriticals', $event)"
-              >
-                <option value="true">Enabled</option>
-                <option value="false">Disabled (default)</option>
-              </select>
-            </div>
-            <div class="option-row">
-              <label for="CBTOptionalSprinting">Sprinting (Meks only):</label>
-              <select
-                id="CBTOptionalSprinting"
-                class="bt-select"
-                [value]="optionsService.options().CBTOptionalRules.sprinting"
-                (change)="onCBTOptionalRuleChange('sprinting', $event)"
-              >
-                <option value="true">Enabled</option>
-                <option value="false">Disabled (default)</option>
-              </select>
-            </div>
-            <div class="option-row">
-              <label for="CBTOptionalExtremeRange">"Extreme" range:</label>
-              <select
-                id="CBTOptionalExtremeRange"
-                class="bt-select"
-                [value]="optionsService.options().CBTOptionalRules.extremeRange"
-                (change)="onCBTOptionalRuleChange('extremeRange', $event)"
-              >
-                <option value="true">Enabled</option>
-                <option value="false">Disabled (default)</option>
-              </select>
-            </div>
-            <div class="option-row">
-              <label for="CBTOptionalHotLoadedAmmo">Hot-Loaded Ammo:</label>
-              <select
-                id="CBTOptionalHotLoadedAmmo"
-                class="bt-select"
-                [value]="optionsService.options().CBTOptionalRules.hotLoadedAmmo"
-                (change)="onCBTOptionalRuleChange('hotLoadedAmmo', $event)"
-              >
-                <option value="true">Enabled</option>
-                <option value="false">Disabled (default)</option>
-              </select>
-            </div>
-            <div class="option-row">
-              <label for="CBTOptionalMixedTechBaseAmmo">Allow mixed IS/Clan ammunition:</label>
-              <select
-                id="CBTOptionalMixedTechBaseAmmo"
-                class="bt-select"
-                [value]="optionsService.options().CBTOptionalRules.allowMixedTechBaseAmmo"
-                (change)="onCBTOptionalRuleChange('allowMixedTechBaseAmmo', $event)"
-              >
-                <option value="true">Enabled</option>
-                <option value="false">Disabled (default)</option>
-              </select>
-            </div>
-            <div class="option-row">
-              <label for="CBTForcedWithdrawal">Forced withdrawal (Cripple):</label>
-              <select
-                id="CBTForcedWithdrawal"
-                class="bt-select"
-                [value]="optionsService.options().CBTOptionalRules.forcedWithdrawal"
-                (change)="onCBTOptionalRuleChange('forcedWithdrawal', $event)"
-              >
-                <option value="true">Enabled (default)</option>
-                <option value="false">Disabled</option>
-              </select>
-            </div>
+            <fieldset class="optional-rules">
+              <legend class="option-section-title">Optional rules</legend>
+              @for (rule of cbtOptionalRules; track rule.key) {
+                <label class="optional-rule">
+                  <span class="optional-rule-label">{{ rule.label }}</span>
+                  <span class="optional-rule-leader" aria-hidden="true"></span>
+                  <input
+                    class="bt-checkbox"
+                    type="checkbox"
+                    [checked]="optionsService.options().CBTOptionalRules[rule.key]"
+                    (change)="onCBTOptionalRuleChange(rule.key, $event)"
+                  />
+                </label>
+              }
+            </fieldset>
           </div>
         }
         @case ('Alpha Strike') {

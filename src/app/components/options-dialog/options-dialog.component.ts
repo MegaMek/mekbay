@@ -209,6 +209,15 @@ export class OptionsDialogComponent {
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
     cbtAutomationModes = CBT_AUTOMATION_MODES;
     cbtAutomationOptions = CBT_AUTOMATION_OPTIONS;
+    readonly cbtOptionalRules: ReadonlyArray<{ key: keyof CBTOptionalRules; label: string }> = [
+        { key: 'quirks', label: 'Quirks' },
+        { key: 'floatingCriticals', label: 'Floating criticals' },
+        { key: 'sprinting', label: 'Sprinting (Meks only)' },
+        { key: 'extremeRange', label: '"Extreme" range' },
+        { key: 'hotLoadedAmmo', label: 'Hot-Loaded Ammo' },
+        { key: 'allowMixedTechBaseAmmo', label: 'Allow mixed IS/Clan ammunition' },
+        { key: 'forcedWithdrawal', label: 'Forced withdrawal (Cripple)' },
+    ];
     forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
@@ -405,17 +414,14 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('colorScheme', value);
     }
 
-    async onCBTRulesChange(event: Event) {
-        const select = event.target as HTMLSelectElement;
-        const value = select.value as 'core-2026' | 'total-warfare';
-        const currentValue = this.optionsService.options().CBTRules;
+    async onCBTRulesChange(useCore2026: boolean) {
+        const value = useCore2026 ? 'core-2026' : 'total-warfare';
         const confirmed = await this.dialogsService.requestConfirmation(
             'Changing the rules system will reload the application. Any uncommitted changes may be lost.',
             'Change Rules System?',
             'warning'
         );
         if (!confirmed) {
-            select.value = currentValue;
             return;
         }
         await this.optionsService.setOption('CBTRules', value);
@@ -517,8 +523,8 @@ export class OptionsDialogComponent {
         this.optionsService.setOption('trackPhaseAndTurn', value);
     }
 
-    onCBTUnitViewModeChange(showTactical: boolean): void {
-        const mode: CBTUnitViewMode = showTactical ? 'tactical' : 'sheet';
+    onCBTUnitViewModeChange(event: Event): void {
+        const mode = (event.target as HTMLSelectElement).value as CBTUnitViewMode;
         this.optionsService.setOption('cbtUnitViewMode', mode);
     }
 
@@ -527,8 +533,7 @@ export class OptionsDialogComponent {
     }
 
     onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
-        const target = event.target as HTMLInputElement | HTMLSelectElement;
-        const value = target instanceof HTMLInputElement && target.type === 'checkbox' ? target.checked : target.value === 'true';
+        const value = (event.target as HTMLInputElement).checked;
         this.optionsService.setOption('CBTOptionalRules', {
             ...this.optionsService.options().CBTOptionalRules,
             [key]: value,

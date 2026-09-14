@@ -170,7 +170,7 @@ export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: Comp
     </div>
     `,
     styles: [`
-        .hot-load-option { display: grid; gap: 6px; margin-bottom: 12px; }
+        .hot-load-option { display: grid; gap: 6px; margin-bottom: 12px; text-align: left; }
         .hot-load-option label { display: flex; align-items: center; gap: 8px; }
         .hot-load-option small { color: var(--text-color-secondary); font-size: 0.8em; line-height: 1.3; }
         @container (max-width: 400px) {

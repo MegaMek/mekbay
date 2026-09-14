@@ -338,6 +338,10 @@
   width: min(360px, 48%);
 }
 
+.rules-mode-switch {
+  justify-content: flex-end;
+}
+
 .automation-options {
   display: flex;
   min-width: 0;
@@ -394,6 +398,54 @@
 
 .options-mobile-detail .automation-mode-switch {
   width: 100%;
+}
+
+.optional-rules {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.optional-rules legend {
+  width: 100%;
+  margin-bottom: 4px;
+  box-sizing: border-box;
+}
+
+.optional-rule {
+  display: flex;
+  align-items: last baseline;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 4px;
+  box-sizing: border-box;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.optional-rule .bt-checkbox {
+  align-self: center;
+  flex: 0 0 20px;
+}
+
+.optional-rule-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.optional-rule-leader {
+  flex: 1 0 16px;
+  border-bottom: 1px dotted var(--border-color);
+}
+
+.optional-rule:hover {
+  background: var(--background-highlight);
+}
+
+.optional-rule:has(:focus-visible) {
+  outline: 2px solid var(--bt-yellow);
+  outline-offset: -2px;
 }
 
 .account-summary-row {
@@ -467,7 +519,7 @@
   width: min(420px, 48%);
 }
 
-input {
+input:not([type='checkbox']) {
   width: 100%;
   box-sizing: border-box;
 }

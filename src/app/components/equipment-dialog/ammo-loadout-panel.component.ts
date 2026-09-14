@@ -67,19 +67,19 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                             <span class="chevron" [class.collapsed]="!isExpanded(group)" aria-hidden="true"></span>
                             <span class="ammo-name-wrapper">
                                 <span class="ammo-name">{{ group.displayName }}</span>
-                                @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
-                                @if (!isExpanded(group)) {
-                                    <span class="ammo-location-badges">
-                                    @for (location of group.locations; track location.loc + ':' + location.state) {
-                                        <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.disabled]="isLocationBadgeDisabled(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
-                                            @if (location.quantity > 1) {
-                                                <span class="quantity">{{ location.quantity + '×' }}</span>
-                                            }
-                                            {{ location.loc }}
-                                        </span>
+                                <span class="ammo-location-badges">
+                                    @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
+                                    @if (!isExpanded(group)) {
+                                        @for (location of group.locations; track location.loc + ':' + location.state) {
+                                            <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.disabled]="isLocationBadgeDisabled(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
+                                                @if (location.quantity > 1) {
+                                                    <span class="quantity">{{ location.quantity + '×' }}</span>
+                                                }
+                                                {{ location.loc }}
+                                            </span>
+                                        }
                                     }
-                                    </span>
-                                }
+                                </span>
                             </span>
                         </button>
                     } @else {
@@ -89,8 +89,8 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                             }
                             <span class="ammo-name-wrapper">
                                 <span class="ammo-name">{{ group.displayName }}</span>
-                                @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                 <span class="ammo-location-badges">
+                                    @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                     @for (location of group.locations; track location.loc + ':' + location.state) {
                                         <span class="ammo-location-badge" [class.exposed]="isLocationBadgeExposed(location)" [class.disabled]="isLocationBadgeDisabled(location)" [class.destroyed]="isLocationBadgeDestroyed(location)">
                                             @if (location.quantity > 1) {
@@ -111,8 +111,8 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
                                 <div class="ammo-bin" [class.destroyed]="entry.status === 'destroyed'" [class.disabled]="entry.status === 'disabled'" [class.empty]="remainingAmmoBin <= 0">
                                     <button class="ammo-bin-name-wrapper" type="button" (click)="setAmmoBin(entry)" [disabled]="!entryUsable(entry) || readOnly()">
                                         <span class="ammo-bin-name">{{ entry.displayBinName }}</span>
-                                        @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                         <span class="ammo-location-badges">
+                                            @if (group.hotLoaded) { <span class="ammo-location-badge hot-loaded-badge">HOT-LOADED</span> }
                                             <span class="ammo-location-badge" [class.exposed]="isEntryLocationBadgeExposed(group, entry)" [class.disabled]="isEntryLocationBadgeDisabled(entry)" [class.destroyed]="isEntryLocationBadgeDestroyed(entry)">
                                                 {{ entry.locationLabel }}
                                             </span>
@@ -287,7 +287,7 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
         .ammo-location-badge.exposed {
             background: var(--background-warning);
         }
-        .hot-loaded-badge { background: var(--background-warning); margin-right: 4px; }
+        .hot-loaded-badge { background: var(--background-warning); }
 
         .ammo-location-badge.destroyed {
             background: var(--damage-color);

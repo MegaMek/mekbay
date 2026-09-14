@@ -208,10 +208,13 @@ describe('OptionsDialogComponent', () => {
     it('persists the selected CBT unit view', () => {
         const setOption = jasmine.createSpy('setOption');
         const component = configureComponent({ options: () => ({}), setOption });
-
-        component.onCBTUnitViewModeChange(true);
-
-        expect(setOption).toHaveBeenCalledOnceWith('cbtUnitViewMode', 'tactical');
+        const select = document.createElement('select');
+        select.innerHTML = '<option value="sheet">Sheet</option><option value="tactical">Tactical</option>';
+        for (const value of ['tactical', 'sheet']) {
+            select.value = value;
+            component.onCBTUnitViewModeChange({ target: select } as unknown as Event);
+            expect(setOption.calls.mostRecent().args).toEqual(['cbtUnitViewMode', value]);
+        }
     });
 
     for (const value of ['classic', 'distributed', 'rail']) {
@@ -274,11 +277,11 @@ describe('OptionsDialogComponent', () => {
             }),
             setOption,
         });
-        const select = document.createElement('select');
-        select.innerHTML = '<option value="true">Enabled</option><option value="false">Disabled</option>';
-        select.value = 'false';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = false;
 
-        component.onCBTOptionalRuleChange('forcedWithdrawal', { target: select } as unknown as Event);
+        component.onCBTOptionalRuleChange('forcedWithdrawal', { target: checkbox } as unknown as Event);
 
         expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
             floatingCriticals: false,
