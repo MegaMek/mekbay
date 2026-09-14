@@ -12,6 +12,7 @@
                 <div class="header-row">
                     <div class="header-chassis-group">
                         <div class="header-chassis allow-select">{{ unitNames.chassis(headerUnit()) }}</div>
+                        @if (headerUnit().isCustom) { <span class="custom-unit-badge">CUSTOM</span> }
                     </div>
                     <div class="header-details">
                         @if (headerUnit().role && headerUnit().role != 'None') {

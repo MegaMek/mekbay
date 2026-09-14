@@ -147,13 +147,14 @@ export abstract class AsLayoutBaseComponent {
 
     // Keep the badge readable at catalog and 88 mm print sizes using fixed SVG units.
     protected customBadge = computed(() => ({
-        width: this.measureText('CUSTOM', '700 28px Roboto') + 6 * 1.68 + 28,
-        height: 44.8,
-        baseline: 8.4 + this.textBaseline('700 28px Roboto', 28),
+        width: this.measureText('CUSTOM', '700 21px Roboto') + 6 * 1.26 + 21,
+        height: 33.6,
+        baseline: 6.3 + this.textBaseline('700 21px Roboto', 21),
     }));
 
     protected customBadgeTop(baseline: number, adjacentFont: string): number {
-        return baseline - this.textMetrics('x', adjacentFont).actualBoundingBoxAscent / 2 - this.customBadge().height / 2;
+        // Header labels are uppercase; center the badge on their cap height.
+        return baseline - this.textMetrics('H', adjacentFont).actualBoundingBoxAscent / 2 - this.customBadge().height / 2;
     }
 
     protected movementText = computed(() => this.plainMovement(this.movementDisplay()));

@@ -47,6 +47,7 @@ import { DisplayNameService } from '../../services/display-name.service';
 import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 import { copyTextToClipboard } from '../../utils/clipboard.util';
 import { CustomUnitLibraryComponent } from '../custom-unit-library/custom-unit-library.component';
+import { SubscriberCountComponent } from '../subscriber-count/subscriber-count.component';
 import { UnitArtworkService } from '../../services/unit-artwork.service';
 import { ProvidedFluffImageService } from '../../services/catalogs/provided-fluff-image.service';
 import { CustomUnitsService } from '../../services/custom-units.service';
@@ -168,7 +169,7 @@ const CBT_AUTOMATION_OPTIONS: readonly CBTAutomationOptionDefinition[] = [
 @Component({
     selector: 'options-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent, ModeSwitchComponent, CustomUnitLibraryComponent],
+    imports: [DatePipe, NgTemplateOutlet, BaseDialogComponent, RangeSliderComponent, ModeSwitchComponent, CustomUnitLibraryComponent, SubscriberCountComponent],
     templateUrl: './options-dialog.component.html',
     styleUrl: './options-dialog.component.scss'
 })

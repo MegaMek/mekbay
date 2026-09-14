@@ -118,8 +118,8 @@ describe('Alpha Strike standard SVG layout', () => {
     function expectReadableBadge(svg: SVGSVGElement) {
         const frame = svg.querySelector<SVGRectElement>('.custom-badge-frame')!.getBoundingClientRect();
         const glyphs = svg.querySelector<SVGTextElement>('.custom-badge-text')!.getBoundingClientRect();
-        expect(frame.height).toBeGreaterThan(12);
-        expect(glyphs.height).toBeGreaterThan(8);
+        expect(frame.height).toBeGreaterThan(9);
+        expect(glyphs.height).toBeGreaterThan(6);
         expect(glyphs.left).toBeGreaterThan(frame.left);
         expect(glyphs.right).toBeLessThan(frame.right);
         expect(glyphs.top).toBeGreaterThanOrEqual(frame.top);

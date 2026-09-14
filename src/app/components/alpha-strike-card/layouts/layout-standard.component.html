@@ -42,7 +42,7 @@
         @if (unit().isCustom) {
             <g [attr.transform]="'translate(' + customBadgeX() + ' ' + customBadgeTop(modelBaseline(), '400 ' + modelSize() + 'px Roboto') + ')'">
                 <rect class="custom-badge-frame" x=".56" y=".56" [attr.width]="customBadge().width - 1.12" [attr.height]="customBadge().height - 1.12" />
-                <text class="custom-badge-text" x="14" [attr.y]="customBadge().baseline">CUSTOM</text>
+                <text class="custom-badge-text" x="10.5" [attr.y]="customBadge().baseline">CUSTOM</text>
             </g>
         }
         <text class="chassis-text" x="31.36" [attr.y]="chassisBaseline()" [attr.font-size]="chassisSize()"

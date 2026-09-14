@@ -19,7 +19,7 @@ import { AsLayoutBaseComponent } from './layout-base.component';
         @if (unit().isCustom) {
             <g [attr.transform]="'translate(' + (subtitleX() + displaySubtitleWidth() + 14) + ' ' + customBadgeTop(titleY(), subtitleSize() + 'px Roboto') + ')'">
                 <rect class="custom-badge-frame" x=".56" y=".56" [attr.width]="customBadge().width - 1.12" [attr.height]="customBadge().height - 1.12" />
-                <text class="custom-badge-text" x="14" [attr.y]="customBadge().baseline">CUSTOM</text>
+                <text class="custom-badge-text" x="10.5" [attr.y]="customBadge().baseline">CUSTOM</text>
             </g>
         }
         @if (showPv()) {
@@ -37,8 +37,8 @@ import { AsLayoutBaseComponent } from './layout-base.component';
         .pv { fill: #fff; font: 900 60.48px Roboto, sans-serif; letter-spacing: .1em; }
         .base-pv { fill:#000; stroke:#fff; stroke-width:3px; paint-order:stroke fill; font:700 24.64px Roboto,sans-serif; }
         .commander { fill: #ECD24B; opacity:.6; }
-        .custom-badge-frame { fill:var(--bt-yellow-background-transparent); stroke:var(--bt-yellow); stroke-width:1.12px; }
-        .custom-badge-text { fill:var(--bt-yellow); font:700 28px Roboto,sans-serif; letter-spacing:1.68px; }
+        .custom-badge-frame { fill:#fff; stroke:#000; stroke-width:1.12px; }
+        .custom-badge-text { fill:#000; font:700 21px Roboto,sans-serif; letter-spacing:1.26px; }
         :host(.monochrome) .vessel-title { font-weight:700; stroke:none; }
         :host(.monochrome) .vessel-subtitle { fill:#000; }
         :host(.monochrome) .commander { fill:#000; opacity:.3; }

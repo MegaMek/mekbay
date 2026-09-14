@@ -36,8 +36,8 @@
     font-weight: 400;
     :host:not(.monochrome) & { fill: #fff; }
 }
-.custom-badge-frame { fill: var(--bt-yellow-background-transparent); stroke: var(--bt-yellow); stroke-width: 1.12px; }
-.custom-badge-text { fill: var(--bt-yellow); font: 700 28px Roboto, sans-serif; letter-spacing: 1.68px; }
+.custom-badge-frame { fill: #fff; stroke: #000; stroke-width: 1.12px; }
+.custom-badge-text { fill: #000; font: 700 21px Roboto, sans-serif; letter-spacing: 1.26px; }
 .chassis-text {
     font-family: 'Roboto Condensed', sans-serif;
     font-weight: 700;
