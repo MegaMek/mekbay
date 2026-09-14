@@ -40,6 +40,7 @@
 }
 
 .crew-skills {
+  position: relative;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -47,16 +48,32 @@
   gap: 8px;
 }
 
-.dual-skills > .crew-skills {
+.grouped-skills > .crew-skills {
   padding: 8px 12px 12px;
   border: 1px solid var(--border-color);
   background: #0002;
 }
 
+.crew-skills:disabled > :not(.skill-group-overlay) {
+  opacity: 0.5;
+}
+
+.skill-group-overlay {
+  position: absolute;
+  // Fieldset positioning starts below the legend; extend to its center at the border.
+  inset: -0.5lh 0 0;
+  pointer-events: none;
+}
+
+.skill-group-overlay,
 .skill-group-title {
+  font-size: 0.8em;
+}
+
+.skill-group-title {
+  z-index: 1;
   padding: 0 6px;
   color: var(--text-color);
-  font-size: 0.8em;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -151,7 +168,7 @@
       grid-column: 1 / -1;
       grid-row: 2;
     }
-    > .aerospace-skills {
+    > .secondary-skills {
       grid-row: auto;
     }
     > .pilot-actions {
@@ -173,7 +190,7 @@
       > .name-field {
         grid-row: 2;
       }
-      > .crew-skills:not(.aerospace-skills) {
+      > .crew-skills:not(.secondary-skills) {
         grid-row: 3;
       }
       > .pilot-actions {

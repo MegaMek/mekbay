@@ -33,7 +33,7 @@ import { LayoutService } from '../../services/layout.service';
 import { PilotNotesFieldComponent } from '../pilot-notes-field/pilot-notes-field.component';
 import { PilotPortraitFieldComponent } from '../pilot-portrait-field/pilot-portrait-field.component';
 import type { CrewEditAction, CrewEditActions } from '../force-crew/crew-edit-actions';
-import { MAX_CREW_WOUNDS } from '../../models/crew-member.model';
+import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL, MAX_CREW_WOUNDS } from '../../models/crew-member.model';
 import type { CrewSkillSet } from '../../models/unit-crew-policy';
 
 export interface EditPilotDialogData {
@@ -108,6 +108,23 @@ interface EditableCrewMember {
 const CREW_NAME_LABELS = ['Pilot Name', 'Gunner Name', 'Officer Name'] as const;
 const SKILL_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 
+const SKILL_GROUPS = {
+  ground: {
+    skillSet: 'ground',
+    label: 'Ground',
+    idPrefix: 'classic-crew',
+    gunneryField: 'gunnery',
+    pilotingField: 'piloting',
+  },
+  aerospace: {
+    skillSet: 'aerospace',
+    label: 'Aerospace',
+    idPrefix: 'classic-crew-aero',
+    gunneryField: 'aeroGunnery',
+    pilotingField: 'aeroPiloting',
+  },
+} as const;
+
 export function getSyntheticCrewSkill(
   crew: readonly EditPilotCrewPosition[],
   skillType: CrewSkillType,
@@ -126,7 +143,11 @@ export function getSyntheticCrewSkill(
     ),
     ...additionalSkills,
   ];
-  return skills.length > 0 ? Math.min(...skills) : skillType === 'gunnery' ? 4 : 5;
+  return skills.length > 0
+    ? Math.min(...skills)
+    : skillType === 'gunnery'
+      ? DEFAULT_GUNNERY_SKILL
+      : DEFAULT_PILOTING_SKILL;
 }
 
 export function buildCrewSkillPreviewEntries(
@@ -139,7 +160,7 @@ export function buildCrewSkillPreviewEntries(
   skillSet: CrewSkillSet = 'both',
 ): SkillPreviewEntry[] {
   const skillType: CrewSkillType = skillField === 'gunnery' || skillField === 'aeroGunnery' ? 'gunnery' : 'piloting';
-  const defaultSkill = skillType === 'gunnery' ? 4 : 5;
+  const defaultSkill = skillType === 'gunnery' ? DEFAULT_GUNNERY_SKILL : DEFAULT_PILOTING_SKILL;
   const calculateCandidate = (value: number): number => {
     const candidateCrew = crew.map((member, index) =>
       index === crewIndex ? { ...member, [skillField]: value } : member,
@@ -170,15 +191,13 @@ export function buildCrewSkillPreviewEntries(
 export class EditPilotDialogComponent {
   private commanderSelectionRequestId = 0;
   nameInputs = viewChildren<ElementRef<HTMLInputElement>>('nameInput');
-  gunneryTriggers = viewChildren<ElementRef<HTMLDivElement>>('gunneryTrigger');
-  pilotingTriggers = viewChildren<ElementRef<HTMLDivElement>>('pilotingTrigger');
-  aeroGunneryTriggers = viewChildren<ElementRef<HTMLDivElement>>('aeroGunneryTrigger');
-  aeroPilotingTriggers = viewChildren<ElementRef<HTMLDivElement>>('aeroPilotingTrigger');
 
   public dialogRef = inject(DialogRef<EditPilotResult | null, EditPilotDialogComponent>);
   readonly data: EditPilotDialogData = inject(DIALOG_DATA) as EditPilotDialogData;
-  readonly showGroundSkills = this.data.skillSet !== 'aerospace';
-  readonly showAerospaceSkills = this.data.skillSet !== 'ground';
+  private readonly skillGroups =
+    this.data.skillSet === 'aerospace'
+      ? [SKILL_GROUPS.aerospace, SKILL_GROUPS.ground]
+      : [SKILL_GROUPS.ground, SKILL_GROUPS.aerospace];
   readonly layoutService = inject(LayoutService);
   private overlayManager = inject(OverlayManagerService);
   private dialogsService = inject(DialogsService);
@@ -212,8 +231,7 @@ export class EditPilotDialogComponent {
   private buildBvMatrix(skillSet: 'ground' | 'aerospace'): number[][] {
     if (!this.hasBvPreview) return [];
     const crew = this.crewSnapshot();
-    const gunneryField = skillSet === 'ground' ? 'gunnery' : 'aeroGunnery';
-    const pilotingField = skillSet === 'ground' ? 'piloting' : 'aeroPiloting';
+    const { gunneryField, pilotingField } = SKILL_GROUPS[skillSet];
     return SKILL_VALUES.map((gunnery) =>
       SKILL_VALUES.map((piloting) => {
         const candidateCrew = crew.map((member) => ({
@@ -241,56 +259,22 @@ export class EditPilotDialogComponent {
     return CREW_NAME_LABELS[index] ?? `Crew Member ${index + 1} Name`;
   }
 
-  toggleGunneryDropdown(index: number): void {
-    const member = this.crew[index];
-    this.openSkillDropdown(
-      this.skillOverlayKey('gunnery', member.id),
-      this.gunneryTriggers()[index],
-      member.gunnery(),
-      this.buildEntries(index, 'gunnery'),
-      (skill) => member.gunnery.set(skill),
-      this.data.labelGunnery || 'Gunnery Skill',
-    );
+  canEditSkills(skillSet: 'ground' | 'aerospace'): boolean {
+    return this.data.skillSet === undefined || this.data.skillSet === 'both' || this.data.skillSet === skillSet;
   }
 
-  togglePilotingDropdown(index: number): void {
-    if (this.data.disablePiloting) return;
-    const member = this.crew[index];
-    this.openSkillDropdown(
-      this.skillOverlayKey('piloting', member.id),
-      this.pilotingTriggers()[index],
-      member.piloting(),
-      this.buildEntries(index, 'piloting'),
-      (skill) => member.piloting.set(skill),
-      this.data.labelPiloting || 'Piloting Skill',
-    );
-  }
-
-  toggleAeroGunneryDropdown(index: number): void {
-    const member = this.crew[index];
-    if (!member.aeroGunnery) return;
-    this.openSkillDropdown(
-      this.skillOverlayKey('aeroGunnery', member.id),
-      this.aeroGunneryTriggers()[index],
-      member.aeroGunnery(),
-      this.buildEntries(index, 'aeroGunnery'),
-      (skill) => member.aeroGunnery!.set(skill),
-      'Aerospace Gunnery Skill',
-    );
-  }
-
-  toggleAeroPilotingDropdown(index: number): void {
-    if (this.data.disablePiloting) return;
-    const member = this.crew[index];
-    if (!member.aeroPiloting) return;
-    this.openSkillDropdown(
-      this.skillOverlayKey('aeroPiloting', member.id),
-      this.aeroPilotingTriggers()[index],
-      member.aeroPiloting(),
-      this.buildEntries(index, 'aeroPiloting'),
-      (skill) => member.aeroPiloting!.set(skill),
-      'Aerospace Piloting Skill',
-    );
+  visibleSkillGroups(member: EditableCrewMember) {
+    return this.skillGroups.filter((group) => {
+      const gunnery = member[group.gunneryField];
+      const piloting = member[group.pilotingField];
+      return (
+        gunnery &&
+        piloting &&
+        (this.canEditSkills(group.skillSet) ||
+          gunnery() !== DEFAULT_GUNNERY_SKILL ||
+          piloting() !== DEFAULT_PILOTING_SKILL)
+      );
+    });
   }
 
   toggleMatrixView(skillSet: 'ground' | 'aerospace'): void {
@@ -318,8 +302,7 @@ export class EditPilotDialogComponent {
   }
 
   setAllCrewSkills(cell: SkillMatrixCell, skillSet: 'ground' | 'aerospace'): void {
-    const gunneryField = skillSet === 'ground' ? 'gunnery' : 'aeroGunnery';
-    const pilotingField = skillSet === 'ground' ? 'piloting' : 'aeroPiloting';
+    const { gunneryField, pilotingField } = SKILL_GROUPS[skillSet];
     for (const member of this.crew) {
       member[gunneryField]?.set(cell.gunnery);
       if (!this.data.disablePiloting) member[pilotingField]?.set(cell.piloting);
@@ -347,14 +330,11 @@ export class EditPilotDialogComponent {
     this.selectedGroupCommander.set(value);
   }
 
-  private openSkillDropdown(
-    key: string,
-    trigger: ElementRef<HTMLElement>,
-    currentSkill: number,
-    entries: SkillPreviewEntry[],
-    onSelect: (skill: number) => void,
-    title?: string,
-  ): void {
+  toggleSkillDropdown(index: number, field: CrewSkillField, trigger: HTMLElement, title: string): void {
+    const member = this.crew[index];
+    const value = member[field];
+    if (!value) return;
+    const key = this.skillOverlayKey(field, member.id);
     this.closeSkillDropdowns();
     this.overlayManager.closeManagedOverlay('skill-matrix');
 
@@ -366,16 +346,16 @@ export class EditPilotDialogComponent {
       anchorActiveSelector: '.skill-option.active',
     });
 
-    componentRef.setInput('entries', entries);
-    componentRef.setInput('selectedSkill', currentSkill);
+    componentRef.setInput('entries', this.buildEntries(index, field));
+    componentRef.setInput('selectedSkill', value());
     componentRef.setInput('valueLabel', 'BV');
     componentRef.setInput('showPreview', this.hasBvPreview);
-    if (title) componentRef.setInput('title', title);
+    componentRef.setInput('title', title);
 
     outputToObservable(componentRef.instance.selected)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((skill: number) => {
-        onSelect(skill);
+        value.set(skill);
         this.overlayManager.closeManagedOverlay(key);
       });
   }
@@ -386,10 +366,10 @@ export class EditPilotDialogComponent {
 
   private closeSkillDropdowns(): void {
     for (const member of this.crew) {
-      this.overlayManager.closeManagedOverlay(this.skillOverlayKey('gunnery', member.id));
-      this.overlayManager.closeManagedOverlay(this.skillOverlayKey('piloting', member.id));
-      this.overlayManager.closeManagedOverlay(this.skillOverlayKey('aeroGunnery', member.id));
-      this.overlayManager.closeManagedOverlay(this.skillOverlayKey('aeroPiloting', member.id));
+      for (const group of this.skillGroups) {
+        this.overlayManager.closeManagedOverlay(this.skillOverlayKey(group.gunneryField, member.id));
+        this.overlayManager.closeManagedOverlay(this.skillOverlayKey(group.pilotingField, member.id));
+      }
     }
   }
 

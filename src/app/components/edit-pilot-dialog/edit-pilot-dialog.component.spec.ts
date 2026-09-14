@@ -269,13 +269,50 @@ describe('Pilot dialog skill previews and reserve controls', () => {
   afterEach(() => TestBed.inject(OverlayManagerService).closeAllManagedOverlays());
 
   for (const skillSet of ['ground', 'aerospace', 'both'] as const) {
-    it(`edits only ${skillSet} skills and retains the hidden pair on submit and matrix selection`, async () => {
+    it(`edits only ${skillSet} skills and retains inactive ratings with conditional striped groups`, async () => {
       data.skillSet = skillSet;
       data.crew = [{ id: 0, name: 'Alex', gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3 }];
       const fixture = TestBed.createComponent(EditPilotDialogComponent);
       fixture.detectChanges();
-      expect(!!fixture.nativeElement.querySelector('#classic-crew-gunnery-0')).toBe(skillSet !== 'aerospace');
-      expect(!!fixture.nativeElement.querySelector('#classic-crew-aero-gunnery-0')).toBe(skillSet !== 'ground');
+      const root = fixture.nativeElement as HTMLElement;
+      const groups = root.querySelectorAll<HTMLFieldSetElement>('.crew-skills');
+      expect([...groups].map((group) => group.querySelector('legend')?.textContent)).toEqual(
+        skillSet === 'aerospace' ? ['Aerospace', 'Ground'] : ['Ground', 'Aerospace'],
+      );
+      expect(groups[0].disabled).toBeFalse();
+      expect(groups[1].disabled).toBe(skillSet !== 'both');
+      for (const group of groups) {
+        expect([...group.querySelectorAll('label')].map((label) => label.textContent?.trim())).toEqual([
+          'Gunnery Skill',
+          'Piloting Skill',
+        ]);
+        expect(!!group.querySelector('.skill-group-overlay.disabled-entry')).toBe(group.disabled);
+        if (group.disabled) {
+          for (const button of group.querySelectorAll('button')) {
+            expect(button.matches(':disabled')).toBeTrue();
+            button.click();
+          }
+        }
+      }
+      expect(TestBed.inject(OverlayContainer).getContainerElement().childElementCount).toBe(0);
+      if (skillSet !== 'both') {
+        const member = fixture.componentInstance.crew[0];
+        const inactiveGunnery = skillSet === 'ground' ? member.aeroGunnery! : member.gunnery;
+        const inactivePiloting = skillSet === 'ground' ? member.aeroPiloting! : member.piloting;
+        const originalGunnery = inactiveGunnery();
+        const originalPiloting = inactivePiloting();
+        for (const [gunnery, piloting] of [[4, 5], [0, 5], [4, 0]]) {
+          inactiveGunnery.set(gunnery);
+          inactivePiloting.set(piloting);
+          fixture.detectChanges();
+          const hasInactiveGroup = gunnery !== 4 || piloting !== 5;
+          expect(!!root.querySelector('fieldset:disabled')).toBe(hasInactiveGroup);
+          expect(root.querySelectorAll('.skill-group-title').length).toBe(hasInactiveGroup ? 2 : 1);
+          expect(root.querySelector('.crew-member-editor')!.classList.contains('dual-skills')).toBe(hasInactiveGroup);
+        }
+        inactiveGunnery.set(originalGunnery);
+        inactivePiloting.set(originalPiloting);
+      }
       fixture.componentInstance.setAllCrewSkills(
         { gunnery: 1, piloting: 2, bv: 0 },
         skillSet === 'aerospace' ? 'aerospace' : 'ground',
@@ -468,6 +505,38 @@ describe('Pilot dialog skill previews and reserve controls', () => {
     await fixture.whenStable();
     expect(overlay.querySelector('.dropdown-panel')).toBeNull();
     expect(overlay.querySelector('.matrix-panel')).not.toBeNull();
+  });
+
+  it('anchors each dropdown to its own crew field when earlier crew lack aerospace ratings', async () => {
+    data.skillSet = 'both';
+    data.crew = [
+      { id: 0, name: 'Alex', gunnery: 4, piloting: 5 },
+      { id: 1, name: 'Sam', gunnery: 1, piloting: 2, aeroGunnery: 0, aeroPiloting: 3 },
+    ];
+    const fixture = TestBed.createComponent(EditPilotDialogComponent);
+    fixture.detectChanges();
+    const createOverlay = spyOn(TestBed.inject(OverlayManagerService), 'createManagedOverlay').and.callThrough();
+    const root = fixture.nativeElement as HTMLElement;
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    for (const [field, id] of [
+      ['gunnery', 'classic-crew-gunnery-1'],
+      ['piloting', 'classic-crew-piloting-1'],
+      ['aeroGunnery', 'classic-crew-aero-gunnery-1'],
+      ['aeroPiloting', 'classic-crew-aero-piloting-1'],
+    ] as const) {
+      const button = root.querySelector<HTMLButtonElement>(`[id="${id}"]`)!;
+      button.click();
+      await fixture.whenStable();
+      expect(createOverlay.calls.mostRecent().args[1]).toBe(button.parentElement);
+      overlay.querySelectorAll<HTMLButtonElement>('.skill-option')[7].click();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.crew[1][field]!()).toBe(7);
+    }
+    await fixture.componentInstance.submit();
+    expect(close.calls.mostRecent().args[0].crew).toEqual([
+      jasmine.objectContaining({ id: 0, gunnery: 4, piloting: 5 }),
+      jasmine.objectContaining({ id: 1, gunnery: 7, piloting: 7, aeroGunnery: 7, aeroPiloting: 7 }),
+    ]);
   });
 
   it('allows a CBT reserve commander toggle and omits unavailable BV values', async () => {

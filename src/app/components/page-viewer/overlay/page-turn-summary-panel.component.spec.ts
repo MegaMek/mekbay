@@ -656,6 +656,7 @@ function turnMember(initial: MekTurnPanelSnapshot, memberCount = 1) {
             ? member
             : { ...member, id: `mek-${index + 1}` }),
         getMekTurnPanelSnapshot: () => current,
+        getUnitSnapshot: () => ({ query: { hasPendingPhaseChanges: () => current.hasPendingPhaseChanges } }),
         getEquipmentPanelSnapshot: () => ({ components: [], physicalAttacks: [] }),
         getEquipmentInteractions: () => [],
         dispatchUnitCommand: dispatch,

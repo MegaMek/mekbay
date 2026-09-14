@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTForce } from './cbt-force.model';
+import { computed } from '@angular/core';
 import { CBTForceMember } from './force-member.model';
 import { TestBipedMekEntity } from './entity/testing/test-entities';
 
@@ -14,6 +15,16 @@ function createMember(id: string): CBTForceMember {
 }
 
 describe('CBTForceMember tactical presentation memory', () => {
+    it('reads formation skill from current crew without calculating battle value', () => {
+        let gunnery = 4;
+        const force = { getUnitCrewProfile: () => ({ positions: [{ gunnery, piloting: 5 }] }) } as unknown as CBTForce;
+        const member = new CBTForceMember('unit', force, new TestBipedMekEntity());
+        const skill = computed(() => member.gunnerySkill());
+        expect(skill()).toBe(4);
+        gunnery = 2;
+        member.bindRuntime({}, 1);
+        expect(skill()).toBe(2);
+    });
     it('defaults every inventory row to collapsed and remembers expansion per unit', () => {
         const first = createMember('first');
         const second = createMember('second');

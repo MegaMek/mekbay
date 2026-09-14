@@ -229,7 +229,13 @@ describe('UnitBlockComponent capability badges', () => {
             runtime.entity, runtime.index, runtime.instance.ruleset(), runtime.instance.query(), 'manual',
         );
         const panel = signal(projectPanel());
-        const force = { getMekTurnPanelSnapshot: panel } as unknown as CBTForce;
+        const force = {
+            getMekTurnPanelSnapshot: panel,
+            getUnitSnapshot: () => {
+                panel();
+                return { query: runtime.instance.query() };
+            },
+        } as unknown as CBTForce;
         const fixture = TestBed.createComponent(UnitBlockComponent);
         fixture.componentRef.setInput('forceUnit', new CBTForceMember('unit:movement-dirty', force, runtime.entity));
 

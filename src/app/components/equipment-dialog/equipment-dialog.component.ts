@@ -30,7 +30,6 @@ import {
     type CBTForceMember,
 } from '../../models/force-member.model';
 import {
-    isMekTurnPanelDirty,
     mekTurnPanelPhase,
     type MekTurnPanelSnapshot,
 } from '../../models/runtime/mek-turn-panel';
@@ -132,11 +131,6 @@ export class EquipmentDialogComponent {
 
     selectTab(tab: EquipmentDialogTab): void {
         this.activeTab.set(tab);
-    }
-
-    turnSummaryDirty(): boolean {
-        const snapshot = this.turnSnapshot();
-        return snapshot !== null && isMekTurnPanelDirty(snapshot);
     }
 
     turnSummaryFalling(): boolean {

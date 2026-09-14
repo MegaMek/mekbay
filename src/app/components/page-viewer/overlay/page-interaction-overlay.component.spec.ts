@@ -8,6 +8,14 @@ import { TestBipedMekEntity,TestTankEntity } from '../../../models/entity/testin
 import type { CBTForceMember,CBTMekForceMember } from '../../../models/force-member.model';
 import type { CBTUnitViewMode } from '../../../models/options.model';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
+import {
+    createNonMekRuntimeBinding,
+    queryNonMekRuntime,
+    reduceNonMekRuntime,
+} from '../../../models/runtime/non-mek-unit-instance';
+import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
+import { UnitBlockComponent } from '../../unit-block/unit-block.component';
+import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
 import { PageInteractionOverlayComponent } from './page-interaction-overlay.component';
 import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
@@ -17,23 +25,30 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { ToastService } from '../../../services/toast.service';
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
 
-describe('PageInteractionOverlay toolbar visibility', () => {
-    it('removes inactive toolbars from the DOM and restores them independently of end-phase controls', () => {
+describe('PageInteractionOverlay phase controls', () => {
+    beforeEach(() => {
         TestBed.configureTestingModule({
-            imports: [PageInteractionOverlayComponent],
+            imports: [PageInteractionOverlayComponent, UnitBlockComponent, PageTurnSummaryPanelComponent],
             providers: [
                 PageViewerStateService,
-                { provide: OptionsService, useValue: { options: signal({ cbtUnitViewMode: 'sheet' }) } },
+                { provide: OptionsService, useValue: {
+                    options: signal({ cbtUnitViewMode: 'sheet', trackPhaseAndTurn: true }),
+                } },
                 { provide: DialogsService, useValue: {} },
                 { provide: ForceWorkspaceStateService, useValue: {} },
                 { provide: Overlay, useValue: {} },
-                { provide: OverlayManagerService, useValue: { closeAllManagedOverlays: () => {} } },
+                { provide: OverlayManagerService, useValue: {
+                    closeAllManagedOverlays: () => {}, closeManagedOverlay: () => {},
+                } },
                 { provide: ToastService, useValue: {} },
                 { provide: CBTAutomationToastService, useValue: {
                     setVisibleUnitIds: () => {}, clearVisibleUnitIds: () => {},
                 } },
             ],
         });
+    });
+
+    it('removes inactive toolbars from the DOM and restores them independently of end-phase controls', () => {
         const fixture = TestBed.createComponent(PageInteractionOverlayComponent);
         fixture.componentInstance.dirtyPhase = signal(true);
         const element: HTMLElement = fixture.nativeElement;
@@ -54,6 +69,48 @@ describe('PageInteractionOverlay toolbar visibility', () => {
         fixture.detectChanges();
         expect(element.querySelector('.top-right-controls')).toBeNull();
         expect(element.querySelector('.end-phase-button')).toBeNull();
+    });
+
+    it('keeps the card, overlay and turn summary aligned for non-Mek movement edits and End Phase', () => {
+        const entity = new TestTankEntity();
+        const prepared = createNonMekRuntimeBinding(entity, 'core-2026');
+        const state = signal(prepared.state);
+        const member = {
+            kind: 'cbt', id: 'tank-phase', entity,
+            force: {
+                getUnitSnapshot: () => ({
+                    entity, state: state(),
+                    query: queryNonMekRuntime(prepared.binding, state()),
+                }),
+            },
+        } as unknown as CBTForceMember;
+        const overlay = TestBed.createComponent(PageInteractionOverlayComponent);
+        const card = TestBed.createComponent(UnitBlockComponent);
+        const summary = TestBed.createComponent(PageTurnSummaryPanelComponent);
+        overlay.componentRef.setInput('member', member);
+        card.componentRef.setInput('forceUnit', member);
+        summary.componentRef.setInput('member', member);
+        const phaseFlags = () => [
+            card.componentInstance.dirty(),
+            overlay.componentInstance.dirtyPhase(),
+            summary.componentInstance.phaseDirty(),
+        ];
+        const dispatch = (command: CBTUnitCommand) => {
+            const result = reduceNonMekRuntime(prepared.binding, state(), command);
+            expect(result.accepted).toBeTrue();
+            if (!result.accepted) throw new Error('Test phase command was rejected');
+            state.set(result.state);
+        };
+
+        expect(phaseFlags()).toEqual([false, false, false]);
+        dispatch({ type: 'set-movement', movement: { mode: 'walk', distance: 0, boosterComponentIds: [] } });
+        expect(phaseFlags()).toEqual([true, true, true]);
+        dispatch({ type: 'end-phase' });
+        expect(state().turn.movement?.mode).toBe('walk');
+        expect(phaseFlags()).toEqual([false, false, false]);
+        overlay.destroy();
+        card.destroy();
+        summary.destroy();
     });
 });
 

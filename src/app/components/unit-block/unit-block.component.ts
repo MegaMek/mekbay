@@ -5,7 +5,7 @@
 import { crewSkillsForUnit } from '../../models/unit-crew-policy';
 import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
-import { UpperCasePipe } from '@angular/common';
+import { NgTemplateOutlet, UpperCasePipe } from '@angular/common';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
 import { CdkMenuModule } from '@angular/cdk/menu';
@@ -24,7 +24,6 @@ import {
 } from '../../models/unit-status-presentation';
 import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
-import { isMekTurnPanelDirtyPhase } from '../../models/runtime/mek-turn-panel';
 import {
     forceMemberAlias,
     forceMemberAdjustedValue,
@@ -69,6 +68,7 @@ export interface UnitBlockPilotEditEvent {
 @Component({
     selector: 'unit-block',
     imports: [
+        NgTemplateOutlet,
         CdkMenuModule,
         FormatTonsPipe,
         UnitIconComponent,
@@ -248,8 +248,10 @@ export class UnitBlockComponent {
         if (!this.optionsService.options().trackPhaseAndTurn) {
             return false;
         }
-        const snapshot = this.mekTurnSnapshot();
-        return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return isCBTForceMember(member)
+            && member.force.getUnitSnapshot(member.id)?.query.hasPendingPhaseChanges() === true;
     });
 
     movementIndicator = computed(() => {

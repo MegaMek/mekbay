@@ -20,15 +20,7 @@ import { merge } from 'rxjs';
 import type { CBTForce } from '../../../models/cbt-force.model';
 import { hasNonMekRuntime } from '../../../models/cbt-unit-snapshot';
 import { isCBTMekForceMember } from '../../../models/force-member.model';
-import {
-isMekTurnPanelDirty,
-isMekTurnPanelDirtyPhase,
-mekTurnPanelPhase,
-} from '../../../models/runtime/mek-turn-panel';
-import {
-hasNonMekAirborneTurnSelection,
-hasPendingNonMekChanges,
-} from '../../../models/runtime/non-mek-unit-instance';
+import { mekTurnPanelPhase } from '../../../models/runtime/mek-turn-panel';
 import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../../services/force-workspace-state.service';
@@ -157,28 +149,10 @@ export class PageInteractionOverlayComponent {
         return this.host.nativeElement;
     }
 
-    dirty = computed(() => {
-        const turn = this.turn();
-        if (turn !== null) return isMekTurnPanelDirty(turn);
-        const entitySnapshot = this.entityTurn();
-        const entity = entitySnapshot?.state;
-        const member = this.member();
-        return entitySnapshot !== null && entity !== undefined && (
-            hasPendingNonMekChanges(entity)
-            || hasNonMekAirborneTurnSelection(entitySnapshot.entity, entity)
-            || entity.turn.movement !== null
-            || member?.force.hasRuntimeHistoryForUnitTurn(
-                member.id,
-                entity.turn.turnCounter + 1,
-            ) === true
-        );
-    });
-
     dirtyPhase = computed(() => {
-        const turn = this.turn();
-        if (turn !== null) return isMekTurnPanelDirtyPhase(turn);
-        const entity = this.entityTurn();
-        return entity !== null && entity !== undefined && hasPendingNonMekChanges(entity.state);
+        this.runtimeVersion();
+        const member = this.member();
+        return member?.force.getUnitSnapshot(member.id)?.query.hasPendingPhaseChanges() === true;
     });
 
     currentPhase = computed(() => {

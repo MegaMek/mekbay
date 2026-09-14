@@ -34,7 +34,6 @@ import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
 import type { MekMovementModeV2 } from '../../../models/runtime/mek-movement-psr-v2';
 import {
 isMekTurnPanelDirty,
-isMekTurnPanelDirtyPhase,
 } from '../../../models/runtime/mek-turn-panel';
 import { canSwitchNonMekAirGroundState } from '../../../models/runtime/non-mek-airborne-state';
 import {
@@ -170,86 +169,49 @@ export abstract class TurnTrackerControls {
 
     readonly dirty = computed(() => {
         this.forceRuntimeVersion();
-        const runtime = this.runtime();
         const member = this.member();
-        if (runtime) {
-            return isMekTurnPanelDirty(runtime.snapshot())
-                || member?.force.hasPendingEndTurnForUnit(member.id) === true;
-        }
-        const snapshot = this.entitySnapshot();
-        const state = snapshot?.state;
-        return snapshot !== null && state !== undefined && (
-            hasPendingNonMekChanges(state)
-            || hasNonMekAirborneTurnSelection(snapshot.entity, state)
-            || state.turn.movement !== null
-            || state.turn.cover !== null
-            || state.turn.spotting
-            || member?.force.hasRuntimeHistoryForUnitTurn(
-                member.id,
-                state.turn.turnCounter + 1,
-            ) === true
-            || member?.force.hasPendingEndTurnForUnit(member.id) === true
-        );
+        return member !== null && this.hasTurnActivity(member);
     });
     readonly phaseDirty = computed(() => {
-        const runtime = this.runtime();
-        if (runtime) return isMekTurnPanelDirtyPhase(runtime.snapshot());
-        const snapshot = this.entitySnapshot();
-        return snapshot !== null
-            && snapshot.query.hasPendingPhaseChanges();
+        this.forceRuntimeVersion();
+        const member = this.member();
+        return member?.force.getUnitSnapshot(member.id)?.query.hasPendingPhaseChanges() === true;
     });
     readonly endPhaseForAllButtonVisible = computed(() => {
         this.forceRuntimeVersion();
         const member = this.member();
         if (!member) return false;
         const members = member.force.members().filter(isCBTForceMember);
-        return members.length > 1 && members.some(candidate => {
-            if (isCBTMekForceMember(candidate)) {
-                const snapshot = candidate.force.getMekTurnPanelSnapshot(
-                    candidate.id,
-                    this.heatPolicy(),
-                );
-                return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
-            }
-            if (!isCBTForceMember(candidate)) return false;
-            const snapshot = candidate.force.getUnitSnapshot(candidate.id);
-            return snapshot !== null
-                && hasNonMekRuntime(snapshot)
-                && snapshot.query.hasPendingPhaseChanges();
-        });
+        return members.length > 1 && members.some(candidate =>
+            candidate.force.getUnitSnapshot(candidate.id)?.query.hasPendingPhaseChanges() === true);
     });
     readonly endTurnForAllButtonVisible = computed(() => {
         this.forceRuntimeVersion();
         const member = this.member();
         if (!member) return false;
         const members = member.force.members().filter(isCBTForceMember);
-        return members.length > 1 && members.some(candidate => {
-            if (isCBTMekForceMember(candidate)) {
-                const snapshot = candidate.force.getMekTurnPanelSnapshot(
-                    candidate.id,
-                    this.heatPolicy(),
-                );
-                return snapshot !== null && (
-                    isMekTurnPanelDirty(snapshot)
-                    || candidate.force.hasPendingEndTurnForUnit(candidate.id)
-                );
-            }
-            if (!isCBTForceMember(candidate)) return false;
-            const snapshot = candidate.force.getUnitSnapshot(candidate.id);
-            if (!snapshot || !hasNonMekRuntime(snapshot)) return false;
-            const state = snapshot.state;
-            return hasPendingNonMekChanges(state)
-                || hasNonMekAirborneTurnSelection(snapshot.entity, state)
-                || state.turn.movement !== null
-                || state.turn.cover !== null
-                || state.turn.spotting
-                || candidate.force.hasRuntimeHistoryForUnitTurn(
-                    candidate.id,
-                    state.turn.turnCounter + 1,
-                )
-                || candidate.force.hasPendingEndTurnForUnit(candidate.id);
-        });
+        return members.length > 1 && members.some(candidate => this.hasTurnActivity(candidate));
     });
+
+    private hasTurnActivity(member: CBTForceMember): boolean {
+        if (isCBTMekForceMember(member)) {
+            const snapshot = member.force.getMekTurnPanelSnapshot(member.id, this.heatPolicy());
+            return snapshot !== null && (
+                isMekTurnPanelDirty(snapshot)
+                || member.force.hasPendingEndTurnForUnit(member.id)
+            );
+        }
+        const snapshot = member.force.getUnitSnapshot(member.id);
+        if (!snapshot || !hasNonMekRuntime(snapshot)) return false;
+        const state = snapshot.state;
+        return hasPendingNonMekChanges(state)
+            || hasNonMekAirborneTurnSelection(snapshot.entity, state)
+            || state.turn.movement !== null
+            || state.turn.cover !== null
+            || state.turn.spotting
+            || member.force.hasRuntimeHistoryForUnitTurn(member.id, state.turn.turnCounter + 1)
+            || member.force.hasPendingEndTurnForUnit(member.id);
+    }
     readonly endTurnButtonVisible = computed(() => this.dirty() || this.showImmobileStatus());
 
     readonly damageReceived = computed(() => {

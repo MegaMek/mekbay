@@ -11,11 +11,14 @@
         }
         <div class="crew-list">
           @for (member of crew; let index = $index; track member.id) {
-            @let dualSkills = showGroundSkills && showAerospaceSkills && member.aeroGunnery && member.aeroPiloting;
+            @let groups = visibleSkillGroups(member);
+            @let dualSkills = groups.length > 1;
+            @let groupedSkills = !!data.skillSet || dualSkills;
             <section
               class="crew-member-editor"
               [class.with-portrait]="data.editPortrait"
               [class.dual-skills]="dualSkills"
+              [class.grouped-skills]="groupedSkills"
               [attr.aria-label]="crewNameLabel(index).replace(' Name', '')"
             >
               @if (data.editPortrait) {
@@ -62,24 +65,40 @@
                   ></button>
                 </div>
               </div>
-              @if (showGroundSkills) {
-                <fieldset class="form-row no-stack crew-skills">
-                  @if (dualSkills) {
-                    <legend class="skill-group-title">Ground</legend>
+              @for (group of groups; track group.skillSet) {
+                @let gunnery = member[group.gunneryField]!;
+                @let piloting = member[group.pilotingField]!;
+                @let enabled = canEditSkills(group.skillSet);
+                @let gunneryLabel = groupedSkills ? 'Gunnery Skill' : data.labelGunnery || 'Gunnery Skill';
+                @let pilotingLabel = groupedSkills ? 'Piloting Skill' : data.labelPiloting || 'Piloting Skill';
+                <fieldset
+                  class="form-row no-stack crew-skills"
+                  [class.secondary-skills]="!$first"
+                  [disabled]="!enabled"
+                >
+                  @if (groupedSkills) {
+                    <legend class="skill-group-title">{{ group.label }}</legend>
                   }
                   <div class="form-fields">
-                    <label class="field-label" [for]="'classic-crew-gunnery-' + member.id">{{
-                      dualSkills ? 'Gunnery Skill' : data.labelGunnery || 'Gunnery Skill'
+                    <label class="field-label" [for]="group.idPrefix + '-gunnery-' + member.id">{{
+                      gunneryLabel
                     }}</label>
                     <div #gunneryTrigger>
                       <button
-                        [id]="'classic-crew-gunnery-' + member.id"
+                        [id]="group.idPrefix + '-gunnery-' + member.id"
                         class="bt-select skill-selector"
                         type="button"
                         aria-haspopup="listbox"
-                        (click)="toggleGunneryDropdown(index)"
+                        (click)="
+                          toggleSkillDropdown(
+                            index,
+                            group.gunneryField,
+                            gunneryTrigger,
+                            groupedSkills ? group.label + ' ' + gunneryLabel : gunneryLabel
+                          )
+                        "
                       >
-                        <span class="skill-selector-value">{{ member.gunnery() }}</span>
+                        <span class="skill-selector-value">{{ gunnery() }}</span>
                       </button>
                     </div>
                   </div>
@@ -87,81 +106,40 @@
                     <button
                       type="button"
                       class="bt-button square primary skill-matrix-toggle"
-                      [attr.title]="dualSkills ? 'Ground Skill Matrix' : 'Skill Matrix'"
-                      [attr.aria-label]="dualSkills ? 'Ground Skill Matrix' : 'Skill Matrix'"
-                      (click)="toggleMatrixView('ground')"
+                      [attr.title]="groupedSkills ? group.label + ' Skill Matrix' : 'Skill Matrix'"
+                      [attr.aria-label]="groupedSkills ? group.label + ' Skill Matrix' : 'Skill Matrix'"
+                      (click)="toggleMatrixView(group.skillSet)"
                     >
                       <ng-container [ngTemplateOutlet]="matrixIcon" />
                     </button>
                   }
                   <div class="form-fields" [class.disabled]="!!data.disablePiloting">
-                    <label class="field-label" [for]="'classic-crew-piloting-' + member.id">{{
-                      dualSkills ? 'Piloting Skill' : data.labelPiloting || 'Piloting Skill'
+                    <label class="field-label" [for]="group.idPrefix + '-piloting-' + member.id">{{
+                      pilotingLabel
                     }}</label>
                     <div #pilotingTrigger>
                       <button
-                        [id]="'classic-crew-piloting-' + member.id"
+                        [id]="group.idPrefix + '-piloting-' + member.id"
                         class="bt-select skill-selector"
                         type="button"
                         aria-haspopup="listbox"
                         [disabled]="!!data.disablePiloting"
-                        (click)="togglePilotingDropdown(index)"
+                        (click)="
+                          toggleSkillDropdown(
+                            index,
+                            group.pilotingField,
+                            pilotingTrigger,
+                            groupedSkills ? group.label + ' ' + pilotingLabel : pilotingLabel
+                          )
+                        "
                       >
-                        <span class="skill-selector-value">{{ member.piloting() }}</span>
+                        <span class="skill-selector-value">{{ piloting() }}</span>
                       </button>
                     </div>
                   </div>
-                </fieldset>
-              }
-              @if (showAerospaceSkills && member.aeroGunnery && member.aeroPiloting) {
-                <fieldset class="form-row no-stack crew-skills aerospace-skills">
-                  @if (dualSkills) {
-                    <legend class="skill-group-title">Aerospace</legend>
+                  @if (!enabled) {
+                    <div class="skill-group-overlay disabled-entry" aria-hidden="true"></div>
                   }
-                  <div class="form-fields">
-                    <label class="field-label" [for]="'classic-crew-aero-gunnery-' + member.id">{{
-                      dualSkills ? 'Gunnery Skill' : 'Aerospace Gunnery Skill'
-                    }}</label>
-                    <div #aeroGunneryTrigger>
-                      <button
-                        [id]="'classic-crew-aero-gunnery-' + member.id"
-                        class="bt-select skill-selector"
-                        type="button"
-                        aria-haspopup="listbox"
-                        (click)="toggleAeroGunneryDropdown(index)"
-                      >
-                        <span class="skill-selector-value">{{ member.aeroGunnery() }}</span>
-                      </button>
-                    </div>
-                  </div>
-                  @if (index === 0 && !data.disablePiloting) {
-                    <button
-                      type="button"
-                      class="bt-button square primary skill-matrix-toggle"
-                      [attr.title]="dualSkills ? 'Aerospace Skill Matrix' : 'Skill Matrix'"
-                      [attr.aria-label]="dualSkills ? 'Aerospace Skill Matrix' : 'Skill Matrix'"
-                      (click)="toggleMatrixView('aerospace')"
-                    >
-                      <ng-container [ngTemplateOutlet]="matrixIcon" />
-                    </button>
-                  }
-                  <div class="form-fields" [class.disabled]="!!data.disablePiloting">
-                    <label class="field-label" [for]="'classic-crew-aero-piloting-' + member.id">{{
-                      dualSkills ? 'Piloting Skill' : 'Aerospace Piloting Skill'
-                    }}</label>
-                    <div #aeroPilotingTrigger>
-                      <button
-                        [id]="'classic-crew-aero-piloting-' + member.id"
-                        class="bt-select skill-selector"
-                        type="button"
-                        aria-haspopup="listbox"
-                        (click)="toggleAeroPilotingDropdown(index)"
-                        [disabled]="!!data.disablePiloting"
-                      >
-                        <span class="skill-selector-value">{{ member.aeroPiloting() }}</span>
-                      </button>
-                    </div>
-                  </div>
                 </fieldset>
               }
               @if (data.fixedPiloting !== undefined) {

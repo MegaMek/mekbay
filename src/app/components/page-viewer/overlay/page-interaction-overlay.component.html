@@ -54,8 +54,7 @@
             (click)="openTurnSummary($event)">
             @let phase = currentPhase();
             @let movement = movementIndicator();
-            <svg [class.dirty]="dirty()" [class.move]="phase === 'M'" [class.ranged]="phase === 'W'" [class.physical]="phase === 'P'"
-                [class.heat]="phase === 'H'" fill="currentColor" width="40px" height="40px" viewBox="0 0 32 32"
+            <svg fill="currentColor" width="40px" height="40px" viewBox="0 0 32 32"
                 [class.stationary]="movement?.color === 'stationary'" [class.walk]="movement?.color === 'walk'"
                 [class.run]="movement?.color === 'run'" [class.jump]="movement?.color === 'jump'"
                 [class.sprint]="movement?.color === 'sprint'"

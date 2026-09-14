@@ -1380,11 +1380,12 @@ details:not([open]) > summary .chevron {
  *   </div>
  */
 .wide-dialog {
+  --wide-dialog-padding: 16px;
   display: flex;
   flex-direction: column;
   width: 100dvw;
   max-width: 700px;
-  padding: 16px;
+  padding: var(--wide-dialog-padding);
   max-height: 100dvh;
   text-align: center;
   box-sizing: border-box;
@@ -1392,11 +1393,11 @@ details:not([open]) > summary .chevron {
 
   @media (max-width: 500px) {
     &.mobile-fullscreen {
+      --wide-dialog-padding: 8px;
       width: 100dvw;
       height: 100dvh;
       max-width: none;
       max-height: none;
-      padding: 8px;
     }
   }
 }
@@ -1430,6 +1431,11 @@ h3 {
   overflow-y: auto;
   min-height: 0;
   padding-bottom: 16px;
+
+  .layout-phone & {
+    margin-inline: calc(-1 * var(--wide-dialog-padding));
+    padding-inline: var(--wide-dialog-padding);
+  }
 }
 
 /* Row of .form-fields placed side-by-side; stacks below 400cqi */

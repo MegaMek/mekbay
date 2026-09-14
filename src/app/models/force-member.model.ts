@@ -201,6 +201,12 @@ export class CBTForceMember {
         return this.entity;
     }
 
+    public gunnerySkill(): number {
+        this.#runtime();
+        const primary = this.force.getUnitCrewProfile(this.id)?.positions[0];
+        return primary ? crewSkillsForUnit(primary, this.entity.unitType(), this.entity.unitSubtype()).gunnery : Infinity;
+    }
+
 }
 
 /** A real family narrowing used only by Mek-specific rules and UI. */

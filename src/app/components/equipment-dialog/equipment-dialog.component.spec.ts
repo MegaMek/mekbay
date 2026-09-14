@@ -375,7 +375,6 @@ describe('EquipmentDialogComponent', () => {
         expect(component.turnSummaryPhase()).toBe('W');
         expect(component.turnSummaryMovement()).toEqual({ color: 'walk', letter: 'W1' });
         expect(component.turnSummaryFalling()).toBeTrue();
-        expect(component.turnSummaryDirty()).toBeTrue();
     });
 
     it('does not confuse a committed prone condition with the in-phase falling warning', () => {
