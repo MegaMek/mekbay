@@ -65,6 +65,15 @@ describe('direct Mek V2 state codec', () => {
         expect(restored.state.ammo.size).toBe(1);
         expect('unresolved' in restored).toBeFalse();
         expect(replay.snapshot().locations.size).toBe(0);
+
+        // Force storage omits the derived witness table. Restore those same deviations
+        // directly against the current native blueprint, without a caller-built index.
+        const compact = { ...wire, blueprintReferences: { schemaVersion: 1 as const, targets: {} } };
+        const fromNative = await restoreSerializedCBTUnitV2(
+            compact, fixture.entity, fixture.index, fixture.initialized, 'current',
+        );
+        expect(serialize(fixture, fromNative.state)).toEqual(serialize(fixture, restored.state));
+        expect(fromNative.warnings).toEqual(restored.warnings);
     });
 
     it('restores under the current application rules without persisting a ruleset', async () => {

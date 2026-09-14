@@ -17,7 +17,7 @@ import { mekCriticalSlotDirectHitThreshold } from '../models/runtime/mek-critica
 import { mekSystemCriticalDamageThreshold } from '../models/rules/mek-system-damage-rules';
 import { refitComponentIds, type ConstructionMountOrigins } from '../models/runtime/unit-construction-refit';
 import { refitCriticalDamage, refitCriticalSlotTargets } from '../models/runtime/construction-refit-critical-slots';
-import { sourceHashCanary } from '../models/source-hash-canary';
+import { nativeSourceHashCanary } from '../models/source-hash-canary';
 import { CustomUnitsService } from '../services/custom-units.service';
 import { asSourceHash, makeUnitFileName } from '../services/unit-catalog/unit-catalog.types';
 import { sha1Base64Url } from '../utils/sha1.util';
@@ -144,7 +144,7 @@ export class ConstructionForceService {
             file: makeUnitFileName(saved.uuid, saved.format), format: saved.format,
             isCustom: true,
             sourceHash: asSourceHash(hash),
-            sourceHashCanary: sourceHashCanary(hash), bytes,
+            sourceHashCanary: await nativeSourceHashCanary(saved.source, saved.format), bytes,
         }, origins: savedOrigins }, runtime, requireRepaired);
     }
 }

@@ -9,7 +9,7 @@ import { TestTankEntity } from '../models/entity/testing/test-entities';
 import { isCBTMekUnit } from '../models/runtime/cbt-unit';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type { ScenarioRules } from '../models/runtime/unit-state-initializer';
-import { asSourceHashCanary } from '../models/source-hash-canary';
+import { nativeSourceHashCanary } from '../models/source-hash-canary';
 import { CBTUnitService } from './cbt-unit.service';
 import { NativeEntityService } from './native-entity.service';
 import {
@@ -29,6 +29,7 @@ describe('CBTUnitService restore warnings', () => {
         entity.chassis.set('Vedette');
         entity.model.set('Medium Tank');
         let currentHash = asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA');
+        let source = '<name>\nVedette\n</name>\n';
         const entities = jasmine.createSpyObj<NativeEntityService>('NativeEntityService', ['load']);
         entities.load.and.callFake(async () => ({
             entity,
@@ -37,7 +38,7 @@ describe('CBTUnitService restore warnings', () => {
                 format: 'blk' as const,
                 sourceHash: currentHash,
                 file: makeUnitFileName(uuid, 'blk'),
-                bytes: new ArrayBuffer(0),
+                bytes: new TextEncoder().encode(source).buffer,
             },
         }));
         TestBed.configureTestingModule({
@@ -56,9 +57,12 @@ describe('CBTUnitService restore warnings', () => {
             scenario,
         });
         const saved = created.serialize();
-        expect(saved.sourceHashCanary).toBe(asSourceHashCanary('AAAA'));
+        expect(saved.sourceHashCanary).toBe(await nativeSourceHashCanary(source, 'blk'));
 
         currentHash = asSourceHash(`${'B'.repeat(26)}A`);
+        source = '# changed comment\n<generator>\nNew version\n</generator>\n' + source;
+        expect((await service.restore(saved, scenario)).warnings).toEqual([]);
+        source += '<armor>\n30\n</armor>\n';
         const restored = await service.restore(saved, scenario);
 
         expect(restored.unit.instanceId).toBe(saved.instanceId);
@@ -67,12 +71,13 @@ describe('CBTUnitService restore warnings', () => {
             code: 'SOURCE_REVISION_CHANGED',
             message: 'The source file has changed since this unit state was saved.',
         }]);
-        expect(restored.unit.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
+        expect(restored.unit.serialize().sourceHashCanary).toBe(await nativeSourceHashCanary(source, 'blk'));
     });
 
     it('returns the common source warning alongside Mek codec warnings', async () => {
         const fixture = createDirectMekRuntimeFixture();
         let currentHash = asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA');
+        let source = 'chassis:Test Mek\nMass:50\n';
         const entities = jasmine.createSpyObj<NativeEntityService>('NativeEntityService', ['load']);
         entities.load.and.callFake(async () => ({
             entity: fixture.entity,
@@ -81,7 +86,7 @@ describe('CBTUnitService restore warnings', () => {
                 format: 'mtf' as const,
                 sourceHash: currentHash,
                 file: makeUnitFileName(fixture.identity, 'mtf'),
-                bytes: new ArrayBuffer(0),
+                bytes: new TextEncoder().encode(source).buffer,
             },
         }));
         TestBed.configureTestingModule({
@@ -101,6 +106,7 @@ describe('CBTUnitService restore warnings', () => {
         });
         const saved = created.serialize();
         currentHash = asSourceHash(`${'B'.repeat(26)}A`);
+        source = source.replace('50', '55');
 
         const restored = await service.restore(
             saved,
@@ -116,7 +122,7 @@ describe('CBTUnitService restore warnings', () => {
                 message: 'The source file has changed since this unit state was saved.',
             },
         ]);
-        expect(restored.unit.serialize().sourceHashCanary).toBe(asSourceHashCanary('BBBB'));
+        expect(restored.unit.serialize().sourceHashCanary).toBe(await nativeSourceHashCanary(source, 'mtf'));
         expect('ruleset' in restored.unit.serialize().baselineRefAtSave).toBeFalse();
         expect(isCBTMekUnit(restored.unit)).toBeTrue();
         if (isCBTMekUnit(restored.unit)) {

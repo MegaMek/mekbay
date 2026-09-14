@@ -4,10 +4,12 @@
 
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { InfantryBaseEntity } from '../../models/entity/entities/infantry/infantry-base-entity';
-import { convertEntityToAlphaStrike } from '../../models/entity/utils/alpha-strike/alpha-strike-converter';
+import { alphaStrikeUnitType } from '../../models/entity/utils/alpha-strike/foundation/unit-classification';
+import { alphaStrikeMovement } from '../../models/entity/utils/alpha-strike/foundation/movement';
+import { collectAlphaStrikeInfantrySpecials } from '../../models/entity/utils/alpha-strike/specials/core-specials';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import type { FormationUnitLike } from '../formation-unit-facts.util';
-import type { OrgUnit } from './org-types';
+import type { OrgEntityUnit, OrgUnit } from './org-types';
 
 /** Catalog rows already contain exactly the structural facts the solver needs. */
 export function orgUnitFromSummary(summary: UnitSummary): OrgUnit {
@@ -19,8 +21,9 @@ export function orgUnitFromSummary(summary: UnitSummary): OrgUnit {
  * This deliberately is not a UnitSummary projection: loaded CBT units never cross
  * back into the catalog model.
  */
-export function orgUnitFromEntity(entity: BaseEntity): OrgUnit {
-    const alphaStrike = convertEntityToAlphaStrike(entity);
+export function orgUnitFromEntity(entity: BaseEntity): OrgEntityUnit {
+    const type = alphaStrikeUnitType(entity);
+    const infantrySpecials = collectAlphaStrikeInfantrySpecials(entity, type);
     return Object.freeze({
         mul1id: entity.mulId(),
         uuid: entity.uuid(),
@@ -30,10 +33,13 @@ export function orgUnitFromEntity(entity: BaseEntity): OrgUnit {
         moveType: entity.getMotiveTypeAsString() ?? 'None',
         omni: entity.omni() ? 1 : 0,
         tons: entity.tonnage(),
-        bv: entity.battleValue(),
         internal: entity.totalInternalPoints(),
         squads: entity instanceof InfantryBaseEntity ? entity.squadCount() : 1,
-        as: alphaStrike,
+        transportSpecials: Object.freeze((['MEC', 'XMEC'] as const).filter(special => infantrySpecials.has(special))),
+        as: Object.freeze({
+            TP: type,
+            MVm: alphaStrikeMovement(entity).values,
+        }),
     });
 }
 

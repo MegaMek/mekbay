@@ -489,7 +489,7 @@ class SetAmmoDropdownPanelComponent {
                         <span class="set-ammo-dropdown-measure-option">{{ option.label }}</span>
                     }
                 </span>
-                <span class="chevron set-ammo-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
+                <span class="chevron chevron-dropdown set-ammo-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
             </button>
         </div>
     `,

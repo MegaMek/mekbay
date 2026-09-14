@@ -247,19 +247,6 @@ function codecUnit(entity: MekEntity, index: MekRuntimeIndex, ruleset: CBTRulese
     return Object.freeze({ entity, index, ruleset });
 }
 
-/**
- * Builds the exhaustive witness table for every blueprint-addressed Mek runtime map. Canonical
- * topology slot indexes remain zero-based; only this persistence boundary emits one-based ordinals.
- */
-export function buildSavedBlueprintReferenceTableV2(
-    entity: MekEntity,
-    index: MekRuntimeIndex,
-    ruleset: CBTRuleset,
-): SavedBlueprintReferenceTableV2 {
-    return buildCurrentTargetIndex(codecUnit(entity, index, ruleset)).table;
-}
-
-
 /** Serializes one exact runtime snapshot without persisting baseline facts or map insertion order. */
 export function serializeCBTUnitStateV2(
     input: SerializeCBTUnitStateV2Input,
@@ -759,6 +746,7 @@ export async function restoreSerializedCBTUnitV2(
     entity: MekEntity,
     index: MekRuntimeIndex,
     initialized: { readonly baselineRef: InstanceBaselineRef; readonly state: MekUnitRuntimeState },
+    blueprint: 'saved' | 'current' = 'saved',
 ): Promise<RestoreSerializedCBTUnitV2Result> {
     // The initializer projection is caller-owned too. Capture its structural baseline and clone
     // every runtime collection before restoration work yields; keep entity by reference.
@@ -786,14 +774,15 @@ export async function restoreSerializedCBTUnitV2(
     if (saved.destroyed !== undefined && saved.destroyed !== true) {
         codecFail('INVALID_SERIALIZED_STATE', '$.destroyed', 'sparse destroyed state must be true when present');
     }
-    saved.instanceId;
-    saved.stateRevision;
     if (saved.deployment.schemaVersion !== MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION) {
         codecFail('DEPLOYMENT_MISMATCH', '$.deployment', 'unsupported saved deployment version');
     }
     assertDeploymentValues(unit.index.crewPositions, saved.deployment, '$.deployment');
     const savedTurn = deserializeSavedTurn(saved.turn, '$.turn');
     const current = buildCurrentTargetIndex(unit);
+    // Compact force storage carries target IDs, so bind its references to the exact
+    // loaded native source using the same index that restores the saved deviations.
+    if (blueprint === 'current') saved = { ...saved, blueprintReferences: current.table };
     const warnings: V2StateRestoreWarning[] = [];
     const warningKeys = new Set<string>();
     const sourceTargets = saved.blueprintReferences.targets;

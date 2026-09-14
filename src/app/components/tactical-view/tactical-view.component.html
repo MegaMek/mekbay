@@ -71,11 +71,7 @@
                         [attr.aria-label]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
                         [attr.title]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
                         (click)="toggleConditionMenu()">
-                        @if (conditionMenuExpanded()) {
-                        <span class="chevron chevron-left" aria-hidden="true"></span>
-                        } @else {
-                        <span class="chevron chevron-right" aria-hidden="true"></span>
-                        }
+                        <span class="chevron" [class.collapsed]="!conditionMenuExpanded()" aria-hidden="true"></span>
                     </button>
                     }
                 </div>

@@ -178,7 +178,7 @@ export class ASForce extends Force<ASForceUnit> {
                     const currentSummary = this.dataService.getUnitByUuid(serializedUnit.uuid);
                     if (currentSummary && sourceHashCanaryChanged(
                         serializedUnit.sourceHashCanary,
-                        currentSummary.hash,
+                        currentSummary.sourceHashCanary,
                     )) {
                         warnings.add(`Unit "${currentSummary.name}" source file has changed since this force was last used.`);
                     }

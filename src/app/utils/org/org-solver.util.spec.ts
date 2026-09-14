@@ -603,10 +603,20 @@ describe('org-solver.util', () => {
             createBattleMekGroup('Lance A', 'Lance', 1, 4),
             createBattleMekGroup('Lance B', 'Lance', 1, 4),
         ].map((group) => compileGroupFacts(group));
+        const scalarReads = spyOn(groups[0].unitScalarSums, 'entries').and.callThrough();
 
         // Abstraction
         const result = evaluateComposedCountRule(rule, groups);
         const materialized = materializeComposedCountRule(rule, groups);
+        // Evaluation and materialization compare the same immutable snapshot.
+        expect(scalarReads).toHaveBeenCalledTimes(1);
+
+        // A changed snapshot must get a new signature even if its logical ID stays.
+        const changed = { ...groups[0], type: 'Lance' as const };
+        const reevaluated = evaluateComposedCountRule(rule, [changed, ...groups.slice(1)]);
+        expect(reevaluated.emitted.length).toBe(1);
+        expect(reevaluated.leftoverCount).toBe(2);
+        expect(scalarReads).toHaveBeenCalledTimes(2);
 
         expect(result.emitted).toEqual([
             { modifierKey: '', perGroupCount: 2, copies: 1, tier: 2, compositionIndex: 0 },

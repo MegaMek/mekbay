@@ -3,6 +3,7 @@
 // Author: Drake
 
 import type { UnitSummary } from '../../models/unit-summary.model';
+import { nativeSourceHashCanary } from '../../models/source-hash-canary';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { parseEntity } from '../../models/entity/parse-entity';
 import type { ParseContextOptions, EntityLoadIssue } from '../../models/entity/parsers/parse-context';
@@ -73,7 +74,7 @@ export class EntityUnitSummaryProjector implements UnitSummaryProjector {
                 format: input.format,
             });
             return {
-                summary: base,
+                summary: { ...base, sourceHashCanary: await nativeSourceHashCanary(raw, input.format) },
                 diagnostics: Object.freeze([...parsed.diagnostics]),
             };
         } catch (error) {

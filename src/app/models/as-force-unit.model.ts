@@ -39,7 +39,6 @@ import {
     resolveAlphaStrikeTagEcmCapabilitySummary,
     type UnitTagEcmCapabilitySummary,
 } from './unit-capability-summary.model';
-import { sourceHashCanary } from './source-hash-canary';
 import type { C3Component } from './c3-network.model';
 import type { UnitConditionKey } from './unit-condition.model';
 import { uuidv7 } from '../utils/uuid.util';
@@ -621,7 +620,7 @@ export class ASForceUnit implements ForceUnit {
                 : {}),
         };
         const formationAbilities = this._formationAbilities();
-        const hashCanary = sourceHashCanary(this.getSummary().hash);
+        const hashCanary = this.getSummary().sourceHashCanary;
         return {
             id: this.id,
             uuid: this.getSummary().uuid,

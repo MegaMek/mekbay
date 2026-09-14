@@ -12,6 +12,21 @@ const MTF_LOCATION_HEADERS = new Set([
   'Front Left Leg:', 'Front Right Leg:', 'Rear Left Leg:', 'Rear Right Leg:',
 ]);
 
+const MULTILINE_FLUFF_FIELDS = ['overview', 'capabilities', 'deployment', 'history', 'manufacturer', 'notes'] as const;
+const COMMON_SINGLE_FLUFF_FIELDS = ['primaryFactory', 'fluffDate'] as const;
+const MTF_TEXT_FLUFF_FIELDS = [...MULTILINE_FLUFF_FIELDS, ...COMMON_SINGLE_FLUFF_FIELDS] as const;
+const BLK_SINGLE_FLUFF_FIELDS = [...COMMON_SINGLE_FLUFF_FIELDS, 'use', 'length', 'width', 'height'] as const;
+// MegaMek's native MTF spelling is "systemmode", without a trailing l.
+const MTF_SYSTEM_FLUFF_FIELDS = { systemmanufacturer: 'systemManufacturers', systemmode: 'systemModels' } as const;
+const SYSTEM_FLUFF_FIELDS = Object.values(MTF_SYSTEM_FLUFF_FIELDS);
+
+/** Uses the same native field definitions as both fluff readers. */
+export function isNativeFluffField(key: string, format: 'mtf' | 'blk'): boolean {
+  return MULTILINE_FLUFF_FIELDS.some(field => field.toLowerCase() === key)
+    || (format === 'blk' ? BLK_SINGLE_FLUFF_FIELDS : COMMON_SINGLE_FLUFF_FIELDS).some(field => field.toLowerCase() === key)
+    || (format === 'blk' ? SYSTEM_FLUFF_FIELDS.some(field => field.toLowerCase() === key) : Object.hasOwn(MTF_SYSTEM_FLUFF_FIELDS, key));
+}
+
 export function isMtfLocationHeader(value: string): boolean {
   return MTF_LOCATION_HEADERS.has(value);
 }
@@ -62,25 +77,17 @@ export function parseMtfEntityFluff(content: string): EntityFluff {
 
 /** Shared by the full MTF parser and the fluff-only reader. */
 export function applyMtfFluffField(fluff: EntityFluff, key: string, value: string): boolean {
-  switch (key) {
-    case 'overview': fluff.overview = value; return true;
-    case 'capabilities': fluff.capabilities = value; return true;
-    case 'deployment': fluff.deployment = value; return true;
-    case 'history': fluff.history = value; return true;
-    case 'manufacturer': fluff.manufacturer = value; return true;
-    case 'primaryfactory': fluff.primaryFactory = value; return true;
-    case 'notes': fluff.notes = value; return true;
-    case 'fluffdate': fluff.fluffDate = value; return true;
-    case 'systemmanufacturer': {
-      assignMtfSystemValue(fluff, 'systemManufacturers', value);
-      return true;
-    }
-    case 'systemmode': {
-      assignMtfSystemValue(fluff, 'systemModels', value);
-      return true;
-    }
-    default: return false;
+  const field = MTF_TEXT_FLUFF_FIELDS.find(field => field.toLowerCase() === key);
+  if (field) {
+    fluff[field] = value;
+    return true;
   }
+  const system = MTF_SYSTEM_FLUFF_FIELDS[key as keyof typeof MTF_SYSTEM_FLUFF_FIELDS];
+  if (system) {
+    assignMtfSystemValue(fluff, system, value);
+    return true;
+  }
+  return false;
 }
 
 export type BlkFluffWarning = (field: 'systemManufacturers' | 'systemModels', message: string) => void;
@@ -88,23 +95,12 @@ export type BlkFluffWarning = (field: 'systemManufacturers' | 'systemModels', me
 /** Shared by every full BLK parser and the fluff-only reader. */
 export function parseBlkEntityFluff(bb: BuildingBlock, warn?: BlkFluffWarning): EntityFluff {
   const fluff: EntityFluff = {};
-  copyMultilineBlock(bb, fluff, 'overview');
-  copyMultilineBlock(bb, fluff, 'capabilities');
-  copyMultilineBlock(bb, fluff, 'deployment');
-  copyMultilineBlock(bb, fluff, 'history');
-  copyMultilineBlock(bb, fluff, 'manufacturer');
-  copyFirstBlock(bb, fluff, 'primaryFactory');
-  copyMultilineBlock(bb, fluff, 'notes');
-  copyFirstBlock(bb, fluff, 'fluffDate');
-  copyFirstBlock(bb, fluff, 'use');
-  copyFirstBlock(bb, fluff, 'length');
-  copyFirstBlock(bb, fluff, 'width');
-  copyFirstBlock(bb, fluff, 'height');
-
-  const systemManufacturers = parseBlkSystems(bb, 'systemManufacturers', warn);
-  if (systemManufacturers) fluff.systemManufacturers = systemManufacturers;
-  const systemModels = parseBlkSystems(bb, 'systemModels', warn);
-  if (systemModels) fluff.systemModels = systemModels;
+  for (const field of MULTILINE_FLUFF_FIELDS) copyMultilineBlock(bb, fluff, field);
+  for (const field of BLK_SINGLE_FLUFF_FIELDS) copyFirstBlock(bb, fluff, field);
+  for (const field of SYSTEM_FLUFF_FIELDS) {
+    const systems = parseBlkSystems(bb, field, warn);
+    if (systems) fluff[field] = systems;
+  }
   return fluff;
 }
 
@@ -120,7 +116,7 @@ function assignMtfSystemValue(
   systems[normalizeSystemManufacturerKey(rawKey) ?? rawKey] = value.slice(separator + 1);
 }
 
-function copyMultilineBlock<TKey extends 'overview' | 'capabilities' | 'deployment' | 'history' | 'manufacturer' | 'notes'>(
+function copyMultilineBlock<TKey extends typeof MULTILINE_FLUFF_FIELDS[number]>(
   bb: BuildingBlock,
   fluff: EntityFluff,
   key: TKey,
@@ -128,7 +124,7 @@ function copyMultilineBlock<TKey extends 'overview' | 'capabilities' | 'deployme
   if (bb.exists(key)) fluff[key] = bb.getDataAsString(key).join('\n');
 }
 
-function copyFirstBlock<TKey extends 'primaryFactory' | 'fluffDate' | 'use' | 'length' | 'width' | 'height'>(
+function copyFirstBlock<TKey extends typeof BLK_SINGLE_FLUFF_FIELDS[number]>(
   bb: BuildingBlock,
   fluff: EntityFluff,
   key: TKey,

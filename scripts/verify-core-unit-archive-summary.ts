@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../src/app/models/unit-summary.model';
+import { nativeSourceHashCanary } from '../src/app/models/source-hash-canary';
 import { isUnitSummaryArray } from '../src/app/services/unit-catalog/core-catalog-generation';
 import {
     CORE_UNIT_ARCHIVE_DEPENDENCY_BUNDLE_PATH,
@@ -45,6 +46,9 @@ async function main(): Promise<void> {
     let blk = 0;
     for (const summary of summaries) {
         verifySummary(summary, manifestUnits, zip, seen);
+        const entry = manifestUnits[summary.uuid];
+        const source = await zip.file(entry.file)!.async('string');
+        assert.equal(summary.sourceHashCanary, await nativeSourceHashCanary(source, entry.format), `${summary.uuid} gameplay canary differs from its native source`);
         manifestUnits[summary.uuid].format === 'mtf' ? mtf++ : blk++;
     }
     process.stdout.write(`PASS: ${summaries.length} summaries (${mtf} MTF, ${blk} BLK), all at version ${UNIT_SUMMARY_VERSION}.\n`);

@@ -9,7 +9,7 @@ import {
     type NativeEntitySource,
 } from '../models/entity/entity-repository';
 import type { NativeUnitSourceHandle } from '../models/native-unit-source-handle';
-import { sourceHashCanary } from '../models/source-hash-canary';
+import { nativeSourceHashCanary } from '../models/source-hash-canary';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { QuirksCatalogService } from './catalogs/quirks-catalog.service';
 import { SourcebooksCatalogService } from './catalogs/sourcebooks-catalog.service';
@@ -116,16 +116,16 @@ export class NativeEntityService {
     }
 }
 
-export function nativeSourceHandleForLoadedEntity(
+export async function nativeSourceHandleForLoadedEntity(
     loaded: LoadedEntity,
-): NativeUnitSourceHandle | undefined {
+): Promise<NativeUnitSourceHandle | undefined> {
     if (loaded.source.file === undefined) return undefined;
-    const hashCanary = sourceHashCanary(loaded.source.sourceHash);
+    const hashCanary = await nativeSourceHashCanary(new TextDecoder().decode(loaded.source.bytes), loaded.source.format);
     return Object.freeze({
         file: loaded.source.file,
         format: loaded.source.format,
         sourceHash: loaded.source.sourceHash,
-        ...(hashCanary === undefined ? {} : { sourceHashCanary: hashCanary }),
+        sourceHashCanary: hashCanary,
         bytes: loaded.source.bytes.slice(0),
         ...(loaded.source.isCustom ? { isCustom: true as const } : {}),
     });

@@ -103,6 +103,8 @@ export interface PointRange {
     max: number;
 }
 
+export type OrgTransportSpecial = 'MEC' | 'XMEC';
+
 /**
  * Minimal structural input accepted by the organization solver.
  *
@@ -110,7 +112,7 @@ export interface PointRange {
  * Loaded CBT members instead compile it directly from Entity, so runtime
  * organization logic never depends on or synthesizes catalog projections.
  */
-export interface OrgUnit {
+interface OrgUnitData {
     readonly mul1id: number | null;
     readonly uuid: UnitUuid;
     readonly name: string;
@@ -119,11 +121,19 @@ export interface OrgUnit {
     readonly moveType: string;
     readonly omni: number;
     readonly tons: number;
-    readonly bv: number;
     readonly internal: number;
     readonly squads: number;
-    readonly as: Pick<AlphaStrikeUnitStats, 'TP' | 'PV' | 'MVm' | 'specials'>;
+    readonly as: Pick<AlphaStrikeUnitStats, 'TP' | 'MVm'>;
 }
+
+export interface OrgEntityUnit extends OrgUnitData {
+    readonly transportSpecials: readonly OrgTransportSpecial[];
+}
+
+/** Existing catalog summaries retain their complete Alpha Strike specials list. */
+export type OrgUnit = OrgEntityUnit | (OrgUnitData & {
+    readonly as: Pick<AlphaStrikeUnitStats, 'TP' | 'MVm' | 'specials'>;
+});
 
 export interface GroupSizeResult {
     name: string;
@@ -278,8 +288,6 @@ export type OrgChildTypeCountKey = BuiltInChildTypeCountKey;
 export type BuiltInUnitNumericScalarName =
     | 'id'
     | 'tons'
-    | 'pv'
-    | 'bv'
     | 'troopers';
 export type UnitNumericScalarName = BuiltInUnitNumericScalarName;
 export type OrgBucketValue = BuiltInUnitBucketValue | BuiltInGroupBucketValue;
@@ -291,8 +299,6 @@ export type OrgFactPath = BuiltInOrgFactPath;
 export interface UnitFactScalars {
     readonly id: number | null;
     readonly tons: number;
-    readonly pv: number;
-    readonly bv: number;
     readonly troopers: number;
     readonly omni: boolean;
     readonly isAero: boolean;

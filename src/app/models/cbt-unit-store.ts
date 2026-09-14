@@ -27,6 +27,7 @@ import type { CBTUnitCommand } from './runtime/unit-command';
 import { isCBTMekUnit,isCBTNonMekUnit,type CBTTargetingReconciliation,type CBTUnit } from './runtime/cbt-unit';
 
 import { jsonValuesEqual } from '../utils/json-value.util';
+import { compareText } from '../utils/string.util';
 import type { CBTRuleset } from './cbt-ruleset.model';
 import type { CrewAssignment } from './runtime/crew-assignment';
 import { projectNonMekEscalatingFailureInteractions } from './runtime/non-mek-unit-instance';
@@ -104,11 +105,14 @@ export class CBTUnitStore {
         const entries = envelope.units;
         const invalidStateUnitIds = new Set<string>();
         const warnings = new Set<string>();
+        const unitsByWarning = new Map<string, Set<string>>();
         const restored = await Promise.all(entries.map(async entry => {
             try {
                 const result = await cbtUnits.restore(entry.unit, scenarioRules);
                 for (const warning of result.warnings) {
-                    warnings.add(`Unit "${warning.unitName}": ${warning.message}`);
+                    let unitNames = unitsByWarning.get(warning.message);
+                    if (!unitNames) unitsByWarning.set(warning.message, unitNames = new Set());
+                    unitNames.add(warning.unitName);
                 }
                 return {
                     entry,
@@ -142,6 +146,9 @@ export class CBTUnitStore {
                 }
             }
         }));
+        for (const [message, unitNames] of unitsByWarning) {
+            warnings.add(`${message}\n\n${[...unitNames].sort(compareText).map(name => `  • ${name}`).join('\n')}`);
+        }
         const units = new Map<string, CBTUnit>();
         const retainedEntries: typeof entries[number][] = [];
         restored.forEach(({ entry, unit }) => {

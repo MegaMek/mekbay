@@ -13,8 +13,7 @@ import { encodeNativeEntity } from '../models/entity/write-entity';
 import { asForceId, emptyRuntimeHistory, CBT_FORCE_PERSISTENCE_SCHEMA_VERSION } from '../models/runtime/persistence-v2';
 import { GameSystem } from '../models/common.model';
 import type { SerializedCBTForce } from '../models/force-serialization';
-import { sha1Base64Url } from '../utils/sha1.util';
-import { sourceHashCanary } from '../models/source-hash-canary';
+import { nativeSourceHashCanary } from '../models/source-hash-canary';
 
 describe('device-local unit artwork storage', () => {
     let name: string, database: IDBDatabase, db: DbService, artwork: UnitArtworkService, png: Blob;
@@ -101,8 +100,7 @@ describe('device-local unit artwork storage', () => {
         await db.saveForce(force);
         const saved = await db.getForce(forceId) as SerializedCBTForce;
         expect(saved.cbt.units[0].unit.customSource?.source).toBe(original);
-        const hash = await sha1Base64Url(new TextEncoder().encode(original).buffer);
-        expect(saved.cbt.units[0].unit.sourceHashCanary).toBe(sourceHashCanary(hash));
+        expect(saved.cbt.units[0].unit.sourceHashCanary).toBe(await nativeSourceHashCanary(original, 'mtf'));
         expect(unit.customSource.source).toContain('fluffimage:');
         expect((await db.getUnitArtwork(fixture.identity))?.fluff?.type).toBe('image/png');
     });

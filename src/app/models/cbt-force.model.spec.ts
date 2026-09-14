@@ -1137,8 +1137,30 @@ describe('CBTForce V2 encounter persistence', () => {
         const { dialogs } = await readyEntityForce({ restoreWarning: warning });
 
         expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
-            `• Unit "${warning.unitName}": ${warning.message}`,
+            `• ${warning.message}\n\n  • ${warning.unitName}`,
             'Save Loaded with Warnings',
+        );
+    });
+
+    it('lists repeated restore warnings once with distinct, sorted unit names', async () => {
+        const { force, reload, dialogs, cbtUnits } = await readyEntityForce();
+        const saved = structuredClone(await force.serializeForPersistence()) as SerializedCBTForce;
+        const first = saved.cbt.units[0];
+        const units = ['unit:z', 'unit:a', 'unit:duplicate'].map(instanceId => ({
+            ...first, instanceId, unit: { ...first.unit, instanceId },
+        }));
+        const grouped = { ...saved, cbt: { ...saved.cbt, units, roster: { ...saved.cbt.roster,
+            groups: [{ ...saved.cbt.roster.groups[0], members: units.map((entry, order) => ({ instanceId: entry.instanceId, order })) }],
+        } } };
+        const pristine = await cbtUnits.restore(first.unit, { id: 'megamek', ruleset: CORE_2026_RULESET });
+        cbtUnits.restore.and.callFake(async (unit, scenario) => ({
+            unit: restoreNonMekUnit(unit as SerializedNonMekUnit, pristine.unit.getUnit(), unit.entity, scenario),
+            warnings: [{ unitName: unit.instanceId === 'unit:z' ? 'Zeus' : 'Atlas',
+                code: 'SOURCE_REVISION_CHANGED', message: 'The source file changed.' }],
+        }));
+        await reload(grouped);
+        expect(dialogs.showNotice).toHaveBeenCalledOnceWith(
+            '• The source file changed.\n\n  • Atlas\n  • Zeus', 'Save Loaded with Warnings',
         );
     });
 

@@ -2537,8 +2537,15 @@ function serializeNestedReadonlyMap(
         .join('||');
 }
 
+// Facts are immutable snapshots. Updated plans create new facts, even when they
+// retain a groupFactId, so key by snapshot identity rather than the logical ID.
+const signatureByGroupFacts = new WeakMap<GroupFacts, string>();
+
 function getGroupFactsSignatureKey(group: GroupFacts): string {
-    return [
+    const cached = signatureByGroupFacts.get(group);
+    if (cached !== undefined) return cached;
+
+    const signature = [
         group.type ?? 'null',
         group.countsAsType ?? 'null',
         group.modifierKey,
@@ -2555,6 +2562,8 @@ function getGroupFactsSignatureKey(group: GroupFacts): string {
         serializeReadonlyMap(group.unitScalarSums),
         serializeNestedReadonlyMap(group.descendantUnitBucketCounts),
     ].join('||');
+    signatureByGroupFacts.set(group, signature);
+    return signature;
 }
 
 function buildCountedCompositionInventory(

@@ -233,7 +233,7 @@ class MultilineDropdownPanelComponent {
                         <span class="multiline-dropdown-measure-option">{{ option.label }}</span>
                     }
                 </span>
-                <span class="chevron multiline-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
+                <span class="chevron chevron-dropdown multiline-dropdown-arrow" [class.collapsed]="!open()" aria-hidden="true"></span>
             </button>
         </div>
     `,

@@ -18,7 +18,7 @@ import { canonicalizeCrewAssignment,createDefaultCrewAssignment,type CrewAssignm
 import { createMekHeatContextV2,type MekHeatRuntimeContextV2 } from './mek-heat-state-v2';
 import { createMekMechanicsContextV2,type MekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import type { SerializedCBTUnitV2,SerializedDeploymentConfigurationV2 } from './persistence-v2';
-import { buildSavedBlueprintReferenceTableV2,restoreSerializedCBTUnitV2,type V2StateRestoreWarning } from './runtime-state-codec-v2';
+import { restoreSerializedCBTUnitV2,type V2StateRestoreWarning } from './runtime-state-codec-v2';
 import { createMekRuntimeBinding } from './unit-instance';
 import type { ScenarioRules } from './unit-state-initializer';
 import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
@@ -325,20 +325,12 @@ export async function restoreMekUnit(
         ...options,
         deployment: saved.deployment.values,
     });
-    // The native Entity owns topology. Storage carries only stable target IDs;
-    // rebuild the transient lookup table from the exact loaded source.
     const restored = await restoreSerializedCBTUnitV2(
-        {
-            ...saved,
-            blueprintReferences: buildSavedBlueprintReferenceTableV2(
-                entity,
-                runtimeIndex,
-                initialized.baselineRef.ruleset,
-            ),
-        },
+        saved,
         entity,
         runtimeIndex,
         initialized,
+        'current',
     );
     const prepared = createMekRuntimeBinding(
         entity, runtimeIndex, initialized.baselineRef.ruleset, restored.state,

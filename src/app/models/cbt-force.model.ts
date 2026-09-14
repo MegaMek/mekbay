@@ -2040,7 +2040,7 @@ export class CBTForce extends Force<never> {
                 ? {}
                 : {
                     afterInstall: () => this.injector.get(DialogsService).showNotice(
-                        restored.warnings.map(warning => `• ${warning}`).join('\n'),
+                        restored.warnings.map(warning => `• ${warning}`).join('\n\n'),
                         'Save Loaded with Warnings',
                     ),
                 }),

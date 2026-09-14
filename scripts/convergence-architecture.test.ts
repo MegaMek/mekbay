@@ -55,7 +55,6 @@ const deletedPaths = [
     'src/app/models/runtime/component-bap.ts',
     'src/app/models/force-unit-state.model.ts',
     'src/app/services/as-force-unit-loading.service.ts',
-    'src/app/components/force-loading-overlay/force-loading-overlay.component.ts',
     'scripts/audit-v1-force-corpus.ts',
 ];
 for (const path of deletedPaths) {
@@ -398,7 +397,7 @@ assert.doesNotMatch(
 assert.match(orgNamer, /formationUnits\(\)\.map\(orgUnitFromFormationUnit\)/u);
 assert.doesNotMatch(orgNamer, /formationUnits\(\)[\s\S]{0,100}getSummary\(/u);
 assert.match(orgUnit, /const entity = unit\.getFormationEntity\?\.\(\);[\s\S]{0,80}if \(entity\) return orgUnitFromEntity\(entity\);/u);
-assert.match(orgUnit, /convertEntityToAlphaStrike\(entity\)/u);
+assert.doesNotMatch(orgUnit, /convertEntityToAlphaStrike\(|\.battleValue\(/u);
 assert.doesNotMatch(orgUnit, /as UnitSummary|satisfies UnitSummary/u);
 
 const forcePreview = source(join(app, 'models', 'force-preview.model.ts'));

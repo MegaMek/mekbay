@@ -27,16 +27,16 @@ export interface ConfirmDialogData<T = unknown> {
         class: 'fullscreen-dialog-host glass'
     },
     template: `
-    <div class="content">
-        <h2 dialog-title>{{ data.title }}</h2>
-        <div dialog-content>
+    <div class="wide-dialog">
+        <h2 class="wide-dialog-title">{{ data.title }}</h2>
+        <div class="wide-dialog-body">
             @if (safeMessageHtml) {
                 <div [innerHTML]="safeMessageHtml"></div>
             } @else {
-                <p>{{ data.message }}</p>
+                <p class="message">{{ data.message }}</p>
             }
         </div>
-        <div dialog-actions>
+        <div class="wide-dialog-actions">
             @for (btn of data.buttons; track btn.label) {
                 <button
                     (click)="close(btn.value)"
@@ -55,30 +55,28 @@ export interface ConfirmDialogData<T = unknown> {
             background-color: #4a3100;
         }
 
-        .content {
-            display: block;
+        .wide-dialog {
             max-width: 500px;
+            max-height: var(--mekbay-overlay-height, 100dvh);
+            text-align: left;
         }
 
-        h2 {
+        .wide-dialog-title {
             margin-top: 4px;
             margin-bottom: 8px;
         }
 
-        [dialog-actions] {
-            padding-top: 8px;
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            flex-wrap: wrap;
+        .message {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            margin: 8px 0;
         }
 
-        [dialog-actions] button {
-            padding: 8px;
-            min-width: 100px;
+        .wide-dialog-actions {
+            border-top: none;
         }
 
-        [dialog-actions] button.square {
+        .wide-dialog-actions button.square {
             min-width: unset;
         }
     `]

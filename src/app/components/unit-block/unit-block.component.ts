@@ -24,11 +24,7 @@ import {
 } from '../../models/unit-status-presentation';
 import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
 import { formatBvPv } from '../../utils/force-viewer-bv-pv-display.util';
-import {
-    isMekTurnPanelDirty,
-    isMekTurnPanelDirtyPhase,
-    mekTurnPanelPhase,
-} from '../../models/runtime/mek-turn-panel';
+import { isMekTurnPanelDirtyPhase } from '../../models/runtime/mek-turn-panel';
 import {
     forceMemberAlias,
     forceMemberAdjustedValue,
@@ -253,12 +249,7 @@ export class UnitBlockComponent {
             return false;
         }
         const snapshot = this.mekTurnSnapshot();
-        return snapshot !== null && isMekTurnPanelDirty(snapshot);
-    });
-
-    unitPhase = computed<string>(() => {
-        const snapshot = this.mekTurnSnapshot();
-        return snapshot === null ? '' : mekTurnPanelPhase(snapshot);
+        return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
     });
 
     movementIndicator = computed(() => {
@@ -268,14 +259,6 @@ export class UnitBlockComponent {
             snapshot?.movementState.movement?.mode,
             snapshot?.defenseModifierTotal?.modifier ?? 0,
         );
-    });
-
-    hasPendingEffects = computed<boolean>(() => {
-        if (!this.optionsService.options().trackPhaseAndTurn) {
-            return false;
-        }
-        const snapshot = this.mekTurnSnapshot();
-        return snapshot !== null && isMekTurnPanelDirtyPhase(snapshot);
     });
 
     activeConditions = computed<UnitConditionDisplay[]>(() => {

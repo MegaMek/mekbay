@@ -12,6 +12,7 @@ import { GameSystem } from '../../models/common.model';
 import { ProtoMekEntity } from '../../models/entity/entities/protomek/protomek-entity';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { CrewAssignmentService, type CrewDragData } from '../../services/crew-assignment.service';
+import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { ToastService } from '../../services/toast.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
@@ -64,6 +65,7 @@ describe('shared force crew controls', () => {
     beforeEach(() => {
         editor.editPerson.calls.reset();
         TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection(),
+            { provide: ForceWorkspaceStateService, useValue: { loadedForces: signal([{}, {}]) } },
             { provide: ForcePilotEditorService, useValue: editor },
             { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
             { provide: OverlayManagerService, useValue: { closeManagedOverlay() {} } },

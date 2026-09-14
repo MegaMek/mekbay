@@ -18,8 +18,7 @@ import { isUnitArtwork, type UnitArtwork } from '../models/unit-artwork.model';
 import { asUnitUuid, type UnitUuid } from './unit-catalog/unit-catalog.types';
 import { assertImageFreeUnitSource, extractNativeUnitArtwork } from '../models/entity/native-unit-artwork';
 import { decodeUnitArtwork } from '../utils/unit-artwork.util';
-import { sha1Base64Url } from '../utils/sha1.util';
-import { sourceHashCanary } from '../models/source-hash-canary';
+import { nativeSourceHashCanary, type SourceHashCanary } from '../models/source-hash-canary';
 import type { StoredCustomUnitSummary } from './unit-catalog/custom-unit-summary-cache';
 import {
     decodeForceFromStorage,
@@ -1138,7 +1137,7 @@ export class DbService {
         // Live owners save V2. Background downloads may cache an intact V1
         // source until an explicit load can warn about best-effort conversion.
         if (force.version === 2 && force.cbt) {
-            const cleaned = new Map<string, Promise<{ source: string; sourceHashCanary: ReturnType<typeof sourceHashCanary> }>>();
+            const cleaned = new Map<string, Promise<{ source: string; sourceHashCanary: SourceHashCanary }>>();
             const units = await Promise.all(force.cbt.units.map(async entry => {
                 const pin = entry.unit.customSource;
                 if (!pin) return entry;
@@ -1151,8 +1150,7 @@ export class DbService {
                         const { artwork, warnings } = await decodeUnitArtwork(extracted.images);
                         warnings.forEach(warning => this.logger.warn(warning));
                         if (artwork) await this.saveUnitArtwork(entry.unit.entity, artwork, true);
-                        const hash = await sha1Base64Url(new TextEncoder().encode(extracted.source).buffer);
-                        return { source: extracted.source, sourceHashCanary: sourceHashCanary(hash) };
+                        return { source: extracted.source, sourceHashCanary: await nativeSourceHashCanary(extracted.source, pin.format) };
                     })();
                     cleaned.set(key, preparation);
                 }

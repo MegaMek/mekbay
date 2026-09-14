@@ -66,7 +66,7 @@ export class CBTUnitService {
             ? await this.entities.load(request.uuid)
             : await this.entities.loadPinnedCustom(request.uuid, request.customSource);
         const uuid = loaded.source.uuid;
-        const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
+        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded);
         if (loaded.entity instanceof MekEntity) {
             return createMekUnit({
                 uuid: request.uuid,
@@ -101,13 +101,13 @@ export class CBTUnitService {
             ? await this.entities.load(saved.entity)
             : await this.entities.loadPinnedCustom(saved.entity, saved.customSource);
         const uuid = loaded.source.uuid;
-        const nativeSource = nativeSourceHandleForLoadedEntity(loaded);
+        const nativeSource = await nativeSourceHandleForLoadedEntity(loaded);
         const unitName = this.unitNames.name(loaded.entity);
         const warnings: CBTUnitRestoreWarning[] = [];
         const warn = (code: CBTUnitRestoreWarningCode, message: string): void => {
             warnings.push(Object.freeze({ unitName, code, message }));
         };
-        if (sourceHashCanaryChanged(saved.sourceHashCanary, loaded.source.sourceHash)) {
+        if (sourceHashCanaryChanged(saved.sourceHashCanary, nativeSource?.sourceHashCanary)) {
             warn(
                 'SOURCE_REVISION_CHANGED',
                 'The source file has changed since this unit state was saved.',

@@ -230,7 +230,7 @@ function addUnitSpecials(
   type: ASUnitTypeCode,
   specials: AlphaStrikeSpecialAbilityCollector,
 ): void {
-  addInfantrySpecials(entity, type, specials);
+  specials.merge(collectAlphaStrikeInfantrySpecials(entity, type));
   addIntrinsicCommandSpecial(entity, specials);
   addCargoSpecials(entity, type, specials);
   addTransportSpecials(entity, type, specials);
@@ -388,13 +388,13 @@ function transportAbilityForBay(type: string): string | null {
   return abilities[type] ?? null;
 }
 
-function addInfantrySpecials(
+export function collectAlphaStrikeInfantrySpecials(
   entity: BaseEntity,
   type: ASUnitTypeCode,
-  specials: AlphaStrikeSpecialAbilityCollector,
-): void {
-  if (type !== 'CI' && type !== 'BA') return;
-  if (!(entity instanceof InfantryEntity) && !(entity instanceof BattleArmorEntity)) return;
+): AlphaStrikeSpecialAbilityCollector {
+  const specials = new AlphaStrikeSpecialAbilityCollector();
+  if (type !== 'CI' && type !== 'BA') return specials;
+  if (!(entity instanceof InfantryEntity) && !(entity instanceof BattleArmorEntity)) return specials;
   specials.add(`CAR${Math.ceil(entity.tonnage())}`);
 
   if (entity instanceof InfantryEntity && entity.specializations().has('mine-engineers')) {
@@ -423,8 +423,8 @@ function addInfantrySpecials(
     }
   }
 
-  if (!(entity instanceof BattleArmorEntity)) return;
-  if (entity.mechanizedCapable()) specials.add('MEC');
+  if (entity instanceof BattleArmorEntity && entity.mechanizedCapable() && !specials.has('XMEC')) specials.add('MEC');
+  return specials;
 }
 
 function addMovementSpecials(
@@ -470,7 +470,6 @@ function finalizeSpecials(specials: AlphaStrikeSpecialAbilityCollector): void {
     specials.delete('CASEII');
     specials.delete('CASEP');
   }
-  if (specials.has('XMEC')) specials.delete('MEC');
 }
 
 function addIntrinsicCommandSpecial(

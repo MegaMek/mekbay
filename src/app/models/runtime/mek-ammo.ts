@@ -86,16 +86,8 @@ export function entityAmmoLoadouts(
     mount: EntityMountedEquipment,
     ruleset: CBTRuleset,
 ): readonly AmmoLoadout[] {
-    const equipment = mount.equipment;
-    return equipment instanceof AmmoEquipment
-        ? compatibleLoadouts(
-            entity,
-            equipment,
-            mount.getAmmoShots() ?? equipment.shots,
-            ruleset,
-            false,
-        )
-        : Object.freeze([]);
+    const source = mount.equipment instanceof AmmoEquipment ? ammoLoadoutSource(entity, mount) : null;
+    return source === null ? Object.freeze([]) : compatibleLoadouts(entity, source, ruleset);
 }
 
 export function entityAmmoLoadout(
@@ -104,11 +96,8 @@ export function entityAmmoLoadout(
     ruleset: CBTRuleset,
     munitionOverride?: string,
 ): AmmoLoadout | null {
-    const equipment = mount.equipment;
-    if (!(equipment instanceof AmmoEquipment)) return null;
-    const key = munitionOverride ?? equipment.internalName;
-    return entityAmmoLoadouts(entity, mount, ruleset)
-        .find(loadout => loadout.munitionKey === key) ?? null;
+    const source = mount.equipment instanceof AmmoEquipment ? ammoLoadoutSource(entity, mount) : null;
+    return source === null ? null : selectAmmoLoadout(entity, source, ruleset, munitionOverride);
 }
 
 export function weaponAcceptsAmmo(
@@ -130,22 +119,27 @@ export function mekAmmoLoadouts(
     ruleset: CBTRuleset,
 ): readonly AmmoLoadout[] {
     const component = index.components.get(componentId);
-    if (component?.kind !== 'equipment') return [];
-    const equipment = component.mount.equipment;
+    const source = component?.kind === 'equipment' ? ammoLoadoutSource(entity, component.mount) : null;
+    return source === null ? [] : compatibleLoadouts(entity, source, ruleset);
+}
+
+interface AmmoLoadoutSource {
+    readonly equipment: AmmoEquipment;
+    readonly capacity: number;
+    readonly intrinsic: boolean;
+}
+
+function ammoLoadoutSource(
+    entity: BaseEntity,
+    mount: EntityMountedEquipment,
+): AmmoLoadoutSource | null {
+    const equipment = mount.equipment;
     if (equipment instanceof AmmoEquipment) {
-        return compatibleLoadouts(
-            entity,
-            equipment,
-            component.mount.getAmmoShots() ?? equipment.shots,
-            ruleset,
-            false,
-        );
+        return { equipment, capacity: mount.getAmmoShots() ?? equipment.shots, intrinsic: false };
     }
-    if (!(equipment instanceof WeaponEquipment) || equipment.oneShotCount === undefined) return [];
+    if (!(equipment instanceof WeaponEquipment) || equipment.oneShotCount === undefined) return null;
     const ammo = findIntrinsicAmmoForWeapon(equipment, entity.getEquipmentRegistry());
-    return ammo === null
-        ? []
-        : compatibleLoadouts(entity, ammo, equipment.oneShotCount, ruleset, true);
+    return ammo === null ? null : { equipment: ammo, capacity: equipment.oneShotCount, intrinsic: true };
 }
 
 export function mekAmmoLoadout(
@@ -155,9 +149,24 @@ export function mekAmmoLoadout(
     ruleset: CBTRuleset,
     munitionOverride?: string,
 ): AmmoLoadout | null {
-    const loadouts = mekAmmoLoadouts(entity, index, componentId, ruleset);
-    const key = munitionOverride ?? mekAmmoDefaultMunitionKey(entity, index, componentId);
-    return key === null ? null : loadouts.find(loadout => loadout.munitionKey === key) ?? null;
+    const component = index.components.get(componentId);
+    const source = component?.kind === 'equipment' ? ammoLoadoutSource(entity, component.mount) : null;
+    if (source === null) return null;
+    return selectAmmoLoadout(entity, source, ruleset, munitionOverride);
+}
+
+function selectAmmoLoadout(
+    entity: BaseEntity,
+    source: AmmoLoadoutSource,
+    ruleset: CBTRuleset,
+    munitionOverride?: string,
+): AmmoLoadout | null {
+    // Runtime queries need one loadout, not the menu of every compatible munition.
+    const equipment = munitionOverride === undefined || munitionOverride === source.equipment.internalName
+        ? source.equipment
+        : entity.getEquipmentRegistry().getAmmoForAmmo(source.equipment)
+            .find(candidate => candidate.internalName === munitionOverride);
+    return equipment === undefined ? null : compatibleLoadout(entity, source, equipment, ruleset);
 }
 
 export function mekAmmoCapacity(
@@ -176,11 +185,9 @@ export function mekAmmoDefaultMunitionKey(
     componentId: ComponentId,
 ): string | null {
     const component = index.components.get(componentId);
-    if (component?.kind !== 'equipment') return null;
-    const equipment = component.mount.equipment;
-    if (equipment instanceof AmmoEquipment) return equipment.internalName;
-    if (!(equipment instanceof WeaponEquipment) || equipment.oneShotCount === undefined) return null;
-    return findIntrinsicAmmoForWeapon(equipment, entity.getEquipmentRegistry())?.internalName ?? null;
+    return component?.kind === 'equipment'
+        ? ammoLoadoutSource(entity, component.mount)?.equipment.internalName ?? null
+        : null;
 }
 
 export function mekIntrinsicMagazine(
@@ -204,34 +211,42 @@ export function mekIntrinsicMagazine(
 
 function compatibleLoadouts(
     entity: BaseEntity,
-    original: AmmoEquipment,
-    originalCapacity: number,
+    source: AmmoLoadoutSource,
     ruleset: CBTRuleset,
-    intrinsic: boolean,
 ): readonly AmmoLoadout[] {
-    const registry = entity.getEquipmentRegistry();
+    const candidates = [source.equipment, ...entity.getEquipmentRegistry().getAmmoForAmmo(source.equipment)]
+        .filter((candidate, position, all) => all.indexOf(candidate) === position)
+        .sort((left, right) => left.internalName.localeCompare(right.internalName));
+    return Object.freeze(candidates.flatMap(equipment => {
+        const loadout = compatibleLoadout(entity, source, equipment, ruleset);
+        return loadout === null ? [] : [loadout];
+    }));
+}
+
+function compatibleLoadout(
+    entity: BaseEntity,
+    source: AmmoLoadoutSource,
+    equipment: AmmoEquipment,
+    ruleset: CBTRuleset,
+): AmmoLoadout | null {
     const unit = {
         type: entity.unitType(),
         mixed: entity.mixedTech(),
         techBase: entity.techBase() === 'Clan' ? 'Clan' as const : 'Inner Sphere' as const,
     };
-    const originalFacts = ammoCapacityFacts(original, entity);
-    const candidates = [original, ...registry.getAmmoForAmmo(original)]
-        .filter((candidate, position, all) => all.indexOf(candidate) === position)
-        .filter(candidate => AmmoValidityUtil.isAmmoCompatible(original, candidate, unit))
-        .sort((left, right) => left.internalName.localeCompare(right.internalName));
-    return Object.freeze(candidates.map(equipment => Object.freeze({
+    if (!AmmoValidityUtil.isAmmoCompatible(source.equipment, equipment, unit)) return null;
+    return Object.freeze({
         munitionKey: equipment.internalName,
-        capacity: intrinsic || equipment === original
-            ? originalCapacity
+        capacity: source.intrinsic || equipment === source.equipment
+            ? source.capacity
             : resolveChangedAmmoCapacity(
                 ruleset,
-                originalFacts,
-                originalCapacity,
+                ammoCapacityFacts(source.equipment, entity),
+                source.capacity,
                 ammoCapacityFacts(equipment, entity),
             ),
         equipment,
-    })));
+    });
 }
 
 function ammoCapacityFacts(ammo: AmmoEquipment, entity: BaseEntity): AmmoCapacityFacts {

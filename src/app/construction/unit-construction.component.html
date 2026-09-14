@@ -1228,7 +1228,7 @@
                             [tooltip]="oemYearField().hint ?? null"
                             (click)="oemYearExpanded.set(!oemYearVisible())"
                           >
-                            <span class="chevron" [class.chevron-down]="!oemYearVisible()" aria-hidden="true"></span>
+                            <span class="chevron" [class.collapsed]="!oemYearVisible()" aria-hidden="true"></span>
                           </button>
                         </div>
                         <input

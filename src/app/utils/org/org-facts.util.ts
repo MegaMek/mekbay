@@ -28,6 +28,7 @@ import type {
     UnitNumericScalarName,
     UnitFacts,
     OrgUnit,
+    OrgTransportSpecial,
 } from './org-types';
 
 const ORG_UNIT_BUCKET_NAMES: readonly OrgUnitBucketName[] = [
@@ -140,8 +141,10 @@ function getCIMoveClassTag(unit: OrgUnit): CIMoveClassTag | null {
     return moveClass ? `ci:${moveClass}` as CIMoveClassTag : null;
 }
 
-function hasSpecial(unit: OrgUnit, special: string): boolean {
-    return unit.as?.specials?.includes(special) ?? false;
+function hasTransportSpecial(unit: OrgUnit, special: OrgTransportSpecial): boolean {
+    return 'transportSpecials' in unit
+        ? unit.transportSpecials.includes(special)
+        : unit.as.specials.includes(special);
 }
 
 function incrementCount<Key extends string>(map: Map<Key, number>, key: Key, amount = 1): void {
@@ -275,8 +278,8 @@ export function compileUnitFacts(unit: OrgUnit, index?: number): UnitFacts {
 
     if (isAero(unit)) tags.add('aero');
     if (unit.omni === 1) tags.add('omni');
-    if (hasSpecial(unit, 'MEC')) tags.add('transport.mec');
-    if (hasSpecial(unit, 'XMEC')) tags.add('transport.xmec');
+    if (hasTransportSpecial(unit, 'MEC')) tags.add('transport.mec');
+    if (hasTransportSpecial(unit, 'XMEC')) tags.add('transport.xmec');
     const ciMoveClassTag = getCIMoveClassTag(unit);
     if (ciMoveClassTag) tags.add(ciMoveClassTag);
 
@@ -288,8 +291,6 @@ export function compileUnitFacts(unit: OrgUnit, index?: number): UnitFacts {
         scalars: {
             id: unit.mul1id,
             tons: unit.tons,
-            pv: unit.as.PV,
-            bv: unit.bv,
             troopers: unit.internal || 0,
             omni: unit.omni === 1,
             isAero: isAero(unit),
@@ -298,8 +299,8 @@ export function compileUnitFacts(unit: OrgUnit, index?: number): UnitFacts {
             isBA: isBA(unit),
             isCI: isCI(unit),
             isPM: isPM(unit),
-            hasMEC: hasSpecial(unit, 'MEC'),
-            hasXMEC: hasSpecial(unit, 'XMEC'),
+            hasMEC: hasTransportSpecial(unit, 'MEC'),
+            hasXMEC: hasTransportSpecial(unit, 'XMEC'),
         },
     };
 }

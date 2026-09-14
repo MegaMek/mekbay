@@ -5,6 +5,7 @@
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { ArmorEquipment } from '../../models/equipment.model';
 import { sha1Base64Url } from '../../utils/sha1.util';
+import { nativeSourceHashCanary } from '../../models/source-hash-canary';
 import { EntityUnitSummaryProjector } from './entity-summary-projector';
 import {
     asSourceHash,
@@ -67,6 +68,7 @@ IS Level 3
         expect(projected.summary.uuid).toBe(uuid);
         expect(projected.summary.entityType).toBe('BuildingEntity');
         expect(projected.summary.hash).toBe(sourceHash);
+        expect(projected.summary.sourceHashCanary).toBe(await nativeSourceHashCanary(new TextDecoder().decode(bytes), 'blk'));
         expect(projected.summary.summaryVersion).toBeGreaterThan(0);
         expect(Object.prototype.hasOwnProperty.call(projected.summary, 'sourceRef')).toBeFalse();
         expect(Object.prototype.hasOwnProperty.call(projected.summary, 'readiness')).toBeFalse();

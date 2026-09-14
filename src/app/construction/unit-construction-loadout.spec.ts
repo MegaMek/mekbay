@@ -1237,7 +1237,7 @@ describe('construction component blocks', () => {
     const toggle = f.root.querySelector<HTMLButtonElement>('.oem-year-toggle')!;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(toggle.getAttribute('aria-label')).toBe('OEM year');
-    expect(toggle.querySelector('.chevron-down')).not.toBeNull();
+    expect(toggle.querySelector('.chevron.collapsed')).not.toBeNull();
     toggle.closest<HTMLElement>('.system-panel')!.style.width = '280px';
     const column = toggle.closest<HTMLElement>('.year-fields')!.getBoundingClientRect();
     const heading = toggle.closest<HTMLElement>('.year-heading')!;
@@ -1249,7 +1249,7 @@ describe('construction component blocks', () => {
     toggle.click();
     f.view.detectChanges();
     await f.view.whenStable();
-    expect(toggle.querySelector('.chevron-down')).toBeNull();
+    expect(toggle.querySelector('.chevron.collapsed')).toBeNull();
     const input = () => f.root.querySelector<HTMLInputElement>('#construction-oem-year')!;
     expect(input().placeholder).toBe(String(f.editor.entity().year()));
     expect(input().value).toBe('');

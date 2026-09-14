@@ -8,6 +8,7 @@ import type { Equipment } from './equipment.model';
 import type { Era } from './eras.model';
 import type { TechBase, UnitTechBaseDisplay } from './tech.model';
 import type { WeaponType } from './weapon-types.model';
+import type { SourceHashCanary } from './source-hash-canary';
 import type {
   CatalogEntryOrigin,
   UnitProviderId,
@@ -15,7 +16,7 @@ import type {
 } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 23 as const;
+export const UNIT_SUMMARY_VERSION = 24 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -136,6 +137,8 @@ export interface UnitSummary {
   originalUnitUuid?: UnitUuid;
   /** Supplier-provided source revision; native core rows use the MTF/BLK SHA-1. */
   hash: string;
+  /** Normalized native-source canary for save warnings; hash remains the byte checksum. */
+  sourceHashCanary?: SourceHashCanary;
   /** Projection revision used to decide whether this row must be regenerated. */
   summaryVersion: number;
   /** Source parsing diagnostics and construction validation errors, exposed by the semantic issues filter. */

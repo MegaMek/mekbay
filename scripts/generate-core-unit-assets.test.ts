@@ -16,7 +16,10 @@ import {
   CORE_UNITS_MANIFEST_PATH,
 } from '../src/app/services/unit-catalog/core-unit-manifest';
 import type { ApplicationCatalogDependencyBundle } from '../src/app/services/unit-catalog/application-catalog-dependency-bundle';
-import type { UnitSummaryProjector } from '../src/app/services/unit-catalog/entity-summary-projector';
+import { EntityUnitSummaryProjector, type UnitSummaryProjector } from '../src/app/services/unit-catalog/entity-summary-projector';
+import { EquipmentRegistry } from '../src/app/models/equipment-lookup';
+import { ArmorEquipment } from '../src/app/models/equipment.model';
+import { nativeSourceHashCanary } from '../src/app/models/source-hash-canary';
 import { generateCoreUnitAssets } from './generate-core-unit-assets';
 import { parseMegaMekUnitFileMetadata } from './lib/megamek-unit-file-metadata';
 
@@ -116,6 +119,34 @@ test('refuses duplicate UUIDs', async (t) => {
     generateCoreUnitAssets(options(sources, path.join(root, 'output'), 1)),
     /Duplicate core unit UUID/u,
   );
+});
+
+test('generated save canaries use the same normalization as runtime loading', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mekbay-unit-canary-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const sources = path.join(root, 'sources');
+  const output = path.join(root, 'generated');
+  fs.mkdirSync(path.join(sources, 'meks'), { recursive: true });
+  const sourcePath = path.join(sources, 'meks', 'test.mtf');
+  const original = mek(MEK_UUID, 'Test');
+  const generation = options(sources, output, 1);
+  const armor = new ArmorEquipment({ id: 'Standard Armor', name: 'Standard', type: 'armor', armor: { type: 'STANDARD' }, tech: { base: 'All' } });
+  generation.summaryGenerationContext.projector = new EntityUnitSummaryProjector(new EquipmentRegistry({ [armor.id]: armor }));
+  const generate = async (source: string) => {
+    fs.writeFileSync(sourcePath, source);
+    const release = await generateCoreUnitAssets(generation);
+    const zip = await JSZip.loadAsync(fs.readFileSync(path.join(output, path.basename(CORE_UNITS_ARCHIVE_PATH))));
+    const [summary] = JSON.parse(await zip.file(CORE_UNIT_ARCHIVE_SUMMARY_PATH)!.async('string')) as UnitSummary[];
+    assert.equal(summary.sourceHashCanary, await nativeSourceHashCanary(source, 'mtf'));
+    assert.equal(summary.hash, sha1(Buffer.from(source)));
+    assert.equal(await zip.file(`${MEK_UUID}.mtf`)!.async('string'), source);
+    return { canary: summary.sourceHashCanary, hash: release.manifest.units[MEK_UUID as keyof typeof release.manifest.units].hash };
+  };
+  const first = await generate(original);
+  const metadataOnly = await generate('# Comment\r\nGenerator:New generator\r\noverview:New unit description\r\n' + original.replaceAll('\n', '\r\n'));
+  assert.equal(metadataOnly.canary, first.canary);
+  assert.notEqual(metadataOnly.hash, first.hash);
+  assert.notEqual((await generate(original.replace('Mass:50', 'Mass:55'))).canary, first.canary);
 });
 
 test('does not publish when the required unit population is missing', async (t) => {

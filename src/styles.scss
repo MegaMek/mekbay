@@ -1,8 +1,9 @@
 @use './app/utils/sheets/styles/record-sheet';
 
 // One geometry for native select backgrounds and all app chevron masks.
+// Fill the existing icon box so arrows are larger without changing control layout.
 @function chevron-image($color) {
-  @return url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23#{$color}'%3e%3cpath d='M8 11L2 5h12z'/%3e%3c/svg%3e");
+  @return url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23#{$color}'%3e%3cpath d='M8 12L0 4h16z'/%3e%3c/svg%3e");
 }
 
 :root {
@@ -583,13 +584,13 @@ hr {
   background-color: currentColor;
   mask: var(--chevron-image) center / contain no-repeat;
   transition: transform 0.15s ease;
-  transform: rotate(-180deg);
+  transform: rotate(0deg);
 
-  &.collapsed,
   &.chevron-down {
     transform: rotate(0deg);
   }
 
+  &.collapsed,
   &.chevron-right {
     transform: rotate(-90deg);
   }
@@ -597,10 +598,18 @@ hr {
   &.chevron-left {
     transform: rotate(90deg);
   }
+
+  &.chevron-dropdown {
+    transform: rotate(-180deg);
+
+    &.collapsed {
+      transform: rotate(0deg);
+    }
+  }
 }
 
 details:not([open]) > summary .chevron {
-  transform: rotate(0deg);
+  transform: rotate(-90deg);
 }
 
 .bt-checkbox {

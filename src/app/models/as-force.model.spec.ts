@@ -28,6 +28,7 @@ describe('ASForce source hash canary', () => {
             uuid,
             name: 'Atlas AS7-D',
             hash: 'BBBBBBBBBBBBBBBBBBBBBBBBBBA',
+            sourceHashCanary: asSourceHashCanary('BBBB'),
         });
         const data = {
             getUnitByUuid: () => summary,

@@ -11,7 +11,6 @@
     "noEmit": true
   },
   "files": [
-    "../src/pako.d.ts",
     "../src/types/qrcode.d.ts"
   ],
   "include": [

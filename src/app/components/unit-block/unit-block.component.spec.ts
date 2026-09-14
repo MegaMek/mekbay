@@ -16,6 +16,8 @@ import { addTestEquipment } from '../../models/entity/testing/test-mounted-equip
 import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
+import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from '../../models/runtime/mek-movement-psr-v2';
+import { projectMekTurnPanel } from '../../models/runtime/mek-turn-panel';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
 import { OptionsService } from '../../services/options.service';
@@ -218,6 +220,43 @@ describe('UnitBlockComponent capability badges', () => {
             color: 'walk',
             letter: 'W0',
         });
+        fixture.destroy();
+    });
+
+    it('clears the dirty marker after End Phase while retaining the declared movement', () => {
+        const runtime = createDirectMekRuntimeFixture();
+        const projectPanel = () => projectMekTurnPanel(
+            runtime.entity, runtime.index, runtime.instance.ruleset(), runtime.instance.query(), 'manual',
+        );
+        const panel = signal(projectPanel());
+        const force = { getMekTurnPanelSnapshot: panel } as unknown as CBTForce;
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', new CBTForceMember('unit:movement-dirty', force, runtime.entity));
+
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(runtime.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: {
+                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+                mode: 'walk', distance: 0, boosterComponentIds: [],
+            },
+        }).accepted).toBeTrue();
+        panel.set(projectPanel());
+        expect(fixture.componentInstance.dirty()).toBeTrue();
+
+        expect(runtime.instance.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
+        panel.set(projectPanel());
+        expect(fixture.componentInstance.dirty()).toBeFalse();
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'walk', letter: 'W0' });
+
+        const face = [...runtime.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 0)!;
+        expect(runtime.instance.dispatch({
+            type: 'damage-armor', faceId: face.id, amount: 1, target: 'pending',
+        }).accepted).toBeTrue();
+        panel.set(projectPanel());
+        expect(fixture.componentInstance.dirty()).toBeTrue();
+        runtimeOptions.set({ trackPhaseAndTurn: false });
+        expect(fixture.componentInstance.dirty()).toBeFalse();
         fixture.destroy();
     });
 
