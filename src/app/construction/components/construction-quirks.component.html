@@ -1,59 +1,158 @@
 <section class="framed-borders quirks-panel">
-    <header><h2>Design quirks</h2><span>{{ entity().quirks().length }} assigned</span></header>
-    <div class="selected-quirks">
-        @for (entry of entity().quirks(); track entry.quirk.key) {
-            <div class="selected-quirk">
-                <quirk-badge [quirk]="entry.quirk">
-                    <button type="button" class="remove" [attr.aria-label]="'Remove ' + entry.quirk.name" (click)="removeQuirk(entry)">×</button>
-                </quirk-badge>
-                @if (hasValue(entry)) {
-                    <input class="bt-input quirk-value" [attr.aria-label]="entry.quirk.name + ' value'"
-                        [placeholder]="entry.quirk.key === 'obsolete' ? 'Years, e.g. 2850, 3050' : 'Locations, e.g. LT RT'"
-                        [ngModel]="entry.value ?? ''" (ngModelChange)="setQuirkValue(entry, $event)">
-                }
-            </div>
-        } @empty { <p class="muted">No design quirks assigned.</p> }
-    </div>
-    <input type="search" class="bt-input" aria-label="Filter design quirks" placeholder="Find a design quirk…" [ngModel]="query()" (ngModelChange)="query.set($event)">
-    <div class="quirk-options">
-        @for (quirk of available(); track quirk.key) {
-            <button type="button" class="bt-button quirk-option" [title]="quirk.description" (click)="addQuirk(quirk.key)">
-                <span [class.negative]="quirk.type === 'negative'">{{ quirk.type === 'negative' ? '−' : '+' }}</span>{{ quirk.name }}
+  <header>
+    <h2>Design quirks</h2>
+    <span>{{ entity().quirks().length }} assigned</span>
+  </header>
+  <div class="selected-quirks">
+    @for (entry of entity().applicableQuirks(); track entry.quirk.key) {
+      <div class="selected-quirk">
+        <quirk-badge [quirk]="entry.quirk">
+          <button
+            type="button"
+            class="remove"
+            [attr.aria-label]="'Remove ' + entry.quirk.name"
+            (click)="removeQuirk(entry)"
+          >
+            ×
+          </button>
+        </quirk-badge>
+        @if (hasValue(entry)) {
+          <input
+            class="bt-input quirk-value"
+            [attr.aria-label]="entry.quirk.name + ' value'"
+            [placeholder]="entry.quirk.key === 'obsolete' ? 'Years, e.g. 2850, 3050' : 'Locations, e.g. LT RT'"
+            [ngModel]="entry.value ?? ''"
+            (ngModelChange)="setQuirkValue(entry, $event)"
+          />
+        }
+      </div>
+    } @empty {
+      <p class="muted">No design quirks assigned.</p>
+    }
+  </div>
+  @if (suppressedQuirks().length) {
+    <div class="suppressed-quirks" aria-label="Suppressed design quirks">
+      <span class="muted suppressed-label">Suppressed until the design allows them:</span>
+      <div class="suppressed-list">
+        @for (entry of suppressedQuirks(); track entry.quirk.key) {
+          <quirk-badge [quirk]="entry.quirk" [muted]="true">
+            <button
+              type="button"
+              class="remove"
+              [attr.aria-label]="'Remove ' + entry.quirk.name"
+              (click)="removeQuirk(entry)"
+            >
+              ×
             </button>
-        } @empty { <p class="muted">No matching compatible quirks.</p> }
+          </quirk-badge>
+        }
+      </div>
     </div>
+  }
+  <input
+    type="search"
+    class="bt-input"
+    aria-label="Filter design quirks"
+    placeholder="Find a design quirk…"
+    [ngModel]="query()"
+    (ngModelChange)="query.set($event)"
+  />
+  <div class="quirk-options">
+    @for (quirk of available(); track quirk.key) {
+      <button type="button" class="bt-button quirk-option" [title]="quirk.description" (click)="addQuirk(quirk.key)">
+        <span [class.negative]="quirk.type === 'negative'">{{ quirk.type === 'negative' ? '−' : '+' }}</span
+        >{{ quirk.name }}
+      </button>
+    } @empty {
+      <p class="muted">No matching compatible quirks.</p>
+    }
+  </div>
 </section>
 <section class="framed-borders quirks-panel">
-    <header><h2>Weapon quirks</h2><span>{{ entity().weaponQuirks().length }} assigned</span></header>
-    @if (weapons().length) {
-        <label>Weapon<select class="bt-select" aria-label="Weapon for quirks" [ngModel]="selectedWeapon()?.mountId" (ngModelChange)="selectedMountId.set($event)">
-            @for (mount of weapons(); track mount.mountId; let index = $index) {
-                <option [value]="mount.mountId">{{ index + 1 }}. {{ mount.displayName() }} · {{ mount.location || 'Unallocated' }}{{ mount.rearMounted ? ' (rear)' : '' }}</option>
-            }
-        </select></label>
-        <div class="selected-quirks">
-            @for (entry of selectedWeaponQuirks(); track entry.name) {
-                <quirk-badge [quirk]="definition(entry.name)" [name]="definition(entry.name)?.name ?? entry.name">
-                    <button type="button" class="remove" [attr.aria-label]="'Remove ' + (definition(entry.name)?.name ?? entry.name)" (click)="removeWeaponQuirk(entry)">×</button>
-                </quirk-badge>
-            } @empty { <p class="muted">No quirks assigned to this weapon.</p> }
-        </div>
-        @if (!canAssignWeapon()) { <p class="muted">Place the weapon in the loadout before assigning quirks.</p> }
-        <input type="search" class="bt-input" aria-label="Filter weapon quirks" placeholder="Find a weapon quirk…" [ngModel]="weaponQuery()" (ngModelChange)="weaponQuery.set($event)">
-        <div class="quirk-options">
-            @for (quirk of availableWeaponQuirks(); track quirk.key) {
-                <button type="button" class="bt-button quirk-option" [disabled]="!canAssignWeapon()" [title]="quirk.description" (click)="addWeaponQuirk(quirk.key)">
-                    <span [class.negative]="quirk.type === 'negative'">{{ quirk.type === 'negative' ? '−' : '+' }}</span>{{ quirk.name }}
-                </button>
-            } @empty { <p class="muted">No matching compatible quirks.</p> }
-        </div>
-    } @else { <p class="muted">Install weapons in the loadout to configure their quirks.</p> }
-    @if (unmatchedWeaponQuirks().length) {
-        <h3>Unmatched weapon assignments</h3>
-        @for (entry of unmatchedWeaponQuirks(); track $index) {
-            <div class="unmatched">{{ entry.weaponName }} · {{ entry.location }} · {{ definition(entry.name)?.name ?? entry.name }}
-                <button type="button" class="bt-button" (click)="removeWeaponQuirk(entry)">Remove</button>
-            </div>
+  <header>
+    <h2>Weapon quirks</h2>
+    <span>{{ entity().weaponQuirks().length }} assigned</span>
+  </header>
+  @if (targets().length) {
+    <label
+      >Weapon or bay<select
+        class="bt-select"
+        aria-label="Weapon for quirks"
+        [ngModel]="selectedTarget()?.id"
+        (ngModelChange)="selectedTargetId.set($event)"
+      >
+        @for (option of targets(); track option.id; let index = $index) {
+          <option [value]="option.id">{{ index + 1 }}. {{ option.label }}</option>
         }
+      </select></label
+    >
+    <div class="selected-quirks">
+      @for (entry of selectedWeaponQuirks(); track entry.name) {
+        <quirk-badge [quirk]="definition(entry.name)" [name]="definition(entry.name)?.name ?? entry.name">
+          <button
+            type="button"
+            class="remove"
+            [attr.aria-label]="'Remove ' + (definition(entry.name)?.name ?? entry.name)"
+            (click)="removeWeaponQuirk(entry)"
+          >
+            ×
+          </button>
+        </quirk-badge>
+      } @empty {
+        <p class="muted">No quirks assigned to this weapon.</p>
+      }
+    </div>
+    @if (suppressedWeaponQuirks().length) {
+      <div class="suppressed-quirks" aria-label="Suppressed weapon quirks">
+        <span class="muted suppressed-label">Suppressed until the design allows them:</span>
+        <div class="suppressed-list">
+          @for (entry of suppressedWeaponQuirks(); track entry) {
+            <quirk-badge
+              [quirk]="definition(entry.name)"
+              [name]="definition(entry.name)?.name ?? entry.name"
+              [muted]="true"
+            >
+              <button
+                type="button"
+                class="remove"
+                [attr.aria-label]="'Remove ' + (definition(entry.name)?.name ?? entry.name)"
+                (click)="removeWeaponQuirk(entry)"
+              >
+                ×
+              </button>
+            </quirk-badge>
+          }
+        </div>
+      </div>
     }
+    @if (!canAssignWeapon()) {
+      <p class="muted">Place the weapon in the loadout before assigning quirks.</p>
+    }
+    <input
+      type="search"
+      class="bt-input"
+      aria-label="Filter weapon quirks"
+      placeholder="Find a weapon quirk…"
+      [ngModel]="weaponQuery()"
+      (ngModelChange)="weaponQuery.set($event)"
+    />
+    <div class="quirk-options">
+      @for (quirk of availableWeaponQuirks(); track quirk.key) {
+        <button
+          type="button"
+          class="bt-button quirk-option"
+          [disabled]="!canAssignWeapon()"
+          [title]="quirk.description"
+          (click)="addWeaponQuirk(quirk.key)"
+        >
+          <span [class.negative]="quirk.type === 'negative'">{{ quirk.type === 'negative' ? '−' : '+' }}</span
+          >{{ quirk.name }}
+        </button>
+      } @empty {
+        <p class="muted">No matching compatible quirks.</p>
+      }
+    </div>
+  } @else {
+    <p class="muted">Install weapons in the loadout to configure their quirks.</p>
+  }
 </section>

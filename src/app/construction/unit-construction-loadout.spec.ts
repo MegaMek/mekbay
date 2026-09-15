@@ -133,12 +133,18 @@ describe('construction component blocks', () => {
     armor: { type: 'STEALTH' },
   });
   const hardened = new ArmorEquipment({
-    id: 'Hardened Armor', name: 'Hardened', type: 'armor',
-    flags: ['F_HARDENED_ARMOR', 'F_MEK_EQUIPMENT'], armor: { type: 'HARDENED' },
+    id: 'Hardened Armor',
+    name: 'Hardened',
+    type: 'armor',
+    flags: ['F_HARDENED_ARMOR', 'F_MEK_EQUIPMENT'],
+    armor: { type: 'HARDENED' },
   });
   const reinforced = new StructureEquipment({
-    id: 'Reinforced Structure', name: 'Reinforced', type: 'structure',
-    flags: ['F_REINFORCED', 'F_MEK_EQUIPMENT'], structure: { typeId: STRUCTURE_TYPE.REINFORCED },
+    id: 'Reinforced Structure',
+    name: 'Reinforced',
+    type: 'structure',
+    flags: ['F_REINFORCED', 'F_MEK_EQUIPMENT'],
+    structure: { typeId: STRUCTURE_TYPE.REINFORCED },
   });
   const registry = createTestEquipmentRegistry({
     [ac.id]: ac,
@@ -409,6 +415,48 @@ describe('construction component blocks', () => {
     expect(f.editor.unallocated()).toEqual([]);
     expect(f.root.querySelector('.unallocated-empty')).not.toBeNull();
     f.root.querySelector<HTMLButtonElement>('.remove-equipment')!.click();
+    expect(
+      f.editor
+        .entity()
+        .equipment()
+        .some((mount) => mount.mountId === gun.mountId),
+    ).toBeFalse();
+    expect(f.editor.unallocated()).toEqual([]);
+  });
+
+  it('switches the loadout uninstall button to direct removal while Ctrl or Cmd is held', async () => {
+    const f = await create();
+    const gun = f.editor
+      .entity()
+      .equipment()
+      .find((mount) => mount.equipmentId === ac.id)!;
+    const button = () =>
+      f.root.querySelector<HTMLButtonElement>('[data-location="LT"] .installed-equipment .uninstall-mount')!;
+    expect(button().getAttribute('title')).toContain('Uninstall');
+    expect(button().classList.contains('direct-remove')).toBeFalse();
+
+    for (const modifier of [
+      { key: 'Control', ctrlKey: true },
+      { key: 'Meta', metaKey: true },
+    ] as const) {
+      document.dispatchEvent(new KeyboardEvent('keydown', modifier));
+      f.view.detectChanges();
+      expect(button().getAttribute('title')).withContext(modifier.key).toContain('Remove');
+      expect(button().getAttribute('aria-label')).withContext(modifier.key).toContain('Remove');
+      expect(button().classList.contains('direct-remove')).withContext(modifier.key).toBeTrue();
+
+      document.dispatchEvent(new KeyboardEvent('keyup', { key: modifier.key }));
+      f.view.detectChanges();
+      expect(button().getAttribute('title')).withContext(modifier.key).toContain('Uninstall');
+      expect(button().classList.contains('direct-remove')).withContext(modifier.key).toBeFalse();
+    }
+
+    // Cmd+click (macOS) deletes the mount outright instead of moving it to unallocated equipment.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Meta', metaKey: true }));
+    f.view.detectChanges();
+    button().dispatchEvent(new MouseEvent('click', { bubbles: true, metaKey: true }));
+    f.view.detectChanges();
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Meta' }));
     expect(
       f.editor
         .entity()
@@ -923,7 +971,10 @@ describe('construction component blocks', () => {
     expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
     f.editor.redo();
     expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
-    const mount = f.editor.entity().equipment().find((item) => item.equipment?.id === endo.id)!;
+    const mount = f.editor
+      .entity()
+      .equipment()
+      .find((item) => item.equipment?.id === endo.id)!;
     f.editor.selectMount(mount);
     expect(f.editor.canPlaceSelectedEquipment()).toBeTrue();
     f.editor.uninstall(mount);
@@ -1300,10 +1351,10 @@ describe('construction component blocks', () => {
     it(`shows construction points and repair gains for hardened armor and reinforced structure in ${ruleset}`, async () => {
       const f = await create({ editDesign: false, armor: true, doubleDamageProtection: true, ruleset });
       const index = f.instance.getIndex();
-      const location = [...index.locations.values()].find(location => location.code === 'LT')!;
-      const other = [...index.locations.values()].find(location => location.code === 'RT')!;
-      const front = location.armorFaceIds.map(id => index.armorFaces.get(id)!).find(face => face.face === 'front')!;
-      const rear = location.armorFaceIds.map(id => index.armorFaces.get(id)!).find(face => face.face === 'rear')!;
+      const location = [...index.locations.values()].find((location) => location.code === 'LT')!;
+      const other = [...index.locations.values()].find((location) => location.code === 'RT')!;
+      const front = location.armorFaceIds.map((id) => index.armorFaces.get(id)!).find((face) => face.face === 'front')!;
+      const rear = location.armorFaceIds.map((id) => index.armorFaces.get(id)!).find((face) => face.face === 'rear')!;
       const member = f.editor.forceMember()!;
       const structure = f.entity.structureValues().get('LT')!;
       const totalStructure = f.entity.totalInternalPoints();
@@ -1322,18 +1373,25 @@ describe('construction component blocks', () => {
       f.view.detectChanges();
       await f.view.whenStable();
       expect(f.editor.internalRemaining('LT', structure)).toBe(structure - 1);
-      expect(f.editor.internalRemaining('RT', f.entity.structureValues().get('RT')!))
-        .toBe(f.entity.structureValues().get('RT')! - 1);
+      expect(f.editor.internalRemaining('RT', f.entity.structureValues().get('RT')!)).toBe(
+        f.entity.structureValues().get('RT')! - 1,
+      );
       expect(f.editor.armorDamage('LT')).toBe(1.5);
       expect(f.editor.armorDamage('LT', 'rear')).toBe(0.5);
       const defense = f.root.querySelector<HTMLElement>('[data-location="LT"] .location-defense')!;
-      expect([...defense.querySelectorAll('.armor-condition')].map(row => row.textContent!.trim()))
-        .toEqual(['10.5 intact · 1.5 damaged', '5.5 intact · 0.5 damaged']);
-      expect(f.editor.summaryStats().find(stat => stat.label === 'Armor')?.value).toBe(totalArmor - 2);
-      expect(f.editor.summaryStats().find(stat => stat.label === 'Structure')?.value).toBe(totalStructure - 2);
+      expect([...defense.querySelectorAll('.armor-condition')].map((row) => row.textContent!.trim())).toEqual([
+        '10.5 intact · 1.5 damaged',
+        '5.5 intact · 0.5 damaged',
+      ]);
+      expect(f.editor.summaryStats().find((stat) => stat.label === 'Armor')?.value).toBe(totalArmor - 2);
+      expect(f.editor.summaryStats().find((stat) => stat.label === 'Structure')?.value).toBe(totalStructure - 2);
 
-      await f.force.dispatchUnitCommand(member.id,
-        { type: 'damage-internal', locationId: location.id, amount: 1, target: 'pending' });
+      await f.force.dispatchUnitCommand(member.id, {
+        type: 'damage-internal',
+        locationId: location.id,
+        amount: 1,
+        target: 'pending',
+      });
       expect(f.editor.internalRemaining('LT', structure)).toBe(structure - 1.5);
       await f.editor.repairDefense('LT', 'internal');
       await f.editor.repairDefense('LT', 'front');
@@ -1345,12 +1403,18 @@ describe('construction component blocks', () => {
       expect(f.editor.armorRepair('LT')).toBe(1.5);
       expect(f.editor.armorDamage('LT', 'rear')).toBe(0.5);
       expect(defense.querySelector('.structure-label .repair-gain')?.textContent).toBe('+1.5');
-      expect(f.editor.summaryStats().find(stat => stat.label === 'Armor')).toEqual(jasmine.objectContaining({
-        value: totalArmor - 0.5, pendingRepair: 1.5,
-      }));
-      expect(f.editor.summaryStats().find(stat => stat.label === 'Structure')).toEqual(jasmine.objectContaining({
-        value: totalStructure - 1, pendingRepair: 1.5,
-      }));
+      expect(f.editor.summaryStats().find((stat) => stat.label === 'Armor')).toEqual(
+        jasmine.objectContaining({
+          value: totalArmor - 0.5,
+          pendingRepair: 1.5,
+        }),
+      );
+      expect(f.editor.summaryStats().find((stat) => stat.label === 'Structure')).toEqual(
+        jasmine.objectContaining({
+          value: totalStructure - 1,
+          pendingRepair: 1.5,
+        }),
+      );
       f.editor.undo();
       expect(f.editor.armorDamage('LT')).toBe(1.5);
       expect(f.editor.armorRepair('LT')).toBe(0);
@@ -2237,7 +2301,13 @@ describe('construction component blocks', () => {
     const f = await create();
     f.editor.install(laser, 'RT', 0);
     for (const id of [ac.id, laser.id]) {
-      f.editor.updateMount(f.editor.entity().equipment().find((mount) => mount.equipmentId === id)!, { armored: true });
+      f.editor.updateMount(
+        f.editor
+          .entity()
+          .equipment()
+          .find((mount) => mount.equipmentId === id)!,
+        { armored: true },
+      );
     }
     f.view.detectChanges();
     await f.view.whenStable();
@@ -2247,17 +2317,24 @@ describe('construction component blocks', () => {
     const button = single.querySelector<HTMLElement>('.mounted-name')!;
     for (const width of [280, 160, 120]) {
       single.style.width = `${width}px`;
-      const b = badge.getBoundingClientRect(), n = name.getBoundingClientRect(), bounds = button.getBoundingClientRect();
-      expect(b.left).withContext(`${width}px: badge follows name`).toBeGreaterThanOrEqual(n.right - 1);
-      expect(b.top + b.height / 2).withContext(`${width}px: badge is vertically centered`).toBeCloseTo(bounds.top + bounds.height / 2, 0);
+      const b = badge.getBoundingClientRect(),
+        n = name.getBoundingClientRect(),
+        bounds = button.getBoundingClientRect();
+      expect(b.left)
+        .withContext(`${width}px: badge follows name`)
+        .toBeGreaterThanOrEqual(n.right - 1);
+      expect(b.top + b.height / 2)
+        .withContext(`${width}px: badge is vertically centered`)
+        .toBeCloseTo(bounds.top + bounds.height / 2, 0);
       expect(n.width).withContext(`${width}px: name retains space`).toBeGreaterThan(0);
       expect(b.right).toBeLessThanOrEqual(bounds.right - parseFloat(getComputedStyle(button).paddingRight) + 1);
       expect(single.scrollWidth).toBeLessThanOrEqual(single.clientWidth);
     }
     const multi = f.root.querySelector<HTMLElement>('[data-location="LT"] .mounted-name')!;
     expect(getComputedStyle(multi).flexDirection).toBe('column');
-    expect(multi.querySelector('.armored-badge')!.getBoundingClientRect().bottom)
-      .toBeLessThanOrEqual(multi.querySelector('.equipment-title')!.getBoundingClientRect().top);
+    expect(multi.querySelector('.armored-badge')!.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+      multi.querySelector('.equipment-title')!.getBoundingClientRect().top,
+    );
   });
 
   it('opens a separate installed inspector, marks armor, and exposes system-slot armor and actuator removal', async () => {

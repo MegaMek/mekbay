@@ -58,6 +58,20 @@ describe('UnitSummaryBuilder', () => {
     expect(summary.dissipation).toBe(mek().heatDissipation());
   });
 
+  it('keeps suppressed quirks in export facts but excludes them from displayed summaries and issues', () => {
+    const entity = mek();
+    entity.quirks.set(['la', 'ra'].map(side => ({ quirk: {
+      key: `battle_fists_${side}`, name: `Battle Fists (${side.toUpperCase()})`, type: 'positive', description: '',
+    } })));
+    for (const left of [false, true]) {
+      entity.hasHandActuator.update(hands => ({ ...hands, left }));
+      const summary = new UnitSummaryBuilder().build(entity, { entryKey, format: 'mtf' });
+      expect(summary.assignedQuirks).toEqual(['Battle Fists (LA)', 'Battle Fists (RA)']);
+      expect(summary.quirks).toEqual(left ? summary.assignedQuirks : ['Battle Fists (RA)']);
+      expect(summary.loadIssues.some(issue => issue.code.includes('QUIRK'))).toBeFalse();
+    }
+  });
+
   it('serializes the MUL reference as mul1id for standard and static summaries', () => {
     for (const entity of [mek(), staticEntity()]) {
       entity.mulId.set(123);

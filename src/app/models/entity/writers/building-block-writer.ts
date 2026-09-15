@@ -228,7 +228,8 @@ export function writeSupportVehicleBarRating(w: BuildingBlockWriter, entity: Bas
 export function writeInternalType(w: BuildingBlockWriter, entity: BaseEntity): void {
   const uniformStructure = entity.uniformStructureMaterial();
   const structureTypeId: number =
-    uniformStructure?.structure.structureTypeId ?? (entity.structureByLocation().size > 0 ? STRUCTURE_TYPE.STANDARD : -1);
+    uniformStructure?.structure.structureTypeId ??
+    (entity.structureByLocation().size > 0 ? STRUCTURE_TYPE.STANDARD : -1);
   if (structureTypeId !== STRUCTURE_TYPE.STANDARD) {
     w.addBlock('internal_type', structureTypeId);
   }

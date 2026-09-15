@@ -132,7 +132,7 @@ function unitToCBTRow(unit: UnitSummary): Record<string, unknown> {
         'firepower (no oneshots)': unit._mdSumNoPhysicalNoOneshots,
         maxRange: unit._maxRange,
         components: unit.comp?.map(c => `${c.q}x${c.n}:${c.l}`).join(', ') ?? '',
-        quirks: unit.quirks?.join(', ') ?? '',
+        quirks: unit.assignedQuirks.join(', '),
         cargo: unit.cargo?.map(c => `${c.type}(${c.capacity})(${c.doors})`).join(', ') ?? '',
         dropshipCapacity: unit.capital?.dropshipCapacity ?? '',
         escapePods: unit.capital?.escapePods ?? '',

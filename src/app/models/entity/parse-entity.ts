@@ -18,6 +18,7 @@ import { parseBlkLargeCraft } from './parsers/blk-largecraft-parser';
 import { parseBlkHandheld } from './parsers/blk-handheld-parser';
 import { parseBlkStaticEmplacement } from './parsers/blk-static-emplacement-parser';
 import { nativeCapabilityForUnitTypeAlias } from './codec-capabilities';
+import { weaponQuirkTarget } from './utils/weapon-quirks';
 
 /** Result of parsing a unit file. */
 export interface ParseResult {
@@ -73,12 +74,16 @@ export function parseEntity(
     entity = parseBlk(bb, ctx);
     // Apply after family parsing, when optional turret and other locations are known.
     if (bb.exists('clancaseoptedoutlocs')) {
-      const locations = bb.getDataAsString('clancaseoptedoutlocs').flatMap(line => line.split(','))
-        .map(location => location.trim()).filter(Boolean);
+      const locations = bb
+        .getDataAsString('clancaseoptedoutlocs')
+        .flatMap((line) => line.split(','))
+        .map((location) => location.trim())
+        .filter(Boolean);
       for (const location of locations) {
-        if (!entity.validLocations.has(location)) ctx.warn('clancaseoptedoutlocs', `Unknown CASE opt-out location: ${location}`);
+        if (!entity.validLocations.has(location))
+          ctx.warn('clancaseoptedoutlocs', `Unknown CASE opt-out location: ${location}`);
       }
-      entity.setClanCaseOptOutLocations(new Set(locations.filter(location => entity.validLocations.has(location))));
+      entity.setClanCaseOptOutLocations(new Set(locations.filter((location) => entity.validLocations.has(location))));
     }
   } else {
     throw new Error(`Unsupported file format: ${fileName}`);
@@ -86,6 +91,9 @@ export function parseEntity(
 
   entity.nativeSourceTrailingNewlines = content.replace(/\r\n?/gu, '\n').match(/\n+$/u)?.[0].length ?? 0;
   entity.reconcileEquipmentRelationships();
+  // A weaponquirk whose weapon (or weapon bay) is missing from the file is file corruption;
+  // MegaMek warns and skips it.
+  entity.weaponQuirks.set(entity.weaponQuirks().filter((entry) => weaponQuirkTarget(entity, entry)));
   entity.setLoadIssues(ctx.diagnostics);
   return { entity, diagnostics: entity.loadIssues() };
 }

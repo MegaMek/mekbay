@@ -2,6 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 export * from './construction-factory';
 export * from './construction-fields';
+export * from './construction-bmm-quirks';
 export * from './construction-rules';
-export * from './construction-quirk-rules';
 export * from './construction-armor-allocation';

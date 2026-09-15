@@ -24,6 +24,7 @@ import type { CBTForceMember } from '../models/force-member.model';
 import { SpriteStorageService } from './sprite-storage.service';
 import { resolveUnitSpritePath } from '../utils/unit-sprite-resolver';
 import type { BaseEntity } from '../models/entity/base-entity';
+import { TestBipedMekEntity } from '../models/entity/testing/test-entities';
 
 describe('UnitDetailsSummaryService', () => {
     const uuid = asUnitUuid('019f583e-b5e8-7032-b925-ba6c429a0687');
@@ -164,6 +165,20 @@ describe('UnitDetailsSummaryService', () => {
         expect(service.resolveForceMember(first.member).model).toBe('First');
         expect(service.resolveForceMember(next.member).model).toBe('Second');
         expect(service.resolveForceMember(first.member).model).toBe('First');
+    });
+
+    it('refreshes applicable quirks when the same force design gains or loses a hand', () => {
+        const entity = new TestBipedMekEntity();
+        entity.uuid.set(uuid);
+        entity.quirks.set([{ quirk: { key: 'battle_fists_la', name: 'Battle Fists (LA)', type: 'positive', description: '' } }]);
+        const member = { id: 'unit:quirks', entity, force: { getUnitSnapshot: () => undefined } } as unknown as CBTForceMember;
+        for (const left of [true, false, true]) {
+            entity.hasHandActuator.update(hands => ({ ...hands, left }));
+            const summary = service.resolveForceMember(member);
+            expect(summary.quirks).toEqual(left ? ['Battle Fists (LA)'] : []);
+            expect(summary.assignedQuirks).toEqual(['Battle Fists (LA)']);
+            expect(service.resolveForceMember(member)).toBe(summary);
+        }
     });
 
     async function forceMember(model: string) {

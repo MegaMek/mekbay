@@ -135,7 +135,7 @@ describe('construction panel DOM events', () => {
     await render();
     const quirks = fixture.debugElement.query(By.directive(ConstructionQuirksComponent))
       .componentInstance as ConstructionQuirksComponent;
-    expect(quirks.selectedWeapon()?.mountId).toBe(second.mountId);
+    expect(quirks.selectedTarget()?.id).toBe(second.mountId);
     expect(editor.entity()).toBe(entity);
     expect(editor.status()).toBe('');
     expect(editor.canUndo()).toBeFalse();

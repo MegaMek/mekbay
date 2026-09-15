@@ -60,8 +60,6 @@ import {
   constructionTechnologyMessages,
   constructionTechnologyYearLabel,
 } from './construction-technology-rules';
-import { constructionQuirkMessages } from './construction-quirk-rules';
-import { filterQuirkIssues, isQuirkIssue } from './construction-quirk-policy';
 import { firstCriticalSlots } from '../../models/entity/utils/critical-slot-allocation';
 import { constructionArmorTechRating, constructionMaterialMessages } from './construction-material-rules';
 import { constructionOmniApplies, constructionOmniWeaponRemovesArmActuators } from './construction-system-rules';
@@ -1193,7 +1191,7 @@ export function resizeConstructionEquipment(
   return resized;
 }
 
-export function validateConstruction(entity: BaseEntity, quirksEnabled = true): EntityValidationResult {
+export function validateConstruction(entity: BaseEntity): EntityValidationResult {
   const messages: EntityValidationMessage[] = [...entity.validationResult().messages].filter(
     (message) =>
       !(entity instanceof BattleArmorEntity && message.code === 'ARMOR_EXCEEDS_MAX' && message.location === 'Squad') &&
@@ -1210,7 +1208,6 @@ export function validateConstruction(entity: BaseEntity, quirksEnabled = true): 
     ...constructionProtoMekMessages(entity),
   );
   messages.push(...constructionTechnologyMessages(entity));
-  messages.push(...constructionQuirkMessages(entity));
   const add = (
     category: EntityValidationMessage['category'],
     code: string,
@@ -1359,12 +1356,9 @@ export function validateConstruction(entity: BaseEntity, quirksEnabled = true): 
     if (entity.isQuad() && entity.isGlider())
       add('structure', 'PROTO_CONFIGURATION', 'ProtoMeks cannot be both quad and glider.');
   }
-  // Disabled optional quirks remain visible for design review, without invalidating the unit.
-  const policyMessages = filterQuirkIssues(messages, true).map(message => !quirksEnabled && isQuirkIssue(message)
-    ? { ...message, severity: 'warning' as const, message: `${message.message} (Quirks are disabled.)` } : message);
   const unique = [
     ...new Map(
-      policyMessages.map((message) => [`${message.code}|${message.location ?? ''}|${message.mountId ?? ''}|${message.message}`, message]),
+      messages.map((message) => [`${message.code}|${message.location ?? ''}|${message.mountId ?? ''}|${message.message}`, message]),
     ).values(),
   ];
   return { valid: !unique.some((message) => message.severity === 'error'), messages: unique };

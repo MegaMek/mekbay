@@ -1,6 +1,8 @@
 import { setConstructionBuildingTopology } from './domain/construction-building-topology';
 import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
-import { MiscEquipment } from '../models/equipment.model';
+import { MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
+import { weaponQuirkAddress, weaponQuirkMount } from '../models/entity/utils/weapon-quirks';
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { signal } from '@angular/core';
@@ -32,6 +34,7 @@ import { UnitNameService } from '../services/unit-name.service';
 import { LayoutService } from '../services/layout.service';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
 import { UnitSearchIndexService } from '../services/unit-search-index.service';
+import { QuirksCatalogService } from '../services/catalogs/quirks-catalog.service';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
 import { CBTForceMember } from '../models/force-member.model';
 import type { CBTForce } from '../models/cbt-force.model';
@@ -181,6 +184,45 @@ describe('construction editor document lifecycle', () => {
     editor = TestBed.runInInjectionContext(() => new UnitConstructionComponent());
   });
 
+  it('keeps the quirks panel available for suppressed-only chassis assignments', () => {
+    const entity = createConstructionEntity('Infantry', registry);
+    editor.entity.set(entity);
+    expect(editor.showQuirks()).toBeFalse();
+    entity.quirks.set([
+      { quirk: { key: 'easy_maintain', name: 'Easy to Maintain', description: '', type: 'positive' } },
+    ]);
+    expect(entity.applicableQuirks()).toEqual([]);
+    expect(editor.showQuirks()).toBeTrue();
+    editor.panel.set('quirks');
+    TestBed.tick();
+    expect(editor.panel()).toBe('quirks');
+    entity.quirks.set([]);
+    TestBed.tick();
+    expect(editor.showQuirks()).toBeFalse();
+    expect(editor.panel()).toBe('loadout');
+  });
+
+  it('keeps the quirks panel available for suppressed-only weapon assignments', () => {
+    const entity = createConstructionEntity('Infantry', registry);
+    const laser = new WeaponEquipment({
+      id: 'Panel Test Laser',
+      name: 'Panel Test Laser',
+      type: 'weapon',
+      flags: ['F_ENERGY'],
+      stats: { criticalSlots: 1 },
+      weapon: { heat: 3, atClass: 'LASER' },
+    });
+    const mount = addTestEquipment(entity, laser, { location: 'Infantry' });
+    editor.entity.set(entity);
+    expect(editor.showQuirks()).toBeFalse();
+    entity.weaponQuirks.set([{ name: 'imp_cooling', ...weaponQuirkAddress(entity, mount) }]);
+    expect(entity.applicableWeaponQuirks()).toEqual([]);
+    expect(editor.showQuirks()).toBeTrue();
+    editor.panel.set('quirks');
+    TestBed.tick();
+    expect(editor.panel()).toBe('quirks');
+  });
+
   it('opens a core design clean, disables saving and closes without an unsaved-changes prompt', async () => {
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
     expect(editor.entity().model()).toBe('HBK-4G');
@@ -260,7 +302,10 @@ describe('construction editor document lifecycle', () => {
     editor.redo();
     expect(editor.originalUuid()).toBeUndefined();
     editor.undo();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Restored lineage');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Restored lineage',
+    );
     await editor.save(true);
     expect(save.calls.mostRecent().args[1].originalUnitUuid).toBe(coreUuid);
     expect(editor.entity().refitFromUUID()).toBe(coreUuid);
@@ -274,7 +319,10 @@ describe('construction editor document lifecycle', () => {
 
   it('tracks effective changes, including no-op edits, undo, redo and manually restoring the original', async () => {
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek' } as UnitSummary);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'HBK-4G');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'HBK-4G',
+    );
     expect(editor.canUndo()).toBeFalse();
     expect(editor.canSave()).toBeFalse();
     editor.setArmor('RA', 'front', 6);
@@ -323,7 +371,10 @@ describe('construction editor document lifecycle', () => {
     expect(editor.routeUuid()).toBe(customUuid);
     expect(editor.saveLabel()).toBe('CONFIRM');
     expect(editor.canSave()).toBeFalse();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Revised custom');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Revised custom',
+    );
     expect(editor.saveLabel()).toBe('UPDATE REFIT');
     await editor.save();
     expect(save.calls.mostRecent().args[1]).toEqual({ uuid: customUuid, originalUnitUuid: coreUuid });
@@ -335,7 +386,10 @@ describe('construction editor document lifecycle', () => {
     await editor.openUnit(summary);
     expect(editor.routeUuid()).toBe(customUuid);
     const original = encodeNativeEntity(editor.entity());
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Forbidden edit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Forbidden edit',
+    );
     expect(encodeNativeEntity(editor.entity())).toBe(original);
     expect(editor.foreignDesign()).toBeTrue();
     editor.cloneToOwn();
@@ -345,7 +399,10 @@ describe('construction editor document lifecycle', () => {
     expect(editor.editDesign()).toBeFalse();
     expect(editor.designEditing()).toBeTrue();
     expect(save).not.toHaveBeenCalled();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Abandoned copy');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Abandoned copy',
+    );
     await editor.close();
     expect(save).not.toHaveBeenCalled();
     await editor.openUnit(summary);
@@ -366,7 +423,10 @@ describe('construction editor document lifecycle', () => {
     expect(editor.foreignDesign()).toBeFalse();
     expect(editor.editDesign()).toBeFalse();
     expect(editor.designEditing()).toBeFalse();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Locked change');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Locked change',
+    );
     expect(editor.entity().model()).toBe('HBK-4G');
     expect(save).not.toHaveBeenCalled();
     await editor.save();
@@ -378,7 +438,10 @@ describe('construction editor document lifecycle', () => {
   it('opens a core unit as an independent editable design with source lineage', async () => {
     const source = encodeNativeEntity(core);
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
-    editor.setField(editor.fields().find(field => field.id === 'chassis')!, 'Workshop Hunchback');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'chassis')!,
+      'Workshop Hunchback',
+    );
     expect(editor.routeUuid()).toBe(coreUuid);
     expect(encodeNativeEntity(core)).toBe(source);
     expect(editor.savedUuid()).toBeUndefined();
@@ -391,11 +454,142 @@ describe('construction editor document lifecycle', () => {
     expect(editor.routeUuid()).toBe(customUuid);
   });
 
+  it('pulls the BattleMech Manual quirks when the chassis changes and only then', () => {
+    const catalog = TestBed.inject(QuirksCatalogService);
+    catalog.commitPreparedCatalog(
+      catalog.prepareBundledCatalog({
+        version: 'test',
+        assetHash: 'test',
+        quirks: ['battle_fists_la', 'battle_fists_ra', 'command_mech', 'stable', 'ubiquitous_is'].map((key) => ({
+          key,
+          name: key,
+          description: '',
+          type: 'positive' as const,
+        })),
+      }),
+    );
+    const field = (id: string) => editor.fields().find((candidate) => candidate.id === id)!;
+    const quirkKeys = () =>
+      editor
+        .entity()
+        .quirks()
+        .map((entry) => entry.quirk.key);
+
+    editor.setField(field('chassis'), 'Archer');
+    expect(editor.entity().chassis()).toBe('Archer');
+    expect(catalog.getQuirksByKey().size).toBe(5);
+    expect(quirkKeys()).toEqual(['battle_fists_la', 'battle_fists_ra', 'command_mech', 'stable', 'ubiquitous_is']);
+
+    // A non-chassis edit neither re-applies nor removes the pulled rows.
+    editor.setField(field('model'), 'ARC-2R');
+    expect(quirkKeys()).toEqual(['battle_fists_la', 'battle_fists_ra', 'command_mech', 'stable', 'ubiquitous_is']);
+  });
+
+  it('applies Cestus weapon quirks when the name is set before installing the Gauss Rifle', () => {
+    const gauss = new WeaponEquipment({
+      id: 'ISGaussRifle',
+      name: 'Gauss Rifle',
+      type: 'weapon',
+      tech: { base: 'IS', level: 'Standard', advancement: { is: { common: '2700' } } },
+      flags: ['F_MEK_WEAPON', 'F_BALLISTIC'],
+      stats: { tonnage: 15, criticalSlots: 7 },
+      weapon: { heat: 1, damage: 15, ammoType: 'GAUSS', atClass: 'GAUSS' },
+    });
+    core = createConstructionEntity('Biped', createTestEquipmentRegistry({ [gauss.id]: gauss }));
+    editor.entity.set(core);
+    editor.setField(
+      editor.fields().find((field) => field.id === 'chassis')!,
+      'Cestus',
+    );
+    expect(editor.status()).toBe('');
+    expect(editor.entity().chassis()).toBe('Cestus');
+    expect(editor.entity().weaponQuirks()).toEqual([]);
+
+    editor.install(gauss, 'LT');
+
+    expect(editor.status()).toBe('');
+    const entity = editor.entity();
+    expect(entity.equipment().some((mount) => mount.equipmentId === gauss.id)).toBeTrue();
+    expect(entity.weaponQuirks().map((entry) => entry.name)).toEqual(['stable_weapon']);
+    expect(weaponQuirkMount(entity, entity.weaponQuirks()[0])?.equipmentId).toBe(gauss.id);
+    const first = weaponQuirkMount(entity, entity.weaponQuirks()[0])!;
+    editor.change(() => entity.weaponQuirks.set([]));
+    editor.change(() => entity.moveEquipment(first, 'RT', [{ location: 'RT', slotIndex: 0 }]));
+    expect(entity.weaponQuirks()).toEqual([]);
+    editor.uninstall(entity.equipment().find((mount) => mount.mountId === first.mountId)!);
+    expect(entity.weaponQuirks()).toEqual([]);
+    editor.change(() =>
+      entity.moveEquipment(
+        entity.equipment().find((mount) => mount.mountId === first.mountId)!,
+        'RT',
+        [{ location: 'RT', slotIndex: 0 }],
+      ),
+    );
+    expect(entity.weaponQuirks()).toEqual([]);
+
+    editor.install(gauss, 'LT');
+    expect(entity.weaponQuirks()).toHaveSize(1);
+    expect(weaponQuirkMount(entity, entity.weaponQuirks()[0])?.mountId).not.toBe(first.mountId);
+    editor.undo();
+    expect(editor.entity().weaponQuirks()).toEqual([]);
+    editor.redo();
+    expect(
+      editor
+        .entity()
+        .weaponQuirks()
+        .map((entry) => entry.name),
+    ).toEqual(['stable_weapon']);
+  });
+
+  it('checks Clan-name changes and raw name changes even when the display name is unchanged', () => {
+    const catalog = TestBed.inject(QuirksCatalogService);
+    catalog.commitPreparedCatalog(
+      catalog.prepareBundledCatalog({
+        version: 'test',
+        assetHash: 'test',
+        quirks: ['combat_computer', 'low_profile'].map((key) => ({
+          key,
+          name: key,
+          description: '',
+          type: 'positive' as const,
+        })),
+      }),
+    );
+    editor.change(() => editor.entity().chassis.set('Black Hawk'));
+    expect(editor.entity().quirks()).toEqual([]);
+    editor.change(() => editor.entity().clanName.set('Nova'));
+    expect(
+      editor
+        .entity()
+        .quirks()
+        .map((entry) => entry.quirk.key),
+    ).toEqual(['combat_computer', 'low_profile']);
+    editor.change(() => editor.entity().quirks.set([]));
+    editor.change(() => editor.entity().clanName.set('Nova'));
+    expect(editor.entity().quirks()).toEqual([]);
+    editor.entity().chassis.set('Black Hawk (Nova)');
+    editor.entity().clanName.set('');
+    const display = editor.entity().fullChassis();
+    editor.change(() => {
+      editor.entity().chassis.set('Black Hawk');
+      editor.entity().clanName.set('Nova');
+    });
+    expect(editor.entity().fullChassis()).toBe(display);
+    expect(
+      editor
+        .entity()
+        .quirks()
+        .map((entry) => entry.quirk.key),
+    ).toEqual(['combat_computer', 'low_profile']);
+  });
   it('clears the previous route identity when creating or copying an unsaved design', async () => {
     expect(editor.routeUuid()).toBeUndefined();
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek' } as UnitSummary);
     confirm.and.resolveTo(false);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Unsaved refit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Unsaved refit',
+    );
     await editor.createNew();
     expect(editor.routeUuid()).toBe(coreUuid);
     confirm.and.resolveTo(true);
@@ -412,7 +606,10 @@ describe('construction editor document lifecycle', () => {
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
     const draftMulId = editor.entity().mulId();
     detach.calls.reset();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Unsaved preview');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Unsaved preview',
+    );
     expect(editor.previewEntity()).toBeNull();
     expect(detach).not.toHaveBeenCalled();
     editor.panel.set('preview');
@@ -466,7 +663,10 @@ describe('construction editor document lifecycle', () => {
     expect(redone.getArmorValue('LA')).toBe(6);
     editor.panel.set('loadout');
     expect(editor.previewEntity()).toBeNull();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'A later edit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'A later edit',
+    );
     editor.panel.set('preview');
     expect(editor.previewEntity()!.model()).toBe('A later edit');
   });
@@ -497,7 +697,10 @@ describe('construction editor document lifecycle', () => {
     await editor.openForceMember(member);
     editor.setDesignEditing(true);
     const openedModel = editor.entity().model();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Preview refit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Preview refit',
+    );
     editor.panel.set('preview');
     expect(editor.previewEntity()!.model()).toBe('Preview refit');
     expect(editor.previewEntity()!.getArmorValue(location.code, face.face)).toBe(
@@ -556,7 +759,10 @@ describe('construction editor document lifecycle', () => {
     expect(editor.saveLabel()).toBe('CONFIRM');
     expect(editor.canSave()).toBeFalse();
     editor.setDesignEditing(true);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Field refit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Field refit',
+    );
     expect(editor.saveLabel()).toBe('SAVE NEW REFIT');
     await editor.save();
     expect(save.calls.mostRecent().args[1]).toEqual(
@@ -567,7 +773,10 @@ describe('construction editor document lifecycle', () => {
     expect(applyRefit.calls.mostRecent().args[1].uuid).toBe(customUuid);
     expect(encodeNativeEntity(core)).toBe(source);
     expect(editor.dirty()).toBeFalse();
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Next refit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Next refit',
+    );
     expect(editor.saveLabel()).toBe('UPDATE REFIT');
   });
 
@@ -580,7 +789,10 @@ describe('construction editor document lifecycle', () => {
       force: { readOnly: () => false, getUnitSnapshot: () => null },
     } as unknown as CBTForceMember);
     editor.setDesignEditing(true);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Revised custom');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Revised custom',
+    );
     await editor.save();
     expect(save.calls.mostRecent().args[1]).toEqual({ uuid: customUuid, originalUnitUuid: coreUuid });
     expect(applyRefit).toHaveBeenCalledTimes(1);
@@ -592,7 +804,10 @@ describe('construction editor document lifecycle', () => {
       force: { readOnly: () => false, getUnitSnapshot: () => null },
     } as unknown as CBTForceMember);
     const before = encodeNativeEntity(editor.entity());
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Locked change');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Locked change',
+    );
     editor.setArmor('HD', 'front', 9);
     editor.maxArmor();
     editor.stripArmor();
@@ -602,7 +817,10 @@ describe('construction editor document lifecycle', () => {
     expect(editor.designEditing()).toBeFalse();
     expect(editor.canUndo()).toBeFalse();
     editor.setDesignEditing(true);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Authorized refit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Authorized refit',
+    );
     expect(editor.entity().model()).toBe('Authorized refit');
     editor.setDesignEditing(false);
     expect(editor.canUndo()).toBeFalse();
@@ -681,7 +899,10 @@ describe('construction editor document lifecycle', () => {
     editor.remove(fixed);
     editor.updateMount(fixed, { omniPodMounted: true });
     editor.setArmor('HD', 'front', 0);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Unauthorized base change');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Unauthorized base change',
+    );
     expect(encodeNativeEntity(editor.entity())).toBe(before);
     const actuator = editor.fields().find((field) => field.id === 'leftHand')!;
     editor.setField(actuator, !actuator.get());
@@ -699,7 +920,10 @@ describe('construction editor document lifecycle', () => {
       force: { readOnly: () => false, getUnitSnapshot: () => null },
     } as unknown as CBTForceMember);
     editor.setDesignEditing(true);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Refit awaiting apply');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Refit awaiting apply',
+    );
     applyRefit.and.rejectWith(new Error('Force update failed'));
     await editor.save();
     expect(editor.dirty()).toBeTrue();
@@ -717,10 +941,16 @@ describe('construction editor document lifecycle', () => {
   it('retains the first saved design as lineage across successive save-as copies', async () => {
     await editor.save();
     save.and.callFake(async (_entity, options) => ({ uuid: copyUuid, originalUnitUuid: options.originalUnitUuid }));
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'First copy');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'First copy',
+    );
     await editor.save(true);
     expect(editor.originalUuid()).toBe(customUuid);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Second copy');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Second copy',
+    );
     await editor.save(true);
     expect(save.calls.mostRecent().args[1].originalUnitUuid).toBe(customUuid);
   });
@@ -734,7 +964,10 @@ describe('construction editor document lifecycle', () => {
       force: { readOnly: () => false, getUnitSnapshot: () => null },
     } as unknown as CBTForceMember);
     editor.setDesignEditing(true);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Separate variant');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Separate variant',
+    );
     save.and.callFake(async (_entity, options) => ({ uuid: copyUuid, originalUnitUuid: options.originalUnitUuid }));
     await editor.save(true);
     expect(save.calls.mostRecent().args[1]).toEqual(
@@ -874,7 +1107,10 @@ describe('construction editor document lifecycle', () => {
 
   it('rolls back failed edits and keeps the previous undo history usable', () => {
     const initial = editor.entity().chassis();
-    editor.setField(editor.fields().find(field => field.id === 'chassis')!, 'Changed design');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'chassis')!,
+      'Changed design',
+    );
     editor.change(() => {
       editor.entity().chassis.set('Partial edit');
       throw new Error('Invalid placement');
@@ -906,7 +1142,10 @@ describe('construction editor document lifecycle', () => {
   });
 
   it('preserves changes when leaving is canceled and blocks undo during a save', async () => {
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Unsaved');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Unsaved',
+    );
     confirm.and.resolveTo(false);
     expect(await editor.canLeave()).toBeFalse();
     expect(editor.dirty()).toBeTrue();
@@ -976,7 +1215,10 @@ describe('construction editor document lifecycle', () => {
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek' } as UnitSummary);
     expect(artworkSave).not.toHaveBeenCalled();
     expect(editor.effectiveArtwork()?.fluff).toBe(original);
-    editor.setField(editor.fields().find(field => field.id === 'model')!, 'Refit');
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Refit',
+    );
     await editor.save();
     expect(artworkSave).toHaveBeenCalledOnceWith(customUuid, { fluff: original });
     expect(artworkRows().get(coreUuid)?.fluff).toBe(original);
@@ -1130,6 +1372,72 @@ describe('construction editor document lifecycle', () => {
     expect(editor.unallocated().map((item) => item.mountId)).toEqual([mount.mountId]);
     editor.undo();
     expect(editor.unallocated().map((item) => item.mountId)).toEqual([mount.mountId]);
+  });
+  it('preserves weapon attachment through a composite edit, undo and redo', () => {
+    const laser = new WeaponEquipment({
+      id: 'History Laser',
+      name: 'History Laser',
+      type: 'weapon',
+      flags: ['F_ENERGY'],
+      stats: { tonnage: 1, criticalSlots: 1 },
+      weapon: { heat: 3, damage: 5, ammoType: 'NA', atClass: 'LASER' },
+    });
+    core = createConstructionEntity('Tank', createTestEquipmentRegistry({ [laser.id]: laser }));
+    editor.entity.set(core);
+    const first = addTestEquipment(core, laser, { location: 'Front' });
+    const second = addTestEquipment(core, laser, { location: 'Front' });
+    addTestEquipment(core, laser, { location: 'Front' });
+    core.weaponQuirks.set([{ name: 'accurate', ...weaponQuirkAddress(core, second) }]);
+
+    editor.change(() => {
+      core.removeEquipment(first);
+      core.moveEquipment(second, 'Rear');
+    });
+    expect(editor.status()).toBe('');
+    expect(core.weaponQuirks()).toHaveSize(1);
+    expect(weaponQuirkMount(core, core.weaponQuirks()[0])?.mountId).toBe(second.mountId);
+    expect(core.weaponQuirks()[0].location).toBe('RR');
+
+    editor.undo();
+    let restored = editor.entity();
+    expect(restored.equipment()).toHaveSize(3);
+    expect(weaponQuirkMount(restored, restored.weaponQuirks()[0])).toBe(restored.equipment()[1]);
+    editor.redo();
+    restored = editor.entity();
+    expect(restored.equipment()).toHaveSize(2);
+    expect(weaponQuirkMount(restored, restored.weaponQuirks()[0])?.location).toBe('Rear');
+    expect(restored.weaponQuirks()[0].location).toBe('RR');
+  });
+
+  it('restores uninstalled weapon quirks through undo and redo before reinstalling', () => {
+    const laser = new WeaponEquipment({
+      id: 'History Laser',
+      name: 'History Laser',
+      type: 'weapon',
+      flags: ['F_MEK_WEAPON', 'F_ENERGY'],
+      stats: { tonnage: 1, criticalSlots: 1 },
+      weapon: { heat: 3, damage: 5, ammoType: 'NA' },
+    });
+    core = createConstructionEntity('Biped', createTestEquipmentRegistry({ [laser.id]: laser }));
+    editor.entity.set(core);
+    const mount = addTestEquipment(core, laser, {
+      allocation: { kind: 'location', location: 'LT', placements: [{ location: 'LT', slotIndex: 0 }] },
+    });
+    core.weaponQuirks.set([{ name: 'accurate', ...weaponQuirkAddress(core, mount) }]);
+    editor.uninstall(mount);
+    expect(editor.entity().weaponQuirks()).toHaveSize(1);
+    editor.undo();
+    expect(editor.entity().applicableWeaponQuirks()).toHaveSize(1);
+    editor.redo();
+    expect(editor.entity().weaponQuirks()).toHaveSize(1);
+    expect(editor.entity().applicableWeaponQuirks()).toEqual([]);
+    editor.change(() => editor.entity().model.set('Another edit'));
+    editor.undo();
+    expect(editor.entity().weaponQuirks()).toHaveSize(1);
+    editor.change(() =>
+      editor.entity().moveEquipment(editor.unallocated()[0], 'LT', [{ location: 'LT', slotIndex: 0 }]),
+    );
+    expect(editor.entity().applicableWeaponQuirks()).toHaveSize(1);
   });
   it('clears the optional MUL field through the editor binding', () => {
     const field = editor.fields().find((field) => field.id === 'mulId')!;

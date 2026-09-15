@@ -404,7 +404,7 @@ export class UnitDetailsDialogComponent {
 
 
     async onAdd(event?: MouseEvent) {
-        this._addUnit(event?.ctrlKey ?? false);
+        this._addUnit(!!event && (event.ctrlKey || event.metaKey));
     }
 
     async onAddLongPress() {

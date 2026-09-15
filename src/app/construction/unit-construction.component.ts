@@ -86,10 +86,7 @@ import {
 } from '../components/floating-comp-info/equipment-info';
 import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../models/rules/game-rules';
 import { formatWeaponDamage } from '../utils/weapon-damage.util';
-import {
-  constructionEngineTechnology,
-  constructionTechnologyEligibility,
-} from './domain/construction-technology-rules';
+import { constructionEngineTechnology } from './domain/construction-technology-rules';
 import { ToastService } from '../services/toast.service';
 import { shareUrlWithClipboardFallback } from '../utils/clipboard.util';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
@@ -143,14 +140,15 @@ import { ConstructionExtrasComponent } from './components/construction-extras.co
 import { ConstructionFluffComponent } from './components/construction-fluff.component';
 import { ConstructionQuirksComponent } from './components/construction-quirks.component';
 import { ConstructionSummaryComponent } from './components/construction-summary.component';
-import { constructionQuirkApplies } from './domain/construction-quirk-rules';
-import { WEAPON_QUIRKS } from '../models/entity/utils/weapon-quirks';
+import { unitQuirkApplies } from '../models/entity/utils/unit-quirks';
+import { applyBmmQuirks, applyBmmWeaponQuirks } from './domain/construction-bmm-quirks';
 import {
+  WEAPON_QUIRKS,
   canAssignWeaponQuirks,
-  captureConstructionWeaponQuirks,
-  constructionWeaponQuirkApplies,
-  reconcileConstructionWeaponQuirks,
-} from './domain/construction-weapon-quirks';
+  weaponQuirkApplies,
+  weaponQuirkMount,
+  withWeaponQuirkReconciliation,
+} from '../models/entity/utils/weapon-quirks';
 import { ConstructionArmorControlComponent } from './components/construction-armor-control.component';
 import { ConstructionPreviewComponent } from './components/construction-preview.component';
 import { ConstructionBreakdownComponent } from './components/construction-breakdown.component';
@@ -226,6 +224,7 @@ type SlotRow = ConstructionLocation['slots'][number] & {
 interface ConstructionHistoryEntry {
   readonly source: string;
   readonly unallocated: readonly EntityMountedEquipment[];
+  readonly unallocatedWeaponQuirks: ReturnType<BaseEntity['weaponQuirks']>;
   readonly origins: ConstructionMountOrigins;
   readonly runtime: ConstructionRuntimePreview | null;
   readonly artwork: UnitArtwork | null;
@@ -326,7 +325,9 @@ export class UnitConstructionComponent {
   private dragPointer: { x: number; y: number } | null = null;
   readonly rejectWarehouseDrop = () => false;
   readonly acceptWarehouseDrop = (drag: CdkDrag<DragEquipment>) => {
-    const mount = this.entity().equipment().find((item) => item.mountId === drag.data?.mountId);
+    const mount = this.entity()
+      .equipment()
+      .find((item) => item.mountId === drag.data?.mountId);
     return !!mount && this.canRemoveMount(mount);
   };
   rowTicks(count: number): readonly undefined[] {
@@ -430,13 +431,13 @@ export class UnitConstructionComponent {
     return (
       entity.quirks().length > 0 ||
       entity.weaponQuirks().length > 0 ||
-      [...this.quirksCatalog.getQuirksByKey().keys()].some((key) => constructionQuirkApplies(entity, key)) ||
+      [...this.quirksCatalog.getQuirksByKey().keys()].some((key) => unitQuirkApplies(entity, key)) ||
       entity
         .equipment()
         .some(
           (mount) =>
             canAssignWeaponQuirks(entity, mount) &&
-            WEAPON_QUIRKS.some((quirk) => constructionWeaponQuirkApplies(entity, mount, quirk.key)),
+            WEAPON_QUIRKS.some((quirk) => weaponQuirkApplies(entity, mount, quirk.key)),
         )
     );
   });
@@ -471,15 +472,19 @@ export class UnitConstructionComponent {
   private readonly placementMount = computed(() => {
     const selection = this.placementSelection();
     return selection?.kind === 'mount'
-      ? this.entity().equipment().find((mount) => mount.mountId === selection.mountId) ?? null
+      ? (this.entity()
+          .equipment()
+          .find((mount) => mount.mountId === selection.mountId) ?? null)
       : null;
   });
   readonly placementEquipment = computed(() => {
     const selection = this.placementSelection();
-    return selection?.kind === 'equipment' ? selection.equipment : this.placementMount()?.equipment ?? null;
+    return selection?.kind === 'equipment' ? selection.equipment : (this.placementMount()?.equipment ?? null);
   });
   readonly selectedMountLocation = signal('');
   readonly hoveredMountId = signal<string | null>(null);
+  /** Ctrl (⌘ on macOS) held: the loadout uninstall button switches to direct removal. */
+  readonly removeModifierHeld = signal(false);
   readonly hoveredSystemId = signal<string | null>(null);
   readonly dragging = signal<DragEquipment | null>(null);
   readonly dragPreviewOffset = signal('0% 0%');
@@ -667,10 +672,13 @@ export class UnitConstructionComponent {
     this.placementSelection.set(null);
 
     const mount = message.mountId
-      ? this.entity().equipment().find((item) => item.mountId === message.mountId)
+      ? this.entity()
+          .equipment()
+          .find((item) => item.mountId === message.mountId)
       : undefined;
-    const location = [message.location, mount?.location, ...(mount?.getOccupiedLocations() ?? [])]
-      .find((id) => id && this.locations().some((item) => item.id === id));
+    const location = [message.location, mount?.location, ...(mount?.getOccupiedLocations() ?? [])].find(
+      (id) => id && this.locations().some((item) => item.id === id),
+    );
     const fieldByCode: Readonly<Record<string, string>> = {
       CHASSIS_REQUIRED: 'chassis',
       OEM_YEAR_AFTER_INTRODUCTION: 'originalBuildYear',
@@ -687,7 +695,11 @@ export class UnitConstructionComponent {
       if (location) this.selectedLocation.set(location);
       const unallocated = this.isMountUnallocated(mount);
       if (unallocated) this.unallocatedOpen.set(true);
-      const scope = unallocated ? '.unallocated-panel ' : location ? `.location-card[data-location="${CSS.escape(location)}"] ` : '';
+      const scope = unallocated
+        ? '.unallocated-panel '
+        : location
+          ? `.location-card[data-location="${CSS.escape(location)}"] `
+          : '';
       selector = `${scope}[data-mount-id="${CSS.escape(mount.mountId)}"]`;
     } else if (field) {
       this.panel.set('systems');
@@ -703,9 +715,7 @@ export class UnitConstructionComponent {
       this.panel.set('loadout');
       this.selectedLocation.set(location);
       fallback = `.location-card[data-location="${CSS.escape(location)}"]`;
-      selector = message.category === 'armor'
-        ? `${fallback} .location-defense`
-        : fallback;
+      selector = message.category === 'armor' ? `${fallback} .location-defense` : fallback;
     } else if (message.code === 'OVERWEIGHT') {
       this.detailsView.set('weight');
       selector = 'construction-breakdown';
@@ -719,27 +729,42 @@ export class UnitConstructionComponent {
     } else {
       this.panel.set('systems');
       const group: Partial<Record<EntityValidationMessage['category'], string>> = {
-        general: 'Chassis', tech: 'Chassis', weight: 'Chassis', movement: 'Movement',
+        general: 'Chassis',
+        tech: 'Chassis',
+        weight: 'Chassis',
+        movement: 'Movement',
       };
-      selector = message.category === 'heat' ? '[data-field-id="heatSinks"]'
-        : `[data-system-group="${group[message.category] ?? 'Systems'}"]`;
+      selector =
+        message.category === 'heat'
+          ? '[data-field-id="heatSinks"]'
+          : `[data-system-group="${group[message.category] ?? 'Systems'}"]`;
     }
-    afterNextRender(() => {
-      const shell = this.constructionShell()?.nativeElement;
-      const target = shell?.querySelector<HTMLElement>(selector) ?? shell?.querySelector<HTMLElement>(fallback);
-      if (!target) return;
-      // Prefer the invalid armor facing, then an editable control or equipment name.
-      const focus = target.querySelector<HTMLElement>('input:out-of-range:not(:disabled), [aria-invalid="true"]:not(:disabled)')
-        ?? target.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled), button:not(:disabled), summary')
-        ?? target;
-      if (focus === target && !target.matches('button, input, select, summary, [tabindex]')) target.tabIndex = -1;
-      focus.focus({ preventScroll: true });
-      target.scrollIntoView({ block: 'center', inline: 'nearest' });
-    }, { injector: this.injector });
+    afterNextRender(
+      () => {
+        const shell = this.constructionShell()?.nativeElement;
+        const target = shell?.querySelector<HTMLElement>(selector) ?? shell?.querySelector<HTMLElement>(fallback);
+        if (!target) return;
+        // Prefer the invalid armor facing, then an editable control or equipment name.
+        const focus =
+          target.querySelector<HTMLElement>(
+            'input:out-of-range:not(:disabled), [aria-invalid="true"]:not(:disabled)',
+          ) ??
+          target.querySelector<HTMLElement>(
+            'input:not(:disabled), select:not(:disabled), button:not(:disabled), summary',
+          ) ??
+          target;
+        if (focus === target && !target.matches('button, input, select, summary, [tabindex]')) target.tabIndex = -1;
+        focus.focus({ preventScroll: true });
+        target.scrollIntoView({ block: 'center', inline: 'nearest' });
+      },
+      { injector: this.injector },
+    );
   }
   readonly equipmentDrawerOpen = signal(false);
   readonly mobileEquipment = computed(() => this.layout.windowWidth() <= 900);
-  readonly equipmentDrawerActive = computed(() => this.mobileEquipment() && this.equipmentDrawerOpen() && !this.dragging());
+  readonly equipmentDrawerActive = computed(
+    () => this.mobileEquipment() && this.equipmentDrawerOpen() && !this.dragging(),
+  );
   readonly forceMember = signal<CBTForceMember | null>(null);
   readonly editDesign = signal(false);
   readonly designEditing = computed(() => !this.foreignDesign() && (!this.forceMember() || this.editDesign()));
@@ -793,13 +818,14 @@ export class UnitConstructionComponent {
     const selection = this.placementSelection();
     if (!selection) return false;
     const mount = this.placementMount();
-    return selection.kind === 'mount'
-      ? !!mount && this.canPlaceMount(mount)
-      : this.canInstall(selection.equipment);
+    return selection.kind === 'mount' ? !!mount && this.canPlaceMount(mount) : this.canInstall(selection.equipment);
   });
   private canPlaceMount(mount: EntityMountedEquipment): boolean {
-    return !!mount.equipment &&
-      (this.isMountUnallocated(mount) || !!this.spreadAllocation(mount)?.remaining) && this.canEditMount(mount);
+    return (
+      !!mount.equipment &&
+      (this.isMountUnallocated(mount) || !!this.spreadAllocation(mount)?.remaining) &&
+      this.canEditMount(mount)
+    );
   }
   placementSourceSelected(equipmentId: string, mountId?: string): boolean {
     const drag = this.dragging();
@@ -1341,14 +1367,19 @@ export class UnitConstructionComponent {
         };
       });
   });
-  readonly validation = computed(() => validateConstruction(this.entity(), this.optionsService.options().CBTOptionalRules?.quirks !== false));
+  readonly validation = computed(() => validateConstruction(this.entity()));
   readonly errors = computed(() => this.validation().messages.filter((message) => message.severity === 'error'));
   readonly warnings = computed(() => this.validation().messages.filter((message) => message.severity === 'warning'));
   readonly notices = computed(() => this.validation().messages.filter((message) => message.severity === 'info'));
-  readonly validationSeverity = computed(() => this.errors().length ? 'error' : this.warnings().length ? 'warning' : this.notices().length ? 'info' : 'clear');
+  readonly validationSeverity = computed(() =>
+    this.errors().length ? 'error' : this.warnings().length ? 'warning' : this.notices().length ? 'info' : 'clear',
+  );
   readonly validationLabel = computed(() => {
-    const [count, label] = this.errors().length ? [this.errors().length, 'issue'] as const
-      : this.warnings().length ? [this.warnings().length, 'warning'] as const : [this.notices().length, 'notice'] as const;
+    const [count, label] = this.errors().length
+      ? ([this.errors().length, 'issue'] as const)
+      : this.warnings().length
+        ? ([this.warnings().length, 'warning'] as const)
+        : ([this.notices().length, 'notice'] as const);
     return count ? `${count} ${label}${count === 1 ? '' : 's'}` : 'Checks passed';
   });
   private readonly mountIssueMessages = computed(() => {
@@ -1484,20 +1515,19 @@ export class UnitConstructionComponent {
   });
   readonly unallocatedOpen = linkedSignal<boolean, boolean>({
     source: () => this.unallocated().length > 0,
-    computation: (hasEquipment, previous) =>
-      hasEquipment && !previous?.source ? true : (previous?.value ?? false),
+    computation: (hasEquipment, previous) => (hasEquipment && !previous?.source ? true : (previous?.value ?? false)),
   });
   readonly removableUnallocated = computed(() =>
     this.unallocated().filter((mount) => this.isMountUnallocated(mount) && this.canRemoveMount(mount)),
   );
   equipmentWarning(mount: EntityMountedEquipment, location = mount.location): string {
-    const caseWarning = mount.allocation.kind === 'location' && caseEquipmentKind(mount.equipment)
-      ? this.locationCase().get(location)?.warning
-      : undefined;
-    return [...new Set([
-      ...(this.mountIssueMessages().get(mount.mountId) ?? []),
-      ...(caseWarning ? [caseWarning] : []),
-    ])].join('\n');
+    const caseWarning =
+      mount.allocation.kind === 'location' && caseEquipmentKind(mount.equipment)
+        ? this.locationCase().get(location)?.warning
+        : undefined;
+    return [
+      ...new Set([...(this.mountIssueMessages().get(mount.mountId) ?? []), ...(caseWarning ? [caseWarning] : [])]),
+    ].join('\n');
   }
   readonly selectedMountInstallIssues = computed(() => {
     const mount = this.selectedMount();
@@ -1509,8 +1539,11 @@ export class UnitConstructionComponent {
   readonly acceptUnallocatedDrop = (drag: CdkDrag<DragEquipment>) => {
     if (!drag.data?.mountId) {
       const equipment = this.registry.findEquipment(drag.data?.equipmentId);
-      return !!equipment && this.canInstall(equipment)
-        && constructionEquipmentEligibilityIssues(this.entity(), equipment).length === 0;
+      return (
+        !!equipment &&
+        this.canInstall(equipment) &&
+        constructionEquipmentEligibilityIssues(this.entity(), equipment).length === 0
+      );
     }
     const mount = this.entity()
       .equipment()
@@ -1521,8 +1554,16 @@ export class UnitConstructionComponent {
   constructor() {
     // Clear the previous choice before click handlers can select or install equipment.
     document.addEventListener('click', this.cancelPlacementOnOutsideClick, true);
+    const trackRemoveModifier = (event: KeyboardEvent) => this.removeModifierHeld.set(event.ctrlKey || event.metaKey);
+    const clearRemoveModifier = () => this.removeModifierHeld.set(false);
+    document.addEventListener('keydown', trackRemoveModifier);
+    document.addEventListener('keyup', trackRemoveModifier);
+    window.addEventListener('blur', clearRemoveModifier);
     this.destroyRef.onDestroy(() => {
       document.removeEventListener('click', this.cancelPlacementOnOutsideClick, true);
+      document.removeEventListener('keydown', trackRemoveModifier);
+      document.removeEventListener('keyup', trackRemoveModifier);
+      window.removeEventListener('blur', clearRemoveModifier);
       this.inspector.close();
       this.endDrag();
     });
@@ -1765,13 +1806,24 @@ export class UnitConstructionComponent {
     try {
       previous = this.captureHistory();
       const omniBase = this.designEditing() ? null : constructionOmniBaseSource(entity);
-      const weaponQuirks = captureConstructionWeaponQuirks(entity);
       const systemSlots = constructionSystemSlotKeys(entity);
-      action();
-      reconcileConstructionSystemSlots(entity, systemSlots);
-      ensureConstructionMaterialEquipment(entity);
-      reconcileConstructionEquipmentRelationships(entity);
-      reconcileConstructionWeaponQuirks(entity, weaponQuirks);
+      const chassis = entity.chassis();
+      const clanName = entity.clanName();
+      const previousMountIds = new Set(entity.equipment().map((mount) => mount.mountId));
+      withWeaponQuirkReconciliation(entity, () => {
+        action();
+        reconcileConstructionSystemSlots(entity, systemSlots);
+        ensureConstructionMaterialEquipment(entity);
+        reconcileConstructionEquipmentRelationships(entity);
+      });
+      // A chassis or clan-name edit pulls the matching BattleMech Manual rows; suppression keeps the
+      // assignments stored but inactive until the design allows each quirk again.
+      if (entity.chassis() !== chassis || entity.clanName() !== clanName)
+        applyBmmQuirks(entity, this.quirksCatalog.getQuirksByKey());
+      applyBmmWeaponQuirks(
+        entity,
+        entity.equipment().filter((mount) => !previousMountIds.has(mount.mountId)),
+      );
       const unallocated = entity.equipment().filter((mount) => mount.allocation.kind === 'unallocated');
       if (
         encodeNativeEntity(entity) === previous.source &&
@@ -1794,7 +1846,7 @@ export class UnitConstructionComponent {
       this.status.set('');
     } catch (error) {
       if (previous !== undefined) {
-        const restored = this.parseHistoryEntity(previous.source, previous.unallocated);
+        const restored = this.parseHistoryEntity(previous);
         restored.uuid.set(entity.uuid());
         this.entity.set(restored);
         this.mountOrigins.set(previous.origins);
@@ -1830,9 +1882,12 @@ export class UnitConstructionComponent {
     const { UnitIconPickerDialogComponent } =
       await import('../components/unit-icon-picker-dialog/unit-icon-picker-dialog.component');
     if (this.destroyRef.destroyed || this.entity() !== entity) return;
-    const result = await firstValueFrom(this.dialogs.createDialog<string | null>(UnitIconPickerDialogComponent, {
-      data: { unit: entity }, autoFocus: 'input[type="search"]',
-    }).closed);
+    const result = await firstValueFrom(
+      this.dialogs.createDialog<string | null>(UnitIconPickerDialogComponent, {
+        data: { unit: entity },
+        autoFocus: 'input[type="search"]',
+      }).closed,
+    );
     if (this.destroyRef.destroyed) return;
     if (result !== undefined && this.entity() === entity) this.change(() => entity.iconPath.set(result ?? ''));
     trigger.focus();
@@ -2241,7 +2296,8 @@ export class UnitConstructionComponent {
     const bounds = scroll.getBoundingClientRect();
     const top = Math.max(bounds.top, shell.querySelector('.workshop-header')!.getBoundingClientRect().bottom);
     const bottom = Math.min(bounds.bottom, this.constructionFooter()!.nativeElement.getBoundingClientRect().top);
-    if (pointer.x < bounds.left || pointer.x > bounds.right || pointer.y < bounds.top || pointer.y > bounds.bottom) return;
+    if (pointer.x < bounds.left || pointer.x > bounds.right || pointer.y < bounds.top || pointer.y > bounds.bottom)
+      return;
     // Use the visible loadout edges, excluding the sticky header and footer.
     const step = pointer.y < top + 48 ? -10 : pointer.y > bottom - 48 ? 10 : 0;
     const previous = scroll.scrollTop;
@@ -2404,10 +2460,11 @@ export class UnitConstructionComponent {
     const data = event.item.data;
     if (!data?.mountId) {
       const equipment = this.registry.findEquipment(data?.equipmentId);
-      if (equipment) this.change(
-        () => this.finishEquipmentEdit(installConstructionEquipment(this.entity(), equipment)),
-        this.canInstall(equipment),
-      );
+      if (equipment)
+        this.change(
+          () => this.finishEquipmentEdit(installConstructionEquipment(this.entity(), equipment)),
+          this.canInstall(equipment),
+        );
     } else {
       const mount = this.entity()
         .equipment()
@@ -2420,8 +2477,30 @@ export class UnitConstructionComponent {
   }
   onWarehouseDrop(event: { item: { data: DragEquipment }; isPointerOverContainer?: boolean }): void {
     if (event.isPointerOverContainer === false) return;
-    const mount = this.entity().equipment().find((item) => item.mountId === event.item.data?.mountId);
+    const mount = this.entity()
+      .equipment()
+      .find((item) => item.mountId === event.item.data?.mountId);
     if (mount) this.remove(mount);
+  }
+  /** Holding Ctrl (⌘ on macOS) turns the loadout uninstall button into a direct removal. */
+  directRemoveActive(mount: EntityMountedEquipment): boolean {
+    return this.removeModifierHeld() && this.canRemoveMount(mount);
+  }
+  uninstallOrRemove(
+    mount: EntityMountedEquipment,
+    location?: string,
+    count?: number,
+    slotIndex?: number,
+    event?: Event,
+  ): void {
+    if (
+      this.directRemoveActive(mount) ||
+      (event instanceof MouseEvent && (event.ctrlKey || event.metaKey) && this.canRemoveMount(mount))
+    ) {
+      this.remove(mount, event);
+      return;
+    }
+    this.uninstallBlock(mount, location, count, slotIndex, event);
   }
   uninstallBlock(
     mount: EntityMountedEquipment,
@@ -2484,7 +2563,10 @@ export class UnitConstructionComponent {
   uninstall(mount: EntityMountedEquipment, event?: Event): void {
     event?.stopPropagation();
     if (!this.canUninstallMount(mount)) return;
-    this.change(() => this.finishEquipmentEdit(uninstallConstructionEquipment(this.entity(), mount)), this.canEditMount(mount));
+    this.change(
+      () => this.finishEquipmentEdit(uninstallConstructionEquipment(this.entity(), mount)),
+      this.canEditMount(mount),
+    );
     this.closeInstalledInspector();
   }
   remove(mount: EntityMountedEquipment, event?: Event): void {
@@ -2559,22 +2641,30 @@ export class UnitConstructionComponent {
     const runtime = this.runtimePreview();
     const artwork = this.effectiveArtwork();
     const unallocated = entity.equipment().filter((mount) => mount.allocation.kind === 'unallocated');
-    if (!this.forceMember()) return { source, unallocated, origins: new Map(), runtime, artwork };
-    const detached = this.parseHistoryEntity(source, unallocated);
+    const unallocatedWeaponQuirks = entity
+      .weaponQuirks()
+      .filter((entry) => weaponQuirkMount(entity, entry)?.allocation.kind === 'unallocated');
+    const draft = { source, unallocated, unallocatedWeaponQuirks };
+    if (!this.forceMember()) return { ...draft, origins: new Map(), runtime, artwork };
+    const detached = this.parseHistoryEntity(draft);
     return {
-      source,
-      unallocated,
+      ...draft,
       origins: this.forceConstruction.remapOrigins(entity, detached, this.mountOrigins()),
       runtime,
       artwork,
     };
   }
-  private parseHistoryEntity(source: string, unallocated: readonly EntityMountedEquipment[]): BaseEntity {
+  private parseHistoryEntity({
+    source,
+    unallocated,
+    unallocatedWeaponQuirks,
+  }: Pick<ConstructionHistoryEntry, 'source' | 'unallocated' | 'unallocatedWeaponQuirks'>): BaseEntity {
     const entity = this.customUnits.parseDraft(source, nativeEntityFormat(this.entity()));
     const heatSinkCount = entity instanceof MekEntity ? entity.heatSinkCount() : 0;
     // Optional inventory belongs to this editing session; native saves retain only installed equipment.
     entity.updateEquipment((mounts) => mounts.filter((mount) => mount.allocation.kind !== 'unallocated'));
     entity.addEquipmentBatch(unallocated);
+    entity.weaponQuirks.update((entries) => [...entries, ...unallocatedWeaponQuirks]);
     if (entity instanceof MekEntity) entity.initializeParsedHeatSinkMounts(heatSinkCount);
     ensureConstructionMaterialEquipment(entity);
     return entity;
@@ -2584,7 +2674,7 @@ export class UnitConstructionComponent {
     const previous = source.pop();
     if (previous === undefined) return;
     destination.push(this.captureHistory());
-    const entity = this.parseHistoryEntity(previous.source, previous.unallocated);
+    const entity = this.parseHistoryEntity(previous);
     entity.uuid.set(this.entity().uuid());
     this.entity.set(entity);
     this.mountOrigins.set(previous.origins);
@@ -2598,7 +2688,7 @@ export class UnitConstructionComponent {
     if (!entry || this.forceMember()?.force.readOnly()) return false;
     if (this.designEditing() || entry.source === encodeNativeEntity(this.entity())) return true;
     if (!this.reconfiguring()) return false;
-    const previous = untracked(() => this.parseHistoryEntity(entry.source, entry.unallocated));
+    const previous = untracked(() => this.parseHistoryEntity(entry));
     return (
       constructionOmniBaseSource(previous) === constructionOmniBaseSource(this.entity()) &&
       !constructionReconfigurationIssues(previous).length
@@ -2985,7 +3075,10 @@ export class UnitConstructionComponent {
   private readonly cancelPlacementOnOutsideClick = (event: MouseEvent): void => {
     if (!this.placementSelection()) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('.inspector-close, .inspector-place, .installed-inspector-backdrop, .empty-slot.placement-ready')) return;
+    if (
+      target?.closest('.inspector-close, .inspector-place, .installed-inspector-backdrop, .empty-slot.placement-ready')
+    )
+      return;
     // Keep the inspector's edit context available to the control being clicked.
     this.placementSelection.set(null);
   };

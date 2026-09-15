@@ -7,6 +7,24 @@ import { weaponQuirkAddress } from '../../models/entity/utils/weapon-quirks';
 import { RecordSheetSvgGenerator } from './record-sheet-svg-generator';
 
 describe('record sheet quirk visibility', () => {
+    it('prints only the eligible fist and restores the other after its hand returns', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(70);
+        entity.quirks.set(['la', 'ra'].map(side => ({ quirk: {
+            key: `battle_fists_${side}`, name: `Battle Fists (${side.toUpperCase()})`, type: 'positive', description: '',
+        } })));
+        for (const format of ['letter', 'a4'] as const) {
+            for (const left of [false, true]) {
+                entity.hasHandActuator.update(hands => ({ ...hands, left }));
+                const sheet = await RecordSheetSvgGenerator.generate(entity, { format });
+                const text = sheet.querySelector('.unitQuirks')?.textContent ?? '';
+                expect(text).toContain('Battle Fists (RA)');
+                expect(text.includes('Battle Fists (LA)')).toBe(left);
+                expect(entity.quirks()).toHaveSize(2);
+            }
+        }
+    });
+
     it('retains authored aerospace quirks in the footer and respects the display option in both rulesets', async () => {
         for (const ruleset of ['total-warfare', 'core-2026'] as const) {
             for (const entity of [new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity(), new TestDropShipEntity()]) {
@@ -28,9 +46,9 @@ describe('record sheet quirk visibility', () => {
         for (const ruleset of ['total-warfare', 'core-2026'] as const) {
             const entity = new TestProtoMekEntity();
             entity.setTonnage(6);
-            entity.quirks.set([{ quirk: { key: 'distracting', name: 'Distracting', type: 'positive', description: '' } }]);
+            entity.quirks.set([{ quirk: { key: 'easy_pilot', name: 'Easy to Pilot', type: 'positive', description: '' } }]);
             const enabled = await RecordSheetSvgGenerator.generate(entity, { ruleset });
-            expect(enabled.querySelector('.unitQuirks')?.textContent).toBe('Quirks: Distracting');
+            expect(enabled.querySelector('.unitQuirks')?.textContent).toBe('Quirks: Easy to Pilot');
             expect(enabled.textContent).not.toContain('Main Gun Destroyed');
             const disabled = await RecordSheetSvgGenerator.generate(entity, { ruleset, showQuirks: false });
             expect(disabled.querySelector('.unitQuirks')).toBeNull();
@@ -45,18 +63,19 @@ describe('record sheet quirk visibility', () => {
             const laser = new WeaponEquipment({ id: 'Sheet Laser', name: 'Sheet Laser', type: 'weapon', weapon: { heat: 3, damage: 5 } });
             const mount = addTestEquipment(entity, laser, { allocation: { kind: 'location', location,
                 ...(entity.entityType === 'Mek' ? { placements: [{ location, slotIndex: 0 }] } : {}) } });
-            entity.weaponQuirks.set([{ name: 'accurate', ...weaponQuirkAddress(entity, mount) }]);
+            entity.weaponQuirks.set(['accurate', 'imp_cooling'].map(name => ({ name, ...weaponQuirkAddress(entity, mount) })));
             const formats = entity.entityType === 'Mek' ? ['letter', 'a4'] as const : ['compact', 'letter', 'a4'] as const;
             for (const format of formats) {
                 const enabled = await RecordSheetSvgGenerator.generate(entity, { format });
                 const visible = [...enabled.querySelectorAll('.unitQuirks')].map(node => node.textContent).join(' ');
                 expect(visible).withContext(`${entity.entityType} ${format}`).toContain('Easy to Maintain');
                 expect(visible).toContain('Accurate Weapon');
+                expect(visible.includes('Improved Cooling Jacket')).toBe(entity.entityType === 'Mek');
                 const disabled = await RecordSheetSvgGenerator.generate(entity, { format, showQuirks: false });
                 expect(disabled.querySelector('.unitQuirks')).withContext(`${entity.entityType} ${format}`).toBeNull();
                 expect(disabled.textContent).not.toContain('Accurate Weapon');
                 expect(entity.quirks().length).toBe(1);
-                expect(entity.weaponQuirks().length).toBe(1);
+                expect(entity.weaponQuirks().length).toBe(2);
             }
         }
     });

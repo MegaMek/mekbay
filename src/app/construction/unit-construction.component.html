@@ -130,17 +130,26 @@
     @if (mount && canUninstallMount(mount)) {
       <button
         class="uninstall-mount"
-        (click)="uninstallBlock(mount, location, span, index, $event)"
+        [class.direct-remove]="directRemoveActive(mount)"
+        (click)="uninstallOrRemove(mount, location, span, index, $event)"
         [attr.aria-label]="
-          'Uninstall ' + label + (spreadAllocation(mount) ? ' block from ' + locationLabel(location) : '')
+          directRemoveActive(mount)
+            ? 'Remove ' + label + ' from the design'
+            : 'Uninstall ' + label + (spreadAllocation(mount) ? ' block from ' + locationLabel(location) : '')
         "
         [title]="
-          spreadAllocation(mount)
-            ? 'Uninstall this block · Return ' + span + (span === 1 ? ' slot' : ' slots') + ' to unallocated'
-            : 'Uninstall · Move to unallocated equipment'
+          directRemoveActive(mount)
+            ? 'Remove · Delete ' + label + ' from the design'
+            : spreadAllocation(mount)
+              ? 'Uninstall this block · Return ' + span + (span === 1 ? ' slot' : ' slots') + ' to unallocated'
+              : 'Uninstall · Move to unallocated equipment'
         "
       >
-        <ng-container [ngTemplateOutlet]="uninstallIcon" />
+        @if (directRemoveActive(mount)) {
+          ×
+        } @else {
+          <ng-container [ngTemplateOutlet]="uninstallIcon" />
+        }
       </button>
     }
   </ng-template>
@@ -489,7 +498,9 @@
         (click)="navigateToIssue(message)"
         title="Go to issue"
       >
-        <b [attr.aria-label]="message.severity === 'info' ? 'Notice' : message.severity">{{ message.severity === 'error' ? '!' : message.severity === 'warning' ? '⚠' : 'i' }}</b
+        <b [attr.aria-label]="message.severity === 'info' ? 'Notice' : message.severity">{{
+          message.severity === 'error' ? '!' : message.severity === 'warning' ? '⚠' : 'i'
+        }}</b
         ><span>{{ message.message }}</span
         ><small>{{ message.location || message.category }}</small>
       </button>
@@ -1245,7 +1256,10 @@
                           [disabled]="!canEditField(field)"
                         />
                         @if (oemYearVisible()) {
-                          <label class="oem-year-field" data-field-id="originalBuildYear" [tooltip]="oemYearField().hint ?? null"
+                          <label
+                            class="oem-year-field"
+                            data-field-id="originalBuildYear"
+                            [tooltip]="oemYearField().hint ?? null"
                             >OEM year
                             <input
                               id="construction-oem-year"

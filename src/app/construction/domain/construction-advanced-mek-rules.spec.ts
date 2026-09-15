@@ -108,10 +108,9 @@ describe('advanced Mek construction combinations', () => {
         entity.armoredSystemSlots.set(new Set([`HD:${index}`]));
         entity.quirks.set([{ quirk: { key: 'cramped_cockpit', name: 'Cramped Cockpit', description: '', type: 'negative' } }]);
         expect(codes(entity)).toContain('MEK_INTERFACE_ARMOR');
-        expect(codes(entity)).toContain('MEK_INTERFACE_CRAMPED');
-        const disabled = validateConstruction(entity, false).messages;
-        expect(disabled.find(issue => issue.code === 'MEK_INTERFACE_CRAMPED')?.severity).toBe('warning');
-        expect(disabled.find(issue => issue.code === 'MEK_INTERFACE_ARMOR')?.severity).toBe('error');
+        expect(codes(entity)).not.toContain('MEK_INTERFACE_CRAMPED');
+        expect(entity.applicableQuirks()).toEqual([]);
+        expect(entity.quirks()).toHaveSize(1);
     });
 
     it('requires a chainsaw to replace the hand while retaining the lower arm', () => {

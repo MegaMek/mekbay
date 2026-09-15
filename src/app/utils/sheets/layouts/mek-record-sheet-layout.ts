@@ -519,7 +519,7 @@ function appendMekInventoryRows(
     const equipmentRows = mekRecordSheetInventoryRows(entity);
     const physicalAttacks = mekPhysicalInventoryRows(entity);
     const ammo = recordSheetAmmoProfile(entity);
-    const quirks = (geometry.showQuirks === false ? [] : entity.quirks())
+    const quirks = (geometry.showQuirks === false ? [] : entity.applicableQuirks())
         .map(entry => entry.quirk.name).sort((left, right) => left.localeCompare(right))
         .concat(geometry.showQuirks === false ? [] : weaponQuirkLabels(entity));
     const rowLines = (row: { name: string; location?: string; heat?: string; damage: string; minimumRange?: string; ranges: readonly string[] }, size: number, nameWidth = 68) =>

@@ -185,7 +185,7 @@ export function drawAeroDataPanel(
         size: font(RECORD_SHEET_FONT.inventory), lineHeight: y(rowStep), maxLines: Number.POSITIVE_INFINITY,
     });
     const quirks = content.showQuirks === false ? []
-        : entity.quirks().map(entry => entry.quirk.name).concat(weaponQuirkLabels(entity));
+        : entity.applicableQuirks().map(entry => entry.quirk.name).concat(weaponQuirkLabels(entity));
     if (quirks.length > 0) {
         const quirkGroup = svgElement('g');
         quirkGroup.setAttribute('class', 'unitQuirks');

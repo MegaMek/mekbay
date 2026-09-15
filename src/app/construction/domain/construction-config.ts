@@ -14,11 +14,3 @@ export const CONSTRUCTION_INTRO_YEAR_MARGIN = 5;
  * enforce extinction and reintroduction dates as well.
  */
 export const CONSTRUCTION_VALIDATE_EXTINCTION = false;
-
-/**
- * Whether construction validation reports issues for assigned unit and weapon quirks.
- * Set to true to enforce quirk applicability and report unmatched weapon quirks
- * when the user's Quirks optional rule is enabled.
- * Quirk selection still uses the applicability rules independently of this setting.
- */
-export const CONSTRUCTION_VALIDATE_QUIRKS = true;

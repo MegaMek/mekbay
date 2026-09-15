@@ -12,7 +12,7 @@ import type { SourceHashCanary } from './source-hash-canary';
 import type { CatalogEntryOrigin, UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 26 as const;
+export const UNIT_SUMMARY_VERSION = 27 as const;
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -234,7 +234,10 @@ export interface UnitSummary {
   comp: UnitSummaryComponent[];
   su: number;
   crewSize: number;
+  /** Applicable quirks for display and search. */
   quirks: string[];
+  /** All assigned quirks, including suppressed ones, for export. */
+  assignedQuirks: string[];
   features: string[];
   icon: string;
   cargo?: {

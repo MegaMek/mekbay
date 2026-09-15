@@ -529,7 +529,9 @@ tech-base-badge {
   padding-top: 0;
 }
 
-.location-card { @include wedge.panel; }
+.location-card {
+  @include wedge.panel;
+}
 
 .mek-grid [data-location='RA'],
 .mek-grid [data-location='RT'],
@@ -1192,6 +1194,16 @@ tech-base-badge {
 .uninstall-mount:focus-visible {
   color: white;
   background: #ffffff20;
+}
+
+.uninstall-mount.direct-remove {
+  color: #ffb3b3;
+}
+
+.uninstall-mount.direct-remove:hover:not(:disabled),
+.uninstall-mount.direct-remove:focus-visible {
+  color: #ff6b6b;
+  background: #d3232333;
 }
 
 .selected-equipment,

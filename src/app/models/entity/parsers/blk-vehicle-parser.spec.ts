@@ -7,29 +7,34 @@ import { EquipmentRegistry } from '../../equipment-lookup';
 import { writeBlkVehicle } from '../writers/blk-vehicle-writer';
 import { BuildingBlock } from './building-block';
 import { parseBlkVehicle } from './blk-vehicle-parser';
+import { parseEntity } from '../parse-entity';
 import { ParseContext } from './parse-context';
 
 describe('BLK vehicle parser', () => {
   const standardArmor = new ArmorEquipment({
-    id: 'Standard Armor', name: 'Standard', type: 'armor',
-    armor: { type: 'STANDARD' }, tech: { base: 'All' },
+    id: 'Standard Armor',
+    name: 'Standard',
+    type: 'armor',
+    armor: { type: 'STANDARD' },
+    tech: { base: 'All' },
   });
   const registry = new EquipmentRegistry({ [standardArmor.id]: standardArmor });
 
   for (const motive of ['Rail', 'MagLev']) {
     it(`accepts ${motive} support vehicles without an unknown-motive warning`, () => {
       const context = new ParseContext('rail-support.blk', registry);
-      const source = vehicleBlk('').replace('<UnitType>\nTank\n', '<UnitType>\nSupportTank\n')
+      const source = vehicleBlk('')
+        .replace('<UnitType>\nTank\n', '<UnitType>\nSupportTank\n')
         .replace('<motion_type>\nTracked\n', `<motion_type>\n${motive}\n`);
       const entity = parseBlkVehicle(new BuildingBlock(source), context);
 
       expect(entity.motiveType()).toBe(motive);
-      expect(context.diagnostics.filter(issue => issue.field === 'motion_type')).toEqual([]);
+      expect(context.diagnostics.filter((issue) => issue.field === 'motion_type')).toEqual([]);
       expect(writeBlkVehicle(entity)).toContain(`<motion_type>\n${motive}\n</motion_type>`);
     });
   }
 
-  it('reads and writes MegaMek\'s canonical extra_seats key', () => {
+  it("reads and writes MegaMek's canonical extra_seats key", () => {
     const entity = parseBlkVehicle(
       new BuildingBlock(vehicleBlk('<extra_seats>\n3\n</extra_seats>')),
       new ParseContext('extra-seats.blk', registry),
@@ -51,9 +56,21 @@ describe('BLK vehicle parser', () => {
     expect(written).not.toContain('<extraSeats>');
   });
 
+  it('drops a weapon quirk whose weapon is missing from the file', () => {
+    const parsed = parseEntity(
+      vehicleBlk('<weaponquirks>\naccurate:FR:0:Missing Laser\n</weaponquirks>'),
+      'missing-weapon-quirk.blk',
+      registry,
+    );
+
+    expect(parsed.entity.weaponQuirks()).toEqual([]);
+  });
+
   it('round trips faction and embedded presentation bytes', () => {
     const entity = parseBlkVehicle(
-      new BuildingBlock(vehicleBlk('<faction>\nDC\n</faction>\n<icon>\nabc\n</icon>\n<fluffimage>\ndef\n</fluffimage>')),
+      new BuildingBlock(
+        vehicleBlk('<faction>\nDC\n</faction>\n<icon>\nabc\n</icon>\n<fluffimage>\ndef\n</fluffimage>'),
+      ),
       new ParseContext('metadata.blk', registry),
     );
     const written = writeBlkVehicle(entity);

@@ -10,8 +10,9 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
   imports: [TooltipDirective],
   template: `<span
     class="quirk"
-    [class.positive]="quirk()?.type === 'positive'"
-    [class.negative]="quirk()?.type === 'negative'"
+    [class.positive]="!quirk()?.unresolved && quirk()?.type === 'positive'"
+    [class.negative]="!quirk()?.unresolved && quirk()?.type === 'negative'"
+    [class.muted]="muted()"
     [tooltip]="quirk()?.description || null"
   >
     {{ name() || quirk()?.name }}<ng-content />
@@ -44,6 +45,10 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
         border-color: red;
         background: #452420;
       }
+      .muted {
+        background: transparent;
+        color: var(--text-color-secondary, #999);
+      }
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,4 +56,6 @@ import { TooltipDirective } from '../../directives/tooltip.directive';
 export class QuirkBadgeComponent {
   readonly quirk = input<Quirk>();
   readonly name = input('');
+  /** Keeps the positive/negative border but drops the fill for suppressed assignments. */
+  readonly muted = input(false);
 }

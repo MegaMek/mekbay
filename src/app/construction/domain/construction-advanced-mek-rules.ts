@@ -65,9 +65,6 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
 
     const cockpit = entity.mountedCockpit();
     const quad = entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee';
-    if (entity.cockpitType() === 'Interface') {
-        if (entity.quirks().some(quirk => quirk.quirk.key === 'cramped_cockpit')) add('MEK_INTERFACE_CRAMPED', 'Interface cockpits cannot have the Cramped Cockpit quirk.');
-    }
     for (const location of entity.locationOrder) {
         const local = misc.filter(mount => mount.location === location);
         if (local.filter(mount => mount.equipment!.hasFlag('F_SHIELD')).length > 1) add('MEK_SHIELD_LOCATION', 'Only one shield is permitted per location.', location);

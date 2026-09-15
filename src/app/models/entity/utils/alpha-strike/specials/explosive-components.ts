@@ -92,7 +92,7 @@ function hasMountedWeaponQuirk(
   quirkName: string,
 ): boolean {
   const identifiers = new Set([weapon.id, weapon.name, ...weapon.aliases]);
-  return entity.weaponQuirks().some(quirk => quirk.name === quirkName
+  return entity.applicableWeaponQuirks().some(quirk => quirk.name === quirkName
     && quirk.location === mount.location
     && identifiers.has(quirk.weaponName)
     && mount.placements?.some(placement => placement.location === quirk.location

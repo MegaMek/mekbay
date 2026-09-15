@@ -183,7 +183,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         maxWidth: 108 * footerScale,
     });
     if (request.showQuirks !== false) {
-        const quirks = entity.quirks().map(entry => entry.quirk.name).sort().concat(weaponQuirkLabels(entity));
+        const quirks = entity.applicableQuirks().map(entry => entry.quirk.name).sort().concat(weaponQuirkLabels(entity));
         if (quirks.length > 0) {
             const group = svgElement('g');
             group.classList.add('unitQuirks');

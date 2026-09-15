@@ -8,12 +8,16 @@ import type { BattleArmorEntity } from '../entities/infantry/battle-armor-entity
 import type { InfantryBaseEntity } from '../entities/infantry/infantry-base-entity';
 import type { InfantryEntity } from '../entities/infantry/infantry-entity';
 import type { JumpShipEntity } from '../entities/largecraft/jumpship-entity';
-import type { MekEntity } from '../entities/mek/mek-entity';
+import type { MekEntity, MekWithArmsEntity } from '../entities/mek/mek-entity';
 import type { ProtoMekEntity } from '../entities/protomek/protomek-entity';
 import type { VehicleEntity } from '../entities/vehicle/vehicle-entity';
 
 export function isMekEntity(entity: BaseEntity): entity is MekEntity {
     return entity.entityType === 'Mek';
+}
+
+export function isMekWithArmsEntity(entity: BaseEntity): entity is MekWithArmsEntity {
+    return isMekEntity(entity) && 'hasHandActuator' in entity;
 }
 
 export function isVehicleEntity(entity: BaseEntity): entity is VehicleEntity {

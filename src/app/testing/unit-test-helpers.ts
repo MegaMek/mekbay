@@ -144,6 +144,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary 
         su: 0,
         crewSize: 1,
         quirks: [],
+        assignedQuirks: [],
         features: [],
         icon: '',
         as: createEmptyAlphaStrikeStats(asOverrides),

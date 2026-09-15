@@ -406,7 +406,7 @@ function appendCompactVehicleInventory(
  * Preserve source order for every other quirk so custom catalogs remain stable.
  */
 function orderedVehicleQuirkNames(entity: BaseEntity): readonly string[] {
-    return entity.quirks()
+    return entity.applicableQuirks()
         .map((entry, sourceIndex) => ({ entry, sourceIndex }))
         .sort((left, right) => {
             const leftPositive = left.entry.quirk.type === 'positive';

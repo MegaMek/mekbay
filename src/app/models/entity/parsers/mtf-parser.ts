@@ -933,8 +933,7 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
 
       // Quirks
       case 'quirk': {
-        const quirk = ctx.resolveQuirk(value, 'quirk');
-        if (quirk) h.quirks.push(quirk);
+        h.quirks.push(ctx.resolveQuirk(value, 'quirk'));
         break;
       }
       case 'weaponquirk': {

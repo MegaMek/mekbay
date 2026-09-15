@@ -811,7 +811,7 @@ export class ForceOverviewDialogComponent {
     /** Handle remove unit */
     async removeUnit(event: MouseEvent, member: ForceMember): Promise<void> {
         event.stopPropagation();
-        await this.forceCommands.removeUnit(member, event.ctrlKey);
+        await this.forceCommands.removeUnit(member, event.ctrlKey || event.metaKey);
     }
 
     /** Handle repair unit */

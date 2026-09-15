@@ -63,7 +63,7 @@ export function calculateMekCostReport(
     conversionCost = (structureCost + equipmentCost) * 0.5;
   }
   entries.push(amount('Conversion Equipment', conversionCost));
-  const quirks = new Set(entity.quirks().map(({ quirk }) => quirk.key));
+  const quirks = new Set(entity.applicableQuirks().map(({ quirk }) => quirk.key));
   const quirkMultiplier = quirks.has('good_rep_1')
     ? Math.fround(1.1)
     : quirks.has('good_rep_2') ? Math.fround(1.25) : 1;

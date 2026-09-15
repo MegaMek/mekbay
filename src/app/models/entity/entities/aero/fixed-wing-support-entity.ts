@@ -59,7 +59,7 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
   readonly maxBombPoints = computed(() => {
     const externalHardpoints = this.equipment().filter(mount =>
       isExternalStoresHardpointEquipment(mount.equipment)).length;
-    if (!this.quirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return externalHardpoints;
+    if (!this.applicableQuirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return externalHardpoints;
     const internalCapacity = this.transporters().reduce((total, transporter) =>
       total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'
         ? Math.floor(transporter.capacity)

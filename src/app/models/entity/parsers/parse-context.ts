@@ -39,12 +39,20 @@ export interface EntityLoadIssue {
 }
 
 export function isEntityLoadIssueArray(value: unknown): value is readonly EntityLoadIssue[] {
-  return Array.isArray(value) && value.every(issue => issue !== null
-    && typeof issue === 'object'
-    && typeof issue.code === 'string' && issue.code.length > 0
-    && (issue.severity === 'error' || issue.severity === 'warning')
-    && typeof issue.field === 'string'
-    && typeof issue.message === 'string' && issue.message.length > 0);
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (issue) =>
+        issue !== null &&
+        typeof issue === 'object' &&
+        typeof issue.code === 'string' &&
+        issue.code.length > 0 &&
+        (issue.severity === 'error' || issue.severity === 'warning') &&
+        typeof issue.field === 'string' &&
+        typeof issue.message === 'string' &&
+        issue.message.length > 0,
+    )
+  );
 }
 
 export type SourcebookResolverFn = (abbrev: string) => Sourcebook | undefined;
@@ -83,11 +91,7 @@ export class ParseContext {
   /** Accumulated diagnostics */
   readonly diagnostics: EntityLoadIssue[] = [];
 
-  constructor(
-    fileName: string,
-    equipmentRegistry: EquipmentRegistry,
-    options: ParseContextOptions = {},
-  ) {
+  constructor(fileName: string, equipmentRegistry: EquipmentRegistry, options: ParseContextOptions = {}) {
     this.fileName = fileName;
     this.equipmentRegistry = equipmentRegistry;
     this.sourcebookResolver = options.sourcebookResolver ?? null;
@@ -98,14 +102,14 @@ export class ParseContext {
     return this.sourcebookResolver?.(abbrev) ?? { abbrev, canon: false, unresolved: true };
   }
 
-  resolveQuirk(rawKey: string, field = 'quirks'): EntityQuirk | null {
+  resolveQuirk(rawKey: string, field = 'quirks'): EntityQuirk {
     const separator = rawKey.indexOf(':');
     const key = separator >= 0 ? rawKey.slice(0, separator) : rawKey;
     const value = separator >= 0 ? rawKey.slice(separator + 1) : undefined;
-    const quirk = this.quirkResolver?.(key);
+    let quirk = this.quirkResolver?.(key);
     if (!quirk) {
-      this.error(field, `Unknown quirk key: "${key}"`, 'QUIRK_NOT_FOUND');
-      return null;
+      this.warn(field, `Unknown quirk key: "${key}"; preserved but suppressed.`, 'QUIRK_NOT_FOUND');
+      quirk = { key, name: key, description: '', type: 'positive', unresolved: true };
     }
     return {
       quirk,
@@ -124,19 +128,19 @@ export class ParseContext {
   }
 
   get errors(): EntityLoadIssue[] {
-    return this.diagnostics.filter(d => d.severity === 'error');
+    return this.diagnostics.filter((d) => d.severity === 'error');
   }
 
   get warnings(): EntityLoadIssue[] {
-    return this.diagnostics.filter(d => d.severity === 'warning');
+    return this.diagnostics.filter((d) => d.severity === 'warning');
   }
 
   get hasErrors(): boolean {
-    return this.diagnostics.some(d => d.severity === 'error');
+    return this.diagnostics.some((d) => d.severity === 'error');
   }
 
   get hasWarnings(): boolean {
-    return this.diagnostics.some(d => d.severity === 'warning');
+    return this.diagnostics.some((d) => d.severity === 'warning');
   }
 
   // ── Validation helpers ──
@@ -200,11 +204,7 @@ export class ParseContext {
    * @param techBase   Entity's tech base for prefix resolution
    * @returns Resolved Equipment, or `null` if not found (error recorded)
    */
-  resolveEquipment(
-    name: string,
-    field: string,
-    techBase?: EntityTechBase,
-  ): Equipment | null {
+  resolveEquipment(name: string, field: string, techBase?: EntityTechBase): Equipment | null {
     if (!name || name === '-Empty-') return null;
 
     const local = techBase

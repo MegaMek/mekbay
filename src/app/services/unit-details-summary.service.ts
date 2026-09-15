@@ -25,6 +25,8 @@ export class UnitDetailsSummaryService {
     private readonly forceSummaries = new WeakMap<BaseEntity, {
         readonly catalogSummary: UnitSummary | undefined;
         readonly summary: UnitSummary;
+        readonly quirks: ReturnType<BaseEntity['applicableQuirks']>;
+        readonly weaponQuirks: ReturnType<BaseEntity['applicableWeaponQuirks']>;
     }>();
 
     /** A force owns an exact design revision, including after its catalog entry changes or disappears. */
@@ -32,7 +34,10 @@ export class UnitDetailsSummaryService {
         const entity = member.entity;
         const catalogSummary = this.data.getUnitByUuid(entity.uuid());
         const cached = this.forceSummaries.get(entity);
-        if (cached && cached.catalogSummary === catalogSummary) return cached.summary;
+        const quirks = entity.applicableQuirks();
+        const weaponQuirks = entity.applicableWeaponQuirks();
+        if (cached && cached.catalogSummary === catalogSummary
+            && cached.quirks === quirks && cached.weaponQuirks === weaponQuirks) return cached.summary;
 
         const snapshot = member.force.getUnitSnapshot(member.id);
         const source = snapshot?.entity === entity ? snapshot.nativeSource : undefined;
@@ -47,7 +52,7 @@ export class UnitDetailsSummaryService {
             format: source?.format ?? (entity.entityType === 'Mek' ? 'mtf' : 'blk'),
         });
         const summary = { ...catalogSummary, ...rebuilt, ...(custom ? { isCustom: true } : {}) };
-        this.forceSummaries.set(entity, { catalogSummary, summary });
+        this.forceSummaries.set(entity, { catalogSummary, summary, quirks, weaponQuirks });
         return summary;
     }
 

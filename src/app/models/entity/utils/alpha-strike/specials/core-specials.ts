@@ -234,7 +234,7 @@ function addUnitSpecials(
   addIntrinsicCommandSpecial(entity, specials);
   addCargoSpecials(entity, type, specials);
   addTransportSpecials(entity, type, specials);
-  if (entity.quirks().some(({ quirk }) => quirk.key === 'trailer_hitch')) specials.add('HTC');
+  if (entity.applicableQuirks().some(({ quirk }) => quirk.key === 'trailer_hitch')) specials.add('HTC');
   const armor = entity.uniformArmor()?.armor;
   if (!entity.hasPatchworkArmor() && armor && STEALTH_ARMOR_TYPES.has(armor.armorType)) {
     specials.add('STL');

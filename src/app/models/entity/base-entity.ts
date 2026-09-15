@@ -102,6 +102,13 @@ import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
 import { EquipmentFlag } from '../equipment-flags.type';
 import type { EntityLoadIssue } from './parsers/parse-context';
 import type { EntityStateView } from './entity-state-view';
+import { unitQuirkApplies } from './utils/unit-quirks';
+import {
+  withWeaponQuirkReconciliation,
+  weaponQuirkDefinition,
+  weaponQuirkTarget,
+  weaponQuirkTargetApplies,
+} from './utils/weapon-quirks';
 import { CORE_2026_RULESET, type CBTRuleset } from '../cbt-ruleset.model';
 
 export interface AddEquipmentOptions {
@@ -620,7 +627,7 @@ export abstract class BaseEntity implements EntityTechnology {
   }
   /** Composite technology rating and four-era availability code. */
   readonly obsoleteYears = computed<readonly number[]>(() => {
-    const obsolete = this.quirks().find((quirk) => quirk.quirk.key === 'obsolete');
+    const obsolete = this.applicableQuirks().find((quirk) => quirk.quirk.key === 'obsolete');
     if (!obsolete) return [];
     const value = obsolete.value?.trim() ?? '';
     if (!value || value.toLowerCase() === 'unknown') return [];
@@ -671,8 +678,19 @@ export abstract class BaseEntity implements EntityTechnology {
   );
 
   // ── Quirks ──
+  /** All assignments, including suppressed quirks. Writers must preserve these. */
   quirks = signal<EntityQuirk[]>([]);
   weaponQuirks = signal<EntityWeaponQuirk[]>([]);
+  /** Live views for effects, display and printing; never remove the stored assignments. */
+  readonly applicableQuirks = computed(() =>
+    this.quirks().filter((entry) => !entry.quirk.unresolved && unitQuirkApplies(this, entry.quirk.key)),
+  );
+  readonly applicableWeaponQuirks = computed(() =>
+    this.weaponQuirks().filter((entry) => {
+      const target = weaponQuirkTarget(this, entry);
+      return !!target && !!weaponQuirkDefinition(entry.name) && weaponQuirkTargetApplies(this, target, entry.name);
+    }),
+  );
 
   // ── Fluff ──
   fluff = signal<EntityFluff>({});
@@ -1302,8 +1320,10 @@ export abstract class BaseEntity implements EntityTechnology {
   removeEquipment(mount: EntityMountedEquipment): void {
     const removed = this.findCurrentMount(mount);
     if (!removed) return;
-    this.#equipment.update((equipment) => equipment.filter((candidate) => candidate.mountId !== removed.mountId));
-    this.#equipmentRelationships.update((relationships) => relationships.withoutMount(removed));
+    withWeaponQuirkReconciliation(this, () => {
+      this.#equipment.update((equipment) => equipment.filter((candidate) => candidate.mountId !== removed.mountId));
+      this.#equipmentRelationships.update((relationships) => relationships.withoutMount(removed));
+    });
   }
 
   /** Move equipment to a new location, optionally with new placements */

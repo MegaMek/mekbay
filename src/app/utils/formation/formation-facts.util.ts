@@ -196,7 +196,7 @@ export function compileFormationUnitFacts(forceUnit: FormationUnitLike, gameSyst
             ? rangedWeapons.some(mount => mount.equipment.hasFlag('F_TAG'))
             : summaryComponents.some(component => component.eq?.hasFlag('F_TAG') === true),
         cbtQuirks: entity
-            ? Object.freeze(entity.quirks().flatMap(quirk => [quirk.quirk.key, quirk.quirk.name]))
+            ? Object.freeze(entity.applicableQuirks().flatMap(quirk => [quirk.quirk.key, quirk.quirk.name]))
             : summary!.quirks,
         cbtWeapons: Object.freeze(weapons),
         pilotSkill,

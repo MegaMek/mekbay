@@ -146,8 +146,7 @@ export function parseBaseBlk(bb: BuildingBlock, entity: BaseEntity, ctx: ParseCo
     for (const line of quirkLines) {
       const trimmed = line.trim();
       if (trimmed) {
-        const quirk = ctx.resolveQuirk(trimmed);
-        if (quirk) quirks.push(quirk);
+        quirks.push(ctx.resolveQuirk(trimmed));
       }
     }
     entity.quirks.set(quirks);
