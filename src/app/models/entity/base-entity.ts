@@ -368,8 +368,6 @@ export abstract class BaseEntity implements EntityTechnology {
   motiveType = signal<MotiveType>('None');
   /** Construction walk MP, corresponding to MegaMek's Entity.walkMP field.  */
   originalWalkMP = signal<number>(0);
-  /** Jump MP declared by the native source, retained for lossless serialization. */
-  originalJumpMP = signal<number>(0);
 
   /**
    * The motive type as a BLK-compatible string, or `null` if the

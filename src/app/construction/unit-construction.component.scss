@@ -125,22 +125,6 @@ h2 {
 .workshop-header .workspace-tabs > button {
   padding: 0 14px;
 }
-.configuration-filter {
-  display: flex;
-  align-items: center;
-  align-self: center;
-  flex-shrink: 0;
-  gap: 6px;
-  min-height: 32px;
-  padding: 5px 8px;
-  font-size: 11px;
-  white-space: nowrap;
-}
-@media (max-width: 1180px) {
-  .configuration-filter span {
-    display: none;
-  }
-}
 .construction-value {
   display: flex;
   flex-direction: column;
@@ -717,8 +701,7 @@ h2 {
 }
 .installed-equipment:focus-within,
 .unallocated-equipment:focus-within,
-.location-card:focus-within,
-.system-panel:focus-within {
+.location-card:focus-within {
   outline: 2px solid var(--bt-yellow);
   outline-offset: 2px;
 }

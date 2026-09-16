@@ -332,7 +332,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.hasRiscHeatSinkOverrideKit.set(decodeMtfRiscHeatSinkOverrideKit(header.heatSinkKit));
 
   entity.originalWalkMP.set(header.walkMP);
-  entity.originalJumpMP.set(header.jumpMP);
 
   // ── Armor (structured { front, rear }) ──
   {

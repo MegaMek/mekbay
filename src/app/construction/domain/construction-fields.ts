@@ -39,6 +39,12 @@ import {
 } from './construction-rules';
 import { constructionTechnologyEligibility } from './construction-technology-rules';
 import { calculateHeatNeutralRequirement } from '../../models/entity/utils/cost/common';
+import { getEquipmentEngineWeight } from '../../models/entity/utils/equipment-engine-weight';
+import {
+  calculateMekConversionWeight,
+  calculateMekGyroWeight,
+  calculateMekStructureWeight,
+} from '../../models/entity/utils/weight/mek-weight';
 import {
   constructionInfantryPrimaryApplies,
   constructionInfantrySecondaryLimit,
@@ -255,11 +261,21 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     'techBase',
     'Tech base',
     entity.techBase,
-    (base) => setConstructionTechBase(entity, base),
+    (base) => {
+      setConstructionTechBase(entity, base);
+      if (!entity.mixedTech() && entity.mountedEngine().techBase !== base)
+        replaceEngine({ techBase: base, installed: entity.mountedEngine().installed });
+    },
     ['IS', 'Clan'],
     'Chassis',
   );
-  boolean('mixedTech', 'Mixed technology', entity.mixedTech, 'Chassis');
+  boolean('mixedTech', 'Mixed technology', entity.mixedTech, 'Chassis', {
+    set: (enabled) => {
+      entity.mixedTech.set(enabled);
+      if (!enabled && entity.mountedEngine().techBase !== entity.techBase())
+        replaceEngine({ techBase: entity.techBase(), installed: entity.mountedEngine().installed });
+    },
+  });
   select('rulesLevel', 'Rules level', entity.rulesLevel, entity.rulesLevel.set, [1, 2, 3, 4, 5], 'Chassis');
   fields.push({
     id: 'manualBV',
@@ -287,16 +303,18 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       hint: "Omni technology requires a compatible chassis. FrankenMek can't be Omni.",
     });
 
-  const replaceEngine = (changes: Partial<{ type: EngineType; rating: number; techBase: 'IS' | 'Clan' }>) => {
+  const replaceEngine = (
+    changes: Partial<{ type: EngineType; rating: number; techBase: 'IS' | 'Clan'; installed: boolean }>,
+  ) => {
     const old = entity.mountedEngine();
     const next = new MountedEngine({
       type: old.type(),
       rating: old.rating,
-      techBase: old.techBase,
       installed: true,
       isSuperHeavy: old.isSuperHeavy,
       baseChassisHeatSinks: old.getBaseChassisHeatSinks(false),
       ...changes,
+      techBase: entity.mixedTech() ? (changes.techBase ?? old.techBase) : entity.techBase(),
     });
     if (entity instanceof MekEntity) entity.configureEngine(next);
     else entity.mountedEngine.set(next);
@@ -315,15 +333,40 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
             throw new Error(
               `This movement and tonnage require engine rating ${rating}; choose a rating from 10 to ${mekEngineLimit(primitive)} in increments of five.`,
             );
-          if (rating !== entity.mountedEngine().rating) replaceEngine({ rating });
+          if (
+            rating !== entity.mountedEngine().rating ||
+            !entity.mountedEngine().installed ||
+            (!entity.mixedTech() && entity.mountedEngine().techBase !== entity.techBase())
+          )
+            replaceEngine({ rating });
         }
       : undefined;
+  const engineFitsTonnage = (rating: number) => {
+    const engine = entity.mountedEngine();
+    const candidate = new MountedEngine({
+      type: engine.type(),
+      rating,
+      techBase: entity.mixedTech() ? engine.techBase : entity.techBase(),
+      installed: true,
+      isSuperHeavy: engine.isSuperHeavy,
+    });
+    const chassisMass =
+      entity instanceof MekEntity
+        ? calculateMekStructureWeight(entity) +
+          entity.mountedCockpit().weight +
+          calculateMekGyroWeight(entity, rating) +
+          calculateMekConversionWeight(entity)
+        : 0;
+    return getEquipmentEngineWeight(entity, candidate) + chassisMass <= entity.tonnage() + 0.00001;
+  };
   const mekEngineChoices =
     entity instanceof MekEntity && entity.tonnage() > 0
       ? Array.from({ length: Math.floor(mekEngineLimit() / entity.tonnage()) }, (_, index) => ({
           walkMP: index + 1,
           rating: entity.calculateEngineRating(index + 1),
-        })).filter((choice) => choice.rating >= 10 && choice.rating <= mekEngineLimit() && choice.rating % 5 === 0)
+        }))
+          .filter((choice) => choice.rating >= 10 && choice.rating <= mekEngineLimit() && choice.rating % 5 === 0)
+          .filter((choice) => engineFitsTonnage(choice.rating))
       : [];
 
   if (!(
@@ -331,19 +374,53 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     entity instanceof BattleArmorEntity ||
     entity instanceof StaticEmplacementEntity
   )) {
-    number(
-      'tonnage',
-      'Chassis tonnage',
-      entity.tonnage,
-      (value) => {
-        syncMekEngine?.(entity.originalWalkMP(), value);
-        entity.setTonnage(value);
-      },
-      'Chassis',
-      0.001,
-      undefined,
-      entity instanceof MekEntity ? 5 : entity instanceof ProtoMekEntity ? 1 : 0.5,
-    );
+    if (entity instanceof MekEntity) {
+      select(
+        'tonnage',
+        'Chassis tonnage',
+        entity.tonnage,
+        (value) => {
+          syncMekEngine!(entity.originalWalkMP(), value);
+          entity.setTonnage(value);
+        },
+        Array.from({ length: 39 }, (_, index) => 10 + index * 5),
+        'Chassis',
+        (value) =>
+          (!(entity instanceof LamEntity) || value <= 55) &&
+          (entity.chassisConfig !== 'QuadVee' || value <= 100) &&
+          (value <= 100 || entity.rulesLevel() >= 3) &&
+          ((value >= 20 && value <= 100) ||
+            technologyAllowed(
+              getMekConstructionTech({
+                primitive: entity.mountedCockpit().isPrimitive,
+                industrial: entity.isIndustrial(),
+                tripod: entity.motiveType() === 'Tripod',
+                weightClass: value > 100 ? 'Super Heavy' : 'Ultra Light',
+              }),
+            )),
+      );
+    } else if (entity instanceof ProtoMekEntity) {
+      select(
+        'tonnage',
+        'Chassis tonnage',
+        entity.tonnage,
+        (value) => entity.setTonnage(value),
+        Array.from({ length: 14 }, (_, index) => index + 2),
+        'Chassis',
+      );
+    } else {
+      const wholeTons = entity instanceof VehicleEntity && !entity.isSupportVehicle();
+      number(
+        'tonnage',
+        'Chassis tonnage',
+        entity.tonnage,
+        (value) => entity.setTonnage(value),
+        'Chassis',
+        wholeTons ? 1 : 0.001,
+        undefined,
+        wholeTons ? 1 : 0.5,
+      );
+    }
   }
 
   const modes = constructionMotiveTypes(entity);
@@ -351,21 +428,18 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     select('motiveType', 'Movement system', entity.motiveType, entity.motiveType.set, modes, 'Movement', (value) =>
       constructionMotiveCompatible(entity, value),
     );
-  if (!(entity instanceof StaticEmplacementEntity) && entity.entityType !== 'HandheldWeapon') {
+  if (
+    !(entity instanceof MekEntity || entity instanceof StaticEmplacementEntity) &&
+    entity.entityType !== 'HandheldWeapon'
+  ) {
     number(
       'walkMP',
       entity instanceof AeroEntity ? 'Safe thrust' : 'Walk / cruise MP',
       entity.originalWalkMP,
-      (value) => {
-        syncMekEngine?.(value);
-        entity.originalWalkMP.set(value);
-      },
+      entity.originalWalkMP.set,
       'Movement',
-      entity instanceof MekEntity ? 1 : 0,
-      entity instanceof MekEntity ? mekEngineChoices.at(-1)?.walkMP : undefined,
+      0,
     );
-    if (entity instanceof MekEntity)
-      number('jumpMP', 'Declared jump MP', entity.originalJumpMP, entity.originalJumpMP.set, 'Movement');
   }
   if (
     entity instanceof MekEntity ||
@@ -375,9 +449,9 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     const engineBase = (type: EngineType) =>
       [
         ...new Set([
-          entity.mountedEngine().techBase,
-          entity.techBase(),
-          ...(entity.mixedTech() ? (['IS', 'Clan'] as const) : []),
+          ...(entity.mixedTech()
+            ? ([entity.mountedEngine().techBase, entity.techBase(), 'IS', 'Clan'] as const)
+            : [entity.techBase()]),
         ]),
       ].find((base) => constructionEngineCompatible(entity, type, base));
     select(
@@ -391,22 +465,19 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     );
     if (entity instanceof MekEntity)
       select(
-        'engineRating',
-        'Engine rating',
-        () => entity.mountedEngine().rating,
+        'walkMP',
+        'Engine rating / Walk MP',
+        entity.originalWalkMP,
         (value) => {
-          replaceEngine({ rating: value });
-          entity.originalWalkMP.set(mekEngineChoices.find((choice) => choice.rating === value)!.walkMP);
+          syncMekEngine!(value);
+          entity.originalWalkMP.set(value);
         },
-        mekEngineChoices.map((choice) => choice.rating),
+        mekEngineChoices.map((choice) => choice.walkMP),
         'Systems',
         undefined,
-        (value) => {
-          const choice = mekEngineChoices.find((choice) => choice.rating === value);
-          return choice ? `${value} · ${choice.walkMP} Walk MP` : String(value);
-        },
+        (value) => `${entity.calculateEngineRating(value)} · ${value} Walk MP`,
       );
-    if (!entity.isSupportVehicle())
+    if (entity.mixedTech() && !entity.isSupportVehicle())
       select(
         'engineTechBase',
         'Engine tech base',

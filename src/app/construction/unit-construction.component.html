@@ -366,7 +366,7 @@
           [attr.aria-pressed]="panel() === 'fluff'"
           (click)="panel.set('fluff')"
         >
-          FLUFF
+          INTEL
         </button>
         <button
           [class.active]="panel() === 'preview'"
@@ -376,33 +376,6 @@
           PREVIEW
         </button>
       </nav>
-      @if (panel() === 'systems') {
-        <button
-          type="button"
-          class="bt-button configuration-filter"
-          [class.active]="showIncompatibleEquipment()"
-          [attr.aria-pressed]="showIncompatibleEquipment()"
-          aria-label="Show incompatible choices"
-          title="Show incompatible choices across all configuration panels"
-          (click)="showIncompatibleEquipment.set(!showIncompatibleEquipment())"
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path d="M4 5h16l-6 7v7l-4 2v-9Z" />
-          </svg>
-          <span>Show incompatible choices</span>
-        </button>
-      }
     </div>
     <div class="construction-value">
       <div class="bv-line">
@@ -1198,7 +1171,25 @@
           [hasCustomImage]="!!effectiveArtwork()?.fluff"
           (imageChange)="changeArtwork($event)"
           (editRequested)="change($event)"
-        />
+        >
+          <section fluff-sources class="system-panel framed-borders">
+            <h2>Sources &amp; publication</h2>
+            <div class="source-fields">
+              <sourcebook-picker
+                label="Source"
+                [value]="entity().source()"
+                [disabled]="!designEditing()"
+                (valueChange)="setSources('source', $event)"
+              />
+              <sourcebook-picker
+                label="Published"
+                [value]="entity().published()"
+                [disabled]="!designEditing()"
+                (valueChange)="setSources('published', $event)"
+              />
+            </div>
+          </section>
+        </construction-fluff>
       } @else if (panel() === 'quirks') {
         <construction-quirks
           [entity]="entity()"
@@ -1209,9 +1200,9 @@
       } @else if (panel() === 'systems') {
         <div class="configuration-panels">
           <div class="systems-grid">
-            <section #systemPanel class="system-panel framed-borders">
-              <construction-summary [entity]="entity()" />
-            </section>
+            @if (!isMek()) {
+              <ng-container [ngTemplateOutlet]="summaryPanel" />
+            }
             @for (group of fieldGroups(); track group.name) {
               <section #systemPanel class="system-panel framed-borders" [attr.data-system-group]="group.name">
                 <h2>{{ group.name === 'Systems' && building() ? 'Structure & Systems' : group.name }}</h2>
@@ -1360,85 +1351,83 @@
                   </div>
                 }
               </section>
+              @if (isMek() && group.name === 'Chassis') {
+                <ng-container [ngTemplateOutlet]="materialsPanel" />
+              }
             }
-            <section #systemPanel class="system-panel framed-borders">
-              <h2>Sources &amp; publication</h2>
-              <div class="source-fields">
-                <sourcebook-picker
-                  label="Source"
-                  [value]="entity().source()"
-                  [disabled]="!designEditing()"
-                  (valueChange)="setSources('source', $event)"
-                />
-                <sourcebook-picker
-                  label="Published"
-                  [value]="entity().published()"
-                  [disabled]="!designEditing()"
-                  (valueChange)="setSources('published', $event)"
-                />
-              </div>
-            </section>
-            @if (armorOptions().length || structureOptions().length) {
-              <section #systemPanel class="system-panel framed-borders" data-system-group="Materials">
-                <h2>Materials</h2>
-                <div class="system-fields">
-                  @if (armorOptions().length) {
-                    <label
-                      >Armor<select
-                        class="bt-select"
-                        aria-label="Armor material"
-                        [class.danger]="materialInvalid(entity().uniformArmor()?.armor)"
-                        [attr.aria-invalid]="materialInvalid(entity().uniformArmor()?.armor) || null"
-                        [ngModel]="entity().hasPatchworkArmor() ? 'patchwork' : entity().uniformArmor()?.armor?.id"
-                        (ngModelChange)="setArmorMaterial($event)"
-                        [disabled]="!designEditing()"
-                      >
-                        @if (supportsPatchwork()) {
-                          <option value="patchwork">Patchwork armor</option>
-                        }
-                        @for (armor of armorOptions(); track armor.id) {
-                          <option [value]="armor.id" [disabled]="materialInvalid(armor)">
-                            {{ materialLabel(armor) }}
-                          </option>
-                        }
-                      </select></label
-                    >
-                  }
-                  @if (structureOptions().length) {
-                    <label
-                      >Structure<select
-                        class="bt-select"
-                        aria-label="Structure material"
-                        [class.danger]="
-                          !hybridStructure() && materialInvalid(entity().uniformStructureMaterial()?.structure)
-                        "
-                        [attr.aria-invalid]="
-                          (!hybridStructure() && materialInvalid(entity().uniformStructureMaterial()?.structure)) ||
-                          null
-                        "
-                        [ngModel]="hybridStructure() ? 'hybrid' : entity().uniformStructureMaterial()?.structure?.id"
-                        (ngModelChange)="setStructure($event)"
-                        [disabled]="!designEditing()"
-                      >
-                        @if (isMek()) {
-                          <option value="hybrid">Hybrid structure</option>
-                        }
-                        @for (structure of structureOptions(); track structure.id) {
-                          <option [value]="structure.id" [disabled]="materialInvalid(structure)">
-                            {{ materialLabel(structure) }}
-                          </option>
-                        }
-                      </select></label
-                    >
-                  }
-                </div>
-                @if (entity().hasPatchworkArmor() || hybridStructure()) {
-                  <p class="muted">
-                    Expand the chevron beside Structure in the loadout to edit a location’s materials.
-                  </p>
-                }
+            @if (isMek()) {
+              <ng-container [ngTemplateOutlet]="summaryPanel" />
+            } @else {
+              <ng-container [ngTemplateOutlet]="materialsPanel" />
+            }
+            <ng-template #summaryPanel>
+              <section #systemPanel class="system-panel framed-borders" data-system-group="Summary">
+                <construction-summary [entity]="entity()" />
               </section>
-            }
+            </ng-template>
+            <ng-template #materialsPanel>
+              @if (armorOptions().length || structureOptions().length) {
+                <section #systemPanel class="system-panel framed-borders" data-system-group="Materials">
+                  <h2>Materials</h2>
+                  <div class="system-fields">
+                    @if (armorOptions().length) {
+                      <label
+                        >Armor<select
+                          class="bt-select"
+                          aria-label="Armor material"
+                          [class.danger]="materialInvalid(entity().uniformArmor()?.armor)"
+                          [attr.aria-invalid]="materialInvalid(entity().uniformArmor()?.armor) || null"
+                          [ngModel]="entity().hasPatchworkArmor() ? 'patchwork' : entity().uniformArmor()?.armor?.id"
+                          (ngModelChange)="setArmorMaterial($event)"
+                          [disabled]="!designEditing()"
+                        >
+                          @if (supportsPatchwork()) {
+                            <option value="patchwork">Patchwork armor</option>
+                          }
+                          @for (armor of armorOptions(); track armor.id) {
+                            <option [value]="armor.id" [disabled]="materialInvalid(armor)">
+                              {{ materialLabel(armor) }}
+                            </option>
+                          }
+                        </select></label
+                      >
+                    }
+                    @if (structureOptions().length) {
+                      <label
+                        >Structure<select
+                          class="bt-select"
+                          aria-label="Structure material"
+                          [class.danger]="
+                            !hybridStructure() && materialInvalid(entity().uniformStructureMaterial()?.structure)
+                          "
+                          [attr.aria-invalid]="
+                            (!hybridStructure() && materialInvalid(entity().uniformStructureMaterial()?.structure)) ||
+                            null
+                          "
+                          [ngModel]="hybridStructure() ? 'hybrid' : entity().uniformStructureMaterial()?.structure?.id"
+                          (ngModelChange)="setStructure($event)"
+                          [disabled]="!designEditing()"
+                        >
+                          @if (isMek()) {
+                            <option value="hybrid">Hybrid structure</option>
+                          }
+                          @for (structure of structureOptions(); track structure.id) {
+                            <option [value]="structure.id" [disabled]="materialInvalid(structure)">
+                              {{ materialLabel(structure) }}
+                            </option>
+                          }
+                        </select></label
+                      >
+                    }
+                  </div>
+                  @if (entity().hasPatchworkArmor() || hybridStructure()) {
+                    <p class="muted">
+                      Expand the chevron beside Structure in the loadout to edit a location’s materials.
+                    </p>
+                  }
+                </section>
+              }
+            </ng-template>
           </div>
           <construction-extras
             [attr.inert]="!designEditing() ? '' : null"

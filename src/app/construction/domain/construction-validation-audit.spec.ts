@@ -2,10 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../models/entity/base-entity';
-import { AeroEntity, BattleArmorEntity, InfantryEntity, MekEntity, ProtoMekEntity, VehicleEntity } from '../../models/entity/entities';
+import {
+  AeroEntity,
+  BattleArmorEntity,
+  InfantryEntity,
+  MekEntity,
+  ProtoMekEntity,
+  VehicleEntity,
+} from '../../models/entity/entities';
 import { MekWithArmsEntity } from '../../models/entity/entities/mek/mek-entity';
 import { MountedArmor } from '../../models/entity/components';
-import { AmmoEquipment, ArmorEquipment, Equipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../../models/equipment.model';
+import {
+  AmmoEquipment,
+  ArmorEquipment,
+  Equipment,
+  MiscEquipment,
+  StructureEquipment,
+  WeaponEquipment,
+} from '../../models/equipment.model';
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import { buildEquipmentRegistry } from '../../services/catalogs/equipment-catalog-builder';
@@ -18,27 +32,64 @@ import { getConstructionFields } from './construction-fields';
 import { constructionEquipmentConflictMessages } from './construction-equipment-conflicts';
 import { constructionMaterialMessages } from './construction-material-rules';
 import { setConstructionInfantryAugmentation } from './construction-infantry-ba-rules';
-import { constructionEquipmentEligibilityIssues, equipmentPlacementIssues, installConstructionEquipment, moveConstructionEquipment,
-  setConstructionHybridStructure, setConstructionOmni, setConstructionPatchwork, setConstructionStructure, validateConstruction } from './construction-rules';
+import {
+  constructionEquipmentEligibilityIssues,
+  equipmentPlacementIssues,
+  installConstructionEquipment,
+  moveConstructionEquipment,
+  setConstructionHybridStructure,
+  setConstructionOmni,
+  setConstructionPatchwork,
+  setConstructionStructure,
+  validateConstruction,
+} from './construction-rules';
 
-const codes = (entity: BaseEntity) => validateConstruction(entity).messages.map(message => message.code);
-const field = (entity: BaseEntity, id: string) => getConstructionFields(entity).find(item => item.id === id)!;
+const codes = (entity: BaseEntity) => validateConstruction(entity).messages.map((message) => message.code);
+const field = (entity: BaseEntity, id: string) => getConstructionFields(entity).find((item) => item.id === id)!;
 const tech = { base: 'All', level: 'Standard' } as const;
 const design = (kind: ConstructionUnitKind = 'Biped', registry = createTestEquipmentRegistry()) => {
   const entity = createConstructionEntity(kind, registry);
-  entity.year.set(3150); entity.rulesLevel.set(5); entity.mixedTech.set(true);
+  entity.year.set(3150);
+  entity.rulesLevel.set(5);
+  entity.mixedTech.set(true);
   return entity;
 };
-const misc = (id: string, flags: EquipmentFlag[], slots = 1, tons = 0) => new MiscEquipment({
-  id, name: id, type: 'misc', flags, tech, stats: { criticalSlots: slots, tonnage: tons },
-});
-const gun = (id: string, flags: EquipmentFlag[] = [], slots = 1, tons = 0) => new WeaponEquipment({
-  id, name: id, type: 'weapon', flags, tech, stats: { criticalSlots: slots, tonnage: tons },
-  ...(flags.includes('F_INFANTRY') ? { infantry: { crew: 1 } } : {}),
-});
+const misc = (id: string, flags: EquipmentFlag[], slots = 1, tons = 0) =>
+  new MiscEquipment({
+    id,
+    name: id,
+    type: 'misc',
+    flags,
+    tech,
+    stats: { criticalSlots: slots, tonnage: tons },
+  });
+const gun = (id: string, flags: EquipmentFlag[] = [], slots = 1, tons = 0) =>
+  new WeaponEquipment({
+    id,
+    name: id,
+    type: 'weapon',
+    flags,
+    tech,
+    stats: { criticalSlots: slots, tonnage: tons },
+    ...(flags.includes('F_INFANTRY') ? { infantry: { crew: 1 } } : {}),
+  });
 
 describe('construction chassis exclusions and dependent settings', () => {
-  for (const kind of ['Biped', 'Quad', 'Tripod', 'QuadVee', 'Tank', 'Naval', 'VTOL', 'SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank', 'FixedWingSupport', 'Aero'] as const) {
+  for (const kind of [
+    'Biped',
+    'Quad',
+    'Tripod',
+    'QuadVee',
+    'Tank',
+    'Naval',
+    'VTOL',
+    'SupportTank',
+    'SupportNaval',
+    'SupportVTOL',
+    'LargeSupportTank',
+    'FixedWingSupport',
+    'Aero',
+  ] as const) {
     it(`allows Omni technology on ${kind}`, () => {
       const entity = design(kind);
       setConstructionOmni(entity, true);
@@ -46,7 +97,18 @@ describe('construction chassis exclusions and dependent settings', () => {
       expect(codes(entity)).not.toContain('OMNI_CHASSIS');
     });
   }
-  for (const kind of ['LAM', 'ConvFighter', 'ProtoMek', 'Infantry', 'BattleArmor', 'SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation'] as const) {
+  for (const kind of [
+    'LAM',
+    'ConvFighter',
+    'ProtoMek',
+    'Infantry',
+    'BattleArmor',
+    'SmallCraft',
+    'DropShip',
+    'JumpShip',
+    'WarShip',
+    'SpaceStation',
+  ] as const) {
     it(`rejects newly selected Omni technology and diagnoses imported Omni ${kind}`, () => {
       const entity = design(kind);
       expect(() => setConstructionOmni(entity, true)).toThrowError(/Omni/);
@@ -70,7 +132,8 @@ describe('construction chassis exclusions and dependent settings', () => {
     expect(entity.hasHybridStructure()).toBeFalse();
     expect(entity.hasPatchworkArmor()).toBeTrue();
     expect(entity.structureDonorAt('CT')).toBeNull();
-    const loaded = parseEntity(encodeNativeEntity(entity), 'omni.mtf', entity.getEquipmentRegistry()).entity as MekEntity;
+    const loaded = parseEntity(encodeNativeEntity(entity), 'omni.mtf', entity.getEquipmentRegistry())
+      .entity as MekEntity;
     expect(loaded.omni()).toBeTrue();
     expect(loaded.hasHybridStructure()).toBeFalse();
     expect(loaded.hasPatchworkArmor()).toBeTrue();
@@ -82,8 +145,8 @@ describe('construction chassis exclusions and dependent settings', () => {
     addTestEquipment(entity, gun('pod laser'), { location: 'RT', omniPodMounted: true });
     entity.transporters.set([{ id: 'troops', kind: 'troop-space', totalSpace: 1, omni: true }]);
     setConstructionHybridStructure(entity, true);
-    expect(entity.equipment().every(mount => !mount.omniPodMounted)).toBeTrue();
-    expect(entity.transporters().every(item => !item.omni)).toBeTrue();
+    expect(entity.equipment().every((mount) => !mount.omniPodMounted)).toBeTrue();
+    expect(entity.transporters().every((item) => !item.omni)).toBeTrue();
   });
 
   it('clears incompatible cockpit options while permitting repairs to imported invalid switches', () => {
@@ -130,7 +193,8 @@ describe('construction chassis exclusions and dependent settings', () => {
 
   it('clears battle armor propulsion and turret settings on incompatible chassis changes', () => {
     const entity = design('BattleArmor') as BattleArmorEntity;
-    entity.motiveType.set('Jump'); entity.propulsionMP.set(3);
+    entity.motiveType.set('Jump');
+    entity.propulsionMP.set(3);
     field(entity, 'chassisType').set('Quad');
     expect(entity.motiveType()).toBe('Leg');
     expect(entity.propulsionMP()).toBe(0);
@@ -155,7 +219,17 @@ describe('construction chassis exclusions and dependent settings', () => {
   it('makes conventional fighter heat sinks automatic and prohibits double sinks', () => {
     const entity = design('ConvFighter') as AeroEntity;
     const before = field(entity, 'heatSinks').get();
-    addTestEquipment(entity, new WeaponEquipment({ id: 'heat', name: 'heat', type: 'weapon', flags: ['F_ENERGY', 'F_LASER'], weapon: { heat: 3 } }), { location: 'Nose' });
+    addTestEquipment(
+      entity,
+      new WeaponEquipment({
+        id: 'heat',
+        name: 'heat',
+        type: 'weapon',
+        flags: ['F_ENERGY', 'F_LASER'],
+        weapon: { heat: 3 },
+      }),
+      { location: 'Nose' },
+    );
     expect(field(entity, 'heatSinks').get()).toBe(Number(before) + 3);
     expect(field(entity, 'heatSinks').disabled).toBeTrue();
     expect(() => field(entity, 'heatSinks').set(0)).toThrow();
@@ -167,18 +241,22 @@ describe('construction chassis exclusions and dependent settings', () => {
   for (const [first, second, code] of [
     ['dermal_armor', 'dermal_camo_armor', 'INFANTRY_DERMAL_CONFLICT'],
     ['pl_glider', 'pl_flight', 'INFANTRY_WING_CONFLICT'],
-  ]) it(`excludes ${first} and ${second} in both directions and diagnoses imported conflicts`, () => {
-    const entity = design('Infantry') as InfantryEntity;
-    for (const [a, b] of [[first, second], [second, first]]) {
-      setConstructionInfantryAugmentation(entity, a, true);
-      setConstructionInfantryAugmentation(entity, b, true);
-      expect(entity.augmentations()).toContain(b);
-      expect(entity.augmentations()).not.toContain(a);
-    }
-    entity.augmentations.set([first, second]);
-    expect(codes(entity)).toContain(code);
-    expect(entity.augmentations()).toEqual([first, second]);
-  });
+  ])
+    it(`excludes ${first} and ${second} in both directions and diagnoses imported conflicts`, () => {
+      const entity = design('Infantry') as InfantryEntity;
+      for (const [a, b] of [
+        [first, second],
+        [second, first],
+      ]) {
+        setConstructionInfantryAugmentation(entity, a, true);
+        setConstructionInfantryAugmentation(entity, b, true);
+        expect(entity.augmentations()).toContain(b);
+        expect(entity.augmentations()).not.toContain(a);
+      }
+      entity.augmentations.set([first, second]);
+      expect(codes(entity)).toContain(code);
+      expect(entity.augmentations()).toEqual([first, second]);
+    });
 });
 
 describe('shared picker and Issues conflict rules', () => {
@@ -192,27 +270,30 @@ describe('shared picker and Issues conflict rules', () => {
     ['F_ARTEMIS', 'F_ARTEMIS_V', 'ARTEMIS_GENERATION'],
     ['F_C3S', 'F_C3I', 'NETWORK_SYSTEM_CONFLICT'],
   ];
-  for (const [first, second, code] of pairs) for (const reverse of [false, true]) {
-    it(`rejects ${reverse ? first : second} against ${reverse ? second : first} before installation`, () => {
-      const entity = design();
-      const a = misc('installed', [reverse ? second : first, 'F_MEK_EQUIPMENT']);
-      const b = misc('candidate', [reverse ? first : second, 'F_MEK_EQUIPMENT']);
-      addTestEquipment(entity, a, { location: 'RT' });
-      const issue = constructionEquipmentConflictMessages(entity, b).find(message => message.code === code)!;
-      expect(issue).toBeDefined();
-      expect(constructionEquipmentEligibilityIssues(entity, b)).toContain(issue.message);
-      expect(() => installConstructionEquipment(entity, b, 'LT')).toThrow();
-      addTestEquipment(entity, b, { location: 'LT' });
-      expect(codes(entity)).toContain(code);
-    });
-  }
+  for (const [first, second, code] of pairs)
+    for (const reverse of [false, true]) {
+      it(`rejects ${reverse ? first : second} against ${reverse ? second : first} before installation`, () => {
+        const entity = design();
+        const a = misc('installed', [reverse ? second : first, 'F_MEK_EQUIPMENT']);
+        const b = misc('candidate', [reverse ? first : second, 'F_MEK_EQUIPMENT']);
+        addTestEquipment(entity, a, { location: 'RT' });
+        const issue = constructionEquipmentConflictMessages(entity, b).find((message) => message.code === code)!;
+        expect(issue).toBeDefined();
+        expect(constructionEquipmentEligibilityIssues(entity, b)).toContain(issue.message);
+        expect(() => installConstructionEquipment(entity, b, 'LT')).toThrow();
+        addTestEquipment(entity, b, { location: 'LT' });
+        expect(codes(entity)).toContain(code);
+      });
+    }
 
   it('ignores a mount being moved and does not block unrelated additions to an invalid design', () => {
     const entity = design();
     const computer = misc('computer', ['F_TARGETING_COMPUTER', 'F_MEK_EQUIPMENT']);
     const mount = addTestEquipment(entity, computer, { location: 'RT' });
     expect(constructionEquipmentConflictMessages(entity, computer, mount)).toEqual([]);
-    expect(constructionEquipmentConflictMessages(entity, computer).map(message => message.code)).toContain('MEK_SINGLE_SYSTEM');
+    expect(constructionEquipmentConflictMessages(entity, computer).map((message) => message.code)).toContain(
+      'MEK_SINGLE_SYSTEM',
+    );
     addTestEquipmentWithFlags(entity, ['F_NULL_SIG'], { location: 'LT' });
     expect(codes(entity)).toContain('MEK_NULL_TARGETING');
     expect(constructionEquipmentConflictMessages(entity, gun('unrelated laser'))).toEqual([]);
@@ -228,13 +309,22 @@ describe('shared picker and Issues conflict rules', () => {
 
   it('checks stealth material selection and incompatible equipment selection against the same rule', () => {
     const entity = design();
-    const stealth = new ArmorEquipment({ id: 'Stealth', name: 'Stealth', type: 'armor', armor: { type: 'STEALTH' }, flags: ['F_MEK_EQUIPMENT'], tech });
+    const stealth = new ArmorEquipment({
+      id: 'Stealth',
+      name: 'Stealth',
+      type: 'armor',
+      armor: { type: 'STEALTH' },
+      flags: ['F_MEK_EQUIPMENT'],
+      tech,
+    });
     const nullSig = misc('Null signature', ['F_NULL_SIG', 'F_MEK_EQUIPMENT']);
     const mount = addTestEquipment(entity, nullSig, { location: 'RT' });
-    expect(constructionMaterialMessages(entity, stealth).map(message => message.code)).toContain('MEK_NULL_STEALTH');
+    expect(constructionMaterialMessages(entity, stealth).map((message) => message.code)).toContain('MEK_NULL_STEALTH');
     entity.removeEquipment(mount);
     entity.setUniformArmor(new MountedArmor({ armor: stealth }));
-    expect(constructionEquipmentConflictMessages(entity, nullSig).map(message => message.code)).toContain('MEK_NULL_STEALTH');
+    expect(constructionEquipmentConflictMessages(entity, nullSig).map((message) => message.code)).toContain(
+      'MEK_NULL_STEALTH',
+    );
   });
 });
 
@@ -245,7 +335,7 @@ describe('new construction capacity and configuration boundaries', () => {
       entity.setTonnage(tons);
       expect(codes(entity)).not.toContain('VEHICLE_TONNAGE_INCREMENT');
     }
-    for (const tons of [.5, 5.5]) {
+    for (const tons of [0.5, 5.5]) {
       entity.setTonnage(tons);
       expect(codes(entity)).toContain('VEHICLE_TONNAGE_INCREMENT');
     }
@@ -254,7 +344,8 @@ describe('new construction capacity and configuration boundaries', () => {
   it('validates vehicle controls, WiGE minimum speed, rotor mast and mast counts', () => {
     const vehicle = design('Tank') as VehicleEntity;
     vehicle.hasNoControlSystems.set(true);
-    vehicle.motiveType.set('WiGE'); vehicle.originalWalkMP.set(4);
+    vehicle.motiveType.set('WiGE');
+    vehicle.originalWalkMP.set(4);
     expect(codes(vehicle)).toEqual(jasmine.arrayContaining(['VEHICLE_CONTROL_SYSTEMS', 'VEHICLE_WIGE_SPEED']));
     vehicle.originalWalkMP.set(5);
     expect(codes(vehicle)).not.toContain('VEHICLE_WIGE_SPEED');
@@ -269,7 +360,8 @@ describe('new construction capacity and configuration boundaries', () => {
 
   it('allows two manipulators per vehicle location and diagnoses the third', () => {
     const entity = design('Tank');
-    for (const location of ['Front', 'Rear']) for (let i = 0; i < 2; i++) addTestEquipmentWithFlags(entity, 'F_MANIPULATOR', { location });
+    for (const location of ['Front', 'Rear'])
+      for (let i = 0; i < 2; i++) addTestEquipmentWithFlags(entity, 'F_MANIPULATOR', { location });
     expect(codes(entity)).not.toContain('VEHICLE_MANIPULATOR_LIMIT');
     addTestEquipmentWithFlags(entity, 'F_MANIPULATOR', { location: 'Front' });
     expect(codes(entity)).toContain('VEHICLE_MANIPULATOR_LIMIT');
@@ -277,19 +369,25 @@ describe('new construction capacity and configuration boundaries', () => {
 
   it('rounds Omni turret structure to half tons and excludes ammunition from its load', () => {
     const entity = design('Tank') as VehicleEntity;
-    setConstructionOmni(entity, true); entity.hasTurret.set(true); entity.baseChassisTurretWeight.set(.5);
+    setConstructionOmni(entity, true);
+    entity.hasTurret.set(true);
+    entity.baseChassisTurretWeight.set(0.5);
     addTestEquipment(entity, gun('turret gun', [], 1, 5), { location: 'Turret' });
-    addTestEquipment(entity, new AmmoEquipment({ id: 'ammo', name: 'ammo', type: 'ammo', stats: { tonnage: 1 } }), { location: 'Turret' });
+    addTestEquipment(entity, new AmmoEquipment({ id: 'ammo', name: 'ammo', type: 'ammo', stats: { tonnage: 1 } }), {
+      location: 'Turret',
+    });
     expect(codes(entity)).not.toContain('VEHICLE_OMNI_TURRET_CAPACITY');
-    addTestEquipment(entity, misc('extra turret load', [], 1, .1), { location: 'Turret' });
+    addTestEquipment(entity, misc('extra turret load', [], 1, 0.1), { location: 'Turret' });
     expect(codes(entity)).toContain('VEHICLE_OMNI_TURRET_CAPACITY');
   });
 
   it('uses the primary chassis turret capacity for the rear of a dual-turret vehicle', () => {
     const entity = design('Tank') as VehicleEntity;
     setConstructionOmni(entity, true);
-    entity.hasTurret.set(true); entity.hasDualTurret.set(true);
-    entity.baseChassisTurretWeight.set(2.5); entity.baseChassisTurret2Weight.set(3);
+    entity.hasTurret.set(true);
+    entity.hasDualTurret.set(true);
+    entity.baseChassisTurretWeight.set(2.5);
+    entity.baseChassisTurret2Weight.set(3);
     addTestEquipment(entity, gun('rear turret gun', [], 1, 21), { location: 'Rear Turret' });
     addTestEquipment(entity, gun('front turret guns', [], 1, 30), { location: 'Front Turret' });
     expect(codes(entity)).not.toContain('VEHICLE_OMNI_TURRET_CAPACITY');
@@ -299,9 +397,17 @@ describe('new construction capacity and configuration boundaries', () => {
 
   it('reserves ProtoMek torso slots for armor even without an equipment marker', () => {
     const entity = design('ProtoMek') as ProtoMekEntity;
-    const armor = new ArmorEquipment({ id: 'Proto armor', name: 'Proto armor', type: 'armor', armor: { type: 'STANDARD' }, stats: { criticalSlots: 1 }, flags: ['F_PROTOMEK_EQUIPMENT'], tech });
+    const armor = new ArmorEquipment({
+      id: 'Proto armor',
+      name: 'Proto armor',
+      type: 'armor',
+      armor: { type: 'STANDARD' },
+      stats: { criticalSlots: 1 },
+      flags: ['F_PROTOMEK_EQUIPMENT'],
+      tech,
+    });
     entity.setUniformArmor(new MountedArmor({ armor }));
-    const weapon = gun('proto laser', ['F_PROTO_WEAPON'], 1, .5);
+    const weapon = gun('proto laser', ['F_PROTO_WEAPON'], 1, 0.5);
     addTestEquipment(entity, weapon, { location: 'Torso' });
     expect(codes(entity)).not.toContain('PROTO_LOCATION_SLOTS');
     expect(equipmentPlacementIssues(entity, weapon, 'Torso').length).toBeGreaterThan(0);
@@ -313,10 +419,15 @@ describe('new construction capacity and configuration boundaries', () => {
 
   it('checks ProtoMek jump and UMU limits without counting slot-free propulsion as body equipment', () => {
     const entity = design('ProtoMek') as ProtoMekEntity;
-    entity.originalWalkMP.set(4); entity.originalJumpMP.set(5);
+    entity.originalWalkMP.set(4);
+    for (let index = 0; index < 4; index++) addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Body' });
+    expect(entity.installedJumpJetMP()).toBe(4);
+    expect(codes(entity)).not.toContain('PROTO_JUMP_LIMIT');
+    addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Body' });
+    expect(entity.installedJumpJetMP()).toBe(5);
     expect(codes(entity)).toContain('PROTO_JUMP_LIMIT');
     addTestEquipmentWithFlags(entity, ['F_JUMP_JET', 'S_IMPROVED'], { location: 'Body' });
-    entity.originalJumpMP.set(6);
+    expect(entity.installedJumpJetMP()).toBe(6);
     expect(codes(entity)).not.toContain('PROTO_JUMP_LIMIT');
     for (let i = 0; i < 6; i++) addTestEquipmentWithFlags(entity, 'F_UMU', { location: 'Body' });
     expect(codes(entity)).not.toContain('PROTO_UMU_LIMIT');
@@ -327,9 +438,14 @@ describe('new construction capacity and configuration boundaries', () => {
 
   it('shares the four-weapon limit across a quad battle armor body and turret', () => {
     const entity = design('BattleArmor') as BattleArmorEntity;
-    entity.chassisType.set('Quad'); entity.turretConfig.set('Standard:5');
-    for (const part of ['Body', 'Turret'] as const) for (let i = 0; i < 2; i++)
-      addTestEquipment(entity, gun(`${part} gun ${i}`, ['F_BA_WEAPON']), { location: 'Squad', baMountLocation: part });
+    entity.chassisType.set('Quad');
+    entity.turretConfig.set('Standard:5');
+    for (const part of ['Body', 'Turret'] as const)
+      for (let i = 0; i < 2; i++)
+        addTestEquipment(entity, gun(`${part} gun ${i}`, ['F_BA_WEAPON']), {
+          location: 'Squad',
+          baMountLocation: part,
+        });
     expect(codes(entity)).not.toContain('BA_ANTI_MEK_WEAPON_LIMIT');
     addTestEquipment(entity, gun('fifth gun', ['F_BA_WEAPON']), { location: 'Squad', baMountLocation: 'Turret' });
     expect(codes(entity)).toContain('BA_ANTI_MEK_WEAPON_LIMIT');
@@ -338,11 +454,21 @@ describe('new construction capacity and configuration boundaries', () => {
   it('counts detached infantry weapons and exempts weapons linked to AP mounts', () => {
     for (const linked of [true, false]) {
       const entity = design('BattleArmor') as BattleArmorEntity;
-      const parent = addTestEquipment(entity, misc('parent', ['F_AP_MOUNT']), { location: 'Squad', baMountLocation: 'LA' });
-      const weapon = addTestEquipment(entity, gun('rifle', ['F_INFANTRY']), { location: 'Squad', baMountLocation: 'LA', isAPM: true });
+      const parent = addTestEquipment(entity, misc('parent', ['F_AP_MOUNT']), {
+        location: 'Squad',
+        baMountLocation: 'LA',
+      });
+      const weapon = addTestEquipment(entity, gun('rifle', ['F_INFANTRY']), {
+        location: 'Squad',
+        baMountLocation: 'LA',
+        isAPM: true,
+      });
       if (linked) entity.linkEquipment(parent, weapon);
-      for (let i = 0; i < 2; i++) addTestEquipment(entity, misc(`filler ${i}`, []), { location: 'Squad', baMountLocation: 'LA' });
-      expect(codes(entity).includes('BA_LOCATION_SLOTS')).withContext(linked ? 'linked' : 'detached').toBe(!linked);
+      for (let i = 0; i < 2; i++)
+        addTestEquipment(entity, misc(`filler ${i}`, []), { location: 'Squad', baMountLocation: 'LA' });
+      expect(codes(entity).includes('BA_LOCATION_SLOTS'))
+        .withContext(linked ? 'linked' : 'detached')
+        .toBe(!linked);
     }
   });
 
@@ -355,14 +481,17 @@ describe('new construction capacity and configuration boundaries', () => {
     addTestEquipmentWithFlags(entity, 'F_CLUB');
     expect(codes(entity)).toContain('HANDHELD_MELEE_EXCLUSIVE');
     const ammo = new AmmoEquipment({ id: 'ammo', name: 'ammo', type: 'ammo', ammo: { type: 'AC', rackSize: 5 } });
-    addTestEquipment(entity, ammo); addTestEquipment(entity, ammo);
+    addTestEquipment(entity, ammo);
+    addTestEquipment(entity, ammo);
     expect(codes(entity)).toContain('HANDHELD_AMMO_BIN_LIMIT');
   });
 });
 
 describe('catalog-backed chassis transitions', () => {
   let registry: EquipmentRegistry;
-  beforeAll(async () => { registry = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json()); });
+  beforeAll(async () => {
+    registry = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
   const find = (predicate: (equipment: Equipment) => boolean) => {
     const equipment = Object.values(registry.equipment).find(predicate);
     if (!equipment) throw new Error('Missing catalog fixture');
@@ -371,7 +500,7 @@ describe('catalog-backed chassis transitions', () => {
 
   it('removes incompatible Omni arm actuators before allocating an AC/20 and when moving it', () => {
     const entity = design('Biped', registry) as MekWithArmsEntity;
-    const weapon = find(eq => eq instanceof WeaponEquipment && eq.ammoType === 'AC' && eq.rackSize === 20);
+    const weapon = find((eq) => eq instanceof WeaponEquipment && eq.ammoType === 'AC' && eq.rackSize === 20);
     setConstructionOmni(entity, true);
     const mounted = installConstructionEquipment(entity, weapon, 'RA');
     expect(entity.hasLowerArmActuator().right).toBeFalse();
@@ -386,7 +515,9 @@ describe('catalog-backed chassis transitions', () => {
   it('removes Omni technology when selecting industrial structure', () => {
     const entity = design('Biped', registry) as MekEntity;
     setConstructionOmni(entity, true);
-    const industrial = find(eq => eq instanceof StructureEquipment && eq.hasFlag('F_INDUSTRIAL_STRUCTURE')) as StructureEquipment;
+    const industrial = find(
+      (eq) => eq instanceof StructureEquipment && eq.hasFlag('F_INDUSTRIAL_STRUCTURE'),
+    ) as StructureEquipment;
     setConstructionStructure(entity, industrial);
     expect(entity.isIndustrial()).toBeTrue();
     expect(entity.omni()).toBeFalse();

@@ -1588,35 +1588,46 @@ export class UnitConstructionComponent {
       onCleanup(() => observer.disconnect());
     });
     afterRenderEffect((onCleanup) => {
-      const panels = this.systemPanels();
+      const panels = [...this.systemPanels()].sort((left, right) => {
+        const position = left.nativeElement.compareDocumentPosition(right.nativeElement);
+        return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : position & Node.DOCUMENT_POSITION_PRECEDING ? 1 : 0;
+      });
       if (!panels.length) return;
-      // Set initial placement before paint, reading every panel before changing the grid.
-      const initialSpans = panels.map(({ nativeElement: panel }) => ({
-        panel,
-        span: Math.ceil(panel.getBoundingClientRect().height + parseFloat(getComputedStyle(panel).marginBottom)),
-      }));
-      for (const { panel, span } of initialSpans) panel.style.gridRowEnd = `span ${span}`;
-      const pendingSpans = new Map<HTMLElement, string>();
+      const grid = panels[0].nativeElement.parentElement!;
+      const container = grid.parentElement!;
+      const assignments = new Map<HTMLElement, number>();
+      let previousWidth = -1;
+      let previousColumns = 0;
       let frame: number | null = null;
-      const observer = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          const panel = entry.target as HTMLElement;
-          const gap = parseFloat(getComputedStyle(panel).marginBottom);
-          // Each implicit grid row is one pixel; include the spacing below the panel.
-          const span = `span ${Math.ceil(entry.borderBoxSize[0].blockSize + gap)}`;
-          if (panel.style.gridRowEnd !== span) pendingSpans.set(panel, span);
-          else pendingSpans.delete(panel);
+      const layout = () => {
+        const width = grid.getBoundingClientRect().width;
+        const columns = getComputedStyle(container).gridTemplateColumns.split(/\s+/).length;
+        const reassign = width !== previousWidth || columns !== previousColumns;
+        const heights = Array<number>(columns).fill(0);
+        const measurements = panels.map(({ nativeElement: panel }) => ({
+          panel,
+          span: Math.ceil(panel.getBoundingClientRect().height + parseFloat(getComputedStyle(panel).marginBottom)),
+        }));
+        for (const { panel, span } of measurements) {
+          const column = reassign ? heights.indexOf(Math.min(...heights)) : assignments.get(panel)!;
+          assignments.set(panel, column);
+          panel.style.gridColumnStart = String(column + 1);
+          panel.style.gridRowStart = String(heights[column] + 1);
+          panel.style.gridRowEnd = `span ${span}`;
+          heights[column] += span;
         }
-        // Changing grid placement during observer delivery can resize these same panels.
-        if (frame !== null || !pendingSpans.size) return;
+        previousWidth = width;
+        previousColumns = columns;
+      };
+      layout();
+      const observer = new ResizeObserver(() => {
+        if (frame !== null) return;
         frame = requestAnimationFrame(() => {
           frame = null;
-          for (const [panel, span] of pendingSpans) {
-            if (panel.style.gridRowEnd !== span) panel.style.gridRowEnd = span;
-          }
-          pendingSpans.clear();
+          layout();
         });
       });
+      observer.observe(grid);
       for (const panel of panels) observer.observe(panel.nativeElement, { box: 'border-box' });
       onCleanup(() => {
         observer.disconnect();
@@ -2118,7 +2129,7 @@ export class UnitConstructionComponent {
     if (!selected) return [];
     const ids =
       selected.system === 'Engine'
-        ? ['engineType', 'engineRating', 'engineTechBase', 'heatSinkType', 'heatSinkCount']
+        ? ['engineType', 'walkMP', 'engineTechBase', 'heatSinkType', 'heatSinkCount']
         : selected.system === 'Gyro'
           ? ['gyro']
           : selected.system === 'Cockpit'

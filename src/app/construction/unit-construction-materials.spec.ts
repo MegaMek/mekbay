@@ -181,6 +181,45 @@ describe('construction material selections and CASE controls', () => {
     expect(caseSelect(location).value).toBe(value);
   };
 
+  it('keeps masonry columns stable on expansion and repacks on width changes', async () => {
+    await render();
+    const container = root().querySelector<HTMLElement>('.configuration-panels')!;
+    const materials = panel() as HTMLElement;
+    const summary = root().querySelector<HTMLElement>('construction-summary')!.parentElement!;
+    const settleLayout = async () => {
+      for (let frame = 0; frame < 4; frame++)
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    };
+    container.style.width = '1200px';
+    container.style.gridTemplateColumns = 'repeat(4, 1fr)';
+    await settleLayout();
+    expect(summary.style.gridColumnStart).toBe(materials.style.gridColumnStart);
+    const column = summary.style.gridColumnStart;
+    const row = Number(summary.style.gridRowStart);
+    await choose('Armor', 'patchwork');
+    materials.style.minHeight = '400px';
+    await settleLayout();
+    expect(summary.style.gridColumnStart).toBe(column);
+    expect(Number(summary.style.gridRowStart)).toBeGreaterThan(row);
+    expect(summary.getBoundingClientRect().top).toBeGreaterThanOrEqual(materials.getBoundingClientRect().bottom);
+    container.style.width = '320px';
+    container.style.gridTemplateColumns = '1fr';
+    await settleLayout();
+    const panels = [...container.querySelectorAll<HTMLElement>('.systems-grid > .system-panel')];
+    expect(panels.map((item) => item.dataset['systemGroup'])).toEqual([
+      'Chassis',
+      'Materials',
+      'Systems',
+      'Special',
+      'Summary',
+    ]);
+    expect(panels.every((item) => item.style.gridColumnStart === '1')).toBeTrue();
+    for (let index = 1; index < panels.length; index++)
+      expect(panels[index].getBoundingClientRect().top).toBeGreaterThanOrEqual(
+        panels[index - 1].getBoundingClientRect().bottom,
+      );
+  });
+
   it('selects patchwork without changing location materials and restores the selection and hint through undo', async () => {
     await render();
     const materials = [...editor.entity().armorByLocation().values()].map((mounted) => mounted.armor.id);

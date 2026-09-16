@@ -18,7 +18,7 @@ import { MountedArmor, MountedEngine, MountedStructure } from '../models/entity/
 import { STRUCTURE_TYPE } from '../models/entity/types/structure';
 import type { GyroType } from '../models/entity/components/gyro-data';
 import { MekEntity } from '../models/entity/entities/mek/mek-entity';
-import type { MekSystemType } from '../models/entity/types/mek';
+import type { MekLocation, MekSystemType } from '../models/entity/types';
 import { parseEntity } from '../models/entity/parse-entity';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { encodeNativeEntity } from '../models/entity/write-entity';
@@ -2209,39 +2209,40 @@ describe('construction component blocks', () => {
     expect(f.root.querySelector('.system-armor-controls')?.textContent).toContain('Superheavy Meks cannot');
   });
 
-  for (const fieldId of ['engineRating', 'walkMP'] as const) {
+  for (const [fieldId, value, equipmentId, location] of [
+    ['gyro', 'XL', srm.id, 'CT'],
+    ['engineType', 'XL', ac.id, 'LT'],
+  ] as const) {
     it(`unallocates equipment displaced by ${fieldId} changes and restores the layout on undo`, async () => {
       const f = await create();
       f.editor.setField(
-        f.editor.fields().find((field) => field.id === 'engineRating')!,
-        300,
+        f.editor.fields().find((field) => field.id === 'walkMP')!,
+        6,
       );
       f.editor.install(srm, 'CT');
       const mount = f.editor
         .entity()
         .equipment()
-        .find((mount) => mount.equipmentId === srm.id)!;
-      const placements = [
-        { location: 'CT', slotIndex: 10 },
-        { location: 'CT', slotIndex: 11 },
-      ];
-      expect(mount.placements).toEqual(placements);
+        .find((item) => item.equipmentId === equipmentId)!;
+      const placements = mount.placements!;
+      expect(placements.every((placement) => placement.location === location)).toBeTrue();
       f.editor.setField(
         f.editor.fields().find((field) => field.id === fieldId)!,
-        fieldId === 'engineRating' ? 500 : 10,
+        value,
       );
       f.view.detectChanges();
       await f.view.whenStable();
-      expect(f.editor.entity().mountedEngine().rating).toBe(500);
-      expect(f.editor.unallocated().find((item) => item.mountId === mount.mountId)?.equipmentId).toBe(srm.id);
-      expect(f.root.querySelector('.unallocated-equipment')?.textContent).toContain('SRM 6');
-      expect(f.root.querySelector('[data-location="CT"] .mounted-name')).toBeNull();
+      expect(f.editor.entity().mountedEngine().rating).toBe(300);
+      expect(f.editor.unallocated().find((item) => item.mountId === mount.mountId)?.equipmentId).toBe(equipmentId);
+      expect(f.root.querySelector('.unallocated-equipment')?.textContent).toContain(mount.equipment!.name);
+      expect(f.root.querySelector(`[data-location="${location}"] .mounted-name`)).toBeNull();
       expect(
-        (f.editor.entity() as MekEntity)
-          .criticalSlotGrid()
-          .get('CT')!
-          .slice(10, 12)
-          .every((slot) => slot.type === 'system'),
+        placements.every(
+          (placement) =>
+            (f.editor.entity() as MekEntity).criticalSlotGrid().get(placement.location as MekLocation)![
+              placement.slotIndex
+            ].type === 'system',
+        ),
       ).toBeTrue();
       expect(
         f.editor
@@ -2255,12 +2256,11 @@ describe('construction component blocks', () => {
         f.editor
           .entity()
           .equipment()
-          .find((item) => item.equipmentId === srm.id)?.placements,
+          .find((item) => item.equipmentId === equipmentId)?.placements,
       ).toEqual(placements);
       expect(f.editor.unallocated()).toEqual([]);
       f.editor.redo();
-      expect(f.editor.entity().mountedEngine().rating).toBe(500);
-      expect(f.editor.unallocated().map((item) => item.equipmentId)).toContain(srm.id);
+      expect(f.editor.unallocated().map((item) => item.equipmentId)).toContain(equipmentId);
     });
   }
 
@@ -2270,7 +2270,7 @@ describe('construction component blocks', () => {
     f.view.detectChanges();
     await f.view.whenStable();
     const selector = f.root.querySelector<HTMLSelectElement>(
-      '.installed-inspector select[aria-label="Engine rating"]',
+      '.installed-inspector select[aria-label="Engine rating / Walk MP"]',
     )!;
     expect(selector).not.toBeNull();
     const option = Array.from(selector.options).find((option) => option.textContent?.trim() === '350 · 7 Walk MP')!;

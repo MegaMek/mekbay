@@ -333,17 +333,6 @@ describe('MTF parser identity', () => {
     expect(encoded).not.toContain('<UnitType>');
   });
 
-  it('derives construction jump MP from equipment while preserving the source field', () => {
-    const entity = parseMtf(
-      minimalMtf().replace('jump mp:0', 'jump mp:5'),
-      new ParseContext('construction-jump-mp.mtf', STANDARD_ARMOR_REGISTRY),
-    );
-
-    expect(entity.installedJumpJetMP()).toBe(0);
-    expect(entity.jumpMP()).toBe(0);
-    expect(writeMtf(entity)).toContain('\njump mp:5\n');
-  });
-
   it('keeps MTF VGL front and rear facings distinct from rear mounting', () => {
     const vgl = new WeaponEquipment({
       id: 'Test VGL',

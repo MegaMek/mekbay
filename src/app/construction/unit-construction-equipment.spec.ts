@@ -593,7 +593,9 @@ describe('construction equipment warehouse', () => {
     const gyro = root.querySelector<HTMLSelectElement>('select[aria-label="Gyro"]')!;
     expect(gyro.classList.contains('danger')).toBeTrue();
     expect(gyro.selectedOptions[0].disabled).toBeTrue();
-    root.querySelector<HTMLButtonElement>('.configuration-filter')!.click();
+    const showIncompatible = root.querySelector<HTMLInputElement>('.warehouse-platform-filter input')!;
+    expect(showIncompatible.checked).toBeFalse();
+    showIncompatible.click();
     fixture.detectChanges();
     await fixture.whenStable();
     expect(editor.showIncompatibleEquipment()).toBeTrue();
@@ -1934,13 +1936,6 @@ describe('construction equipment warehouse', () => {
         expect(previewTab.right <= totals.left || previewTab.bottom <= totals.top || previewTab.top >= totals.bottom)
           .withContext(`Preview tab right ${previewTab.right}; totals left ${totals.left}`)
           .toBeTrue();
-        if (panel === 'systems') {
-          const filter = root.querySelector<HTMLButtonElement>('.configuration-filter')!.getBoundingClientRect();
-          const tabs = root.querySelector<HTMLElement>('.workspace-tabs')!.getBoundingClientRect();
-          expect(filter.width).toBeGreaterThan(0);
-          expect(filter.left).toBeGreaterThanOrEqual(tabs.right);
-          expect(filter.right).toBeLessThanOrEqual(375);
-        }
         const navigation = root.querySelector<HTMLElement>('.workspace-navigation')!;
         const navigationTop = navigation.getBoundingClientRect().top;
         shell.scrollTop = 400;

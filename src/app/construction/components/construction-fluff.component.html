@@ -1,22 +1,25 @@
 <div class="fluff-grid">
-  <section
-    class="framed-borders fluff-panel"
-    [attr.inert]="!textEditable() ? '' : null"
-    [class.design-locked]="!textEditable()"
-  >
-    <h2>Fluff</h2>
-    @for (field of narratives; track field.key) {
-      <label
-        >{{ field.label
-        }}<textarea
-          class="bt-input"
-          rows="5"
-          [ngModel]="textValue(field.key)"
-          (ngModelChange)="setText(field.key, $event)"
-        ></textarea>
-      </label>
-    }
-  </section>
+  <div class="fluff-main">
+    <ng-content select="[fluff-sources]"></ng-content>
+    <section
+      class="framed-borders fluff-panel"
+      [attr.inert]="!textEditable() ? '' : null"
+      [class.design-locked]="!textEditable()"
+    >
+      <h2>Fluff</h2>
+      @for (field of narratives; track field.key) {
+        <label
+          >{{ field.label
+          }}<textarea
+            class="bt-input"
+            rows="5"
+            [ngModel]="textValue(field.key)"
+            (ngModelChange)="setText(field.key, $event)"
+          ></textarea>
+        </label>
+      }
+    </section>
+  </div>
   <div class="fluff-side">
     <section class="framed-borders fluff-panel">
       <h2>Fluff image</h2>

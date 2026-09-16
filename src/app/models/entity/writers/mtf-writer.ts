@@ -266,7 +266,7 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
     lines.push(`nocrit:${m.equipmentId}:${m.location}`);
   }
   lines.push(`walk mp:${entity.originalWalkMP()}`);
-  lines.push(`jump mp:${entity.originalJumpMP()}`);
+  lines.push(`jump mp:${entity.maxJumpMP()}`);
   lines.push('');
 }
 
