@@ -242,6 +242,37 @@ describe('UnitSearchIndexService', () => {
         ]);
     });
 
+    it('indexes nonzero arc damage with four dropdown inputs and excludes zero-only arcs', () => {
+        const service = new UnitSearchIndexService();
+        const zero = { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' };
+        const damage = { dmgS: '1', dmgM: '2', dmgL: '3', dmgE: '4' };
+        const unit = createUnit({
+            name: 'Arc Damage',
+            as: {
+                specials: ['RBT'],
+                frontArc: { STD: damage, CAP: zero, SCAP: damage, MSL: damage, specials: ['MSL', 'SCAP'] },
+                rearArc: { STD: zero, CAP: damage, SCAP: zero, MSL: zero, specials: ['CAP'] },
+            },
+        });
+        const unarmed = createUnit({
+            name: 'Zero Arc Damage',
+            as: { specials: [], frontArc: { STD: zero, CAP: zero, SCAP: zero, MSL: zero, specials: ['CAP'] } },
+        });
+
+        service.rebuildIndexes([unit, unarmed], [], []);
+
+        for (const token of ['STD', 'CAP', 'SCAP', 'MSL']) {
+            expectUnitIds(service.getIndexedUnitIds('as.specials', token), [unit.uuid]);
+            expect(service.getDropdownOptionUniverse('as.specials')).toContain({
+                name: token, minimumFieldLabels: ['S', 'M', 'L', 'E'],
+            });
+            expect(service.getIndexedASSpecials(unit.uuid)?.occurrences
+                .find(occurrence => occurrence.token === token)?.values.map(value => value?.rank))
+                .toEqual([1, 2, 3, 4]);
+        }
+        expect(service.getIndexedASSpecials(unarmed.uuid)?.occurrences).toEqual([]);
+    });
+
     it('indexes implicit values and digit-bearing artillery tokens with contextual fields', () => {
         const service = new UnitSearchIndexService();
         const unit = createUnit({

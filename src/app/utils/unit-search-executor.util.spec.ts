@@ -11,12 +11,15 @@ import { parseASSpecials } from './as-special-filter.util';
 import { applyFilterStateToUnits } from './unit-filter-kernel.util';
 import { getProperty } from './unit-search-shared.util';
 import { filterStateToSemanticText, tokensToFilterState } from './semantic-filter.util';
-import { DROPDOWN_FILTERS, RANGE_FILTERS, SORT_OPTIONS } from '../services/unit-search-filters.model';
+import { DROPDOWN_FILTERS, RANGE_FILTERS, SORT_OPTIONS, type FilterState } from '../services/unit-search-filters.model';
 import { createConstructionEntity } from '../construction/domain/construction-factory';
 import { STANDARD_ARMOR_EQUIPMENT } from '../models/entity/components/armor';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { asSourceHash, asUnitUuid, MM_DATA_UNIT_PROVIDER_ID } from '../services/unit-catalog/unit-catalog.types';
 import { UnitSummaryBuilder } from './unit-summary-builder';
+import { UnitSearchIndexService } from '../services/unit-search-index.service';
+import { collectConstrainedMultistateAvailabilityNames } from './unit-search-constrained-options.util';
+import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl } from './unit-search-url-filters.util';
 
 function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
     return createEmptyUnit(overrides);
@@ -42,7 +45,9 @@ function executeSortedUnits(units: UnitSummary[], sortKey: string): UnitSummary[
     }).results;
 }
 
-function executeQuery(units: UnitSummary[], query: string, gameSystem = GameSystem.CBT): UnitSummary[] {
+function executeQuery(
+    units: UnitSummary[], query: string, gameSystem = GameSystem.CBT, index?: UnitSearchIndexService,
+): UnitSummary[] {
     return executeUnitSearch({
         units,
         parsedQuery: parseSemanticQueryAST(query, gameSystem),
@@ -59,10 +64,103 @@ function executeQuery(units: UnitSummary[], query: string, gameSystem = GameSyst
         unitBelongsToForcePack: () => false,
         getAllEraNames: () => [],
         getAllFactionNames: () => [],
+        ...(index ? {
+            getIndexedUnitIds: (key: string, value: string) => index.getIndexedUnitIds(key, value),
+            getIndexedFilterValues: (key: string) => index.getIndexedFilterValues(key),
+            getIndexedASSpecials: (uuid: UnitSummary['uuid']) => index.getIndexedASSpecials(uuid),
+        } : {}),
     }).results;
 }
 
 describe('unit-search-executor', () => {
+    it('filters arc damage through semantic queries and dropdown minima with or without the index', () => {
+        const zero = { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' };
+        const tiamat = createEmptyUnit({
+            name: 'Tiamat',
+            as: {
+                TP: 'DS', specials: ['RBT'],
+                frontArc: {
+                    STD: { dmgS: '14', dmgM: '15', dmgL: '12', dmgE: '0' },
+                    CAP: zero,
+                    SCAP: { dmgS: '31', dmgM: '31', dmgL: '0', dmgE: '0' },
+                    MSL: { dmgS: '4', dmgM: '4', dmgL: '4', dmgE: '4' },
+                    specials: ['MSL', 'SCAP'],
+                },
+            },
+        });
+        const capital = createEmptyUnit({
+            name: 'Capital',
+            as: {
+                TP: 'WS', specials: [],
+                rightArc: { STD: zero, CAP: { ...zero, dmgL: '3' }, SCAP: zero, MSL: zero, specials: ['CAP'] },
+            },
+        });
+        const unarmed = createEmptyUnit({
+            name: 'Unarmed',
+            as: {
+                TP: 'DS', specials: [],
+                frontArc: { STD: zero, CAP: zero, SCAP: zero, MSL: zero, specials: [] },
+            },
+        });
+        const units = [tiamat, capital, unarmed];
+        const index = new UnitSearchIndexService();
+        index.rebuildIndexes(units, [], []);
+        const selection = { MSL: { name: 'MSL', state: 'and' as const, count: 1, minimumValues: [4, 4, 4, 4] } };
+        const filterState: FilterState = { 'as.specials': { interactedWith: true, value: selection } };
+        const params = buildUnitSearchQueryParameters({
+            searchText: '', filterState, semanticKeys: new Set(), selectedSort: '', selectedSortDirection: 'asc',
+            expanded: false, gunnery: 4, piloting: 5, bvLimit: 0, publicTagsParam: null,
+        });
+        const restoredState = parseAndValidateCompactFiltersFromUrl(params.filters!, {
+            units, getProperty,
+            getDropdownOptionUniverse: key => index.getDropdownOptionUniverse(key).map(option => option.name),
+            getExternalDropdownValues: () => [],
+        });
+        expect(restoredState).toEqual(filterState);
+        expect(collectConstrainedMultistateAvailabilityNames('as.specials', units, selection, false, index))
+            .toEqual(new Set(['MSL', 'RBT', 'SCAP', 'STD']));
+        const cases: [string, string[]][] = [
+            ['specials=STD', ['Tiamat']],
+            ['specials=CAP', ['Capital']],
+            ['specials=SCAP', ['Tiamat']],
+            ['specials=MSL', ['Tiamat']],
+            ['specials=CAP*/*/>=3/*', ['Capital']],
+            ['specials=STD>=14/>=15/>=12/>=0', ['Tiamat']],
+            ['specials=SCAP>=31/>=31/*/*', ['Tiamat']],
+            ['specials=MSL>=4/>=4/>=4/>=4', ['Tiamat']],
+            ['specials=MSL*/*/*/>=5', []],
+            ['specials!=MSL', ['Capital', 'Unarmed']],
+            ['specials&=STD specials&=MSL', ['Tiamat']],
+            ['(specials=CAP OR specials=MSL) specials!=SCAP', ['Capital']],
+        ];
+        for (const activeIndex of [undefined, index]) {
+            for (const [query, expected] of cases) {
+                expect(executeQuery(units, query, GameSystem.AS, activeIndex).map(unit => unit.name))
+                    .withContext(`${query}, indexed: ${!!activeIndex}`).toEqual(jasmine.arrayWithExactContents(expected));
+            }
+            const results = applyFilterStateToUnits({
+                units,
+                state: restoredState,
+                dependencies: {
+                    getProperty,
+                    getAdjustedBV: unit => unit.bv,
+                    getAdjustedPV: unit => unit.as.PV,
+                    getUnitIdsForExternalFilters: () => null,
+                    getPositiveFactionNames: () => [],
+                    unitMatchesAvailabilityFrom: () => false,
+                    unitMatchesAvailabilityRarity: () => false,
+                    getForcePackLookupSet: () => undefined,
+                    getAvailabilityLookupKey: unit => unit.name,
+                    ...(activeIndex ? {
+                        getIndexedUnitIds: (key: string, value: string) => activeIndex.getIndexedUnitIds(key, value),
+                        getIndexedASSpecials: (uuid: UnitSummary['uuid']) => activeIndex.getIndexedASSpecials(uuid),
+                    } : {}),
+                },
+            });
+            expect(results).toEqual([tiamat]);
+        }
+    });
+
     describe('semantic issue counts', () => {
         it('finds both parsing and construction errors in generated summaries', () => {
             const registry = createTestEquipmentRegistry({

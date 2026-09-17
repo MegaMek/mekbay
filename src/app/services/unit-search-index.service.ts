@@ -28,6 +28,7 @@ import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { EquipmentRegistry } from '../models/equipment-lookup';
 import {
     buildASSpecialsByUnitIndex,
+    getASSpecialFilterValues,
     getASSpecialMinimumFieldLabels,
     type ParsedASSpecials,
 } from '../utils/as-special-filter.util';
@@ -458,7 +459,7 @@ export class UnitSearchIndexService {
         const parsedSpecialsByUnitUuid = buildASSpecialsByUnitIndex(
             units,
             unit => unit.uuid,
-            unit => unit.as?.specials,
+            unit => getASSpecialFilterValues(unit.as),
         );
         this.asSpecialsByUnit = units.map(unit => parsedSpecialsByUnitUuid.get(unit.uuid)!);
         const identityMapStartedAt = Date.now();

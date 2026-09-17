@@ -9,6 +9,8 @@
  * evaluator, and search worker all need to interpret specials identically.
  */
 
+import type { AlphaStrikeUnitStats } from '../models/unit-summary.model';
+
 export type ASSpecialSelectionState = false | 'or' | 'and' | 'not';
 
 export interface ASSpecialMinimumSelection {
@@ -113,6 +115,7 @@ const AS_SPECIAL_TOKEN_SCHEMAS = new Map<string, ASSpecialTokenSchema>([
     ['BHJ3', { literalDigits: true }],
     ['C3BSM', { implicitValues: [1] }],
     ['C3M', { implicitValues: [1] }],
+    ['CAP', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['CK', { fieldLabels: ['Cap', 'Doors'] }],
     ['CNARC', { implicitValues: [1] }],
     ['CT', { fieldLabels: ['Cap', 'Doors'] }],
@@ -123,22 +126,44 @@ const AS_SPECIAL_TOKEN_SCHEMAS = new Map<string, ASSpecialTokenSchema>([
     ['LAM', { fieldLabels: ['Ground', 'Aero'] }],
     ['LRM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['MFB', { implicitValues: [1] }],
+    ['MSL', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['MT', { fieldLabels: ['Cap', 'Doors'] }],
     ['NC3', { literalDigits: true }],
     ['PT', { fieldLabels: ['Cap', 'Doors'] }],
     ['REAR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+    ['SCAP', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['SDS-C', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['SDS-CM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['SDS-SC', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['SNARC', { implicitValues: [1] }],
     ['SRM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['ST', { fieldLabels: ['Cap', 'Doors'] }],
+    ['STD', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['TOR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['TUR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
     ['VTH', { fieldLabels: ['Cap', 'Doors'] }],
     ['VTM', { fieldLabels: ['Cap', 'Doors'] }],
     ['VTS', { fieldLabels: ['Cap', 'Doors'] }],
 ]);
+
+const ARC_DAMAGE_SPECIALS = ['STD', 'CAP', 'SCAP', 'MSL'] as const;
+
+export function getASSpecialFilterValues(
+    stats: Pick<AlphaStrikeUnitStats, 'specials' | 'frontArc' | 'rearArc' | 'leftArc' | 'rightArc'> | undefined,
+): string[] {
+    const specials = (stats?.specials ?? []).filter(value => !ARC_DAMAGE_SPECIALS.some(token => token === value));
+    for (const arc of [stats?.frontArc, stats?.rearArc, stats?.leftArc, stats?.rightArc]) {
+        if (!arc) continue;
+        for (const token of ARC_DAMAGE_SPECIALS) {
+            const damage = arc[token];
+            const values = [damage.dmgS, damage.dmgM, damage.dmgL, damage.dmgE];
+            if (values.some(value => value === '0*' || Number(value) > 0)) {
+                specials.push(`${token}${values.join('/')}`);
+            }
+        }
+    }
+    return specials;
+}
 
 interface ASSpecialParseContext {
     readonly abilities: Map<string, ASSpecialAbilityNode | null>;

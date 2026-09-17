@@ -8,12 +8,14 @@ import {
     compileASSpecialSelections,
     evaluateASSpecialsFilter,
     formatASSpecialMinimumQuery,
+    getASSpecialFilterValues,
     getASSpecialMinimumFieldLabels,
     getASSpecialToken,
     parseASSpecialMinimumQuery,
     parseASSpecials,
     unitMatchesASSpecialSelections,
 } from './as-special-filter.util';
+import type { AlphaStrikeArcStats } from '../models/unit-summary.model';
 
 describe('Alpha Strike special filtering', () => {
     const specials = [
@@ -23,6 +25,58 @@ describe('Alpha Strike special filtering', () => {
         'TUR(3/3/3,IF2,LRM3/3/2)',
     ];
     const queries = (...values: string[]) => compileASSpecialQueries(values);
+
+    const emptyArc = (): AlphaStrikeArcStats => ({
+        STD: { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' },
+        CAP: { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' },
+        SCAP: { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' },
+        MSL: { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' },
+        specials: [],
+    });
+
+    it('projects nonzero arc damage into four-slot specials without changing the summary', () => {
+        const frontArc = emptyArc();
+        const rearArc = emptyArc();
+        frontArc.STD = { dmgS: '14', dmgM: '15', dmgL: '12', dmgE: '0' };
+        frontArc.SCAP = { dmgS: '31', dmgM: '31', dmgL: '0', dmgE: '0' };
+        frontArc.MSL = { dmgS: '4', dmgM: '4', dmgL: '4', dmgE: '4' };
+        rearArc.CAP.dmgE = '0*';
+        const stats = { specials: ['RBT', 'CAP'], frontArc, rearArc };
+        const values = getASSpecialFilterValues(stats);
+
+        expect(values).toEqual(['RBT', 'STD14/15/12/0', 'SCAP31/31/0/0', 'MSL4/4/4/4', 'CAP0/0/0/0*']);
+        expect(stats.specials).toEqual(['RBT', 'CAP']);
+        for (const token of ['STD', 'CAP', 'SCAP', 'MSL']) {
+            expect(getASSpecialMinimumFieldLabels(token, 4)).toEqual(['S', 'M', 'L', 'E']);
+            expect(evaluateASSpecialsFilter(values, '=', queries(token))).toBeTrue();
+        }
+        expect(evaluateASSpecialsFilter(values, '=', queries('MSL>=4/>=4/>=4/>=4'))).toBeTrue();
+        expect(evaluateASSpecialsFilter(values, '=', queries('MSL*/*/*/>=5'))).toBeFalse();
+    });
+
+    it('omits all-zero damage specials even when a bare token is present', () => {
+        expect(getASSpecialFilterValues({ specials: ['TAG', 'CAP', 'MSL'], frontArc: emptyArc() })).toEqual(['TAG']);
+        expect(getASSpecialFilterValues({ specials: ['TAG'] })).toEqual(['TAG']);
+        expect(getASSpecialFilterValues(undefined)).toEqual([]);
+    });
+
+    it('requires one arc to satisfy every populated minimum', () => {
+        const leftArc = emptyArc();
+        const rightArc = emptyArc();
+        leftArc.STD.dmgS = '10';
+        rightArc.STD.dmgM = '10';
+        const values = getASSpecialFilterValues({ specials: [], leftArc, rightArc });
+
+        expect(unitMatchesASSpecialSelections(values, compileASSpecialSelections([
+            { name: 'STD', state: 'and', minimumValues: [10, 10, null, null] },
+        ]))).toBeFalse();
+        expect(unitMatchesASSpecialSelections(values, compileASSpecialSelections([
+            { name: 'STD', state: 'and', minimumValues: [null, 10, null, null] },
+        ]))).toBeTrue();
+        expect(unitMatchesASSpecialSelections(values, compileASSpecialSelections([
+            { name: 'STD', state: 'not', minimumValues: [null, 10, null, null] },
+        ]))).toBeFalse();
+    });
 
     it('tokenizes top-level and turret-contained abilities without exposing turret damage as an ability', () => {
         const parsed = parseASSpecials(specials);

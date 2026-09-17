@@ -5,6 +5,7 @@
 import type { MultiStateOption, MultiStateSelection } from '../components/multi-select-dropdown/multi-select-dropdown.component';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, type SearchTelemetryStage } from '../services/unit-search-filters.model';
+import { getASSpecialFilterValues } from './as-special-filter.util';
 
 export interface UnitComponentData {
     names: Set<string>;
@@ -127,6 +128,9 @@ export function getProperty(obj: UnitSummary, key?: string): unknown {
     }
     if (key === 'weaponType') {
         return obj._weaponTypes ?? [];
+    }
+    if (key === 'as.specials') {
+        return getASSpecialFilterValues(obj.as);
     }
     if (key === 'as._motive') {
         const mvm = obj.as?.MVm;
