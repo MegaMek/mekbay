@@ -1,183 +1,212 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>MekBay: BattleTech Force Builder &amp; Record Sheets</title>
-  <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, interactive-widget=resizes-content" />
-  <link rel="icon" type="image/png" href="icons/icon-192x192.png" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="canonical" href="https://mekbay.com/" />
-  <meta name="theme-color" content="#292929" />
-  <meta name="description" content="Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets." />
-  <meta property="og:title" content="MekBay: BattleTech Force Builder &amp; Record Sheets" />
-  <meta property="og:description" content="Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets." />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://mekbay.com/" />
-  <meta property="og:image" content="https://mekbay.com/images/ogimage.jpg" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:type" content="image/jpeg" />
-  <meta property="og:image:alt" content="MekBay BattleTech force builder" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="MekBay: BattleTech Force Builder &amp; Record Sheets" />
-  <meta name="twitter:description" content="Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets." />
-  <meta name="twitter:image" content="https://mekbay.com/images/ogimage_square.jpg" />
-  <meta name="twitter:image:alt" content="MekBay BattleTech force builder" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="MekBay" />
-  <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
-  <script id="mekbay-page-schema" type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "@id": "https://mekbay.com/#webapplication",
-      "name": "MekBay",
-      "url": "https://mekbay.com/",
-      "description": "Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.",
-      "applicationCategory": "GameApplication",
-      "operatingSystem": "Any",
-      "browserRequirements": "Requires JavaScript and a modern web browser.",
-      "isAccessibleForFree": true,
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
-      "image": "https://mekbay.com/images/ogimage.jpg",
-      "author": {
-        "@type": "Organization",
-        "@id": "https://megamek.org/#organization",
-        "name": "MegaMek",
-        "alternateName": "The MegaMek Team",
-        "url": "https://megamek.org/"
-      },
-      "publisher": {
-        "@id": "https://megamek.org/#organization"
-      },
-      "sameAs": [
-        "https://github.com/MegaMek/mekbay",
-        "https://discord.gg/megamek"
-      ],
-      "featureList": [
-        "Classic BattleTech force building",
-        "Alpha Strike force building",
-        "Battle Value and Point Value balancing",
-        "Interactive record sheets",
-        "Printable record sheets",
-        "Interactive Alpha Strike cards",
-        "Printable Alpha Strike cards",
-        "BattleTech force generator",
-        "Alpha Strike force generator"
-      ]
-    }
-  </script>
-  <link rel="preload" href="images/logo.png" as="image" fetchpriority="high">
-  <link rel="preload" href="fonts/Roboto-VariableFont_wdth,wght.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="preload" href="fonts/Roboto-Italic-VariableFont_wdth,wght.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="preload" href="fonts/RobotoCondensed-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="preload" href="fonts/RobotoCondensed-Italic-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin>
-  <style>
-    html,
-    body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      background: #141414;
-    }
+  <head>
+    <meta charset="utf-8" />
+    <title>MekBay: BattleTech Force Builder &amp; Record Sheets</title>
+    <base href="/" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, interactive-widget=resizes-content"
+    />
+    <link rel="icon" type="image/png" href="icons/icon-192x192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="canonical" href="https://mekbay.com/" />
+    <meta name="theme-color" content="#292929" />
+    <meta
+      name="description"
+      content="Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets."
+    />
+    <meta property="og:title" content="MekBay: BattleTech Force Builder &amp; Record Sheets" />
+    <meta
+      property="og:description"
+      content="Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://mekbay.com/" />
+    <meta property="og:image" content="https://mekbay.com/images/ogimage.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:alt" content="MekBay BattleTech force builder" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="MekBay: BattleTech Force Builder &amp; Record Sheets" />
+    <meta
+      name="twitter:description"
+      content="Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets."
+    />
+    <meta name="twitter:image" content="https://mekbay.com/images/ogimage_square.jpg" />
+    <meta name="twitter:image:alt" content="MekBay BattleTech force builder" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MekBay" />
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
+    <script id="mekbay-page-schema" type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "@id": "https://mekbay.com/#webapplication",
+        "name": "MekBay",
+        "url": "https://mekbay.com/",
+        "description": "Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript and a modern web browser.",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "image": "https://mekbay.com/images/ogimage.jpg",
+        "author": {
+          "@type": "Organization",
+          "@id": "https://megamek.org/#organization",
+          "name": "MegaMek",
+          "alternateName": "The MegaMek Team",
+          "url": "https://megamek.org/"
+        },
+        "publisher": {
+          "@id": "https://megamek.org/#organization"
+        },
+        "sameAs": ["https://github.com/MegaMek/mekbay", "https://discord.gg/megamek"],
+        "featureList": [
+          "Classic BattleTech force building",
+          "Alpha Strike force building",
+          "Battle Value and Point Value balancing",
+          "Interactive record sheets",
+          "Printable record sheets",
+          "Interactive Alpha Strike cards",
+          "Printable Alpha Strike cards",
+          "BattleTech force generator",
+          "Alpha Strike force generator"
+        ]
+      }
+    </script>
+    <link rel="preload" href="images/logo.png" as="image" fetchpriority="high" />
+    <link rel="preload" href="fonts/Roboto-VariableFont_wdth,wght.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="fonts/Roboto-Italic-VariableFont_wdth,wght.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="fonts/RobotoCondensed-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin />
+    <link
+      rel="preload"
+      href="fonts/RobotoCondensed-Italic-VariableFont_wght.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #141414;
+      }
 
-    .mekbay-bootstrap-shell {
-      position: fixed;
-      inset: 0;
-      display: grid;
-      place-content: center;
-      justify-items: center;
-      gap: 16px;
-      box-sizing: border-box;
-      padding: 24px;
-      color: #aaa;
-      background: linear-gradient(225deg, #333333 0%, #101010 100%);
-      font: 14px/1.4 Arial, sans-serif;
-      overflow: auto;
-    }
+      .mekbay-bootstrap-shell {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 16px;
+        box-sizing: border-box;
+        padding: 24px;
+        color: #aaa;
+        background: linear-gradient(225deg, #333333 0%, #101010 100%);
+        font:
+          14px/1.4 Arial,
+          sans-serif;
+        overflow: auto;
+      }
 
-    .mekbay-seo-intro {
-      max-width: 640px;
-      text-align: center;
-    }
+      .mekbay-seo-intro {
+        max-width: 640px;
+        text-align: center;
+        opacity: 0;
+      }
 
-    .mekbay-seo-intro h1 { font-size: 22px; }
-    .mekbay-seo-intro a { color: #ddd; }
+      .mekbay-seo-intro h1 {
+        font-size: 22px;
+      }
+      .mekbay-seo-intro a {
+        color: #ddd;
+      }
 
-    .mekbay-bootstrap-shell img {
-      width: min(256px, 70vw);
-      height: auto;
-    }
+      .mekbay-bootstrap-shell img {
+        width: min(256px, 70vw);
+        height: auto;
+      }
 
-    @font-face {
-      font-family: 'Roboto';
-      src: url('fonts/Roboto-VariableFont_wdth,wght.ttf') format('truetype');
-      font-weight: 100 900;
-      font-stretch: 75% 100%;
-      font-style: normal;
-      font-display: swap;
-    }
+      @font-face {
+        font-family: 'Roboto';
+        src: url('fonts/Roboto-VariableFont_wdth,wght.ttf') format('truetype');
+        font-weight: 100 900;
+        font-stretch: 75% 100%;
+        font-style: normal;
+        font-display: swap;
+      }
 
-    @font-face {
-      font-family: 'Roboto';
-      src: url('fonts/Roboto-Italic-VariableFont_wdth,wght.ttf') format('truetype');
-      font-weight: 100 900;
-      font-stretch: 75% 100%;
-      font-style: italic;
-      font-display: swap;
-    }
+      @font-face {
+        font-family: 'Roboto';
+        src: url('fonts/Roboto-Italic-VariableFont_wdth,wght.ttf') format('truetype');
+        font-weight: 100 900;
+        font-stretch: 75% 100%;
+        font-style: italic;
+        font-display: swap;
+      }
 
-    @font-face {
-      font-family: 'Roboto Condensed';
-      src: url('fonts/RobotoCondensed-VariableFont_wght.ttf') format('truetype');
-      font-weight: 100 900;
-      font-style: normal;
-      font-display: swap;
-    }
+      @font-face {
+        font-family: 'Roboto Condensed';
+        src: url('fonts/RobotoCondensed-VariableFont_wght.ttf') format('truetype');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
 
-    @font-face {
-      font-family: 'Roboto Condensed';
-      src: url('fonts/RobotoCondensed-Italic-VariableFont_wght.ttf') format('truetype');
-      font-weight: 100 900;
-      font-style: italic;
-      font-display: swap;
-    }
-  </style>
-</head>
-<body>
-  <app-root>
-    <div class="mekbay-bootstrap-shell">
-      <img src="images/logo.png" width="512" height="109" alt="MekBay" fetchpriority="high">
-      <span role="status" aria-live="polite">Loading MekBay…</span>
-      <!-- seo-content:start -->
-      <section class="mekbay-seo-intro">
-        <h1>MekBay</h1>
-        <p>Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate forces, and use interactive or printable record sheets.</p>
-        <nav aria-label="MekBay tools"><a href="/">MekBay</a> · <a href="/?expanded=true">BattleTech Unit Search</a> · <a href="/forcegenerator">BattleTech Force Generator</a> · <a href="/meklab">MekLab: BattleTech Unit Designer</a></nav>
-      </section>
-      <!-- seo-content:end -->
-    </div>
-  </app-root>
-  <noscript>Please enable JavaScript to continue using this application.</noscript>  
-  <script>
-    document.addEventListener('gesturestart', function(e) {
-      e.preventDefault();
-    });
+      @font-face {
+        font-family: 'Roboto Condensed';
+        src: url('fonts/RobotoCondensed-Italic-VariableFont_wght.ttf') format('truetype');
+        font-weight: 100 900;
+        font-style: italic;
+        font-display: swap;
+      }
+    </style>
+  </head>
+  <body>
+    <app-root>
+      <div class="mekbay-bootstrap-shell">
+        <img src="images/logo.png" width="512" height="109" alt="MekBay" fetchpriority="high" />
+        <span role="status" aria-live="polite">Loading MekBay…</span>
+        <!-- seo-content:start -->
+        <section class="mekbay-seo-intro">
+          <h1>MekBay</h1>
+          <p>
+            Build and manage BattleTech forces for Classic and Alpha Strike. Search units, balance BV/PV, generate
+            forces, and use interactive or printable record sheets.
+          </p>
+          <nav aria-label="MekBay tools">
+            <a href="/">MekBay</a> · <a href="/?expanded=true">BattleTech Unit Search</a> ·
+            <a href="/forcegenerator">BattleTech Force Generator</a> ·
+            <a href="/meklab">MekLab: BattleTech Unit Designer</a>
+          </nav>
+        </section>
+        <!-- seo-content:end -->
+      </div>
+    </app-root>
+    <noscript>Please enable JavaScript to continue using this application.</noscript>
+    <script>
+      document.addEventListener('gesturestart', function (e) {
+        e.preventDefault();
+      });
 
-    document.addEventListener('gesturechange', function(e) {
-      e.preventDefault();
-    });
+      document.addEventListener('gesturechange', function (e) {
+        e.preventDefault();
+      });
 
-    document.addEventListener('gestureend', function(e) {
-      e.preventDefault();
-    });
-  </script>
-</body>
+      document.addEventListener('gestureend', function (e) {
+        e.preventDefault();
+      });
+    </script>
+  </body>
 </html>
