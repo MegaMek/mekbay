@@ -22,575 +22,632 @@ import { collectConstrainedMultistateAvailabilityNames } from './unit-search-con
 import { buildUnitSearchQueryParameters, parseAndValidateCompactFiltersFromUrl } from './unit-search-url-filters.util';
 
 function createUnit(overrides: Pick<UnitSummary, 'name' | 'chassis' | 'model' | 'tons'>): UnitSummary {
-    return createEmptyUnit(overrides);
+  return createEmptyUnit(overrides);
 }
 
 function executeSortedUnits(units: UnitSummary[], sortKey: string): UnitSummary[] {
-    return executeUnitSearch({
-        units,
-        parsedQuery: parseSemanticQueryAST('', GameSystem.CBT),
-        searchTokens: [],
-        gameSystem: GameSystem.CBT,
-        sortKey,
-        sortDirection: 'asc',
-        bvPvLimit: 0,
-        forceTotalBvPv: 0,
-        getAdjustedBV: unit => unit.bv,
-        getAdjustedPV: unit => unit.as.PV,
-        unitBelongsToEra: () => false,
-        unitBelongsToFaction: () => false,
-        unitBelongsToForcePack: () => false,
-        getAllEraNames: () => [],
-        getAllFactionNames: () => [],
-    }).results;
+  return executeUnitSearch({
+    units,
+    parsedQuery: parseSemanticQueryAST('', GameSystem.CBT),
+    searchTokens: [],
+    gameSystem: GameSystem.CBT,
+    sortKey,
+    sortDirection: 'asc',
+    bvPvLimit: 0,
+    forceTotalBvPv: 0,
+    getAdjustedBV: (unit) => unit.bv,
+    getAdjustedPV: (unit) => unit.as.PV,
+    unitBelongsToEra: () => false,
+    unitBelongsToFaction: () => false,
+    unitBelongsToForcePack: () => false,
+    getAllEraNames: () => [],
+    getAllFactionNames: () => [],
+  }).results;
 }
 
 function executeQuery(
-    units: UnitSummary[], query: string, gameSystem = GameSystem.CBT, index?: UnitSearchIndexService,
+  units: UnitSummary[],
+  query: string,
+  gameSystem = GameSystem.CBT,
+  index?: UnitSearchIndexService,
 ): UnitSummary[] {
-    return executeUnitSearch({
-        units,
-        parsedQuery: parseSemanticQueryAST(query, gameSystem),
-        searchTokens: [],
-        gameSystem,
-        sortKey: 'name',
-        sortDirection: 'asc',
-        bvPvLimit: 0,
-        forceTotalBvPv: 0,
-        getAdjustedBV: unit => unit.bv,
-        getAdjustedPV: unit => unit.as.PV,
-        unitBelongsToEra: () => false,
-        unitBelongsToFaction: () => false,
-        unitBelongsToForcePack: () => false,
-        getAllEraNames: () => [],
-        getAllFactionNames: () => [],
-        ...(index ? {
-            getIndexedUnitIds: (key: string, value: string) => index.getIndexedUnitIds(key, value),
-            getIndexedFilterValues: (key: string) => index.getIndexedFilterValues(key),
-            getIndexedASSpecials: (uuid: UnitSummary['uuid']) => index.getIndexedASSpecials(uuid),
-        } : {}),
-    }).results;
+  return executeUnitSearch({
+    units,
+    parsedQuery: parseSemanticQueryAST(query, gameSystem),
+    searchTokens: [],
+    gameSystem,
+    sortKey: 'name',
+    sortDirection: 'asc',
+    bvPvLimit: 0,
+    forceTotalBvPv: 0,
+    getAdjustedBV: (unit) => unit.bv,
+    getAdjustedPV: (unit) => unit.as.PV,
+    unitBelongsToEra: () => false,
+    unitBelongsToFaction: () => false,
+    unitBelongsToForcePack: () => false,
+    getAllEraNames: () => [],
+    getAllFactionNames: () => [],
+    ...(index
+      ? {
+          getIndexedUnitIds: (key: string, value: string) => index.getIndexedUnitIds(key, value),
+          getIndexedFilterValues: (key: string) => index.getIndexedFilterValues(key),
+          getIndexedASSpecials: (uuid: UnitSummary['uuid']) => index.getIndexedASSpecials(uuid),
+        }
+      : {}),
+  }).results;
 }
 
 describe('unit-search-executor', () => {
-    it('filters arc damage through semantic queries and dropdown minima with or without the index', () => {
-        const zero = { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' };
-        const tiamat = createEmptyUnit({
-            name: 'Tiamat',
-            as: {
-                TP: 'DS', specials: ['RBT'],
-                frontArc: {
-                    STD: { dmgS: '14', dmgM: '15', dmgL: '12', dmgE: '0' },
-                    CAP: zero,
-                    SCAP: { dmgS: '31', dmgM: '31', dmgL: '0', dmgE: '0' },
-                    MSL: { dmgS: '4', dmgM: '4', dmgL: '4', dmgE: '4' },
-                    specials: ['MSL', 'SCAP'],
-                },
+  it('filters arc damage through semantic queries and dropdown minima with or without the index', () => {
+    const zero = { dmgS: '0', dmgM: '0', dmgL: '0', dmgE: '0' };
+    const tiamat = createEmptyUnit({
+      name: 'Tiamat',
+      as: {
+        TP: 'DS',
+        specials: ['RBT'],
+        frontArc: {
+          STD: { dmgS: '14', dmgM: '15', dmgL: '12', dmgE: '0' },
+          CAP: zero,
+          SCAP: { dmgS: '31', dmgM: '31', dmgL: '0', dmgE: '0' },
+          MSL: { dmgS: '4', dmgM: '4', dmgL: '4', dmgE: '4' },
+          specials: ['MSL', 'SCAP'],
+        },
+      },
+    });
+    const capital = createEmptyUnit({
+      name: 'Capital',
+      as: {
+        TP: 'WS',
+        specials: [],
+        rightArc: { STD: zero, CAP: { ...zero, dmgL: '3' }, SCAP: zero, MSL: zero, specials: ['CAP'] },
+      },
+    });
+    const unarmed = createEmptyUnit({
+      name: 'Unarmed',
+      as: {
+        TP: 'DS',
+        specials: [],
+        frontArc: { STD: zero, CAP: zero, SCAP: zero, MSL: zero, specials: [] },
+      },
+    });
+    const units = [tiamat, capital, unarmed];
+    const index = new UnitSearchIndexService();
+    index.rebuildIndexes(units, [], []);
+    const selection = { MSL: { name: 'MSL', state: 'and' as const, count: 1, minimumValues: [4, 4, 4, 4] } };
+    const filterState: FilterState = { 'as.specials': { interactedWith: true, value: selection } };
+    const params = buildUnitSearchQueryParameters({
+      searchText: '',
+      filterState,
+      semanticKeys: new Set(),
+      selectedSort: '',
+      selectedSortDirection: 'asc',
+      expanded: false,
+      gunnery: 4,
+      piloting: 5,
+      bvLimit: 0,
+      publicTagsParam: null,
+    });
+    const restoredState = parseAndValidateCompactFiltersFromUrl(params.filters!, {
+      units,
+      getProperty,
+      getDropdownOptionUniverse: (key) => index.getDropdownOptionUniverse(key).map((option) => option.name),
+      getExternalDropdownValues: () => [],
+    });
+    expect(restoredState).toEqual(filterState);
+    expect(collectConstrainedMultistateAvailabilityNames('as.specials', units, selection, false, index)).toEqual(
+      new Set(['MSL', 'RBT', 'SCAP', 'STD']),
+    );
+    const cases: [string, string[]][] = [
+      ['specials=STD', ['Tiamat']],
+      ['specials=CAP', ['Capital']],
+      ['specials=SCAP', ['Tiamat']],
+      ['specials=MSL', ['Tiamat']],
+      ['specials=CAP*/*/>=3/*', ['Capital']],
+      ['specials=STD>=14/>=15/>=12/>=0', ['Tiamat']],
+      ['specials=SCAP>=31/>=31/*/*', ['Tiamat']],
+      ['specials=MSL>=4/>=4/>=4/>=4', ['Tiamat']],
+      ['specials=MSL*/*/*/>=5', []],
+      ['specials!=MSL', ['Capital', 'Unarmed']],
+      ['specials&=STD specials&=MSL', ['Tiamat']],
+      ['(specials=CAP OR specials=MSL) specials!=SCAP', ['Capital']],
+    ];
+    for (const activeIndex of [undefined, index]) {
+      for (const [query, expected] of cases) {
+        expect(executeQuery(units, query, GameSystem.AS, activeIndex).map((unit) => unit.name))
+          .withContext(`${query}, indexed: ${!!activeIndex}`)
+          .toEqual(jasmine.arrayWithExactContents(expected));
+      }
+      const results = applyFilterStateToUnits({
+        units,
+        state: restoredState,
+        dependencies: {
+          getProperty,
+          getAdjustedBV: (unit) => unit.bv,
+          getAdjustedPV: (unit) => unit.as.PV,
+          getUnitIdsForExternalFilters: () => null,
+          getPositiveFactionNames: () => [],
+          unitMatchesAvailabilityFrom: () => false,
+          unitMatchesAvailabilityRarity: () => false,
+          getForcePackLookupSet: () => undefined,
+          getAvailabilityLookupKey: (unit) => unit.name,
+          ...(activeIndex
+            ? {
+                getIndexedUnitIds: (key: string, value: string) => activeIndex.getIndexedUnitIds(key, value),
+                getIndexedASSpecials: (uuid: UnitSummary['uuid']) => activeIndex.getIndexedASSpecials(uuid),
+              }
+            : {}),
+        },
+      });
+      expect(results).toEqual([tiamat]);
+    }
+  });
+
+  describe('semantic issue counts', () => {
+    it('finds both parsing and construction errors in generated summaries', () => {
+      const registry = createTestEquipmentRegistry({
+        [STANDARD_ARMOR_EQUIPMENT.id]: STANDARD_ARMOR_EQUIPMENT,
+      });
+      const summaries = ['Valid', 'Parsing error', 'Construction error'].map((name) => {
+        const entity = createConstructionEntity('BuildingEntity', registry);
+        entity.chassis.set(name);
+        if (name === 'Parsing error') {
+          entity.setLoadIssues([
+            {
+              code: 'INVALID_MOVEMENT_TYPE',
+              severity: 'error',
+              field: 'motion_type',
+              message: 'Invalid movement type',
             },
-        });
-        const capital = createEmptyUnit({
-            name: 'Capital',
-            as: {
-                TP: 'WS', specials: [],
-                rightArc: { STD: zero, CAP: { ...zero, dmgL: '3' }, SCAP: zero, MSL: zero, specials: ['CAP'] },
-            },
-        });
-        const unarmed = createEmptyUnit({
-            name: 'Unarmed',
-            as: {
-                TP: 'DS', specials: [],
-                frontArc: { STD: zero, CAP: zero, SCAP: zero, MSL: zero, specials: [] },
-            },
-        });
-        const units = [tiamat, capital, unarmed];
-        const index = new UnitSearchIndexService();
-        index.rebuildIndexes(units, [], []);
-        const selection = { MSL: { name: 'MSL', state: 'and' as const, count: 1, minimumValues: [4, 4, 4, 4] } };
-        const filterState: FilterState = { 'as.specials': { interactedWith: true, value: selection } };
-        const params = buildUnitSearchQueryParameters({
-            searchText: '', filterState, semanticKeys: new Set(), selectedSort: '', selectedSortDirection: 'asc',
-            expanded: false, gunnery: 4, piloting: 5, bvLimit: 0, publicTagsParam: null,
-        });
-        const restoredState = parseAndValidateCompactFiltersFromUrl(params.filters!, {
-            units, getProperty,
-            getDropdownOptionUniverse: key => index.getDropdownOptionUniverse(key).map(option => option.name),
-            getExternalDropdownValues: () => [],
-        });
-        expect(restoredState).toEqual(filterState);
-        expect(collectConstrainedMultistateAvailabilityNames('as.specials', units, selection, false, index))
-            .toEqual(new Set(['MSL', 'RBT', 'SCAP', 'STD']));
-        const cases: [string, string[]][] = [
-            ['specials=STD', ['Tiamat']],
-            ['specials=CAP', ['Capital']],
-            ['specials=SCAP', ['Tiamat']],
-            ['specials=MSL', ['Tiamat']],
-            ['specials=CAP*/*/>=3/*', ['Capital']],
-            ['specials=STD>=14/>=15/>=12/>=0', ['Tiamat']],
-            ['specials=SCAP>=31/>=31/*/*', ['Tiamat']],
-            ['specials=MSL>=4/>=4/>=4/>=4', ['Tiamat']],
-            ['specials=MSL*/*/*/>=5', []],
-            ['specials!=MSL', ['Capital', 'Unarmed']],
-            ['specials&=STD specials&=MSL', ['Tiamat']],
-            ['(specials=CAP OR specials=MSL) specials!=SCAP', ['Capital']],
-        ];
-        for (const activeIndex of [undefined, index]) {
-            for (const [query, expected] of cases) {
-                expect(executeQuery(units, query, GameSystem.AS, activeIndex).map(unit => unit.name))
-                    .withContext(`${query}, indexed: ${!!activeIndex}`).toEqual(jasmine.arrayWithExactContents(expected));
-            }
-            const results = applyFilterStateToUnits({
-                units,
-                state: restoredState,
-                dependencies: {
-                    getProperty,
-                    getAdjustedBV: unit => unit.bv,
-                    getAdjustedPV: unit => unit.as.PV,
-                    getUnitIdsForExternalFilters: () => null,
-                    getPositiveFactionNames: () => [],
-                    unitMatchesAvailabilityFrom: () => false,
-                    unitMatchesAvailabilityRarity: () => false,
-                    getForcePackLookupSet: () => undefined,
-                    getAvailabilityLookupKey: unit => unit.name,
-                    ...(activeIndex ? {
-                        getIndexedUnitIds: (key: string, value: string) => activeIndex.getIndexedUnitIds(key, value),
-                        getIndexedASSpecials: (uuid: UnitSummary['uuid']) => activeIndex.getIndexedASSpecials(uuid),
-                    } : {}),
-                },
-            });
-            expect(results).toEqual([tiamat]);
+          ]);
+        } else if (name === 'Construction error') {
+          entity.originalBuildYear.set(entity.year() + 1);
         }
+        return new UnitSummaryBuilder().build(entity, {
+          entryKey: {
+            origin: 'megamek',
+            design: { provider: MM_DATA_UNIT_PROVIDER_ID, uuid: asUnitUuid(entity.uuid()!) },
+            sourceRevision: asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA'),
+          },
+          format: 'blk',
+        });
+      });
+
+      for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
+        expect(executeQuery(summaries, 'issues>0', gameSystem).map((unit) => unit.chassis)).toEqual(
+          jasmine.arrayWithExactContents(['Parsing error', 'Construction error']),
+        );
+        expect(executeQuery(summaries, 'issues=0', gameSystem).map((unit) => unit.chassis)).toEqual(['Valid']);
+      }
     });
 
-    describe('semantic issue counts', () => {
-        it('finds both parsing and construction errors in generated summaries', () => {
-            const registry = createTestEquipmentRegistry({
-                [STANDARD_ARMOR_EQUIPMENT.id]: STANDARD_ARMOR_EQUIPMENT,
-            });
-            const summaries = ['Valid', 'Parsing error', 'Construction error'].map(name => {
-                const entity = createConstructionEntity('BuildingEntity', registry);
-                entity.chassis.set(name);
-                if (name === 'Parsing error') {
-                    entity.setLoadIssues([{
-                        code: 'INVALID_MOVEMENT_TYPE', severity: 'error', field: 'motion_type',
-                        message: 'Invalid movement type',
-                    }]);
-                } else if (name === 'Construction error') {
-                    entity.originalBuildYear.set(entity.year() + 1);
-                }
-                return new UnitSummaryBuilder().build(entity, {
-                    entryKey: {
-                        origin: 'megamek',
-                        design: { provider: MM_DATA_UNIT_PROVIDER_ID, uuid: asUnitUuid(entity.uuid()!) },
-                        sourceRevision: asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA'),
-                    },
-                    format: 'blk',
-                });
-            });
+    const units = [0, 1, 2, 101].map((count) =>
+      createEmptyUnit({
+        name: `Issues ${count}`,
+        loadIssues: Array.from({ length: count }, (_, index) => ({
+          code: 'test-issue',
+          severity: index % 2 ? 'warning' : 'error',
+          field: 'equipment',
+          message: `Issue ${index + 1}`,
+        })),
+      }),
+    );
+    const cases: [string, number[]][] = [
+      ['issues=1', [1]],
+      ['issues>0', [1, 2, 101]],
+      ['issues=0', [0]],
+      ['issues!=1', [0, 2, 101]],
+      ['issues>=2', [2, 101]],
+      ['issues<2', [0, 1]],
+      ['issues<=2', [0, 1, 2]],
+      ['issues=1-2', [1, 2]],
+      ['issues!=1-2', [0, 101]],
+      ['issues>0 issues<2', [1]],
+    ];
 
-            for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
-                expect(executeQuery(summaries, 'issues>0', gameSystem).map(unit => unit.chassis))
-                    .toEqual(jasmine.arrayWithExactContents(['Parsing error', 'Construction error']));
-                expect(executeQuery(summaries, 'issues=0', gameSystem).map(unit => unit.chassis))
-                    .toEqual(['Valid']);
-            }
-        });
-
-        const units = [0, 1, 2, 101].map(count => createEmptyUnit({
-            name: `Issues ${count}`,
-            loadIssues: Array.from({ length: count }, (_, index) => ({
-                code: 'test-issue', severity: index % 2 ? 'warning' : 'error',
-                field: 'equipment', message: `Issue ${index + 1}`,
-            })),
-        }));
-        const cases: [string, number[]][] = [
-            ['issues=1', [1]],
-            ['issues>0', [1, 2, 101]],
-            ['issues=0', [0]],
-            ['issues!=1', [0, 2, 101]],
-            ['issues>=2', [2, 101]],
-            ['issues<2', [0, 1]],
-            ['issues<=2', [0, 1, 2]],
-            ['issues=1-2', [1, 2]],
-            ['issues!=1-2', [0, 101]],
-            ['issues>0 issues<2', [1]],
-        ];
-
-        for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
-            it(`filters by issue count in ${gameSystem}`, () => {
-                for (const [query, counts] of cases) {
-                    expect(executeQuery(units, query, gameSystem).map(unit => unit.loadIssues.length))
-                        .withContext(query).toEqual(jasmine.arrayWithExactContents(counts));
-                }
-                expect(executeQuery(units, '(issues=0 OR issues>=2) issues<100', gameSystem)
-                    .map(unit => unit.loadIssues.length)).toEqual(jasmine.arrayWithExactContents([0, 2]));
-            });
+    for (const gameSystem of [GameSystem.CBT, GameSystem.AS]) {
+      it(`filters by issue count in ${gameSystem}`, () => {
+        for (const [query, counts] of cases) {
+          expect(executeQuery(units, query, gameSystem).map((unit) => unit.loadIssues.length))
+            .withContext(query)
+            .toEqual(jasmine.arrayWithExactContents(counts));
         }
+        expect(
+          executeQuery(units, '(issues=0 OR issues>=2) issues<100', gameSystem).map((unit) => unit.loadIssues.length),
+        ).toEqual(jasmine.arrayWithExactContents([0, 2]));
+      });
+    }
 
-        it('preserves numeric constraints through filter state and serialization', () => {
-            for (const [query, counts] of cases) {
-                const state = tokensToFilterState(parseSemanticQueryAST(query, GameSystem.CBT).tokens, GameSystem.CBT, {});
-                expect(state['loadIssues.length'].semanticOnly).withContext(query).toBeTrue();
-                const filtered = applyFilterStateToUnits({
-                    units, state,
-                    dependencies: {
-                        getProperty,
-                        getAdjustedBV: unit => unit.bv,
-                        getAdjustedPV: unit => unit.as.PV,
-                        getUnitIdsForExternalFilters: () => null,
-                        getPositiveFactionNames: () => [],
-                        unitMatchesAvailabilityFrom: () => false,
-                        unitMatchesAvailabilityRarity: () => false,
-                        getForcePackLookupSet: () => undefined,
-                        getAvailabilityLookupKey: unit => unit.name,
-                    },
-                });
-                expect(filtered.map(unit => unit.loadIssues.length))
-                    .withContext(query).toEqual(jasmine.arrayWithExactContents(counts));
-                const serialized = filterStateToSemanticText(state, '', GameSystem.CBT, {});
-                expect(executeQuery(units, serialized).map(unit => unit.loadIssues.length))
-                    .withContext(`${query} serialized as ${serialized}`).toEqual(jasmine.arrayWithExactContents(counts));
-            }
-        });
-
-        it('keeps issue counts out of UI filters and sorting', () => {
-            for (const options of [DROPDOWN_FILTERS, RANGE_FILTERS, SORT_OPTIONS]) {
-                expect(options.some(option => option.key === 'loadIssues.length')).toBeFalse();
-            }
-        });
-    });
-
-    describe('heat filters on units without heat tracking', () => {
-        const nonHeat = createEmptyUnit({
-            name: 'Tank', type: 'Tank', heat: null, dissipation: null,
-            _dissipationEfficiency: undefined, armor: 100,
-        });
-        const zero = createEmptyUnit({ name: 'Zero', heat: 0, dissipation: 0, _dissipationEfficiency: 0 });
-        const medium = createEmptyUnit({ name: 'Medium', heat: 20, dissipation: 20, _dissipationEfficiency: 20 });
-        const high = createEmptyUnit({ name: 'High', heat: 40, dissipation: 40, _dissipationEfficiency: 40 });
-        const units = [nonHeat, zero, medium, high];
-        const dependencies = {
+    it('preserves numeric constraints through filter state and serialization', () => {
+      for (const [query, counts] of cases) {
+        const state = tokensToFilterState(parseSemanticQueryAST(query, GameSystem.CBT).tokens, GameSystem.CBT, {});
+        expect(state['loadIssues.length'].semanticOnly).withContext(query).toBeTrue();
+        const filtered = applyFilterStateToUnits({
+          units,
+          state,
+          dependencies: {
             getProperty,
-            getAdjustedBV: (unit: UnitSummary) => unit.bv,
-            getAdjustedPV: (unit: UnitSummary) => unit.as.PV,
+            getAdjustedBV: (unit) => unit.bv,
+            getAdjustedPV: (unit) => unit.as.PV,
             getUnitIdsForExternalFilters: () => null,
             getPositiveFactionNames: () => [],
             unitMatchesAvailabilityFrom: () => false,
             unitMatchesAvailabilityRarity: () => false,
             getForcePackLookupSet: () => undefined,
-            getAvailabilityLookupKey: (unit: UnitSummary) => unit.name,
-        };
-
-        for (const [key, semanticKey] of [
-            ['heat', 'heat'], ['dissipation', 'dissipation'], ['_dissipationEfficiency', 'efficiency'],
-        ]) {
-            it(`keeps non-heat units through ${key} sliders, included ranges, and excluded ranges`, () => {
-                const cases: {
-                    value: [number, number];
-                    excludeRanges?: [number, number][];
-                    includeRanges?: [number, number][];
-                    expected: UnitSummary[];
-                }[] = [
-                    { value: [0, 10], expected: [nonHeat, zero] },
-                    { value: [10, 30], expected: [nonHeat, medium] },
-                    { value: [0, 40], excludeRanges: [[0, 30]], expected: [nonHeat, high] },
-                    { value: [0, 40], includeRanges: [[0, 0], [40, 40]], expected: [nonHeat, zero, high] },
-                ];
-                for (const { expected, ...filter } of cases) {
-                    const results = applyFilterStateToUnits({
-                        units, dependencies,
-                        state: { [key]: { interactedWith: true, ...filter } },
-                    });
-                    expect(results).withContext(JSON.stringify(filter)).toEqual(expected);
-                }
-            });
-
-            it(`keeps non-heat units through ${semanticKey} numeric comparisons and exclusions`, () => {
-                const cases: [string, UnitSummary[]][] = [
-                    ['<10', [nonHeat, zero]],
-                    ['>10', [nonHeat, medium, high]],
-                    ['=0', [nonHeat, zero]],
-                    ['!=0', [nonHeat, medium, high]],
-                    ['=10-30', [nonHeat, medium]],
-                    ['!=10-30', [nonHeat, zero, high]],
-                ];
-                for (const [expression, expected] of cases) {
-                    expect(executeQuery(units, semanticKey + expression))
-                        .withContext(expression).toEqual(jasmine.arrayWithExactContents(expected));
-                }
-            });
-        }
-
-        it('still applies other filters to units that pass a heat filter', () => {
-            const results = applyFilterStateToUnits({
-                units: [nonHeat], dependencies,
-                state: {
-                    dissipation: { interactedWith: true, value: [0, 10] },
-                    armor: { interactedWith: true, value: [0, 50] },
-                },
-            });
-            expect(results).toEqual([]);
-            expect(executeQuery([nonHeat], 'dissipation<10 armor<50')).toEqual([]);
+            getAvailabilityLookupKey: (unit) => unit.name,
+          },
         });
-
-        it('still excludes missing values for unrelated numeric filters', () => {
-            const missing = createEmptyUnit({ as: { ...zero.as, TMM: null } });
-            expect(applyFilterStateToUnits({
-                units: [missing, zero], dependencies,
-                state: { 'as.TMM': { interactedWith: true, value: [0, 10] } },
-            })).toEqual([zero]);
-            expect(executeQuery([missing], 'tmm<10')).toEqual([]);
-        });
+        expect(filtered.map((unit) => unit.loadIssues.length))
+          .withContext(query)
+          .toEqual(jasmine.arrayWithExactContents(counts));
+        const serialized = filterStateToSemanticText(state, '', GameSystem.CBT, {});
+        expect(executeQuery(units, serialized).map((unit) => unit.loadIssues.length))
+          .withContext(`${query} serialized as ${serialized}`)
+          .toEqual(jasmine.arrayWithExactContents(counts));
+      }
     });
 
-    it('ignores a normalization contract for the wrong game system', () => {
-        const unit = createEmptyUnit({ name: 'AS Unit', as: { ...createEmptyUnit().as, PV: 20 } });
-        const execution = executeUnitSearch({
-            units: [unit],
-            parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
-            searchTokens: [],
-            gameSystem: GameSystem.AS,
-            sortKey: 'name',
-            sortDirection: 'asc',
-            bvPvLimit: 0,
-            forceTotalBvPv: 0,
-            getAdjustedBV: result => result.bv,
-            getAdjustedPV: result => result.as.PV,
-            normalization: {
-                kind: 'bv',
-                settings: {
-                    targetBv: { min: 1, max: 1 },
-                    gunnery: { min: 8, max: 8 },
-                    piloting: { min: 8, max: 8 },
-                    maxDelta: 0,
-                },
-            },
-            unitBelongsToEra: () => false,
-            unitBelongsToFaction: () => false,
-            unitBelongsToForcePack: () => false,
-            getAllEraNames: () => [],
-            getAllFactionNames: () => [],
-        });
-
-        expect(execution.results).toEqual([unit]);
-        expect(execution.normalizationMatchesByUnitUuid.size).toBe(0);
+    it('keeps issue counts out of UI filters and sorting', () => {
+      for (const options of [DROPDOWN_FILTERS, RANGE_FILTERS, SORT_OPTIONS]) {
+        expect(options.some((option) => option.key === 'loadIssues.length')).toBeFalse();
+      }
     });
+  });
 
-    it('normalizes Alpha Strike results and excludes units outside the target PV range', () => {
-        const matching = createEmptyUnit({
-            name: 'Matching',
-            as: { ...createEmptyUnit().as, PV: 20 },
-        });
-        const excluded = createEmptyUnit({
-            name: 'Excluded',
-            as: { ...createEmptyUnit().as, PV: 100 },
-        });
-
-        const execution = executeUnitSearch({
-            units: [excluded, matching],
-            parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
-            searchTokens: [],
-            gameSystem: GameSystem.AS,
-            sortKey: 'as.PV',
-            sortDirection: 'asc',
-            bvPvLimit: 0,
-            forceTotalBvPv: 0,
-            getAdjustedBV: unit => unit.bv,
-            getAdjustedPV: unit => unit.as.PV,
-            normalization: {
-                kind: 'pv',
-                settings: { targetPv: { min: 18, max: 18 }, skill: { min: 5, max: 5 } },
-            },
-            unitBelongsToEra: () => false,
-            unitBelongsToFaction: () => false,
-            unitBelongsToForcePack: () => false,
-            getAllEraNames: () => [],
-            getAllFactionNames: () => [],
-        });
-
-        expect(execution.results.map(unit => unit.name)).toEqual(['Matching']);
-        expect(execution.normalizationMatchesByUnitUuid.get(matching.uuid)).toEqual({
-            kind: 'pv',
-            adjustedValue: 18,
-            skill: 5,
-        });
+  describe('heat filters on units without heat tracking', () => {
+    const nonHeat = createEmptyUnit({
+      name: 'Tank',
+      type: 'Tank',
+      heat: null,
+      dissipation: null,
+      _dissipationEfficiency: undefined,
+      armor: 100,
     });
+    const zero = createEmptyUnit({ name: 'Zero', heat: 0, dissipation: 0, _dissipationEfficiency: 0 });
+    const medium = createEmptyUnit({ name: 'Medium', heat: 20, dissipation: 20, _dissipationEfficiency: 20 });
+    const high = createEmptyUnit({ name: 'High', heat: 40, dissipation: 40, _dissipationEfficiency: 40 });
+    const units = [nonHeat, zero, medium, high];
+    const dependencies = {
+      getProperty,
+      getAdjustedBV: (unit: UnitSummary) => unit.bv,
+      getAdjustedPV: (unit: UnitSummary) => unit.as.PV,
+      getUnitIdsForExternalFilters: () => null,
+      getPositiveFactionNames: () => [],
+      unitMatchesAvailabilityFrom: () => false,
+      unitMatchesAvailabilityRarity: () => false,
+      getForcePackLookupSet: () => undefined,
+      getAvailabilityLookupKey: (unit: UnitSummary) => unit.name,
+    };
 
-    it('sorts Alpha Strike normalization results by adjusted PV', () => {
-        const lowerBase = createEmptyUnit({ name: 'Zulu', as: { ...createEmptyUnit().as, PV: 20 } });
-        const higherBase = createEmptyUnit({ name: 'Alpha', as: { ...createEmptyUnit().as, PV: 25 } });
-        const execution = executeUnitSearch({
-            units: [higherBase, lowerBase],
-            parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
-            searchTokens: [],
-            gameSystem: GameSystem.AS,
-            sortKey: 'as.PV',
-            sortDirection: 'asc',
-            bvPvLimit: 0,
-            forceTotalBvPv: 0,
-            getAdjustedBV: unit => unit.bv,
-            getAdjustedPV: unit => unit.as.PV,
-            normalization: {
-                kind: 'pv',
-                settings: { targetPv: { min: 1, max: 100 }, skill: { min: 5, max: 5 } },
-            },
-            unitBelongsToEra: () => false,
-            unitBelongsToFaction: () => false,
-            unitBelongsToForcePack: () => false,
-            getAllEraNames: () => [],
-            getAllFactionNames: () => [],
-        });
-
-        expect(execution.results.map(unit => unit.name)).toEqual(['Zulu', 'Alpha']);
-    });
-
-    it('filters mixed and nonmixed tech bases as distinct values', () => {
-        const units = [
-            createEmptyUnit({ name: 'Inner Sphere Unit', techBase: 'Inner Sphere', mixed: false }),
-            createEmptyUnit({ name: 'Clan Unit', techBase: 'Clan', mixed: false }),
-            createEmptyUnit({ name: 'Mixed Inner Sphere Unit', techBase: 'Inner Sphere', mixed: true }),
-            createEmptyUnit({ name: 'Mixed Clan Unit', techBase: 'Clan', mixed: true }),
+    for (const [key, semanticKey] of [
+      ['heat', 'heat'],
+      ['dissipation', 'dissipation'],
+      ['_dissipationEfficiency', 'efficiency'],
+    ]) {
+      it(`keeps non-heat units through ${key} sliders, included ranges, and excluded ranges`, () => {
+        const cases: {
+          value: [number, number];
+          excludeRanges?: [number, number][];
+          includeRanges?: [number, number][];
+          expected: UnitSummary[];
+        }[] = [
+          { value: [0, 10], expected: [nonHeat, zero] },
+          { value: [10, 30], expected: [nonHeat, medium] },
+          { value: [0, 40], excludeRanges: [[0, 30]], expected: [nonHeat, high] },
+          {
+            value: [0, 40],
+            includeRanges: [
+              [0, 0],
+              [40, 40],
+            ],
+            expected: [nonHeat, zero, high],
+          },
         ];
+        for (const { expected, ...filter } of cases) {
+          const results = applyFilterStateToUnits({
+            units,
+            dependencies,
+            state: { [key]: { interactedWith: true, ...filter } },
+          });
+          expect(results).withContext(JSON.stringify(filter)).toEqual(expected);
+        }
+      });
 
-        expect(executeQuery(units, 'tech="Inner Sphere"').map(unit => unit.name))
-            .toEqual(['Inner Sphere Unit']);
-        expect(executeQuery(units, 'tech=Clan').map(unit => unit.name))
-            .toEqual(['Clan Unit']);
-        expect(executeQuery(units, 'tech="Mixed (Inner Sphere)"').map(unit => unit.name))
-            .toEqual(['Mixed Inner Sphere Unit']);
-        expect(executeQuery(units, 'tech="Mixed (Clan)"').map(unit => unit.name))
-            .toEqual(['Mixed Clan Unit']);
+      it(`keeps non-heat units through ${semanticKey} numeric comparisons and exclusions`, () => {
+        const cases: [string, UnitSummary[]][] = [
+          ['<10', [nonHeat, zero]],
+          ['>10', [nonHeat, medium, high]],
+          ['=0', [nonHeat, zero]],
+          ['!=0', [nonHeat, medium, high]],
+          ['=10-30', [nonHeat, medium]],
+          ['!=10-30', [nonHeat, zero, high]],
+        ];
+        for (const [expression, expected] of cases) {
+          expect(executeQuery(units, semanticKey + expression))
+            .withContext(expression)
+            .toEqual(jasmine.arrayWithExactContents(expected));
+        }
+      });
+    }
+
+    it('still applies other filters to units that pass a heat filter', () => {
+      const results = applyFilterStateToUnits({
+        units: [nonHeat],
+        dependencies,
+        state: {
+          dissipation: { interactedWith: true, value: [0, 10] },
+          armor: { interactedWith: true, value: [0, 50] },
+        },
+      });
+      expect(results).toEqual([]);
+      expect(executeQuery([nonHeat], 'dissipation<10 armor<50')).toEqual([]);
     });
 
-    it('uses unit name order as the tie-breaker for equal sort option values', () => {
-        const locust10 = createUnit({ name: 'Locust IIC 10', chassis: 'Locust IIC', model: '10', tons: 25 });
-        const locust2 = createUnit({ name: 'Locust IIC 2', chassis: 'Locust IIC', model: '2', tons: 25 });
-        const atlas = createUnit({ name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', tons: 100 });
+    it('still excludes missing values for unrelated numeric filters', () => {
+      const missing = createEmptyUnit({ as: { ...zero.as, TMM: null } });
+      expect(
+        applyFilterStateToUnits({
+          units: [missing, zero],
+          dependencies,
+          state: { 'as.TMM': { interactedWith: true, value: [0, 10] } },
+        }),
+      ).toEqual([zero]);
+      expect(executeQuery([missing], 'tmm<10')).toEqual([]);
+    });
+  });
 
-        const sortedNames = executeSortedUnits([locust10, atlas, locust2], 'tons').map(unit => unit.name);
-
-        expect(sortedNames).toEqual(['Locust IIC 2', 'Locust IIC 10', 'Atlas AS7-D']);
+  it('ignores a normalization contract for the wrong game system', () => {
+    const unit = createEmptyUnit({ name: 'AS Unit', as: { ...createEmptyUnit().as, PV: 20 } });
+    const execution = executeUnitSearch({
+      units: [unit],
+      parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
+      searchTokens: [],
+      gameSystem: GameSystem.AS,
+      sortKey: 'name',
+      sortDirection: 'asc',
+      bvPvLimit: 0,
+      forceTotalBvPv: 0,
+      getAdjustedBV: (result) => result.bv,
+      getAdjustedPV: (result) => result.as.PV,
+      normalization: {
+        kind: 'bv',
+        settings: {
+          targetBv: { min: 1, max: 1 },
+          gunnery: { min: 8, max: 8 },
+          piloting: { min: 8, max: 8 },
+          maxDelta: 0,
+        },
+      },
+      unitBelongsToEra: () => false,
+      unitBelongsToFaction: () => false,
+      unitBelongsToForcePack: () => false,
+      getAllEraNames: () => [],
+      getAllFactionNames: () => [],
     });
 
-    it('filters plain worker-safe weapon-type counts by minimum quantity', () => {
-        const oneAI = createEmptyUnit({ name: 'One AI', _weaponTypes: ['AI'], _weaponTypeCounts: { AI: 1 } });
-        const twoAI = createEmptyUnit({ name: 'Two AI', _weaponTypes: ['AI'], _weaponTypeCounts: { AI: 2 } });
-        const noAI = createEmptyUnit({ name: 'No AI' });
+    expect(execution.results).toEqual([unit]);
+    expect(execution.normalizationMatchesByUnitUuid.size).toBe(0);
+  });
 
-        expect(executeQuery([oneAI, twoAI, noAI], 'weaponType="AI:>=2"').map(unit => unit.name))
-            .toEqual(['Two AI']);
-        expect(executeQuery([oneAI, twoAI, noAI], 'WEAPONTYPE=AP').map(unit => unit.name))
-            .toEqual(['One AI', 'Two AI']);
+  it('normalizes Alpha Strike results and excludes units outside the target PV range', () => {
+    const matching = createEmptyUnit({
+      name: 'Matching',
+      as: { ...createEmptyUnit().as, PV: 20 },
+    });
+    const excluded = createEmptyUnit({
+      name: 'Excluded',
+      as: { ...createEmptyUnit().as, PV: 100 },
     });
 
-    it('evaluates selected weapon types independently for OR and AND queries', () => {
-        const dualTyped = createEmptyUnit({
-            name: 'Dual Typed',
-            _weaponTypes: ['AE', 'AI'],
-            _weaponTypeCounts: { AE: 2, AI: 2 },
-        });
-        const areaEffectOnly = createEmptyUnit({
-            name: 'Area Effect Only',
-            _weaponTypes: ['AE'],
-            _weaponTypeCounts: { AE: 2 },
-        });
-
-        expect(executeQuery([dualTyped, areaEffectOnly], 'weaponType="AI:>=2","AE:>=2"').map(unit => unit.name))
-            .toEqual(['Dual Typed', 'Area Effect Only']);
-        expect(executeQuery([dualTyped, areaEffectOnly], 'weaponType&="AI:>=2" weaponType&="AE:>=2"').map(unit => unit.name))
-            .toEqual(['Dual Typed']);
+    const execution = executeUnitSearch({
+      units: [excluded, matching],
+      parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
+      searchTokens: [],
+      gameSystem: GameSystem.AS,
+      sortKey: 'as.PV',
+      sortDirection: 'asc',
+      bvPvLimit: 0,
+      forceTotalBvPv: 0,
+      getAdjustedBV: (unit) => unit.bv,
+      getAdjustedPV: (unit) => unit.as.PV,
+      normalization: {
+        kind: 'pv',
+        settings: { targetPv: { min: 18, max: 18 }, skill: { min: 5, max: 5 } },
+      },
+      unitBelongsToEra: () => false,
+      unitBelongsToFaction: () => false,
+      unitBelongsToForcePack: () => false,
+      getAllEraNames: () => [],
+      getAllFactionNames: () => [],
     });
 
-    it('uses the sync pre-parsed specials index for numeric minima', () => {
-        const unit = createEmptyUnit({
-            name: 'Indexed AC',
-            as: { ...createEmptyUnit().as, specials: ['AC1/1/1'] },
-        });
-        const indexedSpecials = parseASSpecials(['TUR(3/3/3,AC1/4/1)']);
-        const execution = executeUnitSearch({
-            units: [unit],
-            parsedQuery: parseSemanticQueryAST('specials="AC*/>=4/*"', GameSystem.AS),
-            searchTokens: [],
-            gameSystem: GameSystem.AS,
-            sortKey: 'name',
-            sortDirection: 'asc',
-            bvPvLimit: 0,
-            forceTotalBvPv: 0,
-            getAdjustedBV: value => value.bv,
-            getAdjustedPV: value => value.as.PV,
-            unitBelongsToEra: () => false,
-            unitBelongsToFaction: () => false,
-            unitBelongsToForcePack: () => false,
-            getAllEraNames: () => [],
-            getAllFactionNames: () => [],
-            getIndexedASSpecials: unitUuid => unitUuid === unit.uuid ? indexedSpecials : undefined,
-        });
+    expect(execution.results.map((unit) => unit.name)).toEqual(['Matching']);
+    expect(execution.normalizationMatchesByUnitUuid.get(matching.uuid)).toEqual({
+      kind: 'pv',
+      adjustedValue: 18,
+      skill: 5,
+    });
+  });
 
-        expect(execution.results.map(result => result.name)).toEqual(['Indexed AC']);
+  it('sorts Alpha Strike normalization results by adjusted PV', () => {
+    const lowerBase = createEmptyUnit({ name: 'Zulu', as: { ...createEmptyUnit().as, PV: 20 } });
+    const higherBase = createEmptyUnit({ name: 'Alpha', as: { ...createEmptyUnit().as, PV: 25 } });
+    const execution = executeUnitSearch({
+      units: [higherBase, lowerBase],
+      parsedQuery: parseSemanticQueryAST('', GameSystem.AS),
+      searchTokens: [],
+      gameSystem: GameSystem.AS,
+      sortKey: 'as.PV',
+      sortDirection: 'asc',
+      bvPvLimit: 0,
+      forceTotalBvPv: 0,
+      getAdjustedBV: (unit) => unit.bv,
+      getAdjustedPV: (unit) => unit.as.PV,
+      normalization: {
+        kind: 'pv',
+        settings: { targetPv: { min: 1, max: 100 }, skill: { min: 5, max: 5 } },
+      },
+      unitBelongsToEra: () => false,
+      unitBelongsToFaction: () => false,
+      unitBelongsToForcePack: () => false,
+      getAllEraNames: () => [],
+      getAllFactionNames: () => [],
     });
 
-    it('uses specials token postings before sync UI tuple evaluation', () => {
-        const matching = createEmptyUnit({
-            name: 'Matching AC',
-            as: { ...createEmptyUnit().as, specials: ['AC1/4/1'] },
-        });
-        const unrelated = createEmptyUnit({
-            name: 'Unrelated TAG',
-            as: { ...createEmptyUnit().as, specials: ['TAG'] },
-        });
-        const parsedByUnit = new Map([
-            [matching.uuid, parseASSpecials(matching.as.specials)],
-            [unrelated.uuid, parseASSpecials(unrelated.as.specials)],
-        ]);
-        const getIndexedUnitIds = jasmine.createSpy('getIndexedUnitIds')
-            .and.callFake((_filterKey: string, token: string) => token === 'AC' ? new Set([matching.uuid]) : undefined);
-        const getIndexedASSpecials = jasmine.createSpy('getIndexedASSpecials')
-            .and.callFake((unitUuid: string) => parsedByUnit.get(unitUuid as UnitSummary['uuid']));
+    expect(execution.results.map((unit) => unit.name)).toEqual(['Zulu', 'Alpha']);
+  });
 
-        const results = applyFilterStateToUnits({
-            units: [matching, unrelated],
-            state: {
-                'as.specials': {
-                    interactedWith: true,
-                    value: {
-                        AC: { name: 'AC', state: 'or', count: 1, minimumValues: [null, 4, null] },
-                    },
-                },
-            },
-            dependencies: {
-                getProperty: (unit, key) => key === 'as.specials' ? unit.as.specials : undefined,
-                getAdjustedBV: unit => unit.bv,
-                getAdjustedPV: unit => unit.as.PV,
-                getUnitIdsForExternalFilters: () => null,
-                getPositiveFactionNames: () => [],
-                unitMatchesAvailabilityFrom: () => false,
-                unitMatchesAvailabilityRarity: () => false,
-                getForcePackLookupSet: () => undefined,
-                getAvailabilityLookupKey: unit => unit.name,
-                getIndexedUnitIds,
-                getIndexedASSpecials,
-            },
-        });
+  it('filters mixed and nonmixed tech bases as distinct values', () => {
+    const units = [
+      createEmptyUnit({ name: 'Inner Sphere Unit', techBase: 'Inner Sphere', mixed: false }),
+      createEmptyUnit({ name: 'Clan Unit', techBase: 'Clan', mixed: false }),
+      createEmptyUnit({ name: 'Mixed Inner Sphere Unit', techBase: 'Inner Sphere', mixed: true }),
+      createEmptyUnit({ name: 'Mixed Clan Unit', techBase: 'Clan', mixed: true }),
+    ];
 
-        expect(results).toEqual([matching]);
-        expect(getIndexedUnitIds).toHaveBeenCalledOnceWith('as.specials', 'AC');
-        expect(getIndexedASSpecials).toHaveBeenCalledOnceWith(matching.uuid);
+    expect(executeQuery(units, 'tech="Inner Sphere"').map((unit) => unit.name)).toEqual(['Inner Sphere Unit']);
+    expect(executeQuery(units, 'tech=Clan').map((unit) => unit.name)).toEqual(['Clan Unit']);
+    expect(executeQuery(units, 'tech="Mixed (Inner Sphere)"').map((unit) => unit.name)).toEqual([
+      'Mixed Inner Sphere Unit',
+    ]);
+    expect(executeQuery(units, 'tech="Mixed (Clan)"').map((unit) => unit.name)).toEqual(['Mixed Clan Unit']);
+  });
+
+  it('uses unit name order as the tie-breaker for equal sort option values', () => {
+    const locust10 = createUnit({ name: 'Locust IIC 10', chassis: 'Locust IIC', model: '10', tons: 25 });
+    const locust2 = createUnit({ name: 'Locust IIC 2', chassis: 'Locust IIC', model: '2', tons: 25 });
+    const atlas = createUnit({ name: 'Atlas AS7-D', chassis: 'Atlas', model: 'AS7-D', tons: 100 });
+
+    const sortedNames = executeSortedUnits([locust10, atlas, locust2], 'tons').map((unit) => unit.name);
+
+    expect(sortedNames).toEqual(['Locust IIC 2', 'Locust IIC 10', 'Atlas AS7-D']);
+  });
+
+  it('filters plain worker-safe weapon-type counts by minimum quantity', () => {
+    const oneAI = createEmptyUnit({ name: 'One AI', _weaponTypes: ['AI'], _weaponTypeCounts: { AI: 1 } });
+    const twoAI = createEmptyUnit({ name: 'Two AI', _weaponTypes: ['AI'], _weaponTypeCounts: { AI: 2 } });
+    const noAI = createEmptyUnit({ name: 'No AI' });
+
+    expect(executeQuery([oneAI, twoAI, noAI], 'weaponType="AI:>=2"').map((unit) => unit.name)).toEqual(['Two AI']);
+    expect(executeQuery([oneAI, twoAI, noAI], 'WEAPONTYPE=AP').map((unit) => unit.name)).toEqual(['One AI', 'Two AI']);
+  });
+
+  it('evaluates selected weapon types independently for OR and AND queries', () => {
+    const dualTyped = createEmptyUnit({
+      name: 'Dual Typed',
+      _weaponTypes: ['AE', 'AI'],
+      _weaponTypeCounts: { AE: 2, AI: 2 },
+    });
+    const areaEffectOnly = createEmptyUnit({
+      name: 'Area Effect Only',
+      _weaponTypes: ['AE'],
+      _weaponTypeCounts: { AE: 2 },
     });
 
-    it('matches when the selected rulebooks cover one complete bucket', () => {
-        const unitA = createEmptyUnit({ name: 'Unit A', rulesRefs: [['Core'], ['TW', 'IO:AE']] });
-        const unitB = createEmptyUnit({
-            name: 'Unit B',
-            rulesRefs: [['TW', 'Shrap01', 'AAA'], ['TM', 'Shrap01']],
-        });
-        const units = [unitA, unitB];
+    expect(executeQuery([dualTyped, areaEffectOnly], 'weaponType="AI:>=2","AE:>=2"').map((unit) => unit.name)).toEqual([
+      'Dual Typed',
+      'Area Effect Only',
+    ]);
+    expect(
+      executeQuery([dualTyped, areaEffectOnly], 'weaponType&="AI:>=2" weaponType&="AE:>=2"').map((unit) => unit.name),
+    ).toEqual(['Dual Typed']);
+  });
 
-        expect(executeQuery(units, 'rulesRefs=Core').map(unit => unit.name)).toEqual(['Unit A']);
-        expect(executeQuery(units, 'rulesRefs=TW').map(unit => unit.name)).toEqual([]);
-        expect(executeQuery(units, 'rulesRefs=TW,IO:AE').map(unit => unit.name)).toEqual(['Unit A']);
-        expect(executeQuery(units, 'rulesRefs=TW,Shrap01').map(unit => unit.name)).toEqual([]);
-        expect(executeQuery(units, 'rulesRefs=TW,Shrap01,AAA').map(unit => unit.name)).toEqual(['Unit B']);
-        expect(executeQuery(units, 'rulesRefs=IO:AE').map(unit => unit.name)).toEqual(['Unit A']);
-        expect(executeQuery(units, 'rulesRefs=Shrap01').map(unit => unit.name)).toEqual(['Unit B']);
-        expect(executeQuery(units, 'rulesRefs=AAA').map(unit => unit.name)).toEqual([]);
+  it('uses the sync pre-parsed specials index for numeric minima', () => {
+    const unit = createEmptyUnit({
+      name: 'Indexed AC',
+      as: { ...createEmptyUnit().as, specials: ['AC1/1/1'] },
     });
+    const indexedSpecials = parseASSpecials(['TUR(3/3/3,AC1/4/1)']);
+    const execution = executeUnitSearch({
+      units: [unit],
+      parsedQuery: parseSemanticQueryAST('specials="AC*/>=4/*"', GameSystem.AS),
+      searchTokens: [],
+      gameSystem: GameSystem.AS,
+      sortKey: 'name',
+      sortDirection: 'asc',
+      bvPvLimit: 0,
+      forceTotalBvPv: 0,
+      getAdjustedBV: (value) => value.bv,
+      getAdjustedPV: (value) => value.as.PV,
+      unitBelongsToEra: () => false,
+      unitBelongsToFaction: () => false,
+      unitBelongsToForcePack: () => false,
+      getAllEraNames: () => [],
+      getAllFactionNames: () => [],
+      getIndexedASSpecials: (unitUuid) => (unitUuid === unit.uuid ? indexedSpecials : undefined),
+    });
+
+    expect(execution.results.map((result) => result.name)).toEqual(['Indexed AC']);
+  });
+
+  it('uses specials token postings before sync UI tuple evaluation', () => {
+    const matching = createEmptyUnit({
+      name: 'Matching AC',
+      as: { ...createEmptyUnit().as, specials: ['AC1/4/1'] },
+    });
+    const unrelated = createEmptyUnit({
+      name: 'Unrelated TAG',
+      as: { ...createEmptyUnit().as, specials: ['TAG'] },
+    });
+    const parsedByUnit = new Map([
+      [matching.uuid, parseASSpecials(matching.as.specials)],
+      [unrelated.uuid, parseASSpecials(unrelated.as.specials)],
+    ]);
+    const getIndexedUnitIds = jasmine
+      .createSpy('getIndexedUnitIds')
+      .and.callFake((_filterKey: string, token: string) => (token === 'AC' ? new Set([matching.uuid]) : undefined));
+    const getIndexedASSpecials = jasmine
+      .createSpy('getIndexedASSpecials')
+      .and.callFake((unitUuid: string) => parsedByUnit.get(unitUuid as UnitSummary['uuid']));
+
+    const results = applyFilterStateToUnits({
+      units: [matching, unrelated],
+      state: {
+        'as.specials': {
+          interactedWith: true,
+          value: {
+            AC: { name: 'AC', state: 'or', count: 1, minimumValues: [null, 4, null] },
+          },
+        },
+      },
+      dependencies: {
+        getProperty: (unit, key) => (key === 'as.specials' ? unit.as.specials : undefined),
+        getAdjustedBV: (unit) => unit.bv,
+        getAdjustedPV: (unit) => unit.as.PV,
+        getUnitIdsForExternalFilters: () => null,
+        getPositiveFactionNames: () => [],
+        unitMatchesAvailabilityFrom: () => false,
+        unitMatchesAvailabilityRarity: () => false,
+        getForcePackLookupSet: () => undefined,
+        getAvailabilityLookupKey: (unit) => unit.name,
+        getIndexedUnitIds,
+        getIndexedASSpecials,
+      },
+    });
+
+    expect(results).toEqual([matching]);
+    expect(getIndexedUnitIds).toHaveBeenCalledOnceWith('as.specials', 'AC');
+    expect(getIndexedASSpecials).toHaveBeenCalledOnceWith(matching.uuid);
+  });
+
+  it('matches when the selected rulebooks cover one complete bucket', () => {
+    const unitA = createEmptyUnit({ name: 'Unit A', rulesRefs: [['Core'], ['TW', 'IO:AE']] });
+    const unitB = createEmptyUnit({
+      name: 'Unit B',
+      rulesRefs: [
+        ['TW', 'Shrap01', 'AAA'],
+        ['TM', 'Shrap01'],
+      ],
+    });
+    const units = [unitA, unitB];
+
+    expect(executeQuery(units, 'rulesRefs=Core').map((unit) => unit.name)).toEqual(['Unit A']);
+    expect(executeQuery(units, 'rulesRefs=TW').map((unit) => unit.name)).toEqual([]);
+    expect(executeQuery(units, 'rulesRefs=TW,IO:AE').map((unit) => unit.name)).toEqual(['Unit A']);
+    expect(executeQuery(units, 'rulesRefs=TW,Shrap01').map((unit) => unit.name)).toEqual([]);
+    expect(executeQuery(units, 'rulesRefs=TW,Shrap01,AAA').map((unit) => unit.name)).toEqual(['Unit B']);
+    expect(executeQuery(units, 'rulesRefs=IO:AE').map((unit) => unit.name)).toEqual(['Unit A']);
+    expect(executeQuery(units, 'rulesRefs=Shrap01').map((unit) => unit.name)).toEqual(['Unit B']);
+    expect(executeQuery(units, 'rulesRefs=AAA').map((unit) => unit.name)).toEqual([]);
+  });
 });

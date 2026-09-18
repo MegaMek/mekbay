@@ -14,27 +14,27 @@ import type { AlphaStrikeUnitStats } from '../models/unit-summary.model';
 export type ASSpecialSelectionState = false | 'or' | 'and' | 'not';
 
 export interface ASSpecialMinimumSelection {
-    name: string;
-    state: ASSpecialSelectionState;
-    minimumValues?: readonly (number | null)[];
+  name: string;
+  state: ASSpecialSelectionState;
+  minimumValues?: readonly (number | null)[];
 }
 
 export interface ASSpecialSlotValue {
-    /** Original normalized value. `0*` is significant for exact matching. */
-    text: string;
-    /** Numeric ordering value. Alpha Strike's `0*` ranks between 0 and 1. */
-    rank: number;
+  /** Original normalized value. `0*` is significant for exact matching. */
+  text: string;
+  /** Numeric ordering value. Alpha Strike's `0*` ranks between 0 and 1. */
+  rank: number;
 }
 
 export interface ASSpecialOccurrence {
-    /** Canonical dropdown/index token, such as AC, IF, TAG, or TUR. */
-    token: string;
-    /** Numeric parameters in their displayed order; `null` is a `-` slot. */
-    values: readonly (ASSpecialSlotValue | null)[];
-    /** Original ability text used to preserve legacy semantic matching. */
-    rawText: string;
-    /** Whether this is an actual top-level `as.specials` entry. */
-    topLevel: boolean;
+  /** Canonical dropdown/index token, such as AC, IF, TAG, or TUR. */
+  token: string;
+  /** Numeric parameters in their displayed order; `null` is a `-` slot. */
+  values: readonly (ASSpecialSlotValue | null)[];
+  /** Original ability text used to preserve legacy semantic matching. */
+  rawText: string;
+  /** Whether this is an actual top-level `as.specials` entry. */
+  topLevel: boolean;
 }
 
 /**
@@ -43,65 +43,61 @@ export interface ASSpecialOccurrence {
  * parameters and remain on the node itself.
  */
 export interface ASSpecialAbilityNode {
-    /** Original ability text, trimmed but otherwise unchanged. */
-    rawText: string;
-    /** Text used to resolve the ability definition (the composite head for TUR). */
-    lookupText: string;
-    /** Canonical dropdown/index token. */
-    token: string;
-    /** Numeric parameters, including schema-defined implicit values. */
-    values: readonly (ASSpecialSlotValue | null)[];
-    /** TUR damage text, when present. */
-    turretDamage?: string;
-    /** Nested TUR abilities. */
-    children: readonly ASSpecialAbilityNode[];
+  /** Original ability text, trimmed but otherwise unchanged. */
+  rawText: string;
+  /** Text used to resolve the ability definition (the composite head for TUR). */
+  lookupText: string;
+  /** Canonical dropdown/index token. */
+  token: string;
+  /** Numeric parameters, including schema-defined implicit values. */
+  values: readonly (ASSpecialSlotValue | null)[];
+  /** TUR damage text, when present. */
+  turretDamage?: string;
+  /** Nested TUR abilities. */
+  children: readonly ASSpecialAbilityNode[];
 }
 
 export interface ParsedASSpecials {
-    topLevelValues: readonly string[];
-    abilities: readonly ASSpecialAbilityNode[];
-    occurrences: readonly ASSpecialOccurrence[];
+  topLevelValues: readonly string[];
+  abilities: readonly ASSpecialAbilityNode[];
+  occurrences: readonly ASSpecialOccurrence[];
 }
 
 type SpecialSlotOperator = '=' | '!=' | '>' | '<' | '>=' | '<=';
 
 type SpecialSlotMatcher =
-    | { type: 'any' }
-    | { type: 'missing' }
-    | { type: 'comparison'; operator: SpecialSlotOperator; value: ASSpecialSlotValue }
-    | { type: 'set'; values: readonly ASSpecialSlotValue[] };
+  | { type: 'any' }
+  | { type: 'missing' }
+  | { type: 'comparison'; operator: SpecialSlotOperator; value: ASSpecialSlotValue }
+  | { type: 'set'; values: readonly ASSpecialSlotValue[] };
 
-type SpecialQueryToken =
-    | { type: 'literal'; text: string }
-    | { type: 'slot'; matcher: SpecialSlotMatcher };
+type SpecialQueryToken = { type: 'literal'; text: string } | { type: 'slot'; matcher: SpecialSlotMatcher };
 
-type SpecialTargetToken =
-    | { type: 'literal'; text: string }
-    | { type: 'slot'; value: ASSpecialSlotValue | null };
+type SpecialTargetToken = { type: 'literal'; text: string } | { type: 'slot'; value: ASSpecialSlotValue | null };
 
 interface ParsedSpecialQuery {
-    tokens: SpecialQueryToken[];
+  tokens: SpecialQueryToken[];
 }
 
 export interface CompiledASSpecialQuery {
-    matches(occurrence: ASSpecialOccurrence): boolean;
+  matches(occurrence: ASSpecialOccurrence): boolean;
 }
 
 export interface CompiledASSpecialSelections {
-    readonly or: readonly CompiledASSpecialQuery[];
-    readonly and: readonly CompiledASSpecialQuery[];
-    readonly not: readonly CompiledASSpecialQuery[];
+  readonly or: readonly CompiledASSpecialQuery[];
+  readonly and: readonly CompiledASSpecialQuery[];
+  readonly not: readonly CompiledASSpecialQuery[];
 }
 
 const SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN = /(?:>=|<=|!=|>|<|=)\s*-?\d|\[[^\]]+\]/;
 const DAMAGE_VALUE_PATTERN = /^(?:-|0\*|\d+(?:\.\d+)?)(?:\/(?:-|0\*|\d+(?:\.\d+)?))+$/i;
 interface ASSpecialTokenSchema {
-    /** Digits are part of the ability name, not numeric parameters. */
-    literalDigits?: boolean;
-    /** Values supplied by the rules when the card omits the numeric suffix. */
-    implicitValues?: readonly number[];
-    /** Contextual minimum input labels. */
-    fieldLabels?: readonly string[];
+  /** Digits are part of the ability name, not numeric parameters. */
+  literalDigits?: boolean;
+  /** Values supplied by the rules when the card omits the numeric suffix. */
+  implicitValues?: readonly number[];
+  /** Contextual minimum input labels. */
+  fieldLabels?: readonly string[];
 }
 
 /**
@@ -109,118 +105,118 @@ interface ASSpecialTokenSchema {
  * Keep them here so parsing, indexing, matching, and UI metadata cannot drift.
  */
 const AS_SPECIAL_TOKEN_SCHEMAS = new Map<string, ASSpecialTokenSchema>([
-    ['AC', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['AT', { fieldLabels: ['Cap', 'Doors'] }],
-    ['BHJ2', { literalDigits: true }],
-    ['BHJ3', { literalDigits: true }],
-    ['C3BSM', { implicitValues: [1] }],
-    ['C3M', { implicitValues: [1] }],
-    ['CAP', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['CK', { fieldLabels: ['Cap', 'Doors'] }],
-    ['CNARC', { implicitValues: [1] }],
-    ['CT', { fieldLabels: ['Cap', 'Doors'] }],
-    ['FLK', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['HT', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['IATM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['INARC', { implicitValues: [1] }],
-    ['LAM', { fieldLabels: ['Ground', 'Aero'] }],
-    ['LRM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['MFB', { implicitValues: [1] }],
-    ['MSL', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['MT', { fieldLabels: ['Cap', 'Doors'] }],
-    ['NC3', { literalDigits: true }],
-    ['PT', { fieldLabels: ['Cap', 'Doors'] }],
-    ['REAR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['SCAP', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['SDS-C', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['SDS-CM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['SDS-SC', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['SNARC', { implicitValues: [1] }],
-    ['SRM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['ST', { fieldLabels: ['Cap', 'Doors'] }],
-    ['STD', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['TOR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['TUR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
-    ['VTH', { fieldLabels: ['Cap', 'Doors'] }],
-    ['VTM', { fieldLabels: ['Cap', 'Doors'] }],
-    ['VTS', { fieldLabels: ['Cap', 'Doors'] }],
+  ['AC', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['AT', { fieldLabels: ['Cap', 'Doors'] }],
+  ['BHJ2', { literalDigits: true }],
+  ['BHJ3', { literalDigits: true }],
+  ['C3BSM', { implicitValues: [1] }],
+  ['C3M', { implicitValues: [1] }],
+  ['CAP', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['CK', { fieldLabels: ['Cap', 'Doors'] }],
+  ['CNARC', { implicitValues: [1] }],
+  ['CT', { fieldLabels: ['Cap', 'Doors'] }],
+  ['FLK', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['HT', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['IATM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['INARC', { implicitValues: [1] }],
+  ['LAM', { fieldLabels: ['Ground', 'Aero'] }],
+  ['LRM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['MFB', { implicitValues: [1] }],
+  ['MSL', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['MT', { fieldLabels: ['Cap', 'Doors'] }],
+  ['NC3', { literalDigits: true }],
+  ['PT', { fieldLabels: ['Cap', 'Doors'] }],
+  ['REAR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['SCAP', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['SDS-C', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['SDS-CM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['SDS-SC', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['SNARC', { implicitValues: [1] }],
+  ['SRM', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['ST', { fieldLabels: ['Cap', 'Doors'] }],
+  ['STD', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['TOR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['TUR', { fieldLabels: ['S', 'M', 'L', 'E'] }],
+  ['VTH', { fieldLabels: ['Cap', 'Doors'] }],
+  ['VTM', { fieldLabels: ['Cap', 'Doors'] }],
+  ['VTS', { fieldLabels: ['Cap', 'Doors'] }],
 ]);
 
 const ARC_DAMAGE_SPECIALS = ['STD', 'CAP', 'SCAP', 'MSL'] as const;
 
 export function getASSpecialFilterValues(
-    stats: Pick<AlphaStrikeUnitStats, 'specials' | 'frontArc' | 'rearArc' | 'leftArc' | 'rightArc'> | undefined,
+  stats: Pick<AlphaStrikeUnitStats, 'specials' | 'frontArc' | 'rearArc' | 'leftArc' | 'rightArc'> | undefined,
 ): string[] {
-    const specials = (stats?.specials ?? []).filter(value => !ARC_DAMAGE_SPECIALS.some(token => token === value));
-    for (const arc of [stats?.frontArc, stats?.rearArc, stats?.leftArc, stats?.rightArc]) {
-        if (!arc) continue;
-        for (const token of ARC_DAMAGE_SPECIALS) {
-            const damage = arc[token];
-            const values = [damage.dmgS, damage.dmgM, damage.dmgL, damage.dmgE];
-            if (values.some(value => value === '0*' || Number(value) > 0)) {
-                specials.push(`${token}${values.join('/')}`);
-            }
-        }
+  const specials = (stats?.specials ?? []).filter((value) => !ARC_DAMAGE_SPECIALS.some((token) => token === value));
+  for (const arc of [stats?.frontArc, stats?.rearArc, stats?.leftArc, stats?.rightArc]) {
+    if (!arc) continue;
+    for (const token of ARC_DAMAGE_SPECIALS) {
+      const damage = arc[token];
+      const values = [damage.dmgS, damage.dmgM, damage.dmgL, damage.dmgE];
+      if (values.some((value) => value === '0*' || Number(value) > 0)) {
+        specials.push(`${token}${values.join('/')}`);
+      }
     }
-    return specials;
+  }
+  return specials;
 }
 
 interface ASSpecialParseContext {
-    readonly abilities: Map<string, ASSpecialAbilityNode | null>;
-    readonly topLevelValues: Map<string, ParsedASSpecials>;
-    readonly collections: Map<string, ParsedASSpecials>;
+  readonly abilities: Map<string, ASSpecialAbilityNode | null>;
+  readonly topLevelValues: Map<string, ParsedASSpecials>;
+  readonly collections: Map<string, ParsedASSpecials>;
 }
 
 function createASSpecialParseContext(): ASSpecialParseContext {
-    return {
-        abilities: new Map(),
-        topLevelValues: new Map(),
-        collections: new Map(),
-    };
+  return {
+    abilities: new Map(),
+    topLevelValues: new Map(),
+    collections: new Map(),
+  };
 }
 
 function normalizeSpecialText(value: string): string {
-    return value.replace(/\s+/g, '').toUpperCase();
+  return value.replace(/\s+/g, '').toUpperCase();
 }
 
 export function splitASSpecialArguments(content: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let depth = 0;
+  const result: string[] = [];
+  let current = '';
+  let depth = 0;
 
-    for (const char of content) {
-        if (char === '(') {
-            depth++;
-            current += char;
-            continue;
-        }
-
-        if (char === ')') {
-            depth--;
-            current += char;
-            continue;
-        }
-
-        if (char === ',' && depth === 0) {
-            if (current.trim()) {
-                result.push(current.trim());
-            }
-            current = '';
-            continue;
-        }
-
-        current += char;
+  for (const char of content) {
+    if (char === '(') {
+      depth++;
+      current += char;
+      continue;
     }
 
-    if (current.trim()) {
+    if (char === ')') {
+      depth--;
+      current += char;
+      continue;
+    }
+
+    if (char === ',' && depth === 0) {
+      if (current.trim()) {
         result.push(current.trim());
+      }
+      current = '';
+      continue;
     }
 
-    return result;
+    current += char;
+  }
+
+  if (current.trim()) {
+    result.push(current.trim());
+  }
+
+  return result;
 }
 
 export function isASSpecialDamageValue(value: string): boolean {
-    return DAMAGE_VALUE_PATTERN.test(normalizeSpecialText(value));
+  return DAMAGE_VALUE_PATTERN.test(normalizeSpecialText(value));
 }
 
 /**
@@ -229,628 +225,627 @@ export function isASSpecialDamageValue(value: string): boolean {
  * are names rather than parameters and are deliberately retained.
  */
 export function getASSpecialToken(value: string): string | null {
-    const text = normalizeSpecialText(value);
-    if (!text) {
-        return null;
-    }
+  const text = normalizeSpecialText(value);
+  if (!text) {
+    return null;
+  }
 
-    if (AS_SPECIAL_TOKEN_SCHEMAS.get(text)?.literalDigits) {
-        return text;
-    }
+  if (AS_SPECIAL_TOKEN_SCHEMAS.get(text)?.literalDigits) {
+    return text;
+  }
 
-    // Artillery type digits belong to the token. Accept both card syntax
-    // (`ARTCM5-1`) and the contextual formatter syntax (`ARTCM5>=1`).
-    const artilleryMatch = text.match(/^(ART[A-Z0-9]+?)(?=-(?:0\*|\d)|>=|<=|!=|>|<|=|\/|\*|\[|$)/);
-    if (artilleryMatch) {
-        return artilleryMatch[1];
-    }
+  // Artillery type digits belong to the token. Accept both card syntax
+  // (`ARTCM5-1`) and the contextual formatter syntax (`ARTCM5>=1`).
+  const artilleryMatch = text.match(/^(ART[A-Z0-9]+?)(?=-(?:0\*|\d)|>=|<=|!=|>|<|=|\/|\*|\[|$)/);
+  if (artilleryMatch) {
+    return artilleryMatch[1];
+  }
 
-    if (text.startsWith('C3')) {
-        const c3Match = text.match(/^C3[A-Z]+/);
-        if (c3Match) {
-            return c3Match[0];
-        }
+  if (text.startsWith('C3')) {
+    const c3Match = text.match(/^C3[A-Z]+/);
+    if (c3Match) {
+      return c3Match[0];
     }
+  }
 
-    const prefixMatch = text.match(/^[A-Z]+(?:-[A-Z]+)*/);
-    if (!prefixMatch) {
-        return null;
-    }
+  const prefixMatch = text.match(/^[A-Z]+(?:-[A-Z]+)*/);
+  if (!prefixMatch) {
+    return null;
+  }
 
-    // `-O` marks a one-shot variant; it does not describe another ability.
-    return prefixMatch[0].endsWith('-O')
-        ? prefixMatch[0].slice(0, -2)
-        : prefixMatch[0];
+  // `-O` marks a one-shot variant; it does not describe another ability.
+  return prefixMatch[0].endsWith('-O') ? prefixMatch[0].slice(0, -2) : prefixMatch[0];
 }
 
 function parseSpecialSlotValue(text: string, start: number): { value: ASSpecialSlotValue; end: number } | null {
-    const match = text.slice(start).match(/^-?\d+(?:\.\d+)?/);
-    if (!match) {
-        return null;
-    }
+  const match = text.slice(start).match(/^-?\d+(?:\.\d+)?/);
+  if (!match) {
+    return null;
+  }
 
-    const numericValue = Number(match[0]);
-    if (!Number.isFinite(numericValue)) {
-        return null;
-    }
+  const numericValue = Number(match[0]);
+  if (!Number.isFinite(numericValue)) {
+    return null;
+  }
 
-    const end = start + match[0].length;
-    if (match[0] === '0' && text[end] === '*') {
-        return { value: { text: '0*', rank: 0.5 }, end: end + 1 };
-    }
+  const end = start + match[0].length;
+  if (match[0] === '0' && text[end] === '*') {
+    return { value: { text: '0*', rank: 0.5 }, end: end + 1 };
+  }
 
-    return { value: { text: match[0], rank: numericValue }, end };
+  return { value: { text: match[0], rank: numericValue }, end };
 }
 
 function parseConcreteSlotValue(text: string): ASSpecialSlotValue | null {
-    if (text === '0*') {
-        return { text, rank: 0.5 };
-    }
+  if (text === '0*') {
+    return { text, rank: 0.5 };
+  }
 
-    const rank = Number(text);
-    return Number.isFinite(rank) ? { text, rank } : null;
+  const rank = Number(text);
+  return Number.isFinite(rank) ? { text, rank } : null;
 }
 
 function extractOccurrenceValues(text: string, token: string): readonly (ASSpecialSlotValue | null)[] {
-    const normalized = normalizeSpecialText(text);
-    const parameterText = normalized.startsWith(token) ? normalized.slice(token.length) : normalized;
+  const normalized = normalizeSpecialText(text);
+  const parameterText = normalized.startsWith(token) ? normalized.slice(token.length) : normalized;
 
-    if (isASSpecialDamageValue(parameterText)) {
-        return parameterText.split('/').map(part => (
-            part === '-' ? null : parseConcreteSlotValue(part)
-        ));
-    }
+  if (isASSpecialDamageValue(parameterText)) {
+    return parameterText.split('/').map((part) => (part === '-' ? null : parseConcreteSlotValue(part)));
+  }
 
-    const values: ASSpecialSlotValue[] = [];
-    for (const match of parameterText.matchAll(/0\*|\d+(?:\.\d+)?/g)) {
-        const value = parseConcreteSlotValue(match[0]);
-        if (value) {
-            values.push(value);
-        }
+  const values: ASSpecialSlotValue[] = [];
+  for (const match of parameterText.matchAll(/0\*|\d+(?:\.\d+)?/g)) {
+    const value = parseConcreteSlotValue(match[0]);
+    if (value) {
+      values.push(value);
     }
-    if (values.length > 0) {
-        return values;
-    }
+  }
+  if (values.length > 0) {
+    return values;
+  }
 
-    return (AS_SPECIAL_TOKEN_SCHEMAS.get(token)?.implicitValues ?? []).map(value => ({
-        text: String(value),
-        rank: value,
-    }));
+  return (AS_SPECIAL_TOKEN_SCHEMAS.get(token)?.implicitValues ?? []).map((value) => ({
+    text: String(value),
+    rank: value,
+  }));
 }
 
-function parseASSpecialAbilityInContext(
-    value: string,
-    context: ASSpecialParseContext,
-): ASSpecialAbilityNode | null {
-    const cached = context.abilities.get(value);
-    if (cached !== undefined) {
-        return cached;
-    }
+function parseASSpecialAbilityInContext(value: string, context: ASSpecialParseContext): ASSpecialAbilityNode | null {
+  const cached = context.abilities.get(value);
+  if (cached !== undefined) {
+    return cached;
+  }
 
-    const trimmedValue = value.trim();
-    if (!trimmedValue) {
-        context.abilities.set(value, null);
-        return null;
-    }
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    context.abilities.set(value, null);
+    return null;
+  }
 
-    const compositeMatch = trimmedValue.match(/^([^()]+?)\s*\((.*)\)$/i);
-    const lookupText = compositeMatch?.[1].trim() ?? trimmedValue;
-    const token = getASSpecialToken(lookupText) ?? normalizeSpecialText(lookupText);
+  const compositeMatch = trimmedValue.match(/^([^()]+?)\s*\((.*)\)$/i);
+  const lookupText = compositeMatch?.[1].trim() ?? trimmedValue;
+  const token = getASSpecialToken(lookupText) ?? normalizeSpecialText(lookupText);
 
-    if (compositeMatch && token === 'TUR') {
-        const parts = splitASSpecialArguments(compositeMatch[2]);
-        const turretDamage = parts.find(isASSpecialDamageValue);
-        const node: ASSpecialAbilityNode = {
-            rawText: trimmedValue,
-            lookupText,
-            token: 'TUR',
-            values: turretDamage ? extractOccurrenceValues(turretDamage, '') : [],
-            ...(turretDamage ? { turretDamage: turretDamage.trim() } : {}),
-            children: parts
-                .filter(part => !isASSpecialDamageValue(part))
-                .map(part => parseASSpecialAbilityInContext(part, context))
-                .filter((child): child is ASSpecialAbilityNode => child !== null),
-        };
-        context.abilities.set(value, node);
-        return node;
-    }
-
+  if (compositeMatch && token === 'TUR') {
+    const parts = splitASSpecialArguments(compositeMatch[2]);
+    const turretDamage = parts.find(isASSpecialDamageValue);
     const node: ASSpecialAbilityNode = {
-        rawText: trimmedValue,
-        lookupText,
-        token,
-        values: extractOccurrenceValues(trimmedValue, token),
-        children: [],
+      rawText: trimmedValue,
+      lookupText,
+      token: 'TUR',
+      values: turretDamage ? extractOccurrenceValues(turretDamage, '') : [],
+      ...(turretDamage ? { turretDamage: turretDamage.trim() } : {}),
+      children: parts
+        .filter((part) => !isASSpecialDamageValue(part))
+        .map((part) => parseASSpecialAbilityInContext(part, context))
+        .filter((child): child is ASSpecialAbilityNode => child !== null),
     };
     context.abilities.set(value, node);
     return node;
+  }
+
+  const node: ASSpecialAbilityNode = {
+    rawText: trimmedValue,
+    lookupText,
+    token,
+    values: extractOccurrenceValues(trimmedValue, token),
+    children: [],
+  };
+  context.abilities.set(value, node);
+  return node;
 }
 
 function flattenASSpecialAbility(node: ASSpecialAbilityNode, topLevel: boolean): ASSpecialOccurrence[] {
-    return [
-        {
-            token: node.token,
-            values: node.values,
-            rawText: node.rawText,
-            topLevel,
-        },
-        ...node.children.flatMap(child => flattenASSpecialAbility(child, false)),
-    ];
+  return [
+    {
+      token: node.token,
+      values: node.values,
+      rawText: node.rawText,
+      topLevel,
+    },
+    ...node.children.flatMap((child) => flattenASSpecialAbility(child, false)),
+  ];
 }
 
 function parseTopLevelValue(value: string, context: ASSpecialParseContext): ParsedASSpecials {
-    const cached = context.topLevelValues.get(value);
-    if (cached) {
-        return cached;
-    }
+  const cached = context.topLevelValues.get(value);
+  if (cached) {
+    return cached;
+  }
 
-    const topLevelValues = splitASSpecialArguments(value);
-    const abilities = topLevelValues
-        .map(ability => parseASSpecialAbilityInContext(ability, context))
-        .filter((ability): ability is ASSpecialAbilityNode => ability !== null);
-    const parsed: ParsedASSpecials = {
-        topLevelValues,
-        abilities,
-        occurrences: abilities.flatMap(ability => flattenASSpecialAbility(ability, true)),
-    };
-    context.topLevelValues.set(value, parsed);
-    return parsed;
+  const topLevelValues = splitASSpecialArguments(value);
+  const abilities = topLevelValues
+    .map((ability) => parseASSpecialAbilityInContext(ability, context))
+    .filter((ability): ability is ASSpecialAbilityNode => ability !== null);
+  const parsed: ParsedASSpecials = {
+    topLevelValues,
+    abilities,
+    occurrences: abilities.flatMap((ability) => flattenASSpecialAbility(ability, true)),
+  };
+  context.topLevelValues.set(value, parsed);
+  return parsed;
 }
 
 /** Parse one specials value without retaining session-global parser state. */
 export function parseASSpecials(unitValue: unknown): ParsedASSpecials {
-    return parseASSpecialsInContext(unitValue, createASSpecialParseContext());
+  return parseASSpecialsInContext(unitValue, createASSpecialParseContext());
 }
 
-function parseASSpecialsInContext(
-    unitValue: unknown,
-    context: ASSpecialParseContext,
-): ParsedASSpecials {
-    if (unitValue == null) {
-        return { topLevelValues: [], abilities: [], occurrences: [] };
+function parseASSpecialsInContext(unitValue: unknown, context: ASSpecialParseContext): ParsedASSpecials {
+  if (unitValue == null) {
+    return { topLevelValues: [], abilities: [], occurrences: [] };
+  }
+
+  if (Array.isArray(unitValue)) {
+    const values = unitValue.map((value) => String(value));
+    const cacheKey = values.join('\u0000');
+    const cached = context.collections.get(cacheKey);
+    if (cached) {
+      return cached;
     }
 
-    if (Array.isArray(unitValue)) {
-        const values = unitValue.map(value => String(value));
-        const cacheKey = values.join('\u0000');
-        const cached = context.collections.get(cacheKey);
-        if (cached) {
-            return cached;
-        }
+    const parts = values.map((value) => parseTopLevelValue(value, context));
+    const parsed: ParsedASSpecials = {
+      topLevelValues: parts.flatMap((part) => part.topLevelValues),
+      abilities: parts.flatMap((part) => part.abilities),
+      occurrences: parts.flatMap((part) => part.occurrences),
+    };
+    context.collections.set(cacheKey, parsed);
+    return parsed;
+  }
 
-        const parts = values.map(value => parseTopLevelValue(value, context));
-        const parsed: ParsedASSpecials = {
-            topLevelValues: parts.flatMap(part => part.topLevelValues),
-            abilities: parts.flatMap(part => part.abilities),
-            occurrences: parts.flatMap(part => part.occurrences),
-        };
-        context.collections.set(cacheKey, parsed);
-        return parsed;
-    }
-
-    return parseTopLevelValue(String(unitValue), context);
+  return parseTopLevelValue(String(unitValue), context);
 }
 
 /** Build one generation-local parsed tuple index used by both sync and worker search. */
 export function buildASSpecialsByUnitIndex<T, TUnitId extends string>(
-    units: readonly T[],
-    getUnitId: (unit: T) => TUnitId,
-    getSpecials: (unit: T) => unknown,
+  units: readonly T[],
+  getUnitId: (unit: T) => TUnitId,
+  getSpecials: (unit: T) => unknown,
 ): Map<TUnitId, ParsedASSpecials> {
-    const index = new Map<TUnitId, ParsedASSpecials>();
-    const context = createASSpecialParseContext();
-    for (const unit of units) {
-        index.set(getUnitId(unit), parseASSpecialsInContext(getSpecials(unit), context));
-    }
-    return index;
+  const index = new Map<TUnitId, ParsedASSpecials>();
+  const context = createASSpecialParseContext();
+  for (const unit of units) {
+    index.set(getUnitId(unit), parseASSpecialsInContext(getSpecials(unit), context));
+  }
+  return index;
 }
 
 export function getASSpecialMinimumFieldLabels(token: string, count: number): readonly string[] {
-    if (count <= 0) {
-        return [];
-    }
+  if (count <= 0) {
+    return [];
+  }
 
-    const schemaLabels = AS_SPECIAL_TOKEN_SCHEMAS.get(token)?.fieldLabels;
-    if (schemaLabels) {
-        return schemaLabels.slice(0, count);
-    }
+  const schemaLabels = AS_SPECIAL_TOKEN_SCHEMAS.get(token)?.fieldLabels;
+  if (schemaLabels) {
+    return schemaLabels.slice(0, count);
+  }
 
-    return count === 1
-        ? ['']
-        : Array.from({ length: count }, (_, index) => `#${index + 1}`);
+  return count === 1 ? [''] : Array.from({ length: count }, (_, index) => `#${index + 1}`);
 }
 
 export function isASSpecialNumericQuery(value: string): boolean {
-    const normalized = normalizeSpecialText(value);
-    if (SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN.test(normalized) || normalized.includes('0*')) {
-        return true;
-    }
+  const normalized = normalizeSpecialText(value);
+  if (SPECIAL_EXPLICIT_NUMERIC_QUERY_PATTERN.test(normalized) || normalized.includes('0*')) {
+    return true;
+  }
 
-    if (normalized.includes('*')) {
-        return false;
-    }
+  if (normalized.includes('*')) {
+    return false;
+  }
 
-    return /-?\d/.test(normalized);
+  return /-?\d/.test(normalized);
 }
 
 function flushSpecialLiteral<T extends SpecialQueryToken | SpecialTargetToken>(tokens: T[], literal: string): void {
-    if (literal) {
-        tokens.push({ type: 'literal', text: literal } as T);
-    }
+  if (literal) {
+    tokens.push({ type: 'literal', text: literal } as T);
+  }
 }
 
 function readSpecialSlotOperator(text: string, start: number): { operator: SpecialSlotOperator; end: number } | null {
-    const twoCharOperator = text.slice(start, start + 2);
-    if (twoCharOperator === '>=' || twoCharOperator === '<=' || twoCharOperator === '!=') {
-        return { operator: twoCharOperator, end: start + 2 };
-    }
+  const twoCharOperator = text.slice(start, start + 2);
+  if (twoCharOperator === '>=' || twoCharOperator === '<=' || twoCharOperator === '!=') {
+    return { operator: twoCharOperator, end: start + 2 };
+  }
 
-    const oneCharOperator = text[start];
-    if (oneCharOperator === '>' || oneCharOperator === '<' || oneCharOperator === '=') {
-        return { operator: oneCharOperator, end: start + 1 };
-    }
+  const oneCharOperator = text[start];
+  if (oneCharOperator === '>' || oneCharOperator === '<' || oneCharOperator === '=') {
+    return { operator: oneCharOperator, end: start + 1 };
+  }
 
-    return null;
+  return null;
 }
 
 function parseSpecialNumberSet(text: string, start: number): { values: ASSpecialSlotValue[]; end: number } | null {
-    if (text[start] !== '[') {
-        return null;
-    }
+  if (text[start] !== '[') {
+    return null;
+  }
 
-    const end = text.indexOf(']', start + 1);
-    if (end === -1) {
-        return null;
-    }
+  const end = text.indexOf(']', start + 1);
+  if (end === -1) {
+    return null;
+  }
 
-    const values: ASSpecialSlotValue[] = [];
-    for (const part of text.slice(start + 1, end).split(',')) {
-        const trimmedPart = part.trim();
-        const slotValue = parseSpecialSlotValue(trimmedPart, 0);
-        if (!trimmedPart || !slotValue || slotValue.end !== trimmedPart.length) {
-            return null;
-        }
-        values.push(slotValue.value);
+  const values: ASSpecialSlotValue[] = [];
+  for (const part of text.slice(start + 1, end).split(',')) {
+    const trimmedPart = part.trim();
+    const slotValue = parseSpecialSlotValue(trimmedPart, 0);
+    if (!trimmedPart || !slotValue || slotValue.end !== trimmedPart.length) {
+      return null;
     }
+    values.push(slotValue.value);
+  }
 
-    return values.length > 0 ? { values, end: end + 1 } : null;
+  return values.length > 0 ? { values, end: end + 1 } : null;
 }
 
 function isMissingSpecialSlot(text: string, index: number): boolean {
-    if (text[index] !== '-') {
-        return false;
-    }
+  if (text[index] !== '-') {
+    return false;
+  }
 
-    const previous = index === 0 ? '' : text[index - 1];
-    const next = index + 1 >= text.length ? '' : text[index + 1];
-    const hasSlotBoundaryBefore = index === 0 || previous === '/' || previous === '(' || previous === ',';
-    const hasSlotBoundaryAfter = index + 1 >= text.length || next === '/' || next === ')' || next === ',';
-    return hasSlotBoundaryBefore && hasSlotBoundaryAfter;
+  const previous = index === 0 ? '' : text[index - 1];
+  const next = index + 1 >= text.length ? '' : text[index + 1];
+  const hasSlotBoundaryBefore = index === 0 || previous === '/' || previous === '(' || previous === ',';
+  const hasSlotBoundaryAfter = index + 1 >= text.length || next === '/' || next === ')' || next === ',';
+  return hasSlotBoundaryBefore && hasSlotBoundaryAfter;
 }
 
 function parseSpecialQuery(value: string): ParsedSpecialQuery | null {
-    if (!isASSpecialNumericQuery(value)) {
+  if (!isASSpecialNumericQuery(value)) {
+    return null;
+  }
+
+  const text = normalizeSpecialText(value);
+  const tokens: SpecialQueryToken[] = [];
+  let literal = '';
+  let index = 0;
+
+  while (index < text.length) {
+    const set = parseSpecialNumberSet(text, index);
+    if (set) {
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({ type: 'slot', matcher: { type: 'set', values: set.values } });
+      index = set.end;
+      continue;
+    }
+
+    const operator = readSpecialSlotOperator(text, index);
+    if (operator) {
+      const slotValue = parseSpecialSlotValue(text, operator.end);
+      if (!slotValue) {
         return null;
+      }
+
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({
+        type: 'slot',
+        matcher: { type: 'comparison', operator: operator.operator, value: slotValue.value },
+      });
+      index = slotValue.end;
+      continue;
     }
 
-    const text = normalizeSpecialText(value);
-    const tokens: SpecialQueryToken[] = [];
-    let literal = '';
-    let index = 0;
-
-    while (index < text.length) {
-        const set = parseSpecialNumberSet(text, index);
-        if (set) {
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({ type: 'slot', matcher: { type: 'set', values: set.values } });
-            index = set.end;
-            continue;
-        }
-
-        const operator = readSpecialSlotOperator(text, index);
-        if (operator) {
-            const slotValue = parseSpecialSlotValue(text, operator.end);
-            if (!slotValue) {
-                return null;
-            }
-
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({
-                type: 'slot',
-                matcher: { type: 'comparison', operator: operator.operator, value: slotValue.value },
-            });
-            index = slotValue.end;
-            continue;
-        }
-
-        if (text[index] === '*') {
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({ type: 'slot', matcher: { type: 'any' } });
-            index++;
-            continue;
-        }
-
-        if (isMissingSpecialSlot(text, index)) {
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({ type: 'slot', matcher: { type: 'missing' } });
-            index++;
-            continue;
-        }
-
-        const slotValue = parseSpecialSlotValue(text, index);
-        if (slotValue) {
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({
-                type: 'slot',
-                matcher: { type: 'comparison', operator: '=', value: slotValue.value },
-            });
-            index = slotValue.end;
-            continue;
-        }
-
-        literal += text[index];
-        index++;
+    if (text[index] === '*') {
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({ type: 'slot', matcher: { type: 'any' } });
+      index++;
+      continue;
     }
 
-    flushSpecialLiteral(tokens, literal);
-    return tokens.some(token => token.type === 'slot') ? { tokens } : null;
+    if (isMissingSpecialSlot(text, index)) {
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({ type: 'slot', matcher: { type: 'missing' } });
+      index++;
+      continue;
+    }
+
+    const slotValue = parseSpecialSlotValue(text, index);
+    if (slotValue) {
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({
+        type: 'slot',
+        matcher: { type: 'comparison', operator: '=', value: slotValue.value },
+      });
+      index = slotValue.end;
+      continue;
+    }
+
+    literal += text[index];
+    index++;
+  }
+
+  flushSpecialLiteral(tokens, literal);
+  return tokens.some((token) => token.type === 'slot') ? { tokens } : null;
 }
 
 function parseSpecialTarget(value: string): SpecialTargetToken[] {
-    const text = normalizeSpecialText(value);
-    const tokens: SpecialTargetToken[] = [];
-    let literal = '';
-    let index = 0;
+  const text = normalizeSpecialText(value);
+  const tokens: SpecialTargetToken[] = [];
+  let literal = '';
+  let index = 0;
 
-    while (index < text.length) {
-        if (isMissingSpecialSlot(text, index)) {
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({ type: 'slot', value: null });
-            index++;
-            continue;
-        }
-
-        const slotValue = parseSpecialSlotValue(text, index);
-        if (slotValue) {
-            flushSpecialLiteral(tokens, literal);
-            literal = '';
-            tokens.push({ type: 'slot', value: slotValue.value });
-            index = slotValue.end;
-            continue;
-        }
-
-        literal += text[index];
-        index++;
+  while (index < text.length) {
+    if (isMissingSpecialSlot(text, index)) {
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({ type: 'slot', value: null });
+      index++;
+      continue;
     }
 
-    flushSpecialLiteral(tokens, literal);
-    return tokens;
+    const slotValue = parseSpecialSlotValue(text, index);
+    if (slotValue) {
+      flushSpecialLiteral(tokens, literal);
+      literal = '';
+      tokens.push({ type: 'slot', value: slotValue.value });
+      index = slotValue.end;
+      continue;
+    }
+
+    literal += text[index];
+    index++;
+  }
+
+  flushSpecialLiteral(tokens, literal);
+  return tokens;
 }
 
 function specialSlotValuesEqual(left: ASSpecialSlotValue, right: ASSpecialSlotValue): boolean {
-    if (left.text === '0*' || right.text === '0*') {
-        return left.text === right.text;
-    }
-    return left.rank === right.rank;
+  if (left.text === '0*' || right.text === '0*') {
+    return left.text === right.text;
+  }
+  return left.rank === right.rank;
 }
 
-function compareSpecialSlotValues(left: ASSpecialSlotValue, right: ASSpecialSlotValue, operator: SpecialSlotOperator): boolean {
-    switch (operator) {
-        case '=': return specialSlotValuesEqual(left, right);
-        case '!=': return !specialSlotValuesEqual(left, right);
-        case '>': return left.rank > right.rank;
-        case '<': return left.rank < right.rank;
-        case '>=': return left.rank >= right.rank;
-        case '<=': return left.rank <= right.rank;
-    }
+function compareSpecialSlotValues(
+  left: ASSpecialSlotValue,
+  right: ASSpecialSlotValue,
+  operator: SpecialSlotOperator,
+): boolean {
+  switch (operator) {
+    case '=':
+      return specialSlotValuesEqual(left, right);
+    case '!=':
+      return !specialSlotValuesEqual(left, right);
+    case '>':
+      return left.rank > right.rank;
+    case '<':
+      return left.rank < right.rank;
+    case '>=':
+      return left.rank >= right.rank;
+    case '<=':
+      return left.rank <= right.rank;
+  }
 }
 
 function specialSlotMatches(slotValue: ASSpecialSlotValue | null, matcher: SpecialSlotMatcher): boolean {
-    if (matcher.type === 'any') {
-        return true;
-    }
-    if (matcher.type === 'missing') {
-        return slotValue === null;
-    }
-    if (slotValue === null) {
-        return false;
-    }
-    if (matcher.type === 'set') {
-        return matcher.values.some(value => specialSlotValuesEqual(value, slotValue));
-    }
-    return compareSpecialSlotValues(slotValue, matcher.value, matcher.operator);
+  if (matcher.type === 'any') {
+    return true;
+  }
+  if (matcher.type === 'missing') {
+    return slotValue === null;
+  }
+  if (slotValue === null) {
+    return false;
+  }
+  if (matcher.type === 'set') {
+    return matcher.values.some((value) => specialSlotValuesEqual(value, slotValue));
+  }
+  return compareSpecialSlotValues(slotValue, matcher.value, matcher.operator);
 }
 
 function hasOnlyTrailingSpecialSlots(tokens: SpecialTargetToken[], start: number): boolean {
-    let index = start;
-    while (index < tokens.length) {
-        const separator = tokens[index];
-        if (separator?.type !== 'literal' || separator.text !== '/') {
-            return false;
-        }
-        index++;
-        if (tokens[index]?.type !== 'slot') {
-            return false;
-        }
-        index++;
+  let index = start;
+  while (index < tokens.length) {
+    const separator = tokens[index];
+    if (separator?.type !== 'literal' || separator.text !== '/') {
+      return false;
     }
-    return true;
+    index++;
+    if (tokens[index]?.type !== 'slot') {
+      return false;
+    }
+    index++;
+  }
+  return true;
 }
 
 function legacyNumericQueryMatches(value: string, query: ParsedSpecialQuery): boolean {
-    const targetTokens = parseSpecialTarget(value);
-    let targetIndex = 0;
+  const targetTokens = parseSpecialTarget(value);
+  let targetIndex = 0;
 
-    for (const queryToken of query.tokens) {
-        const targetToken = targetTokens[targetIndex];
-        if (!targetToken) {
-            return false;
-        }
-
-        if (queryToken.type === 'literal') {
-            if (targetToken.type !== 'literal' || targetToken.text !== queryToken.text) {
-                return false;
-            }
-        } else if (targetToken.type !== 'slot' || !specialSlotMatches(targetToken.value, queryToken.matcher)) {
-            return false;
-        }
-        targetIndex++;
+  for (const queryToken of query.tokens) {
+    const targetToken = targetTokens[targetIndex];
+    if (!targetToken) {
+      return false;
     }
 
-    return targetIndex === targetTokens.length || hasOnlyTrailingSpecialSlots(targetTokens, targetIndex);
+    if (queryToken.type === 'literal') {
+      if (targetToken.type !== 'literal' || targetToken.text !== queryToken.text) {
+        return false;
+      }
+    } else if (targetToken.type !== 'slot' || !specialSlotMatches(targetToken.value, queryToken.matcher)) {
+      return false;
+    }
+    targetIndex++;
+  }
+
+  return targetIndex === targetTokens.length || hasOnlyTrailingSpecialSlots(targetTokens, targetIndex);
 }
 
 function parseAbstractSlotMatcher(part: string): SpecialSlotMatcher | null {
-    if (part === '*') {
-        return { type: 'any' };
-    }
-    if (part === '-') {
-        return { type: 'missing' };
-    }
+  if (part === '*') {
+    return { type: 'any' };
+  }
+  if (part === '-') {
+    return { type: 'missing' };
+  }
 
-    const set = parseSpecialNumberSet(part, 0);
-    if (set?.end === part.length) {
-        return { type: 'set', values: set.values };
-    }
+  const set = parseSpecialNumberSet(part, 0);
+  if (set?.end === part.length) {
+    return { type: 'set', values: set.values };
+  }
 
-    const operator = readSpecialSlotOperator(part, 0);
-    const slotValue = parseSpecialSlotValue(part, operator?.end ?? 0);
-    if (!slotValue || slotValue.end !== part.length) {
-        return null;
-    }
+  const operator = readSpecialSlotOperator(part, 0);
+  const slotValue = parseSpecialSlotValue(part, operator?.end ?? 0);
+  if (!slotValue || slotValue.end !== part.length) {
+    return null;
+  }
 
-    return {
-        type: 'comparison',
-        operator: operator?.operator ?? '=',
-        value: slotValue.value,
-    };
+  return {
+    type: 'comparison',
+    operator: operator?.operator ?? '=',
+    value: slotValue.value,
+  };
 }
 
 function parseAbstractSlotMatchers(value: string, token: string): SpecialSlotMatcher[] | null {
-    const text = normalizeSpecialText(value);
-    if (!text.startsWith(token)) {
-        return null;
-    }
+  const text = normalizeSpecialText(value);
+  if (!text.startsWith(token)) {
+    return null;
+  }
 
-    const suffix = text.slice(token.length);
-    if (!suffix || suffix.startsWith('(')) {
-        return suffix ? null : [];
-    }
+  const suffix = text.slice(token.length);
+  if (!suffix || suffix.startsWith('(')) {
+    return suffix ? null : [];
+  }
 
-    const matchers: SpecialSlotMatcher[] = [];
-    for (const part of suffix.split('/')) {
-        const matcher = parseAbstractSlotMatcher(part);
-        if (!matcher) {
-            return null;
-        }
-        matchers.push(matcher);
+  const matchers: SpecialSlotMatcher[] = [];
+  for (const part of suffix.split('/')) {
+    const matcher = parseAbstractSlotMatcher(part);
+    if (!matcher) {
+      return null;
     }
-    return matchers;
+    matchers.push(matcher);
+  }
+  return matchers;
 }
 
 function compileASSpecialQuery(value: string): CompiledASSpecialQuery {
-    const normalized = normalizeSpecialText(value);
-    const token = getASSpecialToken(value);
-    const abstractMatchers = token ? parseAbstractSlotMatchers(value, token) : null;
-    const numeric = parseSpecialQuery(value);
-    const wildcard = value.includes('*')
-        ? new RegExp(`^${value.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`, 'i')
-        : null;
+  const normalized = normalizeSpecialText(value);
+  const token = getASSpecialToken(value);
+  const abstractMatchers = token ? parseAbstractSlotMatchers(value, token) : null;
+  const numeric = parseSpecialQuery(value);
+  const wildcard = value.includes('*')
+    ? new RegExp(`^${value.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`, 'i')
+    : null;
 
-    return Object.freeze({
-        matches: (occurrence: ASSpecialOccurrence): boolean => {
-            if (normalized === occurrence.token) return true;
-            if (token === occurrence.token && abstractMatchers && abstractMatchers.length > 0) {
-                return abstractMatchers.length <= occurrence.values.length
-                    && abstractMatchers.every((matcher, index) => (
-                        specialSlotMatches(occurrence.values[index] ?? null, matcher)
-                    ));
-            }
-            if (numeric && legacyNumericQueryMatches(occurrence.rawText, numeric)) return true;
-            if (wildcard) return wildcard.test(occurrence.rawText);
-            return normalizeSpecialText(occurrence.rawText) === normalized;
-        },
-    });
+  return Object.freeze({
+    matches: (occurrence: ASSpecialOccurrence): boolean => {
+      if (normalized === occurrence.token) return true;
+      if (token === occurrence.token && abstractMatchers && abstractMatchers.length > 0) {
+        return (
+          abstractMatchers.length <= occurrence.values.length &&
+          abstractMatchers.every((matcher, index) => specialSlotMatches(occurrence.values[index] ?? null, matcher))
+        );
+      }
+      if (numeric && legacyNumericQueryMatches(occurrence.rawText, numeric)) return true;
+      if (wildcard) return wildcard.test(occurrence.rawText);
+      return normalizeSpecialText(occurrence.rawText) === normalized;
+    },
+  });
 }
 
 /** Compile user query text once before evaluating it against a unit collection. */
 export function compileASSpecialQueries(values: readonly string[]): readonly CompiledASSpecialQuery[] {
-    return Object.freeze(values.map(compileASSpecialQuery));
+  return Object.freeze(values.map(compileASSpecialQuery));
 }
 
 export type ASSpecialSemanticOperator = '=' | '==' | '!=' | '&=' | '>' | '<' | '>=' | '<=';
 
 /** Shared evaluator used by both direct AST execution and UI-state filtering. */
 export function evaluateASSpecialsFilter(
-    unitValue: unknown,
-    operator: ASSpecialSemanticOperator,
-    queries: readonly CompiledASSpecialQuery[],
-    parsedSpecials?: ParsedASSpecials,
+  unitValue: unknown,
+  operator: ASSpecialSemanticOperator,
+  queries: readonly CompiledASSpecialQuery[],
+  parsedSpecials?: ParsedASSpecials,
 ): boolean {
-    const parsed = parsedSpecials ?? parseASSpecials(unitValue);
+  const parsed = parsedSpecials ?? parseASSpecials(unitValue);
 
-    if (parsed.occurrences.length === 0) {
-        return operator === '!=';
-    }
-
-    if (operator === '&=') {
-        return queries.every(query => parsed.occurrences.some(query.matches));
-    }
-
-    if (operator === '==') {
-        const topLevelOccurrences = parsed.occurrences.filter(occurrence => occurrence.topLevel);
-        return topLevelOccurrences.length > 0 && topLevelOccurrences.every(occurrence => (
-            queries.some(query => query.matches(occurrence))
-        ));
-    }
-
-    for (const query of queries) {
-        const matches = parsed.occurrences.some(query.matches);
-        if (operator === '!=') {
-            if (matches) {
-                return false;
-            }
-        } else if (matches) {
-            return true;
-        }
-    }
-
+  if (parsed.occurrences.length === 0) {
     return operator === '!=';
+  }
+
+  if (operator === '&=') {
+    return queries.every((query) => parsed.occurrences.some(query.matches));
+  }
+
+  if (operator === '==') {
+    const topLevelOccurrences = parsed.occurrences.filter((occurrence) => occurrence.topLevel);
+    return (
+      topLevelOccurrences.length > 0 &&
+      topLevelOccurrences.every((occurrence) => queries.some((query) => query.matches(occurrence)))
+    );
+  }
+
+  for (const query of queries) {
+    const matches = parsed.occurrences.some(query.matches);
+    if (operator === '!=') {
+      if (matches) {
+        return false;
+      }
+    } else if (matches) {
+      return true;
+    }
+  }
+
+  return operator === '!=';
 }
 
 function formatMinimumValue(value: number): string {
-    return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)));
 }
 
 /** Convert contextual UI minima into the canonical semantic slot query. */
 export function formatASSpecialMinimumQuery(
-    token: string,
-    minimumValues: readonly (number | null)[] | undefined,
+  token: string,
+  minimumValues: readonly (number | null)[] | undefined,
 ): string {
-    if (!minimumValues || minimumValues.length === 0) {
-        return token;
-    }
+  if (!minimumValues || minimumValues.length === 0) {
+    return token;
+  }
 
-    let lastValueIndex = -1;
-    for (let index = 0; index < minimumValues.length; index++) {
-        if (minimumValues[index] !== null && minimumValues[index] !== undefined) {
-            lastValueIndex = index;
-        }
+  let lastValueIndex = -1;
+  for (let index = 0; index < minimumValues.length; index++) {
+    if (minimumValues[index] !== null && minimumValues[index] !== undefined) {
+      lastValueIndex = index;
     }
-    if (lastValueIndex === -1) {
-        return token;
-    }
+  }
+  if (lastValueIndex === -1) {
+    return token;
+  }
 
-    const slots = minimumValues.slice(0, lastValueIndex + 1).map(value => (
-        value === null || value === undefined ? '*' : `>=${formatMinimumValue(value)}`
-    ));
-    return token + slots.join('/');
+  const slots = minimumValues
+    .slice(0, lastValueIndex + 1)
+    .map((value) => (value === null || value === undefined ? '*' : `>=${formatMinimumValue(value)}`));
+  return token + slots.join('/');
 }
 
 /**
@@ -858,35 +853,33 @@ export function formatASSpecialMinimumQuery(
  * numeric semantic expressions remain semantic-only and retain exact behavior.
  */
 export function parseASSpecialMinimumQuery(value: string): { token: string; minimumValues: (number | null)[] } | null {
-    const token = getASSpecialToken(value);
-    if (!token) {
-        return null;
-    }
+  const token = getASSpecialToken(value);
+  if (!token) {
+    return null;
+  }
 
-    const normalized = normalizeSpecialText(value);
-    if (normalized === token) {
-        return { token, minimumValues: [] };
-    }
+  const normalized = normalizeSpecialText(value);
+  if (normalized === token) {
+    return { token, minimumValues: [] };
+  }
 
-    const matchers = parseAbstractSlotMatchers(value, token);
-    if (!matchers || matchers.length === 0) {
-        return null;
-    }
+  const matchers = parseAbstractSlotMatchers(value, token);
+  if (!matchers || matchers.length === 0) {
+    return null;
+  }
 
-    const minimumValues: (number | null)[] = [];
-    for (const matcher of matchers) {
-        if (matcher.type === 'any') {
-            minimumValues.push(null);
-        } else if (matcher.type === 'comparison' && matcher.operator === '>=') {
-            minimumValues.push(matcher.value.rank);
-        } else {
-            return null;
-        }
+  const minimumValues: (number | null)[] = [];
+  for (const matcher of matchers) {
+    if (matcher.type === 'any') {
+      minimumValues.push(null);
+    } else if (matcher.type === 'comparison' && matcher.operator === '>=') {
+      minimumValues.push(matcher.value.rank);
+    } else {
+      return null;
     }
+  }
 
-    return minimumValues.some(value => value !== null)
-        ? { token, minimumValues }
-        : null;
+  return minimumValues.some((value) => value !== null) ? { token, minimumValues } : null;
 }
 
 /**
@@ -895,114 +888,115 @@ export function parseASSpecialMinimumQuery(value: string): { token: string; mini
  * this only removes units that cannot contain the requested ability token.
  */
 export function buildIndexedASSpecialSelectionCandidates<T>(
-    selections: readonly Pick<ASSpecialMinimumSelection, 'name' | 'state'>[],
-    getIndexedUnitIds: (token: string) => ReadonlySet<T> | undefined,
+  selections: readonly Pick<ASSpecialMinimumSelection, 'name' | 'state'>[],
+  getIndexedUnitIds: (token: string) => ReadonlySet<T> | undefined,
 ): Set<T> | null {
-    const resolve = (name: string): Set<T> | null => {
-        if (name.includes('*') && !isASSpecialNumericQuery(name)) {
-            return null;
-        }
-
-        const token = getASSpecialToken(name);
-        if (!token) {
-            return null;
-        }
-
-        const indexedUnitIds = getIndexedUnitIds(token);
-        return indexedUnitIds === undefined ? null : new Set(indexedUnitIds);
-    };
-
-    let andCandidates: Set<T> | null = null;
-    for (const selection of selections) {
-        if (selection.state !== 'and') {
-            continue;
-        }
-
-        const candidates = resolve(selection.name);
-        if (candidates === null) {
-            // Other resolved AND clauses are still a safe prefilter.
-            continue;
-        }
-
-        if (andCandidates === null) {
-            andCandidates = candidates;
-            continue;
-        }
-
-        for (const unitId of andCandidates) {
-            if (!candidates.has(unitId)) {
-                andCandidates.delete(unitId);
-            }
-        }
+  const resolve = (name: string): Set<T> | null => {
+    if (name.includes('*') && !isASSpecialNumericQuery(name)) {
+      return null;
     }
 
-    const orSelections = selections.filter(selection => selection.state === 'or');
-    if (orSelections.length === 0) {
-        return andCandidates;
+    const token = getASSpecialToken(name);
+    if (!token) {
+      return null;
     }
 
-    const orCandidates = new Set<T>();
-    for (const selection of orSelections) {
-        const candidates = resolve(selection.name);
-        if (candidates === null) {
-            // An unresolved OR branch may match outside all resolved postings.
-            return andCandidates;
-        }
-        for (const unitId of candidates) {
-            orCandidates.add(unitId);
-        }
+    const indexedUnitIds = getIndexedUnitIds(token);
+    return indexedUnitIds === undefined ? null : new Set(indexedUnitIds);
+  };
+
+  let andCandidates: Set<T> | null = null;
+  for (const selection of selections) {
+    if (selection.state !== 'and') {
+      continue;
+    }
+
+    const candidates = resolve(selection.name);
+    if (candidates === null) {
+      // Other resolved AND clauses are still a safe prefilter.
+      continue;
     }
 
     if (andCandidates === null) {
-        return orCandidates;
+      andCandidates = candidates;
+      continue;
     }
 
     for (const unitId of andCandidates) {
-        if (!orCandidates.has(unitId)) {
-            andCandidates.delete(unitId);
-        }
+      if (!candidates.has(unitId)) {
+        andCandidates.delete(unitId);
+      }
     }
+  }
+
+  const orSelections = selections.filter((selection) => selection.state === 'or');
+  if (orSelections.length === 0) {
     return andCandidates;
+  }
+
+  const orCandidates = new Set<T>();
+  for (const selection of orSelections) {
+    const candidates = resolve(selection.name);
+    if (candidates === null) {
+      // An unresolved OR branch may match outside all resolved postings.
+      return andCandidates;
+    }
+    for (const unitId of candidates) {
+      orCandidates.add(unitId);
+    }
+  }
+
+  if (andCandidates === null) {
+    return orCandidates;
+  }
+
+  for (const unitId of andCandidates) {
+    if (!orCandidates.has(unitId)) {
+      andCandidates.delete(unitId);
+    }
+  }
+  return andCandidates;
 }
 
 export function unitMatchesASSpecialSelections(
-    unitValue: unknown,
-    selections: CompiledASSpecialSelections,
-    parsedSpecials?: ParsedASSpecials,
+  unitValue: unknown,
+  selections: CompiledASSpecialSelections,
+  parsedSpecials?: ParsedASSpecials,
 ): boolean {
-    if (selections.not.some(query => evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))) {
-        return false;
-    }
-    if (selections.and.some(query => !evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))) {
-        return false;
-    }
-    if (selections.or.length > 0 && !selections.or.some(query => (
-        evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials)
-    ))) {
-        return false;
-    }
-    return true;
+  if (selections.not.some((query) => evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))) {
+    return false;
+  }
+  if (selections.and.some((query) => !evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))) {
+    return false;
+  }
+  if (
+    selections.or.length > 0 &&
+    !selections.or.some((query) => evaluateASSpecialsFilter(unitValue, '=', [query], parsedSpecials))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /** Compile contextual dropdown selections once before scanning matching units. */
 export function compileASSpecialSelections(
-    selections: readonly ASSpecialMinimumSelection[],
+  selections: readonly ASSpecialMinimumSelection[],
 ): CompiledASSpecialSelections {
-    const compiled: {
-        or: CompiledASSpecialQuery[];
-        and: CompiledASSpecialQuery[];
-        not: CompiledASSpecialQuery[];
-    } = { or: [], and: [], not: [] };
+  const compiled: {
+    or: CompiledASSpecialQuery[];
+    and: CompiledASSpecialQuery[];
+    not: CompiledASSpecialQuery[];
+  } = { or: [], and: [], not: [] };
 
-    for (const selection of selections) {
-        if (selection.state === false) continue;
-        compiled[selection.state].push(compileASSpecialQuery(
-            formatASSpecialMinimumQuery(selection.name, selection.minimumValues),
-        ));
-    }
-    return Object.freeze({
-        or: Object.freeze(compiled.or),
-        and: Object.freeze(compiled.and),
-        not: Object.freeze(compiled.not),
-    });
+  for (const selection of selections) {
+    if (selection.state === false) continue;
+    compiled[selection.state].push(
+      compileASSpecialQuery(formatASSpecialMinimumQuery(selection.name, selection.minimumValues)),
+    );
+  }
+  return Object.freeze({
+    or: Object.freeze(compiled.or),
+    and: Object.freeze(compiled.and),
+    not: Object.freeze(compiled.not),
+  });
 }
