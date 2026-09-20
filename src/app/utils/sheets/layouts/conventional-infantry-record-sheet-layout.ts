@@ -284,7 +284,7 @@ function drawInfantryNonInfantryWeaponReference(svg: SVGSVGElement, box: Box): v
     ['Cluster (Ballistic)', 'Damage Value / 10 + 1'],
     ['Pulse**', 'Damage Value / 10 + 2'],
     ['Cluster (Missile)', 'Damage Value / 5'],
-    ['Area Effect (AE)', 'Damage Value / 5'],
+    ['Area Effect (AE)', 'Damage Value × 2'],
     ['Burst-Fire', 'See Burst-Fire Weapons Table'],
     ['Heat Effect Weapons', 'See Heat-Effect Weapons‡'],
   ];
