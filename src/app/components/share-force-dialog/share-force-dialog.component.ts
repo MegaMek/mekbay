@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal, computed, effect } from '@angular/core';
 import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import { ForceBuilderService } from '../../services/force-builder.service';
 import { ToastService } from '../../services/toast.service';
@@ -15,6 +15,7 @@ import { DialogsService } from '../../services/dialogs.service';
 import { ForcePreviewComponent } from '../force-preview/force-preview.component';
 import { GameSystem } from '../../models/common.model';
 import type { CBTForce } from '../../models/cbt-force.model';
+import type { ForceAlignment } from '../../models/force-slot.model';
 
 
 
@@ -66,7 +67,7 @@ export interface ShareForceDialogData {
                     <div class="field-note">Share a pristine copy of the force — no damage, pilots, or status conditions.</div>
                 </div>
             }
-            
+
             <div class="export-section">
                 <label class="description">Or export the force to a file.</label>
                 <div class="export-buttons">
@@ -95,6 +96,34 @@ export interface ShareForceDialogData {
                     }
                 </div>
             </div>
+            @if (force.gameSystem === GameSystem.CLASSIC) {
+                <div class="export-section battle-report-section">
+                    <label class="description">Or export forces in lobby for MekHQ manual resolution</label>
+                    <div class="export-buttons">
+                        @if (hasMultipleForces()) {
+                            <div class="form-fields inline">
+                                <label class="field-label">Choose Primary Force</label>
+                                <select class="bt-input" [value]="oppositionForceId()" (change)="oppositionForceId.set($any($event.target).value)" [disabled]="!hasMultipleCbtForces()">
+                                    @for (slot of forceBuilderService.loadedForces(); track slot.force.instanceId()) {
+                                        @if (slot.force.gameSystem === GameSystem.CLASSIC) {
+                                            <option [value]="slot.force.instanceId()">
+                                                {{ slot.force.name }} ({{ slot.alignment }})
+                                            </option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        }
+                        <button class="bt-button export-btn" (click)="exportBattleReport()" [disabled]="isExporting()" title="Creates a MUL file with the opposition as salvage for manual battle resolution in MekHQ">
+                            @if (isExporting()) {
+                                EXPORTING...
+                            } @else {
+                                BATTLE REPORT
+                            }
+                        </button>
+                    </div>
+                </div>
+            }
         </div>
 
         </div>
@@ -152,6 +181,40 @@ export interface ShareForceDialogData {
             min-width: 100px;
         }
 
+        .battle-report-section {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-color);
+            justify-content: flex-start;
+        }
+
+        .battle-report-section .export-buttons {
+            flex-wrap: wrap;
+        }
+
+        .battle-report-section .form-fields.inline {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .battle-report-section .form-fields.inline .field-label {
+            margin-bottom: 0;
+            white-space: nowrap;
+            font-size: 0.9em;
+        }
+
+        .battle-report-section .form-fields.inline .bt-input {
+            min-width: 150px;
+            max-width: 200px;
+        }
+
+        .battle-report-section .export-btn {
+            flex-shrink: 0;
+        }
+
         .export-btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
@@ -186,9 +249,40 @@ export class ShareForceDialogComponent {
     isExporting = signal(false);
     readonly GameSystem = GameSystem;
 
+    /** Selected force instance ID to designate as opposition (salvage). */
+    oppositionForceId = signal<string | null>(null);
+
+    /** Whether multiple forces are loaded (lobby or operation) for battle report export. */
+    hasMultipleForces = computed(() => {
+        const loadedForces = this.forceBuilderService.loadedForces();
+        const forceInstanceId = this.force.instanceId();
+
+        // Check if there are multiple forces loaded and this force is among them
+        const isInLoadedForces = loadedForces.some(slot => {
+            const slotInstanceId = slot.force.instanceId();
+            return slotInstanceId === forceInstanceId;
+        });
+
+        return loadedForces.length > 1 && isInLoadedForces;
+    });
+
+    /** Whether there are multiple CBT forces loaded for dropdown selection. */
+    hasMultipleCbtForces = computed(() => {
+        const loadedForces = this.forceBuilderService.loadedForces();
+        const cbtForces = loadedForces.filter(slot => slot.force.gameSystem === GameSystem.CLASSIC);
+        return cbtForces.length > 1;
+    });
+
     constructor() {
         this.force = this.data.force;
         this.buildUrls();
+
+        // Initialize primary force selection immediately
+        const loadedForces = this.forceBuilderService.loadedForces();
+        const friendlyForce = loadedForces.find(slot => slot.alignment === 'friendly' && slot.force.gameSystem === GameSystem.CLASSIC);
+        if (friendlyForce && loadedForces.length > 1) {
+            this.oppositionForceId.set(friendlyForce.force.instanceId());
+        }
     }
 
     private async confirmDataExportLicense(): Promise<boolean> {
@@ -268,6 +362,44 @@ export class ShareForceDialogComponent {
         } catch (err) {
             console.error('Failed to export to MUL:', err);
             this.toastService.showToast('Failed to export to MUL.', 'error');
+        } finally {
+            this.isExporting.set(false);
+        }
+    }
+
+    async exportBattleReport() {
+        const loadedForces = this.forceBuilderService.loadedForces();
+        const cbtForces = loadedForces.filter(slot => slot.force.gameSystem === GameSystem.CLASSIC);
+
+        if (cbtForces.length === 0) {
+            this.toastService.showToast('No Classic BattleTech forces loaded.', 'error');
+            return;
+        }
+
+        const totalUnits = cbtForces.reduce((sum, slot) => sum + (slot.force.units()?.length || 0), 0);
+        if (totalUnits === 0) {
+            this.toastService.showToast('No units to export.', 'error');
+            return;
+        }
+
+        this.isExporting.set(true);
+        try {
+            const { exportOperationToMul } = await import('../../utils/mul-file.util');
+            const primaryForceId = this.oppositionForceId();
+            const forcesForMul = cbtForces.map(slot => ({
+                force: slot.force as CBTForce,
+                alignment: slot.alignment,
+                // Inverted logic: selected force is primary (survivors), others are opposition (salvage)
+                // If no primary selected (single force), all go to survivors
+                isOpposition: primaryForceId ? slot.force.instanceId() !== primaryForceId : false
+            }));
+            // Use a generic name since we're in a lobby, not a named operation
+            const reportName = 'Battle Report';
+            await exportOperationToMul(forcesForMul, reportName);
+            this.toastService.showToast(`Exported battle report with ${totalUnits} units to MUL.`, 'success');
+        } catch (err) {
+            console.error('Failed to export battle report:', err);
+            this.toastService.showToast('Failed to export battle report.', 'error');
         } finally {
             this.isExporting.set(false);
         }
