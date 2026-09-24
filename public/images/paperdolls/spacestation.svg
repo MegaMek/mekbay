@@ -125,10 +125,10 @@
           <!-- The six armor facings use the hull contour and the matching external armor blocks. -->
           <g clip-path="url(#spacestation-hull)">
             <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M0 583.159H1000V1000H0Z"/>
-            <path class="armor unitLocation" data-loc="FLS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M0 536.8985H414.824V583.159H0Z"/>
-            <path class="armor unitLocation" data-loc="FRS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M414.824 536.8985H1000V583.159H414.824Z"/>
-            <path class="armor unitLocation" data-loc="ALS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M0 490.638H414.824v46.2605H0z"/>
-            <path class="armor unitLocation" data-loc="ARS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M414.824 490.638H1000v46.2605H414.824z"/>
+            <path class="armor unitLocation" data-loc="FLS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M0 532.77H414.824V583.159H0Z"/>
+            <path class="armor unitLocation" data-loc="FRS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M414.824 532.77H1000V583.159H414.824Z"/>
+            <path class="armor unitLocation" data-loc="ALS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M0 490.638H414.824v42.132H0z"/>
+            <path class="armor unitLocation" data-loc="ARS" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M414.824 490.638H1000v42.132H414.824z"/>
             <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#spacestation-armor)" d="M0 0H1000V490.638H0Z"/>
           </g>
 <g transform="translate(449.541,502.638)">

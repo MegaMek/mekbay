@@ -105,10 +105,10 @@
           </g>
 
           <!-- Location contours follow the drawn silhouette; the structural panel remains in front. -->
-          <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M0 621.5295H355.4217V490.105H480.0014V621.5295H1000V1000H0Z"/>
-          <path class="armor unitLocation" data-loc="LS" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M0 0H355.4217V621.5295H0Z"/>
-          <path class="armor unitLocation" data-loc="RS" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M480.0014 0H1000V621.5295H480.0014Z"/>
-          <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M355.4217 0H480.0014V490.105H355.4217Z"/>
+          <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M0 624.9745H355.4217V490.105H480.0014V621.5295H1000V1000H0Z"/>
+          <path class="armor unitLocation" data-loc="LS" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M0 0H354.6801V296.3035H355.4217V624.9745H0Z"/>
+          <path class="armor unitLocation" data-loc="RS" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M483.2911 0H1000V621.5295H480.0014V296.3035H483.2911Z"/>
+          <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#dropship-spheroid-contour)" d="M354.6801 0H483.2911V296.3035H480.0014V490.105H355.4217V296.3035H354.6801Z"/>
 <g transform="translate(475.4887,444.197)">
             <path class="structure unitLocation" data-loc="SI" style="fill:#ccced0;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.932;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" d="M0 0C0-6.401-4.284-11.591-9.568-11.591h-95.05c-5.285 0-9.569 5.19-9.569 11.591V34.317c0 6.401 4.284 11.591 9.569 11.591h95.05C-4.284 45.908 0 40.718 0 34.317z"/>
           </g>

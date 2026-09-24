@@ -37,11 +37,8 @@
       </g>
       <path id="polyline4679" style="fill:#ffffff" d="M415 211h21l12-74 6-26-29-33.3L415 211z" class="armor unitLocation" data-loc="FRLS" />
       <path style="fill:#ffffff" d="M449 284l-2-6-11-67H415v1 97 1l34-26z" class="armor unitLocation" data-loc="RRLS"  clip-path="url(#pd-ex1)"/>
-      <path style="fill:#ffffff" d="M523 284h0-74 0l8 27h58l8-27z" class="armor unitLocation" data-loc="RR"  clip-path="url(#pd-ex2)"/>
       <path style="fill:#ffffff" d="M523 284l-8 27H457l-8-27-34 26 10 23h11v-2h40v2h21v-2h40v2h11l9-24-34-25z" class="armor unitLocation" data-loc="RR"  clip-path="url(#pd-ex2)"/>
-      <g clip-path="url(#pd-ex3)"><path style="fill:#ffffff" d="M537 211H436l11 67 2 6h0 74 0l2-6 12-67z" class="armor unitLocation" data-loc="RRLS"  clip-path="url(#pd-ex4)"/></g>
       <path style="fill:#ffffff" d="M537 211l-12 67-2 6 34 25h0V212v-1H537z" class="armor unitLocation" data-loc="RRRS" />
-      <g clip-path="url(#pd-ex5)"><g clip-path="url(#pd-ex4)"><path style="fill:#ffffff" d="M518 111H454l-6 26-12 74H537l-12-72-7-28z" class="armor unitLocation" data-loc="FR"  clip-path="url(#pd-ex6)"/></g></g>
       <path style="fill:#ffffff" d="M548 77.9v-.6l-10-6.8-10 7.9H444l-9-7.9-10 6.8v.4L454 111h64l30-33.1z" class="armor unitLocation" data-loc="FR" />
       <path style="fill:#ffffff" d="M548 77.9L518 111l7 28 12 72h20L548 77.9z" class="armor unitLocation" data-loc="FRRS" />
       <polygon style="fill:none;stroke:#000000;stroke-width:1.45899999" points="528.241,78.356 444.288,78.356 434.563,70.511 424.836,77.32 415.11,211.778 415.11,308.951 424.836,332.548 436.034,332.548 436.034,330.682 476.068,330.682 476.068,332.548 496.961,332.548 496.961,330.682 536.996,330.682 536.996,332.548 547.693,332.548 557.419,308.951 557.419,211.778 547.693,77.32 537.967,70.511 " />

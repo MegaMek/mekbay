@@ -135,9 +135,9 @@
 
           <!-- Location contours follow the drawn silhouette; the structural panel remains in front. -->
           <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M240.83 1000H564.79L438.4323 528.4367V500.13975H367.87385L367.189 528.4367Z"/>
-          <path class="armor unitLocation" data-loc="LS" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M0 1000H240.83L367.189 528.4367l1.3697-56.5939L242.2 0H0z"/>
-          <path class="armor unitLocation" data-loc="RS" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M564.79 1000H1000V0H564.79L438.4323 471.8428v56.5939z"/>
-          <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M367.87385 500.13975H438.4323V471.8428L564.79 0H242.2L368.5587 471.8428Z"/>
+          <path class="armor unitLocation" data-loc="LS" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M0 1000H240.83L367.189 528.4367l1.3697-56.5939L338.4475 359.4642L336.528 358.2373H0z"/>
+          <path class="armor unitLocation" data-loc="RS" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M564.79 1000H1000V358.2373H470.1484L468.5932 359.2788L438.4323 471.8428v56.5939z"/>
+          <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#smallcraft-spheroid-contour)" d="M367.87385 500.13975H438.4323V471.8428L468.5932 359.2788L470.1484 358.2373H1000V0H0V358.2373H336.528L338.4475 359.4642L368.5587 471.8428Z"/>
 <g transform="translate(437.5627,481.1605)">
             <path class="structure unitLocation" data-loc="SI" style="fill:#ccced0;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.932;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" d="M0 0C0-6.402-4.541-11.591-10.142-11.591H-58.308C-63.91-11.591-68.45-6.402-68.45 0V30.21c0 6.401 4.54 11.591 10.142 11.591h48.166C-4.541 41.801 0 36.611 0 30.21z"/>
           </g>

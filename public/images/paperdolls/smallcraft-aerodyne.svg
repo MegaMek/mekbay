@@ -188,9 +188,9 @@
           </g>
 
           <!-- Location contours follow the drawn silhouette; the structural panel remains in front. -->
-          <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M0 535.2815H1000V1000H0Z"/>
-          <path class="armor unitLocation" data-loc="LS" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M0 0H366.3741V535.2815H0Z"/>
-          <path class="armor unitLocation" data-loc="RS" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M440.3 0H1000V535.2815H440.3Z"/>
+          <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M336.2545 535.2815H470.4175L472.858 538.0854L471.761 544.6582H1000V1000H0V544.6582H334.7914L333.6963 538.0845Z"/>
+          <path class="armor unitLocation" data-loc="LS" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M0 0H366.3741V535.2815H336.2545L333.6963 538.0845L334.7914 544.6582H0Z"/>
+          <path class="armor unitLocation" data-loc="RS" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M440.3 0H1000V544.6582H471.761L472.858 538.0854L470.4175 535.2815H440.3Z"/>
           <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#smallcraft-aerodyne-contour)" d="M366.3741 0H440.3V535.2815H366.3741Z"/>
 <g transform="translate(437.5627,481.1605)">
             <path class="structure unitLocation" data-loc="SI" style="fill:#ccced0;fill-opacity:1;fill-rule:nonzero;stroke:#000000;stroke-width:1.932;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" d="M0 0C0-6.402-4.541-11.591-10.142-11.591H-58.308C-63.91-11.591-68.45-6.402-68.45 0V30.21c0 6.401 4.54 11.591 10.142 11.591h48.166C-4.541 41.801 0 36.611 0 30.21z"/>

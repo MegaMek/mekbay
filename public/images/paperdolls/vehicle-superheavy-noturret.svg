@@ -38,8 +38,8 @@
       <defs><clipPath id="vehicle-superheavy-noturret-armor-outline-1" clipPathUnits="userSpaceOnUse"><polyline points="547.693,77.32 537.967,70.511 528.241,78.356 444.288,78.356 434.563,70.511 424.836,77.32    415.11,211.778 415.11,308.951 424.836,332.549 436.033,332.549 436.033,330.683 476.068,330.683 476.068,332.549 496.96,332.549    496.96,330.683 536.995,330.683 536.995,332.549 547.693,332.549 557.419,308.951 557.419,211.778 547.693,77.32  " /></clipPath></defs>
       <g clip-path="url(#vehicle-superheavy-noturret-armor-outline-1)">
         <path class="armor unitLocation" data-loc="FR" fill="#ffffff" stroke="none" d="M300 0H650L547.764 77.646l-29.436 33.149H454.201l-29.634-33.31z" />
-        <path class="armor unitLocation" data-loc="FRLS" fill="#ffffff" stroke="none" d="M300 0L424.567 77.485l29.634 33.31h33.6408V211.056H300z"  clip-path="url(#pd-ex1)"/>
-        <path class="armor unitLocation" data-loc="RRLS" fill="#ffffff" stroke="none" d="M487.8418 211.056v73.451H449.25l-33.76 25.591H300V211.056z"  clip-path="url(#pd-ex2)"/>
+        <path class="armor unitLocation" data-loc="FRLS" fill="#ffffff" stroke="none" d="M300 0L424.567 77.485l29.634 33.31h33.2408V211.056H300z"  clip-path="url(#pd-ex1)"/>
+        <path class="armor unitLocation" data-loc="RRLS" fill="#ffffff" stroke="none" d="M487.4418 211.056v73.451H449.25l-33.76 25.591H300V211.056z"  clip-path="url(#pd-ex2)"/>
         <path class="armor unitLocation" data-loc="FRRS" fill="#ffffff" stroke="none" d="M547.764 77.646L650 0V211.056H487.4418V110.795H518.328z"  clip-path="url(#pd-ex3)"/>
         <path class="armor unitLocation" data-loc="RRRS" fill="#ffffff" stroke="none" d="M650 211.056V310l-92.672-.226-33.88-25.267H487.4418V211.056z"  clip-path="url(#pd-ex4)"/>
         <path class="armor unitLocation" data-loc="RR" fill="#ffffff" stroke="none" d="M300 310.098H415.49l33.76-25.591h74.198l33.88 25.267L650 310v90H300z"  clip-path="url(#pd-ex5)"/>

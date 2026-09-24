@@ -388,10 +388,10 @@
           <!-- The six armor facings use the hull contour and the matching external armor blocks. -->
           <g clip-path="url(#warship-hull)">
             <path class="armor unitLocation" data-loc="NOS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M0 563.001H1000V1000H0Z"/>
-            <path class="armor unitLocation" data-loc="FLS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M0 485.048H414.824v77.953H0z"/>
-            <path class="armor unitLocation" data-loc="FRS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M414.824 485.048H1000v77.953H414.824z"/>
-            <path class="armor unitLocation" data-loc="ALS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M0 407.095H414.824v77.953H0z"/>
-            <path class="armor unitLocation" data-loc="ARS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M414.824 407.095H1000v77.953H414.824z"/>
+            <path class="armor unitLocation" data-loc="FLS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M0 483.419H414.824v79.582H0z"/>
+            <path class="armor unitLocation" data-loc="FRS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M414.824 483.419H1000v79.582H414.824z"/>
+            <path class="armor unitLocation" data-loc="ALS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M0 407.095H414.824v76.324H0z"/>
+            <path class="armor unitLocation" data-loc="ARS" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M414.824 407.095H1000v76.324H414.824z"/>
             <path class="armor unitLocation" data-loc="AFT" fill="transparent" stroke="none" clip-path="url(#warship-armor)" d="M0 0H1000V407.095H0Z"/>
           </g>
 <g transform="translate(449.541,419.095)">

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="9.5 43.25 171.625 275.875">
-  <defs><clipPath id="pd-ex1"><path clip-rule="evenodd" d="M-145-30H12V219H-145zm32.8936 35.8043h90.243v10.411h-90.243zz"/></clipPath><clipPath id="pd-ex2"><path clip-rule="evenodd" d="M-145-30H12V219H-145zm57.1597047 171.9282l-3.7863546-19.816h3.8380873l2.065 2.982h37.4993345l1.606-2.982h3.3490314l-4.2299239 19.816zzm-3.826206-15.1395h-15.4492379l-15.4732875-73.268h16.3587895zz"/></clipPath><clipPath id="pd-ex3"><path clip-rule="evenodd" d="M-145-30H12V219H-145zM-43.2225605 126.7887h14.9966569l16.8363756-72.35H-29.116542zzm-44.6177348 15.1395l-3.7863546-19.816h3.8380873l2.065 2.982h37.4993345l1.606-2.982h3.3490314l-4.2299239 19.816zz"/></clipPath></defs>
+  <defs><clipPath id="pd-ex1"><path clip-rule="evenodd" d="M-145-30H12V219H-145zM-112.4064 5.5043L-21.5634 5.5043L-21.5634 16.5153L-112.4064 16.5153z"/></clipPath><clipPath id="pd-ex2"><path clip-rule="evenodd" d="M-145-30H12V219H-145zM-88.0884 142.2282L-91.9894 121.8122L-87.6314 121.8122L-85.5664 124.7942L-48.4034 124.7942L-46.7974 121.8122L-42.8984 121.8122L-47.2564 142.2282zM-91.301 127.0887L-107.359 127.0887L-122.959 53.2207L-105.984 53.2207z"/></clipPath><clipPath id="pd-ex3"><path clip-rule="evenodd" d="M-145-30H12V219H-145zM-43.5867 127.0887L-27.9877 127.0887L-11.0117 54.1387L-29.3637 54.1387zM-88.0884 142.2282L-91.9894 121.8122L-87.6314 121.8122L-85.5664 124.7942L-48.4034 124.7942L-46.7974 121.8122L-42.8984 121.8122L-47.2564 142.2282z"/></clipPath></defs>
   <g transform="matrix(1.129 0 0 1.129 0.000 16.094)" id="g297" xmlns="http://www.w3.org/2000/svg">
     <g id="armor_diagram_vee_noturret" transform="matrix(1,0,0,-1,-402.67674,716.15846)">
       <g transform="translate(557.6664,472.0991)">
@@ -36,10 +36,11 @@
       <g transform="translate(553.4614,475.4717)">
         <defs><clipPath id="vehicle-noturret-armor-outline-1" clipPathUnits="userSpaceOnUse"><path d="m 0,0 c 0,0 1.835,-18.813 -16.517,-22.942 l 0,2.294 -39.456,0 0,-2.753 -22.939,0 0,2.753 -39,0 0,-2.294 C -131.677,-22.942 -133.969,0 -133.969,0 l -2.754,99.56 11.93,110.572 5.505,4.588 8.26,-8.259 87.171,0 7.34,8.259 4.588,-4.13 L 1.835,99.1 0,0 Z" /></clipPath></defs>
       <g clip-path="url(#vehicle-noturret-armor-outline-1)">
+        <rect fill="#ffffff" stroke="none" pointer-events="none" x="-150" y="-30" width="160" height="250" />
         <path class="armor unitLocation" data-loc="FR" fill="#ffffff" stroke="none" transform="translate(-553.4614,-475.4717)" d="M300 800H650L541.528 685.6029l-35.099-67.903H465.5974l-36.477 67.9037z" />
         <g clip-path="url(#pd-ex1)"><path class="armor unitLocation" data-loc="RR" fill="#ffffff" stroke="none" transform="translate(-553.4614,-475.4717)" d="M300 400H650l-97.4413 68.4124-20.535 23.576-90.9728-.4604-19.995-22.082z" /></g>
-        <g clip-path="url(#pd-ex2)"><path class="armor unitLocation" data-loc="LS" fill="#ffffff" stroke="none" transform="translate(-553.4614,-475.4717)" d="M300 800L429.1204 685.6036l36.477-67.9037h21.27909999999996V491.528H441.0509l-19.995-22.082L300 400z" /></g>
-        <g clip-path="url(#pd-ex3)"><path class="armor unitLocation" data-loc="RS" fill="#ffffff" stroke="none" transform="translate(-553.4614,-475.4717)" d="M541.528 685.6029L650 800V400l-97.4413 68.4124-20.535 23.576H486.4765V617.6999H506.429z" /></g>
+        <g clip-path="url(#pd-ex2)"><path class="armor unitLocation" data-loc="LS" fill="#ffffff" stroke="none" transform="translate(-553.4614,-475.4717)" d="M300 800L429.1204 685.6036l36.477-67.9037L465.3727 617.7002 441.0547 491.9882 441.0509 491.528l-19.995-22.082L300 400z" /></g>
+        <g clip-path="url(#pd-ex3)"><path class="armor unitLocation" data-loc="RS" fill="#ffffff" stroke="none" transform="translate(-553.4614,-475.4717)" d="M541.528 685.6029L650 800V400l-97.4413 68.4124-20.535 23.576L531.8977 491.9882 506.4337 617.4712 506.429 617.6999z" /></g>
       </g>
       </g>
       <g transform="translate(553.4614,475.4717)">
