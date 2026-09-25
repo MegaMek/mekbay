@@ -98,7 +98,6 @@ export const BV_MOVEMENT_CALCULATION: MovementCalculationOptions = {
   ignoreOptionalRules: true,
   ignoreConversion: true,
   forceTSM: true,
-  ignoreShield: true,
   includeAlternateJumpSystems: true,
 };
 

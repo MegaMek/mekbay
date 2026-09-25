@@ -56,6 +56,33 @@ describe('direct V2 Mek shield rules', () => {
         expect(supportedMovement(tw)).toEqual(jasmine.objectContaining({ walkMp: 5, jumpMp: 3 }));
     });
 
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        for (const size of ['medium', 'large'] as const) {
+            it(`updates BV speed for committed ${size} shield damage in ${ruleset}`, () => {
+                const fixture = createDirectShieldRuntimeFixture(ruleset, size);
+                const before = fixture.instance.query().mekBattleValue();
+                if (before.kind !== 'complete') throw new Error('Expected complete BV');
+
+                damageShield(fixture, 'capacity', onlyShield(fixture).maximumCapacity, 'pending');
+                expect(fixture.instance.query().mekBattleValue()).toEqual(before);
+                expect(fixture.instance.dispatch({ type: 'commit-pending' }).accepted).toBeTrue();
+
+                const exhausted = fixture.instance.query().mekBattleValue();
+                if (exhausted.kind !== 'complete') throw new Error('Expected complete BV');
+                if (ruleset === 'core-2026') {
+                    expect(exhausted.offensive).toBeGreaterThan(before.offensive);
+                } else {
+                    expect(exhausted.offensive).toBe(before.offensive);
+                }
+
+                for (const slot of shieldCriticals(fixture)) hitCritical(fixture, slot.id);
+                const destroyed = fixture.instance.query().mekBattleValue();
+                if (destroyed.kind !== 'complete') throw new Error('Expected complete BV');
+                expect(destroyed.offensive).toBeGreaterThan(before.offensive);
+            });
+        }
+    }
+
     it('derives shield-track loss from criticals and arm actuators', () => {
         const fixture = createDirectShieldRuntimeFixture('total-warfare');
         hitCritical(fixture, shieldCriticals(fixture)[0]!.id);

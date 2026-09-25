@@ -500,8 +500,8 @@ describe('MekEntity jumpMP', () => {
 
     expect(entity.walkMP()).toBe(4);
     expect(entity.runMP()).toBe(6);
-    expect(entity.maxWalkMP()).toBe(7);
-    expect(entity.maxRunMP()).toBe(11);
+    expect(entity.maxWalkMP()).toBe(5);
+    expect(entity.maxRunMP()).toBe(8);
   });
 
   it('uses TSM and movement boosters for maximum movement', () => {

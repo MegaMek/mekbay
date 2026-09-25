@@ -215,6 +215,37 @@ describe('battle value family dispatch', () => {
     expect(findDetail(details, 'Offensive Equipment')).toBeUndefined();
   });
 
+  for (const { size, count, walk, run, jump, factor, tmms } of [
+    { size: 'SMALL', count: 1, walk: 5, run: 8, jump: 5, factor: 1.76, tmms: '3 (R), 3 (J), 0 (U)' },
+    { size: 'MEDIUM', count: 1, walk: 4, run: 6, jump: 4, factor: 1.37, tmms: '2 (R), 2 (J), 0 (U)' },
+    { size: 'LARGE', count: 1, walk: 4, run: 6, jump: 0, factor: 1.12, tmms: '2 (R), 0 (J), 0 (U)' },
+    { size: 'MEDIUM', count: 2, walk: 3, run: 5, jump: 3, factor: 1.24, tmms: '2 (R), 2 (J), 0 (U)' },
+  ] as const) {
+    it(`includes ${count} ${size.toLowerCase()} shield(s) in BV movement and speed factors`, () => {
+      const entity = new TestBipedMekEntity();
+      entity.setTonnage(55);
+      entity.originalWalkMP.set(5);
+      const jet = new MiscEquipment({
+        id: 'test-jet', name: 'Jump Jet', type: 'misc', flags: ['F_JUMP_JET'],
+      });
+      const shield = new MiscEquipment({
+        id: 'test-shield', name: 'Shield', type: 'misc', stats: { bv: 50 },
+        flags: ['F_SHIELD', `S_SHIELD_${size}`],
+      });
+      entity.setEquipment([
+        ...Array.from({ length: 5 }, () => mount(jet, 'CT')),
+        ...Array.from({ length: count }, (_, index) => mount(shield, index === 0 ? 'RA' : 'LA')),
+      ]);
+
+      const result = calculateBattleValueDetails(entity);
+      expect(entity.maxWalkMP()).toBe(walk);
+      expect(findDetail(result.details, 'Effective MP')?.calculation).toBe(`R: ${run}, J: ${jump}, U: 0`);
+      expect(findDetail(result.details, 'TMMs')?.calculation).toBe(tmms);
+      expect(result.offensive).toBeCloseTo(55 * factor, 6);
+      expect(findDetail(result.details, 'Defensive Equipment')?.delta).toBe(50 * count);
+    });
+  }
+
   it('shares mounted pod and linked PPC explosiveness with the entity', () => {
     const entity = new TestBipedMekEntity();
     const pod = mount(new WeaponEquipment({

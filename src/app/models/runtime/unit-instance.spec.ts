@@ -361,15 +361,18 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }
     });
 
-    it('keeps BV movement independent from intact shield and modular-armor mobility modes', () => {
-        for (const fixture of [
-            createDirectShieldRuntimeFixture(),
-            createDirectModularArmorRuntimeFixture(),
-        ]) {
-            expect(fixture.instance.query().currentBaseBattleValue())
-                .withContext(fixture.entity.displayName())
-                .toBe(fixture.entity.battleValue());
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        for (const size of ['small', 'medium', 'large'] as const) {
+            it(`includes ${size} shield mobility penalties in pristine and current BV in ${ruleset}`, () => {
+                const { entity, instance } = createDirectShieldRuntimeFixture(ruleset, size);
+                expect(instance.query().currentBaseBattleValue()).toBe(entity.battleValue());
+            });
         }
+    }
+
+    it('keeps BV movement independent from intact modular armor', () => {
+        const { entity, instance } = createDirectModularArmorRuntimeFixture();
+        expect(instance.query().currentBaseBattleValue()).toBe(entity.battleValue());
     });
 
     it('applies each command to the current state', () => {

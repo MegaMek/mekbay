@@ -1409,11 +1409,10 @@ function movementNumbers(
         .reduce((sum, leg) => sum + leg.footHits, 0);
     const quadruped = profile.form === 'quad' || profile.form === 'quadvee';
     const shields = projectMekShieldsV2(profile, facts);
-    // BV uses the design's maximum movement profile. Shield stance and mounted
-    // Modular Armor are operational mobility choices, not structural damage.
-    const activeMediumShields = options.battleValue ? 0 : shields.filter(shield =>
+    // Shield mobility penalties also apply to BV, using committed shield state.
+    const activeMediumShields = shields.filter(shield =>
         shield.size === 'medium' && shield.retainsMobilityPenalty).length;
-    const activeLargeShields = options.battleValue ? 0 : shields.filter(shield =>
+    const activeLargeShields = shields.filter(shield =>
         shield.size === 'large' && shield.retainsMobilityPenalty).length;
     const modularArmorActive = !options.battleValue && profile.modularArmor.some(group =>
         groupAvailable(group, facts) && facts.modularArmorRemaining(group.componentId) > 0);
