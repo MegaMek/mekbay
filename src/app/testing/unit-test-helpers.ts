@@ -83,7 +83,7 @@ export function createEmptyUnit(overrides: TestUnitOverrides = {}): UnitSummary 
     const unit: UnitSummary = {
         uuid: uuidv4(),
         name: 'Test Unit',
-        id: -1,
+        mul1id: -1,
         chassis: 'Test',
         model: 'TST-1',
         year: 3151,
@@ -253,7 +253,7 @@ export class CBTForceUnitTestHarness {
         const conditions = new Map((options.conditions ?? []).map(condition => [condition, undefined] as const));
         let firedHeat = 0;
 
-        const baseUnit = createEmptyUnit({ id: -1, name: options.id ?? 'Test Unit', ...options.unit });
+        const baseUnit = createEmptyUnit({ mul1id: -1, name: options.id ?? 'Test Unit', ...options.unit });
         const attackMovementModifier = (): number => {
             switch (options.moveMode ?? null) {
                 case 'walk': return 1;

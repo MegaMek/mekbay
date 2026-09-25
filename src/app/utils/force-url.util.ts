@@ -245,7 +245,7 @@ export function parseForceFromUrl(
 ): ForceUnit[] {
     const unitMap = new Map<string, UnitSummary>();
     for (const unit of allUnits) {
-        const key = lookupMode === 'mulId' ? `${unit.id}` : getUnitNameKey(unit.name);
+        const key = lookupMode === 'mulId' ? `${unit.mul1id}` : getUnitNameKey(unit.name);
         if (!unitMap.has(key)) {
             unitMap.set(key, unit);
         }

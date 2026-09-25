@@ -16,7 +16,7 @@ import { uuidv7 } from '../../utils/uuid.util';
 
 export function normalizeNullMulUnitIds(units: readonly UnitSummary[]): UnitSummary[] {
     let nextNullMulId = -1;
-    return units.map((unit) => unit.id > 0
+    return units.map((unit) => unit.mul1id > 0
         ? unit
         : { ...unit, id: nextNullMulId-- });
 }
@@ -111,9 +111,9 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
         }
 
         const usedNames = new Set(this.units.map(unit => unit.name.toLowerCase()));
-        const usedIds = new Set(this.units.map(unit => unit.id));
+        // const usedIds = new Set(this.units.map(unit => unit.mul1id));
         const usedUuids = new Set(this.units.map(unit => unit.uuid));
-        let nextSyntheticId = this.units.reduce((min, unit) => Math.min(min, unit.id), 0) - 1;
+        // let nextSyntheticId = this.units.reduce((min, unit) => Math.min(min, unit.mul1id), 0) - 1;
 
         const customUnits: UnitSummary[] = [];
         for (const server of servers) {
@@ -137,11 +137,11 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
                 }
                 usedNames.add(nameKey);
 
-                let id = rawUnit.id;
-                if (!(id > 0) || usedIds.has(id)) {
-                    id = nextSyntheticId--;
-                }
-                usedIds.add(id);
+                // let id = rawUnit.mul1id;
+                // if (!(id > 0) || usedIds.has(id)) {
+                //     id = nextSyntheticId--;
+                // }
+                // usedIds.add(id);
 
                 let uuid = typeof rawUnit.uuid === 'string' ? rawUnit.uuid.trim() : '';
                 if (!uuid || usedUuids.has(uuid)) {
@@ -149,7 +149,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
                 }
                 usedUuids.add(uuid);
 
-                customUnits.push({ ...rawUnit, id, uuid, serverHost: server });
+                customUnits.push({ ...rawUnit, uuid, serverHost: server });
                 added++;
             }
             this.logger.info(`Loaded ${added} additional unit(s) from ${server}.`);

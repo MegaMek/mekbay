@@ -4508,9 +4508,9 @@ export class ForceGeneratorService implements OnDestroy {
     ): ForceGenerationAvailabilityWeightCache {
         const unitsByMulId = new Map<number, UnitSummary[]>();
         for (const unit of eligibleUnits) {
-            const unitsForMulId = unitsByMulId.get(unit.id) ?? [];
+            const unitsForMulId = unitsByMulId.get(unit.mul1id) ?? [];
             unitsForMulId.push(unit);
-            unitsByMulId.set(unit.id, unitsForMulId);
+            unitsByMulId.set(unit.mul1id, unitsForMulId);
         }
 
         const weightsByUnitName = useMegaMekAvailability

@@ -52,7 +52,7 @@ export class UnitMetadataBuilder {
       source: entity.source().map(source => source.abbrev),
       published: entity.published().map(source => source.abbrev),
       type: entity.unitType(),
-      id: entity.mulId(),
+      mul1id: entity.mulId(),
       canon: entity.canon(),
       canAntiMech: this.buildCanAntiMech(entity),
       unitFile: unitFile,

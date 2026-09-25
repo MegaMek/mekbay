@@ -375,11 +375,11 @@ export class UnitSearchIndexService {
         const unitUuidsByMulId = new Map<number, string[]>();
 
         for (const unit of units) {
-            const uuids = unitUuidsByMulId.get(unit.id);
+            const uuids = unitUuidsByMulId.get(unit.mul1id);
             if (uuids) {
                 uuids.push(unit.uuid);
             } else {
-                unitUuidsByMulId.set(unit.id, [unit.uuid]);
+                unitUuidsByMulId.set(unit.mul1id, [unit.uuid]);
             }
         }
 

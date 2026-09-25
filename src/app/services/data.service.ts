@@ -508,7 +508,7 @@ export class DataService {
             }
         }
 
-        const noneUnits = units.filter((unit) => !factionUnitIds.has(unit.id));
+        const noneUnits = units.filter((unit) => !factionUnitIds.has(unit.mul1id));
 
         noneFaction.eras = {};
         for (const era of eras) {
@@ -518,8 +518,8 @@ export class DataService {
                     continue;
                 }
 
-                noneEraUnitIds.add(unit.id);
-                (era.units as Set<number>).add(unit.id);
+                noneEraUnitIds.add(unit.mul1id);
+                (era.units as Set<number>).add(unit.mul1id);
             }
 
             if (noneEraUnitIds.size > 0) {

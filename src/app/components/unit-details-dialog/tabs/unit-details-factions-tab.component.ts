@@ -164,7 +164,7 @@ export class UnitDetailsFactionTabComponent {
 
         for (const faction of factions) {
             for (const [eraIdText, unitIds] of Object.entries(faction.eras) as Array<[string, Set<number>]>) {
-                if (!unitIds.has(unit.id)) {
+                if (!unitIds.has(unit.mul1id)) {
                     continue;
                 }
 
@@ -202,7 +202,7 @@ export class UnitDetailsFactionTabComponent {
                 const faction = factionById.get(factionId);
                 if (
                     !faction
-                    || (isCatchAllFaction(faction.name) && !faction.eras[eraId]?.has(unit.id))
+                    || (isCatchAllFaction(faction.name) && !faction.eras[eraId]?.has(unit.mul1id))
                 ) {
                     continue;
                 }

@@ -1725,7 +1725,7 @@ export class UnitSearchFiltersService {
 
                     for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
                         const eraId = Number(eraIdText);
-                        if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.id)) {
+                        if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.mul1id)) {
                             availableIds.add(faction.id);
                             break;
                         }
@@ -1742,7 +1742,7 @@ export class UnitSearchFiltersService {
             for (const faction of factions) {
                 for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
                     const eraId = Number(eraIdText);
-                    if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.id)) {
+                    if (!Number.isNaN(eraId) && this.membershipContainsUnitId(membership, unit.mul1id)) {
                         availableIds.add(eraId);
                     }
                 }
@@ -1752,8 +1752,8 @@ export class UnitSearchFiltersService {
         return availableIds;
     }
 
-    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'id'>, factionId: number, eraId: number): boolean {
-        return this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.id);
+    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'mul1id'>, factionId: number, eraId: number): boolean {
+        return this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.mul1id);
     }
 
     private membershipContainsUnitId(

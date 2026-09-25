@@ -217,7 +217,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public createForceAvailabilityContextForUnits(
-        units: readonly Pick<UnitSummary, 'id' | 'name'>[],
+        units: readonly Pick<UnitSummary, 'mul1id' | 'name'>[],
         eras: readonly Era[],
         availabilitySource?: AvailabilitySource,
     ): ForceAvailabilityContext {
@@ -226,7 +226,7 @@ export class UnitAvailabilitySourceService {
             return createMulForceAvailabilityContext();
         }
 
-        const distinctUnitsByKey = new Map<AvailabilityUnitKey, Pick<UnitSummary, 'id' | 'name'>>();
+        const distinctUnitsByKey = new Map<AvailabilityUnitKey, Pick<UnitSummary, 'mul1id' | 'name'>>();
         for (const unit of units) {
             if (!distinctUnitsByKey.has(unit.name)) {
                 distinctUnitsByKey.set(unit.name, unit);
@@ -417,7 +417,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public unitMatchesMegaMekMembership(
-        unit: Pick<UnitSummary, 'id' | 'name'>,
+        unit: Pick<UnitSummary, 'mul1id' | 'name'>,
         context?: MegaMekAvailabilityFilterContext,
     ): boolean {
         this.ensureMulCacheVersion();
@@ -428,7 +428,7 @@ export class UnitAvailabilitySourceService {
         }
 
         if (context?.bridgeThroughMulMembership) {
-            return this.matchesMulMembershipScope(unit.id, context);
+            return this.matchesMulMembershipScope(unit.mul1id, context);
         }
 
         const entries = this.getMegaMekEntries(unit.name);
@@ -440,8 +440,8 @@ export class UnitAvailabilitySourceService {
         return entries.some((entry) => this.entryHasAnyAvailability(entry));
     }
 
-    public getUnitAvailabilityKey(unit: Pick<UnitSummary, 'id' | 'name'>, availabilitySource?: AvailabilitySource): AvailabilityUnitKey {
-        return this.useMegaMekAvailability(availabilitySource) ? unit.name : String(unit.id);
+    public getUnitAvailabilityKey(unit: Pick<UnitSummary, 'mul1id' | 'name'>, availabilitySource?: AvailabilitySource): AvailabilityUnitKey {
+        return this.useMegaMekAvailability(availabilitySource) ? unit.name : String(unit.mul1id);
     }
 
     public getMegaMekAvailabilityScore(
@@ -598,7 +598,7 @@ export class UnitAvailabilitySourceService {
     }
 
     public collectFastMulUnknownOptionIds(
-        contextUnits: readonly Pick<UnitSummary, 'id' | 'name'>[],
+        contextUnits: readonly Pick<UnitSummary, 'mul1id' | 'name'>[],
         target: 'era' | 'faction',
         selectedEraIds?: ReadonlySet<number>,
         selectedFactionIds?: ReadonlySet<number>,
@@ -615,7 +615,7 @@ export class UnitAvailabilitySourceService {
         for (const unit of contextUnits) {
             const availabilityEntriesByEra = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e;
 
-            for (const membershipPair of this.getMulMembershipPairsByUnitId(unit.id)) {
+            for (const membershipPair of this.getMulMembershipPairsByUnitId(unit.mul1id)) {
                 if (selectedEraIds && !selectedEraIds.has(membershipPair.eraId)) {
                     continue;
                 }
@@ -756,7 +756,7 @@ export class UnitAvailabilitySourceService {
 
         for (const unit of units) {
             this.megaMekAllUnitIds.add(unit.name);
-            this.megaMekUnitIdByName.set(unit.name, unit.id);
+            this.megaMekUnitIdByName.set(unit.name, unit.mul1id);
 
             const availabilityRecord = this.dataService.getMegaMekAvailabilityRecordForUnit(unit);
             if (!availabilityRecord) {
