@@ -376,11 +376,33 @@ export abstract class CBTGameRules {
     }
 
     getAmmoBV(ammo: AmmoEquipment, equipmentRegistry?: EquipmentRegistry): number | "variable" {
-        const rule = this.getAmmoMunitionRule(ammo);
-        if (rule?.baseAmmoBvMultiplier === undefined) return ammo.bv;
-
         const baseAmmo = equipmentRegistry?.getBaseAmmo(ammo);
         if (!baseAmmo) return ammo.bv;
+
+        // Derive both rulesets from standard ammo, regardless of the catalog's exported BV.
+        if (ammo.hasMunitionType('M_CASELESS')) {
+            const doubleBv = this.id === 'tw' && ['AC', 'LAC', 'PAC'].includes(ammo.ammoType);
+            return doubleBv && typeof baseAmmo.bv === 'number' ? baseAmmo.bv * 2 : baseAmmo.bv;
+        }
+
+        if (ammo.hasMunitionType('M_THUNDER')) {
+            if (this.id === 'core2026'
+                || !['LRM', 'LRM_IMP', 'MML', 'NLRM', 'TBOLT_10', 'TBOLT_15', 'TBOLT_20'].includes(ammo.ammoType)) {
+                return baseAmmo.bv;
+            }
+            // TO:AUE pp. 197-198: 4 BV per 5 points of standard mines delivered per ton.
+            return ammo.rackSize * this.getAmmoShots(ammo, equipmentRegistry) / 5 * 4;
+        }
+
+        if (ammo.ammoType === 'ARROW_IV' && ammo.hasMunitionType('M_FASCAM')) {
+            if (this.id === 'core2026') return baseAmmo.bv;
+            // TO:AR p. 152: Clan Arrow IV lays a 30-point field; Inner Sphere lays 20.
+            const minePoints = ammo.techBase === 'Clan' ? 30 : 20;
+            return minePoints * this.getAmmoShots(ammo, equipmentRegistry) / 5 * 4;
+        }
+
+        const rule = this.getAmmoMunitionRule(ammo);
+        if (rule?.baseAmmoBvMultiplier === undefined) return ammo.bv;
         return typeof baseAmmo.bv === 'number'
             ? baseAmmo.bv * rule.baseAmmoBvMultiplier
             : baseAmmo.bv;
