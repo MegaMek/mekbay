@@ -262,7 +262,7 @@ export function compileUnitFacts(unit: UnitSummary, index?: number): UnitFacts {
         classKey: getUnitClassKey(unit),
         tags,
         scalars: {
-            id: unit.mul1id,
+            uuid: unit.uuid,
             tons: unit.tons,
             pv: unit.as.PV,
             bv: unit.bv,

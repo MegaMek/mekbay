@@ -27,9 +27,9 @@ async function settleMicrotasks(): Promise<void> {
 function buildPrimaryUnits(count: number): UnitSummary[] {
     const units: UnitSummary[] = [];
     for (let i = 0; i < count; i += 1) {
-        units.push(createEmptyUnit({ id: -1, name: `Primary ${i}` }));
+        units.push(createEmptyUnit({ mul1id: -1, name: `Primary ${i}` }));
     }
-    units.push(createEmptyUnit({ id: -1, name: 'Shared Unit' }));
+    units.push(createEmptyUnit({ mul1id: -1, name: 'Shared Unit' }));
     return units;
 }
 
@@ -96,9 +96,9 @@ describe('UnitsCatalogService custom servers', () => {
             version: '1',
             etag: '',
             units: [
-                createEmptyUnit({ id: 0, name: 'Shared Unit' }), // collides with primary -> dropped
-                createEmptyUnit({ id: 500, uuid: '', name: 'Custom Alpha' }),
-                createEmptyUnit({ id: 0, uuid: '', name: 'Custom Beta' }), // null-ish id -> reassigned
+                createEmptyUnit({ mul1id: 0, name: 'Shared Unit' }), // collides with primary -> dropped
+                createEmptyUnit({ mul1id: 500, uuid: '', name: 'Custom Alpha' }),
+                createEmptyUnit({ mul1id: 0, uuid: '', name: 'Custom Beta' }),
             ],
         };
 
@@ -139,8 +139,10 @@ describe('UnitsCatalogService custom servers', () => {
         expect(units.filter(u => u.name === 'Shared Unit').length).toBe(1);
         expect(byName.get('Shared Unit')?.serverHost).toBeUndefined();
 
-        // Beta had a non-positive id and was reassigned to a unique negative id.
-        expect(byName.get('Custom Beta')?.id).toBeLessThan(0);
+        // Preserve external IDs; UUIDs distinguish designs that have no MUL entry.
+        expect(byName.get('Custom Beta')?.mul1id).toBe(0);
+        expect(byName.get('Custom Alpha')?.mul1id).toBe(500);
+        expect(new Set(units.map(unit => unit.uuid)).size).toBe(units.length);
 
         // Custom server dataset was cached for offline use.
         expect(dbMock.saveCustomServerUnits).toHaveBeenCalledWith(CUSTOM_SERVER, jasmine.objectContaining({ etag: 'custom-etag' }));

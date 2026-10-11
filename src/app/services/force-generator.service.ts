@@ -4506,16 +4506,11 @@ export class ForceGeneratorService implements OnDestroy {
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly UnitSummary[],
     ): ForceGenerationAvailabilityWeightCache {
-        const unitsByMulId = new Map<number, UnitSummary[]>();
-        for (const unit of eligibleUnits) {
-            const unitsForMulId = unitsByMulId.get(unit.mul1id) ?? [];
-            unitsForMulId.push(unit);
-            unitsByMulId.set(unit.mul1id, unitsForMulId);
-        }
+        const unitsByUuid = new Map<string, UnitSummary>(eligibleUnits.map(unit => [unit.uuid, unit]));
 
         const weightsByUnitName = useMegaMekAvailability
             ? this.buildMegaMekAvailabilityWeightMap(scopeState, eligibleUnits)
-            : this.buildMulAvailabilityWeightMap(scopeState, eligibleUnits, unitsByMulId);
+            : this.buildMulAvailabilityWeightMap(scopeState, eligibleUnits, unitsByUuid);
 
         return {
             signature,
@@ -4625,7 +4620,7 @@ export class ForceGeneratorService implements OnDestroy {
     private buildMulAvailabilityWeightMap(
         scopeState: ForceGenerationAvailabilityScopeState,
         eligibleUnits: readonly UnitSummary[],
-        unitsByMulId: ReadonlyMap<number, readonly UnitSummary[]>,
+        unitsByUuid: ReadonlyMap<string, UnitSummary>,
     ): Map<string, { requisition: number; salvage: number }> {
         if (scopeState.pairCount <= 0) {
             const zeroWeightsByUnitName = new Map<string, { requisition: number; salvage: number }>();
@@ -4655,49 +4650,44 @@ export class ForceGeneratorService implements OnDestroy {
 
             const pairKey = buildAvailabilityPairKey(pair.eraId, pair.factionId);
             const mulUnitIds = this.unitAvailabilitySource.getFactionEraUnitIds(forceFaction, forceEra, 'mul');
-            for (const unitIdText of mulUnitIds) {
-                const unitId = Number(unitIdText);
-                const matchingUnits = Number.isNaN(unitId) ? undefined : unitsByMulId.get(unitId);
-                if (!matchingUnits?.length) {
+            for (const uuid of mulUnitIds) {
+                const unit = unitsByUuid.get(uuid);
+                if (!unit) continue;
+
+                if (exactPairKeysByUnitName.get(unit.name)?.has(pairKey)) {
                     continue;
                 }
 
-                for (const unit of matchingUnits) {
-                    if (exactPairKeysByUnitName.get(unit.name)?.has(pairKey)) {
-                        continue;
-                    }
-
-                    const exactValue = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(pair.eraId)]?.[String(pair.factionId)];
-                    if (exactValue !== undefined) {
-                        const weights = weightsByUnitName.get(unit.name) ?? {
-                            requisition: 0,
-                            salvage: 0,
-                        };
-                        const requisition = exactValue[0] ?? 0;
-                        const salvage = exactValue[1] ?? 0;
-                        if (requisition > weights.requisition) {
-                            weights.requisition = requisition;
-                        }
-                        if (salvage > weights.salvage) {
-                            weights.salvage = salvage;
-                        }
-                        weightsByUnitName.set(unit.name, weights);
-                        continue;
-                    }
-
-                    const existingScopedWeights = weightsByUnitName.get(unit.name);
-                    if (existingScopedWeights) {
-                        if (existingScopedWeights.requisition < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
-                            existingScopedWeights.requisition = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
-                        }
-                        continue;
-                    }
-
-                    weightsByUnitName.set(unit.name, {
-                        requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                const exactValue = this.dataService.getMegaMekAvailabilityRecordForUnit(unit)?.e[String(pair.eraId)]?.[String(pair.factionId)];
+                if (exactValue !== undefined) {
+                    const weights = weightsByUnitName.get(unit.name) ?? {
+                        requisition: 0,
                         salvage: 0,
-                    });
+                    };
+                    const requisition = exactValue[0] ?? 0;
+                    const salvage = exactValue[1] ?? 0;
+                    if (requisition > weights.requisition) {
+                        weights.requisition = requisition;
+                    }
+                    if (salvage > weights.salvage) {
+                        weights.salvage = salvage;
+                    }
+                    weightsByUnitName.set(unit.name, weights);
+                    continue;
                 }
+
+                const existingScopedWeights = weightsByUnitName.get(unit.name);
+                if (existingScopedWeights) {
+                    if (existingScopedWeights.requisition < DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT) {
+                        existingScopedWeights.requisition = DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT;
+                    }
+                    continue;
+                }
+
+                weightsByUnitName.set(unit.name, {
+                    requisition: DEFAULT_UNKNOWN_FORCE_GENERATOR_WEIGHT,
+                    salvage: 0,
+                });
             }
         }
 

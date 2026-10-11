@@ -7,7 +7,7 @@ import type { Force } from '../models/force.model';
 import type { ForceUnit } from '../models/force-unit.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
-import { buildMultiForceQueryParams, parseForceFromUrl } from './force-url.util';
+import { buildMultiForceQueryParams, generateUnitUrlParams, parseForceFromUrl } from './force-url.util';
 
 type WritableArraySignal<T> = (() => T[]) & { set: (next: T[]) => void };
 
@@ -55,11 +55,11 @@ function createMockForce(): Force {
 }
 
 describe('force URL parsing', () => {
-    it('parses units by name by default', () => {
+    it('accepts legacy unit names', () => {
         const force = createMockForce();
         const units = [
-            createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
-            createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 })
+            createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
+            createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: 1901 })
         ];
 
         const forceUnits = parseForceFromUrl(force, 'BMAtlas_AS7D,BMLocust_LCT1V', units);
@@ -70,8 +70,8 @@ describe('force URL parsing', () => {
     it('parses units by name without matching case exactly', () => {
         const force = createMockForce();
         const units = [
-            createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
-            createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 })
+            createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
+            createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: 1901 })
         ];
 
         const forceUnits = parseForceFromUrl(force, 'bmatlas_as7d,bmlocust_lct1v', units);
@@ -79,26 +79,45 @@ describe('force URL parsing', () => {
         expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
     });
 
-    it('parses units by mul id and keeps the first duplicate match', () => {
+    it('does not resolve external MUL IDs as unit identifiers', () => {
+        const force = createMockForce();
+        const units = [140, 0, -1].map(mul1id => createEmptyUnit({ name: `Unit ${mul1id}`, mul1id }));
+        expect(parseForceFromUrl(force, '140,0,-1', units)).toEqual([]);
+        expect(force.addUnit).not.toHaveBeenCalled();
+    });
+
+    it('parses grouped UUIDs independently of shared or missing MUL IDs', () => {
         const force = createMockForce();
         const logger = { warn: jasmine.createSpy('warn') };
         const units = [
-            createEmptyUnit({ name: 'BMAtlas_AS7D', id: 140 }),
-            createEmptyUnit({ name: 'BMAtlas_AS7K', id: 144 }),
-            createEmptyUnit({ name: 'BMLocust_LCT1V', id: 1901 })
+            createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
+            createEmptyUnit({ name: 'BMAtlas_AS7K', mul1id: 140 }),
+            createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: null })
         ];
 
-        const forceUnits = parseForceFromUrl(force, 'Alpha~140,1901', units, logger, 'mulId');
+        const forceUnits = parseForceFromUrl(force, `Alpha~${units[1].uuid},${units[2].uuid}`, units, logger);
         const groups = force.groups() as unknown as Array<ReturnType<typeof createMockGroup>>;
+        expect(forceUnits.map(unit => unit.getUnit().uuid)).toEqual([units[1].uuid, units[2].uuid]);
 
-        expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
+        expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7K', 'BMLocust_LCT1V']);
         expect(groups[1]?.name.set).toHaveBeenCalledWith('Alpha');
-        expect(groups[1]?.units().map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
+        expect(groups[1]?.units().map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7K', 'BMLocust_LCT1V']);
         expect(logger.warn).not.toHaveBeenCalled();
     });
 });
 
 describe('force URL serialization', () => {
+    it('round-trips remote-unit UUIDs containing URL separators without a MUL ID', () => {
+        const summary = createEmptyUnit({ uuid: 'custom:server:Unit%20~Variant,1|A', mul1id: null });
+        const source = createMockForce();
+        const units = generateUnitUrlParams([source.addUnit(summary)]).join(',');
+        const params = new URLSearchParams({ units });
+        const decoded = new URLSearchParams(params.toString()).get('units')!;
+        const restored = parseForceFromUrl(createMockForce(), decoded, [summary]);
+
+        expect(restored.map(unit => unit.getUnit())).toEqual([summary]);
+    });
+
     it('omits session-only lobby forces', () => {
         const persistedForce = { instanceId: () => 'persisted-force' } as unknown as Force;
         const lobbyForce = { instanceId: () => 'lobby-force' } as unknown as Force;

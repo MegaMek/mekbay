@@ -18,7 +18,7 @@ import { UnitRuntimeService } from './unit-runtime.service';
 import { UserStateService } from './userState.service';
 import { WsService } from './ws.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
-import { normalizeNullMulUnitIds, UnitsCatalogService } from './catalogs/units-catalog.service';
+import { UnitsCatalogService } from './catalogs/units-catalog.service';
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ErasCatalogService } from './catalogs/eras-catalog.service';
 import { FactionsCatalogService } from './catalogs/mulfactions-catalog.service';
@@ -163,6 +163,7 @@ describe('DataService', () => {
         unitRuntimeServiceMock.postprocessUnits.calls.reset();
         unitRuntimeServiceMock.linkEquipmentToUnits.calls.reset();
         unitSearchIndexServiceMock.rebuildIndexes.calls.reset();
+        unitSearchIndexServiceMock.rebuildIndexes.and.stub();
         unitsCatalogMock.initialize.calls.reset();
         unitsCatalogMock.initialize.and.resolveTo(undefined);
         unitsCatalogMock.getUnits.calls.reset();
@@ -268,19 +269,6 @@ describe('DataService', () => {
         service = TestBed.inject(DataService);
     });
 
-    it('normalizes null MUL ids to unique runtime ids while loading units', () => {
-        const firstNullMulUnit = createEmptyUnit({ id: -1, name: 'First Null MUL' });
-        const secondNullMulUnit = createEmptyUnit({ id: 0, name: 'Second Null MUL' });
-        const mulUnit = createEmptyUnit({ id: 42, name: 'Real MUL' });
-
-        const normalized = normalizeNullMulUnitIds([firstNullMulUnit, secondNullMulUnit, mulUnit]);
-
-        expect(normalized[0].id).toBe(-1);
-        expect(normalized[1].id).toBe(-2);
-        expect(normalized[2].id).toBe(42);
-        expect(new Set(normalized.map((unit) => unit.id)).size).toBe(3);
-    });
-
     it('delegates unit lookup to the runtime service', () => {
         service.getUnitByName('Mad Cat Prime');
         service.getUnitByUuid('unit-uuid');
@@ -316,7 +304,7 @@ describe('DataService', () => {
         const earlyEra: Era = {
             id: 1,
             name: 'Early',
-            years: { from: 2500, to: 2600 },
+            years: { from: 2500, to: 2599 },
             factions: new Set<number>(),
             units: new Set<number>(),
         };
@@ -350,9 +338,9 @@ describe('DataService', () => {
                 [introEra.id]: new Set<number>([3]),
             },
         };
-        const noFactionUnit = createEmptyUnit({ id: -1, name: 'No Faction', year: 2600 });
-        const futureNoFactionUnit = createEmptyUnit({ id: -2, name: 'Future No Faction', year: 2701 });
-        const houseUnit = createEmptyUnit({ id: 3, name: 'House Unit', year: 2600 });
+        const noFactionUnit = createEmptyUnit({ mul1id: -1, name: 'No Faction', year: 2600 });
+        const futureNoFactionUnit = createEmptyUnit({ mul1id: -2, name: 'Future No Faction', year: 2701 });
+        const houseUnit = createEmptyUnit({ mul1id: 3, name: 'House Unit', year: 2600 });
 
         unitsCatalogMock.getUnits.and.returnValue([noFactionUnit, futureNoFactionUnit, houseUnit]);
         erasCatalogMock.getEras.and.returnValue([earlyEra, introEra, openEra]);
@@ -365,24 +353,17 @@ describe('DataService', () => {
 
         await service.initialize();
 
-        expect(noneFaction.eras[introEra.id]).toEqual(new Set<number>([noFactionUnit.id]));
-        expect(noneFaction.eras[openEra.id]).toEqual(new Set<number>([noFactionUnit.id, futureNoFactionUnit.id]));
-        expect(noneFaction.eras[earlyEra.id]).toBeUndefined();
-        expect((earlyEra.units as Set<number>).has(noFactionUnit.id)).toBeFalse();
-        expect((earlyEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
-        expect((introEra.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
-        expect((introEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeFalse();
-        expect((openEra.units as Set<number>).has(noFactionUnit.id)).toBeTrue();
-        expect((openEra.units as Set<number>).has(futureNoFactionUnit.id)).toBeTrue();
-        expect((introEra.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((openEra.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((earlyEra.factions as Set<number>).has(MULFACTION_NONE)).toBeFalse();
-        expect(noneFaction.eras[introEra.id].has(houseUnit.id)).toBeFalse();
+        const index = new UnitSearchIndexService();
+        index.rebuildIndexes([noFactionUnit, futureNoFactionUnit, houseUnit], [earlyEra, introEra, openEra], [noneFaction, houseFaction]);
+        expect(index.getFactionEraUnitUuids([earlyEra.name], [noneFaction.name])).toEqual(new Set<string>());
+        expect(index.getFactionEraUnitUuids([introEra.name], [noneFaction.name])).toEqual(new Set([noFactionUnit.uuid]));
+        expect(index.getFactionEraUnitUuids([openEra.name], [noneFaction.name])).toEqual(new Set([noFactionUnit.uuid, futureNoFactionUnit.uuid]));
+        expect(noneFaction.eras).toEqual({});
+        expect(earlyEra.units).toEqual(new Set<number>());
         expect(unitSearchIndexServiceMock.rebuildIndexes).toHaveBeenCalledWith(
             [noFactionUnit, futureNoFactionUnit, houseUnit],
             [earlyEra, introEra, openEra],
             [noneFaction, houseFaction],
-            undefined,
         );
     });
 

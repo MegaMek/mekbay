@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { Injectable } from '@angular/core';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import type { UnitSummary, UnitComponent } from '../models/unit-summary.model';
 import { type Faction } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
@@ -15,7 +16,6 @@ import { getUnitStatBucketKey, getUnitStatValues } from '../utils/unit-stat-valu
 import { parseASDamageValue } from '../utils/as-damage.util';
 import { AS_MOVEMENT_MODE_DISPLAY_NAMES, BOOLEAN_FILTERS, getBooleanFilterUnitValue } from './unit-search-filters.model';
 import type { UnitSearchWorkerFactionEraSnapshot, UnitSearchWorkerIndexSnapshot } from '../utils/unit-search-worker-protocol.util';
-import { MULFACTION_EXTINCT } from '../models/mulfactions.model';
 import { WeaponEquipment } from '../models/equipment.model';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import {
@@ -56,6 +56,7 @@ export class UnitSearchIndexService {
     private asSpecialFieldCounts = new Map<string, number>();
     private asSpecialsByUnit = new Map<string, ParsedASSpecials>();
     private factionEraSnapshot: UnitSearchWorkerFactionEraSnapshot = {};
+    private mulAvailabilityIndex = new MulAvailabilityIndex([], [], []);
 
     public prepareUnits(units: UnitSummary[]): void {
         this.unitStats = {};
@@ -128,7 +129,7 @@ export class UnitSearchIndexService {
         }
     }
 
-    public rebuildIndexes(units: UnitSummary[], eras: Era[], factions: Faction[], extinctFaction?: Faction): void {
+    public rebuildIndexes(units: UnitSummary[], eras: Era[], factions: Faction[]): void {
         this.searchFilterIndex = new Map<string, Map<string, Set<string>>>();
         this.componentCountIndex = new Map<string, Map<string, number>>();
         this.searchFilterValues = new Map<string, string[]>();
@@ -139,7 +140,7 @@ export class UnitSearchIndexService {
             unit => unit.as?.specials,
         );
 
-        const unitUuidsByMulId = this.createUnitUuidsByMulId(units);
+        this.mulAvailabilityIndex = new MulAvailabilityIndex(units, eras, factions);
 
         for (const unit of units) {
             this.addSearchIndexValue('type', unit.type, unit.uuid);
@@ -168,25 +169,13 @@ export class UnitSearchIndexService {
         }
 
         for (const era of eras) {
-            const extinctReferenceIdsForEra = extinctFaction?.id === MULFACTION_EXTINCT
-                ? extinctFaction.eras[era.id] as Set<number> | undefined
-                : undefined;
-            for (const referenceId of era.units as Set<number>) {
-                if (!extinctReferenceIdsForEra?.has(referenceId)) {
-                    for (const unitUuid of unitUuidsByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('era', era.name, unitUuid);
-                    }
-                }
+            for (const uuid of this.mulAvailabilityIndex.getEraUnitUuids(era.id)) {
+                this.addSearchIndexValue('era', era.name, uuid);
             }
         }
-
         for (const faction of factions) {
-            for (const referenceIds of Object.values(faction.eras) as Set<number>[]) {
-                for (const referenceId of referenceIds) {
-                    for (const unitUuid of unitUuidsByMulId.get(referenceId) ?? []) {
-                        this.addSearchIndexValue('faction', faction.name, unitUuid);
-                    }
-                }
+            for (const uuid of this.mulAvailabilityIndex.getFactionUnitUuids(faction.id)) {
+                this.addSearchIndexValue('faction', faction.name, uuid);
             }
         }
 
@@ -195,7 +184,7 @@ export class UnitSearchIndexService {
         }
 
         this.rebuildDropdownOptionUniverse(eras, factions);
-        this.factionEraSnapshot = this.createFactionEraSnapshot(unitUuidsByMulId, eras, factions);
+        this.factionEraSnapshot = this.createFactionEraSnapshot(eras, factions);
     }
 
     public rebuildTagSearchIndex(units: UnitSummary[]): void {
@@ -259,21 +248,12 @@ export class UnitSearchIndexService {
         );
     }
 
-    public getFactionEraUnitUuids(
-        eraNames: readonly string[],
-        factionNames: readonly string[],
-    ): ReadonlySet<string> {
-        const unitUuids = new Set<string>();
+    public getMulAvailabilityIndex(): MulAvailabilityIndex {
+        return this.mulAvailabilityIndex;
+    }
 
-        for (const eraName of eraNames) {
-            for (const factionName of factionNames) {
-                for (const unitUuid of this.factionEraSnapshot[eraName]?.[factionName] ?? []) {
-                    unitUuids.add(unitUuid);
-                }
-            }
-        }
-
-        return unitUuids;
+    public getFactionEraUnitUuids(eraNames: readonly string[], factionNames: readonly string[]): ReadonlySet<string> {
+        return this.mulAvailabilityIndex.getNamedFactionEraUnitUuids(eraNames, factionNames);
     }
 
     public getDropdownOptionUniverse(filterKey: string): UnitSearchDropdownOption[] {
@@ -343,47 +323,10 @@ export class UnitSearchIndexService {
         }
     }
 
-    private createFactionEraSnapshot(unitUuidsByMulId: Map<number, string[]>, eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {
-        const snapshot: UnitSearchWorkerFactionEraSnapshot = {};
-        const erasById = new Map<number, Era>(eras.map(era => [era.id, era]));
-
-        for (const era of eras) {
-            snapshot[era.name] = {};
-        }
-
-        for (const faction of factions) {
-            for (const [eraIdKey, referenceIds] of Object.entries(faction.eras) as Array<[string, Set<number>]>) {
-                const era = erasById.get(Number(eraIdKey));
-                if (!era) {
-                    continue;
-                }
-
-                const unitUuids: string[] = [];
-                for (const referenceId of referenceIds) {
-                    unitUuids.push(...(unitUuidsByMulId.get(referenceId) ?? []));
-                }
-
-                snapshot[era.name] ??= {};
-                snapshot[era.name][faction.name] = unitUuids;
-            }
-        }
-
-        return snapshot;
-    }
-
-    private createUnitUuidsByMulId(units: UnitSummary[]): Map<number, string[]> {
-        const unitUuidsByMulId = new Map<number, string[]>();
-
-        for (const unit of units) {
-            const uuids = unitUuidsByMulId.get(unit.mul1id);
-            if (uuids) {
-                uuids.push(unit.uuid);
-            } else {
-                unitUuidsByMulId.set(unit.mul1id, [unit.uuid]);
-            }
-        }
-
-        return unitUuidsByMulId;
+    private createFactionEraSnapshot(eras: Era[], factions: Faction[]): UnitSearchWorkerFactionEraSnapshot {
+        return Object.fromEntries(eras.map(era => [era.name, Object.fromEntries(
+            factions.map(faction => [faction.name, Array.from(this.mulAvailabilityIndex.getFactionEraUnitUuids(faction.id, era.id))]),
+        )]));
     }
 
     private addSearchIndexValue(filterKey: string, value: string | undefined, unitUuid: string): void {

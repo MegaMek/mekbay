@@ -160,7 +160,7 @@ export interface UnitFluffCatalog {
 export interface UnitSummary {
     uuid: string; // Stable, unique internal unit identity
     name: string; // Catalog/URL name; not guaranteed unique
-    mul1id: number; // External MUL id; not guaranteed unique
+    mul1id: number | null; // External MUL id; values below 1 or null mean no MUL entry
     mul2id?: string; // External MUL id; not guaranteed unique
     chassis: string;
     model: string;

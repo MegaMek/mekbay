@@ -17,9 +17,9 @@ import type { ForceAvailabilityContext } from '../utils/force-availability.util'
 import { NO_FORMATION } from '../utils/formation-type.model';
 import { C3NetworkType } from './c3-network.model';
 
-function createUnit(id: number, name: string, year: number): UnitSummary {
+function createUnit(mul1id: number, name: string, year: number): UnitSummary {
     return createEmptyUnit({
-        id,
+        mul1id,
         name,
         chassis: 'Test',
         model: 'Unit',

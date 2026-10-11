@@ -7,6 +7,7 @@ import { type MULFaction, MULFACTION_EXTINCT, MULFACTION_MERCENARY, MULFACTION_N
 import type { Era } from '../models/eras.model';
 import type { ForceNameWords } from '../models/force-name-words.model';
 import { Faction } from '../models/factions.model';
+import { MulAvailabilityIndex } from './mul-availability-index';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from './force-availability.util';
 
 /*
@@ -131,16 +132,13 @@ function getCandidateEras(eras: Era[], units: ForceUnit[], selectedEra: Era | nu
     return getEligibleEras(eras, getReferenceYear(units));
 }
 
-function resolveAvailabilityContext(availabilityContext?: ForceAvailabilityContext): ForceAvailabilityContext {
-    return availabilityContext ?? createMulForceAvailabilityContext();
-}
-
 function hasFactionEraAvailability(
     faction: Faction,
     era: Era,
-    availabilityContext?: ForceAvailabilityContext,
+    availabilityContext: ForceAvailabilityContext,
 ): boolean {
-    return resolveAvailabilityContext(availabilityContext).getFactionEraUnitIds(faction, era).size > 0;
+    return availabilityContext.factionExistsInEra?.(faction, era)
+        ?? availabilityContext.getFactionEraUnitIds(faction, era).size > 0;
 }
 
 function isSelectableFaction(faction: Faction): boolean {
@@ -152,11 +150,11 @@ function getEraMatchPercentage(
     era: Era,
     unitKeys: readonly string[],
     totalUnits: number,
-    availabilityContext?: ForceAvailabilityContext,
+    availabilityContext: ForceAvailabilityContext,
 ): number {
     if (totalUnits === 0) return 0;
 
-    const eraUnitIds = resolveAvailabilityContext(availabilityContext).getFactionEraUnitIds(faction, era);
+    const eraUnitIds = availabilityContext.getFactionEraUnitIds(faction, era);
     if (eraUnitIds.size === 0) return 0;
 
     let count = 0;
@@ -282,7 +280,7 @@ export class ForceNamerUtil {
         const eligibleEras = getCandidateEras(eras, units, selectedEra);
         if (eligibleEras.length === 0) return null;
 
-        const resolvedAvailability = resolveAvailabilityContext(availabilityContext);
+        const resolvedAvailability = availabilityContext ?? createMulForceAvailabilityContext(new MulAvailabilityIndex(units.map(unit => unit.getUnit()), eras, factions));
         const unitKeys = units.map((unit) => resolvedAvailability.getUnitKey(unit.getUnit()));
         const totalUnits = units.length;
         const results: Map<Faction, number> = new Map();
@@ -316,7 +314,7 @@ export class ForceNamerUtil {
         selectedEra: Era | null = null,
         availabilityContext?: ForceAvailabilityContext,
     ): Faction | null {
-        const resolvedAvailability = resolveAvailabilityContext(availabilityContext);
+        const resolvedAvailability = availabilityContext ?? createMulForceAvailabilityContext(new MulAvailabilityIndex(units.map(unit => unit.getUnit()), eras, factions));
         const mercenary = factions.find(f => f.id === MULFACTION_MERCENARY) ?? null;
         const availableFactions = this.getAvailableFactions(
             units,
@@ -402,7 +400,7 @@ export class ForceNamerUtil {
         const result: FactionDisplayInfo[] = [];
         const referenceYear = getReferenceYear(units);
         const displayEras = getCandidateEras(eras, units, selectedEra);
-        const resolvedAvailability = resolveAvailabilityContext(availabilityContext);
+        const resolvedAvailability = availabilityContext ?? createMulForceAvailabilityContext(new MulAvailabilityIndex(units.map(unit => unit.getUnit()), eras, allFactions));
         const unitKeys = units.map((unit) => resolvedAvailability.getUnitKey(unit.getUnit()));
         const totalUnits = units.length;
 

@@ -262,7 +262,7 @@ export type BuiltInOrgFactPath = `bucket:${OrgBucketName}` | `sum:${OrgPatternRe
 export type OrgFactPath = BuiltInOrgFactPath;
 
 export interface UnitFactScalars {
-    readonly id: number;
+    readonly uuid: UnitSummary['uuid'];
     readonly tons: number;
     readonly pv: number;
     readonly bv: number;

@@ -43,8 +43,6 @@ export interface UnitShareLinks {
     appUrl: string;
 }
 
-export type ForceUrlUnitLookupMode = 'name' | 'mulId';
-
 export function buildUnitShareLinks(
     origin: string,
     pathname: string,
@@ -179,13 +177,14 @@ export function generateGroupUrlParams(groups: UnitGroup[]): string[] {
 /**
  * Generates URL parameters for units within a group.
  *
- * Format for CBT: unitName:gunnery:piloting (skills omitted if all defaults)
- * Format for AS:  unitName:skill (skill omitted if default 4)
+ * Format for CBT: unitUuid:gunnery:piloting (skills omitted if all defaults)
+ * Format for AS:  unitUuid:skill (skill omitted if default 4)
  */
 export function generateUnitUrlParams(units: ForceUnit[]): string[] {
     return units.map(fu => {
         const unit = fu.getUnit();
-        let unitParam = unit.name;
+        // Remote-unit UUIDs can contain separators used by the force URL format.
+        let unitParam = encodeURIComponent(unit.uuid).replace(/~/g, '%7E');
 
         // Handle Alpha Strike units (single pilot skill)
         if (fu instanceof ASForceUnit) {
@@ -240,16 +239,15 @@ export function parseForceFromUrl(
     force: Force,
     unitsParam: string,
     allUnits: UnitSummary[],
-    logger?: UrlParseLogger,
-    lookupMode: ForceUrlUnitLookupMode = 'name'
+    logger?: UrlParseLogger
 ): ForceUnit[] {
-    const unitMap = new Map<string, UnitSummary>();
+    const unitMap = new Map<string, UnitSummary | undefined>();
     for (const unit of allUnits) {
-        const key = lookupMode === 'mulId' ? `${unit.mul1id}` : getUnitNameKey(unit.name);
-        if (!unitMap.has(key)) {
-            unitMap.set(key, unit);
-        }
+        const key = getUnitNameKey(unit.name);
+        unitMap.set(key, unitMap.has(key) ? undefined : unit);
     }
+    // UUIDs are authoritative; names only resolve unambiguous legacy catalog links.
+    for (const unit of allUnits) unitMap.set(unit.uuid.toLowerCase(), unit);
     const allForceUnits: ForceUnit[] = [];
 
     // Check if it's the new group format (contains '|' or '~')
@@ -298,12 +296,12 @@ export function parseForceFromUrl(
             }
 
             // Parse units for this group
-            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger, lookupMode);
+            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger);
             allForceUnits.push(...groupUnits);
         }
     } else {
         // Legacy format without groups: all units in default group
-        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger, lookupMode);
+        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger);
         allForceUnits.push(...groupUnits);
     }
 
@@ -314,8 +312,8 @@ export function parseForceFromUrl(
  * Parses individual unit parameters from a comma-separated string
  * and adds them to the force.
  *
- * Format for CBT: `unitName[:gunnery:piloting]` (skills optional, defaults to 4/5)
- * Format for AS:  `unitName[:skill]` (skill optional, defaults to 4)
+ * Format for CBT: `unitUuid[:gunnery:piloting]` (legacy catalog names also accepted) (skills optional, defaults to 4/5)
+ * Format for AS:  `unitUuid[:skill]` (legacy catalog names also accepted) (skill optional, defaults to 4)
  *
  * **Note:** This function _mutates_ the force by calling `force.addUnit()`
  * and modifying group membership / crew skills.
@@ -323,10 +321,9 @@ export function parseForceFromUrl(
 export function parseUnitUrlParams(
     force: Force,
     unitsStr: string,
-    unitMap: Map<string, UnitSummary>,
+    unitMap: Map<string, UnitSummary | undefined>,
     group?: UnitGroup,
-    logger?: UrlParseLogger,
-    lookupMode: ForceUrlUnitLookupMode = 'name'
+    logger?: UrlParseLogger
 ): ForceUnit[] {
     if (!unitsStr.trim()) return [];
 
@@ -337,12 +334,17 @@ export function parseUnitUrlParams(
         if (!unitParam.trim()) continue;
 
         const parts = unitParam.split(':');
-        const lookupValue = lookupMode === 'mulId' ? parts[0] : getUnitNameKey(parts[0]);
-        const unit = unitMap.get(lookupValue);
+        let unit = unitMap.get(parts[0].toLowerCase());
+        if (!unit) {
+            try {
+                unit = unitMap.get(decodeURIComponent(parts[0]).toLowerCase());
+            } catch {
+                // Legacy names may contain literal percent signs.
+            }
+        }
 
         if (!unit) {
-            const lookupLabel = lookupMode === 'mulId' ? 'MUL ID' : 'name';
-            logger?.warn(`Unit with ${lookupLabel} "${lookupValue}" not found in data`);
+            logger?.warn(`Unit with UUID or name "${parts[0]}" not found in data`);
             continue;
         }
 

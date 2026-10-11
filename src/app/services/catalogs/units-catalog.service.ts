@@ -14,13 +14,6 @@ import { withServiceWorkerBypass } from '../../utils/service-worker-bypass.util'
 import { CatalogBaseService } from './catalog-base.service';
 import { uuidv7 } from '../../utils/uuid.util';
 
-export function normalizeNullMulUnitIds(units: readonly UnitSummary[]): UnitSummary[] {
-    let nextNullMulId = -1;
-    return units.map((unit) => unit.mul1id > 0
-        ? unit
-        : { ...unit, id: nextNullMulId-- });
-}
-
 function createCustomUnitUuid(server: string, nameKey: string, usedUuids: ReadonlySet<string>): string {
     const baseUuid = `custom:${encodeURIComponent(server)}:${encodeURIComponent(nameKey)}`;
     let uuid = baseUuid;
@@ -77,7 +70,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
     }
 
     protected override hydrate(data: Units): void {
-        this.units = normalizeNullMulUnitIds(data.units);
+        this.units = [...data.units];
         this.unitRuntimeService.preprocessUnits(this.units);
         this.etag = data.etag || '';
     }
@@ -111,9 +104,7 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
         }
 
         const usedNames = new Set(this.units.map(unit => unit.name.toLowerCase()));
-        // const usedIds = new Set(this.units.map(unit => unit.mul1id));
         const usedUuids = new Set(this.units.map(unit => unit.uuid));
-        // let nextSyntheticId = this.units.reduce((min, unit) => Math.min(min, unit.mul1id), 0) - 1;
 
         const customUnits: UnitSummary[] = [];
         for (const server of servers) {
@@ -136,12 +127,6 @@ export class UnitsCatalogService extends CatalogBaseService<Units, Units> {
                     continue; // Primary source (or an earlier server) already owns this name.
                 }
                 usedNames.add(nameKey);
-
-                // let id = rawUnit.mul1id;
-                // if (!(id > 0) || usedIds.has(id)) {
-                //     id = nextSyntheticId--;
-                // }
-                // usedIds.add(id);
 
                 let uuid = typeof rawUnit.uuid === 'string' ? rawUnit.uuid.trim() : '';
                 if (!uuid || usedUuids.has(uuid)) {

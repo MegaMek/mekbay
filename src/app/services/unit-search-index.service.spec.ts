@@ -12,7 +12,7 @@ function createUnit(overrides: TestUnitOverrides): UnitSummary {
 
     return createEmptyUnit({
         uuid: unitOverrides.uuid ?? unitOverrides.name ?? 'Unit',
-        id: 1,
+        mul1id: 1,
         name: 'Unit',
         chassis: 'Unit',
         model: 'A',
@@ -117,8 +117,8 @@ describe('UnitSearchIndexService', () => {
 
     it('uses UUID postings while expanding duplicate MUL ids for era and faction membership', () => {
         const service = new UnitSearchIndexService();
-        const first = createUnit({ id: 42, uuid: 'uuid-a', name: 'Duplicate Name' });
-        const second = createUnit({ id: 42, uuid: 'uuid-b', name: 'Duplicate Name' });
+        const first = createUnit({ mul1id: 42, uuid: 'uuid-a', name: 'Duplicate Name' });
+        const second = createUnit({ mul1id: 42, uuid: 'uuid-b', name: 'Duplicate Name' });
         const era = {
             id: 1,
             name: 'Test Era',
@@ -259,7 +259,7 @@ describe('UnitSearchIndexService', () => {
 
         service.prepareUnits([
             createUnit({
-                id: 1,
+                mul1id: 1,
                 name: 'Mek A',
                 subtype: 'BattleMek',
                 armor: 10,
@@ -291,7 +291,7 @@ describe('UnitSearchIndexService', () => {
                 },
             }),
             createUnit({
-                id: 2,
+                mul1id: 2,
                 name: 'Mek B',
                 subtype: 'BattleMek',
                 armor: 30,
@@ -323,7 +323,7 @@ describe('UnitSearchIndexService', () => {
                 },
             }),
             createUnit({
-                id: 3,
+                mul1id: 3,
                 name: 'Ship A',
                 type: 'Naval',
                 subtype: 'WarShip',
@@ -356,7 +356,7 @@ describe('UnitSearchIndexService', () => {
                 },
             }),
             createUnit({
-                id: 4,
+                mul1id: 4,
                 name: 'Ship B',
                 type: 'Naval',
                 subtype: 'WarShip',

@@ -514,7 +514,6 @@ export const RANGE_FILTERS: readonly RangeFilterConfig[] = Object.freeze([
 export const SEMANTIC_FILTERS: readonly SemanticFilterConfig[] = Object.freeze([
     { key: FORMATION_TARGET_FILTER_KEY, semanticKey: 'formation', label: 'Formation Target', external: true },
     { key: 'name', semanticKey: 'name', label: 'Internal Name' },
-    { key: 'id', semanticKey: 'mul', label: 'MUL ID' },
     { key: 'chassis', semanticKey: 'chassis', label: 'Chassis' },
     { key: 'model', semanticKey: 'model', label: 'Model' },
 ]);
