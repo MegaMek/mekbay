@@ -60,10 +60,12 @@ export function resolveAmmoBattleValue(
         return facts.rackSize * resolveAmmoShots(ruleset, facts) / 5 * 4;
     }
 
-    if (facts.ammoType === 'ARROW_IV' && facts.munitionTypes.has('M_FASCAM')) {
+    if (facts.munitionTypes.has('M_FASCAM')) {
         if (ruleset === 'core-2026') return facts.baseAmmoBv;
         // TO:AR p. 152: Clan Arrow IV lays a 30-point field; Inner Sphere lays 20.
-        const minePoints = facts.techBase === 'Clan' ? 30 : 20;
+        const minePoints = facts.ammoType === 'ARROW_IV'
+            ? (facts.techBase === 'Clan' ? 30 : 20)
+            : facts.rackSize;
         return minePoints * resolveAmmoShots(ruleset, facts) / 5 * 4;
     }
     return current;
