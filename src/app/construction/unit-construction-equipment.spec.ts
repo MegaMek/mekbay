@@ -159,17 +159,18 @@ describe('construction equipment warehouse', () => {
   });
   const sortEquipment = [sortAlpha, sortBeta, sortGamma, sortVariable];
   const arrowAmmo = new AmmoEquipment({
-    id: 'Warehouse standard Arrow IV', name: 'Warehouse standard Arrow IV', type: 'ammo',
+    id: 'Warehouse standard Arrow IV', name: 'Warehouse standard Arrow IV', type: 'ammo', flags: ['F_MEK_EQUIPMENT'],
     tech: { ...tech, base: 'IS' }, stats: { bv: 30, tonnage: 1, criticalSlots: 1 },
     ammo: { type: 'ARROW_IV', rackSize: 20, shots: 5 },
   });
   const fascamAmmo = [30, 80].map(catalogBv => new AmmoEquipment({
     id: 'Warehouse ammo BV FASCAM ' + catalogBv, name: 'Warehouse ammo BV FASCAM ' + catalogBv,
-    type: 'ammo', tech: { ...tech, base: 'IS' }, stats: { bv: catalogBv, tonnage: 1, criticalSlots: 1 },
+    type: 'ammo', flags: ['F_MEK_EQUIPMENT'], tech: { ...tech, base: 'IS' },
+    stats: { bv: catalogBv, tonnage: 1, criticalSlots: 1 },
     ammo: { type: 'ARROW_IV', rackSize: 20, shots: 5, baseAmmo: arrowAmmo.id, munitionType: ['M_FASCAM'] },
   }));
   const ammoSortControl = new AmmoEquipment({
-    id: 'Warehouse ammo BV Control', name: 'Warehouse ammo BV Control', type: 'ammo', tech,
+    id: 'Warehouse ammo BV Control', name: 'Warehouse ammo BV Control', type: 'ammo', tech, flags: ['F_MEK_EQUIPMENT'],
     stats: { bv: 50, tonnage: 1, criticalSlots: 1 }, ammo: { type: 'AC', rackSize: 10, shots: 10 },
   });
   const isTargetingComputer = new MiscEquipment({
@@ -1109,6 +1110,7 @@ describe('construction equipment warehouse', () => {
       rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
     }));
     editor.query.set('Warehouse ammo BV');
+    editor.showIncompatibleEquipment.set(true);
     editor.sortEquipment('bv');
     const root = fixture.nativeElement as HTMLElement;
     const inspectorBV = () => [...root.querySelectorAll('.installed-inspector .equip-item')]
@@ -1125,7 +1127,7 @@ describe('construction equipment warehouse', () => {
 
       for (const [index, equipment] of fascamAmmo.entries()) {
         const anchor = root.querySelector<HTMLButtonElement>(
-          '.warehouse-equipment[aria-label="' + equipment.name + '"]',
+          '.warehouse-equipment[aria-label="' + editor.equipmentLabel(equipment) + '"]',
         )!;
         editor.inspectEquipment(equipment, anchor);
         await renderWarehouse();
