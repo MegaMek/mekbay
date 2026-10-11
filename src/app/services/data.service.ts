@@ -3,7 +3,6 @@
 // Author: Drake
 
 import { Injectable, signal, inject, DestroyRef, effect } from '@angular/core';
-import { isUnitIntroducedByEra } from '../utils/unit-introduction.util';
 import type { UnitSummary } from '../models/unit-summary.model';
 import type { Faction, FactionId } from '../models/factions.model';
 import type { Era } from '../models/eras.model';
@@ -45,7 +44,6 @@ import {
 import { EquipmentCatalogService } from './catalogs/equipment-catalog.service';
 import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalog.service';
 import { CatalogDownloadTrackerService } from './catalogs/catalog-base.service';
-import { MULFACTION_EXTINCT, MULFACTION_NONE } from '../models/mulfactions.model';
 import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 import type { RuntimeCatalogProgressState } from '../models/startup-progress.model';
 import {
@@ -346,6 +344,10 @@ export class DataService {
         this.unitRuntimeService.linkEquipmentToUnit(unit, this.getEquipmentRegistry());
     }
 
+    public getMulAvailabilityIndex() {
+        return this.unitSearchIndexService.getMulAvailabilityIndex();
+    }
+
     public getFactions(): Faction[] {
         return this.activeMemberships?.factions ?? this.factionsCatalog.getFactions();
     }
@@ -528,7 +530,6 @@ export class DataService {
             await yieldForResponsiveness();
             if (revision < this.queuedUnitCatalogRevision) return;
             const summaryFilterPreparationStartedAt = Date.now();
-            this.applyNoneFactionMemberships(units, membershipState.eras, membershipState.factions);
             this.unitRuntimeService.postprocessUnits(units, membershipState.eras, { loadTags: false });
             this.unitRuntimeService.applyPublicTagsToUnits(units, { rebuildTagSearchIndex: false });
             this.applyBufferedTagRefreshToUnits(units);
@@ -540,16 +541,12 @@ export class DataService {
 
             await yieldForResponsiveness();
             if (revision < this.queuedUnitCatalogRevision) return;
-            const extinctFaction = membershipState.factions.find(
-                faction => faction.id === MULFACTION_EXTINCT,
-            );
             const searchIndexPreparationStartedAt = Date.now();
             const searchCandidate: PreparedUnitSearchIndexes =
                 this.unitSearchIndexService.prepareCatalogIndexes(
                     units,
                     membershipState.eras,
                     membershipState.factions,
-                    extinctFaction,
                     equipmentRegistry,
                     pending.customOnly ? this.unitsCatalog.getUnits() : undefined,
                 );
@@ -681,47 +678,6 @@ export class DataService {
         if (!pending || pending.revision !== revision || (expected && pending !== expected)) return undefined;
         return pending;
     }
-
-    private applyNoneFactionMemberships(units: readonly UnitSummary[], eras: readonly Era[], factions: readonly Faction[]): void {
-        const noneFaction = factions.find(faction => faction.id === MULFACTION_NONE);
-        if (!noneFaction) {
-            return;
-        }
-
-        const factionUnitIds = new Set<number>();
-        for (const faction of factions) {
-            if (faction.id === MULFACTION_NONE) {
-                continue;
-            }
-
-            for (const eraUnitIds of Object.values(faction.eras) as Set<number>[]) {
-                for (const unitId of eraUnitIds) {
-                    factionUnitIds.add(unitId);
-                }
-            }
-        }
-
-        const noneUnits = units.filter((unit) => unit.mul1id !== null && !factionUnitIds.has(unit.mul1id));
-
-        noneFaction.eras = {};
-        for (const era of eras) {
-            const noneEraUnitIds = new Set<number>();
-            for (const unit of noneUnits) {
-                if (unit.mul1id === null || !isUnitIntroducedByEra(unit, era)) {
-                    continue;
-                }
-
-                noneEraUnitIds.add(unit.mul1id);
-                (era.units as Set<number>).add(unit.mul1id);
-            }
-
-            if (noneEraUnitIds.size > 0) {
-                noneFaction.eras[era.id] = noneEraUnitIds;
-                (era.factions as Set<number>).add(MULFACTION_NONE);
-            }
-        }
-    }
-
 
     private async checkForUpdate(): Promise<void> {
         await this.unitsCatalog.initialize();

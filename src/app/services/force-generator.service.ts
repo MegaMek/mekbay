@@ -4088,13 +4088,7 @@ export class ForceGeneratorService implements OnDestroy {
         }
 
         if (!useMegaMekAvailability) {
-            const unitsByMulId = new Map<number, UnitSummary[]>();
-            for (const unit of eligibleUnits) {
-                if (unit.mul1id === null) continue;
-                const matchingUnits = unitsByMulId.get(unit.mul1id) ?? [];
-                matchingUnits.push(unit);
-                unitsByMulId.set(unit.mul1id, matchingUnits);
-            }
+            const unitsByUuid = new Map<string, UnitSummary>(eligibleUnits.map(unit => [unit.uuid, unit]));
             for (const { eraId, factionId } of scopeState.pairs) {
                 const faction = this.dataService.getFactionById(factionId);
                 const era = this.dataService.getEraById(eraId);
@@ -4102,10 +4096,10 @@ export class ForceGeneratorService implements OnDestroy {
                     continue;
                 }
                 for (const unitId of this.unitAvailabilitySource.getFactionEraUnitIds(faction, era, 'mul')) {
-                    for (const unit of unitsByMulId.get(Number(unitId)) ?? []) {
-                        const exactValue = recordsByUnitUuid!.get(unit.uuid)?.e[String(eraId)]?.[String(factionId)];
-                        includeMulAvailabilityFallback(weightsByUnitUuid.get(unit.uuid)!, exactValue);
-                    }
+                    const unit = unitsByUuid.get(unitId);
+                    if (!unit) continue;
+                    const exactValue = recordsByUnitUuid!.get(unit.uuid)?.e[String(eraId)]?.[String(factionId)];
+                    includeMulAvailabilityFallback(weightsByUnitUuid.get(unit.uuid)!, exactValue);
                 }
             }
         }

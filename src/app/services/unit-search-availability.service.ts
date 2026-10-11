@@ -3,8 +3,6 @@
 // Author: Drake
 
 import type { AvailabilityFilterScope } from '../models/megamek/availability.model';
-import { isUnitIntroducedByEra } from '../utils/unit-introduction.util';
-import { MULFACTION_NONE } from '../models/mulfactions.model';
 
 import { Injectable, inject } from '@angular/core';
 import type { Era } from '../models/eras.model';
@@ -58,8 +56,8 @@ export class UnitSearchAvailabilityService {
         };
 
         const context: MegaMekAvailabilityFilterContext = {
-            bridgeThroughMulMembership: scope.bridgeThroughMulMembership
-                ?? !this.unitAvailabilitySource.useMegaMekAvailability(),
+            bridgeThroughMulMembership: !this.unitAvailabilitySource.useMegaMekAvailability()
+                && (scope.bridgeThroughMulMembership ?? true),
         };
 
         if (scope.eraNames !== undefined) {
@@ -459,85 +457,23 @@ export class UnitSearchAvailabilityService {
         selectedFactionIds?: ReadonlySet<number>,
     ): ReadonlySet<number> {
         const availableIds = new Set<number>();
-        const contextUnitIds = new Set(contextUnits.map(unit => unit.mul1id).filter((id): id is number => id !== null));
-        if (!selectedFactionIds || selectedFactionIds.has(MULFACTION_NONE)) {
-            const unlisted = contextUnits.filter(unit => unit.mul1id === null);
+        const unitUuids = contextUnits.map(unit => unit.uuid);
+        const index = this.dataService.getMulAvailabilityIndex();
+        for (const faction of this.dataService.getFactions()) {
+            if (target === 'era' && selectedFactionIds && !selectedFactionIds.has(faction.id)) continue;
             for (const era of this.dataService.getEras()) {
                 if (target === 'faction' && selectedEraIds && !selectedEraIds.has(era.id)) continue;
-                if (unlisted.some(unit => isUnitIntroducedByEra(unit, era))) availableIds.add(target === 'era' ? era.id : MULFACTION_NONE);
-            }
-        }
-        const allFactions = this.dataService.getFactions();
-
-        if (target === 'faction') {
-            for (const faction of allFactions) {
-                const memberships = selectedEraIds
-                    ? Array.from(selectedEraIds, eraId => faction.eras[eraId] as Set<number> | number[] | undefined)
-                    : Object.values(faction.eras) as Array<Set<number> | number[]>;
-                if (memberships.some(membership => this.membershipHasAnyUnitId(membership, contextUnitIds))) {
-                    availableIds.add(faction.id);
-                }
-            }
-            return availableIds;
-        }
-
-        const factions = selectedFactionIds
-            ? Array.from(selectedFactionIds, factionId => this.dataService.getFactionById(factionId))
-                .filter((faction): faction is NonNullable<typeof faction> => !!faction)
-            : allFactions;
-
-        for (const faction of factions) {
-            for (const [eraIdText, membership] of Object.entries(faction.eras) as Array<[string, Set<number> | number[]]>) {
-                const eraId = Number(eraIdText);
-                if (!Number.isNaN(eraId) && this.membershipHasAnyUnitId(membership, contextUnitIds)) {
-                    availableIds.add(eraId);
+                const members = index.getFactionEraUnitUuids(faction.id, era.id);
+                if (unitUuids.some(uuid => members.has(uuid))) {
+                    availableIds.add(target === 'era' ? era.id : faction.id);
                 }
             }
         }
-
         return availableIds;
     }
 
-    private membershipHasAnyUnitId(
-        membership: Set<number> | number[] | undefined,
-        unitIds: ReadonlySet<number>,
-    ): boolean {
-        if (!membership) {
-            return false;
-        }
-
-        if (membership instanceof Set && membership.size > unitIds.size) {
-            for (const unitId of unitIds) {
-                if (membership.has(unitId)) return true;
-            }
-            return false;
-        }
-
-        for (const unitId of membership) {
-            if (unitIds.has(unitId)) return true;
-        }
-        return false;
-    }
-
-    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'mul1id' | 'year'>, factionId: number, eraId: number): boolean {
-        if (unit.mul1id === null) {
-            const era = this.dataService.getEras().find(era => era.id === eraId);
-            return factionId === MULFACTION_NONE && !!era && isUnitIntroducedByEra(unit, era);
-        }
-        return unit.mul1id !== null && this.membershipContainsUnitId(this.dataService.getFactionById(factionId)?.eras[eraId] as Set<number> | number[] | undefined, unit.mul1id);
-    }
-
-    private membershipContainsUnitId(
-        membership: Set<number> | number[] | undefined,
-        unitId: number,
-    ): boolean {
-        if (!membership) {
-            return false;
-        }
-
-        return membership instanceof Set
-            ? membership.has(unitId)
-            : membership.includes(unitId);
+    private unitBelongsToMulFactionInEra(unit: Pick<UnitSummary, 'uuid'>, factionId: number, eraId: number): boolean {
+        return this.dataService.getMulAvailabilityIndex().getFactionEraUnitUuids(factionId, eraId).has(unit.uuid);
     }
 
     public unitBelongsToEra(unit: UnitSummary, eraName: string, scope?: AvailabilityFilterScope): boolean {
@@ -550,7 +486,7 @@ export class UnitSearchAvailabilityService {
     public unitBelongsToFaction(unit: UnitSummary, factionName: string, eraNames?: readonly string[]): boolean {
         if (!this.unitAvailabilitySource.useMegaMekAvailability()) {
             if (eraNames !== undefined) {
-                return this.searchIndex.getFactionEraUnitUuids(eraNames, [factionName]).has(unit.uuid);
+                return this.dataService.getMulAvailabilityIndex().unitBelongsToNamedFactionEra(unit.uuid, eraNames, [factionName]);
             }
 
             return this.searchIndex.getIndexedUnitIds('faction', factionName)?.has(unit.uuid) ?? false;
@@ -581,7 +517,7 @@ export class UnitSearchAvailabilityService {
                 return this.searchIndex.getIndexedUnitIds('era', era.name)?.has(unit.uuid) ?? false;
             }
 
-            return this.searchIndex.getFactionEraUnitUuids([era.name], scope.factionNames).has(unit.uuid);
+            return this.dataService.getMulAvailabilityIndex().unitBelongsToNamedFactionEra(unit.uuid, [era.name], scope.factionNames);
         }
 
         if (scope?.factionNames === undefined) {

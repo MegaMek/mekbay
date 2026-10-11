@@ -24,6 +24,15 @@ function unitAggregates(facts: GroupFacts) {
 }
 
 describe('organization facts and allocations', () => {
+    it('retains distinct UUIDs for units with shared or missing external MUL IDs', () => {
+        const units = [null, 0, -1, 42, 42].map(mul1id => createEmptyUnit({ mul1id }));
+        const facts = compileUnitFactsList(units);
+
+        expect(facts.map(fact => fact.scalars.uuid)).toEqual(units.map(unit => unit.uuid));
+        expect(new Set(facts.map(fact => fact.scalars.uuid)).size).toBe(units.length);
+        expect(facts.every(fact => !('id' in fact.scalars))).toBeTrue();
+    });
+
     it('uses identical descendant buckets for a planned group and its concrete result', () => {
         const units = Array.from({ length: 4 }, (_, index) => createEmptyUnit({ moveType: index % 2 ? 'Quad' : 'Biped' }));
         const record = materializeLeafCountRuleRecords(IS_LANCE, compileUnitFactsList(units), DEFAULT_ORG_RULE_REGISTRY).records[0];

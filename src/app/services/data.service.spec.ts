@@ -35,6 +35,7 @@ import { ForceNameWordsCatalogService } from './catalogs/force-name-words-catalo
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyCBTForceForTest, createEmptyUnit } from '../testing/unit-test-helpers';
 import { asUnitUuid } from './unit-catalog/unit-catalog.types';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import { MULFACTION_NONE } from '../models/mulfactions.model';
 import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
@@ -448,6 +449,7 @@ describe('DataService', () => {
             indexStats: { filterKeys: 0, filterValues: 0, memberships: 0 },
         });
         unitSearchIndexServiceMock.commitPreparedCatalogIndexes.calls.reset();
+        unitSearchIndexServiceMock.commitPreparedCatalogIndexes.and.stub();
         unitsCatalogMock.initialize.calls.reset();
         unitsCatalogMock.initialize.and.callFake(async () => { queueMockCatalogActivation(); });
         unitsCatalogMock.getUnits.calls.reset();
@@ -702,31 +704,20 @@ describe('DataService', () => {
         expect(service.getFactionById(activeHouse.id)).toBe(activeHouse);
         expect(eraIndexMock.getEraById).not.toHaveBeenCalled();
         expect(factionsCatalogMock.getFactionById).not.toHaveBeenCalled();
-        expect(activeNone.eras[earlyEra.id!]).toEqual(new Set<number>([eraBoundaryUnit.mul1id!]));
-        expect(activeNone.eras[introEra.id]).toEqual(new Set<number>([
-            noFactionUnit.mul1id!, eraBoundaryUnit.mul1id!,
-        ]));
-        expect(activeNone.eras[openEra.id]).toEqual(new Set<number>([
-            noFactionUnit.mul1id!, futureNoFactionUnit.mul1id!, eraBoundaryUnit.mul1id!,
-        ]));
-        expect((activeEarly.units as Set<number>).has(noFactionUnit.mul1id!)).toBeFalse();
-        expect((activeEarly.units as Set<number>).has(futureNoFactionUnit.mul1id!)).toBeFalse();
-        expect((activeEarly.units as Set<number>).has(eraBoundaryUnit.mul1id!)).toBeTrue();
-        expect((activeIntro.units as Set<number>).has(noFactionUnit.mul1id!)).toBeTrue();
-        expect((activeIntro.units as Set<number>).has(futureNoFactionUnit.mul1id!)).toBeFalse();
-        expect((activeOpen.units as Set<number>).has(noFactionUnit.mul1id!)).toBeTrue();
-        expect((activeOpen.units as Set<number>).has(futureNoFactionUnit.mul1id!)).toBeTrue();
-        expect((activeIntro.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((activeOpen.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect((activeEarly.factions as Set<number>).has(MULFACTION_NONE)).toBeTrue();
-        expect(activeNone.eras[introEra.id!].has(houseUnit.mul1id!)).toBeFalse();
+        const index = new MulAvailabilityIndex(
+            [noFactionUnit, futureNoFactionUnit, eraBoundaryUnit, houseUnit], activeEras, activeFactions,
+        );
+        expect(index.getFactionEraUnitUuids(activeNone.id, activeEarly.id)).toEqual(new Set([eraBoundaryUnit.uuid]));
+        expect(index.getFactionEraUnitUuids(activeNone.id, activeIntro.id)).toEqual(new Set([noFactionUnit.uuid, eraBoundaryUnit.uuid]));
+        expect(index.getFactionEraUnitUuids(activeNone.id, activeOpen.id)).toEqual(new Set([noFactionUnit.uuid, futureNoFactionUnit.uuid, eraBoundaryUnit.uuid]));
+        expect(index.getFactionUnitUuids(activeNone.id).has(houseUnit.uuid)).toBeFalse();
+        expect(activeNone.eras).toEqual({});
         expect(noneFaction.eras).toEqual({});
         expect(introEra.units).toEqual(new Set<number>());
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes).toHaveBeenCalledWith(
             [noFactionUnit, futureNoFactionUnit, eraBoundaryUnit, houseUnit],
             activeEras,
             activeFactions,
-            undefined,
             equipmentCatalogMock.getEquipmentRegistry(),
             undefined,
         );
@@ -2635,7 +2626,7 @@ describe('DataService', () => {
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2]]);
         expect(unitRuntimeServiceMock.prepareRuntimeCatalog.calls.mostRecent().args[0]).toBe(afterSave);
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[0]).toBe(afterSave);
-        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[5]).toBe(initialUnits);
+        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[4]).toBe(initialUnits);
         expect(service.searchCorpusVersion()).toBe(2);
 
         const afterDelete = [unit];
@@ -2646,7 +2637,7 @@ describe('DataService', () => {
         expect(unitsCatalogMock.commitPendingActivation.calls.allArgs()).toEqual([[1], [2], [3]]);
         expect(unitRuntimeServiceMock.prepareRuntimeCatalog.calls.mostRecent().args[0]).toBe(afterDelete);
         expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[0]).toBe(afterDelete);
-        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[5]).toBe(afterSave);
+        expect(unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args[4]).toBe(afterSave);
         expect(unitRuntimeServiceMock.commitPreparedRuntimeCatalog).toHaveBeenCalledTimes(3);
         expect(unitSearchIndexServiceMock.commitPreparedCatalogIndexes).toHaveBeenCalledTimes(3);
         expect(service.searchCorpusVersion()).toBe(3);
@@ -2736,6 +2727,10 @@ describe('DataService', () => {
     });
 
     it('keeps replacement era/faction membership detached until the same atomic Unit swap', async () => {
+        const liveIndex = new UnitSearchIndexService();
+        unitSearchIndexServiceMock.prepareCatalogIndexes.and.callFake(liveIndex.prepareCatalogIndexes.bind(liveIndex));
+        unitSearchIndexServiceMock.commitPreparedCatalogIndexes.and.callFake(liveIndex.commitPreparedCatalogIndexes.bind(liveIndex));
+        spyOn(service, 'getMulAvailabilityIndex').and.callFake(() => liveIndex.getMulAvailabilityIndex());
         const era: Era = {
             id: 1,
             name: 'Test era',
@@ -2760,8 +2755,9 @@ describe('DataService', () => {
         const activeFaction = service.getFactions()[0]!;
         expect(activeEra).not.toBe(era);
         expect(activeFaction).not.toBe(none);
-        expect(activeEra.units).toEqual(new Set([101]));
-        expect(activeFaction.eras[1]).toEqual(new Set([101]));
+        expect(activeEra.units).toEqual(new Set<number>());
+        expect(service.getMulAvailabilityIndex().getFactionEraUnitUuids(none.id, era.id)).toEqual(new Set([unitsA[0].uuid]));
+        expect(activeFaction.eras).toEqual({});
         expect(era.units).toEqual(new Set());
         expect(none.eras[1]).toBeUndefined();
 
@@ -2786,19 +2782,23 @@ describe('DataService', () => {
         // candidate waits at its durable pointer fence.
         expect(service.getEras()[0]).toBe(activeEra);
         expect(service.getFactions()[0]).toBe(activeFaction);
-        expect(activeEra.units).toEqual(new Set([101]));
-        expect(activeFaction.eras[1]).toEqual(new Set([101]));
+        expect(activeEra.units).toEqual(new Set<number>());
+        expect(service.getMulAvailabilityIndex().getFactionEraUnitUuids(none.id, era.id)).toEqual(new Set([unitsA[0].uuid]));
+        expect(activeFaction.eras).toEqual({});
         const preparedArgs = unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().args;
         expect(preparedArgs[1][0]).not.toBe(era);
         expect(preparedArgs[2][0]).not.toBe(none);
-        expect(preparedArgs[1][0].units).toEqual(new Set([101, 202]));
+        expect(preparedArgs[1][0].units).toEqual(new Set<number>());
+        const preparedIndex = unitSearchIndexServiceMock.prepareCatalogIndexes.calls.mostRecent().returnValue.factionEraSnapshot;
+        expect(preparedIndex.getFactionEraUnitUuids(none.id, era.id)).toEqual(new Set(unitsB.map(unit => unit.uuid)));
 
         finishFinalize(true);
         await waitForUnitCatalogSettlement(service);
         expect(service.getEras()[0]).not.toBe(activeEra);
         expect(service.getFactions()[0]).not.toBe(activeFaction);
-        expect(service.getEras()[0].units).toEqual(new Set([101, 202]));
-        expect(service.getFactionById(MULFACTION_NONE)?.eras[1]).toEqual(new Set([101, 202]));
+        expect(service.getEras()[0].units).toEqual(new Set<number>());
+        expect(service.getMulAvailabilityIndex()).toBe(preparedIndex);
+        expect(service.getFactionById(MULFACTION_NONE)?.eras).toEqual({});
         expect(era.units).toEqual(new Set());
         expect(none.eras[1]).toBeUndefined();
     });

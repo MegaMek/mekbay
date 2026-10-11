@@ -708,6 +708,9 @@ function ammoCapacityFacts(
 ): AmmoCapacityFacts {
     const baseAmmo = equipmentRegistry?.getBaseAmmo(ammo);
     return {
+        ammoType: ammo.ammoType,
+        techBase: ammo.techBase,
+        rackSize: ammo.rackSize,
         shots: ammo.shots,
         kgPerShot: ammo.kgPerShot,
         hasCustomKgPerShot: ammo.hasCustomKgPerShot,

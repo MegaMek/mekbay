@@ -306,7 +306,7 @@ export function compileUnitFacts(unit: OrgUnit, squads: number = getCISquadCount
         classKey: getUnitClassKey(unit),
         tags,
         scalars: {
-            id: unit.mul1id,
+            uuid: unit.uuid,
             tons: unit.tons,
             troopers: unit.internal || 0,
             omni: unit.omni === 1,

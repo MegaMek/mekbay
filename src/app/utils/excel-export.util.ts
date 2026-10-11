@@ -95,7 +95,6 @@ function unitToCBTRow(unit: UnitSummary): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
-        mul_id: unit.mul1id ?? '',
         year: unit.year,
         BV: unit.bv,
         cost: unit.cost,
@@ -158,7 +157,6 @@ function entityToCBTRow(unit: BaseEntity): Record<string, unknown> {
     return {
         chassis: unit.fullChassis(),
         model: unit.model(),
-        mul_id: unit.mulId() ?? '',
         year: unit.year(),
         BV: unit.battleValue(),
         cost: unit.cost(),
@@ -235,7 +233,6 @@ function unitToASRow(unit: UnitSummary): Record<string, unknown> {
     return {
         chassis: unit.chassis,
         model: unit.model,
-        mul_id: unit.mul1id ?? '',
         year: unit.year,
         PV: as?.PV ?? '',
         cost: unit.cost,

@@ -85,7 +85,7 @@ export class UnitDetailsFactionTabComponent {
         );
 
         return this.unitAvailabilitySource.useMegaMekAvailability()
-            ? this.buildMegaMekFactionAvailability(unit, allEras, allFactions, megaMekAvailabilityByEraFaction)
+            ? this.buildMegaMekFactionAvailability(allEras, allFactions, megaMekAvailabilityByEraFaction)
             : this.buildMulFactionAvailability(unit, allEras, allFactions, megaMekAvailabilityByEraFaction);
     });
 
@@ -101,16 +101,11 @@ export class UnitDetailsFactionTabComponent {
     ): FactionAvailability[] {
         const factionAvailabilityByEraId = new Map<number, FactionAvailabilityCandidate[]>();
 
+        const index = this.dataService.getMulAvailabilityIndex();
         for (const faction of factions) {
-            for (const [eraIdText, unitIds] of Object.entries(faction.eras) as Array<[string, Set<number>]>) {
-                if (unit.mul1id === null || !unitIds.has(unit.mul1id)) {
-                    continue;
-                }
-
-                const eraId = Number(eraIdText);
-                if (Number.isNaN(eraId)) {
-                    continue;
-                }
+            for (const era of eras) {
+                const eraId = era.id;
+                if (!index.getFactionEraUnitUuids(faction.id, eraId).has(unit.uuid)) continue;
 
                 this.getOrCreateCandidates(factionAvailabilityByEraId, eraId).push(
                     this.createFactionAvailabilityCandidate(
@@ -125,7 +120,6 @@ export class UnitDetailsFactionTabComponent {
     }
 
     private buildMegaMekFactionAvailability(
-        unit: UnitSummary,
         eras: readonly Era[],
         factions: readonly Faction[],
         megaMekAvailabilityByEraFaction: ReadonlyMap<number, ReadonlyMap<number, readonly FactionMegaMekAvailability[]>>,
@@ -139,10 +133,7 @@ export class UnitDetailsFactionTabComponent {
 
             for (const [factionId, details] of eraAvailability.entries()) {
                 const faction = factionById.get(factionId);
-                if (
-                    !faction
-                    || (isCatchAllFaction(faction.name) && (unit.mul1id === null || !faction.eras[eraId]?.has(unit.mul1id)))
-                ) {
+                if (!faction) {
                     continue;
                 }
 

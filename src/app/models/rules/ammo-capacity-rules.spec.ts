@@ -55,6 +55,9 @@ function facts(
     kgPerShot = 0,
 ): AmmoCapacityFacts {
     return Object.freeze({
+        ammoType: 'AC',
+        techBase: 'All',
+        rackSize: 5,
         shots,
         kgPerShot,
         hasCustomKgPerShot: kgPerShot > 0,

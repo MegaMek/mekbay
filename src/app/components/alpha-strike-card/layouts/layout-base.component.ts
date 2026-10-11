@@ -399,32 +399,11 @@ export abstract class AsLayoutBaseComponent {
         const allEras = this.dataService.getEras().sort((a, b) => (a.years.from || 0) - (b.years.from || 0));
         if (allEras.length === 0) return [];
 
-        const unitId = u.mul1id;
-        const unitYear = u.year;
-
-        // Check if unit exists in any era's unit list
-        const unitExistsInAnyEra = allEras.some(era => {
-            const units = era.units;
-            if (units instanceof Set) {
-                return unitId !== null && units.has(unitId);
-            }
-            return Array.isArray(units) && unitId !== null && units.includes(unitId);
-        });
-
-        // Helper to check if unit is available in a specific era
-        const isUnitInEra = (era: Era): boolean => {
-            if (unitExistsInAnyEra) {
-                const units = era.units;
-                if (units instanceof Set) {
-                    return unitId !== null && units.has(unitId);
-                }
-                return Array.isArray(units) && unitId !== null && units.includes(unitId);
-            } else {
-                // Unit not in era data, use year-based calculation
-                const eraEnd = era.years.to ?? Infinity;
-                return unitYear <= eraEnd;
-            }
-        };
+        const index = this.dataService.getMulAvailabilityIndex();
+        const unitExistsInAnyEra = allEras.some(era => index.getEraUnitUuids(era.id).has(u.uuid));
+        const isUnitInEra = (era: Era): boolean => unitExistsInAnyEra
+            ? index.getEraUnitUuids(era.id).has(u.uuid)
+            : u.year <= (era.years.to ?? Infinity);
 
         // Group eras by their image
         const erasByIcon = new Map<string, Era[]>();

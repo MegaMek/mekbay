@@ -9,6 +9,7 @@ import type { Faction } from '../models/factions.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { AvailabilityFilterScope, MegaMekWeightedAvailabilityRecord } from '../models/megamek/availability.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitSearchAvailabilityService } from './unit-search-availability.service';
@@ -49,6 +50,7 @@ describe('UnitSearchAvailabilityService', () => {
                 searchCorpusVersion: version,
                 megaMekAvailabilityVersion: () => 1,
                 getUnits: () => units,
+                getMulAvailabilityIndex: () => new MulAvailabilityIndex(units, eras, factions),
                 getEras: () => eras,
                 getFactions: () => factions,
                 getEraByName: (name: string) => eras.find(era => era.name === name),
@@ -94,11 +96,24 @@ describe('UnitSearchAvailabilityService', () => {
         expect(service.getUnitIdsForSelection(
             { or: ['Early'], and: [], not: ['Late'] },
             { or: ['First'], and: [], not: [] },
-        )).toEqual(new Set(['2', '3']));
+        )).toEqual(new Set([units[2].uuid, units[3].uuid]));
         expect(service.getUnitIdsForSelection(
             { or: ['Early'], and: [], not: [] },
             { or: ['First'], and: ['Second'], not: [] },
-        )).toEqual(new Set(['1']));
+        )).toEqual(new Set([units[0].uuid, units[1].uuid]));
+    });
+
+    it('checks combined MUL era/faction membership without constructing a result set per unit', () => {
+        options.update(value => ({ ...value, availabilitySource: 'mul' }));
+        const index = new MulAvailabilityIndex(units, eras, factions);
+        spyOn(TestBed.inject(DataService), 'getMulAvailabilityIndex').and.returnValue(index);
+        const bulkLookup = spyOn(index, 'getNamedFactionEraUnitUuids').and.callThrough();
+
+        expect(service.unitBelongsToFaction(units[0], 'First', ['Late'])).toBeTrue();
+        expect(service.unitBelongsToFaction(units[2], 'First', ['Late'])).toBeFalse();
+        expect(service.unitBelongsToEra(units[0], 'Early', { factionNames: ['Second'] })).toBeTrue();
+        expect(service.unitBelongsToEra(units[2], 'Early', { factionNames: ['Second'] })).toBeFalse();
+        expect(bulkLookup).not.toHaveBeenCalled();
     });
 
     it('enumerates rarity facets using either each scoped value or each source maximum', () => {
@@ -125,6 +140,33 @@ describe('UnitSearchAvailabilityService', () => {
         const scope = { factionNames: ['First'], availabilityFromNames: ['Unknown'] };
         expect(service.collectAvailableOptionIds([units[3]], scope, 'era', false)).toEqual(new Set([100]));
         expect(service.getBadges(units[3], { ...scope, eraNames: ['Early'] }, false))
+            .toEqual([{ source: 'Unknown', score: -1, rarity: 'Unknown' }]);
+    });
+
+    it('uses only RAT after switching sources, even when a search scope retains its MUL setting', () => {
+        options.update(value => ({ ...value, availabilitySource: 'mul' }));
+        records.set('Unknown Mek', { n: 'Unknown Mek', e: { 200: { 20: [10, 0] } } });
+        const scope = { eraNames: ['Late'], factionNames: ['Second'], bridgeThroughMulMembership: true };
+        expect(service.getCandidateUnitIds(scope, ['Requisition'], [])).toEqual(new Set<string>());
+
+        options.update(value => ({ ...value, availabilitySource: 'megamek' }));
+        const getMulIndex = spyOn(TestBed.inject(DataService), 'getMulAvailabilityIndex')
+            .and.throwError('RAT search must not consult MUL');
+        expect(service.getIndexedUnitIds('era', 'Late', scope, false)).toEqual(new Set([units[3].uuid]));
+        expect(service.getIndexedUnitIds('faction', 'Second', scope, false)).toEqual(new Set([units[3].uuid]));
+        expect(service.getCandidateUnitIds(scope, ['Requisition'], [])).toEqual(new Set([units[3].uuid]));
+        expect(service.getBadges(units[3], scope, false))
+            .toEqual([{ source: 'Requisition', score: 10, rarity: 'Very Rare' }]);
+        expect(getMulIndex).not.toHaveBeenCalled();
+    });
+
+    it('uses MUL membership and RAT rarity in MUL mode', () => {
+        options.update(value => ({ ...value, availabilitySource: 'mul' }));
+        const scope = { eraNames: ['Early'], factionNames: ['First'] };
+        expect(service.unitBelongsToFaction(units[3], 'First', ['Early'])).toBeTrue();
+        expect(service.getBadges(units[0], scope, false))
+            .toEqual([{ source: 'Requisition', score: 10, rarity: 'Very Rare' }]);
+        expect(service.getBadges(units[3], scope, false))
             .toEqual([{ source: 'Unknown', score: -1, rarity: 'Unknown' }]);
     });
 

@@ -117,6 +117,17 @@ describe('ForceUrlStateService', () => {
             await new Promise<void>(resolve => setTimeout(resolve, 0));
         }
 
+        it('ignores the removed mul_ids force-link parameter', async () => {
+            params.delete('instance');
+            params.set('mul_ids', '140');
+            start();
+            await settle();
+
+            expect(requireCatalogReady).not.toHaveBeenCalled();
+            expect(createDialog).not.toHaveBeenCalled();
+            expect(addLoadedForce).not.toHaveBeenCalled();
+        });
+
         it('blocks interaction before catalog readiness and until the force is added', async () => {
             let finishCatalog!: () => void;
             let finishForce!: (force: Force) => void;

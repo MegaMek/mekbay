@@ -8,7 +8,7 @@ import { performance } from 'node:perf_hooks';
 import JSZip from 'jszip';
 
 import { GameSystem } from '../src/app/models/common.model';
-import { MULFACTION_EXTINCT, type MULFaction } from '../src/app/models/mulfactions.model';
+import type { MULFaction } from '../src/app/models/mulfactions.model';
 import type { UnitSummary } from '../src/app/models/unit-summary.model';
 import { EraIndexService } from '../src/app/services/era-index.service';
 import { UnitSearchIndexService } from '../src/app/services/unit-search-index.service';
@@ -69,7 +69,6 @@ async function main(): Promise<void> {
         units,
         eras,
         factions,
-        factions.find(faction => faction.id === MULFACTION_EXTINCT),
     );
     index.commitPreparedCatalogIndexes(prepared);
     const indexDurationMs = performance.now() - indexStartedAt;

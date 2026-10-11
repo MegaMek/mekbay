@@ -349,6 +349,57 @@ describe('CBT game rules', () => {
         expect(TW_GAME_RULES.calculateTagBVCost(facts)).toBeCloseTo(94.8, 10);
     });
 
+    // Standard ammo facts determine prices even when the catalog was exported under the other ruleset.
+    for (const [name, ammoType, munitionType, baseBv, twBv, coreBv, rackSize, baseShots, shots, techBase] of [
+        ['AC/5 Caseless', 'AC', 'M_CASELESS', 9, 18, 9, 5, 20, 40, 'All'],
+        ['LAC/5 Caseless', 'LAC', 'M_CASELESS', 8, 16, 8, 5, 20, 40, 'All'],
+        ['PAC/4 Caseless', 'PAC', 'M_CASELESS', 6, 12, 6, 4, 20, 40, 'All'],
+        ['RAC/5 Caseless', 'AC_ROTARY', 'M_CASELESS', 31, 31, 31, 5, 20, 40, 'All'],
+        ['Improved AC/5 Caseless', 'AC_IMP', 'M_CASELESS', 9, 9, 9, 5, 20, 40, 'All'],
+        ['IS LRM-20 Thunder', 'LRM', 'M_THUNDER', 23, 96, 23, 20, 6, 6, 'IS'],
+        ['Clan LRM-20 Thunder', 'LRM', 'M_THUNDER', 27, 96, 27, 20, 6, 6, 'Clan'],
+        ['Improved LRM-5 Thunder', 'LRM_IMP', 'M_THUNDER', 6, 96, 6, 5, 24, 24, 'Clan'],
+        ['Enhanced LRM-10 Thunder', 'NLRM', 'M_THUNDER', 13, 96, 13, 10, 12, 12, 'IS'],
+        ['MML-7 Thunder', 'MML', 'M_THUNDER', 8, 95.2, 8, 7, 17, 17, 'IS'],
+        ['Primitive LRM-15 Thunder', 'LRM_PRIMITIVE', 'M_THUNDER', 17, 17, 17, 15, 6, 6, 'IS'],
+        ['Thunderbolt-15 Thunder', 'TBOLT_15', 'M_THUNDER', 29, 3.2, 29, 1, 4, 4, 'IS'],
+        ['IS Arrow IV FASCAM', 'ARROW_IV', 'M_FASCAM', 30, 80, 30, 20, 5, 5, 'IS'],
+        ['Clan Arrow IV FASCAM', 'ARROW_IV', 'M_FASCAM', 30, 120, 30, 20, 5, 5, 'Clan'],
+        ['Prototype Arrow IV FASCAM', 'ARROWIV_PROTO', 'M_FASCAM', 30, 64, 64, 20, 4, 4, 'IS'],
+        ['Sniper FASCAM', 'SNIPER', 'M_FASCAM', 11, 160, 160, 20, 10, 10, 'All'],
+        ['Thumper FASCAM', 'THUMPER', 'M_FASCAM', 5, 240, 240, 15, 20, 20, 'All'],
+        ['Long Tom FASCAM', 'LONG_TOM', 'M_FASCAM', 46, 100, 100, 25, 5, 5, 'All'],
+        ['LRM-20 Thunder-Active', 'LRM', 'M_THUNDER_ACTIVE', 23, 72, 72, 20, 6, 3, 'IS'],
+        ['LRM-20 Thunder-Augmented', 'LRM', 'M_THUNDER_AUGMENTED', 23, 168, 168, 20, 6, 3, 'IS'],
+        ['LRM-20 Thunder-Inferno', 'LRM', 'M_THUNDER_INFERNO', 23, 60, 60, 20, 6, 3, 'IS'],
+        ['LRM-20 Thunder-Vibrabomb', 'LRM', 'M_THUNDER_VIBRABOMB', 23, 60, 60, 20, 6, 3, 'IS'],
+        ['AC/5 Tracer', 'AC', 'M_TRACER', 9, 11.25, 11.25, 5, 20, 20, 'All'],
+        ['LRM-20 Listen-Kill', 'LRM', 'M_LISTEN_KILL', 23, 28, 28, 20, 6, 6, 'IS'],
+        ['Arrow IV Homing', 'ARROW_IV', 'M_HOMING', 30, 30, 30, 20, 5, 5, 'IS'],
+        ['SRM-6 Acid', 'SRM', 'M_AX_HEAD', 7, 14, 7, 6, 15, 7, 'IS'],
+    ] as const) {
+        for (const [catalogRuleset, catalogBv] of [['Core', coreBv], ['Total Warfare', twBv]] as const) {
+            it('resolves ' + name + ' BV from a ' + catalogRuleset + ' catalog', () => {
+                const baseAmmo = new AmmoEquipment({
+                    id: name + ' standard', name: 'Standard ammo', type: 'ammo',
+                    stats: { bv: baseBv }, tech: { base: techBase },
+                    ammo: { type: ammoType, rackSize, shots: baseShots },
+                });
+                const ammo = new AmmoEquipment({
+                    id: name, name, type: 'ammo', stats: { bv: catalogBv }, tech: { base: techBase },
+                    ammo: { type: ammoType, rackSize, shots, baseAmmo: baseAmmo.id, munitionType: [munitionType] },
+                });
+                const registry = new EquipmentRegistry({ [baseAmmo.id]: baseAmmo, [ammo.id]: ammo });
+
+                expect(CORE_2026_GAME_RULES.getAmmoBV(ammo, registry)).toBe(coreBv);
+                expect(TW_GAME_RULES.getAmmoBV(ammo, registry)).toBe(twBv);
+                expect(CORE_2026_GAME_RULES.getAmmoBV(ammo, registry)).toBe(coreBv);
+                expect(ammo.bv).toBe(catalogBv);
+                expect(CORE_2026_GAME_RULES.getAmmoBV(ammo)).toBe(catalogBv);
+            });
+        }
+    }
+
     it('ports ruleset-owned ammo BV and explosion resolution', () => {
         const baseAmmo = new AmmoEquipment({
             id: 'AC5Ammo', name: 'AC/5 Ammo', type: 'ammo',

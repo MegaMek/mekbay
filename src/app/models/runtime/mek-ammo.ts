@@ -252,6 +252,9 @@ function compatibleLoadout(
 function ammoCapacityFacts(ammo: AmmoEquipment, entity: BaseEntity): AmmoCapacityFacts {
     const baseAmmoShots = entity.getEquipmentRegistry().getBaseAmmo(ammo)?.shots;
     return {
+        ammoType: ammo.ammoType,
+        techBase: ammo.techBase,
+        rackSize: ammo.rackSize,
         shots: ammo.shots,
         kgPerShot: ammo.kgPerShot,
         hasCustomKgPerShot: ammo.hasCustomKgPerShot,

@@ -104,9 +104,9 @@ describe('UrlService', () => {
                 .toBe(GameSystem.CBT);
         });
 
-        it('recognizes force units specified by MUL ID', () => {
+        it('ignores removed MUL-ID force imports', () => {
             expect(computeGameSystemOverride(new URLSearchParams(`gs=${GameSystem.AS}&mul_ids=123`)))
-                .toBe(GameSystem.AS);
+                .toBeNull();
         });
 
         it('ignores empty consuming parameters', () => {

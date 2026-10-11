@@ -44,7 +44,7 @@ describe('incremental custom search indexes', () => {
         const nextEras = eras([10, -4, -5]), nextFactions = factions([10, -4, -5]);
         const expectedUnits = structuredClone(units);
         const expected = new UnitSearchIndexService().prepareCatalogIndexes(expectedUnits, nextEras, nextFactions);
-        const actual = service.prepareCatalogIndexes(units, nextEras, nextFactions, undefined, undefined, active);
+        const actual = service.prepareCatalogIndexes(units, nextEras, nextFactions, undefined, active);
         expect(comparable(actual)).toEqual(comparable(expected));
         expect(units).toEqual(expectedUnits);
         expect(actual.unitStats).toBe(initial.unitStats);
@@ -66,7 +66,7 @@ describe('incremental custom search indexes', () => {
         }, 'prepareUnitComponentIndexes').and.callThrough();
         const units = structuredClone(active);
         units[1].hash = 'changed';
-        const actual = service.prepareCatalogIndexes(units, [], [], undefined, undefined, active);
+        const actual = service.prepareCatalogIndexes(units, [], [], undefined, active);
         expect(unitComponents.calls.allArgs().map(args => args[0].uuid)).toEqual([active[1].uuid]);
         expect(actual.searchFilterIndex.get('type')?.get(active[1].type)).toBe(unchangedType);
     });
@@ -81,7 +81,7 @@ describe('incremental custom search indexes', () => {
             units[1].hash = String(revision);
             units[1].as.specials = revision % 2 ? ['AC1/2/3'] : [];
             units[1]._nameTags = [];
-            const actual = service.prepareCatalogIndexes(units, [], [], undefined, undefined, active);
+            const actual = service.prepareCatalogIndexes(units, [], [], undefined, active);
             const expected = new UnitSearchIndexService().prepareCatalogIndexes(structuredClone(units), [], []);
             expect(comparable(actual)).toEqual(comparable(expected));
             service.commitPreparedCatalogIndexes(actual);

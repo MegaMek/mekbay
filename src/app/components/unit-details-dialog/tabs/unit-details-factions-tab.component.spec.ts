@@ -12,6 +12,7 @@ import type { MegaMekWeightedAvailabilityRecord } from '../../../models/megamek/
 import { MULFACTION_EXTINCT } from '../../../models/mulfactions.model';
 import type { Options } from '../../../models/options.model';
 import type { UnitSummary } from '../../../models/unit-summary.model';
+import { MulAvailabilityIndex } from '../../../utils/mul-availability-index';
 import { DataService } from '../../../services/data.service';
 import { OptionsService } from '../../../services/options.service';
 import { createEmptyUnit } from '../../../testing/unit-test-helpers';
@@ -89,6 +90,7 @@ describe('UnitDetailsFactionTabComponent', () => {
     };
 
     const dataServiceMock = {
+        getMulAvailabilityIndex: () => new MulAvailabilityIndex([unit], eras, factions),
         getEras: jasmine.createSpy('getEras').and.callFake(() => eras),
         getFactions: jasmine.createSpy('getFactions').and.callFake(() => factions),
         getMegaMekAvailabilityRecordForUnit: jasmine.createSpy('getMegaMekAvailabilityRecordForUnit').and.callFake(() => megaMekAvailabilityRecord),
@@ -324,7 +326,7 @@ describe('UnitDetailsFactionTabComponent', () => {
                 },
             } as Faction,
         );
-        useMegaMekAvailability = true;
+        useMegaMekAvailability = false;
         megaMekAvailabilityRecord = {
             n: unit.name,
             e: {
@@ -401,6 +403,36 @@ describe('UnitDetailsFactionTabComponent', () => {
             expect(collapsedItems[1].textContent).toContain('Faction Y');
         } finally {
             factions.splice(0, factions.length, ...originalFactions);
+        }
+    });
+
+    it('does not fall back to MUL faction membership when RAT has no record', () => {
+        useMegaMekAvailability = true;
+        megaMekAvailabilityRecord = undefined;
+        spyOn(dataServiceMock, 'getMulAvailabilityIndex').and.throwError('RAT must not consult MUL');
+
+        const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+        fixture.componentRef.setInput('unit', unit);
+        fixture.detectChanges();
+        expect(fixture.componentInstance.factionAvailability().flatMap(era => era.factions)).toEqual([]);
+    });
+
+    it('shows RAT catchall memberships without requiring a MUL ID or MUL membership', () => {
+        const originalFactionCount = factions.length;
+        factions.push({ id: 99, name: 'Inner Sphere General', group: 'Inner Sphere', img: '', eras: {} } as Faction);
+        useMegaMekAvailability = true;
+        const ratUnit = createEmptyUnit({ mul1id: null, name: 'Unlisted RAT unit' });
+        megaMekAvailabilityRecord = { n: ratUnit.name, e: { 3050: { 99: [5, 0] } } };
+        spyOn(dataServiceMock, 'getMulAvailabilityIndex').and.throwError('RAT must not consult MUL');
+
+        try {
+            const fixture = TestBed.createComponent(UnitDetailsFactionTabComponent);
+            fixture.componentRef.setInput('unit', ratUnit);
+            fixture.detectChanges();
+            const era = fixture.componentInstance.factionAvailability().find(item => item.eraName === 'Clan Invasion');
+            expect(era?.factions.map(faction => faction.name)).toEqual(['Inner Sphere General']);
+        } finally {
+            factions.length = originalFactionCount;
         }
     });
 

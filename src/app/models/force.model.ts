@@ -24,6 +24,7 @@ import type { OrgSizeResult } from '../utils/org/org-types';
 import { getOrgFromForce, getOrgFromGroup } from '../utils/org/org-analysis.util';
 import { getUnitsAverageTechBase, TechBase } from './tech.model';
 import { MULFACTION_EXTINCT } from './mulfactions.model';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import { createMulForceAvailabilityContext, type ForceAvailabilityContext } from '../utils/force-availability.util';
 import { uuidv7 } from '../utils/uuid.util';
 import { jsonValuesEqual } from '../utils/json-value.util';
@@ -184,9 +185,10 @@ function getEraEndYear(era: Era): number {
 function hasFactionEraAvailability(
     faction: Faction,
     era: Era,
-    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
+    availabilityContext: ForceAvailabilityContext,
 ): boolean {
-    return availabilityContext.getFactionEraUnitIds(faction, era).size > 0;
+    return availabilityContext.factionExistsInEra?.(faction, era)
+        ?? availabilityContext.getFactionEraUnitIds(faction, era).size > 0;
 }
 
 export function resolveSerializedFormation(
@@ -222,7 +224,9 @@ export function buildEraWarningMessage(
     faction: Faction | null,
     eras: readonly Era[],
     extinctFaction: Faction | null,
-    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
+    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(new MulAvailabilityIndex(
+        units, eras, [faction, extinctFaction].filter((candidate): candidate is Faction => candidate !== null),
+    )),
     factionExistsInEra: (faction: Faction, era: Era) => boolean = (candidateFaction, candidateEra) => (
         hasFactionEraAvailability(candidateFaction, candidateEra, availabilityContext)
     ),
@@ -268,7 +272,9 @@ export function getEraUnitValidationSummary(
     era: Era,
     eras: readonly Era[],
     extinctFaction: Faction | null,
-    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
+    availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(new MulAvailabilityIndex(
+        units, eras, extinctFaction ? [extinctFaction] : [],
+    )),
 ): EraUnitValidationSummary {
     const eraEndYear = getEraEndYear(era);
     let invalidTrackedUnits = 0;
@@ -1696,10 +1702,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         return group.units();
     }
 
-    eraWarning = computed<string | null>(() => {
-        return this.getEraWarningMessage(this.era(), this.faction());
-    });
-
     /**
      * Applies a tag mutation for a caller that will persist it explicitly.
      * This advances the same owner-generation and monotonic-time authority as
@@ -1715,23 +1717,6 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
         this.advanceForceOwnerGeneration();
         this.advanceMutationTimestamp();
         return true;
-    }
-
-    getEraWarningMessage(
-        era: Era | null,
-        faction: Faction | null,
-        availabilityContext: ForceAvailabilityContext = createMulForceAvailabilityContext(),
-    ): string | null {
-        const eras = this.dataService.getEras();
-        const extinctFaction = this.dataService.getFactionById(MULFACTION_EXTINCT) ?? null;
-        return buildEraWarningMessage(
-            this.units().map(unit => unit.getSummary()),
-            era,
-            faction,
-            eras,
-            extinctFaction,
-            availabilityContext,
-        );
     }
 
     /** Whole-owner capacity; subclasses may include detached authoritative members. */

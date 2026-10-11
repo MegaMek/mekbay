@@ -25,7 +25,6 @@ export function orgUnitFromEntity(entity: BaseEntity): OrgEntityUnit {
     const type = alphaStrikeUnitType(entity);
     const infantrySpecials = collectAlphaStrikeInfantrySpecials(entity, type);
     return Object.freeze({
-        mul1id: entity.mulId(),
         uuid: entity.uuid(),
         name: entity.displayName(),
         type: entity.unitType(),

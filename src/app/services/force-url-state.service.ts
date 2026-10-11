@@ -17,7 +17,6 @@ import {
     buildMultiForceQueryParams,
     parseForceUrl,
     type ForceQueryParams,
-    type ForceUrlUnitLookupMode,
 } from '../utils/force-url.util';
 import { DataService } from './data.service';
 import { ForcePersistenceService } from './force-persistence.service';
@@ -131,7 +130,7 @@ export class ForceUrlStateService {
     }
 
     private hasInitialForceRequest(): boolean {
-        return ['operation', 'instance', 'units', 'mul_ids'].some(key => this.urlService.initialParams.get(key));
+        return ['operation', 'instance', 'units'].some(key => this.urlService.initialParams.get(key));
     }
 
     private async initializeFromUrl(): Promise<void> {
@@ -251,10 +250,7 @@ export class ForceUrlStateService {
             }
         }
 
-        const unitsParam = params.get('units');
-        const mulIdsParam = params.get('mul_ids');
-        const inlineUnitsParam = unitsParam || mulIdsParam;
-        const lookupMode: ForceUrlUnitLookupMode = unitsParam ? 'identifier' : 'mulId';
+        const inlineUnitsParam = params.get('units');
         if (inlineUnitsParam) {
             reportProgress(params.get('name') ? `Loading ${params.get('name')}…` : 'Loading shared units…');
             const force = this.createInlineForce(params);
@@ -267,7 +263,7 @@ export class ForceUrlStateService {
             reportForceProgress({ ...inlineProgress, status: 'loading' });
             force.loading = true;
             try {
-                const admitted = await this.parseUnitsFromUrl(force, inlineUnitsParam, lookupMode);
+                const admitted = await this.parseUnitsFromUrl(force, inlineUnitsParam);
                 if (admitted.length > 0) {
                     this.logger.info(`Force URL startup: loaded ${admitted.length} units.`);
                     if (this.layoutService.isMobile()) this.layoutService.openMenu();
@@ -315,10 +311,9 @@ export class ForceUrlStateService {
     private async parseUnitsFromUrl(
         force: Force,
         unitsParam: string,
-        lookupMode: ForceUrlUnitLookupMode,
     ): Promise<ForceMember[]> {
         const admitted: ForceMember[] = [];
-        for (const parsedGroup of parseForceUrl(unitsParam, this.dataService.getUnits(), this.logger, lookupMode)) {
+        for (const parsedGroup of parseForceUrl(unitsParam, this.dataService.getUnits(), this.logger)) {
             const group = await force.addGroup(parsedGroup.name || undefined);
             if (parsedGroup.formationId) {
                 const formation = FormationAnalyzer.getDefinitionById(parsedGroup.formationId, force.gameSystem);

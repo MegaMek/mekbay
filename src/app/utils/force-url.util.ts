@@ -24,7 +24,6 @@ export interface ForceQueryParams {
 }
 
 export interface UnitShareLinks { readonly httpsUrl: string; readonly appUrl: string; }
-export type ForceUrlUnitLookupMode = 'identifier' | 'mulId';
 
 export interface ParsedForceUrlUnit {
     readonly summary: UnitSummary;
@@ -84,17 +83,15 @@ export function parseForceUrl(
     unitsParam: string,
     allUnits: readonly UnitSummary[],
     logger?: UrlParseLogger,
-    lookupMode: ForceUrlUnitLookupMode = 'identifier',
 ): readonly ParsedForceUrlGroup[] {
     const lookup = new Map<string, UnitSummary | undefined>();
     const unitsByUuid = new Map<string, UnitSummary>();
     for (const unit of allUnits) {
         unitsByUuid.set(unit.uuid, unit);
         if (unit.isCustom) continue;
-        if (lookupMode === 'mulId' && unit.mul1id === null) continue;
-        const key = lookupMode === 'mulId' ? String(unit.mul1id) : unit.name.toLowerCase();
+        const key = unit.name.toLowerCase();
         if (!lookup.has(key)) lookup.set(key, unit);
-        else if (lookupMode === 'identifier') lookup.set(key, undefined);
+        else lookup.set(key, undefined);
     }
     const sourceGroups = unitsParam.includes('|') || unitsParam.includes('~') ? unitsParam.split('|') : [unitsParam];
     const result: ParsedForceUrlGroup[] = [];
@@ -108,10 +105,10 @@ export function parseForceUrl(
         for (const encoded of unitText.split(',')) {
             if (!encoded.trim()) continue;
             const parts = encoded.split(':');
-            const key = lookupMode === 'mulId' ? parts[0] : parts[0].toLowerCase();
-            const summary = lookupMode === 'mulId' ? lookup.get(key) : unitsByUuid.get(key) ?? lookup.get(key);
+            const key = parts[0].toLowerCase();
+            const summary = unitsByUuid.get(key) ?? lookup.get(key);
             if (!summary) {
-                logger?.warn(`Unit with ${lookupMode === 'mulId' ? 'MUL ID' : 'UUID or non-custom name'} "${parts[0]}" not found in data`);
+                logger?.warn(`Unit with UUID or non-custom name "${parts[0]}" not found in data`);
                 continue;
             }
             const gunnery = parseOptionalSkill(parts[1]);

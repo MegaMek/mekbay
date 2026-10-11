@@ -21,7 +21,6 @@ export type UrlParamValue = string | number | null | undefined;
  */
 export const MEANINGFUL_URL_PARAMS = [
     'units',       // Force units
-    'mul_ids',     // Force units by MUL ID
     'instance',    // Cloud force instance ID
     'toe',         // TO&E organization ID
     'shareUnit',   // Shared single unit

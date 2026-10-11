@@ -111,6 +111,40 @@ describe('battle value pure rules', () => {
     expect(mekArmorBarFactor('STANDARD')).toBe(1);
   });
 
+  for (const catalogBv of [23, 96]) {
+    it('prices mounted and runtime-selected Thunder independently of catalog BV ' + catalogBv, () => {
+      class ExposedCalculator extends CombatVehicleBVCalculator {
+        ammoValue(item: EntityMountedEquipment): number { return this.ammoBV(item); }
+      }
+      const standard = new AmmoEquipment({
+        id: 'ISLRM20Standard', name: 'IS LRM-20 Ammo', type: 'ammo',
+        stats: { bv: 23 }, ammo: { type: 'LRM', rackSize: 20, shots: 6 },
+      });
+      const thunder = new AmmoEquipment({
+        id: 'ISLRM20Thunder', name: 'IS LRM-20 Thunder Ammo', type: 'ammo',
+        stats: { bv: catalogBv },
+        ammo: { type: 'LRM', rackSize: 20, shots: 6, baseAmmo: standard.id, munitionType: ['M_THUNDER'] },
+      });
+      const registry = createTestEquipmentRegistry({ [standard.id]: standard, [thunder.id]: thunder });
+      const entity = new TestTankEntity(registry);
+      const standardBin = mount(standard);
+      const thunderBin = mount(thunder);
+      entity.setEquipment([standardBin, thunderBin]);
+      const selected = {
+        ...entityState(entity),
+        ammoRemaining: () => 2,
+        ammoEquipment: () => thunder,
+      } satisfies EntityStateView;
+
+      for (const [rules, expected] of [[CORE_2026_GAME_RULES, 23], [TW_GAME_RULES, 96]] as const) {
+        const pristine = new ExposedCalculator(entity, undefined, rules);
+        expect(pristine.ammoValue(standardBin)).toBe(23);
+        expect(pristine.ammoValue(thunderBin)).toBe(expected);
+        expect(new ExposedCalculator(entity, selected, rules).ammoValue(standardBin)).toBe(expected);
+      }
+    });
+  }
+
   it('uses the rules layer for pristine and runtime-selected ammunition BV', () => {
     class ExposedCalculator extends CombatVehicleBVCalculator {
       ammoValue(item: EntityMountedEquipment): number { return this.ammoBV(item); }

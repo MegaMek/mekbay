@@ -112,7 +112,6 @@ export type OrgTransportSpecial = 'MEC' | 'XMEC';
  * organization logic never depends on or synthesizes catalog projections.
  */
 interface OrgUnitData {
-    readonly mul1id: number | null;
     readonly uuid: UnitUuid;
     readonly name: string;
     readonly type: UnitSummary['type'];
@@ -291,7 +290,7 @@ export type BuiltInOrgFactPath = `bucket:${OrgBucketName}` | `sum:${OrgPatternRe
 export type OrgFactPath = BuiltInOrgFactPath;
 
 export interface UnitFactScalars {
-    readonly id: number | null;
+    readonly uuid: UnitSummary['uuid'];
     readonly tons: number;
     readonly troopers: number;
     readonly omni: boolean;

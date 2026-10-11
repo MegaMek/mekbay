@@ -19,6 +19,7 @@ import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { FormationAnalyzer } from '../utils/formation/formation-analysis.util';
 import { FormationSolver } from '../utils/formation/formation-solver.util';
 import { DataService } from './data.service';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import type { ForceGenerationContext, ForceGenerationPreview } from './force-generator.service';
 import {
     ForceGeneratorService,
@@ -144,6 +145,7 @@ describe('ForceGeneratorService', () => {
     };
 
     const dataServiceMock = {
+        getMulAvailabilityIndex: () => new MulAvailabilityIndex(units, [...erasById.values()], [...factionsById.values()]),
         searchCorpusVersion: signal(1),
         megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),

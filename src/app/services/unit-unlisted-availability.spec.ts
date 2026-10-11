@@ -11,6 +11,7 @@ import { DataService } from './data.service';
 import { OptionsService } from './options.service';
 import { UnitAvailabilitySourceService } from './unit-availability-source.service';
 import { UnitSearchIndexService } from './unit-search-index.service';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 
 describe('unlisted unit availability', () => {
     const eras: Era[] = [
@@ -27,6 +28,7 @@ describe('unlisted unit availability', () => {
                 getUnits: () => units, getEras: () => eras, getFactions: () => [none],
                 getFactionById: (id: number) => id === none.id ? none : undefined,
                 searchCorpusVersion: signal(1),
+                getMulAvailabilityIndex: () => new MulAvailabilityIndex(units, eras, [none]),
             } },
         ] });
         const service = TestBed.inject(UnitAvailabilitySourceService);

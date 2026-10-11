@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import type { EquipmentTechBase } from '../entity/types/tech';
+import type { AmmoType } from '../equipment.model';
 
-/** Detached catalog facts needed to derive one munition's effective shot mass. */
+/** Detached catalog facts needed to derive munition capacity and Battle Value. */
 export interface AmmoCapacityFacts {
+    readonly ammoType: AmmoType;
+    readonly techBase: EquipmentTechBase;
+    readonly rackSize: number;
     readonly shots: number;
     readonly kgPerShot: number;
     readonly hasCustomKgPerShot: boolean;
@@ -34,10 +39,34 @@ export function resolveAmmoBattleValue(
     facts: AmmoCapacityFacts,
 ): number | 'variable' {
     const current = facts.bv ?? 0;
-    if (!facts.munitionTypes.has('M_AX_HEAD') || facts.baseAmmoBv === undefined) return current;
-    return typeof facts.baseAmmoBv === 'number'
-        ? facts.baseAmmoBv * (ruleset === 'total-warfare' ? 2 : 1)
-        : facts.baseAmmoBv;
+    if (facts.baseAmmoBv === undefined) return current;
+
+    // Derive both rulesets from standard ammo, regardless of the catalog's exported BV.
+    if (facts.munitionTypes.has('M_AX_HEAD') || facts.munitionTypes.has('M_CASELESS')) {
+        const doubleBv = ruleset === 'total-warfare' && (
+            facts.munitionTypes.has('M_AX_HEAD') || ['AC', 'LAC', 'PAC'].includes(facts.ammoType)
+        );
+        return doubleBv && typeof facts.baseAmmoBv === 'number'
+            ? facts.baseAmmoBv * 2
+            : facts.baseAmmoBv;
+    }
+
+    if (facts.munitionTypes.has('M_THUNDER')) {
+        if (ruleset === 'core-2026'
+            || !['LRM', 'LRM_IMP', 'MML', 'NLRM', 'TBOLT_10', 'TBOLT_15', 'TBOLT_20'].includes(facts.ammoType)) {
+            return facts.baseAmmoBv;
+        }
+        // TO:AUE pp. 197-198: 4 BV per 5 points of standard mines delivered per ton.
+        return facts.rackSize * resolveAmmoShots(ruleset, facts) / 5 * 4;
+    }
+
+    if (facts.ammoType === 'ARROW_IV' && facts.munitionTypes.has('M_FASCAM')) {
+        if (ruleset === 'core-2026') return facts.baseAmmoBv;
+        // TO:AR p. 152: Clan Arrow IV lays a 30-point field; Inner Sphere lays 20.
+        const minePoints = facts.techBase === 'Clan' ? 30 : 20;
+        return minePoints * resolveAmmoShots(ruleset, facts) / 5 * 4;
+    }
+    return current;
 }
 
 export function resolveAmmoKgPerShot(

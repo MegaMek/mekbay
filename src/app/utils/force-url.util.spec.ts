@@ -34,9 +34,9 @@ describe('parseForceUrl', () => {
         })]);
     });
 
-    it('decodes MUL IDs, group metadata, and skills while keeping the first duplicate', () => {
+    it('decodes UUIDs, group metadata, and skills independently of MUL IDs', () => {
         const logger = { warn: jasmine.createSpy('warn') };
-        const groups = parseForceUrl('Alpha;assault~140:3:4,1901', units, logger, 'mulId');
+        const groups = parseForceUrl(`Alpha;assault~${units[0].uuid}:3:4,${units[2].uuid}`, units, logger);
 
         expect(groups).toEqual([{
             name: 'Alpha',
@@ -91,9 +91,10 @@ describe('parseForceUrl', () => {
         expect(parseForceUrl(catalogUnit.uuid, [catalogUnit, collision])[0].units[0].summary).toBe(catalogUnit);
     });
 
-    it('does not let custom units shadow catalog MUL IDs', () => {
+    it('does not resolve units through external MUL IDs', () => {
         const custom = createEmptyUnit({ mul1id: 140, isCustom: true });
-        expect(parseForceUrl('140', [custom, ...units], undefined, 'mulId')[0].units[0].summary).toBe(units[0]);
+        expect(parseForceUrl('140', [custom, ...units])[0].units).toEqual([]);
+        expect(parseForceUrl(custom.uuid, [custom, ...units])[0].units[0].summary).toBe(custom);
     });
 });
 

@@ -110,13 +110,11 @@ function refreshSearchCorpusForTest(dataService: DataService): void {
     internals.invalidateForcePackCaches();
     const runtime = TestBed.inject(UnitRuntimeService);
     runtime.commitPreparedRuntimeCatalog(runtime.prepareRuntimeCatalog(units));
-    internals.applyNoneFactionMemberships(units, eras, factions);
     TestBed.inject(UnitRuntimeService).postprocessUnits(units, eras);
     TestBed.inject(UnitSearchIndexService).rebuildIndexes(
         units,
         eras,
         factions,
-        dataService.getFactionById(MULFACTION_EXTINCT),
         dataService.getEquipmentRegistry(),
     );
     internals.runtimeSearchIndexesReady.set(true);
