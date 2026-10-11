@@ -199,7 +199,7 @@
       <div class="equip-group">
         <div class="equip-group-title">General</div>
         <div class="equip-items">
-          @let bv = mount ? mount.getBV(entity()) : eq.bv;
+          @let bv = equipmentBV(eq, mount);
           <div class="equip-item">
             <span class="equip-label">BV:</span>
             <span class="equip-value">{{ bv === 'variable' ? 'Variable' : (bv | number: '1.0-2') }}</span>
@@ -1089,9 +1089,10 @@
                     <span class="equipment-number equipment-range"
                       ><small>Range</small><span>{{ equipmentRange(eq) }}</span></span
                     >
+                    @let bv = equipmentBV(eq);
                     <span class="equipment-number equipment-bv"
                       ><small>BV</small
-                      ><span>{{ eq.bv === 'variable' ? 'Var.' : (eq.bv | number: '1.0-2') }}</span></span
+                      ><span>{{ bv === 'variable' ? 'Var.' : (bv | number: '1.0-2') }}</span></span
                     >
                   </span>
                 </button>

@@ -9,6 +9,7 @@ import {
   formatEquipmentName,
 } from '../../equipment.model';
 import type { BaseEntity } from '../base-entity';
+import type { CBTGameRules } from '../../rules/game-rules';
 import { getEquipmentBV } from '../utils/equipment-bv';
 import { getEquipmentCost } from '../utils/cost/equipment-pricing';
 import { getEquipmentTonnage } from '../utils/equipment-tonnage';
@@ -244,8 +245,8 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
     return resolvePhysicalWeaponDamage(this.equipment, this.owner.tonnage());
   }
 
-  getBV(entity: BaseEntity): number {
-    return getEquipmentBV(entity, this);
+  getBV(entity: BaseEntity, gameRules?: CBTGameRules): number {
+    return getEquipmentBV(entity, this, gameRules);
   }
 
   getTonnage(entity: BaseEntity): number | undefined {

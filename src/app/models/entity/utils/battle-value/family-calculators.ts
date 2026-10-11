@@ -212,7 +212,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
       const requiredSlots = mount.getNumCriticalSlots(this.entity);
       let slots = placedSlots > 0 ? placedSlots
         : typeof requiredSlots === 'number' ? requiredSlots : 0;
-      let value = mount.getBV(this.entity);
+      let value = mount.getBV(this.entity, this.gameRules);
       if (equipment instanceof WeaponEquipment && isPpcEquipment(equipment)) {
         const capacitor = this.entity.getLinkingMount(mount)?.equipment;
         if (isPpcCapacitorEquipment(capacitor)) {

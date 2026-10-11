@@ -84,7 +84,7 @@ import {
   equipmentToHitModifier,
   equipmentTypeLabel,
 } from '../components/floating-comp-info/equipment-info';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../models/rules/game-rules';
+import { gameRulesFor } from '../models/rules/game-rules';
 import { formatWeaponDamage } from '../utils/weapon-damage.util';
 import { constructionEngineTechnology } from './domain/construction-technology-rules';
 import { ToastService } from '../services/toast.service';
@@ -345,6 +345,7 @@ export class UnitConstructionComponent {
   readonly unitNames = inject(UnitNameService);
   private readonly layout = inject(LayoutService);
   private readonly optionsService = inject(OptionsService);
+  private readonly gameRules = computed(() => gameRulesFor(this.optionsService.options().CBTRules));
   private readonly toast = inject(ToastService);
   private readonly injector = inject(Injector);
   private readonly equipmentToggle = viewChild<ElementRef<HTMLButtonElement>>('equipmentToggle');
@@ -1485,7 +1486,7 @@ export class UnitConstructionComponent {
   readonly inspectorToHitModifier = computed(() =>
     equipmentToHitModifier(
       this.inspectorEquipment(),
-      this.optionsService.options().CBTRules === 'total-warfare' ? TW_GAME_RULES : CORE_2026_GAME_RULES,
+      this.gameRules(),
     ),
   );
   readonly inspectorHeat = computed(() => equipmentHeat(this.inspectorEquipment()));
@@ -1664,8 +1665,10 @@ export class UnitConstructionComponent {
         const mass = this.equipmentMass(eq);
         return typeof mass === 'number' ? mass : null;
       }
-      case 'bv':
-        return eq.hasFixedBV() ? eq.bv : null;
+      case 'bv': {
+        const bv = this.equipmentBV(eq);
+        return typeof bv === 'number' ? bv : null;
+      }
       case 'damage':
         return eq instanceof WeaponEquipment
           ? Math.max(0, ...resolveWeaponDamage(eq, this.registry).values) || null
@@ -1694,6 +1697,10 @@ export class UnitConstructionComponent {
   }
   equipmentSlots(eq: Equipment): string | number {
     return eq.getNumCriticalSlots(this.entity()) ?? '—';
+  }
+  equipmentBV(eq: Equipment, mount?: EntityMountedEquipment): number | 'variable' {
+    if (mount) return mount.getBV(this.entity(), this.gameRules());
+    return eq instanceof AmmoEquipment ? this.gameRules().getAmmoBV(eq, this.registry) : eq.bv;
   }
   equipmentMass(eq: Equipment): string | number {
     const entity = this.entity();

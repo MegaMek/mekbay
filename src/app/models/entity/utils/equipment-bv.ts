@@ -3,6 +3,8 @@
 // Author: Drake
 
 import type { BaseEntity } from '../base-entity';
+import { AmmoEquipment } from '../../equipment.model';
+import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../rules/game-rules';
 import type { EntityMountedEquipment } from '../types/equipment';
 import { isEcmEquipment } from '../../ecm-mode.model';
 import { isBapEquipment } from '../../bap-equipment.model';
@@ -30,9 +32,18 @@ export function getPpcCapacitorBV(linkedPpc: EntityMountedEquipment): number {
     return PPC_CAPACITOR_BV[linkedPpc.equipmentId] ?? 0;
 }
 
-export function getEquipmentBV(entity: BaseEntity, mount: EntityMountedEquipment): number {
+export function getEquipmentBV(
+    entity: BaseEntity,
+    mount: EntityMountedEquipment,
+    gameRules: CBTGameRules = CORE_2026_GAME_RULES,
+): number {
     const equipment = mount.equipment;
     if (!equipment) return 0;
+
+    if (equipment instanceof AmmoEquipment) {
+        const bv = gameRules.getAmmoBV(equipment, entity.getEquipmentRegistry());
+        return typeof bv === 'number' ? bv : 0;
+    }
 
     // MiscType calculates ProtoMek melee BV by identity before consulting its
     // nominal database BV (which is zero for the Quad Melee System).

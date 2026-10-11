@@ -8,11 +8,11 @@ import { DialogRef } from '@angular/cdk/dialog';
 import type { UnitComponent } from '../../models/unit-summary.model';
 import { DataService } from '../../services/data.service';
 import type { UnitSummary } from '../../models/unit-summary.model';
-import { type Equipment, formatEquipmentRulesRefs, WeaponEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, type Equipment, formatEquipmentRulesRefs, WeaponEquipment } from '../../models/equipment.model';
 import { equipmentHeat, equipmentTechnologyGroups, equipmentToHitModifier, equipmentTypeLabel, type EquipmentInfoGroup } from './equipment-info';
 import { getWeaponTypeCSSClass } from '../../utils/equipment.util';
 import { OptionsService } from '../../services/options.service';
-import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rules';
+import { gameRulesFor } from '../../models/rules/game-rules';
 
 
 @Component({
@@ -25,6 +25,7 @@ import { CORE_2026_GAME_RULES, TW_GAME_RULES } from '../../models/rules/game-rul
 export class FloatingCompInfoComponent {
     private dataService = inject(DataService);
     private optionsService = inject(OptionsService);
+    private gameRules = computed(() => gameRulesFor(this.optionsService.options().CBTRules));
     readonly dialogRef = inject<DialogRef<void>>(DialogRef, { optional: true });
     unit = input.required<UnitSummary>();
     comp = input<UnitComponent | null>(null);
@@ -60,10 +61,7 @@ export class FloatingCompInfoComponent {
         const equipment = this.equipment() ?? this.comp()?.eq;
         if (!equipment) return null;
 
-        const rules = this.optionsService.options().CBTRules === 'total-warfare'
-            ? TW_GAME_RULES
-            : CORE_2026_GAME_RULES;
-        return equipmentToHitModifier(equipment, rules);
+        return equipmentToHitModifier(equipment, this.gameRules());
     }
 
     get rackSize(): number | null {
@@ -123,7 +121,9 @@ export class FloatingCompInfoComponent {
             {
                 group: 'General',
                 items: [
-                    { label: 'BV', value: eq.bv },
+                    { label: 'BV', value: eq instanceof AmmoEquipment
+                        ? this.gameRules().getAmmoBV(eq, this.dataService.getEquipmentRegistry())
+                        : eq.bv },
                     { label: 'Cost', value: eq.cost },
                     { label: 'Tonnage', value: eq.tonnage },
                     { label: 'Criticals', value: eq.critSlots },

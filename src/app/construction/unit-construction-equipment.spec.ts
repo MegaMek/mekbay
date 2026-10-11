@@ -15,7 +15,7 @@ import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-e
 import { buildingLocationName } from '../models/entity/types/building';
 import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
 import { parseEntity } from '../models/entity/parse-entity';
-import { ArmorEquipment, type Equipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, type Equipment, MiscEquipment, WeaponEquipment } from '../models/equipment.model';
 import {
   MountedArmor,
   MountedEngine,
@@ -158,6 +158,20 @@ describe('construction equipment warehouse', () => {
     stats: { criticalSlots: 'variable', tonnage: 'variable', bv: 'variable' },
   });
   const sortEquipment = [sortAlpha, sortBeta, sortGamma, sortVariable];
+  const arrowAmmo = new AmmoEquipment({
+    id: 'Warehouse standard Arrow IV', name: 'Warehouse standard Arrow IV', type: 'ammo',
+    tech: { ...tech, base: 'IS' }, stats: { bv: 30, tonnage: 1, criticalSlots: 1 },
+    ammo: { type: 'ARROW_IV', rackSize: 20, shots: 5 },
+  });
+  const fascamAmmo = [30, 80].map(catalogBv => new AmmoEquipment({
+    id: 'Warehouse ammo BV FASCAM ' + catalogBv, name: 'Warehouse ammo BV FASCAM ' + catalogBv,
+    type: 'ammo', tech: { ...tech, base: 'IS' }, stats: { bv: catalogBv, tonnage: 1, criticalSlots: 1 },
+    ammo: { type: 'ARROW_IV', rackSize: 20, shots: 5, baseAmmo: arrowAmmo.id, munitionType: ['M_FASCAM'] },
+  }));
+  const ammoSortControl = new AmmoEquipment({
+    id: 'Warehouse ammo BV Control', name: 'Warehouse ammo BV Control', type: 'ammo', tech,
+    stats: { bv: 50, tonnage: 1, criticalSlots: 1 }, ammo: { type: 'AC', rackSize: 10, shots: 10 },
+  });
   const isTargetingComputer = new MiscEquipment({
     id: 'Warehouse mass IS targeting computer',
     name: 'Warehouse mass IS targeting computer',
@@ -188,6 +202,9 @@ describe('construction equipment warehouse', () => {
       [
         ...weapons,
         ...sortEquipment,
+        arrowAmmo,
+        ...fascamAmmo,
+        ammoSortControl,
         ...massEquipment,
         autocannon,
         tankEquipment,
@@ -1081,6 +1098,44 @@ describe('construction equipment warehouse', () => {
     }
     expect(editor.selectedEquipment()).toBe(sortBeta);
     expect(editor.entity().equipment().length).toBe(count);
+  });
+
+  it('updates ammo BV in the warehouse, sorting and both inspectors when the ruleset changes', async () => {
+    const options = TestBed.inject(OptionsService).options;
+    const entity = editor.entity();
+    const mounts = fascamAmmo.map(equipment => entity.addEquipment({
+      equipmentId: equipment.id, equipment,
+      allocation: { kind: 'location', location: 'LT' },
+      rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
+    }));
+    editor.query.set('Warehouse ammo BV');
+    editor.sortEquipment('bv');
+    const root = fixture.nativeElement as HTMLElement;
+    const inspectorBV = () => [...root.querySelectorAll('.installed-inspector .equip-item')]
+      .find(item => item.querySelector('.equip-label')?.textContent?.trim() === 'BV:')
+      ?.querySelector('.equip-value')?.textContent?.trim();
+
+    for (const ruleset of ['core-2026', 'total-warfare', 'core-2026'] as const) {
+      options.update(current => ({ ...current, CBTRules: ruleset }));
+      await renderWarehouse();
+      const tw = ruleset === 'total-warfare';
+      expect(editor.filteredEquipment()).toEqual(tw ? [ammoSortControl, ...fascamAmmo] : [...fascamAmmo, ammoSortControl]);
+      expect([...root.querySelectorAll('.warehouse-item .equipment-bv > span')].map(cell => cell.textContent?.trim()))
+        .toEqual(tw ? ['50', '80', '80'] : ['30', '30', '50']);
+
+      for (const [index, equipment] of fascamAmmo.entries()) {
+        const anchor = root.querySelector<HTMLButtonElement>(
+          '.warehouse-equipment[aria-label="' + equipment.name + '"]',
+        )!;
+        editor.inspectEquipment(equipment, anchor);
+        await renderWarehouse();
+        expect(inspectorBV()).withContext(ruleset + ' catalog ' + equipment.bv).toBe(tw ? '80' : '30');
+        editor.inspectMount(mounts[index], anchor);
+        await renderWarehouse();
+        expect(inspectorBV()).withContext(ruleset + ' mounted catalog ' + equipment.bv).toBe(tw ? '80' : '30');
+      }
+    }
+    expect(fascamAmmo.map(ammo => ammo.bv)).toEqual([30, 80]);
   });
 
   it('recalculates targeting-computer palette mass, inspector mass and Tons sorting as weapons are installed and removed', async () => {
