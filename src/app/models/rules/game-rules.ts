@@ -394,10 +394,12 @@ export abstract class CBTGameRules {
             return ammo.rackSize * this.getAmmoShots(ammo, equipmentRegistry) / 5 * 4;
         }
 
-        if (ammo.ammoType === 'ARROW_IV' && ammo.hasMunitionType('M_FASCAM')) {
+        if (ammo.hasMunitionType('M_FASCAM')) {
             if (this.id === 'core2026') return baseAmmo.bv;
             // TO:AR p. 152: Clan Arrow IV lays a 30-point field; Inner Sphere lays 20.
-            const minePoints = ammo.techBase === 'Clan' ? 30 : 20;
+            const minePoints = ammo.ammoType === 'ARROW_IV'
+                ? (ammo.techBase === 'Clan' ? 30 : 20)
+                : ammo.rackSize;
             return minePoints * this.getAmmoShots(ammo, equipmentRegistry) / 5 * 4;
         }
 
