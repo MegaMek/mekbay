@@ -167,7 +167,7 @@ describe('generated paperdoll pointer targets', () => {
             for (const location of entity.armorLocations) {
                 entity.setArmorValue(location, 'front', Math.min(24, entity.maxArmorValues().get(location) ?? 24));
             }
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             mount(svg);
             expectPipsHitContours(svg, name);
         });
@@ -180,7 +180,7 @@ describe('generated paperdoll pointer targets', () => {
                 for (let headArmor = 1; headArmor <= 6; headArmor++) {
                     const entity = proto(chassis);
                     entity.setArmorValue('Head', 'front', headArmor);
-                    const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact', pipLayout });
+                    const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact', pipLayout });
                     expect(svg.querySelectorAll('.pip.armor[data-loc="HD"]').length).toBe(headArmor);
                     expect(svg.querySelectorAll('.pip.structure[data-loc="HD"]').length).toBe(2);
                     mount(svg);
@@ -195,7 +195,7 @@ describe('generated paperdoll pointer targets', () => {
         const entity = tank(2, true);
         for (const location of entity.armorLocations) entity.setArmorValue(location, 'front', 24);
         const blocks = await Promise.all([1, 2].map(() =>
-            RecordSheetSvgGenerator.generate(entity, { format: 'compact' })));
+            RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' })));
         const page = RecordSheetSvgGenerator.composeCompactPage(blocks);
         mount(page);
 

@@ -35,8 +35,8 @@ describe('record-sheet physical paper formats', () => {
         TestVtolEntity, TestSupportNavalEntity, TestProtoMekEntity]) {
         it(`keeps ${Factory.name} paperdoll proportions and physical size across formats`, async () => {
             const entity = new Factory();
-            const letter = await RecordSheetSvgGenerator.generate(entity, { format: 'letter' });
-            const a4 = await RecordSheetSvgGenerator.generate(entity, { format: 'a4' });
+            const letter = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'letter' });
+            const a4 = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'a4' });
             const selector = '.mek-paperdolls, .aero-paperdoll-layer, .vehicle-paperdoll-layer, .protomek-paperdoll-layer';
             const before = bounds(letter, selector);
             const after = bounds(a4, selector);
@@ -49,8 +49,8 @@ describe('record-sheet physical paper formats', () => {
 
     it('uses Letter width for the critical/data panels and anchors the art and heat panels to the right', async () => {
         const entity = new TestQuadMekEntity();
-        const letter = await RecordSheetSvgGenerator.generate(entity, { format: 'letter' });
-        const a4 = await RecordSheetSvgGenerator.generate(entity, { format: 'a4' });
+        const letter = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'letter' });
+        const a4 = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'a4' });
         const widthDifference = recordSheetPageProfile('letter').width - recordSheetPageProfile('a4').width;
         const heightDifference = recordSheetPageProfile('letter').height - recordSheetPageProfile('a4').height;
         for (const selector of ['#unitDataPanel', '#criticalHitTable']) {
@@ -72,8 +72,8 @@ describe('record-sheet physical paper formats', () => {
     it('moves center artwork and reference tables with the warrior panel without resizing them', async () => {
         const entity = new TestBipedMekEntity();
         const fluffImageUrl = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><path d="M0 0h100v100H0z"/></svg>');
-        const letter = await RecordSheetSvgGenerator.generate(entity, { format: 'letter', fluffImageUrl });
-        const a4 = await RecordSheetSvgGenerator.generate(entity, { format: 'a4', fluffImageUrl });
+        const letter = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'letter', fluffImageUrl });
+        const a4 = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'a4', fluffImageUrl });
         for (const svg of [letter, a4]) {
             svg.querySelector<SVGElement>('#fluff-image-injected')!.style.display = 'block';
         }
@@ -90,7 +90,7 @@ describe('record-sheet physical paper formats', () => {
 
     it('keeps tripod reference notes above the critical table', async () => {
         for (const format of ['letter', 'a4'] as const) {
-            const svg = await RecordSheetSvgGenerator.generate(new TestTripodMekEntity(), { format });
+            const svg = await RecordSheetSvgGenerator.generate(new TestTripodMekEntity(), { ruleset: 'total-warfare', format });
             stage.replaceChildren(svg);
             const criticalTop = svg.querySelector<SVGGraphicsElement>('#criticalHitTable')!.getBoundingClientRect().top;
             const notes = [...svg.querySelectorAll<SVGGraphicsElement>('.reference-table-note')];
@@ -101,7 +101,7 @@ describe('record-sheet physical paper formats', () => {
 
     for (const format of ['letter', 'a4'] as const) {
         it(`keeps battle-armor pips round on ${format}`, async () => {
-            const svg = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { format });
+            const svg = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare', format });
             stage.replaceChildren(svg);
             const pips = [...svg.querySelectorAll<SVGGraphicsElement>('.battle-armor-trooper circle.pip')];
             expect(pips.length).toBeGreaterThan(0);
@@ -121,7 +121,7 @@ describe('record-sheet physical paper formats', () => {
 
         it(`fits taller infantry cluster tables on lone-unit ${format} pages and omits them for two units`, async () => {
             for (const Factory of [TestBattleArmorEntity, TestInfantryEntity]) {
-                const block = await RecordSheetSvgGenerator.generate(new Factory(), { format: 'compact', pageFormat: format });
+                const block = await RecordSheetSvgGenerator.generate(new Factory(), { ruleset: 'total-warfare', format: 'compact', pageFormat: format });
                 const page = RecordSheetSvgGenerator.composeCompactPage([block], format);
                 stage.replaceChildren(page);
                 const cluster = page.querySelector<SVGGElement>('[data-mekbay-reference="cluster-hits"]')!;
@@ -145,7 +145,7 @@ describe('record-sheet physical paper formats', () => {
             expect(plans.some(page => page.items.length > 1)).toBeTrue();
             for (const plan of plans) {
                 const blocks = await Promise.all(plan.items.map(entity =>
-                    RecordSheetSvgGenerator.generate(entity, { format: 'compact', pageFormat: format })));
+                    RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact', pageFormat: format })));
                 const page = RecordSheetSvgGenerator.composeCompactPage(blocks, format);
                 stage.replaceChildren(page);
                 const footer = page.querySelector<SVGGraphicsElement>('#footer');
@@ -161,7 +161,7 @@ describe('record-sheet physical paper formats', () => {
             const profile = recordSheetLayoutProfile(entity, format);
             const blocks = Array.from({ length: 11 }, () => profile);
             const plan = planRecordSheetPages(blocks, value => value, format)[0];
-            const block = await RecordSheetSvgGenerator.generate(entity, { format: 'compact', pageFormat: format });
+            const block = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact', pageFormat: format });
             const page = RecordSheetSvgGenerator.composeCompactPage(plan.items.map(() => block), format);
             stage.replaceChildren(page);
             const strips = [...page.querySelectorAll<SVGGraphicsElement>('.handheld-weapon-strip')];

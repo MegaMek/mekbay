@@ -1660,7 +1660,7 @@ function drawMekSchematicRegion(
 }
 
 export async function drawMekCriticalPanel(
-    svg: SVGSVGElement, entity: MekEntity, box: Box, ruleset: CBTRuleset = 'total-warfare',
+    svg: SVGSVGElement, entity: MekEntity, box: Box, ruleset: CBTRuleset,
 ): Promise<void> {
     const group = addFrame(svg, 'CRITICAL TABLE', box, {
         id: 'criticalHitTable',

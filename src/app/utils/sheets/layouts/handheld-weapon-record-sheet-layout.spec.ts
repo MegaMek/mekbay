@@ -18,7 +18,7 @@ describe('HandheldWeaponRecordSheetLayout', () => {
             entity.chassis.set('ER Medium Laser Weapon');
             entity.setTonnage(6.5);
             entity.setArmorValue('Gun', 'front', armor);
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             document.body.appendChild(svg);
             try {
                 const frames = [...svg.querySelectorAll<SVGPathElement>('.handheld-weapon-strip > g > path[stroke="#000"]')];
@@ -52,7 +52,7 @@ describe('HandheldWeaponRecordSheetLayout', () => {
         const weapon = addTestEquipment(entity, new WeaponEquipment({ id: 'AP Gauss', name: 'AP Gauss Rifle', type: 'weapon',
             weapon: { damage: 3, heat: 1, ranges: [3, 6, 9] } }), { location: 'Gun' });
         addAmmo(entity, 'AP Gauss Rifle', 40);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.dataset['mekbayLayout']).toBe('handheld-weapon');
         expect(Number(svg.getAttribute('height'))).toBeCloseTo(74.534, 3);
@@ -101,7 +101,7 @@ describe('HandheldWeaponRecordSheetLayout', () => {
     it('keeps spent ammo pips and their labels current without replacing the generated strip', async () => {
         const entity = new TestHandheldWeaponEntity();
         const mount = addAmmo(entity, 'AC/5', 20);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const originalPip = svg.querySelector('.ammo.pip');
         const component = { componentId: asComponentId(mount.mountId), equipmentId: 'AC/5 Ammo', label: 'AC/5 Ammo',
             sheetLocations: ['GUN'], status: 'available', previewStatus: 'available',
@@ -119,18 +119,18 @@ describe('HandheldWeaponRecordSheetLayout', () => {
         const entity = new TestHandheldWeaponEntity();
         addAmmo(entity, 'AC/5', 20);
         addAmmo(entity, 'LRM 5', 24);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         expect(svg.querySelectorAll('.handheld-ammo-label').length).toBe(2);
         expect(svg.querySelectorAll('.ammo.pip').length).toBe(44);
         expect(svg.querySelectorAll('.armor.pip').length).toBe(0);
-        const empty = await RecordSheetSvgGenerator.generate(new TestHandheldWeaponEntity(), { format: 'compact' });
+        const empty = await RecordSheetSvgGenerator.generate(new TestHandheldWeaponEntity(), { ruleset: 'total-warfare', format: 'compact' });
         expect(empty.querySelectorAll('.pip').length).toBe(0);
     });
 
     it('embeds one editable masthead artwork definition on a composed page', async () => {
         const entity = new TestHandheldWeaponEntity();
         const blocks = await Promise.all([entity, entity].map(unit =>
-            RecordSheetSvgGenerator.generate(unit, { format: 'compact' })));
+            RecordSheetSvgGenerator.generate(unit, { ruleset: 'total-warfare', format: 'compact' })));
         const page = RecordSheetSvgGenerator.composeCompactPage(blocks);
         expect(page.querySelectorAll('#mekbay-handheld-weapon-masthead-art').length).toBe(1);
         expect(page.querySelector('#mekbay-handheld-weapon-masthead-art path')).not.toBeNull();
@@ -145,13 +145,13 @@ describe('HandheldWeaponRecordSheetLayout', () => {
         const gauss = new TestHandheldWeaponEntity();
         addTestEquipment(gauss, new WeaponEquipment({ id: 'AP Gauss', name: 'AP Gauss Rifle', type: 'weapon',
             weapon: { damage: 3, ranges: [3, 6, 9] } }), { location: 'Gun' });
-        const plain = await RecordSheetSvgGenerator.generate(gauss);
+        const plain = await RecordSheetSvgGenerator.generate(gauss, { ruleset: 'total-warfare' });
         expect(plain.querySelector('[data-mekbay-reference="cluster-hits"]')).toBeNull();
 
         const missile = new TestHandheldWeaponEntity();
         addTestEquipment(missile, new WeaponEquipment({ id: 'SRM 2', name: 'SRM 2', type: 'weapon',
             flags: ['F_MISSILE'], weapon: { damage: '2/Msl', rackSize: 2, ammoType: 'SRM', ranges: [3, 6, 9] } }), { location: 'Gun' });
-        const cluster = await RecordSheetSvgGenerator.generate(missile);
+        const cluster = await RecordSheetSvgGenerator.generate(missile, { ruleset: 'total-warfare' });
         expect(cluster.querySelector('[data-mekbay-reference="cluster-hits"]')).not.toBeNull();
         expect(cluster.querySelector('[data-cluster-rack="2"]')).not.toBeNull();
     });

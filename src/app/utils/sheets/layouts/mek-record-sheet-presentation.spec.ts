@@ -78,7 +78,7 @@ describe('Mek printed equipment and movement alternatives', () => {
         }), { allocation: { kind: 'location', location: 'LT',
             placements: [0, 1].map(slotIndex => ({ location: 'LT', slotIndex })) } });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const brackets = [...svg.querySelectorAll<SVGPathElement>('.critical-equipment-bracket')];
         expect(brackets.length).toBe(1);
         expect(brackets[0].parentElement?.getAttribute('data-loc')).toBe('RT');
@@ -108,7 +108,7 @@ describe('Mek printed equipment and movement alternatives', () => {
             addTestEquipment(entity, weapon, { allocation: { kind: 'location', location: 'LT',
                 placements: [start, start + 1, start + 2].map(slotIndex => ({ location: 'LT', slotIndex })) } });
         }
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelectorAll('.critical-equipment-bracket').length).toBe(2);
         expect(svg.querySelectorAll('.critGroup[data-loc="LT"] .critical-equipment-bracket').length).toBe(2);
     });
@@ -123,7 +123,7 @@ describe('Mek printed equipment and movement alternatives', () => {
             ...[0, 1, 3, 4, 6].map(slotIndex => ({ location: 'LT', slotIndex })),
             ...[4, 5].map(slotIndex => ({ location: 'LA', slotIndex })),
         ] } });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelectorAll('.critical-equipment-bracket').length).toBe(3);
         expect(svg.querySelectorAll('.critGroup[data-loc="LT"] .critical-equipment-bracket').length).toBe(2);
         expect(svg.querySelectorAll('.critGroup[data-loc="LA"] .critical-equipment-bracket').length).toBe(1);
@@ -136,7 +136,7 @@ describe('Mek printed equipment and movement alternatives', () => {
         entity.setUniformArmor(new MountedArmor({ armor: new ArmorEquipment({
             id: 'Commercial', name: 'Commercial', type: 'armor', armor: { type: 'COMMERCIAL', bar: 5 },
         }) }));
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.textContent).toContain('PRIMITIVE BATTLEMECH RECORD SHEET');
         expect(svg.querySelector('#armorType')?.textContent).toBe('Commercial, BAR: 5');
     });
@@ -147,7 +147,7 @@ describe('Mek printed equipment and movement alternatives', () => {
         entity.setArmorAt('LA', new MountedArmor({ armor: new ArmorEquipment({
             id: 'Reactive', name: 'Reactive', type: 'armor', armor: { type: 'REACTIVE' },
         }) }));
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelector('#armorType')?.textContent).toBe('Patchwork');
         expect(svg.querySelector('.diagram-material-name[data-loc="LA"]')?.textContent).toBe('Reactive');
         expect(svg.querySelector('.diagram-material-name[data-loc="RA"]')).toBeNull();
@@ -162,7 +162,7 @@ describe('Mek printed equipment and movement alternatives', () => {
         }), { location: 'Left Arm' });
         const capacitor = addTestEquipmentWithFlags(entity, 'F_PPC_CAPACITOR', { location: 'Left Arm' });
         entity.linkEquipment(capacitor, weapon);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const mode = svg.querySelector('[data-mekbay-mode="w/Capacitor"]')!;
         const row = mode.parentElement!;
         expect(mode.classList.contains('equipmentProfile')).toBeTrue();
@@ -179,7 +179,7 @@ describe('Mek printed equipment and movement alternatives', () => {
         entity.setTonnage(70);
         entity.originalWalkMP.set(5);
         addTestEquipmentWithFlags(entity, 'F_TSM');
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelector('#mpWalk')?.textContent).toBe('5 [6]');
         expect(svg.querySelector('#mpRun')?.textContent).toBe('8 [9]');
         const kick = [...svg.querySelectorAll('.inventoryEntry')].find(row => row.querySelector('.name')?.textContent === 'Kick');

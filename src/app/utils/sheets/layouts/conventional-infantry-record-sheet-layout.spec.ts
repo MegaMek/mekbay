@@ -12,7 +12,7 @@ describe('conventional infantry sheet presentation', () => {
         entity.chassis.set('Mountaineer 45th Cerulean Mountain Infantry; 3rd Davion Guards');
         entity.model.set('');
         for (const format of ['compact', 'letter', 'a4'] as const) {
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format });
             document.body.appendChild(svg);
             try {
                 const frame = svg.querySelector('.compact-infantry-frame')!;
@@ -36,7 +36,7 @@ describe('conventional infantry sheet presentation', () => {
             infantry: { damage: 0.8, range: 3 } }) as InfantryWeaponEquipment);
         addTestEquipment(entity, new MiscEquipment({ id: 'Clan Armor Kit', name: 'Clan Armor Kit', type: 'misc',
             flags: ['F_ARMOR_KIT'], misc: { damageDivisor: 2 } }), { location: 'Infantry' });
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'letter' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'letter' });
         const text = svg.textContent!;
         expect(text).toContain('Damage Divisor:2.0');
         expect([...svg.querySelectorAll('text')].map(node => node.textContent).join(' '))
@@ -49,7 +49,7 @@ describe('conventional infantry sheet presentation', () => {
     it('renders default-crew BV while leaving the neutral entity BV unchanged', async () => {
         const entity = infantry();
         const neutralBV = entity.battleValue();
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('8');
         expect(svg.querySelector('#bv')?.textContent).toBe(String(Math.round(neutralBV * 0.85)));
         expect(entity.battleValue()).toBe(neutralBV);
@@ -64,7 +64,7 @@ describe('conventional infantry sheet presentation', () => {
             flags: ['F_TAG'], infantry: { damage: 0, range: 3 } }) as InfantryWeaponEquipment;
         entity.secondaryWeapon.set(tag);
         entity.secondaryCount.set(2);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const text = [...svg.querySelectorAll('text')].map(node => node.textContent).join(' ');
         expect(text).toContain('+1D6 damage vs. conventional infantry.');
         expect(text).toContain('Can only damage conventional infantry units.');
@@ -74,7 +74,7 @@ describe('conventional infantry sheet presentation', () => {
     it('positions jump movement before ground movement while retaining live movement IDs', async () => {
         const entity = infantry();
         entity.motiveType.set('Jump');
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const jump = svg.querySelector('#mpJump')!;
         const walk = svg.querySelector('#mpWalk')!;
         expect(Number(jump.getAttribute('y'))).toBeLessThan(Number(walk.getAttribute('y')));
@@ -87,7 +87,7 @@ describe('conventional infantry sheet presentation', () => {
         entity.spaceSuit.set(true);
         entity.specializations.set(new Set(['mountain-troops', 'marines']));
         entity.augmentations.set(['dermal_armor', 'tsm_implant', 'artificial_pain_shunt', 'pl_flight']);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const lines = [...svg.querySelectorAll<SVGTextElement>('.infantry-notes text')];
         const notes = lines.map(line => line.textContent).join(' ');
         expect(notes).toContain('Can operate in vacuum.');
@@ -109,7 +109,7 @@ describe('conventional infantry sheet presentation', () => {
             weapon: { rackSize: 20, ammoType: 'ARROW_IV', ranges: [1, 2, 8] } }), { location: 'Field Guns' });
         addTestEquipment(entity, new AmmoEquipment({ id: 'Arrow IV Ammo', name: 'Arrow IV Ammo', type: 'ammo',
             ammo: { type: 'ARROW_IV', shots: 5 } }), { location: 'Field Guns' });
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const values = ['qty', 'type', 'dmg', 'min_range', 'short', 'med', 'long', 'ammo', 'crew']
             .map(id => svg.querySelector(`#field_gun_${id}`)?.textContent);
         expect(values).toEqual(['1', 'Arrow IV', '20 [AE,S,F]', '—', '1', '2', '8', '5', '15']);

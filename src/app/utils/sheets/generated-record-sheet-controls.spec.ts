@@ -23,7 +23,7 @@ describe('generated paperdoll hit areas', () => {
             <circle class="pip armor" data-loc="FR" cx="30" cy="10" r="2"/>
             <polygon class="pip armor" data-loc="FR" points="50,8 52,10 50,12 48,10"/>
         </g>`);
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity());
+        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
         const target = svg.querySelector<SVGPathElement>('.pip-hit-area.armor')!;
 
         expect(svg.querySelectorAll('.pip-hit-area').length).toBe(1);
@@ -52,7 +52,7 @@ describe('generated paperdoll hit areas', () => {
             <circle class="pip structure" data-loc="FR" cx="30" cy="10" r="2"/>
             <polygon class="pip armor" data-loc="FR" transform="rotate(20 40 10)" points="40,8 42,10 40,12 38,10"/>
         </g>`);
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity());
+        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
 
         expect(svg.querySelectorAll('.pip-hit-area').length).toBe(4);
         expect(svg.querySelectorAll('.pip-hit-area.armor[data-rear="1"]').length).toBe(1);
@@ -64,7 +64,7 @@ describe('generated paperdoll hit areas', () => {
         const svg = sheet(`<path class="unitLocation armor" data-loc="TU" d="M0 0H20V20H0Z"/>
             <g><circle class="pip armor" data-loc="TU" cx="10" cy="10" r="2"/></g>
             <g><circle class="pip armor" data-loc="FR" cx="30" cy="10" r="2"/></g>`);
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity());
+        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
 
         expect(svg.querySelector('.pip-hit-area[data-loc="TU"]')).toBeNull();
         expect(svg.querySelector('.pip-hit-area[data-loc="FR"]')).not.toBeNull();
@@ -78,8 +78,8 @@ describe('generated paperdoll hit areas', () => {
             <circle class="pip armor" data-loc="FR" cx="10" cy="10" r="2"/>
             <circle class="pip structure" data-loc="FR" cx="10" cy="30" r="2"/>
         </g>`);
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity());
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity());
+        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
+        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
 
         expect(svg.querySelector('.pip-hit-area')).toBeNull();
         expect([...svg.querySelectorAll('.pip')].map(pip => pip.getAttribute('pointer-events'))).toEqual(['none', 'none']);
@@ -92,7 +92,7 @@ describe('generated paperdoll hit areas', () => {
             <path class="unitLocation armor" data-loc="FR" d="M0 0H20V20H0Z"/>
             <g data-mekbay-random-hit="1" transform="translate(30 50)"><circle cx="14" cy="14" r="15"/></g>
         </g>`);
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity());
+        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
 
         expect(svg.querySelectorAll('[data-mekbay-random-hit]')).toHaveSize(1);
         expect(svg.querySelector('[data-mekbay-random-hit]')?.getAttribute('transform')).toBe('translate(30 50)');

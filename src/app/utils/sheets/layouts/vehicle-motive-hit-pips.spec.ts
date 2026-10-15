@@ -38,7 +38,7 @@ describe('generated vehicle motive hit pips', () => {
             const entity = new Factory();
             entity.setTonnage(30);
             entity.motiveType.set(motiveType);
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             stage.appendChild(svg);
 
             for (const level of [2, 3]) {
@@ -94,7 +94,7 @@ describe('generated vehicle motive hit pips', () => {
                 0, 0, unit.getCrewAssignment()),
             editContext: { owner: unit, state: unit.snapshot() },
         });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, recordSheet(), interaction => interactions.push(interaction));

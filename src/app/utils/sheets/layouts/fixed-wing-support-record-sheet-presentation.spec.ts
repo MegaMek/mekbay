@@ -24,7 +24,7 @@ describe('fixed-wing support record-sheet presentation', () => {
             { id: 'seat', kind: 'bay', configuration: { type: 'ejection-seats' }, capacity: 1, doors: 0, bayNumber: 0, omni: false },
             { id: 'cargo', kind: 'bay', configuration: { type: 'cargo' }, capacity: 0.013, doors: 0, bayNumber: 0, omni: false },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
 
         expect(svg.textContent).toContain('FIXED WING SUPPORT VEHICLE RECORD SHEET');
         expect(svg.getElementById('tonnage')?.textContent).toBe('4,999 kg');
@@ -44,7 +44,7 @@ describe('fixed-wing support record-sheet presentation', () => {
         const entity = new TestFixedWingSupportEntity();
         entity.setTonnage(50);
         for (let index = 0; index < 3; index++) addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT', { location: 'Wings' });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelectorAll('.bombBox').length).toBe(3);
         expect(svg.querySelectorAll('.inventoryEntry').length).toBe(0);
         expect(svg.getElementById('tonnage')?.textContent).toBe('50');
@@ -53,7 +53,7 @@ describe('fixed-wing support record-sheet presentation', () => {
     it('preserves conventional-fighter mass, title and tonnage-derived bomb capacity', async () => {
         const entity = new TestConvFighterEntity();
         entity.setTonnage(20);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.textContent).toContain('CONVENTIONAL FIGHTER RECORD SHEET');
         expect(svg.getElementById('tonnage')?.textContent).toBe('20');
         expect(svg.querySelectorAll('.bombBox').length).toBe(4);

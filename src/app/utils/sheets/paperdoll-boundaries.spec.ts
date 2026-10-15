@@ -47,7 +47,7 @@ describe('paperdoll location boundaries', () => {
     }
 
     it('keeps biped torso interaction out of the head even when the head cannot intercept it', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         mount(svg);
         expectNoUnderlay(svg, '.unitLocation.armor[data-loc="CT"]', '.unitLocation.armor[data-loc="HD"]');
     });
@@ -56,7 +56,7 @@ describe('paperdoll location boundaries', () => {
         const entity = new TestTankEntity();
         entity.setTonnage(50);
         entity.hasTurret.set(true);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         mount(svg);
         expectNoUnderlay(svg, '.unitLocation.armor[data-loc="LS"]', '.unitLocation.structure[data-loc="LS"]');
         expectNoUnderlay(svg, '.unitLocation.armor[data-loc="TU"]', '.unitLocation.structure[data-loc="TU"]');
@@ -65,7 +65,7 @@ describe('paperdoll location boundaries', () => {
     it('keeps space station aft support gaps inert while retaining the struts and enclosed nozzle armor', async () => {
         const entity = new TestSpaceStationEntity();
         entity.setTonnage(100_000);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         mount(svg);
         const layer = svg.querySelector<SVGGElement>('[data-mekbay-paperdoll][data-type="armor"]')!;
         const armor = activateTargets(layer, '.unitLocation.armor[data-loc="AFT"]');
@@ -92,7 +92,7 @@ describe('paperdoll location boundaries', () => {
             entity.isQuad.set(chassis === 'quad');
             entity.isGlider.set(chassis === 'glider');
             entity.hasMainGun.set(true);
-            const armed = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const armed = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             mount(armed);
             expectNoUnderlay(armed, '.unitLocation.armor[data-loc="T"]', '.unitLocation.armor[data-loc="HD"]');
             expectNoUnderlay(armed, '.unitLocation.armor[data-loc="T"]', '.unitLocation.structure[data-loc="MG"]');
@@ -124,7 +124,7 @@ describe('paperdoll location boundaries', () => {
             armed.remove();
 
             entity.hasMainGun.set(false);
-            const unarmed = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const unarmed = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             mount(unarmed);
             expect(unarmed.querySelector('[data-protomek-main-gun]')).toBeNull();
             expect(unarmed.querySelector('[data-protomek-main-gun-clip][clip-path]')).toBeNull();

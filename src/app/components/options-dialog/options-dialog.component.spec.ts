@@ -364,7 +364,7 @@ describe('OptionsDialogComponent', () => {
         const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
         const component = configureComponent(
-            { options: () => ({ unitServers: [] }) },
+            { options: () => ({}) },
             {
                 uuid: signal('test-user-uuid'),
                 publicId: signal(''),

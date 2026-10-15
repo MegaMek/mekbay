@@ -107,6 +107,19 @@ describe('OptionsService theme migration', () => {
         expect(service.options().cbtUnitViewMode).toBe('sheet');
     });
 
+    it('restores a saved CBT ruleset and defaults an invalid one to Core 2026', async () => {
+        savedOptions = { CBTRules: 'total-warfare' };
+        let service = await createService();
+
+        expect(service.options().CBTRules).toBe('total-warfare');
+
+        TestBed.resetTestingModule();
+        savedOptions = { CBTRules: 'basic' };
+        service = await createService();
+
+        expect(service.options().CBTRules).toBe('core-2026');
+    });
+
     it('defaults record sheets to the Canon pip layout', async () => {
         savedOptions = null;
 

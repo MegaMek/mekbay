@@ -30,7 +30,7 @@ export class RecordSheetSourceService {
 
     async load(
         entity: BaseEntity,
-        generatorOptions: RecordSheetSvgGeneratorOptions = {},
+        generatorOptions: Partial<RecordSheetSvgGeneratorOptions> = {},
         context: RecordSheetEntitySourceContext = {},
     ): Promise<RecordSheetSourceResult> {
         await this.fluffImages.initialize();

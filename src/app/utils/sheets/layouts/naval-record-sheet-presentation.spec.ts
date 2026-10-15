@@ -35,9 +35,9 @@ describe('naval record-sheet presentation', () => {
         const entity = new TestSupportNavalEntity();
         entity.setTonnage(100);
         entity.motiveType.set('Naval');
-        const surface = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const surface = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         entity.motiveType.set('Submarine');
-        const submarine = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const submarine = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const surfaceArt = surface.querySelector<SVGGElement>('.vehicle-paperdoll-layer')!;
         const submarineArt = submarine.querySelector<SVGGElement>('.vehicle-paperdoll-layer')!;
         expect(surfaceArt).not.toBeNull();
@@ -84,7 +84,7 @@ describe('naval record-sheet presentation', () => {
             id: 'BAR 2 Armor', name: 'BAR 2 Armor', type: 'armor',
             armor: { type: 'SV_BAR_2', bar: 2 }, tech: { base: 'All' },
         }) }));
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelector('.compact-vehicle-title')?.textContent).toBe('SMALL NAVAL SUPPORT VESSEL RECORD SHEET');
         expect(svg.getElementById('tonnage')?.textContent).toBe('2,500 kg');
@@ -112,7 +112,7 @@ describe('naval record-sheet presentation', () => {
         addTestEquipment(entity, new WeaponEquipment({ id: 'LRM 5', name: 'LRM 5', type: 'weapon',
             flags: ['F_LRM', 'F_MISSILE'], weapon: { damage: '1/Msl', rackSize: 5, ammoType: 'LRM', ranges: [7, 14, 21] },
         }), { location: 'Front' });
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelector('[data-mekbay-reference="cluster-hits"]')).not.toBeNull();
     });
@@ -127,7 +127,7 @@ describe('naval record-sheet presentation', () => {
             { id: 'standard', kind: 'bay', configuration: { type: 'standard-seats' }, capacity: 1, doors: 0, bayNumber: 0, omni: false },
             { id: 'pillion-b', kind: 'bay', configuration: { type: 'pillion-seats' }, capacity: 11, doors: 0, bayNumber: 0, omni: false },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'core-2026', format: 'compact' });
         expect(svg.textContent).toContain('Features 1 Standard Seat, 21 Pillion Seats');
         expect(svg.textContent).toContain('Charge');
         expect(svg.textContent).toContain('0.5×(TMM+1)');
@@ -140,7 +140,7 @@ describe('naval record-sheet presentation', () => {
         support.setTonnage(5);
         combat.setTonnage(2.5);
         for (const entity of [support, combat]) {
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             expect(svg.getElementById('tonnage')?.textContent).toBe(String(entity.tonnage()));
             expect(svg.querySelector('[data-mekbay-weight-unit="kg"]')).toBeNull();
             expect(svg.getElementById('armorType')?.textContent).toBe('Standard Armor');

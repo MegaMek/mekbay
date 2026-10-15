@@ -24,7 +24,7 @@ import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 export interface GeneratedRecordSheetControlOptions {
-  readonly ruleset?: CBTRuleset;
+  readonly ruleset: CBTRuleset;
   readonly fluffImageUrl?: string | null;
 }
 
@@ -39,10 +39,9 @@ let unitConditionBannerFadeMaskSequence = 0;
 export function renderGeneratedRecordSheetControls(
   svg: SVGSVGElement,
   entity: BaseEntity,
-  options: GeneratedRecordSheetControlOptions = {},
+  options: GeneratedRecordSheetControlOptions,
 ): void {
-  const ruleset = options.ruleset ?? 'total-warfare';
-  appendUnitConditionPresentation(svg, generatedUnitConditionControls(entity, ruleset));
+  appendUnitConditionPresentation(svg, generatedUnitConditionControls(entity, options.ruleset));
   appendMovementPresentation(svg, entity);
   appendCrewStateMenuIndicators(svg, entity);
   appendCrewVacancyPresentation(svg);
@@ -54,7 +53,7 @@ export function renderGeneratedRecordSheetControls(
 
 export function generatedUnitConditionControls(
   entity: BaseEntity,
-  ruleset: CBTRuleset = 'total-warfare',
+  ruleset: CBTRuleset,
 ): readonly UnitConditionControl[] {
   if (isMekEntity(entity)) return MEK_UNIT_CONDITION_CONTROLS;
   if (!isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return [];

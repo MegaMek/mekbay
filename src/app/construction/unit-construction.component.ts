@@ -1312,7 +1312,7 @@ export class UnitConstructionComponent {
       },
       format: nativeEntityFormat(entity),
     });
-    return { ...summary, mul1id: -1, isCustom: true, canon: false };
+    return { ...summary, isCustom: true, canon: false };
   });
   /** The source codec captures every native field, including edits with unchanged summary totals. */
   readonly previewEntity = computed(() => {

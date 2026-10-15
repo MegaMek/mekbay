@@ -62,7 +62,7 @@ describe('construction preview view and output controls', () => {
     function create(type: UnitSummary['as']['TP'] = 'BM') {
         const fixture = TestBed.createComponent(ConstructionPreviewComponent);
         const entity = new TestBipedMekEntity();
-        const unit = createEmptyUnit({ mul1id: null, isCustom: true, as: { TP: type } });
+        const unit = createEmptyUnit({ isCustom: true, as: { TP: type } });
         fixture.componentRef.setInput('entity', entity);
         fixture.componentRef.setInput('unit', unit);
         fixture.componentRef.setInput('unsaved', true);

@@ -29,7 +29,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         entity.hexHeights.set(new Map(footprint.filter(hex => hex.q >= 5).map(hex => [`${hex.q},${hex.r}`, 1])));
         entity.elevators.set([{ hex: footprint[16], capacity: 20, exits: new Map([[0, 4], [1, 0]]) }]);
         for (const pageFormat of ['letter', 'a4'] as const) {
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
+            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
             const sections = new Map<string, number>(), actual: string[] = [];
             let section = 0;
             for (const page of pages) {
@@ -86,7 +86,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             { hexes: branched, pieces: 4, pages: 2 }]) for (const pageFormat of ['letter', 'a4'] as const) {
             const entity = parseBuilding();
             setConstructionBuildingTopology(entity, fixture.hexes, 1);
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
+            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
             expect(pages.length).toBe(fixture.pages);
             let pieces = 0;
             const seen: string[] = [], starts: string[] = [];
@@ -129,7 +129,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         });
         setConstructionBuildingTopology(entity, hexes, 1);
         for (const pageFormat of ['letter', 'a4'] as const) {
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
+            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
             expect(pages.length).toBe(2);
             const svg = pages.at(-1)!;
             document.body.appendChild(svg);
@@ -160,7 +160,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         });
         setConstructionBuildingTopology(entity, hexes, 1);
         for (const pageFormat of ['letter', 'a4'] as const) {
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
+            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
             expect(pages.length).toBe(2);
             const sections = pages.flatMap(svg => [...svg.querySelectorAll('.building-template-floor')].map(floor =>
                 [...floor.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex')!)));
@@ -181,7 +181,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             { position: { hex: BUILDING_ORIGIN, floor: 0 }, facing: 2, height: 2, linkGroup: 1 },
         ]);
         for (const pageFormat of ['letter', 'a4'] as const) {
-            const pages = await RecordSheetSvgGenerator.generatePages(entity, { pageFormat });
+            const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat });
             expect(pages.length).toBe(2);
             expect(pages[0].querySelector('#pageNumber')?.textContent).toBe('Page 1 / 1');
             const svg = pages[1];
@@ -221,7 +221,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         const entity = parseBuilding();
         const hexes = Array.from({ length: 24 }, (_, i) => ({ q: i % 8 - 10, r: Math.floor(i / 8) - 10 }));
         setConstructionBuildingTopology(entity, hexes, 2);
-        const pages = (await RecordSheetSvgGenerator.generatePages(entity)).filter(svg => svg.querySelector('#buildingTemplate'));
+        const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' })).filter(svg => svg.querySelector('#buildingTemplate'));
         expect(pages.length).toBeGreaterThan(1);
         const cells: string[] = [];
         for (const svg of pages) {
@@ -260,7 +260,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             { position: { hex: BUILDING_ORIGIN, floor: 0 }, facing: 1, height: 1, linkGroup: 1 },
             { position: { hex: northeast, floor: 0 }, facing: 4, height: 1, linkGroup: 1 },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const doors = [...svg.querySelectorAll('.building-construction-note')].filter(row => row.textContent?.includes(': Door '));
         expect(doors.length).toBe(1);
         expect(doors[0].textContent).toContain('Door N/NE/SW: 1 level high');
@@ -274,7 +274,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             { position: { hex: BUILDING_ORIGIN, floor: 0 }, facing: 2, height: 2, linkGroup: 1 },
             { position: { hex: south, floor: 0 }, facing: 1, height: 2, linkGroup: 1 },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelectorAll('.linked-door-opening').length).toBe(6);
         const doors = [...svg.querySelectorAll('.building-construction-note')].filter(row => row.textContent?.includes(': Door '));
         expect(doors.length).toBe(1);
@@ -301,7 +301,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             { position: { hex: BUILDING_ORIGIN, floor: 1 }, facing: 4, height: 1, linkGroup: 7 },
             { position: { hex: BUILDING_ORIGIN, floor: 1 }, facing: 3, height: 1, linkGroup: 7 },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const doors = [...svg.querySelectorAll('.building-construction-note')].filter(row => row.textContent?.includes(': Door '));
         expect(doors.map(row => row.textContent)).toEqual([
             '0103-0203/G: Door SW: 1 level high',
@@ -389,7 +389,7 @@ Unresolved Searchlight
 <coords>
 0.0,0.0,0.0
 </coords>`);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
 
         expect(svg.dataset['mekbayLayout']).toBe('static-emplacement');
         expect(svg.dataset['mekbayDesignSource']).toBe('native');
@@ -417,7 +417,7 @@ Unresolved Searchlight
 
     it('centers the single hex labeled 0101 in a top-aligned floor, leaving the remaining wireframe unlabeled and gray', async () => {
         const entity = parseBuilding();
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         document.body.appendChild(svg);
         try {
             const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
@@ -455,7 +455,7 @@ Unresolved Searchlight
             ammo: { type: 'LRM', shots: 24, rackSize: 5 } });
         const bin = addTestEquipment(entity, ammo, { location: ground, shotsCount: 24 });
         const partialBin = addTestEquipment(entity, ammo, { location: ground, shotsCount: 18 });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = [...svg.querySelectorAll('.inventoryEntry')];
         const rowFor = (id: string) => rows.find(row => row.getAttribute('data-mekbay-component-ids')?.split(' ').includes(id))!;
         const gunRow = rowFor(original.mountId);
@@ -487,7 +487,7 @@ Unresolved Searchlight
         const ground = buildingLocationName(BUILDING_DIRECTIONS[1], 0);
         entity.armorValues.update(values => new Map(values).set(ground, locationArmor(91)));
         const gun = addTestEquipment(entity, laser, { location: upper });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const labels = ['0202', '0201', '0302', '0303', '0203', '0103', '0102'];
         const hexes = [BUILDING_ORIGIN, ...BUILDING_DIRECTIONS];
         for (let floor = 0; floor < 3; floor++) {
@@ -515,7 +515,7 @@ Unresolved Searchlight
         expect(loaded.capacityPerHex()).toBe(120);
         expect(loaded.tonnage()).toBe(720);
         expect(loaded.equipment()).toEqual([]);
-        const svg = await RecordSheetSvgGenerator.generate(loaded);
+        const svg = await RecordSheetSvgGenerator.generate(loaded, { ruleset: 'total-warfare' });
         const layers = [...svg.querySelectorAll('.building-map-layer')];
         expect(layers.map(layer => layer.getAttribute('data-building-floor'))).toEqual(['2', '1', '0']);
         for (const layer of layers) {
@@ -530,7 +530,7 @@ Unresolved Searchlight
         const entity = parseBuilding();
         for (const floors of [2, 6, 8]) {
             setConstructionBuildingTopology(entity, [BUILDING_ORIGIN], floors);
-            const pages = await RecordSheetSvgGenerator.generatePages(entity);
+            const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
             const layers = pages.flatMap(svg => [...svg.querySelectorAll<SVGGElement>('.building-map-layer')]);
             expect(layers.map(layer => Number(layer.getAttribute('data-building-floor'))))
                 .toEqual(Array.from({ length: floors }, (_, index) => floors - 1 - index));
@@ -553,7 +553,7 @@ Unresolved Searchlight
         setConstructionBuildingTopology(entity, [BUILDING_ORIGIN], 2);
         entity.wallSides.set(new Map([['0,0', 3]]));
         const loaded = parseEntity(encodeNativeEntity(entity), 'wall.blk', registry).entity as StaticEmplacementEntity;
-        const svg = await RecordSheetSvgGenerator.generate(loaded);
+        const svg = await RecordSheetSvgGenerator.generate(loaded, { ruleset: 'total-warfare' });
         expect(svg.querySelectorAll('[data-building-side]').length).toBe(4);
         expect(svg.textContent).toContain('0101/N');
         expect(svg.textContent).toContain('0101/NE');
@@ -566,7 +566,7 @@ Unresolved Searchlight
         const hexes = Array.from({ length: 3 }, (_, q) => ({ q, r: 0 }));
         setConstructionBuildingTopology(entity, hexes, 1);
         entity.bridgeDecks.set(new Map([['0,0', 1], ['1,0', 2], ['2,0', 3]]));
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const layers = [...svg.querySelectorAll('.building-map-layer')];
         expect(layers.map(layer => layer.getAttribute('data-building-floor'))).toEqual(['3', '2', '1']);
         expect(layers.map(layer => layer.querySelectorAll('.occupied').length)).toEqual([1, 1, 1]);
@@ -579,7 +579,7 @@ Unresolved Searchlight
         entity.buildingClass.set(4); entity.buildingType.set(4); entity.constructionFactor.set(150);
         const hexes = Array.from({ length: 70 }, (_, index) => ({ q: index % 10, r: Math.floor(index / 10) }));
         setConstructionBuildingTopology(entity, hexes, 15);
-        const pages = await RecordSheetSvgGenerator.generatePages(entity);
+        const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
         expect(pages.filter(page => !page.querySelector('#buildingTemplate')).length).toBe(3);
         expect(pages[0].textContent).toContain('CF and armor: capital points');
         expect(pages.flatMap(page => [...page.querySelectorAll('.building-map-layer')]).length).toBe(15);
@@ -591,13 +591,13 @@ Unresolved Searchlight
         const entity = parseBuilding();
         const hexes = Array.from({ length: 13 }, (_, q) => ({ q, r: -Math.floor(q / 2) }));
         setConstructionBuildingTopology(entity, hexes, 2);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.querySelectorAll('.building-hex').length).toBe(13 * 7 * 2);
         expect(svg.querySelectorAll('.occupied').length).toBe(26);
         const positions = [...svg.querySelectorAll('.occupied')].map(hex => hex.getAttribute('data-building-hex'));
         expect(positions.slice(0, 13)).toEqual(Array.from({ length: 13 }, (_, index) => `${String(index + 1).padStart(2, '0')}01`));
         entity.coordinates.set([...hexes].reverse());
-        const reversed = await RecordSheetSvgGenerator.generate(entity);
+        const reversed = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect([...reversed.querySelectorAll('.occupied')].map(hex => hex.getAttribute('data-building-hex'))).toEqual(positions);
         const ids = [...svg.querySelectorAll('[id]')].map(element => element.id);
         expect(new Set(ids).size).toBe(ids.length);
@@ -610,7 +610,7 @@ Unresolved Searchlight
             for (const coordinates of [hexes, [...hexes].reverse()]) {
                 const entity = parseBuilding(`<height>\n2\n</height>\n<coords>\n${coordinates.map(hex =>
                     `${hex.q}.0,${hex.r}.0,${-hex.q - hex.r}.0`).join('\n')}\n</coords>`);
-                const svg = await RecordSheetSvgGenerator.generate(entity);
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
                 const layers = [...svg.querySelectorAll('.building-map-layer')];
                 expect(layers.length).toBe(2);
                 for (const layer of layers) {
@@ -635,7 +635,7 @@ Unresolved Searchlight
     it('prints negative floors below Ground with equipment and elevator labels using the same reference', async () => {
         const entity = parseBuilding('<height>\n4\n</height>\n<building_options>\nbase_level=-2\n</building_options>');
         entity.elevators.set([{ hex: BUILDING_ORIGIN, capacity: 20, exits: new Map([[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]]) }]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const layers = [...svg.querySelectorAll('.building-map-layer')];
         expect(layers.map(layer => layer.getAttribute('data-building-floor'))).toEqual(['3', '2', '1', '0']);
         expect(layers.map(layer => [...layer.querySelectorAll('text')].find(text => text.textContent?.startsWith('Level:'))?.textContent))
@@ -644,7 +644,7 @@ Unresolved Searchlight
         expect(svg.querySelector('.occupied[data-loc="Level 0 0.0,0.0,0.0"]')).not.toBeNull();
         expect(svg.textContent).toContain('Roof (2)');
         entity.buildingOptions.update(options => ({ ...options, baseLevel: null, site: 'UNDERGROUND', depth: 1 }));
-        const underground = await RecordSheetSvgGenerator.generate(entity);
+        const underground = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(underground.querySelector('[data-building-floor="0"]')?.textContent).toContain('Level: -5');
         expect(underground.textContent).toContain('Roof (-1)');
         expect(underground.querySelector('.inventoryEntry .location')?.textContent).toBe('0101/-5');
@@ -663,7 +663,7 @@ Unresolved Searchlight
             const location = buildingLocationName(hexes.at(-1)!, 0);
             const mount = addTestEquipment(entity, laser, { location });
             const native = encodeNativeEntity(entity);
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             document.body.appendChild(svg);
             try {
                 const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
@@ -694,7 +694,7 @@ Unresolved Searchlight
 
     it('preserves building inventory and weapon ranges without inventing missing protection', async () => {
         const entity = parseBuilding();
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
 
         expect(svg.getElementById('textArmor_Level 0 0.0,0.0,0.0')?.textContent).toBe('—');
         expect(svg.getElementById('textIS_Level 0 0.0,0.0,0.0')?.textContent).toBe('—');
@@ -716,7 +716,7 @@ Unresolved Searchlight
         for (let index = 0; index < 34; index++) {
             addTestEquipment(entity, ammo, { location: 'Level 0 0.0,0.0,0.0', shotsCount: 24 });
         }
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = [...svg.querySelectorAll<SVGElement>('.inventoryEntry')];
 
         expect(rows.length).toBe(3);
@@ -731,7 +731,7 @@ Unresolved Searchlight
 
     it('distinguishes an explicit zero construction value from an unspecified value', async () => {
         const entity = parseBuilding('<armor>\n0\n</armor>\n<cf>\n0\n</cf>');
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
 
         expect(svg.getElementById('textArmor_Level 0 0.0,0.0,0.0')?.textContent).toBe('( 0 )');
         expect(svg.getElementById('textIS_Level 0 0.0,0.0,0.0')?.textContent).toBe('( 0 )');
@@ -745,7 +745,7 @@ Unresolved Searchlight
             { id: 'cargo', kind: 'bay', configuration: { type: 'cargo' }, capacity: 10, doors: 1, bayNumber: 1, omni: false },
             { id: 'troops', kind: 'troop-space', totalSpace: 5, omni: false },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = [...svg.querySelectorAll('.building-transport')];
         expect(rows.length).toBe(2);
         expect(rows[0].textContent).toContain('Cargo');
@@ -763,13 +763,13 @@ Unresolved Searchlight
                     weapon: { damage: 5, heat: 3, ranges: [3, 6, 9] } }), { location: buildingLocationName(BUILDING_ORIGIN, 0) });
         };
         install(0, 30);
-        const compact = await RecordSheetSvgGenerator.generatePages(entity);
+        const compact = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
         expect(compact.filter(page => !page.querySelector('#buildingTemplate')).length).toBe(1);
         const font = Number(compact[0].querySelector('.inventoryEntry .name')!.getAttribute('font-size'));
         expect(font).toBeLessThan(6.76);
         expect(font).toBeGreaterThanOrEqual(4.5);
         install(30, 60);
-        const pages = (await RecordSheetSvgGenerator.generatePages(entity)).filter(page => !page.querySelector('#buildingTemplate'));
+        const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' })).filter(page => !page.querySelector('#buildingTemplate'));
         expect(pages.length).toBeGreaterThan(1);
         const ids = pages.flatMap(page => [...page.querySelectorAll('.inventoryEntry')]
             .flatMap(row => row.getAttribute('data-mekbay-component-ids')!.split(' ')));
@@ -792,7 +792,7 @@ Unresolved Searchlight
         entity.transporters.set([{ id: 'bay', kind: 'bay', configuration: { type: 'cargo' }, capacity: 10, doors: 1, bayNumber: 0, omni: false }]);
         entity.baySpace.set(new Map([['bay', [{ position: { hex: east, floor: 5 }, tons: 10 }]]]));
         addTestEquipment(entity, laser, { location: buildingLocationName(east, 5), turretType: 'sponson' });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         document.body.appendChild(svg);
         try {
             const key = svg.querySelector<SVGGElement>('.building-map-key')!;
@@ -825,7 +825,7 @@ Unresolved Searchlight
         setConstructionBuildingTopology(entity, [BUILDING_ORIGIN, ...BUILDING_DIRECTIONS], 3);
         entity.elevators.set([{ hex: BUILDING_ORIGIN, capacity: 20,
             exits: new Map([[0, 5], [2, 32], [3, 8]]) }]);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         for (const [floor, sides] of [[0, [0, 2]], [1, []], [2, [5]]] as const) {
             const layer = svg.querySelector(`[data-building-floor="${floor}"]`)!;
             const markers = [...layer.querySelectorAll<SVGPolygonElement>('[data-building-symbol="elevator-door"]')];
@@ -843,7 +843,7 @@ Unresolved Searchlight
     it('aligns every door base with its hexside and points each tip outward in the projected grid', async () => {
         const entity = parseBuilding();
         entity.doors.set(Array.from({ length: 6 }, (_, facing) => ({ position: { hex: BUILDING_ORIGIN, floor: 0 }, facing, height: 1 })));
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const hex = svg.querySelector<SVGPolygonElement>('.occupied')!;
         const keyPolygons = svg.querySelectorAll<SVGPolygonElement>('.building-map-key polygon');
         expect(keyPolygons.length).toBe(1);
@@ -864,8 +864,8 @@ Unresolved Searchlight
 
     it('uses actual Letter and A4 page dimensions for the same native design', async () => {
         const entity = parseBuilding();
-        const letter = await RecordSheetSvgGenerator.generate(entity, { format: 'letter' });
-        const a4 = await RecordSheetSvgGenerator.generate(entity, { format: 'a4' });
+        const letter = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'letter' });
+        const a4 = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'a4' });
 
         expect(letter.getAttribute('viewBox')).toBe('0 0 612 792');
         expect(a4.getAttribute('viewBox')).toBe('0 0 595.276 841.89');

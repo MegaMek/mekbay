@@ -49,7 +49,7 @@ describe('RecordSheetSvgGenerator', () => {
         for (const entity of [new TestBipedMekEntity(), new TestQuadMekEntity(),
             new TestTripodMekEntity(), new TestQuadVeeEntity(), new TestLamEntity()]) {
             entity.setTonnage(55);
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const views = Array.from(svg.querySelectorAll<SVGGElement>('[data-mekbay-paperdoll-view]'));
             expect(views.map(view => view.getAttribute('data-mekbay-paperdoll-view')))
                 .withContext(entity.chassisConfig).toEqual(['front', 'rear', 'structure']);
@@ -69,7 +69,7 @@ describe('RecordSheetSvgGenerator', () => {
         entity.chassis.set('Vedette');
         entity.model.set('Medium Tank');
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.dataset['mekbayGenerated']).toBe('1');
         expect(svg.dataset['mekbayCompact']).toBe('vehicle');
@@ -92,7 +92,7 @@ describe('RecordSheetSvgGenerator', () => {
             weapon: { damage: 5, heat: 3, ranges: [3, 6, 9] },
         }), { location: 'FR' });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const row = svg.querySelector<SVGGElement>(
             `.inventoryEntry[data-mekbay-component-ids="${weapon.mountId}"]`,
         );
@@ -156,7 +156,7 @@ describe('RecordSheetSvgGenerator', () => {
             },
         ]);
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const ecmRow = svg.querySelector<SVGGElement>(
             `.inventoryEntry[data-mekbay-component-ids="${ecm.mountId}"]`,
         );
@@ -189,7 +189,7 @@ describe('RecordSheetSvgGenerator', () => {
         entity.hasTurret.set(false);
         entity.hasDualTurret.set(false);
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelector('#turret_locked')).toBeNull();
         expect(svg.querySelector('#stabilizer_hit_turret')).toBeNull();
@@ -199,7 +199,7 @@ describe('RecordSheetSvgGenerator', () => {
     it('prints the chin-turret lock beside the VTOL flight and sensor controls', async () => {
         const entity = new TestVtolEntity();
         entity.hasTurret.set(true);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const turret = svg.querySelector<SVGRectElement>('#turret_locked');
         expect(turret).not.toBeNull();
         expect(turret?.closest('[display="none"]')).toBeNull();
@@ -216,7 +216,7 @@ describe('RecordSheetSvgGenerator', () => {
             Head: 3, Torso: 7, 'Right Arm': 2, 'Left Arm': 2, Legs: 4, 'Main Gun': 3,
         })) entity.setArmorValue(location, 'front', value);
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(21);
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(12);
@@ -235,7 +235,7 @@ describe('RecordSheetSvgGenerator', () => {
         for (const [location, value] of Object.entries({ Head: 4, Torso: 12, Legs: 14 })) {
             entity.setArmorValue(location, 'front', value);
         }
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(30);
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(16);
@@ -258,7 +258,7 @@ describe('RecordSheetSvgGenerator', () => {
             }), { location: 'Torso' });
         }
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.armor').length).toBe(39);
         expect(svg.querySelectorAll('.protomek-paperdoll .pip.structure').length).toBe(34);
@@ -279,12 +279,12 @@ describe('RecordSheetSvgGenerator', () => {
         for (const entity of [new TestTankEntity(), wige, new TestSupportTankEntity(), new TestLargeSupportTankEntity()]) {
             entity.setTonnage(20);
             entity.originalWalkMP.set(10);
-            const withoutJumpJets = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const withoutJumpJets = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             expect(withoutJumpJets.querySelector('#mpJump:not([aria-hidden="true"])'))
                 .withContext(entity.entityType).toBeNull();
 
             for (let jet = 0; jet < 5; jet++) addTestEquipmentWithFlags(entity, 'F_JUMP_JET', { location: 'Body' });
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             const jump = svg.querySelector('#mpJump:not([aria-hidden="true"])')!;
             expect(jump).withContext(entity.entityType).not.toBeNull();
             expect(jump.textContent).toBe('5');
@@ -301,10 +301,10 @@ describe('RecordSheetSvgGenerator', () => {
         wige.motiveType.set('WiGE');
 
         const [groundSvg, vtolSvg, wigeSvg, navalSvg] = await Promise.all([
-            RecordSheetSvgGenerator.generate(ground, { format: 'compact' }),
-            RecordSheetSvgGenerator.generate(vtol, { format: 'compact' }),
-            RecordSheetSvgGenerator.generate(wige, { format: 'compact' }),
-            RecordSheetSvgGenerator.generate(new TestSupportNavalEntity(), { format: 'compact' }),
+            RecordSheetSvgGenerator.generate(ground, { ruleset: 'total-warfare', format: 'compact' }),
+            RecordSheetSvgGenerator.generate(vtol, { ruleset: 'total-warfare', format: 'compact' }),
+            RecordSheetSvgGenerator.generate(wige, { ruleset: 'total-warfare', format: 'compact' }),
+            RecordSheetSvgGenerator.generate(new TestSupportNavalEntity(), { ruleset: 'total-warfare', format: 'compact' }),
         ]);
 
         expect(groundSvg.querySelector('.ground-vehicle-diagram-labels > text')).not.toBeNull();
@@ -322,13 +322,13 @@ describe('RecordSheetSvgGenerator', () => {
         naval.hasTurret.set(true);
         naval.hasDualTurret.set(true);
         for (const entity of [wige, naval]) {
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             for (const code of ['FRLS', 'RRLS', 'FRRS', 'RRRS']) {
                 expect(svg.querySelector(`#textArmor_${code}`)).withContext(`${entity.entityType} ${code}`).not.toBeNull();
             }
             expect(svg.querySelector('.vehicle-paperdoll-layer')?.getAttribute('data-source')).toContain('-superheavy-');
         }
-        const navalSvg = await RecordSheetSvgGenerator.generate(naval, { format: 'compact' });
+        const navalSvg = await RecordSheetSvgGenerator.generate(naval, { ruleset: 'total-warfare', format: 'compact' });
         expect(navalSvg.querySelector('#textArmor_FT')).not.toBeNull();
         expect(navalSvg.querySelector('#textArmor_RT')).not.toBeNull();
     });
@@ -342,7 +342,7 @@ describe('RecordSheetSvgGenerator', () => {
         expect(entity.isSuperHeavy()).toBeFalse();
         entity.damageLocations().forEach(location => entity.setArmorValue(location.code, 'front', 8));
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         expect(svg.querySelector('.vehicle-paperdoll-layer')?.getAttribute('data-source'))
             .toBe('/images/paperdolls/vehicle-superheavy-noturret.svg');
         for (const code of ['FRLS', 'RRLS', 'FRRS', 'RRRS']) {
@@ -362,7 +362,7 @@ describe('RecordSheetSvgGenerator', () => {
             },
         }), { location: 'Front' });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const row = svg.querySelector<SVGGElement>(
             `.inventoryEntry[data-mekbay-component-ids="${torpedo.mountId}"]`,
         );
@@ -413,7 +413,7 @@ describe('RecordSheetSvgGenerator', () => {
         entity.addEquipmentBay('weapon-bay', { mounts: left });
         entity.addEquipmentBay('weapon-bay', { mounts: right });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const bays = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
         const lrmRow = bays.find(row => row.querySelector('.name')?.textContent?.includes('LRM 20'))!;
         const laserRow = bays.find(row => row.querySelector('.name')?.textContent?.includes('Medium Laser'))!;
@@ -437,7 +437,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('owns conventional-fighter movement and return tables instead of drawing an Aero heat panel', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestConvFighterEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestConvFighterEntity(), { ruleset: 'total-warfare' });
 
         expect(svg.dataset['mekbayLayout']).toBe('aero-fighter');
         expect(svg.textContent).toContain('GROUND MAP STRAIGHT MOVEMENT');
@@ -453,12 +453,12 @@ describe('RecordSheetSvgGenerator', () => {
         const entity = new TestFixedWingSupportEntity();
         entity.barRating.set(2);
         for (const location of entity.locationOrder) entity.setArmorValue(location, 'front', 0);
-        const unarmored = await RecordSheetSvgGenerator.generate(entity);
+        const unarmored = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(unarmored.querySelector('#textArmor_NOS')?.textContent).toBe('1 ( 0 )');
 
         entity.barRating.set(10);
         entity.setArmorValue('Left Wing', 'front', 11);
-        const standardArmor = await RecordSheetSvgGenerator.generate(entity);
+        const standardArmor = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(standardArmor.querySelector('#textArmor_NOS')?.textContent).toBe('0 ( 0 )');
         expect(standardArmor.querySelector('#textArmor_LWG')?.textContent).toBe('2 ( 11 )');
     });
@@ -480,7 +480,7 @@ describe('RecordSheetSvgGenerator', () => {
             ammo: { type: 'LRM', rackSize: 15, shots: 40 },
         }), { location: 'Nose', shotsCount: 40 });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const laserRow = svg.querySelector<SVGGElement>(
             `.inventoryEntry[data-mekbay-component-ids="${laser.mountId}"]`,
         );
@@ -515,7 +515,7 @@ describe('RecordSheetSvgGenerator', () => {
             mounts: [first, second, ammo, firstArtemis, secondArtemis],
         });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
 
         expect(svg.querySelector('[data-mekbay-region="aero-data"]')?.getAttribute('data-mekbay-aero-scale'))
@@ -544,7 +544,7 @@ describe('RecordSheetSvgGenerator', () => {
         addBay('ALS', 1);
         addBay('ARS', 2);
 
-        const pages = await RecordSheetSvgGenerator.generatePages(entity);
+        const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
         const rows = [...pages[0].querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
         expect(pages.length).toBe(1);
         expect(rows.map(row => row.querySelector('.location')?.textContent)).toEqual(['FLS/FRS', 'ALS', 'ARS']);
@@ -591,7 +591,7 @@ describe('RecordSheetSvgGenerator', () => {
             }), { location, shotsCount: 24 });
             entity.addEquipmentBay('weapon-bay', { mounts: [mountedWeapon, ammo] });
         }
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry.bay')];
         expect(rows.map(row => row.querySelector('.name')?.textContent))
             .toEqual(['1 LRM 20 (24 rounds)', '1 LRM 20 (24 rounds)']);
@@ -614,7 +614,7 @@ describe('RecordSheetSvgGenerator', () => {
             addTestEquipment(entity, medium, { location: 'Left Side' }),
             addTestEquipment(entity, medium, { location: 'Right Side', rearMounted: true }),
         ];
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = [...svg.querySelectorAll<SVGGElement>('.inventoryEntry[data-mekbay-component-ids]')];
         expect(rows.map(row => row.getAttribute('data-mekbay-component-ids')))
             .toEqual([mounts[1], mounts[2], mounts[0]].map(mount => mount.mountId));
@@ -630,7 +630,7 @@ describe('RecordSheetSvgGenerator', () => {
         }), { location: 'Front Left Side' });
         entity.addEquipmentBay('weapon-bay', { mounts: [laser] });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const row = svg.querySelector<SVGGElement>('.inventoryEntry.bay')!;
         expect(row.querySelector('.name')?.textContent).toBe('1 Large Laser');
         expect(row.querySelector('.range_short')?.textContent).toBe('1 (8)');
@@ -658,7 +658,7 @@ describe('RecordSheetSvgGenerator', () => {
             entity.addEquipmentBay('weapon-bay', { mounts: [standard] });
         }
 
-        const pages = await RecordSheetSvgGenerator.generatePages(entity);
+        const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
 
         expect(pages.length).toBe(2);
         expect(pages.map(page => page.dataset['mekbayPageRole'])).toEqual(['primary', 'supplemental']);
@@ -688,7 +688,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('generates runtime binding anchors without a downloaded sheet', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestQuadMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestQuadMekEntity(), { ruleset: 'total-warfare' });
 
         expect(svg.classList.contains('mekbay-sheet')).toBeTrue();
         expect(svg.querySelectorAll('#mekbay-svg-style').length).toBe(1);
@@ -781,7 +781,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('uses the diagonal-striped unit-condition banner presentation', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestQuadMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestQuadMekEntity(), { ruleset: 'total-warfare' });
         const banner = svg.querySelector<SVGGElement>('.unitConditionBanner[condition="immobile"]')!;
         const rect = banner.querySelector<SVGRectElement>('.unitConditionBannerRect')!;
         const text = banner.querySelector<SVGTextElement>('.unitConditionBannerText')!;
@@ -836,7 +836,7 @@ describe('RecordSheetSvgGenerator', () => {
             }),
         }));
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const ctArmor = svg.querySelectorAll('.pip.armor[data-loc="CT"]:not(.half)');
         const ctStructure = svg.querySelectorAll('.pip.structure[data-loc="CT"]:not(.half)');
 
@@ -874,7 +874,7 @@ describe('RecordSheetSvgGenerator', () => {
             }) }));
             for (const location of entity.armorLocations) entity.setArmorValue(location, 'front', 3);
 
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const pips = [...svg.querySelectorAll<SVGPolygonElement>('.pip.armor:not(.trooperStatusPip)')];
             expect(pips.length).withContext(family).toBeGreaterThan(0);
             expect(pips.every(pip => pip.tagName === 'polygon' && pip.points.numberOfItems === 5))
@@ -897,7 +897,7 @@ describe('RecordSheetSvgGenerator', () => {
             id: 'Test Composite Structure', name: 'Composite', type: 'structure', structure: { typeId: 5 },
         }) }));
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         for (const type of ['armor', 'structure']) {
             const pips = [...svg.querySelectorAll<SVGCircleElement>(`.pip.${type}[data-loc="CT"]`)];
             expect(pips.length).toBeGreaterThan(0);
@@ -923,7 +923,7 @@ describe('RecordSheetSvgGenerator', () => {
             weapon: { ammoType: 'SRM', rackSize: 6 },
         }), { location: 'LT' });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const hitTable = svg.querySelector<SVGGElement>('[data-mekbay-reference="mek-hit-location-cluster"]')!;
         const punchKick = svg.querySelector<SVGGElement>('[data-mekbay-reference="mek-punch-kick"]')!;
 
@@ -956,7 +956,7 @@ describe('RecordSheetSvgGenerator', () => {
     it('keeps Tripod crew roles and transfer art in the Mek family owner', async () => {
         const entity = new TestTripodMekEntity();
         entity.cockpitType.set('Tripod');
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const crew = svg.querySelector<SVGGElement>('.mek-multi-crew-data')!;
         const reference = svg.querySelector<SVGGElement>(
             '[data-mekbay-reference="mek-hit-location-cluster"]',
@@ -973,7 +973,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('keeps LAM-only movement, systems, transfer, compass, and heat in the Mek family owner', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestLamEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestLamEntity(), { ruleset: 'total-warfare' });
         const masthead = svg.querySelector<SVGTextElement>('.record-sheet-masthead > text');
         const systemDamage = svg.querySelector<SVGGElement>('.lam-system-damage');
         const transfer = svg.querySelector<SVGGElement>('.damage-transfer-diagram');
@@ -1000,7 +1000,7 @@ describe('RecordSheetSvgGenerator', () => {
         entity.omni.set(true);
         entity.motiveType.set('Wheel');
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const masthead = svg.querySelector<SVGTextElement>('.record-sheet-masthead > text');
 
         expect(masthead?.textContent).toBe('OMNIQUADVEE RECORD SHEET');
@@ -1041,7 +1041,7 @@ describe('RecordSheetSvgGenerator', () => {
         ];
 
         for (const entity of entities) {
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const context = `${entity.entityType} (${entity.constructor.name})`;
             expect(svg.dataset['mekbayGenerated']).withContext(context).toBe('1');
             expect(Array.from(svg.querySelectorAll('image')).every(image => {
@@ -1079,9 +1079,9 @@ describe('RecordSheetSvgGenerator', () => {
         superheavy.setTonnage(125);
         const quad = new TestQuadMekEntity();
 
-        const standardSvg = await RecordSheetSvgGenerator.generate(standard);
-        const superheavySvg = await RecordSheetSvgGenerator.generate(superheavy);
-        const quadSvg = await RecordSheetSvgGenerator.generate(quad);
+        const standardSvg = await RecordSheetSvgGenerator.generate(standard, { ruleset: 'total-warfare' });
+        const superheavySvg = await RecordSheetSvgGenerator.generate(superheavy, { ruleset: 'total-warfare' });
+        const quadSvg = await RecordSheetSvgGenerator.generate(quad, { ruleset: 'total-warfare' });
 
         expect(standardSvg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
             .toBe('canon');
@@ -1095,7 +1095,7 @@ describe('RecordSheetSvgGenerator', () => {
 
     it('marks generated A4 pages with their requested page format', async () => {
         const entity = new TestQuadMekEntity();
-        const a4 = await RecordSheetSvgGenerator.generate(entity, { format: 'a4' });
+        const a4 = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'a4' });
 
         expect(a4.dataset['mekbayPageFormat']).toBe('a4');
         expect(a4.dataset['mekbayGenerated']).toBe('1');
@@ -1105,7 +1105,7 @@ describe('RecordSheetSvgGenerator', () => {
         for (const pipLayout of ['distributed', 'rail'] as const) {
             for (const entity of [new TestBipedMekEntity(), new TestTankEntity()]) {
                 entity.damageLocations().forEach(location => entity.setArmorValue(location.code, 'front', 10));
-                const sheet = await RecordSheetSvgGenerator.generate(entity, { pipLayout });
+                const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', pipLayout });
                 expect(sheet.getAttribute('data-mekbay-pip-layout')).toBe(pipLayout);
                 for (const location of entity.damageLocations()) {
                     const code = location.sheetCode ?? location.code;
@@ -1124,7 +1124,7 @@ describe('RecordSheetSvgGenerator', () => {
         ] as const;
 
         for (const item of cases) {
-            const svg = await RecordSheetSvgGenerator.generate(item.entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(item.entity, { ruleset: 'total-warfare', format: 'compact' });
             expect(svg.dataset['mekbayCompact']).toBe(item.kind);
         }
     });
@@ -1141,8 +1141,8 @@ describe('RecordSheetSvgGenerator', () => {
             weapon: { damage: 'cluster', ammoType: 'SRM', rackSize: 6, ranges: [3, 6, 9] },
         }), { location: 'Main Gun' });
 
-        const page = await RecordSheetSvgGenerator.generate(entity);
-        const compact = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const page = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const compact = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(compact.querySelector('[data-mekbay-field="display-name"]')?.textContent)
             .toBe('Procyon (Quad)');
@@ -1168,7 +1168,7 @@ describe('RecordSheetSvgGenerator', () => {
             weapon: { damage: 1, ranges: [1, 2, 3] },
         }), { location: 'LA', isAPM: true });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const primaryRow = svg.querySelector<SVGGElement>(
             `.inventoryEntry[data-mekbay-component-ids="${primary.mountId}"]`,
         );
@@ -1185,7 +1185,7 @@ describe('RecordSheetSvgGenerator', () => {
         entity.heatSinkCount.set(20);
         entity.heatSinkType.set('Double');
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const heat = svg.querySelector<SVGGElement>('#heatDataPanel')!;
         const labels = Array.from(heat.querySelectorAll<SVGTextElement>('text'));
         const text = (value: string): SVGTextElement | undefined => labels.find(node => node.textContent === value);
@@ -1218,7 +1218,7 @@ describe('RecordSheetSvgGenerator', () => {
         });
         for (let index = 0; index < 10; index++) addTestEquipment(entity, container, { location: 'Hull' });
 
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.textContent).toContain('Features 10xCargo Container (10 tons)');
         expect(svg.querySelector('#foreSidesHeat')?.textContent).toBe('14/0');
         expect(svg.querySelector('#aftSidesHeat')?.textContent).toBe('0/6');
@@ -1229,15 +1229,15 @@ describe('RecordSheetSvgGenerator', () => {
         entity.setTonnage(6000);
         expect(entity.sail()).toBeFalse();
         expect(entity.sailIntegrity()).toBe(3);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         expect(svg.textContent).not.toContain('Sail Integrity:');
         expect(svg.querySelector('[data-location="SAIL"], #textSailIntegrity')).toBeNull();
     });
 
     it('lets each compact family own its masthead wording and identifying art', async () => {
-        const battleArmor = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity());
-        const infantry = await RecordSheetSvgGenerator.generate(new TestInfantryEntity());
-        const protoMek = await RecordSheetSvgGenerator.generate(new TestProtoMekEntity());
+        const battleArmor = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare' });
+        const infantry = await RecordSheetSvgGenerator.generate(new TestInfantryEntity(), { ruleset: 'total-warfare' });
+        const protoMek = await RecordSheetSvgGenerator.generate(new TestProtoMekEntity(), { ruleset: 'total-warfare' });
 
         expect(mastheadLines(battleArmor)).toEqual(['BATTLE ARMOR', 'RECORD SHEET']);
         expect(battleArmor.querySelector('.battle-armor-masthead-icon')).not.toBeNull();
@@ -1249,7 +1249,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('keeps the structure torso labels beside their counters and below Head', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         const structure = svg.querySelector('.mek-paperdoll-structure')!;
         const head = [...structure.querySelectorAll<SVGTextElement>('.diagram-location-name')]
             .find(label => label.textContent === 'Head')!;
@@ -1267,7 +1267,7 @@ describe('RecordSheetSvgGenerator', () => {
         const source = '/images/record-sheet-art/custom-fighter-fluff.png';
         const entity = new TestFixedWingSupportEntity();
         entity.fluffImageEncoded.set('previous-encoded-image');
-        const svg = await RecordSheetSvgGenerator.generate(entity, { fluffImageUrl: source });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', fluffImageUrl: source });
         const region = svg.querySelector<SVGGElement>('.aero-artwork-region')!;
         const image = region.querySelector<SVGImageElement>('image')!;
 
@@ -1292,8 +1292,8 @@ describe('RecordSheetSvgGenerator', () => {
     ] as const) {
         it(`places resolved ${family} fluff in the masthead and retains its default when absent`, async () => {
             const source = '/images/record-sheet-art/custom-unit-fluff.png';
-            const custom = await RecordSheetSvgGenerator.generate(createEntity(), { fluffImageUrl: source });
-            const fallback = await RecordSheetSvgGenerator.generate(createEntity(), { fluffImageUrl: null });
+            const custom = await RecordSheetSvgGenerator.generate(createEntity(), { ruleset: 'total-warfare', fluffImageUrl: source });
+            const fallback = await RecordSheetSvgGenerator.generate(createEntity(), { ruleset: 'total-warfare', fluffImageUrl: null });
             const image = custom.querySelector<SVGImageElement>('.masthead-fluff-image')!;
 
             expect(image?.getAttribute('href')).toBe(source);
@@ -1310,8 +1310,8 @@ describe('RecordSheetSvgGenerator', () => {
     }
 
     it('composes mixed compact sheets into distinct unit blocks', async () => {
-        const vehicle = await RecordSheetSvgGenerator.generate(new TestTankEntity(), { format: 'compact' });
-        const battleArmor = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { format: 'compact' });
+        const vehicle = await RecordSheetSvgGenerator.generate(new TestTankEntity(), { ruleset: 'total-warfare', format: 'compact' });
+        const battleArmor = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare', format: 'compact' });
         const page = RecordSheetSvgGenerator.composeCompactPage([vehicle, battleArmor]);
 
         expect(page.dataset['mekbayUnitCount']).toBe('2');
@@ -1320,7 +1320,7 @@ describe('RecordSheetSvgGenerator', () => {
 
     it('owns the legal footer at the vehicle page level instead of repeating it per unit', async () => {
         const vehicles = await Promise.all(Array.from({ length: 2 }, () =>
-            RecordSheetSvgGenerator.generate(new TestTankEntity(), { format: 'compact' })));
+            RecordSheetSvgGenerator.generate(new TestTankEntity(), { ruleset: 'total-warfare', format: 'compact' })));
 
         expect(vehicles.every(vehicle => !vehicle.textContent?.includes('The Topps Company'))).toBeTrue();
         const page = RecordSheetSvgGenerator.composeCompactPage(vehicles);
@@ -1336,7 +1336,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('uses vehicle reference tables when a compact vehicle is alone on its page', async () => {
-        const vehicle = await RecordSheetSvgGenerator.generate(new TestTankEntity(), { format: 'compact' });
+        const vehicle = await RecordSheetSvgGenerator.generate(new TestTankEntity(), { ruleset: 'total-warfare', format: 'compact' });
         const page = RecordSheetSvgGenerator.composeCompactPage([vehicle]);
 
         expect(page.querySelector('.compact-vehicle-unit-chrome')).not.toBeNull();
@@ -1348,7 +1348,7 @@ describe('RecordSheetSvgGenerator', () => {
 
     it('emits one shared reference layer for a compact family page', async () => {
         const battleArmor = await Promise.all(Array.from({ length: 5 }, () =>
-            RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { format: 'compact' })));
+            RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare', format: 'compact' })));
         const page = RecordSheetSvgGenerator.composeCompactPage(battleArmor);
         expect(page.dataset['mekbayReferenceFamily']).toBe('battle-armor');
         expect(page.querySelectorAll('.compact-sheet-block').length).toBe(5);
@@ -1366,7 +1366,7 @@ describe('RecordSheetSvgGenerator', () => {
     });
 
     it('includes the applicable cluster reference when one Battle Armor unit leaves room for it', async () => {
-        const page = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity());
+        const page = await RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), { ruleset: 'total-warfare' });
 
         expect(page.dataset['mekbayReferenceFamily']).toBe('battle-armor');
         expect(page.querySelectorAll('[data-mekbay-reference="cluster-hits"]').length).toBe(1);
@@ -1377,6 +1377,7 @@ describe('RecordSheetSvgGenerator', () => {
     it('composes compact blocks on an A4 canvas', async () => {
         const blocks = await Promise.all(Array.from({ length: 5 }, () =>
             RecordSheetSvgGenerator.generate(new TestBattleArmorEntity(), {
+                ruleset: 'total-warfare',
                 format: 'compact',
                 pageFormat: 'a4',
             })));

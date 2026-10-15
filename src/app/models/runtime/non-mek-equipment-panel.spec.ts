@@ -305,6 +305,73 @@ describe('Entity equipment panel projection', () => {
         }));
     });
 
+    it('clears the ATM minimum range and its penalty for HE ammo and restores them for Standard', () => {
+        const atm = new WeaponEquipment({
+            id: 'CLATM6', name: 'ATM 6', type: 'weapon', tech: { base: 'Clan' }, flags: ['F_MISSILE'],
+            weapon: { ammoType: 'ATM', rackSize: 6, minRange: 4, ranges: [5, 10, 15, 20] },
+        });
+        const standard = new AmmoEquipment({
+            id: 'CLATM6Ammo', name: 'ATM 6 Ammo', type: 'ammo', tech: { base: 'Clan' },
+            ammo: { type: 'ATM', rackSize: 6, shots: 10, munitionType: ['M_STANDARD'] },
+        });
+        const highExplosive = new AmmoEquipment({
+            id: 'CLATM6HEAmmo', name: 'ATM 6 HE Ammo', type: 'ammo', tech: { base: 'Clan' },
+            ammo: { type: 'ATM', rackSize: 6, shots: 10, munitionType: ['M_HIGH_EXPLOSIVE'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [atm.id]: atm, [standard.id]: standard, [highExplosive.id]: highExplosive,
+        }));
+        entity.uuid.set(UUID);
+        entity.techBase.set('Clan');
+        const location = entity.locationOrder[0];
+        const weaponMount = addTestEquipment(entity, atm, { location });
+        addTestEquipment(entity, standard, { location, shotsCount: 10 });
+        addTestEquipment(entity, highExplosive, { location, shotsCount: 10 });
+        const runtime = createNonMekRuntimeForTest('unit:atm-he', baseline(), entity, CORE_2026_RULESET);
+        const weaponId = [...runtime.getIndex().components.keys()]
+            .find(id => String(id) === String(weaponMount.mountId))!;
+        const targetId = asEncounterTargetId('target:atm');
+        const registry = Object.freeze({
+            revision: 0,
+            targets: Object.freeze([Object.freeze({
+                id: targetId, letter: 'A', name: 'Target A', color: '#ff0000', source: 'manual' as const,
+                readOnly: false, unitType: 'vehicle' as const,
+                tnCalculator: Object.freeze({ targetMovementBracket: '0-2' as const }),
+            })]),
+        });
+        runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: {
+            kind: 'set-component-selection', componentId: weaponId, selection: { kind: 'target', targetId },
+        } }, registry, false);
+        runtime.dispatchAttackerTargeting({ type: 'edit-attacker-targeting', edit: {
+            kind: 'set-target-facts', targetId, facts: { distance: 3 },
+        } }, registry, false);
+        const selectMode = (mode: string) => {
+            runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode });
+            const snapshot = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET,
+                runtime.snapshot(), createDefaultCrewAssignment(runtime.getIndex().crewPositions), registry);
+            const row = snapshot.components.find(candidate => candidate.componentId === weaponId)!;
+            const presentation = projectWeaponTargetPresentation(row,
+                projectTargetingTarget(snapshot.targets[0], snapshot.ruleset), snapshot.crew.gunnery, null, snapshot.ruleset);
+            return { weapon: row.weapon!, presentation };
+        };
+
+        const standardShot = selectMode('Standard');
+        expect(standardShot.weapon.minimumRange).toBe(4);
+        expect(standardShot.presentation.minimumRangeModifier).toBe(2);
+
+        const highExplosiveShot = selectMode('High Explosive');
+        expect(highExplosiveShot.weapon.minimumRange).toBe(0);
+        expect(highExplosiveShot.weapon.ranges.slice(0, 3)).toEqual([3, 6, 9]);
+        expect(highExplosiveShot.presentation.minimumRangeModifier).toBe(0);
+        expect(Number(standardShot.presentation.targetNumberText) - Number(highExplosiveShot.presentation.targetNumberText))
+            .toBe(2);
+
+        const restored = selectMode('Standard');
+        expect(restored.weapon.minimumRange).toBe(4);
+        expect(restored.presentation.minimumRangeModifier).toBe(2);
+        expect(restored.presentation.targetNumberText).toBe(standardShot.presentation.targetNumberText);
+    });
+
     it('applies direct vehicle system rules to weapon status, firing, and to-hit display', () => {
         const laser = new WeaponEquipment({
             id: 'VehicleLaser',

@@ -30,7 +30,7 @@ describe('Record sheet inventory geometry', () => {
                     id: 'Wrapping laser ' + index, name: name + ' ' + index, type: 'weapon',
                     weapon: { damage: 6, heat: 7, ranges: [3, 6, 9] },
                 }), { location: entity.locationOrder[0] });
-                const svg = await RecordSheetSvgGenerator.generate(entity);
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
                 document.body.appendChild(svg);
                 try {
                     const rows = Array.from(svg.querySelectorAll<SVGGElement>('.inventoryEntry'))
@@ -77,7 +77,7 @@ describe('Record sheet inventory geometry', () => {
                     id: 'Layout Test Laser', name: 'Medium Re-engineered Laser', type: 'weapon',
                     weapon: { damage: 6, heat: 7, ranges: [3, 6, 9] },
                 }), { location: entity.locationOrder[0] ?? 'Building' });
-                const svg = await RecordSheetSvgGenerator.generate(entity, { format });
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format });
                 document.body.appendChild(svg);
                 try {
                     const texts = Array.from(svg.querySelectorAll<SVGTextElement>('text'))

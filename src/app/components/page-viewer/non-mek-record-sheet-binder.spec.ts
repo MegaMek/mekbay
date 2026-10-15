@@ -55,7 +55,7 @@ describe('bindNonMekRecordSheet', () => {
             addTestEquipment(entity, new WeaponEquipment({ id: 'SRM 2', name: 'SRM 2', type: 'weapon',
                 flags: ['F_MISSILE'], weapon: { damage: '2/Msl', rackSize: 2, ammoType: 'SRM', ranges: [3, 6, 9] },
             }));
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const table = svg.querySelector<SVGElement>('[data-mekbay-reference="cluster-hits"]')!;
             expect(table).not.toBeNull();
             const onInteraction = jasmine.createSpy('onInteraction');
@@ -130,7 +130,7 @@ describe('bindNonMekRecordSheet', () => {
         it(Family.name + ': binds generated armor counters and preserves their prefixes', async () => {
             const entity = new Family();
             for (const code of entity.locationOrder) entity.setArmorValue(code, 'front', 28);
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const counters = [...svg.querySelectorAll<SVGElement>('[id^="textArmor_"]')];
             expect(counters.length).toBeGreaterThan(0);
             const base = snapshot(3);
@@ -595,7 +595,7 @@ describe('bindNonMekRecordSheet', () => {
         const entity = new testEntities.TestWarShipEntity();
         entity.setArmorValue('Nose', 'front', 101);
         entity.structuralIntegrity.set(150);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const locations = entity.damageLocations().map(location => ({
             locationId: asLocationId(location.code), code: location.code, sheetCode: location.sheetCode ?? location.code,
             maximumInternal: location.internalPoints, remainingInternal: location.internalPoints,
@@ -887,7 +887,7 @@ describe('bindNonMekRecordSheet', () => {
                 0, 0, unit.getCrewAssignment()), editContext: { owner: unit, state: unit.snapshot() } });
             const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(),
                 unit.getCrewAssignment(), emptyCBTEncounterSnapshot(), true, enabled);
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${weaponId}"]`)!;
             const values = ammoType === 'LRM' ? row : row.querySelector('.alternativeMode')!;
             const minimum = values.querySelector('.range_min')!;

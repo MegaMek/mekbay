@@ -57,7 +57,7 @@ transparentRect
 } from '../record-sheet-svg-rendering';
 
 export interface CompactVehicleInventoryPresentation {
-    readonly ruleset?: CBTRuleset;
+    readonly ruleset: CBTRuleset;
     readonly showQuirks?: boolean;
     readonly includePhysicalAttacks: boolean;
     readonly lastDetailBaseline: number;

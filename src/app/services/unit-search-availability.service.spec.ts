@@ -154,6 +154,7 @@ describe('UnitSearchAvailabilityService', () => {
             .and.throwError('RAT search must not consult MUL');
         expect(service.getIndexedUnitIds('era', 'Late', scope, false)).toEqual(new Set([units[3].uuid]));
         expect(service.getIndexedUnitIds('faction', 'Second', scope, false)).toEqual(new Set([units[3].uuid]));
+        expect(service.unitBelongsToFaction(units[3], 'First', ['Early'])).toBeFalse();
         expect(service.getCandidateUnitIds(scope, ['Requisition'], [])).toEqual(new Set([units[3].uuid]));
         expect(service.getBadges(units[3], scope, false))
             .toEqual([{ source: 'Requisition', score: 10, rarity: 'Very Rare' }]);
@@ -162,8 +163,10 @@ describe('UnitSearchAvailabilityService', () => {
 
     it('uses MUL membership and RAT rarity in MUL mode', () => {
         options.update(value => ({ ...value, availabilitySource: 'mul' }));
+        records.set('Unknown Mek', { n: 'Unknown Mek', e: { 100: { 20: [10, 0] } } });
         const scope = { eraNames: ['Early'], factionNames: ['First'] };
         expect(service.unitBelongsToFaction(units[3], 'First', ['Early'])).toBeTrue();
+        expect(service.unitBelongsToFaction(units[3], 'Second', ['Early'])).toBeFalse();
         expect(service.getBadges(units[0], scope, false))
             .toEqual([{ source: 'Requisition', score: 10, rarity: 'Very Rare' }]);
         expect(service.getBadges(units[3], scope, false))

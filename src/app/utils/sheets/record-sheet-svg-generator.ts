@@ -26,7 +26,7 @@ export type { RecordSheetSvgFormat } from './layouts/record-sheet-layout';
 export interface RecordSheetSvgGeneratorOptions {
     readonly format?: RecordSheetSvgFormat;
     readonly pageFormat?: RecordSheetPageFormat;
-    readonly ruleset?: CBTRuleset;
+    readonly ruleset: CBTRuleset;
     readonly fluffImageUrl?: string | null;
     readonly pipLayout?: RecordSheetPipLayout;
     readonly showQuirks?: boolean;
@@ -36,7 +36,7 @@ export interface RecordSheetSvgGeneratorOptions {
 export class RecordSheetSvgGenerator {
     public static async generate(
         entity: BaseEntity,
-        options: RecordSheetSvgGeneratorOptions = {},
+        options: RecordSheetSvgGeneratorOptions,
     ): Promise<SVGSVGElement> {
         const pages = await this.generatePages(entity, options);
         const primary = pages[0];
@@ -46,7 +46,7 @@ export class RecordSheetSvgGenerator {
 
     public static async generatePages(
         entity: BaseEntity,
-        options: RecordSheetSvgGeneratorOptions = {},
+        options: RecordSheetSvgGeneratorOptions,
     ): Promise<readonly SVGSVGElement[]> {
         const format = options.format ?? 'letter';
         const pageFormat = options.pageFormat ?? (format === 'a4' ? 'a4' : 'letter');

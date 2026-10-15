@@ -29,7 +29,7 @@ describe('record-sheet movement controls', () => {
     afterEach(() => cleanups.splice(0).forEach(cleanup => cleanup()));
 
     async function mount(entity: BaseEntity) {
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         svg.classList.add('interactive-sheet');
         document.body.append(svg);
         cleanups.push(() => svg.remove());

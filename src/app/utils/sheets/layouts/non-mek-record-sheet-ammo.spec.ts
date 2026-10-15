@@ -21,7 +21,7 @@ describe('generated non-Mek ammo rows', () => {
 
     for (const family of families) {
         it(`uses no visible ammo row for an empty ${family.name} inventory`, async () => {
-            const svg = await RecordSheetSvgGenerator.generate(family.create(), { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(family.create(), { ruleset: 'total-warfare', format: 'compact' });
 
             expect(svg.querySelectorAll('#ammoProfile text').length).toBe(0);
         });
@@ -30,7 +30,7 @@ describe('generated non-Mek ammo rows', () => {
             const entity = family.create();
             addAmmo(entity, 'AC/5');
 
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             const lines = svg.querySelectorAll<SVGTextElement>('#ammoProfile text');
 
             expect(lines.length).toBe(1);
@@ -42,7 +42,7 @@ describe('generated non-Mek ammo rows', () => {
             const names = ['Arrow IV ADA', 'Arrow IV FA', 'Arrow IV T-FASCAM', 'Arrow IV Homing', 'Ultra AC/5', 'MG'];
             names.forEach(name => addAmmo(entity, name));
 
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             const lines = [...svg.querySelectorAll<SVGTextElement>('#ammoProfile text')];
 
             expect(lines.length).toBeGreaterThan(1);
@@ -61,7 +61,7 @@ describe('generated non-Mek ammo rows', () => {
                 id: 'Test Medium Laser', name: 'Medium Laser', type: 'weapon',
                 weapon: { damage: 5, heat: 3, ranges: [3, 6, 9] },
             }), { location: 'Body' });
-            const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
             const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;
             const inventory = profile.parentElement!.querySelector<SVGGElement>('[data-ammo-inventory]')!;
             const originalTransform = inventory.getAttribute('transform');

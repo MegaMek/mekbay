@@ -601,10 +601,8 @@ describe('construction editor document lifecycle', () => {
     expect(editor.routeUuid()).toBeUndefined();
   });
 
-  it('lazily previews a detached unsaved design with custom identity instead of the core MUL id', async () => {
-    core.mulId.set(1234);
+  it('lazily previews a detached unsaved design with custom identity', async () => {
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
-    const draftMulId = editor.entity().mulId();
     detach.calls.reset();
     editor.setField(
       editor.fields().find((field) => field.id === 'model')!,
@@ -617,12 +615,8 @@ describe('construction editor document lifecycle', () => {
     expect(preview).not.toBe(editor.entity());
     expect(preview).not.toBe(core);
     expect(preview.model()).toBe('Unsaved preview');
-    expect(preview.mulId()).toBe(draftMulId);
-    expect(editor.entity().mulId()).toBe(draftMulId);
-    expect(core.mulId()).toBe(1234);
     expect(editor.designSummary()).toEqual(
       jasmine.objectContaining({
-        mul1id: -1,
         origin: 'user',
         isCustom: true,
         canon: false,

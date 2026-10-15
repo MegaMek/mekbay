@@ -373,6 +373,14 @@ describe('PageTurnSummaryPanelComponent', () => {
         );
     });
 
+    it('hides heat controls for a ground vehicle that does not track heat', () => {
+        const fixture = createComponent(entityTurnMember().member, overlayManager());
+        fixture.detectChanges();
+
+        expect(fixture.componentInstance.tracksHeat()).toBeFalse();
+        expect(fixture.nativeElement.querySelector('.heat-section')).toBeNull();
+    });
+
     it('shows direct aerospace heat as the same contextual source rows as origin/next', () => {
         const harness = aeroTurnMember();
         const fixture = createComponent(harness.member, overlayManager());

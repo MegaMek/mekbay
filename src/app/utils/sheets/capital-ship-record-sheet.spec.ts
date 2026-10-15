@@ -14,7 +14,7 @@ describe('capital-vessel record sheet grids', () => {
                 entity.structuralIntegrity.set(150);
                 for (const code of entity.armorLocations) entity.setArmorValue(code, 'front', 1_000);
 
-                const sheet = await RecordSheetSvgGenerator.generate(entity, { pipLayout });
+                const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', pipLayout });
                 const paperdoll = sheet.querySelector('[data-mekbay-paperdoll]')!;
                 expect(paperdoll).not.toBeNull();
                 expect(paperdoll.querySelector('.pip.armor, .pip.structure')).toBeNull();
@@ -66,7 +66,7 @@ describe('capital-vessel record sheet grids', () => {
         const entity = new TestWarShipEntity();
         entity.setArmorValue('Nose', 'front', 101);
         entity.structuralIntegrity.set(150);
-        const sheet = await RecordSheetSvgGenerator.generate(entity, { pipLayout: 'rail' });
+        const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', pipLayout: 'rail' });
         expect(sheet.querySelector('.capital-pip-grid.armor[data-loc="NOS"]')).not.toBeNull();
         expect(sheet.querySelector('.capital-pip-grid.structure[data-loc="SI"]')).not.toBeNull();
         expect(sheet.querySelector('.pip.armor, .pip.structure')).toBeNull();

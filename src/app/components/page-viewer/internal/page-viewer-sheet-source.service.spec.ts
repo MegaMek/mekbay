@@ -27,7 +27,7 @@ describe('PageViewerSheetSourceService', () => {
         options.set({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
         source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
         source.load.and.callFake(async (entity, options) => ({
-            svgs: [await RecordSheetSvgGenerator.generate(entity, options)],
+            svgs: [await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', ...options })],
         }));
         TestBed.configureTestingModule({
             providers: [
@@ -168,7 +168,7 @@ describe('PageViewerSheetSourceService', () => {
         await expectAsync(service.load(member)).toBeRejectedWithError('generation failed');
 
         source.load.and.callFake(async (entity, options) => ({
-            svgs: [await RecordSheetSvgGenerator.generate(entity, options)],
+            svgs: [await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', ...options })],
         }));
         await service.load(member);
 

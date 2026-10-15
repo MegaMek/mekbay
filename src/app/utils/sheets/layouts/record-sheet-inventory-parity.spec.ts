@@ -72,7 +72,7 @@ describe('record-sheet inventory content parity', () => {
             flags: ['F_CLUB', 'S_ROCK_CUTTER'] }), { location: 'RA' });
         const cargo = addTestEquipment(entity, createEquipment({ id: 'Cargo', name: 'Cargo', type: 'misc',
             flags: ['F_CARGO'] }), { location: 'CT', size: 0.5 });
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         const rows = [...svg.querySelectorAll('.inventoryEntry[data-mekbay-component-ids]')];
 
         expect(rows.map(row => row.getAttribute('data-mekbay-component-ids')))
@@ -85,7 +85,7 @@ describe('record-sheet inventory content parity', () => {
     it('omits integral QuadVee tracks while retaining mounted tracks on ordinary Meks', async () => {
         for (const entity of [new TestQuadVeeEntity(), new TestBipedMekEntity()]) {
             const tracks = addTestEquipmentWithFlags(entity, 'F_TRACKS', { location: 'LL' });
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${tracks.mountId}"]`);
             expect(row !== null).withContext(entity.chassisConfig).toBe(entity.chassisConfig !== 'QuadVee');
             expect(entity.equipment().includes(tracks)).toBeTrue();
@@ -102,7 +102,7 @@ describe('record-sheet inventory content parity', () => {
             entity.mixedTech.set(true);
             const mount = addTestEquipment(entity, clan, { location: entity.entityType === 'Mek' ? 'RA' : 'TU', turretMounted: true });
             expect(recordSheetInventoryMountName(entity, mount)).toBe('Gauss Rifle (C) (T)');
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${mount.mountId}"]`);
             expect(row?.querySelector(':scope > .name')?.textContent).toContain('Gauss Rifle (C)');
         }
@@ -121,7 +121,7 @@ describe('record-sheet inventory content parity', () => {
             weapon: { damage: '1/Msl', ammoType: 'LRM', rackSize: 20, ranges: [7, 14, 21] } }), { location: 'TU' });
         const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS_V', { location: 'TU' });
         entity.linkEquipment(artemis, launcher);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${launcher.mountId}"]`)!;
         const linked = row.querySelector('.inventoryEntry.linked');
 
@@ -140,7 +140,7 @@ describe('record-sheet inventory content parity', () => {
             { id: 'water', kind: 'bay', configuration: { type: 'liquid-cargo' }, capacity: 45.5, doors: 1, bayNumber: 2, omni: false },
             { id: 'quarters', kind: 'bay', configuration: { type: 'crew-quarters' }, capacity: 3, doors: 0, bayNumber: 3, omni: false },
         ]);
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const cargo = svg.querySelector('.vehicle-cargo')!;
 
         expect([...cargo.querySelectorAll('text')].map(text => text.textContent)).toEqual([
@@ -155,7 +155,7 @@ describe('record-sheet inventory content parity', () => {
         const entity = new TestSupportTankEntity();
         const backhoe = addTestEquipment(entity, createEquipment({ id: 'Backhoe', name: 'Backhoe', type: 'misc',
             flags: ['F_CLUB', 'S_BACKHOE'] }), { location: 'RR' });
-        const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact' });
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
 
         expect(svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${backhoe.mountId}"] .damage`)?.textContent).toBe('6');
     });

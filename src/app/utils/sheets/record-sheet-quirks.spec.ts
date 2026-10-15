@@ -16,7 +16,7 @@ describe('record sheet quirk visibility', () => {
         for (const format of ['letter', 'a4'] as const) {
             for (const left of [false, true]) {
                 entity.hasHandActuator.update(hands => ({ ...hands, left }));
-                const sheet = await RecordSheetSvgGenerator.generate(entity, { format });
+                const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format });
                 const text = sheet.querySelector('.unitQuirks')?.textContent ?? '';
                 expect(text).toContain('Battle Fists (RA)');
                 expect(text.includes('Battle Fists (LA)')).toBe(left);
@@ -66,12 +66,12 @@ describe('record sheet quirk visibility', () => {
             entity.weaponQuirks.set(['accurate', 'imp_cooling'].map(name => ({ name, ...weaponQuirkAddress(entity, mount) })));
             const formats = entity.entityType === 'Mek' ? ['letter', 'a4'] as const : ['compact', 'letter', 'a4'] as const;
             for (const format of formats) {
-                const enabled = await RecordSheetSvgGenerator.generate(entity, { format });
+                const enabled = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format });
                 const visible = [...enabled.querySelectorAll('.unitQuirks')].map(node => node.textContent).join(' ');
                 expect(visible).withContext(`${entity.entityType} ${format}`).toContain('Easy to Maintain');
                 expect(visible).toContain('Accurate Weapon');
                 expect(visible.includes('Improved Cooling Jacket')).toBe(entity.entityType === 'Mek');
-                const disabled = await RecordSheetSvgGenerator.generate(entity, { format, showQuirks: false });
+                const disabled = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format, showQuirks: false });
                 expect(disabled.querySelector('.unitQuirks')).withContext(`${entity.entityType} ${format}`).toBeNull();
                 expect(disabled.textContent).not.toContain('Accurate Weapon');
                 expect(entity.quirks().length).toBe(1);

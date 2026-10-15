@@ -26,7 +26,7 @@ import {
 export type RecordSheetSvgFormat = RecordSheetPageFormat | 'compact' | 'auto';
 
 export interface RecordSheetLayoutRequest {
-    readonly ruleset?: CBTRuleset;
+    readonly ruleset: CBTRuleset;
     readonly showQuirks?: boolean;
     readonly format: RecordSheetSvgFormat;
     readonly page: RecordSheetPageProfile;

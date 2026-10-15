@@ -42,7 +42,7 @@ describe('generated record-sheet styles', () => {
     for (const Factory of [TestBipedMekEntity, TestLamEntity, TestVtolEntity,
         TestProtoMekEntity, TestAeroSpaceFighterEntity, TestWarShipEntity]) {
         it(`replaces the vacant ${Factory.name} crew frame with a centered label, including in print`, async () => {
-            const svg = await RecordSheetSvgGenerator.generate(new Factory());
+            const svg = await RecordSheetSvgGenerator.generate(new Factory(), { ruleset: 'total-warfare' });
             stage.appendChild(svg);
             const frame = svg.querySelector<SVGGElement>('[data-mekbay-crew-stations]')!;
             const originalText = visibleText(frame);
@@ -70,7 +70,7 @@ describe('generated record-sheet styles', () => {
     it('clears only a vacant multi-crew station, then clears the whole frame when all stations are vacant', async () => {
         const entity = new TestTripodMekEntity();
         entity.cockpitType.set('Tripod');
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const frame = svg.querySelector<SVGGElement>('[data-mekbay-crew-stations]')!;
         const positions = [...frame.querySelectorAll<SVGGElement>('[data-mekbay-crew-position]')];
@@ -103,7 +103,7 @@ describe('generated record-sheet styles', () => {
     for (const Factory of [TestBipedMekEntity, TestAeroSpaceFighterEntity,
         TestBattleArmorEntity, TestInfantryEntity, TestVtolEntity, TestWarShipEntity]) {
         it(`themes an imperatively mounted ${Factory.name} and its cloned preview`, async () => {
-            const svg = await RecordSheetSvgGenerator.generate(new Factory());
+            const svg = await RecordSheetSvgGenerator.generate(new Factory(), { ruleset: 'total-warfare' });
             const preview = svg.cloneNode(true) as SVGSVGElement;
             stage.append(svg, preview);
             for (const sheet of [svg, preview]) {
@@ -117,7 +117,7 @@ describe('generated record-sheet styles', () => {
     }
 
     it('preserves heat-scale colors in both themes through generation and cloning', async () => {
-        const generated = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const generated = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         const svg = generated.cloneNode(true) as SVGSVGElement;
         stage.appendChild(svg);
         const checkpoints = [
@@ -141,7 +141,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('keeps damage and repair colors above authored fills and night recoloring', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const pip = svg.querySelector<SVGElement>('.pip')!;
         const originalClass = pip.getAttribute('class')!;
@@ -162,7 +162,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('distinguishes custom ammo while keeping damage color dominant', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const slot = svg.querySelector('.critSlot[hittable]')!;
         const label = slot.querySelector('text')!;
@@ -175,7 +175,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('enables pointer targets and cursors only on bound controls in live sheets', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         stage.style.cursor = 'grab';
         stage.appendChild(svg);
         const row = svg.querySelector('.inventoryEntry')!;
@@ -210,7 +210,7 @@ describe('generated record-sheet styles', () => {
     it('keeps every generated hit target passive until a live viewer opts in', async () => {
         for (const Factory of [TestBipedMekEntity, TestAeroSpaceFighterEntity,
             TestBattleArmorEntity, TestInfantryEntity, TestVtolEntity, TestWarShipEntity]) {
-            const svg = await RecordSheetSvgGenerator.generate(new Factory());
+            const svg = await RecordSheetSvgGenerator.generate(new Factory(), { ruleset: 'total-warfare' });
             stage.appendChild(svg);
             for (const element of [svg, ...svg.querySelectorAll('*')]) {
                 expect(getComputedStyle(element).pointerEvents)
@@ -222,7 +222,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('gates inventory and paperdoll hover effects while preserving their runtime state', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const row = svg.querySelector('.inventoryEntry')!;
         const button = row.querySelector('.inventoryEntryButton')!;
@@ -244,7 +244,7 @@ describe('generated record-sheet styles', () => {
     it('highlights only the capital block backdrop beneath its grid, shadow and damage layers', async () => {
         const entity = new TestWarShipEntity();
         entity.setArmorValue('Nose', 'front', 101);
-        const svg = await RecordSheetSvgGenerator.generate(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
         svg.classList.add('interactive-sheet');
         stage.appendChild(svg);
         const grid = svg.querySelector('.capital-pip-grid.armor[data-loc="NOS"]')!;
@@ -265,7 +265,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('enables equipment hover without edit actions and keeps previews passive', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const row = svg.querySelector('.inventoryEntry')!;
         const button = row.querySelector('.inventoryEntryButton')!;
@@ -291,7 +291,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('keeps selected weapon ranges visible when their live controls are hovered', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         svg.classList.add('interactive-sheet');
         stage.style.setProperty('--inventory-control-selection-color', '#123456');
         stage.appendChild(svg);
@@ -310,7 +310,7 @@ describe('generated record-sheet styles', () => {
     for (const Factory of WOUND_SHEET_FACTORIES) {
         it(`keeps ${Factory.name} wound numbers readable and clickable in both themes`, async () => {
             const entity = new Factory();
-            const svg = await RecordSheetSvgGenerator.generate(entity);
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const tracks = svg.querySelectorAll<SVGGElement>('.crew-hit-grid');
             expect(tracks.length).toBe(entity.crewSlotCount());
             verifyWoundClicks(svg);
@@ -367,7 +367,7 @@ describe('generated record-sheet styles', () => {
     }
 
     it('underlines the generated heading when its location control is hovered', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         svg.classList.add('interactive-sheet');
         stage.appendChild(svg);
         const control = svg.querySelector('.locationConditionControl')!;
@@ -382,7 +382,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('uses the damaged highlight when hovering a damaged location in night mode', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' });
         svg.classList.add('interactive-sheet');
         stage.classList.add('night-mode');
         stage.appendChild(svg);
@@ -393,7 +393,7 @@ describe('generated record-sheet styles', () => {
     });
 
     it('colors the generated VTOL rotor preview for both damage and repair', async () => {
-        const svg = await RecordSheetSvgGenerator.generate(new TestVtolEntity());
+        const svg = await RecordSheetSvgGenerator.generate(new TestVtolEntity(), { ruleset: 'total-warfare' });
         stage.appendChild(svg);
         const rotor = svg.querySelector<SVGElement>('.critLoc[critId="rotor"]')!;
         const frame = rotor.matches('rect') ? rotor : rotor.querySelector('rect')!;
@@ -437,7 +437,7 @@ describe('standalone record-sheet styles', () => {
         entity.setTonnage(50);
         entity.setArmorValue('CT', 'front', 3);
         addTestEquipmentWithFlags(entity, 'F_HEAT_SINK', { location: 'CT' });
-        const sheet = mountExport(await RecordSheetSvgGenerator.generate(entity));
+        const sheet = mountExport(await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' }));
         for (const [selector, fill, width] of [
             ['.pip.armor[data-loc="CT"]', 'rgb(255, 255, 255)', '0.5px'],
             ['.systemHitPip', 'none', '1.72px'],
@@ -461,7 +461,7 @@ describe('standalone record-sheet styles', () => {
     it('preserves battle-armor status shading and its damage override', async () => {
         const entity = new TestBattleArmorEntity();
         entity.setArmorValue('Squad', 'front', 6);
-        const sheet = mountExport(await RecordSheetSvgGenerator.generate(entity));
+        const sheet = mountExport(await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' }));
         const pip = sheet.querySelector('.trooperStatusPip')!;
         expect(view.getComputedStyle(pip).strokeWidth).toBe('0.9px');
         expect(view.getComputedStyle(pip).fill).toBe('rgb(63, 63, 63)');
@@ -473,7 +473,7 @@ describe('standalone record-sheet styles', () => {
 
     for (const Factory of WOUND_SHEET_FACTORIES) {
         it(`preserves ${Factory.name} wound contrast in standalone exports`, async () => {
-            const sheet = mountExport(await RecordSheetSvgGenerator.generate(new Factory()));
+            const sheet = mountExport(await RecordSheetSvgGenerator.generate(new Factory(), { ruleset: 'total-warfare' }));
             for (const hit of sheet.querySelectorAll('.crewHit')) {
                 const label = hit.nextElementSibling!;
                 hit.classList.add('damaged');
@@ -522,7 +522,7 @@ describe('standalone record-sheet styles', () => {
         </svg>`;
         const unrelated = isolatedDocument.querySelector('svg')!;
         const originalOverflow = view.getComputedStyle(unrelated).overflow;
-        const sheet = mountExport(await RecordSheetSvgGenerator.generate(new TestBipedMekEntity()));
+        const sheet = mountExport(await RecordSheetSvgGenerator.generate(new TestBipedMekEntity(), { ruleset: 'total-warfare' }));
         expect(view.getComputedStyle(unrelated).overflow).toBe(originalOverflow);
         expect(view.getComputedStyle(unrelated.querySelector('text')!).fontFamily).toBe('monospace');
         expect(view.getComputedStyle(unrelated.querySelector('.pip')!).fill).toBe('rgb(128, 0, 128)');

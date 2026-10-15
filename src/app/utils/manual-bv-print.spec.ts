@@ -38,7 +38,7 @@ describe('manual BV sheet authority', () => {
                 const source = jasmine.createSpyObj<RecordSheetSourceService>('recordSheets', ['load', 'applyUnitName']);
                 const rawValues: string[] = [];
                 source.load.and.callFake(async (loadedEntity, options) => {
-                    const svgs = await RecordSheetSvgGenerator.generatePages(loadedEntity, options);
+                    const svgs = await RecordSheetSvgGenerator.generatePages(loadedEntity, { ruleset: 'total-warfare', ...options });
                     rawValues.push(svgs[0].getElementById('bv')!.textContent!);
                     return { svgs };
                 });

@@ -265,7 +265,7 @@ describe('Mobile Structure construction (TO:AUE pp. 76–84)', () => {
     const restoredBay = restored.transporters().find(bay => bay.kind === 'bay' && bay.bayNumber === 7)!;
     expect(restored.bayDoors()[0]).toEqual({ bayId: restoredBay.id, position: { hex: east, floor: 0 }, facing: 0 });
     expect(restored.mapDoors()).toEqual([{ position: { hex: east, floor: 0 }, facing: 0, height: 1 }]);
-    const svg = await RecordSheetSvgGenerator.generate(restored);
+    const svg = await RecordSheetSvgGenerator.generate(restored, { ruleset: 'total-warfare' });
     expect(svg.querySelector('.building-map-layer [data-building-symbol="door"]')).not.toBeNull();
     fixture.destroy();
   });
@@ -376,7 +376,7 @@ describe('Mobile Structure construction (TO:AUE pp. 76–84)', () => {
     entity.coordinates.set([{ q: -10, r: -10 }, { q: -9, r: -10 }]); entity.height.set(3);
     entity.hexHeights.set(new Map([['-10,-10', 3], ['-9,-10', 1]]));
     entity.fuelLocations.set(new Map([['-10,-10', entity.mobileSystems().fuel]]));
-    const svg = await RecordSheetSvgGenerator.generate(entity);
+    const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
     const layers = [...svg.querySelectorAll('.building-map-layer')];
     expect(layers.map(layer => layer.querySelectorAll('.building-hex.occupied').length)).toEqual([1, 1, 2]);
     expect(svg.textContent).toContain('1.25'); expect(svg.textContent).toContain('Tracked');
