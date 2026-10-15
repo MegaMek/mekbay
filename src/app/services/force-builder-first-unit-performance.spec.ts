@@ -15,6 +15,7 @@ import { CBTForceMember, type ForceMember } from '../models/force-member.model';
 import type { AvailabilitySource } from '../models/options.model';
 import { createEmptyForceNameWords } from '../models/force-name-words.model';
 import { createEmptyUnit, createTestMekEntity } from '../testing/unit-test-helpers';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import { DataService } from './data.service';
 import { ForceWorkspaceCommandsService } from './force-workspace-commands.service';
 import { ForceFormationService } from './force-formation.service';
@@ -58,10 +59,13 @@ describe('ForceWorkspaceCommandsService first-unit work bounds', () => {
     const optionsServiceMock = {
       options: signal<{ availabilitySource: AvailabilitySource }>({ availabilitySource: 'mul' }),
     };
+    // The catalog builds the MUL index once at load; only the first-unit path is measured.
+    const mulIndex = new MulAvailabilityIndex([unit], [era], [faction]);
+    iteratedMemberships = 0;
     TestBed.configureTestingModule({
       providers: [
         UnitAvailabilitySourceService,
-        { provide: DataService, useValue: {} },
+        { provide: DataService, useValue: { getMulAvailabilityIndex: () => mulIndex } },
         { provide: OptionsService, useValue: optionsServiceMock },
       ],
     });

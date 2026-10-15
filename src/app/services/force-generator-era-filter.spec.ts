@@ -11,6 +11,7 @@ import type { MegaMekRulesetRecord } from '../models/megamek/rulesets.model';
 import type { AvailabilitySource } from '../models/options.model';
 import type { UnitSummary } from '../models/unit-summary.model';
 import { createEmptyUnit } from '../testing/unit-test-helpers';
+import { MulAvailabilityIndex } from '../utils/mul-availability-index';
 import { DataService } from './data.service';
 import { ForceGeneratorService } from './force-generator.service';
 import { OptionsService } from './options.service';
@@ -39,6 +40,7 @@ describe('ForceGeneratorService negative era filters', () => {
         searchCorpusVersion: signal(1),
         megaMekAvailabilityVersion: signal(0),
         getUnits: jasmine.createSpy('getUnits').and.callFake(() => units),
+        getMulAvailabilityIndex: () => new MulAvailabilityIndex(units, [...erasById.values()], [...factionsById.values()]),
         getEras: jasmine.createSpy('getEras').and.callFake(() => [...erasById.values()]),
         getEraByName: jasmine.createSpy('getEraByName').and.callFake((name: string) => erasByName.get(name)),
         getEraById: jasmine.createSpy('getEraById').and.callFake((id: number) => erasById.get(id)),

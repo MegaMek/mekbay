@@ -313,7 +313,7 @@ export class ForceUrlStateService {
         unitsParam: string,
     ): Promise<ForceMember[]> {
         const admitted: ForceMember[] = [];
-        for (const parsedGroup of parseForceUrl(unitsParam, this.dataService.getUnits(), this.logger)) {
+        for (const parsedGroup of parseForceUrl(unitsParam, identifier => this.dataService.getUnitByIdentifier(identifier), this.logger)) {
             const group = await force.addGroup(parsedGroup.name || undefined);
             if (parsedGroup.formationId) {
                 const formation = FormationAnalyzer.getDefinitionById(parsedGroup.formationId, force.gameSystem);

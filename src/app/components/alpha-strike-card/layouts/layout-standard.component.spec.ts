@@ -9,6 +9,7 @@ import { AsAbilityLookupService } from '../../../services/as-ability-lookup.serv
 import { DataService } from '../../../services/data.service';
 import { UnitNameService } from '../../../services/unit-name.service';
 import { createEmptyUnit, type TestUnitOverrides } from '../../../testing/unit-test-helpers';
+import { MulAvailabilityIndex } from '../../../utils/mul-availability-index';
 import type { CardAbility } from './layout-base.component';
 import { AsLayoutStandardComponent } from './layout-standard.component';
 import { AsVesselHeaderComponent } from './vessel-header.component';
@@ -24,7 +25,10 @@ describe('Alpha Strike standard SVG layout', () => {
             imports: [AsLayoutStandardComponent, AsVesselHeaderComponent],
             providers: [
                 provideZonelessChangeDetection(),
-                { provide: DataService, useValue: { getEras: () => [era] } },
+                { provide: DataService, useValue: {
+                    getEras: () => [era],
+                    getMulAvailabilityIndex: () => new MulAvailabilityIndex([], [era], []),
+                } },
                 { provide: AsAbilityLookupService, useValue: {} },
                 { provide: UnitNameService, useValue: { chassis: (unit: UnitSummary) => unit.chassis } },
             ],

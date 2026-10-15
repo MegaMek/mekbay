@@ -2194,7 +2194,11 @@ export abstract class Force<TUnit extends ForceUnit = ForceUnit> {
     }
 
     emitChanged(changedUnitIds: readonly string[] | null = null) {
-        if (this.loading) return;
+        if (this.loading) {
+            // Bulk loads defer persistence and observers, never the committed member projection.
+            this.onForceChanged(changedUnitIds);
+            return;
+        }
         if (this.readOnly()) {
             const logger = this.injector.get(LoggerService);
             logger.warn(`Force.emitChanged() blocked: force "${this.name}" is read-only. Changes will not be persisted.`);

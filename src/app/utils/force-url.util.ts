@@ -81,18 +81,9 @@ export function buildMultiForceQueryParams(slots: readonly ForceSlot[]): ForceQu
 /** Pure decoder. Runtime creation belongs exclusively to ForceUnitAdmissionService. */
 export function parseForceUrl(
     unitsParam: string,
-    allUnits: readonly UnitSummary[],
+    getUnitByIdentifier: (identifier: string) => UnitSummary | undefined,
     logger?: UrlParseLogger,
 ): readonly ParsedForceUrlGroup[] {
-    const lookup = new Map<string, UnitSummary | undefined>();
-    const unitsByUuid = new Map<string, UnitSummary>();
-    for (const unit of allUnits) {
-        unitsByUuid.set(unit.uuid, unit);
-        if (unit.isCustom) continue;
-        const key = unit.name.toLowerCase();
-        if (!lookup.has(key)) lookup.set(key, unit);
-        else lookup.set(key, undefined);
-    }
     const sourceGroups = unitsParam.includes('|') || unitsParam.includes('~') ? unitsParam.split('|') : [unitsParam];
     const result: ParsedForceUrlGroup[] = [];
     for (const source of sourceGroups) {
@@ -105,8 +96,7 @@ export function parseForceUrl(
         for (const encoded of unitText.split(',')) {
             if (!encoded.trim()) continue;
             const parts = encoded.split(':');
-            const key = parts[0].toLowerCase();
-            const summary = unitsByUuid.get(key) ?? lookup.get(key);
+            const summary = getUnitByIdentifier(parts[0]);
             if (!summary) {
                 logger?.warn(`Unit with UUID or non-custom name "${parts[0]}" not found in data`);
                 continue;

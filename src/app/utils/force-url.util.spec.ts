@@ -14,6 +14,11 @@ const customUnit = createEmptyUnit({ name: catalogUnit.name, isCustom: true });
 const secondCustomUnit = createEmptyUnit({ name: catalogUnit.name, isCustom: true });
 const mixedCatalog = [customUnit, catalogUnit, secondCustomUnit];
 
+/** Stands in for DataService.getUnitByIdentifier, whose lookup rules are tested in UnitRuntimeService. */
+function identifierLookup(units: readonly UnitSummary[]): (identifier: string) => UnitSummary | undefined {
+    return identifier => units.find(unit => unit.uuid === identifier || unit.name === identifier);
+}
+
 describe('parseForceUrl', () => {
     const units = [
         createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
@@ -21,9 +26,11 @@ describe('parseForceUrl', () => {
         createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: 1901 }),
     ];
 
-    it('decodes case-insensitive native names without constructing runtime owners', () => {
-        const groups = parseForceUrl('bmatlas_as7d,bmlocust_lct1v', units);
+    it('resolves each legacy name or UUID token through the catalog identifier lookup', () => {
+        const getUnitByIdentifier = jasmine.createSpy('getUnitByIdentifier').and.callFake(identifierLookup(units));
+        const groups = parseForceUrl(`BMAtlas_AS7D,${units[2].uuid}`, getUnitByIdentifier);
 
+        expect(getUnitByIdentifier.calls.allArgs()).toEqual([['BMAtlas_AS7D'], [units[2].uuid]]);
         expect(groups).toEqual([jasmine.objectContaining({
             name: null,
             formationId: null,
@@ -34,9 +41,9 @@ describe('parseForceUrl', () => {
         })]);
     });
 
-    it('decodes UUIDs, group metadata, and skills independently of MUL IDs', () => {
+    it('decodes group metadata and skills', () => {
         const logger = { warn: jasmine.createSpy('warn') };
-        const groups = parseForceUrl(`Alpha;assault~${units[0].uuid}:3:4,${units[2].uuid}`, units, logger);
+        const groups = parseForceUrl(`Alpha;assault~${units[0].uuid}:3:4,${units[2].uuid}`, identifierLookup(units), logger);
 
         expect(groups).toEqual([{
             name: 'Alpha',
@@ -52,49 +59,12 @@ describe('parseForceUrl', () => {
     it('reports missing rows and never creates a compatibility runtime', () => {
         const logger = { warn: jasmine.createSpy('warn') };
 
-        expect(parseForceUrl('missing', units, logger)).toEqual([{
+        expect(parseForceUrl('missing', identifierLookup(units), logger)).toEqual([{
             name: null,
             formationId: null,
             units: [],
         }]);
         expect(logger.warn).toHaveBeenCalledOnceWith('Unit with UUID or non-custom name "missing" not found in data');
-    });
-
-    it('accepts a mix of catalog names and UUIDs, including colliding custom designs', () => {
-        const groups = parseForceUrl(
-            `Alpha;assault~${catalogUnit.name.toLowerCase()},${customUnit.uuid.toUpperCase()}:3:4|Beta~${secondCustomUnit.uuid},${catalogUnit.uuid}`,
-            mixedCatalog,
-        );
-
-        expect(groups.map(group => group.units.map(unit => unit.summary.uuid))).toEqual([
-            [catalogUnit.uuid, customUnit.uuid], [secondCustomUnit.uuid, catalogUnit.uuid],
-        ]);
-        expect(groups[0].name).toBe('Alpha');
-        expect(groups[0].formationId).toBe('assault');
-        expect(groups[0].units[1]).toEqual({ summary: customUnit, gunnerySkill: 3, pilotingSkill: 4 });
-    });
-
-    it('does not resolve a custom name even if only one custom design has it', () => {
-        const logger = { warn: jasmine.createSpy('warn') };
-        expect(parseForceUrl(customUnit.name, [customUnit], logger)[0].units).toEqual([]);
-        expect(logger.warn).toHaveBeenCalled();
-    });
-
-    it('gives UUID matches priority over a conflicting catalog name', () => {
-        const collision = createEmptyUnit({ name: customUnit.uuid });
-        expect(parseForceUrl(customUnit.uuid, [collision, customUnit])[0].units[0].summary).toBe(customUnit);
-    });
-
-    it('does not select an arbitrary non-custom unit with an ambiguous name', () => {
-        const collision = createEmptyUnit({ name: catalogUnit.name });
-        expect(parseForceUrl(catalogUnit.name, [catalogUnit, collision])[0].units).toEqual([]);
-        expect(parseForceUrl(catalogUnit.uuid, [catalogUnit, collision])[0].units[0].summary).toBe(catalogUnit);
-    });
-
-    it('does not resolve units through external MUL IDs', () => {
-        const custom = createEmptyUnit({ mul1id: 140, isCustom: true });
-        expect(parseForceUrl('140', [custom, ...units])[0].units).toEqual([]);
-        expect(parseForceUrl(custom.uuid, [custom, ...units])[0].units[0].summary).toBe(custom);
     });
 });
 
@@ -152,7 +122,7 @@ describe('force URL serialization', () => {
 
             expect(params.units).toBe(expected);
             expect(multiParams.units).toBe(expected);
-            expect(parseForceUrl(params.units!, mixedCatalog)[0].units.map(unit => unit.summary.uuid))
+            expect(parseForceUrl(params.units!, identifierLookup(mixedCatalog))[0].units.map(unit => unit.summary.uuid))
                 .toEqual([catalogUnit.uuid, customUnit.uuid, secondCustomUnit.uuid]);
         });
     }
@@ -162,7 +132,7 @@ describe('force URL serialization', () => {
         const force = forceWithUnits(GameSystem.CBT, [tank]);
         const params = buildForceQueryParams(force);
         expect(params.units).toBe(`Alpha;assault~${tank.uuid}:3:4`);
-        expect(parseForceUrl(params.units!, [tank])[0].units[0].summary).toBe(tank);
+        expect(parseForceUrl(params.units!, identifierLookup([tank]))[0].units[0].summary).toBe(tank);
     });
 
     it('retains a design UUID when its catalog summary is unavailable', () => {
@@ -181,7 +151,7 @@ describe('unit share links', () => {
                 expect(params.get('shareUnit')).toBe(unit.uuid);
                 expect(params.get('tab')).toBe('General');
                 expect(params.get('gs')).toBe(GameSystem.CBT);
-                expect(parseForceUrl(params.get('shareUnit')!, mixedCatalog)[0].units[0].summary).toBe(unit);
+                expect(parseForceUrl(params.get('shareUnit')!, identifierLookup(mixedCatalog))[0].units[0].summary).toBe(unit);
             }
         });
     }

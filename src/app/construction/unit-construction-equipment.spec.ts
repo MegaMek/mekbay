@@ -261,6 +261,13 @@ describe('construction equipment warehouse', () => {
     await fixture.whenStable();
   }
 
+  /** Persisted options load asynchronously and would overwrite options a test set earlier. */
+  async function initializedOptions(): Promise<OptionsService['options']> {
+    const service = TestBed.inject(OptionsService);
+    while (!service.initialized()) await new Promise(resolve => setTimeout(resolve));
+    return service.options;
+  }
+
   it('keeps the family filter active when the destination filter is off and follows the current unit', () => {
     editor.filterByLocation.set(false);
     expect(editor.filteredEquipment()).toContain(weapons[0]);
@@ -1035,7 +1042,7 @@ describe('construction equipment warehouse', () => {
 
   it('sorts every palette column in both directions, keeping numeric ties alphabetical and unresolved values last', async () => {
     editor.query.set('Warehouse sort');
-    const options = TestBed.inject(OptionsService).options;
+    const options = await initializedOptions();
     options.update((current) => ({
       ...current,
       CBTOptionalRules: { ...current.CBTOptionalRules, extremeRange: false },
@@ -1102,7 +1109,7 @@ describe('construction equipment warehouse', () => {
   });
 
   it('updates ammo BV in the warehouse, sorting and both inspectors when the ruleset changes', async () => {
-    const options = TestBed.inject(OptionsService).options;
+    const options = await initializedOptions();
     const entity = editor.entity();
     const mounts = fascamAmmo.map(equipment => entity.addEquipment({
       equipmentId: equipment.id, equipment,
@@ -1250,7 +1257,7 @@ describe('construction equipment warehouse', () => {
 
   it('sorts by the farthest enabled range bracket and updates when extreme range changes', async () => {
     editor.query.set('Warehouse sort');
-    const options = TestBed.inject(OptionsService).options;
+    const options = await initializedOptions();
     options.update((current) => ({
       ...current,
       CBTOptionalRules: { ...current.CBTOptionalRules, extremeRange: false },
@@ -1399,7 +1406,7 @@ describe('construction equipment warehouse', () => {
 
   it('shows slots and weight beside the name, with combat stats below and a separate install action', async () => {
     editor.query.set(autocannon.name);
-    const options = TestBed.inject(OptionsService).options;
+    const options = await initializedOptions();
     options.update((current) => ({
       ...current,
       CBTOptionalRules: { ...current.CBTOptionalRules, extremeRange: false },

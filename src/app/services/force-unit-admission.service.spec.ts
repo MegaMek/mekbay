@@ -12,6 +12,13 @@ import { createEmptyUnit, createTestMekEntity, createTestTankEntity } from '../t
 import { AsAbilityLookupService } from './as-ability-lookup.service';
 import { OptionsService } from './options.service';
 import { CUSTOM_UNIT_PROVIDER_ID } from './unit-catalog/unit-catalog.types';
+import { CBTUnitService, type CreateCBTUnitRequest } from './cbt-unit.service';
+import { createMekUnit } from '../models/runtime/cbt-mek-unit';
+import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+    UNIT_STATE_INITIALIZER_REVISION,
+} from '../models/runtime/unit-state-initializer';
 
 describe('ForceUnitAdmissionService', () => {
     it('applies Alpha Strike skill and commander facts during admission', async () => {
@@ -106,6 +113,37 @@ describe('ForceUnitAdmissionService', () => {
         expect(member).toBe(ownedMember);
     });
 
+    it('publishes a CBT member admitted while the force is bulk loading', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const cbtUnits = {
+            create: (request: CreateCBTUnitRequest) => createMekUnit(
+                { uuid: request.uuid, instanceId: request.instanceId },
+                fixture.entity,
+                fixture.identity,
+                {
+                    initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
+                    profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
+                    deployment: request.deployment,
+                    scenario: request.scenario,
+                },
+            ),
+        };
+        const force = new CBTForce('Shared link', {} as DataService, Injector.create({
+            providers: [
+                { provide: OptionsService, useValue: TEST_OPTIONS_SERVICE },
+                { provide: CBTUnitService, useValue: cbtUnits },
+            ],
+        }));
+        force.loading = true;
+
+        const member = await createAdmissionService().admit({
+            force,
+            summary: createEmptyUnit({ uuid: fixture.identity, entityType: 'Mek', type: 'Mek' }),
+        });
+
+        expect(force.members()).toEqual([member]);
+    });
+
     it('admits constructed native units through the same CBT runtime', async () => {
         const force = new CBTForce('Custom force', {} as DataService, createCBTForceInjector());
         const summary = createEmptyUnit({ origin: 'user', provider: CUSTOM_UNIT_PROVIDER_ID, isCustom: true });
@@ -125,7 +163,7 @@ function createAdmissionService(): ForceUnitAdmissionService {
 const TEST_OPTIONS_SERVICE = Object.freeze({
     options: () => ({
         CBTRules: 'total-warfare',
-        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false },
+        CBTOptionalRules: { forcedWithdrawal: false, sprinting: false, hotLoadedAmmo: false },
     }),
 });
 
