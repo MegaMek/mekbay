@@ -78,7 +78,7 @@ const DEFAULT_OPTIONS: Options = {
     allowMixedTechBaseAmmo: false,
   },
   allowMultipleActiveSheets: false,
-  CBTRules: 'total-warfare',
+  CBTRules: 'core-2026',
 
   // Alpha Strike
   ASUseHex: false,
