@@ -113,7 +113,7 @@ describe('OptionsService', () => {
             megaMekAvailabilityFiltersUseAllScopedOptions: true,
             recordSheetDoubleTapZoomReset: 'contextual',
             trackPhaseAndTurn: true,
-            CBTRules: 'tw',
+            CBTRules: 'core2026',
             ASUseHex: false,
             c3NetworkConnectionsAboveNodes: false,
             automaticallyConvertFiltersToSemantic: false,

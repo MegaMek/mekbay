@@ -1574,7 +1574,7 @@ describe('ForceGeneratorService', () => {
         const era = createEra(3150, 'ilClan');
         const faction: Faction = { ...createFaction(10, 'Clan Jade Falcon'), group: 'IS Clan' };
         registerEraAndFaction(era, faction);
-        const createAssaultUnit = (id: number, name: string, pv: number, fast = false) => createUnit({
+        const createAssaultUnit = (name: string, pv: number, fast = false) => createUnit({
             name,
             role: 'Juggernaut',
             as: {
@@ -1586,24 +1586,24 @@ describe('ForceGeneratorService', () => {
                 MVm: fast ? { w: 10 } : { w: 8 },
             } as unknown as UnitSummary['as'],
         });
-        const createCommandUnit = (id: number, name: string, role: string, pv: number) => createUnit({
+        const createCommandUnit = (name: string, role: string, pv: number) => createUnit({
             name,
             role,
             as: { TP: 'BM', SZ: 2, PV: pv, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'],
         });
-        const fastAssaultCheapUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(100 + index, `Cheap Fast Assault ${index + 1}`, 20, true));
+        const fastAssaultCheapUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(`Cheap Fast Assault ${index + 1}`, 20, true));
         const commandCheapUnits = ['Sniper', 'Missile Boat', 'Skirmisher', 'Brawler', 'Scout']
-            .map((role, index) => createCommandUnit(200 + index, `Cheap Command ${index + 1}`, role, 20));
-        const assaultCheapUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(300 + index, `Cheap Assault ${index + 1}`, 20));
+            .map((role, index) => createCommandUnit(`Cheap Command ${index + 1}`, role, 20));
+        const assaultCheapUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(`Cheap Assault ${index + 1}`, 20));
         const fillerUnits = Array.from({ length: 10 }, (_, index) => createUnit({
             name: `Cheap Filler ${index + 1}`,
             role: 'Skirmisher',
             as: { TP: 'BM', SZ: 2, PV: 20, Arm: 4, dmg: { _dmgM: 2 } } as UnitSummary['as'],
         }));
-        const fastAssaultExpensiveUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(500 + index, `Expensive Fast Assault ${index + 1}`, 80, true));
+        const fastAssaultExpensiveUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(`Expensive Fast Assault ${index + 1}`, 80, true));
         const commandExpensiveUnits = ['Sniper', 'Missile Boat', 'Skirmisher', 'Brawler', 'Scout']
-            .map((role, index) => createCommandUnit(600 + index, `Expensive Command ${index + 1}`, role, 80));
-        const assaultExpensiveUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(700 + index, `Expensive Assault ${index + 1}`, 80));
+            .map((role, index) => createCommandUnit(`Expensive Command ${index + 1}`, role, 80));
+        const assaultExpensiveUnits = Array.from({ length: 5 }, (_, index) => createAssaultUnit(`Expensive Assault ${index + 1}`, 80));
         const eligibleUnits = [
             ...fastAssaultCheapUnits,
             ...commandCheapUnits,
