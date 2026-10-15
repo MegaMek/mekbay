@@ -54,36 +54,24 @@ function createMockForce(): Force {
     } as unknown as Force;
 }
 
+/** Stands in for the DataService UUID-then-name lookup, whose rules are tested in UnitRuntimeService. */
+function identifierLookup(units: readonly UnitSummary[]): (identifier: string) => UnitSummary | undefined {
+    return identifier => units.find(unit => unit.uuid === identifier || unit.name === identifier);
+}
+
 describe('force URL parsing', () => {
-    it('accepts legacy unit names', () => {
+    it('resolves each legacy name or UUID token through the catalog lookup', () => {
         const force = createMockForce();
         const units = [
             createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
             createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: 1901 })
         ];
+        const getUnit = jasmine.createSpy('getUnit').and.callFake(identifierLookup(units));
 
-        const forceUnits = parseForceFromUrl(force, 'BMAtlas_AS7D,BMLocust_LCT1V', units);
+        const forceUnits = parseForceFromUrl(force, `BMAtlas_AS7D,${units[1].uuid}`, getUnit);
 
+        expect(getUnit.calls.allArgs()).toEqual([['BMAtlas_AS7D'], [units[1].uuid]]);
         expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
-    });
-
-    it('parses units by name without matching case exactly', () => {
-        const force = createMockForce();
-        const units = [
-            createEmptyUnit({ name: 'BMAtlas_AS7D', mul1id: 140 }),
-            createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: 1901 })
-        ];
-
-        const forceUnits = parseForceFromUrl(force, 'bmatlas_as7d,bmlocust_lct1v', units);
-
-        expect(forceUnits.map(unit => unit.getUnit().name)).toEqual(['BMAtlas_AS7D', 'BMLocust_LCT1V']);
-    });
-
-    it('does not resolve external MUL IDs as unit identifiers', () => {
-        const force = createMockForce();
-        const units = [140, 0, -1].map(mul1id => createEmptyUnit({ name: `Unit ${mul1id}`, mul1id }));
-        expect(parseForceFromUrl(force, '140,0,-1', units)).toEqual([]);
-        expect(force.addUnit).not.toHaveBeenCalled();
     });
 
     it('parses grouped UUIDs independently of shared or missing MUL IDs', () => {
@@ -95,7 +83,7 @@ describe('force URL parsing', () => {
             createEmptyUnit({ name: 'BMLocust_LCT1V', mul1id: null })
         ];
 
-        const forceUnits = parseForceFromUrl(force, `Alpha~${units[1].uuid},${units[2].uuid}`, units, logger);
+        const forceUnits = parseForceFromUrl(force, `Alpha~${units[1].uuid},${units[2].uuid}`, identifierLookup(units), logger);
         const groups = force.groups() as unknown as Array<ReturnType<typeof createMockGroup>>;
         expect(forceUnits.map(unit => unit.getUnit().uuid)).toEqual([units[1].uuid, units[2].uuid]);
 
@@ -113,7 +101,7 @@ describe('force URL serialization', () => {
         const units = generateUnitUrlParams([source.addUnit(summary)]).join(',');
         const params = new URLSearchParams({ units });
         const decoded = new URLSearchParams(params.toString()).get('units')!;
-        const restored = parseForceFromUrl(createMockForce(), decoded, [summary]);
+        const restored = parseForceFromUrl(createMockForce(), decoded, identifierLookup([summary]));
 
         expect(restored.map(unit => unit.getUnit())).toEqual([summary]);
     });

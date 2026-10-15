@@ -37,7 +37,6 @@ describe('UnitDetailsIntelTabComponent', () => {
         const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
         fixture.componentRef.setInput('unit', createEmptyUnit({
             name: 'Awesome AWS-8Q',
-            id: 1,
             chassis: 'Awesome',
             model: 'AWS-8Q',
             fluff: fluff.img ? { img: fluff.img } : undefined,
@@ -64,7 +63,6 @@ describe('UnitDetailsIntelTabComponent', () => {
         const fixture = TestBed.createComponent(UnitDetailsIntelTabComponent);
         fixture.componentRef.setInput('unit', createEmptyUnit({
             name: 'Awesome AWS-8Q',
-            id: 1,
             chassis: 'Awesome',
             model: 'AWS-8Q',
             fluff: { img: 'awesome.png' },

@@ -18,7 +18,6 @@ import { PILOT_ABILITIES } from '../models/pilot-abilities.model';
 import { isFormationTargetCopyBonusActive } from './formation-target.util';
 
 function createUnit(
-    id: number,
     name: string,
     unitType: UnitSummary['type'],
     subtype: UnitSubtype,
@@ -28,7 +27,6 @@ function createUnit(
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
-        id,
         name,
         chassis: name,
         model: name,
@@ -151,9 +149,9 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('includes inherited parent effect groups for child formations', () => {
         const formation = getFormation('fast-assault-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Atlas', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('unit-2', createUnit(2, 'Banshee', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('unit-3', createUnit(3, 'Highlander', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-1', createUnit('Atlas', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-2', createUnit('Banshee', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-3', createUnit('Highlander', 'Mek', 'BattleMek', 'BM')),
         ];
         const group = createGroup(
             units,
@@ -173,9 +171,9 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('does not include parent effect groups unless the child opts in', () => {
         const formation = getFormation('anti-air-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Rifleman', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('unit-2', createUnit(2, 'JagerMech', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('unit-3', createUnit(3, 'Catapult', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-1', createUnit('Rifleman', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-2', createUnit('JagerMech', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-3', createUnit('Catapult', 'Mek', 'BattleMek', 'BM')),
         ];
         const group = createGroup(
             units,
@@ -199,7 +197,7 @@ describe('FormationAbilityAssignmentUtil', () => {
 
         for (const formationId of formationIds) {
             const units = Array.from({ length: 3 }, (_, index) =>
-                createASForceUnit(`unit-${index + 1}`, createUnit(index + 1, `${formationId}-${index}`, 'Mek', 'BattleMek', 'BM')),
+                createASForceUnit(`unit-${index + 1}`, createUnit(`${formationId}-${index}`, 'Mek', 'BattleMek', 'BM')),
             );
             const group = createGroup(
                 units,
@@ -224,7 +222,7 @@ describe('FormationAbilityAssignmentUtil', () => {
 
     it('exposes the Phalanx six-use Float Like a Butterfly pool and leveled ability metadata', () => {
         const units = Array.from({ length: 5 }, (_, index) =>
-            createASForceUnit(`unit-${index + 1}`, createUnit(index + 1, `Phalanx-${index}`, 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit(`unit-${index + 1}`, createUnit(`Phalanx-${index}`, 'Mek', 'BattleMek', 'BM')),
         );
         const group = createGroup(
             units,
@@ -251,13 +249,13 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('uses Alpha Strike half-round-down limits for Anti-Air command ability assignments', () => {
         const formation = getFormation('anti-air-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Rifleman', 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit('unit-1', createUnit('Rifleman', 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: ['anti_aircraft_specialists'],
             }),
-            createASForceUnit('unit-2', createUnit(2, 'JagerMech', 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit('unit-2', createUnit('JagerMech', 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: ['anti_aircraft_specialists'],
             }),
-            createASForceUnit('unit-3', createUnit(3, 'Catapult', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('unit-3', createUnit('Catapult', 'Mek', 'BattleMek', 'BM')),
         ];
         const group = createGroup(
             units,
@@ -282,12 +280,12 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('filters structurally ineligible Air Lance units out of formation bonus recipients', () => {
         const formation = getFormation('command-lance');
         const bmUnits = [
-            createASForceUnit('bm-1', createUnit(1, 'Atlas', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('bm-2', createUnit(2, 'Banshee', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('bm-1', createUnit('Atlas', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('bm-2', createUnit('Banshee', 'Mek', 'BattleMek', 'BM')),
         ];
         const flightUnits = [
-            createASForceUnit('flight-1', createUnit(10, 'Corsair', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 12 } } })),
-            createASForceUnit('flight-2', createUnit(11, 'Lucifer', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 } } })),
+            createASForceUnit('flight-1', createUnit('Corsair', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 12 } } })),
+            createASForceUnit('flight-2', createUnit('Lucifer', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 } } })),
         ];
         const allUnits = [...flightUnits, ...bmUnits];
         const group = createGroup(
@@ -318,14 +316,14 @@ describe('FormationAbilityAssignmentUtil', () => {
 
     it('allows the Alpha Strike commander to receive a selected SPA in addition to Tactical Genius', () => {
         const formation = getFormation('command-lance');
-        const commander = createASForceUnit('unit-1', createUnit(1, 'Atlas', 'Mek', 'BattleMek', 'BM'), {
+        const commander = createASForceUnit('unit-1', createUnit('Atlas', 'Mek', 'BattleMek', 'BM'), {
             formationAbilities: ['antagonizer', 'tactical_genius'],
             commander: true,
         });
-        const wingman = createASForceUnit('unit-2', createUnit(2, 'Banshee', 'Mek', 'BattleMek', 'BM'), {
+        const wingman = createASForceUnit('unit-2', createUnit('Banshee', 'Mek', 'BattleMek', 'BM'), {
             formationAbilities: ['marksman'],
         });
-        const support = createASForceUnit('unit-3', createUnit(3, 'Highlander', 'Mek', 'BattleMek', 'BM'));
+        const support = createASForceUnit('unit-3', createUnit('Highlander', 'Mek', 'BattleMek', 'BM'));
         const group = createGroup(
             [commander, wingman, support],
             formation,
@@ -341,14 +339,14 @@ describe('FormationAbilityAssignmentUtil', () => {
 
     it('lets any unit become commander and moves commander-only assignments with that override', () => {
         const formation = getFormation('command-lance');
-        const unitA = createASForceUnit('unit-a', createUnit(1, 'Atlas', 'Mek', 'BattleMek', 'BM'), {
+        const unitA = createASForceUnit('unit-a', createUnit('Atlas', 'Mek', 'BattleMek', 'BM'), {
             commander: true,
             formationAbilities: ['tactical_genius'],
         });
-        const unitB = createASForceUnit('unit-b', createUnit(2, 'Banshee', 'Mek', 'BattleMek', 'BM'), {
+        const unitB = createASForceUnit('unit-b', createUnit('Banshee', 'Mek', 'BattleMek', 'BM'), {
             formationAbilities: ['marksman'],
         });
-        const unitC = createASForceUnit('unit-c', createUnit(3, 'Highlander', 'Mek', 'BattleMek', 'BM'));
+        const unitC = createASForceUnit('unit-c', createUnit('Highlander', 'Mek', 'BattleMek', 'BM'));
         const group = createGroup(
             [unitA, unitB, unitC],
             formation,
@@ -370,9 +368,9 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('keeps one selected Alpha Strike Recon SPA on every unit', () => {
         const formation = getFormation('recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['forward_observer'] }),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['forward_observer'] }),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-1', createUnit('Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-2', createUnit('Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-3', createUnit('Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['forward_observer'] }),
         ];
         const group = createGroup(
             units,
@@ -391,9 +389,9 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('lets an explicit override clear an automatic choose-one selection for all recipients', () => {
         const formation = getFormation('recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-1', createUnit('Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-2', createUnit('Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-3', createUnit('Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
         ];
         const group = createGroup(
             units,
@@ -414,9 +412,9 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('lets an explicit override replace an automatic choose-one selection for all recipients', () => {
         const formation = getFormation('recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-1', createUnit('Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-2', createUnit('Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-3', createUnit('Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
         ];
         const group = createGroup(
             units,
@@ -437,9 +435,9 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('allows each Alpha Strike Light Recon unit to choose a different SPA', () => {
         const formation = getFormation('light-recon-lance');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('unit-2', createUnit(2, 'Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['forward_observer'] }),
-            createASForceUnit('unit-3', createUnit(3, 'Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['maneuvering_ace'] }),
+            createASForceUnit('unit-1', createUnit('Locust', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('unit-2', createUnit('Stinger', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 14 } } }), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('unit-3', createUnit('Wasp', 'Mek', 'BattleMek', 'BM', { role: 'Scout', as: { SZ: 1, MVm: { g: 12 } } }), { formationAbilities: ['maneuvering_ace'] }),
         ];
         const group = createGroup(
             units,
@@ -458,12 +456,12 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('copies a targeted Recon Lance SPA to half the Alpha Strike Support Lance', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const reconUnits = Array.from({ length: 3 }, (_, index) =>
-            createASForceUnit(`recon-${index + 1}`, createUnit(index + 1, `Recon ${index + 1}`, 'Mek', 'BattleMek', 'BM', {
+            createASForceUnit(`recon-${index + 1}`, createUnit(`Recon ${index + 1}`, 'Mek', 'BattleMek', 'BM', {
                 role: 'Scout', as: { SZ: 1, MVm: { g: 12 } },
             }), { formationAbilities: ['forward_observer'] }),
         );
         const supportUnits = Array.from({ length: 5 }, (_, index) =>
-            createASForceUnit(`support-${index + 1}`, createUnit(index + 10, `Support ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`support-${index + 1}`, createUnit(`Support ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: index < 3 ? ['forward_observer'] : [],
             }),
         );
@@ -496,15 +494,15 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('caps each copied Support SPA at the number assigned by the targeted formation', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const reconUnits = [
-            createASForceUnit('recon-1', createUnit(1, 'Recon 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('recon-2', createUnit(2, 'Recon 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['forward_observer'] }),
-            createASForceUnit('recon-3', createUnit(3, 'Recon 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['maneuvering_ace'] }),
+            createASForceUnit('recon-1', createUnit('Recon 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('recon-2', createUnit('Recon 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['forward_observer'] }),
+            createASForceUnit('recon-3', createUnit('Recon 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['maneuvering_ace'] }),
         ];
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-4', createUnit(14, 'Support 4', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-4', createUnit('Support 4', 'Mek', 'BattleMek', 'BM')),
         ];
         const recon = createGroup(reconUnits, getFormation('light-recon-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: reconUnits.map(unit => unit.getUnit()) }),
@@ -525,13 +523,13 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('copies a supported Battle Lance shared pool without serializing a duplicate pool', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const battleUnits = Array.from({ length: 4 }, (_, index) =>
-            createASForceUnit(`battle-${index + 1}`, createUnit(index + 1, `Battle ${index + 1}`, 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit(`battle-${index + 1}`, createUnit(`Battle ${index + 1}`, 'Mek', 'BattleMek', 'BM')),
         );
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['lucky'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['lucky'] }),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-4', createUnit(14, 'Support 4', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['lucky'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['lucky'] }),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-4', createUnit('Support 4', 'Mek', 'BattleMek', 'BM')),
         ];
         const battle = createGroup(battleUnits, getFormation('battle-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: battleUnits.map(unit => unit.getUnit()) }),
@@ -560,12 +558,12 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('does not copy a Special Command Ability as a Support SPA', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const antiAirUnits = Array.from({ length: 4 }, (_, index) =>
-            createASForceUnit(`anti-air-${index + 1}`, createUnit(index + 1, `Anti-Air ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`anti-air-${index + 1}`, createUnit(`Anti-Air ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: index < 2 ? ['anti_aircraft_specialists'] : [],
             }),
         );
         const supportUnits = Array.from({ length: 4 }, (_, index) =>
-            createASForceUnit(`support-${index + 1}`, createUnit(index + 10, `Support ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`support-${index + 1}`, createUnit(`Support ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: index === 0 ? ['anti_aircraft_specialists'] : [],
             }),
         );
@@ -587,15 +585,15 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('retains the Support setup choice when a source bonus rotates per turn', () => {
         const faction = createFaction('Federated Suns', 'Mercenary');
         const rifleUnits = [
-            createASForceUnit('rifle-1', createUnit(1, 'Rifle 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['weapon_specialist'] }),
-            createASForceUnit('rifle-2', createUnit(2, 'Rifle 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['weapon_specialist'] }),
-            createASForceUnit('rifle-3', createUnit(3, 'Rifle 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('rifle-1', createUnit('Rifle 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['weapon_specialist'] }),
+            createASForceUnit('rifle-2', createUnit('Rifle 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['weapon_specialist'] }),
+            createASForceUnit('rifle-3', createUnit('Rifle 3', 'Mek', 'BattleMek', 'BM')),
         ];
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['sandblaster'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-4', createUnit(14, 'Support 4', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['sandblaster'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-4', createUnit('Support 4', 'Mek', 'BattleMek', 'BM')),
         ];
         const rifle = createGroup(rifleUnits, getFormation('rifle-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: rifleUnits.map(unit => unit.getUnit()) }),
@@ -616,14 +614,14 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('keeps Support setup choices serialized but deactivates them below three active units', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const sourceUnits = Array.from({ length: 3 }, (_, index) =>
-            createASForceUnit(`source-${index + 1}`, createUnit(index + 1, `Source ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`source-${index + 1}`, createUnit(`Source ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: ['eagles_eyes'],
             }),
         );
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM')),
         ];
         const source = createGroup(sourceUnits, getFormation('recon-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: sourceUnits.map(unit => unit.getUnit()) }),
@@ -647,15 +645,15 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('removes a copied SPA from Support units that are not appropriate for that ability', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const sourceUnits = Array.from({ length: 3 }, (_, index) =>
-            createASForceUnit(`source-${index + 1}`, createUnit(index + 1, `Source ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`source-${index + 1}`, createUnit(`Source ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: index < 2 ? ['swordsman'] : [],
             }),
         );
         const supportUnits = [
-            createASForceUnit('support-cv', createUnit(11, 'Support Vehicle', 'Tank', 'Combat Vehicle', 'CV'), { formationAbilities: ['swordsman'] }),
-            createASForceUnit('support-bm', createUnit(12, 'Support Mek', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['swordsman'] }),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-4', createUnit(14, 'Support 4', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-cv', createUnit('Support Vehicle', 'Tank', 'Combat Vehicle', 'CV'), { formationAbilities: ['swordsman'] }),
+            createASForceUnit('support-bm', createUnit('Support Mek', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['swordsman'] }),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-4', createUnit('Support 4', 'Mek', 'BattleMek', 'BM')),
         ];
         const source = createGroup(sourceUnits, getFormation('berserker-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: sourceUnits.map(unit => unit.getUnit()) }),
@@ -675,16 +673,16 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('uses the Command Lance exception and never copies the commander or Tactical Genius', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const commandUnits = [
-            createASForceUnit('command-1', createUnit(1, 'Command 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
-            createASForceUnit('command-2', createUnit(2, 'Command 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('command-3', createUnit(3, 'Command 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['blood_stalker'] }),
-            createASForceUnit('commander', createUnit(4, 'Commander', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'], commander: true }),
-            createASForceUnit('command-5', createUnit(5, 'Command 5', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('command-1', createUnit('Command 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
+            createASForceUnit('command-2', createUnit('Command 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('command-3', createUnit('Command 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['blood_stalker'] }),
+            createASForceUnit('commander', createUnit('Commander', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'], commander: true }),
+            createASForceUnit('command-5', createUnit('Command 5', 'Mek', 'BattleMek', 'BM')),
         ];
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'] }),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'] }),
         ];
         const command = createGroup(commandUnits, getFormation('command-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: commandUnits.map(unit => unit.getUnit()) }),
@@ -721,16 +719,16 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('applies the Command exception to a Strategic Command Star', () => {
         const faction = createFaction('Clan', 'Mercenary');
         const commandUnits = [
-            createASForceUnit('command-1', createUnit(1, 'Command 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
-            createASForceUnit('command-2', createUnit(2, 'Command 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['combat_intuition'] }),
-            createASForceUnit('command-3', createUnit(3, 'Command 3', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('commander', createUnit(4, 'Commander', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'], commander: true }),
-            createASForceUnit('fighter', createUnit(5, 'Fighter', 'Aero', 'Aerospace Fighter', 'AF')),
+            createASForceUnit('command-1', createUnit('Command 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
+            createASForceUnit('command-2', createUnit('Command 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['combat_intuition'] }),
+            createASForceUnit('command-3', createUnit('Command 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('commander', createUnit('Commander', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'], commander: true }),
+            createASForceUnit('fighter', createUnit('Fighter', 'Aero', 'Aerospace Fighter', 'AF')),
         ];
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['combat_intuition'] }),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'] }),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['combat_intuition'] }),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['tactical_genius'] }),
         ];
         const command = createGroup(commandUnits, getFormation('strategic-command-star'), [
             createResolvedGroup({ name: 'Star', type: 'Star', tier: 1, units: commandUnits.map(unit => unit.getUnit()) }),
@@ -754,14 +752,14 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('revalidates a targeted Support Lance when a static source assignment changes', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const reconUnits = Array.from({ length: 3 }, (_, index) =>
-            createASForceUnit(`recon-${index + 1}`, createUnit(index + 1, `Recon ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`recon-${index + 1}`, createUnit(`Recon ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: ['eagles_eyes'],
             }),
         );
         const supportUnits = [
-            createASForceUnit('support-1', createUnit(11, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
-            createASForceUnit('support-2', createUnit(12, 'Support 2', 'Mek', 'BattleMek', 'BM')),
-            createASForceUnit('support-3', createUnit(13, 'Support 3', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['eagles_eyes'] }),
+            createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM')),
+            createASForceUnit('support-3', createUnit('Support 3', 'Mek', 'BattleMek', 'BM')),
         ];
         const recon = createGroup(reconUnits, getFormation('recon-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: reconUnits.map(unit => unit.getUnit()) }),
@@ -785,12 +783,12 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('clears a dependent Support snapshot when its source stops being a legal target', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
         const sourceUnits = Array.from({ length: 3 }, (_, index) =>
-            createASForceUnit(`source-${index + 1}`, createUnit(index + 1, `Source ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`source-${index + 1}`, createUnit(`Source ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: ['eagles_eyes'],
             }),
         );
         const supportUnits = Array.from({ length: 3 }, (_, index) =>
-            createASForceUnit(`support-${index + 1}`, createUnit(index + 10, `Support ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
+            createASForceUnit(`support-${index + 1}`, createUnit(`Support ${index + 1}`, 'Mek', 'BattleMek', 'BM'), {
                 formationAbilities: index === 0 ? ['eagles_eyes'] : [],
             }),
         );
@@ -812,8 +810,8 @@ describe('FormationAbilityAssignmentUtil', () => {
 
     it('rejects missing and recursive Support targets and clears stale copied assignments', () => {
         const faction = createFaction('Mercenary', 'Mercenary');
-        const firstUnits = [createASForceUnit('support-1', createUnit(1, 'Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] })];
-        const secondUnits = [createASForceUnit('support-2', createUnit(2, 'Support 2', 'Mek', 'BattleMek', 'BM'))];
+        const firstUnits = [createASForceUnit('support-1', createUnit('Support 1', 'Mek', 'BattleMek', 'BM'), { formationAbilities: ['marksman'] })];
+        const secondUnits = [createASForceUnit('support-2', createUnit('Support 2', 'Mek', 'BattleMek', 'BM'))];
         const first = createGroup(firstUnits, getFormation('support-lance'), [
             createResolvedGroup({ name: 'Lance', type: 'Lance', tier: 1, units: firstUnits.map(unit => unit.getUnit()) }),
         ], faction);
@@ -833,12 +831,12 @@ describe('FormationAbilityAssignmentUtil', () => {
     it('keeps formation-wide Communications Disruption out of unit assignments', () => {
         const formation = getFormation('electronic-warfare-squadron');
         const units = [
-            createASForceUnit('unit-1', createUnit(1, 'Sholagar', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['ECM'] } })),
-            createASForceUnit('unit-2', createUnit(2, 'Corsair', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['PRB'] } })),
-            createASForceUnit('unit-3', createUnit(3, 'Lucifer', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['TAG'] } })),
-            createASForceUnit('unit-4', createUnit(4, 'Transit', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['AECM'] } })),
-            createASForceUnit('unit-5', createUnit(5, 'Sabre', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
-            createASForceUnit('unit-6', createUnit(6, 'Chippewa', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
+            createASForceUnit('unit-1', createUnit('Sholagar', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['ECM'] } })),
+            createASForceUnit('unit-2', createUnit('Corsair', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['PRB'] } })),
+            createASForceUnit('unit-3', createUnit('Lucifer', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['TAG'] } })),
+            createASForceUnit('unit-4', createUnit('Transit', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: ['AECM'] } })),
+            createASForceUnit('unit-5', createUnit('Sabre', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
+            createASForceUnit('unit-6', createUnit('Chippewa', 'Aero', 'Aerospace Fighter', 'AF', { role: 'Interceptor', as: { MVm: { a: 10 }, specials: [] } })),
         ];
         const group = createGroup(
             units,
@@ -866,7 +864,7 @@ describe('FormationAbilityAssignmentUtil', () => {
     });
 
     it('clears unit formation abilities when the group has no active formation', () => {
-        const unit = createASForceUnit('unit-1', createUnit(1, 'Atlas', 'Mek', 'BattleMek', 'BM'), {
+        const unit = createASForceUnit('unit-1', createUnit('Atlas', 'Mek', 'BattleMek', 'BM'), {
             formationAbilities: ['marksman'],
             commander: true,
         });

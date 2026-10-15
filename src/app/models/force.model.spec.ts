@@ -17,9 +17,8 @@ import type { ForceAvailabilityContext } from '../utils/force-availability.util'
 import { NO_FORMATION } from '../utils/formation-type.model';
 import { C3NetworkType } from './c3-network.model';
 
-function createUnit(mul1id: number, name: string, year: number): UnitSummary {
+function createUnit(name: string, year: number): UnitSummary {
     return createEmptyUnit({
-        mul1id,
         name,
         chassis: 'Test',
         model: 'Unit',
@@ -66,7 +65,7 @@ function createSerializedUnit(id: string): SerializedUnit {
 }
 
 function createStubDeserializedUnit(data: SerializedUnit): ForceUnit {
-    const unit = createUnit(1, data.unit, 3025);
+    const unit = createUnit(data.unit, 3025);
 
     return {
         id: data.id,
@@ -141,7 +140,7 @@ describe('getEraUnitValidationSummary', () => {
         const selectedEra = createEra(3025, 3025, 3049);
         const earlierEra = createEra(3000, 3000, 3024);
         const extinctFaction = createFaction(3, 'Extinct');
-        const unit = createUnit(101, 'Shadow Hawk SHD-2H', 3020);
+        const unit = createUnit('Shadow Hawk SHD-2H', 3020);
 
         const visibilityByEra = new Map<number, ReadonlySet<string>>([
             [earlierEra.id, new Set([unit.name])],
@@ -178,7 +177,7 @@ describe('getEraUnitValidationSummary', () => {
 describe('buildEraWarningMessage', () => {
     it('accepts a custom faction-exists predicate for force-scoped availability contexts', () => {
         const selectedEra = createEra(3025, 3025, 3049);
-        const unit = createUnit(101, 'Phoenix Hawk PXH-1', 3020);
+        const unit = createUnit('Phoenix Hawk PXH-1', 3020);
         const faction = createFaction(11, 'Context Faction');
 
         const availabilityContext: ForceAvailabilityContext = {

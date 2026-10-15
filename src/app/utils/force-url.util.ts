@@ -20,10 +20,6 @@ export interface UrlParseLogger {
     warn(message: string): void;
 }
 
-function getUnitNameKey(name: string): string {
-    return name.toLowerCase();
-}
-
 /**
  * Parameters derived from a Force (or set of forces) for URL serialization.
  * For multi-force support, `instance` may contain comma-separated IDs.
@@ -238,16 +234,9 @@ export function generateUnitUrlParams(units: ForceUnit[]): string[] {
 export function parseForceFromUrl(
     force: Force,
     unitsParam: string,
-    allUnits: UnitSummary[],
+    getUnit: (identifier: string) => UnitSummary | undefined,
     logger?: UrlParseLogger
 ): ForceUnit[] {
-    const unitMap = new Map<string, UnitSummary | undefined>();
-    for (const unit of allUnits) {
-        const key = getUnitNameKey(unit.name);
-        unitMap.set(key, unitMap.has(key) ? undefined : unit);
-    }
-    // UUIDs are authoritative; names only resolve unambiguous legacy catalog links.
-    for (const unit of allUnits) unitMap.set(unit.uuid.toLowerCase(), unit);
     const allForceUnits: ForceUnit[] = [];
 
     // Check if it's the new group format (contains '|' or '~')
@@ -296,12 +285,12 @@ export function parseForceFromUrl(
             }
 
             // Parse units for this group
-            const groupUnits = parseUnitUrlParams(force, unitsStr, unitMap, group, logger);
+            const groupUnits = parseUnitUrlParams(force, unitsStr, getUnit, group, logger);
             allForceUnits.push(...groupUnits);
         }
     } else {
         // Legacy format without groups: all units in default group
-        const groupUnits = parseUnitUrlParams(force, unitsParam, unitMap, undefined, logger);
+        const groupUnits = parseUnitUrlParams(force, unitsParam, getUnit, undefined, logger);
         allForceUnits.push(...groupUnits);
     }
 
@@ -321,7 +310,7 @@ export function parseForceFromUrl(
 export function parseUnitUrlParams(
     force: Force,
     unitsStr: string,
-    unitMap: Map<string, UnitSummary | undefined>,
+    getUnit: (identifier: string) => UnitSummary | undefined,
     group?: UnitGroup,
     logger?: UrlParseLogger
 ): ForceUnit[] {
@@ -334,10 +323,10 @@ export function parseUnitUrlParams(
         if (!unitParam.trim()) continue;
 
         const parts = unitParam.split(':');
-        let unit = unitMap.get(parts[0].toLowerCase());
+        let unit = getUnit(parts[0]);
         if (!unit) {
             try {
-                unit = unitMap.get(decodeURIComponent(parts[0]).toLowerCase());
+                unit = getUnit(decodeURIComponent(parts[0]));
             } catch {
                 // Legacy names may contain literal percent signs.
             }

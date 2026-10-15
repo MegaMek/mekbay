@@ -2212,7 +2212,12 @@ export class ForceBuilderService {
      * Legacy format (backward compatible): unit1,unit2,unit3
      */
     private parseUnitsFromUrl(force: Force, unitsParam: string): ForceUnit[] {
-        return parseForceFromUrl(force, unitsParam, this.dataService.getUnits(), this.logger);
+        return parseForceFromUrl(
+            force,
+            unitsParam,
+            identifier => this.dataService.getUnitByUuid(identifier) ?? this.dataService.getUnitByName(identifier),
+            this.logger,
+        );
     }
 
 

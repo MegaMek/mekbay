@@ -17,7 +17,6 @@ import type { GroupSizeResult } from './org/org-types';
 const NOVA_REQUIREMENTS_FILTER_NOTICE = 'Battle Armor child groups are ignored for formation requirements. Mounted infantry in a Nova Formation may make weapon attacks. These mounted attacks use the attacker movement modifier of the transport along with an additional +2 Target Number modifier for being mounted.';
 
 function createUnit(
-    id: number,
     name: string,
     unitType: UnitSummary['type'],
     subtype: UnitSubtype,
@@ -27,7 +26,6 @@ function createUnit(
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
-        id,
         name,
         chassis: name,
         model: name,
@@ -128,8 +126,8 @@ function realFormation(id: string): FormationTypeDefinition {
 describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () => {
     it('uses Nova org metadata to ignore only the Battle Armor child star', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
-        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
-        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 101, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
         const group = createTestGroup(
             [...bmUnits, ...baUnits],
             [createResolvedGroup({
@@ -158,8 +156,8 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('uses Air Lance org metadata to ignore the Flight child group', () => {
         const faction = createFaction('Federated Suns', 'Inner Sphere');
-        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
-        const flightUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const flightUnits = Array.from({ length: 2 }, (_, index) => createUnit(`AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
         const group = createTestGroup(
             [...bmUnits, ...flightUnits],
             [createResolvedGroup({
@@ -188,8 +186,8 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('uses Draconis Combine Air Lance metadata to ignore only the AF Lance child group', () => {
         const faction = createFaction('Draconis Combine', 'Inner Sphere');
-        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
-        const afUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const afUnits = Array.from({ length: 2 }, (_, index) => createUnit(`AF-${index + 1}`, 'Aero', 'Aerospace Fighter', 'AF'));
         const group = createTestGroup(
             [...bmUnits, ...afUnits],
             [createResolvedGroup({
@@ -218,8 +216,8 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('marks filtered matches even when the full Nova unit list also satisfies the requirements', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
-        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
-        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 101, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM'));
+        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
         const group = createTestGroup(
             [...bmUnits, ...baUnits],
             [createResolvedGroup({
@@ -248,8 +246,8 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('uses Augmented Lance metadata to ignore solver-supplied transported units', () => {
         const faction = createFaction('Capellan Confederation', 'Inner Sphere');
-        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
-        const baUnits = Array.from({ length: 2 }, (_, index) => createUnit(index + 201, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const bmUnits = Array.from({ length: 4 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const baUnits = Array.from({ length: 2 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
         const group = createTestGroup(
             [...bmUnits, ...baUnits],
             [createResolvedGroup({
@@ -276,9 +274,9 @@ describe('LanceTypeIdentifierUtil organization-aware requirement filtering', () 
 
     it('does not apply requirement filtering when the group resolves to multiple top-level organizations', () => {
         const faction = createFaction('Clan Test', 'HW Clan');
-        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 1, `BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
-        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(index + 101, `BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
-        const extraPointUnit = createUnit(999, 'PM-1', 'ProtoMek', 'ProtoMek', 'PM');
+        const bmUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BM-${index + 1}`, 'Mek', 'BattleMek', 'BM', { chassis: 'Panther' }));
+        const baUnits = Array.from({ length: 5 }, (_, index) => createUnit(`BA-${index + 1}`, 'Infantry', 'Battle Armor', 'BA'));
+        const extraPointUnit = createUnit('PM-1', 'ProtoMek', 'ProtoMek', 'PM');
         const group = createTestGroup(
             [...bmUnits, ...baUnits, extraPointUnit],
             [
@@ -310,9 +308,9 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
         expect(definition).not.toBeNull();
 
         const units: ForceUnit[] = [
-            createForceUnit(createUnit(1, 'Medium-1', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(2, 'Medium-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(3, 'Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Medium-1', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Medium-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Medium-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Medium' }), GameSystem.CLASSIC),
         ];
 
         expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
@@ -324,10 +322,10 @@ describe('LanceTypeIdentifierUtil CBT weight-class validation', () => {
         expect(definition).not.toBeNull();
 
         const units: ForceUnit[] = [
-            createForceUnit(createUnit(11, 'Light-Scout', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light', role: 'Scout' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(12, 'Light-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(13, 'Light-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
-            createForceUnit(createUnit(14, 'Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Light-Scout', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light', role: 'Scout' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Light-2', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Light-3', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
+            createForceUnit(createUnit('Light-4', 'Mek', 'BattleMek', 'BM', { weightClass: 'Light' }), GameSystem.CLASSIC),
         ];
 
         expect(LanceTypeIdentifierUtil.isValid(definition!, units, GameSystem.CLASSIC)).toBeTrue();
