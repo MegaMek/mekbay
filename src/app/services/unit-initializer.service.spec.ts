@@ -322,6 +322,33 @@ describe('UnitInitializerService', () => {
         }
     });
 
+    it('mounts each conventional infantry platoon weapon once beside its field guns', () => {
+        const rifle = new WeaponEquipment({ id: 'InfantryRifle', name: 'Rifle', type: 'weapon', flags: ['F_INFANTRY'] });
+        const tag = new WeaponEquipment({ id: 'InfantryTAG', name: 'TAG (Light, Man-Portable)', type: 'weapon',
+            flags: ['F_INFANTRY', 'F_TAG'] });
+        const forceUnit = createForceUnit(createEmptyUnit({
+            name: 'TAG Platoon',
+            type: 'Infantry',
+            subtype: 'Conventional Infantry',
+            comp: [
+                { id: rifle.internalName, n: rifle.name, t: 'E', q: 20, p: 0, l: 'Troop', eq: rifle },
+                { id: tag.internalName, n: tag.name, t: 'O', q: 8, p: 0, l: 'Troop', eq: tag },
+                { id: 'CLMediumLaser', n: 'Medium Laser', t: 'E', q: 2, p: 0, l: 'FGUN' },
+            ],
+        }));
+
+        service.initializeUnitIfNeeded(forceUnit, createSvg(''));
+
+        expect(forceUnit.getInventory().map(entry => entry.id)).toEqual([
+            'InfantryRifle@Troop#0', 'InfantryTAG@Troop#1', 'CLMediumLaser@FGUN#2.0', 'CLMediumLaser@FGUN#2.1',
+        ]);
+        const tags = forceUnit.getOperationalMountedEquipmentByFlag('F_TAG');
+        expect(tags.map(entry => entry.id)).toEqual(['InfantryTAG@Troop#1']);
+        // The platoon attacks through the sheet's damage table, not by firing its weapon mounts.
+        expect(forceUnit.rules.canPerformEquipmentAction(tags[0], 'fire')).toBeFalse();
+        expect(forceUnit.rules.canPerformEquipmentAction(forceUnit.getInventory()[2], 'fire')).toBeTrue();
+    });
+
     it('materializes compatible intrinsic one-shot ammo while initializing weapon mounts', () => {
         const equipment = createEquipment();
         const weapon = new WeaponEquipment({

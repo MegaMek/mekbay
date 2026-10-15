@@ -13,6 +13,7 @@ import type { UnitComponent } from '../unit-summary.model';
 import { UnitTypeRulesBase, type UnitModifierBreakdownEntry } from './unit-type-rules';
 
 export const FIELD_GUN_LOCATION = 'FGUN';
+export const PLATOON_WEAPON_LOCATION = 'Troop';
 
 /**
  * 
@@ -21,7 +22,13 @@ export const FIELD_GUN_LOCATION = 'FGUN';
 export class InfantryRules extends UnitTypeRulesBase {
 
     override canPerformEquipmentAction(entry: MountedEquipment, action: EquipmentAction): boolean {
-        return action !== 'fire' || !this.isInfantryFieldGunEntryDisabled(entry);
+        return action !== 'fire' || (!this.isInfantryFieldGunEntryDisabled(entry) && !this.isPlatoonWeaponEntry(entry));
+    }
+
+    /** Platoon weapons attack through the sheet's damage table, not as inventory weapons. */
+    isPlatoonWeaponEntry(entry: MountedEquipment): boolean {
+        return this.unit.getUnit().type === 'Infantry' && this.unit.getUnit().subtype !== 'Battle Armor'
+            && parseInventoryComponentReference(entry.id)?.location === PLATOON_WEAPON_LOCATION;
     }
 
     constructor(unit: CBTForceUnit) {

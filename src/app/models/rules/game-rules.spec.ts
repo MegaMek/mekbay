@@ -92,6 +92,7 @@ function tagBvContext(options: {
 } = {}) {
     const unavailable = new Set<MountedEquipment>();
     const tagUnit = {
+        getUnit: () => ({ type: 'Tank' }),
         getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
         force: { units: () => [ammoUnit] },
     } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
@@ -218,6 +219,7 @@ function vehicleTagBvContext(options: {
     });
 
     const tagUnit = {
+        getUnit: () => ({ type: 'Tank' }),
         getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
         force: { units: () => [ammoUnit] },
     } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
@@ -240,6 +242,9 @@ function coreTagBvContext(options: {
     ammoAvailable?: boolean;
     loaded?: boolean;
     unitType?: 'Mek' | 'Tank';
+    /** Makes the TAG unit battle armor with one TAG mount per listed trooper location. */
+    battleArmorTagLocations?: string[];
+    unavailableTagIndexes?: number[];
 } = {}) {
     const unavailable = new Set<MountedEquipment>();
     let launchers: MountedEquipment[] = [];
@@ -285,16 +290,20 @@ function coreTagBvContext(options: {
         states: new Map(),
     });
     const tagUnit = {
+        getUnit: () => options.battleArmorTagLocations ? { type: 'Infantry', subtype: 'Battle Armor' } : { type: 'Tank' },
         getOperationalMountedEquipmentByFlag: () => tagMounts.filter(mount => !unavailable.has(mount)),
         force: { units: () => [ammoUnit] },
     } as unknown as import('../cbt-force-unit.model').CBTForceUnit;
-    const tagMounts = Array.from({ length: options.tagCount ?? 1 }, (_, index) => new MountedEquipment({
+    const tagLocations = options.battleArmorTagLocations;
+    const tagMounts = Array.from({ length: tagLocations?.length ?? options.tagCount ?? 1 }, (_, index) => new MountedEquipment({
         owner: tagUnit,
         id: `tag-${index}`,
         name: 'TAG',
         equipment: { flags: new Set(['F_TAG']) } as Equipment,
+        locations: tagLocations ? new Set([tagLocations[index]]) : undefined,
         states: new Map(),
     }));
+    for (const index of options.unavailableTagIndexes ?? []) unavailable.add(tagMounts[index]);
 
     return { tagUnit, launchers, ammo, tagMounts, unavailable };
 }
@@ -661,6 +670,17 @@ describe('game rules', () => {
             const { tagUnit } = coreTagBvContext({ tagCount: 2, launcherCount: 3 });
 
             expect(CORE_2026_GAME_RULES.calculateTagBVCost(tagUnit)).toBe(300);
+        });
+
+        it('counts battle armor suit TAG mounts once however many troopers carry them', () => {
+            // Three TAGs per suit, copied onto each of four troopers.
+            const suitTags = ['T1', 'T2', 'T3', 'T4'].flatMap(trooper => [trooper, trooper, trooper]);
+            const surcharge = (unavailableTagIndexes: number[]) => CORE_2026_GAME_RULES.calculateTagBVCost(
+                coreTagBvContext({ battleArmorTagLocations: suitTags, unavailableTagIndexes }).tagUnit);
+
+            expect(surcharge([])).toBe(150);
+            expect(surcharge(suitTags.flatMap((trooper, index) => trooper === 'T4' ? [] : [index]))).toBe(150);
+            expect(surcharge(suitTags.map((_, index) => index))).toBe(0);
         });
 
         it('recognizes homing ammunition without restricting the artillery type', () => {

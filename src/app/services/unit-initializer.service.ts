@@ -11,6 +11,7 @@ import type { CBTForceUnit } from '../models/cbt-force-unit.model';
 import { getBattleArmorTrooperNumber, normalizeBattleArmorTrooperLocation } from '../models/battle-armor-location.model';
 import { materializeIntrinsicOneShotAmmoForInventory } from '../utils/ammo-interaction.util';
 import { normalizeElectronicSuiteDefaults } from '../utils/ecm-state.util';
+import { FIELD_GUN_LOCATION, PLATOON_WEAPON_LOCATION } from '../models/rules/infantry-rules';
 import { reconcileMachineGunArrayLinks } from '../utils/mga-state.util';
 
 export const CRITICAL_ONLY_INVENTORY_EXCLUDED_EQUIPMENT = new Set<string>();
@@ -404,20 +405,28 @@ export class UnitInitializerService {
         return inventoryEntries;
     }
 
-    private getInfantryFieldGunInventoryEntries(unit: CBTForceUnit, currentInventory: MountedEquipment[]): MountedEquipment[] {
+    /**
+     * Conventional infantry sheets have no inventory entries; field guns and platoon weapons
+     * come from the unit summary. Each field gun is its own mount, while a platoon weapon is one
+     * mount however many troopers carry it, as MegaMek's InfantryWeaponMounted.
+     */
+    private getInfantryWeaponInventoryEntries(unit: CBTForceUnit, currentInventory: MountedEquipment[]): MountedEquipment[] {
         if (unit.getUnit().type !== 'Infantry' || unit.getUnit().subtype === 'Battle Armor') return [];
 
         const inventoryEntries: MountedEquipment[] = [];
         const dataService = this.getDataService();
         unit.getUnit().comp.forEach((component, index) => {
-            if (component.l !== 'FGUN') return;
+            const fieldGun = component.l === FIELD_GUN_LOCATION;
+            if (!fieldGun && component.l !== PLATOON_WEAPON_LOCATION) return;
             const equipment = component.eq ?? dataService.findEquipment(component.id);
             if (!(equipment instanceof WeaponEquipment)) return;
 
-            const gunCount = Math.max(1, component.q || 1);
+            const ids = fieldGun
+                ? Array.from({ length: Math.max(1, component.q || 1) },
+                    (_, gunIndex) => `${component.id}@${component.l}#${index}.${gunIndex}`)
+                : [`${component.id}@${component.l}#${index}`];
             const locations = new Set([component.l]);
-            for (let gunIndex = 0; gunIndex < gunCount; gunIndex++) {
-                const id = `${component.id}@${component.l}#${index}.${gunIndex}`;
+            for (const id of ids) {
                 const existingEntry = currentInventory.find(item => item.id === id);
 
                 inventoryEntries.push(new MountedEquipment({
@@ -566,7 +575,7 @@ export class UnitInitializerService {
             inventoryData.push(...this.getCriticalOnlyInventoryEntries(unit, new Set(inventoryData.map(entry => entry.id)), unit.getInventory()));
         }
         if (!svg.querySelector('.critSlot')) {
-            inventoryData.push(...this.getInfantryFieldGunInventoryEntries(unit, unit.getInventory()));
+            inventoryData.push(...this.getInfantryWeaponInventoryEntries(unit, unit.getInventory()));
             inventoryData.push(...this.getDirectAmmoInventoryEntries(unit, unit.getInventory()));
         }
         const materializedInventory = this.materializeBattleArmorWeaponMounts(unit, inventoryData, unit.getInventory());

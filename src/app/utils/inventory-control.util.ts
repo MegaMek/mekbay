@@ -615,6 +615,7 @@ function buildInventoryControlRow(
     options: InventoryControlRowOptions = {}
 ): InventoryControlRow | null {
     const unitRules = entry.owner.rules;
+    if (unitRules instanceof InfantryRules && unitRules.isPlatoonWeaponEntry(entry)) return null;
     const fieldGunComponent = unitRules instanceof InfantryRules ? unitRules.getFieldGunComponent(entry) : null;
     const hasModelDisplay = entry.isIntrinsicPhysicalAttack()
         || (!!entry.equipment && (!(entry.equipment instanceof AmmoEquipment) || isCoolantPodEquipment(entry.equipment)));

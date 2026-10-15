@@ -4,6 +4,7 @@
 
 import type { CBTForceUnit } from '../cbt-force-unit.model';
 import type { AmmoMunitionFlag } from '../ammo-munition-flags.type';
+import { getBattleArmorTrooperNumber } from '../battle-armor-location.model';
 import { AmmoEquipment, Equipment, isTorpedoAmmo, MiscEquipment, WeaponEquipment, type RangeBrackets } from '../equipment.model';
 import type { EquipmentRegistry } from '../equipment-lookup';
 import type { InventoryControlRuntimeTarget } from '../inventory-control-runtime-state.model';
@@ -419,7 +420,7 @@ export abstract class CBTGameRules {
     }
 
     calculateTagBVCost(unit: CBTForceUnit): number {
-        const tagCount = unit.getOperationalMountedEquipmentByFlag('F_TAG').length;
+        const tagCount = operationalTagCount(unit);
         if (tagCount === 0) return 0;
 
         const launcherCount = unit.force.units().reduce(
@@ -775,7 +776,7 @@ export class TWGameRules extends CBTGameRules {
     adds BV equal to the BV of each ton of semi-guided (flag M_SEMIGUIDED or M_HOMING) LRM ammunition 
     carried in the force (use the ammo BV for the appropriate-size LRM launcher). */
     override calculateTagBVCost(unit: CBTForceUnit): number {
-        const tagCount = unit.getOperationalMountedEquipmentByFlag('F_TAG').length;
+        const tagCount = operationalTagCount(unit);
         if (tagCount === 0) return 0;
 
         const guidedAmmoBV = unit.force.units().reduce((total, forceUnit) =>
@@ -848,6 +849,22 @@ function sameProfile(left: readonly number[], right: readonly number[]): boolean
 
 function emptyToHitResolution(): ToHitResolution {
     return { profile: [], value: null, changed: false, weakened: false, modifierBreakdown: [] };
+}
+
+// The TAG multiplier counts design mounts. Battle armor inventory copies each suit mount
+// once per trooper, so count the TAGs of the best-equipped operational trooper.
+function operationalTagCount(unit: CBTForceUnit): number {
+    const tags = unit.getOperationalMountedEquipmentByFlag('F_TAG');
+    if (unit.getUnit().subtype !== 'Battle Armor') return tags.length;
+
+    const perTrooper = new Map<number, number>();
+    let squadWide = 0;
+    for (const tag of tags) {
+        const trooper = Array.from(tag.locations ?? []).map(getBattleArmorTrooperNumber).find(number => number !== null);
+        if (trooper == null) squadWide++;
+        else perTrooper.set(trooper, (perTrooper.get(trooper) ?? 0) + 1);
+    }
+    return squadWide + Math.max(0, ...perTrooper.values());
 }
 
 function countHomingAmmoLaunchers(unit: CBTForceUnit): number {
