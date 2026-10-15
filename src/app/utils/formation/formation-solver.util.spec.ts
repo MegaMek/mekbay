@@ -18,11 +18,10 @@ const CLAN_FACTION: Faction = {
     eras: {},
 };
 
-function createUnit(id: number, name: string, overrides: TestUnitOverrides = {}) {
+function createUnit(name: string, overrides: TestUnitOverrides = {}) {
     const { as: asOverrides, ...unitOverrides } = overrides;
 
     return createEmptyUnit({
-        mul1id: id,
         name,
         chassis: name,
         model: 'Prime',
@@ -86,18 +85,18 @@ describe('FormationSolver', () => {
 
     it('validates Anti-Mech Lance infantry requirements for Alpha Strike and CBT', () => {
         const alphaStrikeUnits = [
-            createForceUnit(createUnit(1, 'BA-1', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } })),
-            createForceUnit(createUnit(2, 'CI-1', { type: 'Infantry', subtype: 'Conventional Infantry', as: { TP: 'CI' } })),
-            createForceUnit(createUnit(3, 'PM-1', { type: 'ProtoMek', subtype: 'ProtoMek', as: { TP: 'PM' } })),
+            createForceUnit(createUnit('BA-1', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } })),
+            createForceUnit(createUnit('CI-1', { type: 'Infantry', subtype: 'Conventional Infantry', as: { TP: 'CI' } })),
+            createForceUnit(createUnit('PM-1', { type: 'ProtoMek', subtype: 'ProtoMek', as: { TP: 'PM' } })),
         ];
         const cbtUnits = [
-            createForceUnit(createUnit(4, 'Inf-1', { type: 'Infantry', subtype: 'Conventional Infantry' }), GameSystem.CBT),
-            createForceUnit(createUnit(5, 'Inf-2', { type: 'Infantry', subtype: 'Conventional Infantry' }), GameSystem.CBT),
-            createForceUnit(createUnit(6, 'Inf-3', { type: 'Infantry', subtype: 'Battle Armor' }), GameSystem.CBT),
+            createForceUnit(createUnit('Inf-1', { type: 'Infantry', subtype: 'Conventional Infantry' }), GameSystem.CBT),
+            createForceUnit(createUnit('Inf-2', { type: 'Infantry', subtype: 'Conventional Infantry' }), GameSystem.CBT),
+            createForceUnit(createUnit('Inf-3', { type: 'Infantry', subtype: 'Battle Armor' }), GameSystem.CBT),
         ];
         const invalidUnits = [
             ...alphaStrikeUnits.slice(0, 2),
-            createForceUnit(createUnit(7, 'Mek-1', { as: { TP: 'BM' } })),
+            createForceUnit(createUnit('Mek-1', { as: { TP: 'BM' } })),
         ];
 
         expect(FormationSolver.evaluateDefinition(definition('anti-mech-lance'), alphaStrikeUnits, GameSystem.AS)?.valid).toBeTrue();
@@ -107,21 +106,21 @@ describe('FormationSolver', () => {
 
     it('validates flattened Anti-Air Lance parent and equipment requirements', () => {
         const validUnits = [
-            createForceUnit(createUnit(1, 'Fire-1', { role: 'Missile Boat', as: { specials: ['FLK1/1/1'] } })),
-            createForceUnit(createUnit(2, 'Fire-2', { role: 'Sniper', as: { specials: ['AC1/1/1'] } })),
-            createForceUnit(createUnit(3, 'Fire-3', { role: 'Sniper' })),
-            createForceUnit(createUnit(4, 'Line-1', { role: 'Brawler' })),
+            createForceUnit(createUnit('Fire-1', { role: 'Missile Boat', as: { specials: ['FLK1/1/1'] } })),
+            createForceUnit(createUnit('Fire-2', { role: 'Sniper', as: { specials: ['AC1/1/1'] } })),
+            createForceUnit(createUnit('Fire-3', { role: 'Sniper' })),
+            createForceUnit(createUnit('Line-1', { role: 'Brawler' })),
         ];
         const missingFireRoleUnits = [
-            createForceUnit(createUnit(5, 'AA-1', { role: 'Missile Boat', as: { specials: ['FLK1/1/1'] } })),
-            createForceUnit(createUnit(6, 'AA-2', { role: 'Brawler', as: { specials: ['AC1/1/1'] } })),
-            createForceUnit(createUnit(7, 'AA-3', { role: 'Brawler' })),
-            createForceUnit(createUnit(8, 'AA-4', { role: 'Brawler' })),
+            createForceUnit(createUnit('AA-1', { role: 'Missile Boat', as: { specials: ['FLK1/1/1'] } })),
+            createForceUnit(createUnit('AA-2', { role: 'Brawler', as: { specials: ['AC1/1/1'] } })),
+            createForceUnit(createUnit('AA-3', { role: 'Brawler' })),
+            createForceUnit(createUnit('AA-4', { role: 'Brawler' })),
         ];
         const missingEquipmentUnits = [
-            createForceUnit(createUnit(9, 'Fire-4', { role: 'Missile Boat', as: { specials: ['FLK1/1/1'] } })),
-            createForceUnit(createUnit(10, 'Fire-5', { role: 'Sniper' })),
-            createForceUnit(createUnit(11, 'Fire-6', { role: 'Sniper' })),
+            createForceUnit(createUnit('Fire-4', { role: 'Missile Boat', as: { specials: ['FLK1/1/1'] } })),
+            createForceUnit(createUnit('Fire-5', { role: 'Sniper' })),
+            createForceUnit(createUnit('Fire-6', { role: 'Sniper' })),
         ];
 
         expect(FormationSolver.evaluateDefinition(definition('anti-air-lance'), validUnits, GameSystem.AS)?.valid).toBeTrue();
@@ -131,9 +130,9 @@ describe('FormationSolver', () => {
 
     it('qualifies through the authored ideal-role alternative', () => {
         const lightBrawlers = [
-            createForceUnit(createUnit(1, 'Light-1', { role: 'Brawler', weightClass: 'Light', as: { SZ: 1 } })),
-            createForceUnit(createUnit(2, 'Light-2', { role: 'Brawler', weightClass: 'Light', as: { SZ: 1 } })),
-            createForceUnit(createUnit(3, 'Light-3', { role: 'Brawler', weightClass: 'Light', as: { SZ: 1 } })),
+            createForceUnit(createUnit('Light-1', { role: 'Brawler', weightClass: 'Light', as: { SZ: 1 } })),
+            createForceUnit(createUnit('Light-2', { role: 'Brawler', weightClass: 'Light', as: { SZ: 1 } })),
+            createForceUnit(createUnit('Light-3', { role: 'Brawler', weightClass: 'Light', as: { SZ: 1 } })),
         ];
         const evaluation = FormationSolver.evaluateDefinition(
             definition('battle-lance'),
@@ -146,15 +145,15 @@ describe('FormationSolver', () => {
     });
 
     it('enforces Battle Lance vehicle pairs only in CBT', () => {
-        const vehicleA = createUnit(1, 'Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Brawler', as: { TP: 'CV', SZ: 3 } });
-        const vehicleB = createUnit(2, 'Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Sniper', as: { TP: 'CV', SZ: 3 } });
+        const vehicleA = createUnit('Vehicle-A', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Brawler', as: { TP: 'CV', SZ: 3 } });
+        const vehicleB = createUnit('Vehicle-B', { type: 'Tank', subtype: 'Combat Vehicle', weightClass: 'Heavy', role: 'Sniper', as: { TP: 'CV', SZ: 3 } });
         const validVehiclePairs = [
             createForceUnit(vehicleA), createForceUnit({ ...vehicleA }),
             createForceUnit(vehicleB), createForceUnit({ ...vehicleB }),
         ];
         const unmatchedVehicles = validVehiclePairs.map((forceUnit, index) => {
             const unit = forceUnit.getSummary();
-            return createForceUnit(createUnit(index + 10, 'Same custom name', {
+            return createForceUnit(createUnit('Same custom name', {
                 isCustom: true,
                 type: 'Tank',
                 subtype: 'Combat Vehicle',
@@ -170,7 +169,7 @@ describe('FormationSolver', () => {
     });
 
     it('requires every non-Fire-Support fighter in a Fire Support Squadron to be a Dogfighter', () => {
-        const validUnits = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 1, `Fighter-${index}`, {
+        const validUnits = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(`Fighter-${index}`, {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             role: index < 3 ? 'Fire Support' : 'Dogfighter',
@@ -178,7 +177,7 @@ describe('FormationSolver', () => {
         })));
         const invalidUnits = [
             ...validUnits.slice(0, 5),
-            createForceUnit(createUnit(10, 'Interceptor', {
+            createForceUnit(createUnit('Interceptor', {
                 type: 'Aero',
                 subtype: 'Aerospace Fighter',
                 role: 'Interceptor',
@@ -191,7 +190,7 @@ describe('FormationSolver', () => {
     });
 
     it('does not count the distinct Fast Dogfighter role toward a Strike Squadron majority', () => {
-        const units = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 1, `Strike-${index}`, {
+        const units = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(`Strike-${index}`, {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             role: index < 4 ? 'Fast Dogfighter' : 'Interceptor',
@@ -202,7 +201,7 @@ describe('FormationSolver', () => {
     });
 
     it('limits standard aerospace squadrons to aerospace and conventional fighters', () => {
-        const alphaStrikeFighters = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 1, `AS-Fighter-${index}`, {
+        const alphaStrikeFighters = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(`AS-Fighter-${index}`, {
             type: 'Aero',
             subtype: index === 5 ? 'Conventional Fighter' : 'Aerospace Fighter',
             role: index < 4 ? 'Interceptor' : 'Fast Dogfighter',
@@ -210,14 +209,14 @@ describe('FormationSolver', () => {
         })));
         const alphaStrikeWithWarShip = [
             ...alphaStrikeFighters.slice(0, 5),
-            createForceUnit(createUnit(10, 'WarShip', {
+            createForceUnit(createUnit('WarShip', {
                 type: 'Aero',
                 subtype: 'WarShip',
                 role: 'Fast Dogfighter',
                 as: { TP: 'WS' },
             })),
         ];
-        const classicFighters = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 20, `CBT-Fighter-${index}`, {
+        const classicFighters = Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(`CBT-Fighter-${index}`, {
             type: 'Aero',
             subtype: index === 5 ? 'Conventional Fighter' : 'Aerospace Fighter',
             role: index < 4 ? 'Interceptor' : 'Fast Dogfighter',
@@ -225,7 +224,7 @@ describe('FormationSolver', () => {
         }), GameSystem.CBT));
         const classicWithDropShip = [
             ...classicFighters.slice(0, 5),
-            createForceUnit(createUnit(30, 'DropShip', {
+            createForceUnit(createUnit('DropShip', {
                 type: 'Aero',
                 subtype: 'Spheroid DropShip',
                 role: 'Fast Dogfighter',
@@ -248,17 +247,17 @@ describe('FormationSolver', () => {
             { name: 'Aerodyne DropShip', overrides: { type: 'Aero', subtype: 'Aerodyne DropShip', as: { TP: 'DA' } } },
             { name: 'Fixed-Wing Support Vehicle', overrides: { type: 'Aero', subtype: 'Fixed Wing Support Vehicle', as: { TP: 'SV' } } },
         ];
-        const alphaStrikeUnits = permittedTransportUnits.map(({ name, overrides }, index) => createForceUnit(createUnit(index + 40, name, {
+        const alphaStrikeUnits = permittedTransportUnits.map(({ name, overrides }, index) => createForceUnit(createUnit(name, {
             ...overrides,
             role: 'Transport',
         })));
-        const cbtUnits = permittedTransportUnits.map(({ name, overrides }, index) => createForceUnit(createUnit(index + 50, name, {
+        const cbtUnits = permittedTransportUnits.map(({ name, overrides }, index) => createForceUnit(createUnit(name, {
             ...overrides,
             role: 'Transport',
         }), GameSystem.CBT));
         const alphaStrikeWithGroundSupportVehicle = [
             ...alphaStrikeUnits.slice(0, 6),
-            createForceUnit(createUnit(60, 'Ground Support Vehicle', {
+            createForceUnit(createUnit('Ground Support Vehicle', {
                 type: 'Tank',
                 subtype: 'Support Vehicle',
                 moveType: 'Wheeled',
@@ -268,7 +267,7 @@ describe('FormationSolver', () => {
         ];
         const classicWithJumpShip = [
             ...cbtUnits.slice(0, 6),
-            createForceUnit(createUnit(61, 'JumpShip', {
+            createForceUnit(createUnit('JumpShip', {
                 type: 'Aero',
                 subtype: 'JumpShip',
                 role: 'Transport',
@@ -284,9 +283,9 @@ describe('FormationSolver', () => {
 
     it('does not require a same-model pair in a Vehicle Command Lance', () => {
         const units = [
-            createForceUnit(createUnit(1, 'Command Vehicle A', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Sniper', as: { TP: 'CV' } })),
-            createForceUnit(createUnit(2, 'Command Vehicle B', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Juggernaut', as: { TP: 'CV' } })),
-            createForceUnit(createUnit(3, 'Escort Vehicle', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Scout', as: { TP: 'CV' } })),
+            createForceUnit(createUnit('Command Vehicle A', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Sniper', as: { TP: 'CV' } })),
+            createForceUnit(createUnit('Command Vehicle B', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Juggernaut', as: { TP: 'CV' } })),
+            createForceUnit(createUnit('Escort Vehicle', { type: 'Tank', subtype: 'Combat Vehicle', role: 'Scout', as: { TP: 'CV' } })),
         ];
 
         expect(FormationSolver.evaluateDefinition(definition('vehicle-command-lance'), units, GameSystem.AS)?.valid).toBeTrue();
@@ -295,17 +294,17 @@ describe('FormationSolver', () => {
 
     it('validates Order Lance same tier and same chassis constraints', () => {
         const validUnits = [
-            createForceUnit(createUnit(1, 'Panther-1', { chassis: 'Panther', as: { SZ: 2 } })),
-            createForceUnit(createUnit(2, 'Panther-2', { chassis: 'Panther', as: { SZ: 2 } })),
-            createForceUnit(createUnit(3, 'Panther-3', { chassis: 'Panther', as: { SZ: 2 } })),
+            createForceUnit(createUnit('Panther-1', { chassis: 'Panther', as: { SZ: 2 } })),
+            createForceUnit(createUnit('Panther-2', { chassis: 'Panther', as: { SZ: 2 } })),
+            createForceUnit(createUnit('Panther-3', { chassis: 'Panther', as: { SZ: 2 } })),
         ];
         const mixedSizeUnits = [
             ...validUnits.slice(0, 2),
-            createForceUnit(createUnit(4, 'Panther-4', { chassis: 'Panther', as: { SZ: 3 } })),
+            createForceUnit(createUnit('Panther-4', { chassis: 'Panther', as: { SZ: 3 } })),
         ];
         const mixedChassisUnits = [
             ...validUnits.slice(0, 2),
-            createForceUnit(createUnit(5, 'Dragon-1', { chassis: 'Dragon', as: { SZ: 2 } })),
+            createForceUnit(createUnit('Dragon-1', { chassis: 'Dragon', as: { SZ: 2 } })),
         ];
 
         expect(FormationSolver.evaluateDefinition(definition('order-lance'), validUnits, GameSystem.AS)?.valid).toBeTrue();
@@ -315,11 +314,11 @@ describe('FormationSolver', () => {
 
     it('uses candidate decisions to preserve or obtain an Order Lance', () => {
         const currentUnits = [
-            createForceUnit(createUnit(1, 'Panther-1', { chassis: 'Panther', as: { SZ: 2 } })),
-            createForceUnit(createUnit(2, 'Panther-2', { chassis: 'Panther', as: { SZ: 2 } })),
+            createForceUnit(createUnit('Panther-1', { chassis: 'Panther', as: { SZ: 2 } })),
+            createForceUnit(createUnit('Panther-2', { chassis: 'Panther', as: { SZ: 2 } })),
         ];
-        const matchingCandidate = createForceUnit(createUnit(3, 'Panther-3', { chassis: 'Panther', as: { SZ: 2 } }));
-        const wrongChassisCandidate = createForceUnit(createUnit(4, 'Dragon-1', { chassis: 'Dragon', as: { SZ: 2 } }));
+        const matchingCandidate = createForceUnit(createUnit('Panther-3', { chassis: 'Panther', as: { SZ: 2 } }));
+        const wrongChassisCandidate = createForceUnit(createUnit('Dragon-1', { chassis: 'Dragon', as: { SZ: 2 } }));
 
         const matchingDecision = FormationSolver.evaluateSearchCandidate(
             definition('order-lance'),
@@ -341,8 +340,8 @@ describe('FormationSolver', () => {
     });
 
     it('does not treat minimum unit count progress as filling Artillery Fire requirements', () => {
-        const artilleryCandidate = createForceUnit(createUnit(1, 'Artillery-1', { as: { specials: ['ART-LT'] } }));
-        const lineCandidate = createForceUnit(createUnit(2, 'Line-1'));
+        const artilleryCandidate = createForceUnit(createUnit('Artillery-1', { as: { specials: ['ART-LT'] } }));
+        const lineCandidate = createForceUnit(createUnit('Line-1'));
 
         const artilleryDecision = FormationSolver.evaluateSearchCandidate(
             definition('artillery-fire-lance'),
@@ -366,15 +365,15 @@ describe('FormationSolver', () => {
     });
 
     it('validates Rogue Star same-model pair requirements', () => {
-        const adder = createUnit(1, 'Adder Prime', { as: { TP: 'BM' } });
+        const adder = createUnit('Adder Prime', { as: { TP: 'BM' } });
         const validUnits = [
             createForceUnit(adder, GameSystem.AS, { faction: CLAN_FACTION }),
             createForceUnit({ ...adder }, GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(3, 'Kit Fox Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(4, 'Nova Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(5, 'Stormcrow Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Kit Fox Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Nova Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Stormcrow Prime', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
         ];
-        const invalidUnits = validUnits.map((forceUnit, index) => createForceUnit(createUnit(index + 10, forceUnit.getSummary().name, {
+        const invalidUnits = validUnits.map((forceUnit, index) => createForceUnit(createUnit(forceUnit.getSummary().name, {
             isCustom: true,
             as: { TP: 'BM' },
         }), GameSystem.AS, { faction: CLAN_FACTION }));
@@ -387,18 +386,18 @@ describe('FormationSolver', () => {
 
     it('validates Strategic Command Star aerospace, skill, and heavy Mek constraints', () => {
         const validUnits = [
-            createForceUnit(createUnit(1, 'Timber Wolf', { weightClass: 'Heavy', as: { TP: 'BM', SZ: 3 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(2, 'Dire Wolf', { weightClass: 'Assault', as: { TP: 'BM', SZ: 4 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 2 }),
-            createForceUnit(createUnit(3, 'Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', role: 'Interceptor', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(4, 'Batu', { type: 'Aero', subtype: 'Aerospace Fighter', role: 'Fast Dogfighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(5, 'Elemental', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Timber Wolf', { weightClass: 'Heavy', as: { TP: 'BM', SZ: 3 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Dire Wolf', { weightClass: 'Assault', as: { TP: 'BM', SZ: 4 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 2 }),
+            createForceUnit(createUnit('Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', role: 'Interceptor', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Batu', { type: 'Aero', subtype: 'Aerospace Fighter', role: 'Fast Dogfighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Elemental', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
         const oneAeroUnit = [
             validUnits[0],
             validUnits[1],
             validUnits[2],
             validUnits[4],
-            createForceUnit(createUnit(6, 'Executioner', { weightClass: 'Assault', as: { TP: 'BM', SZ: 4 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Executioner', { weightClass: 'Assault', as: { TP: 'BM', SZ: 4 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
         const lowSkillUnits = validUnits.map((forceUnit, index) => createForceUnit(forceUnit.getSummary(), GameSystem.AS, {
             faction: CLAN_FACTION,
@@ -406,13 +405,13 @@ describe('FormationSolver', () => {
         }));
         const warshipUnits = [
             ...validUnits,
-            createForceUnit(createUnit(6, 'Vincent Corvette', { type: 'Aero', subtype: 'WarShip', as: { TP: 'WS', SZ: 5 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Vincent Corvette', { type: 'Aero', subtype: 'WarShip', as: { TP: 'WS', SZ: 5 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
         const industrialMekUnits = [
-            createForceUnit(createUnit(7, 'Visigoth II', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(8, 'Batu II', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(9, 'IndustrialMech A', { weightClass: 'Heavy', as: { TP: 'IM', SZ: 3 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(10, 'IndustrialMech B', { weightClass: 'Assault', as: { TP: 'IM', SZ: 4 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Visigoth II', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Batu II', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('IndustrialMech A', { weightClass: 'Heavy', as: { TP: 'IM', SZ: 3 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('IndustrialMech B', { weightClass: 'Assault', as: { TP: 'IM', SZ: 4 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
 
         expect(FormationSolver.evaluateDefinition(definition('strategic-command-star'), validUnits, GameSystem.AS)?.valid).toBeTrue();
@@ -425,11 +424,11 @@ describe('FormationSolver', () => {
     it('allows Strategic Command search to pick a first heavy Mek setup unit', () => {
         const definitionUnderTest = definition('strategic-command-star');
         const currentUnits = [
-            createForceUnit(createUnit(1, 'Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(2, 'Batu', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Batu', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
-        const heavyMek = createForceUnit(createUnit(3, 'Timber Wolf', { weightClass: 'Heavy', as: { TP: 'BM', SZ: 3 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 });
-        const lightMek = createForceUnit(createUnit(4, 'Adder', { weightClass: 'Light', as: { TP: 'BM', SZ: 1 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 });
+        const heavyMek = createForceUnit(createUnit('Timber Wolf', { weightClass: 'Heavy', as: { TP: 'BM', SZ: 3 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 });
+        const lightMek = createForceUnit(createUnit('Adder', { weightClass: 'Light', as: { TP: 'BM', SZ: 1 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 });
         const heavyMekDecision = FormationSolver.evaluateSearchCandidate(definitionUnderTest, currentUnits, heavyMek, GameSystem.AS, { maxUnits: 12 });
 
         expect(heavyMekDecision.allowed).toBeTrue();
@@ -440,25 +439,25 @@ describe('FormationSolver', () => {
     it('guides Strategic Command search away from extra aerospace after the AF requirement is met', () => {
         const definitionUnderTest = definition('strategic-command-star');
         const currentUnits = [
-            createForceUnit(createUnit(1, 'Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
-            createForceUnit(createUnit(2, 'Batu', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Visigoth', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
+            createForceUnit(createUnit('Batu', { type: 'Aero', subtype: 'Aerospace Fighter', as: { TP: 'AF' } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 }),
         ];
 
         const search = FormationSolver.prepareSearch(definitionUnderTest, currentUnits, GameSystem.AS);
         expect(search.evaluateCandidate(currentUnits[0]).allowed).toBeFalse();
-        const lightMek = createForceUnit(createUnit(3, 'Adder', { as: { TP: 'BM', SZ: 1 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 });
+        const lightMek = createForceUnit(createUnit('Adder', { as: { TP: 'BM', SZ: 1 } }), GameSystem.AS, { faction: CLAN_FACTION, pilotSkill: 3 });
         expect(search.evaluateCandidate(lightMek).allowed).toBeFalse();
     });
 
     it('validates Phalanx Star allowed unit types and combined-arms shape', () => {
         const validUnits = [
-            createForceUnit(createUnit(1, 'Warhawk', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(2, 'Summoner', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(3, 'Elemental A', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(4, 'Elemental B', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION }),
-            createForceUnit(createUnit(5, 'Elemental C', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Warhawk', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Summoner', { as: { TP: 'BM' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Elemental A', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Elemental B', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION }),
+            createForceUnit(createUnit('Elemental C', { type: 'Infantry', subtype: 'Battle Armor', as: { TP: 'BA' } }), GameSystem.AS, { faction: CLAN_FACTION }),
         ];
-        const invalidAerospaceUnits = validUnits.map((_, index) => createForceUnit(createUnit(index + 10, `Aero-${index}`, {
+        const invalidAerospaceUnits = validUnits.map((_, index) => createForceUnit(createUnit(`Aero-${index}`, {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             as: { TP: 'AF' },
@@ -469,13 +468,13 @@ describe('FormationSolver', () => {
     });
 
     it('uses proper strict majority for Interceptor Squadron role requirements', () => {
-        const fourOfSevenInterceptors = Array.from({ length: 7 }, (_, index) => createForceUnit(createUnit(index + 1, `Aero-${index}`, {
+        const fourOfSevenInterceptors = Array.from({ length: 7 }, (_, index) => createForceUnit(createUnit(`Aero-${index}`, {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             role: index < 4 ? 'Interceptor' : 'Fast Dogfighter',
             as: { TP: 'AF' },
         })));
-        const threeOfSevenInterceptors = fourOfSevenInterceptors.map((forceUnit, index) => createForceUnit(createUnit(index + 11, `Aero-B-${index}`, {
+        const threeOfSevenInterceptors = fourOfSevenInterceptors.map((forceUnit, index) => createForceUnit(createUnit(`Aero-B-${index}`, {
             type: 'Aero',
             subtype: 'Aerospace Fighter',
             role: index < 3 ? 'Interceptor' : 'Fast Dogfighter',
@@ -487,17 +486,17 @@ describe('FormationSolver', () => {
     });
 
     it('validates Horde size, light unit, and low damage constraints', () => {
-        const validUnits = Array.from({ length: 5 }, (_, index) => createForceUnit(createUnit(index + 1, `Horde-${index}`, {
+        const validUnits = Array.from({ length: 5 }, (_, index) => createForceUnit(createUnit(`Horde-${index}`, {
             weightClass: 'Light',
             as: { SZ: 1, dmg: { _dmgM: 1 } },
         })));
-        const tooManyUnits = [...validUnits, ...Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(index + 20, `Extra-${index}`, {
+        const tooManyUnits = [...validUnits, ...Array.from({ length: 6 }, (_, index) => createForceUnit(createUnit(`Extra-${index}`, {
             weightClass: 'Light',
             as: { SZ: 1, dmg: { _dmgM: 1 } },
         })))];
         const highDamageUnits = [
             ...validUnits.slice(0, 4),
-            createForceUnit(createUnit(99, 'High-Damage', { weightClass: 'Light', as: { SZ: 1, dmg: { _dmgM: 2 } } })),
+            createForceUnit(createUnit('High-Damage', { weightClass: 'Light', as: { SZ: 1, dmg: { _dmgM: 2 } } })),
         ];
 
         expect(FormationSolver.evaluateDefinition(definition('horde'), validUnits, GameSystem.AS)?.valid).toBeTrue();
@@ -506,7 +505,7 @@ describe('FormationSolver', () => {
     });
 
     it('validates Swarm VTOL and size constraints and exposes Coordinated Fire', () => {
-        const validUnits = Array.from({ length: 4 }, (_, index) => createForceUnit(createUnit(index + 1, `Swarm-${index}`, {
+        const validUnits = Array.from({ length: 4 }, (_, index) => createForceUnit(createUnit(`Swarm-${index}`, {
             type: 'VTOL',
             subtype: 'Combat Vehicle',
             weightClass: 'Medium',
@@ -515,11 +514,11 @@ describe('FormationSolver', () => {
         const tooFewUnits = validUnits.slice(0, 3);
         const mixedUnitType = [
             ...validUnits.slice(0, 3),
-            createForceUnit(createUnit(10, 'Ground Unit', { as: { TP: 'CV', SZ: 2 } })),
+            createForceUnit(createUnit('Ground Unit', { as: { TP: 'CV', SZ: 2 } })),
         ];
         const heavyVtol = [
             ...validUnits.slice(0, 3),
-            createForceUnit(createUnit(11, 'Heavy VTOL', {
+            createForceUnit(createUnit('Heavy VTOL', {
                 type: 'VTOL',
                 subtype: 'Combat Vehicle',
                 weightClass: 'Heavy',

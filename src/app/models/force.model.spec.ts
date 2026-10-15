@@ -49,9 +49,8 @@ function controlledGate(): ControlledGate {
     };
 }
 
-function createUnit(id: number, name: string, year: number): UnitSummary {
+function createUnit(name: string, year: number): UnitSummary {
     return createEmptyUnit({
-        mul1id: id,
         name,
         chassis: 'Test',
         model: 'Unit',
@@ -98,7 +97,7 @@ function createSerializedUnit(id: string): SerializedUnit {
 }
 
 function createStubDeserializedUnit(data: SerializedUnit): ForceUnit {
-    const unit = createUnit(1, data.unit, 3025);
+    const unit = createUnit(data.unit, 3025);
     let c3Position: { x: number; y: number } | null = data.state.c3Position ?? null;
 
     return {
@@ -301,7 +300,6 @@ describe('getEraUnitValidationSummary', () => {
         const earlierEra = createEra(3000, 3000, 3024);
         const extinctFaction = createFaction(3, 'Extinct');
         const unit = createEmptyUnit({
-            mul1id: 101,
             name: 'BMShadowHawk_SHD2H',
             chassis: 'Shadow Hawk',
             model: 'SHD-2H',
@@ -343,7 +341,7 @@ describe('getEraUnitValidationSummary', () => {
 describe('buildEraWarningMessage', () => {
     it('accepts a custom faction-exists predicate for force-scoped availability contexts', () => {
         const selectedEra = createEra(3025, 3025, 3049);
-        const unit = createUnit(101, 'Phoenix Hawk PXH-1', 3020);
+        const unit = createUnit('Phoenix Hawk PXH-1', 3020);
         const faction = createFaction(11, 'Context Faction');
 
         const availabilityContext: ForceAvailabilityContext = {
