@@ -14,8 +14,6 @@ export interface ConventionalInfantryCombatProfile {
     readonly underwaterRangeModifiers: readonly (number | null)[] | null;
 }
 
-const PRIMARY_DAMAGE_CAP = 0.6;
-
 /** TAG is a targeting aid, not the weapon used for infantry combat ranges or notes. */
 export function conventionalInfantryRangeWeapon(entity: InfantryEntity): InfantryWeaponEquipment | null {
     const secondary = entity.secondaryWeapon();
@@ -42,10 +40,11 @@ export function projectConventionalInfantryCombat(
     const secondary = entity.secondaryWeapon();
     const squadSize = entity.squadSize();
     const secondaryCount = entity.secondaryCount();
-    // ConvInfantry.getDamagePerTrooper: primary damage is capped; secondary damage is not.
+    const primaryDamage = entity.platoonWeaponDamagePerTrooper('primary');
     const damagePerTrooper = primary === null || squadSize <= 0 ? 0
-        : (Math.min(PRIMARY_DAMAGE_CAP, primary.infantry.damage) * (squadSize - secondaryCount)
-            + (secondary?.infantry.damage ?? 0) * secondaryCount) / squadSize;
+        : (primaryDamage * (squadSize - secondaryCount)
+            + entity.platoonWeaponDamagePerTrooper('secondary') * secondaryCount) / squadSize;
+    const primaryDamageCapped = (primary?.infantry.damage ?? 0) > primaryDamage;
     const maximumStrength = entity.structureValues().get('Infantry') ?? 0;
     // PrintInfantry.writeTextFields uses rounded per-strength damage, not ceil or AS damage.
     const damageByStrength = Array.from({ length: maximumStrength + 1 }, (_, strength) =>
@@ -57,10 +56,9 @@ export function projectConventionalInfantryCombat(
         maximumStrength,
         damagePerTrooper,
         damageByStrength: Object.freeze(damageByStrength),
-        rangeModifiers: infantryRangeModifiers(rangeWeapon, otherWeapon, false,
-            (primary?.infantry.damage ?? 0) > PRIMARY_DAMAGE_CAP),
-        underwaterRangeModifiers: underwater ? infantryRangeModifiers(rangeWeapon, otherWeapon, true,
-            (primary?.infantry.damage ?? 0) > PRIMARY_DAMAGE_CAP) : null,
+        rangeModifiers: infantryRangeModifiers(rangeWeapon, otherWeapon, false, primaryDamageCapped),
+        underwaterRangeModifiers: underwater
+            ? infantryRangeModifiers(rangeWeapon, otherWeapon, true, primaryDamageCapped) : null,
     });
 }
 

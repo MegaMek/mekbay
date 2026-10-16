@@ -153,7 +153,9 @@ export function projectNonMekEquipmentPanel(
             })];
         }),
     );
+    // Platoon weapons attack through the infantry damage table, not as weapon rows.
     const projectedComponents = Object.freeze([...index.components.values()]
+        .filter(component => !component.mount.platoonWeapon)
         .map(component => projectComponent(
             entity,
             index,
@@ -179,6 +181,7 @@ export function projectNonMekEquipmentPanel(
     );
     const firstCrew = crew.positions[0];
     const skills = crewSkillsForUnit(firstCrew, entity.unitType(), entity.unitSubtype());
+    const bombCapacity = entity.bombCapacity();
     return Object.freeze({
         entityUuid: entity.uuid(),
         ruleset,
@@ -207,6 +210,9 @@ export function projectNonMekEquipmentPanel(
             : { equipmentRowOrder: state.equipmentRowOrder }),
         physicalAttackBlockers: Object.freeze([]),
         targets,
+        ...(bombCapacity.external + bombCapacity.internal > 0
+            ? { bombs: Object.freeze({ capacity: bombCapacity, loads: state.bombs ?? [] }) }
+            : {}),
     });
 }
 

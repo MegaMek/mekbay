@@ -68,6 +68,9 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-armor-damage':
         case 'set-ammo-spent':
         case 'reset-ammo-loadout':
+        // Carried bombs change external-stores and TAG battle value.
+        case 'configure-bombs':
+        case 'set-bombs-spent':
         case 'spend-ammo':
         case 'activate-coolant-pod':
         case 'fire-weapons':
@@ -79,6 +82,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
             return true;
         case 'set-component-mode':
         case 'set-airborne':
+        case 'set-velocity-record':
         case 'set-movement':
         case 'set-cover':
         case 'set-spotting':

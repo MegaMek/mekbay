@@ -3,6 +3,8 @@
 
 import { asUnitUuid,type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
+import { BOMB_SECTIONS,bombLoadoutIssue,type BombLoad,type BombSection } from '../aerospace-bomb.model';
+import { velocityRecordEntryIssue,type VelocityRecordEntry } from '../aerospace-velocity-record.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
 import { isNativeEntityType } from '../entity/codec-capabilities';
@@ -54,8 +56,8 @@ const SERIALIZED_NON_MEK_UNIT_KEYS = new Set([
     'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource',
     'baselineRefAtSave', 'deployment', 'family', 'stateRevision',
     'destroyed', 'locationState', 'componentState', 'damageTrackState',
-    'ammoState', 'crewState', 'conditions', 'heat', 'turn',
-    'equipmentRowOrder', 'pendingCombat',
+    'ammoState', 'bombState', 'crewState', 'conditions', 'heat', 'turn',
+    'equipmentRowOrder', 'pendingCombat', 'velocityRecord',
 ]);
 
 export interface NonMekDeploymentConfiguration {
@@ -104,6 +106,13 @@ export interface SerializedNonMekUnit {
         readonly shotsSpent: number;
         readonly munitionOverride?: string;
         readonly hotLoaded?: true;
+    }>[];
+    readonly velocityRecord?: readonly VelocityRecordEntry[];
+    readonly bombState?: readonly Readonly<{
+        readonly section: BombSection;
+        readonly bombId: string;
+        readonly count: number;
+        readonly spent?: number;
     }>[];
     readonly crewState?: readonly Readonly<{
         readonly positionId: CrewPositionId;
@@ -247,6 +256,12 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
     const ammoState = [...state.ammo]
         .sort(([left], [right]) => compareText(left, right))
         .map(([componentId, ammo]) => Object.freeze({ componentId, ...ammo }));
+    const bombState = (state.bombs ?? []).map(load => Object.freeze({
+        section: load.section,
+        bombId: load.bombId,
+        count: load.count,
+        ...(load.spent === 0 ? {} : { spent: load.spent }),
+    }));
     const damageTrackState = [...state.damageTracks]
         .sort(([left], [right]) => compareText(left, right))
         .map(([damageTrackId, damageTrack]) => Object.freeze({
@@ -278,12 +293,14 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         ...(componentState.length === 0 ? {} : { componentState: Object.freeze(componentState) }),
         ...(damageTrackState.length === 0 ? {} : { damageTrackState: Object.freeze(damageTrackState) }),
         ...(ammoState.length === 0 ? {} : { ammoState: Object.freeze(ammoState) }),
+        ...(bombState.length === 0 ? {} : { bombState: Object.freeze(bombState) }),
         ...(crewState.length === 0 ? {} : { crewState: Object.freeze(crewState) }),
         ...(conditions.length === 0 ? {} : { conditions: Object.freeze(conditions) }),
         ...(isPristineHeat(state.heat) ? {} : { heat: Object.freeze({ ...state.heat }) }),
         ...(turn === undefined ? {} : { turn }),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(pendingCombat === undefined ? {} : { pendingCombat }),
+        ...(state.velocityRecord === undefined ? {} : { velocityRecord: state.velocityRecord }),
     });
 }
 
@@ -384,6 +401,8 @@ export function restoreNonMekRuntime(
     }
     const conditions = new Set(persistedConditions.filter(condition => condition !== 'crippled'));
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
+    const bombs = restoreBombLoads(saved.bombState, entity);
+    const velocityRecord = restoreVelocityRecord(saved.velocityRecord);
     const state = freezeNonMekUnitState({
         stateRevision: saved.stateRevision,
         explicitlyDestroyed: saved.destroyed === true,
@@ -404,6 +423,8 @@ export function restoreNonMekRuntime(
         turn: restoreNonMekTurn(saved),
         attackerTargeting: createPristineAttackerTargetingState(),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
+        ...(bombs === undefined ? {} : { bombs }),
+        ...(velocityRecord.length === 0 ? {} : { velocityRecord }),
         pendingCombat: restorePendingCombat(saved),
     });
     return Object.freeze({
@@ -415,6 +436,35 @@ export function restoreNonMekRuntime(
         ...createNonMekRuntimeBinding(entity, ruleset, state, forcedWithdrawal,
             saved.deployment.values.crewAssignment, hotLoadedAmmo),
     });
+}
+
+function restoreBombLoads(rows: SerializedNonMekUnit['bombState'], entity: BaseEntity): readonly BombLoad[] | undefined {
+    const loads = (rows ?? []).map(row => {
+        const spent = row.spent ?? 0;
+        if (!BOMB_SECTIONS.includes(row.section) || !Number.isSafeInteger(row.count) || row.count <= 0
+            || !Number.isSafeInteger(spent) || spent < 0 || spent > row.count) {
+            throw new Error(`Invalid persisted bomb load ${row.bombId}`);
+        }
+        return Object.freeze({ section: row.section, bombId: row.bombId, count: row.count, spent });
+    });
+    if (new Set(loads.map(load => `${load.section}:${load.bombId}`)).size !== loads.length) {
+        throw new Error('Duplicate persisted bomb load');
+    }
+    // Unknown bomb types, or a refit that removed the hardpoints, leave a loadout the unit cannot carry.
+    return loads.length > 0 && bombLoadoutIssue(loads, entity.bombCapacity()) === null ? loads : undefined;
+}
+
+function restoreVelocityRecord(rows: SerializedNonMekUnit['velocityRecord']): readonly VelocityRecordEntry[] {
+    const entries = (rows ?? []).map(row => {
+        const entry = Object.freeze({ turn: row.turn, field: row.field, value: row.value });
+        const issue = velocityRecordEntryIssue(entry);
+        if (issue !== null) throw new Error(`Invalid persisted velocity record: ${issue}`);
+        return entry;
+    });
+    if (new Set(entries.map(entry => `${entry.turn}:${entry.field}`)).size !== entries.length) {
+        throw new Error('Duplicate persisted velocity record entry');
+    }
+    return entries;
 }
 
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {

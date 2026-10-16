@@ -93,6 +93,7 @@ export const CBT_UNIT_FIELD = {
     componentState: 'c',
     damageTrackState: 'q',
     ammoState: 'a',
+    bombState: 'b',
     heat: 'z',
     ruleChecks: 'rC',
     movementPsr: 'm',
@@ -102,6 +103,19 @@ export const CBT_UNIT_FIELD = {
     mekTurn: 't',
     nonMekTurn: 'v',
     pendingCombat: 'p',
+    velocityRecord: 'vr',
+} as const;
+
+export const CBT_VELOCITY_RECORD_FIELD = {
+    thrust: 't',
+    velocity: 'v',
+    effectiveVelocity: 'e',
+    altitude: 'a',
+} as const;
+
+export const CBT_BOMB_SECTION = {
+    external: 'e',
+    internal: 'i',
 } as const;
 
 export const CBT_EQUIPMENT_ROW_ORDER_FIELD = {

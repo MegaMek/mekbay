@@ -6,6 +6,8 @@ import { formatProtectionCounter, renderProtectionCounter } from '../../utils/sh
 import type {
 ComponentId,
 } from '../../models/entity/entity-identifiers';
+import { layoutBombStores,type BombSection } from '../../models/aerospace-bomb.model';
+import { velocityRecordValue,type VelocityRecordField } from '../../models/aerospace-velocity-record.model';
 import type { EntityTechBase } from '../../models/entity/types';
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
@@ -37,8 +39,9 @@ INFANTRY_STRENGTH_DISPLAY_ID,
 type InfantryStrengthDisplay,
 } from '../../utils/sheets/infantry-strength-display';
 import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
+import { AERO_DEFAULT_BOMB_KEY } from '../../utils/sheets/layouts/aero-record-sheet-components';
 import { renderHandheldWeaponAmmoPips } from '../../utils/sheets/layouts/handheld-weapon-record-sheet-layout';
-import { formatMovementWithMaximum, formatRecordSheetTonnage, recordSheetAmmoProfiles } from '../../utils/sheets/record-sheet-svg-rendering';
+import { formatMovementWithMaximum, formatRecordSheetTonnage, recordSheetAmmoProfiles, setAttributes, svgElement, textFitsWidth } from '../../utils/sheets/record-sheet-svg-rendering';
 import { writeSvgTextLines } from '../../utils/svg-text.util';
 import {
 renderRecordSheetConditions,
@@ -223,6 +226,17 @@ export function bindNonMekRecordSheet(
         renderDamageTracks(svg, snapshot.damageTracks, issues, bind, () => current.editContext);
         renderComponents(svg, snapshot, issues);
         renderAmmoProfile(svg, snapshot, onInteraction !== undefined);
+        for (const store of renderBombStores(svg, snapshot)) {
+            bind(store, () => Object.freeze({ kind: 'open-equipment', tab: 'ammo', context: current.editContext }));
+        }
+        for (const cell of renderVelocityRecord(svg, snapshot)) {
+            bind(cell, () => Object.freeze({
+                kind: 'velocity-record',
+                turn: Number(cell.dataset['turn']),
+                field: cell.dataset['field'] as VelocityRecordField,
+                context: current.editContext,
+            }));
+        }
         const ammoProfile = svg.querySelector<SVGElement>('#ammoProfile');
         if (ammoProfile) bind(ammoProfile, () => Object.freeze({
             kind: 'open-equipment',
@@ -778,6 +792,94 @@ function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
             issues.push(`Unknown inventory component binding for ${row.id}`);
         }
     }
+}
+
+/**
+ * Labels one store per carried bomb and greys out, with a slash, the further hardpoints larger bombs take from the
+ * end of the stores. Returns the stores for interaction.
+ */
+function renderBombStores(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot): readonly SVGElement[] {
+    const boxes = [...svg.querySelectorAll<SVGRectElement>('.bombBox[data-store-index]')];
+    const layer = svg.querySelector<SVGGElement>('.bombSlots');
+    if (!layer) return boxes;
+    const boxByStore = new Map(boxes.map(box => [Number(box.dataset['storeIndex']), box] as const));
+    const stores: Record<BombSection, number[]> = { external: [], internal: [] };
+    for (const [store, box] of boxByStore) stores[box.dataset['bombSection'] as BombSection].push(store);
+    const { slots, taken } = layoutBombStores(snapshot.bombs, stores);
+    const slotByStore = new Map(slots.map(slot => [slot.store, slot] as const));
+    const takenStores = new Set(taken);
+    const labelSize = Number(layer.dataset['labelSize']);
+    layer.replaceChildren();
+    for (const [store, box] of boxByStore) {
+        const slot = slotByStore.get(store);
+        const isTaken = takenStores.has(store);
+        box.classList.toggle('bombLoaded', slot !== undefined);
+        box.classList.toggle('bombSpent', slot?.spent === true);
+        box.classList.toggle('bombTaken', isTaken);
+        const tooltip = slot ? `${slot.bomb.name}${slot.spent ? ' (spent)' : ''}` : isTaken ? 'Hardpoint taken by a larger bomb' : '';
+        const title = svgElement('title');
+        title.textContent = tooltip;
+        box.replaceChildren(...(tooltip ? [title] : []));
+        const x = box.x.baseVal.value;
+        const y = box.y.baseVal.value;
+        const width = box.width.baseVal.value;
+        const height = box.height.baseVal.value;
+        if (slot) {
+            const label = svgElement('text');
+            setAttributes(label, {
+                x: x + width / 2,
+                y: y + height / 2,
+                'font-size': labelSize,
+                'font-weight': 700,
+                'text-anchor': 'middle',
+                'dominant-baseline': 'central',
+                class: slot.spent ? 'bombLabel bombSpent' : 'bombLabel',
+            });
+            label.textContent = slot.bomb.label;
+            layer.appendChild(label);
+        } else if (isTaken) {
+            const inset = Number(box.getAttribute('rx') ?? 0);
+            const slash = svgElement('line');
+            setAttributes(slash, {
+                x1: x + inset,
+                y1: y + height - inset,
+                x2: x + width - inset,
+                y2: y + inset,
+                'stroke-width': box.getAttribute('stroke-width') ?? undefined,
+                class: 'bombTakenMark',
+            });
+            layer.appendChild(slash);
+        }
+    }
+    const carried = [...new Map(slots.map(slot => [slot.bomb.id, slot.bomb] as const)).values()];
+    renderBombKey(svg, carried.length > 0
+        ? carried.map(bomb => `${bomb.label} - ${bomb.name}`)
+        : AERO_DEFAULT_BOMB_KEY);
+    return boxes;
+}
+
+/** Explains the abbreviated bombs carried, or shows the sheet's default key for an empty loadout. */
+function renderBombKey(svg: SVGSVGElement, entries: readonly string[]): void {
+    const title = svg.querySelector<SVGTextElement>('.bombKeyTitle');
+    if (!title) return;
+    title.style.display = entries.length > 0 ? '' : 'none';
+    svg.querySelectorAll<SVGTextElement>('.bombKeyLine').forEach((line, index) => {
+        line.textContent = entries[index] ?? '';
+        const maxWidth = Number(line.dataset['maxWidth']);
+        const fits = textFitsWidth(line.textContent, Number(line.getAttribute('font-size')), maxWidth);
+        if (fits) line.removeAttribute('textLength');
+        else setAttributes(line, { textLength: maxWidth, lengthAdjust: 'spacingAndGlyphs' });
+    });
+}
+
+/** Writes the velocity record values into their cells; returns the cells for interaction. */
+function renderVelocityRecord(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot): readonly SVGElement[] {
+    svg.querySelectorAll<SVGTextElement>('.velocityValue[data-turn]').forEach(text => {
+        const value = velocityRecordValue(snapshot.velocityRecord, Number(text.dataset['turn']),
+            text.dataset['field'] as VelocityRecordField);
+        text.textContent = value === undefined ? '' : String(value);
+    });
+    return [...svg.querySelectorAll<SVGElement>('.velocityCell[data-turn]')];
 }
 
 function renderAmmoProfile(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, interactive: boolean): void {

@@ -14,10 +14,12 @@ setAttributes,
 svgElement,
 transparentRect,
 } from '../record-sheet-svg-rendering';
+import { AERO_LOWER_PANEL_TAB_NOTCH } from './aero-record-sheet-components';
 
 /** Critical and pilot controls shared by fighter and small-craft templates. */
 export function drawFighterCriticalPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
     const group = addFrame(svg, 'CRITICAL DAMAGE', box, {
+        bottomLeftNotchWidth: box.width * AERO_LOWER_PANEL_TAB_NOTCH,
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     const sx = box.width / 220.4;
@@ -96,7 +98,4 @@ export function drawFighterPilotPanel(svg: SVGSVGElement, box: Box): void {
         x: x(48.86), y: y(50), cellWidth: x(87.74 / 6), cellHeight: y(10),
         labelX: x(3), labelWidth: x(42.86), fontScale: font(1), mode: 'aero-pilot',
     });
-    const state = transparentRect(x(2), y(17), x(138), y(70), 'crewStateButton');
-    state.setAttribute('crewId', '0');
-    group.insertBefore(state, group.children[2] ?? null);
 }

@@ -72,7 +72,7 @@ describe('ForcePilotEditorService personnel editing', () => {
       source.personnel.set({ people: [{ id: 'person', gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3 }],
         assignments: [{ unitId: 'unit', positionId: 'crew:0', personId: 'person' }] });
       source.owner.members = () => [{ kind: 'cbt', id: 'unit', entity: createEntity(),
-        currentBaseBattleValue: () => 1000, tagBattleValue: () => 0, c3BattleValue: () => 0 }] as never[];
+        currentBaseBattleValue: () => 1000, tagBattleValue: () => 0, c3BattleValue: () => 0, externalStoresBattleValue: () => 0 }] as never[];
       dialogs.createDialog.and.callFake((_component, config) => ({ closed: of({
         crew: (config!.data as EditPilotDialogData).crew, commander: false,
       }) }) as never);
@@ -127,6 +127,7 @@ describe('ForcePilotEditorService personnel editing', () => {
           currentBaseBattleValue: () => 500,
           tagBattleValue: () => 0,
           c3BattleValue: () => 0,
+          externalStoresBattleValue: () => 0,
         },
       ] as never[];
     dialogs.createDialog.and.returnValue({
@@ -151,7 +152,7 @@ describe('ForcePilotEditorService personnel editing', () => {
     });
   });
 
-  it('passes current unit BV with fractional TAG and C3 costs and entity skill facts into the pilot preview', async () => {
+  it('passes current unit BV with fractional TAG, C3 and external stores costs and entity skill facts into the pilot preview', async () => {
     const source = ownerFixture(GameSystem.CBT);
     source.personnel.update((personnel) => ({
       ...personnel,
@@ -168,6 +169,7 @@ describe('ForcePilotEditorService personnel editing', () => {
           currentBaseBattleValue: () => 1000,
           tagBattleValue: () => 100.25,
           c3BattleValue: () => 225.5,
+          externalStoresBattleValue: () => 50,
         },
       ] as never[];
     dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
@@ -175,7 +177,7 @@ describe('ForcePilotEditorService personnel editing', () => {
     await editor.editPerson(source.force, 'person');
 
     const data = dialogs.createDialog.calls.mostRecent().args[1]!.data as EditPilotDialogData;
-    expect(data.preSkillBv).toBe(1325.75);
+    expect(data.preSkillBv).toBe(1375.75);
     expect(data.skillFacts).toEqual({
       unitType: 'Mek',
       unitSubtype: 'BattleMek',

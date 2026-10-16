@@ -27,7 +27,8 @@ export function alphaStrikeEntitySpecials(
     if (fuel > 0) specials.push(`FUEL${fuel}`);
   }
   if (entity instanceof FixedWingSupportEntity) {
-    const bombs = Math.ceil(entity.maxBombPoints() * 0.2);
+    const capacity = entity.bombCapacity();
+    const bombs = Math.ceil((capacity.external + capacity.internal) * 0.2);
     if (bombs > 0) specials.push(`BOMB${bombs}`);
   }
   if (type === 'SC' || type === 'DS' || type === 'DA') {

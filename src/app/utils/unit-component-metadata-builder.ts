@@ -156,16 +156,14 @@ function addConventionalInfantryWeapons(
   if (!(entity instanceof InfantryEntity)) return;
   const primary = entity.primaryWeapon();
   const secondary = entity.secondaryWeapon();
-  const squads = entity.squadCount();
-  const secondaryPerSquad = entity.secondaryCount();
 
   if (primary) addSyntheticInfantryWeapon(
     components, '1st', primary,
-    (entity.squadSize() - secondaryPerSquad) * squads,
-    Math.min(0.6, primary.infantry.damage),
+    entity.platoonWeaponTroopers('primary'), entity.platoonWeaponDamagePerTrooper('primary'),
   );
   if (secondary) addSyntheticInfantryWeapon(
-    components, '2nd', secondary, secondaryPerSquad * squads, secondary.infantry.damage,
+    components, '2nd', secondary,
+    entity.platoonWeaponTroopers('secondary'), entity.platoonWeaponDamagePerTrooper('secondary'),
   );
 }
 

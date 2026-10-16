@@ -1182,6 +1182,10 @@ export class CBTForce extends Force<never> {
         return this.adjustedBattleValues().get(instanceId)?.c3 ?? null;
     }
 
+    public getUnitExternalStoresBattleValue(instanceId: string): number | null {
+        return this.adjustedBattleValues().get(instanceId)?.externalStores ?? null;
+    }
+
     public getUnitSkillBattleValue(instanceId: string): number | null {
         return this.adjustedBattleValues().get(instanceId)?.skills ?? null;
     }

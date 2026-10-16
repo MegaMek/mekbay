@@ -281,7 +281,7 @@ describe('Alpha Strike conversion', () => {
       infantry: { damage: 1, range: 1 },
     });
     if (!flamer.isInfantryWeapon()) throw new Error('Expected infantry flamer');
-    entity.primaryWeapon.set(flamer);
+    entity.setPlatoonWeapon('primary', flamer);
 
     expect(convertEntityToAlphaStrike(entity).specials).toContain('HT2/-/-');
   });
@@ -296,7 +296,7 @@ describe('Alpha Strike conversion', () => {
       weapon: { ammoType: 'NA' }, infantry: { damage: 1, range: 1 },
     });
     if (!flamer.isInfantryWeapon()) throw new Error('Expected infantry flamer');
-    entity.primaryWeapon.set(flamer);
+    entity.setPlatoonWeapon('primary', flamer);
     addTestEquipment(entity, new WeaponEquipment({
       id: 'field-ac', name: 'Field AC', type: 'weapon',
       weapon: { damage: 10, ranges: [3, 6, 9, 12], ammoType: 'AC' },
@@ -315,7 +315,7 @@ describe('Alpha Strike conversion', () => {
       weapon: { ammoType: 'NA' }, infantry: { damage: 1, range: 1 },
     });
     if (!plasma.isInfantryWeapon()) throw new Error('Expected infantry plasma weapon');
-    entity.primaryWeapon.set(plasma);
+    entity.setPlatoonWeapon('primary', plasma);
 
     expect(convertEntityToAlphaStrike(entity).specials).not.toContain('HT2/-/-');
   });

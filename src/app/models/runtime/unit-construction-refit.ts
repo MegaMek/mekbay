@@ -12,6 +12,7 @@ import { createNonMekUnit } from './cbt-non-mek-unit';
 import { CBTUnit, isCBTMekUnit, isCBTNonMekUnit } from './cbt-unit';
 import type { CBTUnitRuntimeIndex, CBTUnitRuntimeState } from './cbt-unit-runtime';
 import { entityAmmoLoadout, mekAmmoCapacity } from './mek-ammo';
+import { bombLoadoutIssue } from '../aerospace-bomb.model';
 import { remapMekMovementPsrStateIdsV2 } from './mek-movement-psr-v2';
 import { buildMekRuntimeIndex } from './mek-runtime-index';
 import { buildNonMekRuntimeIndex } from './non-mek-runtime-index';
@@ -189,7 +190,10 @@ function rebaseCommonState(
         return { ...value, shotsSpent: Math.min(value.shotsSpent, capacity ?? 0) };
     });
     for (const [id, value] of ammo) if (value.shotsSpent === 0 && value.munitionOverride === undefined && !value.hotLoaded) ammo.delete(id);
-    return { ...state, stateRevision: state.stateRevision + 1, locations, components, ammo,
+    // A refit that removes hardpoints leaves a bomb loadout the unit can no longer carry.
+    const bombs = state.bombs && bombLoadoutIssue(state.bombs, next.getUnit().bombCapacity()) === null
+        ? state.bombs : undefined;
+    return { ...state, stateRevision: state.stateRevision + 1, locations, components, ammo, bombs,
         crew: retainEntries(state.crew, index.crewPositions),
         attackerTargeting: rebaseTargeting(state.attackerTargeting, componentIds),
         equipmentRowOrder: undefined,

@@ -51,6 +51,8 @@ export interface MovementCalculationOptions {
   readonly ignoreShield: boolean;
   /** Include Mek alternate jump systems, such as mechanical jump boosters. */
   readonly includeAlternateJumpSystems: boolean;
+  /** External bomb hardpoints currently carried; a runtime fact ignored with cargo. */
+  readonly externalBombPoints?: number;
 }
 
 export const STANDARD_MOVEMENT_CALCULATION: MovementCalculationOptions = {

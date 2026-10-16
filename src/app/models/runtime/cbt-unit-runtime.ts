@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { compareBombLoads,type BombLoad } from '../aerospace-bomb.model';
 import { CrewMember,type CrewMemberRuntimeState } from '../crew-member.model';
 import type { ArmorFaceId,ComponentId,CrewPositionId,LocationId } from '../entity/entity-identifiers';
 import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
@@ -107,14 +108,20 @@ export interface CBTUnitRuntimeState {
     readonly turn: CBTTurnRuntimeState;
     readonly attackerTargeting: AttackerTargetingState;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
+    /** Carried bomb loadout in canonical order; absent when the unit carries no bombs. */
+    readonly bombs?: readonly BombLoad[];
 }
 
 /** Captures shared sparse facts once; specialized canonicalizers add only their own mechanics. */
 export function freezeCommonUnitRuntimeState<State extends CBTUnitRuntimeState>(state: State): State {
-    const { equipmentRowOrder: rawOrder, ...values } = state;
+    const { equipmentRowOrder: rawOrder, bombs: rawBombs, ...values } = state;
     const equipmentRowOrder = freezeEquipmentRowOrder(rawOrder);
+    const bombs = rawBombs?.length
+        ? Object.freeze([...rawBombs].sort(compareBombLoads).map(load => Object.freeze({ ...load })))
+        : undefined;
     return Object.freeze({
         ...values,
+        ...(bombs === undefined ? {} : { bombs }),
         locations: new ImmutableIndex([...state.locations].map(([id, value]) => [id, Object.freeze({
             ...value, armorDamage: Object.freeze(value.armorDamage.map(entry => Object.freeze({ ...entry }))),
         })] as const)),

@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { calculateCBTForceBattleValues } from './cbt-force-battle-value';
+import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
+import { TestAeroSpaceFighterEntity,TestBattleArmorEntity,TestInfantryEntity,TestTankEntity } from './entity/testing/test-entities';
+import { createTestEquipmentRegistry } from './entity/testing/test-equipment-registry';
 import { adjustEntityBattleValueForSkills } from './entity/utils/battle-value/skill-facts';
+import { AmmoEquipment,WeaponEquipment } from './equipment.model';
 import { createMekUnit } from './runtime/cbt-mek-unit';
+import { createNonMekUnit } from './runtime/cbt-non-mek-unit';
 
 import { calculateAdjustedBV } from '../utils/cbt-common.util';
 import type { CBTUnit } from './runtime/cbt-unit';
@@ -27,7 +32,7 @@ describe('CBT force battle value authority', () => {
       fixtures[0].entity.manualBV.set(1234);
       const manual = calculateCBTForceBattleValues(input);
       expect(manual.get(units[0].instanceId)).toEqual({
-        base: 1234, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 1234, adjusted: 1234,
+        base: 1234, tag: 0, c3: 0, externalStores: 0, skills: 0, adjustedPreSkill: 1234, adjusted: 1234,
       });
       expect(manual.get(units[1].instanceId)).toEqual(calculated.get(units[1].instanceId));
     });
@@ -42,10 +47,96 @@ describe('CBT force battle value authority', () => {
       expect(calculateCBTForceBattleValues({ units: [{ unit, baseBattleValue: null }],
         scenario: { id: 'test', ruleset }, networks: [], isC3EndpointIntact: () => false,
       }).get(unit.instanceId)).toEqual({
-        base: 432, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 432, adjusted: 432,
+        base: 432, tag: 0, c3: 0, externalStores: 0, skills: 0, adjustedPreSkill: 432, adjusted: 432,
       });
     });
   }
+
+  describe('Core homing Arrow IV TAG surcharge', () => {
+    const tag = new WeaponEquipment({ id: 'TestInfantryTAG', name: 'TAG (Light, Man-Portable)', type: 'weapon',
+      flags: ['F_INFANTRY', 'F_TAG'], infantry: { damage: 0, range: 3 } });
+    const rifle = new WeaponEquipment({ id: 'TestRifle', name: 'Rifle', type: 'weapon',
+      flags: ['F_INFANTRY'], infantry: { damage: 0.2, range: 1 } });
+    const launcher = new WeaponEquipment({ id: 'TestArrowIV', name: 'Arrow IV', type: 'weapon',
+      flags: ['F_ARTILLERY'], weapon: { ammoType: 'ARROW_IV', rackSize: 20 } });
+    const homing = new AmmoEquipment({ id: 'TestArrowIVHoming', name: 'Arrow IV Homing Ammo', type: 'ammo',
+      ammo: { type: 'ARROW_IV', rackSize: 20, shots: 1, munitionType: ['M_HOMING'] } });
+    const lightTag = new WeaponEquipment({ id: 'TestLightTAG', name: 'Light TAG', type: 'weapon', flags: ['F_TAG'] });
+    const registry = createTestEquipmentRegistry({
+      [tag.id]: tag, [rifle.id]: rifle, [launcher.id]: launcher, [homing.id]: homing, [lightTag.id]: lightTag,
+    });
+    if (!rifle.isInfantryWeapon() || !tag.isInfantryWeapon()) throw new Error('Expected infantry weapons');
+    const scenario = { id: 'test', ruleset: 'core-2026' } as const;
+    const mount = (entity: TestTankEntity | TestBattleArmorEntity, equipment: WeaponEquipment | AmmoEquipment, location: string) =>
+      entity.addEquipment({ equipmentId: equipment.id, equipment, allocation: { kind: 'location', location },
+        rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+    const tagSurcharge = (designator: TestTankEntity | TestInfantryEntity | TestBattleArmorEntity) => {
+      const artillery = new TestTankEntity(registry);
+      mount(artillery, launcher, 'Front');
+      mount(artillery, homing, 'Front');
+      const units = [artillery, designator].map((entity, index) => {
+        const uuid = asUnitUuid(`019f6767-0dcb-7bb8-992f-aef08202f5e${index}`);
+        entity.uuid.set(uuid);
+        return createNonMekUnit(entity, { instanceId: `unit:tag-${index}`, uuid, deployment: { id: 'default' },
+          scenario, initialStateProfileId: 'pristine-non-mek-v1' });
+      });
+      return calculateCBTForceBattleValues({
+        units: units.map(unit => ({ unit, baseBattleValue: 100 })),
+        scenario, networks: [], isC3EndpointIntact: () => true,
+      }).get(units[1].instanceId)!.tag;
+    };
+    const platoon = (primary: typeof rifle, secondary: typeof tag | null) => {
+      const entity = new TestInfantryEntity(registry);
+      entity.squadSize.set(7);
+      entity.squadCount.set(4);
+      entity.setPlatoonWeapon('primary', primary);
+      entity.setPlatoonWeapon('secondary', secondary);
+      entity.secondaryCount.set(secondary ? 2 : 0);
+      return entity;
+    };
+
+    it('counts a platoon TAG weapon as one mount however many troopers carry it', () => {
+      expect(tagSurcharge(platoon(rifle, tag))).toBe(50);
+      expect(tagSurcharge(platoon(rifle, null))).toBe(0);
+    });
+
+    it('counts each TAG mount, including each one on a battle armor suit regardless of troopers', () => {
+      const tank = new TestTankEntity(registry);
+      const suit = new TestBattleArmorEntity(registry);
+      suit.squadSize.set(4);
+      for (let i = 0; i < 3; i++) {
+        mount(tank, lightTag, 'Front');
+        mount(suit, lightTag, 'Squad');
+      }
+      expect(tagSurcharge(tank)).toBe(150);
+      expect(tagSurcharge(suit)).toBe(150);
+    });
+  });
+
+  it('counts carried TAG pods as TAG and carried homing Arrow IV bombs per TAG', () => {
+    const tagPod = new AmmoEquipment({ id: 'TAGBomb', name: 'TAG Pod', type: 'ammo', stats: { bv: 0 },
+      ammo: { type: 'BOMB', rackSize: 1, shots: 1 } });
+    const homing = new AmmoEquipment({ id: 'ArrowIVHomingMissile Ammo', name: 'Arrow IV Homing Missile', type: 'ammo',
+      stats: { bv: 30 }, ammo: { type: 'ARROW_IV_BOMB', rackSize: 20, shots: 1, munitionType: ['M_HOMING'] } });
+    const fighter = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [tagPod.id]: tagPod, [homing.id]: homing }));
+    fighter.setTonnage(50);
+    const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5ea');
+    fighter.uuid.set(uuid);
+    const scenario = { id: 'test', ruleset: 'core-2026' } as const;
+    const unit = createNonMekUnit(fighter, { instanceId: 'unit:bomber', uuid, deployment: { id: 'default' },
+      scenario, initialStateProfileId: 'pristine-non-mek-v1' });
+    unit.dispatch({ type: 'configure-bombs', loads: [
+      { section: 'external', bombId: tagPod.id, count: 1 },
+      { section: 'external', bombId: homing.id, count: 1 },
+    ] });
+    const breakdown = () => calculateCBTForceBattleValues({
+      units: [{ unit, baseBattleValue: 100 }], scenario, networks: [], isC3EndpointIntact: () => true,
+    }).get(unit.instanceId)!;
+
+    expect(breakdown()).toEqual(jasmine.objectContaining({ tag: 30, externalStores: 30 }));
+    unit.dispatch({ type: 'set-bombs-spent', section: 'external', bombId: tagPod.id, spent: 1 });
+    expect(breakdown()).toEqual(jasmine.objectContaining({ tag: 0, externalStores: 30 }));
+  });
 
   it('uses Entity family facts when a presentation summary disagrees', () => {
     const fixture = createDirectMekRuntimeFixture();

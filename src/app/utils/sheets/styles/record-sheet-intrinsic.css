@@ -57,6 +57,38 @@ svg:where(.mekbay-sheet):not(:root),
   pointer-events: none;
 }
 
+/*
+ * One store per carried bomb; the further hardpoints larger bombs take are greyed out and slashed from the end.
+ * Spent bombs stay visible, struck out.
+ */
+:where(.mekbay-sheet) .bombBox {
+  pointer-events: all;
+}
+
+:where(.mekbay-sheet) .bombBox.bombLoaded,
+:where(.mekbay-sheet) .bombBox.bombTaken {
+  fill: #e4e4e4;
+}
+
+:where(.mekbay-sheet) .bombBox.bombSpent {
+  fill: #9a9a9a;
+}
+
+:where(.mekbay-sheet) .bombTakenMark {
+  stroke: #000;
+  pointer-events: none;
+}
+
+:where(.mekbay-sheet) .bombLabel,
+:where(.mekbay-sheet) .velocityValue {
+  pointer-events: none;
+}
+
+:where(.mekbay-sheet) .bombLabel.bombSpent {
+  fill: #444;
+  text-decoration: line-through;
+}
+
 :where(.mekbay-sheet) .pip.disabled,
 :where(.mekbay-sheet) .inventoryEntry.disabled {
   opacity: .38;

@@ -826,8 +826,8 @@ export class InfantryBVCalculator extends BVCalculator {
   }
   protected override processWeapons(): void {
     const originalTroopers = Math.max(0, this.entity.squadSize() * this.entity.squadCount());
-    const secondary = this.entity.secondaryCount() * this.entity.squadCount();
-    const primary = originalTroopers - secondary;
+    const secondary = this.entity.platoonWeaponTroopers('secondary');
+    const primary = this.entity.platoonWeaponTroopers('primary');
     const primaryBV = this.entity.primaryWeapon()?.bv;
     const secondaryBV = this.entity.secondaryWeapon()?.bv;
     if (typeof primaryBV === 'number') this.offensiveValue += primaryBV * primary;

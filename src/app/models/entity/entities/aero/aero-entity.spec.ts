@@ -5,6 +5,7 @@
 import {
   TestConvFighterEntity as ConvFighterEntity,
   TestFixedWingSupportEntity as FixedWingSupportEntity,
+  TestSmallCraftEntity as SmallCraftEntity,
 } from '../../testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 import { writeBlkAero } from '../../writers/blk-aero-writer';
@@ -81,14 +82,14 @@ describe('AeroEntity movement', () => {
     addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT', { location: 'Nose' });
     addTestEquipmentWithFlags(entity, 'F_EXTERNAL_STORES_HARDPOINT', { location: 'Left Wing' });
 
-    expect(entity.maxBombPoints()).toBe(4);
+    expect(entity.bombCapacity()).toEqual({ external: 2, internal: 2 });
   });
 
   it('ignores fixed-wing cargo capacity without the Internal Bomb Bay quirk', () => {
     const entity = new FixedWingSupportEntity();
     entity.transporters.set([cargoBay(100)]);
 
-    expect(entity.maxBombPoints()).toBe(0);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
   });
 
   it('floors each Internal Bomb Bay cargo capacity before summing', () => {
@@ -100,13 +101,34 @@ describe('AeroEntity movement', () => {
     }]);
     entity.transporters.set([cargoBay(0.9), { ...cargoBay(0.9), id: 'second-cargo-bay' }]);
 
-    expect(entity.maxBombPoints()).toBe(0);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
   });
 
   it('reports zero bomb capacity without hardpoints or cargo space', () => {
     const entity = new FixedWingSupportEntity();
 
-    expect(entity.maxBombPoints()).toBe(0);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
+  });
+});
+
+describe('AeroEntity bomb capacity', () => {
+  it('gives fighters one Java-rounded external hardpoint per five tons', () => {
+    const entity = new ConvFighterEntity();
+    for (const [tons, points] of [[10, 2], [12, 2], [12.5, 3], [13, 3]] as const) {
+      entity.setTonnage(tons);
+      expect(entity.bombCapacity()).withContext(`${tons} tons`).toEqual({ external: points, internal: 0 });
+    }
+  });
+
+  it('gives small craft internal bomb bays only with the Internal Bomb Bay quirk', () => {
+    const entity = new SmallCraftEntity();
+    entity.transporters.set([cargoBay(12)]);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 0 });
+
+    entity.quirks.set([{
+      quirk: { key: 'internal_bomb', name: 'Internal Bomb Bay', description: '', type: 'positive' },
+    }]);
+    expect(entity.bombCapacity()).toEqual({ external: 0, internal: 12 });
   });
 });
 

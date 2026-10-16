@@ -28,6 +28,7 @@ type SerializedCBTForceV2,
 type SerializedCBTUnitV2,
 } from './runtime/persistence-v2';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
+import type { VelocityRecordField } from './aerospace-velocity-record.model';
 
 import { decodeRemoteLoadForceEntry } from './remote-load-force-entry.model';
 import { decodeForceFromStorage,encodeForceForStorage } from './runtime/force-storage-codec';
@@ -2560,6 +2561,78 @@ describe('CBTForce V2 encounter persistence', () => {
         });
         expect(emptied.accepted).toBeTrue();
         expect(force.getUnitTagBattleValue(instanceId)).toBe(0);
+    });
+
+    it('carries a validated bomb loadout through BV, thrust, undo and storage', async () => {
+        const he = new AmmoEquipment({
+            id: 'HEBomb', name: 'HE Bomb', type: 'ammo', flags: ['F_GROUND_BOMB', 'F_SPACE_BOMB'],
+            stats: { bv: 12 }, ammo: { type: 'BOMB', rackSize: 1, shots: 1 },
+        });
+        const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [he.id]: he }));
+        entity.originalWalkMP.set(6);
+        const { force, instanceId, reload } = await readyEntityForce({ entity });
+        expect(entity.bombCapacity()).toEqual({ external: 4, internal: 0 });
+        const load = (count: number) => force.dispatchUnitCommand(instanceId, {
+            type: 'configure-bombs', loads: [{ section: 'external', bombId: he.id, count }],
+        });
+
+        // The runtime leaves an over-capacity loadout unapplied.
+        expect((await load(5)).changed).toBeFalse();
+        expect(entityRuntimeSnapshot(force, instanceId).state.bombs).toBeUndefined();
+        expect((await load(4)).changed).toBeTrue();
+        expect(force.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
+        // Four external bomb points cost one point of safe thrust.
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.movement.walk).toBe(5);
+
+        const spend = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-bombs-spent', section: 'external', bombId: he.id, spent: 4,
+        });
+        expect(spend.accepted).toBeTrue();
+        expect(force.getUnitExternalStoresBattleValue(instanceId)).toBe(0);
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.movement.walk).toBe(6);
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getUnitExternalStoresBattleValue(instanceId)).toBe(48);
+        expect(entityRuntimeSnapshot(restored, instanceId).state.bombs)
+            .toEqual([{ section: 'external', bombId: he.id, count: 4, spent: 0 }]);
+    });
+
+    it('keeps an aerospace velocity record with undo, history and storage', async () => {
+        const { force, instanceId, reload } = await readyEntityForce({ entity: new TestAeroSpaceFighterEntity() });
+        const record = (turn: number, field: VelocityRecordField, value: number | null) =>
+            force.dispatchUnitCommand(instanceId, { type: 'set-velocity-record', turn, field, value });
+
+        expect((await record(2, 'velocity', 4)).changed).toBeTrue();
+        expect((await record(1, 'altitude', 6)).changed).toBeTrue();
+        // The record sheet has twenty turn columns; values outside them are left unapplied.
+        expect((await record(21, 'velocity', 1)).changed).toBeFalse();
+        expect(force.getRuntimeHistory().some(row =>
+            row.event.message[0] === RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED)).toBeTrue();
+        expect((await record(2, 'velocity', null)).changed).toBeTrue();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
+            .toEqual([{ turn: 1, field: 'altitude', value: 6 }]);
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([
+            { turn: 1, field: 'altitude', value: 6 },
+            { turn: 2, field: 'velocity', value: 4 },
+        ]);
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
+            .toEqual(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord);
+    });
+
+    it('keeps no velocity record for ground units', async () => {
+        const { force, instanceId } = await readyEntityForce({ entity: new TestTankEntity() });
+        const result = await force.dispatchUnitCommand(instanceId, {
+            type: 'set-velocity-record', turn: 1, field: 'velocity', value: 3,
+        });
+        expect(result.changed).toBeFalse();
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([]);
     });
 
     it('keeps Entity undo/redo in session memory and saves semantic history without checkpoints', async () => {

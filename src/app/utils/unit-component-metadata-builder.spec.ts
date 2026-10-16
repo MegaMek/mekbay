@@ -377,8 +377,8 @@ describe('buildUnitComponentMetadata', () => {
     entity.squadSize.set(5);
     entity.squadCount.set(4);
     entity.secondaryCount.set(1);
-    entity.primaryWeapon.set(primary as never);
-    entity.secondaryWeapon.set(secondary as never);
+    entity.setPlatoonWeapon('primary', primary as never);
+    entity.setPlatoonWeapon('secondary', secondary as never);
 
     const components = buildUnitComponentMetadata(entity)!;
     expect(components.find(component => component.id === 'rifle')).toEqual(jasmine.objectContaining({

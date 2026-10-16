@@ -48,7 +48,8 @@ import { UnitNameService } from '../../../services/unit-name.service';
 import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { WeaponTargetChoiceMenuComponent } from '../../equipment-dialog/weapon-target-choice-menu.component';
 import { InputDialogComponent } from '../../input-dialog/input-dialog.component';
-import type { PickerChoice,PickerInstance } from '../../picker/picker.interface';
+import type { PickerChoice,PickerInstance,PickerTargetType } from '../../picker/picker.interface';
+import { suggestedVelocityRecordValue,VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import {
 recordSheetDamageChoices,
 recordSheetEventPosition,
@@ -232,6 +233,10 @@ export class PageViewerNonMekRuntimeService {
         }
         if (interaction.kind === 'heat-sinks-off') {
             this.openHeatSinksPicker(member, snapshot, event);
+            return;
+        }
+        if (interaction.kind === 'velocity-record') {
+            this.openVelocityRecordPicker(member, interaction, snapshot, event);
             return;
         }
         if (interaction.kind === 'inventory-selection') {
@@ -601,9 +606,12 @@ export class PageViewerNonMekRuntimeService {
         event: Event,
     ): void {
         const count = snapshot.heat.heatSinkCount;
-        const active = Math.max(0, count - snapshot.heat.heatsinksOff);
-        const apply = (value: number): void => {
-            this.closePicker();
+        this.openNumberPicker(member, event, {
+            title: 'Active Heatsinks',
+            max: count,
+            selected: Math.max(0, count - snapshot.heat.heatsinksOff),
+            targetType: 'heatsinks',
+        }, value => {
             if (!this.snapshot(member, snapshot.editContext)?.heat.tracked) return;
             void member.force.dispatchUnitCommand(member.id, {
                 type: 'set-heatsinks-off',
@@ -611,15 +619,58 @@ export class PageViewerNonMekRuntimeService {
             }, snapshot.editContext).then(result => {
                 if (!result.accepted) this.showRejectedEdit();
             });
+        });
+    }
+
+    /** Sets one velocity record cell, starting from the latest value in its row; a secondary click clears it. */
+    private openVelocityRecordPicker(
+        member: CBTForceMember,
+        interaction: Extract<RecordSheetInteraction, { readonly kind: 'velocity-record' }>,
+        snapshot: NonMekRecordSheetSnapshot,
+        event: Event,
+    ): void {
+        const { turn, field } = interaction;
+        const write = (value: number | null): void => {
+            if (!this.snapshot(member, interaction.context)) return;
+            void member.force.dispatchUnitCommand(member.id, { type: 'set-velocity-record', turn, field, value },
+                interaction.context).then(result => {
+                if (!result.accepted) this.showRejectedEdit();
+            });
+        };
+        if (event.type === 'contextmenu') {
+            this.closePicker();
+            write(null);
+            return;
+        }
+        const selected = suggestedVelocityRecordValue(snapshot.velocityRecord, turn, field);
+        // Thrust is bounded by the unit's maximum thrust and altitude by the low-altitude map; velocity has headroom.
+        const limit = field === 'thrust' ? member.entity.runMP() : field === 'altitude' ? 10 : 30;
+        this.openNumberPicker(member, event, {
+            title: `Turn ${turn} ${VELOCITY_RECORD_LABELS[field]}`,
+            max: Math.max(limit, selected),
+            selected,
+        }, write);
+    }
+
+    /** Opens the record-sheet number picker in the user's style: the dial, or a vertical list when linear. */
+    private openNumberPicker(
+        member: CBTForceMember,
+        event: Event,
+        config: Readonly<{ title: string; max: number; selected: number; targetType?: PickerTargetType }>,
+        pick: (value: number) => void,
+    ): void {
+        const apply = (value: number): void => {
+            this.closePicker();
+            pick(value);
         };
         this.closePicker();
         this.zoomPan.cancelGesture();
         const target = event.currentTarget instanceof Element ? event.currentTarget : null;
         target?.classList.add('picker-active');
         const common = {
-            selected: active,
+            selected: config.selected,
             position: recordSheetEventPosition(event),
-            title: 'Active Heatsinks',
+            title: config.title,
             lightTheme: this.options.options().colorScheme === 'night',
             initialEvent: event instanceof PointerEvent ? event : undefined,
             onCancel: () => this.closePicker(),
@@ -627,18 +678,15 @@ export class PageViewerNonMekRuntimeService {
         const instance = this.options.options().pickerStyle === 'linear'
             ? this.pickerFactory.createChoicePicker({
                 ...common,
-                values: Array.from({ length: count + 1 }, (_, value) => ({
-                    label: String(value),
-                    value,
-                })),
+                values: Array.from({ length: config.max + 1 }, (_, value) => ({ label: String(value), value })),
                 suggestedStyle: 'linear',
-                targetType: 'heatsinks',
+                targetType: config.targetType,
                 onPick: choice => apply(Number(choice.value)),
             })
             : this.pickerFactory.createNumericPicker({
                 ...common,
                 min: 0,
-                max: count,
+                max: config.max,
                 onPick: result => apply(result.value),
             });
         this.picker = { unitId: member.id, instance, target };

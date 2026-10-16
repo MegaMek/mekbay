@@ -236,7 +236,8 @@ describe('generated record-sheet styles', () => {
             expect(getComputedStyle(location).fill).toBe('rgb(255, 0, 0)');
             svg.classList.add('interactive-sheet');
             expect(getComputedStyle(button).fill).not.toBe('rgba(0, 0, 0, 0)');
-            expect(getComputedStyle(location).fill).toBe('rgb(255, 105, 105)');
+            // Paperdoll contours lie over the artwork, so even the damaged highlight is a translucent tint.
+            expect(getComputedStyle(location).fill).toBe('rgba(255, 0, 0, 0.55)');
             svg.classList.remove('interactive-sheet');
         }
     });
@@ -389,7 +390,7 @@ describe('generated record-sheet styles', () => {
         const location = svg.querySelector<SVGElement>('.unitLocation')!;
         location.style.transition = 'none';
         location.classList.add('selectable', 'damaged', 'style-test-hover');
-        expect(getComputedStyle(location).fill).toBe('rgb(255, 105, 105)');
+        expect(getComputedStyle(location).fill).toBe('rgba(255, 0, 0, 0.55)');
     });
 
     it('colors the generated VTOL rotor preview for both damage and repair', async () => {

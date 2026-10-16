@@ -35,6 +35,8 @@ export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
     SPOTTING_CHANGED: 27,
     COVER_CHANGED: 28,
     AMMO_LOADOUT_RESET: 29,
+    BOMBS_CHANGED: 30,
+    VELOCITY_RECORD_CHANGED: 31,
 } as const);
 
 export type RuntimeHistoryMessageId = typeof RUNTIME_HISTORY_MESSAGE[keyof typeof RUNTIME_HISTORY_MESSAGE];
@@ -212,6 +214,10 @@ export function formatRuntimeHistoryMessage(
             return scoped(formatCrewRuntimeChange(data, context, instanceId));
         case RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED:
             return scoped('Updated ammunition');
+        case RUNTIME_HISTORY_MESSAGE.BOMBS_CHANGED:
+            return scoped('Updated bombs');
+        case RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED:
+            return scoped('Updated velocity record');
         case RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET:
             return scoped(formatAmmoLoadoutReset(data, context, instanceId));
         case RUNTIME_HISTORY_MESSAGE.WEAPONS_FIRED:

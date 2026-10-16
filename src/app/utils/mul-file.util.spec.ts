@@ -126,6 +126,10 @@ describe('MUL file utilities', () => {
                 components: new Map(),
                 ammo: new Map(),
                 crew: new Map([[positionId, { wounds: 1, unconscious: false, ejected: false }]]),
+                bombs: [
+                    { section: 'external', bombId: 'HEBomb', count: 3, spent: 1 },
+                    { section: 'internal', bombId: 'LAAMissile Ammo', count: 1, spent: 1 },
+                ],
             },
             query: { destroyed: () => false },
         };
@@ -164,6 +168,9 @@ describe('MUL file utilities', () => {
         expect(xml).toContain('hits=\"1\"');
         expect(xml).toContain('points=\"15\"');
         expect(xml).toContain('points=\"7\"');
+        // MegaMek MUL bomb choices carry only bombs still loaded.
+        expect(xml).toContain('<bomb type=\"HEBomb\" load=\"2\" Internal=\"false\"/>');
+        expect(xml).not.toContain('LAAMissile');
     });
 
     it('fails closed when canonical roster authority is unavailable', async () => {

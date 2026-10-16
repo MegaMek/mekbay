@@ -3,11 +3,20 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
-import { getAmmoCategory, InfantryWeaponEquipment, MiscEquipment, WeaponEquipment } from '../../../equipment.model';
+import {
+  getAmmoCategory,
+  InfantryWeaponEquipment,
+  MiscEquipment,
+  WeaponEquipment,
+  type WeaponDamage,
+} from '../../../equipment.model';
 import {
   type UnitSubtype,
   type EntityDamageLocation,
+  type EntityMountedEquipment,
+  type EntityMountedWeapon,
   type MovementCalculationOptions,
+  type PlatoonWeaponRole,
   type TechRatingSource,
   EntityType,
   EntityValidationMessage,
@@ -31,6 +40,7 @@ import {
 // ============================================================================
 
 export const MAX_CONVENTIONAL_INFANTRY_STRENGTH = 30;
+const MAX_PRIMARY_DAMAGE_PER_TROOPER = 0.6;
 
 export class InfantryEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
@@ -56,24 +66,28 @@ export class InfantryEntity extends InfantryBaseEntity {
     const hasFieldEquipment = this.equipment().some(
       (mount) => mount.allocation.kind === 'location' && mount.allocation.location === 'Field Guns',
     );
-    const sources: TechRatingSource[] = [
+    return [
       getConventionalInfantryConstructionTech(this.motiveType(), hasFieldEquipment, this.effectiveEncumberingArmor()),
       getInfantryMotiveTech(this.motiveType()),
       ...getInfantrySpecializationTech(this.specializations()),
     ];
-    // MegaMek represents the platoon's primary/secondary pair as one
-    // InfantryWeaponMounted and composes tech from its range weapon.
-    const rangeWeapon = this.rangeWeapon();
-    if (rangeWeapon) sources.push(rangeWeapon.tech);
-    return sources;
+  }
+
+  /**
+   * MegaMek represents the platoon's primary/secondary pair as one
+   * InfantryWeaponMounted and composes tech from its range weapon.
+   */
+  protected override mountContributesTech(mount: EntityMountedEquipment): boolean {
+    return !mount.platoonWeapon || mount.equipment === this.rangeWeapon();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
   //  SIGNALS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  readonly primaryWeapon = signal<InfantryWeaponEquipment | null>(null);
-  readonly secondaryWeapon = signal<InfantryWeaponEquipment | null>(null);
+  /** Platoon weapons are canonical mounts, so generic equipment scans see them as MegaMek's do. */
+  readonly primaryWeapon = computed(() => this.findPlatoonWeapon('primary'));
+  readonly secondaryWeapon = computed(() => this.findPlatoonWeapon('secondary'));
   readonly secondaryCount = signal<number>(0);
   readonly rangeWeapon = computed<InfantryWeaponEquipment | null>(() => {
     const secondaryWeapon = this.secondaryWeapon();
@@ -206,6 +220,49 @@ export class InfantryEntity extends InfantryBaseEntity {
         mount.equipment instanceof WeaponEquipment &&
         getAmmoCategory(mount.equipment.ammoType) === 'Artillery',
     );
+  }
+
+  /** Replace the platoon's primary or secondary weapon mount. */
+  setPlatoonWeapon(role: PlatoonWeaponRole, weapon: InfantryWeaponEquipment | null): void {
+    const current = this.equipment().find((mount) => mount.platoonWeapon === role);
+    if (current?.equipment === (weapon ?? undefined)) return;
+    if (current) this.removeEquipment(current);
+    if (!weapon) return;
+    this.addEquipment({
+      equipmentId: weapon.id,
+      equipment: weapon,
+      allocation: { kind: 'location', location: 'Infantry' },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+      platoonWeapon: role,
+    });
+  }
+
+  private findPlatoonWeapon(role: PlatoonWeaponRole): InfantryWeaponEquipment | null {
+    const equipment = this.equipment().find((mount) => mount.platoonWeapon === role)?.equipment;
+    return equipment instanceof WeaponEquipment && equipment.isInfantryWeapon() ? equipment : null;
+  }
+
+  /** Troopers carrying a platoon weapon at full strength. */
+  platoonWeaponTroopers(role: PlatoonWeaponRole): number {
+    const secondary = this.secondaryCount() * this.squadCount();
+    return role === 'secondary' ? secondary : this.squadSize() * this.squadCount() - secondary;
+  }
+
+  /** ConvInfantry.getDamagePerTrooper: primary damage is capped; secondary damage is not. */
+  platoonWeaponDamagePerTrooper(role: PlatoonWeaponRole): number {
+    if (role === 'secondary') return this.secondaryWeapon()?.infantry.damage ?? 0;
+    return Math.min(MAX_PRIMARY_DAMAGE_PER_TROOPER, this.primaryWeapon()?.infantry.damage ?? 0);
+  }
+
+  /** A platoon weapon deals its per-trooper damage once for each trooper carrying it. */
+  override resolveMountedWeaponDamage(mount: EntityMountedWeapon): WeaponDamage {
+    const role = mount.platoonWeapon;
+    if (!role) return super.resolveMountedWeaponDamage(mount);
+    const damage = this.platoonWeaponDamagePerTrooper(role) * Math.max(0, this.platoonWeaponTroopers(role));
+    return { values: [damage], maximum: damage };
   }
 
   readonly hasAntiMekGear = computed(() =>

@@ -6,8 +6,17 @@ import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angu
 import { firstValueFrom } from 'rxjs';
 import { AmmoEquipment } from '../../models/equipment.model';
 import type { EquipmentStatus } from '../../models/equipment-status.model';
-import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
+import type { EquipmentPanelBombs, EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
+import {
+    BOMB_SECTIONS,
+    bombAmmo,
+    bombLoadPoints,
+    carriedBombs,
+    type BombLoad,
+    type BombSection,
+} from '../../models/aerospace-bomb.model';
 import { SetAmmoDialogComponent, type SetAmmoDialogData, type SetAmmoDialogResult } from '../set-ammo-dialog/set-ammo.dialog.component';
+import { SetBombsDialogComponent, type SetBombsDialogData, type SetBombsDialogResult } from '../set-bombs-dialog/set-bombs.dialog.component';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -41,6 +50,11 @@ interface AmmoLoadoutGroupView {
     readonly entries: readonly AmmoLoadoutEntryView[];
 }
 
+const BOMB_SECTION_BADGES: Readonly<Record<BombSection, string>> = {
+    external: 'EXT',
+    internal: 'INT',
+};
+
 const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
     available: 0,
     disabled: 1,
@@ -51,12 +65,12 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
     selector: 'ammo-loadout-panel',
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-    @if (groups().length === 0) {
+    @if (groups().length === 0 && !bombs()) {
         <div class="ammo-empty-state">
             <strong>No ammo loadout</strong>
             <span>This unit does not have any ammunition bins.</span>
         </div>
-    } @else {
+    } @else if (groups().length > 0) {
     <div class="ammo-control-list" [class.read-only]="readOnly()">
         @for (group of groups(); track group.id) {
             @let remainingAmmoGroup = groupRemaining(group);
@@ -142,6 +156,46 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
             </div>
         }
     </div>
+    }
+    @if (bombs(); as bombs) {
+        <div class="ammo-control-list bomb-loadout" [class.read-only]="readOnly()">
+            <div class="ammo-control-row bomb-header">
+                <div class="ammo-control-label">
+                    <span class="ammo-name-wrapper">
+                        <span class="ammo-name">Bombs</span>
+                        <span class="ammo-location-badges">
+                            @for (section of bombSections(bombs); track section.section) {
+                                <span class="ammo-location-badge">{{ section.label }} {{ section.used }}/{{ section.capacity }}</span>
+                            }
+                        </span>
+                    </span>
+                </div>
+                @if (!readOnly()) {
+                    <div class="ammo-control-actions">
+                        <button class="bt-button" type="button" (click)="setBombs(bombs)">SET BOMBS</button>
+                    </div>
+                }
+            </div>
+            @for (row of bombRows(bombs); track row.id) {
+                <div class="ammo-control-row" [class.empty]="row.carried <= 0">
+                    <div class="ammo-control-label">
+                        <span class="ammo-name-wrapper">
+                            <span class="ammo-name">{{ row.name }}</span>
+                            <span class="ammo-location-badges"><span class="ammo-location-badge">{{ row.sectionLabel }}</span></span>
+                        </span>
+                        <span class="ammo-count"><span class="count">{{ row.carried }}</span>/{{ row.load.count }}</span>
+                    </div>
+                    @if (!readOnly()) {
+                        <div class="ammo-control-actions">
+                            <button class="bt-button square-small" type="button" (click)="spendBomb(row.load, 1)" [disabled]="row.carried <= 0">-1</button>
+                            <button class="bt-button square-small" type="button" (click)="spendBomb(row.load, -1)" [disabled]="row.load.spent <= 0">+1</button>
+                        </div>
+                    }
+                </div>
+            } @empty {
+                <div class="bomb-empty">No bombs loaded.</div>
+            }
+        </div>
     }
     `,
     styles: [`
@@ -435,6 +489,9 @@ const EQUIPMENT_STATUS_ORDER: Readonly<Record<EquipmentStatus, number>> = {
             color: var(--disabled-color);
         }
 
+        .bomb-loadout { margin-top: 8px; border-top: 1px solid var(--border-color); }
+        .bomb-empty { padding: 4px 8px 8px; color: var(--text-color-secondary); }
+
         @container (max-width: 520px) {
             .ammo-control-row {
                 grid-template-columns: 1fr;
@@ -563,6 +620,49 @@ export class AmmoLoadoutPanelComponent {
     async setAmmoBin(entry: AmmoLoadoutEntryView): Promise<void> {
         if (this.readOnly()) return;
         await this.setAmmoEntries([entry]);
+    }
+
+    bombs(): EquipmentPanelBombs | null {
+        return this.runtime().bombs();
+    }
+
+    bombSections(bombs: EquipmentPanelBombs) {
+        return BOMB_SECTIONS.filter(section => bombs.capacity[section] > 0).map(section => ({
+            section,
+            label: BOMB_SECTION_BADGES[section],
+            used: bombLoadPoints(bombs.loads, section),
+            capacity: bombs.capacity[section],
+        }));
+    }
+
+    bombRows(bombs: EquipmentPanelBombs) {
+        const registry = this.equipmentCatalog.getEquipmentRegistry();
+        return bombs.loads.map(load => ({
+            id: `${load.section}:${load.bombId}`,
+            load,
+            name: bombAmmo(load.bombId, registry)?.name ?? load.bombId,
+            sectionLabel: BOMB_SECTION_BADGES[load.section],
+            carried: carriedBombs(load),
+        }));
+    }
+
+    /** Positive amounts drop or fire bombs; negative amounts restore them. */
+    spendBomb(load: BombLoad, amount: number): void {
+        if (this.readOnly()) return;
+        void this.runtime().setBombsSpent(load, load.spent + amount);
+    }
+
+    async setBombs(bombs: EquipmentPanelBombs): Promise<void> {
+        if (this.readOnly()) return;
+        const ref = this.dialogs.createDialog<SetBombsDialogResult | null>(SetBombsDialogComponent, {
+            data: {
+                capacity: bombs.capacity,
+                loads: bombs.loads.map(({ section, bombId, count }) => ({ section, bombId, count })),
+                equipmentRegistry: this.equipmentCatalog.getEquipmentRegistry(),
+            } satisfies SetBombsDialogData,
+        });
+        const loads = await firstValueFrom(ref.closed);
+        if (loads) await this.runtime().configureBombs(loads);
     }
 
     private buildGroups(rows: readonly EquipmentPanelComponent[]): readonly AmmoLoadoutGroupView[] {

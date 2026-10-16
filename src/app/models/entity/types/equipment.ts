@@ -108,10 +108,15 @@ export interface EntityMountedEquipmentInit {
   /** Anti-Personnel Mount weapon */
   isAPM?: boolean;
 
+  /** Conventional infantry platoon weapon (BLK Primary/Secondary) */
+  platoonWeapon?: PlatoonWeaponRole;
+
   /** Ammo: shot count */
   shotsCount?: number;
 
 }
+
+export type PlatoonWeaponRole = 'primary' | 'secondary';
 
 /** Input accepted when installing equipment; entity ownership supplies identity. */
 export type EntityMountedEquipmentInput = Omit<EntityMountedEquipmentInit, 'mountId'>;
@@ -133,6 +138,7 @@ export class EntityMountedEquipment implements EntityMountedEquipmentInit {
   isDWP?: boolean;
   isSSWM?: boolean;
   isAPM?: boolean;
+  platoonWeapon?: PlatoonWeaponRole;
   shotsCount?: number;
   constructor(data: EntityMountedEquipmentInit, owner?: BaseEntity) {
     Object.assign(this, data);

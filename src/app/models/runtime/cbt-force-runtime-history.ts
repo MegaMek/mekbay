@@ -454,6 +454,11 @@ export function unitCommandHistory(
         case 'spend-ammo':
         case 'activate-coolant-pod':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.AMMO_CHANGED, instanceId);
+        case 'configure-bombs':
+        case 'set-bombs-spent':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.BOMBS_CHANGED, instanceId);
+        case 'set-velocity-record':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED, instanceId);
         case 'set-heat':
         case 'set-pending-heat':
         case 'set-heatsinks-off':

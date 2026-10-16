@@ -102,7 +102,8 @@ export class ForcePilotEditorService {
                   preSkillBv:
                     (member.currentBaseBattleValue() ?? member.entity.battleValue()) +
                     (member.tagBattleValue() ?? 0) +
-                    (member.c3BattleValue() ?? 0),
+                    (member.c3BattleValue() ?? 0) +
+                    (member.externalStoresBattleValue() ?? 0),
                   isAerospace: skillFacts.unitType === 'Aero',
                 }
               : {}),

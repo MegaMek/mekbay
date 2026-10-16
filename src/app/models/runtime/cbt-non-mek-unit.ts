@@ -84,7 +84,9 @@ export function repairNonMekUnit(current: CBTNonMekUnit): CBTNonMekUnit {
     if (before.stateRevision >= Number.MAX_SAFE_INTEGER) throw new Error('Unit revision is exhausted');
     const state = Object.freeze({ ...createPristineNonMekUnitState(current.getUnit()),
         stateRevision: before.stateRevision + 1, attackerTargeting: before.attackerTargeting,
-        ...(before.equipmentRowOrder === undefined ? {} : { equipmentRowOrder: before.equipmentRowOrder }) });
+        ...(before.equipmentRowOrder === undefined ? {} : { equipmentRowOrder: before.equipmentRowOrder }),
+        // Repair rearms the chosen bombs rather than discarding the loadout.
+        ...(before.bombs === undefined ? {} : { bombs: before.bombs.map(load => ({ ...load, spent: 0 })) }) });
     const prepared = createNonMekRuntimeBinding(current.getUnit(), current.ruleset(), state,
         current.mechanics().forcedWithdrawal, current.getCrewAssignment(), current.mechanics().hotLoadedAmmo);
     return new CBTUnit<'non-mek'>({ uuid: current.uuid, instanceId: current.instanceId, baselineRef: current.baselineRef,

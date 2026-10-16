@@ -343,10 +343,15 @@ describe('CBT game rules', () => {
             operationalTagCount: 2,
             homingArtilleryLauncherCount: 3,
             guidedAmmoBv: 47.4,
+            homingBombBv: 0,
         } as const;
 
         expect(CORE_2026_GAME_RULES.calculateTagBVCost(facts)).toBe(300);
         expect(TW_GAME_RULES.calculateTagBVCost(facts)).toBeCloseTo(94.8, 10);
+        // MegaMek adds friendly homing Arrow IV bombs per TAG under both rulesets.
+        const bombs = { ...facts, homingBombBv: 60 };
+        expect(CORE_2026_GAME_RULES.calculateTagBVCost(bombs)).toBe(420);
+        expect(TW_GAME_RULES.calculateTagBVCost(bombs)).toBeCloseTo(214.8, 10);
     });
 
     // Standard ammo facts determine prices even when the catalog was exported under the other ruleset.

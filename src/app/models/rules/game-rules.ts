@@ -159,6 +159,8 @@ export interface TagBattleValueFacts {
     readonly operationalTagCount: number;
     readonly homingArtilleryLauncherCount: number;
     readonly guidedAmmoBv: number;
+    /** Carried homing Arrow IV bombs' BV, added per TAG under both rulesets. */
+    readonly homingBombBv: number;
 }
 
 export interface C3TargetingResolution {
@@ -333,8 +335,7 @@ export abstract class CBTGameRules {
     }
 
     calculateTagBVCost(facts: TagBattleValueFacts): number {
-        return 50
-            * Math.max(0, facts.homingArtilleryLauncherCount)
+        return (50 * Math.max(0, facts.homingArtilleryLauncherCount) + Math.max(0, facts.homingBombBv))
             * Math.max(0, facts.operationalTagCount);
     }
 
@@ -684,7 +685,8 @@ export class TWGameRules extends CBTGameRules {
     }
 
     override calculateTagBVCost(facts: TagBattleValueFacts): number {
-        return Math.max(0, facts.guidedAmmoBv) * Math.max(0, facts.operationalTagCount);
+        return (Math.max(0, facts.guidedAmmoBv) + Math.max(0, facts.homingBombBv))
+            * Math.max(0, facts.operationalTagCount);
     }
 
     protected override getRulesProfile(equipment: Equipment): number[] {

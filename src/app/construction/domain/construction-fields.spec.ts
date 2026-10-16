@@ -407,7 +407,7 @@ describe('construction system choices', () => {
     expect(allowed(entity, 'primaryWeapon')).not.toContain(support.id);
     expect(allowed(entity, 'secondaryWeapon')).toContain(support.id);
     if (!support.isInfantryWeapon()) throw new Error('Fixture must be an infantry weapon.');
-    entity.primaryWeapon.set(support);
+    entity.setPlatoonWeapon('primary', support);
     expect(field(entity, 'primaryWeapon').invalid).toBeTrue();
     expect(
       constructionInfantryBaMessages(entity).some((message) => message.code === 'INFANTRY_PRIMARY_SUPPORT'),
@@ -431,7 +431,7 @@ describe('construction system choices', () => {
     entity.isMicrolite.set(true);
     expect(allowed(entity, 'secondaryWeapon')).toEqual(['']);
     if (!support.isInfantryWeapon()) throw new Error('Fixture must be an infantry weapon.');
-    entity.secondaryWeapon.set(support);
+    entity.setPlatoonWeapon('secondary', support);
     entity.secondaryCount.set(1);
     expect(field(entity, 'secondaryWeapon').invalid).toBeTrue();
     expect(

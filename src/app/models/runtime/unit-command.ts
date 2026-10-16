@@ -3,6 +3,8 @@
 
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
+import type { BombLoadChoice,BombSection } from '../aerospace-bomb.model';
+import type { VelocityRecordField } from '../aerospace-velocity-record.model';
 import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,SystemDamageTrackId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { PrototypeLaserHeatRoll } from '../prototype-laser-heat.model';
@@ -188,6 +190,24 @@ export type CBTUnitCommand =
     }
     | {
         readonly type: 'reset-ammo-loadout';
+    }
+    | {
+        /** Replaces the carried bombs; bombs already spent stay spent where the type remains. */
+        readonly type: 'configure-bombs';
+        readonly loads: readonly BombLoadChoice[];
+    }
+    | {
+        /** Writes one aerospace velocity record cell; null clears it. */
+        readonly type: 'set-velocity-record';
+        readonly turn: number;
+        readonly field: VelocityRecordField;
+        readonly value: number | null;
+    }
+    | {
+        readonly type: 'set-bombs-spent';
+        readonly section: BombSection;
+        readonly bombId: string;
+        readonly spent: number;
     }
     | {
         readonly type: 'spend-ammo';

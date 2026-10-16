@@ -322,7 +322,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                         && member.force.isC3EndpointOperational(member.id, endpoint.componentId),
                     getBaseBv: () => member.currentBaseBattleValue() ?? member.entity.battleValue(),
                     tagBV: () => member.tagBattleValue() ?? 0,
-                    externalStoresBv: () => 0,
+                    externalStoresBv: () => member.externalStoresBattleValue() ?? 0,
                     gunnerySkill: () => crew?.gunnery ?? 4,
                     pilotingSkill: () => crew?.piloting ?? 5,
                 })];
@@ -591,7 +591,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
             baseBv: projected.base,
             tagBv: projected.tag,
             c3Bv: projected.c3,
-            externalStoresBv: 0,
+            externalStoresBv: projected.externalStores,
             pilotBv: projected.skills,
             adjustedBv: projected.adjusted,
         };

@@ -41,6 +41,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   // producing "Troopers Equipment" and "Field Guns Equipment", always, even if empty.
   const mountsByLoc = new Map<string, string[]>();
   for (const m of entity.equipment()) {
+    if (m.platoonWeapon) continue; // written as Primary/Secondary
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
     lines.push(encodeEquipmentLine(m, { blkMode: true }));

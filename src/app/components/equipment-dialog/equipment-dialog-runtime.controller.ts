@@ -22,10 +22,12 @@ AttackerSelection,
 } from '../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
 import type {
+EquipmentPanelBombs,
 EquipmentPanelComponent,
 EquipmentPanelSnapshot,
 MekPhysicalAttackRow,
 } from '../../models/runtime/equipment-panel';
+import type { BombLoad, BombLoadChoice } from '../../models/aerospace-bomb.model';
 import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
 
 import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
@@ -71,6 +73,7 @@ export class EquipmentDialogRuntimeController {
     public readonly weapons: Signal<readonly EquipmentPanelComponent[]>;
     public readonly equipment: Signal<readonly EquipmentPanelComponent[]>;
     public readonly ammo: Signal<readonly EquipmentPanelComponent[]>;
+    public readonly bombs: Signal<EquipmentPanelBombs | null>;
     public readonly interactions: WritableSignal<readonly CBTEquipmentInteraction[]>;
 
     private readonly options: OptionsService;
@@ -155,6 +158,7 @@ export class EquipmentDialogRuntimeController {
                 && actionable.has(row.componentId));
         });
         this.ammo = computed(() => this.snapshot().components.filter(row => row.ammo !== undefined));
+        this.bombs = computed(() => this.snapshot().bombs ?? null);
         this.forceChanges = merge(member.force.changed, member.force.sessionChanged)
             .subscribe(() => this.refresh());
     }
@@ -544,6 +548,21 @@ export class EquipmentDialogRuntimeController {
             munitionKey,
             remaining: boundedRemaining,
             ...(hotLoaded === undefined ? {} : { hotLoaded }),
+        });
+    }
+
+    public async configureBombs(loads: readonly BombLoadChoice[]): Promise<void> {
+        if (this.busy()) return;
+        await this.dispatchUnit({ type: 'configure-bombs', loads });
+    }
+
+    public async setBombsSpent(load: BombLoad, spent: number): Promise<void> {
+        if (this.busy()) return;
+        await this.dispatchUnit({
+            type: 'set-bombs-spent',
+            section: load.section,
+            bombId: load.bombId,
+            spent: Math.max(0, Math.min(load.count, spent)),
         });
     }
 

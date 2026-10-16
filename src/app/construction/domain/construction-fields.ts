@@ -972,9 +972,9 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     const weapons = Object.values(entity.getEquipmentRegistry().equipment).filter(
       (eq): eq is WeaponEquipment => eq instanceof WeaponEquipment && eq.isInfantryWeapon(),
     );
-    for (const [id, label, signal] of [
-      ['primaryWeapon', 'Primary weapon', entity.primaryWeapon],
-      ['secondaryWeapon', 'Secondary weapon', entity.secondaryWeapon],
+    for (const [id, label, role, signal] of [
+      ['primaryWeapon', 'Primary weapon', 'primary', entity.primaryWeapon],
+      ['secondaryWeapon', 'Secondary weapon', 'secondary', entity.secondaryWeapon],
     ] as const) {
       select(
         id,
@@ -982,7 +982,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
         () => signal()?.id ?? '',
         (value) => {
           const weapon = weapons.find((eq) => eq.id === value);
-          signal.set(weapon?.isInfantryWeapon() ? weapon : null);
+          entity.setPlatoonWeapon(role, weapon?.isInfantryWeapon() ? weapon : null);
         },
         ['', ...weapons.map((eq) => eq.id)],
         'Systems',

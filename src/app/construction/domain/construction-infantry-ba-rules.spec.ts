@@ -53,7 +53,7 @@ describe('battle armor attachment and infantry construction predicates', () => {
     });
 
     it('applies secondary crew reductions and motive/specialist allowances', () => {
-        const unit = infantry(); unit.secondaryWeapon.set(support); unit.secondaryCount.set(2); unit.squadSize.set(6); unit.squadCount.set(1);
+        const unit = infantry(); unit.setPlatoonWeapon('secondary', support); unit.secondaryCount.set(2); unit.squadSize.set(6); unit.squadCount.set(1);
         expect(codes(unit)).toContain('INFANTRY_SECONDARY_CREW');
         unit.augmentations.set(['tsm_implant']);
         expect(codes(unit)).not.toContain('INFANTRY_SECONDARY_CREW');

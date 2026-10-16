@@ -53,6 +53,7 @@ export function nonMekWeaponAttackGroups(
     const weapons = [...index.components.values()].flatMap(component => {
         const equipment = component.mount.equipment;
         return equipment instanceof WeaponEquipment && !component.mount.isPhysicalWeapon()
+            && !component.mount.platoonWeapon
             ? [{ id: component.id, mount: component.mount as EntityMountedWeapon }]
             : [];
     });

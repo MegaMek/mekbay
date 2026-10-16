@@ -59,6 +59,8 @@ drawAeroDataPanel,
 drawAeroMovementCompass,
 drawAeroPaperdoll,
 aeroPageBox,
+AERO_LOWER_PANEL_BOX,
+AERO_LOWER_PANEL_TAB_NOTCH,
 drawAeroVelocityPanel,
 type AeroDataInventoryRow,
 } from './aero-record-sheet-components';
@@ -174,11 +176,12 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         drawLargeAeroDiagramHeader(svg, capital, page);
         drawAeroMovementCompass(svg, at({ x: 249.651, y: 456.4, width: 90, height: 50 }));
         if (entity.entityType === 'SpaceStation') {
-            drawNotesPanel(svg, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
-            drawNotesPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
+            const upperNotes = at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 });
+            drawNotesPanel(svg, upperNotes, upperNotes.width * AERO_LOWER_PANEL_TAB_NOTCH);
+            drawNotesPanel(svg, at(AERO_LOWER_PANEL_BOX));
         } else {
             drawAeroArtworkRegion(svg, at({ x: 43, y: 510, width: 193, height: 84.72 }));
-            drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
+            drawAeroVelocityPanel(svg, at(AERO_LOWER_PANEL_BOX));
         }
         drawLargeAeroPilotPanel(svg, entity, at({ x: 252.366, y: 509.4, width: 142.6, height: 93.934 }));
         drawLargeAeroCriticalPanel(svg, entity, at({ x: 405.966, y: 509.4, width: 180.5, height: 166.104 }));
@@ -1359,9 +1362,6 @@ function drawLargeAeroPilotPanel(svg: SVGSVGElement, entity: AeroEntity, box: Bo
         { size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle', maxWidth: x(130) },
     );
     boats.id = 'lifeBoatsEscapePods';
-    const state = transparentRect(x(2), y(17), x(138), y(74), 'crewStateButton');
-    state.setAttribute('crewId', '0');
-    group.insertBefore(state, group.children[2] ?? null);
 }
 
 function largeAeroPersonnel(entity: AeroEntity): {

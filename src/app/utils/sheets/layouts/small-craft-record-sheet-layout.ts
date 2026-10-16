@@ -10,7 +10,7 @@ import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import { fullRecordSheetLayoutProfile, type RecordSheetLayoutProfile, type RecordSheetPageFormat } from '../record-sheet-layout';
 import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, recordSheetInventoryWeaponMounts, type Box } from '../record-sheet-svg-rendering';
 import { drawFighterCriticalPanel, drawFighterPilotPanel } from './aero-fighter-record-sheet-controls';
-import { aeroPageBox, drawAeroArtworkRegion, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, type AeroDataInventoryRow } from './aero-record-sheet-components';
+import { aeroPageBox, drawAeroArtworkRegion, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, AERO_LOWER_PANEL_BOX, type AeroDataInventoryRow } from './aero-record-sheet-components';
 import { drawLargeAeroDiagramHeader } from './large-aero-record-sheet-layout';
 import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
 
@@ -54,7 +54,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         drawAeroArtworkRegion(svg, at({ x: 43, y: 404, width: 193, height: 96 }));
         drawFighterPilotPanel(svg, at({ x: 251.4, y: 509.4, width: 142.6, height: 93.934 }));
         drawFighterCriticalPanel(svg, entity, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
-        drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
+        drawAeroVelocityPanel(svg, at(AERO_LOWER_PANEL_BOX));
         drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
         if (entity.tracksHeat()) drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
         const catalyst = at({ x: 527.13, y: 59.25, width: 0, height: 0 });

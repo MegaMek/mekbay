@@ -11,7 +11,7 @@ asSystemDamageTrackId,
 import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import { MountedArmor } from '../../models/entity/components/armor';
 import { MountedStructure } from '../../models/entity/components/structure';
-import { TestTankEntity } from '../../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity,TestTankEntity } from '../../models/entity/testing/test-entities';
 import * as testEntities from '../../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
@@ -30,6 +30,7 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import { INFANTRY_STRENGTH_CELL_COUNT } from '../../utils/sheets/infantry-strength-projection';
 import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
+import { drawAeroExternalStores, drawAeroVelocityPanel, AERO_DEFAULT_BOMB_KEY } from '../../utils/sheets/layouts/aero-record-sheet-components';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
 import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
 import {
@@ -269,6 +270,66 @@ describe('bindNonMekRecordSheet', () => {
         expect(profile.hasAttribute('tabindex')).toBeFalse();
         expect(profile.classList.contains('interactive')).toBeFalse();
         printBinding.destroy();
+    });
+
+    it('writes velocity record values into their cells and binds each cell to its turn and row', () => {
+        const svg = sheet();
+        drawAeroVelocityPanel(svg, { x: 0, y: 0, width: 377.7, height: 151.88 });
+        const snapshot: NonMekRecordSheetSnapshot = { ...ammoSnapshot([]), velocityRecord: [
+            { turn: 3, field: 'velocity', value: 7 },
+            { turn: 12, field: 'altitude', value: 4 },
+        ] };
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, snapshot, interaction => interactions.push(interaction));
+
+        const value = (turn: number, field: string) =>
+            svg.querySelector(`.velocityValue[data-turn="${turn}"][data-field="${field}"]`)?.textContent;
+        expect(svg.querySelectorAll('.velocityCell').length).toBe(80);
+        expect(value(3, 'velocity')).toBe('7');
+        expect(value(12, 'altitude')).toBe('4');
+        expect(value(3, 'thrust')).toBe('');
+        svg.querySelector('.velocityCell[data-turn="12"][data-field="effectiveVelocity"]')!
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([
+            { kind: 'velocity-record', turn: 12, field: 'effectiveVelocity', context: snapshot.editContext },
+        ]);
+
+        binding.render({ ...snapshot, velocityRecord: [] });
+        expect(value(3, 'velocity')).toBe('');
+        binding.destroy();
+    });
+
+    it('labels a store per bomb, slashes the hardpoints larger bombs take, keys the bombs and opens the loadout', () => {
+        const svg = sheet();
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.setTonnage(50);
+        drawAeroExternalStores(svg, fighter, { x: 0, y: 0, width: 124.466, height: 127 });
+        const snapshot: NonMekRecordSheetSnapshot = { ...ammoSnapshot([]), bombs: [
+            { section: 'external', bombId: 'HEBomb', count: 2, spent: 1 },
+            { section: 'external', bombId: 'ArrowIVHomingMissile Ammo', count: 1, spent: 0 },
+        ] };
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, snapshot, interaction => interactions.push(interaction));
+
+        const boxes = [...svg.querySelectorAll<SVGRectElement>('.bombBox')];
+        const marked = (name: string) => boxes.flatMap((box, index) => box.classList.contains(name) ? [index] : []);
+        expect([...svg.querySelectorAll('.bombLabel')].map(label => label.textContent)).toEqual(['HE', 'HE', 'AIVH']);
+        expect(marked('bombLoaded')).toEqual([0, 1, 2]);
+        expect(marked('bombSpent')).toEqual([0]);
+        // The Arrow IV's four further hardpoints are taken from the end of the ten stores.
+        expect(marked('bombTaken')).toEqual([6, 7, 8, 9]);
+        expect(svg.querySelectorAll('.bombTakenMark').length).toBe(4);
+        expect([...svg.querySelectorAll('.bombKeyLine')].map(line => line.textContent))
+            .toEqual(['HE - HE Bomb', 'AIVH - Arrow IV Homing Missile', '', '']);
+
+        boxes[9]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', context: snapshot.editContext }]);
+
+        binding.render({ ...snapshot, bombs: [] });
+        expect(marked('bombLoaded').length + marked('bombTaken').length).toBe(0);
+        expect(svg.querySelectorAll('.bombLabel, .bombTakenMark').length).toBe(0);
+        expect([...svg.querySelectorAll('.bombKeyLine')].map(line => line.textContent)).toEqual([...AERO_DEFAULT_BOMB_KEY]);
+        binding.destroy();
     });
 
     it('reflows current ammo names and totals without an equipment panel, retaining CASE and empty bins', () => {
@@ -1126,6 +1187,8 @@ function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapsh
         conditionControlKeys: Object.freeze([]),
         crewStateControlKeys: Object.freeze([]),
         crewStateDisplayKeys: Object.freeze([]),
+        bombs: Object.freeze([]),
+        velocityRecord: Object.freeze([]),
         destroyed,
         heat: Object.freeze({
             tracked: false,

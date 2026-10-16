@@ -4,7 +4,7 @@
 
 import { AmmoEquipment, type AlphaStrikeBattleForceClass, type WeaponEquipment } from '../../../../equipment.model';
 import type { BaseEntity } from '../../../base-entity';
-import { AeroEntity, BattleArmorEntity, InfantryEntity } from '../../../entities';
+import { AeroEntity, BattleArmorEntity } from '../../../entities';
 import type { EntityMountedWeapon } from '../../../types';
 import {
   alphaStrikeDamageLocationMultiplier,
@@ -81,11 +81,6 @@ export function collectAlphaStrikeWeaponSpecials(
         entity instanceof BattleArmorEntity,
         entity instanceof AeroEntity,
       );
-    }
-  }
-  if (entity instanceof InfantryEntity) {
-    for (const weapon of [entity.primaryWeapon(), entity.secondaryWeapon()]) {
-      if (weapon?.hasFlag('F_TAG')) specials.add(weapon.ranges[0] < 5 ? 'LTAG' : 'TAG');
     }
   }
   addArtillerySpecials(entity, weapons.filter(countsForDiscreteSpecial), specials);

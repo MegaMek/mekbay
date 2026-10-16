@@ -15,6 +15,7 @@ import {
   WeightClass,
 } from '../../types';
 import { smallCraftArmorPointsPerTon } from '../../utils/large-craft-armor';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
 import { LargeAeroEntity } from './large-aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
@@ -60,6 +61,11 @@ export class SmallCraftEntity extends LargeAeroEntity {
 
   override entityTechAdvancements(): readonly TechRatingSource[] {
     return [getSmallCraftConstructionTech(this.uniformArmor()?.type === 'PRIMITIVE_AERO')];
+  }
+
+  /** MegaMek SmallCraft: bombs only in Internal Bomb Bay cargo space. */
+  protected override computeBombCapacity(): BombCapacity {
+    return { external: 0, internal: this.internalBombBayPoints() };
   }
 
   protected override computeImplicitSystemEquipment(): readonly Equipment[] {

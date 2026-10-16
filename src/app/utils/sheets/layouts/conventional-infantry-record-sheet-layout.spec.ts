@@ -32,7 +32,7 @@ describe('conventional infantry sheet presentation', () => {
 
     it('uses the armor kit divisor and prints capped-primary burst notes and capable anti-Mek skill', async () => {
         const entity = infantry();
-        entity.primaryWeapon.set(new WeaponEquipment({ id: 'Mauser', name: 'Mauser', type: 'weapon',
+        entity.setPlatoonWeapon('primary', new WeaponEquipment({ id: 'Mauser', name: 'Mauser', type: 'weapon', flags: ['F_INFANTRY'],
             infantry: { damage: 0.8, range: 3 } }) as InfantryWeaponEquipment);
         addTestEquipment(entity, new MiscEquipment({ id: 'Clan Armor Kit', name: 'Clan Armor Kit', type: 'misc',
             flags: ['F_ARMOR_KIT'], misc: { damageDivisor: 2 } }), { location: 'Infantry' });
@@ -57,12 +57,12 @@ describe('conventional infantry sheet presentation', () => {
 
     it('uses the primary weapon for combat notes when multiple secondary weapons are TAG', async () => {
         const entity = infantry();
-        entity.primaryWeapon.set(new WeaponEquipment({ id: 'Needler', name: 'Needler', type: 'weapon',
-            flags: ['F_INF_BURST', 'F_INF_NONPENETRATING'],
+        entity.setPlatoonWeapon('primary', new WeaponEquipment({ id: 'Needler', name: 'Needler', type: 'weapon',
+            flags: ['F_INFANTRY', 'F_INF_BURST', 'F_INF_NONPENETRATING'],
             infantry: { damage: 0.1, range: 1 } }) as InfantryWeaponEquipment);
         const tag = new WeaponEquipment({ id: 'Infantry TAG', name: 'Infantry TAG', type: 'weapon',
-            flags: ['F_TAG'], infantry: { damage: 0, range: 3 } }) as InfantryWeaponEquipment;
-        entity.secondaryWeapon.set(tag);
+            flags: ['F_INFANTRY', 'F_TAG'], infantry: { damage: 0, range: 3 } }) as InfantryWeaponEquipment;
+        entity.setPlatoonWeapon('secondary', tag);
         entity.secondaryCount.set(2);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const text = [...svg.querySelectorAll('text')].map(node => node.textContent).join(' ');

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { bombAmmo,carriedBombs,isTagPodBomb } from './aerospace-bomb.model';
 import { isC3EmergencyMasterOperatingTurnsFried } from './c3-emergency-master.model';
 import { crewSkillsForUnit } from './unit-crew-policy';
 import { projectEncounterNetworksToC3Editor } from './c3-network-presentation';
@@ -33,6 +34,8 @@ export interface CBTForceBattleValueBreakdown {
     /** Fractional post-base adjustments retained until final rounding. */
     readonly tag: number;
     readonly c3: number;
+    /** Carried bombs; MegaMek BVCalculator.processExternalStores, before the skill multiplier. */
+    readonly externalStores: number;
     readonly skills: number;
     /** Rounded force-adjusted BV before skills, for the adjustedPreSkill display option. */
     readonly adjustedPreSkill: number;
@@ -81,23 +84,33 @@ export function calculateCBTForceBattleValues(
             launcher.hasFlag('F_ARTILLERY')
             && inventory.ammunition.some(ammo =>
                 ammo.hasMunitionType('M_HOMING') && ammoMatchesWeapon(launcher, ammo))).length, 0);
+    const ammoBv = (ammo: AmmoEquipment, registry: EquipmentRegistry) => {
+        const bv = rules.getAmmoBV(ammo, registry);
+        return typeof bv === 'number' ? bv : 0;
+    };
     const guidedAmmoBv = inventories.reduce((total, { inventory }) =>
-        total + inventory.ammunition.reduce((ammoTotal, ammo) => {
-            if (!(ammo.hasMunitionType('M_SEMIGUIDED') || ammo.hasMunitionType('M_HOMING'))
-                || !inventory.launchers.some(launcher => ammoMatchesWeapon(launcher, ammo))) {
-                return ammoTotal;
-            }
-            const bv = rules.getAmmoBV(ammo, inventory.registry);
-            return ammoTotal + (typeof bv === 'number' ? bv : 0);
-        }, 0), 0);
+        total + inventory.ammunition.reduce((ammoTotal, ammo) =>
+            (ammo.hasMunitionType('M_SEMIGUIDED') || ammo.hasMunitionType('M_HOMING'))
+                && inventory.launchers.some(launcher => ammoMatchesWeapon(launcher, ammo))
+                ? ammoTotal + ammoBv(ammo, inventory.registry)
+                : ammoTotal, 0), 0);
+    // MegaMek tagBVBump: each friendly homing Arrow IV bomb adds its BV per TAG in both rulesets.
+    const homingBombBv = inventories.reduce((total, { inventory }) =>
+        total + inventory.bombs.reduce((bombTotal, bomb) => bomb.ammo.hasMunitionType('M_HOMING')
+            ? bombTotal + bomb.carried * ammoBv(bomb.ammo, inventory.registry)
+            : bombTotal, 0), 0);
     const tagValues = new Map(inventories.map(({ unit, inventory }) => {
         const facts: TagBattleValueFacts = {
             operationalTagCount: inventory.operationalTagCount,
             homingArtilleryLauncherCount,
             guidedAmmoBv,
+            homingBombBv,
         };
         return [unit.instanceId, rules.calculateTagBVCost(facts)] as const;
     }));
+    const externalStoresValues = new Map(inventories.map(({ unit, inventory }) => [unit.instanceId,
+        inventory.bombs.reduce((total, bomb) => total + bomb.carried * ammoBv(bomb.ammo, inventory.registry), 0),
+    ] as const));
 
     // Keep configured endpoints in the structural graph; vacancy changes operation and cost, not ownership.
     const views = input.units.map(row => battleValueC3View(
@@ -116,14 +129,15 @@ export function calculateCBTForceBattleValues(
     return new Map(input.units.flatMap(row => {
         // Native manual BV is the final value, before crew, TAG or network adjustments.
         const manual = row.unit.getUnit().manualBV();
-        if (manual > 0) return [[row.unit.instanceId, Object.freeze({ base: manual, tag: 0, c3: 0, skills: 0, adjustedPreSkill: manual, adjusted: manual })] as const];
-        if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, skills: 0, adjustedPreSkill: 0, adjusted: 0 })] as const];
+        if (manual > 0) return [[row.unit.instanceId, Object.freeze({ base: manual, tag: 0, c3: 0, externalStores: 0, skills: 0, adjustedPreSkill: manual, adjusted: manual })] as const];
+        if (vacant.has(row.unit.instanceId)) return [[row.unit.instanceId, Object.freeze({ base: 0, tag: 0, c3: 0, externalStores: 0, skills: 0, adjustedPreSkill: 0, adjusted: 0 })] as const];
         const base = row.baseBattleValue;
         if (base === null) return [];
         const view = viewsById.get(row.unit.instanceId)!;
         const tag = tagValues.get(row.unit.instanceId) ?? 0;
         const c3 = ruleset === 'total-warfare' ? tax.totalWar(view) : tax.core2026(view);
-        const preSkill = base + tag + c3;
+        const externalStores = externalStoresValues.get(row.unit.instanceId) ?? 0;
+        const preSkill = base + tag + c3 + externalStores;
         const primary = row.unit.getCrewAssignment().positions[0];
         const entity = row.unit.getUnit();
         const skill = crewSkillsForUnit(primary, entity.unitType(), entity.unitSubtype());
@@ -141,6 +155,7 @@ export function calculateCBTForceBattleValues(
             base,
             tag,
             c3,
+            externalStores,
             skills,
             adjustedPreSkill: Math.round(preSkill),
             adjusted,
@@ -152,14 +167,20 @@ interface ReadyTagBattleValueInventory {
     readonly operationalTagCount: number;
     readonly launchers: readonly WeaponEquipment[];
     readonly ammunition: readonly AmmoEquipment[];
+    readonly bombs: readonly Readonly<{ ammo: AmmoEquipment; carried: number }>[];
     readonly registry: EquipmentRegistry;
 }
 
 function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
     const mounts = unit.getUnit().equipment();
+    const registry = unit.getUnit().getEquipmentRegistry();
     const operational = new Set<string>();
     const ammunition: AmmoEquipment[] = [];
-    const query = unit.captureRuntime().query;
+    const { query, state } = unit.captureRuntime();
+    const bombs = query.destroyed() ? [] : (state.bombs ?? []).flatMap(load => {
+        const ammo = bombAmmo(load.bombId, registry);
+        return ammo && carriedBombs(load) > 0 ? [Object.freeze({ ammo, carried: carriedBombs(load) })] : [];
+    });
     for (const mount of mounts) {
         const componentId = asComponentId(mount.mountId);
         if (query.componentStatus(componentId) !== 'available') continue;
@@ -172,12 +193,13 @@ function tagBattleValueInventory(unit: CBTUnit): ReadyTagBattleValueInventory {
 
     const operationalMounts = mounts.filter(mount => operational.has(mount.mountId));
     return Object.freeze({
-        operationalTagCount: operationalMounts.filter(mount =>
-            mount.equipment?.hasFlag('F_TAG')).length,
+        operationalTagCount: operationalMounts.filter(mount => mount.equipment?.hasFlag('F_TAG')).length
+            + bombs.reduce((total, bomb) => total + (isTagPodBomb(bomb.ammo.internalName) ? bomb.carried : 0), 0),
         launchers: Object.freeze(operationalMounts.flatMap(mount =>
             mount.equipment instanceof WeaponEquipment ? [mount.equipment] : [])),
         ammunition: Object.freeze(ammunition),
-        registry: unit.getUnit().getEquipmentRegistry(),
+        bombs: Object.freeze(bombs),
+        registry,
     });
 }
 

@@ -27,7 +27,7 @@ export function matchNativeMounts(original: BaseEntity, detached: BaseEntity): R
 function nativeMountKey(mount: EntityMountedEquipment, physical: boolean): string {
     return JSON.stringify([
         mount.equipment?.id ?? mount.equipmentId, mount.location, mount.rearMounted,
-        mount.size ?? 1, mount.baMountLocation ?? '', mount.isDWP ?? false, mount.isAPM ?? false,
+        mount.size ?? 1, mount.baMountLocation ?? '', mount.isDWP ?? false, mount.isAPM ?? false, mount.platoonWeapon ?? '',
         physical ? [...mount.placements ?? []].map(placement => `${placement.location}:${placement.slotIndex}`).sort() : [],
     ]);
 }

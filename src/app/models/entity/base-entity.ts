@@ -35,6 +35,7 @@ import { isLaserInsulatorEquipment } from '../laser-insulator.model';
 import { isBombastLaserEquipment } from '../bombast-laser-mode.model';
 import { isRiscLaserPulseModule } from '../risc-laser-mode.model';
 import { PPC_CAPACITOR_HEAT_BONUS, isPpcCapacitorEquipment, isPpcEquipment } from '../ppc-capacitor.model';
+import { NO_BOMB_CAPACITY, type BombCapacity } from '../aerospace-bomb.model';
 import { isCaseIIEquipment, isStandardCaseEquipment } from '../case-equipment.model';
 import { isChassisSystemEquipment } from '../chassis-equipment.model';
 import { isBlueShieldEquipment } from '../escalating-equipment.model';
@@ -264,9 +265,15 @@ export abstract class BaseEntity implements EntityTechnology {
     return true;
   }
 
+  /** Whether an installed mount participates in composite technology at all. */
+  protected mountContributesTech(_mount: EntityMountedEquipment): boolean {
+    return true;
+  }
+
   private staticTechLevelSources(): TechRatingSource[] {
     const sources: TechRatingSource[] = this.equipment().flatMap((mount) =>
-      mount.equipment && this.mountedEquipmentContributesStaticTech(mount.equipment) ? [mount.equipment.tech] : [],
+      mount.equipment && this.mountContributesTech(mount) && this.mountedEquipmentContributesStaticTech(mount.equipment)
+        ? [mount.equipment.tech] : [],
     );
     const systemSources = [...this.baseSystemTechAdvancements()];
     const engine = this.mountedEngine();
@@ -284,7 +291,7 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Complete construction technology sources, shared by the rating and construction summary. */
   techRatingSources(): readonly TechRatingSource[] {
     const sources: TechRatingSource[] = this.equipment().flatMap((mount) =>
-      mount.equipment ? [mount.equipment.tech] : [],
+      mount.equipment && this.mountContributesTech(mount) ? [mount.equipment.tech] : [],
     );
     sources.push(...this.implicitSystemEquipment().map((equipment) => equipment.tech));
     if (this.entityType === 'Mek' && this.automaticClanCaseLocations().size > 0) {
@@ -657,6 +664,8 @@ export abstract class BaseEntity implements EntityTechnology {
   );
   /** Weapon capabilities supplied by the entity rather than installed equipment. */
   readonly intrinsicWeapons = computed<readonly IntrinsicWeapon[]>(() => this.computeIntrinsicWeapons());
+  /** Bomb hardpoints this construction provides; the carried loadout is runtime state. */
+  readonly bombCapacity = computed<BombCapacity>(() => this.computeBombCapacity());
   readonly physicalWeapons = computed<readonly PhysicalWeapon[]>(() => {
     const mounted = this.equipment().filter((mount) => mount.isPhysicalWeapon());
     return [...mounted, ...this.intrinsicWeapons()];
@@ -1172,6 +1181,10 @@ export abstract class BaseEntity implements EntityTechnology {
 
   protected computeIntrinsicWeapons(): readonly IntrinsicWeapon[] {
     return [];
+  }
+
+  protected computeBombCapacity(): BombCapacity {
+    return NO_BOMB_CAPACITY;
   }
 
   /** Override in entity families that derive named features from construction state. */

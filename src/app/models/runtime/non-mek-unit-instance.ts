@@ -23,7 +23,7 @@ import type { ArmorFaceId,ComponentId,CrewPositionId,LocationId,SystemDamageTrac
 import type { EntityStateView } from '../entity/entity-state-view';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import type { EntityType } from '../entity/types';
-import { BV_MOVEMENT_CALCULATION,STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
+import { BV_MOVEMENT_CALCULATION,STANDARD_MOVEMENT_CALCULATION,type MovementCalculationOptions } from '../entity/types';
 import { isAeroEntity,isInfantryFamilyEntity,isProtoMekEntity,isVehicleEntity } from '../entity/utils/entity-type-guards';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model';
@@ -45,6 +45,14 @@ import { buildNonMekRuntimeIndex,type NonMekRuntimeIndex } from './non-mek-runti
 import { type ComponentRuntimeState } from './runtime-state';
 
 import { isBoobyTrapEquipment,isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { bombLoadoutIssue,carriedBombPoints,compareBombLoads } from '../aerospace-bomb.model';
+import {
+compareVelocityRecordEntries,
+velocityRecordEntryIssue,
+velocityRecordValue,
+withVelocityRecordValue,
+type VelocityRecordEntry,
+} from '../aerospace-velocity-record.model';
 import { bombastLaserEquipmentModes,bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { ECMMode } from '../common.model';
 import { isJumpJetEquipment,isUmuEquipment } from '../jump-equipment.model';
@@ -197,6 +205,8 @@ export interface NonMekUnitRuntimeState extends CBTUnitRuntimeState {
     readonly heat: NonMekHeatRuntimeState;
     readonly turn: NonMekTurnRuntimeState;
     readonly pendingCombat: NonMekPendingCombatState;
+    /** Aerospace velocity record values in canonical order; absent while the record is blank. */
+    readonly velocityRecord?: readonly VelocityRecordEntry[];
 }
 
 /** True when the sparse Non-Mek runtime has edits waiting for the phase commit. */
@@ -511,9 +521,13 @@ export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRun
 }
 
 export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRuntimeState {
-    const state = freezeCommonUnitRuntimeState(raw);
+    const { velocityRecord, ...state } = freezeCommonUnitRuntimeState(raw);
     return Object.freeze({
         ...state,
+        ...(velocityRecord?.length ? {
+            velocityRecord: Object.freeze([...velocityRecord].sort(compareVelocityRecordEntries)
+                .map(entry => Object.freeze({ ...entry }))),
+        } : {}),
         damageTracks: new ImmutableIndex([...state.damageTracks].map(([id, value]) => [
             id,
             Object.freeze({
@@ -1554,6 +1568,42 @@ function reduceNonMekUnitState(
             candidate = { ...state, ammo: new Map() };
             break;
         }
+        case 'configure-bombs': {
+            const issue = bombLoadoutIssue(command.loads, entity.bombCapacity());
+            if (issue !== null) throw new Error(issue);
+            const previous = state.bombs ?? [];
+            const bombs = command.loads.map(load => Object.freeze({
+                section: load.section,
+                bombId: load.bombId,
+                count: load.count,
+                spent: Math.min(load.count, previous.find(entry =>
+                    entry.section === load.section && entry.bombId === load.bombId)?.spent ?? 0),
+            })).sort(compareBombLoads);
+            if (bombs.length === previous.length && bombs.every((load, position) =>
+                load.section === previous[position]!.section && load.bombId === previous[position]!.bombId
+                && load.count === previous[position]!.count && load.spent === previous[position]!.spent)) return null;
+            candidate = { ...state, bombs };
+            break;
+        }
+        case 'set-velocity-record': {
+            if (!isAeroEntity(entity)) throw new Error('Only aerospace units keep a velocity record');
+            const issue = velocityRecordEntryIssue({ turn: command.turn, field: command.field, value: command.value ?? 0 });
+            if (issue !== null) throw new Error(issue);
+            const entries = state.velocityRecord ?? [];
+            if (velocityRecordValue(entries, command.turn, command.field) === (command.value ?? undefined)) return null;
+            candidate = { ...state, velocityRecord: withVelocityRecordValue(entries, command.turn, command.field, command.value) };
+            break;
+        }
+        case 'set-bombs-spent': {
+            const bombs = state.bombs ?? [];
+            const load = bombs.find(entry => entry.section === command.section && entry.bombId === command.bombId);
+            if (!load || !Number.isSafeInteger(command.spent) || command.spent < 0 || command.spent > load.count) {
+                throw new Error('Invalid spent bombs');
+            }
+            if (load.spent === command.spent) return null;
+            candidate = { ...state, bombs: bombs.map(entry => entry === load ? { ...entry, spent: command.spent } : entry) };
+            break;
+        }
         case 'set-crew-state': {
             if (!crewAssignment.positions.some(position => position.positionId === command.positionId)) return null;
             if (!index.crewPositions.has(command.positionId)
@@ -2394,6 +2444,11 @@ function validateNonMekMovement(
     });
 }
 
+/** Standard movement plus runtime facts the entity cannot know, such as carried external bombs. */
+export function nonMekMovementCalculation(state: NonMekUnitRuntimeState): MovementCalculationOptions {
+    return { ...STANDARD_MOVEMENT_CALCULATION, externalBombPoints: carriedBombPoints(state.bombs ?? [], 'external') };
+}
+
 function entityMovementMaximum(
     mode: MotiveModes,
     boosted: boolean,
@@ -2404,18 +2459,19 @@ function entityMovementMaximum(
 ): number {
     if (mode === 'stationary') return 0;
     if (immobile) return 0;
+    const movement = nonMekMovementCalculation(state);
     if (mode === 'walk') {
         if (entity.unitType() === 'VTOL' && state.turn.airborne !== true) return 0;
         return vehicle?.movement.walk
-            ?? Math.max(0, entity.computeWalkMP(STANDARD_MOVEMENT_CALCULATION));
+            ?? Math.max(0, entity.computeWalkMP(movement));
     }
     if (mode === 'run') {
         if (entity.unitType() === 'Infantry'
             || (entity.unitType() === 'VTOL' && state.turn.airborne !== true)) return 0;
         if (vehicle) return boosted ? vehicle.movement.maxRun : vehicle.movement.run;
         return Math.max(0, entity.computeRunMP(isProtoMekEntity(entity) && !boosted
-            ? { ...STANDARD_MOVEMENT_CALCULATION, ignoreMyomerBooster: true }
-            : STANDARD_MOVEMENT_CALCULATION));
+            ? { ...movement, ignoreMyomerBooster: true }
+            : movement));
     }
     if (mode === 'jump') {
         return state.turn.airborne === true

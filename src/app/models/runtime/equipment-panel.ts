@@ -16,6 +16,7 @@ import {
     type AmmoType,
     type WeaponDamage,
 } from '../equipment.model';
+import type { BombCapacity, BombLoad } from '../aerospace-bomb.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type {
@@ -967,6 +968,13 @@ export interface EquipmentPanelSnapshot {
     readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly physicalAttackBlockers: readonly string[];
     readonly targets: readonly EquipmentPanelTarget[];
+    /** Present when the unit has bomb hardpoints. */
+    readonly bombs?: EquipmentPanelBombs;
+}
+
+export interface EquipmentPanelBombs {
+    readonly capacity: BombCapacity;
+    readonly loads: readonly BombLoad[];
 }
 
 export function selectedWeaponHeat(

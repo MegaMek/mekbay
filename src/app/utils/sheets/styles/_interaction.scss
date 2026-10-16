@@ -1,4 +1,8 @@
 // Only live viewers opt into interaction; generated sheets remain passive.
+$outlined-controls: '.crewNameButton, .crewSkillButton, .velocityCell';
+// Bomb stores open the loadout; they are not damage targets either.
+$store-controls: '.bombBox';
+
 @media screen {
   // Opt-in qualifiers must not outrank existing damage/selection styles.
   .mekbay-sheet:where(.interactive-sheet):not(.print-preview) {
@@ -103,8 +107,8 @@
       transition: fill ease-out 0.2s;
     }
 
-    .selectable:not(.pip-hit-area):hover,
-    .selectable:not(.pip-hit-area):hover > path {
+    .selectable:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover,
+    .selectable:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover > path {
       fill: var(--undamaged-highlight-color) !important;
 
       .night-mode & {
@@ -112,9 +116,48 @@
       }
     }
 
-    .selectable.damaged:not(.pip-hit-area):hover,
-    .selectable.damaged:not(.pip-hit-area):hover > path {
+    .selectable.damaged:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover,
+    .selectable.damaged:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover > path {
       fill: var(--damaged-highlight-color) !important;
+    }
+
+    // Paperdoll location contours lie over the artwork, so their highlight is a translucent red: it tints the paper
+    // like the usual highlight while the artwork lines stay visible. Structural integrity panels, in front of the
+    // artwork, keep the solid highlight above.
+    [data-mekbay-paperdoll] .unitLocation.selectable:not(.structure):is(:hover, :focus-visible, .picker-active) {
+      fill: rgb(255 0 0 / 12%) !important;
+
+      &.damaged {
+        fill: rgb(255 0 0 / 55%) !important;
+      }
+
+      .night-mode &:not(.damaged) {
+        fill: rgb(255 0 0 / 20%) !important;
+      }
+    }
+
+    .aero-paperdoll-layer .unitLocation.structure {
+      fill-opacity: .9 !important;
+    }
+
+    .bombBox:where(.interactive):is(:hover, :focus-visible) {
+      &:not(.bombLoaded, .bombTaken) {
+        fill: var(--highlight-color);
+      }
+
+      &:is(.bombLoaded, .bombTaken) {
+        filter: brightness(.9);
+      }
+    }
+
+    // Value controls are not damage targets: an outline marks them and leaves their value readable.
+    :is(#{$outlined-controls}):where(.interactive) {
+      transition: stroke ease-out 0.2s;
+
+      &:is(:hover, :focus-visible, .picker-active) {
+        stroke: var(--highlight-color);
+        stroke-width: 1px;
+      }
     }
 
     .pip-hit-area:hover {

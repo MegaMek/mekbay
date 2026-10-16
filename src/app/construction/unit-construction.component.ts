@@ -175,6 +175,12 @@ import {
   SetAmmoDialogComponent,
   type SetAmmoDialogResult,
 } from '../components/set-ammo-dialog/set-ammo.dialog.component';
+import {
+  SetBombsDialogComponent,
+  type SetBombsDialogData,
+  type SetBombsDialogResult,
+} from '../components/set-bombs-dialog/set-bombs.dialog.component';
+import { bombAmmo, carriedBombs } from '../models/aerospace-bomb.model';
 import { reconcileConstructionEquipmentRelationships } from './domain/construction-relationships';
 import { constructionSystemSlotKeys, reconcileConstructionSystemSlots } from './domain/construction-system-rules';
 import {
@@ -968,6 +974,49 @@ export class UnitConstructionComponent {
         },
       ]);
       this.status.set('Ammo loadout ready to save.');
+    } catch (error) {
+      this.reportError(error);
+    } finally {
+      this.busy.set(false);
+    }
+  }
+  /** The design's bomb hardpoints; a force unit's carried bombs are staged like its ammo. */
+  readonly bombStores = computed(() => {
+    const source = this.repairSnapshot(),
+      entity = source?.entity ?? this.entity(),
+      capacity = entity.bombCapacity();
+    if (capacity.external + capacity.internal === 0) return null;
+    const registry = entity.getEquipmentRegistry(),
+      loads = source?.state.bombs ?? [];
+    return {
+      capacity,
+      loads,
+      staged: source !== null && source !== undefined,
+      rows: loads.map((load) => ({
+        id: `${load.section}:${load.bombId}`,
+        name: bombAmmo(load.bombId, registry)?.name ?? load.bombId,
+        section: load.section === 'external' ? 'EXT' : 'INT',
+        carried: carriedBombs(load),
+        count: load.count,
+      })),
+    };
+  });
+  async setRuntimeBombs(): Promise<void> {
+    const stores = this.bombStores();
+    if (this.busy() || !stores?.staged) return;
+    this.busy.set(true);
+    try {
+      const ref = this.dialogs.createDialog<SetBombsDialogResult | null>(SetBombsDialogComponent, {
+        data: {
+          capacity: stores.capacity,
+          loads: stores.loads.map(({ section, bombId, count }) => ({ section, bombId, count })),
+          equipmentRegistry: this.entity().getEquipmentRegistry(),
+        } satisfies SetBombsDialogData,
+      });
+      const loads = await firstValueFrom(ref.closed);
+      if (!loads) return;
+      await this.stageRuntime([{ type: 'configure-bombs', loads }]);
+      this.status.set('Bomb loadout ready to save.');
     } catch (error) {
       this.reportError(error);
     } finally {

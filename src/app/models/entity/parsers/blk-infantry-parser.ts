@@ -152,15 +152,17 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('squad_size')) entity.squadSize.set(bb.getFirstInt('squad_size'));
   if (bb.exists('squadn'))    entity.squadCount.set(bb.getFirstInt('squadn'));
 
-  // ── Weapons ──
+  // ── Weapons (mounted last so earlier mount IDs stay stable) ──
+  let primaryWeapon: InfantryWeaponEquipment | null = null;
+  let secondaryWeapon: InfantryWeaponEquipment | null = null;
   if (bb.exists('Primary')) {
-    entity.primaryWeapon.set(resolveInfantryWeapon(bb.getFirstString('Primary'), 'Primary', entity, ctx));
+    primaryWeapon = resolveInfantryWeapon(bb.getFirstString('Primary'), 'Primary', entity, ctx);
   } else {
     ctx.error('Primary', 'Could not find primary weapon');
   }
   if (bb.exists('Secondary')) {
-    entity.secondaryWeapon.set(resolveInfantryWeapon(bb.getFirstString('Secondary'), 'Secondary', entity, ctx));
-    if (entity.secondaryWeapon() && bb.exists('secondn')) {
+    secondaryWeapon = resolveInfantryWeapon(bb.getFirstString('Secondary'), 'Secondary', entity, ctx);
+    if (secondaryWeapon && bb.exists('secondn')) {
       const secondaryCount = bb.getFirstInt('secondn');
       if (ctx.validateNonNegativeInt('secondn', secondaryCount)) {
         entity.secondaryCount.set(secondaryCount);
@@ -241,6 +243,9 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
   if (bb.exists('extraneousPair2')) {
     entity.extraneousPair2.set(bb.getFirstString('extraneousPair2'));
   }
+
+  entity.setPlatoonWeapon('primary', primaryWeapon);
+  entity.setPlatoonWeapon('secondary', secondaryWeapon);
 
   return entity;
 }

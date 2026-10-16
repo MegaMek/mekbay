@@ -467,7 +467,9 @@ export function getConstructionLocations(entity: BaseEntity): ConstructionLocati
         });
       }
     } else {
-      entity.getEquipmentAtLocation(id).forEach((mount, index) => slots.push({ index, mount }));
+      // Platoon weapons are edited through the Primary/Secondary weapon fields.
+      entity.getEquipmentAtLocation(id).filter((mount) => !mount.platoonWeapon)
+        .forEach((mount, index) => slots.push({ index, mount }));
       if (capacity !== null) while (slots.length < capacity) slots.push({ index: slots.length });
     }
     return {
@@ -1277,7 +1279,9 @@ export function validateConstruction(entity: BaseEntity): EntityValidationResult
   }
   for (const mount of entity.equipment()) {
     const eq = mount.equipment;
-    if (!eq) continue;
+    // Platoon weapons have their own infantry family rules; MegaMek's TestInfantry
+    // applies no per-equipment tech checks to them.
+    if (!eq || mount.platoonWeapon) continue;
     if (mount.allocation.kind === 'unallocated') {
       add('crit', 'UNALLOCATED_EQUIPMENT', `${eq.name} has not been assigned a location.`, undefined, 'error', mount.mountId);
       continue;

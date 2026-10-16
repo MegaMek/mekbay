@@ -5,6 +5,7 @@ import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,S
 import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
+import type { VelocityRecordField } from '../../models/aerospace-velocity-record.model';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 export type RecordSheetInteractionPayload =
@@ -115,6 +116,7 @@ export type RecordSheetInteractionPayload =
     }>
     | Readonly<{ kind: 'infantry-strength'; locationId: LocationId; strength: number }>
     | Readonly<{ kind: 'damage-track'; damageTrackId: SystemDamageTrackId }>
+    | Readonly<{ kind: 'velocity-record'; turn: number; field: VelocityRecordField }>
     | Readonly<{ kind: 'crew-profile'; positionId: CrewPositionId }>;
 
 /** Captured from the displayed snapshot and retained across asynchronous choices. */

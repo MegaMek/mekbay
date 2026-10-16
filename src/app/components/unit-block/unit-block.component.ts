@@ -490,11 +490,12 @@ export class UnitBlockComponent {
             const current = forceUnit.currentBaseBattleValue();
             const tag = forceUnit.tagBattleValue();
             const c3 = forceUnit.c3BattleValue();
+            const externalStores = forceUnit.externalStoresBattleValue();
             const skills = forceUnit.skillBattleValue();
             const adjusted = forceUnit.adjustedBattleValue();
             if (pristine === null || current === null || tag === null || c3 === null
-                || skills === null || adjusted === null
-                || (current === pristine && tag === 0 && c3 === 0 && skills === 0)) return null;
+                || externalStores === null || skills === null || adjusted === null
+                || (current === pristine && tag === 0 && c3 === 0 && externalStores === 0 && skills === 0)) return null;
             const formatBv = (value: number) => FormatBvPipe.formatValue(value);
             const lines: TooltipLine[] = [{ label: 'Base', value: formatBv(pristine) }];
             if (current !== pristine) {
@@ -503,6 +504,7 @@ export class UnitBlockComponent {
             }
             if (tag !== 0) lines.push({ label: 'TAG', value: `+${formatBv(tag)}` });
             if (c3 !== 0) lines.push({ label: 'C³', value: `+${formatBv(c3)}` });
+            if (externalStores !== 0) lines.push({ label: 'Bombs', value: `+${formatBv(externalStores)}` });
             if (skills !== 0) {
                 const sign = skills > 0 ? '+' : '';
                 lines.push({ label: 'Skills', value: `${sign}${formatBv(skills)}` });

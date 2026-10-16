@@ -137,8 +137,8 @@ describe('Alpha Strike weapon specials', () => {
       weapon: { ranges: [3, 6, 9, 12], ammoType: 'NA' }, infantry: {},
     });
     if (!tag.isInfantryWeapon()) throw new Error('Expected infantry weapon');
-    entity.primaryWeapon.set(tag);
-    entity.secondaryWeapon.set(tag);
+    entity.setPlatoonWeapon('primary', tag);
+    entity.setPlatoonWeapon('secondary', tag);
 
     expect(alphaStrikeWeaponSpecials(entity)).toContain('LTAG');
   });

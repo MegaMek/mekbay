@@ -46,6 +46,7 @@ drawAeroExternalStores,
 drawAeroHeatDataPanel,
 drawAeroMovementCompass,
 drawAeroPaperdoll,
+AERO_LOWER_PANEL_BOX,
 drawAeroVelocityPanel,
 } from './aero-record-sheet-components';
 import type { RecordSheetLayout,RecordSheetLayoutRequest } from './record-sheet-layout';
@@ -121,6 +122,8 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 assetUrl: this.paperdollAsset(entity),
                 pipLayout: request.pipLayout,
                 capitalFallback: false,
+                // Beside the nose, in the open space above the left wing label.
+                randomHitTransform: 'translate(18 205) scale(0.75)',
             },
         );
         drawFighterDiagramHeader(svg, entity, page);
@@ -131,7 +134,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
         drawAeroArtworkRegion(svg, at({ x: 21, y: 402, width: 224.4, height: 101.4 }));
         drawFighterPilotPanel(svg, at({ x: 251.4, y: 509.4, width: 142.6, height: 93.934 }));
         drawFighterCriticalPanel(svg, entity, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
-        drawAeroVelocityPanel(svg, at({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 }));
+        drawAeroVelocityPanel(svg, at(AERO_LOWER_PANEL_BOX));
         if (conventional) {
             drawGroundMapStraightMovementTable(svg, at({ x: 405.966, y: 509.4, width: 184, height: 157.89 }));
             drawFighterReturnTable(svg, at({ x: 405.966, y: 675.29, width: 184, height: 79.71 }));

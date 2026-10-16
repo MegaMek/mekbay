@@ -1245,6 +1245,43 @@ tech-base-badge {
   margin-top: auto;
 }
 
+.bomb-stores-panel {
+  --frame-color: #aaa;
+  display: grid;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 12px;
+  background-color: var(--panel);
+  font-size: 11px;
+
+  small {
+    color: #888;
+  }
+}
+
+.bomb-stores-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 500;
+  color: #aaa;
+
+  .bt-button {
+    padding: 2px 6px;
+    font-size: 11px;
+    min-height: auto;
+  }
+}
+
+.bomb-stores-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
 .unallocated-panel > summary {
   display: flex;
   align-items: center;

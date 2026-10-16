@@ -1227,8 +1227,11 @@ export function drawReferencePanel(svg: SVGSVGElement, box: Box, title = 'REFERE
   });
 }
 
-export function drawNotesPanel(svg: SVGSVGElement, box: Box): void {
-  const group = addFrame(svg, 'NOTES', box);
+export function drawNotesPanel(svg: SVGSVGElement, box: Box, bottomLeftNotchWidth = 0): void {
+  const group = addFrame(svg, 'NOTES', box, {
+    bottomLeftNotchWidth,
+    cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
+  });
   for (let y = 35; y < box.height - 8; y += 17) addLine(group, 9, y, box.width - 9, y, '#bbb', 0.45);
 }
 
@@ -1358,12 +1361,17 @@ export function addText(
     class: options.class,
   });
   text.textContent = value;
-  if (options.maxWidth && value.length * (options.size ?? 7) * 0.54 > options.maxWidth) {
+  if (options.maxWidth && !textFitsWidth(value, options.size ?? 7, options.maxWidth)) {
     text.setAttribute('textLength', formatNumber(options.maxWidth));
     text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
   }
   parent.appendChild(text);
   return text;
+}
+
+/** Whether record-sheet text fits a width, by average glyph width rather than DOM measurement. */
+export function textFitsWidth(value: string, size: number, width: number): boolean {
+  return value.length * size * 0.54 <= width;
 }
 
 export function addWrappedText(

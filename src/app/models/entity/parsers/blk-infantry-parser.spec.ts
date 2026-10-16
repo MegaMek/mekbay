@@ -31,8 +31,11 @@ describe('BLK conventional infantry codec', () => {
     [nonInfantryWeapon.id]: nonInfantryWeapon,
   });
 
-  it('stores primary and secondary weapons as typed equipment only', () => {
+  it('mounts primary and secondary weapons after all other equipment and writes them back as fields', () => {
     const { entity, context } = parse(`
+<Troopers Equipment>
+${armorKit.id}
+</Troopers Equipment>
 <Primary>
 ${primary.id}
 </Primary>
@@ -48,8 +51,14 @@ ${secondary.id}
     expect(entity.secondaryWeapon()).toBe(secondary);
     expect(entity.secondaryCount()).toBe(2);
     expect(entity.rangeWeapon()).toBe(secondary);
+    expect(entity.equipment().map(mount => [mount.equipment, mount.location, mount.platoonWeapon])).toEqual([
+      [armorKit, 'Infantry', undefined],
+      [primary, 'Infantry', 'primary'],
+      [secondary, 'Infantry', 'secondary'],
+    ]);
 
     const output = writeBlkInfantry(entity);
+    expect(output).toContain(`<Troopers Equipment>\n${armorKit.id}\n</Troopers Equipment>`);
     expect(output).toContain(`<Primary>\n${primary.id}\n</Primary>`);
     expect(output).toContain(`<Secondary>\n${secondary.id}\n</Secondary>`);
     expect(output).toContain('<secondn>\n2\n</secondn>');
@@ -92,8 +101,7 @@ ${armorKit.id}
 
     expect(context.errors).toEqual([]);
     expect(entity.armorKit()).toBe(armorKit);
-    expect(entity.equipment()).toHaveSize(1);
-    expect(entity.equipment()[0].equipment).toBe(armorKit);
+    expect(entity.equipment().map(mount => mount.equipment)).toEqual([armorKit, primary]);
     expect(entity.equipment()[0].location).toBe('Infantry');
     expect(entity.effectiveEncumberingArmor()).toBeTrue();
     expect(entity.effectiveSpaceSuit()).toBeTrue();

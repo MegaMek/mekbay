@@ -4,7 +4,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { asComponentId } from '../../models/entity/entity-identifiers';
-import type { EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
+import type { EquipmentPanelBombs, EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
 import { DialogsService } from '../../services/dialogs.service';
 import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
 import { AmmoLoadoutPanelComponent } from './ammo-loadout-panel.component';
@@ -54,6 +54,7 @@ function ammoRow(
 function createComponent(
     rows: readonly EquipmentPanelComponent[] | (() => readonly EquipmentPanelComponent[]),
     readOnly = false,
+    bombs: EquipmentPanelBombs | null = null,
 ) {
     const currentRows = () => typeof rows === 'function' ? rows() : rows;
     const changeAmmo = jasmine.createSpy('changeAmmo').and.callFake(
@@ -68,26 +69,45 @@ function createComponent(
         },
     );
     const configureAmmo = jasmine.createSpy('configureAmmo').and.resolveTo();
+    const setBombsSpent = jasmine.createSpy('setBombsSpent').and.resolveTo();
     const runtime = {
         ammo: currentRows,
+        bombs: () => bombs,
         member: { force: { readOnly: () => readOnly } },
         changeAmmo,
         configureAmmo,
+        setBombsSpent,
     } as unknown as EquipmentDialogRuntimeController;
     TestBed.configureTestingModule({
         imports: [AmmoLoadoutPanelComponent],
         providers: [
             { provide: DialogsService, useValue: jasmine.createSpyObj('DialogsService', ['createDialog']) },
-            { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => ({}) } },
+            { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => ({ equipment: {} }) } },
         ],
     });
     const fixture = TestBed.createComponent(AmmoLoadoutPanelComponent);
     fixture.componentRef.setInput('runtime', runtime);
     fixture.detectChanges();
-    return { fixture, component: fixture.componentInstance, runtime, changeAmmo, configureAmmo };
+    return { fixture, component: fixture.componentInstance, runtime, changeAmmo, configureAmmo, setBombsSpent };
 }
 
 describe('AmmoLoadoutPanelComponent', () => {
+    it('lists carried bombs with hardpoint use and spends or restores them without ammo bins', () => {
+        const load = { section: 'external', bombId: 'HEBomb', count: 3, spent: 1 } as const;
+        const { fixture, setBombsSpent } = createComponent([], false, {
+            capacity: { external: 10, internal: 0 }, loads: [load],
+        });
+        const element = fixture.nativeElement as HTMLElement;
+        expect(element.querySelector('.ammo-empty-state')).toBeNull();
+        expect(element.querySelector('.bomb-loadout')!.textContent).toContain('EXT 3/10');
+        const row = element.querySelectorAll('.bomb-loadout .ammo-control-row')[1]!;
+        expect(row.querySelector('.ammo-count')!.textContent!.replace(/s/g, '')).toBe('2/3');
+        const [spend, restore] = [...row.querySelectorAll<HTMLButtonElement>('button')];
+        spend!.click();
+        restore!.click();
+        expect(setBombsSpent.calls.allArgs()).toEqual([[load, 2], [load, 0]]);
+    });
+
     it('keeps ordinary and hot-loaded bins separate and labels the hot-loaded group', () => {
         const { fixture, component } = createComponent([
             ammoRow('ammo:normal', 'LT', 5),

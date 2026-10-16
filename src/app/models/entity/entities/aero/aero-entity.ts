@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
 import { BaseEntity } from '../../base-entity';
 import { AERO_COCKPIT_TECH } from '../../components';
 import { modularArmorMovementPenalty } from '../../../modular-armor.model';
@@ -38,6 +39,20 @@ import {
 
 export abstract class AeroEntity extends BaseEntity {
   override readonly entityType: EntityType = 'Aero';
+
+  /** MegaMek AeroSpaceFighter: one external hardpoint per five tons, Java-rounded. */
+  protected fighterBombCapacity(): BombCapacity {
+    return { external: Math.floor(this.tonnage() / 5 + 0.5), internal: this.internalBombBayPoints() };
+  }
+
+  /** MegaMek Aero: only the Internal Bomb Bay quirk turns cargo bay space into bomb hardpoints. */
+  protected internalBombBayPoints(): number {
+    if (!this.applicableQuirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return 0;
+    return this.transporters().reduce((total, transporter) =>
+      total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'
+        ? Math.floor(transporter.capacity)
+        : 0), 0);
+  }
 
   override componentLocationOrder(): readonly string[] {
     return ['Nose', 'Left Wing', 'Right Wing', 'Aft', 'Wings', 'Fuselage'];
@@ -117,7 +132,9 @@ export abstract class AeroEntity extends BaseEntity {
       this.equipment(),
       options.ignoreModularArmor,
     );
-    return Math.max(0, this.originalWalkMP() - modularArmorPenalty);
+    // MegaMek AeroSpaceFighter.reduceMPByBombLoad: one safe thrust per five external bomb points.
+    const bombPenalty = options.ignoreCargo ? 0 : Math.ceil((options.externalBombPoints ?? 0) / 5);
+    return Math.max(0, this.originalWalkMP() - modularArmorPenalty - bombPenalty);
   }
 
   protected override computeMaximumArmorPoints(): number {

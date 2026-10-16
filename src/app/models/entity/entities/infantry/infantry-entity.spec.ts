@@ -54,7 +54,7 @@ describe('InfantryEntity custom beast construction', () => {
 describe('InfantryEntity strength limit', () => {
   it('validates the thirty-troop construction limit as squad size or count changes', () => {
     const infantry = new InfantryEntity();
-    infantry.primaryWeapon.set(infantryWeapon('InfantryStrengthTest'));
+    infantry.setPlatoonWeapon('primary', infantryWeapon('InfantryStrengthTest'));
     infantry.squadSize.set(6);
     infantry.squadCount.set(5);
     expect(infantry.validationResult().messages.some(message => message.code === 'INF_TOO_MANY_TROOPERS')).toBeFalse();
@@ -108,7 +108,7 @@ describe('InfantryEntity movement', () => {
     infantry.originalWalkMP.set(1);
     infantry.motiveType.set('Jump');
     infantry.secondaryCount.set(2);
-    infantry.secondaryWeapon.set(supportWeapon);
+    infantry.setPlatoonWeapon('secondary', supportWeapon);
     return infantry;
   }
 

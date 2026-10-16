@@ -1,13 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { VELOCITY_RECORD_FIELDS, VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, appendInventoryHitModifier, fitInventoryText, inventoryRowSpan, inventoryCellLines, inventoryRowLineCount } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
-import { FixedWingSupportEntity } from '../../../models/entity/entities/aero/fixed-wing-support-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import { type EntityDamageLocation } from '../../../models/entity/types';
 import { weaponQuirkLabels } from '../../../models/entity/utils/weapon-quirks';
@@ -80,6 +80,8 @@ export interface AeroPaperdollPresentation {
     readonly assetUrl: string;
     readonly capitalFallback: boolean;
     readonly pipLayout: PaperdollPipLayout;
+    /** Random hit control placement in the asset's coordinates; defaults to the top-left corner. */
+    readonly randomHitTransform?: string;
 }
 
 /** Reusable drawing components. Family layouts supply all presentation policy. */
@@ -407,8 +409,8 @@ export async function drawAeroPaperdoll(
             + `scale(${formatNumber(scale)})`,
         );
         paperdoll.setAttribute('data-mekbay-aero-asset', presentation.assetUrl);
-        // Keep the control above the art, clear of headings and external stores on the right.
-        paperdoll.setAttribute('data-random-hit-transform', 'translate(4 1) scale(0.75)');
+        // Keep the control clear of the art, headings and external stores on the right.
+        paperdoll.setAttribute('data-random-hit-transform', presentation.randomHitTransform ?? 'translate(4 1) scale(0.75)');
         decoratePaperdollPips(paperdoll);
         updateAeroPaperdollLabels(paperdoll, entity, locations);
         svg.appendChild(paperdoll);
@@ -471,9 +473,16 @@ function setAeroLabeledValue(layer: SVGGElement, label: string, value: number | 
     }
 }
 
+/** Notch, as a share of a 220.4-wide panel, that clears the header tab of the panel in AERO_LOWER_PANEL_BOX. */
+export const AERO_LOWER_PANEL_TAB_NOTCH = 0.46;
+
+/** MegaMekLab's external stores key, shown until bombs are loaded. */
+export const AERO_DEFAULT_BOMB_KEY: readonly string[] = ['HE - High Explosive', 'LG - Laser Guided', 'C - Cluster', 'RL - Rocket Launcher'];
+
 export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
-    const count = entity instanceof FixedWingSupportEntity ? entity.maxBombPoints()
-        : Math.min(20, Math.floor(entity.tonnage() / 5));
+    // MegaMekLab PrintAero draws one store per bomb hardpoint, external and internal.
+    const capacity = entity.bombCapacity();
+    const count = Math.min(20, capacity.external + capacity.internal);
     if (count <= 0) return;
     const group = svgElement('g');
     group.setAttribute('class', 'aero-external-stores');
@@ -507,15 +516,25 @@ export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, b
             stroke: '#000',
             'stroke-width': font(0.966),
             class: 'externalStore bombButton bombBox',
+            'data-store-index': index,
+            'data-bomb-section': index < capacity.external ? 'external' : 'internal',
         });
-        rect.setAttribute('data-store-index', String(index));
         group.appendChild(rect);
     }
-    addText(group, 'Key:', x(59.484), y(93.631), { size: font(5.7), weight: 700 });
-    addText(group, 'HE - High Explosive', x(59.484), y(100.631), { size: font(5.7) });
-    addText(group, 'LG - Laser Guided', x(59.484), y(107.631), { size: font(5.7) });
-    addText(group, 'C - Cluster', x(59.484), y(114.631), { size: font(5.7) });
-    addText(group, 'RL - Rocket Launcher', x(59.484), y(121.631), { size: font(5.7) });
+    // The runtime binder labels the carried bombs and marks the hardpoints larger bombs take.
+    const slots = svgElement('g');
+    setAttributes(slots, { class: 'bombSlots', 'data-label-size': formatNumber(font(6.5)) });
+    group.appendChild(slots);
+    // MegaMekLab moves the key below the last store row; four rows leave no room for it.
+    const rows = Math.ceil(count / columns);
+    if (rows < 4) {
+        const top = 15.25 + rows * 23.794 + 7;
+        addText(group, 'Key:', x(6.408), y(top), { size: font(5.7), weight: 700, class: 'bombKeyTitle' });
+        AERO_DEFAULT_BOMB_KEY.forEach((line, index) => {
+            const text = addText(group, line, x(6.408), y(top + (index + 1) * 7), { size: font(5.7), class: 'bombKeyLine' });
+            text.setAttribute('data-max-width', formatNumber(x(112)));
+        });
+    }
     svg.appendChild(group);
 }
 
@@ -575,27 +594,42 @@ export function drawAeroArtworkRegion(svg: SVGSVGElement, box: Box): void {
     svg.appendChild(group);
 }
 
+/**
+ * The aerospace page's lower-left panel slot (MegaMekLab's), under the pilot and critical damage panels. The panel
+ * above its header tab notches its bottom-left corner around the tab (AERO_LOWER_PANEL_TAB_NOTCH).
+ */
+export const AERO_LOWER_PANEL_BOX: Box = Object.freeze({ x: 18.966, y: 603.12, width: 377.7, height: 151.88 });
+
 export function drawAeroVelocityPanel(svg: SVGSVGElement, box: Box): void {
     const group = addFrame(svg, 'VELOCITY RECORD', box, {
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     group.setAttribute('data-mekbay-region', 'velocity-record');
-    // MegaMekLab authors this panel in a 377.7 x 151.88 coordinate space.
-    // Keep those proportions explicit: the short rows and wide label column are
-    // visually distinctive and also leave enough room for "Effective Velocity".
+    // MegaMekLab's 377.7 x 151.88 panel. The wide label column leaves room for "Effective Velocity"; the data rows
+    // are taller than the printed turn row so the player's values can be written large.
     const sx = box.width / 377.7;
     const sy = box.height / 151.88;
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * Math.min(sx, sy);
-    const left = 4.5;
-    const width = 370;
-    const labelBoundary = 78.5;
-    const turnWidth = 29.15;
-    const tableHeight = 40.164;
-    const rowHeight = 8.033;
-    const labels = ['Turn #', 'Thrust', 'Velocity', 'Effective Velocity', 'Altitude'];
-    [31.388, 91.634].forEach((top, tableIndex) => {
+    // The frame border runs from 0 to 376.2 across and from the header tab (18.6) to 150.38 down: the tables keep
+    // equal margins to both sides and equal gaps above, between and below them.
+    const margin = 5;
+    const left = margin;
+    const width = 376.2 - 2 * margin;
+    const labelWidth = 74;
+    const labelBoundary = left + labelWidth;
+    const turnWidth = (width - labelWidth) / 10;
+    const turnRowHeight = 10.5;
+    const turnSize = RECORD_SHEET_FONT.body;
+    const rowHeight = 11.4;
+    const valueSize = 11.5;
+    const tableHeight = turnRowHeight + VELOCITY_RECORD_FIELDS.length * rowHeight;
+    const gap = (150.38 - 18.6 - 2 * tableHeight) / 3;
+    // A baseline that centres digits and capitals of this size on a row's middle.
+    const centred = (middle: number, size: number): number => middle + size * 0.36;
+    [18.6 + gap, 18.6 + 2 * gap + tableHeight].forEach((top, tableIndex) => {
+        const rowTop = (fieldIndex: number): number => top + turnRowHeight + fieldIndex * rowHeight;
         const border = svgElement('rect');
         setAttributes(border, {
             x: x(left),
@@ -608,43 +642,44 @@ export function drawAeroVelocityPanel(svg: SVGSVGElement, box: Box): void {
             'stroke-width': 1,
         });
         group.appendChild(border);
-        for (let row = 1; row < labels.length; row++) {
-            addLine(
-                group,
-                x(left),
-                y(top + row * rowHeight),
-                x(left + width),
-                y(top + row * rowHeight),
-                '#000',
-                0.58,
-            );
-        }
-        for (let column = 0; column < 10; column++) {
-            const boundary = labelBoundary + column * turnWidth;
-            addLine(
-                group,
-                x(boundary),
-                y(top),
-                x(boundary),
-                y(top + tableHeight),
-                '#000',
-                0.58,
-            );
-        }
-        labels.forEach((label, rowIndex) => {
-            addText(group, label, x(7.5), y(top + 7.049 + rowIndex * rowHeight), {
-                size: font(RECORD_SHEET_FONT.inventory),
-                weight: 700,
-            });
+        VELOCITY_RECORD_FIELDS.forEach((_, fieldIndex) => {
+            addLine(group, x(left), y(rowTop(fieldIndex)), x(left + width), y(rowTop(fieldIndex)), '#000', 0.58);
         });
         for (let column = 0; column < 10; column++) {
-            addText(
-                group,
-                String(tableIndex * 10 + column + 1),
-                x(93.075 + column * turnWidth),
-                y(top + 7.049),
-                { size: font(RECORD_SHEET_FONT.inventory), weight: 700 },
-            );
+            const boundary = labelBoundary + column * turnWidth;
+            addLine(group, x(boundary), y(top), x(boundary), y(top + tableHeight), '#000', 0.58);
+        }
+        const caption = { size: font(RECORD_SHEET_FONT.inventory), weight: 700 } as const;
+        const turnCaption = { size: font(turnSize), weight: 700 } as const;
+        const turnBaseline = y(centred(top + turnRowHeight / 2, turnSize));
+        addText(group, 'Turn #', x(left + 3), turnBaseline, turnCaption);
+        VELOCITY_RECORD_FIELDS.forEach((field, fieldIndex) => {
+            addText(group, VELOCITY_RECORD_LABELS[field], x(left + 3),
+                y(centred(rowTop(fieldIndex) + rowHeight / 2, RECORD_SHEET_FONT.inventory)), caption);
+        });
+        for (let column = 0; column < 10; column++) {
+            const turn = tableIndex * 10 + column + 1;
+            const middle = labelBoundary + (column + 0.5) * turnWidth;
+            addText(group, String(turn), x(middle), turnBaseline, { ...turnCaption, anchor: 'middle' });
+            // The runtime binder writes the player's values here, as large as the crew skills allow.
+            VELOCITY_RECORD_FIELDS.forEach((field, fieldIndex) => {
+                const cell = svgElement('rect');
+                setAttributes(cell, {
+                    x: x(labelBoundary + column * turnWidth),
+                    y: y(rowTop(fieldIndex)),
+                    width: x(turnWidth),
+                    height: y(rowHeight),
+                    fill: 'transparent',
+                    class: 'velocityCell',
+                    'data-turn': turn,
+                    'data-field': field,
+                });
+                group.appendChild(cell);
+                const value = addText(group, '', x(middle), y(centred(rowTop(fieldIndex) + rowHeight / 2, valueSize)), {
+                    size: font(valueSize), weight: 700, anchor: 'middle', class: 'velocityValue',
+                });
+                setAttributes(value, { 'data-turn': turn, 'data-field': field });
+            });
         }
     });
 }

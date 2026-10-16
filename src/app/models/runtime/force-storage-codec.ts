@@ -6,6 +6,8 @@ import type { StoredForceRecord, StoredForceUnit, StoredForceGroup, StoredForceC
 import { packForcePersonnel, unpackForcePersonnel, savedCrewHealthTarget, type AssignedForcePerson, type DecodedForcePersonnel } from './force-personnel-storage';
 export type { StoredForceRecord } from './force-storage.model';
 
+import { BOMB_SECTIONS, type BombSection } from '../aerospace-bomb.model';
+import { VELOCITY_RECORD_FIELDS, type VelocityRecordField } from '../aerospace-velocity-record.model';
 import { GameSystem } from '../common.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../crew-member.model';
 import type {
@@ -117,7 +119,9 @@ import {
     AS_FORCE_FIELD,
     AS_NETWORK_FIELD,
     AS_STATE_FIELD,
+    CBT_BOMB_SECTION,
     CBT_BOMBAST_LASER_FIELD,
+    CBT_VELOCITY_RECORD_FIELD,
     CBT_C3_EMERGENCY_MASTER_FIELD,
     CBT_COMPONENT_STATE_FIELD,
     CBT_DEPLOYMENT_METADATA_FIELD,
@@ -219,12 +223,14 @@ const CBT_NON_MEK_UNIT_FIELDS = [
     CBT_UNIT_FIELD.componentState,
     CBT_UNIT_FIELD.damageTrackState,
     CBT_UNIT_FIELD.ammoState,
+    CBT_UNIT_FIELD.bombState,
     CBT_UNIT_FIELD.conditions,
     CBT_UNIT_FIELD.heat,
     CBT_UNIT_FIELD.nonMekTurn,
     CBT_UNIT_FIELD.equipmentRowOrder,
     CBT_UNIT_FIELD.c3Position,
     CBT_UNIT_FIELD.pendingCombat,
+    CBT_UNIT_FIELD.velocityRecord,
 ] as const;
 
 export function encodeForceForStorage(force: SerializedForce): StoredForceRecord {
@@ -1101,6 +1107,10 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
             unit.ammoState,
             row => tuple(row.componentId, row.shotsSpent, row.munitionOverride, row.hotLoaded),
         ),
+        [CBT_UNIT_FIELD.bombState]: packRows(
+            unit.bombState,
+            row => tuple(CBT_BOMB_SECTION[row.section], row.bombId, row.count, row.spent),
+        ),
         [CBT_UNIT_FIELD.conditions]: unit.conditions?.length ? [...unit.conditions] : undefined,
         [CBT_UNIT_FIELD.heat]: packNonMekHeat(unit.heat),
         [CBT_UNIT_FIELD.nonMekTurn]: packNonMekTurn(unit.turn),
@@ -1109,6 +1119,10 @@ function packNonMekUnit(unit: SerializedNonMekUnit, c3Position: C3UnitPosition |
             ? undefined
             : [c3Position.x, c3Position.y],
         [CBT_UNIT_FIELD.pendingCombat]: packNonMekPending(unit.pendingCombat),
+        [CBT_UNIT_FIELD.velocityRecord]: packRows(
+            unit.velocityRecord,
+            row => [row.turn, CBT_VELOCITY_RECORD_FIELD[row.field], row.value],
+        ),
     });
 }
 
@@ -1220,6 +1234,29 @@ function unpackNonMekUnit(value: Record<string, unknown>, path: string, header: 
                 shotsSpent: rowInteger(row, 1, rowPath),
                 ...(row[2] == null ? {} : { munitionOverride: rowText(row, 2, rowPath) }),
                 ...(row[3] === undefined ? {} : { hotLoaded: optionalTrue(row[3], `${rowPath}[3]`) }),
+                }),
+            ),
+        }),
+        ...(value[CBT_UNIT_FIELD.bombState] === undefined ? {} : {
+            bombState: unpackRows(
+                value[CBT_UNIT_FIELD.bombState],
+                `${path}.${CBT_UNIT_FIELD.bombState}`,
+                (row, rowPath) => ({
+                section: unpackBombSection(rowText(row, 0, rowPath), `${rowPath}[0]`),
+                bombId: rowText(row, 1, rowPath),
+                count: rowInteger(row, 2, rowPath),
+                ...(row[3] === undefined ? {} : { spent: rowInteger(row, 3, rowPath) }),
+                }),
+            ),
+        }),
+        ...(value[CBT_UNIT_FIELD.velocityRecord] === undefined ? {} : {
+            velocityRecord: unpackRows(
+                value[CBT_UNIT_FIELD.velocityRecord],
+                `${path}.${CBT_UNIT_FIELD.velocityRecord}`,
+                (row, rowPath) => ({
+                turn: rowInteger(row, 0, rowPath),
+                field: unpackVelocityRecordField(rowText(row, 1, rowPath), `${rowPath}[1]`),
+                value: rowInteger(row, 2, rowPath),
                 }),
             ),
         }),
@@ -2250,6 +2287,18 @@ function unpackRoster(groups: readonly DecodedGroup[], units: readonly Serialize
 
 function requireUniqueIds(ids: readonly string[], path: string): void {
     if (new Set(ids).size !== ids.length) throw new Error(path + ' contains duplicate identities');
+}
+
+function unpackBombSection(code: string, path: string): BombSection {
+    const section = BOMB_SECTIONS.find(candidate => CBT_BOMB_SECTION[candidate] === code);
+    if (section === undefined) throw new Error(path + ' must be a bomb section');
+    return section;
+}
+
+function unpackVelocityRecordField(code: string, path: string): VelocityRecordField {
+    const field = VELOCITY_RECORD_FIELDS.find(candidate => CBT_VELOCITY_RECORD_FIELD[candidate] === code);
+    if (field === undefined) throw new Error(path + ' must be a velocity record field');
+    return field;
 }
 
 function optionalTrue(value: unknown, path: string): true | undefined {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { supportVehicleBarRating, type SupportVehicle } from '../support-vehicle';
 import {
   AERO_LOCATIONS,
@@ -13,6 +13,7 @@ import {
   resolveSupportVehicleWeightClass,
 } from '../../types';
 import { isExternalStoresHardpointEquipment } from '../../../aerospace-support-equipment.model';
+import type { BombCapacity } from '../../../aerospace-bomb.model';
 import { AeroEntity } from './aero-entity';
 import type { UnitSubtype } from '../../types';
 import type { TechRatingSource } from '../../types';
@@ -55,17 +56,13 @@ export class FixedWingSupportEntity extends AeroEntity implements SupportVehicle
     ];
   }
   
-  /** Maximum bomb payload, derived from external hardpoints and Internal Bomb Bay cargo space. */
-  readonly maxBombPoints = computed(() => {
-    const externalHardpoints = this.equipment().filter(mount =>
-      isExternalStoresHardpointEquipment(mount.equipment)).length;
-    if (!this.applicableQuirks().some(({ quirk }) => quirk.key === 'internal_bomb')) return externalHardpoints;
-    const internalCapacity = this.transporters().reduce((total, transporter) =>
-      total + (transporter.kind === 'bay' && transporter.configuration.type === 'cargo'
-        ? Math.floor(transporter.capacity)
-        : 0), 0);
-    return externalHardpoints + internalCapacity;
-  });
+  /** MegaMek FixedWingSupport: one external hardpoint per External Stores Hardpoint. */
+  protected override computeBombCapacity(): BombCapacity {
+    return {
+      external: this.equipment().filter(mount => isExternalStoresHardpointEquipment(mount.equipment)).length,
+      internal: this.internalBombBayPoints(),
+    };
+  }
 
   override isSupportVehicle(): this is this & SupportVehicle {
     return true;

@@ -10,6 +10,14 @@ hasMekRuntime,
 hasNonMekRuntime,
 type CBTNonMekUnitSnapshot,
 } from '../models/cbt-unit-snapshot';
+import {
+    bombLoadoutIssue,
+    bombType,
+    carriedBombs,
+    type BombLoad,
+    type BombLoadChoice,
+    type BombSection,
+} from '../models/aerospace-bomb.model';
 import { GameSystem } from '../models/common.model';
 import { DEFAULT_GUNNERY_SKILL,DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import type { ArmorFaceId,LocationId } from '../models/entity/entity-identifiers';
@@ -87,6 +95,12 @@ interface ParsedMulSlot {
     readonly armorHit?: boolean;
     readonly hit: boolean;
     readonly destroyed: boolean;
+}
+
+interface ParsedMulBomb {
+    readonly type: string;
+    readonly load: number;
+    readonly section: BombSection;
 }
 
 interface ParsedMulLocation {
@@ -209,6 +223,7 @@ export async function parseMulForce(
             admitted = member;
             await applyMulCrew(force, member, crew);
             await applyMulLocations(force, member, parseEntityLocations(entity), issues);
+            await applyMulBombs(force, member, parseEntityBombs(entity), issues);
         } catch (error) {
             if (admitted) await force.removeCBTMember(admitted.id);
             issues.push({ severity: 'error', message: `Could not import ${formatUnitName(summary)}: ${errorMessage(error)}` });
@@ -276,11 +291,64 @@ function createEntityRuntimeElement(
     for (const location of createNonMekRuntimeLocationElements(doc, snapshot)) {
         appendIndented(entity, doc, location, '\t\t');
     }
+    const bombs = createBombsElement(doc, snapshot.state.bombs ?? []);
+    if (bombs) appendIndented(entity, doc, bombs, '\t\t');
     const game = doc.createElement('Game');
     setAttributes(game, { id: index + 1 });
     appendIndented(entity, doc, game, '\t\t');
     appendClosingIndent(entity, doc, '\t');
     return entity;
+}
+
+/** MegaMek EntityListFile bomb choices: type is the bomb internal name, load the bombs still carried. */
+function createBombsElement(doc: XMLDocument, loads: readonly BombLoad[]): Element | null {
+    const carried = loads.filter(load => carriedBombs(load) > 0);
+    if (carried.length === 0) return null;
+    const element = doc.createElement('bombs');
+    for (const load of carried) {
+        const bomb = doc.createElement('bomb');
+        setAttributes(bomb, { type: load.bombId, load: carriedBombs(load), Internal: load.section === 'internal' });
+        appendIndented(element, doc, bomb, '\t\t\t');
+    }
+    appendClosingIndent(element, doc, '\t\t');
+    return element;
+}
+
+async function applyMulBombs(
+    force: CBTForce,
+    member: CBTForceMember,
+    bombs: readonly ParsedMulBomb[],
+    issues: MulParseIssue[],
+): Promise<void> {
+    if (bombs.length === 0) return;
+    const registry = member.entity.getEquipmentRegistry();
+    const loads = new Map<string, BombLoadChoice>();
+    for (const bomb of bombs) {
+        const id = (bombType(bomb.type) ?? bombType(registry.findEquipment(bomb.type)?.internalName ?? ''))?.id;
+        if (!id) {
+            issues.push({ severity: 'warning', message: `Skipped unknown bomb "${bomb.type}" on ${formatUnitName(member.entity)}.` });
+            continue;
+        }
+        if (bomb.load <= 0) continue;
+        const key = `${bomb.section}:${id}`;
+        loads.set(key, { section: bomb.section, bombId: id, count: (loads.get(key)?.count ?? 0) + bomb.load });
+    }
+    const choices = [...loads.values()];
+    if (choices.length === 0) return;
+    const issue = bombLoadoutIssue(choices, member.entity.bombCapacity());
+    if (issue !== null) {
+        issues.push({ severity: 'warning', message: `Skipped bombs on ${formatUnitName(member.entity)}: ${issue}` });
+        return;
+    }
+    await dispatchEntity(force, member, { type: 'configure-bombs', loads: choices });
+}
+
+function parseEntityBombs(entity: Element): ParsedMulBomb[] {
+    return Array.from(entity.querySelectorAll(':scope > bombs > bomb')).map(bomb => ({
+        type: bomb.getAttribute('type') ?? '',
+        load: Math.max(0, parseNumber(bomb.getAttribute('load'), 0)),
+        section: parseBoolean(bomb.getAttribute('Internal')) ? 'internal' : 'external',
+    }));
 }
 
 function createEntityRuntimeCrewElement(

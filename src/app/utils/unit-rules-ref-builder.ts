@@ -7,7 +7,6 @@ import {
   WeaponEquipment,
 } from '../models/equipment.model';
 import type { BaseEntity } from '../models/entity/base-entity';
-import { InfantryEntity } from '../models/entity/entities/infantry/infantry-entity';
 import { isIndustrialStructureEquipment } from '../models/construction-equipment.model';
 
 export interface UnitRulesRefApplicability {
@@ -67,9 +66,6 @@ export function buildUnitRulesRefs(entity: BaseEntity): string[][] {
         ...(intrinsicAmmo ? [rulesRefBooks(intrinsicAmmo)] : []),
       ];
     }),
-    ...(entity instanceof InfantryEntity
-      ? [rulesRefBooks(entity.primaryWeapon()), rulesRefBooks(entity.secondaryWeapon())]
-      : []),
   ];
   return createMinimalUnitRulesRefCombinations(componentRulesRefs, {
     isMek: entity.entityType === 'Mek',

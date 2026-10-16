@@ -86,6 +86,10 @@ export class CBTForceMember {
         return this.force.getUnitC3BattleValue(this.id);
     }
 
+    public externalStoresBattleValue(): number | null {
+        return this.force.getUnitExternalStoresBattleValue(this.id);
+    }
+
     public skillBattleValue(): number | null {
         return this.force.getUnitSkillBattleValue(this.id);
     }

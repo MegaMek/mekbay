@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { VelocityRecordEntry } from '../aerospace-velocity-record.model';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { CrewMember,type CrewMemberRuntimeState,type CrewMemberState } from '../crew-member.model';
@@ -12,7 +13,8 @@ CrewPositionId,
 LocationId,
 SystemDamageTrackId,
 } from '../entity/entity-identifiers';
-import { STANDARD_MOVEMENT_CALCULATION,type EntityTechBase } from '../entity/types';
+import type { BombLoad } from '../aerospace-bomb.model';
+import type { EntityTechBase } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
 import {
 isAeroEntity,
@@ -43,7 +45,7 @@ import { hasVacantNonMekCrew,type NonMekUnitRuntimeState } from './non-mek-unit-
 import { systemDamagePresentation } from './system-damage-presentation';
 import type { UnitEditContext } from './unit-edit-context';
 import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
-import { nonMekAttackMovementModifier, projectNonMekMovementCapabilities } from './non-mek-unit-instance';
+import { nonMekAttackMovementModifier, nonMekMovementCalculation, projectNonMekMovementCapabilities } from './non-mek-unit-instance';
 import type { RecordSheetMovementSelection } from './record-sheet-movement';
 
 export interface NonMekRecordSheetArmorFace {
@@ -138,6 +140,10 @@ export interface NonMekRecordSheetSnapshot {
     readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly CrewMemberState[];
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
+    /** Carried bombs for the external stores boxes. */
+    readonly bombs: readonly BombLoad[];
+    /** Aerospace velocity record values. */
+    readonly velocityRecord: readonly VelocityRecordEntry[];
     readonly destroyed: boolean;
     readonly heat: Readonly<{
         readonly tracked: boolean;
@@ -312,6 +318,7 @@ export function projectNonMekRecordSheet(
         || protoMekRules?.computedConditions.includes('immobile') === true
         || conditions.has('immobile');
     const capabilities = projectNonMekMovementCapabilities(entity, index, state, ruleset, crewAssignment);
+    const movementCalculation = nonMekMovementCalculation(state);
     const airborne = state.turn.airborne === true;
     const movementModes = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
     return Object.freeze({
@@ -339,12 +346,12 @@ export function projectNonMekRecordSheet(
         }),
         movement: Object.freeze({
             walk: movementBlocked ? 0 : vehicleRules?.movement.walk
-                ?? entity.computeWalkMP(STANDARD_MOVEMENT_CALCULATION),
+                ?? entity.computeWalkMP(movementCalculation),
             run: movementBlocked ? 0 : vehicleRules?.movement.run
-                ?? entity.computeRunMP(STANDARD_MOVEMENT_CALCULATION),
+                ?? entity.computeRunMP(movementCalculation),
             maxRun: movementBlocked ? 0 : vehicleRules?.movement.maxRun
-                ?? entity.computeRunMP(STANDARD_MOVEMENT_CALCULATION),
-            jump: movementBlocked ? 0 : entity.computeJumpMP(STANDARD_MOVEMENT_CALCULATION),
+                ?? entity.computeRunMP(movementCalculation),
+            jump: movementBlocked ? 0 : entity.computeJumpMP(movementCalculation),
             umu: movementBlocked ? 0 : entity.umuMP(),
         }),
         armorType: armor?.armor.name ?? 'Patchwork',
@@ -364,6 +371,8 @@ export function projectNonMekRecordSheet(
             ?? protoMekRules?.crewStateDisplayKeys
             ?? aeroRules?.crewStateDisplayKeys
             ?? Object.freeze([]),
+        bombs: state.bombs ?? Object.freeze([]),
+        velocityRecord: state.velocityRecord ?? Object.freeze([]),
         destroyed,
         heat: aeroRules?.heat ?? Object.freeze({
             tracked: false,

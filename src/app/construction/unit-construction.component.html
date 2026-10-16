@@ -1827,6 +1827,30 @@
           </div>
         }
       }
+      @if (panel() === 'loadout') {
+        @if (bombStores(); as stores) {
+          <section class="bomb-stores-panel framed-borders" aria-label="Bombs">
+            <div class="bomb-stores-header">
+              <span>
+                Bombs · {{ stores.capacity.external }} external{{
+                  stores.capacity.internal > 0 ? ' / ' + stores.capacity.internal + ' internal' : ''
+                }}
+                hardpoints
+              </span>
+              @if (stores.staged && !forceMember()?.force?.readOnly()) {
+                <button class="bt-button" type="button" (click)="setRuntimeBombs()" [disabled]="busy()">SET BOMBS</button>
+              }
+            </div>
+            @for (row of stores.rows; track row.id) {
+              <div class="bomb-stores-row">
+                <span>{{ row.name }}</span><small>{{ row.section }}</small><span>{{ row.carried }}/{{ row.count }}</span>
+              </div>
+            } @empty {
+              <small>{{ stores.staged ? 'No bombs loaded.' : 'Bombs are loaded on a force unit.' }}</small>
+            }
+          </section>
+        }
+      }
       @if (panel() === 'loadout' || panel() === 'topology') {
         <details
           #unallocatedPanel

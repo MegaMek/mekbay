@@ -55,8 +55,8 @@ export function calculateBattleArmorCostReport(
 
 export function calculateInfantryCostReport(entity: InfantryEntity): EntityCostReport {
   const troopers = entity.squadSize() * entity.squadCount();
-  const primaryCount = (entity.squadSize() - entity.secondaryCount()) * entity.squadCount();
-  const secondaryCount = troopers - primaryCount;
+  const primaryCount = entity.platoonWeaponTroopers('primary');
+  const secondaryCount = entity.platoonWeaponTroopers('secondary');
   const primaryCost = entity.primaryWeapon()?.cost;
   const secondaryCost = entity.secondaryWeapon()?.cost;
   const weaponsCost = primaryCount * (typeof primaryCost === 'number' ? Math.sqrt(primaryCost) * 2000 : 0)
