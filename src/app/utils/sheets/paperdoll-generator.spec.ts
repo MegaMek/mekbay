@@ -84,6 +84,24 @@ describe('PaperdollGenerator', () => {
         });
     }
 
+    it('gives each armor paperdoll one random hit button in its own coordinates, and none to rear or structure art', async () => {
+        const [fighter, biped, rear, structure] = await Promise.all([
+            PaperdollGenerator.createPaperdoll('/images/paperdolls/fighter-aerospace.svg', 344, 440, {},
+                { preserveAuthoredCoordinates: true, scale: false }),
+            PaperdollGenerator.createPaperdoll('/images/paperdolls/biped-armor.svg', 200, 300),
+            PaperdollGenerator.createPaperdoll('/images/paperdolls/biped-armor-back.svg', 100, 85),
+            PaperdollGenerator.createPaperdoll('/images/paperdolls/biped-structure.svg', 117, 171, {}, { type: 'structure' }),
+        ]);
+
+        expect([...fighter.querySelectorAll('[data-mekbay-random-hit]')].map(button => button.getAttribute('transform')))
+            .toEqual(['translate(18 205) scale(0.75)']);
+        const button = biped.querySelector('[data-mekbay-random-hit]')!;
+        expect(biped.querySelectorAll('[data-mekbay-random-hit]').length).toBe(1);
+        expect(button.getAttribute('pointer-events')).toBe('all');
+        expect(rear.querySelector('[data-mekbay-random-hit]')).toBeNull();
+        expect(structure.querySelector('[data-mekbay-random-hit]')).toBeNull();
+    });
+
     it('has editable rail guides for every biped armor and structure location', async () => {
         const front = { HD: 9, CT: 47, LT: 32, RT: 32, LA: 34, RA: 34, LL: 41, RL: 41 };
         const rear = { CT_R: 15, LT_R: 10, RT_R: 10 };

@@ -77,7 +77,6 @@ export interface CompactVehicleDiagramPresentation {
     /** Replaces the source artwork's authored root transform for a template variant. */
     readonly authoredRootTransform?: string;
     readonly catalystY?: number;
-    readonly randomHitTransform?: string;
 }
 
 /** MML's vehicle title uses the support size, motive family and vessel designation. */
@@ -842,8 +841,6 @@ export async function drawCompactVehicleDiagram(
                 });
             }
         }
-        paperdoll.setAttribute('data-random-hit-transform', presentation.randomHitTransform
-            ?? `translate(${formatNumber(box.width - 28)} 1) scale(0.9)`);
         decoratePaperdollPips(paperdoll);
         revealVehicleMotiveArt(paperdoll, presentation.motiveArtId);
         group.appendChild(paperdoll);

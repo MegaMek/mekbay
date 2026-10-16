@@ -53,7 +53,9 @@ createRoot,
 decoratePaperdollPips,
 drawCrewHitGrid,
 drawGeneratedFooter,
+appendHeatPanelControls,
 drawHeatScale,
+heatSinkCaption,
 drawPageChrome,
 formatGeometryNumber,
 formatMovementWithMaximum,
@@ -147,7 +149,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
         await drawMekPaperdolls(svg, entity, at({ x: 402.966, y: 18, width: 173, height: 543 }), request.pipLayout);
         await drawMekCriticalPanel(svg, entity, { x: 18.966, y: 389, width: 377.7 + widthDelta, height: 363 + heightDelta }, request.ruleset);
         drawHeatPanel(svg, entity, at({ x: 402.966, y: 571.5 + heightDelta, width: 159.5, height: 180.5 }));
-        drawHeatScale(svg, at({ x: 574.546, y: 386 + heightDelta, width: 19.454, height: 366 }));
+        drawHeatScale(svg, at({ x: 574.546, y: 386 + heightDelta, width: 19.454, height: 366 }), 'mek');
         const catalyst = entity.chassisConfig === 'Tripod'
             ? { catalystX: 140.64, catalystY: 646.025, catalystScale: 0.968 }
             : entity.chassisConfig === 'LAM'
@@ -2168,21 +2170,12 @@ function drawHeatPanel(svg: SVGSVGElement, entity: MekEntity, box: Box): void {
 }
 
 function appendMekHeatControls(group: SVGGElement, box: Box): void {
-    const header = Array.from(group.children)
-        .find((child): child is SVGGElement => child.tagName.toLowerCase() === 'g');
-    if (header) {
-        const apply = header.cloneNode(true) as SVGGElement;
-        apply.id = 'applyHeatButton';
-        apply.setAttribute('class', 'screen-only no-autocolor');
-        const label = apply.querySelector('text');
-        if (label) label.textContent = 'APPLY HEAT';
-        group.appendChild(apply);
-    }
-
-    const framePaths = Array.from(group.children)
-        .filter((child): child is SVGPathElement => child.tagName.toLowerCase() === 'path');
-    const frame = framePaths[1];
-    if (frame) frame.classList.add('applyHeatButtonFrame');
+    appendHeatPanelControls(group, {
+        x: Math.max(0, box.width - 42),
+        y: 35,
+        width: 38,
+        height: Math.max(12, box.height - 72),
+    });
     const damagedEngineHeat = addText(group, '', box.width - 6, box.height - 4, {
         size: 8,
         weight: 700,
@@ -2193,20 +2186,6 @@ function appendMekHeatControls(group: SVGGElement, box: Box): void {
     damagedEngineHeat.id = 'damagedEngineHeatText';
     damagedEngineHeat.setAttribute('display', 'none');
     damagedEngineHeat.setAttribute('dominant-baseline', 'text-after-edge');
-
-    const heatSinks = group.querySelector<SVGGElement>('g.hsPips');
-    if (heatSinks) {
-        heatSinks.insertBefore(
-            transparentRect(
-                Math.max(0, box.width - 42),
-                35,
-                38,
-                Math.max(12, box.height - 72),
-                'changeActiveHeatsinksCountButton screen-only',
-            ),
-            heatSinks.firstChild,
-        );
-    }
 }
 
 interface MekHeatEffectRow extends RecordSheetHeatEffect {
@@ -2313,7 +2292,7 @@ function appendMekHeatSinkData(
     const { x, y, font, fontScale } = scale;
     const heatSinkCount = Math.max(0, entity.heatSinkCount());
     const heatSinkType = entity.heatSinkType();
-    const heatSinkLabel = heatSinkType === 'Single' ? 'Heat Sinks:' : `${heatSinkType} Heat Sinks:`;
+    const heatSinkLabel = heatSinkCaption(heatSinkType);
     const sinkType = addText(group, heatSinkLabel, x(152), y(22), {
         size: font(8.44), anchor: 'end',
     });

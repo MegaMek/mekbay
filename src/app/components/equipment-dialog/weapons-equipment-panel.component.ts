@@ -585,6 +585,12 @@ export class WeaponsEquipmentPanelComponent {
         return this.handlerChoices(row).length > 0 || this.canMarkDestroyed(row) || this.canRepair(row);
     }
 
+    /** A lone HIT/REPAIR control is shown directly rather than behind the compact controls toggle. */
+    rowHasOnlyStatusAction(row: EquipmentPanelRow): boolean {
+        return !this.showAmmoControls(row) && this.handlerChoices(row).length === 0
+            && (this.canMarkDestroyed(row) || this.canRepair(row));
+    }
+
     rowHasActions(row: EquipmentPanelRow): boolean {
         return this.showAmmoControls(row) || this.rowHasControls(row);
     }

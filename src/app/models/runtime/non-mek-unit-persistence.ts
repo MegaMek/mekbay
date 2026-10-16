@@ -134,6 +134,7 @@ export interface SerializedNonMekUnit {
         readonly airborne?: boolean;
         readonly movement?: NonMekMovementDeclaration;
         readonly weaponsHeat?: number;
+        readonly heatSettled?: true;
         readonly cover?: SerializedUnitCover;
         readonly spotting?: true;
         readonly phaseStateChanged?: true;
@@ -470,7 +471,7 @@ function restoreVelocityRecord(rows: SerializedNonMekUnit['velocityRecord']): re
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {
     const turn = state.turn;
     if (turn.turnCounter === 0 && turn.airborne === null && turn.movement === null
-        && turn.weaponsHeat === 0 && turn.cover === null && !turn.spotting
+        && turn.weaponsHeat === 0 && !turn.heatSettled && turn.cover === null && !turn.spotting
         && !turn.phaseStateChanged
         && turn.endTurnCheckpoint === undefined
         && turn.controlRecovery === undefined) return undefined;
@@ -478,6 +479,7 @@ function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUni
         ...(turn.turnCounter === 0 ? {} : { turnCounter: turn.turnCounter }),
         ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...(turn.heatSettled ? { heatSettled: true as const } : {}),
         ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
         ...(turn.spotting ? { spotting: true as const } : {}),
         ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
@@ -511,6 +513,7 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
         turnCounter: saved.turn?.turnCounter ?? 0,
         airborne: saved.turn?.airborne ?? null,
         weaponsHeat: saved.turn?.weaponsHeat ?? 0,
+        heatSettled: saved.turn?.heatSettled === true,
         cover: saved.turn?.cover === undefined
             ? null
             : deserializeUnitCover(saved.turn.cover) ?? null,
@@ -536,7 +539,7 @@ function validateSerializedNonMekTurn(value: unknown): void {
     const turn = requireRecord(value, 'entity turn');
     const keys = Object.keys(turn);
     if (keys.some(key => key !== 'turnCounter' && key !== 'airborne'
-        && key !== 'movement' && key !== 'weaponsHeat'
+        && key !== 'movement' && key !== 'weaponsHeat' && key !== 'heatSettled'
         && key !== 'cover' && key !== 'spotting' && key !== 'endTurnCheckpoint'
         && key !== 'controlRecovery' && key !== 'phaseStateChanged')) {
         throw new Error('Non-Mek turn contains unknown fields');
@@ -551,6 +554,9 @@ function validateSerializedNonMekTurn(value: unknown): void {
     }
     if (turn['spotting'] !== undefined && turn['spotting'] !== true) {
         throw new Error('Non-Mek spotting state must be true when present');
+    }
+    if (turn['heatSettled'] !== undefined && turn['heatSettled'] !== true) {
+        throw new Error('Non-Mek settled heat marker must be true when present');
     }
     if (turn['phaseStateChanged'] !== undefined && turn['phaseStateChanged'] !== true) {
         throw new Error('Non-Mek phase state marker must be true when present');

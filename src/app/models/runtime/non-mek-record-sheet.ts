@@ -24,7 +24,7 @@ isProtoMekEntity,
 isVehicleEntity,
 } from '../entity/utils/entity-type-guards';
 import type { EquipmentStatus } from '../equipment-status.model';
-import { projectAeroRuntimeRules,type AeroHeatEffects } from '../rules/aero-runtime-rules';
+import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import {
 projectConventionalInfantryCombat,
 type ConventionalInfantryCombatProfile,
@@ -45,7 +45,8 @@ import { hasVacantNonMekCrew,type NonMekUnitRuntimeState } from './non-mek-unit-
 import { systemDamagePresentation } from './system-damage-presentation';
 import type { UnitEditContext } from './unit-edit-context';
 import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
-import { nonMekAttackMovementModifier, nonMekMovementCalculation, projectNonMekMovementCapabilities } from './non-mek-unit-instance';
+import { nonMekAttackMovementModifier, nonMekMovementCalculation, projectNonMekEndTurnHeat, projectNonMekMovementCapabilities,type NonMekEndTurnHeatProjection } from './non-mek-unit-instance';
+import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 import type { RecordSheetMovementSelection } from './record-sheet-movement';
 
 export interface NonMekRecordSheetArmorFace {
@@ -145,14 +146,10 @@ export interface NonMekRecordSheetSnapshot {
     /** Aerospace velocity record values. */
     readonly velocityRecord: readonly VelocityRecordEntry[];
     readonly destroyed: boolean;
-    readonly heat: Readonly<{
-        readonly tracked: boolean;
-        readonly current: number;
-        readonly pending: number | null;
-        readonly heatsinksOff: number;
-        readonly heatSinkCount: number;
-        readonly dissipation: number;
-        readonly effects: AeroHeatEffects;
+    readonly heatPolicy: HeatAutomationPolicy;
+    readonly heat: AeroRuntimeRulesProjection['heat'] & Readonly<{
+        /** End-turn heat for aerospace units that track heat. */
+        readonly projection: NonMekEndTurnHeatProjection | null;
     }>;
     readonly currentBattleValue: number;
     readonly pristineBattleValue: number;
@@ -170,6 +167,7 @@ export function projectNonMekRecordSheet(
     pristineBattleValue: number,
     crewAssignment?: CrewAssignment,
     forcedWithdrawal = true,
+    heatPolicy: HeatAutomationPolicy = 'manual',
 ): Omit<NonMekRecordSheetSnapshot, 'editContext'> {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek record-sheet projection');
     const vehicleRules = isVehicleEntity(entity)
@@ -374,10 +372,16 @@ export function projectNonMekRecordSheet(
         bombs: state.bombs ?? Object.freeze([]),
         velocityRecord: state.velocityRecord ?? Object.freeze([]),
         destroyed,
-        heat: aeroRules?.heat ?? Object.freeze({
+        heatPolicy,
+        heat: aeroRules ? Object.freeze({
+            ...aeroRules.heat,
+            projection: aeroRules.heat.tracked ? projectNonMekEndTurnHeat(entity, index, state, ruleset) : null,
+        }) : Object.freeze({
             tracked: false,
             current: 0,
             pending: null,
+            previous: 0,
+            projection: null,
             heatsinksOff: 0,
             heatSinkCount: 0,
             dissipation: 0,

@@ -168,6 +168,9 @@ export type NonMekHeatRuntimeState = CBTUnitHeatState;
 
 export interface NonMekEndTurnHeatProjection {
     readonly current: number;
+    /** The heat this turn's generation and dissipation leave from the current heat, ignoring any arrow. */
+    readonly calculated: number;
+    /** The heat End Turn settles: the arrow when one is set, otherwise the calculated heat. */
     readonly projected: number;
     readonly generated: number;
     readonly dissipated: number;
@@ -188,6 +191,11 @@ export interface NonMekTurnRuntimeState {
     readonly airborne: boolean | null;
     readonly movement: NonMekMovementDeclaration | null;
     readonly weaponsHeat: number;
+    /**
+     * The arrow was committed as this turn's final heat (APPLY HEAT or an end-of-phase commit), so End Turn adds only
+     * weapon heat fired afterwards instead of settling generation and dissipation again.
+     */
+    readonly heatSettled: boolean;
     readonly cover: UnitCover | null;
     readonly spotting: boolean;
     /** Durable origin/next phase-dirty marker, cleared only by a phase boundary. */
@@ -511,6 +519,7 @@ export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRun
             airborne: canonicalNonMekAirborneState(entity, null),
             movement: null,
             weaponsHeat: 0,
+            heatSettled: false,
             cover: null,
             spotting: false,
             phaseStateChanged: false,
@@ -539,6 +548,7 @@ export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRu
             turnCounter: state.turn.turnCounter,
             airborne: state.turn.airborne,
             weaponsHeat: state.turn.weaponsHeat,
+            heatSettled: state.turn.heatSettled,
             cover: state.turn.cover,
             spotting: state.turn.spotting,
             phaseStateChanged: state.turn.phaseStateChanged,
@@ -1825,12 +1835,9 @@ function reduceNonMekUnitState(
                 && command.policy !== 'manual') {
                 throw new Error('Invalid non-Mek heat policy');
             }
-            const pendingHeatWasExplicit = state.heat.pendingOverride !== undefined;
             let committed = commitPendingNonMekChanges(state, index);
-            if (command.policy === 'automatic'
-                && isAeroEntity(entity)
-                && entity.tracksHeat()
-                && !pendingHeatWasExplicit) {
+            // A committed arrow settles the turn, so the projection then adds only later weapon heat.
+            if (command.policy === 'automatic' && isAeroEntity(entity) && entity.tracksHeat()) {
                 const heat = projectNonMekEndTurnHeat(entity, index, committed, ruleset)?.projected
                     ?? committed.heat.current;
                 committed = {
@@ -1853,6 +1860,7 @@ function reduceNonMekUnitState(
                     airborne: canonicalNonMekAirborneState(entity, null),
                     movement: null,
                     weaponsHeat: 0,
+                    heatSettled: false,
                     cover: null,
                     spotting: false,
                     phaseStateChanged: false,
@@ -1876,23 +1884,23 @@ export function projectNonMekEndTurnHeat(
     ruleset: CBTRuleset,
 ): NonMekEndTurnHeatProjection | null {
     if (!isAeroEntity(entity) || !entity.tracksHeat()) return null;
+    // A settled turn already holds its generation and dissipation; only weapons fired since then add heat.
+    const settled = state.turn.heatSettled;
     const weapons = Math.max(0, state.turn.weaponsHeat);
-    const nova = Math.max(0, nonMekNovaHeat(entity, index, state, ruleset));
-    const mobileHpg = Math.max(0, nonMekMobileHpgHeat(entity, index, state, ruleset));
+    const nova = settled ? 0 : Math.max(0, nonMekNovaHeat(entity, index, state, ruleset));
+    const mobileHpg = settled ? 0 : Math.max(0, nonMekMobileHpgHeat(entity, index, state, ruleset));
     const generated = weapons + nova + mobileHpg;
-    const dissipated = Math.max(0, projectAeroRuntimeRules(
+    const dissipated = settled ? 0 : Math.max(0, projectAeroRuntimeRules(
         entity,
         index,
         state,
         ruleset,
     ).heat.dissipation);
-    const projected = state.heat.pendingOverride ?? boundedHeat(Math.max(
-        0,
-        state.heat.current + generated - dissipated,
-    ));
+    const calculated = boundedHeat(Math.max(0, state.heat.current + generated - dissipated));
     return Object.freeze({
         current: state.heat.current,
-        projected,
+        calculated,
+        projected: state.heat.pendingOverride ?? calculated,
         generated,
         dissipated,
         sources: Object.freeze([
@@ -1998,7 +2006,7 @@ function commitPendingHeat(state: NonMekUnitRuntimeState): NonMekUnitRuntimeStat
             previous: state.heat.current,
             heatsinksOff: state.heat.heatsinksOff,
         },
-        turn: Object.freeze({ ...state.turn, weaponsHeat: 0 }),
+        turn: Object.freeze({ ...state.turn, weaponsHeat: 0, heatSettled: true }),
     };
 }
 
@@ -2613,6 +2621,7 @@ function validateState(
         || (state.turn.cover !== null && !isUnitCover(state.turn.cover))
         || typeof state.turn.spotting !== 'boolean'
         || typeof state.turn.phaseStateChanged !== 'boolean'
+        || typeof state.turn.heatSettled !== 'boolean'
         || (state.turn.spotting && state.turn.movement?.mode === 'sprint')) {
         throw new Error('Runtime has invalid non-Mek turn state');
     }

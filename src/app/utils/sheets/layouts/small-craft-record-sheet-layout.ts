@@ -56,7 +56,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         drawFighterCriticalPanel(svg, entity, at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 }));
         drawAeroVelocityPanel(svg, at(AERO_LOWER_PANEL_BOX));
         drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
-        if (entity.tracksHeat()) drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
+        if (entity.tracksHeat()) drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }), 'aero');
         const catalyst = at({ x: 527.13, y: 59.25, width: 0, height: 0 });
         drawGeneratedFooter(svg, page, { catalystX: catalyst.x, catalystY: catalyst.y, catalystScale: 1.015 });
         return svg;

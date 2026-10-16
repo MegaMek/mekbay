@@ -81,29 +81,40 @@ describe('Aero runtime rules', () => {
         expect(projection.modifiers.physical).toEqual([]);
     });
 
-    it('derives destruction from SI, the third engine hit, or the third FCS hit', () => {
+    it('derives destruction from SI, the third engine hit, or pilot death but not from a lost fire control', () => {
         const bySi = fighter('unit:aero-si');
         const si = [...bySi.getIndex().locations.values()].find(location => location.code === 'SI')!;
         bySi.dispatch({
             type: 'set-internal-damage',
-            
+
             locationId: si.id,
             damage: si.internalPoints,
         });
         expect(bySi.query().destroyed()).toBeTrue();
 
-        for (const damageTrackId of [systemDamageId('engine', 3), systemDamageId('fire-control', 3)]) {
+        for (const [damageTrackId, destroyed] of [
+            [systemDamageId('engine', 3), true],
+            [systemDamageId('fire-control', 3), false],
+        ] as const) {
             const runtime = fighter(`unit:aero-${damageTrackId}`);
             runtime.dispatch({
                 type: 'damage-track',
-                
+
                 damageTrackId,
                 amount: 1,
                 target: 'committed',
                 timestamp: 1,
             });
-            expect(runtime.query().destroyed()).withContext(damageTrackId).toBeTrue();
+            expect(runtime.query().destroyed()).withContext(damageTrackId).toBe(destroyed);
         }
+
+        const byPilot = fighter('unit:aero-pilot');
+        const pilot = [...byPilot.getIndex().crewPositions.keys()][0]!;
+        expect(byPilot.dispatch({
+            type: 'set-crew-state', positionId: pilot, wounds: 6, unconscious: false, ejected: false,
+        }).accepted).toBeTrue();
+        byPilot.dispatch({ type: 'end-phase' });
+        expect(byPilot.query().destroyed()).toBeTrue();
     });
 
     it('keeps a large craft operational at three engine hits and destroys it at six', () => {

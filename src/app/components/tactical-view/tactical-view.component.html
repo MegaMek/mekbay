@@ -1,5 +1,5 @@
 @if (member(); as activeMember) {
-<div class="tactical-shell" [class.read-only]="readOnly()">
+<div class="tactical-shell" [class.read-only]="readOnly()" [class.unit-destroyed]="unitDestroyed()">
     <nav class="tactical-toolbar glass" aria-label="Tactical view tools">
             <button type="button" class="toolbar-icon-button" [disabled]="!canUndo()" (click)="undoRuntimeCommand()"
                 aria-label="Undo" title="Undo">
@@ -43,188 +43,122 @@
             }
     </nav>
     <div class="tactical-scroll">
-        <div class="unit-overview">
-        <header class="unit-hero">
-            <unit-icon class="unit-icon" [unit]="activeMember.entity" [size]="44" />
-            <div class="unit-title-block">
-                <h1>{{ unitNames.name(activeMember.entity) }}</h1>
-                <div class="unit-meta">
-                    @if (mekSnapshot(); as mek) {
-                    <span>{{ mek.identity.massTons }} T</span><span>{{ mek.identity.techBase }}</span><span>{{
-                        mek.identity.form }}</span>
-                    <span>BV {{ mek.battleValue.adjusted ?? mek.battleValue.current ?? '—' }}</span>
-                    } @else if (nonMekSnapshot(); as entity) {
-                    <span>{{ entity.tonnage }} T</span><span>{{ entity.techBase }}</span><span>{{ entity.subtype ||
-                        entity.unitType }}</span>
-                    <span>BV {{ entity.currentBattleValue }}</span>
+        <header class="unit-header">
+            <div class="unit-identity">
+                <unit-icon class="unit-icon" [unit]="activeMember.entity" [size]="40" />
+                <div class="unit-title-block">
+                    <div class="unit-title-line">
+                        <h1>{{ unitNames.name(activeMember.entity) }}</h1>
+                        <span class="unit-meta">
+                            @if (mekSnapshot(); as mek) {
+                            <span>{{ mek.identity.massTons }} t</span><span>{{ mek.identity.techBase }}</span><span>{{ mek.identity.form }}</span><span>BV {{ mek.battleValue.adjusted ?? mek.battleValue.current ?? '—' }}</span>
+                            } @else if (nonMekSnapshot(); as entity) {
+                            <span>{{ entity.tonnage }} t</span><span>{{ entity.techBase }}</span><span>{{ entity.subtype || entity.unitType }}</span><span>BV {{ entity.currentBattleValue }}</span>
+                            }
+                        </span>
+                    </div>
+                    @if (passiveConditionStatuses().length > 0 || visibleConditionControls().length > 0) {
+                    <div class="hero-condition-controls" role="group" aria-label="Unit conditions">
+                        @for (status of passiveConditionStatuses(); track status.key) {
+                        <span class="state-chip active condition-status-chip" [style.--state-color]="status.color">{{ status.label }}</span>
+                        }
+                        @for (control of visibleConditionControls(); track control.key) {
+                        <button type="button" class="state-chip" [class.active]="unitConditionActive(control.key)"
+                            [attr.aria-pressed]="unitConditionActive(control.key)"
+                            [style.--state-color]="control.color" [disabled]="readOnly()"
+                            (click)="toggleUnitCondition(control.key)">{{ control.label }}</button>
+                        }
+                        @if (hasExpandableConditionMenu()) {
+                        <button type="button" class="state-chip condition-menu-toggle"
+                            [attr.aria-expanded]="conditionMenuExpanded()"
+                            [attr.aria-label]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
+                            [attr.title]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
+                            (click)="toggleConditionMenu()">
+                            <span class="chevron" [class.chevron-left]="conditionMenuExpanded()"
+                                [class.chevron-right]="!conditionMenuExpanded()" aria-hidden="true"></span>
+                        </button>
+                        }
+                    </div>
                     }
                 </div>
-                @if (passiveConditionStatuses().length > 0 || visibleConditionControls().length > 0) {
-                <div class="hero-condition-controls" role="group" aria-label="Unit conditions">
-                    @for (status of passiveConditionStatuses(); track status.key) {
-                    <span class="state-chip active condition-status-chip" [style.--state-color]="status.color">{{
-                        status.label }}</span>
-                    }
-                    @if (passiveConditionStatuses().length > 0 && visibleConditionControls().length > 0) {
-                    <span class="condition-status-separator" aria-hidden="true">|</span>
-                    }
-                    @for (control of visibleConditionControls(); track control.key) {
-                    <button type="button" class="state-chip" [class.active]="unitConditionActive(control.key)"
-                        [style.--state-color]="control.color" [disabled]="readOnly()"
-                        (click)="toggleUnitCondition(control.key)">{{ control.label }}</button>
-                    }
-                    @if (hasExpandableConditionMenu()) {
-                    <button type="button" class="state-chip condition-menu-toggle"
-                        [attr.aria-expanded]="conditionMenuExpanded()"
-                        [attr.aria-label]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
-                        [attr.title]="conditionMenuExpanded() ? 'Hide additional conditions' : 'Show additional conditions'"
-                        (click)="toggleConditionMenu()">
-                        <span class="chevron" [class.chevron-left]="conditionMenuExpanded()"
-                            [class.chevron-right]="!conditionMenuExpanded()" aria-hidden="true"></span>
+            </div>
+
+            @if (crew().length > 0) {
+            <div class="crew-roster framed-borders" role="group" aria-label="Crew">
+                @for (crew of crew(); track crew.positionId; let crewIndex = $index) {
+                @let position = crewPositionLabel(crewIndex);
+                <div class="crew-row" [class.vacant]="crew.effectiveState === 'vacant'"
+                    [class.incapacitated]="crew.effectiveState !== 'healthy' && crew.effectiveState !== 'vacant'">
+                    <button type="button" class="crew-identity" [disabled]="readOnly()" (click)="editCrew()"
+                        [attr.aria-label]="'Edit ' + position" [attr.title]="'Edit ' + position">
+                        <span class="crew-position">{{ position }}</span>
+                        <span class="crew-name" [class.muted]="!crew.name || crew.effectiveState === 'vacant'">{{
+                            crew.effectiveState === 'vacant' ? 'Vacant' : crew.name || 'Unnamed' }}</span>
                     </button>
+                    @if (crew.effectiveState === 'vacant') {
+                    <span class="crew-vacant-note">Assign a crew member to this station.</span>
+                    } @else {
+                    <span class="crew-skills">
+                        <button type="button" class="skill-rating" [disabled]="readOnly()" (click)="editCrew()"
+                            [attr.aria-label]="'Edit ' + position + ' gunnery'">
+                            <abbr title="Gunnery">G</abbr><strong>{{ crew.gunnery }}</strong>
+                        </button>
+                        <button type="button" class="skill-rating" [disabled]="readOnly()" (click)="editCrew()"
+                            [attr.aria-label]="'Edit ' + position + ' piloting'">
+                            <abbr title="Piloting">P</abbr><strong>{{ crew.piloting }}</strong>
+                        </button>
+                        @if (crewIndex === 0 && mekSnapshot() && mekPsrModifierTotal() !== 0) {
+                        <button type="button" class="psr-modifier" [class.danger]="mekPsrModifierTotal() > 0"
+                            [class.bonus]="mekPsrModifierTotal() < 0" [tooltip]="mekPsrModifierTooltip()"
+                            [tooltipDelay]="0"
+                            [attr.aria-label]="'PSR modifier ' + formatModifier(mekPsrModifierTotal()) + '. Show full breakdown'">
+                            {{ formatModifier(mekPsrModifierTotal()) }}<small>PSR</small>
+                        </button>
+                        }
+                    </span>
+                    <span class="wound-track" role="group" [attr.aria-label]="'Wounds for ' + (crew.name || position)">
+                        @for (wound of crewWoundSteps; track wound.wounds) {
+                        <button type="button" class="wound-button"
+                            [class.active]="wound.wounds <= crew.state.wounds" [disabled]="readOnly()"
+                            [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
+                            [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
+                            [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
+                            (click)="setCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
+                        }
+                    </span>
+                    @if (crewStateControls().length > 0) {
+                    <span class="crew-states">
+                        @for (control of crewStateControls(); track control.key) {
+                        <button type="button" class="state-chip"
+                            [class.active]="crew.effectiveState === control.key"
+                            [attr.aria-pressed]="crew.effectiveState === control.key"
+                            [style.--state-color]="control.color" [disabled]="readOnly()"
+                            (click)="toggleCrewState(crew, control.key)">{{ control.label }}</button>
+                        }
+                    </span>
+                    }
                     }
                 </div>
                 }
             </div>
+            }
         </header>
 
-        @if (mekSnapshot(); as mek) {
-        <section class="command-strip framed-borders" aria-label="Crew">
-            <div class="crew-scroll" aria-label="Crew">
-                <div class="crew-track">
-                    @for (crew of mek.crew; track crew.positionId; let crewIndex = $index) {
-                    <article class="crew-card">
-                        <button type="button" class="crew-identity" [disabled]="readOnly()" (click)="editCrew()"
-                            [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' name'"
-                            [attr.title]="'Edit ' + crewPositionLabel(crewIndex) + ' name'">
-                            <strong class="crew-position-label">{{ crewPositionLabel(crewIndex) }}</strong>
-                            @if (crew.effectiveState === 'vacant') { <span class="crew-name-text">: VACANT</span> }
-                            @else if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
-                        </button>
-                        @if (crew.effectiveState === 'vacant') {
-                            <span class="muted">Assign a crew member to this station.</span>
-                        } @else {
-                        <div class="skills">
-                            <button type="button" class="skill-item skill-rating" [disabled]="readOnly()" (click)="editCrew()"
-                                [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' gunnery'">
-                                <abbr title="Gunnery">G</abbr><strong>{{ crew.gunnery }}</strong>
-                            </button>
-                            <span class="skill-item">
-                                <button type="button" class="skill-rating" [disabled]="readOnly()" (click)="editCrew()"
-                                    [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' piloting'">
-                                    <abbr title="Piloting">P</abbr><strong>{{ crew.piloting }}</strong>
-                                </button>
-                                <span class="psr-modifier-space">
-                                @if (mekPsrModifierTotal() != 0) {
-                                <button type="button" class="psr-modifier" [class.danger]="mekPsrModifierTotal() > 0"
-                                    [class.bonus]="mekPsrModifierTotal() < 0" [tooltip]="mekPsrModifierTooltip()"
-                                    [tooltipDelay]="0"
-                                    [attr.aria-label]="'PSR modifier ' + formatModifier(mekPsrModifierTotal()) + '. Show full breakdown'">
-                                    {{ formatModifier(mekPsrModifierTotal()) }} <small>PSR</small>
-                                </button>
-                                }
-                                </span>
-                            </span>
-                        </div>
-                        <div class="crew-condition-controls">
-                        <div class="crew-wounds">
-
-                            <div class="wound-track" role="group"
-                                [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
-                                @for (wound of crewWoundSteps; track wound.wounds) {
-                                <button type="button" class="wound-button"
-                                    [class.active]="wound.wounds <= crew.state.wounds" [disabled]="readOnly()"
-                                    [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
-                                    [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
-                                    [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
-                                    (click)="setMekCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
-                                }
-                            </div>
-                        </div>
-                        <div class="crew-state-controls">
-                            @for (control of mekCrewStateControls; track control.key) {
-                            <button type="button" class="state-chip"
-                                [class.active]="crew.effectiveState === control.key"
-                                [style.--state-color]="control.color" [disabled]="readOnly()"
-                                (click)="toggleMekCrewState(crew, control.key)">{{ control.label }}</button>
-                            }
-                        </div>
-                        </div>
-                        }
-                    </article>
-                    }
-                </div>
-            </div>
-        </section>
-        } @else if (nonMekSnapshot(); as entity) {
-        <section class="command-strip framed-borders" aria-label="Crew">
-            <div class="crew-scroll" aria-label="Crew">
-                <div class="crew-track">
-                    @for (crew of entity.crew; track crew.positionId; let crewIndex = $index) {
-                    <article class="crew-card">
-                        <button type="button" class="crew-identity" [disabled]="readOnly()" (click)="editCrew()"
-                            [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' name'"
-                            [attr.title]="'Edit ' + crewPositionLabel(crewIndex) + ' name'">
-                            <strong class="crew-position-label">{{ crewPositionLabel(crewIndex) }}</strong>
-                            @if (crew.effectiveState === 'vacant') { <span class="crew-name-text">: VACANT</span> }
-                            @else if (crew.name) { <span class="crew-name-text">: {{ crew.name }}</span> }
-                        </button>
-                        @if (crew.effectiveState === 'vacant') {
-                            <span class="muted">Assign a crew member to this station.</span>
-                        } @else {
-                        <div class="skills">
-                            <button type="button" class="skill-item skill-rating" [disabled]="readOnly()" (click)="editCrew()"
-                                [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' gunnery'">
-                                <abbr title="Gunnery">G</abbr><strong>{{ crew.gunnery }}</strong>
-                            </button>
-                            <button type="button" class="skill-item skill-rating" [disabled]="readOnly()" (click)="editCrew()"
-                                [attr.aria-label]="'Edit ' + crewPositionLabel(crewIndex) + ' piloting'">
-                                <abbr title="Piloting">P</abbr><strong>{{ crew.piloting }}</strong>
-                            </button>
-                        </div>
-                        <div class="crew-condition-controls">
-                        <div class="crew-wounds">
-
-                            <div class="wound-track" role="group"
-                                [attr.aria-label]="'Wounds for ' + (crew.name || crewPositionLabel(crewIndex))">
-                                @for (wound of crewWoundSteps; track wound.wounds) {
-                                <button type="button" class="wound-button"
-                                    [class.active]="wound.wounds <= crew.state.wounds" [disabled]="readOnly()"
-                                    [attr.aria-pressed]="wound.wounds <= crew.state.wounds"
-                                    [attr.aria-label]="'Wound ' + wound.wounds + ', consciousness check ' + wound.label"
-                                    [attr.title]="'Wound ' + wound.wounds + ': consciousness check ' + wound.label"
-                                    (click)="setNonMekCrewWounds(crew, wound.wounds)">{{ wound.label }}</button>
-                                }
-                            </div>
-                        </div>
-                        @if (nonMekCrewStateControls().length > 0) {
-                        <div class="crew-state-controls">
-                            @for (control of nonMekCrewStateControls(); track control.key) {
-                            <button type="button" class="state-chip"
-                                [class.active]="crew.effectiveState === control.key"
-                                [style.--state-color]="control.color" [disabled]="readOnly()"
-                                (click)="toggleNonMekCrewState(crew, control.key)">{{ control.label }}</button>
-                            }
-                        </div>
-                        }
-                        </div>
-                        }
-                    </article>
-                    }
-                </div>
-            </div>
-        </section>
+        @if (unitDestroyed()) {
+        <div class="destroyed-banner" role="status">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2 2 21h20L12 2Z" /><path d="M12 9v5M12 17.5v.5" /></svg>
+            <strong>Destroyed</strong>
+            <span>This unit is out of action. Undo or repair its damage to bring it back.</span>
+        </div>
         }
 
         <section class="turn-summary-host" id="tactical-turn" tabindex="-1" aria-label="Turn controls">
             <tactical-turn-tracker [member]="activeMember" />
         </section>
-        </div>
-
 
         <main class="tactical-grid" [class.mek-grid]="mekSnapshot() !== null"
             [class.entity-grid]="nonMekSnapshot() !== null">
-            <div class="equipment-column">
+            <div class="main-column">
             <section class="tactical-panel framed-borders inventory-panel" id="tactical-weapons" tabindex="-1" aria-label="Weapons and equipment">
                 <div class="panel-heading">
                     <h2>Weapons & Equipment</h2>
@@ -325,30 +259,38 @@
                     <h2>Critical Hit Table</h2>
                 </div>
                 <div class="critical-columns">
-                    @for (group of mekCriticalCells(); track $index) {
-                    @if (group) {
-                    <section class="critical-cell critical-group" [attr.data-location]="group.code">
-                        <h3>{{ group.code }}</h3>
-                        @for (slot of group.slots; track slot.slotId) {
-                        @let hits = mekCriticalHits(slot);
-                        <button type="button" class="critical-row" [class.hit]="hits > 0"
-                            [class.destroyed]="criticalDestroyed(slot)" [class.unhittable]="!slot.hittable"
-                            [disabled]="readOnly() || !slot.hittable" (click)="activateMekCritical(slot, $event)"
-                            [attr.aria-label]="criticalLabel(slot) + ', ' + hits + ' of ' + slot.hitCapacity + ' critical hits'">
-                            <span class="slot-number">{{ slot.slotIndex + 1 }}</span>
-                            @if (slot.armored) { <span class="critical-pip armor-critical-pip"
-                                [class.hit]="criticalArmorHit(slot)" title="Armored slot"></span> }
-                            <span class="critical-name">{{ criticalLabel(slot) }}</span>
-                            @for (pip of criticalIntermediatePips(slot); track pip) {
-                            <span class="critical-pip extra-critical-pip"
-                                [class.hit]="criticalIntermediateHit(slot, pip)" title="Additional hit required"></span>
+                    @for (stack of mekCriticalStacks(); track stack.key) {
+                    <div class="critical-stack" [attr.data-stack]="stack.key">
+                        @for (group of stack.groups; track group.code) {
+                        <section class="critical-group" [class.destroyed]="group.destroyed" [style.order]="group.pairOrder"
+                            [attr.aria-label]="group.label + ' critical slots'">
+                            <h3>{{ group.label }}</h3>
+                            @for (block of group.blocks; track $index) {
+                            <div class="critical-block" [class.rolled]="block.roll !== null">
+                                @if (block.roll) { <span class="roll-label" [attr.aria-label]="'First die ' + block.roll">{{ block.roll }}</span> }
+                                <div class="critical-slots">
+                                    @for (slot of block.slots; track slot.slotId) {
+                                    @let hits = mekCriticalHits(slot);
+                                    <button type="button" class="critical-row" [class.hit]="hits > 0"
+                                        [class.destroyed]="criticalDestroyed(slot)" [class.unhittable]="!slot.hittable"
+                                        [disabled]="readOnly() || !slot.hittable" (click)="activateMekCritical(slot, $event)"
+                                        [attr.aria-label]="criticalLabel(slot) + ', ' + hits + ' of ' + slot.hitCapacity + ' critical hits'">
+                                        <span class="slot-number">{{ slot.slotIndex % 6 + 1 }}</span>
+                                        @if (slot.armored) { <span class="critical-pip armor-critical-pip"
+                                            [class.hit]="criticalArmorHit(slot)" title="Armored slot"></span> }
+                                        <span class="critical-name">{{ criticalLabel(slot) }}</span>
+                                        @for (pip of criticalIntermediatePips(slot); track pip) {
+                                        <span class="critical-pip extra-critical-pip"
+                                            [class.hit]="criticalIntermediateHit(slot, pip)" title="Additional hit required"></span>
+                                        }
+                                    </button>
+                                    }
+                                </div>
+                            </div>
                             }
-                        </button>
+                        </section>
                         }
-                    </section>
-                    } @else {
-                    <div class="critical-cell critical-spacer" aria-hidden="true"></div>
-                    }
+                    </div>
                     }
                 </div>
             </section>
@@ -426,22 +368,26 @@
                     }
                 </div>
             </section>
-            @if (entity.damageTracks.length > 0) {
-            <section class="tactical-panel framed-borders critical-panel damage-panel" id="tactical-criticals" tabindex="-1">
+            @if (damageTrackGroups().length > 0) {
+            <section class="tactical-panel framed-borders systems-panel" id="tactical-criticals" tabindex="-1">
                 <div class="panel-heading">
-                    <h2>Damage Tracks</h2>
+                    <h2>Critical Damage</h2>
                 </div>
-                <div class="damage-track-list">
-                    @for (track of entity.damageTracks; track track.damageTrackId) {
-                    @let hits = nonMekTrackHits(track);
-                    <button type="button" class="entity-damage-track" [class.hit]="hits > 0" [disabled]="readOnly()"
-                        (click)="openNonMekTrackPicker(track, $event)">
-                        <span class="critical-name">{{ track.label }}</span>
-                        <span class="damage-track-pips" aria-hidden="true">@for (pip of pips(track.maximumHits); track
-                            pip) { <span class="critical-pip extra-critical-pip" [class.hit]="pip <= hits"></span>
-                            }</span>
-                        <strong>{{ hits }}/{{ track.maximumHits }}</strong>
-                    </button>
+                <div class="system-list">
+                    @for (group of damageTrackGroups(); track group.system) {
+                    <div class="system-row" role="group" [attr.aria-label]="group.label">
+                        <span class="system-label">{{ group.label }}</span>
+                        <span class="system-stages">
+                            @for (stage of group.stages; track stage.track.damageTrackId) {
+                            @let hits = nonMekTrackHits(stage.track);
+                            <button type="button" class="system-stage" [class.hit]="hits > 0" [disabled]="readOnly()"
+                                [attr.aria-pressed]="stage.track.maximumHits === 1 ? hits > 0 : null"
+                                [attr.aria-label]="stage.track.label + ', ' + hits + ' of ' + stage.track.maximumHits + ' hits'"
+                                [attr.title]="stage.track.label"
+                                (click)="openNonMekTrackPicker(stage.track, $event)">{{ stage.caption }}@if (stage.track.maximumHits > 1 && hits > 0) {<small>&times;{{ hits }}</small>}</button>
+                            }
+                        </span>
+                    </div>
                     }
                 </div>
             </section>

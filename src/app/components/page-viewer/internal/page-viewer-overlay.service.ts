@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { ApplicationRef, Injectable, inject, Injector, createComponent, type ComponentRef } from '@angular/core';
+import { ApplicationRef, Injectable, inject, Injector, createComponent, signal, type ComponentRef } from '@angular/core';
 
 import type { CBTForce } from '../../../models/cbt-force.model';
 import type { PageViewerMember } from './types';
@@ -18,13 +18,42 @@ function applyAbsoluteFillLayout(element: HTMLElement): void {
     element.style.height = '100%';
 }
 
+/** A unit's heat scale being dragged to a value, shown as a difference marker beside the scale. */
+export interface RecordSheetHeatPreview {
+    readonly element: SVGElement;
+    readonly heat: number;
+    readonly baselineHeat: number;
+}
+
 @Injectable()
 export class PageViewerOverlayService {
     private readonly zoomPan = inject(PageViewerZoomPanService);
+    private readonly heatPreviews = signal<ReadonlyMap<string, RecordSheetHeatPreview>>(new Map());
+
     private canvasOverlayRefs = new Map<string, ComponentRef<PageCanvasOverlayComponent>>();
     private canvasOverlaySubscriptions = new Map<string, { unsubscribe: () => void }>();
     private interactionOverlayRefs = new Map<string, ComponentRef<PageInteractionOverlayComponent>>();
     private interactionOverlayModes = new Map<string, 'fixed' | 'page'>();
+
+    heatPreview(unitId: string): RecordSheetHeatPreview | null {
+        return this.heatPreviews().get(unitId) ?? null;
+    }
+
+    setHeatPreview(unitId: string, preview: RecordSheetHeatPreview): void {
+        const { element, heat, baselineHeat } = preview;
+        this.heatPreviews.update(current => new Map(current).set(unitId, Object.freeze({ element, heat, baselineHeat })));
+    }
+
+    /** Clears one unit's heat preview, or every preview without a unit. */
+    clearHeatPreview(unitId?: string): void {
+        if (unitId === undefined ? this.heatPreviews().size === 0 : !this.heatPreviews().has(unitId)) return;
+        this.heatPreviews.update(current => {
+            if (unitId === undefined) return new Map();
+            const next = new Map(current);
+            next.delete(unitId);
+            return next;
+        });
+    }
 
     getOrCreateCanvasOverlay(options: {
         appRef: ApplicationRef;

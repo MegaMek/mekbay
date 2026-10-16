@@ -983,59 +983,93 @@
     }
 }
 
+/*
+ * Phones: a two-line card per row. Identity and the ammo chip on top; below, a stat strip
+ * with small captions over the values and the range boxes pushed to the right.
+ */
 @container tactical-inventory (max-width: 600px) {
     .tactical-inventory {
         .weapon-equipment-grid { display: flex; flex-direction: column; gap: 0; }
         .weapon-equipment-header, .grid-fill, .drag-cell { display: none; }
         .weapon-equipment-section { display: flex; flex-direction: column; }
-        .grouped-cells, .range-cells { display: flex; align-items: center; }
-        .group-identity { width: 100%; }
-        .group-stats .meta-cell::before, .min-cell::before { content: attr(data-label); color: var(--text-color-secondary); }
-        .range-cells { gap: 4px; }
-        .section-title { padding: 4px 8px; font-size: .78rem; display: flex; gap: 6px; }
+        .section-title { display: flex; gap: 6px; padding: 4px 8px; font-size: .78rem; }
         .section-title-text { flex: 1; }
-        .mobile-group-selection:has(input, button) { display: flex; align-items: center; justify-content: center; width: 26px; flex: 0 0 26px; }
+        .mobile-group-selection:has(input, button) { display: flex; align-items: center; justify-content: center; width: 24px; flex: 0 0 24px; }
         .mobile-group-selection input, .mobile-group-selection button { width: 18px; height: 18px; }
         .weapon-equipment-list { display: flex; flex-direction: column; margin: 0; gap: 0; }
         .weapon-equipment-row, .weapon-equipment-row:last-child {
             display: grid;
-            grid-template-columns: minmax(0, 1fr);
-            align-items: center;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas: 'identity identity' 'stats ranges' 'actions actions';
+            align-items: end;
+            gap: 3px 10px;
             width: 100%;
             margin: 0;
+            padding: 5px 8px 6px;
             border: 0;
             border-bottom: 1px solid var(--border-color);
-            gap: 2px;
-            padding: 4px 8px;
             font-size: .8rem;
         }
         .weapon-equipment-row.mga-member-row { width: calc(100% - 16px); margin-left: 16px; }
-        .grouped-cells { gap: 6px; min-width: 0; }
-        .grouped-cells.group-identity { height: auto; min-height: 26px; align-items: center; }
-        .select-cell { flex: 0 0 26px; }
-        .tn-cell { flex: 0 0 30px; }
-        .name-cell { font-size: .82rem; flex: 1; }
-        .group-stats, .group-ranges { padding-left: 32px; }
-        .group-stats { flex-wrap: wrap; gap: 2px 8px; }
-        .group-ranges { gap: 8px; }
-        .group-stats .centered-cell { width: auto; min-width: 0; font-size: .78rem; flex-direction: row; gap: 4px; }
+        .grouped-cells { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .group-identity { grid-area: identity; min-height: 26px; }
+        .select-cell { flex: 0 0 24px; }
+        .tn-cell { flex: 0 0 28px; }
+        .name-cell { flex: 1; font-size: .85rem; }
+        .group-stats { grid-area: stats; flex-wrap: wrap; align-items: flex-end; gap: 2px 14px; }
+        .group-ranges { grid-area: ranges; align-items: flex-end; gap: 6px; }
+        .group-actions { grid-area: actions; display: none; }
+        .controls-expanded .group-actions { display: block; padding-left: 0; }
+        .meta-cell { flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 2px; width: auto; min-width: 0; line-height: 1.1; }
+        .meta-cell::before, .range-cell::before {
+            content: attr(data-label);
+            color: var(--text-color-tertiary);
+            font-size: .56rem;
+            font-weight: 700;
+            letter-spacing: .06em;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .hit-cell .hit-value { font-size: 1.1em; line-height: 1; }
         .damage-cell { flex-grow: 0; }
-        .group-stats .meta-cell::before, .min-cell::before { font-weight: 500; font-size: .68rem; }
-        .min-cell { width: auto; flex-direction: row; }
+        .min-cell { align-items: center; }
         .range-cells.meta-cell::before { display: none; }
-        .range-cell { min-width: 36px; height: 26px; display: inline-flex; align-items: center; justify-content: center; gap: 3px; font-size: .78rem; }
-        .range-cell::before { content: attr(data-label); color: var(--text-color-secondary); font-size: .62rem; font-weight: 500; }
-        .group-actions { width: 100%; }
-        .grouped-cells .grouped-cells { flex-wrap: wrap; }
-        .controls-expanded .group-actions { padding-left: 32px; }
+        .range-cells { display: flex; gap: 3px; }
+        .range-cell { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 34px; height: 32px; padding: 0 3px; font-size: .8rem; line-height: 1; }
     }
 }
 
-@container tactical-inventory (min-width: 400px) and (max-width: 600px) {
+/* Very narrow phones: the range boxes take their own line instead of squeezing the stats. */
+@container tactical-inventory (max-width: 340px) {
     .tactical-inventory {
-        .weapon-equipment-row, .weapon-equipment-row:last-child { grid-template-columns: minmax(0, 1fr) auto; }
-        .group-identity { grid-column: 1 / -1; }
-        .group-ranges { padding-left: 0; }
+        .weapon-equipment-row, .weapon-equipment-row:last-child { grid-template-areas: 'identity identity' 'stats stats' 'ranges ranges'; }
+        .group-ranges { justify-content: flex-end; }
+    }
+}
+
+/*
+ * Wide tables show ammo and controls inline. Ammo fills the column so its steppers, and the
+ * HIT/mode buttons after them, land on the same x in every row.
+ */
+@container tactical-inventory (min-width: 1051px) {
+    .tactical-inventory {
+        .actions-cell { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 6px; }
+        .ammo-cell { grid-column: 1; display: flex; width: 100%; }
+        .ammo-choice, .ammo-choice-static { flex: 1 1 auto; }
+        .controls-cell { grid-column: 2; justify-content: flex-end; }
+        .empty-row-controls { display: none; }
+    }
+}
+
+/* Mouse-driven tables can be denser than the touch targets phones need. */
+@container tactical-inventory (min-width: 601px) {
+    @media (pointer: fine) {
+        .tactical-inventory {
+            .weapon-equipment-row { padding-block: 2px; }
+            .range-cell { height: 24px; }
+            .secondary-controls-toggle { min-height: 22px; }
+        }
     }
 }
 

@@ -9,10 +9,10 @@ TestLargeSupportTankEntity,
 TestProtoMekEntity,TestTankEntity
 } from '../entity/testing/test-entities';
 import { buildNonMekRuntimeIndex } from '../runtime/non-mek-runtime-index';
-import { systemDamageControls } from '../runtime/system-damage-presentation';
+import { compareSystemDamageScopes,systemDamageControls,systemDamageStageCaption } from '../runtime/system-damage-presentation';
 import { mekGyroDestructionHits,mekSystemDamageDisplayCapacities } from './mek-system-damage-rules';
 import { protoMekCriticalReferences } from './protomek-critical-rules';
-import { systemDamageDefinitions,systemDamageId } from './system-damage-rules';
+import { systemDamageDefinitions,systemDamageId,type SystemDamageKind } from './system-damage-rules';
 
 describe('semantic system damage targets', () => {
     it('generates accessible controls for every actual split facing and both turrets', () => {
@@ -49,6 +49,22 @@ describe('semantic system damage targets', () => {
             ids: ['engine_hit_1', 'engine_hit_2', 'engine_hit_3', 'engine_hit_4', 'engine_hit_5', 'engine_hit_6'],
             modifiers: ['-1', '-2', '-3', '-4', '-5', 'D'],
         });
+    });
+
+    it('captions each stage with its printed effect, its location, or its stage number', () => {
+        const tank = new TestTankEntity();
+        tank.hasDualTurret.set(true);
+        const caption = (system: SystemDamageKind) => systemDamageDefinitions(tank)
+            .filter(track => track.system === system)
+            .sort((left, right) => compareSystemDamageScopes(left.scope, right.scope))
+            .map(track => systemDamageStageCaption(tank, track));
+        expect(caption('sensors')).toEqual(['+1', '+2', '+3', 'D']);
+        expect(caption('motive')).toEqual(['+1', '+2', '+3', 'I']);
+        expect(caption('turret-lock')).toEqual(['F Turret', 'R Turret']);
+        expect(caption('stabilizer').slice(0, 4)).toEqual(['Front', 'Left', 'Right', 'Rear']);
+        const proto = new TestProtoMekEntity();
+        expect(systemDamageDefinitions(proto).filter(track => track.system === 'torso')
+            .map(track => systemDamageStageCaption(proto, track))).toEqual(['1', '2', '3']);
     });
 
     it('keeps ProtoMek system counters separate from mount slots and excludes quad arms and absent main guns', () => {

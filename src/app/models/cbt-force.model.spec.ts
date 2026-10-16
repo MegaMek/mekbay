@@ -80,6 +80,7 @@ const optionsService = {
         CBTRules: CORE_2026_RULESET,
         CBTOptionalRules: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false },
     }),
+    cbtAutomationMode: () => 'no',
 } as unknown as OptionsService;
 
 const injector = {
@@ -2967,6 +2968,7 @@ describe('CBTForce V2 encounter persistence', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
+            heatSettled: false,
             cover: null,
             spotting: false,
             phaseStateChanged: false,

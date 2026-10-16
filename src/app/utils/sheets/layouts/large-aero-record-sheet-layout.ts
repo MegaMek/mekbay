@@ -187,7 +187,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         drawLargeAeroCriticalPanel(svg, entity, at({ x: 405.966, y: 509.4, width: 180.5, height: 166.104 }));
         drawLargeAeroHeatPanel(svg, entity, at({ x: 405.966, y: 675.29, width: 180.5, height: 79.71 }));
         if (entity.tracksHeat()) {
-            drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
+            drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }), 'aero');
         }
         const catalyst = at({ x: 527.13, y: 59.25, width: 0, height: 0 });
         drawGeneratedFooter(svg, page, { catalystX: catalyst.x, catalystY: catalyst.y, catalystScale: 1.015 });

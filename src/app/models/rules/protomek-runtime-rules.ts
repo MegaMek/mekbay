@@ -63,7 +63,9 @@ export function projectProtoMekRuntimeRules(
     conditionControlKeys.push('jammed');
 
     return Object.freeze({
-        destroyed: state.explicitlyDestroyed || torsoDestroyed || torsoDamage,
+        // Pilot death destroys a ProtoMek outright (MegaMek "pilot death"); a destroyed head does not.
+        destroyed: state.explicitlyDestroyed || torsoDestroyed || torsoDamage
+            || crew.some(crewMember => crewMember.isDeathCommitted()),
         computedConditions: Object.freeze(computedConditions),
         conditionControlKeys: Object.freeze(conditionControlKeys),
         crewStateControlKeys: Object.freeze(['stunned'] as const),

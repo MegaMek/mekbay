@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { CrewMemberState } from '../crew-member.model';
+import { CrewMember, type CrewMemberState } from '../crew-member.model';
 import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import type { AeroEntity } from '../entity/entities/aero/aero-entity';
 import { projectComponentLocationStatuses } from '../runtime/component-status-projection';
@@ -33,6 +33,7 @@ export interface AeroRuntimeRulesProjection {
         readonly tracked: boolean;
         readonly current: number;
         readonly pending: number | null;
+        readonly previous: number;
         readonly heatsinksOff: number;
         readonly heatSinkCount: number;
         readonly dissipation: number;
@@ -75,10 +76,14 @@ export function projectAeroRuntimeRules(
     const siDestroyed = si !== undefined
         && si.internalPoints > 0
         && (state.locations.get(si.id)?.internalDamage ?? 0) >= si.internalPoints;
-    const damageTrackDestroyed = [...index.damageTracks.values()].some(track =>
-        ((track.system === 'engine' && track.stage === (['SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType) ? 6 : 3))
-            || (track.system === 'fire-control' && track.stage === 3))
+    // Only the last engine stage destroys the craft; a third FCS/CIC hit only stops weapon fire (MegaMek: crippled).
+    const engineDestroyed = [...index.damageTracks.values()].some(track =>
+        track.system === 'engine'
+        && track.stage === (['SmallCraft', 'DropShip', 'JumpShip', 'WarShip', 'SpaceStation'].includes(entity.entityType) ? 6 : 3)
         && (state.damageTracks.get(track.id)?.hits ?? 0) > 0);
+    // Pilot death (or large-craft crew casualties) destroys the unit.
+    const crewKilled = [...index.crewPositions.keys()].some(positionId =>
+        CrewMember.from(state.crew.get(positionId)).isDeathCommitted());
 
     const statuses = projectComponentLocationStatuses(index, state).committed;
     const drone = [...index.components.values()].find(component =>
@@ -113,7 +118,7 @@ export function projectAeroRuntimeRules(
         })]);
 
     return Object.freeze({
-        destroyed: state.explicitlyDestroyed || siDestroyed || damageTrackDestroyed,
+        destroyed: state.explicitlyDestroyed || siDestroyed || engineDestroyed || crewKilled,
         computedConditions,
         conditionControlKeys: Object.freeze(conditionControlKeys),
         crewStateControlKeys: Object.freeze([]),
@@ -122,6 +127,7 @@ export function projectAeroRuntimeRules(
             tracked,
             current: tracked ? state.heat.current : 0,
             pending: tracked ? state.heat.pendingOverride ?? null : null,
+            previous: tracked ? state.heat.previous : 0,
             heatsinksOff: tracked ? state.heat.heatsinksOff : 0,
             heatSinkCount,
             dissipation,

@@ -71,9 +71,8 @@ describe('generated paperdoll hit areas', () => {
         expect(svg.querySelectorAll('.pip.armor').length).toBe(2);
     });
 
-    it('keeps paperdoll pips inert and places one random-hit control in the layout-reserved space', () => {
-        const svg = sheet(`<g data-mekbay-paperdoll="1" data-art-x="10" data-art-y="20" data-art-width="100"
-            data-random-hit-transform="translate(140 4) scale(0.75)">
+    it('keeps paperdoll pips inert', () => {
+        const svg = sheet(`<g data-mekbay-paperdoll="1" data-art-x="10" data-art-y="20" data-art-width="100">
             <path class="unitLocation armor" data-loc="FR" d="M0 0H20V20H0Z"/>
             <circle class="pip armor" data-loc="FR" cx="10" cy="10" r="2"/>
             <circle class="pip structure" data-loc="FR" cx="10" cy="30" r="2"/>
@@ -83,18 +82,5 @@ describe('generated paperdoll hit areas', () => {
 
         expect(svg.querySelector('.pip-hit-area')).toBeNull();
         expect([...svg.querySelectorAll('.pip')].map(pip => pip.getAttribute('pointer-events'))).toEqual(['none', 'none']);
-        expect(svg.querySelectorAll('[data-mekbay-random-hit]')).toHaveSize(1);
-        expect(svg.querySelector('[data-mekbay-random-hit]')?.getAttribute('transform')).toBe('translate(140 4) scale(0.75)');
-    });
-
-    it('preserves an authored control when the layout also supplies a position', () => {
-        const svg = sheet(`<g data-mekbay-paperdoll="1" data-random-hit-transform="translate(140 4)">
-            <path class="unitLocation armor" data-loc="FR" d="M0 0H20V20H0Z"/>
-            <g data-mekbay-random-hit="1" transform="translate(30 50)"><circle cx="14" cy="14" r="15"/></g>
-        </g>`);
-        renderGeneratedRecordSheetControls(svg, new TestTankEntity(), { ruleset: 'total-warfare' });
-
-        expect(svg.querySelectorAll('[data-mekbay-random-hit]')).toHaveSize(1);
-        expect(svg.querySelector('[data-mekbay-random-hit]')?.getAttribute('transform')).toBe('translate(30 50)');
     });
 });

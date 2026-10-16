@@ -35,7 +35,9 @@ paperdollPipOptions,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
-transparentRect
+transparentRect,
+appendHeatPanelControls,
+heatSinkCaption,
 } from '../record-sheet-svg-rendering';
 import { SvgFrameUtil } from '../svg-frame.util';
 import { recordSheetPageProfile, type RecordSheetPageProfile } from '../record-sheet-layout';
@@ -80,8 +82,6 @@ export interface AeroPaperdollPresentation {
     readonly assetUrl: string;
     readonly capitalFallback: boolean;
     readonly pipLayout: PaperdollPipLayout;
-    /** Random hit control placement in the asset's coordinates; defaults to the top-left corner. */
-    readonly randomHitTransform?: string;
 }
 
 /** Reusable drawing components. Family layouts supply all presentation policy. */
@@ -409,8 +409,6 @@ export async function drawAeroPaperdoll(
             + `scale(${formatNumber(scale)})`,
         );
         paperdoll.setAttribute('data-mekbay-aero-asset', presentation.assetUrl);
-        // Keep the control clear of the art, headings and external stores on the right.
-        paperdoll.setAttribute('data-random-hit-transform', presentation.randomHitTransform ?? 'translate(4 1) scale(0.75)');
         decoratePaperdollPips(paperdoll);
         updateAeroPaperdollLabels(paperdoll, entity, locations);
         svg.appendChild(paperdoll);
@@ -695,7 +693,7 @@ export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, bo
     const detailedX = (value: number): number => value * detailedSx;
     const detailedY = (value: number): number => value * detailedSy;
     const detailedFont = (value: number): number => value * Math.min(detailedSx, detailedSy);
-    const hsType = addText(group, 'Heat Sinks:', detailed ? detailedX(149) : box.width - 12, detailed ? detailedY(22) : 26, {
+    const hsType = addText(group, heatSinkCaption(entity.heatSinkType()), detailed ? detailedX(149) : box.width - 12, detailed ? detailedY(22) : 26, {
         size: detailed ? detailedFont(8.44) : 5.8, anchor: 'end',
     });
     hsType.id = 'hsType';
@@ -714,6 +712,7 @@ export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, bo
             addText(group, `${arc}:`, 74, 41 + index * 8, { size: 5.3, weight: 700, maxWidth: box.width * 0.52 });
             addText(group, String(heat), box.width - 12, 41 + index * 8, { size: 5.3, anchor: 'end' });
         });
+        appendHeatPanelControls(group);
         return;
     }
     const baselines = [48.218, 58.291, 68.364, 78.436, 88.509, 108.655, 118.727, 128.8, 138.873,
@@ -764,15 +763,7 @@ export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, bo
         pips.appendChild(pip);
     }
     group.appendChild(pips);
-    const apply = transparentRect(
-        detailedX(122),
-        detailedY(39),
-        detailedX(29),
-        detailedY(100),
-        'heatApplyButton',
-    );
-    apply.id = 'applyHeatButton';
-    group.appendChild(apply);
+    appendHeatPanelControls(group, { x: detailedX(122), y: detailedY(39), width: detailedX(29), height: detailedY(100) });
 }
 
 function drawAeroDamagePanel(

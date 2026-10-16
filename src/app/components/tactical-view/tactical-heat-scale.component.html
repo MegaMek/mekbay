@@ -1,34 +1,49 @@
 <section class="heat-panel framed-borders" aria-label="Heat">
     <div class="heat-heading">
         <h2>Heat</h2>
-        <label class="heat-value">Level <input #heatInput type="number" min="0" max="1000000" step="1" aria-label="Heat level" [value]="displayedHeat()" [disabled]="readOnly()" (change)="setNumericHeat($event)" /></label>
+        <div class="heat-legend" aria-label="Heat markers">
+            @for (marker of markers(); track marker.id) {
+                <span class="legend-item" [attr.data-tone]="marker.tone" [attr.data-marker]="marker.id">
+                    <span class="legend-symbol" aria-hidden="true"></span>{{ marker.label }} <strong>{{ marker.value }}</strong>
+                </span>
+            }
+        </div>
         <span class="cooling">Cooling <strong>{{ cooling() }}</strong></span>
-        @if (state().pending !== undefined) {
-            <button class="bt-button apply-heat" type="button" [disabled]="readOnly()" (click)="applyHeat.emit()">Apply {{ state().pending }}</button>
-        }
-    </div>
-    <div class="heat-legend" aria-label="Heat markers">
-        @for (marker of markers(); track marker.id) {
-            <span class="legend-item" [attr.data-tone]="marker.tone" [attr.data-marker]="marker.id">
-                <span class="legend-symbol" aria-hidden="true"></span>{{ marker.label }} <strong>{{ marker.value }}</strong>
-            </span>
-        }
+        <label class="heat-value">Level <input #heatInput type="number" min="0" max="1000000" step="1" aria-label="Heat level" [value]="displayedHeat()" [disabled]="readOnly()" (change)="setNumericHeat($event)" /></label>
+        <!-- Always present so editing the level never moves the controls under the pointer. -->
+        <button class="bt-button apply-heat" type="button" [disabled]="readOnly() || state().pending === undefined"
+            [attr.aria-label]="state().pending === undefined ? 'No pending heat to apply' : 'Apply heat ' + state().pending"
+            (click)="applyHeat.emit()">Apply @if (state().pending !== undefined) { {{ state().pending }} }</button>
     </div>
     <div class="heat-track" role="slider" tabindex="0" aria-label="Heat scale" aria-valuemin="0" aria-valuemax="1000000" [attr.aria-valuenow]="displayedHeat()" [attr.aria-disabled]="readOnly()"
         [style.--projection-color]="state().projection! > state().current ? '#e35845' : '#5bb7e5'"
         [attr.aria-valuetext]="'Heat ' + displayedHeat()" (pointerdown)="startDrag($event)" (pointermove)="moveDrag($event)" (pointerup)="finishDrag($event)" (pointercancel)="cancelDrag()" (lostpointercapture)="cancelDrag()" (keydown)="keyDown($event)">
         @for (cell of cells(); track cell.heat) {
-            <button type="button" class="heat-slot" tabindex="-1" [attr.data-heat]="cell.heat" [class.hot]="cell.heat <= displayedHeat()" [class.threshold]="cell.effects" [class.preview]="preview() === cell.heat"
+            <button type="button" class="heat-slot" tabindex="-1" [attr.data-heat]="cell.heat" [class.hot]="cell.heat <= displayedHeat()" [class.threshold]="cell.marks.length > 0" [class.preview]="preview() === cell.heat"
                 [attr.heat]="cell.heat" [disabled]="readOnly()"
                 [class.projection-range]="state().automaticProjection && cell.heat >= Math.min(state().current, state().projection!) && cell.heat <= Math.max(state().current, state().projection!)"
                 [attr.aria-label]="'Heat ' + cell.heat + (cell.effects ? ': ' + cell.effects : '')" [title]="cell.effects || 'Heat ' + cell.heat" (click)="selectCell($event, cell.heat)">
-                {{ cell.heat }}
+                <span class="heat-number">{{ cell.heat }}</span>
+                @for (effect of cell.marks; track effect.kind) {
+                    <span class="heat-mark" [attr.data-kind]="effect.kind" aria-hidden="true">
+                        @switch (effect.kind) {
+                            @case ('movement') { <svg viewBox="0 0 12 12"><path d="M1.5 6h7.5M6.5 2.5 10 6l-3.5 3.5" /></svg> }
+                            @case ('fire') { <svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.6" /><path d="M6 .5v3M6 8.5v3M.5 6h3M8.5 6h3" /></svg> }
+                            @case ('shutdown') { <svg viewBox="0 0 12 12"><path d="M6 1v4.5M3.2 3.1a4.1 4.1 0 1 0 5.6 0" /></svg> }
+                            @case ('ammo-explosion') { <svg viewBox="0 0 12 12" class="filled"><path d="M6 .4l1.5 3.4 3.7.3-2.8 2.5.9 3.6L6 8.3l-3.3 1.9.9-3.6L.8 4.1l3.7-.3z" /></svg> }
+                            @case ('pilot-damage') { <svg viewBox="0 0 12 12" class="filled"><path d="M4.5 1h3v3.5H11v3H7.5V11h-3V7.5H1v-3h3.5z" /></svg> }
+                            @default { <svg viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" rx="1.5" /><path d="M4.2 4.2h.1M7.8 7.8h.1M6 6h.1" /></svg> }
+                        }
+                        <span class="heat-mark-value">{{ effectMark(effect) }}</span>
+                    </span>
+                }
                 @for (marker of markersAt(cell.heat); track marker.id) {
                     <span class="heat-marker" [attr.data-marker]="marker.id" [attr.data-tone]="marker.tone" aria-hidden="true"></span>
                 }
             </button>
         }
-        <button type="button" class="heat-slot overflow-slot" tabindex="-1" [class.hot]="displayedHeat() > 30" [disabled]="readOnly()" aria-label="Enter heat above 30" title="Enter heat above 30" (click)="enterOverflow()">30+
+        <button type="button" class="heat-slot overflow-slot" tabindex="-1" [class.hot]="displayedHeat() > 30" [disabled]="readOnly()" aria-label="Enter heat above 30" title="Enter heat above 30" (click)="enterOverflow()">
+            <span class="heat-number">30+</span>
             @for (marker of markersAt(31); track marker.id) { <span class="heat-marker" [attr.data-marker]="marker.id" [attr.data-tone]="marker.tone" aria-hidden="true"></span> }
         </button>
         @if (preview() !== null) {
@@ -38,13 +53,18 @@
             </div>
         }
     </div>
-    <div class="heat-effects" aria-live="polite">
-        @for (effect of effects(); track effect.label) { <span>{{ effect.label }}{{ effect.secondaryLabel }}</span> }
-        @empty { <span class="no-effects">No heat effects</span> }
+    <div class="heat-footer">
+        <div class="heat-effects" aria-live="polite">
+            @for (effect of effects(); track effect.label) { <span class="heat-effect" [attr.data-kind]="effect.kind">{{ effect.label }}{{ effect.secondaryLabel }}</span> }
+            @empty { <span class="no-effects">No heat effects</span> }
+        </div>
+        @if (summaryRows().length) {
+            <button type="button" class="breakdown-toggle" [attr.aria-expanded]="breakdownOpen()" (click)="breakdownOpen.set(!breakdownOpen())">
+                Heat breakdown<span class="chevron" [class.collapsed]="!breakdownOpen()" aria-hidden="true"></span>
+            </button>
+        }
     </div>
-    @if (summaryRows().length) {
-        <details class="heat-sources"><summary>Heat breakdown</summary>
-            <div class="source-list">@for (source of summaryRows(); track $index) { <span [class.selected]="source.selectedOnly" [class.underwater]="source.underwater">{{ source.label }} <strong>{{ source.value > 0 ? '+' : '' }}{{ source.value }}@if (source.selectedValue !== undefined) { <small> ({{ source.selectedValue > 0 ? '+' : '' }}{{ source.selectedValue }} selected)</small> }</strong></span> }</div>
-        </details>
+    @if (breakdownOpen() && summaryRows().length) {
+        <div class="source-list">@for (source of summaryRows(); track $index) { <span [class.selected]="source.selectedOnly" [class.underwater]="source.underwater">{{ source.label }} <strong>{{ source.value > 0 ? '+' : '' }}{{ source.value }}@if (source.selectedValue !== undefined) { <small> ({{ source.selectedValue > 0 ? '+' : '' }}{{ source.selectedValue }} selected)</small> }</strong></span> }</div>
     }
 </section>

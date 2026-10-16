@@ -91,12 +91,6 @@ interface OpenPicker {
     readonly target: Element | null;
 }
 
-export interface MekHeatPreview {
-    readonly element: SVGElement;
-    readonly heat: number;
-    readonly baselineHeat: number;
-}
-
 /**
  * Original record-sheet interaction vocabulary backed exclusively by Entity +
  * typed runtime owner APIs. The SVG supplies targets and geometry, never facts.
@@ -114,27 +108,22 @@ export class PageViewerMekInteractionService {
     private readonly zoomPan = inject(PageViewerZoomPanService);
     private picker: OpenPicker | null = null;
     private readonly randomHitResult = new RecordSheetRandomHitResult();
-    private readonly heatPreviews = signal<ReadonlyMap<string, MekHeatPreview>>(new Map());
 
     isPickerOpen(unitId: string): boolean {
-        return this.picker?.unitId === unitId || this.heatPreviews().has(unitId);
-    }
-
-    heatPreview(unitId: string): MekHeatPreview | null {
-        return this.heatPreviews().get(unitId) ?? null;
+        return this.picker?.unitId === unitId || this.overlays.heatPreview(unitId) !== null;
     }
 
     cleanup(unitId: string): void {
         if (this.picker?.unitId === unitId) this.closePicker();
         if (this.randomHitResult.unitId === unitId) this.randomHitResult.clear();
-        this.clearHeatPreview(unitId);
+        this.overlays.clearHeatPreview(unitId);
         this.closeSheetOverlays();
     }
 
     clear(): void {
         this.closePicker();
         this.randomHitResult.clear();
-        this.heatPreviews.set(new Map());
+        this.overlays.clearHeatPreview();
         this.closeSheetOverlays();
     }
 
@@ -158,10 +147,10 @@ export class PageViewerMekInteractionService {
                 void this.toggleSystemCritical(member, interaction);
                 return;
             case 'heat-preview':
-                this.setHeatPreview(member.id, interaction);
+                this.overlays.setHeatPreview(member.id, interaction);
                 return;
             case 'heat-preview-end':
-                this.clearHeatPreview(member.id);
+                this.overlays.clearHeatPreview(member.id);
                 return;
             case 'heat-sinks-off':
                 this.openHeatSinksPicker(member, interaction, event);
@@ -201,7 +190,7 @@ export class PageViewerMekInteractionService {
             case 'apply-heat':
             case 'condition':
             case 'shutdown':
-                if (interaction.kind === 'heat') this.clearHeatPreview(member.id);
+                if (interaction.kind === 'heat') this.overlays.clearHeatPreview(member.id);
                 void this.dispatchDirect(member, interaction);
                 return;
         }
@@ -322,30 +311,6 @@ export class PageViewerMekInteractionService {
             return;
         }
         await this.dispatchDirect(member, interaction, hits > 0 ? -1 : 1);
-    }
-
-    private setHeatPreview(
-        unitId: string,
-        interaction: Extract<RecordSheetInteraction, { readonly kind: 'heat-preview' }>,
-    ): void {
-        this.heatPreviews.update(current => {
-            const next = new Map(current);
-            next.set(unitId, Object.freeze({
-                element: interaction.element,
-                heat: interaction.heat,
-                baselineHeat: interaction.baselineHeat,
-            }));
-            return next;
-        });
-    }
-
-    private clearHeatPreview(unitId: string): void {
-        if (!this.heatPreviews().has(unitId)) return;
-        this.heatPreviews.update(current => {
-            const next = new Map(current);
-            next.delete(unitId);
-            return next;
-        });
     }
 
     private openDamagePicker(

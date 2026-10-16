@@ -127,11 +127,19 @@
                                     <div class="name-cell">
                                         <span class="equipment-name">{{ row.display.name }}</span>
                                         @if (tactical() && rowHasActions(row)) {
-                                            <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-expanded]="expandedControls().has(row.id)" [attr.aria-label]="'Ammo and controls for ' + row.display.name" (click)="toggleControls(row)">
-                                                @if (row.tracksAmmo) { <span class="current-ammo" [title]="ammoState(row).text">{{ ammoState(row).text || 'No ammo' }}</span> }
-                                                @else { <span>Controls</span> }
-                                                <span class="chevron" [class.collapsed]="!expandedControls().has(row.id)" aria-hidden="true"></span>
-                                            </button>
+                                            @if (rowHasOnlyStatusAction(row)) {
+                                                @if (canMarkDestroyed(row)) {
+                                                    <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-label]="'Mark ' + row.display.name + ' hit'" (click)="markDestroyed(row)">HIT</button>
+                                                } @else {
+                                                    <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-label]="'Repair ' + row.display.name" (click)="repair(row)">REPAIR</button>
+                                                }
+                                            } @else {
+                                                <button type="button" class="bt-button tiny secondary-controls-toggle" [attr.aria-expanded]="expandedControls().has(row.id)" [attr.aria-label]="'Ammo and controls for ' + row.display.name" (click)="toggleControls(row)">
+                                                    @if (row.tracksAmmo) { <span class="current-ammo" [title]="ammoState(row).text">{{ ammoState(row).text || 'No ammo' }}</span> }
+                                                    @else { <span>Controls</span> }
+                                                    <span class="chevron" [class.collapsed]="!expandedControls().has(row.id)" aria-hidden="true"></span>
+                                                </button>
+                                            }
                                         }
                                         @if (machineGunArraySummary(row); as summary) {
                                             <span class="mga-membership-badge mga-array-summary">{{ summary }}</span>

@@ -1289,6 +1289,7 @@ export class CBTForce extends Force<never> {
             pristineBattleValue,
             crew,
             owned.mechanics().forcedWithdrawal,
+            this.currentHeatPolicy(),
         ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
 

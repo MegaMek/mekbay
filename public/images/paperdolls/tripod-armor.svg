@@ -368,8 +368,4 @@
       <text id="textArmor_CL" x="125.079" y="264.561" font-size="5.609" text-anchor="middle"></text>
     </g>
   </g>
-  <g class="mek-random-hit-button screen-only" data-mekbay-random-hit="1" role="button" transform="translate(112 205.5) scale(0.75)">
-    <circle class="mek-random-hit-area" cx="14" cy="14" r="11.5" fill="transparent"/>
-    <image x="3" y="3" width="22" height="22" pointer-events="none" href="/images/random-black.svg"/>
-  </g>
 </svg>

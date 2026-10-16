@@ -11,6 +11,8 @@ import { isPpcCapacitorEquipment, PPC_CAPACITOR_HEAT_BONUS } from '../../models/
 import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/runtime/component-ppc-capacitor';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
 import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
+import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
+import type { HeatSinkType } from '../../models/entity/types/heat-sink';
 import { clusterHits } from '../cluster-hit-table';
 import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
 import { resolveInventoryControlDamageText } from '../inventory-control-damage.util';
@@ -879,7 +881,40 @@ export function drawCriticalPanel(svg: SVGSVGElement, entity: BaseEntity, box: B
   });
 }
 
-export function drawHeatScale(svg: SVGSVGElement, box: Box): void {
+/** The heat data panel's heat sink caption, naming every type but single heat sinks. */
+export function heatSinkCaption(type: HeatSinkType): string {
+  return type === 'Single' ? 'Heat Sinks:' : `${type} Heat Sinks:`;
+}
+
+/**
+ * Live controls shared by heat data panels: an APPLY HEAT tab cloned from the panel header, the frame that colours
+ * with pending heat, and a hit area over the heat sink pips when the panel draws them.
+ */
+export function appendHeatPanelControls(group: SVGGElement, heatSinkArea?: Box): void {
+  const header = Array.from(group.children)
+    .find((child): child is SVGGElement => child.tagName.toLowerCase() === 'g');
+  if (header) {
+    const apply = header.cloneNode(true) as SVGGElement;
+    apply.id = 'applyHeatButton';
+    apply.setAttribute('class', 'screen-only no-autocolor');
+    const label = apply.querySelector('text');
+    if (label) label.textContent = 'APPLY HEAT';
+    group.appendChild(apply);
+  }
+  const framePaths = Array.from(group.children)
+    .filter((child): child is SVGPathElement => child.tagName.toLowerCase() === 'path');
+  framePaths[1]?.classList.add('applyHeatButtonFrame');
+  const heatSinks = group.querySelector<SVGGElement>('g.hsPips');
+  if (heatSinks && heatSinkArea) {
+    heatSinks.insertBefore(
+      transparentRect(heatSinkArea.x, heatSinkArea.y, heatSinkArea.width, heatSinkArea.height,
+        'changeActiveHeatsinksCountButton screen-only'),
+      heatSinks.firstChild,
+    );
+  }
+}
+
+export function drawHeatScale(svg: SVGSVGElement, box: Box, family: 'mek' | 'aero'): void {
   const group = svgElement('g');
   group.id = 'heatScale';
   group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
@@ -943,7 +978,7 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box): void {
 
   const cellTop = 47.667;
   const cellHeight = 10.3333333333;
-  const effectLevels = new Set([30, 28, 26, 25, 24, 23, 22, 20, 19, 18, 17, 15, 14, 13, 10, 8, 5]);
+  const effectLevels = new Set(recordSheetHeatEffects(family, 0).map(effect => effect.heat));
   for (let index = 0; index <= 30; index++) {
     const heat = 30 - index;
     const cellY = cellTop + index * cellHeight;

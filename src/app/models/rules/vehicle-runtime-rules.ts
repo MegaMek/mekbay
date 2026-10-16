@@ -163,9 +163,11 @@ export function projectVehicleRuntimeRules(
     if ((crewKilled || vacant) && !hasDroneOperatingSystem) computedConditions.add('abandoned');
     if (disconnected) computedConditions.add('disconnected');
     if (crewKilled || (vacant && !hasDroneOperatingSystem) || motiveImmobile || disconnected) computedConditions.add('immobile');
-    const destroyed = state.explicitlyDestroyed || [...index.locations.values()].some(location =>
-        location.internalPoints > 0
-        && (state.locations.get(location.id)?.internalDamage ?? 0) >= location.internalPoints);
+    // A fuel tank critical is a fuel explosion: MegaMek dooms the vehicle outright (TWGameManager CRIT_FUEL_TANK).
+    const destroyed = state.explicitlyDestroyed || hasDamage('fuel-tank')
+        || [...index.locations.values()].some(location =>
+            location.internalPoints > 0
+            && (state.locations.get(location.id)?.internalDamage ?? 0) >= location.internalPoints);
     const movement = vehicleMovement(
         entity,
         systems,

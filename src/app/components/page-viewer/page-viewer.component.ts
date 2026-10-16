@@ -317,19 +317,19 @@ export class PageViewerComponent implements AfterViewInit {
             handle: (event) => this.handleShortcutKeyDown(event),
         }, this.destroyRef);
 
-        let previousMekIds = new Set<string>();
+        let previousPreviewIds = new Set<string>();
         effect(() => {
             if (!this.viewInitialized()) return;
-            const mekMembers = this.displayedUnits().filter(isCBTMekForceMember);
-            const currentIds = new Set<string>(mekMembers.map(member => member.id));
-            const previews = mekMembers.map(member => Object.freeze({
+            const members = this.displayedUnits().filter(isCBTForceMember);
+            const currentIds = new Set<string>(members.map(member => member.id));
+            const previews = members.map(member => Object.freeze({
                 unitId: member.id,
-                preview: this.pageViewerMekInteractions.heatPreview(member.id),
+                preview: this.pageViewerOverlay.heatPreview(member.id),
             }));
             untracked(() => {
                 this.heatDiffMarkers.update(markers => {
                     const next = new Map(markers);
-                    for (const unitId of previousMekIds) {
+                    for (const unitId of previousPreviewIds) {
                         if (!currentIds.has(unitId)) next.delete(unitId);
                     }
                     for (const row of previews) {
@@ -349,7 +349,7 @@ export class PageViewerComponent implements AfterViewInit {
                     }
                     return next;
                 });
-                previousMekIds = currentIds;
+                previousPreviewIds = currentIds;
             });
         }, { injector: this.injector });
 

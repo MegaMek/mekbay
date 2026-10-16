@@ -187,7 +187,7 @@ describe('PageViewerMekInteractionService', () => {
                     },
                 },
                 { provide: OverlayManagerService, useValue: overlayManager },
-                { provide: PageViewerOverlayService, useValue: jasmine.createSpyObj('PageViewerOverlayService', ['openEquipment', 'openTurn']) },
+                PageViewerOverlayService,
                 { provide: ToastService, useValue: jasmine.createSpyObj('ToastService', ['showToast']) },
                 { provide: ForcePilotEditorService, useValue: jasmine.createSpyObj('ForcePilotEditorService', ['editCBTMember']) },
                 { provide: PageViewerZoomPanService, useValue: jasmine.createSpyObj('PageViewerZoomPanService', ['cancelGesture']) },
@@ -199,6 +199,8 @@ describe('PageViewerMekInteractionService', () => {
             closed: new Subject<void>(),
         } as ReturnType<OverlayManagerService['createManagedOverlay']>);
         service = TestBed.inject(PageViewerMekInteractionService);
+        const overlays = TestBed.inject(PageViewerOverlayService);
+        spyOn(overlays, 'openEquipment');
     });
 
     afterEach(() => dropdownFixture.destroy());
@@ -568,13 +570,13 @@ describe('PageViewerMekInteractionService', () => {
             kind: 'heat-preview', heat: 6, baselineHeat: 2, element: marker, context: editContext(1),
         } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
-        expect(service.heatPreview('unit-1')).toEqual({ element: marker, heat: 6, baselineHeat: 2 });
+        expect(TestBed.inject(PageViewerOverlayService).heatPreview('unit-1')).toEqual({ element: marker, heat: 6, baselineHeat: 2 });
         expect(service.isPickerOpen('unit-1')).toBeTrue();
 
         service.handle(member, {
             kind: 'heat-preview-end', context: editContext(1),
         } as unknown as RecordSheetInteraction, anchoredMouseEvent());
-        expect(service.heatPreview('unit-1')).toBeNull();
+        expect(TestBed.inject(PageViewerOverlayService).heatPreview('unit-1')).toBeNull();
     });
 
     it('uses an active-heatsinks delta picker while dispatching the resulting disabled count', async () => {

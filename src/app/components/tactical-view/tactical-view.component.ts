@@ -45,7 +45,7 @@ NonMekRecordSheetSnapshot,
 import { TooltipDirective } from '../../directives/tooltip.directive';
 import { hasMekRuntime } from '../../models/cbt-unit-snapshot';
 import { CrewMember,MAX_CREW_WOUNDS,type CrewMemberState } from '../../models/crew-member.model';
-import type { MekLocation } from '../../models/entity/types';
+import { getMekLocationLabel, type MekLocation } from '../../models/entity/types';
 import {
 MEK_CREW_STATE_CONTROLS,
 MEK_UNIT_CONDITION_CONTROLS,
@@ -57,6 +57,8 @@ getUnitConditionDefinition,
 unitConditionControls,
 type UnitConditionControl,
 } from '../../models/unit-status-presentation';
+import type { SystemDamageKind } from '../../models/rules/system-damage-rules';
+import { compareSystemDamageScopes, systemDamageStageCaption, systemDamageSystemLabel } from '../../models/runtime/system-damage-presentation';
 import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
@@ -67,7 +69,8 @@ import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
 import {
-mekCriticalLocationCells,
+mekCriticalLocationMatrix,
+mekCriticalTableRowCount,
 mekDamageLocationOrder,
 } from '../../utils/mek-location-layout.util';
 import { EquipmentDialogRuntimeController } from '../equipment-dialog/equipment-dialog-runtime.controller';
@@ -88,10 +91,37 @@ import { TacticalPipMatrixDirective } from './tactical-pip-matrix.directive';
 import { TacticalHeatScaleComponent } from './tactical-heat-scale.component';
 import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component';
 
-interface MekCriticalGroup {
-    readonly code: MekLocation;
+/** Slots rolled with the same first die: 1-3 or 4-6 on twelve-slot locations, all slots otherwise. */
+interface MekCriticalBlock {
+    readonly roll: '1-3' | '4-6' | null;
     readonly slots: readonly MekRecordSheetCriticalSlot[];
 }
+
+interface MekCriticalGroup {
+    readonly code: MekLocation;
+    readonly label: string;
+    /** Left/right pairing order used when the table collapses to two columns. */
+    readonly pairOrder: number;
+    readonly destroyed: boolean;
+    readonly blocks: readonly MekCriticalBlock[];
+}
+
+/** One vertical column of the paper critical table; stacks never align rows across columns. */
+interface MekCriticalStack {
+    readonly key: 'left-arm' | 'left-body' | 'center' | 'right-body' | 'right-arm';
+    readonly groups: readonly MekCriticalGroup[];
+}
+
+interface TacticalDamageTrackGroup {
+    readonly system: SystemDamageKind;
+    readonly label: string;
+    readonly stages: readonly Readonly<{
+        readonly track: NonMekRecordSheetDamageTrack;
+        readonly caption: string;
+    }>[];
+}
+
+type TacticalCrewPosition = MekRecordSheetCrewPosition | NonMekRecordSheetCrewPosition;
 
 interface TacticalConditionStatus {
     readonly key: string;
@@ -152,7 +182,6 @@ export class TacticalViewComponent {
         destroyRef: this.destroyRef,
     });
 
-    protected readonly mekCrewStateControls = MEK_CREW_STATE_CONTROLS;
     protected readonly crewWoundSteps = CREW_WOUND_STEPS;
     protected readonly damagePipThreshold = TACTICAL_DAMAGE_PIP_THRESHOLD;
 
@@ -251,6 +280,8 @@ export class TacticalViewComponent {
             ...menu.filter(control => this.unitConditionActive(control.key)),
         ]);
     });
+    protected readonly unitDestroyed = computed(() =>
+        (this.mekSnapshot() ?? this.nonMekSnapshot())?.destroyed === true);
     protected readonly passiveConditionStatuses = computed<readonly TacticalConditionStatus[]>(() => {
         const mek = this.mekSnapshot();
         const snapshot = mek ?? this.nonMekSnapshot();
@@ -264,7 +295,6 @@ export class TacticalViewComponent {
             statuses.push(Object.freeze(status));
         };
 
-        if (snapshot.destroyed) add({ key: 'destroyed', label: 'DESTROYED', color: '#db4d43' });
         if (mek?.crippled) {
             const crippled = getUnitConditionDefinition('crippled');
             add({ key: crippled.key, label: crippled.label, color: crippled.color });
@@ -278,21 +308,77 @@ export class TacticalViewComponent {
         }
         return Object.freeze(statuses);
     });
-    protected readonly nonMekCrewStateControls = computed(() => {
+    protected readonly crew = computed<readonly TacticalCrewPosition[]>(() =>
+        this.mekSnapshot()?.crew ?? this.nonMekSnapshot()?.crew ?? Object.freeze([]));
+    protected readonly crewStateControls = computed(() => {
+        if (this.mekSnapshot()) return MEK_CREW_STATE_CONTROLS;
         const snapshot = this.nonMekSnapshot();
         return snapshot ? crewStateDefinitions(snapshot.crewStateControlKeys) : [];
     });
-    protected readonly mekCriticalGroups = computed<readonly MekCriticalGroup[]>(() => {
-        const groups = new Map<MekLocation, MekRecordSheetCriticalSlot[]>();
-        for (const slot of this.mekSnapshot()?.criticalSlots ?? []) {
+    protected readonly mekCriticalStacks = computed<readonly MekCriticalStack[]>(() => {
+        const snapshot = this.mekSnapshot();
+        if (!snapshot) return Object.freeze([]);
+        const slotsByCode = new Map<MekLocation, MekRecordSheetCriticalSlot[]>();
+        for (const slot of snapshot.criticalSlots) {
             if (slot.components.length === 0 && slot.committedHits === 0 && slot.previewHits === 0) continue;
-            const slots = groups.get(slot.locationCode) ?? [];
+            const slots = slotsByCode.get(slot.locationCode) ?? [];
             slots.push(slot);
-            groups.set(slot.locationCode, slots);
+            slotsByCode.set(slot.locationCode, slots);
         }
-        return [...groups].map(([code, slots]) => Object.freeze({
-            code,
-            slots: Object.freeze(slots),
+        const [[arm, head, otherArm], [torso, center, otherTorso], [leg, centerLeg, otherLeg]] =
+            mekCriticalLocationMatrix(snapshot.identity.form);
+        const standard = [arm, head, otherArm, torso, center, otherTorso, leg, centerLeg, otherLeg];
+        const extras = [...slotsByCode.keys()].filter(code => !standard.includes(code));
+        const pairOrder = [head, center, arm, otherArm, torso, otherTorso, leg, otherLeg, centerLeg, ...extras];
+        const locations = new Map(snapshot.locations.map(location => [location.code, location]));
+        const group = (code: MekLocation | null): MekCriticalGroup | null => {
+            const slots = code === null ? undefined : slotsByCode.get(code);
+            if (code === null || !slots) return null;
+            const location = locations.get(code);
+            const blocks = mekCriticalTableRowCount(code) === 12
+                ? [
+                    { roll: '1-3' as const, slots: slots.filter(slot => slot.slotIndex < 6) },
+                    { roll: '4-6' as const, slots: slots.filter(slot => slot.slotIndex >= 6) },
+                ].filter(block => block.slots.length > 0)
+                : [{ roll: null, slots }];
+            return Object.freeze({
+                code,
+                label: getMekLocationLabel(code) ?? code,
+                pairOrder: pairOrder.indexOf(code),
+                destroyed: location?.previewStructurallyDestroyed === true || location?.previewDetached === true,
+                blocks: Object.freeze(blocks.map(block => Object.freeze(block))),
+            });
+        };
+        const stack = (key: MekCriticalStack['key'], codes: readonly (MekLocation | null)[]): MekCriticalStack =>
+            Object.freeze({
+                key,
+                groups: Object.freeze(codes.map(group).filter((entry): entry is MekCriticalGroup => entry !== null)),
+            });
+        return Object.freeze([
+            stack('left-arm', [arm]),
+            stack('left-body', [torso, leg]),
+            stack('center', [head, center, centerLeg, ...extras]),
+            stack('right-body', [otherTorso, otherLeg]),
+            stack('right-arm', [otherArm]),
+        ]);
+    });
+    protected readonly damageTrackGroups = computed<readonly TacticalDamageTrackGroup[]>(() => {
+        const snapshot = this.nonMekSnapshot();
+        const entity = this.member()?.entity;
+        if (!snapshot || !entity) return Object.freeze([]);
+        const groups = new Map<SystemDamageKind, TacticalDamageTrackGroup['stages'][number][]>();
+        for (const track of snapshot.damageTracks) {
+            const stages = groups.get(track.system) ?? [];
+            stages.push(Object.freeze({ track, caption: systemDamageStageCaption(entity, track) }));
+            groups.set(track.system, stages);
+        }
+        return Object.freeze([...groups].map(([system, stages]) => {
+            stages.sort((left, right) => compareSystemDamageScopes(left.track.scope, right.track.scope));
+            // A lone stage needs no "1" caption; its box reads like a single sheet pip.
+            if (stages.length === 1 && stages[0].caption === String(stages[0].track.stage)) {
+                stages[0] = Object.freeze({ ...stages[0], caption: '' });
+            }
+            return Object.freeze({ system, label: systemDamageSystemLabel(system), stages: Object.freeze(stages) });
         }));
     });
     protected readonly orderedMekLocations = computed<readonly MekRecordSheetLocation[]>(() => {
@@ -303,20 +389,6 @@ export class TacticalViewComponent {
         return Object.freeze([...snapshot.locations].sort((left, right) =>
             (priority.get(left.code) ?? Number.MAX_SAFE_INTEGER)
             - (priority.get(right.code) ?? Number.MAX_SAFE_INTEGER)));
-    });
-    protected readonly mekCriticalCells = computed<readonly (MekCriticalGroup | null)[]>(() => {
-        const snapshot = this.mekSnapshot();
-        if (!snapshot) return Object.freeze([]);
-        const groups = this.mekCriticalGroups();
-        const byCode = new Map(groups.map(group => [group.code, group]));
-        const cells = mekCriticalLocationCells(snapshot.identity.form)
-            .map(code => code === null ? null : byCode.get(code) ?? null);
-        const standardCodes = new Set(mekCriticalLocationCells(snapshot.identity.form));
-        const extras = groups.filter(group => !standardCodes.has(group.code));
-        while (extras.length > 0) {
-            cells.push(extras.shift() ?? null, extras.shift() ?? null, extras.shift() ?? null);
-        }
-        return Object.freeze(cells);
     });
     protected readonly targets = computed<readonly EquipmentPanelTarget[]>(() =>
         this.equipmentRuntime()?.snapshot().targets ?? Object.freeze([]));
@@ -681,7 +753,15 @@ export class TacticalViewComponent {
         else await this.sendNonMekCommand({ type: 'apply-heat', policy: 'automatic' });
     }
 
-    protected async setMekCrewWounds(position: MekRecordSheetCrewPosition, wounds: number): Promise<void> {
+    protected setCrewWounds(position: TacticalCrewPosition, wounds: number): void {
+        void (this.mekSnapshot() ? this.setMekCrewWounds(position, wounds) : this.setNonMekCrewWounds(position, wounds));
+    }
+
+    protected toggleCrewState(position: TacticalCrewPosition, state: CrewMemberState): void {
+        void (this.mekSnapshot() ? this.toggleMekCrewState(position, state) : this.toggleNonMekCrewState(position, state));
+    }
+
+    private async setMekCrewWounds(position: TacticalCrewPosition, wounds: number): Promise<void> {
         const snapshot = this.mekSnapshot();
         const current = snapshot?.crew.find(candidate => candidate.positionId === position.positionId);
         if (!snapshot || !current || !Number.isSafeInteger(wounds)) return;
@@ -694,8 +774,8 @@ export class TacticalViewComponent {
         });
     }
 
-    protected async toggleMekCrewState(
-        position: MekRecordSheetCrewPosition,
+    private async toggleMekCrewState(
+        position: TacticalCrewPosition,
         state: CrewMemberState,
     ): Promise<void> {
         if (state !== 'unconscious' && state !== 'ejected') return;
@@ -777,8 +857,8 @@ export class TacticalViewComponent {
             }, snapshot.editContext);
     }
 
-    protected async setNonMekCrewWounds(
-        position: NonMekRecordSheetCrewPosition,
+    private async setNonMekCrewWounds(
+        position: TacticalCrewPosition,
         wounds: number,
     ): Promise<void> {
         const snapshot = this.nonMekSnapshot();
@@ -794,8 +874,8 @@ export class TacticalViewComponent {
         }, snapshot.editContext);
     }
 
-    protected async toggleNonMekCrewState(
-        position: NonMekRecordSheetCrewPosition,
+    private async toggleNonMekCrewState(
+        position: TacticalCrewPosition,
         selected: CrewMemberState,
     ): Promise<void> {
         if (selected !== 'unconscious'

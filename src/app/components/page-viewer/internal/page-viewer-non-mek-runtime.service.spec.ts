@@ -46,7 +46,8 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
                 { provide: DialogsService, useValue: dialogs },
                 { provide: LoggerService, useValue: { warn: () => {} } },
                 { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
-                ...[ForcePilotEditorService, OptionsService, PageViewerOverlayService, OverlayManagerService,
+                PageViewerOverlayService,
+                ...[ForcePilotEditorService, OptionsService, OverlayManagerService,
                     PickerFactoryService, ToastService, PageViewerZoomPanService].map(provide => ({ provide, useValue: {} })),
             ] });
             const member = { kind: 'cbt', id: 'tank', entity, nonMekRecordSheetSnapshot: () => snapshot,
@@ -96,8 +97,9 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
                 { provide: PickerFactoryService, useValue: { createChoicePicker: picker } },
                 { provide: OptionsService, useValue: { options: () => ({}) } },
                 { provide: PageViewerZoomPanService, useValue: { cancelGesture: () => {} } },
+                PageViewerOverlayService,
                 ...[LoggerService, UnitNameService, DialogsService, ForcePilotEditorService,
-                    PageViewerOverlayService, OverlayManagerService, ToastService].map(provide => ({ provide, useValue: {} })),
+                    OverlayManagerService, ToastService].map(provide => ({ provide, useValue: {} })),
             ] });
             const replace = jasmine.createSpy('replaceUnitCrewProfile').and.resolveTo(profile);
             const member = { kind: 'cbt', id: 'unit', entity, nonMekRecordSheetSnapshot: () => snapshot,
@@ -126,8 +128,9 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             editContext: context(),
         });
         TestBed.configureTestingModule({ providers: [PageViewerNonMekRuntimeService,
+            PageViewerOverlayService,
             ...[LoggerService, UnitNameService, DialogsService, ForcePilotEditorService, OptionsService,
-                PageViewerOverlayService, OverlayManagerService, PickerFactoryService, ToastService, PageViewerZoomPanService,
+                OverlayManagerService, PickerFactoryService, ToastService, PageViewerZoomPanService,
             ].map(provide => ({ provide, useValue: {} })),
         ] });
         const dispatch = jasmine.createSpy().and.callFake(async (_id, command) => unit.dispatch(command));
@@ -166,7 +169,8 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
                 PageViewerNonMekRuntimeService,
                 { provide: LoggerService, useValue: { warn: () => {} } },
                 { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
-                ...[DialogsService, ForcePilotEditorService, OptionsService, PageViewerOverlayService,
+                PageViewerOverlayService,
+                ...[DialogsService, ForcePilotEditorService, OptionsService,
                     OverlayManagerService, PickerFactoryService, ToastService, PageViewerZoomPanService,
                 ].map(provide => ({ provide, useValue: {} })),
             ] });
@@ -236,8 +240,9 @@ describe('PageViewerNonMekRuntimeService random hits', () => {
                 },
             } },
             { provide: PageViewerZoomPanService, useValue: { cancelGesture: () => undefined } },
+            PageViewerOverlayService,
             ...[
-                DialogsService, ForcePilotEditorService, LoggerService, PageViewerOverlayService,
+                DialogsService, ForcePilotEditorService, LoggerService,
                 OverlayManagerService, ToastService, UnitNameService,
             ].map(provide => ({ provide, useValue: {} })),
         ] });
@@ -280,8 +285,9 @@ describe('PageViewerNonMekRuntimeService async heat edits', () => {
             PageViewerNonMekRuntimeService,
             { provide: DialogsService, useValue: dialogs },
             { provide: OptionsService, useValue: { options: () => ({ trackPhaseAndTurn }) } },
+            PageViewerOverlayService,
             ...[
-                PageViewerOverlayService, ForcePilotEditorService, LoggerService,
+                ForcePilotEditorService, LoggerService,
                 OverlayManagerService, PickerFactoryService, ToastService, UnitNameService, PageViewerZoomPanService,
             ].map(provide => ({ provide, useValue: {} })),
         ] });
@@ -331,8 +337,9 @@ describe('PageViewerNonMekRuntimeService aggregate infantry edits', () => {
             PageViewerNonMekRuntimeService,
             { provide: OptionsService, useValue: { options: () => ({ trackPhaseAndTurn: pending }) } },
             { provide: ToastService, useValue: { showToast: () => undefined } },
+            PageViewerOverlayService,
             ...[
-                DialogsService, PageViewerOverlayService, ForcePilotEditorService, LoggerService,
+                DialogsService, ForcePilotEditorService, LoggerService,
                 OverlayManagerService, PickerFactoryService, UnitNameService, PageViewerZoomPanService,
             ].map(provide => ({ provide, useValue: {} })),
         ] });

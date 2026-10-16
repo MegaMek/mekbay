@@ -122,8 +122,6 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 assetUrl: this.paperdollAsset(entity),
                 pipLayout: request.pipLayout,
                 capitalFallback: false,
-                // Beside the nose, in the open space above the left wing label.
-                randomHitTransform: 'translate(18 205) scale(0.75)',
             },
         );
         drawFighterDiagramHeader(svg, entity, page);
@@ -142,7 +140,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
         }
         if (entity.tracksHeat()) {
-            drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }));
+            drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }), 'aero');
         }
         const catalyst = at({ x: 521, y: 476.987, width: 0, height: 0 });
         drawGeneratedFooter(svg, page, { catalystX: catalyst.x, catalystY: catalyst.y, catalystScale: 1.015 });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
-import { systemDamageDefinitions,systemDamageReferenceValues,type SystemDamageDefinition,type SystemDamageKind } from '../rules/system-damage-rules';
+import { systemDamageDefinitions,systemDamageReferenceValues,type SystemDamageDefinition,type SystemDamageKind,type SystemDamageReferenceValue } from '../rules/system-damage-rules';
 
 const SYSTEM_LAYOUT_NAMES: Readonly<Record<SystemDamageKind, string>> = Object.freeze({
     commander: 'commander_hit', driver: 'driver_hit', pilot: 'pilot_hit', copilot: 'copilot_hit',
@@ -29,23 +29,43 @@ export function systemDamagePresentation(track: SystemDamageDefinition): Readonl
             : `_${location ?? track.scope}`;
     }
     const sheetId = `${SYSTEM_LAYOUT_NAMES[track.system]}${suffix}`;
-    const label = `${track.system.replaceAll('-', ' ')}${track.scope === undefined ? '' : ` (${track.scope})`}${track.stage === undefined ? '' : ` ${track.stage}`}`
-        .replace(/\b\w/gu, character => character.toUpperCase());
+    const label = `${systemDamageSystemLabel(track.system)}${track.scope === undefined ? '' : ` (${track.scope})`}${track.stage === undefined ? '' : ` ${track.stage}`}`;
     return Object.freeze({ sheetId, label,
         ...(track.system === 'motive' && track.maximumHits > 1 ? { visibleHitPips: 9 } : {}),
     });
+}
+
+/** Display name of a damaged system, without its stage or location. */
+export function systemDamageSystemLabel(system: SystemDamageKind): string {
+    return system.replaceAll('-', ' ').replace(/\b\w/gu, character => character.toUpperCase());
+}
+
+/** Short caption printed on one stage control: its reference effect, its location, or its stage number. */
+export function systemDamageStageCaption(
+    entity: BaseEntity,
+    track: Pick<SystemDamageDefinition, 'system' | 'stage' | 'scope'>,
+): string {
+    if (track.scope !== undefined) return systemDamageScopeCaption(track.scope);
+    const value = systemDamageReferenceValues(entity, track.system)[(track.stage ?? 1) - 1];
+    if (value !== undefined) return systemDamageReferenceCaption(value);
+    return track.stage === undefined ? '' : String(track.stage);
+}
+
+const SYSTEM_DAMAGE_SCOPE_ORDER = ['Front', 'Left', 'Right', 'Rear', 'Front Left', 'Front Right', 'Rear Left', 'Rear Right',
+    'Turret', 'Front Turret', 'Rear Turret'];
+
+/** Printed order of location-scoped controls (front, sides, rear, turrets). */
+export function compareSystemDamageScopes(left: string | undefined, right: string | undefined): number {
+    return SYSTEM_DAMAGE_SCOPE_ORDER.indexOf(left ?? '') - SYSTEM_DAMAGE_SCOPE_ORDER.indexOf(right ?? '');
 }
 
 /** The locations of scoped controls come from the rules; only their ordering and captions live here. */
 export function systemDamageLocationControls(entity: BaseEntity, system: 'stabilizer' | 'turret-lock'): readonly Readonly<{
     id: string; label: string;
 }>[] {
-    const order = ['Front', 'Left', 'Right', 'Rear', 'Front Left', 'Front Right', 'Rear Left', 'Rear Right',
-        'Turret', 'Front Turret', 'Rear Turret'];
     return systemDamageDefinitions(entity).filter(track => track.system === system && track.scope !== undefined)
-        .sort((left, right) => order.indexOf(left.scope!) - order.indexOf(right.scope!))
-        .map(track => ({ id: systemDamagePresentation(track).sheetId,
-            label: track.scope!.replace('Front ', 'F ').replace('Rear ', 'R ') }));
+        .sort((left, right) => compareSystemDamageScopes(left.scope, right.scope))
+        .map(track => ({ id: systemDamagePresentation(track).sheetId, label: systemDamageScopeCaption(track.scope!) }));
 }
 
 /** Generated controls bind semantic targets while their geometry stays in the layout. */
@@ -58,8 +78,15 @@ export function systemDamageControls(entity: BaseEntity, system: SystemDamageKin
         ids: definitions.map(track => systemDamagePresentation(track).sheetId),
         modifiers: definitions.map(track => {
             const value = effects[(track.stage ?? 1) - 1];
-            return value === undefined ? '' : value === 'destroyed' ? 'D' : value === 'immobile' ? 'I'
-                : value > 0 ? `+${value}` : String(value);
+            return value === undefined ? '' : systemDamageReferenceCaption(value);
         }),
     });
+}
+
+function systemDamageReferenceCaption(value: SystemDamageReferenceValue): string {
+    return value === 'destroyed' ? 'D' : value === 'immobile' ? 'I' : value > 0 ? `+${value}` : String(value);
+}
+
+function systemDamageScopeCaption(scope: string): string {
+    return scope.replace('Front ', 'F ').replace('Rear ', 'R ');
 }

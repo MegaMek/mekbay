@@ -1,153 +1,152 @@
 <section class="tactical-tracker framed-borders" aria-label="Movement and turn" (click)="$event.stopPropagation()">
-
-
     <div class="tracker-layout">
-    <section class="summary-section movement-section" aria-label="Movement">
-        @if (showImmobileStatus()) {
-            <div class="summary-row immobile-status" role="status">Unit is immobile</div>
-        }
-        @if (showMovementControls()) {
-        @if (canSwitchAirborneMode()) {
-            <div class="button-row">
-                <button
-                    type="button"
-                    class="bt-button move-button"
-                    [class.selected]="airborne() === false"
-                    [attr.aria-pressed]="airborne() === false"
-                    (click)="setAirborne(false)"
-                >Grounded</button>
-                <button
-                    type="button"
-                    class="bt-button move-button"
-                    [class.selected]="airborne() === true"
-                    [attr.aria-pressed]="airborne() === true"
-                    (click)="setAirborne(true)"
-                >Airborne</button>
-            </div>
-        }
-
-        @if (canSwitchAirborneMode() === false || airborne() !== null) {
-            <div class="summary-row move-mode-row" [class.crowded]="moveModes().length > 4">
-                @for (moveMode of moveModes(); track moveMode.mode) {
-                    @let mode = moveMode.mode;
+        <section class="summary-section movement-section" aria-label="Movement">
+            @if (showImmobileStatus()) {
+                <div class="summary-row immobile-status" role="status">Unit is immobile</div>
+            }
+            @if (showMovementControls()) {
+            @if (canSwitchAirborneMode()) {
+                <div class="button-row">
                     <button
                         type="button"
                         class="bt-button move-button"
-                        [class.stationary]="mode === 'stationary'"
-                        [class.stationary-only]="mode === 'stationary' && onlyStationaryMoveMode()"
-                        [class.selected]="currentMoveMode() === mode"
-                        [class.danger]="moveMode.psr"
-                        [disabled]="isMoveModeDisabled(mode)"
-                        [attr.aria-label]="mode === 'stationary' ? 'Stationary' : null"
-                        [attr.aria-pressed]="currentMoveMode() === mode"
-                        (click)="selectMove(mode)"
-                    >
-                        @if (mode === 'stationary') {
-                            <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
-                                <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
-                            </svg>
-                        } @else {
-                            <span>{{ moveMode.label }}</span>
-                            <span class="modifier-badge" [class.empty-modifier]="!moveModeModifierLabel(mode)">{{ moveModeModifierLabel(mode) }}</span>
-                        }
-                    </button>
-                }
-            </div>
-
-            @if (prone() && canStandUp()) {
-                <div class="button-row">
-                    <button type="button" class="bt-button move-button" [class.danger]="standUpRequiresPSR()"
-                        (click)="standUp($event)">Stand up!</button>
-                </div>
-            }
-
-            @if (standAttempts() > 0) {
-                <div class="summary-row stand-attempts-summary">
+                        [class.selected]="airborne() === false"
+                        [attr.aria-pressed]="airborne() === false"
+                        (click)="setAirborne(false)"
+                    >Grounded</button>
                     <button
                         type="button"
-                        class="stand-attempts-link"
-                        aria-haspopup="dialog"
-                        title="Review stand-up attempt details"
-                        (click)="reviewStandAttempts($event)"
-                    >
-                        Stand attempts: {{ standAttempts() }} (&minus;{{ standAttemptMovementPointsSpent() }} MP)
-                    </button>
+                        class="bt-button move-button"
+                        [class.selected]="airborne() === true"
+                        [attr.aria-pressed]="airborne() === true"
+                        (click)="setAirborne(true)"
+                    >Airborne</button>
                 </div>
             }
 
-            @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
-                <div class="summary-row">
-                    <hex-slider
-                        class="move-slider"
-                        [min]="0"
-                        [max]="moveCapacity()"
-                        [blockedMin]="moveMin()"
-                        [blockedMax]="moveMax()"
-                        [step]="1"
-                        [value]="moveDistance()"
-                        [ticks]="moveDistanceTicks()"
-                        [label]="moveDistance()"
-                        ariaLabel="Move distance"
-                        [valueAssigned]="hasMoveDistance()"
-                        [danger]="overDistance()"
-                        (valueChange)="setMoveDistance($event, false)"
-                        (valueCommit)="commitMoveDistance($event)"
-                    ></hex-slider>
-                </div>
-            }
-
-            @for (trackRow of equipmentTrackControlRows(); track trackRow.componentId) {
-                <div class="summary-row equipment-track-row" [class.damaged]="trackRow.damaged">
-                    <span class="equipment-track-label">{{ trackRow.label }}</span>
-                    <span class="equipment-track-choices">
-                        @for (choice of trackRow.sequenceChoices; track choice.command) {
-                            <button
-                                type="button"
-                                class="bt-button equipment-track-button"
-                                [class.selected]="choice.active && choice.selectionTone !== 'muted'"
-                                [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
-                                [style.--picker-choice-normal-color]="choice.colors?.normal"
-                                [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
-                                [style.--picker-choice-selected-color]="choice.colors?.selected"
-                                [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
-                                [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
-                                [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
-                                [style.--picker-choice-disabled-color]="choice.colors?.disabled"
-                                [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
-                                [disabled]="choice.disabled && !choice.active"
-                                [attr.aria-pressed]="choice.active"
-                                (click)="handleEquipmentTrackChoice(choice)"
-                            >{{ choice.shortLabel || choice.label }}</button>
-                        }
-                    </span>
-
-                    @if (trackRow.statusChoice; as choice) {
-                        <span class="equipment-track-status" [class.failed]="choice.active">
-                            <button
-                                type="button"
-                                class="bt-button equipment-track-button"
-                                [class.selected]="choice.active && choice.selectionTone !== 'muted'"
-                                [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
-                                [style.--picker-choice-normal-color]="choice.colors?.normal"
-                                [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
-                                [style.--picker-choice-selected-color]="choice.colors?.selected"
-                                [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
-                                [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
-                                [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
-                                [style.--picker-choice-disabled-color]="choice.colors?.disabled"
-                                [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
-                                [disabled]="choice.disabled && !choice.active"
-                                [attr.aria-pressed]="choice.active"
-                                (click)="handleEquipmentTrackChoice(choice)"
-                            >{{ choice.shortLabel || choice.label }}</button>
-                        </span>
+            @if (canSwitchAirborneMode() === false || airborne() !== null) {
+                <div class="summary-row move-mode-row" [class.crowded]="moveModes().length > 4">
+                    @for (moveMode of moveModes(); track moveMode.mode) {
+                        @let mode = moveMode.mode;
+                        <button
+                            type="button"
+                            class="bt-button move-button"
+                            [class.stationary]="mode === 'stationary'"
+                            [class.stationary-only]="mode === 'stationary' && onlyStationaryMoveMode()"
+                            [class.selected]="currentMoveMode() === mode"
+                            [class.danger]="moveMode.psr"
+                            [disabled]="isMoveModeDisabled(mode)"
+                            [attr.aria-label]="mode === 'stationary' ? 'Stationary' : null"
+                            [attr.aria-pressed]="currentMoveMode() === mode"
+                            (click)="selectMove(mode)"
+                        >
+                            @if (mode === 'stationary') {
+                                <svg width="16px" height="16px" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                                    <path d="M32 2C15.432 2 2 15.432 2 32c-.001 16.568 13.432 30 30 30s30.001-13.432 30-30c.001-16.568-13.432-30-30-30zM9 38V26h46v12H9z" fill="currentColor"></path>
+                                </svg>
+                            } @else {
+                                <span>{{ moveMode.label }}</span>
+                                <span class="modifier-badge" [class.empty-modifier]="!moveModeModifierLabel(mode)">{{ moveModeModifierLabel(mode) }}</span>
+                            }
+                        </button>
                     }
                 </div>
-            }
-        }
-        }
 
-        <div class="button-row">
+                @if (currentMoveMode() !== 'stationary' && currentMoveMode() !== null) {
+                    <div class="summary-row">
+                        <hex-slider
+                            class="move-slider"
+                            [min]="0"
+                            [max]="moveCapacity()"
+                            [blockedMin]="moveMin()"
+                            [blockedMax]="moveMax()"
+                            [step]="1"
+                            [value]="moveDistance()"
+                            [ticks]="moveDistanceTicks()"
+                            [label]="moveDistance()"
+                            ariaLabel="Move distance"
+                            [valueAssigned]="hasMoveDistance()"
+                            [danger]="overDistance()"
+                            (valueChange)="setMoveDistance($event, false)"
+                            (valueCommit)="commitMoveDistance($event)"
+                        ></hex-slider>
+                    </div>
+                }
+
+                @if (prone() && canStandUp()) {
+                    <div class="button-row">
+                        <button type="button" class="bt-button move-button" [class.danger]="standUpRequiresPSR()"
+                            (click)="standUp($event)">Stand up!</button>
+                    </div>
+                }
+
+                @if (standAttempts() > 0) {
+                    <div class="summary-row stand-attempts-summary">
+                        <button
+                            type="button"
+                            class="stand-attempts-link"
+                            aria-haspopup="dialog"
+                            title="Review stand-up attempt details"
+                            (click)="reviewStandAttempts($event)"
+                        >
+                            Stand attempts: {{ standAttempts() }} (&minus;{{ standAttemptMovementPointsSpent() }} MP)
+                        </button>
+                    </div>
+                }
+
+                @for (trackRow of equipmentTrackControlRows(); track trackRow.componentId) {
+                    <div class="summary-row equipment-track-row" [class.damaged]="trackRow.damaged">
+                        <span class="equipment-track-label">{{ trackRow.label }}</span>
+                        <span class="equipment-track-choices">
+                            @for (choice of trackRow.sequenceChoices; track choice.command) {
+                                <button
+                                    type="button"
+                                    class="bt-button equipment-track-button"
+                                    [class.selected]="choice.active && choice.selectionTone !== 'muted'"
+                                    [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
+                                    [style.--picker-choice-normal-color]="choice.colors?.normal"
+                                    [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
+                                    [style.--picker-choice-selected-color]="choice.colors?.selected"
+                                    [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
+                                    [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
+                                    [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
+                                    [style.--picker-choice-disabled-color]="choice.colors?.disabled"
+                                    [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
+                                    [disabled]="choice.disabled && !choice.active"
+                                    [attr.aria-pressed]="choice.active"
+                                    (click)="handleEquipmentTrackChoice(choice)"
+                                >{{ choice.shortLabel || choice.label }}</button>
+                            }
+                        </span>
+
+                        @if (trackRow.statusChoice; as choice) {
+                            <span class="equipment-track-status" [class.failed]="choice.active">
+                                <button
+                                    type="button"
+                                    class="bt-button equipment-track-button"
+                                    [class.selected]="choice.active && choice.selectionTone !== 'muted'"
+                                    [class.muted-selected]="choice.active && choice.selectionTone === 'muted'"
+                                    [style.--picker-choice-normal-color]="choice.colors?.normal"
+                                    [style.--picker-choice-normal-text-color]="choice.colors?.normalText"
+                                    [style.--picker-choice-selected-color]="choice.colors?.selected"
+                                    [style.--picker-choice-selected-text-color]="choice.colors?.selectedText"
+                                    [style.--picker-choice-muted-selected-color]="choice.colors?.mutedSelected"
+                                    [style.--picker-choice-muted-selected-text-color]="choice.colors?.mutedSelectedText"
+                                    [style.--picker-choice-disabled-color]="choice.colors?.disabled"
+                                    [style.--picker-choice-disabled-text-color]="choice.colors?.disabledText"
+                                    [disabled]="choice.disabled && !choice.active"
+                                    [attr.aria-pressed]="choice.active"
+                                    (click)="handleEquipmentTrackChoice(choice)"
+                                >{{ choice.shortLabel || choice.label }}</button>
+                            </span>
+                        }
+                    </div>
+                }
+            }
+            }
+        </section>
+
+        <section class="tactical-readouts" aria-label="Turn readouts">
             <button
                 type="button"
                 class="bt-button spotting-button"
@@ -159,47 +158,39 @@
                 <span>Spotting</span>
                 <span class="modifier-badge" [class.empty-modifier]="!spottingModifierLabel()">{{ spottingModifierLabel() }}</span>
             </button>
-        </div>
-    </section>
 
-        <section class="tactical-readouts" aria-label="Turn readouts">
-
-            <div class="defense-readout" [tooltip]="defenseTargetModifierTooltip()">
-                <span>Defense</span>
+            <div class="readout defense-readout" [tooltip]="defenseTargetModifierTooltip()">
+                <span class="readout-caption">Defense</span>
                 <strong>{{ getTotalTargetModifierAsDefender() }}</strong>
             </div>
 
-            <div class="cover-readout">
-                <div class="cover-label">
-                    <span>Cover</span>
-                    <span class="modifier-badge large defense" [class.empty-modifier]="!coverModifierLabel()">{{ coverModifierLabel() }}</span>
-                </div>
+            <div class="readout cover-readout">
+                <span class="readout-caption">Cover</span>
+                <span class="modifier-badge defense" [class.empty-modifier]="!coverModifierLabel()">{{ coverModifierLabel() }}</span>
                 <cover-choices [cover]="cover()" [waterDepth]="waterDepth()" [buildingLevel]="buildingLevel()" (coverChange)="selectCover($event)" (waterDepthChange)="selectWaterDepth($event)" (buildingLevelChange)="selectBuildingLevel($event)" />
             </div>
 
-            <div class="damage-readout" [class.active]="damageReceived() > 0">
-                <span>Phase damage</span>
+            <div class="readout damage-readout" [class.active]="damageReceived() > 0">
+                <span class="readout-caption">Phase dmg</span>
                 <strong>{{ damageReceived() }}</strong>
             </div>
 
             @if (psrModifiers().length > 0 && controlRollShortLabel() !== 'PSR') {
                 <div class="control-modifiers">
-                    <div class="readout-label"><span>{{ controlRollShortLabel() }} modifiers</span></div>
-                    <div class="modifier-chips">
-                        @for (modifier of psrModifiers(); track $index) {
-                            <span [class.danger]="modifier.modifier >= 0" [class.bonus]="modifier.modifier < 0">
-                                {{ modifier.reason }} <strong>{{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}</strong>
-                            </span>
-                        }
-                    </div>
+                    <span class="readout-caption">{{ controlRollShortLabel() }}</span>
+                    @for (modifier of psrModifiers(); track $index) {
+                        <span class="modifier-chip" [class.danger]="modifier.modifier >= 0" [class.bonus]="modifier.modifier < 0">
+                            {{ modifier.reason }} <strong>{{ modifier.modifier >= 0 ? '+' : '' }}{{ modifier.modifier }}</strong>
+                        </span>
+                    }
                 </div>
             }
         </section>
-        <aside class="command-rail" aria-label="Turn commands">
 
+        <aside class="command-rail" aria-label="Turn commands">
             @if (falling() || hasPSRChecks()) {
                 <button type="button" class="bt-button alert-command" [class.falling]="falling()" (click)="openPsrWarning($event)">
-                    <span aria-hidden="true">!</span>
+                    <span class="alert-icon" aria-hidden="true">!</span>
                     @if (falling()) {
                         <strong>Falling</strong><small>Resolve now</small>
                     } @else {
@@ -217,7 +208,7 @@
                         </button>
                     }
                     @if (endPhaseForAllButtonVisible()) {
-                        <button type="button" class="bt-button scope-command" (click)="endPhaseForAll($event)">{{ phaseDirty() ? 'All units' : 'End phase for all units' }}</button>
+                        <button type="button" class="bt-button scope-command" (click)="endPhaseForAll($event)">{{ phaseDirty() ? 'All units' : 'End phase for all' }}</button>
                     }
                 </div>
             }
@@ -231,11 +222,10 @@
                         </button>
                     }
                     @if (endTurnForAllButtonVisible()) {
-                        <button type="button" class="bt-button scope-command" (click)="endTurnForAll($event)">{{ dirty() ? 'All units' : 'End turn for all units' }}</button>
+                        <button type="button" class="bt-button scope-command" (click)="endTurnForAll($event)">{{ dirty() ? 'All units' : 'End turn for all' }}</button>
                     }
                 </div>
             }
-
         </aside>
     </div>
 </section>

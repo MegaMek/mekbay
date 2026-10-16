@@ -30,7 +30,8 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import { INFANTRY_STRENGTH_CELL_COUNT } from '../../utils/sheets/infantry-strength-projection';
 import { appendRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
-import { drawAeroExternalStores, drawAeroVelocityPanel, AERO_DEFAULT_BOMB_KEY } from '../../utils/sheets/layouts/aero-record-sheet-components';
+import { drawAeroExternalStores, drawAeroHeatDataPanel, drawAeroVelocityPanel, AERO_DEFAULT_BOMB_KEY } from '../../utils/sheets/layouts/aero-record-sheet-components';
+import { drawHeatScale } from '../../utils/sheets/record-sheet-svg-rendering';
 import { optimizeGeneratedSvg } from '../../utils/sheets/record-sheet-svg-rendering';
 import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
 import {
@@ -290,7 +291,11 @@ describe('bindNonMekRecordSheet', () => {
         expect(value(3, 'thrust')).toBe('');
         svg.querySelector('.velocityCell[data-turn="12"][data-field="effectiveVelocity"]')!
             .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        // A secondary click reaches the runtime too, which clears the cell.
+        svg.querySelector('.velocityCell[data-turn="12"][data-field="effectiveVelocity"]')!
+            .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
         expect(interactions).toEqual([
+            { kind: 'velocity-record', turn: 12, field: 'effectiveVelocity', context: snapshot.editContext },
             { kind: 'velocity-record', turn: 12, field: 'effectiveVelocity', context: snapshot.editContext },
         ]);
 
@@ -846,27 +851,64 @@ describe('bindNonMekRecordSheet', () => {
         expect(svg.querySelectorAll('.crewHit.damaged').length).toBe(2);
     });
 
-    it('renders and binds aerospace heat and active heat sinks', () => {
+    it('renders and binds the generated aerospace heat scale and heat panel as unhighlighted controls', () => {
         const svg = heatSheet();
         const interactions: RecordSheetInteraction[] = [];
-        bindNonMekRecordSheet(svg, heatSnapshot(), interaction => interactions.push(interaction));
+        const binding = bindNonMekRecordSheet(svg, heatSnapshot(), interaction => interactions.push(interaction));
 
-        expect(svg.querySelectorAll('#heatScale .heat.hot').length).toBe(3);
+        expect(svg.querySelectorAll('#heatScale .heat.hot').length).toBe(9);
         expect(svg.querySelector('#heatDataPanel')?.classList.contains('dirtyHeat')).toBeTrue();
-        expect(svg.querySelectorAll('.hsPips .pip.disabled').length).toBe(2);
+        const visiblePips = [...svg.querySelectorAll<SVGElement>('.hsPips .pip')].filter(pip => pip.style.display !== 'none');
+        expect(visiblePips.length).toBe(10);
+        expect(visiblePips.filter(pip => pip.classList.contains('disabled')).length).toBe(2);
         expect(svg.querySelector('#hsCount')?.textContent).toBe('10 (16)');
+        expect(svg.querySelector('#applyHeatButton text')?.textContent).toBe('APPLY HEAT');
+        // Aero pilot-damage levels are marked on the scale as well as the shared effect levels.
+        expect([...svg.querySelectorAll('.heat-effect-marker')].length).toBe(19);
+        const controls = [
+            svg.querySelector('#heatScale .heat[heat="5"]')!, svg.querySelector('#heatScale .overflowFrame')!,
+            svg.querySelector('#applyHeatButton')!, svg.querySelector('.hsPips')!,
+        ];
+        expect(controls.map(control => [control.classList.contains('interactive'), control.classList.contains('selectable')]))
+            .toEqual(controls.map(() => [true, false]));
 
-        svg.querySelector('#heatScale .heat[heat="5"]')
-            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        svg.querySelector('#applyHeatButton')
-            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        svg.querySelector('.hsPips')
-            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        controls[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        controls[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        controls[2].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        svg.querySelector('.changeActiveHeatsinksCountButton')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([
             jasmine.objectContaining({ kind: 'heat', heat: 5 }),
+            jasmine.objectContaining({ kind: 'heat-overflow' }),
             jasmine.objectContaining({ kind: 'apply-heat' }),
             jasmine.objectContaining({ kind: 'heat-sinks-off' }),
         ]);
+        // Heat controls answer only the primary click.
+        controls.forEach(control => control.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })));
+        expect(interactions.length).toBe(4);
+
+        // Heat past the top of the scale lights the overflow frame and writes the total.
+        binding.render({ ...heatSnapshot(), heat: { ...heatSnapshot().heat, pending: 33 } });
+        expect(svg.querySelector('#heatScale .overflowFrame')?.classList.contains('hot')).toBeTrue();
+        expect(svg.querySelector('#heatScale .overflowText')?.textContent).toBe('33');
+        binding.destroy();
+    });
+
+    it('shows aerospace end-turn heat as the automatic projection bar or the manual target marker', () => {
+        const svg = heatSheet();
+        const projection = Object.freeze({ current: 5, calculated: 9, projected: 9, generated: 12, dissipated: 8, sources: [] });
+        const projected = (heatPolicy: NonMekRecordSheetSnapshot['heatPolicy']): NonMekRecordSheetSnapshot => Object.freeze({
+            ...heatSnapshot(),
+            heatPolicy,
+            heat: Object.freeze({ ...heatSnapshot().heat, pending: null, projection }),
+        });
+        const binding = bindNonMekRecordSheet(svg, projected('automatic'), () => undefined);
+        expect(svg.querySelector('#heat-projection-path')).not.toBeNull();
+        expect(svg.querySelector('#heat-projection-target-marker')).toBeNull();
+
+        binding.render(projected('manual'));
+        expect(svg.querySelector('#heat-projection-path')).toBeNull();
+        expect(svg.querySelector('#heat-projection-target-marker')?.getAttribute('fill')).toBe('#d12020');
+        binding.destroy();
     });
 
     it('binds generated non-Mek weapon rows to stable component IDs', () => {
@@ -1190,10 +1232,13 @@ function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapsh
         bombs: Object.freeze([]),
         velocityRecord: Object.freeze([]),
         destroyed,
+        heatPolicy: 'automatic',
         heat: Object.freeze({
             tracked: false,
             current: 0,
             pending: null,
+            previous: 0,
+            projection: null,
             heatsinksOff: 0,
             heatSinkCount: 0,
             dissipation: 0,
@@ -1230,6 +1275,8 @@ function heatSnapshot(): NonMekRecordSheetSnapshot {
             tracked: true,
             current: 5,
             pending: 8,
+            previous: 5,
+            projection: null,
             heatsinksOff: 2,
             heatSinkCount: 10,
             dissipation: 16,
@@ -1447,21 +1494,12 @@ function criticalSheet(): SVGSVGElement {
 
 function heatSheet(): SVGSVGElement {
     const host = document.createElement('div');
-    host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
-        <g id="heatScale">
-            <rect class="heat" heat="0"></rect>
-            <rect class="heat" heat="5"></rect>
-            <rect class="heat" heat="8"></rect>
-            <rect class="overflowFrame"></rect>
-            <text class="overflowText"></text>
-        </g>
-        <g id="heatDataPanel"><g id="applyHeatButton"></g></g>
-        <text id="hsCount"></text>
-        <g class="hsPips">
-            ${Array.from({ length: 10 }, () => '<circle class="pip"></circle>').join('')}
-        </g>
-    </svg>`;
-    return host.querySelector('svg') as SVGSVGElement;
+    host.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+    const svg = host.firstElementChild as SVGSVGElement;
+    const fighter = new TestAeroSpaceFighterEntity();
+    drawHeatScale(svg, { x: 574, y: 388.911, width: 19.454, height: 366 }, 'aero');
+    drawAeroHeatDataPanel(svg, fighter, { x: 405.456, y: 509.4, width: 161, height: 246.6 }, true);
+    return svg;
 }
 
 function inventorySheet(): SVGSVGElement {

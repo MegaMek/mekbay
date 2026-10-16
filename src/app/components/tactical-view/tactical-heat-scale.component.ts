@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, input, output, signal, viewChild } from '@angular/core';
-import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
+import { recordSheetHeatEffects, type RecordSheetHeatEffect } from '../../models/runtime/heat-effect-presentation';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
-import { recordSheetHeatScale, type RecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
+import { nonMekRecordSheetHeatScale, recordSheetHeatScale, type RecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
 import type { TurnSummaryHeatRow } from '../page-viewer/overlay/page-turn-summary.util';
 
 @Component({
@@ -33,8 +33,10 @@ export class TacticalHeatScaleComponent {
     readonly state = computed<RecordSheetHeatScale>(() => {
         const mek = this.mek();
         if (mek) return recordSheetHeatScale(mek);
-        const heat = this.entity()?.heat;
-        return { current: heat?.current ?? 0, pending: heat?.pending ?? undefined, automaticProjection: false };
+        const entity = this.entity();
+        return entity
+            ? nonMekRecordSheetHeatScale(entity)
+            : { current: 0, automaticProjection: false };
     });
     readonly displayedHeat = computed(() => this.preview() ?? this.state().pending ?? this.state().current);
     readonly projection = computed(() => {
@@ -47,11 +49,15 @@ export class TacticalHeatScaleComponent {
     readonly family = computed(() => this.mek() ? this.mek()!.identity.form === 'lam' ? 'lam' : 'mek' : 'aero');
     readonly effects = computed(() => recordSheetHeatEffects(this.family(), this.displayedHeat())
         .filter(effect => effect.active && !effect.superseded));
-    readonly cells = computed(() => this.levels.map(heat => ({
-        heat,
-        effects: recordSheetHeatEffects(this.family(), heat).filter(effect => effect.heat === heat)
-            .map(effect => effect.label + (effect.secondaryLabel ?? '')).join(' · '),
-    })));
+    readonly cells = computed(() => this.levels.map(heat => {
+        const marks = recordSheetHeatEffects(this.family(), heat).filter(effect => effect.heat === heat);
+        return {
+            heat,
+            marks,
+            effects: marks.map(effect => effect.label + (effect.secondaryLabel ?? '')).join(' · '),
+        };
+    }));
+    readonly breakdownOpen = signal(false);
     readonly markers = computed(() => {
         const state = this.state();
         return [
@@ -72,7 +78,18 @@ export class TacticalHeatScaleComponent {
             this.mek()?.entityUuid;
             this.entity()?.entityUuid;
             this.cancelDrag();
+            this.breakdownOpen.set(false);
         });
+    }
+
+    /** Short value printed under an effect icon on the scale: -1, +2, 4+, or nothing for automatic shutdown. */
+    effectMark(effect: RecordSheetHeatEffect): string {
+        switch (effect.kind) {
+            case 'movement': return String(effect.value);
+            case 'fire': return `+${effect.value}`;
+            case 'shutdown': return effect.value >= 100 ? '' : `${effect.value}+`;
+            default: return `${effect.value}+`;
+        }
     }
 
     markersAt(heat: number) {

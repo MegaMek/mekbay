@@ -47,7 +47,6 @@ export function renderGeneratedRecordSheetControls(
   appendCrewVacancyPresentation(svg);
   applyRecordSheetPipMaterials(svg, entity);
   appendPipHitAreas(svg);
-  appendPaperdollRandomHitButtons(svg, entity);
   appendGeneratedFluffImage(svg, entity, options.fluffImageUrl);
 }
 
@@ -515,36 +514,6 @@ function appendPipHitAreas(svg: SVGSVGElement): void {
     hitArea.setAttribute('pointer-events', 'all');
     after.after(hitArea);
   }
-}
-
-function appendPaperdollRandomHitButtons(svg: SVGSVGElement, entity: BaseEntity): void {
-  if (!isMekEntity(entity) && !isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return;
-  svg.querySelectorAll<SVGGElement>('[data-mekbay-paperdoll][data-random-hit-transform]').forEach((layer) => {
-    if (layer.querySelector('[data-mekbay-random-hit]') || !layer.querySelector('.unitLocation.armor:not([data-rear])'))
-      return;
-    const button = svgElement('g');
-    setAttributes(button, {
-      class: 'mek-random-hit-button screen-only',
-      'data-mekbay-random-hit': '1',
-      role: 'button',
-      'aria-label': 'Roll random hit location',
-      'pointer-events': 'all',
-      transform: layer.getAttribute('data-random-hit-transform')!,
-    });
-    const hitArea = svgElement('circle');
-    setAttributes(hitArea, { class: 'mek-random-hit-area', cx: 14, cy: 14, r: 15, fill: 'transparent' });
-    const icon = svgElement('image');
-    setAttributes(icon, {
-      x: 3,
-      y: 3,
-      width: 22,
-      height: 22,
-      'pointer-events': 'none',
-      href: '/images/random-black.svg',
-    });
-    button.append(hitArea, icon);
-    layer.appendChild(button);
-  });
 }
 
 function appendGeneratedFluffImage(

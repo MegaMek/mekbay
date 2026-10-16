@@ -105,7 +105,7 @@ export class PageViewerNonMekRuntimeService {
     private readonly randomHitResult = new RecordSheetRandomHitResult();
 
     isPickerOpen(unitId: string): boolean {
-        return this.picker?.unitId === unitId;
+        return this.picker?.unitId === unitId || this.overlays.heatPreview(unitId) !== null;
     }
 
     bind(member: CBTForceMember, svg: SVGSVGElement): boolean {
@@ -159,6 +159,7 @@ export class PageViewerNonMekRuntimeService {
     clear(): void {
         this.closePicker();
         this.randomHitResult.clear();
+        this.overlays.clearHeatPreview();
         for (const unitId of [...this.bound.keys()]) this.destroyBinding(unitId);
     }
 
@@ -219,7 +220,16 @@ export class PageViewerNonMekRuntimeService {
             this.openRandomHitPicker(member, interaction, event);
             return;
         }
+        if (interaction.kind === 'heat-preview') {
+            this.overlays.setHeatPreview(member.id, interaction);
+            return;
+        }
+        if (interaction.kind === 'heat-preview-end') {
+            this.overlays.clearHeatPreview(member.id);
+            return;
+        }
         if (interaction.kind === 'heat') {
+            this.overlays.clearHeatPreview(member.id);
             void this.setHeat(member, interaction.heat, interaction.context);
             return;
         }
@@ -1109,6 +1119,7 @@ export class PageViewerNonMekRuntimeService {
 
     private destroyBinding(unitId: string): void {
         if (this.randomHitResult.unitId === unitId) this.randomHitResult.clear();
+        this.overlays.clearHeatPreview(unitId);
         const current = this.bound.get(unitId);
         if (!current) return;
         current.subscription.unsubscribe();

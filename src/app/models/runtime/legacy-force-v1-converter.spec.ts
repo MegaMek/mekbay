@@ -486,6 +486,7 @@ describe('CBT V1 force converter', () => {
             airborne: null,
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
             weaponsHeat: 0,
+            heatSettled: false,
             cover: null,
             spotting: false,
             phaseStateChanged: false,

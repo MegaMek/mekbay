@@ -1,7 +1,5 @@
 // Only live viewers opt into interaction; generated sheets remain passive.
 $outlined-controls: '.crewNameButton, .crewSkillButton, .velocityCell';
-// Bomb stores open the loadout; they are not damage targets either.
-$store-controls: '.bombBox';
 
 @media screen {
   // Opt-in qualifiers must not outrank existing damage/selection styles.
@@ -107,8 +105,8 @@ $store-controls: '.bombBox';
       transition: fill ease-out 0.2s;
     }
 
-    .selectable:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover,
-    .selectable:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover > path {
+    .selectable:not(.pip-hit-area):hover,
+    .selectable:not(.pip-hit-area):hover > path {
       fill: var(--undamaged-highlight-color) !important;
 
       .night-mode & {
@@ -116,8 +114,8 @@ $store-controls: '.bombBox';
       }
     }
 
-    .selectable.damaged:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover,
-    .selectable.damaged:not(.pip-hit-area, #{$outlined-controls}, #{$store-controls}):hover > path {
+    .selectable.damaged:not(.pip-hit-area):hover,
+    .selectable.damaged:not(.pip-hit-area):hover > path {
       fill: var(--damaged-highlight-color) !important;
     }
 
@@ -141,11 +139,11 @@ $store-controls: '.bombBox';
     }
 
     .bombBox:where(.interactive):is(:hover, :focus-visible) {
-      &:not(.bombLoaded, .bombTaken) {
+      &:not(.bombTaken, .bombSpent) {
         fill: var(--highlight-color);
       }
 
-      &:is(.bombLoaded, .bombTaken) {
+      &:is(.bombTaken, .bombSpent) {
         filter: brightness(.9);
       }
     }

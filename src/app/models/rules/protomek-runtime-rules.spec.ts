@@ -51,6 +51,7 @@ describe('ProtoMek runtime rules', () => {
         }).accepted).toBeTrue();
         dead.runtime.dispatch({ type: 'end-phase' });
         expect(project(dead.runtime).computedConditions).toEqual(['abandoned', 'immobile']);
+        expect(project(dead.runtime).destroyed).withContext('pilot death destroys a ProtoMek').toBeTrue();
 
         const ejected = harness();
         const ejectedCrew = [...ejected.runtime.getIndex().crewPositions.keys()][0]!;
@@ -63,6 +64,7 @@ describe('ProtoMek runtime rules', () => {
             ejected: true,
         });
         expect(project(ejected.runtime).computedConditions).toEqual(['immobile']);
+        expect(project(ejected.runtime).destroyed).toBeFalse();
 
         const crippled = harness();
         const crippledCrew = [...crippled.runtime.getIndex().crewPositions.keys()][0]!;

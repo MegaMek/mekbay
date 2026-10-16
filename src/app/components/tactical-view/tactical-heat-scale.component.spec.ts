@@ -9,8 +9,8 @@ describe('TacticalHeatScaleComponent', () => {
     function setup(readOnly = false) {
         TestBed.configureTestingModule({ imports: [TacticalHeatScaleComponent] });
         const fixture = TestBed.createComponent(TacticalHeatScaleComponent);
-        fixture.componentRef.setInput('entity', { entityUuid: 'heat-test', heat: {
-            current: 4, pending: null, dissipation: 10, tracked: true,
+        fixture.componentRef.setInput('entity', { entityUuid: 'heat-test', heatPolicy: 'manual', heat: {
+            current: 4, pending: null, previous: 4, projection: null, dissipation: 10, tracked: true,
         } } as unknown as NonMekRecordSheetSnapshot);
         fixture.componentRef.setInput('readOnly', readOnly);
         fixture.detectChanges();
@@ -40,6 +40,16 @@ describe('TacticalHeatScaleComponent', () => {
         cells[18].dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
         expect(changed).toHaveBeenCalledOnceWith(18);
         expect(fixture.componentInstance.preview()).toBeNull();
+    });
+
+    it('prints the effect that starts at each threshold on its scale cell', () => {
+        const { cells } = setup();
+        const marks = (heat: number) => [...cells[heat].querySelectorAll('.heat-mark')]
+            .map(mark => `${mark.getAttribute('data-kind')} ${mark.textContent?.trim()}`.trim());
+        expect(marks(8)).toEqual(['fire +1']);
+        expect(marks(21)).toEqual(['pilot-damage 6+']);
+        expect(marks(30)).toEqual(['shutdown']);
+        expect(marks(9)).toEqual([]);
     });
 
     it('cancels a drag without changing heat', () => {

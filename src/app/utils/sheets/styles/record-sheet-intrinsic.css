@@ -65,7 +65,6 @@ svg:where(.mekbay-sheet):not(:root),
   pointer-events: all;
 }
 
-:where(.mekbay-sheet) .bombBox.bombLoaded,
 :where(.mekbay-sheet) .bombBox.bombTaken {
   fill: #e4e4e4;
 }

@@ -1346,12 +1346,13 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
                 value.controlRecovery.cause === 'controller-loss' ? 1 : 0,
             ],
         value.phaseStateChanged ? 1 : undefined,
+        value.heatSettled ? 1 : undefined,
     );
 }
 
 function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedNonMekUnit['turn']> {
     const turn = array(value, path);
-    if (turn.length < 1 || turn.length > 9) throw new Error(`${path} is not a compact non-Mek turn`);
+    if (turn.length < 1 || turn.length > 10) throw new Error(`${path} is not a compact non-Mek turn`);
     const turnCounter = rowInteger(turn, 0, path);
     const airborneCode = optionalInteger(turn[1], `${path}[1]`) ?? 0;
     if (airborneCode !== -1 && airborneCode !== 0 && airborneCode !== 1) {
@@ -1380,6 +1381,9 @@ function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedN
         }),
         ...(turn[8] === undefined || turn[8] === null ? {} : {
             phaseStateChanged: truthyOne(turn[8], `${path}[8]`),
+        }),
+        ...(turn[9] === undefined || turn[9] === null ? {} : {
+            heatSettled: truthyOne(turn[9], `${path}[9]`),
         }),
     };
 }

@@ -314,6 +314,17 @@ describe('projectVehicleRuntimeRules', () => {
         expect(rules.destroyed).toBeTrue();
         expect(rules.componentStatuses.get(componentIdForMount(cannon))).toBe('destroyed');
     });
+
+    it('destroys the vehicle when a fuel tank critical is committed, not while it is pending', () => {
+        const runtime = instance(tank(), 'unit:vehicle-fuel-tank');
+        const fuelTank = systemDamageId('fuel-tank', 1);
+        expect(runtime.dispatch({
+            type: 'damage-track', damageTrackId: fuelTank, amount: 1, target: 'pending', timestamp: 1,
+        }).accepted).toBeTrue();
+        expect(project(runtime).destroyed).toBeFalse();
+        runtime.dispatch({ type: 'end-phase' });
+        expect(project(runtime).destroyed).toBeTrue();
+    });
 });
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');

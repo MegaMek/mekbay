@@ -730,6 +730,7 @@ describe('NonMekUnitInstance', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
+            heatSettled: false,
             cover: null,
             spotting: false,
             phaseStateChanged: false,
@@ -1836,6 +1837,29 @@ describe('NonMekUnitInstance', () => {
         expect(restored.snapshot().heat.current).toBe(2);
     });
 
+    it('settles applied aerospace heat once, adding only weapons fired afterwards at End Turn', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const fresh = createNonMekRuntimeForTest('unit:applied-heat', baseline(), fighter, CORE_2026_RULESET);
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { weaponsHeat: 14 } }, fighter, CORE_2026_RULESET);
+
+        // The arrow is the turn's final heat: 14 fired less 10 dissipated.
+        expect(runtime.dispatch({ type: 'set-pending-heat', heat: 4 }).changed).toBeTrue();
+        expect(runtime.dispatch({ type: 'apply-heat', policy: 'automatic' }).changed).toBeTrue();
+        expect(runtime.snapshot().heat.current).toBe(4);
+        expect(runtime.snapshot().turn.heatSettled).toBeTrue();
+
+        // Weapons fired after the arrow add heat without a second dissipation, even across a save.
+        const later = restoreNonMekRuntimeForTest({
+            ...runtime.serialize(),
+            turn: { ...runtime.serialize().turn, weaponsHeat: 3 },
+        }, fighter, CORE_2026_RULESET);
+        later.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(later.snapshot().heat.current).toBe(7);
+        expect(later.snapshot().turn.heatSettled).toBeFalse();
+    });
+
     it('applies Nova CEWS heat to aerospace units using the committed power state', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
@@ -1951,6 +1975,7 @@ describe('NonMekUnitInstance', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
+            heatSettled: false,
             cover: null,
             spotting: false,
             phaseStateChanged: false,

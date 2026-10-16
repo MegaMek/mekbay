@@ -518,8 +518,6 @@ async function drawCompactProtoMekDiagram(
             paperdoll.querySelectorAll('[data-protomek-main-gun]').forEach(element => element.remove());
             paperdoll.querySelectorAll('[data-protomek-main-gun-clip]').forEach(element => element.removeAttribute('clip-path'));
         }
-        // Use the narrow clear margin below the heading, beside the right shoulder.
-        paperdoll.setAttribute('data-random-hit-transform', 'translate(83 13) scale(0.5)');
         decoratePaperdollPips(paperdoll);
         group.appendChild(paperdoll);
     } catch {

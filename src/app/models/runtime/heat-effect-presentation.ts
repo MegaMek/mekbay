@@ -3,11 +3,13 @@
 
 import {
 AERO_HEAT_EFFECTS,LAM_HEAT_EFFECTS,MEK_HEAT_EFFECTS,projectHeatEffects,
-type HeatEffectDefinition
+type HeatEffectDefinition,type HeatEffectKind
 } from '../rules/heat-effect-rules';
 
 export interface RecordSheetHeatEffect {
     readonly heat: number;
+    readonly kind: HeatEffectKind;
+    readonly value: number;
     readonly label: string;
     readonly secondaryLabel?: string;
     readonly active: boolean;
@@ -23,7 +25,8 @@ export function recordSheetHeatEffects(family: 'mek' | 'aero' | 'lam', heat: num
             const random = family === 'lam' && effect.kind === 'movement'
                 ? effects.find(row => row.kind === 'random-movement' && row.heat === effect.heat) : undefined;
             return Object.freeze({
-                heat: effect.heat, label: heatEffectLabel(effect), active: effect.active, superseded: effect.superseded,
+                heat: effect.heat, kind: effect.kind, value: effect.value,
+                label: heatEffectLabel(effect), active: effect.active, superseded: effect.superseded,
                 ...(effect.kind === 'movement' ? { movementModifier: effect.value } : {}),
                 ...(random === undefined ? {} : { secondaryLabel: `/Rand. Movement ${random.value}+` }),
             });

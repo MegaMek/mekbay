@@ -145,6 +145,56 @@ interface PaperdollAssetCacheEntry {
 
 const MAX_PAPERDOLL_ASSET_CACHE_ENTRIES = 32;
 
+interface RandomHitButtonPlacement {
+    readonly transform: string;
+    readonly hitRadius?: number;
+}
+
+/**
+ * Where each armor paperdoll shows its random hit button, in the asset's own coordinates, clear of its artwork and
+ * labels. Paperdolls without an entry (rear, structure and damage-transfer diagrams) have no button.
+ */
+const RANDOM_HIT_BUTTONS: Readonly<Record<string, RandomHitButtonPlacement>> = Object.freeze({
+    'biped-armor.svg': { transform: 'translate(80 206)' },
+    'quad-armor.svg': { transform: 'translate(82 220)' },
+    // A smaller hit circle clears the right leg.
+    'tripod-armor.svg': { transform: 'translate(112 205.5) scale(0.75)', hitRadius: 11.5 },
+    'lam-armor.svg': { transform: 'translate(82 270)' },
+    'quadvee-armor.svg': { transform: 'translate(82 220)' },
+    // Beside the nose, in the open space above the left wing label.
+    'fighter-aerospace.svg': { transform: 'translate(18 205) scale(0.75)' },
+    'fighter-conventional.svg': { transform: 'translate(18 205) scale(0.75)' },
+    'smallcraft-aerodyne.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'smallcraft-spheroid.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'dropship-aerodyne.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'dropship-spheroid.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'jumpship.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'warship.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'spacestation.svg': { transform: 'translate(4 1) scale(0.75)' },
+    'vehicle-noturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vehicle-turret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vehicle-dualturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vehicle-superheavy-noturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vehicle-superheavy-turret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vehicle-superheavy-dualturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'naval-noturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'naval-turret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'naval-dualturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'naval-superheavy-noturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'naval-superheavy-turret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'naval-superheavy-dualturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vtol-noturret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    'vtol-turret.svg': { transform: 'translate(161 1) scale(0.9)' },
+    // WiGE hulls leave room beside the nose for a control close to the armor.
+    'wige-noturret.svg': { transform: 'translate(18 88) scale(0.9)' },
+    'wige-turret.svg': { transform: 'translate(18 88) scale(0.9)' },
+    'wige-dualturret.svg': { transform: 'translate(18 88) scale(0.9)' },
+    // Below the heading, beside the right shoulder.
+    'protomek-biped.svg': { transform: 'translate(86.75 23.875) scale(0.5)' },
+    'protomek-glider.svg': { transform: 'translate(86.75 23.875) scale(0.5)' },
+    'protomek-quad.svg': { transform: 'translate(92.25 24.125) scale(0.5)' },
+});
+
 export class PaperdollGenerator {
     private static readonly assetCache = new Map<string, PaperdollAssetCacheEntry>();
 
@@ -280,6 +330,8 @@ export class PaperdollGenerator {
                 });
             });
         }
+        const randomHit = type === 'armor' ? RANDOM_HIT_BUTTONS[assetUrl.slice(assetUrl.lastIndexOf('/') + 1)] : undefined;
+        if (randomHit) sourceGroup.appendChild(this.createRandomHitButton(randomHit));
         // The painted location contours own interaction; labels, details and pips
         // must let pointer events reach those contours below them.
         sourceGroup.setAttribute('pointer-events', 'none');
@@ -1344,8 +1396,28 @@ export class PaperdollGenerator {
         return element.tagName.toLowerCase() === 'defs'
             || element.matches('[data-canon], [data-fill], [data-rail]')
             || element.querySelector('[data-canon], [data-fill], [data-rail]') !== null
-            || element.matches('[data-mekbay-paperdoll-overlay], [data-mekbay-random-hit]')
-            || element.querySelector('[data-mekbay-paperdoll-overlay], [data-mekbay-random-hit]') !== null;
+            || element.matches('[data-mekbay-paperdoll-overlay]')
+            || element.querySelector('[data-mekbay-paperdoll-overlay]') !== null;
+    }
+
+    private static createRandomHitButton({ transform, hitRadius = 15 }: RandomHitButtonPlacement): SVGGElement {
+        const button = document.createElementNS(SVG_NAMESPACE, 'g');
+        button.setAttribute('class', 'mek-random-hit-button screen-only');
+        button.setAttribute('data-mekbay-random-hit', '1');
+        button.setAttribute('role', 'button');
+        button.setAttribute('aria-label', 'Roll random hit location');
+        button.setAttribute('transform', transform);
+        const hitArea = document.createElementNS(SVG_NAMESPACE, 'circle');
+        for (const [name, value] of [['class', 'mek-random-hit-area'], ['cx', '14'], ['cy', '14'], ['r', String(hitRadius)], ['fill', 'transparent']]) {
+            hitArea.setAttribute(name, value);
+        }
+        const icon = document.createElementNS(SVG_NAMESPACE, 'image');
+        for (const [name, value] of [['x', '3'], ['y', '3'], ['width', '22'], ['height', '22'], ['pointer-events', 'none'],
+            ['href', '/images/random-black.svg']]) {
+            icon.setAttribute(name, value);
+        }
+        button.append(hitArea, icon);
+        return button;
     }
 
     private static removeSupersededAssetText(sourceGroup: SVGGElement): void {

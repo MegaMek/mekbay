@@ -125,7 +125,6 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 assetUrl: this.paperdollAsset(entity, family),
                 motiveArtId: this.motiveArtId(entity, family),
                 // WiGE hulls leave room beside the nose for a control close to the armor.
-                randomHitTransform: family === 'wige' ? 'translate(18 88) scale(0.9)' : undefined,
             },
         );
         this.drawDiagramLabels(diagram, entity, diagramBox, family);
