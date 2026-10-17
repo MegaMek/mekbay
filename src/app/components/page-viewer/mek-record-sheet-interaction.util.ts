@@ -6,7 +6,7 @@ import type { HeatAutomationPolicy } from '../../models/runtime/cbt-unit-runtime
 import type { CBTUnitCommand } from '../../models/runtime/unit-command';
 import type { MekUnitQueryPort } from '../../models/runtime/unit-instance';
 import type { PickerChoice } from '../picker/picker.interface';
-import type { DirectRecordSheetInteraction,RecordSheetInteraction } from './record-sheet-interaction';
+import type { DirectRecordSheetInteraction,RecordSheetInteraction,RecordSheetInteractionPayload } from './record-sheet-interaction';
 
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 
@@ -87,6 +87,32 @@ export function recordSheetDamageChoices(min: number, max: number): PickerChoice
         .map(value => ({ label: String(value), value }));
 }
 
+/** Damages (a positive delta) or repairs one armor face, internal structure, critical slot or shield track. */
+export function recordSheetDamageCommand(
+    interaction: Extract<RecordSheetInteractionPayload, { readonly kind: 'armor' | 'internal' | 'critical' | 'shield' }>,
+    delta: number,
+    target: 'pending' | 'committed',
+): CBTUnitCommand {
+    const amount = Math.abs(delta);
+    const damage = delta > 0;
+    switch (interaction.kind) {
+        case 'armor':
+            return { type: damage ? 'damage-armor' : 'repair-armor', faceId: interaction.faceId, amount, target };
+        case 'internal':
+            return { type: damage ? 'damage-internal' : 'repair-internal', locationId: interaction.locationId, amount, target };
+        case 'critical':
+            return { type: damage ? 'hit-critical' : 'repair-critical', slotId: interaction.slotId, hits: amount, target };
+        case 'shield':
+            return {
+                type: damage ? 'damage-shield' : 'repair-shield',
+                componentId: interaction.componentId,
+                track: interaction.track,
+                amount,
+                target,
+            };
+    }
+}
+
 export function recordSheetCommand(
     interaction: DirectRecordSheetInteraction,
     source: MekRecordSheetCommandSource,
@@ -96,38 +122,13 @@ export function recordSheetCommand(
     const target = trackPhaseAndTurn ? 'pending' as const : 'committed' as const;
     switch (interaction.kind) {
         case 'armor':
-            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
-                ? { type: 'damage-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? 1), target }
-                : { type: 'repair-armor', faceId: interaction.faceId, amount: Math.abs(delta ?? -1), target };
         case 'internal':
-            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
-                ? { type: 'damage-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? 1), target }
-                : { type: 'repair-internal', locationId: interaction.locationId, amount: Math.abs(delta ?? -1), target };
         case 'critical':
-            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
-                ? { type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? 1), target }
-                : { type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(delta ?? -1), target };
         case 'shield':
-            return (delta ?? (interaction.button !== 'secondary' ? 1 : -1)) > 0
-                ? {
-                    type: 'damage-shield',
-                    componentId: interaction.componentId,
-                    track: interaction.track,
-                    amount: Math.abs(delta ?? 1),
-                    target,
-                }
-                : {
-                    type: 'repair-shield',
-                    componentId: interaction.componentId,
-                    track: interaction.track,
-                    amount: Math.abs(delta ?? -1),
-                    target,
-                };
+            return recordSheetDamageCommand(interaction, delta ?? (interaction.button !== 'secondary' ? 1 : -1), target);
         case 'system-critical': {
             const change = delta ?? 1;
-            return change > 0
-                ? { type: 'hit-critical', slotId: interaction.slotId, hits: Math.abs(change), target }
-                : { type: 'repair-critical', slotId: interaction.slotId, hits: Math.abs(change), target };
+            return { type: change > 0 ? 'hit-critical' : 'repair-critical', slotId: interaction.slotId, hits: Math.abs(change), target };
         }
         case 'crew-wounds': {
             const state = source.query.crewState(interaction.positionId);

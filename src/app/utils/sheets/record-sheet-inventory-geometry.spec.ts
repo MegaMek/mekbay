@@ -129,3 +129,67 @@ describe('Record sheet inventory geometry', () => {
         }
     }
 });
+
+describe('Record sheet inventory badges', () => {
+    const families = [
+        entities.TestBipedMekEntity, entities.TestTankEntity, entities.TestProtoMekEntity, entities.TestBattleArmorEntity,
+        entities.TestAeroSpaceFighterEntity, entities.TestSmallCraftEntity, entities.TestWarShipEntity,
+        entities.TestHandheldWeaponEntity,
+    ];
+    for (const Family of families) {
+        it(`${Family.name}: gives every weapon row the hit-modifier and target-number badges the binders fill`, async () => {
+            const entity = new Family();
+            const mount = addTestEquipment(entity, new WeaponEquipment({
+                id: 'Badge Laser', name: 'Medium Laser', type: 'weapon',
+                weapon: { damage: 5, heat: 3, ranges: [3, 6, 9], av: [5, 5, 0, 0] },
+            }), { location: entity.locationOrder[0] });
+            if (entity instanceof entities.TestWarShipEntity) entity.addEquipmentBay('weapon-bay', { mounts: [mount] });
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const rows = Array.from(svg.querySelectorAll<SVGGElement>('.inventoryEntry[id]'))
+                .filter(row => row.getAttribute('data-mekbay-component-ids')?.split(' ').includes(mount.mountId));
+            expect(rows.length).toBeGreaterThan(0);
+            for (const row of rows) {
+                const badge = (selector: string) => row.querySelector<SVGElement>(`:scope > ${selector}`)!;
+                for (const selector of ['.hitMod-rect', '.hitMod-text', '.targetTn-rect', '.targetTn-text']) {
+                    expect(badge(selector)).withContext(selector).not.toBeNull();
+                    expect(badge(selector).getAttribute('display')).withContext(selector).toBe('none');
+                }
+                // One badge style everywhere: the target number matches the modifier's box and type.
+                expect(badge('.targetTn-rect').getAttribute('width')).toBe(badge('.hitMod-rect').getAttribute('width'));
+                expect(badge('.targetTn-rect').getAttribute('height')).toBe(badge('.hitMod-rect').getAttribute('height'));
+                expect(badge('.targetTn-text').getAttribute('font-size')).toBe(badge('.hitMod-text').getAttribute('font-size'));
+                expect(badge('.targetTn-text').getAttribute('font-family')).toBe('monospace');
+            }
+        });
+    }
+
+    for (const Family of [entities.TestProtoMekEntity, entities.TestBattleArmorEntity, entities.TestWarShipEntity,
+        entities.TestHandheldWeaponEntity]) {
+        it(`${Family.name}: keeps visible to-hit badges apart in a dense table`, async () => {
+            const entity = new Family();
+            const mounts = Array.from({ length: 8 }, (_, index) => addTestEquipment(entity, new WeaponEquipment({
+                id: `Dense Laser ${index}`, name: `Dense Laser ${index}`, type: 'weapon',
+                weapon: { damage: 5, heat: 3, ranges: [3, 6, 9], av: [5, 5, 0, 0] },
+            }), { location: entity.locationOrder[0] }));
+            if (entity instanceof entities.TestWarShipEntity) {
+                mounts.forEach(mount => entity.addEquipmentBay('weapon-bay', { mounts: [mount] }));
+            }
+            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            document.body.appendChild(svg);
+            try {
+                // Only weapon rows can show a badge; component-less physical-attack rows never do.
+                const badges = Array.from(svg.querySelectorAll<SVGRectElement>(
+                    '.inventoryEntry[data-mekbay-component-ids]:not([data-mekbay-component-ids=""]) > .hitMod-rect'), rect => {
+                    rect.setAttribute('display', 'block');
+                    return rect.getBoundingClientRect();
+                }).sort((a, b) => a.top - b.top);
+                expect(badges.length).toBeGreaterThan(1);
+                for (let index = 1; index < badges.length; index++) {
+                    expect(badges[index].top).withContext('badges do not overlap').toBeGreaterThanOrEqual(badges[index - 1].bottom - 0.01);
+                }
+            } finally {
+                svg.remove();
+            }
+        });
+    }
+});

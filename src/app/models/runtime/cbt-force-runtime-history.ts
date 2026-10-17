@@ -449,7 +449,6 @@ export function unitCommandHistory(
             );
         case 'reset-ammo-loadout':
             return ammoLoadoutResetHistory(instanceId, unit, before.ammo, after.ammo);
-        case 'set-ammo-spent':
         case 'configure-ammo-source':
         case 'spend-ammo':
         case 'activate-coolant-pod':

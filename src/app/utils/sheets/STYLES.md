@@ -16,6 +16,15 @@ Use `maxHeaderWidth` to let a tab grow with its title up to a layout limit, then
 compress longer text horizontally at the same font size. Short titles retain
 their natural width. `fullWidthHeader` takes precedence over this limit.
 Use `headerStyle: 'outline'` to retain a raised title lip without a filled ribbon.
+Panels drawn inside a unit block (ProtoMek inventory, criticals, pilot) use `nested`.
+Every frame records `data-mekbay-frame-top` (the top border's y beside the title tab)
+and `data-mekbay-frame-top-end` (where that border meets the top-right corner);
+unit condition buttons centre on the former and end a fixed gap before the latter.
+A frame whose top border is covered by inner panels (the ProtoMek block) instead sets
+`data-mekbay-controls-end` and `data-mekbay-controls-y` for those buttons.
+`SvgFrameUtil.innerRight()` gives the inner edge of the right border for content
+gutters. Crew name fields end `CREW_STATE_MENU_SPACE` before their gutter; the
+generated crew-state menu fills that space.
 Preserve the reference silhouette, including lips and bottom notches; standard
 angles and border weights do not replace the reference shape.
 Unit-specific outlines such as Battle Armor trooper rows stay in their family

@@ -18,7 +18,7 @@ type DirectNonMekEndTurnAutomationRequest,
 type PreparedDirectNonMekAutomationCommand,
 } from '../../services/direct-non-mek-automation.service';
 import type { CBTForce } from '../cbt-force.model';
-import type { CBTForceEndTurnAllResult,CBTForceEndTurnUnitResult,CBTForceUnitCommandResult } from '../cbt-force.types';
+import type { CBTForceEndTurnAllResult,CBTForceEndTurnUnitResult,CBTForceUnitCommandDispatch,CBTForceUnitCommandResult } from '../cbt-force.types';
 import { hasMekRuntime,hasNonMekRuntime,type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import { captureUnitCommand,type CBTUnitCommand } from './unit-command';
 import { isUnitEditContextCurrent,type UnitEditContext } from './unit-edit-context';
@@ -235,9 +235,7 @@ export class CBTForceUnitCommandDispatcher {
         instanceId: string,
         owner: object | undefined,
         result: CBTForceUnitCommandResult,
-        applyEffects: (dispatch: (
-            command: CBTUnitCommand, automate?: boolean,
-        ) => Promise<CBTForceUnitCommandResult>) => Promise<boolean>,
+        applyEffects: (dispatch: CBTForceUnitCommandDispatch) => Promise<boolean>,
     ): Promise<AutomatedCommandCompletion> {
         if (!result.accepted || !result.state || !owner) return { completed: true, result };
         let expected: UnitEditContext = { owner, state: result.state };
@@ -352,7 +350,7 @@ export class CBTForceUnitCommandDispatcher {
         command: Extract<CBTUnitCommand, { readonly type: 'end-phase' }>,
         phaseWork: 'unit-checks' | 'pilot-checks',
         interactive: boolean,
-        dispatch: (command: CBTUnitCommand, automate?: boolean) => Promise<CBTForceUnitCommandResult>,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         const beforeReview = this.boundaryContexts([instanceId]);
         const rows = await automation.prepareEndPhaseCommands(

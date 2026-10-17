@@ -1,16 +1,22 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { queryNonMekRuntime } from '../../../models/runtime/non-mek-unit-instance';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
-import { asComponentId,asCrewPositionId,asLocationId } from '../../../models/entity/entity-identifiers';
+import { asArmorFaceId,asComponentId,asCrewPositionId,asLocationId } from '../../../models/entity/entity-identifiers';
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../../../models/cbt-ruleset.model';
 import { gameRulesFor } from '../../../models/rules/game-rules';
 import { TestInfantryEntity,TestTankEntity,TestAeroSpaceFighterEntity,TestVtolEntity } from '../../../models/entity/testing/test-entities';
 import type { ChoicePickerConfig } from '../../../services/picker-factory.service';
 import type { CBTForceMember } from '../../../models/force-member.model';
 import { createNonMekUnit } from '../../../models/runtime/cbt-non-mek-unit';
-import { projectNonMekRecordSheet,type NonMekRecordSheetCrewPosition } from '../../../models/runtime/non-mek-record-sheet';
+import {
+    projectNonMekRecordSheet,
+    type NonMekRecordSheetCrewPosition,
+    type NonMekRecordSheetSnapshot,
+} from '../../../models/runtime/non-mek-record-sheet';
+import { createUnitEditContextFixture } from '../../../models/runtime/testing/unit-edit-context-fixture';
 import { createPristineNonMekUnitState } from '../../../models/runtime/non-mek-unit-instance';
 import { DialogsService } from '../../../services/dialogs.service';
 import { ForcePilotEditorService } from '../../../services/force-pilot-editor.service';
@@ -24,7 +30,12 @@ import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 import { drawClusterHitsReference } from '../../../utils/sheets/record-sheet-svg-rendering';
 import { ClusterTableDialogComponent } from '../../cluster-table-dialog/cluster-table-dialog.component';
 import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
-import { PageViewerNonMekRuntimeService,nonMekCrewStateCommand } from './page-viewer-non-mek-runtime.service';
+import {
+    PageViewerNonMekRuntimeService,
+    nonMekCrewStateCommand,
+    nonMekDamageParts,
+    nonMekDamagePickerRange,
+} from './page-viewer-non-mek-runtime.service';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
 describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
@@ -36,7 +47,7 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             const unit = createNonMekUnit(entity, { instanceId: 'tank', uuid,
                 scenario: { id: 'test' }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
             const snapshot = {
-                ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset, 0, 0, unit.getCrewAssignment()),
+                ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset, unit.query(), 0, 0),
                 editContext: { owner: unit, state: unit.snapshot() },
             };
             const dialogs = { createDialog: jasmine.createSpy('createDialog') };
@@ -90,7 +101,7 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             const profile = { schemaVersion: 1 as const, positions: unit.getCrewAssignment().positions.map(row => ({
                 ...row, gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3,
             })) };
-            const snapshot = { ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), 0, 0, profile),
+            const snapshot = { ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), queryNonMekRuntime({ ...unit.mechanics(), crewAssignment: profile }, unit.snapshot()), 0, 0),
                 editContext: { owner: unit, state: unit.snapshot() } };
             const picker = jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: () => {} });
             TestBed.configureTestingModule({ providers: [PageViewerNonMekRuntimeService,
@@ -103,7 +114,8 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             ] });
             const replace = jasmine.createSpy('replaceUnitCrewProfile').and.resolveTo(profile);
             const member = { kind: 'cbt', id: 'unit', entity, nonMekRecordSheetSnapshot: () => snapshot,
-                force: { getUnitCrewProfile: () => profile, replaceUnitCrewProfile: replace } } as unknown as CBTForceMember;
+                force: { getUnitCrewProfile: () => profile, replaceUnitCrewProfile: replace,
+                    getUnitSnapshot: () => ({ editContext: snapshot.editContext }) } } as unknown as CBTForceMember;
             const service = TestBed.inject(PageViewerNonMekRuntimeService);
             service.handle(member, { kind: 'crew-skill', positionId: profile.positions[0].positionId,
                 skill: 'gunnery', context: snapshot.editContext }, new MouseEvent('click'));
@@ -124,7 +136,7 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const context = () => ({ owner: unit, state: unit.snapshot() });
         const snapshot = () => ({
-            ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), 0, 0, unit.getCrewAssignment()),
+            ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(), 0, 0),
             editContext: context(),
         });
         TestBed.configureTestingModule({ providers: [PageViewerNonMekRuntimeService,
@@ -162,7 +174,7 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             const unit = createNonMekUnit(entity, { instanceId: 'tank', uuid,
                 scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
             const snapshot = {
-                ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), 0, 0, unit.getCrewAssignment()),
+                ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(), 0, 0),
                 editContext: { owner: unit, state: unit.snapshot() },
             };
             TestBed.configureTestingModule({ providers: [
@@ -256,13 +268,13 @@ describe('PageViewerNonMekRuntimeService random hits', () => {
         const button = svg.querySelector<SVGElement>('[data-mekbay-random-hit]')!;
         spyOn(Math, 'random').and.returnValue(0.4);
         service.handle(member, { kind: 'random-hit', element: button, context }, new PointerEvent('pointerdown'));
-        expect(service.isPickerOpen('tank')).toBeTrue();
+        expect(button.classList.contains('picker-active')).toBeTrue();
         config!.onPick({ label: 'Front', value: 'front' });
         expect(destroy).toHaveBeenCalledTimes(1);
-        expect(service.isPickerOpen('tank')).toBeFalse();
+        expect(button.classList.contains('picker-active')).toBeFalse();
         expect(svg.querySelector('.unitLocation')?.classList.contains('random-hit-location-highlight')).toBeTrue();
         expect(svg.querySelector('.mek-random-hit-result-location')?.textContent).toBe('FR');
-        service.cleanupUnused(new Set());
+        service.clear();
         expect(svg.querySelector('.mek-random-hit-result')).toBeNull();
 
         service.handle(member, { kind: 'random-hit', element: button, context }, new PointerEvent('pointerdown'));
@@ -309,14 +321,14 @@ describe('PageViewerNonMekRuntimeService async heat edits', () => {
     it('keeps pending heat and the source context when a dialog completes', async () => {
         const { closed, dispatch, context } = setup(true);
         closed.next(40);
-        await Promise.resolve();
+        await new Promise(resolve => setTimeout(resolve));
         expect(dispatch).toHaveBeenCalledOnceWith('aero-1', { type: 'set-pending-heat', heat: 40 }, context);
     });
 
     it('uses committed heat when phase tracking is disabled', async () => {
         const { closed, dispatch, context } = setup(false);
         closed.next(40);
-        await Promise.resolve();
+        await new Promise(resolve => setTimeout(resolve));
         expect(dispatch).toHaveBeenCalledOnceWith('aero-1', { type: 'set-heat', heat: 40 }, context);
     });
 
@@ -324,7 +336,7 @@ describe('PageViewerNonMekRuntimeService async heat edits', () => {
         const { closed, dispatch, replaceOwner } = setup(true);
         replaceOwner();
         closed.next(40);
-        await Promise.resolve();
+        await new Promise(resolve => setTimeout(resolve));
         expect(dispatch).not.toHaveBeenCalled();
     });
 });
@@ -461,3 +473,37 @@ function position(effectiveState: NonMekRecordSheetCrewPosition['effectiveState'
         effectiveState,
     });
 }
+
+describe('Battle Armor trooper damage picker', () => {
+    const locationId = asLocationId('trooper-1');
+    const faceId = asArmorFaceId(`armor:${locationId}:front`);
+    const armor = { kind: 'armor' as const, faceId, locationId, context: createUnitEditContextFixture()(1) };
+    // One internal pip and three armor pips, as on a Battle Armor trooper row.
+    const trooper = (armorRemaining: number, internalRemaining: number, combinedPips = true) => ({
+        locations: [{
+            locationId, code: 'Trooper 1', sheetCode: 'T1', combinedPips,
+            maximumInternal: 1, remainingInternal: internalRemaining, previewRemainingInternal: internalRemaining,
+            armor: [{ faceId, locationId, face: 'front', maximum: 3,
+                remaining: armorRemaining, previewRemaining: armorRemaining }],
+        }],
+    }) as unknown as NonMekRecordSheetSnapshot;
+    const parts = (snapshot: NonMekRecordSheetSnapshot, delta: number) =>
+        nonMekDamageParts(armor, snapshot, delta, false).map(part => [part.interaction.kind, part.delta]);
+
+    it('lets the single trooper picker repair internal structure as well as armor', () => {
+        expect(nonMekDamagePickerRange(armor, trooper(0, 0), false))
+            .toEqual(jasmine.objectContaining({ min: -4, max: 0, threshold: 0 }));
+        expect(nonMekDamagePickerRange(armor, trooper(2, 1), false))
+            .toEqual(jasmine.objectContaining({ min: -1, max: 3, threshold: 2 }));
+        // Other units keep repairing armor only from their armor picker.
+        expect(nonMekDamagePickerRange(armor, trooper(0, 0, false), false).min).toBe(-3);
+    });
+
+    it('damages armor before internal structure and repairs internal structure before armor', () => {
+        expect(parts(trooper(2, 1), 3)).toEqual([['armor', 2], ['internal', 1]]);
+        expect(parts(trooper(0, 0), -2)).toEqual([['internal', -1], ['armor', -1]]);
+        expect(parts(trooper(0, 0), -1)).toEqual([['internal', -1]]);
+        expect(parts(trooper(1, 1), -2)).toEqual([['armor', -2]]);
+        expect(parts(trooper(0, 0, false), -2)).toEqual([['armor', -2]]);
+    });
+});

@@ -65,6 +65,18 @@ export type AttackerSelection =
 /** Physical actions have no range-band-only selection state. */
 export type AttackerActionSelection = Exclude<AttackerSelection, { readonly kind: 'manual-range' }>;
 
+/** Whether two selections pick the same thing; absence (unselected) only equals absence. */
+export function sameAttackerSelection(
+    left: AttackerSelection | null | undefined,
+    right: AttackerSelection | null | undefined,
+): boolean {
+    if (left == null || right == null) return (left ?? null) === (right ?? null);
+    if (left.kind !== right.kind) return false;
+    if (left.kind === 'target' && right.kind === 'target') return left.targetId === right.targetId;
+    if (left.kind === 'manual-range' && right.kind === 'manual-range') return left.range === right.range;
+    return true;
+}
+
 export interface AttackerAmmoSelection {
     readonly munitionKey: string;
     /** Exact installed/intrinsic ammo-source identity; grouped display IDs are forbidden. */

@@ -713,7 +713,13 @@ describe('RecordSheetSvgGenerator', () => {
         expect(svg.querySelector('.crewStateButton[crewId="0"] text')?.textContent).toBe('...');
         expect(svg.querySelectorAll('.crewStateButton[crewId="0"]').length).toBe(1);
         const crewStateRect = svg.querySelector<SVGRectElement>('.crewStateButton[crewId="0"] rect')!;
-        expect(crewStateRect.getAttribute('x')).toBe('129.6');
+        const station = crewStateRect.closest<SVGGElement>('[data-mekbay-crew-position]')!;
+        const nameField = station.querySelector<SVGRectElement>(':scope > rect.crewNameButton')!;
+        // The menu ends the station's content and starts just after its name field.
+        expect(Number(crewStateRect.getAttribute('x')) + Number(crewStateRect.getAttribute('width')))
+            .toBeCloseTo(Number(station.dataset['mekbayCrewWidth']), 3);
+        expect(Number(crewStateRect.getAttribute('x')))
+            .toBeCloseTo(Number(nameField.getAttribute('x')) + Number(nameField.getAttribute('width')) + 2, 3);
         expect(crewStateRect.getAttribute('y')).toBe('4');
         expect(crewStateRect.getAttribute('width')).toBe('10');
         expect(svg.querySelector('.crewStateBanner[crewId="0"] .unitConditionBannerRect')).not.toBeNull();
@@ -980,8 +986,10 @@ describe('RecordSheetSvgGenerator', () => {
         const movementHeat = svg.querySelector<SVGGElement>('.heatEffect[heat="25"]');
 
         expect(masthead?.textContent).toBe("LAND-AIR 'MECH RECORD SHEET");
+        // LAMs share the biped artwork, so Canon resolves to its canonical pip map.
         expect(svg.querySelector('.mek-paperdolls')?.getAttribute('data-mekbay-pip-layout'))
-            .toBe('distributed');
+            .toBe('canon');
+        expect(svg.querySelector('[data-source="/images/paperdolls/biped-armor.svg"]')).not.toBeNull();
         expect(svg.querySelector('.lam-advanced-movement-compass')).not.toBeNull();
         expect(svg.querySelector('#mpAirMekWalk')).not.toBeNull();
         expect(svg.querySelector('#mpSafeThrust')).not.toBeNull();

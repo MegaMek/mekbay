@@ -38,6 +38,20 @@ describe('Record-sheet framing', () => {
         expect(widths[1]).toBeLessThan(widths[2]);
     });
 
+    it('runs the top border beside a tab at one depth whatever the title size', () => {
+        const tops = [6.25, 10, 12].map(headerHeight => {
+            const frame = SvgFrameUtil.createSVGFrame('TITLE', 200, 60, { headerHeight, headerFontSize: 10.6 });
+            svg.appendChild(frame);
+            const top = Number(frame.getAttribute('data-mekbay-frame-top'));
+            const border = frame.querySelector(':scope > path[stroke="#000"]')!.getAttribute('d')!;
+            const header = frame.querySelector('.svg-frame-title')!.parentNode as SVGGElement;
+            expect(border).toMatch(new RegExp(`^M 0 ${top} `));
+            expect(header.transform.baseVal.consolidate()!.matrix.e).withContext(`height ${headerHeight}`).toBeGreaterThan(1);
+            return top;
+        });
+        expect(new Set(tops).size).toBe(1);
+    });
+
     it('keeps full-width headers spanning the frame when a tab limit is supplied', () => {
         const frame = SvgFrameUtil.createSVGFrame('TITLE', 300, 60, {
             maxHeaderWidth: 100, fullWidthHeader: true,

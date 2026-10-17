@@ -84,6 +84,14 @@ export function systemDamageDefinitions(entity: BaseEntity): readonly SystemDama
     return Object.freeze([]);
 }
 
+/**
+ * Staged systems are hit counters (MegaMek avionicsHits, fcsHits, sensorHits, engineHits, thruster hits,
+ * ProtoMek location crits): stage N being hit implies every earlier stage. Motive damage has its own table.
+ */
+export function isCumulativeSystemDamage(track: Pick<SystemDamageDefinition, 'system' | 'stage'>): boolean {
+    return track.stage !== undefined && track.system !== 'motive';
+}
+
 export type SystemDamageReferenceValue = number | 'destroyed' | 'immobile';
 
 /** Rule-owned consequences printed alongside system stages on record sheets. */

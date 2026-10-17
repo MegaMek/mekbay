@@ -7,6 +7,7 @@ import type { AutomationCheck } from '../models/automation-check.model';
 import { DialogsService } from './dialogs.service';
 import { OptionsService } from './options.service';
 import {
+    automationCheckBatchIsFullyAutomatic,
     CBTAutomationCheckService,
     resolveAutomationChecksAutomatically,
 } from './cbt-automation-check.service';
@@ -45,6 +46,14 @@ describe('resolveAutomationChecksAutomatically', () => {
             automatic: true,
             selectionId: 'ammo:right',
         }]);
+    });
+
+    it('needs no dice only when every check is automatic or cascaded by an earlier failure', () => {
+        const forcedFall = { ...check('forced', 7, 'unit:fall'), automaticOutcome: 'failed' as const };
+
+        expect(automationCheckBatchIsFullyAutomatic([forcedFall, check('later', 7, 'unit:fall')])).toBeTrue();
+        expect(automationCheckBatchIsFullyAutomatic([check('first', 7, 'unit:fall'), forcedFall])).toBeFalse();
+        expect(automationCheckBatchIsFullyAutomatic([])).toBeFalse();
     });
 });
 

@@ -10,14 +10,19 @@ import {
     type CBTNonMekUnitSnapshot,
     type CBTUnitSnapshot,
 } from '../../models/cbt-unit-snapshot';
-import { AmmoEquipment } from '../../models/equipment.model';
+import { activeCrewController } from '../../models/crew-member.model';
 import { getMekLocationLabel } from '../../models/entity/types';
 import { isAeroEntity } from '../../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../../models/runtime/aero-heat-automation-rules';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY } from '../../models/runtime/mek-destruction-state-v2';
-import { ammoExplosionDamagePerShot, ammoRackSize } from '../../models/runtime/mek-critical-hit-v2';
-import { mekConsciousnessTarget, mekHeatAutomationChecks } from '../../models/runtime/mek-automation-rules';
+import {
+    crewPositionLabel,
+    dueConsciousnessRecoveryTarget,
+    heatAmmoExplosionCandidates,
+    mekHeatAutomationChecks,
+    orderedCrewPositions,
+} from '../../models/runtime/mek-automation-rules';
 import { projectMekLifeSupportPilotDamage } from '../../models/runtime/mek-life-support';
 import type { MekAutomaticFallV2, MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
 import { projectNonMekEndTurnHeat } from '../../models/runtime/non-mek-unit-instance';
@@ -124,10 +129,8 @@ function projectMekNotifications(
 
     const automaticFall = movementState.automaticFalls.length > 0;
     const movement = snapshot.query.mekMovementPsr();
-    const pilotCanControl = [...snapshot.index.crewPositions.values()].some(position => {
-        const state = snapshot.query.crewState(position.id);
-        return state.isAvailable();
-    }) || movement.kind === 'supported' && movement.controlledByDrone;
+    const pilotCanControl = activeCrewController(snapshot, 'piloting') !== null
+        || movement.kind === 'supported' && movement.controlledByDrone;
     const pendingChecks = movementState.checks.filter(check => check.status === 'pending');
     const actionableChecks = actionableMekPilotChecks(pendingChecks, automaticFall);
     const actionableCheckIds = new Set(actionableChecks.map(check => check.checkId));
@@ -200,23 +203,11 @@ function projectMekEndTurnChecks(
     const heat = options.heatAndDissipationResolution === 'no'
         ? snapshot.state.heat.pendingOverride ?? snapshot.state.heat.current
         : automaticHeat;
-    const consciousPilot = [...snapshot.index.crewPositions.values()].some(position => {
-        const state = snapshot.query.crewState(position.id);
-        return state.isAvailable();
-    });
-    const hasExplosiveAmmo = [...snapshot.index.components.entries()].some(([componentId, component]) => {
-        const equipment = component.mount?.equipment;
-        return component.kind === 'equipment'
-            && equipment instanceof AmmoEquipment
-            && equipment.isExplosive()
-            && snapshot.query.componentStatus(componentId, 'committed') === 'available'
-            && snapshot.query.remainingAmmo(componentId) > 0;
-    });
     const rows: TooltipLine[] = mekHeatAutomationChecks({
         heat,
         shutdown: snapshot.query.hasCondition('shutdown'),
-        consciousPilot,
-        hasExplosiveAmmo,
+        activeController: activeCrewController(snapshot, 'piloting') !== null,
+        hasExplosiveAmmo: heatAmmoExplosionCandidates(snapshot).length > 0,
     }).map(check => Object.freeze({
         label: check.kind === 'shutdown'
             ? 'Heat shutdown check'
@@ -320,28 +311,15 @@ function projectAeroEndTurnChecks(
         snapshot.ruleset,
     );
     if (!rules.heat.tracked) return Object.freeze([]);
-    const activeController = [...snapshot.index.crewPositions.values()].some(position => {
-        const common = snapshot.query.crewState(position.id);
-        return common.isAvailable();
-    });
-    const hasExplosiveAmmo = [...snapshot.index.components.values()].some(component => {
-        const ammo = component.mount.equipment;
-        return ammo instanceof AmmoEquipment
-            && ammo.isExplosive()
-            && snapshot.query.componentStatus(component.id, 'committed') === 'available'
-            && snapshot.query.remainingAmmo(component.id) > 0
-            && ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo) > 0;
-    });
     const hadHeatControlEffect = snapshot.state.turn.controlRecovery?.cause
         === 'heat-random-movement'
         && snapshot.query.hasCondition('out-of-control')
         && snapshot.query.hasCondition('random-movement');
     const checks = projectAeroHeatAutomationChecks({
-        heat,
         effects: rules.heat.effects,
         shutdown: snapshot.query.hasCondition('shutdown'),
-        activeController,
-        hasExplosiveAmmo,
+        activeController: activeCrewController(snapshot, 'aeroPiloting') !== null,
+        hasExplosiveAmmo: heatAmmoExplosionCandidates(snapshot).length > 0,
         hadHeatControlEffect,
     }).filter(check => check.kind !== 'pilot-damage'
         || options.pilotHitsAndConsciousnessCheck !== 'no');
@@ -361,24 +339,16 @@ function projectAeroEndTurnChecks(
 }
 
 function dueCrewRecoveries(snapshot: CBTUnitSnapshot): readonly TooltipLine[] {
-    const turn = snapshot.state.turn.turnCounter;
-    return Object.freeze([...snapshot.index.crewPositions.values()]
-        .sort((left, right) => left.occurrence - right.occurrence)
-        .flatMap(position => {
-            const state = snapshot.query.crewState(position.id);
-            const target = mekConsciousnessTarget(state.wounds);
-            const readyTurn = state.recoveryReadyTurn;
-            if (!state.unconscious || state.ejected || state.isDeathCommitted()
-                || target === undefined || readyTurn === null
-                || readyTurn !== undefined && readyTurn > turn) return [];
-            const assignment = snapshot.crewAssignment.positions.find(candidate =>
-                candidate.positionId === position.id);
-            const name = assignment?.name.trim() || `Crew ${position.occurrence + 1}`;
-            return [Object.freeze({
-                label: `${name}: Consciousness recovery`,
-                value: `Target ${target}+`,
-            })];
-        }));
+    return Object.freeze(orderedCrewPositions(snapshot).flatMap(position => {
+        const target = dueConsciousnessRecoveryTarget(
+            snapshot.query.crewState(position.id),
+            snapshot.state.turn.turnCounter,
+        );
+        return target === undefined ? [] : [Object.freeze({
+            label: `${crewPositionLabel(snapshot, position.id)}: Consciousness recovery`,
+            value: `Target ${target}+`,
+        })];
+    }));
 }
 
 function pilotCheckAutomaticallyFails(

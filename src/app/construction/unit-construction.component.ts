@@ -41,6 +41,11 @@ import {
   type CdkDragMove,
 } from '@angular/cdk/drag-drop';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
+import { MultiSelectDropdownComponent, type DropdownOption } from '../components/multi-select-dropdown/multi-select-dropdown.component';
+import { RangeSliderComponent } from '../components/range-slider/range-slider.component';
+import { MultilineDropdownComponent, type MultilineDropdownOption } from '../components/multiline-dropdown/multiline-dropdown.component';
+import { WEAPON_TYPE_DISPLAY_NAMES, WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
 import { BaseEntity } from '../models/entity/base-entity';
 import { asComponentId, type ComponentId } from '../models/entity/entity-identifiers';
@@ -112,6 +117,8 @@ import {
   allocationPlacements,
   constructionBlockMovePlacements,
   constructionEquipmentCandidate,
+  constructionSharedMekSlots,
+  constructionSlotMountBlocks,
   moveConstructionEquipmentBlock,
   removeConstructionEquipment,
   reorderConstructionEquipment,
@@ -236,6 +243,12 @@ interface ConstructionHistoryEntry {
   readonly artwork: UnitArtwork | null;
 }
 type WarehouseCategory = 'all' | 'energy' | 'ballistic' | 'missile' | 'artillery' | 'physical' | 'ammo' | 'misc';
+type WarehouseRangeId = Exclude<EquipmentSortColumn, 'name'> | 'heat';
+
+/** Record-sheet damage type codes of a weapon, or of the weapons an ammunition loads. */
+function equipmentWeaponTypes(eq: Equipment): readonly WeaponType[] {
+  return eq instanceof WeaponEquipment || eq instanceof AmmoEquipment ? eq.getWeaponTypes() : [];
+}
 type EquipmentSortColumn = 'name' | 'slots' | 'tons' | 'damage' | 'range' | 'bv';
 
 @Component({
@@ -255,6 +268,11 @@ type EquipmentSortColumn = 'name' | 'slots' | 'tons' | 'damage' | 'range' | 'bv'
     CdkDropList,
     CdkDropListGroup,
     CdkTrapFocus,
+    CdkConnectedOverlay,
+    CdkOverlayOrigin,
+    MultiSelectDropdownComponent,
+    MultilineDropdownComponent,
+    RangeSliderComponent,
     TooltipDirective,
     InspectorHoverDirective,
     TechBaseBadgeComponent,
@@ -456,6 +474,11 @@ export class UnitConstructionComponent {
   readonly category = signal<WarehouseCategory>('all');
   readonly filterByLocation = signal(false);
   readonly equipmentFiltersOpen = signal(false);
+  /** The filter panel opens beside the warehouse, or below the toggle where there is no room. */
+  readonly warehouseFilterPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'top', overlayX: 'start', overlayY: 'top', offsetX: 8 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+  ];
   readonly showIncompatibleEquipment = signal(false);
   readonly equipmentRowHeight = 44;
   readonly trackEquipment = (_index: number, equipment: Equipment) => equipment.id;
@@ -495,7 +518,8 @@ export class UnitConstructionComponent {
   readonly hoveredSystemId = signal<string | null>(null);
   readonly dragging = signal<DragEquipment | null>(null);
   readonly dragPreviewOffset = signal('0% 0%');
-  readonly dragTarget = signal<{ location: string; beforeMountId?: string } | null>(null);
+  /** Drop position; `shareSlotIndex` is a superheavy slot whose single load the dragged load joins. */
+  readonly dragTarget = signal<{ location: string; beforeMountId?: string; shareSlotIndex?: number } | null>(null);
   readonly selectedSystem = signal<{ location: string; system: MekSystemType; componentId: string } | null>(null);
   readonly inspector = new InspectorInteraction();
   readonly inspectorOpen = this.inspector.isOpen;
@@ -537,6 +561,8 @@ export class UnitConstructionComponent {
             : 'Fixed design. Enable Edit design to change this equipment.';
         let placements: ReturnType<typeof allocationPlacements>;
         let insertion: ReturnType<typeof planConstructionEquipmentInsertion> | undefined;
+        const target = this.dragTarget();
+        const shareSlotIndex = target?.location === location.id ? target.shareSlotIndex : undefined;
         if (eq && !issue) {
           try {
             const entity = this.entity();
@@ -560,9 +586,10 @@ export class UnitConstructionComponent {
               placements = constructionBlockMovePlacements(entity, mount, drag.sourceLocation!, location.id);
             } else {
               issue = equipmentPlacementIssues(this.entity(), eq, location.id, mount).join(' ');
-              if (!issue) placements = allocationPlacements(this.entity(), eq, location.id, undefined, mount);
+              if (!issue) placements = allocationPlacements(this.entity(), eq, location.id, shareSlotIndex, mount);
               // Reordering retains this mount's existing split allocation.
               if (
+                shareSlotIndex === undefined &&
                 mount &&
                 (mount.placements?.some((p) => p.location === location.id) ||
                   (!(this.entity() instanceof MekEntity) && mount.location === location.id))
@@ -571,7 +598,8 @@ export class UnitConstructionComponent {
                 placements = mount.placements;
               }
             }
-            if (!issue && placements && entity instanceof MekEntity && this.dragTarget()?.location === location.id) {
+            if (!issue && placements && entity instanceof MekEntity && target?.location === location.id
+              && shareSlotIndex === undefined) {
               insertion = planConstructionEquipmentInsertion(
                 entity,
                 eq,
@@ -813,7 +841,8 @@ export class UnitConstructionComponent {
   isMountUnallocated(mount: EntityMountedEquipment): boolean {
     if (mount.allocation.kind === 'engine') return false;
     if (this.locationCase().get(mount.location)?.slotlessMounts.includes(mount)) return false;
-    return !this.locations().some((location) => location.slots.some((slot) => slot.mount?.mountId === mount.mountId));
+    return !this.locations().some((location) => location.slots.some((slot) =>
+      slot.mount?.mountId === mount.mountId || slot.sharedMount?.mountId === mount.mountId));
   }
   canUninstallMount(mount: EntityMountedEquipment): boolean {
     return mount.allocation.kind !== 'engine' && !this.isMountUnallocated(mount) && this.canEditMount(mount);
@@ -1463,19 +1492,34 @@ export class UnitConstructionComponent {
   techBaseMismatchReason(base: Equipment['techBase']): string {
     return `${base === 'Clan' ? 'Clan' : 'Inner Sphere'} technology requires mixed technology on this ${this.entity().techBase() === 'Clan' ? 'Clan' : 'Inner Sphere'} chassis.`;
   }
-  readonly filteredEquipment = computed(() => {
+  /** Warehouse rows passing search, category, compatibility and destination; the filter panel narrows these. */
+  private readonly warehouseBaseEquipment = computed(() => {
     const query = this.query().trim().toLowerCase();
     const category = this.category();
     const entity = this.entity();
     const location = this.selectedLocation();
     const filterByLocation = this.filterByLocation();
     const showIncompatible = this.showIncompatibleEquipment();
-    const filtered = this.equipment.filter(
+    return this.equipment.filter(
       (eq) =>
         (category === 'all' || this.equipmentCategory(eq) === category) &&
         (!query || `${eq.name} ${eq.id} ${eq.aliases.join(' ')}`.toLowerCase().includes(query)) &&
         (showIncompatible || constructionEquipmentEligibilityIssues(entity, eq).length === 0) &&
         (!filterByLocation || equipmentLocationIssues(entity, eq, location).length === 0),
+    );
+  });
+  readonly filteredEquipment = computed(() => {
+    const techBases = this.warehouseTechBases();
+    const weaponTypes = this.warehouseWeaponTypes();
+    const ranges = Object.entries(this.warehouseRanges()) as [WarehouseRangeId, readonly [number, number]][];
+    const filtered = this.warehouseBaseEquipment().filter(
+      (eq) =>
+        (techBases.length === 0 || techBases.includes(eq.techBase)) &&
+        (weaponTypes.length === 0 || equipmentWeaponTypes(eq).some((type) => weaponTypes.includes(type))) &&
+        ranges.every(([id, [min, max]]) => {
+          const value = this.warehouseValue(eq, id);
+          return value !== null && value >= min && value <= max;
+        }),
     );
     const { column, direction } = this.equipmentSort();
     const order = direction === 'asc' ? 1 : -1;
@@ -1704,6 +1748,63 @@ export class UnitConstructionComponent {
       column,
       direction: sort.column === column && sort.direction === 'asc' ? 'desc' : 'asc',
     }));
+  }
+
+  readonly warehouseRangeFilters: readonly { id: WarehouseRangeId; label: string; step: number }[] = [
+    { id: 'tons', label: 'Tons', step: 0.5 },
+    { id: 'slots', label: 'Slots', step: 1 },
+    { id: 'damage', label: 'Damage', step: 1 },
+    { id: 'range', label: 'Range', step: 1 },
+    { id: 'heat', label: 'Heat', step: 1 },
+    { id: 'bv', label: 'BV', step: 1 },
+  ];
+  readonly warehouseTechBaseOptions: readonly DropdownOption[] = [
+    { name: 'IS', displayName: 'Inner Sphere' },
+    { name: 'Clan', displayName: 'Clan' },
+    { name: 'All', displayName: 'Universal' },
+  ];
+  readonly warehouseTechBases = signal<readonly string[]>([]);
+  readonly warehouseWeaponTypes = signal<readonly string[]>([]);
+  /** Narrowed ranges only; a range left at its full extent is not stored and filters nothing. */
+  readonly warehouseRanges = signal<Partial<Record<WarehouseRangeId, readonly [number, number]>>>({});
+  readonly warehouseWeaponTypeOptions = computed((): readonly DropdownOption[] => {
+    const present = new Set(this.warehouseBaseEquipment().flatMap(equipmentWeaponTypes));
+    return WEAPON_TYPES.filter((type) => present.has(type) || this.warehouseWeaponTypes().includes(type))
+      .map((type) => ({ name: type, displayName: WEAPON_TYPE_DISPLAY_NAMES[type] }));
+  });
+  /** Slider extents over the rows the panel narrows; computed only while the panel is open. */
+  readonly warehouseRangeBounds = computed(() => {
+    if (!this.equipmentFiltersOpen()) return new Map<WarehouseRangeId, readonly [number, number]>();
+    const base = this.warehouseBaseEquipment();
+    return new Map(this.warehouseRangeFilters.flatMap((filter) => {
+      const values = base.map((eq) => this.warehouseValue(eq, filter.id)).filter((value): value is number => value !== null);
+      return values.length === 0 ? [] : [[filter.id, [Math.min(...values), Math.max(...values)] as const] as const];
+    }));
+  });
+  readonly warehouseFilterCount = computed(() =>
+    Number(this.filterByLocation()) + Number(this.warehouseTechBases().length > 0)
+      + Number(this.warehouseWeaponTypes().length > 0) + Object.keys(this.warehouseRanges()).length);
+  setWarehouseRange(id: WarehouseRangeId, value: readonly [number, number]): void {
+    const bounds = this.warehouseRangeBounds().get(id);
+    this.warehouseRanges.update((ranges) => {
+      const { [id]: _previous, ...rest } = ranges;
+      return bounds && value[0] <= bounds[0] && value[1] >= bounds[1] ? rest : { ...rest, [id]: value };
+    });
+  }
+  /** The warehouse stays usable beside the open filter panel; a click anywhere else closes it. */
+  closeWarehouseFilters(event: MouseEvent): void {
+    if (event.target instanceof Element && event.target.closest('.warehouse')) return;
+    this.equipmentFiltersOpen.set(false);
+  }
+  resetWarehouseFilters(): void {
+    this.filterByLocation.set(false);
+    this.warehouseTechBases.set([]);
+    this.warehouseWeaponTypes.set([]);
+    this.warehouseRanges.set({});
+  }
+  private warehouseValue(eq: Equipment, id: WarehouseRangeId): number | null {
+    if (id === 'heat') return eq instanceof WeaponEquipment ? eq.heat : null;
+    return this.equipmentSortValue(eq, id);
   }
 
   private equipmentSortValue(eq: Equipment, column: Exclude<EquipmentSortColumn, 'name'>): number | null {
@@ -1937,6 +2038,48 @@ export class UnitConstructionComponent {
       control?.control.setValue(null, { emitEvent: false, emitViewToModelChange: false });
     }
   }
+  /** Tech base and mixed technology shown, and chosen, as one value: `IS`, `Clan`, `IS:mixed` or `Clan:mixed`. */
+  readonly techBaseChoice = computed(() => {
+    const entity = this.entity();
+    return `${entity.techBase()}${entity.mixedTech() ? ':mixed' : ''}`;
+  });
+  readonly techBaseOptions = computed(() => {
+    const fields = this.fields();
+    const base = fields.find((field) => field.id === 'techBase');
+    const mixed = fields.find((field) => field.id === 'mixedTech');
+    if (!base) return [];
+    return [false, true].flatMap((mixedTech) => (mixedTech && !mixed ? [] : (['IS', 'Clan'] as const).map((value) => {
+      const name = value === 'IS' ? 'Inner Sphere' : 'Clan';
+      return {
+        value: `${value}${mixedTech ? ':mixed' : ''}`,
+        label: mixedTech ? `Mixed (${name})` : name,
+        disabled: !!base.options?.find((option) => option.value === value)?.disabled
+          || (mixedTech && !!mixed?.disabled && !mixed.get()),
+      };
+    })));
+  });
+  readonly techBaseLabel = computed(() =>
+    this.techBaseOptions().find((option) => option.value === this.techBaseChoice())?.label
+      ?? (this.entity().techBase() === 'IS' ? 'Inner Sphere' : this.entity().techBase()));
+  setTechBaseChoice(choice: string): void {
+    const fields = this.fields();
+    const base = fields.find((field) => field.id === 'techBase');
+    const mixed = fields.find((field) => field.id === 'mixedTech');
+    if (!base) return;
+    const [value, flag] = choice.split(':');
+    this.change(() => {
+      base.set(value);
+      mixed?.set(flag === 'mixed');
+    }, this.canEditField(base));
+  }
+  readonly tonnageField = computed(() => this.fields().find((field) => field.id === 'tonnage') ?? null);
+  /** Tonnage choices for chassis with a fixed list; other chassis type their tonnage. */
+  readonly tonnageOptions = computed((): readonly MultilineDropdownOption[] | null =>
+    this.tonnageField()?.options?.map((option) => ({
+      value: String(option.value),
+      label: option.label,
+      disabled: option.disabled,
+    })) ?? null);
   setOemYear(value: number | null): void {
     this.oemYearExpanded.set(true);
     this.change(() => this.oemYearField().set(value ?? ''));
@@ -2185,13 +2328,15 @@ export class UnitConstructionComponent {
     if (!selected) return [];
     const ids =
       selected.system === 'Engine'
-        ? ['engineType', 'walkMP', 'engineTechBase', 'heatSinkType', 'heatSinkCount']
+        ? ['engineType', 'walkMP', 'engineTechBase', 'heatSinkType', 'heatSinkCount', 'riscHeatSinkOverride']
         : selected.system === 'Gyro'
           ? ['gyro']
           : selected.system === 'Cockpit'
             ? ['cockpit', 'fullHeadEjection']
             : [];
-    return this.fields().filter((field) => ids.includes(field.id));
+    // The RISC kit appears only where it is available, or while installed so it can be removed.
+    return this.fields().filter((field) => ids.includes(field.id)
+      && !(field.id === 'riscHeatSinkOverride' && field.disabled));
   });
   readonly selectedSystemSlots = computed(() => {
     const selected = this.selectedSystem();
@@ -2285,25 +2430,28 @@ export class UnitConstructionComponent {
     this.splitSecondLocation.set(this.splitSecondChoices().at(0)?.id ?? '');
   }
   locationMounts(location: string): string[] {
-    return [
-      ...new Set(
-        this.locations()
-          .find((item) => item.id === location)
-          ?.slots.flatMap((slot) => (slot.mount ? [slot.mount.mountId] : [])) ?? [],
-      ),
-    ];
+    return this.locationMountBlocks(location).flat();
+  }
+  private locationMountBlocks(location: string): string[][] {
+    return constructionSlotMountBlocks(this.locations().find((item) => item.id === location)?.slots ?? []);
+  }
+  /** Where the mount's block sits in its location's order; null when it occupies no slot there. */
+  mountOrderPosition(mount: EntityMountedEquipment, location: string): { first: boolean; last: boolean } | null {
+    const blocks = this.locationMountBlocks(location);
+    const index = blocks.findIndex((block) => block.includes(mount.mountId));
+    return index < 0 ? null : { first: index === 0, last: index === blocks.length - 1 };
   }
   reorderMount(mount: EntityMountedEquipment, location: string, direction: -1 | 1): void {
-    const order = this.locationMounts(location);
-    const index = order.indexOf(mount.mountId);
-    if (index < 0 || index + direction < 0 || index + direction >= order.length) return;
+    const blocks = this.locationMountBlocks(location);
+    const index = blocks.findIndex((block) => block.includes(mount.mountId));
+    if (index < 0 || index + direction < 0 || index + direction >= blocks.length) return;
     this.change(
       () =>
         reorderConstructionEquipment(
           this.entity(),
           location,
           mount.mountId,
-          order[index + (direction === -1 ? -1 : 2)],
+          blocks[index + (direction === -1 ? -1 : 2)]?.[0],
         ),
       this.canReorderMount(mount),
     );
@@ -2386,8 +2534,22 @@ export class UnitConstructionComponent {
         ? this.dragBounds.get(location)?.find((block) => block.id !== this.dragging()?.mountId && y < block.midpoint)
             ?.id
         : undefined;
-    if (location !== this.dragTarget()?.location || beforeMountId !== this.dragTarget()?.beforeMountId)
-      this.dragTarget.set(location ? { location, beforeMountId } : null);
+    const shareSlotIndex = location ? this.shareSlotAt(location, element) : undefined;
+    const target = this.dragTarget();
+    if (location !== target?.location || beforeMountId !== target?.beforeMountId || shareSlotIndex !== target?.shareSlotIndex)
+      this.dragTarget.set(location ? { location, beforeMountId, ...(shareSlotIndex === undefined ? {} : { shareSlotIndex }) } : null);
+  }
+  /** The superheavy slot under the pointer whose single load the dragged load can join. */
+  private shareSlotAt(location: string, element: Element | null): number | undefined {
+    const entity = this.entity(), drag = this.dragging();
+    const partnerId = element?.closest('[data-mount-id]')?.getAttribute('data-mount-id');
+    if (!(entity instanceof MekEntity) || !drag || !partnerId || partnerId === drag.mountId) return undefined;
+    const slotIndex = entity.equipment().find((mount) => mount.mountId === partnerId)
+      ?.placements?.find((placement) => placement.location === location)?.slotIndex;
+    const mount = entity.equipment().find((item) => item.mountId === drag.mountId);
+    const equipment = mount?.equipment ?? this.registry.findEquipment(drag.equipmentId);
+    return slotIndex !== undefined && equipment
+      && constructionSharedMekSlots(entity, equipment, location, mount).includes(slotIndex) ? slotIndex : undefined;
   }
   dragLabel(): string {
     return this.registry.findEquipment(this.dragging()?.equipmentId ?? '')?.name ?? '';
@@ -2485,9 +2647,14 @@ export class UnitConstructionComponent {
     )
       return;
     const entity = this.entity();
+    const shareSlotIndex = this.dragTarget()?.location === destination.location ? this.dragTarget()?.shareSlotIndex : undefined;
     this.change(() => {
       let placed: EntityMountedEquipment;
-      if (mount && entity instanceof MekEntity && this.spreadAllocation(mount)) {
+      if (shareSlotIndex !== undefined) {
+        placed = mount
+          ? moveConstructionEquipment(entity, mount, destination.location, shareSlotIndex)
+          : installConstructionEquipment(entity, equipment, destination.location, shareSlotIndex);
+      } else if (mount && entity instanceof MekEntity && this.spreadAllocation(mount)) {
         placed = applyConstructionSpreadPlacements(
           entity,
           mount,
@@ -2518,7 +2685,8 @@ export class UnitConstructionComponent {
         placed = mount;
       } else if (mount) placed = moveConstructionEquipment(entity, mount, destination.location);
       else placed = installConstructionEquipment(entity, equipment, destination.location, destination.slotIndex);
-      reorderConstructionEquipment(entity, destination.location, placed.mountId, this.dragTarget()?.beforeMountId);
+      if (shareSlotIndex === undefined)
+        reorderConstructionEquipment(entity, destination.location, placed.mountId, this.dragTarget()?.beforeMountId);
       this.finishEquipmentEdit(entity.equipment().find((item) => item.mountId === placed.mountId)!);
     }, this.reconfiguring());
   }

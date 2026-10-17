@@ -10,13 +10,12 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId,CriticalSlotId } from '../entity/entity-identifiers';
 import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import type { UnitWaterState } from '../unit-cover.model';
-import type { CBTUnitHeatState } from './cbt-unit-runtime';
+import { isHeatValue,settleHeat,type CBTUnitHeatState } from './cbt-unit-runtime';
 import { compileMekHeatProfile,evaluateMekHeatScenarioSupport,type MekHeatProfile,type MekHeatScenarioInput } from './mek-heat-profile';
 import { MAX_MEK_MOVEMENT_MP_V2,type MekMovementHeatInputV2 } from './mek-movement-psr-v2';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { canonicalizeMekTurnStateV2,type MekTurnStateV2 } from './mek-turn-state-v2';
 
-export const MAX_MEK_HEAT_VALUE_V2 = 1_000_000;
 export const MAX_MEK_HEATSINKS_OFF_V2 = 1_000;
 export const MAX_MEK_HEAT_CONTEXT_BLOCKERS_V2 = 64;
 export const EQUIPMENT_HEAT_SOURCE_GROUP = 'Equipment';
@@ -162,13 +161,6 @@ export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV
         ...(value.pendingOverride === undefined ? {} : { pendingOverride: value.pendingOverride }),
         heatsinksOff: value.heatsinksOff,
     });
-}
-
-export function mekHeatStatesEqualV2(left: MekHeatStateV2, right: MekHeatStateV2): boolean {
-    return left.current === right.current
-        && left.previous === right.previous
-        && left.pendingOverride === right.pendingOverride
-        && left.heatsinksOff === right.heatsinksOff;
 }
 
 /**
@@ -465,11 +457,7 @@ export function applyPendingMekHeatV2(
     if (heat.pendingOverride === undefined) {
         return Object.freeze({ changed: false, heat, turn: input.turn, projection });
     }
-    const nextHeat = canonicalizeMekHeatStateV2({
-        current: heat.pendingOverride,
-        previous: heat.current,
-        heatsinksOff: heat.heatsinksOff,
-    });
+    const nextHeat = settleHeat(heat, heat.pendingOverride);
     if (policy === 'automatic') {
         return Object.freeze({ changed: true, heat: nextHeat, turn: input.turn, projection });
     }
@@ -493,11 +481,7 @@ export function resolveEndTurnMekHeatV2(
     if (!projection.hasPendingSettlement) {
         return Object.freeze({ changed: false, heat, turn: input.turn, projection });
     }
-    const nextHeat = canonicalizeMekHeatStateV2({
-        current: projection.projected,
-        previous: heat.current,
-        heatsinksOff: heat.heatsinksOff,
-    });
+    const nextHeat = canonicalizeMekHeatStateV2(settleHeat(heat, projection.projected));
 
     const acknowledged = new Map(input.turn.acknowledgedHeatSources);
     for (const source of projection.sources) {
@@ -844,8 +828,5 @@ export function mekHeatSourceSignatureV2(source: MekHeatSourceV2): string {
 }
 
 function assertHeatValue(value: number, path: string): void {
-    if (typeof value !== 'number' || !Number.isFinite(value) || Object.is(value, -0)
-        || value < 0 || value > MAX_MEK_HEAT_VALUE_V2) {
-        throw new Error(`${path} must be a canonical heat value`);
-    }
+    if (!isHeatValue(value)) throw new Error(`${path} must be a canonical heat value`);
 }

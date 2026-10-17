@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
+import { withAmmoConfiguration,withAmmoShotsSpent,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
 import { mekHotLoadedAmmoEnabled } from './mek-mechanics-context-v2';
 import type { HotLoadExplosionRoll } from './mek-critical-hit-v2';
 
@@ -15,7 +15,7 @@ import { MML_INVENTORY_MODES } from '../ammo-weapon-profile.model';
 import { C3EM_FRIED_SEQUENCE_VALUE } from '../c3-emergency-master.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { ECMMode } from '../common.model';
-import { CrewMember,MAX_CREW_WOUNDS } from '../crew-member.model';
+import { CrewMember,isSparseCrewMemberState,MAX_CREW_WOUNDS,withCrewMemberState,type CrewMemberEffectiveState,type CrewStateEdit } from '../crew-member.model';
 import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model';
 import { isEcmEquipment } from '../ecm-mode.model';
 import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId } from '../entity/entity-identifiers';
@@ -32,15 +32,15 @@ import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import { activeStealthHeatComponents,getActiveStealthTnModifiers,hasFunctionalEcmForStealth,isStealthEquipment,isStealthSystemEquipment,isSwitchableStealthEquipment,isVoidSignatureEquipment,nextStealthState,STEALTH_DISABLING_MODE,STEALTH_ENABLING_MODE,stealthStateForMode,unitHasActiveC3DisruptingStealth,unitHasActiveVoidSignature,type StealthEquipmentFacts,type StealthState } from '../stealth-equipment.model';
 import type { TnStealthModifiers } from '../target-number-calculator.model';
-import { isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
+import { conditionsCarriedIntoNextTurn,isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import { VIBROBLADE_ON_MODE } from '../vibroblade-mode.model';
-import { createPristineAttackerTargetingState,freezeAttackerTargetingState,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerTargetingState,type AttackerTargetingValidationContext } from './attacker-targeting-state';
+import { createPristineAttackerTargetingState,reconcileAttackerTargetingState,reduceAttackerTargetingCommand,type AttackerTargetingValidationContext } from './attacker-targeting-state';
 import { BOMBAST_LASER_CHARGED_STATE,BOMBAST_LASER_CHARGING_STATE,isCoreBombastLaserComponent } from './component-bombast-laser';
 import { BOOBY_TRAP_ARMED_MODE,BOOBY_TRAP_DETONATED_MODE,isBoobyTrapDetonated } from './component-booby-trap';
 import { isC3EmergencyMasterComponent } from './component-c3-emergency-master';
 import { COOLANT_POD_ACTIVE_MODE,COOLANT_POD_READY_MODE,isCoolantPodEquipment } from './component-coolant-pod';
 import { effectiveEcmMode,electronicClaims,isEcmRuntimeMode,isNovaCewsEquipment,isPowerControlledEquipment,planElectronicModeRequest,planElectronicSettlement,type ElectronicComponentFact } from './component-electronic-suite';
-import { canUseEscalatingFailure,componentEscalatingFailureDefinition,isBattleArmorMyomerBoosterEquipment,movementBoosterUsableWhile,selectEscalatingFailureComponentState,setEscalatingFailureComponentStatus,settleEscalatingFailureComponentState,type ComponentEscalatingFailureDefinition } from './component-escalating-failure';
+import { componentEscalatingFailureDefinition,editEscalatingFailureComponentState,isBattleArmorMyomerBoosterEquipment,movementBoosterUsableWhile,settleEscalatingFailureComponentState,type ComponentEscalatingFailureDefinition } from './component-escalating-failure';
 import { effectiveMachineGunArrayMode,isMachineGunArrayController,isMachineGunArrayEquipment,isMachineGunArrayLifecycleState,isMachineGunArrayTransition,machineGunArrayLifecycleState,MGA_LINKED_MODE,nextMachineGunArrayState,settledMachineGunArrayState } from './component-machine-gun-array';
 import { HPG_IDLE_MODE,isMobileHpgMode,mobileHpgBlocksMovement,mobileHpgBlocksWeaponAttacks,mobileHpgMode,mobileHpgModeChangeReason,mobileHpgOperatingHeat,settleMobileHpgMode,type MobileHpgComponentFact } from './component-mobile-hpg';
 import { isPpcCapacitorPair,PPC_CAPACITOR_CHARGED_STATE,PPC_CAPACITOR_CHARGING_STATE,ppcCapacitorWeaponId } from './component-ppc-capacitor';
@@ -51,30 +51,31 @@ import type { TargetRegistrySnapshot } from './encounter-runtime';
 import { RuntimeEquipmentStatusKernel,type RuntimeEquipmentCommittedState,type RuntimeEquipmentStatusTopology } from './equipment-status-kernel';
 import { buildEquipmentStatusTopology } from './equipment-status-topology';
 import { canPerformMekAction } from './mek-action-availability';
-import { mekAmmoCapacity,mekAmmoDefaultMunitionKey,mekAmmoLoadout,mekAmmoLoadouts,mekIntrinsicMagazine,type AmmoLoadout } from './mek-ammo';
+import { mekAmmoCapacity,mekAmmoDefaultMunitionKey,mekAmmoLoadout,mekAmmoLoadouts,mekIntrinsicMagazine,weaponAcceptsAmmo,type AmmoLoadout } from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
 import { GAUSS_POWERED_UP,isSparseMekGaussPowerState,nextGaussPowerState,settledGaussPowerState,type MekGaussPowerState } from './mek-gauss-power';
 import { isMekLocationPhysicallyDestroyed,isMekLocationPhysicallyDestroyedFromView,mekLocationDestructionParentId } from './mek-location-state-kernel';
 import type { MekShieldTrack } from './mek-shield-rules';
 import { canonicalizeMekTurnStateV2,createPristineMekTurnStateV2,MAX_MEK_TURN_NUMBER,mekTurnStatesEqualV2,type MekTurnStateV2 } from './mek-turn-state-v2';
-import { applyMekWeaponFirePlanV2,mekWeaponAmmoMatches,planMekWeaponFireV2,type MekWeaponFireSelectionV2 } from './mek-weapon-fire-v2';
-import { freezeRuntimeState,isMekLocationConditionKey,MAX_MEK_LOCATION_CONDITION_VALUE,type AmmoRuntimeState,type BombastLaserRuntimeState,type C3EmergencyMasterOperatingTurns,type C3EmergencyMasterRuntimeState,type ComponentRuntimeState,type EscalatingFailureRuntimeState,type LocationRuntimeState,type MekLocationConditionKey,type MekShieldDamageRuntimeState,type MekUnitRuntimeState,type PendingCombatOverlay,type PpcCapacitorRuntimeState } from './runtime-state';
+import { applyMekWeaponFirePlanV2,planMekWeaponFireV2,type MekWeaponFireSelectionV2 } from './mek-weapon-fire-v2';
+import { freezeRuntimeState,isMekLocationConditionKey,MAX_MEK_LOCATION_CONDITION_VALUE,type BombastLaserRuntimeState,type C3EmergencyMasterOperatingTurns,type C3EmergencyMasterRuntimeState,type ComponentRuntimeState,type EscalatingFailureRuntimeState,type LocationRuntimeState,type MekLocationConditionKey,type MekShieldDamageRuntimeState,type MekUnitRuntimeState,type PendingCombatOverlay,type PpcCapacitorRuntimeState } from './runtime-state';
 import type { CBTUnitCommand } from './unit-command';
 
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
-import { type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
+import { isHeatValue,MAX_HEAT_VALUE,withEditedHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { projectMekBlowOffV2,projectMekCriticalChanceV2,projectMekCriticalRollProfileV2,projectMekCriticalRollV2,projectPendingMekCriticalExplosionV2,type MekBlowOffPlanV2,type MekCriticalChanceProfileV2,type MekCriticalRollPlanV2,type MekCriticalRollProfileV2,type MekCriticalRuntimeViewV2,type MekEquipmentExplosionPlanV2 } from './mek-critical-hit-v2';
 import { mekCriticalSlotDirectHitThreshold,mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import { createMekTorsoCripplingRuleCheckTokenV2,MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,type MekDamageStateViewV2,type MekRuleCheckKeyV2,type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
-import { applyPendingMekHeatContextV2,assertMekHeatContextEntityV2,buildMekHeatKernelInputV2,canonicalizeMekHeatStateV2,createUnboundMekHeatContextV2,disableMekHeatContextV2,MAX_MEK_HEAT_VALUE_V2,MAX_MEK_HEATSINKS_OFF_V2,mekHeatCapabilityV2,mekHeatSourceSignatureV2,mekHeatStatesEqualV2,projectMekHeatContextV2,resolveEndTurnMekHeatContextV2,validateMekHeatContextStateV2,type MekHeatCapabilityV2,type MekHeatKernelInputV2,type MekHeatProjectionResultV2,type MekHeatRuntimeContextV2,type MekHeatStateV2 } from './mek-heat-state-v2';
+import { applyPendingMekHeatContextV2,assertMekHeatContextEntityV2,buildMekHeatKernelInputV2,canonicalizeMekHeatStateV2,createUnboundMekHeatContextV2,disableMekHeatContextV2,MAX_MEK_HEATSINKS_OFF_V2,mekHeatCapabilityV2,mekHeatSourceSignatureV2,projectMekHeatContextV2,resolveEndTurnMekHeatContextV2,validateMekHeatContextStateV2,type MekHeatCapabilityV2,type MekHeatKernelInputV2,type MekHeatProjectionResultV2,type MekHeatRuntimeContextV2,type MekHeatStateV2 } from './mek-heat-state-v2';
 import { adjustMekStandAttemptsContextV2,assertMekMechanicsContextEntityV2,createUnboundMekMechanicsContextV2,declareMekActionContextV2,declareMekMovementContextV2,prepareMekStandUpContextV2,projectMekBattleValueMovementContextV2,projectMekC3EndpointCapabilitiesV2,projectMekCombatModifiersContextV2,projectMekDestructionContextV2,projectMekMovementPsrContextV2,projectMekPhysicalAttacksContextV2,projectMekPilotChecksContextV2,projectMekShieldsContextV2,reconcileMekPilotChecksContextV2,reconcileMekRuleChecksContextV2,resolveMekPilotCheckContextV2,resolveMekRuleCheckContextV2,resolveMekStandAttemptContextV2,synthesizeCommittedMekDamagePilotChecksContextV2,type MekC3EndpointCapabilitiesResultV2,type MekDestructionProjectionResultV2,type MekMechanicsContextV2,type MekMovementRuntimeContextInputV2,type MekShieldProjectionResultV2 } from './mek-mechanics-context-v2';
 import { canonicalizeMekMovementPsrStateV2,clearMekActionV2,clearMekMovementV2,createPristineMekMovementPsrStateV2,dismissMekAutomaticFallsV2,dismissPendingMekPilotChecksV2,mekMovementPsrStatesEqualV2,resetMekMovementPsrPhaseV2,resetMekMovementPsrTurnV2,type MekCommittedDamageMutationV2,type MekMovementModeV2,type MekMovementPsrProjectionResultV2,type MekMovementPsrStateV2,type MekPilotCheckV2 } from './mek-movement-psr-v2';
 import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-v2';
 import { componentLocationIds,equipmentForComponent,type MekIndexedBay,type MekIndexedCriticalSlot,type MekRuntimeIndex } from './mek-runtime-index';
-import { isMekWeaponUnderwater,resolveMekTargetingAmmo,resolveMekUnitWaterState,weaponTargetDisabledReason } from './mek-targeting-rules';
+import { mekWeaponTargetSubject,resolveMekUnitWaterState } from './mek-targeting-rules';
+import { applyWeaponTargetPolicies,reconcileWeaponTargetPolicies,type WeaponTargetSubjectResolver } from './weapon-target-policy';
 
 export type MekHitArcV2 = 'front' | 'rear' | 'left' | 'right';
 
@@ -147,7 +148,6 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     c3DisruptedByStealth(perspective?: RuntimeStatePerspective): boolean;
     voidSignatureActive(perspective?: RuntimeStatePerspective): boolean;
     componentGaussPower(componentId: ComponentId): MekGaussPowerState;
-    componentJammed(componentId: ComponentId): boolean;
     componentEscalatingFailure(componentId: ComponentId): EscalatingFailureRuntimeState | undefined;
     componentPpcCapacitor(componentId: ComponentId): PpcCapacitorRuntimeState | undefined;
     componentBombastLaser(componentId: ComponentId): BombastLaserRuntimeState | undefined;
@@ -172,8 +172,8 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     mekMovementMode():
         | { readonly kind: 'supported'; readonly mode: MekMovementModeV2 | null }
         | { readonly kind: 'unsupported' };
-    /** Immutable deployment profile; wounds/consciousness are queried separately. */
-    crewAssignment(): CrewAssignment;
+    /** Effective station state, including death from a destroyed cockpit or command console. */
+    crewEffectiveState(positionId: CrewPositionId): CrewMemberEffectiveState;
     turnState(): MekTurnStateV2;
     linkedTarget(componentId: ComponentId): ComponentId | undefined;
     linkedSource(componentId: ComponentId): ComponentId | undefined;
@@ -255,8 +255,8 @@ export function planMekAttackerTargetingReconciliation(binding: MekRuntimeBindin
     const context = buildAttackerTargetingContext(binding.source, binding.source.index, state, registry, false);
     const planned = reconcileAttackerTargetingState(state.attackerTargeting, context);
     if (!planned.accepted) throw new Error('Attacker targeting reconciliation failed: ' + planned.reason);
-    const nextTargeting = reconcileMekWeaponTargetPolicies(binding.source, binding.source.index,
-        queryMekRuntime(binding, state), registry, planned.state);
+    const nextTargeting = reconcileWeaponTargetPolicies(planned.state, registry, binding.source.ruleset,
+        mekWeaponTargetSubjects(binding.source, binding.source.index, queryMekRuntime(binding, state)));
     return planned.changed || nextTargeting !== planned.state ? Object.freeze({ nextTargeting }) : null;
 }
 
@@ -331,7 +331,7 @@ class MekRuntimeQuery {
         const hasAirGroundSelection = canChangeAirborneGround(motiveModeFactsForEntity(unit.entity));
         const storedDisplayConditions = new ImmutableSet<UnitConditionKey>([...state.conditions].filter(condition =>
             condition !== 'airborne' && condition !== 'grounded' && condition !== 'crippled'));
-        const effectiveCrewState = (positionId: CrewPositionId): ReturnType<CrewMember['effectiveState']> => {
+        const effectiveCrewState = (positionId: CrewPositionId): CrewMemberEffectiveState => {
             const position = unit.index.crewPositions.get(positionId);
             if (!position) throw new Error(`Unknown crew position ${positionId}`);
             if (!this.#source.crewAssignment.positions.some(assigned => assigned.positionId === positionId)) return 'vacant';
@@ -379,7 +379,7 @@ class MekRuntimeQuery {
                 conditions.add('crippled');
             }
             if (getActiveStealthTnModifiers(
-                buildMekStealthFacts(unit, state, statusTopology, 'preview'),
+                mekStealthEffectFacts(unit, state, statusTopology, 'preview'),
                 0,
                 state.destroyed || state.conditions.has('shutdown'),
             ) !== undefined) {
@@ -579,19 +579,19 @@ class MekRuntimeQuery {
                 targetMoveDistance = 0,
                 perspective: RuntimeStatePerspective = 'preview',
             ) => getActiveStealthTnModifiers(
-                buildMekStealthFacts(unit, state, statusTopology, perspective),
+                mekStealthEffectFacts(unit, state, statusTopology, perspective),
                 targetMoveDistance,
                 state.destroyed || state.conditions.has('shutdown'),
             ),
             c3DisruptedByStealth: (perspective: RuntimeStatePerspective = 'preview') => (
                 unitHasActiveC3DisruptingStealth(
-                    buildMekStealthFacts(unit, state, statusTopology, perspective),
+                    mekStealthEffectFacts(unit, state, statusTopology, perspective),
                     state.destroyed || state.conditions.has('shutdown'),
                 )
             ),
             voidSignatureActive: (perspective: RuntimeStatePerspective = 'preview') => (
                 unitHasActiveVoidSignature(
-                    buildMekStealthFacts(unit, state, statusTopology, perspective),
+                    mekStealthEffectFacts(unit, state, statusTopology, perspective),
                     state.destroyed || state.conditions.has('shutdown'),
                 )
             ),
@@ -703,6 +703,7 @@ class MekRuntimeQuery {
                 ]),
             ].sort(compareText)),
             crewAssignment: () => this.#source.crewAssignment,
+            crewEffectiveState: effectiveCrewState,
             crewState: (positionId: CrewPositionId) => {
                 if (!unit.index.crewPositions.has(positionId)) {
                     throw new Error(`Unknown crew position ${positionId}`);
@@ -780,26 +781,9 @@ function reduceAttackerTargeting(
         return forceReadOnly ? readOnly(state) : unchanged(state);
     }
     if (!planned.changed) return unchanged(state);
-    const targetComponentIds = command.edit.kind === 'set-component-selection'
-        && command.edit.selection?.kind === 'target'
-        ? [command.edit.componentId]
-        : command.edit.kind === 'set-component-selections'
-            && command.edit.selection?.kind === 'target'
-            ? command.edit.componentIds
-            : [];
-    if (targetComponentIds.some(componentId => !mekWeaponTargetSelectionAllowed(
-        unit,
-        index,
-        runtime,
-        registry,
-        planned.state,
-        componentId,
-    ))) {
-        return unchanged(state);
-    }
-    const nextTargeting = reconcileMekWeaponTargetPolicies(
-        unit, index, runtime, registry, planned.state,
-    );
+    const nextTargeting = applyWeaponTargetPolicies(planned.state, command.edit, registry, unit.ruleset,
+        mekWeaponTargetSubjects(unit, index, runtime));
+    if (nextTargeting === null) return unchanged(state);
     const nextState = freezeRuntimeState({
         ...state,
         attackerTargeting: nextTargeting,
@@ -838,8 +822,8 @@ function reduceSelectedWeaponFire(
     }
     const reconciled = reconcileAttackerTargetingState(state.attackerTargeting, context);
     if (!reconciled.accepted || reconciled.changed) return unchanged(state);
-    if (reconcileMekWeaponTargetPolicies(unit, index, runtime, registry, state.attackerTargeting)
-        !== state.attackerTargeting) return unchanged(state);
+    if (reconcileWeaponTargetPolicies(state.attackerTargeting, registry, unit.ruleset,
+        mekWeaponTargetSubjects(unit, index, runtime)) !== state.attackerTargeting) return unchanged(state);
 
     const selected = [...state.attackerTargeting.components]
         .filter(([, component]) => component.selection !== undefined)
@@ -928,16 +912,8 @@ function reduceSelectedWeaponFire(
                 heatContext,
                 command.heatPolicy,
             );
-            if (projected > MAX_MEK_HEAT_VALUE_V2) return unchanged(state);
-            nextState = {
-                ...nextState,
-                heat: canonicalizeMekHeatStateV2({
-                    current: state.heat.current,
-                    previous: state.heat.previous,
-                    pendingOverride: projected,
-                    heatsinksOff: state.heat.heatsinksOff,
-                }),
-            };
+            if (projected > MAX_HEAT_VALUE) return unchanged(state);
+            nextState = { ...nextState, heat: withPendingHeat(state.heat, projected) };
         }
     }
 
@@ -984,7 +960,7 @@ function buildAttackerTargetingContext(
                 .map(([sourceId]) => Object.freeze({
                     componentId: sourceId,
                     munitionKeys: Object.freeze(mekAmmoLoadouts(entity, index, sourceId, ruleset)
-                        .filter(loadout => mekWeaponAmmoMatches(
+                        .filter(loadout => weaponAcceptsAmmo(
                             weapon,
                             loadout.equipment,
                             selectedMode,
@@ -1021,56 +997,12 @@ function buildAttackerTargetingContext(
     });
 }
 
-function reconcileMekWeaponTargetPolicies(
+function mekWeaponTargetSubjects(
     unit: MekRuntimeSource,
     index: MekRuntimeIndex,
     runtime: MekUnitQueryPort,
-    registry: TargetRegistrySnapshot,
-    targeting: AttackerTargetingState,
-): AttackerTargetingState {
-    const components = new Map(targeting.components);
-    let changed = false;
-    for (const [componentId, component] of components) {
-        if (component.selection?.kind !== 'target'
-            || mekWeaponTargetSelectionAllowed(unit, index, runtime, registry, targeting, componentId)) {
-            continue;
-        }
-        changed = true;
-        if (component.ammo === undefined) components.delete(componentId);
-        else components.set(componentId, Object.freeze({ ammo: component.ammo }));
-    }
-    return changed
-        ? freezeAttackerTargetingState({ ...targeting, components: new ImmutableIndex(components) })
-        : targeting;
-}
-
-function mekWeaponTargetSelectionAllowed(
-    unit: MekRuntimeSource,
-    index: MekRuntimeIndex,
-    runtime: MekUnitQueryPort,
-    registry: TargetRegistrySnapshot,
-    targeting: AttackerTargetingState,
-    componentId: ComponentId,
-): boolean {
-    const component = targeting.components.get(componentId);
-    if (component?.selection?.kind !== 'target') return true;
-    const targetId = component.selection.targetId;
-    const weapon = equipmentForComponent(index, componentId);
-    const target = registry.targets.find(candidate => candidate.id === targetId);
-    if (!(weapon instanceof WeaponEquipment) || target === undefined) return false;
-    const local = targeting.targets.get(target.id);
-    const calculator = Object.freeze({ ...target.tnCalculator, ...local?.calculator });
-    return weaponTargetDisabledReason(
-        weapon,
-        resolveMekTargetingAmmo(unit.entity, index, unit.ruleset, runtime, componentId, component.ammo),
-        unit.ruleset,
-        {
-            ...(target.unitType === undefined ? {} : { unitType: target.unitType }),
-            ...(Object.keys(calculator).length === 0 ? {} : { calculator }),
-            ...(local?.manualTnOverride === undefined ? {} : { manualTnOverride: true }),
-        },
-        isMekWeaponUnderwater(unit.entity, index, runtime, componentId),
-    ) === null;
+): WeaponTargetSubjectResolver {
+    return (componentId, ammo) => mekWeaponTargetSubject(unit.entity, index, unit.ruleset, runtime, componentId, ammo);
 }
 
 function requireComponent<T>(unit: MekRuntimeSource, componentId: ComponentId, read: () => T): T {
@@ -1148,7 +1080,7 @@ function reduce(
                 return unchanged(state);
             }
             changed = command.target === 'pending'
-                ? withPending(state, 'locationInternalDamage', command.locationId, command.amount)
+                ? withPendingCombatDelta(state, 'locationInternalDamage', command.locationId, command.amount)
                 : clearNarcFromCommittedPhysicallyDestroyedLocations(
                     unit,
                     withLocationInternalDamage(state, command.locationId, command.amount),
@@ -1166,7 +1098,7 @@ function reduce(
                 return unchanged(state);
             }
             changed = command.target === 'pending'
-                ? withPending(state, 'locationInternalDamage', command.locationId, -command.amount)
+                ? withPendingCombatDelta(state, 'locationInternalDamage', command.locationId, -command.amount)
                 : withLocationInternalDamage(state, command.locationId, -command.amount);
             break;
         }
@@ -1182,7 +1114,7 @@ function reduce(
                 return unchanged(state);
             }
             if (command.target === 'pending') {
-                changed = withPending(state, 'criticalHits', command.slotId, command.hits);
+                changed = withPendingCombatDelta(state, 'criticalHits', command.slotId, command.hits);
             } else {
                 const hit = withCriticalHits(state, slot, command.hits);
                 const becameDirectHit = criticalHits(hit, command.slotId, 'committed')
@@ -1211,7 +1143,7 @@ function reduce(
                 return unchanged(state);
             }
             changed = command.target === 'pending'
-                ? withPending(state, 'criticalHits', command.slotId, -command.hits)
+                ? withPendingCombatDelta(state, 'criticalHits', command.slotId, -command.hits)
                 : withCriticalHits(state, slot, -command.hits);
             break;
         }
@@ -1288,7 +1220,7 @@ function reduce(
                 const delta = desired - current;
                 if (delta === 0) continue;
                 next = command.target === 'pending'
-                    ? withPending(next, 'criticalHits', slot.id, delta)
+                    ? withPendingCombatDelta(next, 'criticalHits', slot.id, delta)
                     : withCriticalHits(next, slot, delta);
             }
             changed = next === state ? null : next;
@@ -1493,7 +1425,7 @@ function reduce(
             break;
         }
         case 'set-component-jammed': {
-            if (!rapidFireAutocannonSupportsJamming(index, command.componentId, ruleset)
+            if (!rapidFireAutocannonSupportsJamming(equipmentForComponent(index, command.componentId), ruleset)
                 || typeof command.jammed !== 'boolean') {
                 return unchanged(state);
             }
@@ -1503,33 +1435,14 @@ function reduce(
         case 'edit-escalating-failure': {
             const definition = escalatingFailureDefinition(unit, command.componentId);
             if (!definition) return unchanged(state);
-            if (command.edit.kind === 'select-sequence') {
-                if (!Number.isSafeInteger(command.edit.index)
-                    || command.edit.index < 0
-                    || command.edit.index >= definition.targets.length
-                    || componentRuntimeStatus(unit, state, command.componentId) !== 'available'
-                    || !canUseEscalatingFailure(definition, state.turn.airborne)) {
-                    return unchanged(state);
-                }
-                changed = withEscalatingFailureSelection(
-                    state,
-                    command.componentId,
-                    command.edit.index,
-                    definition.targets.length,
-                );
-            } else {
-                const current = componentRuntimeStatus(unit, state, command.componentId);
-                if ((command.edit.status === 'disabled' && current !== 'available')
-                    || (command.edit.status === 'available'
-                        && state.components.get(command.componentId)?.statusOverride !== 'disabled')) {
-                    return unchanged(state);
-                }
-                changed = withEscalatingFailureStatus(
-                    state,
-                    command.componentId,
-                    command.edit.status,
-                );
-            }
+            const components = editEscalatingFailureComponentState(
+                state.components,
+                definition,
+                command.edit,
+                componentRuntimeStatus(unit, state, command.componentId),
+                state.turn.airborne,
+            );
+            changed = components === null ? null : { ...state, components };
             break;
         }
         case 'set-ppc-capacitor-charge': {
@@ -1656,15 +1569,15 @@ function reduce(
             if (command.remaining > loadout.capacity) return unchanged(state);
             if (command.hotLoaded !== undefined && typeof command.hotLoaded !== 'boolean') return unchanged(state);
             if (command.hotLoaded && (!unit.hotLoadedAmmo || !loadout.equipment.hasFlag('F_HOT_LOAD'))) return unchanged(state);
-            changed = withAmmoConfiguration(
-                state,
-                unit,
-                command.componentId,
-                loadout.munitionKey,
-                loadout.capacity - command.remaining,
-                loadout.equipment.hasFlag('F_HOT_LOAD')
-                    && (command.hotLoaded ?? state.ammo.get(command.componentId)?.hotLoaded ?? false),
-            );
+            const defaultMunitionKey = mekAmmoDefaultMunitionKey(unit.entity, unit.index, command.componentId);
+            if (defaultMunitionKey === null) return unchanged(state);
+            changed = withAmmoConfiguration(state, command.componentId, {
+                munitionKey: loadout.munitionKey,
+                defaultMunitionKey,
+                shotsSpent: loadout.capacity - command.remaining,
+                hotLoadable: loadout.equipment.hasFlag('F_HOT_LOAD'),
+                hotLoaded: command.hotLoaded,
+            });
             break;
         }
         case 'reset-ammo-loadout': {
@@ -1685,7 +1598,7 @@ function reduce(
             if (capacity === null) return unchanged(state);
             const spent = current?.shotsSpent ?? 0;
             if (spent + command.amount > capacity) return unchanged(state);
-            changed = withAmmoSpent(state, command.componentId, command.amount);
+            changed = withAmmoShotsSpent(state, [[command.componentId, command.amount]]);
             break;
         }
         case 'activate-coolant-pod': {
@@ -1710,7 +1623,7 @@ function reduce(
             if (capacity === null || (ammo?.shotsSpent ?? 0) >= capacity) {
                 return unchanged(state);
             }
-            const spent = withAmmoSpent(state, command.componentId, 1);
+            const spent = withAmmoShotsSpent(state, [[command.componentId, 1]]);
             const activated = withComponentMode(
                 spent,
                 command.componentId,
@@ -1757,16 +1670,8 @@ function reduce(
                     heatContext,
                     command.heatPolicy,
                 );
-                if (projected > MAX_MEK_HEAT_VALUE_V2) return unchanged(state);
-                changed = {
-                    ...changed,
-                    heat: canonicalizeMekHeatStateV2({
-                        current: state.heat.current,
-                        previous: state.heat.previous,
-                        pendingOverride: projected,
-                        heatsinksOff: state.heat.heatsinksOff,
-                    }),
-                };
+                if (projected > MAX_HEAT_VALUE) return unchanged(state);
+                changed = { ...changed, heat: withPendingHeat(state.heat, projected) };
             }
             break;
         }
@@ -1774,34 +1679,22 @@ function reduce(
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
                 return unchanged(state);
             }
-            if (!canonicalNonnegativeNumber(command.heat)) return unchanged(state);
-            const heat = canonicalizeMekHeatStateV2({
-                current: command.heat,
-                previous: state.heat.current,
-                heatsinksOff: state.heat.heatsinksOff,
-            });
-            changed = mekHeatStatesEqualV2(state.heat, heat) ? null : { ...state, heat };
+            if (!isHeatValue(command.heat)) return unchanged(state);
+            const heat = withEditedHeat(state.heat, command.heat);
+            changed = heat === null ? null : { ...state, heat };
             break;
         }
         case 'set-pending-heat': {
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
                 return unchanged(state);
             }
-            if (command.heat !== null && !canonicalNonnegativeNumber(command.heat)) {
+            if (command.heat !== null && !isHeatValue(command.heat)) {
                 return unchanged(state);
             }
             const pendingOverride = command.heat === null ? undefined : command.heat;
             changed = state.heat.pendingOverride === pendingOverride
                 ? null
-                : {
-                    ...state,
-                    heat: canonicalizeMekHeatStateV2({
-                        current: state.heat.current,
-                        previous: state.heat.previous,
-                        ...(pendingOverride === undefined ? {} : { pendingOverride }),
-                        heatsinksOff: state.heat.heatsinksOff,
-                    }),
-                };
+                : { ...state, heat: withPendingHeat(state.heat, pendingOverride) };
             break;
         }
         case 'set-heatsinks-off': {
@@ -1837,7 +1730,7 @@ function reduce(
             );
             if (projection.kind === 'unsupported') return unchanged(state);
             if (command.policy === 'automatic'
-                && projection.projection.projected > MAX_MEK_HEAT_VALUE_V2) {
+                && projection.projection.projected > MAX_HEAT_VALUE) {
                 return unchanged(state);
             }
             const applied = applyPendingMekHeatContextV2(
@@ -1937,26 +1830,7 @@ function reduce(
             if (!runtime.crewAssignment().positions.some(position => position.positionId === command.positionId)) {
                 return unchanged(state);
             }
-            if (!Number.isSafeInteger(command.wounds)
-                || command.wounds < 0
-                || command.wounds > MAX_CREW_WOUNDS
-                || typeof command.unconscious !== 'boolean'
-                || typeof command.ejected !== 'boolean'
-                || (command.recoveryReadyTurn !== undefined
-                    && command.recoveryReadyTurn !== null
-                    && (!Number.isSafeInteger(command.recoveryReadyTurn)
-                        || command.recoveryReadyTurn < 0))
-                || (command.recoveryReadyTurn !== undefined && !command.unconscious)) {
-                return unchanged(state);
-            }
-            changed = withCrewState(
-                state,
-                command.positionId,
-                command.wounds,
-                command.unconscious,
-                command.ejected,
-                command.recoveryReadyTurn,
-            );
+            changed = withCrewEdit(state, command.positionId, command);
             break;
         }
         case 'declare-mek-movement': {
@@ -2245,7 +2119,7 @@ function reduce(
             );
             if (endTurnProjection.kind === 'unsupported') return unchanged(state);
             if (command.policy === 'automatic'
-                && endTurnProjection.projection.projected > MAX_MEK_HEAT_VALUE_V2) {
+                && endTurnProjection.projection.projected > MAX_HEAT_VALUE) {
                 return unchanged(state);
             }
             const ended = endTurn(unit, entity, index, state, command.policy, statusTopology, heatContext);
@@ -2968,6 +2842,17 @@ function buildMekStealthFacts(
     }));
 }
 
+/** Stealth armor and signature systems have no effect on a superheavy Mek; its ECM still works (IO:AE p. 157). */
+function mekStealthEffectFacts(
+    unit: MekRuntimeSource,
+    state: MekUnitRuntimeState,
+    statusTopology: RuntimeEquipmentStatusTopology,
+    perspective: RuntimeStatePerspective,
+): readonly StealthEquipmentFacts[] {
+    const facts = buildMekStealthFacts(unit, state, statusTopology, perspective);
+    return unit.entity.isSuperHeavy() ? facts.filter(entry => !isStealthSystemEquipment(entry.equipment)) : facts;
+}
+
 function settleStealthSystems(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
@@ -3067,9 +2952,7 @@ function endTurn(
     const stealthSettled = settleStealthSystems(unit, electronicSettled, statusTopology, true);
     const committed = commitPending(unit, entity, index, stealthSettled) ?? stealthSettled;
     const deathsSettled = commitCrewDeaths(committed);
-    const conditions = new Set(deathsSettled.conditions);
-    conditions.delete('tagged');
-    conditions.delete('skidding');
+    const conditions = conditionsCarriedIntoNextTurn(deathsSettled.conditions);
     const turn = createPristineMekTurnStateV2(Math.min(
         deathsSettled.turn.turnCounter + 1,
         MAX_MEK_TURN_NUMBER,
@@ -3263,7 +3146,7 @@ function applyMekBlowOffPlan(
         const slot = unit.index.slots.get(plan.slotId);
         if (!slot) throw new Error(`Unknown critical slot ${plan.slotId}`);
         return target === 'pending'
-            ? withPending(state, 'criticalHits', plan.slotId, 1)
+            ? withPendingCombatDelta(state, 'criticalHits', plan.slotId, 1)
             : withCriticalHits(state, slot, 1);
     }
     return target === 'pending'
@@ -3284,7 +3167,7 @@ function applyMekCriticalRollPlan(
     const slot = unit.index.slots.get(plan.slotId);
     if (!slot) throw new Error(`Unknown critical slot ${plan.slotId}`);
     let next = target === 'pending'
-        ? withPending(state, 'criticalHits', plan.slotId, 1)
+        ? withPendingCombatDelta(state, 'criticalHits', plan.slotId, 1)
         : withCriticalHits(state, slot, 1);
     if (!applyExplosion) {
         if (plan.explosion || plan.pendingExplosion) {
@@ -3326,12 +3209,12 @@ function applyMekEquipmentExplosionPlan(
     for (const damage of explosion.locations) {
         if (damage.armorFaceId !== undefined && damage.armorDamage > 0) {
             next = target === 'pending'
-                ? withPending(next, 'armorDamage', damage.armorFaceId, damage.armorDamage)
+                ? withPendingCombatDelta(next, 'armorDamage', damage.armorFaceId, damage.armorDamage)
                 : withLocationArmorDamage(next, damage.locationId, damage.armorFaceId, damage.armorDamage);
         }
         if (damage.internalDamage > 0) {
             next = target === 'pending'
-                ? withPending(next, 'locationInternalDamage', damage.locationId, damage.internalDamage)
+                ? withPendingCombatDelta(next, 'locationInternalDamage', damage.locationId, damage.internalDamage)
                 : withLocationInternalDamage(next, damage.locationId, damage.internalDamage);
         }
     }
@@ -3340,20 +3223,18 @@ function applyMekEquipmentExplosionPlan(
             .sort((left, right) => left.occurrence - right.occurrence)[0];
         if (pilot) {
             const current = CrewMember.from(next.crew.get(pilot.id));
-            next = withCrewState(
-                next,
-                pilot.id,
-                Math.min(MAX_CREW_WOUNDS, current.wounds + explosion.pilotHits),
-                current.unconscious,
-                current.ejected,
-            ) ?? next;
+            next = withCrewEdit(next, pilot.id, {
+                wounds: Math.min(MAX_CREW_WOUNDS, current.wounds + explosion.pilotHits),
+                unconscious: current.unconscious,
+                ejected: current.ejected,
+            }) ?? next;
         }
     }
     if (explosion.automaticCritical) {
         const slot = unit.index.slots.get(explosion.automaticCritical.slotId);
         if (!slot) throw new Error(`Unknown critical slot ${explosion.automaticCritical.slotId}`);
         next = target === 'pending'
-            ? withPending(
+            ? withPendingCombatDelta(
                 next,
                 'criticalHits',
                 explosion.automaticCritical.slotId,
@@ -3388,7 +3269,7 @@ function destroyComponentForCriticalExplosion(
         const remaining = mekCriticalSlotDirectHitThreshold(slot) - criticalHits(next, slot.id, perspective);
         if (remaining <= 0) continue;
         next = target === 'pending'
-            ? withPending(next, 'criticalHits', slot.id, remaining)
+            ? withPendingCombatDelta(next, 'criticalHits', slot.id, remaining)
             : withCriticalHits(next, slot, remaining);
     }
     return clearDestroyedComponentLifecycle(next, componentId);
@@ -3695,53 +3576,6 @@ function settleGaussPower(
     return settled;
 }
 
-function withComponentJammed(
-    state: MekUnitRuntimeState,
-    componentId: ComponentId,
-    jammed: boolean,
-): MekUnitRuntimeState | null {
-    const components = new Map(state.components);
-    const current = components.get(componentId) ?? {};
-    const existing = current.jammed ?? false;
-    if (existing === jammed) return null;
-    if (!jammed) {
-        const { jammed: _removed, ...remaining } = current;
-        if (Object.keys(remaining).length === 0) components.delete(componentId);
-        else components.set(componentId, Object.freeze(remaining));
-    } else {
-        components.set(componentId, Object.freeze({ ...current, jammed: true }));
-    }
-    return { ...state, components: new ImmutableIndex(components) };
-}
-
-function withEscalatingFailureSelection(
-    state: MekUnitRuntimeState,
-    componentId: ComponentId,
-    index: number,
-    sequenceLength: number,
-): MekUnitRuntimeState | null {
-    const components = selectEscalatingFailureComponentState(
-        state.components,
-        componentId,
-        index,
-        sequenceLength,
-    );
-    return components === null ? null : { ...state, components };
-}
-
-function withEscalatingFailureStatus(
-    state: MekUnitRuntimeState,
-    componentId: ComponentId,
-    status: 'available' | 'disabled',
-): MekUnitRuntimeState | null {
-    const components = setEscalatingFailureComponentStatus(
-        state.components,
-        componentId,
-        status,
-    );
-    return components === null ? null : { ...state, components };
-}
-
 function settleEscalatingFailures(
     unit: MekRuntimeSource,
     state: MekUnitRuntimeState,
@@ -3751,10 +3585,6 @@ function settleEscalatingFailures(
         if (definition.kind !== 'equipment') continue;
         const failure = escalatingFailureDefinition(unit, componentId);
         if (!failure) continue;
-        const component = settled.components.get(componentId);
-        const lifecycle = component?.escalatingFailure;
-        if (!lifecycle || component.statusOverride === 'disabled') continue;
-        if (!lifecycle.active && !failure.recoversWhenUnused) continue;
         const components = settleEscalatingFailureComponentState(settled.components, failure);
         if (components !== null) settled = { ...settled, components };
     }
@@ -4071,84 +3901,16 @@ function componentStatesEqual(left: ComponentRuntimeState, right: ComponentRunti
         && left.modularArmorDamage === right.modularArmorDamage;
 }
 
-function withAmmoSpent(
-    state: MekUnitRuntimeState,
-    componentId: ComponentId,
-    amount: number,
-): MekUnitRuntimeState {
-    const ammo = new Map(state.ammo);
-    const current = ammo.get(componentId);
-    ammo.set(componentId, Object.freeze({
-        ...current,
-        shotsSpent: (current?.shotsSpent ?? 0) + amount,
-    }));
-    return { ...state, ammo: new ImmutableIndex(ammo) };
-}
-
-function withAmmoConfiguration(
-    state: MekUnitRuntimeState,
-    unit: MekRuntimeSource,
-    componentId: ComponentId,
-    munitionKey: string,
-    shotsSpent: number,
-    hotLoaded: boolean,
-): MekUnitRuntimeState | null {
-    const defaultKey = mekAmmoDefaultMunitionKey(unit.entity, unit.index, componentId);
-    if (defaultKey === null) return null;
-    const next: AmmoRuntimeState = Object.freeze({
-        shotsSpent,
-        ...(munitionKey === defaultKey ? {} : { munitionOverride: munitionKey }),
-        ...(hotLoaded ? { hotLoaded: true as const } : {}),
-    });
-    const current = state.ammo.get(componentId);
-    if ((current?.shotsSpent ?? 0) === next.shotsSpent
-        && current?.munitionOverride === next.munitionOverride
-        && current?.hotLoaded === next.hotLoaded) return null;
-    const ammo = new Map(state.ammo);
-    if (next.shotsSpent === 0 && next.munitionOverride === undefined && !next.hotLoaded) ammo.delete(componentId);
-    else ammo.set(componentId, next);
-    return { ...state, ammo: new ImmutableIndex(ammo) };
-}
-
-function withCrewState(
+function withCrewEdit(
     state: MekUnitRuntimeState,
     positionId: CrewPositionId,
-    wounds: number,
-    unconscious: boolean,
-    ejected: boolean,
-    requestedRecoveryReadyTurn?: number | null,
+    edit: CrewStateEdit,
 ): MekUnitRuntimeState | null {
-    const current = CrewMember.from(state.crew.get(positionId));
-    const next = current.withWoundTrackedState({
-        wounds,
-        unconscious,
-        ejected,
-        recoveryReadyTurn: requestedRecoveryReadyTurn,
-    });
-    if (current.equals(next)) return null;
-    const crew = new Map(state.crew);
-    if (next.isPristine()) crew.delete(positionId);
-    else crew.set(positionId, next.toRuntimeState());
-    return {
+    const crew = withCrewMemberState(state.crew, positionId, edit);
+    return crew === null ? null : {
         ...state,
-        crew: new ImmutableIndex(crew),
+        crew,
         turn: canonicalizeMekTurnStateV2({ ...state.turn, phaseStateChanged: true }),
-    };
-}
-
-function withPending<K extends 'armorDamage' | 'locationInternalDamage' | 'criticalHits'>(
-    state: MekUnitRuntimeState,
-    field: K,
-    id: K extends 'armorDamage' ? ArmorFaceId : K extends 'criticalHits' ? CriticalSlotId : LocationId,
-    amount: number,
-): MekUnitRuntimeState {
-    const values = new Map(state.pendingCombat[field] as ReadonlyMap<typeof id, number>);
-    const next = (values.get(id) ?? 0) + amount;
-    if (next === 0) values.delete(id);
-    else values.set(id, next);
-    return {
-        ...state,
-        pendingCombat: Object.freeze({ ...state.pendingCombat, [field]: new ImmutableIndex(values) }),
     };
 }
 
@@ -4349,7 +4111,7 @@ function applyArmorMutation(
         const amount = Math.min(remaining, capacity);
         if (amount === 0) return;
         next = target === 'pending'
-            ? withPending(next, 'armorDamage', faceId, delta > 0 ? amount : -amount)
+            ? withPendingCombatDelta(next, 'armorDamage', faceId, delta > 0 ? amount : -amount)
             : withLocationArmorDamage(next, locationId, faceId, delta > 0 ? amount : -amount);
         remaining -= amount;
     };
@@ -4721,7 +4483,8 @@ function validateState(
             }
         }
         if (component.jammed !== undefined && (
-            component.jammed !== true || !rapidFireAutocannonSupportsJamming(index, id, ruleset)
+            component.jammed !== true
+            || !rapidFireAutocannonSupportsJamming(equipmentForComponent(index, id), ruleset)
         )) {
             throw new Error(`Invalid component jam state for ${id}`);
         }
@@ -4835,21 +4598,7 @@ function validateState(
     }
     for (const [id, crew] of state.crew) {
         if (!unit.index.crewPositions.has(id)) throw new Error(`Unknown crew position ${id}`);
-        if (!Number.isSafeInteger(crew.wounds)
-            || crew.wounds < 0
-            || crew.wounds > MAX_CREW_WOUNDS
-            || typeof crew.unconscious !== 'boolean'
-            || typeof crew.ejected !== 'boolean'
-            || (crew.dead !== undefined && crew.dead !== true)
-            || (crew.dead === true && crew.wounds < MAX_CREW_WOUNDS)
-            || (crew.recoveryReadyTurn !== undefined
-                && crew.recoveryReadyTurn !== null
-                && (!Number.isSafeInteger(crew.recoveryReadyTurn)
-                    || crew.recoveryReadyTurn < 0))
-            || (crew.recoveryReadyTurn !== undefined && !crew.unconscious)
-            || (crew.wounds === 0 && !crew.unconscious && !crew.ejected)) {
-            throw new Error(`Invalid sparse crew state for ${id}`);
-        }
+        if (!isSparseCrewMemberState(crew)) throw new Error(`Invalid sparse crew state for ${id}`);
     }
     const pendingFall = state.turn.pendingFallConsequences;
     if (pendingFall && [...pendingFall.seatbeltPositionIds, ...(pendingFall.seatbeltFailures ?? [])]
@@ -4988,7 +4737,7 @@ function effectiveComponentMode(
                 unit.ruleset,
                 state.ammo.get(ammoId)?.munitionOverride,
             );
-            if (loadout && mekWeaponAmmoMatches(equipment, loadout.equipment, MML_INVENTORY_MODES[0])) {
+            if (loadout && weaponAcceptsAmmo(equipment, loadout.equipment, MML_INVENTORY_MODES[0])) {
                 return MML_INVENTORY_MODES[0];
             }
         }
@@ -5281,13 +5030,6 @@ function isC3EmergencyMasterOperatingTurns(
     return Number.isSafeInteger(value)
         && Number(value) >= 1
         && Number(value) <= C3EM_FRIED_SEQUENCE_VALUE;
-}
-
-function canonicalNonnegativeNumber(value: number): boolean {
-    return Number.isFinite(value)
-        && value >= 0
-        && value <= MAX_MEK_HEAT_VALUE_V2
-        && !Object.is(value, -0);
 }
 
 function isHeatPolicy(value: unknown): value is HeatAutomationPolicy {

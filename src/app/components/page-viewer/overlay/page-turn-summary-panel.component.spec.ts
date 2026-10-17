@@ -273,6 +273,15 @@ describe('PageTurnSummaryPanelComponent', () => {
             .toContain('Torso-mounted cockpit');
     });
 
+    it('shows a zero spotting modifier as +0 instead of an empty badge', () => {
+        const fixture = createComponent(turnMember({ ...turnSnapshot(), spottingModifier: 0 }).member, overlayManager());
+        fixture.detectChanges();
+
+        const badge = fixture.nativeElement.querySelector('.spotting-button .modifier-badge') as HTMLElement;
+        expect(badge.textContent?.trim()).toBe('+0');
+        expect(badge.classList.contains('empty-modifier')).toBeFalse();
+    });
+
     it('uses the shared turn panel for direct vehicle Entity movement', () => {
         const manager = overlayManager();
         const harness = entityTurnMember();

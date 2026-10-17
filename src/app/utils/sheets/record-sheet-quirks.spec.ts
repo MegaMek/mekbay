@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { TestAeroSpaceFighterEntity, TestBipedMekEntity, TestDropShipEntity, TestProtoMekEntity, TestSmallCraftEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
+import { TestAeroSpaceFighterEntity, TestBipedMekEntity, TestDropShipEntity, TestProtoMekEntity, TestSmallCraftEntity, TestTankEntity, TestWarShipEntity } from '../../models/entity/testing/test-entities';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
 import { WeaponEquipment } from '../../models/equipment.model';
 import { weaponQuirkAddress } from '../../models/entity/utils/weapon-quirks';
@@ -27,7 +27,7 @@ describe('record sheet quirk visibility', () => {
 
     it('retains authored aerospace quirks in the footer and respects the display option in both rulesets', async () => {
         for (const ruleset of ['total-warfare', 'core-2026'] as const) {
-            for (const entity of [new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity(), new TestDropShipEntity()]) {
+            for (const entity of [new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity(), new TestDropShipEntity(), new TestWarShipEntity()]) {
                 entity.quirks.set([
                     { quirk: { key: 'obsolete', name: 'Obsolete', type: 'negative', description: '' } },
                     { quirk: { key: 'atmo_instability', name: 'Atmospheric Flight Instability', type: 'negative', description: '' } },
@@ -39,6 +39,28 @@ describe('record sheet quirk visibility', () => {
                 expect(disabled.querySelector('.unitQuirks')).withContext(entity.entityType).toBeNull();
                 expect(entity.quirks()).toHaveSize(2);
             }
+        }
+    });
+
+    it('prints quirks in MegaMekLab catalogue order on every family that shows them', async () => {
+        const quirk = (key: string, name: string, type: 'positive' | 'negative') => ({ quirk: { key, name, type, description: '' } });
+        // Authored order matches none of source, alphabetical, or positive-first-source ordering.
+        const authored = [
+            quirk('obsolete', 'Obsolete', 'negative'),
+            quirk('ubiquitous_clan', 'Ubiquitous (Clans)', 'positive'),
+            quirk('bad_rep_clan', 'Bad Reputation (Clan)', 'negative'),
+            quirk('ubiquitous_is', 'Ubiquitous (Inner Sphere)', 'positive'),
+            quirk('bad_rep_is', 'Bad Reputation (Inner Sphere)', 'negative'),
+            quirk('easy_maintain', 'Easy to Maintain', 'positive'),
+        ] as const;
+        const expected = 'Quirks: Easy to Maintain, Ubiquitous (Inner Sphere), Ubiquitous (Clans), '
+            + 'Bad Reputation (Inner Sphere), Bad Reputation (Clan), Obsolete';
+        for (const entity of [new TestBipedMekEntity(), new TestTankEntity(), new TestProtoMekEntity(),
+            new TestAeroSpaceFighterEntity(), new TestSmallCraftEntity(), new TestWarShipEntity()]) {
+            entity.quirks.set([...authored]);
+            const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+            const printed = Array.from(sheet.querySelectorAll('text.unitQuirks, .unitQuirks text'), text => text.textContent).join(' ');
+            expect(printed.replace(/\s+/gu, ' ')).withContext(entity.entityType).toBe(expected);
         }
     });
 

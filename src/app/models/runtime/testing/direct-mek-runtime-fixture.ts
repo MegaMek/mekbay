@@ -358,8 +358,9 @@ export function createDirectLegDamageFloorRuntimeFixture(
 export function createDirectSuperheavyRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
     instanceId = 'unit:direct-superheavy-fixture',
+    options: Pick<DirectFixtureOptions, 'sharedAmmoSlot' | 'engineType' | 'includeVoidSignature'> = {},
 ): DirectMekRuntimeFixture {
-    return createFixture(ruleset, instanceId, { configuration: 'superheavy' });
+    return createFixture(ruleset, instanceId, { ...options, configuration: 'superheavy' });
 }
 
 /** Parsed torso-mounted-cockpit MekEntity plus a pristine sparse runtime. */
@@ -485,6 +486,8 @@ interface DirectFixtureOptions {
     readonly gyroType?: GyroType;
     readonly cockpitType?: CockpitType;
     readonly configuration?: 'biped' | 'quad' | 'tripod' | 'superheavy';
+    /** Superheavy only: two Test Ammo bins share one left-arm slot. */
+    readonly sharedAmmoSlot?: boolean;
     readonly shieldSize?: 'small' | 'medium' | 'large';
     readonly dualShields?: boolean;
     readonly baseWalkMp?: number;
@@ -1048,7 +1051,7 @@ function directMekMtf(options: DirectFixtureOptions): string {
         ...(includeRiscLaserPulse ? ['Test RISC Laser Pulse Module'] : []),
         ...(includeLaserInsulator ? ['Test Laser Insulator'] : []),
         'Test AC',
-        'Test Ammo',
+        options.sharedAmmoSlot ? 'Test Ammo|Test Ammo' : 'Test Ammo',
         'Test MML',
         'Test ATM',
         'Test ATM Ammo',

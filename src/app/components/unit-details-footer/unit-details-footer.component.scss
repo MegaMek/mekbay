@@ -151,7 +151,9 @@
 }
 
 .nav-arrow-symbol {
-    --chevron-size: 24px;
+    flex: 0 0 auto;
+    font-size: 2rem;
+    line-height: 1;
 }
 
 .nav-unit-name {

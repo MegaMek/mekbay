@@ -3,7 +3,7 @@ import { PaperdollGenerator } from './paperdoll-generator';
 import { decoratePaperdollPips } from './record-sheet-svg-rendering';
 
 const PIP_ASSETS = [
-    ...['biped', 'quad', 'quadvee', 'tripod', 'lam'].flatMap(chassis =>
+    ...['biped', 'quad', 'quadvee', 'tripod'].flatMap(chassis =>
         ['armor', 'armor-back', 'structure'].map(view => `${chassis}-${view}`)),
     ...['vehicle', 'naval'].flatMap(family =>
         ['', 'superheavy-'].flatMap(weight =>
@@ -67,7 +67,7 @@ describe('PaperdollGenerator', () => {
         });
     }
 
-    for (const chassis of ['quad', 'quadvee', 'tripod', 'lam']) {
+    for (const chassis of ['quad', 'quadvee', 'tripod']) {
         it(`keeps ${chassis} front and rear artwork and labels independent`, async () => {
             const front = await PaperdollGenerator.createPaperdoll(`/images/paperdolls/${chassis}-armor.svg`, 200, 300);
             const rear = await PaperdollGenerator.createPaperdoll(`/images/paperdolls/${chassis}-armor-back.svg`, 100, 85);

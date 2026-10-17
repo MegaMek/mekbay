@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
-import { addInventoryText, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { SvgFrameUtil } from '../svg-frame.util';
 
@@ -12,15 +12,15 @@ import type { NonMekRecordSheetComponent } from '../../../models/runtime/non-mek
 import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
 import { GenericPipRenderer } from '../generic-pip-renderer';
-import { appendEmbeddedSvgDefinition } from '../record-sheet-embedded-art';
+import { appendEmbeddedSvgDefinition, appendMastheadArt } from '../record-sheet-embedded-art';
 import {
     type RecordSheetLayoutProfile,
     type RecordSheetPageFormat,
     type RecordSheetPageProfile,
 } from '../record-sheet-layout';
 import {
-    type Box, addText, drawClusterHitsReference, drawGeneratedFooter,
-    formatNumber, makeDistributedPips, recordSheetInventoryWeapons, scalePageBox, setAttributes,
+    type Box, addText, appendBattleValue, compactClusterRacks, drawClusterHitsReference, drawGeneratedFooter,
+    formatNumber, makeDistributedPips, recordSheetInventoryWeapons, scalePageBox, setAttributes, setCompactClusterRacks,
     setInventoryComponentIds, svgElement, transparentRect,
 } from '../record-sheet-svg-rendering';
 import { CompactRecordSheetLayout } from './record-sheet-layout';
@@ -70,10 +70,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
     }
 
     protected override drawCompactMastheadIcon(parent: SVGGElement, box: Box): void {
-        const use = svgElement('use');
-        setAttributes(use, { href: `#${MASTHEAD_ART_ID}`, class: 'handheld-weapon-masthead-icon',
-            width: 56.7 * box.width / 31.018, height: 45.357 * box.height / 41.357 });
-        parent.appendChild(use);
+        appendMastheadArt(parent, box, MASTHEAD_ART_ID, 'handheld-weapon-masthead-icon');
     }
 
     public override drawCompactPageSupplement(
@@ -81,8 +78,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         profile: RecordSheetPageProfile,
         blocks: readonly SVGSVGElement[],
     ): void {
-        const racks = (blocks[0]?.getAttribute('data-mekbay-cluster-racks') ?? '')
-            .split(',').map(Number).filter(value => value > 0);
+        const racks = compactClusterRacks(blocks[0]);
         if (blocks.length === 1 && racks.length > 0) {
             const height = Number(blocks[0].getAttribute('height'));
             drawClusterHitsReference(page, scalePageBox(profile, {
@@ -99,7 +95,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
     }
 
     protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
-        svg.setAttribute('data-mekbay-cluster-racks', clusterTableForEntity(entity).clusterSizes.join(','));
+        setCompactClusterRacks(svg, clusterTableForEntity(entity).clusterSizes);
         await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/handheld-weapon.svg', MASTHEAD_ART_ID);
         const large = isLargeHandheldLayout(entity);
         const extra = large ? LARGE_HEIGHT - STANDARD_HEIGHT : 0;
@@ -124,8 +120,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         addText(group, formatProtectionCounter(entity.getArmorValue('Gun')), 251.3, 30.51, { size: 8.2, anchor: 'middle' }).id = 'textArmor_GUN';
         addText(group, entity.uniformArmor()?.armor.shortName ?? 'Standard', 251.3, 38.968,
             { size: 8.2, anchor: 'middle', maxWidth: 41 }).id = 'armorType';
-        addText(group, 'BV:', 530.06, 19.491, { size: 8.2, weight: 700 });
-        addText(group, String(entity.battleValue()), 545.836, 19.491, { size: 8.2 }).id = 'bv';
+        appendBattleValue(group, entity.battleValue(), { x: 530.06, valueX: 545.836, y: 19.491, size: 8.2 });
 
         // This strip has no authored rails; every non-canonical mode uses its rectangular fill.
         const armor = makeDistributedPips(entity.getArmorValue('Gun'), 160, 34.94 + extra, 'armor', 'GUN');
@@ -175,10 +170,12 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
     const rowLines = (name: string, location: string, damage: string, minimum: string, ranges: readonly string[], fontSize: number) =>
         inventoryRowLineCount([[name, 77], [location, 19], [damage, 52], [minimum, 11],
             ...ranges.map(value => [value, 11] as const)], fontSize);
-    const metrics = fitInventoryText(26 + extra, fontSize => ({ lineCount: rows.reduce((sum, row) => sum
-        + rowLines(row.name, entity.componentLocationLabel(row.location), row.damage, row.minimumRange, row.ranges, fontSize)
+    const mainLines = (fontSize: number) => rows.map(row =>
+        rowLines(row.name, entity.componentLocationLabel(row.location), row.damage, row.minimumRange, row.ranges, fontSize));
+    const metrics = fitInventoryText(26 + extra, fontSize => ({ lineCount: rows.reduce((sum, row, index) => sum
+        + mainLines(fontSize)[index]
         + row.alternativeModes.reduce((n, mode) => n + rowLines(mode.name, entity.componentLocationLabel(row.location),
-            mode.damage, mode.minimumRange, mode.ranges, fontSize), 0), 0), content: undefined }));
+            mode.damage, mode.minimumRange, mode.ranges, fontSize), 0), 0), badgeRows: mainLines(fontSize), content: undefined }));
     const step = metrics.lineStep;
     const addCell = (parent: SVGElement, value: string, x: number, y: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, y, { ...options, size: metrics.fontSize, lineHeight: step });
@@ -192,7 +189,8 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
         const draw = (host: SVGGElement, name: string, damage: string, min: string, ranges: readonly string[]) => {
             const y = 43.389 + index * step;
             const lineCount = rowLines(name, entity.componentLocationLabel(row.location), damage, min, ranges, metrics.fontSize);
-            index += lineCount;
+            // The entry row carries the to-hit badges and keeps their minimum height.
+            index += host === entry ? inventoryRowSpan(lineCount, step) : lineCount;
             host.appendChild(transparentRect(11.529, y - step + 1, 211.277, lineCount * step, 'inventoryEntryButton mainButton'));
             addCell(host, name, xs[0], y, { class: 'name', size: RECORD_SHEET_FONT.inventory, maxWidth: 77 });
             addCell(host, entity.componentLocationLabel(row.location), 106.604, y,
@@ -205,7 +203,10 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
                     `inventoryEntryButton ${['', 'shrButton', 'medButton', 'lngButton'][column]}`));
             });
         };
+        const baseline = 43.389 + index * step;
         draw(entry, row.name, row.damage, row.minimumRange, row.ranges);
+        appendInventoryHitModifier(entry, baseline, 1, step);
+        appendInventoryTargetNumber(entry, 0, baseline, 1, step);
         row.alternativeModes.forEach(mode => {
             const alternative = svgElement('g');
             setAttributes(alternative, { class: mode.displayOnly ? 'equipmentProfile' : 'alternativeMode', 'data-mekbay-mode': mode.name });

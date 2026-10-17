@@ -34,3 +34,11 @@ export function requireUnitConditionKey(value: unknown): UnitConditionKey {
     if (!isUnitConditionKey(value)) throw new Error(`Unknown unit condition ${String(value)}`);
     return value;
 }
+
+/** Conditions that last only for the turn they were set in. */
+const TURN_SCOPED_UNIT_CONDITIONS: ReadonlySet<UnitConditionKey> = new Set(['tagged', 'skidding']);
+
+/** The stored conditions a unit carries into the next turn. */
+export function conditionsCarriedIntoNextTurn(conditions: Iterable<UnitConditionKey>): Set<UnitConditionKey> {
+    return new Set([...conditions].filter(condition => !TURN_SCOPED_UNIT_CONDITIONS.has(condition)));
+}

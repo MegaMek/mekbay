@@ -248,7 +248,7 @@ export class WeaponsEquipmentPanelComponent {
     private pendingDragPreviewSizing: DragPreviewSizing | null = null;
     readonly usesAerospaceWeaponValues = computed(() => this.runtime().snapshot().unitType === 'Aero');
     readonly showsGroundExtremeRange = computed(() => !this.usesAerospaceWeaponValues()
-        && this.runtime().allowsExtremeRangeAttacks());
+        && this.runtime().attackContext()?.allowExtremeRange === true);
     readonly rangeColumns = computed(() => this.usesAerospaceWeaponValues()
         ? AEROSPACE_RANGE_COLUMNS
         : this.showsGroundExtremeRange() ? GROUND_EXTREME_RANGE_COLUMNS : GROUND_RANGE_COLUMNS);
@@ -859,7 +859,8 @@ export class WeaponsEquipmentPanelComponent {
         target: TargetingTarget | null,
     ): TargetRowState {
         if (row.physical) return this.createPhysicalTargetState(row, target);
-        if (!row.component?.weapon) {
+        const attack = this.runtime().attackContext();
+        if (!row.component?.weapon || attack === null) {
             return {
                 target: null,
                 invalidTarget: false,
@@ -875,22 +876,8 @@ export class WeaponsEquipmentPanelComponent {
         }
         const component = row.component!;
         const targetDisabledReason = target === null ? null : this.targetDisabledReason(row, target);
-        const presentation = projectWeaponTargetPresentation(
-            component,
-            target,
-            this.runtime().snapshot().crew.gunnery,
-            this.runtime().attackerMovementMode(),
-            this.runtime().snapshot().ruleset,
-            {
-                pilotingSkill: this.runtime().snapshot().crew.piloting,
-                allowExtremeRange: this.runtime().allowsExtremeRangeAttacks(),
-                missingMovementModifier: this.runtime().missingAttackMovementModifier(),
-                attackModifierBreakdown: this.runtime().attackModifierBreakdown(),
-                c3Available: this.runtime().c3Available(),
-                c3DegradationSource: this.runtime().c3DegradationSource(),
-            },
-        );
-        const attackModifierBreakdown = this.runtime().attackModifierBreakdown();
+        const presentation = projectWeaponTargetPresentation(component, target, attack, this.runtime().snapshot().ruleset);
+        const attackModifierBreakdown = attack.attackModifierBreakdown;
         const hitResolution = presentation.hitResolution;
         if (hitResolution === null) {
             throw new Error(`Weapon ${component.componentId} has no hit resolution`);
@@ -929,7 +916,8 @@ export class WeaponsEquipmentPanelComponent {
         const numericModifier = typeof modifier === 'number' ? modifier : 0;
         const piloting = this.runtime().snapshot().crew.piloting;
         const targetModifier = target?.tnModifier ?? 0;
-        const attackModifierBreakdown = this.runtime().attackModifierBreakdown();
+        const attackModifierBreakdown: readonly UnitModifierBreakdownEntry[] =
+            this.runtime().attackContext()?.attackModifierBreakdown ?? [];
         const attackModifier = attackModifierBreakdown.reduce((total, item) => total + item.modifier, 0);
         const physicalBreakdown = row.physical!.hitModifierBreakdown;
         const hitModifierTooltip = this.modifierTooltip([

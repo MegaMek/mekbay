@@ -4,10 +4,15 @@
 import type { CBTEquipmentChoice,CBTEquipmentChoiceCommand,CBTEquipmentInteraction } from '../cbt-force.types';
 import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
 
-import { ESCALATING_FAILURE_HANDLER_ID } from './component-escalating-failure';
+import type { ComponentId } from '../entity/entity-identifiers';
+import { ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,ESCALATING_FAILURE_HANDLER_ID } from './component-escalating-failure';
+import { componentJamChoices,componentJamDefinition,selectComponentJam,UAC_JAMMING_HANDLER_ID } from './component-rapid-fire-autocannon';
 import type {
 EquipmentInteractionChoice,
 EquipmentInteractionChoiceBinding,
+EquipmentInteractionCommandContext,
+EquipmentInteractionHandlerId,
+EquipmentInteractionKind,
 EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import { canPerformMekAction } from './mek-action-availability';
@@ -82,35 +87,115 @@ export function projectMekEquipmentInteractions(
     return Object.freeze(rows);
 }
 
+/** One live non-Mek choice and the shared equipment behavior that applies it. */
+interface NonMekEquipmentChoiceBinding {
+    readonly componentId: ComponentId;
+    readonly componentLabel: string;
+    readonly handlerId: EquipmentInteractionHandlerId;
+    readonly kind: EquipmentInteractionKind;
+    readonly choice: EquipmentInteractionChoice;
+    readonly select: (context: EquipmentInteractionCommandContext) => boolean;
+}
+
+/**
+ * Non-Mek units bind the escalating-failure and UAC/RAC jamming behaviors
+ * directly. Projection and dispatch share these bindings, so a detached
+ * choice is applied only while the live unit still offers it.
+ */
+function nonMekEquipmentChoiceBindings(
+    unit: CBTNonMekUnit,
+    context: EquipmentInteractionQueryContext,
+): readonly NonMekEquipmentChoiceBinding[] {
+    const index = unit.getIndex();
+    const escalatingFailures = projectNonMekEscalatingFailureInteractions(
+        unit.getUnit(),
+        index,
+        unit.snapshot(),
+        unit.ruleset(),
+        context.choiceSurface,
+    ).flatMap(interaction => interaction.choices.map((choice): NonMekEquipmentChoiceBinding => Object.freeze({
+        componentId: interaction.componentId,
+        componentLabel: interaction.componentLabel,
+        handlerId: ESCALATING_FAILURE_HANDLER_ID,
+        kind: 'escalating-failure',
+        choice,
+        select: () => {
+            const edit = choice.value === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
+                ? Object.freeze({
+                    kind: 'set-status' as const,
+                    status: interaction.status === 'disabled' ? 'available' as const : 'disabled' as const,
+                })
+                : typeof choice.value === 'number' && Number.isSafeInteger(choice.value)
+                    ? Object.freeze({ kind: 'select-sequence' as const, index: choice.value })
+                    : null;
+            return edit !== null && unit.dispatch({
+                type: 'edit-escalating-failure',
+                componentId: interaction.componentId,
+                edit,
+            }).accepted;
+        },
+    })));
+    const jams = [...index.components.values()].flatMap(component => {
+        const definition = componentJamDefinition(component.id, component.mount.equipment, unit.ruleset());
+        return definition === null ? [] : componentJamChoices(unit, definition)
+            .map((choice): NonMekEquipmentChoiceBinding => Object.freeze({
+                componentId: component.id,
+                componentLabel: component.mount.displayName(),
+                handlerId: UAC_JAMMING_HANDLER_ID,
+                kind: 'jam',
+                choice,
+                select: (commandContext: EquipmentInteractionCommandContext) =>
+                    selectComponentJam(unit, definition, choice, commandContext),
+            }));
+    });
+    return Object.freeze([...escalatingFailures, ...jams]);
+}
+
 export function projectNonMekEquipmentInteractions(
     unit: CBTNonMekUnit,
     context: EquipmentInteractionQueryContext,
     readOnly: boolean,
 ): readonly CBTEquipmentInteraction[] {
     const entity = unit.getUnit();
-    const runtime = unit;
-    return Object.freeze(projectNonMekEscalatingFailureInteractions(
-        entity,
-        unit.getIndex(),
-        runtime.snapshot(),
-        runtime.ruleset(),
-        context.choiceSurface,
-    ).map(interaction => Object.freeze({
-        componentId: interaction.componentId,
-        componentLabel: interaction.componentLabel,
-        choices: Object.freeze(interaction.choices.map(choice => detachedEquipmentChoice(
+    const rows = new Map<ComponentId, { componentLabel: string; choices: CBTEquipmentChoice[] }>();
+    for (const binding of nonMekEquipmentChoiceBindings(unit, context)) {
+        const row = rows.get(binding.componentId) ?? { componentLabel: binding.componentLabel, choices: [] };
+        row.choices.push(detachedEquipmentChoice(
             Object.freeze({
                 instanceId: unit.instanceId,
                 entityUuid: entity.uuid(),
-                componentId: interaction.componentId,
-                handlerId: ESCALATING_FAILURE_HANDLER_ID,
-                value: choice.value,
+                componentId: binding.componentId,
+                handlerId: binding.handlerId,
+                value: binding.choice.value,
             }),
-            'escalating-failure',
-            choice,
-            readOnly || choice.disabled === true,
-        ))),
+            binding.kind,
+            binding.choice,
+            readOnly || binding.choice.disabled === true,
+        ));
+        rows.set(binding.componentId, row);
+    }
+    return Object.freeze([...rows].map(([componentId, row]) => Object.freeze({
+        componentId,
+        componentLabel: row.componentLabel,
+        choices: Object.freeze(row.choices),
     })));
+}
+
+/** Applies a detached choice through its live binding; null when the unit no longer offers it. */
+export function selectNonMekEquipmentChoice(
+    unit: CBTNonMekUnit,
+    selected: CBTEquipmentChoiceCommand,
+    queryContext: EquipmentInteractionQueryContext,
+    commandContext: EquipmentInteractionCommandContext,
+): boolean | null {
+    const binding = selected.relatedComponentId === undefined
+        ? nonMekEquipmentChoiceBindings(unit, queryContext).find(candidate =>
+            candidate.componentId === selected.componentId
+            && candidate.handlerId === selected.handlerId
+            && candidate.choice.disabled !== true
+            && Object.is(candidate.choice.value, selected.value))
+        : undefined;
+    return binding === undefined ? null : binding.select(commandContext);
 }
 
 export function expandEquipmentDropdownBinding(

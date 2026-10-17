@@ -983,6 +983,16 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(serialized.personnel?.people.find(person => person.id === personId)?.name).toBeUndefined();
     });
 
+    it('flags a missing attacker-movement modifier for ground units only, never for aerospace', async () => {
+        for (const [entity, missing] of [[new TestTankEntity(), true], [new TestAeroSpaceFighterEntity(), false]] as const) {
+            const { force, instanceId } = await readyEntityForce({ entity });
+            const attack = force.getWeaponAttackContext(instanceId)!;
+            expect(attack.movementMode).toBeNull();
+            expect(attack.attackModifierBreakdown).toEqual([]);
+            expect(attack.missingMovementModifier).withContext(entity.unitType()).toBe(missing);
+        }
+    });
+
     it('uses aerospace ratings on an Aero unit and preserves both sets through crew edits, undo and storage', async () => {
         const { force, instanceId, reload } = await readyEntityForce({ entity: new TestAeroSpaceFighterEntity() });
         const positionId = force.getUnitCrewProfile(instanceId)!.positions[0].positionId;
@@ -2555,10 +2565,10 @@ describe('CBTForce V2 encounter persistence', () => {
 
         const snapshot = entityRuntimeSnapshot(force, instanceId);
         const emptied = await force.dispatchUnitCommand(instanceId, {
-            type: 'set-ammo-spent',
-
+            type: 'configure-ammo-source',
             componentId: asComponentId('ammo'),
-            shotsSpent: 1,
+            munitionKey: homing.id,
+            remaining: 0,
         });
         expect(emptied.accepted).toBeTrue();
         expect(force.getUnitTagBattleValue(instanceId)).toBe(0);

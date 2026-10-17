@@ -58,7 +58,7 @@ describe('construction panel DOM events', () => {
       providers: [
         { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
         { provide: Dialog, useValue: { openDialogs: [] } },
-        { provide: LayoutService, useValue: { windowWidth: signal(1440) } },
+        { provide: LayoutService, useValue: { windowWidth: signal(1440), windowHeight: signal(900) } },
         { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => registry } },
         {
           provide: QuirksCatalogService,

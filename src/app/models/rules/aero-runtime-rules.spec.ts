@@ -17,7 +17,7 @@ import type { CBTNonMekUnit } from '../runtime/cbt-unit';
 import { isAeroEntity } from '../entity/utils/entity-type-guards';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
 import { aeroHeatEffects,projectAeroRuntimeRules } from './aero-runtime-rules';
-import { systemDamageId } from './system-damage-rules';
+import { isCumulativeSystemDamage,systemDamageId } from './system-damage-rules';
 
 describe('Aero runtime rules', () => {
     it('ports the production aerospace heat scale', () => {
@@ -115,6 +115,23 @@ describe('Aero runtime rules', () => {
         }).accepted).toBeTrue();
         byPilot.dispatch({ type: 'end-phase' });
         expect(byPilot.query().destroyed()).toBeTrue();
+    });
+
+    it('treats staged systems as hit counters: a level fills every earlier stage', () => {
+        const runtime = fighter('unit:aero-avionics-level');
+        const hitStages = () => [1, 2, 3].filter(stage =>
+            (runtime.snapshot().damageTracks.get(systemDamageId('avionics', stage))?.hits ?? 0) > 0);
+        const setLevel = (level: number) => runtime.dispatch({
+            type: 'set-system-damage-level', system: 'avionics', level, target: 'committed', timestamp: level,
+        });
+        expect(setLevel(2).accepted).toBeTrue();
+        expect(hitStages()).toEqual([1, 2]);
+        expect(setLevel(1).accepted).toBeTrue();
+        expect(hitStages()).toEqual([1]);
+        // Motive damage has its own table and location-scoped systems are independent boxes.
+        expect(isCumulativeSystemDamage({ system: 'motive', stage: 2 })).toBeFalse();
+        expect(isCumulativeSystemDamage({ system: 'stabilizer', stage: undefined })).toBeFalse();
+        expect(isCumulativeSystemDamage({ system: 'torso', stage: 2 })).toBeTrue();
     });
 
     it('keeps a large craft operational at three engine hits and destroys it at six', () => {

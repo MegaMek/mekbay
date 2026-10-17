@@ -9,7 +9,6 @@ aerospaceRangeLimits,
 effectiveAerospaceMaximumBracket,
 } from '../../utils/aerospace-range.util';
 import { compareText } from '../../utils/string.util';
-import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
 import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
@@ -17,47 +16,25 @@ import type { BaseEntity } from '../entity/base-entity';
 import { asComponentId,asLocationId,type ComponentId } from '../entity/entity-identifiers';
 import type { EntityMountedEquipment,EntityWeaponHitModifier } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
-import {
-isAeroEntity,
-isInfantryFamilyEntity,
-isProtoMekEntity,
-isVehicleEntity,
-} from '../entity/utils/entity-type-guards';
+import { isVehicleEntity } from '../entity/utils/entity-type-guards';
 import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
 import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from '../equipment.model';
 import { isLaserInsulatorEquipment } from '../laser-insulator.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import {
-projectAeroRuntimeRules,
-type AeroRuntimeRulesProjection,
-} from '../rules/aero-runtime-rules';
-import {
 gameRulesFor,
 type ComponentToHitSubject,
 type ComponentToHitTargetingComputerFacts,
 type ToHitModifierBreakdownEntry,
 } from '../rules/game-rules';
+import type { ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
 import {
-projectInfantryRuntimeRules,
-type InfantryRuntimeRulesProjection,
-} from '../rules/infantry-runtime-rules';
-import {
-projectProtoMekRuntimeRules,
-type ProtoMekRuntimeRulesProjection,
-} from '../rules/protomek-runtime-rules';
-import {
-projectVehicleRuntimeRules,
 vehicleHasChargeAttack,
 type VehicleRuntimeRulesProjection,
 } from '../rules/vehicle-runtime-rules';
 import { attackerActionSelection } from './attacker-targeting-state';
 import { mobileHpgBlocksWeaponAttacks } from './component-mobile-hpg';
-import {
-projectComponentLocationStatuses,
-type ComponentStatusProjection,
-} from './component-status-projection';
-import type { CrewAssignment } from './crew-assignment';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import {
 EquipmentPanelAmmoLoadout,
@@ -68,8 +45,6 @@ equipmentPanelWeaponTypes,
 projectEquipmentPanelHit,
 projectEquipmentPanelWeaponDamage,
 projectEquipmentTargets,
-projectWeaponTargetDisabledReasons,
-selectedAmmoEquipment,
 selectedAmmoIsHotLoaded,
 type EquipmentPanelTarget,
 type MekPhysicalAttackRow,
@@ -84,10 +59,16 @@ type AmmoLoadout,
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import {
 effectiveNonMekComponentMode,
+nonMekAmmoSourceLoads,
 nonMekComponentModes,
+nonMekMobileHpgFacts,
+nonMekWeaponTargetSubject,
+type NonMekAmmoSourceLoads,
+type NonMekUnitQueryPort,
 type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
 import { nonMekWeaponAttackGroups } from './non-mek-weapon-attack-groups';
+import { weaponTargetDisabledReasons } from './weapon-target-policy';
 
 interface NonMekAmmoSourceCandidate {
     readonly source: EquipmentPanelAmmoSource;
@@ -103,56 +84,20 @@ export function projectNonMekEquipmentPanel(
     index: NonMekRuntimeIndex,
     ruleset: CBTRuleset,
     state: NonMekUnitRuntimeState,
-    crew: CrewAssignment,
+    query: NonMekUnitQueryPort,
     registry: TargetRegistrySnapshot,
-    forcedWithdrawal = true,
-    hotLoadedAmmo = false,
 ): EquipmentPanelSnapshot {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek equipment projection');
+    if (state.stateRevision !== query.stateRevision) {
+        throw new Error('Equipment-panel state and query revisions do not match');
+    }
     const targets = projectEquipmentTargets(state.attackerTargeting, registry);
-    const vehicleRules = isVehicleEntity(entity)
-        ? projectVehicleRuntimeRules(entity, index, state, ruleset)
-        : null;
-    const protoMekRules = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal)
-        : null;
-    const infantryRules = isInfantryFamilyEntity(entity)
-        ? projectInfantryRuntimeRules(entity, index, state)
-        : null;
-    const aeroRules = isAeroEntity(entity)
-        ? projectAeroRuntimeRules(entity, index, state, ruleset)
-        : null;
-    const entityStatuses = projectComponentLocationStatuses(index, state);
-    const ammoSourceCandidates = projectAmmoSourceCandidates(
-        entity,
-        index,
-        ruleset,
-        state,
-        vehicleRules,
-        entityStatuses,
-        hotLoadedAmmo,
-    );
-    const targetingComputer = installedTargetingComputer(index, vehicleRules, entityStatuses);
-    const hpgBlocksWeaponFire = mobileHpgBlocksWeaponAttacks(
-        [...index.components.values()].flatMap(component => {
-            const equipment = component.mount.equipment;
-            if (!equipment || !isMobileHpgEquipment(equipment)) return [];
-            return [Object.freeze({
-                componentId: component.id,
-                equipment,
-                mode: state.components.get(component.id)?.mode,
-                operational: !(vehicleRules?.destroyed
-                    ?? protoMekRules?.destroyed
-                    ?? infantryRules?.destroyed
-                    ?? aeroRules?.destroyed
-                    ?? state.explicitlyDestroyed)
-                    && !state.conditions.has('shutdown')
-                    && (vehicleRules?.componentStatuses.get(component.id)
-                        ?? entityStatuses.committed.get(component.id)
-                        ?? 'available') === 'available',
-            })];
-        }),
-    );
+    const projection = query.projection();
+    const { vehicle: vehicleRules, protoMek: protoMekRules, aero: aeroRules } = projection;
+    const ammoSourceLoads = nonMekAmmoSourceLoads(entity, index, ruleset, state);
+    const ammoSourceCandidates = projectAmmoSourceCandidates(index, ammoSourceLoads, query);
+    const targetingComputer = installedTargetingComputer(index, query);
+    const hpgBlocksWeaponFire = mobileHpgBlocksWeaponAttacks(nonMekMobileHpgFacts(index, state, projection));
     // Platoon weapons attack through the infantry damage table, not as weapon rows.
     const projectedComponents = Object.freeze([...index.components.values()]
         .filter(component => !component.mount.platoonWeapon)
@@ -161,17 +106,13 @@ export function projectNonMekEquipmentPanel(
             index,
             ruleset,
             state,
+            query,
             component.id,
             targets,
-            vehicleRules,
-            protoMekRules,
-            infantryRules,
-            aeroRules,
-            entityStatuses,
             targetingComputer,
             hpgBlocksWeaponFire,
+            ammoSourceLoads,
             ammoSourceCandidates,
-            hotLoadedAmmo,
         )));
     const components = projectWeaponAttackComponents(
         entity,
@@ -179,7 +120,7 @@ export function projectNonMekEquipmentPanel(
         state,
         projectedComponents,
     );
-    const firstCrew = crew.positions[0];
+    const firstCrew = query.crewAssignment().positions[0];
     const skills = crewSkillsForUnit(firstCrew, entity.unitType(), entity.unitSubtype());
     const bombCapacity = entity.bombCapacity();
     return Object.freeze({
@@ -221,29 +162,22 @@ function projectComponent(
     index: NonMekRuntimeIndex,
     ruleset: CBTRuleset,
     state: NonMekUnitRuntimeState,
+    query: NonMekUnitQueryPort,
     componentId: ComponentId,
     targets: readonly EquipmentPanelTarget[],
-    vehicleRules: VehicleRuntimeRulesProjection | null,
-    protoMekRules: ProtoMekRuntimeRulesProjection | null,
-    infantryRules: InfantryRuntimeRulesProjection | null,
-    aeroRules: AeroRuntimeRulesProjection | null,
-    entityStatuses: ComponentStatusProjection,
     targetingComputer: ComponentToHitTargetingComputerFacts | null,
     hpgBlocksWeaponFire: boolean,
+    ammoSourceLoads: readonly NonMekAmmoSourceLoads[],
     ammoSourceCandidates: readonly NonMekAmmoSourceCandidate[],
-    hotLoadedAmmo: boolean,
 ): EquipmentPanelComponent {
     const component = index.components.get(componentId);
     if (!component) throw new Error(`Unknown non-Mek component ${componentId}`);
     const mount = component.mount;
     const equipment = mount.equipment;
     const componentState = state.components.get(componentId);
-    const status = vehicleRules?.componentStatuses.get(componentId)
-        ?? entityStatuses.committed.get(componentId)
-        ?? 'available';
-    const previewStatus = vehicleRules?.previewComponentStatuses.get(componentId)
-        ?? entityStatuses.preview.get(componentId)
-        ?? status;
+    const { vehicle: vehicleRules, infantry: infantryRules, aero: aeroRules } = query.projection();
+    const status = query.componentStatus(componentId, 'committed');
+    const previewStatus = query.componentStatus(componentId, 'preview');
     const modeDefinition = nonMekComponentModes(entity, equipment, ruleset);
     const mode = effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
     const locations = mount.getOccupiedLocations().map(code => {
@@ -265,7 +199,7 @@ function projectComponent(
     const loadouts = entityAmmoLoadouts(entity, mount, ruleset);
     const ammo = loadouts.length === 0
         ? undefined
-        : projectAmmo(entity, mount, ruleset, state, componentId, loadouts, hotLoadedAmmo);
+        : projectAmmo(entity, mount, ruleset, state, query, componentId, loadouts);
     const targeting = state.attackerTargeting.components.get(componentId);
     const ammoSources = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? compatibleAmmoSources(
@@ -274,7 +208,16 @@ function projectComponent(
             mode,
         )
         : Object.freeze([]);
-    const selectedAmmo = selectedAmmoEquipment(ammoSources, targeting?.ammo);
+    const targetSubject = nonMekWeaponTargetSubject(
+        entity,
+        index,
+        ruleset,
+        state,
+        ammoSourceLoads,
+        componentId,
+        targeting?.ammo,
+    );
+    const selectedAmmo = targetSubject?.selectedAmmo ?? null;
     const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
     const aerospace = equipment instanceof WeaponEquipment
         && !mount.isPhysicalWeapon()
@@ -337,9 +280,7 @@ function projectComponent(
         : asComponentId(linkedEnhancement.mountId);
     const linkedEnhancementStatus = linkedEnhancementId === undefined
         ? 'available'
-        : vehicleRules?.componentStatuses.get(linkedEnhancementId)
-            ?? entityStatuses.committed.get(linkedEnhancementId)
-            ?? 'available';
+        : query.componentStatus(linkedEnhancementId, 'committed');
     const linkedEnhancementEquipment = linkedEnhancement?.equipment;
     const modifiers = linkedEnhancementEquipment !== undefined
         && isWeaponEnhancementEquipment(linkedEnhancementEquipment)
@@ -363,11 +304,7 @@ function projectComponent(
             ...(prototypeMaximumHeat > 0 && entity.unitType() !== 'Aero'
                 ? { heatSuffix: '*' as const }
                 : {}),
-            selectable: !(vehicleRules?.destroyed
-                ?? protoMekRules?.destroyed
-                ?? infantryRules?.destroyed
-                ?? aeroRules?.destroyed
-                ?? state.explicitlyDestroyed)
+            selectable: !query.destroyed()
                 && status === 'available'
                 && componentState?.jammed !== true
                 && vehicleRules?.fireBlockedComponentIds.has(componentId) !== true
@@ -388,19 +325,13 @@ function projectComponent(
             ...(targeting?.selection === undefined ? {} : { selection: targeting.selection }),
             ...(targeting?.ammo === undefined ? {} : { ammoSelection: targeting.ammo }),
             ammoSources,
-            underwater: false,
+            underwater: targetSubject!.underwater,
             attackerSubmerged: false,
             effectiveWeaponTypes,
             ...(entity.unitType() === 'Infantry' && entity.unitSubtype() !== 'Battle Armor'
                 ? { attackerIsConventionalInfantry: true as const }
                 : {}),
-            disabledTargetReasons: projectWeaponTargetDisabledReasons(
-                equipment,
-                selectedAmmo,
-                ruleset,
-                targets,
-                false,
-            ),
+            disabledTargetReasons: weaponTargetDisabledReasons(targetSubject!, ruleset, targets),
         })
         : undefined;
     return Object.freeze({
@@ -721,45 +652,27 @@ function projectVehicleCharge(
 }
 
 function projectAmmoSourceCandidates(
-    entity: BaseEntity,
     index: NonMekRuntimeIndex,
-    ruleset: CBTRuleset,
-    state: NonMekUnitRuntimeState,
-    vehicleRules: VehicleRuntimeRulesProjection | null,
-    entityStatuses: ComponentStatusProjection,
-    hotLoadedAmmo: boolean,
+    sourceLoads: readonly NonMekAmmoSourceLoads[],
+    query: NonMekUnitQueryPort,
 ): readonly NonMekAmmoSourceCandidate[] {
-    return Object.freeze([...index.components.values()].flatMap(component => {
-        const loadouts = entityAmmoLoadouts(entity, component.mount, ruleset);
-        if (loadouts.length === 0) return [];
-        const runtime = state.ammo.get(component.id);
-        const current = entityAmmoLoadout(
-            entity,
-            component.mount,
-            ruleset,
-            runtime?.munitionOverride,
-        );
-        if (!current) return [];
-        const committedStatus = vehicleRules?.componentStatuses.get(component.id)
-            ?? entityStatuses.committed.get(component.id)
-            ?? 'available';
-        return [Object.freeze({
+    return Object.freeze(sourceLoads.map(({ componentId, current, loadouts }) => {
+        const committedStatus = query.componentStatus(componentId, 'committed');
+        return Object.freeze({
             loadouts,
             source: Object.freeze({
-                componentId: component.id,
+                componentId,
                 label: current.equipment.shortName || current.equipment.name,
-                location: component.mount.location,
+                location: index.components.get(componentId)!.mount.location,
                 status: committedStatus,
                 munitionKey: current.munitionKey,
-                remaining: committedStatus === 'available'
-                    ? Math.max(0, current.capacity - (runtime?.shotsSpent ?? 0))
-                    : 0,
+                remaining: committedStatus === 'available' ? query.remainingAmmo(componentId) : 0,
                 capacity: current.capacity,
-                hotLoaded: hotLoadedAmmo && runtime?.hotLoaded === true,
+                hotLoaded: query.ammoHotLoaded(componentId),
                 loadouts: freezeLoadouts(loadouts),
             }),
-        })];
-    }).sort((left, right) => compareText(left.source.componentId, right.source.componentId)));
+        });
+    }));
 }
 
 function compatibleAmmoSources(
@@ -780,17 +693,14 @@ function compatibleAmmoSources(
 
 function installedTargetingComputer(
     index: NonMekRuntimeIndex,
-    vehicleRules: VehicleRuntimeRulesProjection | null,
-    entityStatuses: ComponentStatusProjection,
+    query: NonMekUnitQueryPort,
 ): ComponentToHitTargetingComputerFacts | null {
     for (const component of index.components.values()) {
         const equipment = component.mount.equipment;
         if (!equipment || !isTargetingComputerEquipment(equipment)) continue;
         return Object.freeze({
             label: equipment.name,
-            status: vehicleRules?.componentStatuses.get(component.id)
-                ?? entityStatuses.committed.get(component.id)
-                ?? 'available',
+            status: query.componentStatus(component.id, 'committed'),
         });
     }
     return null;
@@ -828,23 +738,22 @@ function projectAmmo(
     component: EntityMountedEquipment,
     ruleset: CBTRuleset,
     state: NonMekUnitRuntimeState,
+    query: NonMekUnitQueryPort,
     componentId: ComponentId,
     loadouts: readonly AmmoLoadout[],
-    hotLoadedAmmo: boolean,
 ): NonNullable<EquipmentPanelComponent['ammo']> {
     if (!(component.equipment instanceof AmmoEquipment)) {
         throw new Error(`Non-Mek ammunition source ${componentId} is unavailable`);
     }
-    const runtime = state.ammo.get(componentId);
-    const current = entityAmmoLoadout(entity, component, ruleset, runtime?.munitionOverride);
+    const current = entityAmmoLoadout(entity, component, ruleset, state.ammo.get(componentId)?.munitionOverride);
     if (!current) throw new Error(`Non-Mek ammunition source ${componentId} has no valid loadout`);
     return Object.freeze({
         defaultMunitionKey: component.equipment.internalName,
         munitionKey: current.munitionKey,
         displayName: current.equipment.shortName || current.equipment.name,
-        remaining: Math.max(0, current.capacity - (runtime?.shotsSpent ?? 0)),
+        remaining: query.remainingAmmo(componentId),
         capacity: current.capacity,
-        hotLoaded: hotLoadedAmmo && runtime?.hotLoaded === true,
+        hotLoaded: query.ammoHotLoaded(componentId),
         loadouts: freezeLoadouts(loadouts),
         weaponTechBases: entityWeaponTechBasesForAmmo(entity, current.equipment),
     });

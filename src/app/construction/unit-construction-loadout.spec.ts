@@ -45,7 +45,7 @@ import { DialogsService } from '../services/dialogs.service';
 import { LayoutService } from '../services/layout.service';
 import { NativeEntityService } from '../services/native-entity.service';
 import { UnitSearchIndexService } from '../services/unit-search-index.service';
-import { mekCriticalSlotLabel } from '../utils/mek-critical-display.util';
+import { mekCriticalSlotLines } from '../utils/mek-critical-display.util';
 import { createConstructionEntity, setConstructionArmorMaterial, setConstructionStructure } from './domain';
 import { UnitConstructionComponent } from './unit-construction.component';
 import type { ConstructionMountOrigins } from './construction-force.service';
@@ -279,7 +279,7 @@ describe('construction component blocks', () => {
         { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
         { provide: DialogRef, useValue: { close: () => {} } },
         { provide: Dialog, useValue: { openDialogs: [] } },
-        { provide: LayoutService, useValue: { windowWidth: signal(1440) } },
+        { provide: LayoutService, useValue: { windowWidth: signal(1440), windowHeight: signal(900) } },
         { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => registry } },
         {
           provide: CustomUnitsService,
@@ -1329,7 +1329,7 @@ describe('construction component blocks', () => {
     await f.view.whenStable();
     expect(input().value).toBe('');
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    const select = f.root.querySelector<HTMLSelectElement>('select[aria-label="Tech base"]')!.getBoundingClientRect();
+    const select = f.root.querySelector<HTMLSelectElement>('[data-field-id="techBase"] select')!.getBoundingClientRect();
     const checkbox = f.root
       .querySelector<HTMLInputElement>('input[aria-label="Mixed technology"]')!
       .getBoundingClientRect();
@@ -2580,7 +2580,7 @@ describe('construction component blocks', () => {
         .criticalSlotGrid()
         .get(location)!
         .find((slot) => slot.type === 'system' && slot.systemType === system);
-      expect(mekCriticalSlotLabel(slot, entity)).toBe(label);
+      expect(mekCriticalSlotLines(slot, entity)).toEqual([label]);
       f.editor.closeInstalledInspector();
       f.view.detectChanges();
       await f.view.whenStable();

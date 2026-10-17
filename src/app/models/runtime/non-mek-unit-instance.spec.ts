@@ -27,7 +27,8 @@ addTestEquipmentWithFlags,
 import { AmmoEquipment,WeaponEquipment } from '../equipment.model';
 import { systemDamageId } from '../rules/system-damage-rules';
 import { createDefaultCrewAssignment } from './crew-assignment';
-import { asEncounterTargetId,type TargetRegistrySnapshot } from './encounter-runtime';
+import { asEncounterTargetId,type EncounterTargetId,type TargetRegistrySnapshot } from './encounter-runtime';
+import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 import {
 canNonMekTakeActiveActions,
@@ -45,6 +46,8 @@ serializeNonMekUnit,
 } from './non-mek-unit-persistence';
 import { type InstanceBaselineRef } from './runtime-state';
 import { componentIdForMount } from './unit-runtime-index';
+import { TARGET_TAG_INFANTRY_REASON } from './weapon-target-policy';
+import type { TnTargetUnitType } from '../target-number-calculator.model';
 
 import { MountedEngine } from '../entity/components/engine';
 import {
@@ -55,6 +58,20 @@ BOOBY_TRAP_DETONATED_MODE,
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 describe('NonMekUnitInstance', () => {
+    it('clears tagged and skidding at End Turn, like Meks, and keeps lasting conditions', () => {
+        const tank = new TestTankEntity();
+        tank.uuid.set(UUID);
+        const runtime = createNonMekRuntimeForTest('unit:turn-conditions', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, tank,
+            TOTAL_WARFARE_RULESET);
+        for (const condition of ['tagged', 'skidding', 'swarmed'] as const) {
+            expect(runtime.dispatch({ type: 'set-condition', condition, active: true }).accepted).toBeTrue();
+        }
+        expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+        expect(runtime.query().hasCondition('tagged')).toBeFalse();
+        expect(runtime.query().hasCondition('skidding')).toBeFalse();
+        expect(runtime.query().hasCondition('swarmed')).toBeTrue();
+    });
+
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
         it(`keeps authored manual BV after non-Mek damage in ${ruleset}`, () => {
             const entity = new TestTankEntity();
@@ -1713,6 +1730,110 @@ describe('NonMekUnitInstance', () => {
         expect(restored.query().attackerTargetingState().targets.size).toBe(0);
     });
 
+    it('jams a non-Mek Ultra AC only where the ruleset lets it jam and keeps the jam across save', () => {
+        const ultra = new WeaponEquipment({
+            id: 'TestUltraAC5',
+            name: 'Test Ultra AC/5',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            modes: ['Single', 'Ultra'],
+            weapon: { ammoType: 'AC_ULTRA', rackSize: 5, damage: 5, heat: 1, ranges: [3, 6, 9, 12] },
+        });
+        const laser = new WeaponEquipment({
+            id: 'TestJamLaser',
+            name: 'Test Laser',
+            type: 'weapon',
+            weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ultra.id]: ultra, [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const ultraId = componentIdForMount(addTestEquipment(entity, ultra, { location: entity.locationOrder[0] }));
+        const laserId = componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+
+        const core = createNonMekRuntimeForTest('unit:tank-uac-core', baseline(), entity, CORE_2026_RULESET);
+        expect(core.dispatch({ type: 'set-component-jammed', componentId: ultraId, jammed: true }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+
+        const runtime = createNonMekRuntimeForTest('unit:tank-uac-jam',
+            { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        expect(runtime.dispatch({ type: 'set-component-jammed', componentId: laserId, jammed: true }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+        expect(runtime.dispatch({ type: 'set-component-jammed', componentId: ultraId, jammed: true }))
+            .toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
+        expect(runtime.query().componentJammed(ultraId)).toBeTrue();
+        expect(runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId: ultraId, selection: { kind: 'selected' } },
+        }, Object.freeze({ revision: 0, targets: Object.freeze([]) }), false).changed).toBeFalse();
+
+        const restored = restoreNonMekRuntimeForTest(runtime.serialize(), entity, TOTAL_WARFARE_RULESET);
+        expect(restored.query().componentJammed(ultraId)).toBeTrue();
+        expect(restored.dispatch({ type: 'set-component-jammed', componentId: ultraId, jammed: false }).changed)
+            .toBeTrue();
+        expect(restored.snapshot().components.has(ultraId)).toBeFalse();
+    });
+
+    it('rejects and clears non-Mek weapon targets that the shared target policy forbids', () => {
+        const tag = new WeaponEquipment({
+            id: 'TestTAG',
+            name: 'Test TAG',
+            type: 'weapon',
+            flags: ['F_TAG'],
+            weapon: { damage: 0, heat: 0, ranges: [5, 9, 15, 20] },
+        });
+        const laser = new WeaponEquipment({
+            id: 'TestDirectLaser',
+            name: 'Test Laser',
+            type: 'weapon',
+            weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [tag.id]: tag, [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const tagId = componentIdForMount(addTestEquipment(entity, tag, { location: entity.locationOrder[0] }));
+        const laserId = componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        const runtime = createNonMekRuntimeForTest('unit:tank-target-policy',
+            { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const infantryId = asEncounterTargetId('target:infantry');
+        const mekId = asEncounterTargetId('target:mek');
+        const registry = (revision: number, mekType: TnTargetUnitType): TargetRegistrySnapshot => Object.freeze({
+            revision,
+            targets: Object.freeze(([[infantryId, 'A', 'infantry'], [mekId, 'B', mekType]] as const)
+                .map(([id, letter, unitType]) => Object.freeze({
+                    id, letter, name: `Target ${letter}`, color: '#ff0000',
+                    source: 'manual' as const, readOnly: false, unitType,
+                }))),
+        });
+        const initial = registry(0, 'mek-biped');
+        const aim = (componentId: typeof tagId, targetId: EncounterTargetId) => runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId, selection: { kind: 'target', targetId } },
+        }, initial, false);
+        const selection = (componentId: typeof tagId) =>
+            runtime.query().attackerTargetingState().components.get(componentId)?.selection;
+
+        expect(aim(tagId, infantryId).changed).toBeFalse();
+        expect(selection(tagId)).toBeUndefined();
+        const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), TOTAL_WARFARE_RULESET,
+            runtime.snapshot(),
+            runtime.query(), initial);
+        expect(panel.components.find(row => row.componentId === tagId)?.weapon?.disabledTargetReasons[infantryId])
+            .toBe(TARGET_TAG_INFANTRY_REASON);
+
+        expect(aim(tagId, mekId).changed).toBeTrue();
+        const retyped = registry(1, 'infantry');
+        expect(runtime.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons', heatPolicy: 'automatic' },
+            retyped, false, false).changed).toBeFalse();
+        runtime.planTargetingReconciliation(retyped)!();
+        expect(selection(tagId)).toBeUndefined();
+
+        expect(aim(laserId, mekId).changed).toBeTrue();
+        expect(runtime.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-target-facts', targetId: mekId, facts: { calculator: { indirectFire: true } } },
+        }, initial, false).changed).toBeTrue();
+        expect(selection(laserId)).toBeUndefined();
+    });
+
     it('uses BaseEntity damage topology for Battle Armor and aerospace families', () => {
         const battleArmor = new TestBattleArmorEntity();
         battleArmor.uuid.set(UUID);
@@ -1729,7 +1850,7 @@ describe('NonMekUnitInstance', () => {
             'Trooper 1', 'Trooper 2', 'Trooper 3', 'Trooper 4',
         ]);
         const battleArmorSheet = projectNonMekRecordSheet(battleArmor, battleArmorRuntime.getIndex(),
-            battleArmorRuntime.snapshot(), CORE_2026_RULESET, 0, 0);
+            battleArmorRuntime.snapshot(), CORE_2026_RULESET, battleArmorRuntime.query(), 0, 0);
         expect(battleArmorSheet.locations.map(location => location.sheetCode)).toEqual(['T1', 'T2', 'T3', 'T4']);
         expect(battleArmorLocations.every(location => location.internalPoints === 1)).toBeTrue();
         expect(battleArmorSheet.locations.every(location => location.combinedPips)).toBeTrue();

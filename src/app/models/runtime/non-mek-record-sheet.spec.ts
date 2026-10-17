@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { queryNonMekRuntime } from './non-mek-unit-instance';
 import {
 asUnitUuid,
 } from '../../services/unit-catalog/unit-catalog.types';
@@ -14,11 +15,13 @@ TestProtoMekEntity,
 TestTankEntity,
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
-import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import { addTestEquipment,addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import { type InstanceBaselineRef } from './runtime-state';
 
+import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
+import { componentIdForMount } from './unit-runtime-index';
 
 describe('projectNonMekRecordSheet', () => {
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
@@ -31,7 +34,7 @@ describe('projectNonMekRecordSheet', () => {
                 flags: ['F_MISSILE', 'F_ONE_SHOT'], weapon: { ammoType: 'SRM', rackSize: 2 } }),
                 { location: 'Squad', baMountLocation: 'Body' });
             const runtime = createNonMekRuntimeForTest('unit:burdened-ba-sheet', { ...baseline(), ruleset }, entity, ruleset);
-            const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset,
+            const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset, runtime.query(),
                 runtime.query().currentBaseBattleValue()!, entity.battleValue());
             expect(sheet.movement.jump).toBe(0);
             expect(entity.baseJumpMP()).toBe(3);
@@ -68,7 +71,7 @@ describe('projectNonMekRecordSheet', () => {
         }).accepted).toBeTrue();
 
         const sheet = projectNonMekRecordSheet(
-            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, 100, 100,
+            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, runtime.query(), 100, 100,
         );
 
         expect(sheet.components[0].ammo).toEqual({
@@ -87,7 +90,7 @@ describe('projectNonMekRecordSheet', () => {
             Object.freeze({ positionId, name: 'Pilot', gunnery: 2, piloting: 2 }),
         ]) });
         const project = (crew: typeof assignment | { schemaVersion: 1; positions: [] }) => projectNonMekRecordSheet(
-            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, 100, 100, crew,
+            entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, queryNonMekRuntime({ ...runtime.mechanics(), crewAssignment: crew }, runtime.snapshot()), 100, 100,
         );
         expect(project(assignment).crew[0].piloting).toBe(5);
         expect(assignment.positions[0].piloting).toBe(2);
@@ -96,6 +99,30 @@ describe('projectNonMekRecordSheet', () => {
         expect(vacant.crew[0].effectiveState).toBe('vacant');
         expect(vacant.conditions).toContain('immobile');
         expect(vacant.conditions).toContain('abandoned');
+    });
+
+    it('shows a unit destroyed by its detonated Booby Trap on the sheet and the equipment panel', () => {
+        const laser = new WeaponEquipment({
+            id: 'TestTrapLaser', name: 'Test Laser', type: 'weapon',
+            weapon: { damage: 5, heat: 3, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(UUID);
+        const weaponId = componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
+        const trapId = componentIdForMount(addTestEquipmentWithFlags(entity, 'F_BOOBY_TRAP',
+            { location: entity.locationOrder[0] }));
+        const runtime = createNonMekRuntimeForTest('unit:tank-booby-trap-sheet', baseline(), entity, CORE_2026_RULESET);
+        expect(runtime.dispatch({ type: 'detonate-booby-trap', componentId: trapId }).changed).toBeTrue();
+        expect(runtime.snapshot().explicitlyDestroyed).toBeFalse();
+
+        const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
+            runtime.query(), 0, 0);
+        const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
+            runtime.query(), Object.freeze({ revision: 0, targets: Object.freeze([]) }));
+
+        expect(sheet.destroyed).toBeTrue();
+        expect(sheet.movement.walk).toBe(0);
+        expect(panel.components.find(row => row.componentId === weaponId)?.weapon?.selectable).toBeFalse();
     });
 
     it('carries selectable air-ground state into presentation but suppresses space-only invariants', () => {
@@ -117,6 +144,7 @@ describe('projectNonMekRecordSheet', () => {
             fighterRuntime.getIndex(),
             fighterRuntime.snapshot(),
             CORE_2026_RULESET,
+            fighterRuntime.query(),
             fighterRuntime.query().currentBaseBattleValue()!,
             fighter.battleValue(),
         );
@@ -136,6 +164,7 @@ describe('projectNonMekRecordSheet', () => {
             jumpShipRuntime.getIndex(),
             jumpShipRuntime.snapshot(),
             CORE_2026_RULESET,
+            jumpShipRuntime.query(),
             jumpShipRuntime.query().currentBaseBattleValue()!,
             jumpShip.battleValue(),
         );
@@ -190,9 +219,9 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
+            queryNonMekRuntime({ ...runtime.mechanics(), crewAssignment: crewAssignment }, runtime.snapshot()),
             95,
             100,
-            crewAssignment,
         );
         const projectedFront = snapshot.locations.find(location => location.code === 'Front')!;
 
@@ -233,6 +262,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
+            runtime.query(),
             runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
@@ -277,6 +307,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
+            runtime.query(),
             runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
@@ -302,6 +333,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
+            runtime.query(),
             runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
@@ -339,6 +371,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
+            runtime.query(),
             runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );
@@ -381,6 +414,7 @@ describe('projectNonMekRecordSheet', () => {
             runtime.getIndex(),
             runtime.snapshot(),
             CORE_2026_RULESET,
+            runtime.query(),
             runtime.query().currentBaseBattleValue()!,
             entity.battleValue(),
         );

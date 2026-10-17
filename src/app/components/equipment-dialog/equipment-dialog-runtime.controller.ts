@@ -32,30 +32,17 @@ import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
 
 import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
 import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
-import type { UnitModifierBreakdownEntry } from '../../models/combat-modifier';
-import {
-canChangeAirborneGround,
-getMotiveModeLabel,
-getMotiveModesByUnit,
-motiveModeFactsForEntity,
-type MotiveModes,
-} from '../../models/motiveModes.model';
 import {
 prototypeLaserMaximumExtraHeat,
 type PrototypeLaserHeatResult,
 type PrototypeLaserHeatRoll,
 } from '../../models/prototype-laser-heat.model';
 import {
-ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
-type C3DegradationSource,
-} from '../../models/rules/game-rules';
-import {
 BOOBY_TRAP_DETONATED_MODE,
 isBoobyTrapDetonated,
 } from '../../models/runtime/component-booby-trap';
+import type { WeaponAttackContext } from '../../models/runtime/equipment-panel';
 import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
-import { canSwitchNonMekAirGroundState } from '../../models/runtime/non-mek-airborne-state';
-import { getDefaultAttackerMovementModifier } from '../../models/target-number-calculator.model';
 import type { DialogsService } from '../../services/dialogs.service';
 import type { OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
@@ -75,6 +62,8 @@ export class EquipmentDialogRuntimeController {
     public readonly ammo: Signal<readonly EquipmentPanelComponent[]>;
     public readonly bombs: Signal<EquipmentPanelBombs | null>;
     public readonly interactions: WritableSignal<readonly CBTEquipmentInteraction[]>;
+    /** The attacker facts every target number of this unit shares, the same ones its record sheet uses. */
+    public readonly attackContext: Signal<WeaponAttackContext | null>;
 
     private readonly options: OptionsService;
     private readonly toast: ToastService;
@@ -159,6 +148,7 @@ export class EquipmentDialogRuntimeController {
         });
         this.ammo = computed(() => this.snapshot().components.filter(row => row.ammo !== undefined));
         this.bombs = computed(() => this.snapshot().bombs ?? null);
+        this.attackContext = computed(() => this.member.force.getWeaponAttackContext(this.member.id, this.snapshot()));
         this.forceChanges = merge(member.force.changed, member.force.sessionChanged)
             .subscribe(() => this.refresh());
     }
@@ -566,66 +556,9 @@ export class EquipmentDialogRuntimeController {
         });
     }
 
-    public attackerMovementMode(): MotiveModes | null {
-        if (isCBTMekForceMember(this.member)) {
-            return this.member.force.getMekTurnPanelSnapshot(this.member.id, 'manual')
-                ?.movementState.movement?.mode ?? null;
-        }
-        return this.entityRuntime()?.state.turn.movement?.mode ?? null;
-    }
-
-    /** Exact rules-owned attacker movement shown in hit and target-number cells. */
-    public attackModifierBreakdown(): readonly UnitModifierBreakdownEntry[] {
-        const mode = this.attackerMovementMode();
-        if (mode === null) return Object.freeze([]);
-        const turn = isCBTMekForceMember(this.member)
-            ? this.member.force.getMekTurnPanelSnapshot(this.member.id, 'manual')
-            : null;
-        const airborne = turn?.turn.airborne === true
-            || this.entityRuntime()?.state.turn.airborne === true;
-        const modifier = turn?.attackMovementModifiers[mode as keyof typeof turn.attackMovementModifiers]
-            ?? getDefaultAttackerMovementModifier(mode);
-        if (modifier === 0) return Object.freeze([]);
-        const entity = this.member.force.getUnitSnapshot(this.member.id)?.entity;
-        if (!entity) return Object.freeze([]);
-        return Object.freeze([Object.freeze({
-            label: getMotiveModeLabel(mode, motiveModeFactsForEntity(entity), airborne),
-            modifier,
-            priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
-        })]);
-    }
-
-    public missingAttackMovementModifier(): boolean {
-        if (this.attackerMovementMode() !== null) return false;
-        const entityState = this.entityRuntime()?.state;
-        const mekTurn = isCBTMekForceMember(this.member)
-            ? this.member.force.getMekTurnPanelSnapshot(this.member.id, 'manual')
-            : null;
-        const airborne = mekTurn?.turn.airborne === true || entityState?.turn.airborne === true;
-        const entity = this.member.force.getUnitSnapshot(this.member.id)?.entity;
-        if (!entity) return false;
-        const facts = motiveModeFactsForEntity(entity);
-        const canSelectAirborne = entity.entityType === 'Mek'
-            ? canChangeAirborneGround(facts)
-            : canSwitchNonMekAirGroundState(entity);
-        const airborneStates = canSelectAirborne
-            ? [false, true]
-            : [airborne];
-        return airborneStates.some(isAirborne => getMotiveModesByUnit(facts, isAirborne)
-            .some(mode => getDefaultAttackerMovementModifier(mode) !== 0));
-    }
-
     private entityRuntime() {
         const snapshot = this.member.force.getUnitSnapshot(this.member.id);
         return snapshot && hasNonMekRuntime(snapshot) ? snapshot : null;
-    }
-
-    public c3Available(): boolean {
-        return this.member.force.getC3State(this.member.id) !== 'none';
-    }
-
-    public c3DegradationSource(): C3DegradationSource {
-        return this.member.force.getC3State(this.member.id) === 'degraded' ? 'unit' : 'none';
     }
 
     public supportsMekTurnTools(): boolean {
@@ -638,10 +571,6 @@ export class EquipmentDialogRuntimeController {
 
     public canFireSelectedWeapons(): boolean {
         return selectedWeaponHeat(this.snapshot()).hasSelection;
-    }
-
-    public allowsExtremeRangeAttacks(): boolean {
-        return this.options.options().CBTOptionalRules?.extremeRange ?? false;
     }
 
     private async dispatchTargeting(

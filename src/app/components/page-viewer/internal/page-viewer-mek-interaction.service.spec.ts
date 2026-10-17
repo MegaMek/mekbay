@@ -141,6 +141,7 @@ describe('PageViewerMekInteractionService', () => {
                 positions: [{ positionId: 'crew-0', name: 'Morgan', gunnery: 3, piloting: 4 }],
             }),
             replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ schemaVersion: 1, positions: [] }),
+            getAssignedPerson: jasmine.createSpy().and.returnValue(null),
             getAttackerTargeting: jasmine.createSpy().and.returnValue({
                 instanceId: 'unit-1', stateRevision: 1, editContext: editContext(1), registryRevision: 2,
                 state: { schemaVersion: 1, components: new Map(), actions: new Map(), targets: new Map() },
@@ -267,6 +268,34 @@ describe('PageViewerMekInteractionService', () => {
             armorDamagedBySameHit: true,
         }));
         expect(commands[1].hitArc).toBeUndefined();
+        expect(TestBed.inject(ToastService).showToast)
+            .toHaveBeenCalledWith(jasmine.stringMatching(/^\+5 armor hits in CT/), 'error', jasmine.any(String));
+    });
+
+    it('sets a whole heat from the overflow prompt', async () => {
+        const closed = new Subject<number | null>();
+        dialogs.createDialog.and.returnValue({ closed } as never);
+        service.handle(member, { kind: 'heat-overflow', context: editContext(1) }, anchoredMouseEvent());
+        closed.next(3.7);
+        closed.complete();
+        await settleAsyncHandlers();
+        expect(force.dispatchUnitCommand).toHaveBeenCalledOnceWith('unit-1', { type: 'set-pending-heat', heat: 3 }, editContext(1));
+    });
+
+    it('keeps a selected weapon selected when its mode button changes the mode', async () => {
+        panel = {
+            ...panel,
+            components: panel.components.map(row => ({
+                ...row, mode: 'normal', modes: ['normal', 'rapid'], weapon: { ...row.weapon, selection: { kind: 'selected' } },
+            })),
+        } as EquipmentPanelSnapshot;
+        service.handle(member, {
+            kind: 'inventory-selection', componentIds: ['weapon-1'], mode: 'rapid', context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+        await settleAsyncHandlers();
+        expect(force.dispatchAttackerTargeting).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
+            edit: { kind: 'set-component-selection', componentId: 'weapon-1', selection: { kind: 'selected' } },
+        }), jasmine.any(Object), 2);
     });
 
     it('uses the original critical choice picker and dispatches typed equipment choices', async () => {
@@ -380,7 +409,7 @@ describe('PageViewerMekInteractionService', () => {
 
         dropdownFixture.componentInstance.selected.emit('critical-chance');
 
-        expect(overlayManager.closeManagedOverlay).toHaveBeenCalledWith('mek-sheet-location-condition');
+        expect(overlayManager.closeManagedOverlay).toHaveBeenCalledWith('record-sheet-location-condition');
         expect(dialogs.createDialog.calls.argsFor(0)).toEqual([
             MekCriticalChanceDialogComponent,
             jasmine.objectContaining({
@@ -491,11 +520,11 @@ describe('PageViewerMekInteractionService', () => {
         }), jasmine.any(Object));
     });
 
-    it('opens the established crew editor from authored crew-name controls', async () => {
+    it('opens the unit crew editor from a crew control whose seat has nobody assigned', async () => {
         const pilotEditor = TestBed.inject(ForcePilotEditorService) as jasmine.SpyObj<ForcePilotEditorService>;
         pilotEditor.editCBTMember.and.resolveTo();
         service.handle(member, {
-            kind: 'crew-name', positionId: 'crew-0', context: editContext(1),
+            kind: 'crew-profile', positionId: 'crew-0', context: editContext(1),
         } as unknown as RecordSheetInteraction, anchoredMouseEvent());
         await settleAsyncHandlers();
 
@@ -571,7 +600,6 @@ describe('PageViewerMekInteractionService', () => {
         } as unknown as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(TestBed.inject(PageViewerOverlayService).heatPreview('unit-1')).toEqual({ element: marker, heat: 6, baselineHeat: 2 });
-        expect(service.isPickerOpen('unit-1')).toBeTrue();
 
         service.handle(member, {
             kind: 'heat-preview-end', context: editContext(1),
@@ -579,7 +607,7 @@ describe('PageViewerMekInteractionService', () => {
         expect(TestBed.inject(PageViewerOverlayService).heatPreview('unit-1')).toBeNull();
     });
 
-    it('uses an active-heatsinks delta picker while dispatching the resulting disabled count', async () => {
+    it('picks the active heat sinks and dispatches the resulting disabled count', async () => {
         currentSnapshot = {
             ...currentSnapshot,
             heat: { ...currentSnapshot.heat, heatsinksOff: 3 },
@@ -589,9 +617,9 @@ describe('PageViewerMekInteractionService', () => {
         } as RecordSheetInteraction, anchoredMouseEvent());
 
         expect(numericConfig).toEqual(jasmine.objectContaining({
-            min: -7, max: 3, selected: 0, title: 'Active Heatsinks',
+            min: 0, max: 10, selected: 7, title: 'Active Heatsinks',
         }));
-        numericConfig!.onPick({ value: -2 });
+        numericConfig!.onPick({ value: 5 });
         await settleAsyncHandlers();
         expect(force.dispatchUnitCommand).toHaveBeenCalledWith('unit-1', jasmine.objectContaining({
             type: 'set-heatsinks-off', heatsinksOff: 5,
@@ -883,7 +911,7 @@ function recordSheetSnapshot(stateRevision: number): MekRecordSheetSnapshot {
                 type: 'weapon', flags: new Set(), modes: [],
                 weapon: { rapidFireCount: 0, ammoType: 'AC', rackSize: 20 },
             }, locations: [{ locationId: 'loc-ct', code: 'CT' }], status: 'available', modes: [], jammed: false,
-            weapon: { heat: 7, damage: 20, ranges: [3, 6, 9, 12], minimumRange: 0, ammoSources: [] },
+            weapon: { heat: 7, damage: 20, ranges: [3, 6, 9, 12], minimumRange: 0, ammoSources: [], selectable: true },
         }],
     } as unknown as MekRecordSheetSnapshot;
 }
@@ -896,7 +924,7 @@ function equipmentPanel(stateRevision: number): EquipmentPanelSnapshot {
         physicalAttacks: [],
         components: [{
             componentId: 'weapon-1', label: 'AC/20', locations: [], status: 'available', modes: [], jammed: false,
-            weapon: { heat: 7, damage: 20, ranges: [3, 6, 9, 12], minimumRange: 0, ammoSources: [] },
+            weapon: { heat: 7, damage: 20, ranges: [3, 6, 9, 12], minimumRange: 0, ammoSources: [], selectable: true },
         }],
     } as unknown as EquipmentPanelSnapshot;
 }

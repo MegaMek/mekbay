@@ -12,7 +12,7 @@ import {
     type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-    addFrame, addLine, addText, createRoot, drawGeneratedFooter,
+    addFrame, addLine, addText, appendBattleValue, createRoot, drawCheckbox, drawGeneratedFooter,
     drawPageChrome, formatNumber,
     scalePageBox,
     setAttributes, svgElement, transparentRect, type Box,
@@ -104,14 +104,7 @@ function drawBuildingData(svg: SVGSVGElement, entity: StaticEmplacementEntity, b
     for (const [label, y, checked] of [['Clan', 55, entity.techBase() === 'Clan' || entity.mixedTech()],
         ['Inner Sphere', 67, entity.techBase() !== 'Clan' || entity.mixedTech()]] as const) {
         addText(group, label, right + 3, y, { size: 6.8 });
-        const checkbox = svgElement('rect');
-        setAttributes(checkbox, { x: box.width - 15, y: y - 6, width: 6, height: 6, rx: 1, fill: 'none', stroke: '#000', 'stroke-width': .8 });
-        group.appendChild(checkbox);
-        if (checked) {
-            const tick = svgElement('path');
-            setAttributes(tick, { d: `M${box.width - 14},${y - 3} l1.5,2 l3.5,-5`, fill: 'none', stroke: '#000', 'stroke-width': 1 });
-            group.appendChild(tick);
-        }
+        drawCheckbox(group, box.width - 15, y - 6, 6, checked);
     }
     addLine(group, 7, 74, box.width - 9, 74, '#000', 1.3);
     const inventory = svgElement('g');
@@ -123,8 +116,7 @@ function drawBuildingData(svg: SVGSVGElement, entity: StaticEmplacementEntity, b
     let cost = '—';
     try { cost = entity.cost().toLocaleString('en-US'); } catch { /* An unresolved design still has a printable inventory. */ }
     addText(group, cost, 32, box.height - 12, { size: 7, maxWidth: 80 }).id = 'cost';
-    addText(group, 'BV:', 123, box.height - 12, { size: 7, weight: 700 });
-    addText(group, formatNumber(entity.battleValue()), 140, box.height - 12, { size: 7, maxWidth: box.width - 151 }).id = 'bv';
+    appendBattleValue(group, entity.battleValue(), { x: 123, valueX: 140, y: box.height - 12, size: 7, maxWidth: box.width - 151 });
 }
 
 function drawBuildingProtection(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box,

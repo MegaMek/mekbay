@@ -5,16 +5,14 @@ import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entit
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import {
 type Box,
-addCrewSkillValue,
 drawCrewHitGrid,
 addFrame,
 addLine,
 addText,
-setAttributes,
-svgElement,
+drawCriticalDamageBox,
 transparentRect,
 } from '../record-sheet-svg-rendering';
-import { AERO_LOWER_PANEL_TAB_NOTCH } from './aero-record-sheet-components';
+import { AERO_LOWER_PANEL_TAB_NOTCH, appendAeroSkillRows } from './aero-record-sheet-components';
 
 /** Critical and pilot controls shared by fighter and small-craft templates. */
 export function drawFighterCriticalPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
@@ -43,26 +41,15 @@ export function drawFighterCriticalPanel(svg: SVGSVGElement, entity: AeroEntity,
             const cellWidth = Math.min(15, 45 / Math.max(1, row.ids.length));
             const controlWidth = Math.min(12, cellWidth - 1);
             const controlX = row.x + 53.73 + (row.ids.length === 1 ? 30 : index * cellWidth);
-            const control = svgElement('rect');
-            control.id = id;
-            control.setAttribute('critId', id);
-            setAttributes(control, {
-                x: x(controlX), y: y(row.y), width: x(controlWidth), height: y(12), rx: x(1.315),
-                fill: 'none', stroke: '#000', 'stroke-width': 0.96,
-                class: 'critLoc criticalPip',
-            });
-            group.appendChild(control);
-            const modifier = addText(group, row.modifiers[index], x(controlX + controlWidth / 2), y(row.y + 7.6), {
-                size: font(row.ids.length > 3 ? 4.8 : 5.7), anchor: 'middle', maxWidth: x(controlWidth - 1),
-            });
-            modifier.style.pointerEvents = 'none';
+            drawCriticalDamageBox(group, id, { x: x(controlX), y: y(row.y), width: x(controlWidth), height: y(12) },
+                { text: row.modifiers[index], size: font(row.ids.length > 3 ? 4.8 : 5.7) }, sx);
         });
     });
 }
 
 export function drawFighterPilotPanel(svg: SVGSVGElement, box: Box): void {
     const group = addFrame(svg, 'PILOT DATA', box, {
-        cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     const sx = box.width / 142.6;
     const sy = box.height / 93.934;
@@ -79,20 +66,7 @@ export function drawFighterPilotPanel(svg: SVGSVGElement, box: Box): void {
     nameButton.setAttribute('textElement', name.id);
     group.appendChild(nameButton);
 
-    addText(group, 'Gunnery Skill:', x(3), y(42), { size: font(6.76), weight: 700, maxWidth: x(39.172) });
-    const gunnery = addCrewSkillValue(group, '4', x(47.672), y(42), font(1));
-    gunnery.id = 'gunnerySkill0';
-    addLine(group, x(47.672), y(43), x(65.82), y(43), '#000', 0.72);
-    addText(group, 'Piloting Skill:', x(69.8), y(42), { size: font(6.76), weight: 700, maxWidth: x(36.72) });
-    const piloting = addCrewSkillValue(group, '5', x(114.472), y(42), font(1));
-    piloting.id = 'pilotingSkill0';
-    addLine(group, x(114.472), y(43), x(136.6), y(43), '#000', 0.72);
-    for (const [skill, left, width] of [['gunnery', 44, 24], ['piloting', 111, 27]] as const) {
-        const button = transparentRect(x(left), y(33), x(width), y(13), 'crewSkillButton');
-        button.setAttribute('crewId', '0');
-        button.setAttribute('skill', skill);
-        group.appendChild(button);
-    }
+    appendAeroSkillRows(group, { x, y, font }, 42);
 
     drawCrewHitGrid(group, 0, {
         x: x(48.86), y: y(50), cellWidth: x(87.74 / 6), cellHeight: y(10),

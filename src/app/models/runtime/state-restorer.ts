@@ -83,10 +83,10 @@ import {
     mekIntrinsicMagazine,
 } from './mek-ammo';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
 import {
     canonicalizeMekHeatStateV2,
     MAX_MEK_HEATSINKS_OFF_V2,
-    MAX_MEK_HEAT_VALUE_V2,
 } from './mek-heat-state-v2';
 import {
     C3EM_MODE_STATE_KEY,
@@ -103,7 +103,7 @@ import {
     mekCriticalSlotMaximumHits,
 } from './mek-critical-slot-rules';
 import { isShieldEquipment, resolveShieldProfile } from '../entity/utils/physical-weapon';
-import { mekCriticalSlotLabel } from '../../utils/mek-critical-display.util';
+import { mekCriticalSlotLines } from '../../utils/mek-critical-display.util';
 import { AmmoEquipment } from '../equipment.model';
 
 interface MekRestoreUnit {
@@ -1109,7 +1109,7 @@ function slotOccupants(unit: MekRestoreUnit, slotId: CriticalSlotId): readonly s
     if (!slot) return [];
     const location = unit.index.locations.get(slot.locationId)!;
     const sheetSlot = unit.entity.criticalSlotGrid().get(location.code)?.[slot.slotIndex];
-    return [mekCriticalSlotLabel(sheetSlot, unit.entity), ...slot.componentIds.flatMap(id => {
+    return [...mekCriticalSlotLines(sheetSlot, unit.entity), ...slot.componentIds.flatMap(id => {
         const component = unit.index.components.get(id);
         if (!component) return [];
         return component.kind === 'equipment'
@@ -1401,9 +1401,10 @@ function nonnegativeInteger(value: JsonValue | undefined): number | null {
     return result !== null && result >= 0 ? result : null;
 }
 
+/** V1 accepted any finite heat; runtime heat is a whole number, so a fraction rounds to the nearest point. */
 function legacyHeatValue(value: JsonValue | undefined): number | null {
-    return typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0)
-        && value >= 0 && value <= MAX_MEK_HEAT_VALUE_V2
-        ? value
+    return typeof value === 'number' && Number.isFinite(value)
+        && value >= 0 && Math.round(value) <= MAX_HEAT_VALUE
+        ? Math.round(value) || 0
         : null;
 }

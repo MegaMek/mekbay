@@ -5,9 +5,10 @@ import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
-import { mekCriticalMountName, mekCriticalSlotLabel } from '../../utils/mek-critical-display.util';
+import { formatMekCriticalSlotLines, mekCriticalMountName, mekSystemLabel } from '../../utils/mek-critical-display.util';
+import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { CrewMember,type CrewMemberRuntimeState,type CrewMemberState } from '../crew-member.model';
+import type { CrewMemberRuntimeState,CrewMemberState } from '../crew-member.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type {
 ArmorFaceId,
@@ -23,8 +24,8 @@ import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modul
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import {
-projectEquipmentTargets,
-projectMekEquipmentComponents,
+mekAttackModifierSets,
+projectMekEquipmentPanel,
 projectMekPhysicalAttackPresentation,
 type EquipmentPanelComponent,
 type EquipmentPanelTarget,
@@ -115,6 +116,17 @@ export interface MekRecordSheetCriticalSlot {
     readonly components: readonly MekRecordSheetSlotComponent[];
 }
 
+/** Critical-table lines of a slot, with each ammo bin's remaining shots and loadout. */
+export function mekRecordSheetSlotLines(slot: MekRecordSheetCriticalSlot): readonly string[] {
+    return formatMekCriticalSlotLines(slot.components.map(component => component.ammo
+        ? { ammo: {
+            name: recordSheetAmmoName(component.ammo.displayName),
+            shots: component.ammo.remaining,
+            custom: component.ammo.custom,
+        } }
+        : { label: component.label }));
+}
+
 export interface MekRecordSheetShieldTrack {
     readonly componentId: ComponentId;
     readonly locationId: LocationId;
@@ -178,6 +190,7 @@ export interface MekRecordSheetSnapshot {
         gyro: string;
         myomer: string;
     }>;
+    /** Construction materials for runtime views; the generated sheet prints its own subtitles. */
     readonly construction: Readonly<{
         armor: string;
         structure: string;
@@ -227,7 +240,6 @@ export interface MekRecordSheetBattleValueSnapshot {
 
 /** Projects only the runtime facts needed by compact unit-status presentation. */
 export function projectMekUnitStatus(
-    entity: MekEntity,
     index: MekRuntimeIndex,
     state: MekUnitRuntimeState,
     query: MekUnitQueryPort,
@@ -235,11 +247,23 @@ export function projectMekUnitStatus(
     if (state.stateRevision !== query.stateRevision) {
         throw new Error('Unit-status state and query revisions do not match');
     }
-    const destruction = query.mekDestruction();
-    if (destruction.kind === 'unsupported') {
+    if (query.mekDestruction().kind === 'unsupported') {
         throw new Error('Mek destruction mechanics context is unsupported');
     }
-    return projectMekUnitStatusFromDestruction(entity, index, state, query, destruction);
+    const crew = [...index.crewPositions.values()]
+        .sort((left, right) => left.occurrence - right.occurrence
+            || compareText(left.id, right.id))
+        .map(position => Object.freeze({
+            positionId: position.id,
+            effectiveState: query.crewEffectiveState(position.id),
+        }));
+    return Object.freeze({
+        stateRevision: state.stateRevision,
+        conditions: Object.freeze([...query.conditions()].sort(compareText)),
+        crew: Object.freeze(crew),
+        hasNarc: [...index.locations.keys()].some(locationId =>
+            query.locationCondition(locationId, 'narc', 'preview') > 0),
+    });
 }
 
 export function projectMekRecordSheet(
@@ -261,7 +285,7 @@ export function projectMekRecordSheet(
     if (destruction.kind === 'unsupported') {
         throw new Error('Mek destruction mechanics context is unsupported');
     }
-    const unitStatus = projectMekUnitStatusFromDestruction(entity, index, state, query, destruction);
+    const unitStatus = projectMekUnitStatus(index, state, query);
 
     const modularArmorByLocation = new Map<LocationId, Set<ComponentId>>();
     for (const slot of index.slots.values()) {
@@ -360,7 +384,7 @@ export function projectMekRecordSheet(
                 if (!component) throw new Error(`Slot ${slot.id} references unknown component ${componentId}`);
                 const label = component.kind === 'equipment'
                     ? mekCriticalMountName(entity, component.mount)
-                    : mekCriticalSlotLabel(entity.criticalSlotGrid().get(location.code)?.[slot.slotIndex], entity);
+                    : mekSystemLabel(component.systemType, entity);
                 const loadouts = mekAmmoLoadouts(entity, index, componentId, ruleset);
                 const ammo = loadouts.length === 0
                     ? undefined
@@ -463,17 +487,14 @@ export function projectMekRecordSheet(
                 effectiveState,
             });
         });
-    const targeting = query.attackerTargetingState();
-    const targets = projectEquipmentTargets(targeting, targetRegistry);
-    const equipment = projectMekEquipmentComponents(
-        entity,
-        index,
-        ruleset,
-        query,
-        targeting,
-        targets,
+    // The sheet reads the panel's rows and targets; physical attacks keep their supported/unsupported shape.
+    const attackModifiers = mekAttackModifierSets(entity, index, ruleset, query);
+    const { components: equipment, targets } = projectMekEquipmentPanel(
+        entity, index, ruleset, query, targetRegistry, attackModifiers,
     );
-    const physicalAttacks = projectMekPhysicalAttackPresentation(entity, index, ruleset, query, targeting);
+    const physicalAttacks = projectMekPhysicalAttackPresentation(
+        entity, index, ruleset, query, query.attackerTargetingState(), attackModifiers,
+    );
     const movement = query.mekMovementPsr();
     const airborne = query.turnState().airborne === true;
     const movementOptions = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
@@ -561,54 +582,6 @@ export function projectMekRecordSheet(
         physicalAttacks,
         crew: Object.freeze(crew),
     });
-}
-
-function projectMekUnitStatusFromDestruction(
-    entity: MekEntity,
-    index: MekRuntimeIndex,
-    state: MekUnitRuntimeState,
-    query: MekUnitQueryPort,
-    destruction: Extract<ReturnType<MekUnitQueryPort['mekDestruction']>, { readonly kind: 'supported' }>,
-): MekUnitStatusSnapshot {
-    const conditions = new Set(query.conditions());
-    const crew = [...index.crewPositions.values()]
-        .sort((left, right) => left.occurrence - right.occurrence
-            || compareText(left.id, right.id))
-        .map(position => Object.freeze({
-            positionId: position.id,
-            effectiveState: effectiveMekCrewState(
-                entity,
-                position.occurrence,
-                query.crewState(position.id),
-                destruction.facts.committed.mainCockpitUnavailable,
-                destruction.facts.committed.commandConsoleUnavailable,
-            ),
-        }));
-    return Object.freeze({
-        stateRevision: state.stateRevision,
-        conditions: Object.freeze([...conditions].sort(compareText)),
-        crew: Object.freeze(crew),
-        hasNarc: [...index.locations.keys()].some(locationId =>
-            query.locationCondition(locationId, 'narc', 'preview') > 0),
-    });
-}
-
-function effectiveMekCrewState(
-    entity: MekEntity,
-    occurrence: number,
-    state: CrewMemberRuntimeState,
-    mainCockpitUnavailable: boolean,
-    commandConsoleUnavailable: boolean,
-): MekRecordSheetCrewPosition['effectiveState'] {
-    const hasCommandConsole = entity.mountedCockpit().hasCommandConsoleBonus;
-    const cockpitUnavailable = !hasCommandConsole
-        ? mainCockpitUnavailable
-        : occurrence === 0
-            ? mainCockpitUnavailable
-            : occurrence === 1
-                ? commandConsoleUnavailable
-                : false;
-    return CrewMember.from(state).effectiveState(cockpitUnavailable);
 }
 
 function safeCurrentMekBattleValue(query: MekUnitQueryPort): number | null {

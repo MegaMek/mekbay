@@ -1,9 +1,18 @@
+// The panel owns its query container so the dialog and the tactical view lay out identically by width.
+:host {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    container: weapons-panel / inline-size;
+}
+
 .weapons-equipment-panel {
     --weapon-equipment-title-height: 30px;
     --weapon-equipment-content-columns: var(--equipment-drag-column, 24px) var(--equipment-selection-column, 28px) var(--equipment-name-column, fit-content(100%)) var(--equipment-stat-column, 42px) var(--equipment-stat-column, 42px) var(--equipment-stat-column, 42px) var(--equipment-damage-column, fit-content(200px)) repeat(4, var(--equipment-range-column, 42px)) var(--equipment-action-column, fit-content(420px));
     --weapon-equipment-columns: minmax(0, 1fr) var(--weapon-equipment-content-columns) minmax(0, 1fr);
     max-width: 1100px;
     width: 100%;
+    margin-inline: auto;
     align-items: center;
 
     @media (max-height: 600px) {
@@ -789,159 +798,6 @@
     margin-left: -4px;
 }
 
-@container (max-width: 760px) {
-  .weapons-equipment-panel:not(.tactical-inventory) {
-    .grid-fill,
-    .weapon-equipment-header {
-        display: none;
-    }
-
-    .weapon-equipment-grid {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .weapon-equipment-list {
-        margin-top: 1px;
-    }
-
-    .weapon-equipment-section {
-        display: flex;
-        flex-direction: column;
-    }    
-    
-    .weapon-equipment-row {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: baseline;
-        width: calc(100% - 4px);
-        box-sizing: border-box;
-        gap: 4px 16px;
-        padding: 5px 10px;
-        margin: 2px;
-        font-size: 1.1em;
-        border: 1px solid var(--border-color);
-
-        &:last-child {
-            border-bottom: 1px solid var(--border-color);
-        }
-    }
-
-    .weapon-equipment-row.mga-member-row {
-        width: calc(100% - 20px);
-        margin-left: 18px;
-    }
-
-    .mga-branch,
-    .weapon-equipment-row.mga-member-row + .weapon-equipment-row.mga-member-row .mga-branch {
-        flex: 0 0 14px;
-        width: 14px;
-        height: 14px;
-        margin-top: -14px;
-        margin-left: 0px;
-    }
-
-    .mga-membership-badge {
-        font-size: 0.7rem;
-    }
-
-    .drag-cell {
-        display: none;
-    }
-
-    .ammo-cell {
-        align-items: baseline;
-    }
-
-    .grouped-cells {
-        display: flex;
-        flex-direction: row;
-        gap: 8px;
-        align-items: center;
-        box-sizing: border-box;
-
-        &.group-identity {
-            width: 100%;
-            height: 32px;
-        }
-    }
-
-    .group-stats {
-        flex-wrap: wrap;
-        min-width: 0;
-    }
-
-    .centered-cell {
-        justify-content: flex-start;
-        gap: 4px;
-    }
-    
-    .meta-cell::before {
-        content: attr(data-label);
-        color: var(--text-color-secondary);
-        font-weight: 700;
-        white-space: nowrap;
-        font-size: 0.9em;
-    }
-
-    .tn-cell:empty {
-        display: none;
-    }
-
-    .name-cell {
-        font-size: 1.2em;
-    }
-
-    .hit-cell, .location-cell, .heat-cell, .min-cell {
-        width: 48px;
-    }
-
-    .hit-cell, .location-cell {
-        width: auto;
-        min-width: 48px;
-        max-width: 100%;
-        overflow-wrap: anywhere;
-    }
-
-    .min-value {
-        display: flex;
-        height: 26px;
-        align-items: center;
-    }
-    
-    .damage-cell {
-        width: unset;
-        min-width: 0;
-        flex-grow: 1;
-    }
-
-    .range-cells {
-        width: unset;
-        display: flex;
-        flex-direction: row;
-    }
-}
-}
-
-@media (max-width: 360px) {
-    .meta-cell {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
-    }
-
-    .hit-cell, .location-cell, .heat-cell, .min-cell {
-        width: 32px;
-    }
-
-    .hit-cell, .location-cell {
-        width: auto;
-        min-width: 32px;
-    }
-}
-
 // The tactical view uses the same interactions with a denser, container-aware layout.
 .tactical-inventory {
     --equipment-name-column: minmax(140px, 1fr);
@@ -963,7 +819,7 @@
     button:focus-visible, input:focus-visible { outline: 2px solid var(--primary-focus-color); outline-offset: 2px; }
 }
 
-@container tactical-inventory (max-width: 1050px) {
+@container weapons-panel (max-width: 1050px) {
     .tactical-inventory {
         --equipment-action-column: 0px;
         .secondary-controls-toggle { display: inline-flex; max-width: 100%; }
@@ -984,65 +840,84 @@
 }
 
 /*
- * Phones: a two-line card per row. Identity and the ammo chip on top; below, a stat strip
- * with small captions over the values and the range boxes pushed to the right.
+ * Phones: a two-line card per row, shared by the dialog and the tactical view. Identity on top;
+ * below, a stat strip with small captions over the values and the range boxes pushed right.
  */
-@container tactical-inventory (max-width: 600px) {
-    .tactical-inventory {
-        .weapon-equipment-grid { display: flex; flex-direction: column; gap: 0; }
-        .weapon-equipment-header, .grid-fill, .drag-cell { display: none; }
-        .weapon-equipment-section { display: flex; flex-direction: column; }
-        .section-title { display: flex; gap: 6px; padding: 4px 8px; font-size: .78rem; }
-        .section-title-text { flex: 1; }
-        .mobile-group-selection:has(input, button) { display: flex; align-items: center; justify-content: center; width: 24px; flex: 0 0 24px; }
-        .mobile-group-selection input, .mobile-group-selection button { width: 18px; height: 18px; }
-        .weapon-equipment-list { display: flex; flex-direction: column; margin: 0; gap: 0; }
-        .weapon-equipment-row, .weapon-equipment-row:last-child {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            grid-template-areas: 'identity identity' 'stats ranges' 'actions actions';
-            align-items: end;
-            gap: 3px 10px;
-            width: 100%;
-            margin: 0;
-            padding: 5px 8px 6px;
-            border: 0;
-            border-bottom: 1px solid var(--border-color);
-            font-size: .8rem;
-        }
-        .weapon-equipment-row.mga-member-row { width: calc(100% - 16px); margin-left: 16px; }
-        .grouped-cells { display: flex; align-items: center; gap: 8px; min-width: 0; }
-        .group-identity { grid-area: identity; min-height: 26px; }
-        .select-cell { flex: 0 0 24px; }
-        .tn-cell { flex: 0 0 28px; }
-        .name-cell { flex: 1; font-size: .85rem; }
-        .group-stats { grid-area: stats; flex-wrap: wrap; align-items: flex-end; gap: 2px 14px; }
-        .group-ranges { grid-area: ranges; align-items: flex-end; gap: 6px; }
-        .group-actions { grid-area: actions; display: none; }
-        .controls-expanded .group-actions { display: block; padding-left: 0; }
-        .meta-cell { flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 2px; width: auto; min-width: 0; line-height: 1.1; }
-        .meta-cell::before, .range-cell::before {
-            content: attr(data-label);
-            color: var(--text-color-tertiary);
-            font-size: .56rem;
-            font-weight: 700;
-            letter-spacing: .06em;
-            line-height: 1;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        .hit-cell .hit-value { font-size: 1.1em; line-height: 1; }
-        .damage-cell { flex-grow: 0; }
-        .min-cell { align-items: center; }
-        .range-cells.meta-cell::before { display: none; }
-        .range-cells { display: flex; gap: 3px; }
-        .range-cell { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 34px; height: 32px; padding: 0 3px; font-size: .8rem; line-height: 1; }
+@mixin card-layout {
+    .weapon-equipment-grid { display: flex; flex-direction: column; gap: 0; }
+    .weapon-equipment-header, .grid-fill, .drag-cell { display: none; }
+    .weapon-equipment-section { display: flex; flex-direction: column; }
+    .section-title { display: flex; gap: 6px; padding: 4px 8px; font-size: .78rem; }
+    .section-title-text { flex: 1; }
+    .mobile-group-selection:has(input, button) { display: flex; align-items: center; justify-content: center; width: 24px; flex: 0 0 24px; }
+    .mobile-group-selection input, .mobile-group-selection button { width: 18px; height: 18px; }
+    .weapon-equipment-list { display: flex; flex-direction: column; margin: 0; gap: 0; }
+    .weapon-equipment-row, .weapon-equipment-row:last-child {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: 'identity identity' 'stats ranges' 'actions actions';
+        align-items: end;
+        gap: 3px 10px;
+        box-sizing: border-box;
+        width: 100%;
+        margin: 0;
+        padding: 5px 8px 6px;
+        border: 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: .8rem;
+    }
+    .weapon-equipment-row.mga-member-row { width: calc(100% - 16px); margin-left: 16px; }
+    .mga-branch { flex: 0 0 14px; width: 14px; height: 14px; margin: -14px 0 0; }
+    .mga-membership-badge { font-size: .7rem; }
+    .grouped-cells { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .group-identity { grid-area: identity; min-height: 26px; }
+    .select-cell { flex: 0 0 24px; }
+    .tn-cell { flex: 0 0 28px; }
+    .name-cell { flex: 1; min-width: 0; font-size: .85rem; }
+    .group-stats { grid-area: stats; flex-wrap: wrap; align-items: flex-end; gap: 2px 14px; }
+    .group-ranges { grid-area: ranges; align-items: flex-end; gap: 6px; }
+    .group-actions { grid-area: actions; padding-left: 0; }
+    .meta-cell { flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 2px; width: auto; min-width: 0; line-height: 1.1; }
+    .meta-cell::before, .range-cell::before {
+        content: attr(data-label);
+        color: var(--text-color-tertiary);
+        font-size: .56rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        line-height: 1;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .hit-cell .hit-value { font-size: 1.1em; line-height: 1; }
+    .damage-cell { flex-grow: 0; }
+    .min-cell { align-items: center; }
+    .range-cells.meta-cell::before, .ammo-cell::before { display: none; }
+    .range-cells { display: flex; gap: 3px; }
+    .range-cell { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 34px; height: 32px; padding: 0 3px; font-size: .8rem; line-height: 1; }
+    .actions-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+    .ammo-cell { flex-direction: row; align-items: center; flex: 0 1 auto; max-width: 100%; }
+    .ammo-cell > .grouped-cells { flex-wrap: nowrap; gap: 4px; }
+}
+
+/* The dialog has no compact controls toggle, so its ammo and controls row stays visible. */
+@container weapons-panel (max-width: 760px) {
+    .weapons-equipment-panel:not(.tactical-inventory) {
+        @include card-layout;
+        .tn-cell:empty { display: none; }
     }
 }
 
-/* Very narrow phones: the range boxes take their own line instead of squeezing the stats. */
-@container tactical-inventory (max-width: 340px) {
+@container weapons-panel (max-width: 600px) {
     .tactical-inventory {
+        @include card-layout;
+        .group-actions { display: none; }
+        .controls-expanded .group-actions { display: block; padding-left: 8px; }
+    }
+}
+
+/* Very narrow phones, or four range bands: the range boxes take their own line. */
+@container weapons-panel (max-width: 340px) {
+    .weapons-equipment-panel {
         .weapon-equipment-row, .weapon-equipment-row:last-child { grid-template-areas: 'identity identity' 'stats stats' 'ranges ranges'; }
         .group-ranges { justify-content: flex-end; }
     }
@@ -1052,7 +927,7 @@
  * Wide tables show ammo and controls inline. Ammo fills the column so its steppers, and the
  * HIT/mode buttons after them, land on the same x in every row.
  */
-@container tactical-inventory (min-width: 1051px) {
+@container weapons-panel (min-width: 1051px) {
     .tactical-inventory {
         .actions-cell { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 6px; }
         .ammo-cell { grid-column: 1; display: flex; width: 100%; }
@@ -1063,7 +938,7 @@
 }
 
 /* Mouse-driven tables can be denser than the touch targets phones need. */
-@container tactical-inventory (min-width: 601px) {
+@container weapons-panel (min-width: 601px) {
     @media (pointer: fine) {
         .tactical-inventory {
             .weapon-equipment-row { padding-block: 2px; }
@@ -1080,7 +955,7 @@
     }
 }
 
-@container tactical-inventory (min-width: 601px) and (max-width: 850px) {
+@container weapons-panel (min-width: 601px) and (max-width: 850px) {
     .tactical-inventory {
         --equipment-drag-column: 16px;
         --equipment-selection-column: 24px;

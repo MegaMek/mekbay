@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../../models/entity/base-entity';
+import { readRecordSheetComponentIds } from './record-sheet-inventory';
 import { addTestEquipmentWithFlags } from '../../models/entity/testing/test-mounted-equipment';
 import {
     TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestInfantryEntity, TestLamEntity,
@@ -142,7 +143,7 @@ describe('record-sheet movement controls', () => {
         } }).accepted).toBeTrue();
         sheet.render();
         const row = [...sheet.svg.querySelectorAll<SVGElement>('.inventoryEntry')].find(row =>
-            JSON.parse(row.getAttribute('data-mekbay-component-ids') ?? '[]').includes(weapon.componentId))!;
+            readRecordSheetComponentIds(row).includes(weapon.componentId))!;
         const charge = [...sheet.svg.querySelectorAll<SVGElement>('.inventoryEntry')]
             .find(row => row.querySelector('.name')?.textContent === 'Charge')!;
         const host = document.createElement('div');
@@ -220,7 +221,8 @@ describe('record-sheet movement controls', () => {
                 entity, 'core-2026');
             const svg = await mount(entity);
             const snapshot = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(),
-                'core-2026', 0, 0, unit.getCrewAssignment()), editContext: editContext(unit.snapshot().stateRevision) });
+                'core-2026',
+                unit.query(), 0, 0), editContext: editContext(unit.snapshot().stateRevision) });
             const binding = bindNonMekRecordSheet(svg, snapshot(), () => {});
             cleanups.push(() => binding.destroy());
             expect(svg.getElementById('mpStationary')).not.toBeNull();

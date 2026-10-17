@@ -29,8 +29,8 @@ describe('manual BV sheet authority', () => {
                 const force = {
                     getUnitSnapshot: () => ({ entity, ruleset }),
                     getNonMekRecordSheetSnapshot: () => ({
-                        ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset,
-                            runtime.query().currentBaseBattleValue()!, entity.battleValue(), runtime.getCrewAssignment()),
+                        ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset, runtime.query(),
+                            runtime.query().currentBaseBattleValue()!, entity.battleValue()),
                         editContext: { owner: runtime, state: runtime.snapshot() },
                     }),
                 } as unknown as CBTForce;

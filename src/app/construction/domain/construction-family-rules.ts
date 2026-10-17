@@ -76,7 +76,7 @@ export function constructionEquipmentChassisMessages(entity: BaseEntity, equipme
     if (!quad && equipment.hasFlag('F_RAM_PLATE')) add('MEK_RAM_PLATE_CHASSIS', 'Ram plates require a quad Mek.');
     if (quad && equipment.hasFlag('F_SHOULDER_TURRET')) add('MEK_QUAD_SHOULDER_TURRET', 'Quad Meks cannot mount shoulder turrets.');
     if (quad && equipment.hasAnyFlag(['F_CHAIN_DRAPE_APRON', 'F_CHAIN_DRAPE_PONCHO'])) add('MEK_CHAIN_DRAPE_CONFIGURATION', 'Quad Meks can use only cape chain drapes.');
-    if (entity.isSuperHeavy() && equipment.hasAnyFlag(['F_TSM', 'F_INDUSTRIAL_TSM', 'F_SCM', 'F_MASC', 'F_JUMP_JET', 'F_MECHANICAL_JUMP_BOOSTER', 'F_UMU', 'F_ACTUATOR_ENHANCEMENT_SYSTEM', 'F_MODULAR_ARMOR', 'F_PARTIAL_WING'])) {
+    if (entity.isSuperHeavy() && equipment.hasAnyFlag(['F_TSM', 'F_INDUSTRIAL_TSM', 'F_SCM', 'F_MASC', 'F_JUMP_JET', 'F_JUMP_BOOSTER', 'F_MECHANICAL_JUMP_BOOSTER', 'F_UMU', 'F_ACTUATOR_ENHANCEMENT_SYSTEM', 'F_MODULAR_ARMOR', 'F_PARTIAL_WING'])) {
       add('MEK_SUPERHEAVY_EQUIPMENT', `${equipment.name} cannot be mounted on a superheavy Mek.`);
     }
     const myomer = equipment.hasAnyFlag(['F_TSM', 'F_INDUSTRIAL_TSM', 'F_SCM'])

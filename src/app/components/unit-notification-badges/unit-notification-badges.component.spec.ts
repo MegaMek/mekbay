@@ -6,6 +6,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import type { CBTMekUnitSnapshot } from '../../models/cbt-unit-snapshot';
+import { AmmoEquipment } from '../../models/equipment.model';
 import type { MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import {
@@ -175,6 +176,35 @@ describe('direct runtime unit notifications', () => {
         expect(projectRuntimeFallTooltip(projected)).toEqual([
             { label: 'Automatic fall', value: 'Gyro destroyed' },
         ]);
+    });
+
+    it('lists the Mek heat ammunition explosion check only for loaded ammunition that can explode', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        expect(fixture.instance.dispatch({ type: 'set-heat', heat: 19 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'end-phase', endTurnBoundary: true }).accepted).toBeTrue();
+        const ammoChecks = (snapshot: CBTMekUnitSnapshot) =>
+            projectRuntimeUnitNotifications(snapshot, {
+                pilotSkillCheck: 'ask',
+                pilotHitsAndConsciousnessCheck: 'ask',
+                heatAndDissipationResolution: 'no',
+                heatEffectsCheck: 'ask',
+            })!.pendingEvents
+                .flatMap(event => event.tooltip)
+                .filter(row => row.label === 'Heat ammunition explosion check');
+        const snapshot = unitSnapshot(fixture);
+        expect(ammoChecks(snapshot)).toEqual([
+            { label: 'Heat ammunition explosion check', value: 'Target 4+' },
+        ]);
+
+        const inert = new AmmoEquipment({
+            id: 'Test Inert Ammo', name: 'Test Inert Ammo', type: 'ammo',
+            stats: { explosive: true },
+            ammo: { type: 'AC_ULTRA', rackSize: 5, shots: 20, damagePerShot: 0 },
+        });
+        expect(ammoChecks(Object.freeze({
+            ...snapshot,
+            query: Object.freeze({ ...snapshot.query, ammoEquipment: () => inert }),
+        }))).toEqual([]);
     });
 
     it('renders the numbered warning used by both badge hosts', async () => {

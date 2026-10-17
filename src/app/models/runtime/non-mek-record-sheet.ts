@@ -4,7 +4,7 @@
 import type { VelocityRecordEntry } from '../aerospace-velocity-record.model';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { CrewMember,type CrewMemberRuntimeState,type CrewMemberState } from '../crew-member.model';
+import type { CrewMemberRuntimeState,CrewMemberState } from '../crew-member.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type {
 ArmorFaceId,
@@ -16,32 +16,20 @@ SystemDamageTrackId,
 import type { BombLoad } from '../aerospace-bomb.model';
 import type { EntityTechBase } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
-import {
-isAeroEntity,
-isInfantryEntity,
-isInfantryFamilyEntity,
-isProtoMekEntity,
-isVehicleEntity,
-} from '../entity/utils/entity-type-guards';
+import { isInfantryEntity } from '../entity/utils/entity-type-guards';
 import type { EquipmentStatus } from '../equipment-status.model';
-import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
+import type { AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import {
 projectConventionalInfantryCombat,
 type ConventionalInfantryCombatProfile,
 } from '../rules/conventional-infantry-combat-rules';
-import { projectInfantryRuntimeRules } from '../rules/infantry-runtime-rules';
-import { projectProtoMekRuntimeRules } from '../rules/protomek-runtime-rules';
 import type { SystemDamageKind } from '../rules/system-damage-rules';
-import { projectVehicleRuntimeRules } from '../rules/vehicle-runtime-rules';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { UnitType } from '../unit-summary.model';
 import { crewSkillsForUnit } from '../unit-crew-policy';
-import { projectComponentLocationStatuses } from './component-status-projection';
-import type { CrewAssignment } from './crew-assignment';
 import { entityAmmoLoadout } from './mek-ammo';
-import { projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
-import { hasVacantNonMekCrew,type NonMekUnitRuntimeState } from './non-mek-unit-instance';
+import type { NonMekUnitQueryPort,NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import { systemDamagePresentation } from './system-damage-presentation';
 import type { UnitEditContext } from './unit-edit-context';
 import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
@@ -158,48 +146,35 @@ export interface NonMekRecordSheetSnapshot {
     readonly damageTracks: readonly NonMekRecordSheetDamageTrack[];
 }
 
+/** Reads destruction, conditions, statuses, crew and remaining values through the unit's query. */
 export function projectNonMekRecordSheet(
     entity: BaseEntity,
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    query: NonMekUnitQueryPort,
     currentBattleValue: number,
     pristineBattleValue: number,
-    crewAssignment?: CrewAssignment,
-    forcedWithdrawal = true,
     heatPolicy: HeatAutomationPolicy = 'manual',
 ): Omit<NonMekRecordSheetSnapshot, 'editContext'> {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek record-sheet projection');
-    const vehicleRules = isVehicleEntity(entity)
-        ? projectVehicleRuntimeRules(entity, index, state, ruleset, crewAssignment)
-        : null;
-    const protoMekRules = isProtoMekEntity(entity)
-        ? projectProtoMekRuntimeRules(entity, index, state, ruleset, forcedWithdrawal, crewAssignment)
-        : null;
-    const infantryRules = isInfantryFamilyEntity(entity)
-        ? projectInfantryRuntimeRules(entity, index, state)
-        : null;
-    const aeroRules = isAeroEntity(entity)
-        ? projectAeroRuntimeRules(entity, index, state, ruleset)
-        : null;
-    const entityComponentStatuses = projectComponentLocationStatuses(index, state);
+    if (state.stateRevision !== query.stateRevision) {
+        throw new Error('Record-sheet state and query revisions do not match');
+    }
+    const { vehicle: vehicleRules, protoMek: protoMekRules, aero: aeroRules } = query.projection();
+    const crewAssignment = query.crewAssignment();
 
     const locations = [...index.locations.values()].map(location => {
-        const locationState = state.locations.get(location.id);
-        const internalDamage = locationState?.internalDamage ?? 0;
-        const pendingInternal = state.pendingCombat.locationInternalDamage.get(location.id) ?? 0;
         const armor = location.armorFaceIds.map(faceId => {
             const face = index.armorFaces.get(faceId);
             if (!face) throw new Error(`Non-Mek runtime is missing armor face ${faceId}`);
-            const damage = locationState?.armorDamage.find(row => row.faceId === faceId)?.damage ?? 0;
-            const pendingDamage = state.pendingCombat.armorDamage.get(faceId) ?? 0;
             return Object.freeze({
                 faceId,
                 locationId: location.id,
                 face: face.face,
                 maximum: face.maximumPoints,
-                remaining: face.maximumPoints - damage,
-                previewRemaining: face.maximumPoints - clamp(damage + pendingDamage, 0, face.maximumPoints),
+                remaining: query.remainingArmor(faceId, 'committed'),
+                previewRemaining: query.remainingArmor(faceId, 'preview'),
             });
         });
         return Object.freeze({
@@ -211,27 +186,19 @@ export function projectNonMekRecordSheet(
             ...(entity.entityType === 'BattleArmor' ? { combinedPips: true } : {}),
             ...(entity.entityType === 'Infantry' ? { soldierPips: true } : {}),
             maximumInternal: location.internalPoints,
-            remainingInternal: location.internalPoints - internalDamage,
-            previewRemainingInternal: location.internalPoints
-                - clamp(internalDamage + pendingInternal, 0, location.internalPoints),
+            remainingInternal: query.remainingInternal(location.id, 'committed'),
+            previewRemainingInternal: query.remainingInternal(location.id, 'preview'),
             armor: Object.freeze(armor),
         });
     });
 
     const components = [...index.components.values()].map(component => {
         const mount = component.mount;
-        const status = vehicleRules?.componentStatuses.get(component.id)
-            ?? entityComponentStatuses.committed.get(component.id)
-            ?? 'available';
-        const previewStatus = vehicleRules?.previewComponentStatuses.get(component.id)
-            ?? entityComponentStatuses.preview.get(component.id)
-            ?? status;
-        const runtimeAmmo = state.ammo.get(component.id);
         const loadout = entityAmmoLoadout(
             entity,
             mount,
             ruleset,
-            runtimeAmmo?.munitionOverride,
+            state.ammo.get(component.id)?.munitionOverride,
         );
         return Object.freeze({
             componentId: component.id,
@@ -239,13 +206,13 @@ export function projectNonMekRecordSheet(
             label: mount.displayName(),
             sheetLocations: Object.freeze(mount.getOccupiedLocations()
                 .map(location => entity.componentLocationLabel(location))),
-            status,
-            previewStatus,
+            status: query.componentStatus(component.id, 'committed'),
+            previewStatus: query.componentStatus(component.id, 'preview'),
             ...(loadout === null ? {} : {
                 ammo: Object.freeze({
                     displayName: loadout.equipment.shortName || loadout.equipment.name,
                     capacity: loadout.capacity,
-                    remaining: Math.max(0, loadout.capacity - (runtimeAmmo?.shotsSpent ?? 0)),
+                    remaining: query.remainingAmmo(component.id),
                 }),
             }),
         });
@@ -275,10 +242,9 @@ export function projectNonMekRecordSheet(
     const crew = [...index.crewPositions.values()]
         .sort((left, right) => left.occurrence - right.occurrence)
         .map(position => {
-            const runtimeState = state.crew.get(position.id);
-            const assignment = crewAssignment?.positions.find(candidate => candidate.positionId === position.id);
+            const assignment = crewAssignment.positions.find(candidate => candidate.positionId === position.id);
             const skills = crewSkillsForUnit(assignment, entity.unitType(), entity.unitSubtype());
-            const member = crewAssignment !== undefined && !assignment ? CrewMember.vacant : CrewMember.from(runtimeState);
+            const member = query.crewState(position.id);
             const effectiveState = member.effectiveState();
             return Object.freeze({
                 positionId: position.id,
@@ -294,27 +260,8 @@ export function projectNonMekRecordSheet(
                         : effectiveState,
             });
         });
-    const conditions = new Set(state.conditions);
-    if (hasVacantNonMekCrew(index, crewAssignment)) {
-        conditions.add('abandoned');
-        conditions.add('immobile');
-    }
-    conditions.delete('crippled');
-    vehicleRules?.computedConditions.forEach(condition => conditions.add(condition));
-    protoMekRules?.computedConditions.forEach(condition => conditions.add(condition));
-    aeroRules?.computedConditions.forEach(condition => conditions.add(condition));
-    conditions.delete('airborne');
-    conditions.delete('grounded');
-    const airGroundCondition = projectedNonMekAirGroundCondition(entity, state.turn.airborne);
-    if (airGroundCondition !== null) conditions.add(airGroundCondition);
-    const destroyed = vehicleRules?.destroyed
-        ?? protoMekRules?.destroyed
-        ?? infantryRules?.destroyed
-        ?? aeroRules?.destroyed
-        ?? state.explicitlyDestroyed;
-    const movementBlocked = destroyed
-        || protoMekRules?.computedConditions.includes('immobile') === true
-        || conditions.has('immobile');
+    const destroyed = query.destroyed();
+    const movementBlocked = destroyed || query.hasCondition('immobile');
     const capabilities = projectNonMekMovementCapabilities(entity, index, state, ruleset, crewAssignment);
     const movementCalculation = nonMekMovementCalculation(state);
     const airborne = state.turn.airborne === true;
@@ -356,7 +303,7 @@ export function projectNonMekRecordSheet(
         structureType: structure?.structure.name ?? '',
         crewSize: crew.length,
         crew: Object.freeze(crew),
-        conditions: Object.freeze([...conditions]),
+        conditions: query.conditions(),
         conditionControlKeys: vehicleRules?.conditionControlKeys
             ?? protoMekRules?.conditionControlKeys
             ?? aeroRules?.conditionControlKeys
@@ -393,8 +340,4 @@ export function projectNonMekRecordSheet(
         components: Object.freeze(components),
         damageTracks: Object.freeze(damageTracks),
     });
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-    return Math.max(minimum, Math.min(maximum, value));
 }

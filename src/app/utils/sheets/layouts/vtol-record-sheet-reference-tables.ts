@@ -5,15 +5,13 @@ import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
     addFrame,
+    addReferenceShade,
     addText,
     scalePageBox,
-    setAttributes,
-    svgElement,
 } from '../record-sheet-svg-rendering';
 import {
-    addExactReferenceText,
-    addReferenceShade,
     canonicalReferenceContent,
+    drawTurnTrack,
 } from './record-sheet-reference-table-components';
 
 /** VTOL-only rules references. These deliberately live with the vehicle family,
@@ -77,50 +75,17 @@ function drawVtolHitLocationReference(svg: SVGSVGElement, box: Box): void {
         ['of the phase in which the damage occurred.', 174.6],
         ['‡ If the VTOL has no turret, a turret strike hits Rotors†', 181.6],
     ];
-    notes.forEach(([value, y, width]) => addExactReferenceText(content, value, 6, y, 5.7, width));
+    notes.forEach(([value, y, width]) => addText(content, value, 6, y, { size: 5.7, textLength: width }));
 }
 
 function drawVtolElevationTrack(svg: SVGSVGElement, box: Box): void {
     const group = addFrame(svg, 'VTOL ELEVATION TRACK', box, { fullWidthHeader: true });
     const content = canonicalReferenceContent(group, box, 241.18, 121.66);
-    drawElevationGrid(content, 28.216, 58.864);
-    drawElevationGrid(content, 74.188, 104.836);
-    drawElevationRow(content, 1, 38.54, 53.864);
-    drawElevationRow(content, 16, 84.512, 99.836);
-}
-
-function drawElevationGrid(content: SVGGElement, top: number, bottom: number): void {
-    const outline = svgElement('rect');
-    setAttributes(outline, {
-        x: 4.5, y: top, width: 230.68, height: bottom - top,
-        rx: 1.315, fill: 'none', stroke: '#000', 'stroke-width': 1,
-    });
-    content.appendChild(outline);
-    const horizontal = svgElement('line');
-    setAttributes(horizontal, {
-        x1: 4.5, y1: top + 15.324, x2: 235.18, y2: top + 15.324,
-        stroke: '#000', 'stroke-width': 0.58,
-    });
-    content.appendChild(horizontal);
-    for (let index = 0; index <= 15; index++) {
-        const vertical = svgElement('line');
-        const x = 50.636 + index * 12.003;
-        setAttributes(vertical, { x1: x, y1: top, x2: x, y2: bottom, stroke: '#000', 'stroke-width': 0.58 });
-        content.appendChild(vertical);
-    }
-}
-
-function drawElevationRow(
-    content: SVGGElement,
-    firstTurn: number,
-    turnY: number,
-    elevationY: number,
-): void {
-    addText(content, 'Turn', 7.5, turnY, { size: 6.76, weight: 700 });
-    addText(content, 'Elevation', 7.5, elevationY, { size: 6.76, weight: 700 });
-    for (let index = 0; index < 15; index++) {
-        addText(content, String(firstTurn + index), 56.637 + index * 12.003, turnY, {
-            size: 6.76, weight: 700, anchor: 'middle', maxWidth: 10.8,
+    const identity = { x: (value: number) => value, y: (value: number) => value, font: (value: number) => value };
+    for (const [top, firstTurn] of [[28.216, 1], [74.188, 16]] as const) {
+        drawTurnTrack(content, identity, {
+            top, height: 30.648, right: 235.18, firstColumnX: 50.636, columnWidth: 12.003, firstTurn, turns: 15,
+            valueLabel: 'Elevation', textInset: 5,
         });
     }
 }

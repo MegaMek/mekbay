@@ -1,17 +1,19 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { WeaponAttackContext } from './equipment-panel';
 import {
     asEncounterTargetId,
     type TargetRegistrySnapshot,
 } from './encounter-runtime';
-import { TARGET_INDIRECT_WEAPON_REASON } from './mek-targeting-rules';
+import { TARGET_INDIRECT_WEAPON_REASON } from './weapon-target-policy';
 import {
     projectTargetingTarget,
     projectMekEquipmentPanel,
     projectWeaponTargetPresentation,
 } from './equipment-panel';
 import { projectMekRecordSheet, projectMekUnitStatus } from './mek-record-sheet';
+import type { EngineType } from '../entity/types/engine';
 import { evaluateMekRuntimeCapability } from './mek-runtime-capability';
 import {
     deserializeMekMovementPsrStateV2,
@@ -379,7 +381,7 @@ describe('direct Mek entity/runtime projections', () => {
 
         const state = fixture.instance.snapshot();
         const query = fixture.instance.query();
-        const status = projectMekUnitStatus(fixture.entity, fixture.index, state, query);
+        const status = projectMekUnitStatus(fixture.index, state, query);
         const sheet = projectMekRecordSheet(
             fixture.entity,
             fixture.index,
@@ -423,7 +425,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(state.conditions.has('stealth')).toBeFalse();
         expect(query.hasCondition('stealth')).toBeTrue();
         expect(query.conditions()).toContain('stealth');
-        expect(projectMekUnitStatus(fixture.entity, fixture.index, state, query).conditions)
+        expect(projectMekUnitStatus(fixture.index, state, query).conditions)
             .toContain('stealth');
     });
 
@@ -1351,6 +1353,31 @@ describe('direct Mek entity/runtime projections', () => {
         ]);
     });
 
+    it('destroys a superheavy compact engine at two hits instead of three', () => {
+        const afterTwoEngineHits = (engineType: EngineType) => {
+            const fixture = createDirectSuperheavyRuntimeFixture('core-2026', undefined, { engineType });
+            const torso = [...fixture.index.locations.values()].find(location => location.code === 'CT')!;
+            const engineSlots = [...fixture.index.slots.values()]
+                .filter(slot => slot.locationId === torso.id && slot.componentIds.some(id => {
+                    const component = fixture.index.components.get(id);
+                    return component?.kind === 'system' && component.systemType === 'Engine';
+                }))
+                .sort((left, right) => left.slotIndex - right.slotIndex);
+            for (const slot of engineSlots.slice(0, 2)) {
+                expect(fixture.instance.dispatch({
+                    type: 'apply-mek-critical-roll',
+                    locationId: torso.id,
+                    results: [1, slot.slotIndex + 1],
+                    target: 'committed',
+                }).accepted).toBeTrue();
+            }
+            return { engineSlots: engineSlots.length, destroyed: fixture.instance.query().destroyed() };
+        };
+
+        expect(afterTwoEngineHits('Compact')).toEqual({ engineSlots: 2, destroyed: true });
+        expect(afterTwoEngineHits('Fusion')).toEqual({ engineSlots: 3, destroyed: false });
+    });
+
     it('projects rapid-fire mode labels and total firing heat from the entity modes', () => {
         const fixture = createDirectMekRuntimeFixture();
         const ac = fixture.equipmentComponent('Test AC');
@@ -1604,7 +1631,7 @@ describe('direct Mek entity/runtime projections', () => {
         const row = panel.components.find(component => component.componentId === ordinaryLauncher.id)!;
         const target = projectTargetingTarget(panel.targets[0]!, panel.ruleset);
         expect(projectWeaponTargetPresentation(
-            row, target, panel.crew.gunnery, null, panel.ruleset,
+            row, target, stationaryAttack(panel.crew.gunnery), panel.ruleset,
         ).weaponToHitModifier).toBe(0);
     });
 
@@ -1677,7 +1704,7 @@ describe('direct Mek entity/runtime projections', () => {
         const target = projectTargetingTarget(panel.targets[0], panel.ruleset);
         expect(target.tnModifier).toBe(3);
         expect(projectWeaponTargetPresentation(
-            row, target, panel.crew.gunnery, null, panel.ruleset,
+            row, target, stationaryAttack(panel.crew.gunnery), panel.ruleset,
         ).targetModifier).toBe(0);
     });
 
@@ -2772,3 +2799,17 @@ describe('direct Mek entity/runtime projections', () => {
         }
     });
 });
+
+/** An attacker with no declared movement, standard piloting, and an available C3 link. */
+function stationaryAttack(gunnery: number): WeaponAttackContext {
+    return Object.freeze({
+        gunnery,
+        pilotingSkill: 5,
+        movementMode: null,
+        allowExtremeRange: false,
+        missingMovementModifier: false,
+        attackModifierBreakdown: Object.freeze([]),
+        c3DegradationSource: 'none',
+        c3Available: true,
+    });
+}

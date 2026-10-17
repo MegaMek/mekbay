@@ -44,11 +44,11 @@
   </g>
   <g data-mekbay-paperdoll-overlay="armor" font-family="Roboto, Arial, sans-serif" font-weight="700" pointer-events="none">
     <g class="diagram-location-label">
-      <text x="60.2 64.597 68.334 72.169 74.59 78.326 81.249 83.53 86.737 90.506 93.43 96.981 100.75 103.032 107.667 111.404 115.174" y="344.72" font-size="6.626">Center Torso Rear</text>
-      <text x="144.482 147.689 151.458 154.381 157.933 161.702 163.983 168.619 172.355 176.124" y="325.769" font-size="6.626">Torso Rear</text>
+      <text y="344.72" font-size="6.626" x="118.456" text-anchor="end">Center Torso Rear</text>
+      <text y="325.769" font-size="6.626" x="161.517" text-anchor="middle">Torso Rear</text>
       <text x="153.792" y="316.844" font-size="6.626">Right</text>
       <text x="26.15" y="316.844" font-size="6.626">Left</text>
-      <text x="14.247 17.454 21.223 24.146 27.698 31.467 33.748 38.384 42.12 45.889" y="325.219" font-size="6.626">Torso Rear</text>
+      <text y="325.219" font-size="6.626" x="31.707" text-anchor="middle">Torso Rear</text>
     </g>
     <g class="diagram-value">
       <text id="textArmor_CTR" x="120.956" y="345.084" font-size="6.626"></text>

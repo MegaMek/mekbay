@@ -27,12 +27,13 @@ isCBTMekForceMember,
 type CBTForceMember,
 } from '../../models/force-member.model';
 import type { EquipmentPanelTarget } from '../../models/runtime/equipment-panel';
-import type {
-MekRecordSheetArmorFace,
-MekRecordSheetCrewPosition,
-MekRecordSheetCriticalSlot,
-MekRecordSheetLocation,
-MekRecordSheetSnapshot,
+import {
+mekRecordSheetSlotLines,
+type MekRecordSheetArmorFace,
+type MekRecordSheetCrewPosition,
+type MekRecordSheetCriticalSlot,
+type MekRecordSheetLocation,
+type MekRecordSheetSnapshot,
 } from '../../models/runtime/mek-record-sheet';
 import type {
 NonMekRecordSheetArmorFace,
@@ -581,7 +582,7 @@ export class TacticalViewComponent {
     }
 
     protected criticalLabel(slot: MekRecordSheetCriticalSlot): string {
-        return slot.components.map(component => component.label).join(' / ') || `Slot ${slot.slotIndex + 1}`;
+        return mekRecordSheetSlotLines(slot).join('\n');
     }
 
     protected criticalIntermediatePips(slot: MekRecordSheetCriticalSlot): readonly number[] {

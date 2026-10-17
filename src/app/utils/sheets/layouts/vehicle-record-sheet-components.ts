@@ -1,15 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, appendInventoryHitModifier, fitInventoryText, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
 import { isBapEquipment } from '../../../models/bap-equipment.model';
 import { artemisKind } from '../../../models/artemis-equipment.model';
 import { isNovaC3Equipment } from '../../../models/c3-network.model';
-import { isCaseEquipment } from '../../../models/case-equipment.model';
 import { isAngelEcmEquipment,isEcmEquipment,isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
-import { weaponQuirkLabels } from '../../../models/entity/utils/weapon-quirks';
 import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/fire-control';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
@@ -25,10 +23,15 @@ import { isJumpJetEquipment,isUmuEquipment } from '../../../models/jump-equipmen
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
 import { sensorEquipmentKind } from '../../../models/sensor-equipment.model';
 import { PaperdollGenerator, type PaperdollPipLayout } from '../paperdoll-generator';
-import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { SvgFrameUtil } from '../svg-frame.util';
+import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory } from '../record-sheet-ammo-rendering';
+import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
+import { recordSheetQuirksText } from '../record-sheet-quirks';
 import { createBattleTechLogo,createCatalystGameLabsLogo } from '../record-sheet-brand';
 import { isRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 import {
+crewSkillValueX,
+CREW_STATE_MENU_SPACE,
 type Box,
 addCrewSkillValue,
 addDiagramHeading,
@@ -36,11 +39,16 @@ addFrame,
 addLine,
 addText,
 addWrappedText,
+appendBattleValue,
 appendLegacyIdentityAnchors,
 circle,
-constructionMaterialSubtitle,
+armorDiagramSubtitle,
 decoratePaperdollPips,
-drawDamagePanelIntoGroup,
+addTemplateCaption,
+appendDataPanelFacts,
+appendDataPanelType,
+drawCriticalDamageBox,
+drawDamageLocationGrid,
 formatNumber,
 formatMovementWithMaximum,
 formatRecordSheetTonnage,
@@ -50,6 +58,7 @@ paperdollPipOptions,
 readViewBox,
 recordSheetAmmoProfile,
 recordSheetInventoryWeapons,
+recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
@@ -108,8 +117,9 @@ export function drawCompactVehicleChrome(
     const logo = createBattleTechLogo();
     logo.setAttribute('transform', `scale(${formatNumber(0.791 * scale)})`);
     group.appendChild(logo);
+    // The same title column as drawPageChrome's full-page masthead.
     addText(group, title, 192 * scaleX, 63.357 * scaleY, {
-        class: 'compact-vehicle-title', size: 11.59 * scale, weight: 700, anchor: 'middle',
+        class: 'compact-vehicle-title', size: 11.59 * scale, weight: 700, anchor: 'middle', maxWidth: 260 * scaleX,
     });
 
     svg.appendChild(group);
@@ -136,26 +146,14 @@ export function drawCompactVehicleDataPanel(
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy * verticalContentScale;
     const font = (value: number): number => value * fontScale;
-    const typeLabel = addText(content, 'Type:', x(3), y(28), { size: font(9.67), weight: 700 });
-    typeLabel.setAttribute('textLength', formatNumber(x(21.401)));
-    typeLabel.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-    const type = addText(content, entity.displayName(), x(29.229), y(28), {
-        size: font(9.67), weight: 700, maxWidth: x(187),
-    });
-    type.id = 'type';
-    type.setAttribute('data-mekbay-field', 'display-name');
+    appendDataPanelType(content, entity, { x, y, font }, 3);
     addText(content, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
-    const movementRows: readonly [string, string, string, string][] = [
-        ['Cruising:', String(entity.walkMP()), 'mpWalk', 'walk'],
-        ['Flanking:', formatMovementWithMaximum(entity.runMP(), entity.maxRunMP()), 'mpRun', 'run'],
-    ];
-    movementRows.forEach(([label, value, id, field], index) => {
-        const baseline = y(47 + index * 9);
-        addText(content, label, x(6), baseline, { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const node = addText(content, value, x(56), baseline, { size: font(RECORD_SHEET_FONT.body), anchor: 'middle' });
-        node.id = id;
-        node.setAttribute('data-mekbay-field', field);
-    });
+    appendDataPanelFacts(content, [
+        { label: 'Cruising:', value: String(entity.walkMP()), baseline: 47, id: 'mpWalk', field: 'walk',
+            labelX: 6, valueX: 56, anchor: 'middle' },
+        { label: 'Flanking:', value: formatMovementWithMaximum(entity.runMP(), entity.maxRunMP()), baseline: 56,
+            id: 'mpRun', field: 'run', labelX: 6, valueX: 56, anchor: 'middle' },
+    ], { x, y, font });
     if (entity.jumpMP() > 0) {
         addText(content, 'Jumping:', x(74), y(56), { size: font(7), weight: 700, maxWidth: x(29) });
         const jump = addText(content, String(entity.jumpMP()), x(108), y(56), { size: font(RECORD_SHEET_FONT.body), anchor: 'middle' });
@@ -164,26 +162,18 @@ export function drawCompactVehicleDataPanel(
     }
     const engine = entity.mountedEngine();
     const weightInKilograms = entity.weightClass() === 'Small Support';
-    const facts: readonly [string, string, number, string?, string?][] = [
-        ['Tonnage:', formatRecordSheetTonnage(entity.tonnage(), weightInKilograms), 38, 'tonnage', 'tonnage'],
-        ['Tech Base:', formatTechBase(entity.techBase(), entity.mixedTech()), 47, 'techBase', 'tech-base'],
-        ['Role:', entity.role() || '—', 56, 'role', 'role'],
-        ['Engine Type:', entity.isSupportVehicle() ? engine.type() : `${engine.rating} ${engine.type()}`, 65, 'engineType', undefined],
-    ];
-    facts.forEach(([label, value, baseline, id, field]) => {
-        addText(content, label, x(115.7), y(baseline), { size: font(RECORD_SHEET_FONT.body), weight: 700, maxWidth: x(40.5) });
-        const node = addText(content, value, x(158.24), y(baseline), { size: font(RECORD_SHEET_FONT.body), maxWidth: x(58) });
-        if (id) node.id = id;
-        if (field) node.setAttribute('data-mekbay-field', field);
-        if (id === 'tonnage' && weightInKilograms) node.setAttribute('data-mekbay-weight-unit', 'kg');
-    });
-    addText(content, 'Movement Type:', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, maxWidth: x(56) });
-    const motive = addText(content, entity.getMotiveTypeAsString() ?? entity.entityType, x(64.129), y(65), {
-        size: font(RECORD_SHEET_FONT.body), maxWidth: x(47),
-    });
-    motive.id = 'movementType';
+    appendDataPanelFacts(content, [
+        { label: 'Tonnage:', value: formatRecordSheetTonnage(entity.tonnage(), weightInKilograms), baseline: 38,
+            id: 'tonnage', field: 'tonnage', ...(weightInKilograms ? { weightUnit: 'kg' as const } : {}) },
+        { label: 'Tech Base:', value: formatTechBase(entity.techBase(), entity.mixedTech()), baseline: 47, id: 'techBase', field: 'tech-base' },
+        { label: 'Role:', value: entity.role() || '—', baseline: 56, id: 'role', field: 'role' },
+        { label: 'Engine Type:', value: entity.isSupportVehicle() ? engine.type() : `${engine.rating} ${engine.type()}`,
+            baseline: 65, id: 'engineType' },
+        { label: 'Movement Type:', value: entity.getMotiveTypeAsString() ?? entity.entityType, baseline: 65,
+            id: 'movementType', labelX: 6, valueX: 64.129, maxWidth: 47 },
+    ], { x, y, font });
     addLine(content, x(3), y(71.462), box.width - x(3), y(71.462), '#111', 0.8 * fontScale);
-    addText(content, 'Weapons & Equipment Inventory', x(3), y(80.462), { size: font(RECORD_SHEET_FONT.section), weight: 700, maxWidth: x(150) });
+    addTemplateCaption(content, 'Weapons & Equipment Inventory', x(3), y(80.462), { size: font(RECORD_SHEET_FONT.section), weight: 700 });
     addText(content, '(hexes)', x(171.132), y(80.462), { size: font(RECORD_SHEET_FONT.inventory) });
     const headings: readonly [string, number, 'start' | 'middle'][] = [
         ['Type', 8.41, 'start'], ['Loc', 100.38, 'middle'], ['Dmg', 111.2, 'start'],
@@ -196,9 +186,10 @@ export function drawCompactVehicleDataPanel(
     appendCompactVehicleInventory(content, entity, { x, y, font }, box, presentation);
     const footerOffset = presentation.footerBaselineOffset ?? 0;
     addLine(content, x(3), y(257.643 + footerOffset), box.width - x(3), y(257.643 + footerOffset), '#111', 0.8 * fontScale);
-    addText(content, 'BV:', x(13.845), y(268.143 + footerOffset), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-    const bv = addText(content, formatNumber(entity.battleValue()), x(28.927), y(268.143 + footerOffset), { size: font(RECORD_SHEET_FONT.body) });
-    bv.id = 'bv';
+    appendBattleValue(content, entity.battleValue(), {
+        x: x(13.845), valueX: x(28.927), y: y(268.143 + footerOffset), size: font(RECORD_SHEET_FONT.body),
+    });
+    appendDataPanelEraIcon(svg, content, entity.year(), { x, y }, 260 + footerOffset);
     appendLegacyIdentityAnchors(content, entity, box);
     return group;
 }
@@ -229,9 +220,8 @@ function appendCompactVehicleInventory(
         componentIds: [] as readonly string[],
     }));
     const ammo = recordSheetAmmoProfile(entity);
-    const quirks = presentation.showQuirks === false ? '' : [...orderedVehicleQuirkNames(entity), ...weaponQuirkLabels(entity)].join(', ');
+    const quirks = recordSheetQuirksText(entity, presentation.showQuirks);
     const features = compactVehicleFeatureText(entity);
-    const caseProtected = entity.equipment().some(mount => isCaseEquipment(mount.equipment));
     const detailRows = [
         ...(features ? [{
             text: `Features ${features}`,
@@ -240,7 +230,7 @@ function appendCompactVehicleInventory(
             italic: false,
         }] : []),
         ...(quirks ? [{
-            text: `Quirks: ${quirks}`,
+            text: quirks,
             size: 6.084,
             class: 'unitQuirks',
             maxLines: 2,
@@ -284,12 +274,6 @@ function appendCompactVehicleInventory(
     const physicalStart = y(firstDetailBaseline - (detailRows.length ? 13.689 : 0))
         - Math.max(0, metrics.content.physicalRows.reduce((a, b) => a + b, 0) - 1) * weaponStep;
     const inventory = svgElement('g');
-    setAttributes(inventory, {
-        'data-ammo-inventory': '',
-        'data-top': y(101.162) - weaponStep * 0.82,
-        'data-bottom': physical.length > 0 ? physicalStart - weaponStep
-            : y(firstDetailBaseline - (detailRows.length > 0 ? 9.126 : 0)),
-    });
     group.appendChild(inventory);
     let displayLine = 0;
     weapons.forEach((row, index) => {
@@ -307,21 +291,9 @@ function appendCompactVehicleInventory(
             transparentRect(x(position), baseline - weaponStep, x(13.4), weaponStep,
                 `inventoryEntryButton ${className}`),
         ));
-        const badgeY = baseline - weaponStep + weaponStep * 0.08;
-        const badgeHeight = weaponStep * 0.84;
         appendInventoryHitModifier(entry, baseline, box.width / 220.4, weaponStep);
-        const targetTnRect = svgElement('rect');
-        setAttributes(targetTnRect, {
-            x: x(158.5), y: badgeY, width: x(12), height: badgeHeight,
-            fill: '#fff', stroke: '#000', 'stroke-width': 0.8,
-            class: 'targetTn-rect', display: 'none',
-        });
-        entry.appendChild(targetTnRect);
         drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, 8.41, weaponStep);
-        const targetTn = addText(entry, '', x(164.5), badgeY + badgeHeight * 0.73, {
-            class: 'targetTn-text', size: font(5), weight: 700, anchor: 'middle',
-        });
-        targetTn.setAttribute('display', 'none');
+        appendInventoryTargetNumber(entry, x(164.5), baseline, box.width / 220.4, weaponStep);
         if (row.linkedEquipment) {
             const linked = svgElement('g');
             setAttributes(linked, { class: 'inventoryEntry linked', id: `generated-vehicle-linked-row@${index}` });
@@ -368,9 +340,13 @@ function appendCompactVehicleInventory(
         });
         inventory.appendChild(cargo);
     }
-    inventory.setAttribute('data-content-bottom', String(y(101.162) + Math.max(0, displayLine - 1) * weaponStep));
+    markAmmoInventory(inventory, {
+        top: y(101.162) - weaponStep * 0.82,
+        bottom: physical.length > 0 ? physicalStart - weaponStep : y(firstDetailBaseline - (detailRows.length > 0 ? 9.126 : 0)),
+        contentBottom: y(101.162) + Math.max(0, displayLine - 1) * weaponStep,
+    });
     const physicalRows = svgElement('g');
-    physicalRows.setAttribute('data-ammo-before', '');
+    markAmmoBefore(physicalRows);
     group.appendChild(physicalRows);
     physical.forEach((row, index) => {
         const baseline = physicalStart + metrics.content.physicalRows.slice(0, index).reduce((a, b) => a + b, 0) * weaponStep;
@@ -395,28 +371,8 @@ function appendCompactVehicleInventory(
         width: box.width - x(17),
         fontSize: font(RECORD_SHEET_FONT.inventory),
         lineHeight: weaponStep,
-        prefix: `Ammo${caseProtected ? ' (CASE)' : ''}:`,
+        prefix: recordSheetNonMekAmmoPrefix(entity),
     });
-}
-
-/**
- * MegaMek renders positive quirks before negative quirks and keeps Oversized,
- * which was added later to its option catalog, at the end of the negative list.
- * Preserve source order for every other quirk so custom catalogs remain stable.
- */
-function orderedVehicleQuirkNames(entity: BaseEntity): readonly string[] {
-    return entity.applicableQuirks()
-        .map((entry, sourceIndex) => ({ entry, sourceIndex }))
-        .sort((left, right) => {
-            const leftPositive = left.entry.quirk.type === 'positive';
-            const rightPositive = right.entry.quirk.type === 'positive';
-            if (leftPositive !== rightPositive) return leftPositive ? -1 : 1;
-            const leftOversized = left.entry.quirk.key === 'oversized';
-            const rightOversized = right.entry.quirk.key === 'oversized';
-            if (leftOversized !== rightOversized) return leftOversized ? 1 : -1;
-            return left.sourceIndex - right.sourceIndex;
-        })
-        .map(({ entry }) => entry.quirk.name);
 }
 
 function drawCompactVehicleInventoryFields(
@@ -561,31 +517,33 @@ export function drawCompactVehicleCrewPanel(
     presentation: CompactVehicleCrewPresentation,
 ): void {
     const group = addFrame(svg, 'CREW DATA', box, {
-        cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     const state = transparentRect(2, 17, box.width - 4, box.height - 20, 'crewStateButton');
     state.setAttribute('crewId', '0');
     group.insertBefore(state, group.children[2] ?? null);
 
     addText(group, 'Crew:', 3, 30, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
-    const name = addText(group, '', 23.036, 30, { size: RECORD_SHEET_FONT.inventory, maxWidth: box.width - 26 });
+    // The name line leaves the crew-state menu room before the right gutter.
+    const nameEnd = SvgFrameUtil.innerRight(box.width) - 2 - CREW_STATE_MENU_SPACE;
+    const name = addText(group, '', 23.036, 30, { size: RECORD_SHEET_FONT.inventory, maxWidth: nameEnd - 23.036 });
     name.id = 'pilotName0';
-    const nameButton = transparentRect(21, 20, box.width - 23, 12, 'crewNameButton');
+    const nameButton = transparentRect(21, 20, nameEnd - 21, 12, 'crewNameButton');
     nameButton.setAttribute('crewId', '0');
     nameButton.setAttribute('textElement', name.id);
     group.appendChild(nameButton);
-    addLine(group, 23.036, 31, box.width - 3, 31, '#111', 0.72);
+    addLine(group, 23.036, 31, nameEnd, 31, '#111', 0.72);
 
-    addText(group, 'Gunnery Skill:', 3, 42, { size: RECORD_SHEET_FONT.inventory, weight: 700, maxWidth: 39.172 });
-    const gunnery = addCrewSkillValue(group, '4', 49.592, 42);
+    const gunneryLabel = addText(group, 'Gunnery Skill:', 3, 42, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
+    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, 49.592), 42);
     gunnery.id = 'gunnerySkill0';
     const gunButton = transparentRect(46, 33, 24, 12, 'crewSkillButton');
     gunButton.setAttribute('crewId', '0');
     gunButton.setAttribute('skill', 'gunnery');
     group.appendChild(gunButton);
 
-    addText(group, 'Driving Skill:', 72.8, 42, { size: RECORD_SHEET_FONT.inventory, weight: 700, maxWidth: 35.365 });
-    const piloting = addCrewSkillValue(group, '5', 119.392, 42);
+    const drivingLabel = addText(group, 'Driving Skill:', 72.8, 42, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
+    const piloting = addCrewSkillValue(group, '5', crewSkillValueX(drivingLabel, 119.392), 42);
     piloting.id = 'pilotingSkill0';
     const pilotButton = transparentRect(116, 33, 27, 12, 'crewSkillButton');
     pilotButton.setAttribute('crewId', '0');
@@ -594,20 +552,12 @@ export function drawCompactVehicleCrewPanel(
 
     const isVtol = presentation.airborne;
     drawVehicleDamageCheckbox(group, isVtol ? 'copilot_hit' : 'commander_hit', 57.52, 58, '+1');
-    addText(group, isVtol ? 'Co-Pilot Hit' : 'Commander Hit', 3, 64.4, {
-        size: RECORD_SHEET_FONT.inventory,
-        maxWidth: isVtol ? 30.632 : 44.689,
-    });
+    // Captions keep their natural spacing; each fits before the next column.
+    addText(group, isVtol ? 'Co-Pilot Hit' : 'Commander Hit', 3, 64.4, { size: RECORD_SHEET_FONT.inventory });
     drawVehicleDamageCheckbox(group, isVtol ? 'pilot_hit' : 'driver_hit', 130.32, 58, '+2');
-    addText(group, isVtol ? 'Pilot Hit' : 'Driver Hit', 75.8, 64.4, {
-        size: RECORD_SHEET_FONT.inventory,
-        maxWidth: isVtol ? 21.789 : 26.819,
-    });
-    addText(group, isVtol ? 'Modifier to all to-hit rolls' : 'Modifier to all skill rolls', 3, 72.4, {
-        size: 4.83,
-        maxWidth: 45.035,
-    });
-    addText(group, 'Modifier to Driving skill rolls', 75.8, 72.4, { size: 4.83, maxWidth: 54.512 });
+    addText(group, isVtol ? 'Pilot Hit' : 'Driver Hit', 75.8, 64.4, { size: RECORD_SHEET_FONT.inventory });
+    addText(group, isVtol ? 'Modifier to all to-hit rolls' : 'Modifier to all skill rolls', 3, 72.4, { size: 4.83 });
+    addText(group, 'Modifier to Driving skill rolls', 75.8, 72.4, { size: 4.83 });
 
 }
 
@@ -618,7 +568,7 @@ export function drawCompactVehicleCriticalPanel(
     airborne: boolean,
 ): void {
     const group = addFrame(svg, 'CRITICAL DAMAGE', box, {
-        cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
 
     const isVtol = airborne;
@@ -673,7 +623,14 @@ export function drawCompactVehicleCriticalPanel(
     appendVehicleDamageTrackBindings(svg, entity);
 }
 
-function drawVehicleLabeledDamageCheckbox(
+/** Front armor by sheet location code; the first code a hull uses wins, absent locations read 0. */
+export function vehicleArmorReader(entity: BaseEntity): (...codes: readonly string[]) => number {
+    const values = new Map(entity.damageLocations()
+        .map(location => [location.sheetCode ?? location.code, location.armor.front] as const));
+    return (...codes) => codes.map(code => values.get(code)).find(value => value !== undefined) ?? 0;
+}
+
+export function drawVehicleLabeledDamageCheckbox(
     group: SVGGElement,
     label: string,
     sheetId: string,
@@ -686,7 +643,7 @@ function drawVehicleLabeledDamageCheckbox(
     drawVehicleDamageCheckbox(group, sheetId, x + checkboxOffset, y);
 }
 
-function drawVehicleDamageTrackRow(
+export function drawVehicleDamageTrackRow(
     group: SVGGElement,
     prefix: string,
     startX: number,
@@ -698,33 +655,15 @@ function drawVehicleDamageTrackRow(
     });
 }
 
-function drawVehicleDamageCheckbox(
+/** Ground and naval vehicle templates use 8-point boxes. */
+export function drawVehicleDamageCheckbox(
     group: SVGGElement,
     sheetId: string,
     x: number,
     y: number,
     modifier?: string,
 ): void {
-    const control = svgElement('rect');
-    control.id = sheetId;
-    setAttributes(control, {
-        x,
-        y,
-        width: 8,
-        height: 8,
-        rx: 1.315,
-        fill: 'none',
-        stroke: '#000',
-        'stroke-width': 0.96,
-        class: 'critLoc criticalPip',
-    });
-    control.setAttribute('critId', sheetId);
-    group.appendChild(control);
-    if (modifier) addText(group, modifier, x + 4, y + 6, {
-        size: 5.7,
-        anchor: 'middle',
-        maxWidth: 6.5,
-    }).style.pointerEvents = 'none';
+    drawCriticalDamageBox(group, sheetId, { x, y, width: 8, height: 8 }, { text: modifier, size: 5.7 });
 }
 
 export function appendVehicleDamageTrackBindings(svg: SVGSVGElement, entity: BaseEntity): void {
@@ -781,13 +720,10 @@ export async function drawCompactVehicleDiagram(
     const group = svgElement('g');
     group.setAttribute('class', 'vehicle-paperdoll');
     group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
-    const armor = entity.uniformArmor()?.armor;
-    const armorName = entity.isSupportVehicle() && armor?.armorType.startsWith('SV_BAR_')
-        ? `BAR: ${armor.bar}` : armor?.name;
     addDiagramHeading(
         group,
         'ARMOR DIAGRAM',
-        constructionMaterialSubtitle(armorName, 'Armor', 'Patchwork Armor'),
+        armorDiagramSubtitle(entity),
         box.width,
         0,
         { subtitleId: 'armorType' },
@@ -852,7 +788,7 @@ export async function drawCompactVehicleDiagram(
     }
     const fallback = svgElement('g');
     fallback.setAttribute('transform', 'translate(0 27)');
-    drawDamagePanelIntoGroup(fallback, entity, box.width, box.height - 27);
+    drawDamageLocationGrid(fallback, entity.damageLocations(), { x: 6, y: 23, width: box.width - 12, height: box.height - 55 }, 3);
     group.appendChild(fallback);
     appendVehicleDiagramCatalyst(group, box, presentation.catalystY);
     svg.appendChild(group);

@@ -576,23 +576,15 @@ function criticalExplosionSource(
     const rules = gameRulesFor(ruleset);
     const delayed = delayedExplosionSource(entity, index, ruleset, runtime, slot, target);
     if (delayed) return delayed;
+    const ammo = slotAmmoExplosionSource(index, ruleset, runtime, slot);
+    if (ammo) return ammo;
 
     for (const componentId of slot.componentIds) {
         const component = index.components.get(componentId);
         if (component?.kind !== 'equipment' || !component.mount.equipment) continue;
         const equipment = component.mount.equipment;
         const previousHits = componentCriticalHits(index, runtime, componentId, target);
-        if (equipment instanceof AmmoEquipment) {
-            const loadout = runtime.ammoLoadout(componentId);
-            const ammo = loadout?.equipment ?? equipment;
-            const remaining = runtime.remainingAmmo(componentId);
-            const rawDamage = ammo.ammoType === 'COOLANT_POD'
-                ? (remaining > 0 ? (ruleset === 'core-2026' ? 2 : 10) : 0)
-                : ammo.isExplosive() ? remaining * ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo) : 0;
-            if (rawDamage > 0) return explosionSource(ammo.name, rawDamage, rules.getMekInternalExplosionPilotHits());
-            continue;
-        }
-        if (previousHits > 0) continue;
+        if (equipment instanceof AmmoEquipment || previousHits > 0) continue;
         if (equipment instanceof WeaponEquipment) {
             const hotLoadedAmmo = hotLoadedAmmoForWeapon(index, runtime, componentId, criticalPerspective(target));
             if (hotLoadedAmmo.length > 0) {
@@ -652,6 +644,34 @@ function criticalExplosionSource(
         if (rawDamage > 0) return explosionSource(equipment.name, rawDamage, rules.getMekInternalExplosionPilotHits());
     }
     return null;
+}
+
+/**
+ * One explosion for all ammunition in the slot. A superheavy slot can hold two bins
+ * (IO:AE p. 155), and a critical hit there detonates both together.
+ */
+function slotAmmoExplosionSource(
+    index: MekRuntimeIndex,
+    ruleset: CBTRuleset,
+    runtime: MekCriticalRuntimeViewV2,
+    slot: MekIndexedCriticalSlot,
+): ExplosionSource | null {
+    const bins = slot.componentIds.flatMap(componentId => {
+        const equipment = index.components.get(componentId)?.mount?.equipment;
+        if (!(equipment instanceof AmmoEquipment)) return [];
+        const ammo = runtime.ammoLoadout(componentId)?.equipment ?? equipment;
+        const remaining = runtime.remainingAmmo(componentId);
+        const rawDamage = ammo.ammoType === 'COOLANT_POD'
+            ? (remaining > 0 ? (ruleset === 'core-2026' ? 2 : 10) : 0)
+            : ammo.isExplosive() ? remaining * ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo) : 0;
+        return rawDamage > 0 ? [{ name: ammo.name, rawDamage }] : [];
+    });
+    if (bins.length === 0) return null;
+    return explosionSource(
+        [...new Set(bins.map(bin => bin.name))].join(' + '),
+        bins.reduce((total, bin) => total + bin.rawDamage, 0),
+        gameRulesFor(ruleset).getMekInternalExplosionPilotHits(),
+    );
 }
 
 function delayedExplosionSource(

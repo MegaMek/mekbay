@@ -202,6 +202,7 @@ class MultilineDropdownPanelComponent {
 @Component({
     selector: 'multiline-dropdown',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.inline]': `appearance() === 'inline'` },
     template: `
         <div class="multiline-dropdown">
             <button
@@ -278,6 +279,22 @@ class MultilineDropdownPanelComponent {
 
         .multiline-dropdown-trigger.destroyed {
             color: var(--damage-color);
+        }
+
+        /* Inline: a value inside running text, showing only the label and its chevron. */
+        :host(.inline) .multiline-dropdown-trigger {
+            padding: 0;
+            font: inherit;
+            line-height: inherit;
+            transition: color 0.2s;
+        }
+
+        :host(.inline) .multiline-dropdown-trigger:is(:hover, :focus-visible):not(:disabled) {
+            color: var(--bt-yellow);
+        }
+
+        :host(.inline) .multiline-dropdown-arrow {
+            --chevron-size: 9px;
         }
 
         .multiline-dropdown-label {
@@ -369,6 +386,8 @@ export class MultilineDropdownComponent implements OnDestroy {
     readonly controlId = input(this.instanceId);
     readonly disabled = input(false);
     readonly expandPanelToContent = input(false);
+    /** `inline` drops the field styling so the value reads as part of the surrounding text. */
+    readonly appearance = input<'field' | 'inline'>('field');
 
     readonly valueChange = output<string>();
     readonly optionSelected = output<MultilineDropdownOption>();

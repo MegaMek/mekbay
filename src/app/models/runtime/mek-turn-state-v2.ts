@@ -15,6 +15,7 @@ import {
     serializeUnitCover,
     type UnitCover,
 } from '../unit-cover.model';
+import { serializeSharedTurnFacts } from './cbt-unit-runtime';
 import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export const MAX_MEK_TURN_COLLECTION_ENTRIES = 256;
@@ -206,10 +207,7 @@ export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTur
     const turn = canonicalizeMekTurnStateV2(value);
     return Object.freeze({
         schemaVersion: 1 as const,
-        ...(turn.turnCounter === 0 ? {} : { turnCounter: turn.turnCounter }),
-        ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
-        ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
-        ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...serializeSharedTurnFacts(turn),
         ...(turn.acknowledgedHeatSources.size === 0 ? {} : {
             acknowledgedHeatSources: Object.freeze([...turn.acknowledgedHeatSources]
                 .map(([sourceId, signature]) => Object.freeze({ sourceId, signature }))),
@@ -217,11 +215,6 @@ export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTur
         ...(turn.heatDissipationConsumed === 0
             ? {}
             : { heatDissipationConsumed: turn.heatDissipationConsumed }),
-        ...(turn.spotting ? { spotting: true as const } : {}),
-        ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
-        ...(turn.endTurnCheckpoint === undefined
-            ? {}
-            : { endTurnCheckpoint: turn.endTurnCheckpoint }),
         ...(turn.pendingFallConsequences === undefined
             ? {}
             : { pendingFallConsequences: turn.pendingFallConsequences }),

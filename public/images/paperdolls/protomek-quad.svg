@@ -63,7 +63,7 @@
             <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.33199406px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162644,0,-0.19081282,-0.98162644,488.9417,626.3481)"><tspan x="35.990208" y="9.820631">Torso</tspan><tspan x="38.034908" y="15.885423">Legs</tspan></text>
           </g>
           <g transform="translate(-4.8002987,23.399537)">
-            <text data-protomek-main-gun="1" style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:3.58099556px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162643,0,-0.19081285,-0.98162643,523.5285,662.6363)"><tspan x="0 3.6060627" y="0">Main Gun</tspan></text>
+            <text data-protomek-main-gun="1" style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:3.58099556px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162643,0,-0.19081285,-0.98162643,523.5285,662.6363)"><tspan y="0" x="8.023" text-anchor="middle">Main Gun</tspan></text>
           </g>
           <g transform="translate(6.1999059,16.600156)">
             <text style="font-variant:normal;font-weight:600;font-stretch:normal;font-size:4.33199406px;font-family:Eurostile;writing-mode:lr-tb;fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none" transform="matrix(0.98162644,0,-0.19081282,-0.98162644,533.5791,653.47)"><tspan x="0" y="0">Head</tspan></text>

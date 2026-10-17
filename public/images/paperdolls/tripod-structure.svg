@@ -184,20 +184,20 @@
   </g>
   <g data-mekbay-paperdoll-overlay="structure" font-family="Roboto, Arial, sans-serif" font-weight="700" pointer-events="none">
     <g class="diagram-location-label">
-      <text x="63.266 67.522 70.729 73.962" y="16.04" font-size="5.686">Head</text>
-      <text x="96.094 99.867 103.073 106.365 108.441 111.648" y="131.548" font-size="5.686">Center</text>
-      <text x="97.733 100.486 103.72 106.229 109.275" y="139.901" font-size="5.686">Torso</text>
-      <text x="12.86 16.026 19.232 20.946" y="82.61" font-size="5.686">Left</text>
-      <text x="12.133 16.021 18.528" y="90.962" font-size="5.686">Arm</text>
-      <text x="146.364 150.342 151.562 154.813 158.105" y="83.054" font-size="5.686">Right</text>
-      <text x="147.471 151.357 153.866" y="91.406" font-size="5.686">Arm</text>
-      <text x="20.259 23.425 26.632 28.345 30.423 32.38 35.132 38.367 40.875 43.922 111.619 115.597 116.817 120.068 123.36 125.436 127.394 130.146 133.38 135.889 138.936" y="24.102" font-size="5.686">Left TorsoRight Torso</text>
-      <text x="23.942 27.109 30.315 32.028" y="139.61" font-size="5.686">Left</text>
-      <text x="24.209 27.375 30.581" y="147.964" font-size="5.686">Leg</text>
-      <text x="57.593 61.366 64.573 67.864 69.941 73.147" y="139.606" font-size="5.686">Center</text>
-      <text x="61.809 64.976 68.182" y="147.959" font-size="5.686">Leg</text>
-      <text x="136.274 140.252 141.472 144.723 148.015" y="139.606" font-size="5.686">Right</text>
-      <text x="138.374 141.541 144.746" y="147.959" font-size="5.686">Leg</text>
+      <text y="16.04" font-size="5.686" x="70.215" text-anchor="middle">Head</text>
+      <text y="131.548" font-size="5.686" x="104.912" text-anchor="middle">Center</text>
+      <text y="139.901" font-size="5.686" x="105.109" text-anchor="middle">Torso</text>
+      <text y="82.61" font-size="5.686" x="18.456" text-anchor="middle">Left</text>
+      <text y="90.962" font-size="5.686" x="18.456" text-anchor="middle">Arm</text>
+      <text y="83.054" font-size="5.686" x="153.677" text-anchor="middle">Right</text>
+      <text y="91.406" font-size="5.686" x="153.677" text-anchor="middle">Arm</text>
+      <text y="24.102" font-size="5.686" x="33.695" text-anchor="middle">Left Torso</text><text y="24.102" font-size="5.686" x="126.882" text-anchor="middle">Right Torso</text>
+      <text y="139.61" font-size="5.686" x="28.948" text-anchor="middle">Left</text>
+      <text y="147.964" font-size="5.686" x="29.019" text-anchor="middle">Leg</text>
+      <text y="139.606" font-size="5.686" x="66.937" text-anchor="middle">Center</text>
+      <text y="147.959" font-size="5.686" x="66.62" text-anchor="middle">Leg</text>
+      <text y="139.606" font-size="5.686" x="143.107" text-anchor="middle">Right</text>
+      <text y="147.959" font-size="5.686" x="143.184" text-anchor="middle">Leg</text>
     </g>
     <g class="diagram-value">
       <text id="textIS_CT" x="105.186" y="149.228" font-size="5.609" text-anchor="middle"></text>

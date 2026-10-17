@@ -10,6 +10,7 @@ import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
     addFrame,
+    appendTspan,
     drawClusterHitsReference,
     drawGeneratedFooter,
     formatNumber,
@@ -26,10 +27,10 @@ import {
     drawCompactVehicleDataPanel,
     drawCompactVehicleDiagram,
     usesSixSideVehicleHull,
+    vehicleArmorReader,
 } from './vehicle-record-sheet-components';
 import { drawVehicleReferenceTables } from './vehicle-record-sheet-reference-tables';
 import { drawVtolReferenceTables } from './vtol-record-sheet-reference-tables';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import { isNavalRecordSheetEntity } from './naval-record-sheet-layout';
 
 type CombatVehiclePaperdollFamily = 'vehicle' | 'vtol' | 'wige';
@@ -80,7 +81,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         svg.setAttribute('data-mekbay-vehicle-family', family);
         drawCompactVehicleChrome(svg, compactVehicleSheetTitle(entity));
         const dataBox = at({ x: 0.966, y: 69.857, width: 220.4, height: 283 });
-        const dataGroup = drawCompactVehicleDataPanel(
+        drawCompactVehicleDataPanel(
             svg,
             entity,
             dataBox,
@@ -108,13 +109,6 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         } else {
             addFrame(svg, 'NOTES', at({ x: 230.4, y: 260, width: 145.6, height: 93 }));
         }
-        const dataContent = dataGroup.querySelector<SVGGElement>('.compact-vehicle-data-content') ?? dataGroup;
-        await appendRecordSheetEraIcon(svg, dataContent, entity.year(), {
-            x: 158.563 * dataBox.width / 220.4,
-            y: 260 * dataBox.height / 283,
-            width: 20 * dataBox.width / 220.4,
-            height: 20 * dataBox.height / 283,
-        });
         const diagramBox = { x: Number(svg.getAttribute('width')) - 189, y: 3, width: 189, height: 350 };
         const diagram = await drawCompactVehicleDiagram(
             svg,
@@ -188,7 +182,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'transform',
             `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
         );
-        const armor = this.armorValueReader(entity);
+        const armor = vehicleArmorReader(entity);
         const superheavy = usesSixSideVehicleHull(entity);
         const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
         const hasTurret = isVehicleEntity(entity) && entity.hasTurret();
@@ -210,10 +204,10 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         const frontY = superheavy || dualTurret ? 0 : noTurret ? 13 : 12;
         const rearY = superheavy ? dualTurret ? 280.91 : 282.91 : dualTurret ? 301.512 : noTurret ? 273.91 : 269.91;
         const valueGap = superheavy || dualTurret ? 9.636 : 9.275;
-        this.appendLabelTspan(frontRear, 'Front Armor', 0, frontY);
-        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, frontY + valueGap).id = 'textArmor_FR';
-        this.appendLabelTspan(frontRear, 'Rear Armor', 0, rearY);
-        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, rearY + valueGap).id = 'textArmor_RR';
+        appendTspan(frontRear, 'Front Armor', 0, frontY);
+        appendTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, frontY + valueGap).id = 'textArmor_FR';
+        appendTspan(frontRear, 'Rear Armor', 0, rearY);
+        appendTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, rearY + valueGap).id = 'textArmor_RR';
         labels.appendChild(frontRear);
 
         if (superheavy) {
@@ -255,8 +249,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 'font-size': superheavy ? 8.0431 : 6.77,
                 'font-weight': superheavy ? 700 : 600,
             });
-            this.appendLabelTspan(turretText, 'Turret Armor', 0, superheavy ? 8.431 : 0);
-            this.appendLabelTspan(turretText, formatProtectionCounter(turret), superheavy ? 50.58 : 0,
+            appendTspan(turretText, 'Turret Armor', 0, superheavy ? 8.431 : 0);
+            appendTspan(turretText, formatProtectionCounter(turret), superheavy ? 50.58 : 0,
                 superheavy ? 8.431 : 8.116).id = 'textArmor_TU';
             labels.appendChild(turretText);
         }
@@ -286,8 +280,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 'font-family': 'Roboto', 'font-size': 8.0431, 'font-weight': 700,
             });
             for (const [label, location, labelX, valueX] of side.parts) {
-                this.appendLabelTspan(text, label, labelX, 0);
-                this.appendLabelTspan(text, formatProtectionCounter(armor(location)), valueX, 0).id = `textArmor_${location}`;
+                appendTspan(text, label, labelX, 0);
+                appendTspan(text, formatProtectionCounter(armor(location)), valueX, 0).id = `textArmor_${location}`;
             }
             parent.appendChild(text);
         }
@@ -309,9 +303,9 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'font-size': superheavy ? 8.0431 : 7.0377,
             'font-weight': 700,
         });
-        this.appendLabelTspan(rear, superheavy ? 'Rear' : 'Rear Turret', 0, 0);
-        if (superheavy) this.appendLabelTspan(rear, 'Turret Armor', 0, 8.431);
-        this.appendLabelTspan(rear, formatProtectionCounter(rearArmor), superheavy ? 50.58 : 0, 8.431).id = 'textArmor_RT';
+        appendTspan(rear, superheavy ? 'Rear' : 'Rear Turret', 0, 0);
+        if (superheavy) appendTspan(rear, 'Turret Armor', 0, 8.431);
+        appendTspan(rear, formatProtectionCounter(rearArmor), superheavy ? 50.58 : 0, 8.431).id = 'textArmor_RT';
         parent.appendChild(rear);
 
         const front = svgElement('text');
@@ -324,10 +318,10 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'font-weight': 700,
             'text-anchor': superheavy ? 'end' : 'start',
         });
-        this.appendLabelTspan(front, 'Front', 0, superheavy ? 2 : 0);
-        this.appendLabelTspan(front, superheavy ? 'Turret Armor' : 'Turret', superheavy ? 0 : -1.422,
+        appendTspan(front, 'Front', 0, superheavy ? 2 : 0);
+        appendTspan(front, superheavy ? 'Turret Armor' : 'Turret', superheavy ? 0 : -1.422,
             superheavy ? 10.431 : 8.431);
-        this.appendLabelTspan(front, formatProtectionCounter(frontArmor), superheavy ? 0 : -1.738,
+        appendTspan(front, formatProtectionCounter(frontArmor), superheavy ? 0 : -1.738,
             superheavy ? 18.862 : 16.862).id = 'textArmor_FT';
         parent.appendChild(front);
     }
@@ -339,7 +333,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'transform',
             `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
         );
-        const armor = this.armorValueReader(entity);
+        const armor = vehicleArmorReader(entity);
         if (isVehicleEntity(entity) && entity.hasTurret()) {
             const authored = svgElement('g');
             authored.setAttribute('transform', 'matrix(1.006 0 0 1.006 3.363 11.25) translate(-398.478 -13.05)');
@@ -350,8 +344,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             ] as const) {
                 const text = svgElement('text');
                 text.setAttribute('transform', transform);
-                this.appendLabelTspan(text, name, 0, 0);
-                this.appendLabelTspan(text, formatProtectionCounter(armor(code)), counterX, 0).id = `textArmor_${code}`;
+                appendTspan(text, name, 0, 0);
+                appendTspan(text, formatProtectionCounter(armor(code)), counterX, 0).id = `textArmor_${code}`;
                 authored.appendChild(text);
             }
             for (const [names, code, x, y, gap] of [
@@ -362,8 +356,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             ] as const) {
                 const text = svgElement('text');
                 setAttributes(text, { transform: `translate(${x} ${y})`, 'text-anchor': 'middle' });
-                names.forEach((name, index) => this.appendLabelTspan(text, name, 0, index * gap));
-                this.appendLabelTspan(text, formatProtectionCounter(armor(code)), 0, names.length * gap).id = `textArmor_${code}`;
+                names.forEach((name, index) => appendTspan(text, name, 0, index * gap));
+                appendTspan(text, formatProtectionCounter(armor(code)), 0, names.length * gap).id = `textArmor_${code}`;
                 authored.appendChild(text);
             }
             labels.appendChild(authored);
@@ -378,10 +372,10 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'font-weight': 700,
             'text-anchor': 'middle',
         });
-        this.appendLabelTspan(frontRear, 'Front Armor', 0, 0);
-        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
-        this.appendLabelTspan(frontRear, 'Rear Armor', 0, 280.185);
-        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 289.46).id = 'textArmor_RR';
+        appendTspan(frontRear, 'Front Armor', 0, 0);
+        appendTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
+        appendTspan(frontRear, 'Rear Armor', 0, 280.185);
+        appendTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 289.46).id = 'textArmor_RR';
         labels.appendChild(frontRear);
 
         this.appendVerticalArmorLabel(
@@ -409,9 +403,9 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'font-weight': 700,
             'text-anchor': 'middle',
         });
-        this.appendLabelTspan(rotor, 'Rotor', 0, 0);
-        this.appendLabelTspan(rotor, 'Armor', 0, 8.116);
-        this.appendLabelTspan(rotor, formatProtectionCounter(armor('RO', 'Rotor')), 0, 16.232).id = 'textArmor_RO';
+        appendTspan(rotor, 'Rotor', 0, 0);
+        appendTspan(rotor, 'Armor', 0, 8.116);
+        appendTspan(rotor, formatProtectionCounter(armor('RO', 'Rotor')), 0, 16.232).id = 'textArmor_RO';
         labels.appendChild(rotor);
         group.appendChild(labels);
     }
@@ -423,7 +417,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'transform',
             `scale(${formatNumber(box.width / 189)} ${formatNumber(box.height / 350)})`,
         );
-        const armor = this.armorValueReader(entity);
+        const armor = vehicleArmorReader(entity);
         const frontRear = svgElement('text');
         setAttributes(frontRear, {
             transform: 'matrix(1.036 0 0 1.036 93.221352 40.178744)',
@@ -432,10 +426,10 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'font-weight': 600,
             'text-anchor': 'middle',
         });
-        this.appendLabelTspan(frontRear, 'Front Armor', 0, 0);
-        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
-        this.appendLabelTspan(frontRear, 'Rear Armor', 0, 267.81);
-        this.appendLabelTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 277.085).id = 'textArmor_RR';
+        appendTspan(frontRear, 'Front Armor', 0, 0);
+        appendTspan(frontRear, formatProtectionCounter(armor('FR', 'F')), 0, 9.275).id = 'textArmor_FR';
+        appendTspan(frontRear, 'Rear Armor', 0, 267.81);
+        appendTspan(frontRear, formatProtectionCounter(armor('RR', 'R')), 0, 277.085).id = 'textArmor_RR';
         labels.appendChild(frontRear);
         this.appendVerticalArmorLabel(
             labels,
@@ -463,8 +457,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 'font-weight': 600,
                 'text-anchor': 'middle',
             });
-            this.appendLabelTspan(turretText, 'Turret Armor', 0, 0);
-            this.appendLabelTspan(turretText, formatProtectionCounter(turret), 0, 8.116).id = 'textArmor_TU';
+            appendTspan(turretText, 'Turret Armor', 0, 0);
+            appendTspan(turretText, formatProtectionCounter(turret), 0, 8.116).id = 'textArmor_TU';
             labels.appendChild(turretText);
         }
         group.appendChild(labels);
@@ -487,37 +481,12 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             'font-size': fontSize,
             'font-weight': fontSize === 7.74 ? 600 : 700,
         });
-        const name = this.appendLabelTspan(text, label, 0, 0);
+        const name = appendTspan(text, label, 0, 0);
         if (labelWidth !== undefined) {
             name.setAttribute('textLength', formatNumber(labelWidth));
             name.setAttribute('lengthAdjust', 'spacingAndGlyphs');
         }
-        this.appendLabelTspan(text, formatProtectionCounter(value), valueX, 0).id = `textArmor_${code}`;
+        appendTspan(text, formatProtectionCounter(value), valueX, 0).id = `textArmor_${code}`;
         parent.appendChild(text);
-    }
-
-    private appendLabelTspan(
-        parent: SVGTextElement,
-        value: string,
-        x: number,
-        y: number,
-    ): SVGTSpanElement {
-        const tspan = svgElement('tspan');
-        setAttributes(tspan, { x, y });
-        tspan.textContent = value;
-        parent.appendChild(tspan);
-        return tspan;
-    }
-
-    private armorValueReader(entity: BaseEntity): (...codes: readonly string[]) => number {
-        const values = new Map(entity.damageLocations()
-            .map(location => [location.sheetCode ?? location.code, location.armor.front] as const));
-        return (...codes: readonly string[]): number => {
-            for (const code of codes) {
-                const value = values.get(code);
-                if (value !== undefined) return value;
-            }
-            return 0;
-        };
     }
 }

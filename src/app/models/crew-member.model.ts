@@ -1,6 +1,10 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CBTUnitSnapshot } from './cbt-unit-snapshot';
+import type { CrewPositionId } from './entity/entity-identifiers';
+import { ImmutableIndex } from './entity/immutable-collections';
+
 export const MAX_CREW_WOUNDS = 6;
 export const CRIPPLED_CREW_WOUND_THRESHOLD = 4;
 export const DEFAULT_GUNNERY_SKILL = 4;
@@ -115,6 +119,11 @@ export class CrewMember implements CrewMemberRuntimeState {
         return state !== 'vacant' && state !== 'dead' && state !== 'ejected';
     }
 
+    /** Aboard and not fatally wounded: still takes hits and rolls, even while unconscious. */
+    isAliveAboard(): boolean {
+        return this.isAboard() && !this.isFatallyWounded();
+    }
+
     isCrippled(derivedDead = false): boolean {
         return this.isAboard(derivedDead)
             && this.wounds >= CRIPPLED_CREW_WOUND_THRESHOLD;
@@ -191,4 +200,93 @@ export class CrewMember implements CrewMemberRuntimeState {
                 : { recoveryReadyTurn: this.recoveryReadyTurn }),
         });
     }
+}
+
+/** One crew edit for every unit family; `dead` is the manual Killed switch. */
+export interface CrewStateEdit extends CrewMemberStateUpdate {
+    readonly dead?: boolean;
+}
+
+/** The sparse crew invariant every runtime family and the save codec enforce. */
+export function isSparseCrewMemberState(crew: CrewMemberRuntimeState): boolean {
+    return Number.isSafeInteger(crew.wounds) && crew.wounds >= 0 && crew.wounds <= MAX_CREW_WOUNDS
+        && typeof crew.unconscious === 'boolean'
+        && typeof crew.ejected === 'boolean'
+        && (crew.dead === undefined || (crew.dead === true && crew.wounds === MAX_CREW_WOUNDS))
+        && validRecoveryReadyTurn(crew.recoveryReadyTurn, crew.unconscious)
+        && (crew.wounds > 0 || crew.unconscious || crew.ejected);
+}
+
+/** Applies one crew edit to the sparse crew map; null when the edit is invalid or changes nothing. */
+export function withCrewMemberState(
+    crew: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
+    positionId: CrewPositionId,
+    edit: CrewStateEdit,
+): ReadonlyMap<CrewPositionId, CrewMemberRuntimeState> | null {
+    if (!Number.isSafeInteger(edit.wounds) || edit.wounds < 0 || edit.wounds > MAX_CREW_WOUNDS
+        || typeof edit.unconscious !== 'boolean'
+        || typeof edit.ejected !== 'boolean'
+        || (edit.dead !== undefined && typeof edit.dead !== 'boolean')
+        || !validRecoveryReadyTurn(edit.recoveryReadyTurn, edit.unconscious)) {
+        return null;
+    }
+    const current = CrewMember.from(crew.get(positionId));
+    const next = edit.dead === undefined
+        ? current.withWoundTrackedState(edit)
+        : current.withManualDeath({
+            unconscious: edit.unconscious,
+            ejected: edit.ejected,
+            recoveryReadyTurn: edit.recoveryReadyTurn,
+            dead: edit.dead,
+        });
+    if (current.equals(next)) return null;
+    const result = new Map(crew);
+    if (next.isPristine()) result.delete(positionId);
+    else result.set(positionId, next.toRuntimeState());
+    return new ImmutableIndex(result);
+}
+
+/** A recovery turn is queued only for unconscious crew; null means none is queued. */
+function validRecoveryReadyTurn(value: number | null | undefined, unconscious: boolean): boolean {
+    return value === undefined
+        || (unconscious && (value === null || (Number.isSafeInteger(value) && value >= 0)));
+}
+
+export interface ActiveCrewController {
+    readonly positionId: CrewPositionId;
+    readonly occurrence: number;
+    readonly piloting: number;
+    readonly member: CrewMember;
+}
+
+/**
+ * The crew member who controls the unit: the primary station when able,
+ * otherwise the able member with the best skill. Vacant, ejected, dead, fatally
+ * wounded, and unconscious stations never control; `recoveredPositions` are
+ * unconscious crew whose pending recovery roll already succeeded.
+ */
+export function activeCrewController(
+    snapshot: CBTUnitSnapshot,
+    skill: 'piloting' | 'aeroPiloting',
+    recoveredPositions: ReadonlySet<CrewPositionId> = new Set<CrewPositionId>(),
+): ActiveCrewController | null {
+    const candidates = [...snapshot.index.crewPositions.values()].flatMap(position => {
+        const member = snapshot.query.crewState(position.id);
+        if (!member.isAliveAboard()
+            || member.unconscious && !recoveredPositions.has(position.id)) return [];
+        const assignment = snapshot.crewAssignment.positions.find(candidate =>
+            candidate.positionId === position.id);
+        return [Object.freeze({
+            positionId: position.id,
+            occurrence: position.occurrence,
+            piloting: assignment?.[skill] ?? DEFAULT_PILOTING_SKILL,
+            member,
+        })];
+    });
+    return candidates.find(candidate => candidate.occurrence === 0)
+        ?? candidates.sort((left, right) =>
+            left.piloting - right.piloting
+            || left.occurrence - right.occurrence
+            || left.positionId.localeCompare(right.positionId))[0]
+        ?? null;
 }

@@ -17,7 +17,7 @@ export function commandMayChangeOperationalC3(command: CBTUnitCommand): boolean 
         case 'set-internal-damage':
         case 'damage-track':
         case 'repair-damage-track':
-        case 'set-sensor-damage-level':
+        case 'set-system-damage-level':
         case 'set-component-mode':
         case 'detonate-booby-trap':
         case 'set-stealth-state':
@@ -56,7 +56,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-component-statuses':
         case 'damage-track':
         case 'repair-damage-track':
-        case 'set-sensor-damage-level':
+        case 'set-system-damage-level':
         case 'damage-shield':
         case 'repair-shield':
             return command.target === 'committed';
@@ -66,7 +66,6 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-destroyed':
         case 'set-internal-damage':
         case 'set-armor-damage':
-        case 'set-ammo-spent':
         case 'reset-ammo-loadout':
         // Carried bombs change external-stores and TAG battle value.
         case 'configure-bombs':

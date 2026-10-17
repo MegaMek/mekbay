@@ -126,7 +126,7 @@ describe('bulk record sheet pagination and printing', () => {
                 expect(cleanSheet.getElementById('mpWalk')!.textContent).toBe(pristineWalk);
                 expect(cleanSheet.getElementById('mpRun')!.textContent)
                     .toBe(pristineSheet.getElementById('mpRun')!.textContent);
-                expect(cleanSheet.getElementById('bv')!.textContent).toBe('1200 (1000)');
+                expect(cleanSheet.getElementById('bv')!.textContent).toBe('1,200 (1,000)');
                 const cleanProjection = family === 'Mek'
                     ? force.getMekRecordSheetSnapshot(runtime.instanceId, true)!
                     : force.getNonMekRecordSheetSnapshot(runtime.instanceId, true)!;
@@ -137,7 +137,7 @@ describe('bulk record sheet pagination and printing', () => {
                 expect(runtime.snapshot()).toBe(damagedState);
                 (CBTPrintUtil as unknown as { applyPilotDataPrintOption: (svg: SVGSVGElement, show: boolean, bv: number) => void })
                     .applyPilotDataPrintOption(cleanSheet, false, 1000);
-                expect(cleanSheet.getElementById('bv')!.textContent).toBe('1000');
+                expect(cleanSheet.getElementById('bv')!.textContent).toBe('1,000');
             });
         }
     }
@@ -155,7 +155,8 @@ describe('bulk record sheet pagination and printing', () => {
                     getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),
                     getNonMekRecordSheetSnapshot: () => ({
                         ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(),
-                            CORE_2026_RULESET, 100, 100),
+                            CORE_2026_RULESET,
+                            runtime.query(), 100, 100),
                         editContext: { owner: runtime, state: runtime.snapshot() },
                     }),
                 } as unknown as CBTForce;

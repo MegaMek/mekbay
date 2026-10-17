@@ -16,6 +16,11 @@ import {
 
 export type HeatSinkType = 'Single' | 'Double' | 'Compact' | 'Laser';
 
+/** Heat one sink of this type dissipates: laser heat sinks are double heat sinks. */
+export function heatSinkTypeDissipation(type: HeatSinkType): 1 | 2 {
+  return type === 'Double' || type === 'Laser' ? 2 : 1;
+}
+
 export interface IntegralHeatSinkCapability {
   readonly count: number;
   readonly equipment: MiscEquipment;

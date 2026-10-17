@@ -129,7 +129,7 @@ describe('construction material selections and CASE controls', () => {
         { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
         { provide: DialogRef, useValue: { close: () => {} } },
         { provide: Dialog, useValue: { openDialogs: [] } },
-        { provide: LayoutService, useValue: { windowWidth: signal(1440) } },
+        { provide: LayoutService, useValue: { windowWidth: signal(1440), windowHeight: signal(900) } },
         { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => registry } },
         {
           provide: CustomUnitsService,

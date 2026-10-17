@@ -34,7 +34,7 @@
   }
 
   .inspector-heading:has(.mount-order-controls) {
-    padding-right: 100px;
+    padding-right: 64px;
   }
 
   .inspector-heading h3 {
@@ -282,19 +282,39 @@
     font-weight: 600;
   }
 
+  // A quiet chevron pair beside the close button, styled like it.
   .mount-order-controls {
     position: absolute;
     top: 6px;
-    right: 52px;
+    right: 44px;
     display: flex;
-    gap: 6px;
+    flex-direction: column;
+    height: 40px;
   }
 
-  .mount-order-controls button {
-    width: 26px;
-    height: 26px;
+  .mount-order-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
     padding: 0;
-    font-size: 15px;
+    border: none;
+    background: transparent;
+    color: var(--text-color-secondary);
+    cursor: pointer;
+    transition: color 0.2s ease;
+    --chevron-size: 11px;
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      color: var(--bt-yellow);
+    }
+
+    &:disabled {
+      opacity: 0.25;
+      cursor: default;
+    }
   }
 
   &.mobile {

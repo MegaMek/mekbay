@@ -2,83 +2,143 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
+import { TestTankEntity } from '../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
+import { WeaponEquipment } from '../models/equipment.model';
 import {
-    type ComponentJamDefinition,
-    rapidFireAutocannonSupportsJamming,
+    projectNonMekEquipmentInteractions,
+    selectNonMekEquipmentChoice,
+} from '../models/runtime/cbt-equipment-interactions';
+import { createNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
+import {
+    UACJammingHandler,
     UAC_JAMMED_CHOICE_VALUE,
+    UAC_JAMMING_HANDLER_ID,
 } from '../models/runtime/component-rapid-fire-autocannon';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import type {
     EquipmentInteractionDialogsService,
-    EquipmentInteractionNotifications,
+    EquipmentInteractionInput,
 } from '../models/runtime/equipment-interaction';
-import { UACJammingHandler } from '../models/runtime/component-rapid-fire-autocannon';
+import {
+    createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { componentIdForMount } from '../models/runtime/unit-runtime-index';
+import { asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
+
+function commandContext() {
+    return {
+        toastService: { showToast: jasmine.createSpy('showToast') },
+        dialogsService: { showNoticeHtml: jasmine.createSpy('showNoticeHtml') } as EquipmentInteractionDialogsService,
+    };
+}
+
+function mekJamInput(ruleset: typeof CORE_2026_RULESET | typeof TOTAL_WARFARE_RULESET) {
+    const fixture = createDirectMekRuntimeFixture(ruleset);
+    const component = fixture.equipmentComponent('Test AC');
+    const input: EquipmentInteractionInput = {
+        runtime: fixture.instance,
+        entity: fixture.entity,
+        index: fixture.index,
+        ruleset,
+        owner: { instanceId: fixture.instance.instanceId, encounter: emptyCBTEncounterSnapshot },
+        componentId: component.id,
+        context: {},
+    };
+    return { fixture, component, input };
+}
 
 describe('direct UAC jamming handler', () => {
     it('jams and unjams an Ultra AC under Total Warfare', () => {
-        const fixture = createDirectMekRuntimeFixture(TOTAL_WARFARE_RULESET);
-        const component = fixture.equipmentComponent('Test AC');
-        const equipment = component.mount.equipment;
-        if (!equipment) throw new Error('Test AC equipment is missing');
-        const runtime = fixture.instance;
+        const { fixture, component, input } = mekJamInput(TOTAL_WARFARE_RULESET);
         const handler = new UACJammingHandler();
-        const definition: ComponentJamDefinition = Object.freeze({
-            componentId: component.id,
-            displayName: equipment.name,
-            supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, TOTAL_WARFARE_RULESET),
-        });
-        const toast: EquipmentInteractionNotifications = {
-            showToast: jasmine.createSpy('showToast'),
-        };
-        const dialogs = {
-            showNoticeHtml: jasmine.createSpy('showNoticeHtml'),
-        } as EquipmentInteractionDialogsService;
-        const queryContext = {};
-        const commandContext = { toastService: toast, dialogsService: dialogs };
+        const context = commandContext();
 
-        const jam = handler.getComponentJamChoices(runtime, definition, queryContext)[0]!;
+        const jam = handler.choices(input)[0]!;
         expect(jam).toEqual(jasmine.objectContaining({
             label: 'Jam',
             shortLabel: 'Jam',
             value: UAC_JAMMED_CHOICE_VALUE,
             active: false,
         }));
-        expect(handler.handleComponentJamSelection(runtime, definition, jam, commandContext)).toBeTrue();
-        expect(runtime.query().componentJammed(component.id)).toBeTrue();
-        expect(toast.showToast).toHaveBeenCalledWith('Test AC is jammed', 'error');
+        expect(handler.select(input, jam, context)).toBeTrue();
+        expect(fixture.instance.query().componentJammed(component.id)).toBeTrue();
+        expect(context.toastService.showToast).toHaveBeenCalledWith('Test AC is jammed', 'error');
 
-        const unjam = handler.getComponentJamChoices(runtime, definition, queryContext)[0]!;
+        const unjam = handler.choices(input)[0]!;
         expect(unjam).toEqual(jasmine.objectContaining({
             label: 'Jammed',
             shortLabel: 'Unjam',
             value: 'false',
             active: true,
         }));
-        expect(handler.handleComponentJamSelection(runtime, definition, unjam, commandContext)).toBeTrue();
-        expect(runtime.query().componentJammed(component.id)).toBeFalse();
-        expect(toast.showToast).toHaveBeenCalledWith('Test AC is unjammed', 'info');
+        expect(handler.select(input, unjam, context)).toBeTrue();
+        expect(fixture.instance.query().componentJammed(component.id)).toBeFalse();
+        expect(context.toastService.showToast).toHaveBeenCalledWith('Test AC is unjammed', 'info');
     });
 
     it('ignores Ultra AC jamming under Core rules', () => {
-        const fixture = createDirectMekRuntimeFixture(CORE_2026_RULESET);
-        const component = fixture.equipmentComponent('Test AC');
-        const equipment = component.mount.equipment;
-        if (!equipment) throw new Error('Test AC equipment is missing');
-        const runtime = fixture.instance;
-        const handler = new UACJammingHandler();
-        const definition: ComponentJamDefinition = Object.freeze({
-            componentId: component.id,
-            displayName: equipment.name,
-            supportsJamming: rapidFireAutocannonSupportsJamming(fixture.index, component.id, CORE_2026_RULESET),
-        });
+        const { fixture, component, input } = mekJamInput(CORE_2026_RULESET);
 
-        expect(definition.supportsJamming).toBeFalse();
-        expect(runtime.dispatch({
+        expect(new UACJammingHandler().choices(input)).toEqual([]);
+        expect(fixture.instance.dispatch({
             type: 'set-component-jammed',
-            
-            
             componentId: component.id,
             jammed: true,
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
+    });
+
+    it('offers the same jam control for a non-Mek Rotary AC and only for weapons that can jam', () => {
+        const rotary = new WeaponEquipment({
+            id: 'TestRotaryAC5',
+            name: 'Test Rotary AC/5',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC_ROTARY', rackSize: 5, damage: 5, heat: 1, ranges: [5, 10, 15, 20] },
+        });
+        const autocannon = new WeaponEquipment({
+            id: 'TestAC10',
+            name: 'Test AC/10',
+            type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC', rackSize: 10, damage: 10, heat: 3, ranges: [5, 10, 15, 20] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [rotary.id]: rotary,
+            [autocannon.id]: autocannon,
+        }));
+        entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+        const rotaryId = componentIdForMount(addTestEquipment(entity, rotary, { location: entity.locationOrder[0] }));
+        const autocannonId = componentIdForMount(addTestEquipment(entity, autocannon, { location: entity.locationOrder[0] }));
+        const unit = createNonMekUnit(entity, {
+            uuid: entity.uuid(),
+            instanceId: 'unit:tank-rac-jam',
+            deployment: { id: 'jam-test' },
+            scenario: { id: 'jam-test', ruleset: CORE_2026_RULESET },
+            initialStateProfileId: 'pristine',
+        });
+        const context = commandContext();
+        const jamChoice = () => {
+            const rows = projectNonMekEquipmentInteractions(unit, {}, false);
+            expect(rows.map(row => row.componentId)).toEqual([rotaryId]);
+            return rows[0]!.choices[0]!;
+        };
+
+        const jam = jamChoice();
+        expect(jam).toEqual(jasmine.objectContaining({ interactionKind: 'jam', label: 'Jam', active: false }));
+        expect(jam.command.handlerId).toBe(UAC_JAMMING_HANDLER_ID);
+        expect(selectNonMekEquipmentChoice(unit, jam.command, {}, context)).toBeTrue();
+        expect(unit.query().componentJammed(rotaryId)).toBeTrue();
+        expect(context.toastService.showToast).toHaveBeenCalledWith('Test Rotary AC/5 is jammed', 'error');
+
+        const unjam = jamChoice();
+        expect(unjam).toEqual(jasmine.objectContaining({ label: 'Jammed', shortLabel: 'Unjam', active: true }));
+        expect(selectNonMekEquipmentChoice(unit, unjam.command, {}, context)).toBeTrue();
+        expect(unit.query().componentJammed(rotaryId)).toBeFalse();
+
+        expect(selectNonMekEquipmentChoice(unit, { ...jam.command, componentId: autocannonId }, {}, context))
+            .toBeNull();
+        expect(unit.query().componentJammed(autocannonId)).toBeFalse();
     });
 });

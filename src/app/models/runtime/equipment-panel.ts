@@ -27,7 +27,6 @@ import type {
     AttackerTargetingState,
 } from './attacker-targeting-state';
 import { attackerActionSelection } from './attacker-targeting-state';
-import { mekWeaponAmmoMatches } from './mek-weapon-fire-v2';
 import type { EncounterTargetId, TargetRegistrySnapshot } from './encounter-runtime';
 import type { TnTargetNumberCalculatorState, TnTargetUnitType } from '../target-number-calculator.model';
 import type { MekUnitQueryPort } from './unit-instance';
@@ -39,7 +38,6 @@ import { activeTargetCalculator, type TargetingTarget } from './targeting-target
 import {
     calculateTargetTnModifierBreakdown,
     calculateTargetTnModifier,
-    getDefaultAttackerMovementModifier,
     getTnTargetModifierGroupTotals,
     TN_INDIRECT_FIRE_MODIFIER,
     TN_SKIDDING_ATTACKER,
@@ -53,6 +51,7 @@ import {
     mekAmmoDefaultMunitionKey,
     mekAmmoLoadouts,
     mekIntrinsicMagazine,
+    weaponAcceptsAmmo,
     type AmmoLoadout,
 } from './mek-ammo';
 import { mekComponentModes } from './mek-component-rules';
@@ -65,15 +64,13 @@ import { applyFlamerWeaponTypes, flamerDisplayLabel } from '../flamer-mode.model
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { BOMBAST_LASER_CHARGED_STATE } from './component-bombast-laser';
 import {
-    isMekWeaponUnderwater,
     mekUnitWaterState,
-    weaponTargetAttackTraits,
-    weaponTargetDisabledReason,
+    mekWeaponTargetSubject,
     resolveMekTargetingAmmo,
 } from './mek-targeting-rules';
+import { weaponTargetAttackTraits, weaponTargetDisabledReasons } from './weapon-target-policy';
 import {
     gameRulesFor,
-    ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
     type C3DegradationSource,
     type CBTGameRules,
     type ComponentToHitSubject,
@@ -104,6 +101,7 @@ import {
 import type { EquipmentRowOrderState } from './equipment-row-order';
 import { AEROSPACE_RANGE_BRACKETS, type AerospaceRangeLimits } from '../../utils/aerospace-range.util';
 import type { UnitModifierBreakdownEntry } from '../combat-modifier';
+import type { MotiveModes } from '../motiveModes.model';
 import {
     inventoryControlDamageRange,
     resolveInventoryControlDamageText,
@@ -275,13 +273,19 @@ export interface WeaponTargetPresentation {
     }> | null;
 }
 
-export interface WeaponTargetPresentationOptions {
-    readonly pilotingSkill?: number;
-    readonly allowExtremeRange?: boolean;
-    readonly missingMovementModifier?: boolean;
-    readonly attackModifierBreakdown?: readonly UnitModifierBreakdownEntry[];
-    readonly c3DegradationSource?: C3DegradationSource;
-    readonly c3Available?: boolean;
+/**
+ * The attacking unit's facts every target number for its weapons shares, wherever it is shown: the record sheet, its
+ * target menus and the equipment dialog.
+ */
+export interface WeaponAttackContext {
+    readonly gunnery: number;
+    readonly pilotingSkill: number;
+    readonly movementMode: MotiveModes | null;
+    readonly allowExtremeRange: boolean;
+    readonly missingMovementModifier: boolean;
+    readonly attackModifierBreakdown: readonly UnitModifierBreakdownEntry[];
+    readonly c3DegradationSource: C3DegradationSource;
+    readonly c3Available: boolean;
 }
 
 /** Converts the force target row into the detached target facts shared by sheet and panel UI. */
@@ -319,22 +323,20 @@ export function projectTargetingTarget(
 export function projectWeaponTargetPresentation(
     row: EquipmentPanelComponent,
     target: TargetingTarget | null,
-    crewGunnery: number,
-    attackerMoveMode: Parameters<typeof getDefaultAttackerMovementModifier>[0],
+    attack: WeaponAttackContext,
     ruleset: CBTRuleset,
-    options: WeaponTargetPresentationOptions = {},
 ): WeaponTargetPresentation {
     const weapon = row.weapon;
     const selection = weapon?.selection;
     const manualRange = selection?.kind === 'manual-range' ? selection.range : null;
     if (!weapon) return emptyWeaponTargetPresentation();
     const rules = gameRulesFor(ruleset);
-    const c3Target = target === null || options.c3Available !== false
+    const c3Target = target === null || attack.c3Available
         ? target
         : stripC3Distance(target);
     const c3Resolution = c3Target === null
         ? null
-        : rules.resolveC3Targeting(c3Target, options.c3DegradationSource ?? 'none');
+        : rules.resolveC3Targeting(c3Target, attack.c3DegradationSource);
     const calculationTarget = c3Resolution?.target ?? null;
     const selectedAmmo = selectedAmmoEquipment(weapon.ammoSources, weapon.ammoSelection);
     const targetNumberFacts = Object.freeze({
@@ -350,7 +352,7 @@ export function projectWeaponTargetPresentation(
         targetNumberFacts,
         display,
         extremeRange: weapon.ranges[3] ?? null,
-        allowExtremeRange: options.allowExtremeRange === true,
+        allowExtremeRange: attack.allowExtremeRange,
         selectedAmmo,
     } as const;
     const calculatedRangeSelection = inventoryTargetRangeSelection({
@@ -379,8 +381,7 @@ export function projectWeaponTargetPresentation(
         weaponRuleRange,
         target !== null && activeTargetCalculator(target)?.indirectFire === true,
     );
-    const attackModifierBreakdown = options.attackModifierBreakdown
-        ?? defaultAttackMovementBreakdown(attackerMoveMode);
+    const attackModifierBreakdown = attack.attackModifierBreakdown;
     const attackerMovementModifier = attackModifierBreakdown.reduce(
         (total, modifier) => total + modifier.modifier,
         0,
@@ -394,9 +395,9 @@ export function projectWeaponTargetPresentation(
         target: calculationTarget === null || targetProjection === null
             ? calculationTarget
             : Object.freeze({ ...calculationTarget, tnModifier: targetModifier }),
-        gunnerySkill: crewGunnery,
-        pilotingSkill: options.pilotingSkill ?? 5,
-        missingMovementModifier: options.missingMovementModifier === true,
+        gunnerySkill: attack.gunnery,
+        pilotingSkill: attack.pilotingSkill,
+        missingMovementModifier: attack.missingMovementModifier,
         attackModifierBreakdown,
         hitResolution,
         targetModifier,
@@ -531,19 +532,6 @@ function weaponTargetDisplay(weapon: EquipmentPanelWeapon): Readonly<{
 function stripC3Distance(target: TargetingTarget): TargetingTarget {
     const { c3Distance: _c3Distance, useC3: _useC3, ...withoutC3 } = target;
     return Object.freeze(withoutC3);
-}
-
-function defaultAttackMovementBreakdown(
-    mode: Parameters<typeof getDefaultAttackerMovementModifier>[0],
-): readonly UnitModifierBreakdownEntry[] {
-    const modifier = getDefaultAttackerMovementModifier(mode);
-    if (modifier === 0) return Object.freeze([]);
-    const label = mode == null ? 'Movement' : `${mode[0]?.toUpperCase()}${mode.slice(1)}`;
-    return Object.freeze([Object.freeze({
-        label,
-        modifier,
-        priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
-    })]);
 }
 
 function formatEquipmentPanelHit(
@@ -827,11 +815,7 @@ export function projectMekPhysicalAttackPresentation(
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
     targeting: AttackerTargetingState,
-    combatModifiers: MekCombatModifierProjectionResult = query.mekCombatModifiers(),
-    stateModifiers: readonly ToHitModifierBreakdownEntry[] = combineAttackModifiers(
-        combatModifiers.kind === 'supported' ? combatModifiers.physical : [],
-        mekTurnAttackModifiers(entity, index, ruleset, query),
-    ),
+    modifiers: MekAttackModifierSets,
 ): MekPhysicalAttackPresentation {
     const projection = query.mekPhysicalAttacks();
     if (projection.kind === 'unsupported') return projection;
@@ -845,8 +829,8 @@ export function projectMekPhysicalAttackPresentation(
                 index,
                 attack.target,
                 ruleset,
-                stateModifiers,
-                combatModifiers,
+                modifiers.physical,
+                modifiers.combat,
             );
             return Object.freeze({
                 ...attack,
@@ -1013,26 +997,46 @@ function mekTurnAttackModifiers(
     return Object.freeze(modifiers.map(modifier => Object.freeze(modifier)));
 }
 
+/** The attack modifiers every ranged and physical row of one Mek state shares. */
+export interface MekAttackModifierSets {
+    readonly combat: MekCombatModifierProjectionResult;
+    readonly ranged: readonly ToHitModifierBreakdownEntry[];
+    readonly physical: readonly ToHitModifierBreakdownEntry[];
+}
+
+export function mekAttackModifierSets(
+    entity: MekEntity,
+    index: MekRuntimeIndex,
+    ruleset: CBTRuleset,
+    query: MekUnitQueryPort,
+): MekAttackModifierSets {
+    const combat = query.mekCombatModifiers();
+    const turnModifiers = mekTurnAttackModifiers(entity, index, ruleset, query);
+    return Object.freeze({
+        combat,
+        ranged: combineAttackModifiers(
+            combat.kind === 'supported' ? combat.ranged : [],
+            turnModifiers,
+            voidSignatureWeaponModifiers(query),
+        ),
+        physical: combineAttackModifiers(
+            combat.kind === 'supported' ? combat.physical : [],
+            turnModifiers,
+        ),
+    });
+}
+
+/** The one Mek equipment projection: the dialog panel, and the record sheet's rows and targets. */
 export function projectMekEquipmentPanel(
     entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
     registry: TargetRegistrySnapshot,
+    modifiers: MekAttackModifierSets = mekAttackModifierSets(entity, index, ruleset, query),
 ): EquipmentPanelSnapshot {
     const targeting = query.attackerTargetingState();
     const targets = projectEquipmentTargets(targeting, registry);
-    const combatModifiers = query.mekCombatModifiers();
-    const turnModifiers = mekTurnAttackModifiers(entity, index, ruleset, query);
-    const rangedModifiers = combineAttackModifiers(
-        combatModifiers.kind === 'supported' ? combatModifiers.ranged : [],
-        turnModifiers,
-        voidSignatureWeaponModifiers(query),
-    );
-    const physicalModifiers = combineAttackModifiers(
-        combatModifiers.kind === 'supported' ? combatModifiers.physical : [],
-        turnModifiers,
-    );
     const components = projectMekEquipmentComponents(
         entity,
         index,
@@ -1040,11 +1044,10 @@ export function projectMekEquipmentPanel(
         query,
         targeting,
         targets,
-        combatModifiers,
-        rangedModifiers,
+        modifiers,
     );
     const physicalProjection = projectMekPhysicalAttackPresentation(
-        entity, index, ruleset, query, targeting, combatModifiers, physicalModifiers,
+        entity, index, ruleset, query, targeting, modifiers,
     );
     const physicalAttacks = physicalProjection.kind === 'unsupported'
         ? Object.freeze([])
@@ -1101,20 +1104,14 @@ export function projectEquipmentTargets(
     })));
 }
 
-/** Shared entity/runtime equipment projection used by sheets and equipment UI. */
-export function projectMekEquipmentComponents(
+function projectMekEquipmentComponents(
     entity: MekEntity,
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
-    targeting?: AttackerTargetingState,
-    targets: readonly EquipmentPanelTarget[] = [],
-    combatModifiers: MekCombatModifierProjectionResult = query.mekCombatModifiers(),
-    stateModifiers: readonly ToHitModifierBreakdownEntry[] = combineAttackModifiers(
-        combatModifiers.kind === 'supported' ? combatModifiers.ranged : [],
-        mekTurnAttackModifiers(entity, index, ruleset, query),
-        voidSignatureWeaponModifiers(query),
-    ),
+    targeting: AttackerTargetingState,
+    targets: readonly EquipmentPanelTarget[],
+    attackModifiers: MekAttackModifierSets,
 ): readonly EquipmentPanelComponent[] {
     const attackerSubmerged = mekUnitWaterState(entity, query).submerged;
     const targetingComputer = installedTargetingComputer(index, query);
@@ -1166,7 +1163,7 @@ export function projectMekEquipmentComponents(
             const ammo = loadouts.length === 0
                 ? undefined
                 : ammoSnapshot(entity, index, componentId, ruleset, loadouts, query);
-            const selected = targeting?.components.get(componentId);
+            const selected = targeting.components.get(componentId);
             const bombast = bombastLaserEquipmentProfile(equipment, ruleset, mode);
             const baseWeaponHeat = equipment instanceof WeaponEquipment
                 ? bombast?.heat ?? equipment.heat
@@ -1179,19 +1176,17 @@ export function projectMekEquipmentComponents(
             const ammoSources = equipment instanceof WeaponEquipment
                 ? compatibleAmmoSources(entity, index, ruleset, componentId, equipment, mode, query)
                 : Object.freeze([]);
-            const selectedAmmo = equipment instanceof WeaponEquipment
-                ? resolveMekTargetingAmmo(
-                    entity,
-                    index,
-                    ruleset,
-                    query,
-                    componentId,
-                    selected?.ammo,
-                )
-                : null;
+            const targetSubject = mekWeaponTargetSubject(
+                entity,
+                index,
+                ruleset,
+                query,
+                componentId,
+                selected?.ammo,
+            );
+            const selectedAmmo = targetSubject?.selectedAmmo ?? null;
             const ammoProfile = resolveAmmoWeaponProfile(selectedAmmo);
-            const underwater = equipment instanceof WeaponEquipment
-                && isMekWeaponUnderwater(entity, index, query, componentId);
+            const underwater = targetSubject?.underwater ?? false;
             const bombastToHit = bombast === null
                 ? undefined
                 : bombastCharged ? 0 : bombast.toHitModifier;
@@ -1259,9 +1254,9 @@ export function projectMekEquipmentComponents(
                 ? Object.freeze({
                     subject: toHitSubject!,
                     stateModifiers: combineAttackModifiers(
-                        stateModifiers,
-                        combatModifiers.kind === 'supported'
-                            ? combatModifiers.components.get(componentId) ?? []
+                        attackModifiers.ranged,
+                        attackModifiers.combat.kind === 'supported'
+                            ? attackModifiers.combat.components.get(componentId) ?? []
                             : [],
                     ),
                     ...(toHitAdjustments.length === 0 ? {} : { adjustments: toHitAdjustments }),
@@ -1348,17 +1343,7 @@ export function projectMekEquipmentComponents(
                     underwater,
                     attackerSubmerged,
                     effectiveWeaponTypes,
-                    disabledTargetReasons: mekWeaponTargetDisabledReasons(
-                        entity,
-                        index,
-                        ruleset,
-                        query,
-                        componentId,
-                        equipment,
-                        selected?.ammo,
-                        targets,
-                        underwater,
-                    ),
+                    disabledTargetReasons: weaponTargetDisabledReasons(targetSubject!, ruleset, targets),
                 });
             return Object.freeze({
                 componentId,
@@ -1522,41 +1507,6 @@ function installedWeaponFacts(
     });
 }
 
-function mekWeaponTargetDisabledReasons(
-    entity: MekEntity,
-    index: MekRuntimeIndex,
-    ruleset: CBTRuleset,
-    query: MekUnitQueryPort,
-    weaponId: ComponentId,
-    weapon: WeaponEquipment,
-    ammoSelection: AttackerAmmoSelection | undefined,
-    targets: readonly EquipmentPanelTarget[],
-    underwater: boolean,
-): Readonly<Record<string, string>> {
-    const selectedAmmo = resolveMekTargetingAmmo(
-        entity, index, ruleset, query, weaponId, ammoSelection,
-    );
-    return projectWeaponTargetDisabledReasons(weapon, selectedAmmo, ruleset, targets, underwater);
-}
-
-export function projectWeaponTargetDisabledReasons(
-    weapon: WeaponEquipment,
-    selectedAmmo: AmmoEquipment | null,
-    ruleset: CBTRuleset,
-    targets: readonly EquipmentPanelTarget[],
-    underwater: boolean,
-): Readonly<Record<string, string>> {
-    return Object.freeze(Object.fromEntries(targets.flatMap(target => {
-        const calculator = Object.freeze({ ...target.calculator, ...target.local?.calculator });
-        const reason = weaponTargetDisabledReason(weapon, selectedAmmo, ruleset, {
-            ...(target.unitType === undefined ? {} : { unitType: target.unitType }),
-            ...(Object.keys(calculator).length === 0 ? {} : { calculator }),
-            ...(target.local?.manualTnOverride === undefined ? {} : { manualTnOverride: true }),
-        }, underwater);
-        return reason === null ? [] : [[target.targetId, reason] as const];
-    })) as Record<string, string>);
-}
-
 function compatibleAmmoSources(
     entity: MekEntity,
     index: MekRuntimeIndex,
@@ -1569,7 +1519,7 @@ function compatibleAmmoSources(
     return Object.freeze([...index.components]
         .map(([sourceId, source]) => {
             const loadouts = mekAmmoLoadouts(entity, index, sourceId, ruleset)
-                .filter(loadout => mekWeaponAmmoMatches(weapon, loadout.equipment, mode));
+                .filter(loadout => weaponAcceptsAmmo(weapon, loadout.equipment, mode));
             const intrinsic = mekIntrinsicMagazine(entity, index, sourceId, ruleset);
             if (loadouts.length === 0
                 || (intrinsic !== null && intrinsic.ownerComponentId !== weaponId)) return null;

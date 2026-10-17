@@ -21,25 +21,25 @@ import { INFANTRY_STRENGTH_CELL_COUNT } from '../infantry-strength-projection';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import { SvgFrameUtil } from '../svg-frame.util';
 import {
+  crewSkillValueX,
   type Box,
   addCrewSkillValue,
   addFrame,
   addLine,
+  addReferenceShade,
   addText,
+  appendBattleValue,
   appendLegacyIdentityAnchors,
   drawClusterHitsReference,
   drawGeneratedFooter,
   formatNumber,
   scaleCompactBox,
   scalePageBox,
-  setAttributes,
   svgElement,
 } from '../record-sheet-svg-rendering';
-import { appendEmbeddedSvgDefinition } from '../record-sheet-embedded-art';
+import { appendEmbeddedSvgDefinition, appendMastheadArt } from '../record-sheet-embedded-art';
 import { CompactRecordSheetLayout } from './record-sheet-layout';
 import {
-  addExactReferenceText,
-  addReferenceShade,
   canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 
@@ -58,15 +58,8 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     return ['CONVENTIONAL', 'INFANTRY RECORD', 'SHEET'];
   }
 
-  protected override drawCompactMastheadIcon(parent: SVGGElement, box: Box, svg: SVGSVGElement): void {
-    const use = svgElement('use');
-    setAttributes(use, {
-      href: '#mekbay-infantry-masthead-art',
-      class: 'infantry-masthead-icon',
-      width: (56.7 * box.width) / 31.018,
-      height: (45.357 * box.height) / 41.357,
-    });
-    parent.appendChild(use);
+  protected override drawCompactMastheadIcon(parent: SVGGElement, box: Box): void {
+    appendMastheadArt(parent, box, 'mekbay-infantry-masthead-art', 'infantry-masthead-icon');
   }
 
   public override drawCompactPageSupplement(
@@ -146,17 +139,20 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
       ['Max Weapon Damage*', '', 76.887, undefined],
       ['Notes:', '', 88.664, undefined],
     ];
+    const captions = facts.map(([label, , baseline]) =>
+      addText(group, label, x(3), y(baseline), { size: font(7.2), weight: 700 }));
+    // Both skill values share one column, clear of the longer caption.
+    const skillColumn = Math.max(...facts.flatMap(([, , , id], index) =>
+      id ? [crewSkillValueX(captions[index], x(55.8), fontScale)] : []));
     facts.forEach(([label, value, baseline, id]) => {
-      addText(group, label, x(3), y(baseline), { size: font(7.2), weight: 700 });
-      if (value) {
-        const node = id
-          ? addCrewSkillValue(group, value, x(55.8), y(baseline), fontScale)
-          : addText(group, value, x(label === 'Role:' ? 21.702 : 55.8), y(baseline), {
-              size: font(7.2),
-              maxWidth: x(58),
-            });
-        if (id) node.id = id;
-      }
+      if (!value) return;
+      const node = id
+        ? addCrewSkillValue(group, value, skillColumn, y(baseline), fontScale)
+        : addText(group, value, x(label === 'Role:' ? 21.702 : 55.8), y(baseline), {
+            size: font(7.2),
+            maxWidth: x(58),
+          });
+      if (id) node.id = id;
     });
     const commander = addText(group, '', x(46.03), y(29.777), { size: font(7.2), maxWidth: x(68.047) });
     commander.id = 'pilotName0';
@@ -170,15 +166,12 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     );
 
     drawCompactInfantryTrack(svg, group, entity, { x, y, font });
-    addText(group, 'BV:', x(116.6), y(154.786), { size: font(7.2), weight: 700 });
-    const bv = addText(
-      group,
-      formatNumber(adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5)),
-      x(130.701),
-      y(154.786),
-      { size: font(7.2) },
-    );
-    bv.id = 'bv';
+    appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5), {
+      x: x(116.6),
+      valueX: x(130.701),
+      y: y(154.786),
+      size: font(7.2),
+    });
     addText(group, 'Transport Wt:', x(173.4), y(154.786), { size: font(7.2), weight: 700 });
     addText(group, `${entity.tonnage().toFixed(1)} tons`, x(221.502), y(154.786), { size: font(7.2) });
     addText(group, '', x(387), y(154.786), { size: font(7.2), weight: 700 }).id = 'movementPointsLabel';
@@ -293,14 +286,7 @@ function drawInfantryNonInfantryWeaponReference(svg: SVGSVGElement, box: Box): v
     addInfantryReferenceText(content, weapon, 11.08, y, true, 'start');
     addInfantryReferenceText(content, effect, 207.75, y);
   });
-  addExactReferenceText(
-    content,
-    '*See Combat, p. 113 in Total Warfare, for weapon terminology.',
-    6,
-    93.47,
-    5.7,
-    153.054,
-  );
+  addText(content, '*See Combat, p. 113 in Total Warfare, for weapon terminology.', 6, 93.47, { size: 5.7, textLength: 153.054 });
   addInfantryReferenceText(
     content,
     '**Except for Small and Micro Pulse Lasers, which are treated as Burst-Fire Weapons.',
@@ -309,47 +295,12 @@ function drawInfantryNonInfantryWeaponReference(svg: SVGSVGElement, box: Box): v
     false,
     'start',
   );
-  addExactReferenceText(
-    content,
-    '†This equals the number of conventional infantry troopers hit and eliminated, regardless of armor protection.',
-    6,
-    107.47,
-    5.7,
-    268,
-  );
-  addExactReferenceText(
-    content,
-    'Attacks by non-infantry weapons against mechanized infantry double the number of troopers eliminated;',
-    6,
-    114.47,
-    5.7,
-    268,
-  );
+  addText(content, '†This equals the number of conventional infantry troopers hit and eliminated, regardless of armor protection.', 6, 107.47, { size: 5.7, textLength: 268 });
+  addText(content, 'Attacks by non-infantry weapons against mechanized infantry double the number of troopers eliminated;', 6, 114.47, { size: 5.7, textLength: 268 });
   addInfantryReferenceText(content, 'round fractions up.', 6, 121.47, false, 'start');
-  addExactReferenceText(
-    content,
-    '‡Each Heat-Effect Weapon has specific damage against conventional infantry,',
-    6,
-    128.47,
-    5.7,
-    198.75,
-  );
-  addExactReferenceText(
-    content,
-    'as noted on either the appropriate Weapon and Equipment Tables or in Other',
-    6,
-    135.47,
-    5.7,
-    203.795,
-  );
-  addExactReferenceText(
-    content,
-    'Combat Weapons and Equipment (see p. 129 in Total Warfare).',
-    6,
-    142.47,
-    5.7,
-    159.619,
-  );
+  addText(content, '‡Each Heat-Effect Weapon has specific damage against conventional infantry,', 6, 128.47, { size: 5.7, textLength: 198.75 });
+  addText(content, 'as noted on either the appropriate Weapon and Equipment Tables or in Other', 6, 135.47, { size: 5.7, textLength: 203.795 });
+  addText(content, 'Combat Weapons and Equipment (see p. 129 in Total Warfare).', 6, 142.47, { size: 5.7, textLength: 159.619 });
 }
 
 function addInfantryReferenceText(

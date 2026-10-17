@@ -38,6 +38,8 @@ import {
 CBT_HISTORY_MUTATION_TARGET_CODE,
 } from './force-storage-vocabulary';
 import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
+import { deserializeMekTurnStateV2,serializeMekTurnStateV2 } from './mek-turn-state-v2';
+import { serializeUnitCover } from '../unit-cover.model';
 import { RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 import {
 DEFAULT_FORCE_DEPLOYMENT_ID,
@@ -73,6 +75,37 @@ describe('force storage codec', () => {
             }
             const person = decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).personnel!.people[0];
             expect([person.gunnery ?? 4, person.piloting ?? 5, person.aeroGunnery ?? 4, person.aeroPiloting ?? 5]).toEqual(skills);
+        });
+    }
+
+    for (const family of ['mek', 'non-mek'] as const) {
+        it(`stores shared ${family} turn facts byte-identically whatever order the turn wire lists them in`, () => {
+            const shared = { turnCounter: 2, cover: serializeUnitCover('light'), weaponsHeat: 4,
+                spotting: true as const, phaseStateChanged: true as const, endTurnCheckpoint: 'heat-staged' as const };
+            const tank = new TestTankEntity();
+            tank.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+            const base = family === 'mek' ? damagedForce() : forceWithUnit(createNonMekUnit(tank, {
+                instanceId: 'unit:turn-wire-tank', uuid: tank.uuid(), deployment: { id: 'default' },
+                scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine',
+            }).serialize(), 'force:turn-wire', 'Turn wire');
+            // The current serializer lists the shared facts first; the earlier ones interleaved family facts.
+            const [current, earlier] = family === 'mek'
+                ? [serializeMekTurnStateV2(deserializeMekTurnStateV2({ schemaVersion: 1, ...shared,
+                    acknowledgedHeatSources: [{ sourceId: 'weapons', signature: '[4,null,null]' }],
+                    heatDissipationConsumed: 2 })),
+                { schemaVersion: 1, turnCounter: 2, cover: shared.cover, weaponsHeat: 4,
+                    acknowledgedHeatSources: [{ sourceId: 'weapons', signature: '[4,null,null]' }],
+                    heatDissipationConsumed: 2, spotting: true, phaseStateChanged: true, endTurnCheckpoint: 'heat-staged' }]
+                : [{ ...shared, heatSettled: true as const },
+                    { turnCounter: 2, weaponsHeat: 4, heatSettled: true as const, cover: shared.cover, spotting: true,
+                        phaseStateChanged: true, endTurnCheckpoint: 'heat-staged' }];
+            expect(Object.keys(current)).not.toEqual(Object.keys(earlier));
+            const withTurn = (turn: unknown): SerializedCBTForce => ({ ...base, cbt: { ...base.cbt!, units: base.cbt!.units
+                .map(entry => ({ ...entry, unit: { ...entry.unit, turn } as typeof entry.unit })) } });
+
+            const stored = encodeForceForStorage(withTurn(current));
+            expect(JSON.stringify(encodeForceForStorage(withTurn(earlier)))).toBe(JSON.stringify(stored));
+            expect(decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.units[0].unit.turn).toEqual(current);
         });
     }
 

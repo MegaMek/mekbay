@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
+import { MAX_HEAT_VALUE,type HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './runtime/unit-command';
 
 import { CBTUnitService } from '../services/cbt-unit.service';
@@ -30,7 +30,6 @@ import { jsonValuesEqual } from '../utils/json-value.util';
 import { compareText } from '../utils/string.util';
 import type { CBTRuleset } from './cbt-ruleset.model';
 import type { CrewAssignment } from './runtime/crew-assignment';
-import { projectNonMekEscalatingFailureInteractions } from './runtime/non-mek-unit-instance';
 import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './runtime/non-mek-unit-persistence';
 import type { ScenarioRules } from './runtime/unit-state-initializer';
 import { DEFAULT_FORCE_DEPLOYMENT_ID,scenarioRuleset } from './runtime/unit-state-initializer';
@@ -52,21 +51,17 @@ canSelectMekEquipmentInteraction,
 expandEquipmentDropdownBinding,
 projectMekEquipmentInteractions,
 projectNonMekEquipmentInteractions,
+selectNonMekEquipmentChoice,
 } from './runtime/cbt-equipment-interactions';
 import { pruneRemovedUnitsFromEncounter } from './runtime/cbt-force-persistence-helpers';
 import { sameCBTUnitGameplayState } from './runtime/cbt-force-runtime-history';
 import { entityTargetRosterRow,mekTargetRosterRow } from './runtime/cbt-force-target-roster';
 import { cbtUnitMatchesEntity } from './runtime/cbt-unit-validation';
-import {
-ESCALATING_FAILURE_DISABLED_CHOICE_VALUE,
-ESCALATING_FAILURE_HANDLER_ID,
-} from './runtime/component-escalating-failure';
 import type {
 EquipmentInteractionCommandContext,
 EquipmentInteractionQueryContext,
 } from './runtime/equipment-interaction';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
-import { MAX_MEK_HEAT_VALUE_V2 } from './runtime/mek-heat-state-v2';
 import { evaluateMekRuntimeCapability } from './runtime/mek-runtime-capability';
 import type { RuntimeCommandCheckpoint } from './runtime/runtime-command-session';
 
@@ -766,40 +761,13 @@ export class CBTUnitStore {
 
         if (isCBTNonMekUnit(candidate)) {
             if (isReadOnly()) return rejectedEquipmentChoice('READ_ONLY');
-            if (selected.relatedComponentId !== undefined
-                || selected.handlerId !== ESCALATING_FAILURE_HANDLER_ID) {
-                return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
-            }
-            const runtime = candidate;
-            const projected = projectNonMekEscalatingFailureInteractions(
-                entity,
-                candidate.getIndex(),
-                runtime.snapshot(),
-                runtime.ruleset(),
-                queryContext.choiceSurface,
-            ).find(row => row.componentId === selected.componentId);
-            const choice = projected?.choices.find(current =>
-                !current.disabled && Object.is(current.value, selected.value));
-            if (!projected || !choice) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
-            const edit: Extract<
-                CBTUnitCommand,
-                { readonly type: 'edit-escalating-failure' }
-            >['edit'] | null = selected.value === ESCALATING_FAILURE_DISABLED_CHOICE_VALUE
-                ? Object.freeze({
-                    kind: 'set-status',
-                    status: projected.status === 'disabled' ? 'available' : 'disabled',
-                })
-                : typeof selected.value === 'number' && Number.isSafeInteger(selected.value)
-                    ? Object.freeze({ kind: 'select-sequence', index: selected.value })
-                    : null;
-            if (edit === null) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
-            const result = runtime.dispatch({
-                type: 'edit-escalating-failure',
-                componentId: selected.componentId,
-                edit,
-            });
-            if (result.accepted && result.changed) publishChanged();
-            return Object.freeze({ accepted: true, changed: result.changed,
+            const before = candidate.snapshot();
+            const accepted = selectNonMekEquipmentChoice(candidate, selected, queryContext, commandContext);
+            if (accepted === null) return rejectedEquipmentChoice('CHOICE_UNAVAILABLE');
+            const changed = candidate.snapshot() !== before;
+            if (changed) publishChanged();
+            if (!accepted && !changed) return rejectedEquipmentChoice('HANDLER_REJECTED');
+            return Object.freeze({ accepted: true, changed,
                 context: Object.freeze({ owner: candidate, state: candidate.snapshot() }) });
         }
 
@@ -968,7 +936,7 @@ export class CBTUnitStore {
                 ));
             }
             if (selectedPolicy === 'automatic'
-                && projection.projection.projected > MAX_MEK_HEAT_VALUE_V2) {
+                && projection.projection.projected > MAX_HEAT_VALUE) {
                 return frozenEndTurnAllResult(false, false, preflightFailureRows(
                     retained.map(([id]) => id),
                     instanceId,

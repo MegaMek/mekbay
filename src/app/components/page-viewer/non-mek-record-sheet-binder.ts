@@ -8,15 +8,8 @@ ComponentId,
 } from '../../models/entity/entity-identifiers';
 import { layoutBombStores,type BombSection } from '../../models/aerospace-bomb.model';
 import { velocityRecordValue,type VelocityRecordField } from '../../models/aerospace-velocity-record.model';
-import type { EntityTechBase } from '../../models/entity/types';
 import { WeaponEquipment } from '../../models/equipment.model';
-import type { AttackerSelection } from '../../models/runtime/attacker-targeting-state';
 import type { EquipmentPanelComponent,EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
-import {
-equipmentWeaponToHitModifier,
-projectTargetingTarget,
-projectWeaponTargetPresentation,
-} from '../../models/runtime/equipment-panel';
 import { nonMekRecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
 import type {
 NonMekRecordSheetArmorFace,
@@ -30,7 +23,6 @@ crewStateDefinitions,
 UNIT_CONDITION_DEFINITIONS,
 unitConditionControls,
 } from '../../models/unit-status-presentation';
-import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
 import { CapitalShipPipRenderer } from '../../utils/sheets/capital-ship-pip-renderer';
 import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 import {
@@ -38,101 +30,79 @@ createInfantryStrengthDisplay,
 INFANTRY_STRENGTH_DISPLAY_ID,
 type InfantryStrengthDisplay,
 } from '../../utils/sheets/infantry-strength-display';
-import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import { AERO_DEFAULT_BOMB_KEY } from '../../utils/sheets/layouts/aero-record-sheet-components';
 import { renderHandheldWeaponAmmoPips } from '../../utils/sheets/layouts/handheld-weapon-record-sheet-layout';
-import { formatMovementWithMaximum, formatRecordSheetTonnage, recordSheetAmmoProfiles, setAttributes, svgElement, textFitsWidth } from '../../utils/sheets/record-sheet-svg-rendering';
+import { formatMovementWithMaximum, formatRecordSheetTonnage, formatTechBase, formatWholeNumber, recordSheetAmmoProfiles, setAttributes, svgElement, textFitsWidth } from '../../utils/sheets/record-sheet-svg-rendering';
 import { writeSvgTextLines } from '../../utils/svg-text.util';
 import {
+attributeValue,
+bindRecordSheetEquipmentOpeners,
+bindRecordSheetRandomHit,
+createRecordSheetBind,
+recordSheetDamageTargets,
+renderRecordSheetAmmoProfile,
 renderRecordSheetConditions,
+renderRecordSheetCrewControls,
 renderRecordSheetCrewName,
 renderRecordSheetCrewState,
 renderRecordSheetCrewVacancies,
 renderRecordSheetDestroyed,
 renderRecordSheetPips,
+type RecordSheetBind,
 } from './record-sheet-dom';
-import { bindRecordSheetHeatCell,displayedHeat,renderRecordSheetHeatScale } from './record-sheet-heat-scale-rendering';
+import {
+bindRecordSheetHeatCell,
+bindRecordSheetHeatControls,
+displayedHeat,
+renderRecordSheetHeatScale,
+} from './record-sheet-heat-scale-rendering';
+import {
+bindRecordSheetInventoryButtons,
+NO_INVENTORY_SELECTION,
+projectRecordSheetWeaponSelection,
+readRecordSheetComponentIds,
+renderRecordSheetInventorySelection,
+writeRecordSheetComponentIds,
+type RecordSheetInventorySource,
+type RecordSheetPanelWeapon,
+} from './record-sheet-inventory';
 import type { RecordSheetInteraction, RecordSheetInteractionHandler } from './record-sheet-interaction';
 import { bindRecordSheetMovement } from './record-sheet-movement';
 
 export interface NonMekRecordSheetBinding {
     readonly initialIssues: readonly string[];
-    render(snapshot: NonMekRecordSheetSnapshot, equipmentPanel?: EquipmentPanelSnapshot | null): readonly string[];
+    render(snapshot: NonMekRecordSheetSnapshot, inventory?: RecordSheetInventorySource | null): readonly string[];
     destroy(): void;
 }
-
-/**
- * Binds a sheet element. Damage targets take the selectable highlight and answer a secondary click too; controls answer
- * only the primary click, like the Mek sheet's; values are controls whose secondary click clears them.
- */
-type RecordSheetBind = (
-    element: SVGElement,
-    interaction: () => RecordSheetInteraction | null,
-    role?: 'target' | 'control' | 'value',
-) => void;
 
 export function bindNonMekRecordSheet(
     svg: SVGSVGElement,
     initial: NonMekRecordSheetSnapshot,
     onInteraction?: RecordSheetInteractionHandler,
-    initialEquipmentPanel?: EquipmentPanelSnapshot | null,
     onPresentationInteraction: RecordSheetInteractionHandler | undefined = onInteraction,
+    initialInventory: RecordSheetInventorySource | null = null,
 ): NonMekRecordSheetBinding {
     const abort = new AbortController();
     const highlights = new RecordSheetDamageHighlights();
     const entityUuid = initial.entityUuid;
     let current = initial;
-    let currentEquipmentPanel = initialEquipmentPanel ?? null;
+    let currentInventory = initialInventory;
     let firstRender = true;
     const renderMovementSelection = bindRecordSheetMovement(svg, () => current.movementSelection,
         () => current.editContext, abort.signal, onInteraction);
     let infantryDisplay: InfantryStrengthDisplay | undefined;
 
-    const referenceTables = onPresentationInteraction
-        ? [...svg.querySelectorAll<SVGElement>('[data-mekbay-reference="cluster-hits"]')]
-        : [];
-    for (const table of referenceTables) {
-        table.classList.add('interactive', 'referenceTableControl');
-        table.setAttribute('tabindex', '0');
-        const activate = (event: Event): void => {
-            event.preventDefault();
-            event.stopPropagation();
-            onPresentationInteraction?.(Object.freeze({ kind: 'reference-table', context: current.editContext }), event);
-        };
-        table.addEventListener('click', event => {
-            if (event instanceof MouseEvent && event.button === 0) activate(event);
-        }, { signal: abort.signal });
-        table.addEventListener('keydown', event => {
-            if (event instanceof KeyboardEvent && (event.key === 'Enter' || event.key === ' ')) activate(event);
-        }, { signal: abort.signal });
+    const bind = createRecordSheetBind(abort.signal, onInteraction);
+    const bindPresentation = createRecordSheetBind(abort.signal, onPresentationInteraction);
+    const context = (): UnitEditContext => current.editContext;
+    for (const table of svg.querySelectorAll<SVGElement>('[data-mekbay-reference="cluster-hits"]')) {
+        bindPresentation(table, () => Object.freeze({ kind: 'reference-table', context: context() }), 'control');
     }
-
-    // Controls stay unhighlighted on hover, like the Mek sheet's.
-    const bind: RecordSheetBind = (element, interaction, role = 'target') => {
-        if (!onInteraction || element.dataset['mekbayEntityBound'] === '1') return;
-        element.dataset['mekbayEntityBound'] = '1';
-        element.classList.add('interactive');
-        if (role === 'target') element.classList.add('selectable');
-        element.setAttribute('tabindex', '0');
-        const emit = (event: Event): void => {
-            if (element.style.display === 'none') return;
-            event.preventDefault();
-            event.stopPropagation();
-            const selected = interaction();
-            if (selected) onInteraction(selected, event);
-        };
-        element.addEventListener('click', emit, { signal: abort.signal });
-        if (role !== 'control') element.addEventListener('contextmenu', emit, { signal: abort.signal });
-        element.addEventListener('keydown', event => {
-            if (!(event instanceof KeyboardEvent) || (event.key !== 'Enter' && event.key !== ' ')) return;
-            emit(event);
-        }, { signal: abort.signal });
-    };
     const bindHeatCell = (element: SVGElement, heat: number): void => {
         if (!onInteraction) return;
         bindRecordSheetHeatCell(element, heat, {
             svg,
-            emit: onInteraction,
+            onInteraction,
             signal: abort.signal,
             context: () => current.editContext,
             displayedHeat: () => displayedHeat({ current: current.heat.current, pending: current.heat.pending ?? undefined }),
@@ -142,36 +112,18 @@ export function bindNonMekRecordSheet(
 
     const render = (
         snapshot: NonMekRecordSheetSnapshot,
-        equipmentPanel: EquipmentPanelSnapshot | null = currentEquipmentPanel,
+        inventory: RecordSheetInventorySource | null = currentInventory,
     ): readonly string[] => {
         if (snapshot.entityUuid !== entityUuid) {
             throw new Error('Record-sheet binding cannot change its entity');
         }
         current = snapshot;
-        currentEquipmentPanel = equipmentPanel;
+        currentInventory = inventory;
         const issues: string[] = [];
         const markChanges = !firstRender;
         renderIdentity(svg, snapshot);
         renderMovementSelection(snapshot.movementSelection);
-        if (onInteraction) {
-            svg.querySelectorAll<SVGElement>('[data-mekbay-random-hit="1"]').forEach(element => {
-                if (element.dataset['mekbayEntityBound'] === '1') return;
-                element.dataset['mekbayEntityBound'] = '1';
-                element.classList.add('interactive');
-                element.setAttribute('tabindex', '0');
-                const activate = (event: Event): void => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onInteraction(Object.freeze({ kind: 'random-hit', element, context: current.editContext }), event);
-                };
-                element.addEventListener('pointerdown', event => {
-                    if (event instanceof PointerEvent && event.button === 0) activate(event);
-                }, { signal: abort.signal });
-                element.addEventListener('keydown', event => {
-                    if (event instanceof KeyboardEvent && (event.key === 'Enter' || event.key === ' ')) activate(event);
-                }, { signal: abort.signal });
-            });
-        }
+        bindRecordSheetRandomHit(svg, bindPresentation, context);
         renderConditions(svg, snapshot, bind, () => current);
         renderCrew(svg, snapshot, bind, () => current);
         for (const location of snapshot.locations) {
@@ -214,7 +166,7 @@ export function bindNonMekRecordSheet(
             if (!numericInternal && location.maximumInternal > 0 && internalCapacity < location.maximumInternal) {
                 issues.push(`Missing structure pips for ${location.sheetCode}: ${internalCapacity}/${location.maximumInternal}`);
             }
-            const internalTargets = interactionTargets(
+            const internalTargets = recordSheetDamageTargets(
                 [...svg.querySelectorAll<SVGElement>(`.unitLocation.structure[data-loc="${code}"]`)],
                 [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.structure[data-loc="${code}"]`)],
                 internalPips,
@@ -245,9 +197,12 @@ export function bindNonMekRecordSheet(
         }
         renderDamageTracks(svg, snapshot.damageTracks, issues, bind, () => current.editContext);
         renderComponents(svg, snapshot, issues);
-        renderAmmoProfile(svg, snapshot, onInteraction !== undefined);
+        if (!renderHandheldWeaponAmmoPips(svg, snapshot.components)) {
+            renderRecordSheetAmmoProfile(svg, snapshot.components, onInteraction !== undefined);
+        }
+        bindRecordSheetEquipmentOpeners(svg, bind, context);
         for (const store of renderBombStores(svg, snapshot)) {
-            bind(store, () => Object.freeze({ kind: 'open-equipment', tab: 'ammo', context: current.editContext }), 'control');
+            bind(store, () => Object.freeze({ kind: 'open-equipment', tab: 'ammo', context: context() }), 'control');
         }
         for (const cell of renderVelocityRecord(svg, snapshot)) {
             bind(cell, () => Object.freeze({
@@ -257,22 +212,8 @@ export function bindNonMekRecordSheet(
                 context: current.editContext,
             }), 'value');
         }
-        const ammoProfile = svg.querySelector<SVGElement>('#ammoProfile');
-        if (ammoProfile) bind(ammoProfile, () => Object.freeze({
-            kind: 'open-equipment',
-            tab: 'ammo',
-            context: current.editContext,
-        }), 'control');
-        if (currentEquipmentPanel !== null) {
-            renderInventorySelections(
-                svg,
-                snapshot,
-                currentEquipmentPanel,
-                bind,
-                () => current.editContext,
-            );
-        }
-        renderHeat(svg, snapshot, issues, bind, bindHeatCell, () => current);
+        renderInventorySelections(svg, inventory, bind, context);
+        renderHeat(svg, snapshot, issues, bind, bindHeatCell, context);
         renderRecordSheetDestroyed(svg, snapshot.destroyed);
         firstRender = false;
         return Object.freeze(issues);
@@ -285,16 +226,7 @@ export function bindNonMekRecordSheet(
         destroy: () => {
             abort.abort();
             highlights.destroy();
-            for (const table of referenceTables) {
-                table.classList.remove('interactive', 'referenceTableControl');
-                table.removeAttribute('tabindex');
-            }
             svg.querySelector('#ammoProfile > .inventoryEntryButton')?.remove();
-            svg.querySelectorAll<SVGElement>('[data-mekbay-entity-bound="1"]').forEach(element => {
-                delete element.dataset['mekbayEntityBound'];
-                element.classList.remove('interactive', 'selectable');
-                element.removeAttribute('tabindex');
-            });
         },
     });
 }
@@ -313,14 +245,14 @@ function renderConditions(
                 kind: 'condition',
                 condition: control.key,
                 context: current().editContext,
-            })));
+            }), 'control'));
     }
     if (controls.some(control => control.placement === 'menu')) {
         svg.querySelectorAll<SVGElement>('.unitConditionButton[condition="menu"]')
             .forEach(button => bind(button, () => Object.freeze({
                 kind: 'condition-menu',
                 context: current().editContext,
-            })));
+            }), 'control'));
     }
 }
 
@@ -344,50 +276,12 @@ function renderCrew(
         if (gunnery) gunnery.textContent = vacant ? '—' : String(position.gunnery);
         const piloting = svg.getElementById(`pilotingSkill${occurrence}`);
         if (piloting) piloting.textContent = vacant ? '—' : String(position.piloting);
-        svg.querySelectorAll<SVGElement>(
-            `.crewNameButton[crewId="${occurrence}"]`,
-        ).forEach(button => bind(button, () => Object.freeze({
-            kind: 'crew-profile',
-            positionId: position.positionId,
-            context: current().editContext,
-        }), 'control'));
-        if (!vacant) for (const skill of ['gunnery', 'piloting'] as const) {
-            svg.querySelectorAll<SVGElement>(`.crewSkillButton[crewId="${occurrence}"][skill="${skill}"]`)
-                .forEach(button => bind(button, () => Object.freeze({
-                    kind: 'crew-skill', positionId: position.positionId, skill,
-                    context: current().editContext,
-                }), 'control'));
-        }
-        for (let wounds = 1; wounds <= 6; wounds += 1) {
-            const marker = svg.querySelector<SVGElement>(
-                `.crewHit[crewId="${position.occurrence}"][hit="${wounds}"]`,
-            );
-            if (!marker) continue;
-            marker.style.display = vacant ? 'none' : '';
-            marker.classList.toggle('damaged', wounds <= position.state.wounds);
-            if (vacant) continue;
-            bind(marker, () => {
-                const latest = current();
-                const currentPosition = latest.crew.find(row => row.positionId === position.positionId);
-                const currentWounds = currentPosition?.state.wounds ?? 0;
-                return Object.freeze({
-                    kind: 'crew-wounds',
-                    positionId: position.positionId,
-                    wounds: currentWounds === wounds ? Math.max(0, wounds - 1) : wounds,
-                    context: latest.editContext,
-                });
-            });
-        }
+        renderRecordSheetCrewControls(svg, position, bind, () => current().editContext, () =>
+            current().crew.find(row => row.positionId === position.positionId)?.state.wounds ?? 0);
         const display = position.effectiveState === 'healthy'
             ? null
             : displays.find(candidate => candidate.key === position.effectiveState) ?? null;
         renderRecordSheetCrewState(svg, position.occurrence, display);
-        svg.querySelectorAll<SVGElement>(`.crewStateButton[crewId="${position.occurrence}"]`)
-            .forEach(button => bind(button, () => Object.freeze({
-                kind: 'crew-state-menu',
-                positionId: position.positionId,
-                context: current().editContext,
-            })));
     }
 }
 
@@ -539,8 +433,10 @@ function renderCombinedLocation(
     if (!face) return;
     const code = attributeValue(location.sheetCode);
     const pips = [...svg.querySelectorAll<SVGElement>(`.armor.pip:not([data-rear])[data-loc="${code}"]`)];
-    const internalPips = pips.slice(0, location.maximumInternal);
-    const armorPips = pips.slice(location.maximumInternal);
+    // The row reads internal pip(s) then armor; damage fills it from the right, so
+    // armor is crossed off first and the internal pip last.
+    const internalPips = pips.slice(0, location.maximumInternal).reverse();
+    const armorPips = pips.slice(location.maximumInternal).reverse();
     renderRecordSheetPips(
         highlights,
         internalPips,
@@ -564,18 +460,12 @@ function renderCombinedLocation(
         issues.push(`Missing combined pips for ${location.sheetCode}: ${pips.length}/${required}`);
     }
 
-    internalPips.forEach(target => {
-        target.style.pointerEvents = '';
-        bind(target, () => Object.freeze({
-            kind: 'internal',
-            locationId: location.locationId,
-            context: context(),
-        }));
-    });
-    const armorTargets = interactionTargets(
+    // One trooper picker covers the whole row; the runtime splits damage and repairs
+    // between armor and internal structure.
+    const armorTargets = recordSheetDamageTargets(
         [...svg.querySelectorAll<SVGElement>(`.unitLocation.armor:not([data-rear])[data-loc="${code}"]`)],
         [],
-        armorPips,
+        pips,
     );
     armorTargets.forEach(target => {
         if (!target.classList.contains('pip')) {
@@ -628,7 +518,7 @@ function renderArmorFace(
     if (!numericArmor && face.maximum > 0 && capacity < face.maximum) {
         issues.push(`Missing ${rear ? 'rear ' : ''}armor pips for ${sheetCode}: ${capacity}/${face.maximum}`);
     }
-    const targets = interactionTargets(
+    const targets = recordSheetDamageTargets(
         [...svg.querySelectorAll<SVGElement>(`.unitLocation.armor${rearSelector}[data-loc="${code}"]`)],
         [...svg.querySelectorAll<SVGElement>(`.pip-hit-area.armor${rearSelector}[data-loc="${code}"]`)],
         pips,
@@ -658,36 +548,10 @@ function renderNumericProtection(svg: SVGSVGElement, kind: 'structure' | 'armor'
     return values.length > 0;
 }
 
-function interactionTargets(
-    unitLocations: readonly SVGElement[],
-    hitAreas: readonly SVGElement[],
-    pips: readonly SVGElement[],
-): readonly SVGElement[] {
-    if (unitLocations.length > 0) {
-        hitAreas.forEach(element => { element.style.pointerEvents = 'none'; });
-        pips.forEach(element => { element.style.pointerEvents = 'none'; });
-        return unitLocations;
-    }
-    // Paperdoll geometry owns damage interaction even if a location is omitted.
-    if (pips.some(pip => pip.closest('[data-mekbay-paperdoll="1"]'))
-        || hitAreas.some(area => area.closest('[data-mekbay-paperdoll="1"]'))) {
-        hitAreas.forEach(element => { element.style.pointerEvents = 'none'; });
-        pips.forEach(element => { element.style.pointerEvents = 'none'; });
-        return [];
-    }
-    if (hitAreas.length > 0) {
-        hitAreas.forEach(element => { element.style.pointerEvents = ''; });
-        pips.forEach(element => { element.style.pointerEvents = 'none'; });
-        return hitAreas;
-    }
-    pips.forEach(element => { element.style.pointerEvents = ''; });
-    return pips;
-}
-
 function renderIdentity(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot): void {
     const battleValue = snapshot.currentBattleValue === snapshot.pristineBattleValue
-        ? snapshot.currentBattleValue
-        : `${snapshot.currentBattleValue} (${snapshot.pristineBattleValue})`;
+        ? formatWholeNumber(snapshot.currentBattleValue)
+        : `${formatWholeNumber(snapshot.currentBattleValue)} (${formatWholeNumber(snapshot.pristineBattleValue)})`;
     const battleValueSuffix = svg.getElementById('bv')?.getAttribute('data-mekbay-bv-suffix') ?? '';
     const jump = snapshot.movement.umu > 0 ? snapshot.movement.umu : snapshot.movement.jump;
     const run = formatMovementWithMaximum(snapshot.movement.run, snapshot.movement.maxRun);
@@ -735,19 +599,12 @@ function renderHeat(
     issues: string[],
     bind: RecordSheetBind,
     bindHeatCell: (element: SVGElement, heat: number) => void,
-    current: () => NonMekRecordSheetSnapshot,
+    context: () => UnitEditContext,
 ): void {
     if (!snapshot.heat.tracked) return;
     if (!svg.querySelector('#heatScale .heat[heat]')) issues.push('Missing heat scale');
     renderRecordSheetHeatScale(svg, nonMekRecordSheetHeatScale(snapshot), 'aero', bindHeatCell);
-    // The frame is painted over the transparent button, so both take the click.
-    svg.querySelectorAll<SVGElement>('#heatScale .overflowButton, #heatScale .overflowFrame').forEach(overflow =>
-        bind(overflow, () => Object.freeze({ kind: 'heat-overflow', context: current().editContext }), 'control'));
-    const apply = svg.getElementById('applyHeatButton') as SVGElement | null;
-    if (apply) bind(apply, () => Object.freeze({
-        kind: 'apply-heat',
-        context: current().editContext,
-    }), 'control');
+    bindRecordSheetHeatControls(svg, bind, context);
 
     const pips = [...svg.querySelectorAll<SVGElement>('.hsPips .pip')];
     pips.forEach((pip, index) => {
@@ -765,11 +622,6 @@ function renderHeat(
             ? `${snapshot.heat.heatSinkCount} (${snapshot.heat.dissipation})`
             : String(snapshot.heat.dissipation);
     }
-    svg.querySelectorAll<SVGElement>('#hsCount, .hsPips, [data-mekbay-field="heat-sinks"]')
-        .forEach(element => bind(element, () => Object.freeze({
-            kind: 'heat-sinks-off',
-            context: current().editContext,
-        }), 'control'));
 }
 
 function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, issues: string[]): void {
@@ -777,13 +629,13 @@ function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
     rows.forEach(row => row.classList.remove('damaged', 'disabled', 'disabledInventory', 'pending'));
     const componentsById = new Map(snapshot.components.map(component => [component.componentId, component]));
     for (const row of rows) {
-        const components = inventoryComponentIds(row).flatMap(componentId => {
+        const components = readRecordSheetComponentIds(row).flatMap(componentId => {
             const component = componentsById.get(componentId);
             return component === undefined ? [] : [component];
         });
         if (components.length > 0) {
             renderInventoryComponentStatus(row, components);
-        } else if (inventoryComponentIds(row).length > 0) {
+        } else if (readRecordSheetComponentIds(row).length > 0) {
             issues.push(`Unknown inventory component binding for ${row.id}`);
         }
     }
@@ -877,21 +729,6 @@ function renderVelocityRecord(svg: SVGSVGElement, snapshot: NonMekRecordSheetSna
     return [...svg.querySelectorAll<SVGElement>('.velocityCell[data-turn]')];
 }
 
-function renderAmmoProfile(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot, interactive: boolean): void {
-    if (renderHandheldWeaponAmmoPips(svg, snapshot.components)) return;
-    const profile = svg.querySelector<SVGElement>('#ammoProfile');
-    if (!profile) return;
-    const totals = new Map<string, number>();
-    for (const component of snapshot.components) {
-        if (component.ammo === undefined) continue;
-        const name = recordSheetAmmoName(component.ammo.displayName);
-        totals.set(name, (totals.get(name) ?? 0) + component.ammo.remaining);
-    }
-    updateRecordSheetAmmoProfile(profile, [...totals.entries()]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([name, remaining]) => `(${name}) ${remaining}`), interactive);
-}
-
 function renderInventoryComponentStatus(
     row: SVGElement,
     components: readonly Pick<NonMekRecordSheetSnapshot['components'][number], 'status' | 'previewStatus'>[],
@@ -905,40 +742,22 @@ function renderInventoryComponentStatus(
         component.previewStatus !== component.status));
 }
 
-const INVENTORY_RANGE_BUTTONS = Object.freeze([
-    { selector: '.shrButton', range: 'short' as const },
-    { selector: '.medButton', range: 'medium' as const },
-    { selector: '.lngButton', range: 'long' as const },
-    { selector: '.extButton', range: 'extreme' as const },
-]);
-
 function renderInventorySelections(
     svg: SVGSVGElement,
-    snapshot: NonMekRecordSheetSnapshot,
-    panel: EquipmentPanelSnapshot,
+    source: RecordSheetInventorySource | null,
     bind: RecordSheetBind,
     context: () => UnitEditContext,
 ): void {
     const rows = [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')];
-    const assignments = inventoryRowAssignments(rows, panel);
+    const assignments = source === null ? new Map<SVGElement, readonly EquipmentPanelComponent[]>()
+        : inventoryRowAssignments(rows, source.panel);
     for (const row of rows) {
-        row.classList.remove(
-            'selected',
-            'selected-range-short',
-            'selected-range-medium',
-            'selected-range-long',
-            'selected-range-extreme',
-            'selected-target-out-of-range',
-        );
-        row.style.removeProperty('--inventory-control-selection-color');
-        renderInventoryOverlay(row, 'targetTn', undefined);
-        renderInventoryOverlay(row, 'hitMod', undefined);
-
-        const components = assignments.get(row) ?? [];
-        const weapons = components.filter((component): component is EquipmentPanelComponent & {
-            readonly weapon: NonNullable<EquipmentPanelComponent['weapon']>;
-        } => component.weapon !== undefined);
-        if (weapons.length === 0) continue;
+        const weapons = (assignments.get(row) ?? []).filter((component): component is RecordSheetPanelWeapon =>
+            component.weapon !== undefined);
+        if (weapons.length === 0) {
+            renderRecordSheetInventorySelection(row, NO_INVENTORY_SELECTION);
+            continue;
+        }
 
         const weapon = weapons[0].weapon;
         const ammoProfiles = weapons[0].equipment instanceof WeaponEquipment
@@ -949,79 +768,17 @@ function renderInventorySelections(
 
         const componentIds = Object.freeze([...new Set(weapons.flatMap(component =>
             equipmentPanelAttackComponentIds(component)))]);
-        row.setAttribute('data-mekbay-component-ids', componentIds.join(' '));
-        const unavailable = weapons.every(component => component.status !== 'available');
+        writeRecordSheetComponentIds(row, componentIds);
         renderInventoryComponentStatus(row, weapons);
+        const selection = projectRecordSheetWeaponSelection(weapons, source);
 
-        const selections = weapons.map(component => component.weapon.selection);
-        const selection = selections[0];
-        const uniformSelection = selections.every(candidate => sameInventorySelection(candidate, selection));
-        const selected = selections.some(candidate => candidate !== undefined);
-        row.classList.toggle('selected', selected && !unavailable);
-
-        const selectedTarget = uniformSelection && selection?.kind === 'target'
-            ? panel.targets.find(target => target.targetId === selection.targetId)
-            : undefined;
-        const runtimeTarget = selectedTarget === undefined
-            ? null
-            : projectTargetingTarget(selectedTarget, panel.ruleset);
-        const presentation = uniformSelection && selection !== undefined
-            ? projectWeaponTargetPresentation(
-                weapons[0],
-                runtimeTarget,
-                panel.crew.gunnery,
-                null,
-                panel.ruleset,
-            )
-            : null;
-        const selectedRange = uniformSelection && selection !== undefined
-            ? presentation?.rangeSelection?.range
-            : undefined;
-        if (selectedRange !== undefined) row.classList.add(`selected-range-${selectedRange}`);
-        if (selectedTarget !== undefined) {
-            row.style.setProperty('--inventory-control-selection-color', selectedTarget.color);
-        }
-        row.classList.toggle('selected-target-out-of-range', selected && presentation?.outOfRange === true);
-        renderInventoryOverlay(
-            row,
-            'targetTn',
-            selected && presentation?.targetNumberText ? presentation.targetNumberText : undefined,
-        );
-        const modifier = equipmentWeaponToHitModifier(
-            weapons[0],
-            runtimeTarget,
-            presentation?.rangeSelection?.range ?? null,
-        );
-        renderInventoryOverlay(
-            row,
-            'hitMod',
-            unavailable || modifier === 0 ? undefined : `${modifier > 0 ? '+' : ''}${modifier}`,
-        );
-
-        const main = row.querySelector<SVGElement>(':scope > .inventoryEntryButton.mainButton') ?? row;
-        bind(main, () => Object.freeze({
-            kind: 'inventory-selection',
-            componentIds,
-            context: context(),
-        }));
-        for (const definition of INVENTORY_RANGE_BUTTONS) {
-            row.querySelectorAll<SVGElement>(`:scope > .inventoryEntryButton${definition.selector}`)
-                .forEach(button => bind(button, () => Object.freeze({
-                    kind: 'inventory-selection',
-                    componentIds,
-                    range: definition.range,
-                    context: context(),
-                })));
-        }
+        bindRecordSheetInventoryButtons(row, componentIds, undefined, bind, context);
         const modeElements = [...row.querySelectorAll<SVGElement>(':scope > .alternativeMode')];
         const modes = weapons[0].modes;
         modeElements.forEach((modeElement, modeIndex) => {
             const mode = modes[modeIndex];
             modeElement.style.display = mode === undefined ? 'none' : '';
-            modeElement.classList.toggle(
-                'selected',
-                mode !== undefined && weapons.every(component => component.mode === mode),
-            );
+            modeElement.classList.toggle('selected', mode !== undefined && weapons.every(component => component.mode === mode));
             if (mode === undefined) return;
             modeElement.setAttribute('data-mekbay-mode', mode);
             const profile = ammoProfiles.find(profile => profile.displayName === mode);
@@ -1029,26 +786,9 @@ function renderInventorySelections(
                 const minimumRange = mode === weapons[0].mode ? weapon.minimumRange : profile.minimumRange;
                 writeSvgTextLines(modeElement.querySelector(':scope > .range_min'), minimumRange > 0 ? String(minimumRange) : '—');
             }
-            const modeButton = modeElement.querySelector<SVGElement>(
-                ':scope > .inventoryEntryButton.alternativeModeButton',
-            ) ?? modeElement;
-            bind(modeButton, () => Object.freeze({
-                kind: 'inventory-selection',
-                componentIds,
-                mode,
-                context: context(),
-            }));
-            for (const definition of INVENTORY_RANGE_BUTTONS) {
-                modeElement.querySelectorAll<SVGElement>(`:scope > .inventoryEntryButton${definition.selector}`)
-                    .forEach(button => bind(button, () => Object.freeze({
-                        kind: 'inventory-selection',
-                        componentIds,
-                        mode,
-                        range: definition.range,
-                        context: context(),
-                    })));
-            }
+            bindRecordSheetInventoryButtons(modeElement, componentIds, mode, bind, context);
         });
+        renderRecordSheetInventorySelection(row, selection);
     }
 }
 
@@ -1062,7 +802,7 @@ function inventoryRowAssignments(
     const assignments = new Map<SVGElement, EquipmentPanelComponent[]>();
     const used = new Set<ComponentId>();
     for (const row of rows) {
-        const ids = inventoryComponentIds(row);
+        const ids = readRecordSheetComponentIds(row);
         const components = [...new Set(ids.flatMap(id => {
             const component = panelById.get(id);
             return component === undefined ? [] : [component];
@@ -1084,43 +824,3 @@ function equipmentPanelAttackComponentIds(
         ?? Object.freeze([component.componentId]);
 }
 
-function renderInventoryOverlay(
-    row: SVGElement,
-    kind: 'hitMod' | 'targetTn',
-    value: string | undefined,
-): void {
-    const rect = row.querySelector<SVGElement>(`:scope > .${kind}-rect`);
-    const text = row.querySelector<SVGElement>(`:scope > .${kind}-text`);
-    const visible = value !== undefined && value !== '';
-    rect?.setAttribute('display', visible ? 'block' : 'none');
-    text?.setAttribute('display', visible ? 'block' : 'none');
-    if (text) text.textContent = value ?? '';
-}
-
-function sameInventorySelection(
-    left: AttackerSelection | undefined,
-    right: AttackerSelection | undefined,
-): boolean {
-    if (left === undefined || right === undefined) return left === right;
-    if (left.kind !== right.kind) return false;
-    if (left.kind === 'target' && right.kind === 'target') return left.targetId === right.targetId;
-    if (left.kind === 'manual-range' && right.kind === 'manual-range') return left.range === right.range;
-    return true;
-}
-
-function inventoryComponentIds(row: SVGElement): readonly ComponentId[] {
-    return (row.getAttribute('data-mekbay-component-ids') ?? '')
-        .trim()
-        .split(/\s+/u)
-        .filter(Boolean) as ComponentId[];
-}
-
-function formatTechBase(value: EntityTechBase, mixedTech = false): string {
-    if (mixedTech) return 'Mixed';
-    if (value === 'IS') return 'Inner Sphere';
-    return value;
-}
-
-function attributeValue(value: string): string {
-    return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
-}

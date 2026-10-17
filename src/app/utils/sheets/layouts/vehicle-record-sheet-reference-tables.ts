@@ -5,12 +5,11 @@ import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
     type Box,
     addFrame,
+    addReferenceShade,
     addText,
     scalePageBox,
 } from '../record-sheet-svg-rendering';
 import {
-    addExactReferenceText,
-    addReferenceShade,
     canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 
@@ -69,7 +68,7 @@ export function drawVehicleHitLocationReference(
         ['§ Side hits strike the side as indicated by the attack direction. For example, if an attack hits the right side, all Side results', 188.6, 311.32],
         ['strike the right side armor. If the vehicle has no turret, a turret hit strikes the armor on the side attacked.', 195.6],
     ];
-    notes.forEach(([value, y, width]) => addExactReferenceText(content, value, 6, y, 5.7, width));
+    notes.forEach(([value, y, width]) => addText(content, value, 6, y, { size: 5.7, textLength: width }));
 }
 
 export function drawVehicleMotiveReference(
@@ -128,8 +127,7 @@ export function drawVehicleMotiveReference(
         'take effect during the Physical Attack Phase. If a hover vehicle is rendered immobile while',
         'over a Depth 1 or deeper water hex, it sinks and is destroyed.',
     ];
-    notes.forEach((value, index) => addExactReferenceText(content, value, 6, 131.5 + index * 5, 4.8,
-        index < notes.length - 1 ? 227.68 : undefined));
+    notes.forEach((value, index) => addText(content, value, 6, 131.5 + index * 5, { size: 4.8, textLength: index < notes.length - 1 ? 227.68 : undefined }));
 }
 
 export function drawVehicleCriticalReference(

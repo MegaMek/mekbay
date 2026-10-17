@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { queryNonMekRuntime } from '../../models/runtime/non-mek-unit-instance';
 import {
 asArmorFaceId,
 asComponentId,
@@ -38,6 +39,7 @@ import {
 bindNonMekRecordSheet,
 } from './non-mek-record-sheet-binder';
 import { RECORD_SHEET_FRESH_DAMAGE_DURATION_MS } from '../../utils/sheets/record-sheet-damage-highlights';
+import type { RecordSheetInventorySource } from './record-sheet-inventory';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
 
 const editContext = createUnitEditContextFixture();
@@ -93,7 +95,7 @@ describe('bindNonMekRecordSheet', () => {
             expect(table.hasAttribute('tabindex')).toBeFalse();
 
             const onPresentation = jasmine.createSpy('onPresentation');
-            const readOnly = bindNonMekRecordSheet(svg, next, undefined, undefined, onPresentation);
+            const readOnly = bindNonMekRecordSheet(svg, next, undefined, onPresentation);
             targets[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
             table.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
             expect(onPresentation).toHaveBeenCalledTimes(2);
@@ -200,8 +202,8 @@ describe('bindNonMekRecordSheet', () => {
                 entity: uuid, ruleset,
                 initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
             }, entity, ruleset);
-            const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset,
-                0, 0, unit.getCrewAssignment()), editContext: { owner: unit, state: unit.snapshot() } });
+            const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset, unit.query(),
+                0, 0), editContext: { owner: unit, state: unit.snapshot() } });
             const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
             expect(svg.querySelector('#mpRun')?.textContent).toBe('8 [10]');
             const binding = bindNonMekRecordSheet(svg, recordSheet());
@@ -473,21 +475,23 @@ describe('bindNonMekRecordSheet', () => {
         expect(svg.querySelector('#destroyed-overlay')).toBeNull();
     });
 
-    it('binds the first Battle Armor pip to the trooper and the remaining pips to armor', () => {
+    it('gives a Battle Armor trooper row one picker and crosses its pips off from the right', () => {
         const svg = combinedSheet();
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, combinedSnapshot(2), interaction => interactions.push(interaction));
         const pips = [...svg.querySelectorAll<SVGElement>('.armor.pip')];
+        const damaged = (): boolean[] => pips.map(pip => pip.classList.contains('damaged'));
 
-        expect(pips[0].classList.contains('damaged')).toBeFalse();
-        expect(pips.slice(1).filter(pip => pip.classList.contains('damaged')).length).toBe(1);
-        pips[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        svg.querySelector('.unitLocation.armor')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+        // Internal pip first, then three armor pips: one armor point lost marks the rightmost pip.
+        expect(damaged()).toEqual([false, false, false, true]);
+        expect(pips.every(pip => pip.style.pointerEvents === 'none')).toBeTrue();
+        svg.querySelector('.unitLocation.armor')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([
-            jasmine.objectContaining({ kind: 'internal', locationId: TROOPER_ID }),
             jasmine.objectContaining({ kind: 'armor', faceId: TROOPER_FACE_ID, locationId: TROOPER_ID }),
         ]);
 
+        binding.render(combinedSnapshot(0));
+        expect(damaged()).toEqual([false, true, true, true]);
         binding.render(combinedSnapshot(2, 0));
         expect(pips.every(pip => pip.classList.contains('damaged'))).toBeTrue();
     });
@@ -499,8 +503,8 @@ describe('bindNonMekRecordSheet', () => {
         const armorTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.armor')];
         const structureTargets = [...svg.querySelectorAll<SVGElement>('.pip-hit-area.structure')];
 
-        expect(armorTargets.every(target => target.dataset['mekbayEntityBound'] === '1')).toBeTrue();
-        expect(structureTargets.every(target => target.dataset['mekbayEntityBound'] === '1')).toBeTrue();
+        expect(armorTargets.every(target => target.dataset['mekbayBound'] === '1')).toBeTrue();
+        expect(structureTargets.every(target => target.dataset['mekbayBound'] === '1')).toBeTrue();
         expect([...svg.querySelectorAll<SVGElement>('.pip')]
             .every(pip => pip.style.pointerEvents === 'none')).toBeTrue();
         armorTargets[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -518,7 +522,7 @@ describe('bindNonMekRecordSheet', () => {
         expect([...svg.querySelectorAll<SVGElement>('.pip')]
             .every(pip => pip.style.pointerEvents === 'none')).toBeTrue();
         expect([...svg.querySelectorAll<SVGElement>('.unitLocation')]
-            .every(zone => zone.dataset['mekbayEntityBound'] === '1')).toBeTrue();
+            .every(zone => zone.dataset['mekbayBound'] === '1')).toBeTrue();
     });
 
     it('binds every paperdoll fragment and leaves pips inert even when a location path is missing', () => {
@@ -534,7 +538,7 @@ describe('bindNonMekRecordSheet', () => {
         expect(interactions.map(interaction => interaction.kind)).toEqual(['armor', 'armor']);
         const pips = [...svg.querySelectorAll<SVGElement>('.pip')];
         expect(pips.every(pip => pip.style.pointerEvents === 'none'
-            && pip.dataset['mekbayEntityBound'] === undefined)).toBeTrue();
+            && pip.dataset['mekbayBound'] === undefined)).toBeTrue();
         pips.forEach(pip => pip.dispatchEvent(new MouseEvent('click')));
         expect(interactions).toHaveSize(2);
         binding.destroy();
@@ -595,7 +599,7 @@ describe('bindNonMekRecordSheet', () => {
         const structure = [...svg.querySelectorAll<SVGElement>('.structure.pip')];
 
         expect([...armor, ...structure].every(pip =>
-            pip.style.pointerEvents === '' && pip.dataset['mekbayEntityBound'] === '1')).toBeTrue();
+            pip.style.pointerEvents === '' && pip.dataset['mekbayBound'] === '1')).toBeTrue();
         armor[2].dispatchEvent(new MouseEvent('click', { bubbles: true }));
         structure[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
         expect(interactions).toEqual([
@@ -675,7 +679,7 @@ describe('bindNonMekRecordSheet', () => {
         expect(backdrops.length).toBeGreaterThan(2);
         for (const backdrop of backdrops) {
             const location = locations.find(location => location.sheetCode === backdrop.getAttribute('data-loc'))!;
-            expect(backdrop.dataset['mekbayEntityBound']).toBe('1');
+            expect(backdrop.dataset['mekbayBound']).toBe('1');
             backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }));
             expect(interactions.at(-1)).toEqual(jasmine.objectContaining({
                 kind: backdrop.classList.contains('armor') ? 'armor' : 'internal',
@@ -683,7 +687,7 @@ describe('bindNonMekRecordSheet', () => {
             }));
         }
         expect(interactions.length).toBe(backdrops.length);
-        expect(svg.querySelector('.capital-pip-grid[data-mekbay-entity-bound], .capital-pip-state[data-mekbay-entity-bound]')).toBeNull();
+        expect(svg.querySelector('.capital-pip-grid[data-mekbay-bound], .capital-pip-state[data-mekbay-bound]')).toBeNull();
         binding.destroy();
     });
 
@@ -696,7 +700,7 @@ describe('bindNonMekRecordSheet', () => {
         const targets = [...svg.querySelectorAll<SVGElement>('.capital-pip-interaction')];
         expect(targets).not.toHaveSize(0);
         expect(targets.every(target => target.style.pointerEvents === 'none'
-            && target.dataset['mekbayEntityBound'] === undefined)).toBeTrue();
+            && target.dataset['mekbayBound'] === undefined)).toBeTrue();
         targets[0].dispatchEvent(new MouseEvent('click'));
         expect(interactions).toEqual([]);
         binding.destroy();
@@ -718,12 +722,12 @@ describe('bindNonMekRecordSheet', () => {
             svg.querySelector(`.${className}`)?.getAttribute('d') ?? '';
 
         expect(targets.length).toBe(60);
-        expect(targets.every(target => target.dataset['mekbayEntityBound'] === undefined
+        expect(targets.every(target => target.dataset['mekbayBound'] === undefined
             && target.style.pointerEvents === 'none')).toBeTrue();
         expect(targets.every(target => target.style.fill === 'transparent'
             && target.style.getPropertyPriority('fill') === 'important')).toBeTrue();
-        expect(grid.dataset['mekbayEntityBound']).toBeUndefined();
-        expect(region.dataset['mekbayEntityBound']).toBe('1');
+        expect(grid.dataset['mekbayBound']).toBeUndefined();
+        expect(region.dataset['mekbayBound']).toBe('1');
         expect(svg.querySelectorAll('.pip').length).toBe(0);
         expect(path('capital-pip-state-damaged')).not.toBe('');
 
@@ -846,9 +850,26 @@ describe('bindNonMekRecordSheet', () => {
             jasmine.objectContaining({ kind: 'crew-state-menu', positionId: CREW_ID }),
             jasmine.objectContaining({ kind: 'crew-profile', positionId: CREW_ID }),
         ]);
+        // Controls take no damage highlight and no secondary click.
+        const controls = ['.unitConditionButton[condition="menu"]', '.unitConditionButton[condition="disconnected"]',
+            '.crewHit[hit="2"]', '.crewStateButton', '.crewNameButton'].map(selector => svg.querySelector<SVGElement>(selector)!);
+        expect(controls.some(control => control.classList.contains('selectable'))).toBeFalse();
+        controls.forEach(control => control.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })));
+        expect(interactions.length).toBe(5);
 
         binding.render(stateSnapshot(2));
         expect(svg.querySelectorAll('.crewHit.damaged').length).toBe(2);
+    });
+
+    it('rolls random hits on read-only sheets through the presentation handler', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', '<g data-mekbay-random-hit="1"></g>');
+        const onPresentation = jasmine.createSpy('onPresentation');
+        const binding = bindNonMekRecordSheet(svg, snapshot(3), undefined, onPresentation);
+        svg.querySelector('[data-mekbay-random-hit]')!
+            .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+        expect(onPresentation).toHaveBeenCalledOnceWith(jasmine.objectContaining({ kind: 'random-hit' }), jasmine.any(PointerEvent));
+        binding.destroy();
     });
 
     it('renders and binds the generated aerospace heat scale and heat panel as unhighlighted controls', () => {
@@ -891,6 +912,28 @@ describe('bindNonMekRecordSheet', () => {
         expect(svg.querySelector('#heatScale .overflowFrame')?.classList.contains('hot')).toBeTrue();
         expect(svg.querySelector('#heatScale .overflowText')?.textContent).toBe('33');
         binding.destroy();
+    });
+
+    it('keeps heat-cell events on the sheet and binds the scale again after the binding is destroyed', () => {
+        const svg = heatSheet();
+        const cell = () => svg.querySelector<SVGElement>('#heatScale .heat[heat="5"]')!;
+        const outside = jasmine.createSpy('outside');
+        svg.parentElement!.addEventListener('pointerdown', outside);
+        svg.parentElement!.addEventListener('click', outside);
+        const first = bindNonMekRecordSheet(svg, heatSnapshot(), () => undefined);
+        cell().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+        window.dispatchEvent(new PointerEvent('pointerup'));
+        cell().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(outside).not.toHaveBeenCalled();
+
+        first.destroy();
+        expect(cell().classList.contains('interactive')).toBeFalse();
+        expect(cell().hasAttribute('tabindex')).toBeFalse();
+        const interactions: RecordSheetInteraction[] = [];
+        const second = bindNonMekRecordSheet(svg, heatSnapshot(), interaction => interactions.push(interaction));
+        cell().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([jasmine.objectContaining({ kind: 'heat', heat: 5 })]);
+        second.destroy();
     });
 
     it('shows aerospace end-turn heat as the automatic projection bar or the manual target marker', () => {
@@ -947,11 +990,12 @@ describe('bindNonMekRecordSheet', () => {
             svg,
             recordSheet,
             interaction => interactions.push(interaction),
-            equipmentPanel,
+            undefined,
+            inventory(equipmentPanel),
         );
         svg.querySelector('.mainButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-        expect(svg.querySelector('.mainButton')?.getAttribute('data-mekbay-entity-bound')).toBe('1');
+        expect(svg.querySelector('.mainButton')?.getAttribute('data-mekbay-bound')).toBe('1');
         expect(interactions).toEqual([jasmine.objectContaining({
             kind: 'inventory-selection',
             componentIds: [componentId],
@@ -962,7 +1006,8 @@ describe('bindNonMekRecordSheet', () => {
         const unboundRow = unboundSvg.querySelector('.inventoryEntry')!;
         unboundRow.removeAttribute('data-mekbay-component-ids');
         unboundRow.id = 'weapon@0';
-        bindNonMekRecordSheet(unboundSvg, recordSheet, interaction => interactions.push(interaction), equipmentPanel);
+        bindNonMekRecordSheet(unboundSvg, recordSheet, interaction => interactions.push(interaction), undefined,
+            inventory(equipmentPanel));
         unboundSvg.querySelector('.mainButton')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions.length).toBe(1);
     });
@@ -986,19 +1031,18 @@ describe('bindNonMekRecordSheet', () => {
             const coldAmmoId = componentIdForMount(addTestEquipment(entity, ammo, { shotsCount: 12 }));
             const unit = createNonMekUnit(entity, { instanceId: 'hot-load-vehicle', uuid,
                 scenario: { id: 'megamek', options: { hotLoadedAmmo: true } }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
-            const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(),
-                0, 0, unit.getCrewAssignment()), editContext: { owner: unit, state: unit.snapshot() } });
-            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(),
-                unit.getCrewAssignment(), emptyCBTEncounterSnapshot(), true, enabled);
+            const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
+                0, 0), editContext: { owner: unit, state: unit.snapshot() } });
+            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), queryNonMekRuntime({ ...unit.mechanics(), hotLoadedAmmo: enabled }, unit.snapshot()), emptyCBTEncounterSnapshot());
             const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${weaponId}"]`)!;
             const values = ammoType === 'LRM' ? row : row.querySelector('.alternativeMode')!;
             const minimum = values.querySelector('.range_min')!;
-            const binding = bindNonMekRecordSheet(svg, recordSheet(), undefined, panel());
+            const binding = bindNonMekRecordSheet(svg, recordSheet(), undefined, undefined, inventory(panel()));
             expect(minimum.textContent).toBe(normalMinimum);
 
             unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: ammo.id, remaining: 12, hotLoaded: true });
-            binding.render(recordSheet(), panel());
+            binding.render(recordSheet(), inventory(panel()));
             expect(minimum.textContent).toBe('—');
             expect(['short', 'medium', 'long'].map(range => values.querySelector(`.range_${range}`)!.textContent))
                 .toEqual(ranges.slice(0, 3).map(String));
@@ -1006,30 +1050,30 @@ describe('bindNonMekRecordSheet', () => {
             for (const [sourceId, expected] of [[coldAmmoId, normalMinimum], [ammoId, '—']] as const) {
                 unit.installAttackerTargetingSessionState({ ...unit.query().attackerTargetingState(),
                     components: new Map([[weaponId, { ammo: { munitionKey: ammo.id, preferredSourceId: sourceId } }]]) });
-                binding.render(recordSheet(), panel());
+                binding.render(recordSheet(), inventory(panel()));
                 expect(minimum.textContent).toBe(expected);
             }
-            binding.render(recordSheet(), panel(false));
+            binding.render(recordSheet(), inventory(panel(false)));
             expect(minimum.textContent).toBe(normalMinimum);
-            binding.render(recordSheet(), panel());
+            binding.render(recordSheet(), inventory(panel()));
             expect(minimum.textContent).toBe('—');
 
             expect(unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
                 munitionKey: ammo.id, remaining: 0 }).changed).toBeTrue();
             expect(unit.query().remainingAmmo(ammoId)).toBe(0);
             expect(unit.query().ammoHotLoaded(ammoId)).toBeTrue();
-            binding.render(recordSheet(), panel());
+            binding.render(recordSheet(), inventory(panel()));
             expect(minimum.textContent).toBe(normalMinimum);
             unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: ammo.id, remaining: 12, hotLoaded: false });
-            binding.render(recordSheet(), panel());
+            binding.render(recordSheet(), inventory(panel()));
             expect(minimum.textContent).toBe(normalMinimum);
             if (ammoType !== 'LRM') {
                 unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: ammo.id, remaining: 12, hotLoaded: true });
-                binding.render(recordSheet(), panel());
+                binding.render(recordSheet(), inventory(panel()));
                 expect(minimum.textContent).toBe('—');
                 unit.dispatch({ type: 'set-component-mode', componentId: weaponId,
                     mode: ammoType === 'MML' ? 'SRM' : 'Extended Range' });
-                binding.render(recordSheet(), panel());
+                binding.render(recordSheet(), inventory(panel()));
                 expect(minimum.textContent).toBe(normalMinimum);
                 expect(row.querySelector(':scope > .range_min')!.textContent).toBe('');
             }
@@ -1118,13 +1162,13 @@ describe('bindNonMekRecordSheet', () => {
             }],
         } as unknown as EquipmentPanelSnapshot;
 
-        bindNonMekRecordSheet(svg, recordSheet, interaction => interactions.push(interaction), equipmentPanel);
+        bindNonMekRecordSheet(svg, recordSheet, interaction => interactions.push(interaction), undefined, inventory(equipmentPanel));
         const buttons = svg.querySelectorAll<SVGElement>('.mainButton');
         buttons[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         buttons[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-        expect(buttons[0]?.getAttribute('data-mekbay-entity-bound')).toBe('1');
-        expect(buttons[1]?.hasAttribute('data-mekbay-entity-bound')).toBeFalse();
+        expect(buttons[0]?.getAttribute('data-mekbay-bound')).toBe('1');
+        expect(buttons[1]?.hasAttribute('data-mekbay-bound')).toBeFalse();
         expect(interactions).toEqual([jasmine.objectContaining({
             kind: 'inventory-selection',
             componentIds: [firstId, secondId],
@@ -1164,7 +1208,7 @@ describe('bindNonMekRecordSheet', () => {
             }],
         } as unknown as EquipmentPanelSnapshot;
 
-        bindNonMekRecordSheet(svg, recordSheet, interaction => interactions.push(interaction), equipmentPanel);
+        bindNonMekRecordSheet(svg, recordSheet, interaction => interactions.push(interaction), undefined, inventory(equipmentPanel));
         expect(svg.querySelector('.alternativeMode')?.classList.contains('selected')).toBeTrue();
         svg.querySelectorAll('.alternativeModeButton')[1]
             ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -1498,7 +1542,7 @@ function heatSheet(): SVGSVGElement {
     const svg = host.firstElementChild as SVGSVGElement;
     const fighter = new TestAeroSpaceFighterEntity();
     drawHeatScale(svg, { x: 574, y: 388.911, width: 19.454, height: 366 }, 'aero');
-    drawAeroHeatDataPanel(svg, fighter, { x: 405.456, y: 509.4, width: 161, height: 246.6 }, true);
+    drawAeroHeatDataPanel(svg, fighter, { x: 405.456, y: 509.4, width: 161, height: 246.6 });
     return svg;
 }
 
@@ -1574,4 +1618,8 @@ function stateSheet(): SVGSVGElement {
         <g class="crewStateBanner" crewId="0"><rect class="unitConditionBannerRect"></rect><text class="unitConditionBannerText"></text></g>
     </svg>`;
     return host.querySelector('svg') as SVGSVGElement;
+}
+
+function inventory(panel: EquipmentPanelSnapshot): RecordSheetInventorySource {
+    return { panel, attack: null };
 }

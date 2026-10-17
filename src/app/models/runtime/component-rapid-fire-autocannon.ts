@@ -3,9 +3,9 @@
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { EquipmentFlag } from '../equipment-flags.type';
-import { WeaponEquipment } from '../equipment.model';
+import { WeaponEquipment, type Equipment } from '../equipment.model';
 import { gameRulesFor } from '../rules/game-rules';
-import { type CBTMekUnit } from './cbt-unit';
+import { type CBTMekUnit, type CBTUnit } from './cbt-unit';
 import {
 ComponentModeHandler,
 type ComponentModeDefinition,
@@ -14,34 +14,82 @@ import {
 EquipmentInteractionHandler,
 type EquipmentInteractionChoice,
 type EquipmentInteractionCommandContext,
+type EquipmentInteractionHandlerId,
 type EquipmentInteractionInput,
 type EquipmentInteractionQueryContext,
 } from './equipment-interaction';
-import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index';
+import { equipmentForComponent } from './mek-runtime-index';
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
 
+export const UAC_JAMMING_HANDLER_ID: EquipmentInteractionHandlerId = 'uac-jamming-handler';
 export const UAC_JAMMED_CHOICE_VALUE = 'true';
 const UAC_UNJAMMED_CHOICE_VALUE = 'false';
 
 export interface ComponentJamDefinition {
     readonly componentId: ComponentId;
     readonly displayName: string;
-    readonly supportsJamming: boolean;
 }
 
+/** Rotary ACs always jam; Ultra ACs jam only where the ruleset uses UAC jamming. */
 export function rapidFireAutocannonSupportsJamming(
-    index: MekRuntimeIndex,
-    componentId: ComponentId,
+    equipment: Equipment | undefined,
     ruleset: CBTRuleset,
 ): boolean {
-    const equipment = equipmentForComponent(index, componentId);
     if (!(equipment instanceof WeaponEquipment)) return false;
     return equipment.ammoType === 'AC_ROTARY'
         || (gameRulesFor(ruleset).usesUacJamming
             && ['AC_ULTRA', 'AC_ULTRA_THB'].includes(equipment.ammoType));
+}
+
+/** The jam control of one component in either runtime family; null when it cannot jam. */
+export function componentJamDefinition(
+    componentId: ComponentId,
+    equipment: Equipment | undefined,
+    ruleset: CBTRuleset,
+): ComponentJamDefinition | null {
+    if (equipment === undefined || !rapidFireAutocannonSupportsJamming(equipment, ruleset)) return null;
+    return Object.freeze({ componentId, displayName: equipment.shortName || equipment.name });
+}
+
+export function componentJamChoices(
+    runtime: CBTUnit,
+    definition: ComponentJamDefinition,
+): EquipmentInteractionChoice[] {
+    const jammed = runtime.query().componentJammed(definition.componentId);
+    return [{
+        label: jammed ? 'Jammed' : 'Jam',
+        shortLabel: jammed ? 'Unjam' : 'Jam',
+        value: jammed ? UAC_UNJAMMED_CHOICE_VALUE : UAC_JAMMED_CHOICE_VALUE,
+        stateEdit: jammed ? 'enable' : 'disable',
+        displayType: 'toggle',
+        active: jammed,
+        tooltipType: jammed ? 'error' : undefined,
+    }];
+}
+
+export function selectComponentJam(
+    runtime: CBTUnit,
+    definition: ComponentJamDefinition,
+    choice: PickerChoice,
+    context: EquipmentInteractionCommandContext,
+): boolean {
+    const jammed = choice.value === UAC_JAMMED_CHOICE_VALUE;
+    if (runtime.query().componentJammed(definition.componentId) === jammed) return true;
+    const result = runtime.dispatch({
+        type: 'set-component-jammed',
+        componentId: definition.componentId,
+        jammed,
+    });
+    if (result.accepted && result.changed) {
+        context.toastService.showToast(
+            `${definition.displayName} is ${jammed ? 'jammed' : 'unjammed'}`,
+            jammed ? 'error' : 'info',
+        );
+    }
+    return result.accepted;
 }
 
 /** Ordered UAC/RAC entity modes map directly to one through six fired shots. */
@@ -101,7 +149,7 @@ export class UACFiringModeHandler extends ComponentModeHandler {
 }
 
 export class UACJammingHandler extends EquipmentInteractionHandler {
-    readonly id = 'uac-jamming-handler';
+    readonly id = UAC_JAMMING_HANDLER_ID;
     readonly kind = 'jam';
     readonly scope = 'component' as const;
     override readonly flags: EquipmentFlag[] = ['F_AC'];
@@ -109,9 +157,7 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
 
     override choices(input: EquipmentInteractionInput): readonly EquipmentInteractionChoice[] {
         const definition = this.definition(input);
-        return definition.supportsJamming
-            ? this.getComponentJamChoices(input.runtime, definition, input.context)
-            : [];
+        return definition === null ? [] : componentJamChoices(input.runtime, definition);
     }
 
     override select(
@@ -120,61 +166,14 @@ export class UACJammingHandler extends EquipmentInteractionHandler {
         context: EquipmentInteractionCommandContext,
     ): boolean {
         const definition = this.definition(input);
-        return definition.supportsJamming
-            && this.handleComponentJamSelection(input.runtime, definition, choice, context);
+        return definition !== null && selectComponentJam(input.runtime, definition, choice, context);
     }
 
-    getComponentJamChoices(
-        runtime: CBTMekUnit,
-        definition: ComponentJamDefinition,
-        _context: EquipmentInteractionQueryContext,
-    ): EquipmentInteractionChoice[] {
-        const jammed = runtime.query().componentJammed(definition.componentId);
-        return [{
-            label: jammed ? 'Jammed' : 'Jam',
-            shortLabel: jammed ? 'Unjam' : 'Jam',
-            value: jammed ? UAC_UNJAMMED_CHOICE_VALUE : UAC_JAMMED_CHOICE_VALUE,
-            stateEdit: jammed ? 'enable' : 'disable',
-            displayType: 'toggle',
-            active: jammed,
-            tooltipType: jammed ? 'error' : undefined,
-        }];
-    }
-
-    handleComponentJamSelection(
-        runtime: CBTMekUnit,
-        definition: ComponentJamDefinition,
-        choice: PickerChoice,
-        context: EquipmentInteractionCommandContext,
-    ): boolean {
-        const jammed = choice.value === UAC_JAMMED_CHOICE_VALUE;
-        if (!definition.supportsJamming) return false;
-        if (runtime.query().componentJammed(definition.componentId) === jammed) return true;
-        const result = runtime.dispatch({
-            type: 'set-component-jammed',
-            componentId: definition.componentId,
-            jammed,
-        });
-        if (result.accepted && result.changed) {
-            context.toastService.showToast(
-                `${definition.displayName} is ${jammed ? 'jammed' : 'unjammed'}`,
-                jammed ? 'error' : 'info',
-            );
-        }
-        return result.accepted;
-    }
-
-    private definition(input: EquipmentInteractionInput): ComponentJamDefinition {
-        const equipment = equipmentForComponent(input.index, input.componentId);
-        if (!equipment) throw new Error(`Component ${input.componentId} has no equipment`);
-        return Object.freeze({
-            componentId: input.componentId,
-            displayName: equipment.shortName || equipment.name,
-            supportsJamming: rapidFireAutocannonSupportsJamming(
-                input.index,
-                input.componentId,
-                input.ruleset,
-            ),
-        });
+    private definition(input: EquipmentInteractionInput): ComponentJamDefinition | null {
+        return componentJamDefinition(
+            input.componentId,
+            equipmentForComponent(input.index, input.componentId),
+            input.ruleset,
+        );
     }
 }

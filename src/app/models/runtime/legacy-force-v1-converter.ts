@@ -35,7 +35,7 @@ MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
 type SerializedCBTForceRosterGroupV1,
 } from './cbt-force-roster';
 import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
-import { type CBTRuntimeEquipment } from './cbt-unit-runtime';
+import { MAX_HEAT_VALUE,type CBTRuntimeEquipment } from './cbt-unit-runtime';
 import {
 asForceId,
 CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
@@ -1142,7 +1142,7 @@ function restoreLegacyEntityHeat(
         if (nonPristine) issues.push('V1 heat state belongs to an Entity that does not track heat.');
         return undefined;
     }
-    if (current > 1_000_000 || previous > 1_000_000 || (pending ?? 0) > 1_000_000) {
+    if (current > MAX_HEAT_VALUE || previous > MAX_HEAT_VALUE || (pending ?? 0) > MAX_HEAT_VALUE) {
         issues.push('V1 heat state exceeds the current runtime limit.');
         return undefined;
     }

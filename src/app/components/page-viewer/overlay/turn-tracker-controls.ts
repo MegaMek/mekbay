@@ -342,11 +342,9 @@ export abstract class TurnTrackerControls {
             ).modifier;
         return modifier === 0 ? null : `+${modifier}`;
     });
-    readonly spottingModifierLabel = computed(() => {
-        const modifier = this.runtime()?.snapshot().spottingModifier
-            ?? (this.entitySnapshot() ? 1 : 0);
-        return modifier === 0 ? null : this.formatModifier(modifier);
-    });
+    /** Always shown, +0 included, so the button keeps its layout and the user sees spotting costs nothing. */
+    readonly spottingModifierLabel = computed(() => this.formatModifier(this.runtime()?.snapshot().spottingModifier
+        ?? (this.entitySnapshot() ? 1 : 0)));
 
     private readonly entityHeatProjection = computed(() => {
         const snapshot = this.entitySnapshot();

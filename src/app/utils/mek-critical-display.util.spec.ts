@@ -8,7 +8,7 @@ import {
     addTestEquipmentWithFlags,
 } from '../models/entity/testing/test-mounted-equipment';
 import type { CriticalSlotView } from '../models/entity/types';
-import { mekCriticalCaseLabel, mekCriticalSlotLabel } from './mek-critical-display.util';
+import { formatMekCriticalSlotLines, mekCriticalCaseLabel, mekCriticalSlotLines } from './mek-critical-display.util';
 
 describe('Mek critical display', () => {
     it('formats ammo through its mounted display name and includes the shot count', () => {
@@ -27,7 +27,40 @@ describe('Mek critical display', () => {
             omniPod: false,
         };
 
-        expect(mekCriticalSlotLabel(slot, entity)).toBe('Ammo (AC/20) 5');
+        expect(mekCriticalSlotLines(slot, entity)).toEqual(['Ammo (AC/20) 5']);
+    });
+
+    it('sums superheavy bins of one ammo into a single line', () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(135);
+        const ammo = new AmmoEquipment({
+            id: 'Clan Streak SRM 6 Ammo',
+            name: 'Streak SRM 6 Ammo',
+            shortName: 'Streak SRM 6',
+            type: 'ammo',
+            ammo: { type: 'SRM_STREAK', shots: 15 },
+        });
+        const slot: CriticalSlotView = {
+            type: 'equipment',
+            mounts: [addTestEquipment(entity, ammo, { location: 'RA' }), addTestEquipment(entity, ammo, { location: 'RA' })],
+            armored: false,
+            omniPod: true,
+        };
+
+        expect(mekCriticalSlotLines(slot, entity)).toEqual(['Ammo (Streak SRM 6) 30']);
+    });
+
+    it('gives each munition sharing a superheavy slot its own line and counts shared heat sinks', () => {
+        expect(formatMekCriticalSlotLines([
+            { ammo: { name: 'LB 10-X AC', shots: 10 } },
+            { ammo: { name: 'LB 10-X Cluster', shots: 10 } },
+        ])).toEqual(['Ammo (LB 10-X AC) 10', 'Ammo (LB 10-X Cluster) 10']);
+        expect(formatMekCriticalSlotLines([
+            { ammo: { name: 'LRM 20', shots: 6 } },
+            { ammo: { name: 'LRM 20 Swarm', shots: 3, custom: true } },
+        ])).toEqual(['Ammo (LRM 20) 6', '*Ammo (LRM 20 Swarm) 3']);
+        expect(formatMekCriticalSlotLines([{ label: 'Heat Sink' }, { label: 'Heat Sink' }])).toEqual(['2 Heat Sinks']);
+        expect(formatMekCriticalSlotLines([])).toEqual(['Roll Again']);
     });
 
     it('uses explicit and entity-derived Clan CASE facts', () => {

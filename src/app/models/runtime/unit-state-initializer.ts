@@ -13,10 +13,8 @@ import {
     type MekUnitRuntimeState,
     type InstanceBaselineRef,
 } from './runtime-state';
-import {
-    createPristineMekHeatStateV2,
-    MAX_MEK_HEAT_VALUE_V2,
-} from './mek-heat-state-v2';
+import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { createPristineMekHeatStateV2 } from './mek-heat-state-v2';
 import {
     canonicalizeCrewAssignment,
     createDefaultCrewAssignment,
@@ -144,7 +142,7 @@ function canonicalizeDeploymentConfiguration(
     if (deployment.initialHeat !== undefined
         && (!Number.isSafeInteger(deployment.initialHeat)
             || deployment.initialHeat < 0
-            || deployment.initialHeat > MAX_MEK_HEAT_VALUE_V2
+            || deployment.initialHeat > MAX_HEAT_VALUE
             || Object.is(deployment.initialHeat, -0))) {
         throw new Error('Initial heat must be a canonical bounded non-negative integer');
     }

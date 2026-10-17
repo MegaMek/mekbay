@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, fitInventoryText, inventoryCellLines, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryCellLines, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import type { SystemDamageKind } from '../../../models/rules/system-damage-rules';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
@@ -14,6 +14,7 @@ import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entit
 import { SmallCraftEntity } from '../../../models/entity/entities/aero/small-craft-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import type { EntityMountedEquipment,EntityMountedWeapon,EquipmentBay } from '../../../models/entity/types';
+import { heatSinkTypeDissipation } from '../../../models/entity/types';
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { AmmoEquipment, MiscEquipment, ammoMatchesWeapon } from '../../../models/equipment.model';
 import { isPrintableLargeCraftMisc, largeCraftMiscFeatureName } from '../../../models/entity/utils/large-craft-features';
@@ -23,7 +24,8 @@ PPC_CAPACITOR_DAMAGE_BONUS,
 PPC_CAPACITOR_HEAT_BONUS,
 } from '../../../models/ppc-capacitor.model';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
+import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
+import { recordSheetQuirksText } from '../record-sheet-quirks';
 import {
 fullRecordSheetLayoutProfile,
 recordSheetPageProfile,
@@ -31,12 +33,13 @@ type RecordSheetLayoutProfile,
 type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-addCrewSkillValue,
 drawCrewHitGrid,
-addDiagramHeading,
 addFrame,
 addLine,
+addTemplateCaption,
 addText,
+appendBattleValue,
+drawCriticalDamageBox,
 appendLegacyIdentityAnchors,
 createRoot,
 drawGeneratedFooter,
@@ -44,16 +47,18 @@ drawHeatScale,
 drawNotesPanel,
 drawPageChrome,
 formatNumber,
-formatTechBase,
 formatWholeNumber,
 scalePageBox,
-setAttributes,
 setInventoryComponentIds,
 svgElement,
 transparentRect,
+wrapRecordSheetText,
 type Box,
 } from '../record-sheet-svg-rendering';
 import {
+appendAeroDataPanelHeader,
+drawAeroDiagramHeader,
+appendAeroSkillRows,
 drawAeroArtworkRegion,
 drawAeroDataPanel,
 drawAeroMovementCompass,
@@ -107,7 +112,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         if (!isAeroEntity(entity) || !this.matches(entity)) {
             throw new Error('Large-aero layout requires a large aerospace vessel');
         }
-        return this.generatePrimaryPage(entity, request, largeAeroPageContent(entity));
+        return this.generatePrimaryPage(entity, request, largeAeroPageContent(entity, request.showQuirks));
     }
 
     public async generatePages(
@@ -117,7 +122,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
         if (!isAeroEntity(entity) || !this.matches(entity)) {
             throw new Error('Large-aero layout requires a large aerospace vessel');
         }
-        const content = largeAeroPageContent(entity);
+        const content = largeAeroPageContent(entity, request.showQuirks);
         const primary = await this.generatePrimaryPage(entity, request, content);
         return content.plan.pageCount === 1
             ? Object.freeze([primary])
@@ -143,25 +148,19 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             width: 222.4,
             height: dataPanelHeight + page.height - recordSheetPageProfile().height,
         });
-        const dataGroup = capital || content.plan.pageCount > 1 || content.capitalRows.length > 0
-            ? drawCapitalAeroDataPanel(svg, entity, dataPanelBox, content)
-            : drawAeroDataPanel(svg, entity, dataPanelBox, dataPanelHeight, {
+        if (capital || content.plan.pageCount > 1 || content.capitalRows.length > 0) {
+            drawCapitalAeroDataPanel(svg, entity, dataPanelBox, content);
+        } else {
+            drawAeroDataPanel(svg, entity, dataPanelBox, dataPanelHeight, {
                 panelTitle: this.dataPanelTitle(entity),
                 identity: 'large-vessel',
                 inventoryRows: this.standardBayInventoryRows(entity),
                 flowCargoAfterInventory: true,
                 showAmmoSummary: false,
-                stationary: false,
                 showQuirks: request.showQuirks,
                 featureText: capitalAeroFeatures(entity),
             });
-        const eraY = 395.65;
-        await appendRecordSheetEraIcon(svg, dataGroup, entity.year(), {
-            x: 158.563 * dataPanelBox.width / 222.4,
-            y: eraY * dataPanelBox.height / dataPanelHeight,
-            width: 20 * dataPanelBox.width / 222.4,
-            height: 20 * dataPanelBox.height / dataPanelHeight,
-        });
+        }
         await drawAeroPaperdoll(svg, entity, at({
             x: 249.651,
             y: 18,
@@ -173,7 +172,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             // Capital armor and integrity tracks always use square tables.
             pipLayout: capital ? 'capital-grid' : request.pipLayout,
         });
-        drawLargeAeroDiagramHeader(svg, capital, page);
+        drawAeroDiagramHeader(svg, page, 'vessel', capital ? 'Capital Scale' : 'Standard Scale');
         drawAeroMovementCompass(svg, at({ x: 249.651, y: 456.4, width: 90, height: 50 }));
         if (entity.entityType === 'SpaceStation') {
             const upperNotes = at({ x: 18.966, y: 509.4, width: 220.4, height: 93.934 });
@@ -454,10 +453,11 @@ interface LargeAeroPageContent {
     readonly standardRows: readonly CapitalAeroInventoryRow[];
     readonly gravDecks: readonly number[];
     readonly cargoLines: readonly string[];
+    readonly footerText: { readonly fuel: string; readonly features: string; readonly quirks: string };
     readonly plan: LargeAeroRecordSheetPagePlan;
 }
 
-function largeAeroPageContent(entity: AeroEntity): LargeAeroPageContent {
+function largeAeroPageContent(entity: AeroEntity, showQuirks: boolean | undefined): LargeAeroPageContent {
     const capitalRows = capitalAeroInventoryRows(entity, 'capital');
     const standardRows = capitalAeroInventoryRows(entity, 'standard');
     const gravDecks = entity instanceof JumpShipEntity ? entity.gravDecks() : [];
@@ -469,14 +469,34 @@ function largeAeroPageContent(entity: AeroEntity): LargeAeroPageContent {
         gravDeckCount: gravDecks.length,
         transportBayLines: cargoLines.length,
     });
-    return Object.freeze({ capitalRows, standardRows, gravDecks, cargoLines, plan });
+    const features = capitalAeroFeatures(entity);
+    const footerText = Object.freeze({
+        fuel: `Fuel Points: ${formatWholeNumber(entity.fuel())}`,
+        features: features ? `Features ${features}` : '',
+        quirks: recordSheetQuirksText(entity, showQuirks),
+    });
+    return Object.freeze({ capitalRows, standardRows, gravDecks, cargoLines, footerText, plan });
+}
+
+function inventoryRowLines(rows: readonly CapitalAeroInventoryRow[], fontSize: number,
+    columns: LargeAeroInventoryColumns): readonly number[] {
+    return rows.map(row => Math.max(row.nameLines.flatMap(name => inventoryCellLines(name, columns.nameMaxWidth, fontSize)).length,
+        inventoryRowLineCount([[row.location, columns.locationMaxWidth], [String(row.heat), 12],
+            ...row.damageByRange.map(value => [value, columns.rangeMaxWidth] as const)], fontSize)));
+}
+
+/** Weapon rows carrying to-hit badges in the given blocks, for the fit's badge leading. */
+function largeAeroBadgeRows(content: LargeAeroPageContent, blocks: ReadonlySet<LargeAeroRecordSheetBlock>,
+    fontSize: number, columns: LargeAeroInventoryColumns): readonly number[] {
+    return [
+        ...(blocks.has('capital-weapons') ? inventoryRowLines(content.capitalRows, fontSize, columns) : []),
+        ...(blocks.has('standard-weapons') ? inventoryRowLines(content.standardRows, fontSize, columns) : []),
+    ];
 }
 
 function inventoryLineCount(rows: readonly CapitalAeroInventoryRow[], includeFootnotes: boolean,
     fontSize: number = RECORD_SHEET_FONT.inventory, columns: LargeAeroInventoryColumns = FRONT_INVENTORY_COLUMNS): number {
-    const entries = rows.reduce((sum, row) => sum + Math.max(row.nameLines.flatMap(name => inventoryCellLines(name, columns.nameMaxWidth, fontSize)).length,
-        inventoryRowLineCount([[row.location, columns.locationMaxWidth], [String(row.heat), 12],
-            ...row.damageByRange.map(value => [value, columns.rangeMaxWidth] as const)], fontSize)), 0);
+    const entries = inventoryRowLines(rows, fontSize, columns).reduce((sum, lines) => sum + lines, 0);
     if (!includeFootnotes) return entries;
     return entries + new Set(rows.map(row => row.footnote).filter((note): note is string => Boolean(note))).size;
 }
@@ -489,7 +509,7 @@ function drawCapitalAeroDataPanel(
 ): SVGGElement {
     const group = addFrame(svg, capitalAeroDataPanelTitle(entity), box, {
         bottomLeftNotchWidth: box.width * 0.36,
-        cornerAngleDegrees: { topRight: 45, bottomLeft: 45 },
+        cornerAngleDegrees: { topRight: 0, bottomLeft: 45 },
     });
     group.setAttribute('data-mekbay-region', 'aero-data');
     const firstScale = content.plan.front.has('capital-weapons') ? 'capital' : 'standard';
@@ -501,60 +521,24 @@ function drawCapitalAeroDataPanel(
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * box.width / 222.4;
 
-    addText(group, 'Type:', x(6), y(28), { size: font(9.67), weight: 700 });
-    const type = addText(group, entity.displayName(), x(32.229), y(28), {
-        size: font(9.67), weight: 700, maxWidth: x(184),
-    });
-    type.id = 'type';
-    type.setAttribute('data-mekbay-field', 'display-name');
-    addText(group, 'Name:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-    const fluffName = addText(group, '', x(31.315), y(38), { size: font(RECORD_SHEET_FONT.body), maxWidth: x(74) });
-    fluffName.id = 'fluffName';
-    addLine(group, x(31.315), y(39), x(105.218), y(39), '#000', 0.72 * Math.min(sx, sy));
-
     const stationary = entity.entityType === 'JumpShip' || entity.entityType === 'SpaceStation';
-    addText(group, 'Thrust:', x(6), y(47), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
-    if (stationary) {
-        addText(group, 'Station Keeping Only', x(9.844), y(56), { size: font(RECORD_SHEET_FONT.body), maxWidth: x(96) });
-    } else {
-        addText(group, 'Safe Thrust:', x(9.844), y(56), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const safe = addText(group, String(entity.safeThrust()), x(79.844), y(56), {
-            size: font(RECORD_SHEET_FONT.body), anchor: 'middle',
-        });
-        safe.id = 'mpWalk';
-        addText(group, 'Maximum Thrust:', x(9.844), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const maximum = addText(group, String(entity.maxThrust()), x(79.844), y(65), {
-            size: font(RECORD_SHEET_FONT.body), anchor: 'middle',
-        });
-        maximum.id = 'mpRun';
-    }
-
-    const facts: readonly [string, string, number, string, string?][] = [
-        ['Tonnage:', formatWholeNumber(entity.tonnage()), 38, 'tonnage', 'tonnage'],
-        ['Tech Base:', formatTechBase(entity.techBase(), entity.mixedTech()), 47, 'techBase', 'tech-base'],
-        ['Role:', entity.role() || 'None', 56, 'role', 'role'],
-    ];
-    facts.forEach(([label, value, baseline, id, field]) => {
-        addText(group, label, x(115.7), y(baseline), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const node = addText(group, value, x(158.24), y(baseline), { size: font(RECORD_SHEET_FONT.body), maxWidth: x(58) });
-        node.id = id;
-        if (field) node.setAttribute('data-mekbay-field', field);
-    });
+    appendAeroDataPanelHeader(group, entity, { x, y, font }, 'large-vessel', stationary);
 
     const inventoryOffset = stationary ? -7.339 : 0;
     const inventoryY = (value: number): number => y(value + inventoryOffset);
     addLine(group, x(3), inventoryY(69), x(219.4), inventoryY(69), '#000', 1.932 * Math.min(sx, sy));
-    addText(group, 'Weapons & Equipment Inventory', x(3), inventoryY(79), {
-        size: font(RECORD_SHEET_FONT.section), weight: 700, maxWidth: x(155),
+    addTemplateCaption(group, 'Weapons & Equipment Inventory', x(3), inventoryY(79), {
+        size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
     const metrics = fitInventoryText(282, fontSize => ({
         lineCount: largeAeroBlockLineCount(content, content.plan.front, fontSize, FRONT_INVENTORY_COLUMNS)
-            + (content.plan.reverse.has('standard-weapons') ? 2 : 0), content: undefined }));
+            + (content.plan.reverse.has('standard-weapons') ? 2 : 0),
+        badgeRows: largeAeroBadgeRows(content, content.plan.front, fontSize, FRONT_INVENTORY_COLUMNS), content: undefined }));
     const rowStep = metrics.lineStep;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
-    const geometry = largeAeroInventoryGeometry(group, x, inventoryY, inventoryFont, rowStep);
+    const geometry = largeAeroInventoryGeometry(group, x, inventoryY, inventoryFont, rowStep, metrics.fontSize, font(1));
     let detailY = 89.8;
-    detailY = drawLargeAeroBlocks(geometry, entity, content, content.plan.front, detailY, 'front');
+    detailY = drawLargeAeroBlocks(geometry, content, content.plan.front, detailY, 'front');
     if (content.plan.reverse.has('standard-weapons')) {
         addText(group, 'Standard Scale on Reverse', x(7.328), inventoryY(detailY), {
             size: font(RECORD_SHEET_FONT.inventory), weight: 700,
@@ -562,15 +546,14 @@ function drawCapitalAeroDataPanel(
     }
 
     if (content.plan.front.has('footer')) {
+        const footer = largeAeroFooterLines(content, geometry);
         const fuelBaseline = stationary ? 393.454 : 376.854;
-        drawLargeAeroFooter(group, entity, x, inventoryY, inventoryFont, fuelBaseline, rowStep, 204);
+        // Bottom-anchored like MegaMekLab's footer block: quirk rows lift fuel and features.
+        drawLargeAeroFooter(geometry, footer, fuelBaseline - Math.max(0, footer.length - 2) * rowStep);
     }
     addLine(group, x(3), y(392.543), x(219.4), y(392.543), '#000', 1.932 * Math.min(sx, sy));
-    addText(group, 'BV:', x(13.845), y(404.543), { size: font(9.67), weight: 700 });
-    const bv = addText(group, formatWholeNumber(entity.battleValue()), x(32.79), y(404.543), {
-        size: font(9.67),
-    });
-    bv.id = 'bv';
+    appendBattleValue(group, entity.battleValue(), { x: x(13.845), valueX: x(32.79), y: y(404.543), size: font(9.67) });
+    appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, 395.65);
     appendLegacyIdentityAnchors(group, entity, box);
     return group;
 }
@@ -591,6 +574,7 @@ interface LargeAeroInventoryColumns {
     readonly gravDeckSecondColumnX: number;
     readonly gravDeckColumnWidth: number;
     readonly cargoMaxWidth: number;
+    readonly targetNumberX: number;
 }
 
 const FRONT_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
@@ -609,6 +593,7 @@ const FRONT_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
     gravDeckSecondColumnX: 110.328,
     gravDeckColumnWidth: 99,
     cargoMaxWidth: 205,
+    targetNumberX: 216,
 });
 
 const REVERSE_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
@@ -627,6 +612,7 @@ const REVERSE_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
     gravDeckSecondColumnX: 143.92,
     gravDeckColumnWidth: 130,
     cargoMaxWidth: 262,
+    targetNumberX: 269,
 });
 
 interface LargeAeroInventoryGeometry {
@@ -635,6 +621,9 @@ interface LargeAeroInventoryGeometry {
     readonly y: (value: number) => number;
     readonly font: (value: number) => number;
     readonly rowStep: number;
+    /** Fitted inventory type size in reference units. */
+    readonly fontSize: number;
+    readonly badgeScale: number;
     readonly headingOffset: number;
     readonly firstRowOffset: number;
     readonly columns: LargeAeroInventoryColumns;
@@ -646,16 +635,17 @@ function largeAeroInventoryGeometry(
     y: (value: number) => number,
     font: (value: number) => number,
     rowStep: number,
+    fontSize: number,
+    badgeScale: number,
     columns: LargeAeroInventoryColumns = FRONT_INVENTORY_COLUMNS,
     headingOffset = rowStep,
     firstRowOffset = rowStep * 2,
 ): LargeAeroInventoryGeometry {
-    return { group, x, y, font, rowStep, headingOffset, firstRowOffset, columns };
+    return { group, x, y, font, rowStep, fontSize, badgeScale, headingOffset, firstRowOffset, columns };
 }
 
 function drawLargeAeroBlocks(
     geometry: LargeAeroInventoryGeometry,
-    entity: AeroEntity,
     content: LargeAeroPageContent,
     blocks: ReadonlySet<LargeAeroRecordSheetBlock>,
     startY: number,
@@ -672,17 +662,9 @@ function drawLargeAeroBlocks(
     if (blocks.has('grav-decks')) currentY = drawGravDecks(geometry, content.gravDecks, currentY);
     if (blocks.has('transport-bays')) currentY = drawCargo(geometry, content.cargoLines, currentY);
     if (blocks.has('footer') && pageRole === 'reverse') {
-        drawLargeAeroFooter(
-            geometry.group,
-            entity,
-            geometry.x,
-            geometry.y,
-            geometry.font,
-            currentY,
-            geometry.rowStep,
-            205,
-        );
-        currentY += geometry.rowStep * 2;
+        const footer = largeAeroFooterLines(content, geometry);
+        drawLargeAeroFooter(geometry, footer, currentY);
+        currentY += geometry.rowStep * Math.max(2, footer.length);
     }
     return currentY;
 }
@@ -736,6 +718,7 @@ function drawLargeAeroInventoryTable(
                 x(columns.rangeMaxWidth), y(rowStep),
                 `inventoryEntryButton ${['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex]}`),
         ));
+        appendInventoryHitModifier(entry, y(baseline), geometry.badgeScale, y(rowStep));
         nameLines.forEach((name, lineIndex) => {
             addCell(entry, name, x(lineIndex === 0 ? columns.nameX : columns.continuationX),
                 y(baseline + lineIndex * rowStep), {
@@ -754,8 +737,9 @@ function drawLargeAeroInventoryTable(
                 class: ['range_short', 'range_medium', 'range_long', 'range_extreme'][rangeIndex],
                 size: font(textSize), anchor: 'middle', maxWidth: x(columns.rangeMaxWidth),
             }));
+        appendInventoryTargetNumber(entry, x(columns.targetNumberX), y(baseline), geometry.badgeScale, y(rowStep));
         group.appendChild(entry);
-        displayLine += lineCount;
+        displayLine += inventoryRowSpan(lineCount, rowStep);
     });
     let nextY = startY + firstRowOffset + displayLine * rowStep;
     if (scale === 'standard') {
@@ -829,24 +813,34 @@ function drawCargo(
     return startY + rowStep * (cargoLines.length + 2);
 }
 
+/** MegaMekLab's footer block: fuel, features, then italic quirks at 90% type; fuel and features keep two rows. */
+function largeAeroFooterLines(
+    content: LargeAeroPageContent,
+    { fontSize, columns }: Pick<LargeAeroInventoryGeometry, 'fontSize' | 'columns'>,
+): readonly { readonly text: string; readonly quirk: boolean }[] {
+    const { fuel, features, quirks } = content.footerText;
+    return [
+        { text: fuel, quirk: false },
+        ...(features ? [{ text: features, quirk: false }] : []),
+        ...wrapRecordSheetText(quirks, columns.cargoMaxWidth, fontSize * 0.9).map(text => ({ text, quirk: true })),
+    ];
+}
+
 function drawLargeAeroFooter(
-    group: SVGGElement,
-    entity: AeroEntity,
-    x: (value: number) => number,
-    y: (value: number) => number,
-    font: (value: number) => number,
-    baseline: number,
-    rowStep: number,
-    maxWidth: number,
+    { group, x, y, font, rowStep, columns }: LargeAeroInventoryGeometry,
+    lines: ReturnType<typeof largeAeroFooterLines>,
+    firstBaseline: number,
 ): void {
     const textSize = RECORD_SHEET_FONT.inventory;
-    addText(group, `Fuel Points: ${formatWholeNumber(entity.fuel())}`, x(8.41), y(baseline), {
-        size: font(textSize), maxWidth: x(maxWidth),
+    const quirks = svgElement('g');
+    quirks.setAttribute('class', 'unitQuirks');
+    lines.forEach(({ text, quirk }, index) => {
+        const line = addText(quirk ? quirks : group, text, x(8.41), y(firstBaseline + index * rowStep), {
+            size: font(quirk ? textSize * 0.9 : textSize), maxWidth: x(columns.cargoMaxWidth),
+        });
+        if (quirk) line.setAttribute('font-style', 'italic');
     });
-    const featureText = capitalAeroFeatures(entity);
-    if (featureText) addText(group, `Features ${featureText}`, x(8.41), y(baseline + rowStep), {
-        size: font(textSize), maxWidth: x(maxWidth),
-    });
+    if (quirks.hasChildNodes()) group.appendChild(quirks);
 }
 
 function largeAeroBlockLineCount(
@@ -861,7 +855,7 @@ function largeAeroBlockLineCount(
     if (blocks.has('standard-weapons')) count += inventoryLineCount(content.standardRows, true, fontSize, columns) + 3;
     if (blocks.has('grav-decks')) count += Math.ceil(content.gravDecks.length / 2) + 2;
     if (blocks.has('transport-bays')) count += content.cargoLines.length + 2;
-    if (blocks.has('footer')) count += 2;
+    if (blocks.has('footer')) count += Math.max(2, largeAeroFooterLines(content, { fontSize, columns }).length);
     return count;
 }
 
@@ -910,21 +904,22 @@ function drawLargeAeroReverseDataPanel(
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * Math.min(sx, sy);
-    addText(group, 'Type:', x(6), y(28), { size: font(9.67), weight: 700 });
+    addTemplateCaption(group, 'Type:', x(6), y(28), { size: font(9.67), weight: 700 });
     const type = addText(group, entity.displayName(), x(32.229), y(28), {
         size: font(9.67), weight: 700, maxWidth: x(238),
     });
     type.id = 'type';
-    addText(group, 'Name:', x(3), y(38), { size: font(9.67), weight: 700 });
+    addTemplateCaption(group, 'Name:', x(3), y(38), { size: font(9.67), weight: 700 });
     const fluffName = addText(group, '', x(34.798), y(38), { size: font(9.67), maxWidth: x(92.115) });
     fluffName.id = 'fluffName';
     addLine(group, x(34.798), y(39), x(126.913), y(39), '#000', 0.72 * Math.min(sx, sy));
     addLine(group, x(3), y(43), x(274), y(43), '#000', 1.932 * Math.min(sx, sy));
-    addText(group, 'Weapons & Equipment Inventory', x(3), y(53), {
-        size: font(RECORD_SHEET_FONT.section), weight: 700, maxWidth: x(121.508),
+    addTemplateCaption(group, 'Weapons & Equipment Inventory', x(3), y(53), {
+        size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
     const metrics = fitInventoryText(570, fontSize => ({
-        lineCount: largeAeroBlockLineCount(content, content.plan.reverse, fontSize, REVERSE_INVENTORY_COLUMNS), content: undefined }));
+        lineCount: largeAeroBlockLineCount(content, content.plan.reverse, fontSize, REVERSE_INVENTORY_COLUMNS),
+        badgeRows: largeAeroBadgeRows(content, content.plan.reverse, fontSize, REVERSE_INVENTORY_COLUMNS), content: undefined }));
     const rowStep = metrics.lineStep;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
     const compressed = rowStep / 9.126;
@@ -934,11 +929,13 @@ function drawLargeAeroReverseDataPanel(
         y,
         inventoryFont,
         rowStep,
+        metrics.fontSize,
+        Math.min(sx, sy),
         REVERSE_INVENTORY_COLUMNS,
         10.8 * compressed,
         20.7 * compressed,
     );
-    drawLargeAeroBlocks(geometry, entity, content, content.plan.reverse, 63.8, 'reverse');
+    drawLargeAeroBlocks(geometry, content, content.plan.reverse, 63.8, 'reverse');
 }
 
 function drawAdvancedMovementReference(svg: SVGSVGElement, box: Box): void {
@@ -1182,41 +1179,6 @@ function capitalAeroFeatures(entity: AeroEntity): string {
     return features.join(', ');
 }
 
-export function drawLargeAeroDiagramHeader(
-    svg: SVGSVGElement,
-    capital: boolean,
-    page: RecordSheetLayoutRequest['page'],
-): void {
-    const origin = aeroPageBox(page, { x: 510.009, y: 18, width: 83.991, height: 24.25 });
-    const group = svgElement('g');
-    group.setAttribute('class', 'aero-diagram-header large-aero-diagram-header');
-    group.setAttribute(
-        'transform',
-        `translate(${formatNumber(origin.x)} ${formatNumber(origin.y)})`,
-    );
-    addDiagramHeading(
-        group,
-        'ARMOR DIAGRAM',
-        capital ? 'Capital Scale' : 'Standard Scale',
-        83.991,
-        0,
-        {
-            showSubtitleRibbon: false,
-            titleWidth: 83.991,
-            titleX: 0,
-            titleY: 0,
-            ribbonX: -18,
-            ribbonY: 0,
-            ribbonWidth: 123.749,
-            ribbonCut: 3.749,
-            subtitleX: 41.996,
-            subtitleY: 18.25,
-            subtitleFontSize: 6.2,
-        },
-    );
-    svg.appendChild(group);
-}
-
 interface LargeAeroCriticalRow {
     readonly label: string;
     readonly x: number;
@@ -1285,31 +1247,15 @@ function drawLargeAeroCriticalRow(
     });
     row.ids.forEach((id, index) => {
         const controlX = row.x + row.controlX + index * 15;
-        const control = svgElement('rect');
-        control.id = id;
-        control.setAttribute('critId', id);
-        setAttributes(control, {
-            x: scale.x(controlX),
-            y: scale.y(row.y),
-            width: scale.x(12),
-            height: scale.y(12),
-            rx: scale.x(1.315),
-            fill: 'none',
-            stroke: '#000',
-            'stroke-width': 0.96,
-            class: 'critLoc criticalPip',
-        });
-        group.appendChild(control);
-        const modifier = addText(group, row.modifiers[index], scale.x(controlX + 6), scale.y(row.y + 7.6), {
-            size: scale.font(5.7), anchor: 'middle', maxWidth: scale.x(9),
-        });
-        modifier.style.pointerEvents = 'none';
+        drawCriticalDamageBox(group, id,
+            { x: scale.x(controlX), y: scale.y(row.y), width: scale.x(12), height: scale.y(12) },
+            { text: row.modifiers[index], size: scale.font(5.7) }, scale.x(1));
     });
 }
 
 function drawLargeAeroPilotPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
     const group = addFrame(svg, 'PILOT DATA', box, {
-        cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     group.setAttribute('data-mekbay-region', 'pilot-data');
     const sx = box.width / 142.6;
@@ -1318,20 +1264,7 @@ function drawLargeAeroPilotPanel(svg: SVGSVGElement, entity: AeroEntity, box: Bo
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * Math.min(sx, sy);
 
-    addText(group, 'Gunnery Skill:', x(3), y(29.986), { size: font(RECORD_SHEET_FONT.inventory), weight: 700, maxWidth: x(39.172) });
-    const gunnery = addCrewSkillValue(group, '4', x(47.672), y(29.986), font(1));
-    gunnery.id = 'gunnerySkill0';
-    addLine(group, x(47.672), y(30.986), x(65.82), y(30.986), '#000', 0.72);
-    addText(group, 'Piloting Skill:', x(69.8), y(29.986), { size: font(RECORD_SHEET_FONT.inventory), weight: 700, maxWidth: x(36.72) });
-    const piloting = addCrewSkillValue(group, '5', x(114.472), y(29.986), font(1));
-    piloting.id = 'pilotingSkill0';
-    addLine(group, x(114.472), y(30.986), x(136.6), y(30.986), '#000', 0.72);
-    for (const [skill, left, width] of [['gunnery', 44, 24], ['piloting', 111, 27]] as const) {
-        const button = transparentRect(x(left), y(20.5), x(width), y(13), 'crewSkillButton');
-        button.setAttribute('crewId', '0');
-        button.setAttribute('skill', skill);
-        group.appendChild(button);
-    }
+    appendAeroSkillRows(group, { x, y, font }, 29.986);
 
     drawCrewHitGrid(group, 0, {
         x: x(48.86), y: y(35.979), cellWidth: x(87.74 / 6), cellHeight: y(10),
@@ -1422,8 +1355,9 @@ function drawLargeAeroHeatPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box
         size: font(11.59), weight: 700, anchor: 'middle',
     });
     count.id = 'hsCount';
-    if (entity.heatSinkType() === 'Double') {
-        addText(group, `(${heatSinkCount * 2})`, x(29.7), y(57), {
+    const dissipation = heatSinkTypeDissipation(entity.heatSinkType());
+    if (dissipation !== 1) {
+        addText(group, `(${heatSinkCount * dissipation})`, x(29.7), y(57), {
             size: font(11.59), weight: 700, anchor: 'middle',
         });
     }

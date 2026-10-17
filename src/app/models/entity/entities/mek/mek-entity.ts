@@ -25,6 +25,7 @@ import {
 import { isStandardTripleStrengthMyomerEquipment } from '../../../myomer-equipment.model';
 import {
   heatSinkDissipationRate,
+  isCompactHeatSinkEquipment,
   isPrototypeDoubleHeatSinkEquipment,
   isSingleHeatSinkEquipment,
 } from '../../../heat-equipment.model';
@@ -794,7 +795,7 @@ export abstract class MekEntity extends BaseEntity {
         if (slots && p.slotIndex >= 0 && p.slotIndex < MEK_SLOTS_PER_LOCATION) {
           const existing = slots[p.slotIndex];
           slots[p.slotIndex] = existing.type === 'equipment'
-            ? this.appendEquipmentToCriticalSlot(existing, mount) ?? this.equipmentCriticalSlot(mount)
+            ? this.appendEquipmentToCriticalSlot(p.location, existing, mount) ?? this.equipmentCriticalSlot(mount)
             : this.equipmentCriticalSlot(mount);
         }
       }
@@ -816,15 +817,15 @@ export abstract class MekEntity extends BaseEntity {
         - Math.min(...b.placements!.filter(p => p.location === location).map(p => p.slotIndex)));
     if (order) local.sort((a, b) => order.indexOf(a.mountId) - order.indexOf(b.mountId));
     const result = new Map<string, readonly MountPlacement[]>();
-    // Native superheavy designs can share a slot; keep those mounts together.
+    // Superheavy loads that share a slot in `mounts` move as one block.
     const shared = new Map<string, number[]>();
+    const localSlots = (mount: EntityMountedEquipment) =>
+      mount.placements!.filter(p => p.location === location).map(p => p.slotIndex).sort((a, b) => a - b);
     for (const mount of local) {
-      const previous = mount.placements!.filter(p => p.location === location).map(p => p.slotIndex).sort((a, b) => a - b);
+      const previous = localSlots(mount);
       const key = previous.join(',');
-      const shareable = previous.every(index => {
-        const slot = this.criticalSlotGrid().get(location as MekLocation)?.[index];
-        return slot?.type === 'equipment' && slot.mounts.length > 1 && slot.mounts.some(item => item.mountId === mount.mountId);
-      });
+      const shareable = previous.length === 1 && local.some(other => other !== mount
+        && localSlots(other).join(',') === key && this.canShareCriticalSlot(location, other, mount));
       const slots = (shareable ? shared.get(key) : undefined) ?? firstCriticalSlots(free, previous.length, mount.equipment?.isSpreadable);
       if (slots.length !== previous.length) throw new Error(`${mount.displayName(true)} needs ${previous.length} contiguous critical slots in ${location}.`);
       if (shareable) shared.set(key, slots);
@@ -934,12 +935,12 @@ export abstract class MekEntity extends BaseEntity {
       if (mounts.length < 2) continue;
       let slot = this.equipmentCriticalSlot(mounts[0]);
       for (const mount of mounts.slice(1)) {
-        const sharedSlot = this.appendEquipmentToCriticalSlot(slot, mount);
+        const [location, index] = slotKey.split(':');
+        const sharedSlot = this.appendEquipmentToCriticalSlot(location, slot, mount);
         if (sharedSlot) {
           slot = sharedSlot;
           continue;
         }
-        const [location, index] = slotKey.split(':');
         msgs.push({
           severity: 'error', category: 'crit', code: 'CRIT_SLOT_SHARING_INVALID',
           message: `Critical slot ${Number(index) + 1} in ${location} cannot be shared by "${mounts.map(item => item.equipmentId).join('", "')}"`,
@@ -1021,11 +1022,26 @@ export abstract class MekEntity extends BaseEntity {
     };
   }
 
+  /** Whether `incoming` may join the slot `occupant` fills alone, as its second load. */
+  canShareCriticalSlot(
+    location: string,
+    occupant: EntityMountedEquipment,
+    incoming: EntityMountedEquipment,
+  ): boolean {
+    return this.appendEquipmentToCriticalSlot(location, this.equipmentCriticalSlot(occupant), incoming) !== null;
+  }
+
+  /**
+   * Superheavy torsos, arms and legs hold two slots' worth of ammunition or heat sinks per
+   * slot (IO:AE pp. 155-157): two tons of ammunition for one weapon (munitions may differ),
+   * two single heat sinks, or up to four compact heat sinks. Nothing else shares a slot.
+   */
   private appendEquipmentToCriticalSlot(
+    location: string,
     existing: Extract<CriticalSlotView, { type: 'equipment' }>,
     incoming: EntityMountedEquipment,
   ): Extract<CriticalSlotView, { type: 'equipment' }> | null {
-    if (!this.isSuperHeavy() || existing.mounts.length >= 2
+    if (!this.isSuperHeavy() || location === 'HD' || existing.mounts.length >= 2
       || existing.armored !== incoming.armored
       || existing.omniPod !== incoming.omniPodMounted
       || existing.mounts.some(mount => mount.mountId === incoming.mountId)) return null;
@@ -1033,10 +1049,12 @@ export abstract class MekEntity extends BaseEntity {
     const incomingEquipment = incoming.equipment;
     if (!incomingEquipment) return null;
     if (incomingEquipment instanceof AmmoEquipment) {
-      if (!existing.mounts.every(mount => mount.equipment instanceof AmmoEquipment)) return null;
+      if (!existing.mounts.every(mount => mount.equipment instanceof AmmoEquipment
+        && mount.equipment.ammoType === incomingEquipment.ammoType
+        && mount.equipment.rackSize === incomingEquipment.rackSize)) return null;
     } else {
-      if (!isSingleHeatSinkEquipment(incomingEquipment)
-        || !existing.mounts.every(mount => isSingleHeatSinkEquipment(mount.equipment))) return null;
+      const kind = sharedSlotHeatSinkKind(incomingEquipment);
+      if (kind === null || !existing.mounts.every(mount => sharedSlotHeatSinkKind(mount.equipment) === kind)) return null;
     }
     const mounts = [...existing.mounts, incoming] as [EntityMountedEquipment, ...EntityMountedEquipment[]];
     return {
@@ -1056,6 +1074,13 @@ export abstract class MekEntity extends BaseEntity {
     return slots;
   }
 }
+
+/** Heat sinks that fit two to a superheavy slot: standard singles, or compact one- and two-packs. */
+function sharedSlotHeatSinkKind(equipment: EntityMountedEquipment['equipment']): 'single' | 'compact' | null {
+  if (isCompactHeatSinkEquipment(equipment)) return 'compact';
+  return isSingleHeatSinkEquipment(equipment) ? 'single' : null;
+}
+
 // ============================================================================
 // MekWithArmsEntity - abstract, adds arm actuator management
 // ============================================================================

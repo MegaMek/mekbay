@@ -7,7 +7,6 @@ import { projectAeroHeatAutomationChecks } from './aero-heat-automation-rules';
 describe('aerospace heat automation projection', () => {
     it('projects every actionable high-heat check in rules order', () => {
         expect(projectAeroHeatAutomationChecks({
-            heat: 30,
             effects: aeroHeatEffects(30),
             shutdown: false,
             activeController: false,
@@ -23,7 +22,6 @@ describe('aerospace heat automation projection', () => {
 
     it('projects automatic startup and clearing a stale heat-control effect', () => {
         expect(projectAeroHeatAutomationChecks({
-            heat: 3,
             effects: aeroHeatEffects(3),
             shutdown: true,
             activeController: true,

@@ -9,8 +9,6 @@ import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/f
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { isSingleHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
-import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import { isRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 import {
 fullRecordSheetLayoutProfile,
@@ -18,20 +16,17 @@ type RecordSheetLayoutProfile,
 type RecordSheetPageFormat,
 } from '../record-sheet-layout';
 import {
-addDiagramHeading,
 addFrame,
+addReferenceShade,
 addText,
 type Box,
-constructionMaterialSubtitle,
+armorDiagramSubtitle,
 createRoot,
 drawGeneratedFooter,
 drawHeatScale,
 drawPageChrome,
-formatNumber,
 formatRecordSheetTonnage,
 formatWholeNumber,
-setAttributes,
-svgElement,
 } from '../record-sheet-svg-rendering';
 import {
 drawFighterCriticalPanel,
@@ -40,8 +35,10 @@ drawFighterPilotPanel,
 import {
 type AeroDataInventoryRow,
 aeroPageBox,
+aeroWeaponSheetName,
 drawAeroArtworkRegion,
 drawAeroDataPanel,
+drawAeroDiagramHeader,
 drawAeroExternalStores,
 drawAeroHeatDataPanel,
 drawAeroMovementCompass,
@@ -87,7 +84,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
 
         drawPageChrome(svg, this.sheetTitle(entity), page, false);
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 308.357 });
-        const dataGroup = drawAeroDataPanel(
+        drawAeroDataPanel(
             svg,
             entity,
             dataBox,
@@ -98,7 +95,6 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 inventoryRows: this.inventoryRows(entity),
                 flowCargoAfterInventory: false,
                 showAmmoSummary: true,
-                stationary: false,
                 showQuirks: request.showQuirks,
                 featureText: fighterFeatures(entity).join(', '),
                 ...(entity.entityType === 'FixedWingSupport' ? {
@@ -107,12 +103,6 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 } : {}),
             },
         );
-        await appendRecordSheetEraIcon(svg, dataGroup, entity.year(), {
-            x: 158.563 * dataBox.width / 222.4,
-            y: 285.25 * dataBox.height / 308.357,
-            width: 20 * dataBox.width / 222.4,
-            height: 20 * dataBox.height / 308.357,
-        });
         await drawAeroPaperdoll(
             svg,
             entity,
@@ -124,7 +114,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 capitalFallback: false,
             },
         );
-        drawFighterDiagramHeader(svg, entity, page);
+        drawAeroDiagramHeader(svg, page, 'fighter', armorDiagramSubtitle(entity));
         if (!conventional) {
             drawAeroMovementCompass(svg, at({ x: 251.4, y: 456.4, width: 90, height: 50 }));
         }
@@ -137,7 +127,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             drawGroundMapStraightMovementTable(svg, at({ x: 405.966, y: 509.4, width: 184, height: 157.89 }));
             drawFighterReturnTable(svg, at({ x: 405.966, y: 675.29, width: 184, height: 79.71 }));
         } else {
-            drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }), true);
+            drawAeroHeatDataPanel(svg, entity, at({ x: 405.456, y: 509.4, width: 161, height: 246.6 }));
         }
         if (entity.tracksHeat()) {
             drawHeatScale(svg, at({ x: 574, y: 388.911, width: 19.454, height: 366 }), 'aero');
@@ -163,7 +153,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             const equipment = mount.equipment;
             const row: MutableRow = {
                 quantity: 1,
-                name: this.weaponRecordSheetName(mount.displayName(), equipment),
+                name: aeroWeaponSheetName(mount.displayName(), equipment),
                 location: this.inventoryLocation(entity, mount.getOccupiedLocations()),
                 heat: String(equipment.heat),
                 damageByRange: aerospaceAttackValues(equipment, null)
@@ -214,16 +204,6 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             damageByRange: row.damageByRange,
             componentIds: row.componentIds,
         }));
-    }
-
-    private weaponRecordSheetName(
-        displayName: string,
-        weapon: ReturnType<AeroEntity['rangedWeapons']>[number]['equipment'],
-    ): string {
-        const notation = formatRecordSheetWeaponDamageText(weapon, '').trim();
-        return notation && !displayName.includes(notation)
-            ? `${displayName} ${notation}`
-            : displayName;
     }
 
     private inventoryLocation(entity: AeroEntity, locations: readonly string[]): string {
@@ -318,7 +298,7 @@ function drawGroundMapStraightMovementTable(svg: SVGSVGElement, box: Box): void 
     const support = [8, 14, 20, 26, 32, 38, 44, 50, 56, 62, 68, 74];
     fighter.forEach((value, index) => {
         const baseline = 54.371 + index * 6.994;
-        if (index % 2 === 1) appendReferenceShade(group, x(7), y(baseline - 5.865), x(170), y(7));
+        if (index % 2 === 1) addReferenceShade(group, x(7), y(baseline - 5.865), x(170), y(7));
         addText(group, String(index + 1), x(27.15), y(baseline), {
             size: font(5.7), weight: 700, anchor: 'middle',
         });
@@ -351,7 +331,7 @@ function drawFighterReturnTable(svg: SVGSVGElement, box: Box): void {
     ];
     rows.forEach(([turns, returns], index) => {
         const baseline = 40.04 + index * 8.816;
-        if (index % 2 === 0) appendReferenceShade(group, x(7), y(baseline - 5.54), x(170), y(9));
+        if (index % 2 === 0) addReferenceShade(group, x(7), y(baseline - 5.54), x(170), y(9));
         addText(group, turns, x(41.63), y(baseline), {
             size: font(5.7), weight: 700, anchor: 'middle',
         });
@@ -359,53 +339,4 @@ function drawFighterReturnTable(svg: SVGSVGElement, box: Box): void {
             size: font(5.7), anchor: 'middle',
         });
     });
-}
-
-function appendReferenceShade(
-    group: SVGGElement,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-): void {
-    const shade = svgElement('rect');
-    setAttributes(shade, { x, y, width, height, fill: '#bbb', class: 'tableshading' });
-    group.appendChild(shade);
-}
-
-function drawFighterDiagramHeader(
-    svg: SVGSVGElement,
-    entity: BaseEntity,
-    page: RecordSheetLayoutRequest['page'],
-): void {
-    const origin = aeroPageBox(page, { x: 276.4, y: 82.857, width: 83.991, height: 24.25 });
-    const group = svgElement('g');
-    group.setAttribute('class', 'aero-diagram-header fighter-diagram-header');
-    group.setAttribute(
-        'transform',
-        `translate(${formatNumber(origin.x)} ${formatNumber(origin.y)})`,
-    );
-    const armor = entity.uniformArmor()?.armor;
-    const armorName = entity.isSupportVehicle() && armor?.armorType.startsWith('SV_BAR_')
-        ? `BAR: ${armor.bar}` : armor?.name;
-    addDiagramHeading(
-        group,
-        'ARMOR DIAGRAM',
-        constructionMaterialSubtitle(armorName, 'Armor', 'Patchwork Armor'),
-        83.991,
-        0,
-        {
-            subtitleId: 'armorType',
-            titleWidth: 83.991,
-            titleX: 0,
-            titleY: 0,
-            ribbonX: -18,
-            ribbonY: 0,
-            ribbonWidth: 123.749,
-            ribbonCut: 3.749,
-            subtitleX: 41.996,
-            subtitleY: 21.5,
-        },
-    );
-    svg.appendChild(group);
 }

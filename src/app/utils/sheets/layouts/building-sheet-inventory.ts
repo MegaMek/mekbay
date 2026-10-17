@@ -7,7 +7,7 @@ import { BUILDING_CLASSES, BUILDING_TYPES, BUILDING_SIDE_LABELS, buildingLocatio
 import { buildingCapitalWeapon, buildingElevatorRange } from '../../../models/entity/utils/building-construction';
 import { buildingDoorGroups, buildingLinkedDoorGeometry } from '../../../models/entity/utils/building-doors';
 import { getBayRecordSheetName, getBayRecordSheetCapacity } from '../../../models/entity/bays/bay-definitions';
-import { appendRecordSheetAmmoProfile, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { appendRecordSheetAmmoProfile, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
 import { inventoryCellLines, fitInventoryText, MIN_INVENTORY_FONT, MIN_INVENTORY_LINE_RATIO } from '../inventory-text-layout';
 import { addText, formatNumber, recordSheetAmmoProfile, recordSheetInventoryWeapons, setAttributes,
@@ -186,8 +186,7 @@ export function drawBuildingInventory(group: SVGGElement, entity: StaticEmplacem
     if (!page) return;
     const { fontSize, lineStep } = page;
     const rows = svgElement('g');
-    setAttributes(rows, { 'data-ammo-inventory': '', 'data-top': 32, 'data-bottom': height - 8,
-        'data-content-bottom': 32 + page.rows.length * lineStep });
+    markAmmoInventory(rows, { top: 32, bottom: height - 8, contentBottom: 32 + page.rows.length * lineStep });
     group.appendChild(rows);
     const groups = new Map<number, SVGGElement>();
     page.rows.forEach((row, index) => {

@@ -6,6 +6,7 @@ import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { RecordSheetPipLayout } from '../../models/options.model';
 import { isMekEntity } from '../../models/entity/utils/entity-type-guards';
 import type { PaperdollPipLayout } from './paperdoll-generator';
+import { usesBipedMekPaperdoll } from './mek-paperdoll-generator';
 import {
     recordSheetPageProfile,
     type RecordSheetPageFormat,
@@ -55,7 +56,7 @@ export class RecordSheetSvgGenerator {
         const profile = layout.profile(entity, pageFormat);
         const requestedPipLayout = options.pipLayout ?? 'classic';
         const pipLayout: PaperdollPipLayout = requestedPipLayout === 'classic'
-            ? isMekEntity(entity) && entity.chassisConfig === 'Biped' && entity.tonnage() <= 100
+            ? isMekEntity(entity) && usesBipedMekPaperdoll(entity.chassisConfig) && entity.tonnage() <= 100
                 ? 'canon' : 'distributed'
             : requestedPipLayout;
         const request = { format, page, profile, pipLayout, ruleset: options.ruleset,

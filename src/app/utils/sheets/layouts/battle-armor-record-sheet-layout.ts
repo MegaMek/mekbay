@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -11,24 +11,30 @@ import { adjustEntityBattleValueForSkills, effectiveEntityPilotingSkill } from '
 import { isAntiPersonnelMountEquipment } from '../../../models/battle-armor-equipment.model';
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';
 import { isJumpJetEquipment, isUmuEquipment } from '../../../models/jump-equipment.model';
-import { recordSheetAmmoName } from '../../record-sheet-ammo.util';
-import { appendRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { appendRecordSheetAmmoProfile, markAmmoInventory } from '../record-sheet-ammo-rendering';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
+    crewSkillValueX,
     type Box,
     addCrewSkillValue,
     addFrame,
+    addReferenceShade,
     addText,
+    appendBattleValue,
     appendLegacyIdentityAnchors,
     compactArmorDisplayName,
+    compactClusterRacks,
     drawCheckbox,
     drawClusterHitsReference,
     drawGeneratedFooter,
     formatNumber,
+    formatWholeNumber,
+    recordSheetAmmoProfile,
     recordSheetInventoryWeapons,
     scaleCompactBox,
     scalePageBox,
     setAttributes,
+    setCompactClusterRacks,
     setInventoryComponentIds,
     svgElement,
     transparentRect,
@@ -36,12 +42,12 @@ import {
 import {
     BATTLE_ARMOR_DEFAULT_ART,
     appendEmbeddedSvgDefinition,
+    appendMastheadArt,
     appendEmbeddedRasterUse,
     appendRecordSheetEraIcon,
 } from '../record-sheet-embedded-art';
 import { CompactRecordSheetLayout } from './record-sheet-layout';
 import {
-    addReferenceShade,
     canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
 
@@ -71,7 +77,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         parent: SVGGElement,
         box: Box,
     ): void {
-        drawBattleArmorMastheadIcon(parent, box);
+        appendMastheadArt(parent, box, MASTHEAD_ART_ID, 'battle-armor-masthead-icon');
     }
 
     public override drawCompactPageSupplement(
@@ -82,9 +88,10 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     ): void {
         page.setAttribute('data-mekbay-reference-family', 'battle-armor');
         if (blocks.length === 1) {
+            const recorded = compactClusterRacks(blocks[0]);
             const racks = entity !== undefined && isBattleArmorEntity(entity)
                 ? battleArmorClusterRacks(entity)
-                : parseClusterRacks(blocks[0]);
+                : recorded.length > 0 ? recorded : [2, 3, 4, 5];
             drawClusterHitsReference(page, scalePageBox(profile, {
                 x: 18.9, y: 221.486, width: 382.1, height: 180,
             }), racks);
@@ -101,7 +108,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
         if (!isBattleArmorEntity(entity)) throw new Error('Battle Armor layout requires a Battle Armor entity');
         await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/battle-armor.svg', MASTHEAD_ART_ID);
-        svg.setAttribute('data-mekbay-cluster-racks', battleArmorClusterRacks(entity).join(','));
+        setCompactClusterRacks(svg, battleArmorClusterRacks(entity));
         const at = (box: Box): Box => scaleCompactBox(svg, box, 136.2);
         const frameBox = at({ x: 0, y: 0, width: 384, height: 136.2 });
         const formation = ({ 1: 'SUIT', 3: 'UN', 5: 'POINT', 6: 'LEVEL I' } as Record<number, string>)[entity.trooperCount()] ?? 'SQUAD';
@@ -124,17 +131,18 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     });
     type.id = 'type';
     type.setAttribute('data-mekbay-field', 'display-name');
-    addText(group, 'Gunnery Skill:', x(6.966), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const gunnery = addCrewSkillValue(group, '4', x(49.513), y(37.966), fontScale);
+    const gunneryLabel = addText(group, 'Gunnery Skill:', x(6.966), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, x(49.513), fontScale), y(37.966), fontScale);
     gunnery.id = 'gunnerySkill0';
-    addText(group, "Anti-'Mech Skill:", x(99.466), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const piloting = addCrewSkillValue(group, String(effectiveEntityPilotingSkill(entity, 5)), x(148.855), y(37.966), fontScale);
+    const antiMekLabel = addText(group, "Anti-'Mech Skill:", x(99.466), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    const piloting = addCrewSkillValue(group, String(effectiveEntityPilotingSkill(entity, 5)), crewSkillValueX(antiMekLabel, x(148.855), fontScale), y(37.966), fontScale);
     piloting.id = 'pilotingSkill0';
     addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(RECORD_SHEET_FONT.inventory) });
     walk.id = 'mpWalk';
     const secondaryMovement = compactBattleArmorSecondaryMovement(entity);
-    addText(group, '', x(62), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 }).id = 'movementPointsLabel';
+    // The runtime "Stationary" mode follows the movement columns, clear of their modifier badges.
+    addText(group, '', x(150), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 }).id = 'movementPointsLabel';
     if (secondaryMovement !== undefined) {
         addText(group, secondaryMovement.label, x(99.466), y(45.966), {
             size: font(RECORD_SHEET_FONT.inventory), weight: 700,
@@ -168,12 +176,9 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     });
     addText(group, 'Role:', x(255), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     addText(group, entity.role() || '—', x(272.5), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(55) });
-    addText(group, 'BV:', x(332.966), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const singleTrooperBv = new BattleArmorBVCalculator(entity).singleTrooperBattleValue();
-    const bv = addText(group, `${formatNumber(adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5))}/${formatNumber(singleTrooperBv)}`,
-        x(346.209), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(31) });
-    bv.id = 'bv';
-    bv.setAttribute('data-mekbay-bv-suffix', `/${formatNumber(singleTrooperBv)}`);
+    appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5), {
+        x: x(332.966), valueX: x(346.209), y: y(129.166), size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(31),
+    }, `/${formatWholeNumber(new BattleArmorBVCalculator(entity).singleTrooperBattleValue())}`);
         await appendRecordSheetEraIcon(svg, group, entity.year(), {
             x: x(165.966), y: y(11.752), width: x(20), height: y(20),
         });
@@ -204,14 +209,6 @@ function battleArmorClusterRacks(entity: BattleArmorEntity): readonly number[] {
         }
     }
     return [...racks].sort((left, right) => left - right);
-}
-
-function parseClusterRacks(block: SVGSVGElement | undefined): readonly number[] {
-    const values = (block?.getAttribute('data-mekbay-cluster-racks') ?? '')
-        .split(',')
-        .map(Number)
-        .filter(value => Number.isInteger(value) && value > 0);
-    return values.length > 0 ? values : [2, 3, 4, 5];
 }
 
 function drawBattleArmorReferenceTables(page: SVGSVGElement, profile: RecordSheetPageProfile): void {
@@ -452,14 +449,15 @@ function drawCompactBattleArmorInventory(
             alternativeModes: Object.freeze([]),
         })),
     ];
-    const ammo = battleArmorAmmoProfile(entity);
+    const ammo = recordSheetAmmoProfile(entity);
     const rowLines = (row: { name: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
         inventoryRowLineCount([[row.name, x(79)], [row.damage, x(31)], [row.minimumRange, x(13)],
             ...row.ranges.map(value => [value, x(13)] as const)], font(size));
     const firstBaseline = 66.666;
     const metrics = fitInventoryText(105.2 - firstBaseline, fontSize => ({
         lineCount: rows.reduce((sum, row) => sum + rowLines(row, fontSize)
-            + row.alternativeModes.reduce((count, mode) => count + rowLines(mode, fontSize), 0), 0), content: undefined }));
+            + row.alternativeModes.reduce((count, mode) => count + rowLines(mode, fontSize), 0), 0),
+        badgeRows: rows.map(row => rowLines(row, fontSize)), content: undefined }));
     const lineStep = metrics.lineStep;
     const rowFont = metrics.fontSize;
     const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
@@ -478,11 +476,6 @@ function drawCompactBattleArmorInventory(
 
     const rangeClasses = ['', 'shrButton', 'medButton', 'lngButton'] as const;
     const inventory = svgElement('g');
-    setAttributes(inventory, {
-        'data-ammo-inventory': '',
-        'data-top': y(firstBaseline - lineStep * 0.82),
-        'data-bottom': y(105.2),
-    });
     group.appendChild(inventory);
     let displayLine = 0;
     rows.forEach((row, index) => {
@@ -500,6 +493,8 @@ function drawCompactBattleArmorInventory(
                 `inventoryEntryButton ${className}`),
         ));
         const baseline = y(baselineValue);
+        // Compact blocks compress vertically; badges take the smaller scale so they fit their rows.
+        appendInventoryHitModifier(entry, baseline, Math.min(font(1), y(1)), y(lineStep));
         addCell(entry, String(row.quantity), x(7.55), baseline, {
             class: 'quantity', size: font(rowFont), anchor: 'middle',
         });
@@ -518,8 +513,9 @@ function drawCompactBattleArmorInventory(
         rangeValues.forEach((value, rangeIndex) => addCell(entry, value, x(rangePositions[rangeIndex]), baseline, {
             class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(13),
         }));
+        appendInventoryTargetNumber(entry, 0, baseline, Math.min(font(1), y(1)), y(lineStep));
 
-        let modeLine = displayLine + lineCount;
+        let modeLine = displayLine + inventoryRowSpan(lineCount, lineStep);
         row.alternativeModes.forEach(mode => {
             const modeDamageLines = [mode.damage];
             const modeLineCount = rowLines(mode, rowFont);
@@ -548,31 +544,14 @@ function drawCompactBattleArmorInventory(
         inventory.appendChild(entry);
         displayLine = modeLine;
     });
-    inventory.setAttribute('data-content-bottom', String(y(firstBaseline + Math.max(0, displayLine - 1) * lineStep)));
+    markAmmoInventory(inventory, {
+        top: y(firstBaseline - lineStep * 0.82),
+        bottom: y(105.2),
+        contentBottom: y(firstBaseline + Math.max(0, displayLine - 1) * lineStep),
+    });
     appendRecordSheetAmmoProfile(group, ammo, {
         x: x(7.55), y: y(104.783), width: x(178), fontSize: font(RECORD_SHEET_FONT.inventory), lineHeight: y(lineStep),
     });
-}
-
-function battleArmorAmmoProfile(entity: BattleArmorEntity): readonly string[] {
-    const totals = new Map<string, number>();
-    entity.equipment().forEach(mount => {
-        const shots = mount.getAmmoShots();
-        if (shots === undefined) return;
-        let name = recordSheetAmmoName(mount.displayName());
-        for (const location of mount.getOccupiedLocations()) {
-            const locationSuffix = ` (${location})`;
-            if (name.endsWith(locationSuffix)) {
-                name = name.slice(0, -locationSuffix.length);
-                break;
-            }
-        }
-        name = name.replace(/\s+\((?:Body|Squad|LA|RA|Left Arm|Right Arm)\)$/u, '');
-        totals.set(name, (totals.get(name) ?? 0) + shots);
-    });
-    return Object.freeze([...totals.entries()]
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([name, shots]) => `(${name}) ${shots}`));
 }
 
 function drawCompactBattleArmorTroopers(
@@ -640,16 +619,4 @@ function drawCompactBattleArmorTroopers(
         }
         group.appendChild(row);
     });
-}
-
-function drawBattleArmorMastheadIcon(
-    parent: SVGGElement,
-    box: Box,
-): void {
-    const sx = box.width / 31.018;
-    const sy = box.height / 41.357;
-    const use = svgElement('use');
-    setAttributes(use, { href: `#${MASTHEAD_ART_ID}`, class: 'battle-armor-masthead-icon',
-        width: 56.7 * sx, height: 45.357 * sy });
-    parent.appendChild(use);
 }

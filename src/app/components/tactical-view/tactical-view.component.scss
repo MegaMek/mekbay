@@ -206,7 +206,7 @@ h1 { font-size: 20px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhe
 }
 .panel-heading h2 { font-size: 14px; font-weight: 600; }
 .panel-kicker { color: var(--bt-yellow); font-size: .72rem; }
-weapons-equipment-panel { display: block; min-width: 0; container: tactical-inventory / inline-size; }
+weapons-equipment-panel { display: block; min-width: 0; }
 .ammo-loadout-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; padding: 2px 6px; font-size: .75rem; }
 .tactical-ammo-loadout { padding: 12px; border-bottom: 1px solid var(--border-color); container-type: inline-size; }
 
@@ -486,7 +486,7 @@ weapons-equipment-panel { display: block; min-width: 0; container: tactical-inve
 .critical-row:disabled { opacity: 1; }
 .read-only .critical-row.unhittable, .critical-row.unhittable:disabled { opacity: .5; }
 .slot-number { flex: 0 0 11px; color: var(--tactical-label); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-.critical-name { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; font-weight: 500; line-height: 1.2; }
+.critical-name { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; white-space: pre-line; font-weight: 500; line-height: 1.2; }
 .critical-pip {
     display: block;
     width: 8px;

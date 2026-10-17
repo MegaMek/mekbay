@@ -7,9 +7,12 @@ import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import { resolveAutomaticFallingDamage } from '../components/falling-damage-dialog/falling-damage-dialog.component';
 import { projectRuntimeUnitNotifications } from '../components/unit-notification-badges/unit-notification-runtime.util';
 import type { CBTForce } from '../models/cbt-force.model';
+import type { CBTForceUnitCommandDispatch } from '../models/cbt-force.types';
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
+import { createMekUnit } from '../models/runtime/cbt-mek-unit';
 
 import {
+createDirectCommandConsoleRuntimeFixture,
 createDirectExplosionRuntimeFixture,
 createDirectHotLoadedAmmoRuntimeFixture,
 createDirectMekRuntimeFixture,
@@ -21,7 +24,6 @@ import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { CBTAutomationService } from './cbt-automation.service';
 import {
 DirectMekAutomationService,
-type DirectMekAutomationDispatch,
 type PreparedDirectMekAutomationCommand,
 } from './direct-mek-automation.service';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
@@ -597,7 +599,7 @@ describe('DirectMekAutomationService', () => {
             policy: 'automatic',
         });
         const turn = harness.fixture.instance.query().turnState().turnCounter;
-        const ammoComponentId = prepared.heatEffects?.staged.ammoComponentId;
+        const ammoComponentId = prepared.heatEffects?.staged.ammo?.componentId;
         expect(ammoComponentId).toBeDefined();
 
         expect(await service.settleBeforeCommand(
@@ -798,7 +800,7 @@ describe('DirectMekAutomationService', () => {
 
         });
         const commands: string[] = [];
-        const dispatch: DirectMekAutomationDispatch = async command => {
+        const dispatch: CBTForceUnitCommandDispatch = async command => {
             commands.push(command.type);
             return harness.dispatch(command);
         };
@@ -818,25 +820,14 @@ describe('DirectMekAutomationService', () => {
     it('does not offer a manually-created Mek recovery until the following turn', async () => {
         const harness = createHarness();
         const positionId = [...harness.fixture.index.crewPositions.keys()][0]!;
-        const before = harness.snapshot();
-        const command: CBTUnitCommand = {
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'set-crew-state',
-
             positionId,
             wounds: 1,
             unconscious: true,
             ejected: false,
-        };
-        const result = harness.fixture.instance.dispatch(command);
-        expect(result.accepted).toBeTrue();
-        await service.afterCommand(
-            harness.force,
-            harness.instanceId,
-            before,
-            { command, deferredPilotHits: 0 },
-            result,
-            harness.dispatch,
-        );
+        });
+        expect(harness.fixture.instance.dispatch(prepared.command).accepted).toBeTrue();
 
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-phase',
@@ -875,25 +866,14 @@ describe('DirectMekAutomationService', () => {
     it('defers a failed Mek consciousness recovery until the following turn', async () => {
         const harness = createHarness();
         const positionId = [...harness.fixture.index.crewPositions.keys()][0]!;
-        const before = harness.snapshot();
-        const command: CBTUnitCommand = {
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'set-crew-state',
-
             positionId,
             wounds: 1,
             unconscious: true,
             ejected: false,
-        };
-        const result = harness.fixture.instance.dispatch(command);
-        expect(result.accepted).toBeTrue();
-        await service.afterCommand(
-            harness.force,
-            harness.instanceId,
-            before,
-            { command, deferredPilotHits: 0 },
-            result,
-            harness.dispatch,
-        );
+        });
+        expect(harness.fixture.instance.dispatch(prepared.command).accepted).toBeTrue();
         expect(harness.fixture.instance.dispatch({
             type: 'end-turn',
 
@@ -964,7 +944,10 @@ describe('DirectMekAutomationService', () => {
             unconscious: true,
             ejected: false,
         }).accepted).toBeTrue();
-        setPendingHeat(harness, 14);
+        expect(harness.fixture.instance.dispatch({
+            type: 'set-heat',
+            heat: 24,
+        }).accepted).toBeTrue();
         spyOn(Math, 'random').and.returnValue(0.99);
 
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
@@ -984,7 +967,56 @@ describe('DirectMekAutomationService', () => {
             .filter(args => args[0] === 'heatEffectsCheck')
             .flatMap(args => args[1] as readonly { readonly label: string; readonly automaticOutcome?: string }[])
             .find(check => check.label === 'Shutdown');
+        expect(shutdown).toBeDefined();
         expect(shutdown?.automaticOutcome).toBeUndefined();
+    });
+
+    it('does not count a vacant primary station as the pilot for heat shutdown checks', async () => {
+        const instanceId = 'unit:automation:vacant-primary';
+        const fixture = createDirectCommandConsoleRuntimeFixture('core-2026', instanceId);
+        const occupied = fixture.initialized.deployment.crewAssignment.positions[1]!;
+        const instance = await createMekUnit({ uuid: fixture.identity, instanceId },
+            fixture.entity, fixture.identity, {
+                initializerRevision: 1,
+                profileId: 'pristine',
+                deployment: { id: 'vacant-primary', crewAssignment: { schemaVersion: 1, positions: [occupied] } },
+                scenario: { id: 'megamek', ruleset: 'core-2026' },
+            });
+        const harness = createHarnessForFixture(
+            { ...fixture, index: instance.getIndex(), instance },
+            'core-2026',
+            instanceId,
+        );
+        expect(instance.dispatch({
+            type: 'set-crew-state',
+            positionId: occupied.positionId,
+            wounds: 1,
+            unconscious: true,
+            ejected: false,
+        }).accepted).toBeTrue();
+        expect(harness.fixture.instance.dispatch({
+            type: 'set-heat',
+            heat: 24,
+        }).accepted).toBeTrue();
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'end-turn',
+            policy: 'automatic',
+        });
+        expect(await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            harness.dispatch,
+        )).not.toBeNull();
+
+        expect(instance.query().hasCondition('shutdown')).toBeTrue();
+        const shutdown = resolveChecksAutomation.calls.allArgs()
+            .filter(args => args[0] === 'heatEffectsCheck')
+            .flatMap(args => args[1] as readonly { readonly label: string; readonly automaticOutcome?: string }[])
+            .find(check => check.label === 'Shutdown');
+        expect(shutdown).toEqual(jasmine.objectContaining({ automaticOutcome: 'failed' }));
     });
 
     it('applies accepted explosion pilot hits even when consciousness automation is disabled', async () => {
@@ -1958,7 +1990,7 @@ describe('DirectMekAutomationService', () => {
         ) => events[0]?.event === 'Critical Hit Chance'
             ? null
             : new Set(events.map(event => event.id)));
-        let dispatch: DirectMekAutomationDispatch;
+        let dispatch: CBTForceUnitCommandDispatch;
         dispatch = async (command, automate = true) => {
             const before = harness.snapshot();
             const prepared: PreparedDirectMekAutomationCommand = automate

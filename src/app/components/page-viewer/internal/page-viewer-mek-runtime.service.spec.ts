@@ -17,6 +17,7 @@ recordSheetDamagePickerRange,
 type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
 import type { DirectRecordSheetInteraction } from '../record-sheet-interaction';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
 import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
 import { PageViewerMekRuntimeService } from './page-viewer-mek-runtime.service';
 
@@ -32,17 +33,22 @@ describe('PageViewerMekRuntimeService sheet interactivity', () => {
                     fixture.instance.query(), emptyCBTEncounterSnapshot(), null),
                 editContext: context,
             };
-            const interactions = jasmine.createSpyObj<PageViewerMekInteractionService>('interactions', ['handle', 'cleanup', 'clear']);
+            const interactions = jasmine.createSpyObj<PageViewerMekInteractionService>('interactions', ['handle']);
+            const overlays = jasmine.createSpyObj<PageViewerOverlayService>('overlays', ['clearUnitControls', 'clearSheetControls']);
             TestBed.configureTestingModule({ providers: [
                 PageViewerMekRuntimeService,
                 { provide: PageViewerMekInteractionService, useValue: interactions },
+                { provide: PageViewerOverlayService, useValue: overlays },
                 { provide: LoggerService, useValue: { warn: () => {} } },
                 { provide: UnitNameService, useValue: { applyToRecordSheet: () => {} } },
             ] });
             const service = TestBed.inject(PageViewerMekRuntimeService);
             const member = {
                 kind: 'cbt', id: 'mek', entity: fixture.entity, mekRecordSheetSnapshot: () => snapshot,
-                force: { readOnly: () => readOnly, changed: new Subject(), sessionChanged: new Subject() },
+                force: {
+                    readOnly: () => readOnly, changed: new Subject(), sessionChanged: new Subject(),
+                    getEquipmentPanelSnapshot: () => null,
+                },
             } as unknown as CBTMekForceMember;
             const first = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             first.innerHTML = '<g data-mekbay-random-hit="1"></g>';
@@ -59,6 +65,7 @@ describe('PageViewerMekRuntimeService sheet interactivity', () => {
             expect(replacement.classList.contains('interactive-sheet')).toBeTrue();
             service.cleanupUnused(new Set());
             expect(replacement.classList.contains('interactive-sheet')).toBeFalse();
+            expect(overlays.clearUnitControls).toHaveBeenCalledWith('mek');
         });
     }
 });

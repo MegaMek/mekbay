@@ -18,7 +18,8 @@ import {
     type SerializedCBTForceV2,
 } from './persistence-v2';
 import { MAX_MEK_TURN_COLLECTION_ENTRIES } from './mek-turn-state-v2';
-import { MAX_MEK_HEATSINKS_OFF_V2, MAX_MEK_HEAT_VALUE_V2 } from './mek-heat-state-v2';
+import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { MAX_MEK_HEATSINKS_OFF_V2 } from './mek-heat-state-v2';
 import { prepareCBTForceRosterMutationPlan } from './cbt-force-roster-owner';
 import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
 
@@ -325,7 +326,7 @@ describe('V2 force persistence', () => {
         await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
 
         for (const mutate of [
-            (candidate: typeof valid) => { candidate.units[0].unit.heat.heat = MAX_MEK_HEAT_VALUE_V2 + 1; },
+            (candidate: typeof valid) => { candidate.units[0].unit.heat.heat = MAX_HEAT_VALUE + 1; },
             (candidate: typeof valid) => { candidate.units[0].unit.heat.previous = 0; },
             (candidate: typeof valid) => { candidate.units[0].unit.heat.pendingOverride = -1; },
             (candidate: typeof valid) => {

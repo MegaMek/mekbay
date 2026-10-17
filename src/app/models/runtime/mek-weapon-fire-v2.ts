@@ -11,14 +11,11 @@ import {
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import {
-    createAmmoCompatibilityMatch,
-    matchesAmmoCompatibility,
-} from '../ammo-compatibility-matcher.model';
-import {
     canPerformMekAction,
     type MekActionRuntimePort,
 } from './mek-action-availability';
 import { resolveComponentBayRuntime } from './component-bay-runtime';
+import { withAmmoShotsSpent } from './component-state-change';
 import {
     BOMBAST_LASER_CHARGING_STATE,
     isBombastLaserComponent,
@@ -36,7 +33,6 @@ import {
 } from './mek-turn-state-v2';
 import { mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
 import type {
-    AmmoRuntimeState,
     BombastLaserRuntimeState,
     MekUnitRuntimeState,
     ComponentRuntimeState,
@@ -47,6 +43,7 @@ import { equipmentForComponent } from './mek-runtime-index';
 import {
     mekAmmoLoadout,
     mekIntrinsicMagazine,
+    weaponAcceptsAmmo,
 } from './mek-ammo';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
 import {
@@ -315,15 +312,7 @@ export function applyMekWeaponFirePlanV2(
     state: MekUnitRuntimeState,
     plan: MekWeaponFirePlanV2,
 ): MekUnitRuntimeState {
-    const ammo = new Map<ComponentId, AmmoRuntimeState>(state.ammo);
-    for (const spend of plan.ammoSpends) {
-        const current = ammo.get(spend.sourceId);
-        ammo.set(spend.sourceId, Object.freeze({
-            ...current,
-            shotsSpent: (current?.shotsSpent ?? 0) + spend.amount,
-        }));
-    }
-
+    const spent = withAmmoShotsSpent(state, plan.ammoSpends.map(spend => [spend.sourceId, spend.amount] as const));
     const components = new Map<ComponentId, ComponentRuntimeState>(state.components);
     for (const transition of plan.ppcTransitions) {
         const current = components.get(transition.capacitorId);
@@ -355,8 +344,7 @@ export function applyMekWeaponFirePlanV2(
         acknowledgedHeatSources,
     });
     return {
-        ...state,
-        ammo: new ImmutableIndex(ammo),
+        ...spent,
         components: new ImmutableIndex(components),
         turn,
     };
@@ -485,7 +473,7 @@ function selectedAmmoSpend(
     }
     if (loadout.munitionKey !== selection.expectedMunitionKey) return rejected('MUNITION_CHANGED');
     const selected = mekAmmoLoadout(entity, index, sourceId, ruleset, loadout.munitionKey);
-    if (!selected || !mekWeaponAmmoMatches(weapon, selected.equipment, runtime.componentMode(weaponId))) {
+    if (!selected || !weaponAcceptsAmmo(weapon, selected.equipment, runtime.componentMode(weaponId))) {
         return rejected('INCOMPATIBLE_AMMO');
     }
     if (intrinsicMagazine && sourceId !== weaponId) return rejected('INVALID_AMMO_SOURCE');
@@ -497,22 +485,6 @@ function selectedAmmoSpend(
             munitionKey: loadout.munitionKey,
         }),
     });
-}
-
-/** One compatibility rule shared by fire planning and attacker selection. */
-export function mekWeaponAmmoMatches(
-    weapon: WeaponEquipment,
-    ammo: AmmoEquipment,
-    selectedMode: string | undefined,
-): boolean {
-    const special = matchesAmmoCompatibility(createAmmoCompatibilityMatch({
-        weapon,
-        ammo,
-        selectedMode,
-    }));
-    if (special !== null) return special;
-    return ammo.ammoType === weapon.ammoType
-        && (weapon.rackSize <= 0 || ammo.rackSize === weapon.rackSize);
 }
 
 function rejected(code: MekWeaponFirePlanRejectionCode): Extract<MekWeaponFirePlanResultV2, { accepted: false }> {

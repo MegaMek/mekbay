@@ -53,6 +53,19 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         expect(after.mekCombatModifiers()).toBe(after.mekCombatModifiers());
     });
 
+    it('keeps whole-point heat and treats re-entering the current heat as no edit', () => {
+        const { instance } = createDirectMekRuntimeFixture();
+        expect(instance.dispatch({ type: 'set-heat', heat: 4 }).changed).toBeTrue();
+        expect(instance.dispatch({ type: 'set-heat', heat: 6 }).changed).toBeTrue();
+        const revision = instance.revision();
+
+        expect(instance.dispatch({ type: 'set-heat', heat: 6 }).changed).toBeFalse();
+        expect(instance.revision()).toBe(revision);
+        expect(instance.snapshot().heat).toEqual(jasmine.objectContaining({ current: 6, previous: 4 }));
+        expect(instance.dispatch({ type: 'set-heat', heat: 6.5 }).changed).toBeFalse();
+        expect(instance.dispatch({ type: 'set-pending-heat', heat: 2.5 }).changed).toBeFalse();
+    });
+
     it('accepts an empty phase boundary so history can advance independently of damage', () => {
         const { instance } = createDirectMekRuntimeFixture();
 

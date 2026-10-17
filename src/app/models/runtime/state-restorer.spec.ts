@@ -187,6 +187,18 @@ describe('V1 unit-state ingress', () => {
         expect(Object.keys(restored).sort()).toEqual(['state', 'warnings']);
     });
 
+    it('rounds fractional V1 heat to whole points', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const restored = await restoreLegacyUnitState(record(fixture.identity, {
+            heat: { current: 4.4, previous: 2.6, next: 6.5 },
+        }), fixture.entity, fixture.initialized);
+
+        expect(restored.state.heat).toEqual(jasmine.objectContaining({
+            current: 4, previous: 3, pendingOverride: 7,
+        }));
+        expect(restored.warnings).toEqual([]);
+    });
+
     it('never applies legacy state to another entity UUID', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const foreign = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2');

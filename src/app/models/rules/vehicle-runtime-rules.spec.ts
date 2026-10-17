@@ -203,8 +203,8 @@ describe('projectVehicleRuntimeRules', () => {
         const runtime = instance(entity, 'unit:vehicle-systems');
         hit(runtime, systemDamageId('engine', 1), 10);
         expect(runtime.dispatch({
-            type: 'set-sensor-damage-level',
-            
+            type: 'set-system-damage-level',
+            system: 'sensors',
             level: 4,
             target: 'committed',
             timestamp: 20,

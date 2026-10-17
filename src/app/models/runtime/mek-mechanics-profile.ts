@@ -41,7 +41,7 @@ isActuatorEnhancementSystem,
 tripleStrengthMyomerKind,
 } from '../myomer-equipment.model';
 import { isRamPlateEquipment,isSpikesEquipment } from '../physical-augmentation.model';
-import { MEK_ENGINE_DESTRUCTION_HITS,mekGyroDestructionHits,mekSensorWeaponDisableHits } from '../rules/mek-system-damage-rules';
+import { mekEngineDestructionHits,mekGyroDestructionHits,mekSensorWeaponDisableHits } from '../rules/mek-system-damage-rules';
 import {
 isMascEquipment,
 isSuperchargerEquipment,
@@ -138,7 +138,7 @@ export interface MekEngineMechanics extends MekSystemTopology {
     readonly powerSource: EnginePowerSource;
     readonly fusionFamily: boolean;
     readonly rating: number;
-    readonly destructionHitThreshold: 3;
+    readonly destructionHitThreshold: 2 | 3;
 }
 
 export interface MekCockpitMechanics extends MekSystemTopology {
@@ -475,7 +475,7 @@ export function compileMekMechanicsProfile(
         powerSource: engineDescriptor.powerSource,
         fusionFamily: engineDescriptor.powerSource === 'fusion',
         rating: entity.mountedEngine().rating,
-        destructionHitThreshold: MEK_ENGINE_DESTRUCTION_HITS,
+        destructionHitThreshold: mekEngineDestructionHits(entity),
     });
     const cockpit: MekCockpitMechanics = Object.freeze({
         ...cockpitTopology,

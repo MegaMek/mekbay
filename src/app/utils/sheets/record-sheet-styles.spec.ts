@@ -236,8 +236,10 @@ describe('generated record-sheet styles', () => {
             expect(getComputedStyle(location).fill).toBe('rgb(255, 0, 0)');
             svg.classList.add('interactive-sheet');
             expect(getComputedStyle(button).fill).not.toBe('rgba(0, 0, 0, 0)');
-            // Paperdoll contours lie over the artwork, so even the damaged highlight is a translucent tint.
-            expect(getComputedStyle(location).fill).toBe('rgba(255, 0, 0, 0.55)');
+            // The Mek contour is the location's opaque paper over the artwork's shading, so the tint is mixed into
+            // the paper colour instead of letting that shading show through.
+            expect(location.classList.contains('opaque-location')).toBeTrue();
+            expect(getComputedStyle(location).fill).toBe(night ? 'color(srgb 0.55 0 0)' : 'color(srgb 1 0.45 0.45)');
             svg.classList.remove('interactive-sheet');
         }
     });
@@ -390,7 +392,17 @@ describe('generated record-sheet styles', () => {
         const location = svg.querySelector<SVGElement>('.unitLocation')!;
         location.style.transition = 'none';
         location.classList.add('selectable', 'damaged', 'style-test-hover');
-        expect(getComputedStyle(location).fill).toBe('rgba(255, 0, 0, 0.55)');
+        expect(getComputedStyle(location).fill).toBe('color(srgb 0.55 0 0)');
+    });
+
+    it('keeps the translucent tint on contours that lie over the artwork', async () => {
+        const svg = await RecordSheetSvgGenerator.generate(new TestAeroSpaceFighterEntity(), { ruleset: 'total-warfare' });
+        svg.classList.add('interactive-sheet');
+        stage.appendChild(svg);
+        const location = svg.querySelector<SVGElement>('[data-mekbay-paperdoll] .unitLocation:not(.structure):not(.opaque-location)')!;
+        location.style.transition = 'none';
+        location.classList.add('selectable', 'style-test-hover');
+        expect(getComputedStyle(location).fill).toBe('rgba(255, 0, 0, 0.12)');
     });
 
     it('colors the generated VTOL rotor preview for both damage and repair', async () => {

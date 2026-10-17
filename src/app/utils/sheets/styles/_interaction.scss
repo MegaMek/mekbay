@@ -119,18 +119,24 @@ $outlined-controls: '.crewNameButton, .crewSkillButton, .velocityCell';
       fill: var(--damaged-highlight-color) !important;
     }
 
-    // Paperdoll location contours lie over the artwork, so their highlight is a translucent red: it tints the paper
-    // like the usual highlight while the artwork lines stay visible. Structural integrity panels, in front of the
-    // artwork, keep the solid highlight above.
+    // Paperdoll location contours are tinted red, like the usual highlight, while the artwork lines stay visible.
+    // A transparent contour lies over the artwork, so its tint is translucent. An opaque contour is the location's
+    // paper, covering the artwork's shading behind it, so its tint is the same red mixed into the paper colour and
+    // stays opaque. Structural integrity panels, in front of the artwork, keep the solid highlight above.
     [data-mekbay-paperdoll] .unitLocation.selectable:not(.structure):is(:hover, :focus-visible, .picker-active) {
-      fill: rgb(255 0 0 / 12%) !important;
+      --location-tint: 12%;
+      fill: rgb(255 0 0 / var(--location-tint)) !important;
 
       &.damaged {
-        fill: rgb(255 0 0 / 55%) !important;
+        --location-tint: 55%;
       }
 
       .night-mode &:not(.damaged) {
-        fill: rgb(255 0 0 / 20%) !important;
+        --location-tint: 20%;
+      }
+
+      &.opaque-location {
+        fill: color-mix(in srgb, rgb(255 0 0) var(--location-tint), var(--svg-fg-color-inv, #fff)) !important;
       }
     }
 

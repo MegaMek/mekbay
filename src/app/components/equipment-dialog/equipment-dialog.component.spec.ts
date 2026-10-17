@@ -81,6 +81,7 @@ function createMembers(definitions: readonly MemberFixture[]): CBTMekForceMember
         sessionChanged: new Subject<void>(),
         members: () => members,
         readOnly: () => false,
+        getWeaponAttackContext: () => ATTACK_CONTEXT,
         getEquipmentPanelSnapshot: (id: string) => {
             const definition = byId.get(id)!;
             return {
@@ -136,6 +137,7 @@ function createTankMember(): CBTForceMember {
         sessionChanged: new Subject<void>(),
         members: () => [member],
         readOnly: () => false,
+        getWeaponAttackContext: () => ATTACK_CONTEXT,
         getEquipmentPanelSnapshot: () => ({
             displayName: 'Vedette Medium Tank',
             unitType: 'Tank',
@@ -385,4 +387,15 @@ describe('EquipmentDialogComponent', () => {
         expect(component.turnSummaryPhase()).toBe('M');
         expect(component.turnSummaryFalling()).toBeFalse();
     });
+});
+
+const ATTACK_CONTEXT = Object.freeze({
+    gunnery: 4,
+    pilotingSkill: 5,
+    movementMode: null,
+    allowExtremeRange: false,
+    missingMovementModifier: false,
+    attackModifierBreakdown: [],
+    c3Available: false,
+    c3DegradationSource: 'none' as const,
 });

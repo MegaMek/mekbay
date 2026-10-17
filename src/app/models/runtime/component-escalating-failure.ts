@@ -34,6 +34,7 @@ import { equipmentForComponent,type MekRuntimeIndex } from './mek-runtime-index'
 import {
 type ComponentRuntimeState,
 } from './runtime-state';
+import type { CBTUnitCommand } from './unit-command';
 
 export {
 escalatingFailureCriticalExplosionDamage,
@@ -323,8 +324,42 @@ export function componentEscalatingFailureChoices(
     })]);
 }
 
-/** Shared sparse-state transition for selecting/resetting one failure step. */
-export function selectEscalatingFailureComponentState(
+export type EscalatingFailureEdit = Extract<CBTUnitCommand, { readonly type: 'edit-escalating-failure' }>['edit'];
+
+/**
+ * The one edit rule for both runtime families. A step is chosen only on
+ * available equipment where it can be used; Malfunctioning marks available
+ * equipment, and Operational clears only that explicit malfunction, never a
+ * destroyed or damage-derived status.
+ */
+export function editEscalatingFailureComponentState(
+    currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
+    definition: ComponentEscalatingFailureDefinition,
+    edit: EscalatingFailureEdit,
+    status: EquipmentStatus,
+    airborne: boolean | null,
+): ReadonlyMap<ComponentId, ComponentRuntimeState> | null {
+    if (edit.kind === 'select-sequence') {
+        return status === 'available' && canUseEscalatingFailure(definition, airborne)
+            ? selectEscalatingFailureComponentState(
+                currentComponents,
+                definition.componentId,
+                edit.index,
+                definition.targets.length,
+            )
+            : null;
+    }
+    const allowed = edit.status === 'disabled'
+        ? status === 'available'
+        : edit.status === 'available'
+            && currentComponents.get(definition.componentId)?.statusOverride === 'disabled';
+    return allowed
+        ? setEscalatingFailureComponentStatus(currentComponents, definition.componentId, edit.status)
+        : null;
+}
+
+/** Sparse-state transition for selecting/resetting one failure step. */
+function selectEscalatingFailureComponentState(
     currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
     componentId: ComponentId,
     index: number,
@@ -360,8 +395,8 @@ export function selectEscalatingFailureComponentState(
     );
 }
 
-/** Shared sparse-state transition for the Operational/Malfunctioning toggle. */
-export function setEscalatingFailureComponentStatus(
+/** Sparse-state transition for the Operational/Malfunctioning toggle. */
+function setEscalatingFailureComponentStatus(
     currentComponents: ReadonlyMap<ComponentId, ComponentRuntimeState>,
     componentId: ComponentId,
     status: 'available' | 'disabled',

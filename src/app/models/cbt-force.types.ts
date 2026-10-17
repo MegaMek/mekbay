@@ -13,6 +13,7 @@ import type { PinnedCustomUnitSource } from './pinned-custom-unit-source';
 import type { ComponentId } from './entity/entity-identifiers';
 import type { AttackerTargetingState } from './runtime/attacker-targeting-state';
 import type { CBTUnitCommandResult,CBTUnitRuntimeState } from './runtime/cbt-unit-runtime';
+import type { CBTUnitCommand } from './runtime/unit-command';
 import type {
 EncounterTargetCalculatorState,
 EncounterTargetId,
@@ -43,6 +44,12 @@ export type CBTForceUnitCommandResult = Readonly<
     CBTUnitCommandResult<CBTUnitRuntimeState | null>
     & { readonly prototypeHeat?: readonly import('./prototype-laser-heat.model').PrototypeLaserHeatResult[] }
 >;
+
+/** One owner-bound unit command step; `automate` re-enters direct automation for follow-up work. */
+export type CBTForceUnitCommandDispatch = (
+    command: CBTUnitCommand,
+    automate?: boolean,
+) => Promise<CBTForceUnitCommandResult>;
 
 export type CBTUnitRepairResult =
     | Readonly<{

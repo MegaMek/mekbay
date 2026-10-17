@@ -45,7 +45,7 @@ describe('responsive construction details', () => {
         TestBed.configureTestingModule({ providers: [
             { provide: DialogRef, useValue: dialogRef },
             { provide: Dialog, useValue: { openDialogs: [dialogRef] } },
-            { provide: LayoutService, useValue: { windowWidth: width } },
+            { provide: LayoutService, useValue: { windowWidth: width, windowHeight: signal(900) } },
             { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => registry } },
             { provide: CustomUnitsService, useValue: {
                 summaries: signal([]), parseDraft: (source: string, format: string) => parseEntity(source, `draft.${format}`, registry).entity,

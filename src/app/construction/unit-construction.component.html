@@ -517,7 +517,13 @@
         @for (preview of dropPreview(); track preview.location + ':' + preview.index) {
           @if (preview.location === location.id) {
             <div class="slot-drop-preview" [style.grid-row]="preview.index + 1 + ' / span ' + preview.span">
-              <span class="drop-preview-label"><ng-container [ngTemplateOutlet]="placementArrow" />DROP HERE</span>
+              <span class="drop-preview-label"
+                ><ng-container [ngTemplateOutlet]="placementArrow" />{{
+                  dragTarget()?.location === location.id && dragTarget()?.shareSlotIndex === preview.index
+                    ? 'SHARE SLOT'
+                    : 'DROP HERE'
+                }}</span
+              >
               @if (preview.span > 1) {
                 <small>{{ dragLabel() }} · {{ preview.span }} slots</small>
               }
@@ -540,7 +546,6 @@
               [class.damaged-equipment]="destroyed"
               [class.destroyed-equipment]="destroyed"
             >
-              <small class="slot-number">{{ row.index + 1 }}</small>
               <div class="system-content">
                 @if (armoredSystemCount(location.id, row); as count) {
                   <span class="armored-badge" [title]="count + ' armored critical slots'"
@@ -637,8 +642,10 @@
               [class.preview-covered]="!row.mount && previewOccupied(location.id, row.index)"
               [style.--slot-span]="row.span"
               [class.single-slot]="row.span === 1"
+              [class.shared-slot]="!!row.sharedMount"
             >
-              @if (row.mount; as mount) {
+              @if (row.mount) {
+                @for (mount of row.sharedMount ? [row.mount, row.sharedMount] : [row.mount]; track mount.mountId) {
                 @let display = mountedDisplay(mount);
                 @let mountLabel = (display.custom ? '*' : '') + display.name;
                 @if (
@@ -712,6 +719,7 @@
                     }"
                   />
                 </div>
+                }
               } @else {
                 <button
                   class="empty-slot"
@@ -756,9 +764,9 @@
         <div class="design-identity">
           <div class="identity-line">
             <span class="subtype">{{ entity().unitSubtype() }}</span>
-            <span class="save-state">{{
-              dirty() ? '● Unsaved' : savedUuid() ? 'Saved locally' : originalUuid() ? 'Original design' : 'New design'
-            }}</span>
+            @if (dirty()) {
+              <span class="save-state">● Unsaved</span>
+            }
           </div>
           <div class="design-name">
             <button
@@ -775,6 +783,21 @@
             <div class="design-name-text">
               <div class="design-model">{{ entity().model() }}</div>
               <div class="design-chassis">{{ unitNames.chassis(entity()) }}</div>
+              <div class="design-tech">
+                Tech:
+                @if (designEditing() && techBaseOptions().length > 1) {
+                  <multiline-dropdown
+                    appearance="inline"
+                    label="Tech base"
+                    [expandPanelToContent]="true"
+                    [options]="techBaseOptions()"
+                    [value]="techBaseChoice()"
+                    (valueChange)="setTechBaseChoice($event)"
+                  />
+                } @else {
+                  {{ techBaseLabel() }}
+                }
+              </div>
             </div>
           </div>
           @if (refitReference(); as reference) {
@@ -808,18 +831,54 @@
           }
         </div>
         <div class="mass-summary" [class.overweight]="mass() !== null && mass()! > massCapacity()">
-          <span class="eyebrow">TONNAGE</span>
-          <button
-            class="mass-value"
-            (click)="showBreakdown('weight', $event)"
-            [disabled]="mass() === null"
-            aria-label="Show weight breakdown"
-            [attr.aria-expanded]="detailsView() === 'weight'"
-            aria-controls="construction-details"
+          <span class="eyebrow"
+            >TONNAGE
+            <button
+              type="button"
+              class="info-notice-button"
+              (click)="showBreakdown('weight', $event)"
+              [disabled]="mass() === null"
+              aria-label="Show weight breakdown"
+              title="Weight breakdown"
+              [attr.aria-expanded]="detailsView() === 'weight'"
+              aria-controls="construction-details"
+            >
+              <span class="info-notice" aria-hidden="true">i</span>
+            </button></span
           >
-            {{ mass() === null ? '—' : (mass() | number: '1.0-3')
-            }}<small> / {{ massCapacity() | number: '1.0-3' }} t</small>
-          </button>
+          <span class="mass-value"
+            >{{ mass() === null ? '—' : (mass() | number: '1.0-3') }}<small>
+              /
+              @if (tonnageField(); as field) {
+                @if (canEditField(field) && tonnageOptions(); as options) {
+                  <multiline-dropdown
+                    appearance="inline"
+                    label="Chassis tonnage"
+                    [expandPanelToContent]="true"
+                    [options]="options"
+                    [value]="'' + field.get()"
+                    (valueChange)="setField(field, $event)"
+                  />
+                } @else if (canEditField(field)) {
+                  <input
+                    #tonnageControl="ngModel"
+                    class="inline-number"
+                    type="number"
+                    aria-label="Chassis tonnage"
+                    [min]="field.min ?? 0"
+                    [step]="field.step ?? 1"
+                    [ngModel]="field.get()"
+                    (ngModelChange)="setField(field, $event, tonnageControl)"
+                  />
+                } @else {
+                  {{ massCapacity() | number: '1.0-3' }}
+                }
+              } @else {
+                {{ massCapacity() | number: '1.0-3' }}
+              }
+              t</small
+            ></span
+          >
           <div class="meter"><i [style.width.%]="massRatio()"></i></div>
           <span class="muted">{{
             mass() === null
@@ -915,9 +974,12 @@
             </div>
             <button
               class="bt-button warehouse-filter-toggle"
-              [class.active]="filterByLocation()"
+              cdkOverlayOrigin
+              #warehouseFilterOrigin="cdkOverlayOrigin"
+              [class.active]="warehouseFilterCount() > 0"
               aria-label="Equipment filters"
               title="Equipment filters"
+              aria-haspopup="dialog"
               aria-controls="construction-equipment-filters"
               [attr.aria-expanded]="equipmentFiltersOpen()"
               (click)="equipmentFiltersOpen.set(!equipmentFiltersOpen())"
@@ -938,35 +1000,89 @@
               </svg>
             </button>
           </div>
-          @if (equipmentFiltersOpen()) {
+          <ng-template
+            cdkConnectedOverlay
+            [cdkConnectedOverlayOrigin]="warehouseFilterOrigin"
+            [cdkConnectedOverlayOpen]="equipmentFiltersOpen()"
+            [cdkConnectedOverlayPositions]="warehouseFilterPositions"
+            [cdkConnectedOverlayPush]="true"
+            [cdkConnectedOverlayViewportMargin]="4"
+            (overlayOutsideClick)="closeWarehouseFilters($event)"
+            (overlayKeydown)="$event.key === 'Escape' && equipmentFiltersOpen.set(false)"
+            (detach)="equipmentFiltersOpen.set(false)"
+          >
             <div
-              class="warehouse-filters"
+              class="warehouse-filter-panel framed-borders has-shadow"
               id="construction-equipment-filters"
-              role="group"
+              role="dialog"
               aria-label="Equipment filters"
             >
-              <label>
-                <input
-                  class="bt-checkbox"
-                  type="checkbox"
-                  [ngModel]="filterByLocation()"
-                  (ngModelChange)="filterByLocation.set($event)"
-                />
-                Fits in</label
-              >
-              <select
-                class="bt-select"
-                aria-label="Equipment destination"
-                [disabled]="!filterByLocation()"
-                [ngModel]="selectedLocation()"
-                (ngModelChange)="selectedLocation.set($event)"
-              >
-                @for (location of locations(); track location.id) {
-                  <option [value]="location.id">{{ location.label }}</option>
+              <div class="warehouse-filter-heading">
+                <h3>Filters</h3>
+                <button
+                  type="button"
+                  class="bt-button"
+                  [disabled]="warehouseFilterCount() === 0"
+                  (click)="resetWarehouseFilters()"
+                >
+                  Reset
+                </button>
+              </div>
+              <div class="warehouse-filter-location">
+                <label>
+                  <input
+                    class="bt-checkbox"
+                    type="checkbox"
+                    [ngModel]="filterByLocation()"
+                    (ngModelChange)="filterByLocation.set($event)"
+                  />
+                  Fits in</label
+                >
+                <select
+                  class="bt-select"
+                  aria-label="Equipment destination"
+                  [disabled]="!filterByLocation()"
+                  [ngModel]="selectedLocation()"
+                  (ngModelChange)="selectedLocation.set($event)"
+                >
+                  @for (location of locations(); track location.id) {
+                    <option [value]="location.id">{{ location.label }}</option>
+                  }
+                </select>
+              </div>
+              <multi-select-dropdown
+                label="Tech base"
+                [options]="warehouseTechBaseOptions"
+                [selected]="$any(warehouseTechBases())"
+                (selectionChange)="warehouseTechBases.set($any($event))"
+              />
+              <multi-select-dropdown
+                label="Damage type"
+                [options]="warehouseWeaponTypeOptions()"
+                [selected]="$any(warehouseWeaponTypes())"
+                (selectionChange)="warehouseWeaponTypes.set($any($event))"
+              />
+              @for (filter of warehouseRangeFilters; track filter.id) {
+                @if (warehouseRangeBounds().get(filter.id); as bounds) {
+                  @let value = warehouseRanges()[filter.id] ?? bounds;
+                  <div class="warehouse-filter-range">
+                    <span class="warehouse-filter-range-label"
+                      >{{ filter.label }}
+                      <span class="warehouse-filter-range-values">({{ value[0] }}~{{ value[1] }})</span></span
+                    >
+                    <range-slider
+                      [min]="bounds[0]"
+                      [max]="bounds[1]"
+                      [value]="$any(value)"
+                      [stepSize]="filter.step"
+                      [interacted]="!!warehouseRanges()[filter.id]"
+                      (valueChange)="setWarehouseRange(filter.id, $event)"
+                    />
+                  </div>
                 }
-              </select>
+              }
             </div>
-          }
+          </ng-template>
           <div class="equipment-categories" aria-label="Equipment category">
             @for (cat of categories; track cat.id) {
               <button
@@ -1475,11 +1591,6 @@
                           {{ caseState!.label }}
                         </span>
                       }
-                      <small>{{
-                        location.slotCapacity === null
-                          ? location.slots.length + ' mounts'
-                          : location.slotCapacity + ' slots'
-                      }}</small>
                     </button>
                     <ng-template #caseControl>
                       @if (!isMek() && caseState?.configurable) {
@@ -2201,26 +2312,27 @@
               }
             </div>
             @let location = selectedMountLocation();
-            @let order = locationMounts(location);
-            @if (order.includes(mount.mountId)) {
-              <div class="mount-order-controls">
+            @if (mountOrderPosition(mount, location); as position) {
+              <div class="mount-order-controls" role="group" [attr.aria-label]="'Order in ' + locationLabel(location)">
                 <button
-                  class="bt-button"
+                  type="button"
+                  class="mount-order-button"
                   (click)="reorderMount(mount, location, -1)"
-                  [disabled]="!canReorderMount(mount) || order[0] === mount.mountId"
+                  [disabled]="!canReorderMount(mount) || position.first"
                   [attr.aria-label]="'Move up in ' + locationLabel(location)"
                   [title]="'Move up in ' + locationLabel(location)"
                 >
-                  ↑
+                  <span class="chevron chevron-dropdown" aria-hidden="true"></span>
                 </button>
                 <button
-                  class="bt-button"
+                  type="button"
+                  class="mount-order-button"
                   (click)="reorderMount(mount, location, 1)"
-                  [disabled]="!canReorderMount(mount) || order.at(-1) === mount.mountId"
+                  [disabled]="!canReorderMount(mount) || position.last"
                   [attr.aria-label]="'Move down in ' + locationLabel(location)"
                   [title]="'Move down in ' + locationLabel(location)"
                 >
-                  ↓
+                  <span class="chevron" aria-hidden="true"></span>
                 </button>
               </div>
             }

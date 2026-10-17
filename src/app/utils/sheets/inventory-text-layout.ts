@@ -91,17 +91,32 @@ export function addInventoryText(parent: SVGElement, value: string, x: number, y
     return text;
 }
 
-/** Mek-reference width and type stay fixed; only the background height follows dense leading. */
+/** Weapon to-hit modifier, centred on the frame's left border. */
 export function appendInventoryHitModifier(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale): void {
+    appendInventoryBadge(parent, 'hitMod', 0, baseline, scale, lineHeight);
+}
+
+/** Selected-target number; templates differ only in where the badge sits. */
+export function appendInventoryTargetNumber(parent: SVGElement, x: number, baseline: number, scale = 1,
+    lineHeight = 9 * scale): void {
+    appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
+}
+
+/** Mek-reference width and type stay fixed; only the background height follows dense leading. */
+function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number,
+    scale: number, lineHeight: number): void {
     const height = Math.min(INVENTORY_BADGE.height * scale, Math.max(INVENTORY_BADGE.minimumHeight * scale, lineHeight));
+    const center = baseline - 2.5 * scale;
+    const hitModifier = kind === 'hitMod';
     const rect = svgElement('rect');
-    setAttributes(rect, { x: -INVENTORY_BADGE.width * scale / 2, y: baseline - 2.5 * scale - height / 2,
+    setAttributes(rect, { x: x - INVENTORY_BADGE.width * scale / 2, y: center - height / 2,
         width: INVENTORY_BADGE.width * scale, height,
-        fill: '#000', class: 'hitMod-rect', display: 'none' });
+        fill: hitModifier ? '#000' : '#fff', stroke: hitModifier ? undefined : '#000',
+        'stroke-width': hitModifier ? undefined : 0.8 * scale, class: `${kind}-rect`, display: 'none' });
     parent.appendChild(rect);
-    const text = addText(parent, '', 0, baseline - 7 * scale + INVENTORY_BADGE.height * scale / 2
-        + INVENTORY_BADGE.fontSize * scale / 3, {
-        class: 'hitMod-text', size: INVENTORY_BADGE.fontSize * scale, weight: 700, fill: '#fff', anchor: 'middle' });
+    const text = addText(parent, '', x, center + INVENTORY_BADGE.fontSize * scale / 3, {
+        class: `${kind}-text`, size: INVENTORY_BADGE.fontSize * scale, weight: 700,
+        fill: hitModifier ? '#fff' : undefined, anchor: 'middle' });
     text.setAttribute('font-family', 'monospace');
     text.setAttribute('display', 'none');
 }

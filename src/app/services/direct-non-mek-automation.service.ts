@@ -4,51 +4,47 @@
 import { inject,Injectable } from '@angular/core';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
-import {
-orderedAutomationChecks,
-type AutomationCheck,
-type AutomationCheckResolution,
-} from '../models/automation-check.model';
+import type { AutomationCheck,AutomationCheckResolution } from '../models/automation-check.model';
 import type { AutomationReviewEvent } from '../models/automation-review.model';
 import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
-import type { CBTForceUnitCommandResult } from '../models/cbt-force.types';
+import type { CBTForceUnitCommandDispatch,CBTForceUnitCommandResult } from '../models/cbt-force.types';
 import {
 cbtUnitCheckAutomaticMessage,
 cbtUnitCheckPresentation,
-cbtUnitCheckReviewDescription,
 } from '../models/cbt-unit-check-presentation';
 import { hasNonMekRuntime,type CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
-import { MAX_CREW_WOUNDS } from '../models/crew-member.model';
+import { activeCrewController,DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
-import type { ComponentId,CrewPositionId } from '../models/entity/entity-identifiers';
+import type { CrewPositionId } from '../models/entity/entity-identifiers';
 import { isAeroEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
-import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
+import type { WeaponEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
-import {
-projectAeroHeatAutomationChecks,
-type AeroHeatAutomationCheck,
-} from '../models/runtime/aero-heat-automation-rules';
-import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
-import { mekConsciousnessTarget,twoD6Total } from '../models/runtime/mek-automation-rules';
-import { ammoExplosionDamagePerShot,ammoRackSize } from '../models/runtime/mek-critical-hit-v2';
+import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
+import { heatAmmoExplosionCandidates, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
+import { ammoExplosionDamagePerShot } from '../models/runtime/mek-critical-hit-v2';
 import { hotLoadedAmmoForWeapon } from '../models/runtime/mek-ammo';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
 import type { UnitConditionKey } from '../models/unit-condition.model';
-import { buildHeatSummaryRows } from '../utils/heat-summary.util';
 import { automationCheckEvidenceDice,CBTAutomationCheckService } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { CBTAutomationService } from './cbt-automation.service';
 import {
-automaticConsciousnessNotifications,
-automaticConsciousnessRecoveryNotification,
 CBTCrewHitAutomationService,
+type PreparedCrewRecovery,
 type ResolvedCrewHits,
 } from './cbt-crew-hit-automation.service';
 import { directAutomationSubject } from './direct-automation-subject';
+import {
+EndTurnHeatAutomationService,
+stagedEndTurnHeatChecks,
+type EndTurnHeatAdapter,
+type PreparedEndTurnHeatEffects,
+type StagedEndTurnHeat,
+} from './end-turn-heat-automation.service';
 import { OptionsService } from './options.service';
 import type { Toast } from './toast.service';
 
@@ -64,15 +60,10 @@ type NonMekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Read
     state: NonMekUnitRuntimeState;
 }>;
 
-export type DirectNonMekAutomationDispatch = (
-    command: CBTUnitCommand,
-    automate?: boolean,
-) => Promise<CBTForceUnitCommandResult>;
-
 export interface PreparedDirectNonMekAutomationCommand {
     readonly command: CBTUnitCommand;
     readonly cancelled?: true;
-    readonly heatEffects?: PreparedAeroHeatEffects;
+    readonly heatEffects?: PreparedEndTurnHeatEffects<StagedAeroHeatEffects>;
     readonly phaseBoundary?: PreparedNonMekPhaseBoundary;
 }
 
@@ -100,50 +91,8 @@ export interface DirectNonMekAutomationReviewOptions {
     readonly interactive?: boolean;
 }
 
-interface StagedAeroHeatCheck {
-    readonly id: string;
-    readonly check: AeroHeatAutomationCheck;
-}
-
-interface RolledAeroHeatCheck extends StagedAeroHeatCheck {
-    readonly total: number | null;
-    readonly outcome: 'success' | 'failed';
-}
-
-interface StagedAeroHeatEffects {
-    readonly id: string;
-    readonly heat: number;
-    readonly checks: readonly StagedAeroHeatCheck[];
+interface StagedAeroHeatEffects extends StagedEndTurnHeat {
     readonly hadHeatControlEffect: boolean;
-    readonly ammoCandidates: readonly AeroAmmoExplosionCandidate[];
-}
-
-interface ResolvedAeroHeatEffects extends Omit<StagedAeroHeatEffects, 'checks'> {
-    readonly checks: readonly RolledAeroHeatCheck[];
-    readonly ammo: AeroAmmoExplosionCandidate | null;
-}
-
-interface PreparedAeroHeatEffects {
-    readonly staged: ResolvedAeroHeatEffects;
-    readonly applyEffects: boolean;
-    readonly applyPilotHits: boolean;
-    readonly interactive: boolean;
-}
-
-interface PreparedNonMekCrewRecovery {
-    readonly eventId: string;
-    readonly positionId: CrewPositionId;
-    readonly total: number;
-    readonly targetNumber: number;
-    readonly recovered: boolean;
-    readonly accepted: boolean;
-}
-
-interface StagedNonMekCrewRecovery {
-    readonly eventId: string;
-    readonly positionId: CrewPositionId;
-    readonly targetNumber: number;
-    readonly event: AutomationReviewEvent;
 }
 
 interface StagedNonMekControlRecovery {
@@ -160,26 +109,8 @@ interface PreparedNonMekControlRecovery extends StagedNonMekControlRecovery {
 }
 
 interface PreparedNonMekPhaseBoundary {
-    readonly recoveries: readonly PreparedNonMekCrewRecovery[];
+    readonly recoveries: readonly PreparedCrewRecovery[];
     readonly controlRecovery: PreparedNonMekControlRecovery | null;
-}
-
-interface AeroAmmoExplosionCandidate {
-    readonly componentId: ComponentId;
-    readonly equipment: string;
-    readonly location?: string;
-    readonly damagePerShot: number;
-    readonly shots: number;
-    readonly rawDamage: number;
-}
-
-interface NonMekEndTurnDecision {
-    readonly request: DirectNonMekEndTurnAutomationRequest;
-    readonly snapshot: AeroSnapshot | null;
-    readonly staged: StagedAeroHeatEffects | null;
-    readonly heatAccepted: boolean;
-    readonly applyEffects: boolean;
-    readonly applyPilotHits: boolean;
 }
 
 /**
@@ -193,6 +124,29 @@ export class DirectNonMekAutomationService {
     private readonly automationToasts = inject(CBTAutomationToastService);
     private readonly crewHitAutomation = inject(CBTCrewHitAutomationService);
     private readonly options = inject(OptionsService);
+    private readonly endTurnHeat = inject(EndTurnHeatAutomationService);
+    private readonly endTurnHeatAdapter: EndTurnHeatAdapter<AeroSnapshot, StagedAeroHeatEffects> = {
+        snapshot: (force, instanceId) => this.snapshot(force, instanceId),
+        projectHeat: snapshot => {
+            const projection = projectNonMekEndTurnHeat(
+                snapshot.entity,
+                snapshot.index,
+                snapshot.state,
+                snapshot.ruleset,
+            );
+            return projection && {
+                current: projection.current,
+                projected: projection.projected,
+                sources: projection.sources,
+                dissipationBalance: projection.dissipated,
+                consumedDissipation: Math.min(projection.dissipated, projection.current + projection.generated),
+            };
+        },
+        stage: (snapshot, heat) => this.stageAeroHeatEffects(snapshot, heat),
+        extraPilotHitDescriptions: () => [],
+        applyEffects: (force, instanceId, prepared, dispatch) =>
+            this.applyAeroHeatEffects(force, instanceId, prepared, dispatch),
+    };
 
     async prepareCommand(
         force: CBTForce,
@@ -229,20 +183,9 @@ export class DirectNonMekAutomationService {
         }
         if (command.type === 'set-crew-state') {
             const snapshot = this.nonMekSnapshot(force, instanceId);
-            if (snapshot
-                && command.unconscious
-                && !snapshot.query.crewState(command.positionId).unconscious) {
-                return Object.freeze({
-                    command: Object.freeze({
-                        ...command,
-                        recoveryReadyTurn: this.options.cbtAutomationMode(
-                            'pilotHitsAndConsciousnessCheck',
-                        ) === 'no'
-                            ? null
-                            : snapshot.state.turn.turnCounter + 1,
-                    }),
-                });
-            }
+            return Object.freeze({
+                command: snapshot ? this.crewHitAutomation.withRecoveryReadyTurn(snapshot, command) : command,
+            });
         }
         if (command.type === 'end-phase') {
             const batch = await this.prepareEndPhaseCommands(force, [{ instanceId, command }]);
@@ -259,226 +202,7 @@ export class DirectNonMekAutomationService {
         requests: readonly DirectNonMekEndTurnAutomationRequest[],
         review: DirectNonMekAutomationReviewOptions = {},
     ): Promise<readonly PreparedDirectNonMekEndTurnAutomation[] | null> {
-        const rows = requests.map(request => {
-            const snapshot = this.snapshot(force, request.instanceId);
-            const projection = snapshot === null
-                ? null
-                : projectNonMekEndTurnHeat(
-                    snapshot.entity,
-                    snapshot.index,
-                    snapshot.state,
-                    snapshot.ruleset,
-                );
-            const automaticHeat = projection?.projected ?? snapshot?.state.heat.current ?? 0;
-            const staged = snapshot
-                ? this.stageAeroHeatEffects(
-                    snapshot,
-                    automaticHeat,
-                )
-                : null;
-            const effects = staged
-                ? this.reviewableAeroEffectDescriptions(staged)
-                : Object.freeze([]);
-            const hasHeatWork = snapshot !== null && projection !== null && (
-                projection.projected !== projection.current
-                || projection.sources.some(source => source.value !== 0)
-                || projection.dissipated > 0
-                || snapshot.state.heat.pendingOverride !== undefined
-            );
-            const event: AutomationReviewEvent | null = snapshot && projection && hasHeatWork
-                ? Object.freeze({
-                    id: `non-mek-heat:${request.instanceId}`,
-                    subject: this.subject(snapshot),
-                    event: 'Heat and dissipation',
-                    description: `Heat ${projection.current} → ${projection.projected}`,
-                    delta: projection.projected - projection.current,
-                    breakdown: Object.freeze(buildHeatSummaryRows(
-                        projection.sources.filter(source => source.value > 0),
-                        projection.dissipated,
-                        Math.min(
-                            projection.dissipated,
-                            projection.current + projection.generated,
-                        ),
-                        projection.projected,
-                    ).map(row => Object.freeze({
-                        id: row.id,
-                        label: row.label,
-                        value: row.value,
-                    }))),
-                    ...(effects.length === 0 ? {} : { effects }),
-                })
-                : null;
-            return Object.freeze({ request, snapshot, event, staged });
-        });
-        const heatMode = this.options.cbtAutomationMode('heatAndDissipationResolution');
-        const effectsMode = this.options.cbtAutomationMode('heatEffectsCheck');
-        const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
-
-        if (heatMode === 'ask' && effectsMode === 'ask') {
-            const events = rows.flatMap(row => {
-                const effects = row.staged
-                    ? this.reviewableAeroEffectDescriptions(row.staged)
-                    : Object.freeze([]);
-                if (!row.snapshot || (!row.event && effects.length === 0)) return [];
-                return [Object.freeze({
-                    id: this.combinedHeatEventId(row.request),
-                    subject: this.subject(row.snapshot),
-                    event: pilotHitsMode === 'ask'
-                        ? 'Heat, dissipation, effects, and pilot hits'
-                        : 'Heat, dissipation, and effects',
-                    ...(row.event
-                        ? {
-                            description: row.event.description,
-                            ...(row.event.delta === undefined ? {} : { delta: row.event.delta }),
-                            ...(row.event.breakdown === undefined ? {} : { breakdown: row.event.breakdown }),
-                        }
-                        : { description: `Heat ${row.staged?.heat ?? row.snapshot.state.heat.current}` }),
-                    ...(effects.length === 0 ? {} : { effects }),
-                } satisfies AutomationReviewEvent)];
-            });
-            const accepted = await this.automation.resolve(
-                'heatAndDissipationResolution',
-                events,
-                {
-                    title: 'Review End-Turn Heat',
-                    message: pilotHitsMode === 'ask'
-                        ? 'Choose which units\' heat, dissipation, heat effects, and pilot hits to apply.'
-                        : 'Choose which units\' heat, dissipation, and heat effects to apply.',
-                    allowCancel: true,
-                    interactive: review.interactive,
-                },
-            );
-            if (accepted === null) return null;
-            return this.resolveAeroEndTurnDecisions(rows.map(row => {
-                const selected = accepted.has(this.combinedHeatEventId(row.request));
-                return Object.freeze({
-                    request: row.request,
-                    snapshot: row.snapshot,
-                    staged: row.staged,
-                    heatAccepted: row.event !== null && selected,
-                    applyEffects: selected,
-                    applyPilotHits: selected && pilotHitsMode !== 'no',
-                } satisfies NonMekEndTurnDecision);
-            }), review.interactive);
-        }
-
-        const acceptedHeat = await this.automation.resolve(
-            'heatAndDissipationResolution',
-            rows.flatMap(row => row.event ? [row.event] : []),
-            {
-                title: 'Review Heat and Dissipation',
-                message: 'Choose which heat and dissipation results to apply.',
-                allowCancel: true,
-                interactive: review.interactive,
-            },
-        );
-        if (acceptedHeat === null) return null;
-        const finalRows = rows.map(row => {
-            const heatAccepted = row.event !== null && acceptedHeat.has(row.event.id);
-            const finalHeat = heatAccepted
-                ? projectNonMekEndTurnHeat(
-                    row.snapshot!.entity,
-                    row.snapshot!.index,
-                    row.snapshot!.state,
-                    row.snapshot!.ruleset,
-                )?.projected ?? row.snapshot?.state.heat.current ?? 0
-                : row.snapshot?.state.heat.pendingOverride
-                    ?? row.snapshot?.state.heat.current
-                    ?? 0;
-            const staged = row.snapshot
-                ? this.stageAeroHeatEffects(
-                    row.snapshot,
-                    finalHeat,
-                )
-                : null;
-            return Object.freeze({ ...row, heatAccepted, staged });
-        });
-        const combinesEffectsAndPilotHits = effectsMode === 'ask' && pilotHitsMode === 'ask';
-        const effectEvents = finalRows.flatMap(row => {
-            if (!row.snapshot || !row.staged) return [];
-            const effects = this.reviewableAeroEffectDescriptions(row.staged);
-            if (effects.length === 0) return [];
-            return [Object.freeze({
-                id: row.staged.id,
-                subject: this.subject(row.snapshot),
-                event: combinesEffectsAndPilotHits
-                    ? 'Heat effects and pilot hits'
-                    : 'Heat effects',
-                ...(row.heatAccepted && row.event
-                    ? {
-                        description: row.event.description,
-                        ...(row.event.delta === undefined ? {} : { delta: row.event.delta }),
-                        ...(row.event.breakdown === undefined ? {} : { breakdown: row.event.breakdown }),
-                    }
-                    : { description: `Heat ${row.staged.heat}` }),
-                effects,
-            } satisfies AutomationReviewEvent)];
-        });
-        const acceptedEffects = await this.automation.resolve(
-            'heatEffectsCheck',
-            effectEvents,
-            {
-                title: 'Review End-Turn Heat Effects',
-                message: combinesEffectsAndPilotHits
-                    ? 'Choose which units\' heat effects and pilot hits to resolve.'
-                    : 'Choose which units\' heat effects to resolve.',
-                allowCancel: true,
-                interactive: review.interactive,
-            },
-        );
-        if (acceptedEffects === null) return null;
-
-        let acceptedPilotHits = new Set<string>();
-        if (combinesEffectsAndPilotHits) {
-            acceptedPilotHits = new Set(finalRows
-                .filter(row => row.staged && acceptedEffects.has(row.staged.id))
-                .map(row => this.pilotHitEventId(row.request)));
-        } else if (pilotHitsMode === 'yes') {
-            acceptedPilotHits = new Set(finalRows
-                .filter(row => row.staged && this.aeroPilotHits(row.staged) > 0
-                    && acceptedEffects.has(row.staged.id))
-                .map(row => this.pilotHitEventId(row.request)));
-        } else if (pilotHitsMode === 'ask') {
-            const pilotEvents = finalRows.flatMap(row => {
-                if (!row.snapshot || !row.staged || !acceptedEffects.has(row.staged.id)) return [];
-                const hits = this.aeroPilotHits(row.staged);
-                if (hits === 0) return [];
-                return [Object.freeze({
-                    id: this.pilotHitEventId(row.request),
-                    subject: this.subject(row.snapshot),
-                    event: 'Pilot hits and consciousness',
-                    description: `Heat ${row.staged.heat}`,
-                    effects: Object.freeze(row.staged.checks
-                        .filter(check => check.check.kind === 'pilot-damage')
-                        .map(check => cbtUnitCheckReviewDescription('pilot-damage', {
-                            targetNumber: check.check.target,
-                            heat: row.staged!.heat,
-                            hits: 1,
-                        }))),
-                } satisfies AutomationReviewEvent)];
-            });
-            const decision = await this.automation.resolve(
-                'pilotHitsAndConsciousnessCheck',
-                pilotEvents,
-                {
-                    title: 'Review Pilot Hits',
-                    message: 'Choose which units\' pilot-hit effects to apply. Accepted hits continue directly into any required Consciousness Rolls.',
-                    allowCancel: true,
-                    interactive: review.interactive,
-                },
-            );
-            if (decision === null) return null;
-            acceptedPilotHits = new Set(decision);
-        }
-
-        return this.resolveAeroEndTurnDecisions(finalRows.map(row => Object.freeze({
-            request: row.request,
-            snapshot: row.snapshot,
-            staged: row.staged,
-            heatAccepted: row.heatAccepted,
-            applyEffects: row.staged !== null && acceptedEffects.has(row.staged.id),
-            applyPilotHits: acceptedPilotHits.has(this.pilotHitEventId(row.request)),
-        } satisfies NonMekEndTurnDecision)), review.interactive);
+        return this.endTurnHeat.prepare(this.endTurnHeatAdapter, force, requests, review.interactive);
     }
 
     /** Applies the reviewed heat/consequence chain before the turn reset. */
@@ -486,7 +210,7 @@ export class DirectNonMekAutomationService {
         force: CBTForce,
         instanceId: string,
         prepared: PreparedDirectNonMekAutomationCommand,
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<PreparedDirectNonMekAutomationCommand | null> {
         if (prepared.command.type === 'end-phase' && prepared.phaseBoundary) {
             if (!await this.applyPhaseBoundary(
@@ -505,48 +229,7 @@ export class DirectNonMekAutomationService {
                 phaseBoundary: undefined,
             });
         }
-        if (prepared.command.type !== 'end-turn') return prepared;
-        const initial = this.snapshot(force, instanceId);
-        if (!initial) return null;
-        const automaticHeat = prepared.command.policy === 'automatic';
-        const finalHeat = prepared.command.policy === 'automatic'
-            ? prepared.heatEffects?.staged.heat ?? initial.state.heat.current
-            : selectedManualEndTurnHeat(
-                this.options.cbtAutomationMode('heatAndDissipationResolution'),
-                initial.state.heat.current,
-                initial.state.heat.pendingOverride,
-            );
-        const heat = await dispatch({
-            type: 'set-heat',
-            heat: finalHeat,
-
-        }, false);
-        if (!heat.accepted) return null;
-        if (automaticHeat
-            && this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes') {
-            this.toast(
-                initial,
-                `Heat and dissipation: Heat ${initial.state.heat.current} → ${finalHeat}`,
-                'info',
-            );
-        }
-        if (prepared.heatEffects) {
-            if (!await this.applyAeroHeatEffects(
-                force,
-                instanceId,
-                prepared.heatEffects,
-                dispatch,
-            )) return null;
-        }
-        const settled = this.snapshot(force, instanceId);
-        if (!settled) return null;
-        return Object.freeze({
-            ...prepared,
-            command: Object.freeze({
-                ...prepared.command,
-                policy: 'manual' as const,
-            }),
-        });
+        return this.endTurnHeat.settle(this.endTurnHeatAdapter, force, instanceId, prepared, dispatch);
     }
 
     async afterCommand(
@@ -555,19 +238,9 @@ export class DirectNonMekAutomationService {
         before: CBTUnitSnapshot | null,
         prepared: PreparedDirectNonMekAutomationCommand,
         result: CBTForceUnitCommandResult,
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         if (!result.accepted || !result.changed) return true;
-        const command = prepared.command;
-        const after = this.nonMekSnapshot(force, instanceId);
-        if (command.type === 'set-crew-state'
-            && before && hasNonMekRuntime(before) && after
-            && !await this.recordCrewRecoveryTransition(
-                before as NonMekSnapshot,
-                after,
-                command.positionId,
-                dispatch,
-            )) return false;
         const aeroAfter = this.snapshot(force, instanceId);
         if (aeroAfter?.state.turn.controlRecovery !== undefined
             && !this.hasPotentialController(aeroAfter)
@@ -585,38 +258,22 @@ export class DirectNonMekAutomationService {
         const rows = requests.map(request => {
             const snapshot = this.nonMekSnapshot(force, request.instanceId);
             const recoveries = snapshot
-                ? this.stageCrewRecoveries(snapshot)
+                ? this.crewHitAutomation.stageRecoveries(snapshot)
                 : Object.freeze([]);
             return Object.freeze({ request, snapshot, recoveries });
         });
-        const candidates = rows.flatMap(row => row.recoveries.map(recovery => {
-            const snapshot = this.nonMekSnapshot(force, row.request.instanceId);
-            const assignment = snapshot?.crewAssignment.positions.find(position =>
-                position.positionId === recovery.positionId);
-            return Object.freeze({
-                id: recovery.eventId,
-                subject: recovery.event.subject,
-                ...cbtUnitCheckPresentation('consciousness-recovery', {
-                    crewName: assignment?.name.trim() || undefined,
-                }),
-                targetNumber: recovery.targetNumber,
-            } satisfies AutomationCheck);
-        }));
-        const resolutions = await this.automationChecks.resolve(
-            'pilotHitsAndConsciousnessCheck',
-            candidates,
-            { title: 'Recover Consciousness', interactive: review.interactive },
+        const recoveries = await this.crewHitAutomation.resolveRecoveries(
+            rows.flatMap(row => row.recoveries),
+            review.interactive,
         );
-        if (resolutions === null) return null;
-        const resolutionById = new Map(resolutions.map(result => [result.id, result]));
+        if (recoveries === null) return null;
         const controls = new Map<string, StagedNonMekControlRecovery>();
         const controlCandidates = rows.flatMap(row => {
             if (!row.snapshot || !isAeroEntity(row.snapshot.entity)) return [];
             const recoveredPositions = new Set(row.recoveries
-                .filter(recovery => resolutionById.get(recovery.eventId)?.outcome === 'success')
+                .filter(recovery => recoveries.get(recovery.eventId)?.recovered)
                 .map(recovery => recovery.positionId));
             const control = this.stageControlRecovery(
-                force,
                 row.snapshot as AeroSnapshot,
                 recoveredPositions,
             );
@@ -663,20 +320,8 @@ export class DirectNonMekAutomationService {
             prepared: Object.freeze({
                 command: row.request.command,
                 phaseBoundary: Object.freeze({
-                    recoveries: Object.freeze(row.recoveries.map(recovery => {
-                        const resolution = resolutionById.get(recovery.eventId);
-                        const dice = resolution
-                            ? automationCheckEvidenceDice(resolution, recovery.targetNumber)
-                            : null;
-                        return Object.freeze({
-                            eventId: recovery.eventId,
-                            positionId: recovery.positionId,
-                            total: dice === null ? 0 : twoD6Total(dice),
-                            targetNumber: recovery.targetNumber,
-                            recovered: resolution?.outcome === 'success',
-                            accepted: resolution !== undefined,
-                        } satisfies PreparedNonMekCrewRecovery);
-                    })),
+                    recoveries: Object.freeze(row.recoveries
+                        .map(recovery => recoveries.get(recovery.eventId)!)),
                     controlRecovery: (() => {
                         const control = controls.get(row.request.instanceId);
                         if (!control) return null;
@@ -696,39 +341,7 @@ export class DirectNonMekAutomationService {
         })));
     }
 
-    private stageCrewRecoveries(
-        snapshot: NonMekSnapshot,
-    ): readonly StagedNonMekCrewRecovery[] {
-        const positions = [...snapshot.index.crewPositions.values()]
-            .sort((left, right) => left.occurrence - right.occurrence);
-        if (this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck') === 'no') {
-            return Object.freeze([]);
-        }
-        return Object.freeze(positions.flatMap(position => {
-            const state = snapshot.query.crewState(position.id);
-            const target = mekConsciousnessTarget(state.wounds);
-            const readyTurn = state.recoveryReadyTurn;
-            if (!state.unconscious || state.ejected || state.isDeathCommitted()
-                || target === undefined || readyTurn === null
-                || readyTurn !== undefined && readyTurn > snapshot.state.turn.turnCounter) return [];
-            const eventId = `consciousness:${snapshot.instanceId}:${snapshot.query.stateRevision}:${position.id}`;
-            return [Object.freeze({
-                eventId,
-                positionId: position.id,
-                targetNumber: target,
-                event: Object.freeze({
-                    id: eventId,
-                    subject: directAutomationSubject(snapshot, this.options.options().displayUnitNameFormat),
-                    event: 'Consciousness Recovery',
-                    description: `Target ${target}+.`,
-                    effects: Object.freeze(['Success: crew member regains consciousness']),
-                } satisfies AutomationReviewEvent),
-            } satisfies StagedNonMekCrewRecovery)];
-        }));
-    }
-
     private stageControlRecovery(
-        force: CBTForce,
         snapshot: AeroSnapshot,
         recoveredPositions: ReadonlySet<CrewPositionId>,
     ): StagedNonMekControlRecovery | null {
@@ -738,7 +351,7 @@ export class DirectNonMekAutomationService {
         if (!this.hasPotentialController(snapshot) && !this.hasDroneController(snapshot)) {
             return null;
         }
-        const targetNumber = this.controlRollTarget(force, snapshot, recoveredPositions);
+        const targetNumber = this.controlRollTarget(snapshot, recoveredPositions);
         const eventId = `control-recovery:${snapshot.instanceId}:${snapshot.query.stateRevision}`;
         return targetNumber !== null && targetNumber <= 12
             ? Object.freeze({ eventId, cause: workflow.cause, targetNumber })
@@ -749,53 +362,17 @@ export class DirectNonMekAutomationService {
         force: CBTForce,
         instanceId: string,
         prepared: PreparedNonMekPhaseBoundary,
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         const opening = this.nonMekSnapshot(force, instanceId);
         if (!opening) return false;
-        if (this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck') === 'yes') {
-            const notification = automaticConsciousnessRecoveryNotification(
-                prepared.recoveries.filter(recovery => recovery.accepted).map(recovery => ({
-                    id: recovery.positionId,
-                    targetNumber: recovery.targetNumber,
-                    total: recovery.total,
-                    recovered: recovery.recovered,
-                })),
-                id => {
-                    const positionId = id as CrewPositionId;
-                    const occurrence = opening.index.crewPositions.get(positionId)?.occurrence ?? 0;
-                    const assignment = opening.crewAssignment.positions.find(position =>
-                        position.positionId === positionId);
-                    return assignment?.name.trim() || `Crew ${occurrence + 1}`;
-                },
-            );
-            if (notification) this.toast(opening, notification.message, notification.type);
-        }
-        for (const recovery of prepared.recoveries) {
-            if (!recovery.accepted) continue;
-            if (!recovery.recovered) {
-                if (!await this.deferCrewRecovery(
-                    force,
-                    instanceId,
-                    recovery.positionId,
-                    opening.state.turn.turnCounter,
-                    dispatch,
-                )) return false;
-                continue;
-            }
-            const snapshot = this.nonMekSnapshot(force, instanceId);
-            const state = snapshot?.query.crewState(recovery.positionId);
-            if (!snapshot || !state || state.ejected || !state.unconscious
-                || state.isDeathCommitted()) continue;
-            const result = await dispatch({
-                type: 'set-crew-state',
-                positionId: recovery.positionId,
-                wounds: state.wounds,
-                unconscious: false,
-                ejected: state.ejected,
-            }, false);
-            if (!result.accepted) return false;
-        }
+        if (!await this.crewHitAutomation.applyRecoveries(
+            force,
+            instanceId,
+            opening,
+            prepared.recoveries,
+            dispatch,
+        )) return false;
         const control = prepared.controlRecovery;
         if (control?.accepted) {
             const automationKey = control.cause === 'heat-random-movement'
@@ -830,128 +407,10 @@ export class DirectNonMekAutomationService {
         return true;
     }
 
-    private async resolveAeroEndTurnDecisions(
-        decisions: readonly NonMekEndTurnDecision[],
-        interactive?: boolean,
-    ): Promise<readonly PreparedDirectNonMekEndTurnAutomation[] | null> {
-        const checks = orderedAutomationChecks(decisions.flatMap(decision => {
-            if (!decision.snapshot || !decision.staged || !decision.applyEffects) return [];
-            return decision.staged.checks
-                .filter(row => row.check.kind !== 'pilot-damage' || decision.applyPilotHits)
-                .map(row => Object.freeze({
-                    id: row.id,
-                    subject: this.subject(decision.snapshot!),
-                    ...cbtUnitCheckPresentation(row.check.kind, {
-                        targetNumber: row.check.target,
-                        heat: decision.staged!.heat,
-                        ...(row.check.kind === 'pilot-damage' ? { hits: 1 } : {}),
-                    }),
-                    ...(row.check.target === undefined ? {} : { targetNumber: row.check.target }),
-                    ...(row.check.automaticOutcome === undefined
-                        ? {}
-                        : { automaticOutcome: row.check.automaticOutcome }),
-                    ...(row.check.kind !== 'ammo-explosion'
-                        ? {}
-                        : {
-                            failureChoices: Object.freeze(decision.staged!.ammoCandidates.map(candidate => Object.freeze({
-                                id: candidate.componentId,
-                                label: `${candidate.equipment}${candidate.location ? ` · ${candidate.location}` : ''}`,
-                                detail: `${candidate.damagePerShot}/shot · ${candidate.shots} shots`,
-                            }))),
-                        }),
-                } satisfies AutomationCheck));
-        }));
-        const resolutions = await this.automationChecks.resolve(
-            'heatEffectsCheck',
-            checks,
-            { title: 'Resolve Pending Checks', interactive },
-        );
-        if (resolutions === null) return null;
-        const resolutionById = new Map(resolutions.map(result => [result.id, result]));
-        return Object.freeze(decisions.map(decision => {
-            let staged: ResolvedAeroHeatEffects | null = null;
-            if (decision.staged !== null) {
-                const ammoCheck = decision.staged.checks.find(row => row.check.kind === 'ammo-explosion');
-                const selectedAmmoId = ammoCheck
-                    ? resolutionById.get(ammoCheck.id)?.selectionId
-                    : undefined;
-                const ammo = decision.staged.ammoCandidates.find(candidate =>
-                    candidate.componentId === selectedAmmoId)
-                    ?? (decision.staged.ammoCandidates.length === 1
-                        ? decision.staged.ammoCandidates[0]!
-                        : null);
-                staged = Object.freeze({
-                    ...decision.staged,
-                    checks: Object.freeze(decision.staged.checks.map(row => {
-                        const resolution = resolutionById.get(row.id);
-                        return resolution
-                            ? Object.freeze({
-                                ...row,
-                                total: resolution.dice === null
-                                    ? null
-                                    : twoD6Total(resolution.dice),
-                                outcome: resolution.outcome,
-                            })
-                            : Object.freeze({
-                                ...row,
-                                total: null,
-                                outcome: row.check.automaticOutcome ?? 'success',
-                            });
-                    })),
-                    ammo,
-                });
-            }
-            return this.preparedAeroEndTurn(
-                decision.request,
-                decision.heatAccepted,
-                staged,
-                decision.applyEffects,
-                decision.applyPilotHits,
-                interactive === true,
-            );
-        }));
-    }
-
-    private preparedAeroEndTurn(
-        request: DirectNonMekEndTurnAutomationRequest,
-        heatAccepted: boolean,
-        staged: ResolvedAeroHeatEffects | null,
-        applyEffects: boolean,
-        applyPilotHits: boolean,
-        interactive: boolean,
-    ): PreparedDirectNonMekEndTurnAutomation {
-        return Object.freeze({
-            instanceId: request.instanceId,
-            prepared: Object.freeze({
-                command: Object.freeze({
-                    ...request.command,
-                    policy: heatAccepted ? 'automatic' as const : 'manual' as const,
-                }),
-                ...(staged === null ? {} : {
-                    heatEffects: Object.freeze({
-                        staged,
-                        applyEffects,
-                        applyPilotHits,
-                        interactive,
-                    }),
-                }),
-            }),
-        });
-    }
-
-    private combinedHeatEventId(request: DirectNonMekEndTurnAutomationRequest): string {
-        return `end-turn-heat:${request.instanceId}`;
-    }
-
-    private pilotHitEventId(request: DirectNonMekEndTurnAutomationRequest): string {
-        return `pilot-hits:${request.instanceId}`;
-    }
-
     private stageAeroHeatEffects(
         snapshot: AeroSnapshot,
         heat: number,
     ): StagedAeroHeatEffects {
-        const revision = snapshot.query.stateRevision;
         const state: NonMekUnitRuntimeState = heat === snapshot.state.heat.current
             ? snapshot.state
             : Object.freeze({
@@ -966,22 +425,19 @@ export class DirectNonMekAutomationService {
         );
         if (!projection.heat.tracked) {
             return Object.freeze({
-                id: `aero-heat-effects:${snapshot.instanceId}:${revision}`,
-                heat,
-                checks: Object.freeze([]),
+                ...stagedEndTurnHeatChecks(snapshot, heat, []),
                 hadHeatControlEffect: false,
                 ammoCandidates: Object.freeze([]),
             });
         }
         const effects = projection.heat.effects;
-        const activeController = this.activeController(snapshot) !== null;
-        const ammoCandidates = this.preferredExplosiveAmmoCandidates(snapshot);
+        const activeController = activeCrewController(snapshot, 'aeroPiloting') !== null;
+        const ammoCandidates = heatAmmoExplosionCandidates(snapshot);
         const hadHeatControlEffect = snapshot.state.turn.controlRecovery?.cause
             === 'heat-random-movement'
             && snapshot.query.hasCondition('out-of-control')
             && snapshot.query.hasCondition('random-movement');
         const checks = projectAeroHeatAutomationChecks({
-            heat,
             effects,
             shutdown: snapshot.query.hasCondition('shutdown'),
             activeController,
@@ -989,39 +445,17 @@ export class DirectNonMekAutomationService {
             hadHeatControlEffect,
         });
         return Object.freeze({
-            id: `aero-heat-effects:${snapshot.instanceId}:${revision}`,
-            heat,
-            checks: Object.freeze(checks.map((check, index): StagedAeroHeatCheck => Object.freeze({
-                id: `aero-heat-effect:${snapshot.instanceId}:${revision}:${index}`,
-                check,
-            }))),
+            ...stagedEndTurnHeatChecks(snapshot, heat, checks),
             hadHeatControlEffect,
             ammoCandidates,
         });
     }
 
-    private reviewableAeroEffectDescriptions(staged: StagedAeroHeatEffects): readonly string[] {
-        const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
-        return Object.freeze(staged.checks
-            .filter(row => row.check.kind !== 'pilot-damage' || pilotHitsMode !== 'no')
-            .map(row => cbtUnitCheckReviewDescription(row.check.kind, {
-                targetNumber: row.check.target,
-                heat: staged.heat,
-                ...(row.check.kind === 'pilot-damage' ? { hits: 1 } : {}),
-            })));
-    }
-
-    private aeroPilotHits(staged: StagedAeroHeatEffects): number {
-        return staged.checks.reduce((hits, row) => hits + (
-            row.check.kind === 'pilot-damage' ? 1 : 0
-        ), 0);
-    }
-
     private async applyAeroHeatEffects(
         force: CBTForce,
         instanceId: string,
-        prepared: PreparedAeroHeatEffects,
-        dispatch: DirectNonMekAutomationDispatch,
+        prepared: PreparedEndTurnHeatEffects<StagedAeroHeatEffects>,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         let snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return false;
@@ -1035,7 +469,12 @@ export class DirectNonMekAutomationService {
         // Preflight the complete crew consequence before applying ammunition
         // or condition mutations. CLOSE must leave the whole chain resumable.
         const crewPlan = pilotHits > 0
-            ? await this.resolveCrewHits(snapshot, pilotHits, prepared.interactive)
+            ? await this.crewHitAutomation.resolveUnitHits(
+                snapshot,
+                pilotHits,
+                `crew-hits:${snapshot.instanceId}:${snapshot.query.stateRevision}`,
+                { interactive: prepared.interactive },
+            )
             : Object.freeze([]);
         if (crewPlan === null) return false;
         for (const row of prepared.staged.checks) {
@@ -1114,15 +553,15 @@ export class DirectNonMekAutomationService {
             crewPlan,
             dispatch,
         )) return false;
-        this.showAutomaticConsciousnessToasts(snapshot, crewPlan);
+        this.crewHitAutomation.showConsciousnessToasts(snapshot, crewPlan);
         return true;
     }
 
     private async explodeAmmo(
         force: CBTForce,
         instanceId: string,
-        ammo: AeroAmmoExplosionCandidate,
-        dispatch: DirectNonMekAutomationDispatch,
+        ammo: HeatAmmoExplosionCandidate,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         let snapshot = this.snapshot(force, instanceId);
         if (!snapshot
@@ -1132,7 +571,8 @@ export class DirectNonMekAutomationService {
         const caseProtected = [...snapshot.index.components.values()].some(component =>
             isCaseEquipment(component.mount.equipment)
             && snapshot!.query.componentStatus(component.id, 'committed') === 'available');
-        const siDamage = Math.max(1, Math.floor(ammo.rawDamage / (caseProtected ? 20 : 10)));
+        const rawDamage = ammo.shots * ammo.damagePerShot;
+        const siDamage = Math.max(1, Math.floor(rawDamage / (caseProtected ? 20 : 10)));
 
         const destroyed = await dispatch({
             type: 'set-component-status',
@@ -1159,73 +599,16 @@ export class DirectNonMekAutomationService {
         return true;
     }
 
-    private resolveCrewHits(
-        initial: NonMekSnapshot,
-        hits: number,
-        interactive = false,
-    ): Promise<readonly ResolvedCrewHits[] | null> {
-        const positions = [...initial.index.crewPositions.values()]
-            .sort((left, right) => left.occurrence - right.occurrence);
-        return this.crewHitAutomation.resolve(
-            this.subject(initial),
-            initial.ruleset,
-            `crew-hits:${initial.instanceId}:${initial.query.stateRevision}`,
-            positions.map(position => {
-                const state = initial.query.crewState(position.id);
-                const assignment = initial.crewAssignment.positions.find(candidate =>
-                    candidate.positionId === position.id);
-                const name = positions.length > 1
-                    ? assignment?.name.trim()
-                    : undefined;
-                return Object.freeze({
-                    id: position.id,
-                    ...(name ? { name } : {}),
-                    wounds: state.wounds,
-                    unconscious: state.unconscious,
-                    unavailable: state.ejected || state.isDeathCommitted()
-                        || state.wounds >= MAX_CREW_WOUNDS,
-                    hits,
-                });
-            }),
-            { interactive },
-        );
-    }
-
     private async applyResolvedCrewHits(
         force: CBTForce,
         instanceId: string,
         initial: NonMekSnapshot,
         resolved: readonly ResolvedCrewHits[],
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         const aeroInitiallyControlled = isAeroEntity(initial.entity)
             && this.hasActiveAeroController(initial as AeroSnapshot);
-        const positions = [...initial.index.crewPositions.values()]
-            .sort((left, right) => left.occurrence - right.occurrence);
-        for (const position of positions) {
-            const plan = resolved.find(candidate => candidate.id === position.id);
-            const state = initial.query.crewState(position.id);
-            if (!plan || state.ejected || state.isDeathCommitted()
-                || (plan.wounds === state.wounds
-                    && plan.unconscious === state.unconscious)) continue;
-            const result = await dispatch({
-                type: 'set-crew-state',
-                positionId: position.id,
-                wounds: plan.wounds,
-                unconscious: plan.unconscious,
-                ejected: state.ejected,
-                ...(plan.unconscious && !state.unconscious
-                    ? {
-                        recoveryReadyTurn: this.options.cbtAutomationMode(
-                            'pilotHitsAndConsciousnessCheck',
-                        ) === 'no'
-                            ? null
-                            : initial.state.turn.turnCounter + 1,
-                    }
-                    : {}),
-            }, false);
-            if (!result.accepted) return false;
-        }
+        if (!await this.crewHitAutomation.applyResolvedHits(initial, resolved, dispatch)) return false;
         const latest = this.snapshot(force, instanceId);
         if (latest
             && aeroInitiallyControlled
@@ -1245,140 +628,14 @@ export class DirectNonMekAutomationService {
         return true;
     }
 
-    private async deferCrewRecovery(
-        force: CBTForce,
-        instanceId: string,
-        positionId: CrewPositionId,
-        currentTurn: number,
-        dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<boolean> {
-        const snapshot = this.nonMekSnapshot(force, instanceId);
-        const state = snapshot?.query.crewState(positionId);
-        if (!snapshot || !state || !state.unconscious || state.ejected
-            || state.isDeathCommitted() || state.wounds >= MAX_CREW_WOUNDS) return true;
-        const result = await dispatch({
-            type: 'set-crew-state',
-            positionId,
-            wounds: state.wounds,
-            unconscious: true,
-            ejected: state.ejected,
-            recoveryReadyTurn: currentTurn + 1,
-        }, false);
-        return result.accepted;
-    }
-
-    private async recordCrewRecoveryTransition(
-        before: NonMekSnapshot,
-        after: NonMekSnapshot,
-        positionId: CrewPositionId,
-        dispatch: DirectNonMekAutomationDispatch,
-    ): Promise<boolean> {
-        const previous = before.query.crewState(positionId);
-        const current = after.query.crewState(positionId);
-        if (previous.unconscious || !current.unconscious || current.ejected
-            || current.isDeathCommitted() || current.wounds >= MAX_CREW_WOUNDS) return true;
-        const recoveryReadyTurn = this.options.cbtAutomationMode(
-            'pilotHitsAndConsciousnessCheck',
-        ) === 'no' ? null : before.state.turn.turnCounter + 1;
-        if (current.recoveryReadyTurn === recoveryReadyTurn) return true;
-        const result = await dispatch({
-            type: 'set-crew-state',
-            positionId,
-            wounds: current.wounds,
-            unconscious: true,
-            ejected: current.ejected,
-            recoveryReadyTurn,
-        }, false);
-        return result.accepted;
-    }
-
-    private showAutomaticConsciousnessToasts(
-        initial: NonMekSnapshot,
-        resolved: readonly ResolvedCrewHits[],
-    ): void {
-        if (this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck') !== 'yes') return;
-        const crewLabel = (id: string): string => {
-            const positionId = id as CrewPositionId;
-            const occurrence = initial.index.crewPositions.get(positionId)?.occurrence ?? 0;
-            const assignment = initial.crewAssignment.positions.find(position =>
-                position.positionId === positionId);
-            return assignment?.name.trim() || `Crew ${occurrence + 1}`;
-        };
-        for (const notification of automaticConsciousnessNotifications(resolved, crewLabel)) {
-            this.toast(
-                initial,
-                notification.message,
-                notification.type,
-            );
-        }
-    }
-
-    private preferredExplosiveAmmoCandidates(
-        snapshot: AeroSnapshot,
-    ): readonly AeroAmmoExplosionCandidate[] {
-        const candidates = [...snapshot.index.components.values()].flatMap(component => {
-            const ammo = component.mount.equipment;
-            if (!(ammo instanceof AmmoEquipment)
-                || !ammo.isExplosive()
-                || snapshot.query.componentStatus(component.id, 'committed') !== 'available') return [];
-            const shots = snapshot.query.remainingAmmo(component.id);
-            const damagePerShot = ammoRackSize(ammo) * ammoExplosionDamagePerShot(ammo);
-            return shots > 0 && damagePerShot > 0
-                ? [Object.freeze({
-                    componentId: component.id,
-                    equipment: component.mount.displayName(),
-                    ...(component.mount.location === 'Unallocated'
-                        ? {}
-                        : { location: component.mount.location }),
-                    damagePerShot,
-                    shots,
-                    rawDamage: shots * damagePerShot,
-                })]
-                : [];
-        });
-        if (candidates.length <= 1) return Object.freeze(candidates);
-        const highestDamage = Math.max(...candidates.map(candidate => candidate.damagePerShot));
-        const mostDestructive = candidates.filter(candidate =>
-            candidate.damagePerShot === highestDamage);
-        const mostShots = Math.max(...mostDestructive.map(candidate => candidate.shots));
-        return Object.freeze(mostDestructive.filter(candidate => candidate.shots === mostShots));
-    }
-
-    private activeController(
-        snapshot: AeroSnapshot,
-        recoveredPositions: ReadonlySet<CrewPositionId> = new Set<CrewPositionId>(),
-    ) {
-        const candidates = [...snapshot.index.crewPositions.values()].flatMap(position => {
-            const common = snapshot.query.crewState(position.id);
-            if (common.ejected || common.wounds >= MAX_CREW_WOUNDS
-                || common.isDeathCommitted()
-                || common.unconscious && !recoveredPositions.has(position.id)) return [];
-            const assignment = snapshot.crewAssignment.positions.find(candidate =>
-                candidate.positionId === position.id);
-            return [Object.freeze({
-                positionId: position.id,
-                occurrence: position.occurrence,
-                piloting: assignment?.aeroPiloting ?? 5,
-                state: common,
-            })];
-        });
-        return candidates.find(candidate => candidate.occurrence === 0)
-            ?? candidates.sort((left, right) =>
-                left.piloting - right.piloting
-                || left.occurrence - right.occurrence
-                || left.positionId.localeCompare(right.positionId))[0]
-            ?? null;
-    }
-
     private hasPotentialController(snapshot: AeroSnapshot): boolean {
-        return [...snapshot.index.crewPositions.keys()].some(positionId => {
-            const common = snapshot.query.crewState(positionId);
-            return common.isAboard() && common.wounds < MAX_CREW_WOUNDS;
-        });
+        return [...snapshot.index.crewPositions.keys()].some(positionId =>
+            snapshot.query.crewState(positionId).isAliveAboard());
     }
 
     private hasActiveAeroController(snapshot: AeroSnapshot): boolean {
-        return this.activeController(snapshot) !== null || this.hasDroneController(snapshot);
+        return activeCrewController(snapshot, 'aeroPiloting') !== null
+            || this.hasDroneController(snapshot);
     }
 
     private isAeroAirborne(snapshot: AeroSnapshot): boolean {
@@ -1393,18 +650,13 @@ export class DirectNonMekAutomationService {
     }
 
     private controlRollTarget(
-        force: CBTForce,
         snapshot: AeroSnapshot,
-        recoveredPositions: ReadonlySet<CrewPositionId> = new Set<CrewPositionId>(),
+        recoveredPositions: ReadonlySet<CrewPositionId>,
     ): number | null {
-        const controller = this.activeController(snapshot, recoveredPositions);
-        const drone = this.hasDroneController(snapshot);
-        if (!controller && !drone) return null;
-        const profile = force.getUnitCrewProfile(snapshot.instanceId);
-        const base = controller
-            ? profile?.positions.find(position => position.positionId === controller.positionId)?.aeroPiloting ?? 5
-            : 5;
-        const wounds = controller?.state.wounds ?? 0;
+        const controller = activeCrewController(snapshot, 'aeroPiloting', recoveredPositions);
+        if (!controller && !this.hasDroneController(snapshot)) return null;
+        const base = controller?.piloting ?? DEFAULT_PILOTING_SKILL;
+        const wounds = controller?.member.wounds ?? 0;
         const systemDamage = [...snapshot.index.damageTracks.values()].filter(track =>
             (track.system === 'avionics' || track.system === 'life-support')
             && (snapshot.state.damageTracks.get(track.id)?.hits ?? 0) > 0).length;
@@ -1416,7 +668,7 @@ export class DirectNonMekAutomationService {
         instanceId: string,
         randomMovement: boolean,
         outOfControl: boolean,
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         if (!await this.setCondition(
             force, instanceId, 'random-movement', randomMovement, dispatch,
@@ -1431,7 +683,7 @@ export class DirectNonMekAutomationService {
         instanceId: string,
         condition: UnitConditionKey,
         active: boolean,
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return false;
@@ -1446,7 +698,7 @@ export class DirectNonMekAutomationService {
         force: CBTForce,
         instanceId: string,
         workflow: NonMekControlRecoveryWorkflow | null,
-        dispatch: DirectNonMekAutomationDispatch,
+        dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return false;

@@ -84,10 +84,14 @@ sheet caches are keyed by this preference and reject stale asynchronous results;
 both interactive and catalog previews regenerate after it changes.
 
 All Meks generate three sibling views identified by
-`data-mekbay-paperdoll-view="front"`, `"rear"`, or `"structure"`. For bipeds,
-edit `BIPED_MEK_PAPERDOLL_BOXES` in the Mek layout. Other chassis have independent
-armor/rear/structure placements in `PROFILED_MEK_PAPERDOLLS`. Each view carries
-its own art, pips and labels so moving one view does not move another.
+`data-mekbay-paperdoll-view="front"`, `"rear"`, or `"structure"`. Bipeds and
+LAMs share the biped artwork and canonical pip map; edit `BIPED_MEK_PAPERDOLL_BOXES`
+in the Mek layout, whose `art` entry registers each view's artwork with the
+reference silhouette while its labels keep box coordinates. Other chassis have
+independent armor/rear/structure placements in `PROFILED_MEK_PAPERDOLLS`. Each
+view carries its own art, pips and labels so moving one view does not move another.
+Asset captions use one anchored `x` per line, centred over their value; they never
+carry per-glyph `x` lists.
 
 Runtime contracts such as `.pip.armor`, `.pip.structure`, `data-loc`, `data-rear`,
 `textArmor_*`, `textIS_*`, inventory component IDs and crew/control IDs must stay

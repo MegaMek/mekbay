@@ -3,14 +3,16 @@
 
 import { VELOCITY_RECORD_FIELDS, VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
-import { addInventoryText, appendInventoryHitModifier, fitInventoryText, inventoryRowSpan, inventoryCellLines, inventoryRowLineCount } from '../inventory-text-layout';
+import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
+import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowSpan, inventoryCellLines, inventoryRowLineCount } from '../inventory-text-layout';
+import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
+import { recordSheetQuirksText } from '../record-sheet-quirks';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import { type EntityDamageLocation } from '../../../models/entity/types';
-import { weaponQuirkLabels } from '../../../models/entity/utils/weapon-quirks';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import {
 type PaperdollPipLayout,
@@ -19,28 +21,40 @@ PaperdollGenerator,
 import { CapitalShipPipRenderer } from '../capital-ship-pip-renderer';
 import {
 type Box,
+addCrewSkillValue,
+addDiagramHeading,
 addFrame,
 addLine,
+addTemplateCaption,
 addText,
+appendDataPanelFacts,
+appendDataPanelType,
+type DataPanelFact,
 addWrappedText,
+appendBattleValue,
 appendLegacyIdentityAnchors,
-circle,
+crewSkillValueX,
 decoratePaperdollPips,
+drawAdvancedMovementCompass,
 formatNumber,
 formatRecordSheetTonnage,
 formatTechBase,
 formatWholeNumber,
 makePips,
 paperdollPipOptions,
+recordSheetAmmoProfile,
+recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
 transparentRect,
 appendHeatPanelControls,
-heatSinkCaption,
+appendHeatEffectRows,
+appendHeatSinkData,
 } from '../record-sheet-svg-rendering';
 import { SvgFrameUtil } from '../svg-frame.util';
 import { recordSheetPageProfile, type RecordSheetPageProfile } from '../record-sheet-layout';
+import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
 
 /** Keep the right-hand diagrams at their authored size; let the left panels absorb the width difference. */
 export function aeroPageBox(page: RecordSheetPageProfile, box: Box): Box {
@@ -72,7 +86,6 @@ export interface AeroDataPanelContent {
     readonly inventoryRows: readonly AeroDataInventoryRow[];
     readonly flowCargoAfterInventory: boolean;
     readonly showAmmoSummary: boolean;
-    readonly stationary: boolean;
     readonly showQuirks?: boolean;
     readonly featureText?: string;
     readonly cargoInFeatures?: boolean;
@@ -94,7 +107,7 @@ export function drawAeroDataPanel(
 ): SVGGElement {
     const group = addFrame(svg, content.panelTitle, box, {
         bottomLeftNotchWidth: box.width * 0.36,
-        cornerAngleDegrees: { topRight: 45, bottomLeft: 45 },
+        cornerAngleDegrees: { topRight: 0, bottomLeft: 45 },
     });
     group.setAttribute('data-mekbay-region', 'aero-data');
     const referenceHeight = authoredHeight;
@@ -105,101 +118,58 @@ export function drawAeroDataPanel(
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * fontScale;
-    const engine = entity.mountedEngine();
+    appendAeroDataPanelHeader(group, entity, { x, y, font }, content.identity);
 
-    addText(group, 'Type:', x(6), y(28), { size: font(9.67), weight: 700, maxWidth: x(23) });
-    const type = addText(group, entity.displayName(), x(32.229), y(28), {
-        size: font(9.67), weight: 700, maxWidth: x(187),
+    // Small craft have no engine row, so their whole inventory block sits higher.
+    const inventoryY = (value: number): number => y(value + (content.identity === 'small-craft' ? -7.339 : 0));
+    addLine(group, x(3), inventoryY(69), x(219.4), inventoryY(69), '#000', 1.932 * fontScale);
+    addTemplateCaption(group, 'Weapons & Equipment Inventory', x(3), inventoryY(79), {
+        size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
-    type.id = 'type';
-    type.setAttribute('data-mekbay-field', 'display-name');
-
-    const stationary = content.stationary;
-    if (content.identity === 'large-vessel') {
-        addText(group, 'Name:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const fluffName = addText(group, '', x(31.315), y(38), { size: font(RECORD_SHEET_FONT.body), maxWidth: x(74) });
-        fluffName.id = 'fluffName';
-        addLine(group, x(31.315), y(39), x(105.218), y(39), '#000', 0.72 * fontScale);
-    }
-    const thrustBaseline = content.identity === 'large-vessel' ? 47 : 38;
-    const safeBaseline = content.identity === 'large-vessel' ? 56 : 47;
-    const maximumBaseline = content.identity === 'large-vessel' ? 65 : 56;
-    const leftFacts: readonly [string, string, number, string?][] = content.identity === 'fighter'
-        ? [
-            ['Thrust:', stationary ? 'Station Keeping Only' : '', thrustBaseline],
-            ['Safe Thrust:', stationary ? '' : String(entity.safeThrust()), safeBaseline, 'mpWalk'],
-            ['Maximum Thrust:', stationary ? '' : String(entity.maxThrust()), maximumBaseline, 'mpRun'],
-            ['Engine Type:', stationary ? '—' : entity.isSupportVehicle() ? engine.type() : `${engine.rating} ${engine.type()}`, 65, 'engineType'],
-        ]
-        : [
-            ['Thrust:', stationary ? 'Station Keeping Only' : '', thrustBaseline],
-            ['Safe Thrust:', stationary ? '' : String(entity.safeThrust()), safeBaseline, 'mpWalk'],
-            ['Maximum Thrust:', stationary ? '' : String(entity.maxThrust()), maximumBaseline, 'mpRun'],
-        ];
-    leftFacts.forEach(([label, value, baseline, id]) => {
-        const labelNode = addText(group, label, x(label === 'Safe Thrust:' || label === 'Maximum Thrust:' ? 9.844 : 6), y(baseline), {
-            size: font(RECORD_SHEET_FONT.body), weight: 700,
-        });
-        if (label === 'Thrust:') labelNode.id = 'movementPointsLabel';
-        const node = addText(group, value, x(label === 'Engine Type:' ? 60 : 79.844), y(baseline), {
-            size: font(RECORD_SHEET_FONT.body), maxWidth: x(43), anchor: value && label !== 'Engine Type:' ? 'middle' : 'start',
-        });
-        if (id) node.id = id;
-    });
-    const weightInKilograms = entity.weightClass() === 'Small Support';
-    const rightFacts: readonly [string, string, number, string, string?][] = [
-        ['Tonnage:', weightInKilograms ? formatRecordSheetTonnage(entity.tonnage(), true) : formatWholeNumber(entity.tonnage()), 38, 'tonnage', 'tonnage'],
-        ['Tech Base:', formatTechBase(entity.techBase(), entity.mixedTech()), 47, 'techBase', 'tech-base'],
-        ['Role:', entity.role() || '—', 56, 'role', 'role'],
-    ];
-    rightFacts.forEach(([label, value, baseline, id, field]) => {
-        addText(group, label, x(115.7), y(baseline), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const node = addText(group, value, x(160.5), y(baseline), { size: font(RECORD_SHEET_FONT.body), maxWidth: x(55.5) });
-        node.id = id;
-        if (field) node.setAttribute('data-mekbay-field', field);
-        if (id === 'tonnage' && weightInKilograms) node.setAttribute('data-mekbay-weight-unit', 'kg');
-    });
-
-    const inventoryStart = group.childElementCount;
-    addLine(group, x(3), y(69), x(219.4), y(69), '#000', 1.932 * fontScale);
-    addText(group, 'Weapons & Equipment Inventory', x(3), y(79), {
-        size: font(RECORD_SHEET_FONT.section), weight: 700, maxWidth: x(155),
-    });
-    addText(group, 'Standard Scale', x(7.328), y(89.8), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    addText(group, 'Standard Scale', x(7.328), inventoryY(89.8), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const rangeHeadings: readonly [string, number][] = [
         ['(1-6)', 152.316], ['(7-12)', 169.628], ['(13-20)', 186.94], ['(21-25)', 204.252],
     ];
-    rangeHeadings.forEach(([label, position]) => addText(group, label, x(position), y(89.8), {
+    rangeHeadings.forEach(([label, position]) => addText(group, label, x(position), inventoryY(89.8), {
         size: font(5.8), anchor: 'middle', maxWidth: x(16.312),
     }));
     const headings: readonly [string, number, 'start' | 'middle'][] = [
         ['#', 8.41, 'middle'], ['Type', 13.82, 'start'], ['Loc', 109.036, 'middle'], ['Ht', 132.84, 'middle'],
         ['SRV', 152.316, 'middle'], ['MRV', 169.628, 'middle'], ['LRV', 186.94, 'middle'], ['ERV', 204.252, 'middle'],
     ];
-    headings.forEach(([label, position, anchor]) => addText(group, label, x(position), y(100.6), {
+    headings.forEach(([label, position, anchor]) => addText(group, label, x(position), inventoryY(100.6), {
         size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
     }));
 
-    let rowStep = 9.126;
+    const footerStep = 9.126;
+    let rowStep = footerStep;
     const features = svgElement('g');
     features.setAttribute('class', 'aero-features');
     if (content.featureText) addWrappedText(features, `Features ${content.featureText}`, x(8.41), 0, x(204), {
         size: font(RECORD_SHEET_FONT.inventory), lineHeight: y(rowStep), maxLines: Number.POSITIVE_INFINITY,
     });
-    const quirks = content.showQuirks === false ? []
-        : entity.applicableQuirks().map(entry => entry.quirk.name).concat(weaponQuirkLabels(entity));
-    if (quirks.length > 0) {
+    const quirks = recordSheetQuirksText(entity, content.showQuirks);
+    if (quirks) {
         const quirkGroup = svgElement('g');
         quirkGroup.setAttribute('class', 'unitQuirks');
-        addWrappedText(quirkGroup, `Quirks: ${quirks.join(', ')}`, x(8.41),
+        // MegaMekLab's footer block prints quirks italic at 90% of the inventory type.
+        addWrappedText(quirkGroup, quirks, x(8.41),
             y(features.querySelectorAll('text').length * rowStep), x(204), {
-                size: font(RECORD_SHEET_FONT.inventory), lineHeight: y(rowStep), maxLines: Number.POSITIVE_INFINITY,
+                size: font(RECORD_SHEET_FONT.inventory * 0.9), lineHeight: y(rowStep), maxLines: Number.POSITIVE_INFINITY,
+                italic: true,
             });
         features.appendChild(quirkGroup);
     }
     const featureHeight = features.querySelectorAll('text').length * rowStep;
     const cargoLines = content.cargoInFeatures ? [] : aeroCargoLines(entity);
-    const footerReserve = 46.466 + cargoLines.length * 8.5 + featureHeight;
+    const ammo = content.showAmmoSummary ? recordSheetAmmoProfile(entity) : [];
+    const ammoProfile = {
+        width: x(204), fontSize: font(RECORD_SHEET_FONT.inventory), prefix: recordSheetNonMekAmmoPrefix(entity),
+    };
+    // The footer always holds one ammo row; a longer profile takes its extra rows from the inventory.
+    const baseFooterReserve = 46.466 + cargoLines.length * 8.5 + featureHeight;
+    const footerReserve = baseFooterReserve
+        + Math.max(0, measureRecordSheetAmmoProfile(ammo, ammoProfile).lines.length - 1) * footerStep;
     const metrics = fitInventoryText(referenceHeight - 110.5 - footerReserve, fontSize => {
         const lineCounts = content.inventoryRows.map(row => Math.max(
             row.nameLines.flatMap(name => inventoryCellLines(name, x(82), font(fontSize))).length, inventoryRowLineCount([
@@ -213,10 +183,12 @@ export function drawAeroDataPanel(
     const addCell = (parent: SVGElement, value: string, x: number, y: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, y, { ...options, lineHeight: yStep });
     const yStep = y(rowStep);
+    const inventory = svgElement('g');
+    group.appendChild(inventory);
     let displayLine = 0;
     rows.forEach((row, rowIndex) => {
         const lineCount = inventoryRowSpan(metrics.content[rowIndex], metrics.lineStep);
-        const baseline = y(110.5 + displayLine * rowStep);
+        const baseline = inventoryY(110.5 + displayLine * rowStep);
         const entry = svgElement('g');
         entry.setAttribute('class', row.kind === 'bay' ? 'inventoryEntry bay' : 'inventoryEntry');
         entry.id = row.id;
@@ -227,16 +199,7 @@ export function drawAeroDataPanel(
             transparentRect(x(position), baseline - y(rowStep), x(rangeIndex === 3 ? 16.63 : 17.31), y(rowStep),
                 `inventoryEntryButton ${['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex]}`),
         ));
-        const badgeY = baseline - y(rowStep) + y(rowStep * 0.08);
-        const badgeHeight = y(rowStep * 0.84);
         appendInventoryHitModifier(entry, baseline, fontScale, yStep);
-        const targetTnRect = svgElement('rect');
-        setAttributes(targetTnRect, {
-            x: x(213), y: badgeY, width: x(6), height: badgeHeight,
-            fill: '#fff', stroke: '#000', 'stroke-width': 0.65,
-            class: 'targetTn-rect', display: 'none',
-        });
-        entry.appendChild(targetTnRect);
         if (row.quantity !== undefined) {
             addCell(entry, String(row.quantity), x(8.41), baseline, {
                 class: 'quantity', size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
@@ -261,61 +224,64 @@ export function drawAeroDataPanel(
                 size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(16.312),
             },
         ));
-        const targetTn = addCell(entry, '', x(216), badgeY + badgeHeight * 0.73, {
-            class: 'targetTn-text', size: font(4.2), weight: 700, anchor: 'middle',
-        });
-        targetTn.setAttribute('display', 'none');
-        group.appendChild(entry);
+        appendInventoryTargetNumber(entry, x(216), baseline, fontScale, yStep);
+        inventory.appendChild(entry);
         displayLine += lineCount;
     });
 
+    let contentBottom = 110.5 + Math.max(0, displayLine - 1) * rowStep;
     let detailY = 110.5 + displayLine * rowStep + 4.563;
     const gravDecks = entity instanceof JumpShipEntity ? entity.gravDecks() : [];
     if (gravDecks.length > 0 && detailY < referenceHeight - footerReserve) {
-        addText(group, 'Grav Decks:', x(8), y(detailY), { size: font(6.2), weight: 700 });
-        addText(group, gravDecks.map((diameter, index) => `#${index + 1}: ${formatWholeNumber(diameter)}m`).join(' · '),
-            x(52), y(detailY), { size: font(5.8), maxWidth: x(160) });
+        addText(inventory, 'Grav Decks:', x(8), inventoryY(detailY), { size: font(6.2), weight: 700 });
+        addText(inventory, gravDecks.map((diameter, index) => `#${index + 1}: ${formatWholeNumber(diameter)}m`).join(' · '),
+            x(52), inventoryY(detailY), { size: font(5.8), maxWidth: x(160) });
+        contentBottom = detailY;
         detailY += 10;
     }
     if (cargoLines.length > 0) {
         if (content.flowCargoAfterInventory) {
             detailY = Math.max(detailY, 110.5 + displayLine * rowStep + rowStep);
-            addText(group, 'Cargo:', x(7.328), y(detailY), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-            cargoLines.forEach((line, index) => addText(group, line, x(7.328), y(detailY + (index + 1) * rowStep), {
+            addText(inventory, 'Cargo:', x(7.328), inventoryY(detailY), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+            cargoLines.forEach((line, index) => addText(inventory, line, x(7.328), inventoryY(detailY + (index + 1) * rowStep), {
                 size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(205),
             }));
+            contentBottom = detailY + cargoLines.length * rowStep;
             detailY += (cargoLines.length + 1) * rowStep + 4.563;
         } else {
-            const cargoStart = referenceHeight - 48 - cargoLines.length * 8.5;
-            addText(group, 'Cargo:', x(8), y(cargoStart - 2), { size: font(6.4), weight: 700 });
-            cargoLines.forEach((line, index) => addText(group, line, x(8), y(cargoStart + 7 + index * 8.5), {
+            // Authored as if the ammo profile were empty; the profile lifts it by its own height.
+            const cargo = svgElement('g');
+            markAmmoBefore(cargo);
+            group.appendChild(cargo);
+            const cargoStart = referenceHeight - 48 - cargoLines.length * 8.5 - featureHeight + footerStep;
+            addText(cargo, 'Cargo:', x(8), y(cargoStart - 2), { size: font(6.4), weight: 700 });
+            cargoLines.forEach((line, index) => addText(cargo, line, x(8), y(cargoStart + 7 + index * 8.5), {
                 size: font(5.8), maxWidth: x(204),
             }));
         }
     }
     if (entity.tracksHeat() && detailY < referenceHeight - footerReserve - 5) {
-        const heatProfile = addText(group,
+        const heatProfile = addText(inventory,
             `Maximum Heat (Dissipation): ${Math.max(0, entity.heatGeneration())} (${Math.max(0, entity.heatDissipation())})`,
-            x(8.41), y(detailY), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204) });
+            x(8.41), inventoryY(detailY), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204) });
         heatProfile.id = 'heatProfile';
+        contentBottom = detailY;
     }
-    if (content.identity === 'small-craft') {
-        const inventory = svgElement('g');
-        inventory.setAttribute('transform', `translate(0 ${formatNumber(y(-7.339))})`);
-        [...group.children].slice(inventoryStart).forEach(child => inventory.appendChild(child));
-        group.appendChild(inventory);
-    }
-    const ammo = aeroAmmoSummary(entity);
+    // With n ammo rows the content must end above `bottom - n * footer row`, the reserve fitted above.
+    markAmmoInventory(inventory, {
+        top: inventoryY(110.5 - rowStep),
+        bottom: inventoryY(referenceHeight - baseFooterReserve) + y(footerStep),
+        contentBottom: inventoryY(contentBottom),
+    });
     const largeVesselFooterShift = content.identity === 'fighter' ? 0 : 1.5;
-    if (content.showAmmoSummary && ammo) addText(
-        group,
-        `Ammo: ${ammo}`,
-        x(8.41),
-        box.height - y(41.903 + largeVesselFooterShift + featureHeight),
-        {
-        size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204),
-        },
-    );
+    if (content.showAmmoSummary) {
+        appendRecordSheetAmmoProfile(group, ammo, {
+            ...ammoProfile,
+            x: x(8.41),
+            y: box.height - y(41.903 + largeVesselFooterShift + featureHeight),
+            lineHeight: y(footerStep),
+        });
+    }
     addText(group, `Fuel Points: ${formatWholeNumber(entity.fuel())}`, x(8.41),
         box.height - y(32.777 + largeVesselFooterShift + featureHeight), {
         size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204),
@@ -326,14 +292,10 @@ export function drawAeroDataPanel(
     }
     addLine(group, x(3), box.height - y(26.214 + largeVesselFooterShift), x(219.4),
         box.height - y(26.214 + largeVesselFooterShift), '#000', 1.932 * fontScale);
-    addText(group, 'BV:', x(13.845), box.height - y(14.214 + largeVesselFooterShift), {
-        size: font(9.67), weight: 700,
+    appendBattleValue(group, entity.battleValue(), {
+        x: x(13.845), valueX: x(32.79), y: box.height - y(14.214 + largeVesselFooterShift), size: font(9.67),
     });
-    const bv = addText(group, formatWholeNumber(entity.battleValue()), x(32.79),
-        box.height - y(14.214 + largeVesselFooterShift), {
-        size: font(9.67),
-    });
-    bv.id = 'bv';
+    appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, referenceHeight - 14.214 - largeVesselFooterShift - 8.893);
     appendLegacyIdentityAnchors(group, entity, box);
     return group;
 }
@@ -348,22 +310,6 @@ function aeroCargoLines(entity: AeroEntity): readonly string[] {
         .reduce((sum, transporter) => sum + transporter.totalSpace, 0);
     if (troopSpace > 0) lines.push(`Infantry Compartment: ${formatWholeNumber(troopSpace)} tons`);
     return lines.slice(0, 9);
-}
-
-function aeroAmmoSummary(entity: AeroEntity): string {
-    const grouped = new Map<string, number>();
-    entity.equipment().forEach(mount => {
-        const shots = mount.getAmmoShots();
-        if (shots === undefined) return;
-        const label = mount.displayName()
-            .replace(/\s+ammo(?:unition)?\b.*$/iu, '')
-            .replace(/\s*\([^)]*shots?\)\s*$/iu, '')
-            .trim();
-        grouped.set(label, (grouped.get(label) ?? 0) + shots);
-    });
-    return [...grouped.entries()]
-        .map(([label, shots]) => `(${label}) ${formatWholeNumber(shots)}`)
-        .join(', ');
 }
 
 export async function drawAeroPaperdoll(
@@ -536,46 +482,106 @@ export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, b
     svg.appendChild(group);
 }
 
-export function drawAeroMovementCompass(svg: SVGSVGElement, box: Box): void {
+/**
+ * The data-panel header every aerospace template shares, at MegaMekLab geometry: type, the vessel
+ * name line, thrust (or station keeping), the fighter engine, then tonnage, tech base and role.
+ */
+export function appendAeroDataPanelHeader(
+    group: SVGGElement,
+    entity: AeroEntity,
+    scale: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
+    identity: AeroDataPanelContent['identity'],
+    stationary = false,
+): void {
+    const { x, y, font } = scale;
+    const size = font(RECORD_SHEET_FONT.body);
+    appendDataPanelType(group, entity, scale, 6);
+    const vessel = identity === 'large-vessel';
+    if (vessel) {
+        addTemplateCaption(group, 'Name:', x(6), y(38), { size, weight: 700 });
+        addText(group, '', x(31.315), y(38), { size, maxWidth: x(74) }).id = 'fluffName';
+        addLine(group, x(31.315), y(39), x(105.218), y(39), '#000', font(0.72));
+    }
+    const thrustBaseline = vessel ? 47 : 38;
+    addText(group, 'Thrust:', x(6), y(thrustBaseline), { size, weight: 700 }).id = 'movementPointsLabel';
+    if (stationary) addText(group, 'Station Keeping Only', x(9.844), y(thrustBaseline + 9), { size, maxWidth: x(96) });
+    const thrust = (label: string, value: number, baseline: number, id: string): DataPanelFact => ({
+        label, value: String(value), baseline, id, labelX: 9.844, valueX: 79.844, maxWidth: 43, anchor: 'middle',
+    });
+    const engine = entity.mountedEngine();
+    const kilograms = entity.weightClass() === 'Small Support';
+    appendDataPanelFacts(group, [
+        ...(stationary ? [] : [
+            thrust('Safe Thrust:', entity.safeThrust(), thrustBaseline + 9, 'mpWalk'),
+            thrust('Maximum Thrust:', entity.maxThrust(), thrustBaseline + 18, 'mpRun'),
+        ]),
+        ...(identity === 'fighter' ? [{
+            label: 'Engine Type:', value: entity.isSupportVehicle() ? engine.type() : `${engine.rating} ${engine.type()}`,
+            baseline: 65, id: 'engineType', labelX: 6, valueX: 56, maxWidth: 55,
+        }] : []),
+        { label: 'Tonnage:', value: formatRecordSheetTonnage(entity.tonnage(), kilograms), baseline: 38,
+            id: 'tonnage', field: 'tonnage', ...(kilograms ? { weightUnit: 'kg' as const } : {}) },
+        { label: 'Tech Base:', value: formatTechBase(entity.techBase(), entity.mixedTech()), baseline: 47, id: 'techBase', field: 'tech-base' },
+        { label: 'Role:', value: entity.role() || '—', baseline: 56, id: 'role', field: 'role' },
+    ], scale);
+}
+
+/** The "ARMOR DIAGRAM" heading over the aerospace diagram; fighters name their armor, vessels their scale. */
+export function drawAeroDiagramHeader(
+    svg: SVGSVGElement,
+    page: RecordSheetPageProfile,
+    variant: 'fighter' | 'vessel',
+    subtitle: string,
+): void {
+    const fighter = variant === 'fighter';
+    const origin = aeroPageBox(page, { x: fighter ? 276.4 : 510.009, y: fighter ? 82.857 : 18, width: 83.991, height: 24.25 });
     const group = svgElement('g');
-    group.setAttribute('class', 'aero-movement-compass');
-    group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
-    const sx = box.width / 90;
-    const sy = box.height / 50;
-    const x = (value: number): number => value * sx;
-    const y = (value: number): number => value * sy;
-    const font = (value: number): number => value * Math.min(sx, sy);
-    addText(group, 'Advanced', x(22.5), y(15.5), {
-        size: font(9.35), weight: 700, anchor: 'middle',
-    });
-    addText(group, 'Movement', x(22.5), y(25.5), {
-        size: font(9.35), weight: 700, anchor: 'middle',
-    });
-    addText(group, 'Compass', x(22.5), y(35.5), {
-        size: font(9.35), weight: 700, anchor: 'middle',
-    });
-    const points = [
-        [58.84, 10], [50.179, 25], [58.84, 40],
-        [76.16, 40], [84.821, 25], [76.16, 10],
-    ].map(([px, py]) => `${formatNumber(x(px))},${formatNumber(y(py))}`).join(' ');
-    const hex = svgElement('polygon');
-    setAttributes(hex, {
-        points,
-        fill: 'none',
-        stroke: '#000',
-        'stroke-width': font(2.9),
-    });
-    group.appendChild(hex);
-    const labels: readonly [string, number, number][] = [
-        ['A', 67.5, 7], ['B', 85.321, 17], ['C', 85.321, 38],
-        ['D', 67.5, 49], ['E', 49.679, 38], ['F', 49.679, 17],
-    ];
-    labels.forEach(([label, px, py]) => {
-        addText(group, label, x(px), y(py), {
-            size: font(9.35), weight: 700, anchor: 'middle',
-        });
+    group.setAttribute('class', `aero-diagram-header ${fighter ? 'fighter' : 'large-aero'}-diagram-header`);
+    group.setAttribute('transform', `translate(${formatNumber(origin.x)} ${formatNumber(origin.y)})`);
+    addDiagramHeading(group, 'ARMOR DIAGRAM', subtitle, 83.991, 0, {
+        ...(fighter ? { subtitleId: 'armorType' } : { showSubtitleRibbon: false, subtitleFontSize: 6.2 }),
+        titleWidth: 83.991,
+        titleX: 0,
+        titleY: 0,
+        ribbonX: -18,
+        ribbonY: 0,
+        ribbonWidth: 123.749,
+        ribbonCut: 3.749,
+        subtitleX: 41.996,
+        subtitleY: fighter ? 21.5 : 18.25,
     });
     svg.appendChild(group);
+}
+
+/** A weapon's inventory name followed by its damage notation, unless the name already carries it. */
+export function aeroWeaponSheetName(displayName: string, weapon: Parameters<typeof formatRecordSheetWeaponDamageText>[0]): string {
+    const notation = formatRecordSheetWeaponDamageText(weapon, '').trim();
+    return notation && !displayName.includes(notation) ? `${displayName} ${notation}` : displayName;
+}
+
+/** Gunnery and piloting rows of the 142.6-point aerospace pilot panels; only the baseline moves. */
+export function appendAeroSkillRows(
+    group: SVGGElement,
+    { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
+    baseline: number,
+): void {
+    const gunneryLabel = addText(group, 'Gunnery Skill:', x(3), y(baseline), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, x(47.672), font(1)), y(baseline), font(1)).id = 'gunnerySkill0';
+    addLine(group, x(47.672), y(baseline + 1), x(65.82), y(baseline + 1), '#000', 0.72);
+    const pilotingLabel = addText(group, 'Piloting Skill:', x(69.8), y(baseline), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    addCrewSkillValue(group, '5', crewSkillValueX(pilotingLabel, x(114.472), font(1)), y(baseline), font(1)).id = 'pilotingSkill0';
+    addLine(group, x(114.472), y(baseline + 1), x(136.6), y(baseline + 1), '#000', 0.72);
+    for (const [skill, left, width] of [['gunnery', 44, 24], ['piloting', 111, 27]] as const) {
+        const button = transparentRect(x(left), y(baseline - 9), x(width), y(13), 'crewSkillButton');
+        button.setAttribute('crewId', '0');
+        button.setAttribute('skill', skill);
+        group.appendChild(button);
+    }
+}
+
+export function drawAeroMovementCompass(svg: SVGSVGElement, box: Box): void {
+    drawAdvancedMovementCompass(svg, box, 'aero-movement-compass',
+        { width: 90, height: 50, captionX: 22.5, centerX: 67.5, centerY: 25, halfHeight: 15 });
 }
 
 export function drawAeroArtworkRegion(svg: SVGSVGElement, box: Box): void {
@@ -682,88 +688,27 @@ export function drawAeroVelocityPanel(svg: SVGSVGElement, box: Box): void {
     });
 }
 
-export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box, detailed: boolean): void {
+export function drawAeroHeatDataPanel(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
     const group = addFrame(svg, 'HEAT DATA', box, {
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     group.id = 'heatDataPanel';
-    const heatSinkCount = Math.max(0, entity.heatSinkCount());
-    const detailedSx = box.width / 161;
-    const detailedSy = box.height / 246.6;
-    const detailedX = (value: number): number => value * detailedSx;
-    const detailedY = (value: number): number => value * detailedSy;
-    const detailedFont = (value: number): number => value * Math.min(detailedSx, detailedSy);
-    const hsType = addText(group, heatSinkCaption(entity.heatSinkType()), detailed ? detailedX(149) : box.width - 12, detailed ? detailedY(22) : 26, {
-        size: detailed ? detailedFont(8.44) : 5.8, anchor: 'end',
-    });
-    hsType.id = 'hsType';
-    const count = addText(group, String(heatSinkCount), detailed ? detailedX(149) : 35, detailed ? detailedY(31) : 44, {
-        size: detailed ? detailedFont(8.44) : 15, weight: detailed ? 400 : 700, anchor: 'end',
-    });
-    count.id = 'hsCount';
-    if (!detailed) {
-        addText(group, 'Heat Generation Per Arc:', 74, 29, { size: 5.9, weight: 700, maxWidth: box.width - 80 });
-        const heatByArc = new Map<string, number>();
-        entity.rangedWeapons().forEach(mount => {
-            const location = mount.getOccupiedLocations().map(value => entity.componentLocationLabel(value)).join('/') || '—';
-            heatByArc.set(location, (heatByArc.get(location) ?? 0) + mount.equipment.heat);
-        });
-        [...heatByArc.entries()].slice(0, 7).forEach(([arc, heat], index) => {
-            addText(group, `${arc}:`, 74, 41 + index * 8, { size: 5.3, weight: 700, maxWidth: box.width * 0.52 });
-            addText(group, String(heat), box.width - 12, 41 + index * 8, { size: 5.3, anchor: 'end' });
-        });
-        appendHeatPanelControls(group);
-        return;
-    }
+    const sx = box.width / 161;
+    const sy = box.height / 246.6;
+    const x = (value: number): number => value * sx;
+    const y = (value: number): number => value * sy;
+    const font = (value: number): number => value * Math.min(sx, sy);
     const baselines = [48.218, 58.291, 68.364, 78.436, 88.509, 108.655, 118.727, 128.8, 138.873,
         148.945, 159.018, 169.091, 179.164, 189.236, 199.309, 209.382, 219.455, 229.527, 239.6];
-    const effects = recordSheetHeatEffects('aero', 0).map((effect, index) => ({
-        ...effect, baseline: baselines[index],
+    // The template gives its fifth row (25: Random Movement, avoid on 10+) two lines.
+    appendHeatEffectRows(group, recordSheetHeatEffects('aero', 0).map((effect, index) => ({
+        heat: effect.heat,
         lines: index === 4 ? effect.label.split(', ').map((line, part) => part === 0 ? `${line},` : line) : [effect.label],
-    }));
-    addText(group, 'Heat', detailedX(15), detailedY(28.073), {
-        size: detailedFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
-    });
-    addText(group, 'Level*', detailedX(15), detailedY(38.145), {
-        size: detailedFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
-    });
-    addText(group, 'Effects', detailedX(55.5), detailedY(38.145), {
-        size: detailedFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
-    });
-    effects.forEach(effect => {
-        const row = svgElement('g');
-        row.setAttribute('class', 'heatEffect');
-        row.setAttribute('heat', String(effect.heat));
-        addText(row, String(effect.heat), detailedX(15), detailedY(effect.baseline), {
-            size: detailedFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
-        });
-        effect.lines.forEach((line, index) => addText(
-            row,
-            line,
-            detailedX(index === 0 ? 27 : 30),
-            detailedY(effect.baseline + index * 10.073),
-            { size: detailedFont(RECORD_SHEET_FONT.inventory) },
-        ));
-        group.appendChild(row);
-    });
-    const pips = svgElement('g');
-    pips.setAttribute('class', 'hsPips');
-    for (let index = 0; index < 30; index++) {
-        const column = Math.floor(index / 10);
-        const row = index % 10;
-        const pip = circle(
-            detailedX(128.478 + column * 9.66),
-            detailedY(45.478 + row * 9.66),
-            detailedFont(3.478),
-            'pip hsPip',
-        );
-        pip.setAttribute('stroke-width', formatNumber(detailedFont(0.9)));
-        pip.setAttribute('data-loc', 'hs');
-        if (index >= heatSinkCount) pip.style.display = 'none';
-        pips.appendChild(pip);
-    }
-    group.appendChild(pips);
-    appendHeatPanelControls(group, { x: detailedX(122), y: detailedY(39), width: detailedX(29), height: detailedY(100) });
+        baseline: baselines[index],
+    })), { x, y, font }, { headingBaselines: [28.073, 38.145], effectsX: 55.5, lineHeight: 10.073, labelMaxWidth: 88 });
+    appendHeatSinkData(group, { count: entity.heatSinkCount(), type: entity.heatSinkType() }, { x, y, font },
+        { rightX: 149, pipsX: 128.478 });
+    appendHeatPanelControls(group, { x: x(122), y: y(39), width: x(29), height: y(100) });
 }
 
 function drawAeroDamagePanel(

@@ -5,7 +5,10 @@ import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 
-export const MEK_ENGINE_DESTRUCTION_HITS = 3;
+/** Three engine hits destroy a Mek; a superheavy's compact fusion engine fails at two (IO:AE p. 154). */
+export function mekEngineDestructionHits(entity: MekEntity): 2 | 3 {
+    return entity.isSuperHeavy() && entity.mountedEngine().type() === 'Compact' ? 2 : 3;
+}
 
 export function mekGyroDestructionHits(gyroType: string, ruleset: CBTRuleset): 0 | 2 | 3 | 4 {
     return gyroType === 'None' ? 0 : gyroType === 'Heavy Duty' ? ruleset === 'core-2026' ? 4 : 3 : 2;
@@ -18,7 +21,7 @@ export function mekSensorWeaponDisableHits(torsoMounted: boolean): 2 | 3 {
 /** Component failure thresholds; individual critical-slot marks remain separate. */
 export function mekSystemCriticalDamageThreshold(entity: MekEntity, system: MekSystemType, ruleset: CBTRuleset): number {
     switch (system) {
-        case 'Engine': return MEK_ENGINE_DESTRUCTION_HITS;
+        case 'Engine': return mekEngineDestructionHits(entity);
         case 'Gyro': return mekGyroDestructionHits(entity.gyroType(), ruleset);
         case 'Sensors': return mekSensorWeaponDisableHits(entity.mountedCockpit().hasTorsoSlots);
         case 'Avionics': return 3;

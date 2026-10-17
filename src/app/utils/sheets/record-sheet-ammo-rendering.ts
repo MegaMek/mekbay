@@ -20,6 +20,25 @@ interface AmmoProfileGeometry extends AmmoProfileMetrics {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const AMMO_FONT = 'Roboto, Arial, sans-serif';
 
+/**
+ * Marks the inventory rows a growing ammo profile squeezes: their content, from `top` to `contentBottom`,
+ * must end above `bottom` minus the profile's height. Coordinates are in the profile's parent space.
+ */
+export function markAmmoInventory(
+    group: SVGGElement,
+    region: { readonly top: number; readonly bottom: number; readonly contentBottom: number },
+): void {
+    group.setAttribute('data-ammo-inventory', '');
+    group.setAttribute('data-top', String(region.top));
+    group.setAttribute('data-bottom', String(region.bottom));
+    group.setAttribute('data-content-bottom', String(region.contentBottom));
+}
+
+/** Marks rows authored as if the ammo profile were empty; they rise by the profile's height. */
+export function markAmmoBefore(group: SVGGElement): void {
+    group.setAttribute('data-ammo-before', '');
+}
+
 export function measureRecordSheetAmmoProfile(entries: readonly string[], options: AmmoProfileMetrics) {
     const text = document.createElementNS(SVG_NS, 'text');
     text.setAttribute('font-size', String(options.fontSize));

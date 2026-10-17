@@ -147,15 +147,69 @@
   }
 }
 
-.warehouse-filters {
+// Filter panel beside the warehouse, laid out like the unit search's advanced filters.
+.warehouse-filter-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100vw - 8px);
+  max-height: calc(100dvh - 8px);
+  overflow-y: auto;
+  padding: 10px;
+  background-color: #222;
+  color: #fff;
+}
+
+.warehouse-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .bt-button {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+  }
+}
+
+.warehouse-filter-location {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
-  padding: 0 14px 12px;
+
+  select {
+    width: 100%;
+  }
 }
 
-.warehouse-filters label,
+.warehouse-filter-range-label {
+  display: block;
+  min-height: 20px;
+  font-size: 0.85rem;
+}
+
+.warehouse-filter-range-values {
+  color: var(--text-color-secondary);
+  font-size: 0.9em;
+}
+
+.warehouse-filter-location label {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
 .warehouse-platform-filter {
   display: flex;
   gap: 5px;
@@ -167,12 +221,6 @@
 
 .warehouse-platform-filter {
   margin-left: auto;
-}
-
-.warehouse-filters select {
-  width: 100%;
-  padding-block: 6px;
-  font-size: 10px;
 }
 
 .equipment-table {
@@ -573,12 +621,6 @@ tech-base-badge {
   letter-spacing: 0.35px;
 }
 
-.location-title small {
-  font-size: 9px;
-  color: #aaa;
-  white-space: nowrap;
-}
-
 .location-name {
   margin-right: auto;
 }
@@ -803,7 +845,6 @@ tech-base-badge {
     inset 0 -1px 0 #0005;
 }
 
-.system-slot .slot-number,
 .empty-slot small {
   font-size: 8px;
   color: var(--border-color);
@@ -874,6 +915,16 @@ tech-base-badge {
   display: flex;
   flex-direction: column;
   min-height: calc(var(--slot-span, 1) * var(--slot-height) + (var(--slot-span, 1) - 1) * var(--slot-gap));
+}
+
+// Two loads of one superheavy slot sit side by side.
+.slot-target.shared-slot {
+  flex-direction: row;
+  gap: var(--slot-gap);
+}
+
+.slot-target.shared-slot > .installed-equipment {
+  min-width: 0;
 }
 
 .slot-drag-origin {

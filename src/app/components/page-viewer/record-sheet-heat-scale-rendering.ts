@@ -4,6 +4,7 @@
 import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
 import type { RecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
+import type { RecordSheetBind } from './record-sheet-dom';
 import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
 
@@ -52,31 +53,58 @@ export function renderRecordSheetHeatScale(
     renderHeatProjectionGraphics(svg, scale, highestHeat);
 }
 
+/**
+ * The heat panel's controls: the overflow box asks for a heat, APPLY HEAT applies the arrow, and the heat-sink count
+ * and pips pick how many heat sinks are active.
+ */
+export function bindRecordSheetHeatControls(svg: SVGSVGElement, bind: RecordSheetBind, context: () => UnitEditContext): void {
+    const control = (kind: 'heat-overflow' | 'apply-heat' | 'heat-sinks-off') => () => Object.freeze({ kind, context: context() });
+    // The frame is painted over the transparent button, so both take the click.
+    svg.querySelectorAll<SVGElement>('#heatScale .overflowButton, #heatScale .overflowFrame')
+        .forEach(element => bind(element, control('heat-overflow'), 'control'));
+    svg.querySelectorAll<SVGElement>('#applyHeatButton').forEach(element => bind(element, control('apply-heat'), 'control'));
+    svg.querySelectorAll<SVGElement>('#hsCount, .hsPips, [data-mekbay-field="heat-sinks"]')
+        .forEach(element => bind(element, control('heat-sinks-off'), 'control'));
+}
+
 export interface HeatCellBinding {
     readonly svg: SVGSVGElement;
-    readonly emit: (interaction: RecordSheetInteraction, event: Event) => void;
+    readonly onInteraction: (interaction: RecordSheetInteraction, event: Event) => void;
     readonly signal: AbortSignal;
     readonly context: () => UnitEditContext;
     readonly displayedHeat: () => number;
     readonly family: HeatScaleFamily;
 }
 
-/** Binds one heat cell: a click sets its heat, and dragging along the scale previews a heat before setting it. */
+/**
+ * Binds one heat cell until the binding's signal aborts: a click sets its heat, and dragging along the scale previews a
+ * heat before setting it. Its events stay on the sheet, so a drag never pans the page.
+ */
 export function bindRecordSheetHeatCell(element: SVGElement, heat: number, binding: HeatCellBinding): void {
-    if (element.dataset['mekbayBound'] === '1') return;
-    element.dataset['mekbayBound'] = '1';
+    if (element.dataset['mekbayHeatBound'] === '1') return;
+    element.dataset['mekbayHeatBound'] = '1';
     element.classList.add('interactive');
     element.setAttribute('tabindex', '0');
+    binding.signal.addEventListener('abort', () => {
+        delete element.dataset['mekbayHeatBound'];
+        element.classList.remove('interactive');
+        element.removeAttribute('tabindex');
+    }, { once: true });
+    const emit = (interaction: RecordSheetInteraction, event: Event): void => {
+        event.preventDefault();
+        event.stopPropagation();
+        binding.onInteraction(interaction, event);
+    };
     const interaction = (value = heat): RecordSheetInteraction => Object.freeze({
         kind: 'heat',
         heat: value,
         context: binding.context(),
     });
-    const endPreview = (event: Event): void => binding.emit(Object.freeze({
+    const endPreview = (event: Event): void => emit(Object.freeze({
         kind: 'heat-preview-end',
         context: binding.context(),
     }), event);
-    const preview = (value: number, target: SVGElement, event: Event): void => binding.emit(Object.freeze({
+    const preview = (value: number, target: SVGElement, event: Event): void => emit(Object.freeze({
         kind: 'heat-preview',
         heat: value,
         baselineHeat: binding.displayedHeat(),
@@ -91,7 +119,7 @@ export function bindRecordSheetHeatCell(element: SVGElement, heat: number, bindi
             event.stopPropagation();
             return;
         }
-        binding.emit(interaction(), event);
+        emit(interaction(), event);
     }, { signal: binding.signal });
     element.addEventListener('pointerdown', event => {
         if (!(event instanceof PointerEvent) || event.button !== 0) return;
@@ -124,7 +152,7 @@ export function bindRecordSheetHeatCell(element: SVGElement, heat: number, bindi
             endPreview(upEvent);
             if (moved) {
                 suppressClick = true;
-                binding.emit(interaction(selected), upEvent);
+                emit(interaction(selected), upEvent);
             }
         };
         const cancel = (cancelEvent: PointerEvent): void => {
@@ -147,7 +175,7 @@ export function bindRecordSheetHeatCell(element: SVGElement, heat: number, bindi
     }, { signal: binding.signal });
     element.addEventListener('keydown', event => {
         if (!(event instanceof KeyboardEvent) || (event.key !== 'Enter' && event.key !== ' ')) return;
-        binding.emit(interaction(), event);
+        emit(interaction(), event);
     }, { signal: binding.signal });
 }
 

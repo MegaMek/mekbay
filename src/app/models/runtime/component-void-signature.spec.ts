@@ -8,6 +8,7 @@ import { StealthHandler } from './component-stealth';
 import { projectMekEquipmentPanel } from './equipment-panel';
 
 import {
+createDirectSuperheavyRuntimeFixture,
 createDirectVoidSignatureRuntimeFixture,
 emptyCBTEncounterSnapshot,
 type DirectMekRuntimeFixture,
@@ -77,6 +78,16 @@ describe('direct Void Signature runtime', () => {
 
         }).accepted).toBeTrue();
         expect(fixture.instance.query().componentStealthState(voidSignature.id)).toBe('disabled');
+    });
+
+    it('gives a superheavy no stealth protection or C3 disruption from an active Void Signature', () => {
+        const fixture = createDirectSuperheavyRuntimeFixture(undefined, undefined, { includeVoidSignature: true });
+        const voidSignature = activateVoidSignature(fixture);
+
+        expect(fixture.instance.query().componentStealthState(voidSignature.id)).toBe('enabled');
+        expect(fixture.instance.query().stealthTnModifiers(0)).toBeUndefined();
+        expect(fixture.instance.query().voidSignatureActive()).toBeFalse();
+        expect(fixture.instance.query().c3DisruptedByStealth()).toBeFalse();
     });
 
     it('projects movement-based protection and treats non-stationary zero-distance movement as one', () => {

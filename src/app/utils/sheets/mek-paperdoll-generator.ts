@@ -1,3 +1,4 @@
+import type { MekEntity } from '../../models/entity/entities/mek/mek-entity';
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { PaperdollGenerator, type PaperdollOptions, type PaperdollPipCounts } from './paperdoll-generator';
 
@@ -8,6 +9,11 @@ export interface MekPaperdollOptions extends Omit<PaperdollOptions, 'type' | 'ca
     assetUrl?: string;
     /** Exact internal counts for superheavy and non-biped chassis. */
     structurePipCounts?: PaperdollPipCounts;
+}
+
+/** LAMs share the biped silhouettes, views and canonical pip map. */
+export function usesBipedMekPaperdoll(chassis: MekEntity['chassisConfig']): boolean {
+    return chassis === 'Biped' || chassis === 'LAM';
 }
 
 /** Mek-specific defaults and the authored biped map; each view has its own output. */

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { WeaponAttackContext } from './equipment-panel';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { CORE_2026_RULESET } from '../cbt-ruleset.model';
 import { asComponentId } from '../entity/entity-identifiers';
@@ -15,7 +16,6 @@ TestTankEntity,
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
 import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
 import { AmmoEquipment,createEquipment,WeaponEquipment } from '../equipment.model';
-import { createDefaultCrewAssignment } from './crew-assignment';
 import {
 projectTargetingTarget,
 projectWeaponTargetPresentation,
@@ -38,7 +38,8 @@ describe('Entity equipment panel projection', () => {
                 const runtime = createNonMekRuntimeForTest('unit:charge-eligibility',
                     { ...baseline(), ruleset }, entity, ruleset);
                 const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset,
-                    runtime.snapshot(), createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+                    runtime.snapshot(),
+                    runtime.query(),
                     { revision: 0, targets: [] });
                 expect(panel.physicalAttacks).withContext(`${ruleset} ${motive}`)
                     .toHaveSize(ruleset === 'total-warfare' && motive !== 'Tracked' ? 0 : 1);
@@ -112,8 +113,7 @@ describe('Entity equipment panel projection', () => {
         const presentation = projectWeaponTargetPresentation(
             row,
             target,
-            4,
-            null,
+            stationaryAttack(4),
             CORE_2026_RULESET,
         );
         expect(presentation.targetModifier).toBe(-1);
@@ -242,7 +242,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             registry,
         );
         const weaponRow = snapshot.components.find(row => row.componentId === weaponId)!;
@@ -279,8 +279,7 @@ describe('Entity equipment panel projection', () => {
         const presentation = projectWeaponTargetPresentation(
             weaponRow,
             target,
-            snapshot.crew.gunnery,
-            null,
+            stationaryAttack(snapshot.crew.gunnery),
             snapshot.ruleset,
         );
         expect(presentation.targetModifier).toBe(1);
@@ -295,7 +294,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             registry,
         );
         const committedWeapon = committed.components.find(row => row.componentId === weaponId)!;
@@ -348,10 +347,12 @@ describe('Entity equipment panel projection', () => {
         const selectMode = (mode: string) => {
             runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode });
             const snapshot = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET,
-                runtime.snapshot(), createDefaultCrewAssignment(runtime.getIndex().crewPositions), registry);
+                runtime.snapshot(),
+                runtime.query(), registry);
             const row = snapshot.components.find(candidate => candidate.componentId === weaponId)!;
             const presentation = projectWeaponTargetPresentation(row,
-                projectTargetingTarget(snapshot.targets[0], snapshot.ruleset), snapshot.crew.gunnery, null, snapshot.ruleset);
+                projectTargetingTarget(snapshot.targets[0], snapshot.ruleset), stationaryAttack(snapshot.crew.gunnery),
+                snapshot.ruleset);
             return { weapon: row.weapon!, presentation };
         };
 
@@ -408,8 +409,8 @@ describe('Entity equipment panel projection', () => {
             timestamp: 1,
         });
         runtime.dispatch({
-            type: 'set-sensor-damage-level',
-
+            type: 'set-system-damage-level',
+            system: 'sensors',
             level: 4,
             target: 'committed',
             timestamp: 2,
@@ -420,7 +421,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const row = snapshot.components.find(component =>
@@ -483,7 +484,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             registry,
         );
         const row = snapshot.components.find(component =>
@@ -537,7 +538,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const row = snapshot.components.find(component =>
@@ -575,7 +576,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             registry,
         );
 
@@ -640,7 +641,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const rows = mounts.map(mount => snapshot.components.find(row =>
@@ -681,7 +682,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const weapons = snapshot.components.filter(row => row.weapon !== undefined);
@@ -706,8 +707,7 @@ describe('Entity equipment panel projection', () => {
             const mounts = Array.from({ length: 3 }, () => addTestEquipment(entity, laser, { location: entity.locationOrder[0] }));
             entity.addEquipmentBay('weapon-bay', { mounts });
             const runtime = createNonMekRuntimeForTest('unit:naval-laser-rounding', { ...baseline(), ruleset }, entity, ruleset);
-            const project = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset, runtime.snapshot(),
-                createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            const project = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(),
                 Object.freeze({ revision: 0, targets: Object.freeze([]) })).components.find(row => row.weapon !== undefined)!;
             expect(project().weapon?.aerospace?.attackValues).toEqual([17, 17, 17, 17]);
             runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(mounts[0].mountId), status: 'destroyed', target: 'committed' });
@@ -739,7 +739,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             registry,
         ).components.filter(row => row.weapon !== undefined);
 
@@ -799,7 +799,7 @@ describe('Entity equipment panel projection', () => {
             runtime.getIndex(),
             CORE_2026_RULESET,
             runtime.snapshot(),
-            createDefaultCrewAssignment(runtime.getIndex().crewPositions),
+            runtime.query(),
             Object.freeze({ revision: 0, targets: Object.freeze([]) }),
         );
         const elapsed = performance.now() - started;
@@ -826,3 +826,17 @@ function baseline(): InstanceBaselineRef {
 }
 
 import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';
+
+/** An attacker with no declared movement, standard piloting, and an available C3 link. */
+function stationaryAttack(gunnery: number): WeaponAttackContext {
+    return Object.freeze({
+        gunnery,
+        pilotingSkill: 5,
+        movementMode: null,
+        allowExtremeRange: false,
+        missingMovementModifier: false,
+        attackModifierBreakdown: Object.freeze([]),
+        c3DegradationSource: 'none',
+        c3Available: true,
+    });
+}

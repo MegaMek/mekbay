@@ -17,10 +17,10 @@ setComponentBombastLaserMode,
 } from '../models/runtime/component-bombast-laser';
 import {
 equipmentWeaponToHitModifier,
-projectMekEquipmentComponents,
+projectMekEquipmentPanel,
 } from '../models/runtime/equipment-panel';
 import { canPerformMekAction } from '../models/runtime/mek-action-availability';
-import { createDirectBombastRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { createDirectBombastRuntimeFixture,emptyCBTEncounterSnapshot } from '../models/runtime/testing/direct-mek-runtime-fixture';
 
 import { BombastLaserHandler } from '../models/runtime/component-bombast-laser';
 import type {
@@ -178,12 +178,13 @@ function directBombastSetup() {
 type DirectBombastSetup = ReturnType<typeof directBombastSetup>;
 
 function projectedRow(setup: DirectBombastSetup) {
-    const row = projectMekEquipmentComponents(
+    const row = projectMekEquipmentPanel(
         setup.fixture.entity,
         setup.fixture.index,
         setup.fixture.instance.ruleset(),
         setup.runtime.query(),
-    ).find(candidate => candidate.componentId === setup.component.id);
+        emptyCBTEncounterSnapshot(),
+    ).components.find(candidate => candidate.componentId === setup.component.id);
     if (row?.weapon === undefined) throw new Error('Missing projected Bombast weapon');
     return row;
 }

@@ -50,11 +50,11 @@
   </g>
   <g data-mekbay-paperdoll-overlay="armor" font-family="Roboto, Arial, sans-serif" font-weight="700" pointer-events="none">
     <g class="diagram-location-label">
-      <text x="57.096 60.785 63.919 67.136 69.167 72.3 74.752 76.666 79.357 82.519 84.97 87.949 91.112 93.025 96.914 100.048 103.21" y="342.754" font-size="5.558">Center Torso Rear</text>
-      <text x="140.754 143.444 146.606 149.058 152.037 155.199 157.112 161.001 164.135 167.297" y="323.917" font-size="5.558">Torso Rear</text>
-      <text x="148.492" y="315.179" font-size="5.558">Right</text>
-      <text x="23.257" y="315.179" font-size="5.558">Left</text>
-      <text x="13.727 16.417 19.579 22.031 25.011 28.172 30.086 33.975 37.109 40.271" y="323.917" font-size="5.558">Torso Rear</text>
+      <text y="342.754" font-size="5.558" x="105.455" text-anchor="end">Center Torso Rear</text>
+      <text y="323.917" font-size="5.558" x="155.537" text-anchor="middle">Torso Rear</text>
+      <text y="315.179" font-size="5.558" x="155.537" text-anchor="middle">Right</text>
+      <text y="315.179" font-size="5.558" x="28.623" text-anchor="middle">Left</text>
+      <text y="323.917" font-size="5.558" x="28.623" text-anchor="middle">Torso Rear</text>
     </g>
     <g class="diagram-value">
       <text id="textArmor_CTR" x="107.955" y="342.844" font-size="5.609"></text>

@@ -46,7 +46,8 @@ import {
     MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
     type CanonicalMekDeploymentConfigurationV2,
 } from './unit-state-initializer';
-import { MAX_MEK_HEATSINKS_OFF_V2, MAX_MEK_HEAT_VALUE_V2 } from './mek-heat-state-v2';
+import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { MAX_MEK_HEATSINKS_OFF_V2 } from './mek-heat-state-v2';
 import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
@@ -857,18 +858,18 @@ function validateV2Unit(
         const heat = requireRecord(record['heat'], `${path}.heat`);
         exactKeys(heat, ['heat', 'previous', 'pendingOverride', 'heatsinksOff'], `${path}.heat`);
         const value = requireFiniteNumber(heat['heat'], `${path}.heat.heat`);
-        if (value < 0 || value > MAX_MEK_HEAT_VALUE_V2 || Object.is(value, -0)) {
+        if (value < 0 || value > MAX_HEAT_VALUE || Object.is(value, -0)) {
             fail('INVALID_SHAPE', `${path}.heat.heat`, 'must be a canonical bounded heat value');
         }
         if (heat['previous'] !== undefined) {
             const previous = requireFiniteNumber(heat['previous'], `${path}.heat.previous`);
-            if (previous <= 0 || previous > MAX_MEK_HEAT_VALUE_V2 || Object.is(previous, -0)) {
+            if (previous <= 0 || previous > MAX_HEAT_VALUE || Object.is(previous, -0)) {
                 fail('INVALID_SHAPE', `${path}.heat.previous`, 'sparse previous heat must be positive and bounded');
             }
         }
         if (heat['pendingOverride'] !== undefined) {
             const pending = requireFiniteNumber(heat['pendingOverride'], `${path}.heat.pendingOverride`);
-            if (pending < 0 || pending > MAX_MEK_HEAT_VALUE_V2 || Object.is(pending, -0)) {
+            if (pending < 0 || pending > MAX_HEAT_VALUE || Object.is(pending, -0)) {
                 fail('INVALID_SHAPE', `${path}.heat.pendingOverride`, 'must be a canonical bounded heat value');
             }
         }

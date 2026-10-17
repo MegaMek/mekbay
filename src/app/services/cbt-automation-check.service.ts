@@ -160,23 +160,38 @@ function automationCheckSessionId(
     return `${key}:${checks.map(check => check.id).join('\u001f')}`;
 }
 
+/** The rules-ordered walk: a failed check fails every later check in its failure group. */
+function cascadeAutomationChecks<Row extends { readonly outcome: 'success' | 'failed' }>(
+    checks: readonly AutomationCheck[],
+    initiallyFailedGroups: ReadonlySet<string>,
+    decide: (check: AutomationCheck, cascaded: boolean) => Row,
+): Row[] {
+    const failedGroups = new Set(initiallyFailedGroups);
+    return checks.map(check => {
+        const row = decide(check, check.failureGroup !== undefined && failedGroups.has(check.failureGroup));
+        if (row.outcome === 'failed' && check.failureGroup) failedGroups.add(check.failureGroup);
+        return row;
+    });
+}
+
+/** The outcome a check reaches without dice, or undefined when it needs a roll. */
+function automaticCheckOutcome(
+    check: AutomationCheck,
+    cascaded: boolean,
+): 'success' | 'failed' | undefined {
+    if (cascaded) return 'failed';
+    return check.automaticOutcome ?? (check.targetNumber === undefined ? 'failed' : undefined);
+}
+
 export function resolveAutomationChecksAutomatically(
     checks: readonly AutomationCheck[],
     initiallyFailedGroups: ReadonlySet<string> = new Set<string>(),
 ): readonly AutomationCheckResolution[] {
-    const failedGroups = new Set(initiallyFailedGroups);
-    return Object.freeze(checks.map(check => {
-        const cascaded = check.failureGroup !== undefined && failedGroups.has(check.failureGroup);
-        const dice = cascaded || check.automaticOutcome !== undefined || check.targetNumber === undefined
-            ? null
-            : roll2D6();
-        const outcome = cascaded
-            ? 'failed' as const
-            : check.automaticOutcome
-                ?? (dice !== null && twoD6Total(dice) >= check.targetNumber!
-                    ? 'success' as const
-                    : 'failed' as const);
-        if (outcome === 'failed' && check.failureGroup) failedGroups.add(check.failureGroup);
+    return Object.freeze(cascadeAutomationChecks(checks, initiallyFailedGroups, (check, cascaded) => {
+        const automatic = automaticCheckOutcome(check, cascaded);
+        const dice = automatic === undefined ? roll2D6() : null;
+        const outcome = automatic
+            ?? (twoD6Total(dice!) >= check.targetNumber! ? 'success' as const : 'failed' as const);
         const failureChoices = outcome === 'failed' ? check.failureChoices ?? [] : [];
         const selectionId = failureChoices.length === 0
             ? undefined
@@ -185,10 +200,21 @@ export function resolveAutomationChecksAutomatically(
             id: check.id,
             outcome,
             dice,
-            automatic: cascaded || check.automaticOutcome !== undefined || check.targetNumber === undefined,
+            automatic: automatic !== undefined,
             ...(selectionId === undefined ? {} : { selectionId }),
         });
     }));
+}
+
+/** True when resolving the batch cannot require dice or a manual outcome. */
+export function automationCheckBatchIsFullyAutomatic(
+    checks: readonly AutomationCheck[],
+    initiallyFailedGroups: ReadonlySet<string> = new Set<string>(),
+): boolean {
+    return checks.length > 0 && cascadeAutomationChecks(checks, initiallyFailedGroups, (check, cascaded) => {
+        const outcome = automaticCheckOutcome(check, cascaded);
+        return { outcome: outcome ?? 'failed', automatic: outcome !== undefined };
+    }).every(row => row.automatic);
 }
 
 /** Dice evidence for reducers that derive outcomes from 2d6 instead of accepting a manual flag. */

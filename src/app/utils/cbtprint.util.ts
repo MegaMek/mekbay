@@ -17,6 +17,7 @@ import {
     type RecordSheetLayoutProfile,
 } from './sheets/record-sheet-layout';
 import { recordSheetLayoutProfile } from './sheets/layouts/record-sheet-layout-resolver';
+import { formatWholeNumber } from './sheets/record-sheet-svg-rendering';
 import { printRecordSheetPages } from './record-sheet-print.util';
 import { nextAnimationFrames } from './print-overlay.util';
 
@@ -224,7 +225,7 @@ export class CBTPrintUtil {
 
         const bvElement = svg.getElementById('bv');
         if (bvElement && baseBv !== undefined) {
-            bvElement.textContent = `${baseBv}${bvElement.getAttribute('data-mekbay-bv-suffix') ?? ''}`;
+            bvElement.textContent = `${formatWholeNumber(baseBv)}${bvElement.getAttribute('data-mekbay-bv-suffix') ?? ''}`;
         }
 
         svg.querySelectorAll<SVGElement>('.crewNameButton').forEach((crewNameButton) => {

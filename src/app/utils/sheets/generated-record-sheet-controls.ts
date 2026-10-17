@@ -19,7 +19,14 @@ import {
   unitConditionControls,
   type UnitConditionControl,
 } from '../../models/unit-status-presentation';
-import { addText, readViewBox, setAttributes, svgElement, transparentRect } from './record-sheet-svg-rendering';
+import {
+  addText,
+  CREW_STATE_MENU_SPACE,
+  readViewBox,
+  setAttributes,
+  svgElement,
+  transparentRect,
+} from './record-sheet-svg-rendering';
 import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
@@ -28,6 +35,7 @@ export interface GeneratedRecordSheetControlOptions {
   readonly fluffImageUrl?: string | null;
 }
 
+const CREW_STATE_MENU_SIZE = CREW_STATE_MENU_SPACE - 2;
 const UNIT_CONDITION_BANNER_FADE_WIDTH = 48;
 const UNIT_CONDITION_BANNER_FADE_STRIPE_GAP = 6;
 let unitConditionBannerFadeMaskSequence = 0;
@@ -90,12 +98,17 @@ function appendConditionButtons(svg: SVGSVGElement, controls: readonly UnitCondi
   const panel = type?.closest<SVGGElement>('[data-mekbay-frame-width]') ?? null;
   const parent: SVGElement = panel ?? svg;
   const viewBox = readViewBox(svg);
-  const panelWidth = Number(panel?.dataset['mekbayFrameWidth']) || viewBox.width;
   const gap = 2;
   const height = 12;
   const totalWidth = buttons.reduce((sum, button) => sum + button.width, 0) + gap * Math.max(0, buttons.length - 1);
-  let x = panelWidth - totalWidth - 16;
-  const y = panel ? 3 : 54;
+  // The buttons sit on the frame's top border, ending a little before that border
+  // turns into the top-right corner, so a squared corner lets them sit further right.
+  // A frame whose top border is covered by inner panels names its own spot instead.
+  const end = panel
+    ? Number(panel.dataset['mekbayControlsEnd'] ?? Number(panel.dataset['mekbayFrameTopEnd']) - 7)
+    : viewBox.width - 16;
+  let x = end - totalWidth;
+  const y = (panel ? Number(panel.dataset['mekbayControlsY'] ?? panel.dataset['mekbayFrameTop']) : 60) - height / 2;
 
   const wrapper = svgElement('g');
   wrapper.id = 'unit_condition_wrapper';
@@ -391,20 +404,23 @@ function appendCrewStateMenuIndicators(svg: SVGSVGElement, entity: BaseEntity): 
     if (!name) continue;
     const parent = name.parentElement as SVGElement | null;
     if (!parent) continue;
-    const frame = name.closest<SVGGElement>('[data-mekbay-frame-width]');
-    const width = Number(frame?.dataset['mekbayFrameWidth']) || 145.6;
+    // Each layout ends its name field CREW_STATE_MENU_SPACE before its content edge;
+    // the menu fills that space in the same coordinate system as the name.
+    const nameField = parent.querySelector<SVGRectElement>(`:scope > rect.crewNameButton[crewId="${occurrence}"]`);
+    if (!nameField) continue;
     const nameY = Number(name.getAttribute('y')) || 12;
     const control = svgElement('g');
     control.id = `generated_crew_state_menu_${occurrence}`;
     control.setAttribute('class', 'crewStateButton unitConditionButton screen-only edit-only');
     control.setAttribute('crewId', occurrence);
     control.setAttribute('data-mekbay-control-id', 'menu');
-    const x = Math.max(0, width - 16);
-    const rect = transparentRect(x, nameY - 8, 10, 10, 'crew-state-menu-hit-area');
+    const x = Number(nameField.getAttribute('x')) + Number(nameField.getAttribute('width'))
+      + CREW_STATE_MENU_SPACE - CREW_STATE_MENU_SIZE;
+    const rect = transparentRect(x, nameY - 8, CREW_STATE_MENU_SIZE, CREW_STATE_MENU_SIZE, 'crew-state-menu-hit-area');
     rect.setAttribute('fill', '#fff');
     rect.setAttribute('stroke', '#000');
     rect.setAttribute('stroke-width', '0.72');
-    const text = addText(control, '...', x + 5, nameY - 2.5, {
+    const text = addText(control, '...', x + CREW_STATE_MENU_SIZE / 2, nameY - 2.5, {
       size: 6.5,
       weight: 700,
       anchor: 'middle',

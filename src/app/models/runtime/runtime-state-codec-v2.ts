@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentStatus } from '../equipment-status.model';
-import { MAX_CREW_WOUNDS } from '../crew-member.model';
+import { isSparseCrewMemberState,MAX_CREW_WOUNDS,type CrewMemberRuntimeState } from '../crew-member.model';
 import { decodePinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
 import { compareText } from '../../utils/string.util';
@@ -408,49 +408,12 @@ export function serializeCBTUnitStateV2(
     for (const [positionId, value] of input.state.crew) {
         const target = current.crewById.get(positionId);
         if (!target) codecFail('INVALID_RUNTIME_STATE', '$.state.crew', `unknown crew position ${positionId}`);
-        const wounds = requireNonnegativeInteger(value.wounds, `$.state.crew.${positionId}.wounds`);
-        if (wounds > MAX_CREW_WOUNDS) {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.wounds`, 'exceeds the Mek crew wound limit');
-        }
-        if (typeof value.unconscious !== 'boolean') {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.unconscious`, 'must be boolean');
-        }
-        if (value.dead !== undefined && value.dead !== true) {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.dead`, 'sparse dead state must be true');
-        }
-        if (typeof value.ejected !== 'boolean') {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}.ejected`, 'must be boolean');
-        }
-        if (value.dead === true && wounds < MAX_CREW_WOUNDS) {
-            codecFail(
-                'INVALID_RUNTIME_STATE',
-                `$.state.crew.${positionId}.dead`,
-                'committed death requires fatal wounds',
-            );
-        }
-        if (value.recoveryReadyTurn !== undefined
-            && value.recoveryReadyTurn !== null
-            && (!Number.isSafeInteger(value.recoveryReadyTurn)
-                || value.recoveryReadyTurn < 0)) {
-            codecFail(
-                'INVALID_RUNTIME_STATE',
-                `$.state.crew.${positionId}.recoveryReadyTurn`,
-                'must be null or a nonnegative integer',
-            );
-        }
-        if (value.recoveryReadyTurn !== undefined && !value.unconscious) {
-            codecFail(
-                'INVALID_RUNTIME_STATE',
-                `$.state.crew.${positionId}.recoveryReadyTurn`,
-                'requires unconscious crew',
-            );
-        }
-        if (wounds === 0 && !value.unconscious && !value.ejected) {
-            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}`, 'sparse crew state must contain a fact');
+        if (!isSparseCrewMemberState(value)) {
+            codecFail('INVALID_RUNTIME_STATE', `$.state.crew.${positionId}`, 'invalid sparse crew state');
         }
         crewState.push({
             target: target.ref,
-            wounds,
+            wounds: value.wounds,
             unconscious: value.unconscious,
             ...(value.dead ? { dead: true as const } : {}),
             ...(value.ejected ? { ejected: true as const } : {}),
@@ -1032,44 +995,26 @@ export async function restoreSerializedCBTUnitV2(
         if (typeof entry.unconscious !== 'boolean') {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.unconscious', 'must be boolean');
         }
-        const ejected = entry.ejected === true;
-        const dead = entry.dead === true;
-        if (entry.dead !== undefined && !dead) {
+        if (entry.dead !== undefined && entry.dead !== true) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.dead', 'sparse dead state must be true');
         }
-        if (entry.ejected !== undefined && !ejected) {
+        if (entry.ejected !== undefined && entry.ejected !== true) {
             codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions.ejected', 'sparse ejected state must be true');
         }
-        if (dead && requested < MAX_CREW_WOUNDS) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.crew.positions.dead',
-                'committed death requires fatal wounds',
-            );
-        }
-        const recoveryReadyTurn = entry.recoveryReadyTurn;
-        if (recoveryReadyTurn !== undefined
-            && recoveryReadyTurn !== null
-            && (!Number.isSafeInteger(recoveryReadyTurn) || recoveryReadyTurn < 0)) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.crew.positions.recoveryReadyTurn',
-                'must be null or a nonnegative integer',
-            );
-        }
-        if (recoveryReadyTurn !== undefined && !entry.unconscious) {
-            codecFail(
-                'INVALID_SERIALIZED_STATE',
-                '$.crew.positions.recoveryReadyTurn',
-                'requires unconscious crew',
-            );
-        }
-        if (requested === 0 && !entry.unconscious && !ejected) {
-            codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions', 'sparse crew state must contain a fact');
+        // Wounds above the current limit are clamped with a warning below; the invariant holds on the result.
+        const effective = Math.min(requested, MAX_CREW_WOUNDS);
+        const restored: CrewMemberRuntimeState = Object.freeze({
+            wounds: effective,
+            unconscious: entry.unconscious,
+            ejected: entry.ejected === true,
+            ...(entry.dead === true ? { dead: true as const } : {}),
+            ...(entry.recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn: entry.recoveryReadyTurn }),
+        });
+        if (!isSparseCrewMemberState(restored)) {
+            codecFail('INVALID_SERIALIZED_STATE', '$.crew.positions', 'invalid sparse crew state');
         }
         const currentTarget = resolveCrewTarget(target, accumulator);
         if (!currentTarget) return warnSkippedState(accumulator, entry.target, 'CREW_POSITION_NOT_FOUND');
-        const effective = Math.min(requested, MAX_CREW_WOUNDS);
         let warned = false;
         if (effective !== requested) {
             warned = true;
@@ -1083,14 +1028,7 @@ export async function restoreSerializedCBTUnitV2(
             });
             warnSkippedState(accumulator, entry.target, 'CREW_WOUNDS_EXCEED_CURRENT_LIMIT');
         }
-        if (effective === 0 && !entry.unconscious && !ejected) crew.delete(currentTarget.positionId);
-        else crew.set(currentTarget.positionId, Object.freeze({
-            wounds: effective,
-            unconscious: entry.unconscious,
-            ejected,
-            ...(dead ? { dead: true as const } : {}),
-            ...(recoveryReadyTurn === undefined ? {} : { recoveryReadyTurn }),
-        }));
+        crew.set(currentTarget.positionId, restored);
         const rekeyed = target.savedCrewPositionId !== undefined
             && target.savedCrewPositionId !== currentTarget.positionId;
         if (rekeyed) warnRekeyed(accumulator, entry.target, currentTarget.ref, 'crew position');
@@ -1165,10 +1103,11 @@ export async function restoreSerializedCBTUnitV2(
             codecFail('INVALID_SERIALIZED_STATE', '$.heat.heatsinksOff', 'sparse heatsinks-off count must be positive');
         }
         try {
+            // Older saves could carry fractional heat; runtime heat is a whole number.
             heat = canonicalizeMekHeatStateV2({
-                current,
-                previous,
-                ...(pendingOverride === undefined ? {} : { pendingOverride }),
+                current: Math.round(current),
+                previous: Math.round(previous),
+                ...(pendingOverride === undefined ? {} : { pendingOverride: Math.round(pendingOverride) }),
                 heatsinksOff,
             });
         } catch (error) {
@@ -1592,7 +1531,7 @@ function buildCurrentTargetIndex(
             stateCapabilities: Object.freeze({
                 ...modes,
                 modes: persistedModes,
-                supportsJamming: rapidFireAutocannonSupportsJamming(index, componentId, ruleset),
+                supportsJamming: rapidFireAutocannonSupportsJamming(equipment, ruleset),
             }),
             escalatingFailureTargetCount: equipment === undefined
                 ? 0

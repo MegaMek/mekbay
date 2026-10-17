@@ -17,8 +17,8 @@ addTestEquipment,
 addTestEquipmentWithFlags,
 } from '../models/entity/testing/test-mounted-equipment';
 import { AmmoEquipment, WeaponEquipment } from '../models/equipment.model';
-import { createNonMekUnit } from '../models/runtime/cbt-non-mek-unit';
-import { createDefaultCrewAssignment } from '../models/runtime/crew-assignment';
+import { createNonMekUnit, redeployNonMekCrew } from '../models/runtime/cbt-non-mek-unit';
+import type { CrewAssignmentPosition } from '../models/runtime/crew-assignment';
 import type { UnitConditionKey } from '../models/unit-condition.model';
 
 import { type InstanceBaselineRef } from '../models/runtime/runtime-state';
@@ -359,25 +359,14 @@ describe('DirectNonMekAutomationService', () => {
     it('does not offer a manually-created consciousness recovery until the following turn', async () => {
         const harness = createHarness();
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
-        const before = harness.snapshot();
-        const command: CBTUnitCommand = {
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'set-crew-state',
-
             positionId: pilotId,
             wounds: 1,
             unconscious: true,
             ejected: false,
-        };
-        const result = await harness.dispatch(command);
-        expect(result.accepted).toBeTrue();
-        await service.afterCommand(
-            harness.force,
-            harness.instanceId,
-            before,
-            { command },
-            result,
-            harness.dispatch,
-        );
+        });
+        expect((await harness.dispatch(prepared.command)).accepted).toBeTrue();
         expect(harness.runtime.query().crewState(pilotId).recoveryReadyTurn).toBe(1);
 
         const sameTurn = await service.prepareCommand(harness.force, harness.instanceId, {
@@ -417,25 +406,14 @@ describe('DirectNonMekAutomationService', () => {
     it('defers a failed non-Mek consciousness recovery until the following turn', async () => {
         const harness = createHarness(false, 'recovery-retry');
         const pilotId = [...harness.runtime.getIndex().crewPositions.keys()][0]!;
-        const before = harness.snapshot();
-        const command: CBTUnitCommand = {
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'set-crew-state',
-
             positionId: pilotId,
             wounds: 1,
             unconscious: true,
             ejected: false,
-        };
-        const result = await harness.dispatch(command);
-        expect(result.accepted).toBeTrue();
-        await service.afterCommand(
-            harness.force,
-            harness.instanceId,
-            before,
-            { command },
-            result,
-            harness.dispatch,
-        );
+        });
+        expect((await harness.dispatch(prepared.command)).accepted).toBeTrue();
         expect((await harness.dispatch({
             type: 'end-turn',
 
@@ -687,6 +665,66 @@ describe('DirectNonMekAutomationService', () => {
             .flatMap(args => args[1] as readonly { readonly label: string; readonly automaticOutcome?: string }[])
             .find(check => check.label === 'Shutdown');
         expect(shutdown?.automaticOutcome).toBeUndefined();
+    });
+
+    it('automatically shuts down an aerospace unit whose only station is vacant', async () => {
+        const harness = createHarness(false, 'vacant-only-station', false, () => []);
+        setHeat(harness.runtime, 14);
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        await executeEndTurn(service, harness);
+
+        expect(harness.runtime.query().hasCondition('shutdown')).toBeTrue();
+        const shutdown = resolveChecksAutomation.calls.allArgs()
+            .filter(args => args[0] === 'heatEffectsCheck')
+            .flatMap(args => args[1] as readonly { readonly label: string; readonly automaticOutcome?: string }[])
+            .find(check => check.label === 'Shutdown');
+        expect(shutdown?.automaticOutcome).toBe('failed');
+    });
+
+    it('rolls aerospace Control for the occupied station when the primary station is vacant', async () => {
+        const harness = createHarness(false, 'vacant-primary-control', true, positions =>
+            positions.slice(1).map(position => ({ ...position, aeroPiloting: 2 })));
+        setHeat(harness.runtime, 10);
+        const random = spyOn(Math, 'random').and.returnValue(0);
+        await executeEndTurn(service, harness);
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
+
+        random.and.returnValue(0.99);
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'end-phase',
+        });
+        expect(await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            harness.dispatch,
+        )).not.toBeNull();
+
+        const control = resolveChecksAutomation.calls.allArgs()
+            .flatMap(args => args[1] as readonly { readonly label: string; readonly targetNumber?: number }[])
+            .find(check => check.label === 'Regain aerospace control');
+        expect(control?.targetNumber).toBe(2);
+    });
+
+    it('loses aerospace control when the only occupied station is knocked out beside a vacant one', async () => {
+        const harness = createHarness(false, 'vacant-primary-loss', true, positions => positions.slice(1));
+        const occupied = harness.runtime.getCrewAssignment().positions[0]!.positionId;
+        setHeat(harness.runtime, 21);
+        spyOn(Math, 'random').and.returnValues(
+            0.99, 0.99,
+            0.99, 0.99,
+            0, 0,
+            0, 0,
+        );
+
+        await executeEndTurn(service, harness);
+
+        expect(harness.runtime.query().crewState(occupied).unconscious).toBeTrue();
+        expect(harness.runtime.query().hasCondition('out-of-control')).toBeTrue();
+        expect(resolveChecksAutomation.calls.allArgs()
+            .filter(args => args[0] === 'pilotHitsAndConsciousnessCheck')
+            .flatMap(args => args[1] as readonly unknown[])).toHaveSize(1);
     });
 
     it('keeps unrelated random movement while resolving control lost to unconsciousness', async () => {
@@ -951,7 +989,12 @@ describe('DirectNonMekAutomationService', () => {
     });
 });
 
-function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
+function createHarness(
+    withAmmo = false,
+    suffix = '',
+    commandConsole = false,
+    seats?: (defaults: readonly CrewAssignmentPosition[]) => readonly CrewAssignmentPosition[],
+) {
     const ammo = new AmmoEquipment({
         id: 'Ammo_AC_10_Aero_Automation_Test',
         name: 'AC/10 Ammo',
@@ -977,28 +1020,28 @@ function createHarness(withAmmo = false, suffix = '', commandConsole = false) {
     const instanceId = `${withAmmo
         ? 'unit:aero-automation-ammo'
         : 'unit:aero-automation'}${suffix ? `:${suffix}` : ''}`;
-    const runtime = createNonMekRuntimeForTest(
+    const created = createNonMekRuntimeForTest(
         instanceId,
         baseline(),
         entity,
         CORE_2026_RULESET,
     );
-    const crew = createDefaultCrewAssignment(runtime.getIndex().crewPositions);
+    const defaults = created.getCrewAssignment();
+    const runtime = seats === undefined
+        ? created
+        : redeployNonMekCrew(created, { ...defaults, positions: seats(defaults.positions) });
     const snapshot = (): CBTUnitSnapshot => Object.freeze({
         instanceId,
         entity,
         index: runtime.getIndex(),
         uuid: baseline().entity,
         ruleset: CORE_2026_RULESET,
-        crewAssignment: crew,
+        crewAssignment: runtime.getCrewAssignment(),
         editContext: { owner: runtime, state: runtime.snapshot() },
         state: runtime.snapshot(),
         query: runtime.query(),
     });
-    const force = {
-        getUnitSnapshot: () => snapshot(),
-        getUnitCrewProfile: () => Object.freeze({ revision: 0, positions: crew.positions }),
-    } as unknown as CBTForce;
+    const force = { getUnitSnapshot: () => snapshot() } as unknown as CBTForce;
     const dispatch = async (command: CBTUnitCommand): Promise<CBTForceUnitCommandResult> => {
         return runtime.dispatch(command);
     };

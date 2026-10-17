@@ -227,7 +227,7 @@ describe('construction equipment warehouse', () => {
         { provide: ToastService, useValue: { showToast: jasmine.createSpy('showToast') } },
         { provide: DialogRef, useValue: { close: () => {} } },
         { provide: Dialog, useValue: { openDialogs: [] } },
-        { provide: LayoutService, useValue: { windowWidth: signal(1440) } },
+        { provide: LayoutService, useValue: { windowWidth: signal(1440), windowHeight: signal(900) } },
         { provide: EquipmentCatalogService, useValue: { getEquipmentRegistry: () => registry } },
         {
           provide: CustomUnitsService,
@@ -461,6 +461,25 @@ describe('construction equipment warehouse', () => {
     }
   });
 
+  it('narrows the warehouse by tech base and value ranges, and drops a range left at its full extent', () => {
+    editor.query.set('Warehouse sort');
+    editor.equipmentFiltersOpen.set(true);
+    expect(editor.warehouseRangeBounds().get('tons')).toEqual([0.5, 12]);
+    editor.setWarehouseRange('tons', [0.5, 2]);
+    expect(editor.filteredEquipment()).toEqual([sortBeta, sortGamma]);
+    editor.setWarehouseRange('tons', [0.5, 12]);
+    expect(editor.warehouseRanges()).toEqual({});
+    expect(editor.filteredEquipment()).toEqual(sortEquipment);
+    editor.setWarehouseRange('damage', [5, 10]);
+    expect(editor.filteredEquipment()).toEqual([sortAlpha, sortGamma]);
+    expect(editor.warehouseFilterCount()).toBe(1);
+    editor.resetWarehouseFilters();
+    editor.warehouseTechBases.set(['Clan']);
+    expect(editor.filteredEquipment()).toEqual([]);
+    editor.warehouseTechBases.set(['All']);
+    expect(editor.filteredEquipment()).toEqual(sortEquipment);
+  });
+
   it('combines eligibility and physical-fit filters without relaxing installation rules', () => {
     editor.query.set('technology');
     editor.selectedLocation.set('RA');
@@ -480,22 +499,21 @@ describe('construction equipment warehouse', () => {
     expect(() => installConstructionEquipment(editor.entity(), future, 'RA')).toThrowError(/Not available/);
   });
 
-  it('keeps location filtering off by default and exposes its disabled dropdown below the search disclosure', async () => {
+  it('keeps location filtering off by default and exposes its disabled dropdown in the filter panel', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
     const root = fixture.nativeElement as HTMLElement;
     expect(editor.filterByLocation()).toBeFalse();
-    expect(root.querySelector('.warehouse-filters')).toBeNull();
+    expect(document.querySelector('.warehouse-filter-panel')).toBeNull();
     const toggle = root.querySelector<HTMLButtonElement>('[aria-controls="construction-equipment-filters"]')!;
     expect(toggle.parentElement?.querySelector('[aria-label="Search equipment"]')).not.toBeNull();
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     toggle.click();
     fixture.detectChanges();
     await fixture.whenStable();
-    const filters = root.querySelector('.warehouse-filters')!;
+    const filters = document.querySelector('.warehouse-filter-panel .warehouse-filter-location')!;
     const location = filters.querySelector<HTMLSelectElement>('select')!;
     expect(location.disabled).toBeTrue();
-    expect(root.querySelector('.warehouse-search-row')?.nextElementSibling).toBe(filters);
     const checkbox = filters.querySelector<HTMLInputElement>('input')!;
     checkbox.click();
     fixture.detectChanges();

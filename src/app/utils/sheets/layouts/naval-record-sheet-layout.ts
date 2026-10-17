@@ -7,12 +7,13 @@ import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { systemDamageControls,systemDamageLocationControls } from '../../../models/runtime/system-damage-presentation';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
-import { appendRecordSheetEraIcon } from '../record-sheet-embedded-art';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
 type Box,
 addFrame,
+addReferenceShade,
 addText,
+appendTspan,
 drawClusterHitsReference,
 drawGeneratedFooter,
 scaleCompactBox,
@@ -21,18 +22,21 @@ svgElement,
 } from '../record-sheet-svg-rendering';
 import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
-addExactReferenceText,
-addReferenceShade,
 canonicalReferenceContent,
+drawTurnTrack,
 } from './record-sheet-reference-table-components';
 import {
 appendVehicleDamageTrackBindings,
+drawVehicleDamageCheckbox,
+drawVehicleDamageTrackRow,
+drawVehicleLabeledDamageCheckbox,
 compactVehicleSheetTitle,
 drawCompactVehicleChrome,
 drawCompactVehicleCrewPanel,
 drawCompactVehicleDataPanel,
 drawCompactVehicleDiagram,
 usesSixSideVehicleHull,
+vehicleArmorReader,
 } from './vehicle-record-sheet-components';
 
 const NAVAL_MOTIVE_TYPES = new Set(['hydrofoil', 'naval', 'submarine']);
@@ -85,7 +89,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
         const at = (box: Box): Box => scaleCompactBox(svg, box, 756);
         drawCompactVehicleChrome(svg, compactVehicleSheetTitle(entity, true), 756);
         const dataBox = at({ x: 0.966, y: 69.857, width: 220.4, height: 283 });
-        const dataGroup = drawCompactVehicleDataPanel(
+        drawCompactVehicleDataPanel(
             svg,
             entity,
             dataBox,
@@ -120,13 +124,6 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             svg,
             at({ x: 0.965, y: 583.593, width: 378.94, height: 141.9 }),
         );
-        const dataContent = dataGroup.querySelector<SVGGElement>('.compact-vehicle-data-content') ?? dataGroup;
-        await appendRecordSheetEraIcon(svg, dataContent, entity.year(), {
-            x: 158.563 * dataBox.width / 220.4,
-            y: 263 * dataBox.height / 283,
-            width: 20 * dataBox.width / 220.4,
-            height: 20 * dataBox.height / 283,
-        });
         const diagramBox = { x: Number(svg.getAttribute('width')) - 189, y: 3, width: 189, height: 731 };
         const submarine = this.isSubmarine(entity);
         const diagram = await drawCompactVehicleDiagram(
@@ -168,15 +165,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
     ): void {
         const labels = svgElement('g');
         labels.setAttribute('class', 'naval-diagram-labels');
-        const values = new Map(entity.damageLocations()
-            .map(location => [location.sheetCode ?? location.code, location.armor.front] as const));
-        const armor = (...codes: readonly string[]): number => {
-            for (const code of codes) {
-                const value = values.get(code);
-                if (value !== undefined) return value;
-            }
-            return 0;
-        };
+        const armor = vehicleArmorReader(entity);
         const twoLine = (label: string, code: string, value: number, x: number, y: number, gap = 9.525): void => {
             addText(labels, label, x, y, { size: 7.74, weight: 700, anchor: 'middle' });
             addText(labels, formatProtectionCounter(value), x, y + gap, { size: 7.74, weight: 700, anchor: 'middle' }).id = `textArmor_${code}`;
@@ -267,13 +256,8 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
                 'font-family': 'Roboto', 'font-size': 7.74, 'font-weight': 700,
             });
             for (const [label, location, labelX, counterX] of parts) {
-                const name = svgElement('tspan');
-                setAttributes(name, { x: labelX, y: 0 });
-                name.textContent = label;
-                const counter = svgElement('tspan');
-                setAttributes(counter, { x: counterX, y: 0, id: `textArmor_${location}` });
-                counter.textContent = formatProtectionCounter(armor(location));
-                text.append(name, counter);
+                appendTspan(text, label, labelX, 0);
+                appendTspan(text, formatProtectionCounter(armor(location)), counterX, 0).id = `textArmor_${location}`;
             }
             parent.appendChild(text);
         }
@@ -285,133 +269,41 @@ function drawSubmarineDepthTrack(svg: SVGSVGElement, box: Box): void {
     group.setAttribute('class', 'submarine-depth-track');
     const sx = box.width / 180.5;
     const sy = box.height / 80.68;
-    const scale = Math.min(sx, sy);
-    const row = (top: number, firstTurn: number): void => {
-        const border = svgElement('rect');
-        setAttributes(border, {
-            x: 4.5 * sx,
-            y: top * sy,
-            width: 172 * sx,
-            height: 18.804 * sy,
-            rx: 1.315 * scale,
-            fill: 'none',
-            stroke: '#000',
-            'stroke-width': scale,
+    const scale = { x: (value: number) => value * sx, y: (value: number) => value * sy,
+        font: (value: number) => value * Math.min(sx, sy) };
+    for (const [top, firstTurn] of [[24.268, 1], [52.474, 11]] as const) {
+        drawTurnTrack(group, scale, {
+            top, height: 18.804, right: 176.5, firstColumnX: 38.9, columnWidth: 13.31, firstTurn, turns: 10,
+            valueLabel: 'Depth', textInset: 1.701, turnClass: 'submarine-depth-turn',
         });
-        group.appendChild(border);
-
-        const divider = svgElement('line');
-        setAttributes(divider, {
-            x1: 4.5 * sx,
-            y1: (top + 9.402) * sy,
-            x2: 176.5 * sx,
-            y2: (top + 9.402) * sy,
-            stroke: '#000',
-            'stroke-width': 0.58 * scale,
-        });
-        group.appendChild(divider);
-        for (let column = 0; column <= 10; column++) {
-            const x = (38.9 + column * 13.31) * sx;
-            const line = svgElement('line');
-            setAttributes(line, {
-                x1: x,
-                y1: top * sy,
-                x2: x,
-                y2: (top + 18.804) * sy,
-                stroke: '#000',
-                'stroke-width': 0.58 * scale,
-            });
-            group.appendChild(line);
-        }
-        addText(group, 'Turn', 7.5 * sx, (top + 7.701) * sy, {
-            size: 6.76 * scale,
-            weight: 700,
-        });
-        addText(group, 'Depth', 7.5 * sx, (top + 17.103) * sy, {
-            size: 6.76 * scale,
-            weight: 700,
-        });
-        for (let column = 0; column < 10; column++) {
-            addText(group, String(firstTurn + column), (45.555 + column * 13.31) * sx,
-                (top + 7.701) * sy, {
-                    class: 'submarine-depth-turn',
-                    size: 6.76 * scale,
-                    weight: 700,
-                    anchor: 'middle',
-                });
-        }
-    };
-    row(24.268, 1);
-    row(52.474, 11);
+    }
 }
 
 /** Naval vessels expose separate fore/aft turret tracks; this is not a ground-vehicle façade. */
 function drawNavalCriticalPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
     const group = addFrame(svg, 'CRITICAL DAMAGE', box, {
-        cornerAngleDegrees: { topRight: 0, bottomLeft: 0, bottomRight: 45 },
+        cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
     addText(group, 'Turret Locked', 6, 29.403, { size: 6.76, maxWidth: 39.254 });
     const turrets = systemDamageLocationControls(entity, 'turret-lock');
-    turrets.forEach((control, index) => drawNavalDamageCheckbox(group, control.id,
+    turrets.forEach((control, index) => drawVehicleDamageCheckbox(group, control.id,
         75.08 - (turrets.length - 1 - index) * 11, 23.003,
         turrets.length > 1 ? control.label[0] : undefined));
     addText(group, 'Engine Hit', 90.36, 29.403, { size: 6.76, maxWidth: 28.081 });
-    drawNavalDamageCheckbox(group, 'engine_hit_1', 130.32, 23.003);
+    drawVehicleDamageCheckbox(group, 'engine_hit_1', 130.32, 23.003);
 
     addText(group, 'Sensor Hits', 6, 39.41, { size: 6.76, maxWidth: 32.801 });
-    drawNavalDamageTrack(group, 'sensor_hit_', 97.32, 33.01, systemDamageControls(entity, 'sensors').modifiers);
+    drawVehicleDamageTrackRow(group, 'sensor_hit_', 97.32, 33.01, systemDamageControls(entity, 'sensors').modifiers);
     addText(group, 'Motive System Hits', 6, 49.417, { size: 6.76, maxWidth: 54.079 });
-    drawNavalDamageTrack(group, 'motive_system_hit_', 97.32, 43.017, systemDamageControls(entity, 'motive').modifiers);
+    drawVehicleDamageTrackRow(group, 'motive_system_hit_', 97.32, 43.017, systemDamageControls(entity, 'motive').modifiers);
 
     addText(group, 'Stabilizers', 75.8, 58.027, { size: 6.76, weight: 700, anchor: 'middle' });
     const stabilizers = systemDamageLocationControls(entity, 'stabilizer');
     const columns = Math.ceil(stabilizers.length / 2);
-    stabilizers.forEach((control, index) => drawNavalLabeledDamage(group,
+    stabilizers.forEach((control, index) => drawVehicleLabeledDamageCheckbox(group,
         control.label, control.id, 6 + (index % columns) * 138 / columns,
-        index < columns ? 63.031 : 73.037));
+        index < columns ? 63.031 : 73.037, 138 / columns));
     appendVehicleDamageTrackBindings(svg, entity);
-}
-
-function drawNavalDamageTrack(
-    group: SVGGElement,
-    prefix: string,
-    x: number,
-    y: number,
-    labels: readonly string[],
-): void {
-    labels.forEach((label, index) => drawNavalDamageCheckbox(group, `${prefix}${index + 1}`, x + index * 11, y, label));
-}
-
-function drawNavalLabeledDamage(
-    group: SVGGElement,
-    label: string,
-    sheetId: string,
-    x: number,
-    y: number,
-): void {
-    addText(group, label, x, y + 6.4, { size: 6.76, maxWidth: 24 });
-    drawNavalDamageCheckbox(group, sheetId, x + 31.224, y);
-}
-
-function drawNavalDamageCheckbox(
-    group: SVGGElement,
-    sheetId: string,
-    x: number,
-    y: number,
-    modifier?: string,
-): void {
-    const control = svgElement('rect');
-    control.id = sheetId;
-    setAttributes(control, {
-        x, y, width: 8, height: 8, rx: 1.315,
-        fill: 'none', stroke: '#000', 'stroke-width': 0.96,
-        class: 'critLoc criticalPip',
-    });
-    control.setAttribute('critId', sheetId);
-    group.appendChild(control);
-    if (modifier) addText(group, modifier, x + 4, y + 6, {
-        size: 5.7, anchor: 'middle', maxWidth: 6.5,
-    }).style.pointerEvents = 'none';
 }
 
 function drawNavalHitLocationReference(svg: SVGSVGElement, box: Box): void {
@@ -476,14 +368,7 @@ function drawNavalHitLocationReference(svg: SVGSVGElement, box: Box): void {
         ['hits the right side, all Side results strike the right side armor. If the vehicle has no', 213.4],
         ['turret, a turret hit strikes the armor on the side attacked.'],
     ];
-    notes.forEach(([value, width], index) => addExactReferenceText(
-        content,
-        value,
-        6,
-        131.6 + index * 5,
-        4.8,
-        width,
-    ));
+    notes.forEach(([value, width], index) => addText(content, value, 6, 131.6 + index * 5, { size: 4.8, textLength: width }));
 }
 
 function drawNavalMotiveReference(svg: SVGSVGElement, box: Box): void {
@@ -537,14 +422,7 @@ function drawNavalMotiveReference(svg: SVGSVGElement, box: Box): void {
         'motive system damage takes effect at the end of the phase in which',
         'the damage occurred.',
     ];
-    notes.forEach((value, index) => addExactReferenceText(
-        content,
-        value,
-        6,
-        162 + index * 4,
-        3.8,
-        index < notes.length - 1 ? 139.6 : undefined,
-    ));
+    notes.forEach((value, index) => addText(content, value, 6, 162 + index * 4, { size: 3.8, textLength: index < notes.length - 1 ? 139.6 : undefined }));
 }
 
 function drawNavalCriticalReference(svg: SVGSVGElement, box: Box): void {

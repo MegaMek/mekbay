@@ -90,8 +90,8 @@ describe('generated vehicle motive hit pips', () => {
         const unit = createNonMekUnit(entity, { instanceId: 'motive-hit-pips', uuid,
             scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const recordSheet = () => ({
-            ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(),
-                0, 0, unit.getCrewAssignment()),
+            ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
+                0, 0),
             editContext: { owner: unit, state: unit.snapshot() },
         });
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });

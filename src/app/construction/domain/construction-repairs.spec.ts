@@ -5,7 +5,7 @@ import type { CBTUnitSnapshot } from '../../models/cbt-unit-snapshot';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { TestBattleArmorEntity, TestSupportTankEntity, TestTankEntity } from '../../models/entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
-import { AmmoEquipment } from '../../models/equipment.model';
+import { AmmoEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { createNonMekUnit } from '../../models/runtime/cbt-non-mek-unit';
 import type { CBTUnit } from '../../models/runtime/cbt-unit';
 import { prepareConstructionRuntime, type ConstructionRuntimeCommand } from '../../models/runtime/construction-runtime';
@@ -272,11 +272,30 @@ describe('construction repair campaign quotes', () => {
                 rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
             const unit = nonMek(entity);
             const component = [...unit.getIndex().components.values()][0];
-            expect(unit.dispatch({ type: 'set-ammo-spent', componentId: component.id, shotsSpent: 1 }).changed).toBeTrue();
+            expect(unit.dispatch({ type: 'configure-ammo-source', componentId: component.id, munitionKey: ammo.id, remaining: 9 })
+                .changed).toBeTrue();
             const quote = await pending(unit, repairAll);
             expect(quote?.spCost).toBe(level === 'Standard' ? 10 : 100);
             expect(constructionHasRepairDamage(snapshot(unit))).toBeFalse();
         }
+    });
+
+    it('clears a jammed non-Mek Rotary AC with the component repair commands', async () => {
+        const rotary = new WeaponEquipment({ id: 'RAC_5_Repair_Test', name: 'Rotary AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'],
+            weapon: { ammoType: 'AC_ROTARY', rackSize: 5, damage: 5, heat: 1, ranges: [5, 10, 15, 20] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [rotary.id]: rotary }));
+        entity.addEquipment({ equipment: rotary, equipmentId: rotary.id, allocation: { kind: 'location', location: 'Front' },
+            rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+        const unit = nonMek(entity);
+        const component = [...unit.getIndex().components.values()][0];
+        expect(unit.dispatch({ type: 'set-component-jammed', componentId: component.id, jammed: true }).changed).toBeTrue();
+        expect(constructionHasRepairDamage(snapshot(unit))).toBeTrue();
+        const repaired = await prepareConstructionRuntime(unit,
+            constructionComponentRepairCommands(snapshot(unit), component.id), scenario);
+        expect(repaired.query().componentJammed(component.id)).toBeFalse();
+        expect(constructionHasRepairDamage(snapshot(repaired))).toBeFalse();
+        expect(unit.query().componentJammed(component.id)).toBeTrue();
     });
 
     it('adds crew healing and rearming to one repair charge and leaves Omni reconfiguration unmodified', async () => {

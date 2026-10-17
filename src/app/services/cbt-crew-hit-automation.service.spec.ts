@@ -7,11 +7,13 @@ import {
     CBTAutomationCheckService,
     resolveAutomationChecksAutomatically,
 } from './cbt-automation-check.service';
+import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import {
     automaticConsciousnessNotifications,
     automaticConsciousnessRecoveryNotification,
     CBTCrewHitAutomationService,
 } from './cbt-crew-hit-automation.service';
+import { OptionsService } from './options.service';
 
 describe('CBTCrewHitAutomationService', () => {
     let resolveChecks: jasmine.Spy;
@@ -26,6 +28,14 @@ describe('CBTCrewHitAutomationService', () => {
             providers: [
                 CBTCrewHitAutomationService,
                 { provide: CBTAutomationCheckService, useValue: { resolve: resolveChecks } },
+                { provide: CBTAutomationToastService, useValue: { show: jasmine.createSpy('show') } },
+                {
+                    provide: OptionsService,
+                    useValue: {
+                        cbtAutomationMode: () => 'ask',
+                        options: () => ({ displayUnitNameFormat: 'innerSphereClan' }),
+                    },
+                },
             ],
         });
         service = TestBed.inject(CBTCrewHitAutomationService);

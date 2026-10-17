@@ -480,6 +480,55 @@ h2 {
   font-weight: 650;
   color: var(--text-color);
 }
+.design-tech {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-color-secondary);
+}
+// Tonnage typed in place for chassis without a fixed list; scoped to outrank the generic input rules.
+.design-summary input.inline-number {
+  width: 5ch;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed currentColor;
+  background: none;
+  color: inherit;
+  font: inherit;
+  appearance: textfield;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+}
+.design-tech multiline-dropdown,
+.mass-value multiline-dropdown {
+  display: inline-flex;
+  vertical-align: baseline;
+}
+.info-notice-button {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+
+  &:hover:not(:disabled),
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    color: var(--bt-yellow);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+}
 .provenance {
   font-size: 11px;
   color: #aaa;
@@ -530,9 +579,6 @@ h2 {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   line-height: 1;
-  background: none;
-  border: 0;
-  padding: 0;
 }
 .mass-value small {
   font-size: 16px;

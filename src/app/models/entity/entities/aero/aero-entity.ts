@@ -23,6 +23,7 @@ import {
   EntityType,
   EntityValidationMessage,
   HeatSinkType,
+  heatSinkTypeDissipation,
   MotiveType,
   locationArmor,
   resolveWeightClass,
@@ -164,7 +165,7 @@ export abstract class AeroEntity extends BaseEntity {
 
   protected override computeHeatDissipation(includeRadical: boolean): number {
     const sinks = this.heatSinkCount();
-    let capacity = sinks * (this.heatSinkType() === 'Double' ? 2 : 1);
+    let capacity = sinks * heatSinkTypeDissipation(this.heatSinkType());
     if (includeRadical && this.equipment().some(mount => isRadicalHeatSinkEquipment(mount.equipment))) {
       capacity += Math.ceil(sinks * 0.4);
     }

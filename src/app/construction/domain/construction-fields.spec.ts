@@ -44,6 +44,18 @@ describe('construction system choices', () => {
       .options!.filter((option) => !option.disabled)
       .map((option) => option.value);
 
+  it('offers the RISC heat sink override kit only where its experimental technology is legal', () => {
+    const entity = design();
+    expect(field(entity, 'riscHeatSinkOverride').disabled).toBeFalse();
+    field(entity, 'riscHeatSinkOverride').set(true);
+    expect(entity.hasRiscHeatSinkOverrideKit()).toBeTrue();
+    entity.rulesLevel.set(3);
+    expect(field(entity, 'riscHeatSinkOverride')).toEqual(jasmine.objectContaining({ disabled: false, invalid: true }));
+    field(entity, 'riscHeatSinkOverride').set(false);
+    expect(field(entity, 'riscHeatSinkOverride').disabled).toBeTrue();
+    expect(() => field(entity, 'riscHeatSinkOverride').set(true)).toThrowError(/unavailable/);
+  });
+
   it('selects Walk MP and derives the displayed engine rating', () => {
     const entity = design();
     field(entity, 'walkMP').set(5);

@@ -429,6 +429,8 @@ export interface ConstructionLocation {
     system?: MekSystemType;
     componentId?: ComponentId;
     mount?: EntityMountedEquipment;
+    /** Second load of a shared superheavy slot. */
+    sharedMount?: EntityMountedEquipment;
   }[];
   readonly slotCapacity: number | null;
 }
@@ -463,7 +465,9 @@ export function getConstructionLocations(entity: BaseEntity): ConstructionLocati
                 componentId: mekSystemComponentId(slot.systemType, mekLocationId(id)!),
               }
             : {}),
-          ...(slot?.type === 'equipment' ? { mount: slot.mounts[0] } : {}),
+          ...(slot?.type === 'equipment'
+            ? { mount: slot.mounts[0], ...(slot.mounts[1] ? { sharedMount: slot.mounts[1] } : {}) }
+            : {}),
         });
       }
     } else {
@@ -483,6 +487,27 @@ export function getConstructionLocations(entity: BaseEntity): ConstructionLocati
       slotCapacity: capacity,
     };
   });
+}
+
+/** Mount IDs in slot order, grouped into the blocks that move together: both loads of a shared superheavy slot. */
+export function constructionSlotMountBlocks(slots: ConstructionLocation['slots']): string[][] {
+  const blocks: string[][] = [];
+  for (const slot of slots) {
+    const ids = [slot.mount, slot.sharedMount].flatMap((mount) => (mount ? [mount.mountId] : []));
+    if (ids.length > 0 && !blocks.some((block) => block.includes(ids[0]))) blocks.push(ids);
+  }
+  return blocks;
+}
+
+/** The location's mount order with `mountId`'s block moved before `beforeMountId`'s block, or to the end. */
+function constructionMountOrder(entity: BaseEntity, location: string, mountId: string, beforeMountId?: string): string[] {
+  const blocks = constructionSlotMountBlocks(getConstructionLocations(entity).find((item) => item.id === location)?.slots ?? []);
+  const block = blocks.find((candidate) => candidate.includes(mountId)) ?? [mountId];
+  if (beforeMountId !== undefined && block.includes(beforeMountId)) return blocks.flat();
+  const rest = blocks.filter((candidate) => candidate !== block);
+  const index = beforeMountId === undefined ? rest.length : rest.findIndex((candidate) => candidate.includes(beforeMountId));
+  rest.splice(index < 0 ? rest.length : index, 0, block);
+  return rest.flat();
 }
 
 export function setConstructionArmor(entity: BaseEntity, location: string, front: number, rear = 0): void {
@@ -723,19 +748,42 @@ export function equipmentLocationIssues(
   return issues;
 }
 
+/** Slots a candidate may use, empty ones first, then slots it can share. */
 function freeMekSlots(entity: MekEntity, location: string, ignore?: EntityMountedEquipment, candidate?: Equipment): number[] {
+  const { free, shared } = mekSlotAvailability(entity, location, ignore, candidate);
+  return [...free, ...shared];
+}
+
+/**
+ * Empty slots, plus the slots a one-slot superheavy load can join because they hold a
+ * single compatible load (see MekEntity.canShareCriticalSlot).
+ */
+function mekSlotAvailability(entity: MekEntity, location: string, ignore?: EntityMountedEquipment, candidate?: Equipment):
+  { readonly free: readonly number[]; readonly shared: readonly number[] } {
   const grid =
     entity.criticalSlotGrid().get(location as Parameters<ReturnType<typeof entity.criticalSlotGrid>['get']>[0]) ?? [];
-  return grid
-    .slice(0, constructionSlotCapacity(entity, location) ?? 0)
-    .flatMap((slot, index) =>
-      slot.type === 'empty' ||
+  const incoming = candidate && entity.isSuperHeavy() && getNumCriticalSlots(entity, candidate, ignore?.size ?? 1) === 1
+    ? (ignore?.equipment === candidate ? ignore : constructionEquipmentCandidate(entity, candidate, location))
+    : undefined;
+  const free: number[] = [];
+  const shared: number[] = [];
+  grid.slice(0, constructionSlotCapacity(entity, location) ?? 0).forEach((slot, index) => {
+    const occupants = slot.type === 'equipment' ? slot.mounts.filter((mount) => mount.mountId !== ignore?.mountId) : [];
+    if (slot.type === 'empty' || (slot.type === 'equipment' && occupants.length === 0) ||
       (candidate && entity.omni() && ['LA', 'RA'].includes(location) && constructionOmniWeaponRemovesArmActuators(candidate)
-        && slot.type === 'system' && (slot.systemType === 'Lower Arm Actuator' || slot.systemType === 'Hand Actuator')) ||
-      (slot.type === 'equipment' && slot.mounts.some((mount) => mount.mountId === ignore?.mountId))
-        ? [index]
-        : [],
-    );
+        && slot.type === 'system' && (slot.systemType === 'Lower Arm Actuator' || slot.systemType === 'Hand Actuator'))) {
+      free.push(index);
+    } else if (incoming && occupants.length === 1 && entity.canShareCriticalSlot(location, occupants[0], incoming)) {
+      shared.push(index);
+    }
+  });
+  return { free, shared };
+}
+
+/** Superheavy slots a one-slot load can join as their second load. */
+export function constructionSharedMekSlots(entity: MekEntity, equipment: Equipment, location: string,
+  ignore?: EntityMountedEquipment): readonly number[] {
+  return mekSlotAvailability(entity, location, ignore, equipment).shared;
 }
 
 /** Default installation context for placement checks and palette statistics; does not install the equipment. */
@@ -755,14 +803,17 @@ export function constructionEquipmentCandidate(entity: BaseEntity, equipment: Eq
   );
 }
 
+/** Default packing, unless `slotIndex` names a superheavy slot the equipment can join. */
 export function allocationPlacements(
   entity: BaseEntity,
   equipment: Equipment,
   location: string,
-  _slotIndex?: number,
+  slotIndex?: number,
   ignore?: EntityMountedEquipment,
 ): readonly MountPlacement[] | undefined {
   if (!(entity instanceof MekEntity)) return undefined;
+  if (slotIndex !== undefined && constructionSharedMekSlots(entity, equipment, location, ignore).includes(slotIndex))
+    return [{ location, slotIndex }];
   const needed = equipment instanceof ArmorEquipment || equipment instanceof StructureEquipment
     ? constructionMaterialSlotCount(entity, equipment) : getNumCriticalSlots(entity, equipment, ignore?.size ?? 1);
   if (needed === undefined) throw new Error('Set this equipment size before allocating variable critical slots.');
@@ -1090,12 +1141,9 @@ export function reorderConstructionEquipment(
   mountId: string,
   beforeMountId?: string,
 ): void {
-  const local = getConstructionLocations(entity).find((item) => item.id === location)?.slots ?? [];
-  const order: string[] = [...new Set(local.flatMap((slot) => (slot.mount ? [slot.mount.mountId] : [])))];
-  if (!order.includes(mountId) || mountId === beforeMountId) return;
-  order.splice(order.indexOf(mountId), 1);
-  const index = beforeMountId ? order.indexOf(beforeMountId) : order.length;
-  order.splice(index < 0 ? order.length : index, 0, mountId);
+  const slots = getConstructionLocations(entity).find((item) => item.id === location)?.slots ?? [];
+  if (!constructionSlotMountBlocks(slots).flat().includes(mountId) || mountId === beforeMountId) return;
+  const order = constructionMountOrder(entity, location, mountId, beforeMountId);
   if (entity instanceof MekEntity) entity.arrangeEquipment(location, order);
   else {
     const mounts = [...entity.equipment()];
@@ -1118,14 +1166,7 @@ export function planConstructionEquipmentInsertion(
     allocation: { kind: 'location', location, placements },
   });
   const mounts = [...entity.equipment().filter((item) => item.mountId !== incoming.mountId), incoming];
-  const local = getConstructionLocations(entity).find((item) => item.id === location)?.slots ?? [];
-  const order: string[] = [...new Set(local.flatMap((slot) => (slot.mount ? [slot.mount.mountId] : [])))];
-  if (beforeMountId !== incoming.mountId) {
-    const previous = order.indexOf(incoming.mountId);
-    if (previous >= 0) order.splice(previous, 1);
-    const index = beforeMountId ? order.indexOf(beforeMountId) : order.length;
-    order.splice(index < 0 ? order.length : index, 0, incoming.mountId);
-  }
+  const order = constructionMountOrder(entity, location, incoming.mountId, beforeMountId);
   return { mountId: incoming.mountId, arrangement: entity.planEquipmentOrder(location, order, mounts) };
 }
 

@@ -13,7 +13,9 @@ import {
     bindMekRecordSheet,
     type MekRecordSheetBinding,
 } from '../mek-record-sheet-binder';
+import { recordSheetInventorySource } from '../record-sheet-inventory';
 import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
+import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
 interface BoundMekSheet {
     readonly member: CBTMekForceMember;
@@ -27,6 +29,7 @@ interface BoundMekSheet {
 export class PageViewerMekRuntimeService {
     private readonly unitNames = inject(UnitNameService);
     private readonly interactions = inject(PageViewerMekInteractionService);
+    private readonly overlays = inject(PageViewerOverlayService);
     private readonly logger = inject(LoggerService);
     private readonly bound = new Map<string, BoundMekSheet>();
 
@@ -50,7 +53,9 @@ export class PageViewerMekRuntimeService {
             snapshot,
             readOnly ? undefined : handleInteraction,
             handleInteraction,
+            recordSheetInventorySource(member),
         );
+        this.reportLayoutIssues(snapshot, binding.initialIssues);
         svg.classList.add('interactive-sheet');
         const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
             if (changedUnitIds?.includes(member.id) ?? true) this.render(member);
@@ -68,7 +73,7 @@ export class PageViewerMekRuntimeService {
 
     clear(): void {
         for (const unitId of [...this.bound.keys()]) this.destroyBinding(unitId);
-        this.interactions.clear();
+        this.overlays.clearSheetControls();
     }
 
     private requiredSnapshot(member: CBTMekForceMember): MekRecordSheetSnapshot {
@@ -81,8 +86,12 @@ export class PageViewerMekRuntimeService {
         const current = this.bound.get(member.id);
         const snapshot = member.mekRecordSheetSnapshot();
         if (!current || current.member !== member || !snapshot) return;
-        const issues = current.binding.render(snapshot);
+        const issues = current.binding.render(snapshot, recordSheetInventorySource(member));
         this.unitNames.applyToRecordSheet(current.svg, member.entity);
+        this.reportLayoutIssues(snapshot, issues);
+    }
+
+    private reportLayoutIssues(snapshot: MekRecordSheetSnapshot, issues: readonly string[]): void {
         if (issues.length > 0) {
             this.logger.warn(`Record-sheet layout omissions for ${snapshot.identity.displayName}: ${issues.join('; ')}`);
         }
@@ -95,6 +104,6 @@ export class PageViewerMekRuntimeService {
         current.binding.destroy();
         current.svg.classList.remove('interactive-sheet');
         this.bound.delete(unitId);
-        this.interactions.cleanup(unitId);
+        this.overlays.clearUnitControls(unitId);
     }
 }

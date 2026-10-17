@@ -80,7 +80,7 @@
         <button [class.hidden]="!hasPrev()" class="footer-nav footer-nav-left" (click)="prev.emit()"
             [attr.aria-label]="prevUnitLabel() ? 'Previous Unit: ' + prevUnitLabel() : 'Previous Unit'"
             [title]="prevUnitLabel()">
-            <span class="chevron chevron-left nav-arrow-symbol" aria-hidden="true"></span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
             <span class="nav-unit-name">
                 <span class="nav-unit-model">{{ prevUnit()?.model }}</span>
                 <span class="nav-unit-chassis">{{ unitNames.chassis(prevUnit()) }}</span>
@@ -96,7 +96,7 @@
                 <span class="nav-unit-model">{{ nextUnit()?.model }}</span>
                 <span class="nav-unit-chassis">{{ unitNames.chassis(nextUnit()) }}</span>
             </span>
-            <span class="chevron chevron-right nav-arrow-symbol" aria-hidden="true"></span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
         </button>
     </div>
 </div>

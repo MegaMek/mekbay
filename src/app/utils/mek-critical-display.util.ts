@@ -20,30 +20,45 @@ export function mekCriticalCaseLabel(
     return entity.automaticClanCaseLocations().has(location) ? 'CASE' : null;
 }
 
-/** Canonical user-facing label for one derived Mek critical slot. */
-export function mekCriticalSlotLabel(
+/** One occupant of a Mek critical slot, as the critical table names it. */
+export type MekCriticalSlotItem =
+    | { readonly label: string }
+    | { readonly ammo: Readonly<{ name: string; shots: number; custom?: boolean }> };
+
+/**
+ * Critical-table lines for one slot. Superheavy slots can hold two occupants: bins of the
+ * same ammo share one line with their shots summed, identical heat sinks share one counted
+ * line, and anything else (such as two different munitions) gets a line of its own.
+ */
+export function formatMekCriticalSlotLines(items: readonly MekCriticalSlotItem[]): readonly string[] {
+    if (items.length === 0) return ['Roll Again'];
+    const lines = new Map<string, { readonly text: string; count: number; shots: number | null }>();
+    for (const item of items) {
+        const text = 'label' in item ? item.label : `${item.ammo.custom ? '*' : ''}Ammo (${item.ammo.name})`;
+        const key = `${'label' in item ? 'equipment' : 'ammo'}:${text}`;
+        const line = lines.get(key) ?? { text, count: 0, shots: 'label' in item ? null : 0 };
+        line.count++;
+        if ('ammo' in item) line.shots! += item.ammo.shots;
+        lines.set(key, line);
+    }
+    return [...lines.values()].map(line => line.shots !== null
+        ? `${line.text} ${line.shots}`
+        : line.count === 1 ? line.text : `${line.count} ${line.text}s`);
+}
+
+/** Critical-table lines for one derived (construction-time) Mek critical slot. */
+export function mekCriticalSlotLines(
     slot: CriticalSlotView | undefined,
     entity: MekEntity,
-): string {
-    if (!slot || slot.type === 'empty') return 'Roll Again';
-    if (slot.type === 'system') return mekSystemLabel(slot.systemType, entity);
-
-    const labels = new Map<string, { readonly name: string; shots: number | null }>();
-    slot.mounts.forEach(mount => {
+): readonly string[] {
+    if (!slot || slot.type === 'empty') return formatMekCriticalSlotLines([]);
+    if (slot.type === 'system') return [mekSystemLabel(slot.systemType, entity)];
+    return formatMekCriticalSlotLines(slot.mounts.map(mount => {
         const shots = mount.getAmmoShots();
-        const name = shots === undefined
-            ? mekCriticalMountName(entity, mount)
-            : recordSheetAmmoName(mount.displayName());
-        const key = `${shots === undefined ? 'equipment' : 'ammo'}:${name}`;
-        const existing = labels.get(key);
-        labels.set(key, {
-            name,
-            shots: shots === undefined ? null : (existing?.shots ?? 0) + shots,
-        });
-    });
-    return [...labels.values()].map(item => item.shots === null
-        ? item.name
-        : `Ammo (${item.name}) ${item.shots}`).join(' / ');
+        return shots === undefined
+            ? { label: mekCriticalMountName(entity, mount) }
+            : { ammo: { name: recordSheetAmmoName(mount.displayName()), shots } };
+    }));
 }
 
 /** Configured system name shared by loadout and record-sheet presentations. */

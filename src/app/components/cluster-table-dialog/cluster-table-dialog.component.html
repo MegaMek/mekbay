@@ -20,7 +20,7 @@
                 >
                     <span>{{ tableGroupButtonLabel(group) }}</span>
                     @if (group.options.length > 1) {
-                    <span class="chevron" [class.collapsed]="expandedGroupId() !== group.id" aria-hidden="true"></span>
+                    <span class="chevron chevron-dropdown" [class.collapsed]="expandedGroupId() !== group.id" aria-hidden="true"></span>
                     }
                 </button>
 

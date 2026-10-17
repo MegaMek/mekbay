@@ -37,6 +37,15 @@ describe('Equipment.getNumCriticalSlots', () => {
         expect(equipment.getNumCriticalSlots(entity)).toBe(2);
     });
 
+    it('compresses tonnage-scaled physical weapons for a superheavy Mek', () => {
+        const entity = new BipedMekEntity();
+        const hatchet = variableEquipment('Hatchet', ['F_CLUB', 'S_HATCHET']);
+        entity.setTonnage(100);
+        expect(hatchet.getNumCriticalSlots(entity)).toBe(7);
+        entity.setTonnage(120);
+        expect(hatchet.getNumCriticalSlots(entity)).toBe(4);
+    });
+
     it('uses the equipment tech base for MASC and internal structure', () => {
         const entity = new BipedMekEntity();
         entity.setTonnage(100);

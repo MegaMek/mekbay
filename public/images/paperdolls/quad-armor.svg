@@ -180,21 +180,21 @@
   </g>
   <g data-mekbay-paperdoll-overlay="armor" font-family="Roboto, Arial, sans-serif" font-weight="700" pointer-events="none">
     <g class="diagram-location-label">
-      <text x="114.479 119.114 120.536 124.325 128.161" y="258.865" font-size="6.626">Right</text>
-      <text x="108.249 112.885 116.621 120.39 123.314 125.595 129.285 133.022" y="266.816" font-size="6.626">Rear Leg</text>
-      <text x="159.09 163.725 165.147 168.936 172.771" y="269.599" font-size="6.626">Right</text>
-      <text x="152.106 155.737 158.659 162.429 166.264 168.685 170.966 174.656 178.393" y="277.551" font-size="6.626">Front Leg</text>
-      <text x="86.191 90.589 94.326 98.161 100.581 104.317" y="171.651" font-size="6.626">Center</text>
-      <text x="88.103 91.31 95.079 98.002 101.554" y="179.603" font-size="6.626">Torso</text>
-      <text x="13.651 17.341 21.077 23.074" y="103.899" font-size="6.626">Left</text>
-      <text x="10.966 14.173 17.943 20.866 24.417" y="111.851" font-size="6.626">Torso</text>
-      <text x="163.896 168.532 169.953 173.743 177.578" y="103.899" font-size="6.626">Right</text>
-      <text x="163.341 166.548 170.317 173.241 176.792" y="111.851" font-size="6.626">Torso</text>
-      <text x="79.61 84.569 88.306 92.075" y="32.416" font-size="6.626">Head</text>
-      <text x="65.202 68.892 72.628 74.625" y="258.858" font-size="6.626">Left</text>
-      <text x="56.844 61.478 65.216 68.985 71.907 74.189 77.879 81.615" y="266.809" font-size="6.626">Rear Leg</text>
-      <text x="21.14 24.83 28.566 30.564" y="269.591" font-size="6.626">Left</text>
-      <text x="12.028 15.658 18.581 22.35 26.186 28.606 30.887 34.577 38.314" y="277.543" font-size="6.626">Front Leg</text>
+      <text y="258.865" font-size="6.626" x="122.441" text-anchor="middle">Right</text>
+      <text y="266.816" font-size="6.626" x="122.528" text-anchor="middle">Rear Leg</text>
+      <text y="269.599" font-size="6.626" x="167.052" text-anchor="middle">Right</text>
+      <text y="277.551" font-size="6.626" x="167.142" text-anchor="middle">Front Leg</text>
+      <text y="171.651" font-size="6.626" x="96.468" text-anchor="middle">Center</text>
+      <text y="179.603" font-size="6.626" x="96.699" text-anchor="middle">Torso</text>
+      <text y="103.899" font-size="6.626" x="19.484" text-anchor="middle">Left</text>
+      <text y="111.851" font-size="6.626" x="19.562" text-anchor="middle">Torso</text>
+      <text y="103.899" font-size="6.626" x="171.858" text-anchor="middle">Right</text>
+      <text y="111.851" font-size="6.626" x="171.937" text-anchor="middle">Torso</text>
+      <text y="32.416" font-size="6.626" x="87.708" text-anchor="middle">Head</text>
+      <text y="258.858" font-size="6.626" x="71.035" text-anchor="middle">Left</text>
+      <text y="266.809" font-size="6.626" x="71.122" text-anchor="middle">Rear Leg</text>
+      <text y="269.591" font-size="6.626" x="26.973" text-anchor="middle">Left</text>
+      <text y="277.543" font-size="6.626" x="27.064" text-anchor="middle">Front Leg</text>
     </g>
     <g class="diagram-value">
       <text id="textArmor_HD" x="97.652" y="32.121" font-size="6.626"></text>

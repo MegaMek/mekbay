@@ -74,7 +74,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
     );
     const supportSlots = supportEquipmentCriticalSlots(entity, eq, size);
 
-    if (physicalSlots !== null) return physicalSlots;
+    if (physicalSlots !== null) return isSuperHeavyMek ? Math.ceil(physicalSlots / 2) : physicalSlots;
 
     // ── MASC ────────────────────────────────────────────────────────
     if (isMascEquipment(eq)) {
@@ -203,7 +203,7 @@ export function getNumCriticalSlots(entity: BaseEntity, eq: Equipment, size: num
         return isSuperHeavyEntity ? Math.ceil(base / 2) : base;
     }
 
-    if (supportSlots !== null) return supportSlots;
+    if (supportSlots !== null) return isSuperHeavyMek ? Math.ceil(supportSlots / 2) : supportSlots;
 
     // MegaMek logs an error and assumes one slot for an unrecognized formula.
     return 1;

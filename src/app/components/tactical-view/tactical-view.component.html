@@ -16,7 +16,7 @@
                 </svg>
             </button>
             <div class="section-shortcuts" role="group" aria-label="Jump to section">
-                <button type="button" (click)="jumpToSection('tactical-turn')">Turn</button>
+                <button type="button" (click)="jumpToSection('tactical-unit')">Unit</button>
                 <button type="button" (click)="jumpToSection('tactical-weapons')">Weapons</button>
                 <button type="button" (click)="jumpToSection('tactical-armor')">Armor</button>
                 @if (mekSnapshot() || nonMekSnapshot()?.damageTracks?.length) {
@@ -43,7 +43,7 @@
             }
     </nav>
     <div class="tactical-scroll">
-        <header class="unit-header">
+        <header class="unit-header" id="tactical-unit" tabindex="-1">
             <div class="unit-identity">
                 <unit-icon class="unit-icon" [unit]="activeMember.entity" [size]="40" />
                 <div class="unit-title-block">

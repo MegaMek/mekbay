@@ -1,43 +1,42 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { heatEffectValue, MEK_HEAT_EFFECTS } from '../rules/heat-effect-rules';
 import {
     mekConsciousnessTarget,
-    mekHeatAmmoExplosionTarget,
     mekHeatAutomationChecks,
-    mekHeatShutdownTarget,
     roll2D6,
 } from './mek-automation-rules';
 
 describe('direct Mek automation rules', () => {
     it('uses the cumulative shutdown and ammunition-explosion thresholds', () => {
-        expect([13, 14, 18, 22, 26, 30].map(mekHeatShutdownTarget))
+        expect([13, 14, 18, 22, 26, 30].map(heat => heatEffectValue(MEK_HEAT_EFFECTS, 'shutdown', heat)))
             .toEqual([undefined, 4, 6, 8, 10, 100]);
-        expect([18, 19, 23, 28].map(mekHeatAmmoExplosionTarget))
+        expect([18, 19, 23, 28].map(heat => heatEffectValue(MEK_HEAT_EFFECTS, 'ammo-explosion', heat)))
             .toEqual([undefined, 4, 6, 8]);
     });
 
     it('keeps shutdown, restart, and ammunition checks independent', () => {
         expect(mekHeatAutomationChecks({
-            heat: 23, shutdown: false, consciousPilot: true, hasExplosiveAmmo: true,
+            heat: 23, shutdown: false, activeController: true, hasExplosiveAmmo: true,
         })).toEqual([
             { kind: 'shutdown', target: 8 },
             { kind: 'ammo-explosion', target: 6 },
         ]);
         expect(mekHeatAutomationChecks({
-            heat: 30, shutdown: false, consciousPilot: true, hasExplosiveAmmo: false,
+            heat: 30, shutdown: false, activeController: true, hasExplosiveAmmo: false,
         })).toEqual([{ kind: 'shutdown', automaticOutcome: 'failed' }]);
         expect(mekHeatAutomationChecks({
-            heat: 13, shutdown: true, consciousPilot: false, hasExplosiveAmmo: false,
+            heat: 13, shutdown: true, activeController: false, hasExplosiveAmmo: false,
         })).toEqual([{ kind: 'startup', automaticOutcome: 'success' }]);
         expect(mekHeatAutomationChecks({
-            heat: 18, shutdown: true, consciousPilot: true, hasExplosiveAmmo: false,
+            heat: 18, shutdown: true, activeController: true, hasExplosiveAmmo: false,
         })).toEqual([{ kind: 'startup', target: 6 }]);
     });
 
     it('automatically fails shutdown checks when no conscious pilot can intervene', () => {
         expect(mekHeatAutomationChecks({
-            heat: 14, shutdown: false, consciousPilot: false, hasExplosiveAmmo: false,
+            heat: 14, shutdown: false, activeController: false, hasExplosiveAmmo: false,
         })).toEqual([{ kind: 'shutdown', automaticOutcome: 'failed' }]);
     });
 

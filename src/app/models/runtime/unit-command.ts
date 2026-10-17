@@ -9,6 +9,7 @@ import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,S
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { PrototypeLaserHeatRoll } from '../prototype-laser-heat.model';
 import type { StealthState } from '../stealth-equipment.model';
+import type { SystemDamageKind } from '../rules/system-damage-rules';
 import type { UnitConditionKey } from '../unit-condition.model';
 import type { BOMBAST_LASER_CHARGING_STATE } from './component-bombast-laser';
 import type { PPC_CAPACITOR_CHARGING_STATE } from './component-ppc-capacitor';
@@ -329,9 +330,8 @@ export type CBTUnitCommand =
     | { readonly type: 'set-armor-damage'; readonly faceId: ArmorFaceId; readonly damage: number }
     | { readonly type: 'damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
     | { readonly type: 'repair-damage-track'; readonly damageTrackId: SystemDamageTrackId; readonly amount: number; readonly target: 'committed' | 'pending' }
-    | { readonly type: 'set-sensor-damage-level'; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
+    | { readonly type: 'set-system-damage-level'; readonly system: SystemDamageKind; readonly level: number; readonly target: 'committed' | 'pending'; readonly timestamp: number }
     | { readonly type: 'set-component-statuses'; readonly componentIds: readonly ComponentId[]; readonly status: EquipmentStatus; readonly target: 'committed' | 'pending'; readonly applyExplosion?: boolean }
-    | { readonly type: 'set-ammo-spent'; readonly componentId: ComponentId; readonly shotsSpent: number }
     | { readonly type: 'set-airborne'; readonly airborne: boolean | null }
     | { readonly type: 'set-movement'; readonly movement: NonMekMovementDeclaration | null }
     | { readonly type: 'set-cover'; readonly cover: UnitCover | null }

@@ -3,7 +3,7 @@
 
 import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
-import { ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../models/equipment.model';
+import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../models/equipment.model';
 import { MountedArmor } from '../../../models/entity/components/armor';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 
@@ -127,6 +127,66 @@ describe('Mek printed equipment and movement alternatives', () => {
         expect(svg.querySelectorAll('.critical-equipment-bracket').length).toBe(3);
         expect(svg.querySelectorAll('.critGroup[data-loc="LT"] .critical-equipment-bracket').length).toBe(2);
         expect(svg.querySelectorAll('.critGroup[data-loc="LA"] .critical-equipment-bracket').length).toBe(1);
+    });
+
+    it('sums one superheavy ammo per slot and gives mixed munitions their own lines, pushing later rows down', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(150);
+        const ammo = (name: string, shots: number): AmmoEquipment => new AmmoEquipment({
+            id: name, name: `${name} Ammo`, type: 'ammo', ammo: { type: 'AC_LBX', shots },
+        });
+        const place = (equipment: AmmoEquipment | WeaponEquipment, location: string, slots: readonly number[]): void => {
+            addTestEquipment(entity, equipment, { allocation: { kind: 'location', location,
+                placements: slots.map(slotIndex => ({ location, slotIndex })) } });
+        };
+        place(ammo('Gauss', 8), 'RA', [6]);
+        place(ammo('Gauss', 8), 'RA', [6]);
+        place(ammo('LB 10-X AC', 10), 'RA', [7]);
+        place(ammo('LB 10-X Cluster', 10), 'RA', [7]);
+        place(new WeaponEquipment({
+            id: 'Gauss Rifle', name: 'Gauss Rifle', type: 'weapon',
+            weapon: { heat: 1, damage: 15, ranges: [7, 15, 22] },
+        }), 'RA', [9, 10]);
+        for (const slotIndex of [10, 11]) {
+            place(ammo('LB 10-X AC', 10), 'CT', [slotIndex]);
+            place(ammo('LB 10-X Cluster', 10), 'CT', [slotIndex]);
+        }
+
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const column = (location: string) => {
+            const group = svg.querySelector<SVGGElement>(`.critGroup[data-loc="${location}"]`)!;
+            const rows = [...group.querySelectorAll<SVGGElement>(':scope > .critRow')];
+            const baselines = rows.map(row => Number(row.querySelector(':scope > text')!.getAttribute('y')));
+            const shift = (index: number): number =>
+                Number(/translate\(0 ([-\d.]+)\)/u.exec(rows[index].getAttribute('transform') ?? '')?.[1] ?? 0);
+            return { group, rows, baselines, step: baselines[1] - baselines[0], shift };
+        };
+        const label = (location: string, slot: number) =>
+            svg.querySelector<SVGTextElement>(`.critSlot[data-loc="${location}"][slot="${slot}"] text`)!;
+
+        const ra = column('RA');
+        expect(label('RA', 6).textContent).toBe('Ammo (Gauss) 16');
+        expect(label('RA', 6).querySelector('tspan')).toBeNull();
+        const mixed = [...label('RA', 7).querySelectorAll('tspan')];
+        expect(mixed.map(line => line.textContent)).toEqual(['Ammo (LB 10-X AC) 10', 'Ammo (LB 10-X Cluster) 10']);
+        expect(Number(mixed[1].getAttribute('dy'))).toBeCloseTo(ra.step, 3);
+        expect(ra.rows[7].querySelectorAll(':scope > text').length).toBe(1);
+        expect(ra.rows.slice(0, 8).every(row => !row.hasAttribute('transform'))).toBeTrue();
+        for (let index = 8; index < 12; index++) expect(ra.shift(index)).toBeCloseTo(ra.step, 3);
+        expect(ra.group.querySelector('.critical-equipment-bracket')!.getAttribute('transform'))
+            .toBe(`matrix(1 0 0 1 0 ${Number(ra.step.toFixed(3))})`);
+        const rolls = [...svg.querySelectorAll('.critical-roll-range[data-mekbay-roll-loc="RA"]')];
+        expect(rolls.map(roll => roll.textContent)).toEqual(['1-3', '4-6']);
+        expect(rolls[0].hasAttribute('transform')).toBeFalse();
+        expect(rolls[1].getAttribute('transform')).toBe(`translate(0 ${Number((ra.step / 2).toFixed(3))})`);
+        expect(svg.querySelector('.critGroup[data-loc="LA"] .critRow[transform]')).toBeNull();
+
+        // The center torso has almost no room above the engine-hit box, so its rows tighten instead.
+        const ct = column('CT');
+        const slack = Number(ct.group.getAttribute('data-mekbay-row-slack'));
+        const lastLine = ct.baselines[11] + ct.shift(11) + Number(label('CT', 11).querySelectorAll('tspan')[1].getAttribute('dy'));
+        expect(lastLine).toBeLessThanOrEqual(ct.baselines[11] + slack + 0.01);
+        expect(ct.baselines[1] + ct.shift(1) - ct.baselines[0]).toBeLessThan(ct.step);
     });
 
     it('identifies primitive construction and the BAR of commercial armor', async () => {

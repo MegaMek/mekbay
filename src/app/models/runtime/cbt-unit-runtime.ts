@@ -9,7 +9,9 @@ import type { EntityMountedEquipment } from '../entity/types';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
 import type { UnitConditionKey } from '../unit-condition.model';
+import { serializeUnitCover,type UnitCover } from '../unit-cover.model';
 import { freezeAttackerTargetingState,type AttackerTargetingState } from './attacker-targeting-state';
+import type { CrewAssignment } from './crew-assignment';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
 import type { AmmoRuntimeState,ComponentRuntimeState } from './runtime-state';
@@ -69,6 +71,14 @@ export interface CBTLocationRuntimeState {
 
 export type HeatAutomationPolicy = 'automatic' | 'manual';
 
+/** Heat is a whole number of points; one bound serves every family, command and save format. */
+export const MAX_HEAT_VALUE = 1_000_000;
+
+export function isHeatValue(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_HEAT_VALUE
+        && !Object.is(value, -0);
+}
+
 /** Durable heat facts; source calculation and settlement order belong to the mechanics. */
 export interface CBTUnitHeatState {
     readonly current: number;
@@ -77,18 +87,76 @@ export interface CBTUnitHeatState {
     readonly heatsinksOff: number;
 }
 
+/** Settles the track at a value: the prior current heat becomes previous and any pending arrow is consumed. */
+export function settleHeat(heat: CBTUnitHeatState, current: number): CBTUnitHeatState {
+    return Object.freeze({ current, previous: heat.current, heatsinksOff: heat.heatsinksOff });
+}
+
+/** Sets or clears the pending arrow; the committed track is unchanged. */
+export function withPendingHeat(heat: CBTUnitHeatState, pendingOverride: number | undefined): CBTUnitHeatState {
+    return Object.freeze({
+        current: heat.current,
+        previous: heat.previous,
+        ...(pendingOverride === undefined ? {} : { pendingOverride }),
+        heatsinksOff: heat.heatsinksOff,
+    });
+}
+
+/** A manual edit settles a new value; re-entering the current value only drops a pending arrow. */
+export function withEditedHeat(heat: CBTUnitHeatState, current: number): CBTUnitHeatState | null {
+    if (current !== heat.current) return settleHeat(heat, current);
+    return heat.pendingOverride === undefined ? null : withPendingHeat(heat, undefined);
+}
+
 export interface CBTUnitPendingCombatState {
     readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
     readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
     readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
 }
 
+type PendingCounterField<P> = { [K in keyof P]-?: P[K] extends ReadonlyMap<unknown, number> ? K : never }[keyof P];
+type PendingCounterId<P, K extends keyof P> = P[K] extends ReadonlyMap<infer Id, number> ? Id : never;
+
+/** Adds a signed delta to one sparse pending-combat counter; a counter back at zero is removed. */
+export function withPendingCombatDelta<
+    State extends { readonly pendingCombat: CBTUnitPendingCombatState },
+    K extends PendingCounterField<State['pendingCombat']>,
+>(state: State, field: K, id: PendingCounterId<State['pendingCombat'], K>, amount: number): State {
+    type Id = PendingCounterId<State['pendingCombat'], K>;
+    const counters = state.pendingCombat as unknown as Readonly<Record<K, ReadonlyMap<Id, number>>>;
+    const values = new Map(counters[field]);
+    const next = (values.get(id) ?? 0) + amount;
+    if (next === 0) values.delete(id);
+    else values.set(id, next);
+    return {
+        ...state,
+        pendingCombat: Object.freeze({ ...state.pendingCombat, [field]: new ImmutableIndex(values) }),
+    };
+}
+
 /** Boundary facts shared by every CBT family runtime. */
 export interface CBTTurnRuntimeState {
     readonly turnCounter: number;
+    readonly airborne: boolean | null;
+    readonly cover: UnitCover | null;
+    readonly weaponsHeat: number;
+    readonly spotting: boolean;
     /** A committed phase-scoped edit exists and has not crossed End Phase yet. */
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
+}
+
+/** Sparse wire form of the turn facts every family shares; each family's wire adds its own facts after them. */
+export function serializeSharedTurnFacts(turn: CBTTurnRuntimeState) {
+    return {
+        ...(turn.turnCounter === 0 ? {} : { turnCounter: turn.turnCounter }),
+        ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
+        ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
+        ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...(turn.spotting ? { spotting: true as const } : {}),
+        ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
+        ...(turn.endTurnCheckpoint === undefined ? {} : { endTurnCheckpoint: turn.endTurnCheckpoint }),
+    };
 }
 
 /**
@@ -168,6 +236,7 @@ export interface CBTUnitQueryPort {
     remainingInternal(locationId: LocationId, perspective?: RuntimeStatePerspective): number;
     componentStatus(componentId: ComponentId, perspective?: RuntimeStatePerspective): EquipmentStatus;
     componentMode(componentId: ComponentId): string | undefined;
+    componentJammed(componentId: ComponentId): boolean;
     remainingAmmo(componentId: ComponentId): number;
     ammoEquipment(componentId: ComponentId): AmmoEquipment | null;
     ammoHotLoaded(componentId: ComponentId): boolean;
@@ -176,6 +245,8 @@ export interface CBTUnitQueryPort {
     hasCondition(condition: UnitConditionKey): boolean;
     conditions(): readonly UnitConditionKey[];
     crewState(positionId: CrewPositionId): CrewMember;
+    /** Immutable deployment profile; wounds/consciousness are queried separately. */
+    crewAssignment(): CrewAssignment;
 }
 
 /** One atomically captured force-facing runtime read model. */

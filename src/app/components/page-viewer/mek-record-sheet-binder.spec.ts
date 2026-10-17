@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { asComponentId,asCriticalSlotId,asLocationId } from '../../models/entity/entity-identifiers';
+import { getDefaultAttackerMovementModifier } from '../../models/target-number-calculator.model';
+import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
+import type { RecordSheetInventorySource } from './record-sheet-inventory';
 import { ArmorEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from '../../models/equipment.model';
 import { MountedArmor } from '../../models/entity/components/armor';
 import { MountedStructure } from '../../models/entity/components/structure';
 import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
 import { applyRecordSheetPipMaterials } from '../../utils/sheets/record-sheet-pip-materials';
+import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
@@ -95,6 +99,46 @@ describe('Mek record-sheet binder', () => {
         host.remove();
     });
 
+    it('reflows a column when a runtime loadout splits or rejoins a shared superheavy ammo slot', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(150);
+        const svg = sheet();
+        svg.append((await RecordSheetSvgGenerator.generate(entity, { ruleset: 'core-2026' }))
+            .querySelector('#criticalHitTable')!);
+        const original = snapshot();
+        const bin = original.criticalSlots[0].components[0];
+        const sharedSlot = (displayName: string, custom: boolean): MekRecordSheetSnapshot => ({
+            ...original,
+            criticalSlots: [{
+                ...original.criticalSlots[0],
+                locationCode: 'RA',
+                slotIndex: 7,
+                components: [bin, {
+                    ...bin, componentId: asComponentId('second-bin'), ammo: { ...bin.ammo!, displayName, custom },
+                }],
+            }],
+        });
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, sharedSlot('AC/20 Ammo', false));
+        const label = svg.querySelector('.critSlot[data-loc="RA"][slot="7"] text')!;
+        const laterRow = svg.querySelectorAll('.critGroup[data-loc="RA"] > .critRow')[8];
+        const fourToSix = svg.querySelectorAll('.critical-roll-range[data-mekbay-roll-loc="RA"]')[1];
+        expect(label.textContent).toBe('Ammo (AC/20) 8');
+        expect(laterRow.hasAttribute('transform')).toBeFalse();
+
+        binding.render(sharedSlot('Flak AC/20 Ammo', true));
+        expect([...label.querySelectorAll('tspan')].map(line => line.textContent))
+            .toEqual(['Ammo (AC/20) 4', '*Ammo (Flak AC/20) 4']);
+        expect(laterRow.getAttribute('transform')).toMatch(/^translate\(0 \d/u);
+        expect(fourToSix.getAttribute('transform')).toMatch(/^translate\(0 \d/u);
+
+        binding.render(sharedSlot('AC/20 Ammo', false));
+        expect(label.textContent).toBe('Ammo (AC/20) 8');
+        expect(label.querySelector('tspan')).toBeNull();
+        expect(laterRow.hasAttribute('transform')).toBeFalse();
+        expect(fourToSix.hasAttribute('transform')).toBeFalse();
+        binding.destroy();
+    });
+
     it('opens ammo loadout from the full ammo row after live reflow and supports keyboard activation', () => {
         const svg = sheet();
         const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;
@@ -162,7 +206,7 @@ describe('Mek record-sheet binder', () => {
         marker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([]);
         frame.querySelector('.crew-vacancy')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        expect(interactions.at(-1)?.kind).toBe('crew-name');
+        expect(interactions.at(-1)?.kind).toBe('crew-profile');
 
         binding.render(original);
         expect(frame.classList.contains('crew-frame-vacant')).toBeFalse();
@@ -198,9 +242,9 @@ describe('Mek record-sheet binder', () => {
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot());
 
         expect(svg.querySelector('#unitName')?.textContent).toBe('Atlas AS7-D');
-        expect(svg.querySelector('#bv')?.textContent).toBe('1897 (1810)');
-        expect(svg.querySelector('#armorType')?.textContent).toBe('Standard Armor');
-        expect(svg.querySelector('#structureType')?.textContent).toBe('Endo Steel');
+        expect(svg.querySelector('#bv')?.textContent).toBe('1,897 (1,810)');
+        // Construction subtitles are static generator output; the binder leaves them alone.
+        expect(svg.querySelector('#armorType')?.textContent).toBe('FORGED ARMOR');
         expect(svg.querySelector('#mpWalk')?.textContent).toBe('2 [3]');
         expect(svg.querySelector('#mpRun')?.textContent).toBe('3 [5]');
         expect(svg.querySelector('#hsCount')?.textContent).toBe('4 (2)');
@@ -232,7 +276,7 @@ describe('Mek record-sheet binder', () => {
         expect(inventory[0].querySelector('.heat')?.textContent).toBe('7');
         expect(inventory[0].querySelector('.damage')?.textContent).toBe('20');
         expect(inventory[0].querySelector('.range_short')?.textContent).toBe('3');
-        expect(inventory[0].getAttribute('data-mekbay-component-ids')).toBe('["weapon-component"]');
+        expect(inventory[0].getAttribute('data-mekbay-component-ids')).toBe('weapon-component');
         expect(inventory[0].hasAttribute('id')).toBeFalse();
         expect([...inventory[0].classList].some(className => className.startsWith('eq-'))).toBeFalse();
         expect(inventory[1].style.display).toBe('none');
@@ -338,10 +382,10 @@ describe('Mek record-sheet binder', () => {
 
         expect(interactions).toEqual([
             jasmine.objectContaining({
-                kind: 'armor', faceId: 'armor-ct-front', locationId: 'location-ct', button: 'primary',
+                kind: 'armor', faceId: 'armor-ct-front', locationId: 'location-ct',
             }),
             jasmine.objectContaining({
-                kind: 'internal', locationId: 'location-ct', button: 'secondary',
+                kind: 'internal', locationId: 'location-ct',
             }),
         ]);
     });
@@ -375,10 +419,10 @@ describe('Mek record-sheet binder', () => {
 
         expect(interactions).toEqual([
             jasmine.objectContaining({
-                kind: 'armor', faceId: 'armor-ct-front', locationId: 'location-ct', button: 'primary',
+                kind: 'armor', faceId: 'armor-ct-front', locationId: 'location-ct',
             }),
             jasmine.objectContaining({
-                kind: 'internal', locationId: 'location-ct', button: 'secondary',
+                kind: 'internal', locationId: 'location-ct',
             }),
         ]);
     });
@@ -856,7 +900,7 @@ describe('Mek record-sheet binder', () => {
         const inventory = svg.querySelector<SVGElement>('.inventoryEntry')!;
         const critical = svg.querySelector<SVGElement>('.critSlot')!;
         const sameMountSlots = [...svg.querySelectorAll<SVGElement>('.critSlot')]
-            .filter(slot => slot.getAttribute('data-mekbay-component-ids') === '["weapon-component"]');
+            .filter(slot => slot.getAttribute('data-mekbay-component-ids') === 'weapon-component');
         const otherMountSlots = svg.querySelector<SVGElement>('.critSlot[slot="2"]')!;
         const otherInventory = svg.querySelectorAll<SVGElement>('.inventoryEntry')[1];
 
@@ -1478,13 +1522,16 @@ describe('Mek record-sheet binder', () => {
             svg,
             MM_DATA_MEK_SHEET_BINDING_MANIFEST,
             selected,
+            undefined,
+            undefined,
+            inventoryFrom(selected),
         );
 
         expect(svg.querySelector('.inventoryEntry')?.classList.contains('selected')).toBeTrue();
         expect(svg.querySelector('.inventoryEntry')?.classList.contains('selected-alternative-mode')).toBeTrue();
         expect(svg.querySelector('.inventoryEntry')?.classList.contains('selected-range-short')).toBeTrue();
         expect(svg.querySelector('.alternativeMode')?.classList.contains('selected')).toBeTrue();
-        binding.render(base);
+        binding.render(base, inventoryFrom(base));
         expect(svg.querySelector('.inventoryEntry')?.classList.contains('selected')).toBeFalse();
         binding.destroy();
     });
@@ -1536,7 +1583,8 @@ describe('Mek record-sheet binder', () => {
                 : component),
         } as unknown as MekRecordSheetSnapshot;
 
-        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, targeted);
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, targeted, undefined, undefined,
+            inventoryFrom(targeted));
         const row = svg.querySelector('.inventoryEntry') as SVGElement;
         expect(row.style.getPropertyValue('--inventory-control-selection-color')).toBe('#d64545');
         expect(row.querySelector('.targetTn-text')?.textContent).toBe('10');
@@ -1545,6 +1593,36 @@ describe('Mek record-sheet binder', () => {
         expect(row.querySelector('.hitMod-rect')?.getAttribute('display')).toBe('block');
         expect(row.classList.contains('selected-range-medium')).toBeTrue();
         expect(row.classList.contains('selected-target-out-of-range')).toBeFalse();
+        binding.destroy();
+    });
+
+    it('adds the attacker movement to the target number and takes the hit modifier at the selected range', () => {
+        const svg = sheet();
+        svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
+            <rect class="hitMod-rect" display="none"></rect><text class="hitMod-text" display="none"></text>
+            <rect class="targetTn-rect" display="none"></rect><text class="targetTn-text" display="none"></text>
+        `);
+        const atMedium = { ...equipmentHit(0), byRange: { ...equipmentHit(0).byRange, medium: equipmentHit(2).default } };
+        const base = snapshot();
+        const running = {
+            ...base,
+            targets: [{ targetId: 'target-a', letter: 'A', name: 'Enemy', color: '#d64545', readOnly: false, local: { distance: 4 } }],
+            equipment: base.equipment.map((component, index) => index === 0
+                ? { ...component, weapon: { ...component.weapon!, selection: { kind: 'target', targetId: 'target-a' }, hit: atMedium } }
+                : component),
+        } as unknown as MekRecordSheetSnapshot;
+        const standing = {
+            ...running,
+            movement: { ...running.movement, declared: { kind: 'supported', mode: 'stationary' } },
+        } as MekRecordSheetSnapshot;
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, standing, undefined, undefined,
+            inventoryFrom(standing));
+        const row = svg.querySelector('.inventoryEntry') as SVGElement;
+        const standingTargetNumber = Number(row.querySelector('.targetTn-text')?.textContent);
+        expect(row.querySelector('.hitMod-text')?.textContent).toBe('+2');
+
+        binding.render(running, inventoryFrom(running));
+        expect(Number(row.querySelector('.targetTn-text')?.textContent)).toBe(standingTargetNumber + 2);
         binding.destroy();
     });
 
@@ -1744,12 +1822,12 @@ describe('Mek record-sheet binder', () => {
         activate('.referenceTable');
 
         expect(interactions).toContain(jasmine.objectContaining({
-            kind: 'internal', locationId: 'location-ct', button: 'secondary',
+            kind: 'internal', locationId: 'location-ct',
         }) as unknown as RecordSheetInteraction);
         expect(interactions).toContain(jasmine.objectContaining({
             kind: 'crew-wounds', positionId: 'crew-0', wounds: 0,
         }) as unknown as RecordSheetInteraction);
-        expect(interactions).toContain(jasmine.objectContaining({ kind: 'crew-name', positionId: 'crew-0' }) as unknown as RecordSheetInteraction);
+        expect(interactions).toContain(jasmine.objectContaining({ kind: 'crew-profile', positionId: 'crew-0' }) as unknown as RecordSheetInteraction);
         expect(interactions).toContain(jasmine.objectContaining({ kind: 'condition-menu' }) as unknown as RecordSheetInteraction);
         expect(interactions).toContain(jasmine.objectContaining({ kind: 'shutdown' }) as unknown as RecordSheetInteraction);
         expect(interactions).toContain(jasmine.objectContaining({ kind: 'location-condition-menu', locationId: 'location-ct' }) as unknown as RecordSheetInteraction);
@@ -2049,4 +2127,23 @@ function snapshot(): MekRecordSheetSnapshot {
             state: { wounds: 1, unconscious: false },
         }],
     } as unknown as MekRecordSheetSnapshot;
+}
+
+/** The equipment panel and attack context the page viewer supplies, built from a sheet fixture. */
+function inventoryFrom(snapshot: MekRecordSheetSnapshot): RecordSheetInventorySource {
+    const movementMode = snapshot.movement.declared.kind === 'supported' ? snapshot.movement.declared.mode : null;
+    const movementModifier = getDefaultAttackerMovementModifier(movementMode);
+    return {
+        panel: { components: snapshot.equipment, targets: snapshot.targets, ruleset: snapshot.ruleset } as unknown as EquipmentPanelSnapshot,
+        attack: {
+            gunnery: snapshot.crew[0]?.gunnery ?? 4,
+            pilotingSkill: 5,
+            movementMode,
+            attackModifierBreakdown: movementModifier === 0 ? [] : [{ label: String(movementMode), modifier: movementModifier, priority: 0 }],
+            missingMovementModifier: false,
+            allowExtremeRange: false,
+            c3Available: true,
+            c3DegradationSource: 'none',
+        },
+    };
 }

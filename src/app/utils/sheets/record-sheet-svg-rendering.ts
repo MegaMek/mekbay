@@ -3,6 +3,7 @@
 import { RECORD_SHEET_FONT } from './record-sheet-typography';
 
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
+import { isCaseEquipment } from '../../models/case-equipment.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import { asComponentId } from '../../models/entity/entity-identifiers';
 import type { EntityDamageLocation, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
@@ -12,7 +13,7 @@ import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
 import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
 import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
-import type { HeatSinkType } from '../../models/entity/types/heat-sink';
+import { heatSinkTypeDissipation, type HeatSinkType } from '../../models/entity/types/heat-sink';
 import { clusterHits } from '../cluster-hit-table';
 import { formatEquipmentLocationCodes } from '../equipment-location-display.util';
 import { resolveInventoryControlDamageText } from '../inventory-control-damage.util';
@@ -32,6 +33,7 @@ import {
   type RecordSheetPageProfile,
 } from './record-sheet-layout';
 import { SvgFrameUtil } from './svg-frame.util';
+import { measureSvgTextCanvas } from '../svg-text.util';
 import recordSheetIntrinsicStyle from './styles/record-sheet-intrinsic.css' with { loader: 'text' };
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -249,6 +251,42 @@ export function drawCheckbox(
   return box;
 }
 
+/**
+ * A critical-damage box the binders toggle by `critId`, captioned with its modifier.
+ * Templates differ only in the box geometry, the caption size and their drawing scale.
+ */
+export function drawCriticalDamageBox(
+  parent: SVGElement,
+  id: string,
+  box: Box,
+  modifier?: { readonly text: string | undefined; readonly size: number },
+  scale = 1,
+): SVGRectElement {
+  const control = svgElement('rect');
+  control.id = id;
+  control.setAttribute('critId', id);
+  setAttributes(control, {
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    rx: 1.315 * scale,
+    fill: 'none',
+    stroke: '#000',
+    'stroke-width': 0.96,
+    class: 'critLoc criticalPip',
+  });
+  parent.appendChild(control);
+  if (modifier?.text) {
+    addText(parent, modifier.text, box.x + box.width / 2, box.y + box.height / 2 + modifier.size * 0.36, {
+      size: modifier.size,
+      anchor: 'middle',
+      maxWidth: box.width - 1.5 * scale,
+    }).style.pointerEvents = 'none';
+  }
+  return control;
+}
+
 /** The reference inventory sorts ground ranges descending, including aerospace units. */
 export function recordSheetInventoryWeaponMounts(entity: BaseEntity): readonly EntityMountedWeapon[] {
   return [...entity.rangedWeapons()].sort((left, right) => {
@@ -423,18 +461,36 @@ function recordSheetModeDamage(profile: AmmoWeaponProfile): string {
 }
 
 export function recordSheetAmmoProfile(entity: BaseEntity): readonly string[] {
+  return recordSheetAmmoEntries(
+    entity.equipment().flatMap((mount) => {
+      const shots = mount.getAmmoShots();
+      // MegaMekLab keys ammo by its type's short name, as the live profile does; placement modifiers such as
+      // a battle armor "(Body)" mount never print.
+      const name = mount.equipment ? mount.equipment.shortName || mount.equipment.name : mount.displayName();
+      return shots === undefined ? [] : [[name, shots] as const];
+    }),
+  );
+}
+
+/** Printed and live ammo profiles: shots summed per printed ammo name, in MegaMekLab's (TreeMap) name order. */
+export function recordSheetAmmoEntries(
+  ammo: Iterable<readonly [displayName: string, shots: number]>,
+): readonly string[] {
   const totals = new Map<string, number>();
-  entity.equipment().forEach((mount) => {
-    const shots = mount.getAmmoShots();
-    if (shots === undefined) return;
-    const name = recordSheetAmmoName(mount.displayName());
+  for (const [displayName, shots] of ammo) {
+    const name = recordSheetAmmoName(displayName);
     totals.set(name, (totals.get(name) ?? 0) + shots);
-  });
+  }
   return Object.freeze(
     [...totals.entries()]
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([name, shots]) => `(${name}) ${shots}`),
   );
+}
+
+/** MegaMekLab marks CASE-protected ammunition on non-Mek sheets. */
+export function recordSheetNonMekAmmoPrefix(entity: BaseEntity): string {
+  return entity.equipment().some((mount) => isCaseEquipment(mount.equipment)) ? 'Ammo (CASE):' : 'Ammo:';
 }
 
 export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
@@ -448,7 +504,7 @@ export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: B
     ['ROLE', entity.role() || '—', 'role'],
     ['MOTIVE', entity.getMotiveTypeAsString() ?? entity.entityType, undefined],
     ['MOVEMENT', `${entity.walkMP()} / ${entity.runMP()} / ${entity.jumpMP()}`, undefined],
-    ['BATTLE VALUE', formatNumber(entity.battleValue()), 'bv'],
+    ['BATTLE VALUE', formatWholeNumber(entity.battleValue()), 'bv'],
   ];
   const available = Math.max(1, content.height);
   const rowHeight = Math.min(14, available / lines.length);
@@ -479,7 +535,7 @@ export function appendLegacyIdentityAnchors(group: SVGGElement, entity: BaseEnti
     mpWalk: String(entity.walkMP()),
     mpRun: String(entity.runMP()),
     mpJump: String(entity.jumpMP()),
-    bv: formatNumber(entity.battleValue()),
+    bv: formatWholeNumber(entity.battleValue()),
   };
   Object.entries(values).forEach(([id, value]) => {
     if (group.ownerSVGElement?.getElementById(id)) return;
@@ -487,6 +543,120 @@ export function appendLegacyIdentityAnchors(group: SVGGElement, entity: BaseEnti
     anchor.id = id;
     anchor.setAttribute('aria-hidden', 'true');
   });
+}
+
+/**
+ * Every family's "BV:" caption and value. MegaMekLab groups BV digits on all sheets;
+ * binders rewriting `#bv` at runtime must format with `formatWholeNumber` too.
+ */
+export function appendBattleValue(
+  parent: SVGElement,
+  battleValue: number,
+  position: { readonly x: number; readonly valueX: number; readonly y: number; readonly size: number; readonly maxWidth?: number },
+  suffix = '',
+): SVGTextElement {
+  addTemplateCaption(parent, 'BV:', position.x, position.y, { size: position.size, weight: 700 });
+  const value = addText(parent, `${formatWholeNumber(battleValue)}${suffix}`, position.valueX, position.y, {
+    size: position.size,
+    maxWidth: position.maxWidth,
+  });
+  value.id = 'bv';
+  if (suffix) value.setAttribute('data-mekbay-bv-suffix', suffix);
+  return value;
+}
+
+/**
+ * MegaMekLab template captions keep a fixed `textLength`; these are those widths per point of type,
+ * taken from its record-sheet templates, so every template and type size prints them alike.
+ */
+const TEMPLATE_CAPTION_EMS: Readonly<Record<string, number>> = {
+  'Type:': 21.401 / 9.67,
+  'Name:': 21.471 / 7.7,
+  'Tonnage:': 29.785 / 7.7,
+  'Tech Base:': 35.949 / 7.7,
+  'Role:': 16.16 / 7.7,
+  'Engine Type:': 40.915 / 7.7,
+  'Movement Type:': 54.285 / 7.7,
+  'Safe Thrust:': 38.723 / 7.7,
+  'Maximum Thrust:': 58.411 / 7.7,
+  'Weapons & Equipment Inventory': 121.508 / 8.6,
+  'BV:': 14.117 / 9.67,
+  Heat: 13.53 / 6.76,
+  'Level*': 18.187 / 6.76,
+  Effects: 19.001 / 6.76,
+};
+
+/** A template caption at MegaMekLab's width for its type size (plain text when the template has none). */
+export function addTemplateCaption(
+  parent: SVGElement,
+  caption: string,
+  x: number,
+  y: number,
+  options: Omit<NonNullable<Parameters<typeof addText>[4]>, 'textLength' | 'maxWidth'> & { readonly size: number },
+): SVGTextElement {
+  const ems = TEMPLATE_CAPTION_EMS[caption];
+  return addText(parent, caption, x, y, { ...options, ...(ems === undefined ? {} : { textLength: ems * options.size }) });
+}
+
+/** The data panel's "Type:" row; every template sets its value 26.229 points after the caption. */
+export function appendDataPanelType(
+  group: SVGGElement,
+  entity: BaseEntity,
+  { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
+  captionX: number,
+): SVGTextElement {
+  addTemplateCaption(group, 'Type:', x(captionX), y(28), { size: font(9.67), weight: 700 });
+  const type = addText(group, entity.displayName(), x(captionX + 26.229), y(28), {
+    size: font(9.67),
+    weight: 700,
+    maxWidth: x(187),
+  });
+  type.id = 'type';
+  type.setAttribute('data-mekbay-field', 'display-name');
+  return type;
+}
+
+export interface DataPanelFact {
+  readonly label: string;
+  readonly value: string;
+  readonly baseline: number;
+  readonly id?: string;
+  readonly field?: string;
+  /** Defaults to the templates' right-hand fact column. */
+  readonly labelX?: number;
+  readonly valueX?: number;
+  readonly maxWidth?: number;
+  readonly anchor?: 'middle';
+  readonly weightUnit?: 'kg';
+}
+
+/** Data-panel fact rows at MegaMekLab geometry: template caption widths, values at 158.24 unless placed. */
+export function appendDataPanelFacts(
+  group: SVGGElement,
+  facts: readonly DataPanelFact[],
+  { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
+): void {
+  const size = font(RECORD_SHEET_FONT.body);
+  for (const fact of facts) {
+    addTemplateCaption(group, fact.label, x(fact.labelX ?? 115.7), y(fact.baseline), { size, weight: 700 });
+    const value = addText(group, fact.value, x(fact.valueX ?? 158.24), y(fact.baseline), {
+      size,
+      anchor: fact.anchor,
+      maxWidth: x(fact.maxWidth ?? 58),
+    });
+    if (fact.id) value.id = fact.id;
+    if (fact.field) value.setAttribute('data-mekbay-field', fact.field);
+    if (fact.weightUnit) value.setAttribute('data-mekbay-weight-unit', fact.weightUnit);
+  }
+}
+
+/**
+ * X for a crew value following its caption: the layout's column, or just past the
+ * caption's natural width when the caption needs more room. Captions are never squeezed.
+ */
+export function crewSkillValueX(caption: SVGTextElement, column: number, fontScale = 1): number {
+  const captionEnd = Number(caption.getAttribute('x')) + measureSvgTextCanvas(caption, caption.textContent ?? '');
+  return Math.max(column, captionEnd + 3 * fontScale);
 }
 
 /** Crew values share a readable size while retaining each layout's scale and baseline. */
@@ -502,6 +672,9 @@ export function addCrewSkillValue(
     size: 12 * fontScale, weight: 700, class: 'skillValue', anchor,
   });
 }
+
+/** Width a layout reserves after its crew-name field for the crew-state menu and its gap. */
+export const CREW_STATE_MENU_SPACE = 12;
 
 export function drawGenericCrewPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
   const group = addFrame(svg, 'CREW', box, {
@@ -519,9 +692,10 @@ export function drawGenericCrewPanel(svg: SVGSVGElement, entity: BaseEntity, box
     });
     group.appendChild(position);
     const y = 11;
-    const name = addText(position, '', 9, y, { size: 7.2, weight: 700, maxWidth: box.width - 18 });
+    const nameEnd = SvgFrameUtil.innerRight(box.width) - 2 - CREW_STATE_MENU_SPACE;
+    const name = addText(position, '', 9, y, { size: 7.2, weight: 700, maxWidth: nameEnd - 9 });
     name.id = `crewName${occurrence}`;
-    const nameButton = transparentRect(6, y - 10, box.width - 12, 13, 'crewNameButton');
+    const nameButton = transparentRect(6, y - 10, nameEnd - 6, 13, 'crewNameButton');
     nameButton.setAttribute('crewId', String(occurrence));
     nameButton.setAttribute('textElement', name.id);
     position.appendChild(nameButton);
@@ -547,11 +721,6 @@ export function drawGenericCrewPanel(svg: SVGSVGElement, entity: BaseEntity, box
     const state = transparentRect(6, y - 11, box.width - 12, rowHeight - 1, 'crewStateButton');
     state.setAttribute('crewId', String(occurrence));
     position.insertBefore(state, name);
-    const banner = svgElement('g');
-    banner.id = `crewState${occurrence}`;
-    banner.setAttribute('class', 'crewStateBanner');
-    banner.setAttribute('display', 'none');
-    position.appendChild(banner);
   }
 }
 
@@ -640,15 +809,30 @@ export function drawCrewHitGrid(
 export function drawDamagePanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
   const group = addFrame(svg, 'ARMOR DIAGRAM', box);
   const locations = entity.damageLocations();
-  const columns = locations.length <= 4 ? 2 : locations.length <= 9 ? 3 : 4;
-  const rows = Math.max(1, Math.ceil(locations.length / columns));
-  const cellWidth = (box.width - 12) / columns;
-  const cellHeight = (box.height - 28) / rows;
-  locations.forEach((location, index) => {
-    const x = 6 + (index % columns) * cellWidth;
-    const y = 23 + Math.floor(index / columns) * cellHeight;
-    drawDamageLocation(group, location, x, y, cellWidth - 2, cellHeight - 2);
-  });
+  drawDamageLocationGrid(group, locations, { x: 6, y: 23, width: box.width - 12, height: box.height - 28 },
+    locations.length <= 4 ? 2 : locations.length <= 9 ? 3 : 4);
+}
+
+/** The text-only damage diagram: one location cell per grid slot, used where no artwork applies. */
+export function drawDamageLocationGrid(
+  group: SVGGElement,
+  locations: readonly EntityDamageLocation[],
+  area: Box,
+  columns: number,
+  minimumCellHeight = 0,
+): void {
+  const cellWidth = area.width / columns;
+  const cellHeight = Math.max(minimumCellHeight, area.height / Math.max(1, Math.ceil(locations.length / columns)));
+  locations.forEach((location, index) =>
+    drawDamageLocation(
+      group,
+      location,
+      area.x + (index % columns) * cellWidth,
+      area.y + Math.floor(index / columns) * cellHeight,
+      cellWidth - 2,
+      cellHeight - 2,
+    ),
+  );
 }
 
 export function drawDamageLocation(
@@ -742,6 +926,22 @@ export function constructionMaterialSubtitle(
   return materialName === 'Standard' ? `${materialName} ${suffix}` : materialName;
 }
 
+/** The armor diagram subtitle; support vehicles with BAR armor print the rating, as MegaMekLab does. */
+export function armorDiagramSubtitle(entity: BaseEntity): string {
+  const armor = entity.uniformArmor()?.armor;
+  const name = entity.isSupportVehicle() && armor?.armorType.startsWith('SV_BAR_') ? `BAR: ${armor.bar}` : armor?.name;
+  return constructionMaterialSubtitle(name, 'Armor', 'Patchwork Armor');
+}
+
+/** A positioned run inside a multi-part template text, such as a caption and its armor counter. */
+export function appendTspan(parent: SVGTextElement, value: string, x: number, y: number): SVGTSpanElement {
+  const tspan = svgElement('tspan');
+  setAttributes(tspan, { x, y });
+  tspan.textContent = value;
+  parent.appendChild(tspan);
+  return tspan;
+}
+
 interface DiagramHeadingOptions {
   readonly showSubtitleRibbon?: boolean;
   readonly titleWidth?: number;
@@ -811,24 +1011,6 @@ export function addDiagramHeading(
 
 export function formatWholeNumber(value: number): string {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 }).format(value);
-}
-
-export function drawDamagePanelIntoGroup(group: SVGGElement, entity: BaseEntity, width: number, height: number): void {
-  const locations = entity.damageLocations();
-  const columns = 3;
-  const rows = Math.ceil(locations.length / columns);
-  const cellWidth = (width - 12) / columns;
-  const cellHeight = (height - 28) / Math.max(1, rows);
-  locations.forEach((location, index) =>
-    drawDamageLocation(
-      group,
-      location,
-      6 + (index % columns) * cellWidth,
-      23 + Math.floor(index / columns) * cellHeight,
-      cellWidth - 2,
-      cellHeight - 2,
-    ),
-  );
 }
 
 export function decoratePaperdollPips(layer: SVGGElement, forceRear = false): void {
@@ -912,6 +1094,124 @@ export function appendHeatPanelControls(group: SVGGElement, heatSinkArea?: Box):
       heatSinks.firstChild,
     );
   }
+}
+
+export interface HeatEffectRow {
+  readonly heat: number;
+  /** The effect text; continuation lines indent as on MegaMekLab's heat tables. */
+  readonly lines: readonly string[];
+  readonly baseline: number;
+  readonly movementModifier?: number;
+}
+
+/** A heat data panel's headings and effect rows; templates differ only in baselines, columns and leading. */
+export function appendHeatEffectRows(
+  group: SVGGElement,
+  rows: readonly HeatEffectRow[],
+  { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
+  layout: {
+    readonly headingBaselines: readonly [heat: number, level: number];
+    readonly effectsX: number;
+    readonly lineHeight: number;
+    readonly labelMaxWidth: number;
+  },
+): void {
+  const size = font(RECORD_SHEET_FONT.inventory);
+  const [heatBaseline, levelBaseline] = layout.headingBaselines;
+  addTemplateCaption(group, 'Heat', x(15), y(heatBaseline), { size, anchor: 'middle' });
+  addTemplateCaption(group, 'Level*', x(15), y(levelBaseline), { size, anchor: 'middle' });
+  addTemplateCaption(group, 'Effects', x(layout.effectsX), y(levelBaseline), { size, anchor: 'middle' });
+  rows.forEach((effect) => {
+    const row = svgElement('g');
+    setAttributes(row, { class: 'heatEffect', heat: effect.heat });
+    addText(row, String(effect.heat), x(15), y(effect.baseline), { size, anchor: 'middle' });
+    effect.lines.forEach((line, index) => {
+      const indent = index === 0 ? 0 : 3;
+      const text = addText(row, line, x(27 + indent), y(effect.baseline + index * layout.lineHeight), {
+        size,
+        maxWidth: x(layout.labelMaxWidth - indent),
+      });
+      if (index === 0 && effect.movementModifier !== undefined) text.id = `minus${Math.abs(effect.movementModifier)}MP`;
+    });
+    group.appendChild(row);
+  });
+}
+
+/**
+ * A heat data panel's heat-sink type, count ("N (2N)" for doubles, as MegaMekLab prints it) and
+ * the 3×10 pip grid binders reveal up to the live count. Templates differ only in their columns.
+ */
+export function appendHeatSinkData(
+  group: SVGGElement,
+  heatSinks: { readonly count: number; readonly type: HeatSinkType },
+  { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
+  layout: { readonly rightX: number; readonly pipsX: number },
+): void {
+  const count = Math.max(0, heatSinks.count);
+  addText(group, heatSinkCaption(heatSinks.type), x(layout.rightX), y(22), { size: font(8.44), anchor: 'end' }).id = 'hsType';
+  const dissipation = heatSinkTypeDissipation(heatSinks.type);
+  addText(group, dissipation === 1 ? String(count) : `${count} (${count * dissipation})`, x(layout.rightX), y(31), {
+    size: font(8.44),
+    anchor: 'end',
+  }).id = 'hsCount';
+  const pips = svgElement('g');
+  pips.setAttribute('class', 'hsPips');
+  for (let index = 0; index < 30; index++) {
+    const pip = circle(x(layout.pipsX + Math.floor(index / 10) * 9.66), y(45.478 + (index % 10) * 9.66), font(3.478), 'pip hsPip');
+    pip.setAttribute('data-loc', 'hs');
+    if (index >= count) pip.style.display = 'none';
+    pips.appendChild(pip);
+  }
+  group.appendChild(pips);
+}
+
+/**
+ * The advanced movement compass: a three-line caption beside a hex with lettered facings.
+ * Templates differ only in the authored frame, the caption column and the hex centre and size.
+ */
+export function drawAdvancedMovementCompass(
+  svg: SVGSVGElement,
+  box: Box,
+  className: string,
+  layout: {
+    readonly width: number;
+    readonly height: number;
+    readonly captionX: number;
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly halfHeight: number;
+  },
+): void {
+  const group = svgElement('g');
+  group.setAttribute('class', className);
+  group.setAttribute('transform', `translate(${formatNumber(box.x)} ${formatNumber(box.y)})`);
+  const sx = box.width / layout.width;
+  const sy = box.height / layout.height;
+  const x = (value: number): number => value * sx;
+  const y = (value: number): number => value * sy;
+  const font = (value: number): number => value * Math.min(sx, sy);
+  const { centerX: cx, centerY: cy, halfHeight: h } = layout;
+  const r = (h * 2) / Math.sqrt(3);
+  const bold = { size: font(9.35), weight: 700, anchor: 'middle' } as const;
+  ['Advanced', 'Movement', 'Compass'].forEach((label, index) =>
+    addText(group, label, x(layout.captionX), y(cy + 0.5 + (index - 1) * 10), bold),
+  );
+  const hex = svgElement('polygon');
+  setAttributes(hex, {
+    points: [[cx - r / 2, cy - h], [cx - r, cy], [cx - r / 2, cy + h], [cx + r / 2, cy + h], [cx + r, cy], [cx + r / 2, cy - h]]
+      .map(([px, py]) => `${formatNumber(x(px))},${formatNumber(y(py))}`)
+      .join(' '),
+    fill: 'none',
+    stroke: '#000',
+    'stroke-width': font(2.9),
+  });
+  group.appendChild(hex);
+  const facings: readonly [string, number, number][] = [
+    ['A', cx, cy - h - 3], ['B', cx + r + 0.5, cy - h / 2 - 0.5], ['C', cx + r + 0.5, cy + h / 2 + 5.5],
+    ['D', cx, cy + h + 9], ['E', cx - r - 0.5, cy + h / 2 + 5.5], ['F', cx - r - 0.5, cy - h / 2 - 0.5],
+  ];
+  facings.forEach(([label, px, py]) => addText(group, label, x(px), y(py), bold));
+  svg.appendChild(group);
 }
 
 export function drawHeatScale(svg: SVGSVGElement, box: Box, family: 'mek' | 'aero'): void {
@@ -1012,6 +1312,19 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box, family: 'mek' | 'aer
   svg.appendChild(group);
 }
 
+/** A compact block records the cluster racks its page's cluster hits table needs. */
+export function setCompactClusterRacks(block: SVGSVGElement, racks: readonly number[]): void {
+  block.setAttribute('data-mekbay-cluster-racks', racks.join(','));
+}
+
+/** The cluster racks a compact block recorded with `setCompactClusterRacks`. */
+export function compactClusterRacks(block: SVGSVGElement | undefined): readonly number[] {
+  return (block?.getAttribute('data-mekbay-cluster-racks') ?? '')
+    .split(',')
+    .map(Number)
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
 export function drawClusterHitsReference(
   svg: SVGSVGElement,
   box: Box,
@@ -1019,15 +1332,12 @@ export function drawClusterHitsReference(
   presentation: 'auto' | 'full-width' = 'auto',
 ): void {
   const profile = clusterHitsReferenceProfile(box, rackColumns.length, presentation);
-  const group = addFrame(svg, 'CLUSTER HITS TABLE', box, {
-    fullWidthHeader: true,
-  });
-  group.setAttribute('class', 'referenceTable');
+  const group = addReferenceTableFrame(svg, 'CLUSTER HITS TABLE', box);
   group.setAttribute('data-mekbay-reference', 'cluster-hits');
   const table = svgElement('g');
   // Scale grid coordinates, not the text: numbers retain their physical size
   // and proportions while the frame keeps the utility's standard geometry.
-  const tableTop = 27;
+  const tableTop = 22.5;
   const scaleX = box.width / profile.width;
   const scaleY = (box.height - tableTop) / (profile.height - 22.5);
   table.setAttribute('transform', `translate(${formatNumber(3 * scaleX)} ${tableTop})`);
@@ -1036,8 +1346,9 @@ export function drawClusterHitsReference(
   const columnWidth = (profile.width - profile.rollColumnX * 2 - 6) * scaleX / safeRackCount;
   const rowHeight = profile.rowHeight * scaleY;
   const firstShadeY = profile.firstShadeY * scaleY;
-  // Numeral glyphs fit within 0.8 em; reserve that height even in short tables.
-  const fontSize = Math.min(RECORD_SHEET_FONT.body, rowHeight / 0.8);
+  // Readable numerals (at least the small type) whose glyphs, about 0.7 em tall, stay
+  // shorter than their rows so neighbouring rows never touch.
+  const fontSize = Math.min(RECORD_SHEET_FONT.body, Math.max(RECORD_SHEET_FONT.small, rowHeight * 0.82));
   addText(table, '2D6', rollColumnX, 0, {
     size: fontSize,
     weight: 700,
@@ -1055,16 +1366,7 @@ export function drawClusterHitsReference(
     const rowIndex = roll - 2;
     const baseline = firstShadeY + (rowIndex + 0.5) * rowHeight + fontSize * 0.35;
     if (rowIndex % 2 === 0) {
-      const shade = svgElement('rect');
-      setAttributes(shade, {
-        x: scaleX,
-        y: firstShadeY + rowIndex * rowHeight,
-        width: (profile.width - 11) * scaleX,
-        height: rowHeight,
-        fill: '#bbb',
-        class: 'tableshading',
-      });
-      table.appendChild(shade);
+      addReferenceShade(table, scaleX, firstShadeY + rowIndex * rowHeight, (profile.width - 11) * scaleX, rowHeight);
     }
     addText(table, String(roll), rollColumnX, baseline, {
       size: fontSize,
@@ -1278,6 +1580,19 @@ const RECORD_SHEET_HEADER_WIDTHS: Readonly<Record<string, number>> = Object.free
   'GROUND MAP STRAIGHT MOVEMENT': 178.308,
 });
 
+/** Every reference table shares this frame: a compact full-width title tab. */
+export function addReferenceTableFrame(svg: SVGSVGElement, title: string, box: Box): SVGGElement {
+  const group = addFrame(svg, title, box, {
+    fullWidthHeader: true,
+    headerFontSize: RECORD_SHEET_FONT.inventory,
+    // SvgFrameUtil adds 2.5 points of padding above and below an explicit height.
+    headerHeight: 11.25 - 5,
+    cornerAngleDegrees: 56.31,
+  });
+  group.setAttribute('class', 'referenceTable');
+  return group;
+}
+
 export function addFrame(
   svg: SVGSVGElement,
   title: string,
@@ -1383,6 +1698,8 @@ export function addText(
     readonly anchor?: 'start' | 'middle' | 'end';
     readonly class?: string;
     readonly maxWidth?: number;
+    /** A template caption's exact MegaMekLab width, independent of the viewer's font metrics. */
+    readonly textLength?: number;
   } = {},
 ): SVGTextElement {
   const text = svgElement('text');
@@ -1396,12 +1713,28 @@ export function addText(
     class: options.class,
   });
   text.textContent = value;
-  if (options.maxWidth && !textFitsWidth(value, options.size ?? 7, options.maxWidth)) {
-    text.setAttribute('textLength', formatNumber(options.maxWidth));
+  if (options.textLength !== undefined) {
+    text.setAttribute('textLength', formatNumber(options.textLength));
     text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-  }
+  } else if (options.maxWidth) fitRecordSheetTextLine(text, value, options.size ?? 7, options.maxWidth);
   parent.appendChild(text);
   return text;
+}
+
+/** Condenses one text line to `maxWidth` when it would overflow, and clears an outdated condensation otherwise. */
+export function fitRecordSheetTextLine(
+  text: SVGTextContentElement,
+  value: string,
+  size: number,
+  maxWidth: number,
+): void {
+  if (textFitsWidth(value, size, maxWidth)) {
+    text.removeAttribute('textLength');
+    text.removeAttribute('lengthAdjust');
+    return;
+  }
+  text.setAttribute('textLength', formatNumber(maxWidth));
+  text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
 }
 
 /** Whether record-sheet text fits a width, by average glyph width rather than DOM measurement. */
@@ -1422,28 +1755,36 @@ export function addWrappedText(
     readonly italic?: boolean;
   },
 ): void {
-  // Roboto's record-sheet prose averages notably narrower than the inventory
-  // numerals; this keeps MML's quirk line breaks without measuring the DOM.
-  const maxCharacters = Math.max(1, Math.floor(maxWidth / (options.size * 0.43)));
-  const lines: string[] = [];
-  for (const word of value.split(/\s+/u)) {
-    const current = lines.at(-1);
-    if (
-      current === undefined ||
-      (current.length + 1 + word.length > maxCharacters && lines.length < options.maxLines)
-    ) {
-      lines.push(word);
-    } else {
-      lines[lines.length - 1] = `${current} ${word}`;
-    }
-  }
-  lines.slice(0, options.maxLines).forEach((line, index) => {
+  wrapRecordSheetText(value, maxWidth, options.size, options.maxLines).forEach((line, index) => {
     const text = addText(parent, line, x, y + index * options.lineHeight, {
       size: options.size,
       maxWidth,
     });
     if (options.italic) text.setAttribute('font-style', 'italic');
   });
+}
+
+/** Word-wraps prose; overflow beyond `maxLines` stays on the last line, which `addText` then condenses. */
+export function wrapRecordSheetText(
+  value: string,
+  maxWidth: number,
+  size: number,
+  maxLines = Number.POSITIVE_INFINITY,
+): readonly string[] {
+  if (!value) return [];
+  // Roboto's record-sheet prose averages notably narrower than the inventory
+  // numerals; this keeps MML's quirk line breaks without measuring the DOM.
+  const maxCharacters = Math.max(1, Math.floor(maxWidth / (size * 0.43)));
+  const lines: string[] = [];
+  for (const word of value.split(/\s+/u)) {
+    const current = lines.at(-1);
+    if (current === undefined || (current.length + 1 + word.length > maxCharacters && lines.length < maxLines)) {
+      lines.push(word);
+    } else {
+      lines[lines.length - 1] = `${current} ${word}`;
+    }
+  }
+  return lines;
 }
 
 export function addLine(
@@ -1459,6 +1800,13 @@ export function addLine(
   setAttributes(line, { x1, y1, x2, y2, stroke, 'stroke-width': width });
   parent.appendChild(line);
   return line;
+}
+
+/** The grey band behind alternate reference-table rows. */
+export function addReferenceShade(parent: SVGElement, x: number, y: number, width: number, height: number): void {
+  const shade = svgElement('rect');
+  setAttributes(shade, { x, y, width, height, fill: '#bbb', class: 'tableshading' });
+  parent.appendChild(shade);
 }
 
 export function circle(cx: number, cy: number, radius: number, className: string): SVGCircleElement {
@@ -1580,7 +1928,8 @@ export function formatNumber(value: number): string {
 
 /** Small support vehicle record sheets express their construction weight in kg. */
 export function formatRecordSheetTonnage(tons: number, kilograms = false): string {
-  return kilograms ? `${formatWholeNumber(Math.trunc(tons * 1000))} kg` : formatNumber(tons);
+  // MegaMekLab groups tonnage digits like every other printed number.
+  return kilograms ? `${formatWholeNumber(Math.trunc(tons * 1000))} kg` : formatWholeNumber(tons);
 }
 
 export function formatGeometryNumber(value: number): string {

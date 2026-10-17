@@ -123,7 +123,7 @@ describe('construction editor document lifecycle', () => {
           provide: UnitFluffImageService,
           useValue: { resolveEntityCatalogUrl: () => null, loadEntityCatalogUrl: async () => null },
         },
-        { provide: LayoutService, useValue: { windowWidth: signal(1440) } },
+        { provide: LayoutService, useValue: { windowWidth: signal(1440), windowHeight: signal(900) } },
         StatBarSpecsPipe,
         { provide: UnitSearchIndexService, useValue: searchIndex },
         {

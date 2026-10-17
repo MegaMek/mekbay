@@ -53,7 +53,12 @@ type SerializedCBTForceV2,
 } from './runtime/persistence-v2';
 import { createPristineMekState, createUnitInstanceId, freezeRuntimeState } from './runtime/runtime-state';
 import { queryMekRuntime } from './runtime/unit-instance';
-import { createPristineNonMekUnitState, freezeNonMekUnitState } from './runtime/non-mek-unit-instance';
+import { createPristineNonMekUnitState, freezeNonMekUnitState, nonMekAttackMovementModifier, queryNonMekRuntime } from './runtime/non-mek-unit-instance';
+import { canSwitchNonMekAirGroundState } from './runtime/non-mek-airborne-state';
+import type { MekMovementModeV2 } from './runtime/mek-movement-psr-v2';
+import type { UnitModifierBreakdownEntry } from './combat-modifier';
+import { canChangeAirborneGround, getMotiveModeLabel, getMotiveModesByUnit, motiveModeFactsForEntity, type MotiveModes } from './motiveModes.model';
+import { ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY } from './rules/game-rules';
 import { captureUnitCommand,type CBTUnitCommand } from './runtime/unit-command';
 import { isUnitEditContextCurrent,type UnitEditContext } from './runtime/unit-edit-context';
 import type { UnitConditionKey } from './unit-condition.model';
@@ -124,7 +129,7 @@ import { CBTForceSession,type CapturedRuntimeCommandMutation } from './runtime/c
 import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
 import { commandMayChangeBaseBattleValue,commandMayChangeOperationalC3 } from './runtime/cbt-force-unit-mutation-impact';
 import { readOnlyTargetRegistry } from './runtime/encounter-runtime';
-import { projectMekEquipmentPanel,type EquipmentPanelSnapshot } from './runtime/equipment-panel';
+import { projectMekEquipmentPanel,type EquipmentPanelSnapshot,type WeaponAttackContext } from './runtime/equipment-panel';
 import type { EquipmentRowOrderGroup } from './runtime/equipment-row-order';
 import {
 projectMekRecordSheet,
@@ -132,7 +137,7 @@ projectMekUnitStatus,
 type MekRecordSheetSnapshot,
 type MekUnitStatusSnapshot,
 } from './runtime/mek-record-sheet';
-import { projectMekTurnPanel,type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
+import { mekAttackMovementModifier,projectMekTurnPanel,type MekTurnPanelSnapshot } from './runtime/mek-turn-panel';
 import { projectNonMekEquipmentPanel } from './runtime/non-mek-equipment-panel';
 import { projectNonMekRecordSheet,type NonMekRecordSheetSnapshot } from './runtime/non-mek-record-sheet';
 import {
@@ -1256,7 +1261,7 @@ export class CBTForce extends Force<never> {
     public getMekUnitStatusSnapshot(instanceId: string): MekUnitStatusSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         return unit && hasMekRuntime(unit)
-            ? projectMekUnitStatus(unit.entity, unit.index, unit.state, unit.query)
+            ? projectMekUnitStatus(unit.index, unit.state, unit.query)
             : null;
     }
 
@@ -1273,8 +1278,6 @@ export class CBTForce extends Force<never> {
         if (adjustedBattleValue === null || pristineBattleValue === null) {
             throw new Error(`Non-Mek runtime ${instanceId} has no battle-value projection`);
         }
-        const crew = this.getUnitCrewAssignment(instanceId);
-        if (!crew) throw new Error(`Non-Mek runtime ${instanceId} has no crew assignment`);
         const state = pristine ? freezeNonMekUnitState({
             ...createPristineNonMekUnitState(unit.entity),
             ammo: new Map([...unit.state.ammo].map(([id, ammo]) => [id, { ...ammo, shotsSpent: 0 }])),
@@ -1285,10 +1288,9 @@ export class CBTForce extends Force<never> {
             unit.index,
             state,
             unit.ruleset,
+            pristine ? queryNonMekRuntime(owned.mechanics(), state) : owned.query(),
             adjustedBattleValue,
             pristineBattleValue,
-            crew,
-            owned.mechanics().forcedWithdrawal,
             this.currentHeatPolicy(),
         ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
@@ -1312,17 +1314,13 @@ export class CBTForce extends Force<never> {
         if (!hasNonMekRuntime(unit)) return null;
         const owned = this.unitStore.nonMekUnit(instanceId);
         if (!owned) return null;
-        const crew = this.getUnitCrewAssignment(instanceId);
-        if (!crew) throw new Error(`Non-Mek runtime ${instanceId} has no crew assignment`);
         return projectNonMekEquipmentPanel(
             unit.entity,
             unit.index,
             unit.ruleset,
             unit.state,
-            crew,
+            owned.query(),
             registry,
-            owned.mechanics().forcedWithdrawal,
-            owned.mechanics().hotLoadedAmmo,
         );
     }
 
@@ -1669,6 +1667,50 @@ export class CBTForce extends Force<never> {
     public getC3State(instanceId: string): C3State {
         this.memberRegistry.dependOnOperationalC3Inputs();
         return this.unitStore.c3.state(instanceId, this.c3Encounter.networks);
+    }
+
+    /** The attacker facts every target number for this unit's weapons shares; pass the unit's panel when at hand. */
+    public getWeaponAttackContext(
+        instanceId: string,
+        panel = this.getEquipmentPanelSnapshot(instanceId),
+    ): WeaponAttackContext | null {
+        const unit = this.getUnitSnapshot(instanceId);
+        if (!unit || !panel) return null;
+        const mek = hasMekRuntime(unit) ? unit : null;
+        const nonMek = hasNonMekRuntime(unit) ? unit : null;
+        const movementMode: MotiveModes | null = mek
+            ? mek.query.mekMovementPsrState().movement?.mode ?? null
+            : nonMek?.state.turn.movement?.mode ?? null;
+        const airborne = mek ? mek.query.turnState().airborne === true : nonMek?.state.turn.airborne === true;
+        const modifier = (mode: MotiveModes, isAirborne: boolean): number => mek
+            ? mekAttackMovementModifier(mek.entity, mode as MekMovementModeV2, isAirborne)
+            : nonMekAttackMovementModifier(unit.entity, mode);
+        const facts = motiveModeFactsForEntity(unit.entity);
+        const movementModifier = movementMode === null ? 0 : modifier(movementMode, airborne);
+        const attackModifierBreakdown: readonly UnitModifierBreakdownEntry[] = Object.freeze(movementModifier === 0
+            ? []
+            : [Object.freeze({
+                label: getMotiveModeLabel(movementMode!, facts, airborne),
+                modifier: movementModifier,
+                priority: ATTACK_MOVEMENT_MODIFIER_BREAKDOWN_PRIORITY,
+            })]);
+        // Without declared movement the shown numbers miss a modifier whenever the unit could have moved with one.
+        const airborneStates = (mek ? canChangeAirborneGround(facts) : canSwitchNonMekAirGroundState(unit.entity))
+            ? [false, true]
+            : [airborne];
+        const c3 = this.getC3State(instanceId);
+        return Object.freeze({
+            gunnery: panel.crew.gunnery,
+            pilotingSkill: panel.crew.piloting,
+            movementMode,
+            attackModifierBreakdown,
+            missingMovementModifier: movementMode === null && airborneStates.some(isAirborne =>
+                getMotiveModesByUnit(facts, isAirborne).some(mode => modifier(mode, isAirborne) !== 0)),
+            allowExtremeRange: this.injector.get(OptionsService, null, { optional: true })
+                ?.options().CBTOptionalRules?.extremeRange ?? false,
+            c3Available: c3 !== 'none',
+            c3DegradationSource: c3 === 'degraded' ? 'unit' : 'none',
+        });
     }
 
     public isC3EndpointOperational(instanceId: string, componentId: ComponentId): boolean {

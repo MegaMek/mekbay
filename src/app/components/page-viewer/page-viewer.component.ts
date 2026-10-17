@@ -141,7 +141,6 @@ export class PageViewerComponent implements AfterViewInit {
     private pageViewerSwipeAnimation = inject(PageViewerSwipeAnimationService);
     private pageViewerSwipeDom = inject(PageViewerSwipeDomService);
     private pageViewerSheetSource = inject(PageViewerSheetSourceService);
-    private pageViewerMekInteractions = inject(PageViewerMekInteractionService);
     private pageViewerMekRuntime = inject(PageViewerMekRuntimeService);
     private pageViewerEntityRuntime = inject(PageViewerNonMekRuntimeService);
     private keyboardShortcutService = inject(KeyboardShortcutService);    
@@ -199,25 +198,6 @@ export class PageViewerComponent implements AfterViewInit {
     // Track displayed units
     private displayedUnits = signal<PageViewerMember[]>([]);
     readonly displayedUnitIds = computed(() => this.displayedUnits().map((unit) => unit.id));
-
-    isPickerOpen = computed(() => {
-        if (this.readOnly()) {
-            return false;
-        }
-
-        const displayedIds = this.displayedUnitIds();
-        let anyPickerOpen = false;
-
-        for (const unitId of displayedIds) {
-            if (this.pageViewerMekInteractions.isPickerOpen(unitId)
-                || this.pageViewerEntityRuntime.isPickerOpen(unitId)) {
-                anyPickerOpen = true;
-                break;
-            }
-        }
-
-        return anyPickerOpen;
-    });
 
     // Heat diff marker data for each interaction service (keyed by unitId for stability)
     heatDiffMarkers = signal<Map<string, { data: HeatDiffMarkerData | null; visible: boolean }>>(new Map());

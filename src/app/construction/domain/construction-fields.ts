@@ -28,6 +28,7 @@ import {
   getIndustrialAdvancedFireControlTech,
   getLamConstructionTech,
   getMekConstructionTech,
+  getRiscHeatSinkOverrideKitTech,
 } from '../../models/entity/components';
 import type { CockpitType, EngineType, MotiveType, TechRatingSource } from '../../models/entity/types';
 import {
@@ -578,7 +579,10 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       compatible: () => constructionFullHeadEjectionApplies(entity),
       hint: 'Full-head ejection is incompatible with torso-mounted cockpits and command consoles.',
     });
-    boolean('riscHeatSinkOverride', 'RISC heat sink override', entity.hasRiscHeatSinkOverrideKit);
+    boolean('riscHeatSinkOverride', 'RISC heat sink override', entity.hasRiscHeatSinkOverrideKit, 'Special', {
+      compatible: () => technologyAllowed(getRiscHeatSinkOverrideKitTech()),
+      hint: 'The RISC heat sink override kit is unavailable for this tech base, year or rules level.',
+    });
     if (entity instanceof MekWithArmsEntity) {
       for (const side of ['left', 'right'] as const) {
         for (const [id, label, signal] of [

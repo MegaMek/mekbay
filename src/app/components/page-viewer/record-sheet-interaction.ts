@@ -50,10 +50,6 @@ export type RecordSheetInteractionPayload =
         skill: 'gunnery' | 'piloting' | 'aeroGunnery' | 'aeroPiloting';
     }>
     | Readonly<{
-        kind: 'crew-name';
-        positionId: CrewPositionId;
-    }>
-    | Readonly<{
         kind: 'crew-state-menu';
         positionId: CrewPositionId;
     }>

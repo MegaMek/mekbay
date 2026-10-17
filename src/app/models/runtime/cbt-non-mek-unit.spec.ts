@@ -55,8 +55,8 @@ describe('CBTNonMekUnit', () => {
                 expect(runtime.dispatch({ type: 'set-crew-state', positionId: seat,
                     wounds: 1, unconscious: false, ejected: false }).changed).toBeFalse();
                 expect(runtime.snapshot().crew.size).toBe(0);
-                const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset(),
-                    0, 0, ready.getCrewAssignment());
+                const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset(), runtime.query(),
+                    0, 0);
                 expect(sheet.crew.length).toBe(runtime.getIndex().crewPositions.size);
                 expect(sheet.crew.every(person => person.effectiveState === 'vacant')).toBeTrue();
                 expect(sheet.crewSize).toBe(runtime.getIndex().crewPositions.size);
@@ -82,7 +82,7 @@ describe('CBTNonMekUnit', () => {
         expect(positions.length).toBeGreaterThan(0);
         expect(positions.every(position => position.piloting === 5)).toBeTrue();
         const runtime = unit;
-        const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset(), 0, 0, unit.getCrewAssignment());
+        const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), runtime.ruleset(), runtime.query(), 0, 0);
         expect(sheet.crew.every(position => position.piloting === 8)).toBeTrue();
     });
 });

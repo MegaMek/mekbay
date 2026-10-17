@@ -31,13 +31,13 @@ queryNonMekRuntime,
 reduceNonMekAttackerTargeting,
 reduceNonMekRuntime,
 reduceNonMekSelectedWeaponFire,
-type NonMekRuntimeBinding,type NonMekUnitRuntimeState,
+type NonMekRuntimeBinding,type NonMekUnitQueryPort,type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
 import { planMekAttackerTargetingReconciliation,queryMekRuntime,reduceMekAttackerTargeting,reduceMekRuntime,reduceMekSelectedWeaponFire,type MekRuntimeBinding,type MekUnitQueryPort } from './unit-instance';
 
 export type CBTUnitFamily = 'mek' | 'non-mek';
 export type CBTUnitStateFor<F extends CBTUnitFamily> = F extends 'mek' ? MekUnitRuntimeState : NonMekUnitRuntimeState;
-type UnitQueryFor<F extends CBTUnitFamily> = F extends 'mek' ? MekUnitQueryPort : CBTUnitQueryPort;
+type UnitQueryFor<F extends CBTUnitFamily> = F extends 'mek' ? MekUnitQueryPort : NonMekUnitQueryPort;
 type UnitIndexFor<F extends CBTUnitFamily> = F extends 'mek' ? MekRuntimeIndex : NonMekRuntimeIndex;
 type UnitEntityFor<F extends CBTUnitFamily> = F extends 'mek' ? MekEntity : BaseEntity;
 type UnitDeploymentFor<F extends CBTUnitFamily> = F extends 'mek' ? SerializedDeploymentConfigurationV2 : SerializedNonMekDeployment;

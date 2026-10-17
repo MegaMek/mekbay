@@ -25,7 +25,8 @@ import type { EquipmentStatus } from '../equipment-status.model';
 import { asSourceHashCanary,type SourceHashCanary } from '../source-hash-canary';
 import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { requireUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
-import { deserializeUnitCover,serializeUnitCover,type SerializedUnitCover } from '../unit-cover.model';
+import { deserializeUnitCover,type SerializedUnitCover } from '../unit-cover.model';
+import { serializeSharedTurnFacts } from './cbt-unit-runtime';
 import {
 createPristineAttackerTargetingState,
 } from './attacker-targeting-state';
@@ -476,16 +477,8 @@ function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUni
         && turn.endTurnCheckpoint === undefined
         && turn.controlRecovery === undefined) return undefined;
     return Object.freeze({
-        ...(turn.turnCounter === 0 ? {} : { turnCounter: turn.turnCounter }),
-        ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
-        ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...serializeSharedTurnFacts(turn),
         ...(turn.heatSettled ? { heatSettled: true as const } : {}),
-        ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
-        ...(turn.spotting ? { spotting: true as const } : {}),
-        ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
-        ...(turn.endTurnCheckpoint === undefined
-            ? {}
-            : { endTurnCheckpoint: turn.endTurnCheckpoint }),
         ...(turn.controlRecovery === undefined
             ? {}
             : { controlRecovery: Object.freeze({ ...turn.controlRecovery }) }),

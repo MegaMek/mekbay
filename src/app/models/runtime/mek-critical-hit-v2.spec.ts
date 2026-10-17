@@ -16,6 +16,7 @@ import {
     createDirectExplosionRuntimeFixture,
     createDirectMekRuntimeFixture,
     createDirectRiscLaserPulseRuntimeFixture,
+    createDirectSuperheavyRuntimeFixture,
     type DirectMekRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
 import type { ComponentId } from '../entity/entity-identifiers';
@@ -151,6 +152,32 @@ describe('direct Mek critical-hit rules', () => {
         expect(fixture.instance.query().criticalHits(slot.id)).toBe(1);
         expect(fixture.instance.query().remainingAmmo(ammo.id)).toBe(20);
         expect(fixture.instance.query().crewState(pilot.id).wounds).toBe(1);
+    });
+
+    it('detonates both bins of a shared superheavy ammo slot as one explosion', () => {
+        const explosionAt = (fixture: DirectMekRuntimeFixture) => {
+            const ammo = fixture.equipmentComponent('Test Ammo');
+            const slot = [...fixture.index.slots.values()].find(candidate =>
+                candidate.componentIds.includes(ammo.id))!;
+            const plan = projectMekCriticalRollV2(
+                fixture.entity,
+                fixture.index,
+                fixture.instance.ruleset(),
+                fixture.instance.query(),
+                slot.locationId,
+                slot.slotIndex < 6 ? [1, slot.slotIndex + 1] : [4, slot.slotIndex - 5],
+                'committed',
+            );
+            expect(plan.kind).toBe('applied');
+            return { slot, explosion: plan.kind === 'applied' ? plan.explosion : undefined };
+        };
+        const single = explosionAt(createDirectSuperheavyRuntimeFixture());
+        const shared = explosionAt(createDirectSuperheavyRuntimeFixture(undefined, undefined, { sharedAmmoSlot: true }));
+
+        expect(single.slot.componentIds.length).toBe(1);
+        expect(shared.slot.componentIds.length).toBe(2);
+        expect(shared.explosion?.rawDamage).toBe(2 * single.explosion!.rawDamage);
+        expect(shared.explosion?.pilotHits).toBe(single.explosion!.pilotHits);
     });
 
     it('can retain an ammunition critical while independently skipping explosion and pilot-hit effects', () => {

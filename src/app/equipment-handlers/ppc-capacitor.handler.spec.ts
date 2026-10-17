@@ -9,9 +9,9 @@ ppcCapacitorChargedForWeapon,
 ppcCapacitorWeaponTypes,
 setComponentPpcCapacitorCharge,
 } from '../models/runtime/component-ppc-capacitor';
-import { projectMekEquipmentComponents } from '../models/runtime/equipment-panel';
+import { projectMekEquipmentPanel } from '../models/runtime/equipment-panel';
 import { canPerformMekAction } from '../models/runtime/mek-action-availability';
-import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
+import { createDirectMekRuntimeFixture,emptyCBTEncounterSnapshot } from '../models/runtime/testing/direct-mek-runtime-fixture';
 
 import {
 PPC_CAPACITOR_CHARGED_STATE,
@@ -166,12 +166,13 @@ function directPpcSetup() {
 type DirectPpcSetup = ReturnType<typeof directPpcSetup>;
 
 function projectedWeapon(setup: DirectPpcSetup) {
-    const row = projectMekEquipmentComponents(
+    const row = projectMekEquipmentPanel(
         setup.fixture.entity,
         setup.fixture.index,
         setup.fixture.instance.ruleset(),
         setup.runtime.query(),
-    ).find(candidate => candidate.componentId === setup.weapon.id);
+        emptyCBTEncounterSnapshot(),
+    ).components.find(candidate => candidate.componentId === setup.weapon.id);
     if (row?.weapon === undefined) throw new Error('Missing projected PPC weapon');
     return row.weapon;
 }

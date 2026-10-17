@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { WeaponEquipment } from '../equipment.model';
-import { projectMekEquipmentComponents } from './equipment-panel';
+import { projectMekEquipmentPanel } from './equipment-panel';
 import {
     mekComponentModes,
 } from './mek-component-rules';
 import { FLAMER_DAMAGE_MODE, FLAMER_HEAT_MODE } from '../flamer-mode.model';
-import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import { createDirectMekRuntimeFixture,emptyCBTEncounterSnapshot } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mek component rules', () => {
     it('only exposes modes owned by runtime handlers', () => {
@@ -58,12 +58,13 @@ describe('direct Mek component rules', () => {
             componentId: tw.componentId,
             mode: FLAMER_HEAT_MODE,
         }).accepted).toBeTrue();
-        const row = projectMekEquipmentComponents(
+        const row = projectMekEquipmentPanel(
             tw.entity,
             tw.index,
             'total-warfare',
             tw.instance.query(),
-        ).find(candidate => candidate.componentId === tw.componentId);
+            emptyCBTEncounterSnapshot(),
+        ).components.find(candidate => candidate.componentId === tw.componentId);
         expect(row?.label).toBe('Medium Laser (Heat)');
     });
 });
