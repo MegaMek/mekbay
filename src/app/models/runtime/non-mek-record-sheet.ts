@@ -29,6 +29,7 @@ import type { UnitConditionKey } from '../unit-condition.model';
 import type { UnitType } from '../unit-summary.model';
 import { crewSkillsForUnit } from '../unit-crew-policy';
 import { entityAmmoLoadout } from './mek-ammo';
+import { isCoolantPodEquipment } from './component-coolant-pod';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import type { NonMekUnitQueryPort,NonMekUnitRuntimeState } from './non-mek-unit-instance';
 import { systemDamagePresentation } from './system-damage-presentation';
@@ -94,7 +95,8 @@ export interface NonMekRecordSheetCrewPosition {
     readonly occurrence: number;
     readonly name: string;
     readonly gunnery: number;
-    readonly piloting: number;
+    /** Null for conventional infantry that cannot make anti-'Mech attacks: their sheet has no skill to show. */
+    readonly piloting: number | null;
     readonly state: CrewMemberRuntimeState;
     readonly effectiveState: CrewMemberState;
 }
@@ -209,7 +211,8 @@ export function projectNonMekRecordSheet(
                 .map(location => entity.componentLocationLabel(location))),
             status: query.componentStatus(component.id, 'committed'),
             previewStatus: query.componentStatus(component.id, 'preview'),
-            ...(loadout === null ? {} : {
+            // The printed ammunition profile; coolant pods are catalogued as ammunition but print as equipment.
+            ...(loadout === null || isCoolantPodEquipment(mount.equipment) ? {} : {
                 ammo: Object.freeze({
                     displayName: loadout.equipment.shortName || loadout.equipment.name,
                     capacity: loadout.capacity,
@@ -252,7 +255,9 @@ export function projectNonMekRecordSheet(
                 occurrence: position.occurrence,
                 name: assignment?.name ?? '',
                 gunnery: skills.gunnery,
-                piloting: effectiveEntityPilotingSkill(entity, skills.piloting),
+                piloting: isInfantryEntity(entity) && !entity.canMakeAntiMekAttacks()
+                    ? null
+                    : effectiveEntityPilotingSkill(entity, skills.piloting),
                 state: member.toRuntimeState(),
                 effectiveState: effectiveState === 'dead'
                     ? 'killed'

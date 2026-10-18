@@ -9,7 +9,7 @@ import { isDroneOperatingSystemEquipment } from '../drone-operating-system.model
 import type { VehicleEntity } from '../entity/entities/vehicle/vehicle-entity';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
-import { STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
+import { BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION, type MovementCalculationOptions } from '../entity/types';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { WeaponEquipment } from '../equipment.model';
 import { isMascEquipment } from '../escalating-equipment.model';
@@ -75,6 +75,8 @@ export interface VehicleRuntimeRulesProjection {
     readonly crewStateDisplayKeys: readonly CrewMemberState[];
     readonly systems: VehicleRuntimeSystems;
     readonly movement: VehicleRuntimeMovement;
+    /** The same damage over BV-calculation base movement, which ignores e.g. modular armor (MegaMek BV_CALCULATION). */
+    readonly battleValueMovement: VehicleRuntimeMovement;
     readonly attackMovementModifier: number;
     readonly chargeDamage: ChargeDamageProjection;
     readonly modifiers: VehicleRuntimeRuleModifiers;
@@ -171,12 +173,10 @@ export function projectVehicleRuntimeRules(
         || [...index.locations.values()].some(location =>
             location.internalPoints > 0
             && (state.locations.get(location.id)?.internalDamage ?? 0) >= location.internalPoints);
-    const movement = vehicleMovement(
-        entity,
-        systems,
-        destroyed || storedImmobile || computedConditions.has('immobile')
-            || state.conditions.has('disconnected'),
-    );
+    const immobile = destroyed || storedImmobile || computedConditions.has('immobile')
+        || state.conditions.has('disconnected');
+    const movement = vehicleMovement(entity, systems, immobile, STANDARD_MOVEMENT_CALCULATION);
+    const battleValueMovement = vehicleMovement(entity, systems, immobile, BV_MOVEMENT_CALCULATION);
     const fireBlockedComponentIds = new Set<ComponentId>();
     const stabilizerAffectedComponentIds = new Set<ComponentId>();
     for (const component of index.components.values()) {
@@ -217,6 +217,7 @@ export function projectVehicleRuntimeRules(
         crewStateDisplayKeys: crewStateControlKeys,
         systems,
         movement,
+        battleValueMovement,
         attackMovementModifier: getDefaultAttackerMovementModifier(movementMode),
         chargeDamage,
         modifiers: vehicleModifiers(entity, systems),
@@ -231,8 +232,9 @@ function vehicleMovement(
     entity: VehicleEntity,
     systems: VehicleRuntimeSystems,
     immobile: boolean,
+    options: MovementCalculationOptions,
 ): VehicleRuntimeMovement {
-    const baseWalk = Math.max(0, entity.computeWalkMP(STANDARD_MOVEMENT_CALCULATION));
+    const baseWalk = Math.max(0, entity.computeWalkMP(options));
     const baseRun = baseWalk === 0 ? 0 : Math.round(baseWalk * 1.5);
     if (immobile) {
         return Object.freeze({ moveImpaired: true, walk: 0, maxWalk: 0, run: 0, maxRun: 0 });

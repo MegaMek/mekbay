@@ -9,11 +9,11 @@ import { EquipmentRegistry } from '../../../equipment-lookup';
 import { AmmoEquipment, MiscEquipment } from '../../../equipment.model';
 import { modularArmorMovementPenalty } from '../../../modular-armor.model';
 import {
-  isEmergencyCoolantSystemEquipment,
   isMascEquipment,
   isRadicalHeatSinkEquipment,
 } from '../../../escalating-equipment.model';
 import { resolveShieldSize } from '../../utils/physical-weapon';
+import { shieldWalkMpReduction } from '../../utils/physical-weapon-kernel';
 import {
   PARTIAL_WING_HEAT_DISSIPATION_BONUS,
   isJumpBoosterEquipment,
@@ -35,6 +35,7 @@ import { isChainDrapeEquipment } from '../../../chassis-equipment.model';
 import {
   BaseEntity,
   COLLECT_ALL_MIXED_TECH_REASONS,
+  type HeatDissipationBoost,
   MixedTechResult,
 } from '../../base-entity';
 import {
@@ -370,15 +371,8 @@ export abstract class MekEntity extends BaseEntity {
     }, 0);
   }
 
-  protected override computeMaximumHeatDissipation(normal: number): number {
-    const sinks = this.totalHeatSinks();
-    let maximum = normal;
-    if (this.equipment().some(mount => isRadicalHeatSinkEquipment(mount.equipment))) maximum += sinks;
-    if (this.hasCoolantPod()) maximum += sinks;
-    maximum += this.equipment().filter(
-      mount => isEmergencyCoolantSystemEquipment(mount.equipment),
-    ).length * 6;
-    return maximum;
+  protected override computeHeatDissipationBoosts(): readonly HeatDissipationBoost[] {
+    return this.heatDissipationBoostsForSinks(this.totalHeatSinks());
   }
 
   override readonly engineHeatSinkType = computed<string>(() => {
@@ -551,13 +545,15 @@ export abstract class MekEntity extends BaseEntity {
 
   override computeWalkMP(options: MovementCalculationOptions): number {
     const equipment = this.equipment();
-    const shieldPenalty = options.ignoreShield
+    const baseWalkMp = this.originalWalkMP();
+    const shieldCount = options.ignoreShield
       || this.chassisConfig === 'Quad' || this.chassisConfig === 'QuadVee'
       ? 0
       : equipment.filter(mount => {
         const size = resolveShieldSize(mount.equipment);
         return size === 'large' || size === 'medium';
       }).length;
+    const shieldPenalty = shieldWalkMpReduction(options.ruleset ?? 'total-warfare', baseWalkMp, shieldCount);
     const modularArmorPenalty = modularArmorMovementPenalty(equipment, options.ignoreModularArmor);
     const chainDrapePenalty = !options.ignoreChainDrape && equipment.some(
       mount => isChainDrapeEquipment(mount.equipment),
@@ -567,7 +563,7 @@ export abstract class MekEntity extends BaseEntity {
     ) ? 1 : 0;
     return Math.max(
       0,
-      this.originalWalkMP() - shieldPenalty - modularArmorPenalty - chainDrapePenalty + tsmBonus,
+      baseWalkMp - shieldPenalty - modularArmorPenalty - chainDrapePenalty + tsmBonus,
     );
   }
 
@@ -613,8 +609,8 @@ export abstract class MekEntity extends BaseEntity {
     return false;
   }
 
-  /** Land-Air Mek AirMek flank MP for BV; zero for ordinary Meks. */
-  airMekFlankMP(): number {
+  /** Land-Air Mek AirMek flank MP for BV from the given jump MP; zero for ordinary Meks. */
+  airMekFlankMP(_jumpMP: number): number {
     return 0;
   }
 

@@ -17,6 +17,7 @@ import {
   TestDropShipEntity,
   TestFixedWingSupportEntity,
   TestInfantryEntity,
+  TestLamEntity,
   TestProtoMekEntity,
   TestSupportTankEntity,
   TestTankEntity,
@@ -236,6 +237,19 @@ describe('battle value family dispatch', () => {
     expect(entity.battleValueFor(entityState(entity))).toBe(entity.battleValue('core-2026'));
   });
 
+  for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+    it(`prices LAM AirMek movement from runtime movement like the pristine entity in ${ruleset}`, () => {
+      const entity = new TestLamEntity();
+      entity.setTonnage(55);
+      entity.originalWalkMP.set(5);
+      const jet = new MiscEquipment({ id: 'test-jet', name: 'Jump Jet', type: 'misc', flags: ['F_JUMP_JET'] });
+      // Odd jump MP: AirMek flank MP is ceil(5 x 4.5) = 23 before the speed factor halves it.
+      entity.setEquipment(Array.from({ length: 5 }, () => mount(jet, 'CT')));
+
+      expect(entity.battleValueFor(entityState(entity), ruleset)).toBe(entity.battleValue(ruleset));
+    });
+  }
+
   it('counts F_SHIELD equipment defensively instead of offensively', () => {
     const entity = new TestBipedMekEntity();
     const shield = new MiscEquipment({
@@ -279,6 +293,23 @@ describe('battle value family dispatch', () => {
       expect(findDetail(result.details, 'Defensive Equipment')?.delta).toBe(50 * count);
     });
   }
+
+  it('uses the chosen ruleset for pristine shield-limited BV movement', () => {
+    const entity = new TestBipedMekEntity();
+    entity.setTonnage(55);
+    entity.originalWalkMP.set(2);
+    const shield = new MiscEquipment({
+      id: 'test-medium-shield', name: 'Medium Shield', type: 'misc', stats: { bv: 50 },
+      flags: ['F_SHIELD', 'S_SHIELD_MEDIUM'],
+    });
+    entity.setEquipment([mount(shield, 'RA'), mount(shield, 'LA')]);
+
+    const core = calculateBattleValueDetails(entity, undefined, 'core-2026');
+    const tw = calculateBattleValueDetails(entity, undefined, 'total-warfare');
+    expect(findDetail(core.details, 'Effective MP')?.calculation).toBe('R: 2, J: 0, U: 0');
+    expect(findDetail(tw.details, 'Effective MP')?.calculation).toBe('R: 0, J: 0, U: 0');
+    expect(core.offensive).toBeGreaterThan(tw.offensive);
+  });
 
   it('shares mounted pod and linked PPC explosiveness with the entity', () => {
     const entity = new TestBipedMekEntity();

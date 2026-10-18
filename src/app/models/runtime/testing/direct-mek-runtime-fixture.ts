@@ -258,8 +258,10 @@ export function createDirectShieldRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
     size: 'small' | 'medium' | 'large' = 'medium',
     instanceId = `unit:direct-${size}-shield-fixture`,
+    options: Pick<DirectFixtureOptions,
+        'baseWalkMp' | 'configuration' | 'dualShields' | 'includeModularArmor' | 'includeChainDrape'> = {},
 ): DirectMekRuntimeFixture {
-    return createFixture(ruleset, instanceId, { shieldSize: size });
+    return createFixture(ruleset, instanceId, { ...options, shieldSize: size });
 }
 
 /** Parsed Mek with one shield in each arm, used by Core's single-raised-shield invariant. */
@@ -477,6 +479,7 @@ interface DirectFixtureOptions {
     readonly includeVoidSignature?: boolean;
     readonly includeDroneOperatingSystem?: boolean;
     readonly includeModularArmor?: boolean;
+    readonly includeChainDrape?: boolean;
     readonly includeVspLaser?: boolean;
     readonly includePrototypeLaser?: boolean;
     readonly includeMachineGunArray?: boolean;
@@ -770,6 +773,10 @@ function directMekEquipmentRegistry() {
         id: 'Test Modular Armor', name: 'Modular Armor', type: 'misc',
         flags: ['F_MODULAR_ARMOR'], stats: { criticalSlots: 1, bv: 10 },
     });
+    const chainDrape = new MiscEquipment({
+        id: 'Test Chain Drape', name: 'Chain Drape', type: 'misc',
+        flags: ['F_CHAIN_DRAPE'], stats: { criticalSlots: 1 },
+    });
     const vspLaser = new WeaponEquipment({
         id: 'Test Medium VSP Laser', name: 'Medium VSP Laser', type: 'weapon',
         flags: ['F_DIRECT_FIRE', 'F_ENERGY', 'F_LASER', 'F_PULSE', 'F_VSP'],
@@ -937,6 +944,7 @@ function directMekEquipmentRegistry() {
         [targetingComputer.id]: targetingComputer,
         [droneOperatingSystem.id]: droneOperatingSystem,
         [modularArmor.id]: modularArmor,
+        [chainDrape.id]: chainDrape,
         [vspLaser.id]: vspLaser,
         [aes.id]: aes,
         [radicalHeatSink.id]: radicalHeatSink,
@@ -972,7 +980,7 @@ function directMekEquipmentRegistry() {
 
 function directMekMtf(options: DirectFixtureOptions): string {
     if (options.includePartialWing) return directPartialWingMekMtf();
-    if (options.shieldSize) return directShieldMekMtf(options.shieldSize, options.dualShields === true);
+    if (options.shieldSize) return directShieldMekMtf(options.shieldSize, options);
     if (options.includeMachineGunArray) return directMachineGunArrayMtf();
     const includeBombast = options.includeBombast ?? false;
     const includeFlamer = options.includeFlamer ?? false;
@@ -1243,7 +1251,9 @@ ${Array(5).fill('-Empty-').join('\n')}
 `;
 }
 
-function directShieldMekMtf(size: 'small' | 'medium' | 'large', dualShields: boolean): string {
+function directShieldMekMtf(size: 'small' | 'medium' | 'large', options: DirectFixtureOptions): string {
+    const dualShields = options.dualShields === true;
+    const tripod = options.configuration === 'tripod';
     const shieldName = `Test ${size[0]!.toUpperCase()}${size.slice(1)} Shield`;
     const shieldSlots = size === 'large' ? 7 : size === 'medium' ? 5 : 3;
     const leftArm = [
@@ -1273,18 +1283,24 @@ function directShieldMekMtf(size: 'small' | 'medium' | 'large', dualShields: boo
             ...Array(6).fill('Heat Sink'),
             ...Array(2).fill('-Empty-'),
         ];
+    const rightTorso = [
+        'ISMediumLaser',
+        ...(dualShields ? Array(6).fill('Heat Sink') : []),
+        ...(options.includeModularArmor ? ['Test Modular Armor'] : []),
+        ...(options.includeChainDrape ? ['Test Chain Drape'] : []),
+    ];
     return `uuid:${UUID}
 chassis:Direct Shield Fixture
 model:DS-${size[0]!.toUpperCase()}
-Config:Biped
+Config:${tripod ? 'Tripod' : 'Biped'}
 techbase:Inner Sphere
 era:3050
 mass:20
 engine:100 Fusion Engine
-gyro:Standard
+${tripod ? 'cockpit:Tripod\n' : ''}gyro:Standard
 structure:Standard
 heat sinks:10 Single
-walk mp:5
+walk mp:${options.baseWalkMp ?? 5}
 jump mp:3
 armor:Standard(Inner Sphere)
 LA armor:5
@@ -1295,7 +1311,7 @@ CT armor:5
 HD armor:3
 LL armor:5
 RL armor:5
-Left Arm:
+${tripod ? 'CL armor:5\n' : ''}Left Arm:
 ${leftArm.join('\n')}
 Right Arm:
 ${rightArm.join('\n')}
@@ -1310,8 +1326,14 @@ ISMediumLaser
 (R) ISMediumLaser
 ${Array(4).fill('-Empty-').join('\n')}
 Right Torso:
-ISMediumLaser
-${dualShields ? Array(6).fill('Heat Sink').join('\n') + '\n' : ''}${Array(dualShields ? 5 : 11).fill('-Empty-').join('\n')}
+${[...rightTorso, ...Array(12 - rightTorso.length).fill('-Empty-')].join('\n')}
+${tripod ? `Center Leg:
+Hip
+Upper Leg Actuator
+Lower Leg Actuator
+Foot Actuator
+${Array(8).fill('-Empty-').join('\n')}
+` : ''}
 `;
 }
 

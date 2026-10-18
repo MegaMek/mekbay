@@ -316,6 +316,21 @@ describe('projectNonMekRecordSheet', () => {
         expect(snapshot.movement).toEqual({ walk: 0, run: 0, maxRun: 0, jump: 0, umu: 0 });
     });
 
+    it('shows no anti-\'Mech skill for conventional infantry that cannot make anti-\'Mech attacks', () => {
+        const piloting = (motive: 'Leg' | 'Wheeled') => {
+            const entity = new TestInfantryEntity();
+            entity.uuid.set(UUID);
+            entity.motiveType.set(motive);
+            const runtime = createNonMekRuntimeForTest('unit:infantry-sheet', baseline(), entity, CORE_2026_RULESET);
+            return projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
+                runtime.query(), runtime.query().currentBaseBattleValue()!, entity.battleValue(CORE_2026_RULESET),
+            ).crew[0]?.piloting;
+        };
+        // Untrained foot infantry keep the fixed 8; mechanized infantry cannot attempt anti-'Mech attacks at all.
+        expect(piloting('Leg')).toBe(8);
+        expect(piloting('Wheeled')).toBeNull();
+    });
+
     it('projects conventional-infantry casualties onto the authored soldier grid', () => {
         const entity = new TestInfantryEntity();
         entity.uuid.set(UUID);

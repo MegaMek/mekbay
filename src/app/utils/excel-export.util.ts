@@ -21,6 +21,8 @@ import { GameSystem } from '../models/common.model';
 import { DEFAULT_GUNNERY_SKILL, DEFAULT_PILOTING_SKILL } from '../models/crew-member.model';
 import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
 import type { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../models/entity/types/move';
 
 async function loadXlsx() {
     const { utils, writeFile } = await import('xlsx');
@@ -147,7 +149,7 @@ function unitsToCBTRows(units: UnitSummary[]): Record<string, unknown>[] {
 }
 
 /** Loaded CBT export facts come only from the admitted Entity. */
-function entityToCBTRow(unit: BaseEntity): Record<string, unknown> {
+function entityToCBTRow(unit: BaseEntity, ruleset: CBTRuleset | undefined): Record<string, unknown> {
     const engine = unit.mountedEngine();
     const rangedWeapons = unit.rangedWeapons();
     const firepower = rangedWeapons.reduce((total, mount) =>
@@ -188,8 +190,8 @@ function entityToCBTRow(unit: BaseEntity): Record<string, unknown> {
             ? unit.heatDissipation() / unit.heatGeneration()
             : '',
         moveType: unit.motiveType(),
-        walk: unit.walkMP(),
-        maxWalk: unit.maxWalkMP(),
+        walk: unit.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset }),
+        maxWalk: unit.computeWalkMP({ ...BV_MOVEMENT_CALCULATION, ruleset }),
         jump: unit.jumpMP(),
         umu: unit.umuMP(),
         c3: unit.c3System(),
@@ -295,7 +297,7 @@ function unitsToASRows(units: UnitSummary[]): Record<string, unknown>[] {
  */
 function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<string, unknown> {
     const unit = member.entity;
-    const baseRow = entityToCBTRow(unit);
+    const baseRow = entityToCBTRow(unit, member.ruleset() ?? undefined);
     const { chassis, model, ...rest } = baseRow;
     if (!isCBTMekForceMember(member)) {
         const snapshot = member.force.getUnitSnapshot(member.id);

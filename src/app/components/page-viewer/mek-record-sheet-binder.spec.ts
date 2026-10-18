@@ -1731,13 +1731,24 @@ describe('Mek record-sheet binder', () => {
         expect(svg.querySelector('#gunnerySkillText0')?.textContent).toBe('Gunnery Skill:');
         expect(svg.querySelector('#pilotingSkillText0')?.textContent).toBe('Piloting Skill:');
         expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('3');
-        expect(svg.querySelector('#pilotingSkill0')?.childNodes[0]?.textContent).toBe('4');
-        expect(svg.querySelector('#pilotingSkill0 .controlRollModifier')?.textContent).toBe(' +3PSR');
-        expect(svg.querySelector('#pilotingSkill0 .controlRollLabel')?.textContent).toBe('PSR');
+        expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('4');
+        // Separate texts at their own coordinates: the modifier on the skill's baseline after its digits,
+        // the label raised after the modifier.
+        const skill = svg.querySelector<SVGTextElement>('#pilotingSkill0')!;
+        const modifier = svg.querySelector<SVGTextElement>('#pilotingSkill0-control-roll-modifier')!;
+        const label = svg.querySelector<SVGTextElement>('#pilotingSkill0-control-roll-label')!;
+        expect(modifier.textContent).toBe('+3');
+        expect(label.textContent).toBe('PSR');
+        const coordinate = (text: SVGTextElement, axis: 'x' | 'y') => Number(text.getAttribute(axis) ?? 0);
+        expect(coordinate(modifier, 'y')).toBe(coordinate(skill, 'y'));
+        expect(coordinate(label, 'y')).toBeLessThan(coordinate(modifier, 'y'));
+        expect(coordinate(modifier, 'x')).toBeGreaterThan(coordinate(skill, 'x'));
+        expect(coordinate(label, 'x')).toBeGreaterThan(coordinate(modifier, 'x'));
 
         binding.render(base);
         expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('4');
-        expect(svg.querySelector('#pilotingSkill0 .controlRollModifier')).toBeNull();
+        expect(svg.querySelector('#pilotingSkill0-control-roll-modifier')).toBeNull();
+        expect(svg.querySelector('#pilotingSkill0-control-roll-label')).toBeNull();
         binding.destroy();
     });
 

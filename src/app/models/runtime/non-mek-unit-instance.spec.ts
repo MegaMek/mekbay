@@ -15,6 +15,7 @@ TestDropShipEntity,
 TestHandheldWeaponEntity,
 TestInfantryEntity,
 TestJumpShipEntity,
+TestLargeSupportTankEntity,
 TestProtoMekEntity,
 TestTankEntity,
 TestWarShipEntity,
@@ -24,7 +25,7 @@ import {
 addTestEquipment,
 addTestEquipmentWithFlags,
 } from '../entity/testing/test-mounted-equipment';
-import { AmmoEquipment,WeaponEquipment } from '../equipment.model';
+import { AmmoEquipment,MiscEquipment,WeaponEquipment } from '../equipment.model';
 import { systemDamageId } from '../rules/system-damage-rules';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import { asEncounterTargetId,type EncounterTargetId,type TargetRegistrySnapshot } from './encounter-runtime';
@@ -86,6 +87,72 @@ describe('NonMekUnitInstance', () => {
             expect(runtime.query().currentBaseBattleValue()).toBe(321);
         });
     }
+
+    describe('undamaged runtime BV', () => {
+        const laser = new WeaponEquipment({ id: 'Test Laser', name: 'Test Laser', type: 'weapon', stats: { bv: 50 } });
+        const lbx = new WeaponEquipment({ id: 'Test LB 10-X AC', name: 'Test LB 10-X AC', type: 'weapon',
+            stats: { bv: 148 }, weapon: { ammoType: 'AC_LBX', rackSize: 10 } });
+        // Slug (non-cluster) LB-X ammo is not an aerospace replacement munition, but it is authored on stock craft.
+        const slug = new AmmoEquipment({ id: 'Test LB 10-X AC Ammo', name: 'Test LB 10-X AC Ammo', type: 'ammo',
+            stats: { bv: 19 }, ammo: { type: 'AC_LBX', rackSize: 10, shots: 10 } });
+        const modularArmor = new MiscEquipment({ id: 'Test Modular Armor', name: 'Test Modular Armor', type: 'misc',
+            flags: ['F_MODULAR_ARMOR'] });
+        const registry = () => createTestEquipmentRegistry(Object.fromEntries(
+            [laser, lbx, slug, modularArmor].map(equipment => [equipment.id, equipment])));
+        const cases: Readonly<Record<string, () => BaseEntity>> = {
+            'a JumpShip, whose speed factor uses MP 1': () => {
+                const entity = new TestJumpShipEntity(registry());
+                addTestEquipment(entity, laser, { location: 'Nose' });
+                return entity;
+            },
+            'a train, whose speed factor uses cruise MP': () => {
+                const entity = new TestLargeSupportTankEntity(registry());
+                entity.setTonnage(300);
+                entity.motiveType.set('Rail');
+                entity.originalWalkMP.set(4);
+                return entity;
+            },
+            'battle armor, whose speed factor uses its best walk, jump or UMU MP': () => {
+                const entity = new TestBattleArmorEntity(registry());
+                entity.motiveType.set('Jump');
+                entity.propulsionMP.set(4);
+                addTestEquipment(entity, laser, { location: 'Squad' });
+                return entity;
+            },
+            'a tank, whose BV movement ignores the modular-armor MP penalty': () => {
+                const entity = new TestTankEntity(registry());
+                entity.setTonnage(40);
+                entity.originalWalkMP.set(4);
+                addTestEquipment(entity, modularArmor, { location: 'Front' });
+                return entity;
+            },
+            'a DropShip carrying authored slug LB-X ammo': () => {
+                const entity = new TestDropShipEntity(registry());
+                addTestEquipment(entity, lbx, { location: 'Nose' });
+                addTestEquipment(entity, slug, { location: 'Nose', shotsCount: 10 });
+                return entity;
+            },
+        };
+        for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+            for (const [name, create] of Object.entries(cases)) {
+                it(`equals the entity BV for ${name} in ${ruleset}`, () => {
+                    const entity = create();
+                    entity.uuid.set(UUID);
+                    const runtime = createNonMekRuntimeForTest('unit:pristine-bv', { ...baseline(), ruleset }, entity, ruleset);
+                    expect(runtime.query().currentBaseBattleValue()).toBe(entity.battleValue(ruleset));
+                });
+            }
+        }
+
+        it('loads the authored aerospace munition even when it is not a valid replacement', () => {
+            const entity = cases['a DropShip carrying authored slug LB-X ammo']();
+            entity.uuid.set(UUID);
+            const bin = entity.equipment().find(mount => mount.equipment === slug)!;
+            const runtime = createNonMekRuntimeForTest('unit:authored-ammo', baseline(), entity, CORE_2026_RULESET);
+            expect(runtime.query().remainingAmmo(componentIdForMount(bin))).toBe(10);
+            expect(runtime.query().ammoEquipment(componentIdForMount(bin))).toBe(slug);
+        });
+    });
 
     it('binds every non-Mek family directly to its concrete entity', () => {
         const entities: BaseEntity[] = [

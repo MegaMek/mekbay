@@ -251,6 +251,20 @@ export function referenceTableNotes(
     return [...new Set(ids)].map(id => ({ id, text: NOTE_TEXT[id] ?? id }));
 }
 
+/** How record sheets print the equipment notes under a cluster table, as MegaMekLab words them. */
+const RECORD_SHEET_NOTE_TEXT: Readonly<Record<string, string>> = {
+    artemisIV: 'Artemis IV FCS: +2',
+    artemisV: 'Artemis V FCS: +3',
+    artemisProto: 'Prototype Artemis FCS: +1',
+    apollo: 'Apollo MRM FCS: -1',
+    hag: 'HAG: short range +2, long range -2',
+};
+
+/** The equipment notes a record sheet prints under its cluster table. */
+export function recordSheetClusterNotes(equipment: readonly ReferenceTableEquipmentFlags[]): readonly string[] {
+    return referenceTableNotes(undefined, equipment).map(note => RECORD_SHEET_NOTE_TEXT[note.id] ?? note.text);
+}
+
 /**
  * Derives the reference-table data from the unit's native component records.
  */

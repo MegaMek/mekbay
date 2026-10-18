@@ -8,8 +8,8 @@ import { CORE_2026_GAME_RULES, type CBTGameRules } from '../../../rules/game-rul
 import type { BaseEntity } from '../../base-entity';
 import { supportVehicleBarRating } from '../../entities/support-vehicle';
 import type { EntityStateView } from '../../entity-state-view';
-import { BV_MOVEMENT_CALCULATION, type EntityMountedEquipment } from '../../types';
-import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../battle-value';
+import type { EntityMountedEquipment } from '../../types';
+import { entityBattleValueMovement, offensiveSpeedFactor, offensiveSpeedFactorMP } from '../battle-value';
 import { getPpcCapacitorBV } from '../equipment-bv';
 import {
   fireControlBattleValueModifier,
@@ -74,6 +74,7 @@ export interface BattleValueDetail {
 export class BVCalculator {
   protected defensiveValue = 0;
   protected offensiveValue = 0;
+  protected walkMP = 0;
   protected runMP = 0;
   protected jumpMP = 0;
   protected umuMP = 0;
@@ -139,9 +140,11 @@ export class BVCalculator {
     this.frontDecided = false;
     this.switchRearAndFront = false;
     this.report = [];
-    this.runMP = this.state?.movement.run ?? this.entity.maxRunMP();
-    this.jumpMP = this.state?.movement.jump ?? this.entity.computeJumpMP(BV_MOVEMENT_CALCULATION);
-    this.umuMP = this.state?.movement.umu ?? this.entity.umuMP();
+    const movement = this.state?.movement ?? entityBattleValueMovement(this.entity, this.gameRules.id);
+    this.walkMP = movement.walk;
+    this.runMP = movement.run;
+    this.jumpMP = movement.jump;
+    this.umuMP = movement.umu;
   }
 
   protected processDefensiveValue(): void {
@@ -488,9 +491,9 @@ export class BVCalculator {
 
   protected processSpeedFactor(): void {
     const before = this.offensiveValue;
-    const factor = this.state
-      ? offensiveSpeedFactor(this.currentOffensiveSpeedFactorMP())
-      : getOffensiveSpeedFactor(this.entity);
+    const factor = offensiveSpeedFactor(offensiveSpeedFactorMP(this.entity, {
+      walk: this.walkMP, run: this.runMP, jump: this.jumpMP, umu: this.umuMP,
+    }));
     this.offensiveValue *= factor;
     this.addValueLine('Speed Factor', `${this.format(before)} x ${this.format(factor)}`, before);
   }
@@ -567,11 +570,6 @@ export class BVCalculator {
     if (!this.state) return this.entity.totalInternalPoints();
     return this.entity.damageLocations()
       .reduce((sum, location) => sum + this.state!.structureRemaining(location.code), 0);
-  }
-
-  /** Family calculators may override special current-movement formulas. */
-  protected currentOffensiveSpeedFactorMP(): number {
-    return this.runMP + Math.round(Math.max(this.jumpMP, this.umuMP) / 2);
   }
 
   private currentValue(): number {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CrewPositionId } from '../../models/entity/entity-identifiers';
+import type { Equipment } from '../../models/equipment.model';
+import { isCoolantPodEquipment } from '../../models/runtime/component-coolant-pod';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
 import type {
     CrewStateDefinition,
@@ -155,13 +157,15 @@ export function renderRecordSheetCrewControls(
 /** Writes the sheet's ammo totals, one line per munition, from the unit's ammo bins. */
 export function renderRecordSheetAmmoProfile(
     svg: SVGSVGElement,
-    bins: readonly Readonly<{ ammo?: Readonly<{ displayName: string; remaining: number }> }>[],
+    bins: readonly Readonly<{ equipment?: Equipment; ammo?: Readonly<{ displayName: string; remaining: number }> }>[],
     interactive: boolean,
 ): void {
     const profile = svg.querySelector<SVGElement>('#ammoProfile');
     if (!profile) return;
+    // Coolant pods are catalogued as ammunition but print as equipment, as on the generated sheet.
     updateRecordSheetAmmoProfile(profile, recordSheetAmmoEntries(bins.flatMap(bin =>
-        bin.ammo === undefined ? [] : [[bin.ammo.displayName, bin.ammo.remaining] as const])), interactive);
+        bin.ammo === undefined || isCoolantPodEquipment(bin.equipment)
+            ? [] : [[bin.ammo.displayName, bin.ammo.remaining] as const])), interactive);
 }
 
 /** The paperdoll's random-hit buttons only show a roll, so read-only sheets keep them through the presentation bind. */

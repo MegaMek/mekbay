@@ -1,11 +1,24 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CBTRuleset } from '../../cbt-ruleset.model';
+
 /** Physical equipment exported as an independently mounted attack capability. */
 export const SHIELD_FLAG = 'F_SHIELD' as const;
 export const SMALL_SHIELD_FLAG = 'S_SHIELD_SMALL' as const;
 export const MEDIUM_SHIELD_FLAG = 'S_SHIELD_MEDIUM' as const;
 export const LARGE_SHIELD_FLAG = 'S_SHIELD_LARGE' as const;
+
+/** CORE p. 195: shields cannot reduce base Walking MP below 1. */
+export function shieldWalkMpReduction(
+  ruleset: CBTRuleset,
+  baseWalkMp: number,
+  shieldCount: number,
+): number {
+  return ruleset === 'core-2026'
+    ? Math.min(shieldCount, Math.max(0, baseWalkMp - 1))
+    : shieldCount;
+}
 
 export type PhysicalEquipmentKind =
   | 'shield'

@@ -4,13 +4,10 @@
 
 import { Signal, computed, signal } from '@angular/core';
 import type { BombCapacity } from '../../../aerospace-bomb.model';
-import { BaseEntity } from '../../base-entity';
+import { BaseEntity, type HeatDissipationBoost } from '../../base-entity';
 import { AERO_COCKPIT_TECH } from '../../components';
 import { modularArmorMovementPenalty } from '../../../modular-armor.model';
-import {
-  isEmergencyCoolantSystemEquipment,
-  isRadicalHeatSinkEquipment,
-} from '../../../escalating-equipment.model';
+import { isRadicalHeatSinkEquipment } from '../../../escalating-equipment.model';
 import {
   type UnitType,
   type UnitSubtype,
@@ -172,15 +169,8 @@ export abstract class AeroEntity extends BaseEntity {
     return capacity;
   }
 
-  protected override computeMaximumHeatDissipation(normal: number): number {
-    const sinks = this.heatSinkCount();
-    let maximum = normal;
-    if (this.equipment().some(mount => isRadicalHeatSinkEquipment(mount.equipment))) maximum += sinks;
-    if (this.hasCoolantPod()) maximum += sinks;
-    maximum += this.equipment().filter(
-      mount => isEmergencyCoolantSystemEquipment(mount.equipment),
-    ).length * 6;
-    return maximum;
+  protected override computeHeatDissipationBoosts(): readonly HeatDissipationBoost[] {
+    return this.heatDissipationBoostsForSinks(this.heatSinkCount());
   }
 
   override readonly engineHeatSinks = computed(() =>

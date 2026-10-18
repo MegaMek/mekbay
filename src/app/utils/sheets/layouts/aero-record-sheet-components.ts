@@ -27,6 +27,7 @@ addDiagramHeading,
 addFrame,
 addLine,
 addTemplateCaption,
+addRecordSheetHeatProfile,
 addText,
 appendDataPanelFacts,
 appendDataPanelType,
@@ -42,10 +43,8 @@ formatRecordSheetTonnage,
 formatTechBase,
 formatWholeNumber,
 makePips,
-markRecordSheetHeatProfile,
 paperdollPipOptions,
 recordSheetAmmoProfile,
-recordSheetHeatProfileText,
 recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
@@ -265,10 +264,8 @@ export function drawAeroDataPanel(
         }
     }
     if (entity.tracksHeat() && detailY < referenceHeight - footerReserve - 5) {
-        const maximumHeat = Math.max(0, entity.heatGeneration());
-        markRecordSheetHeatProfile(addText(inventory,
-            recordSheetHeatProfileText(maximumHeat, Math.max(0, entity.heatDissipation())),
-            x(8.41), inventoryY(detailY), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204) }), maximumHeat);
+        addRecordSheetHeatProfile(entity, text => addText(inventory, text,
+            x(8.41), inventoryY(detailY), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204) }));
         contentBottom = detailY;
     }
     // With n ammo rows the content must end above `bottom - n * footer row`, the reserve fitted above.

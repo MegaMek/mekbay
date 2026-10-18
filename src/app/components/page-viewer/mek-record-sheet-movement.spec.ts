@@ -19,7 +19,7 @@ describe('Mek record-sheet movement PSR pre-warnings', () => {
     const cleanups: (() => void)[] = [];
     afterEach(() => cleanups.splice(0).forEach(cleanup => cleanup()));
 
-    function bindMovement(fixture: DirectMekRuntimeFixture) {
+    function bindMovement(fixture: DirectMekRuntimeFixture, unsupportedMovement = false) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.classList.add('mekbay-sheet');
         svg.innerHTML = '<g><text>Walking:</text><text id="mpWalk"/><text>Running:</text><text id="mpRun"/><text>Jumping:</text><text id="mpJump"/></g>';
@@ -36,7 +36,14 @@ describe('Mek record-sheet movement PSR pre-warnings', () => {
                 fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.snapshot(),
                 fixture.instance.query(), emptyCBTEncounterSnapshot(), null,
             );
-            return { ...sheet, editContext: editContext(sheet.stateRevision) };
+            return {
+                ...sheet,
+                movement: unsupportedMovement ? {
+                    ...sheet.movement,
+                    projection: { kind: 'unsupported' as const, blockers: ['Unsupported test movement'] },
+                } : sheet.movement,
+                editContext: editContext(sheet.stateRevision),
+            };
         };
         const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, snapshot());
         cleanups.push(() => { binding.destroy(); svg.remove(); });
@@ -58,6 +65,13 @@ describe('Mek record-sheet movement PSR pre-warnings', () => {
     }
 
     for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        it(`${ruleset}: uses the shield minimum in the static movement fallback`, () => {
+            const fixture = createDirectShieldRuntimeFixture(ruleset, 'medium', 'shield-fallback', { baseWalkMp: 1 });
+            const sheet = bindMovement(fixture, true);
+            expect(sheet.svg.getElementById('mpWalk')!.textContent).toBe(ruleset === 'core-2026' ? '1' : '0');
+            expect(sheet.svg.getElementById('mpRun')!.textContent).toBe(ruleset === 'core-2026' ? '2' : '0');
+        });
+
         it(ruleset + ': colors only the movement mode actually reduced by heat or equipment damage', () => {
             for (const underwater of [false, true]) {
                 const fixture = underwater ? createDirectShieldRuntimeFixture(ruleset, 'small')

@@ -6,10 +6,7 @@ import { renderProtectionCounter } from '../../utils/sheets/record-sheet-protect
 import type {
 ComponentId,
 } from '../../models/entity/entity-identifiers';
-import { isTargetingComputerEquipment } from '../../models/entity/utils/targeting-computer';
 import { WeaponEquipment } from '../../models/equipment.model';
-import { isHeatSinkEquipment } from '../../models/heat-equipment.model';
-import { isJumpJetEquipment } from '../../models/jump-equipment.model';
 import { MEK_CREW_STATE_DISPLAYS } from '../../models/mek-record-sheet-controls';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST,type MekSheetBindingManifestV1 } from '../../models/mek-sheet-binding';
 import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
@@ -22,7 +19,7 @@ type MekRecordSheetLocation,
 type MekRecordSheetSnapshot,
 } from '../../models/runtime/mek-record-sheet';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
-import { formatPilotingDisplay,UNIT_CONDITION_DEFINITIONS } from '../../models/unit-status-presentation';
+import { UNIT_CONDITION_DEFINITIONS } from '../../models/unit-status-presentation';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 import { buildHeatSummaryRows } from '../../utils/heat-summary.util';
 import { formatPhysicalHitModifier } from '../../utils/inventory-target-number.util';
@@ -34,8 +31,17 @@ resolveCenterPanelCursorElements,
 import { formatRecordSheetWeaponDamageText } from '../../utils/record-sheet-weapon-info.util';
 import { INVENTORY_TEXT_WIDTH_ATTRIBUTE } from '../../utils/sheets/inventory-text-layout';
 import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
-import { isMekRecordSheetInventorySupport } from '../../utils/sheets/record-sheet-inventory-equipment';
-import { formatMovementWithMaximum, formatTechBase, formatWholeNumber } from '../../utils/sheets/record-sheet-svg-rendering';
+import { isPrintableMekInventoryEquipment } from '../../utils/sheets/record-sheet-inventory-equipment';
+import {
+formatMovementWithMaximum,
+formatNumber,
+formatTechBase,
+formatWholeNumber,
+recordSheetHeatText,
+recordSheetRangeTexts,
+setAttributes,
+svgElement,
+} from '../../utils/sheets/record-sheet-svg-rendering';
 import { getSvgTextLines,measureSvgTextCanvas,writeSvgTextLines } from '../../utils/svg-text.util';
 import {
 flowMekCriticalLocation,
@@ -712,17 +718,23 @@ function renderInventory(
         const selection = row.kind === 'weapon'
             ? projectRecordSheetWeaponSelection(panelWeapons(source, row.componentIds), source)
             : row.selection ?? NO_INVENTORY_SELECTION;
+        const heat = typeof row.heat === 'number' ? recordSheetHeatText(row.heat) : row.heat;
+        const ranges = row.ranges.every(range => typeof range === 'number')
+            ? recordSheetRangeTexts(row.ranges as readonly number[]) : row.ranges;
         writeInventoryField(element, 'quantity', row.componentIds.length > 1 ? row.componentIds.length : '');
         writeInventoryName(element, row.label);
-        writeInventoryField(element, 'location', row.location);
-        writeInventoryField(element, 'heat', row.heat);
-        writeInventoryDamage(element, row.damage);
-        writeInventoryField(element, 'range_min', row.minimumRange);
-        writeInventoryField(element, 'range_short', row.ranges[0] ?? '');
-        writeInventoryField(element, 'range_medium', row.ranges[1] ?? '');
-        writeInventoryField(element, 'range_long', row.ranges[2] ?? '');
-        writeInventoryField(element, 'range_extreme', row.ranges[3] ?? '');
-        writeGeneratedInventorySummary(element, row);
+        // Equipment rows print design facts the generator laid out; only weapons and attacks change in play.
+        if (row.kind !== 'equipment') {
+            writeInventoryField(element, 'location', row.location);
+            writeInventoryField(element, 'heat', heat);
+            writeInventoryDamage(element, row.damage);
+            writeInventoryField(element, 'range_min', row.minimumRange);
+            writeInventoryField(element, 'range_short', ranges[0] ?? '');
+            writeInventoryField(element, 'range_medium', ranges[1] ?? '');
+            writeInventoryField(element, 'range_long', ranges[2] ?? '');
+            writeInventoryField(element, 'range_extreme', ranges[3] ?? '');
+            writeGeneratedInventorySummary(element, row);
+        }
         const alternativeModes = [...element.querySelectorAll<SVGElement>(':scope > .alternativeMode')];
         const modes = alternativeModes.some(mode => mode.dataset['mekbayStaticModeProfile'] === '1')
             ? row.modes
@@ -741,13 +753,13 @@ function renderInventory(
                     modeElement.dataset['mekbayModeLabelOnly'] === '1' ? mode : `${row.baseLabel} (${mode})`,
                 );
                 writeInventoryField(modeElement, 'location', row.location);
-                writeInventoryField(modeElement, 'heat', row.heat);
+                writeInventoryField(modeElement, 'heat', heat);
                 writeInventoryDamage(modeElement, row.damage);
                 writeInventoryField(modeElement, 'range_min', row.minimumRange);
-                writeInventoryField(modeElement, 'range_short', row.ranges[0] ?? '');
-                writeInventoryField(modeElement, 'range_medium', row.ranges[1] ?? '');
-                writeInventoryField(modeElement, 'range_long', row.ranges[2] ?? '');
-                writeInventoryField(modeElement, 'range_extreme', row.ranges[3] ?? '');
+                writeInventoryField(modeElement, 'range_short', ranges[0] ?? '');
+                writeInventoryField(modeElement, 'range_medium', ranges[1] ?? '');
+                writeInventoryField(modeElement, 'range_long', ranges[2] ?? '');
+                writeInventoryField(modeElement, 'range_extreme', ranges[3] ?? '');
             }
             if (row.kind === 'weapon') bindRecordSheetInventoryButtons(modeElement, row.componentIds, mode, bind, context);
         });
@@ -778,10 +790,10 @@ function renderInventory(
 }
 
 /**
- * Keeps each weapon and equipment row on the layout row generated for its components, so the
- * layout's printed sub-rows (enhancements, ammo profiles) stay under their weapon however the
- * runtime orders its rows. Rows without a matching layout row, such as physical attacks, fill
- * the remaining layout rows in order.
+ * Keeps each row on the layout row generated for its components, so the layout's printed sub-rows
+ * (enhancements, ammo profiles) stay under their weapon however the runtime orders its rows, and a
+ * physical weapon's attack lands on that weapon's row. Rows without components, the intrinsic
+ * physical attacks, fill the remaining layout rows in order.
  */
 function assignInventoryLayoutRows(
     layoutRows: readonly SVGElement[],
@@ -789,7 +801,7 @@ function assignInventoryLayoutRows(
     layout: ReadonlyMap<SVGElement, string>,
 ): readonly (RecordSheetEquipmentRow | undefined)[] {
     const byComponents = new Map<string, RecordSheetEquipmentRow>();
-    rows.filter(row => row.kind !== 'physical' && row.componentIds.length > 0)
+    rows.filter(row => row.componentIds.length > 0)
         .forEach(row => byComponents.set(row.componentIds.join(' '), row));
     const placed = new Set<RecordSheetEquipmentRow>();
     const assigned = layoutRows.map(element => {
@@ -910,26 +922,27 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
         componentIds: Object.freeze([componentId]),
         ...row,
     }));
+    // Their location, heat, damage and ranges are the generator's design text; the binding writes only status.
     const equipment = snapshot.equipment
-        .filter(component => component.weapon === undefined && isPrintableMekInventoryComponent(component))
+        .filter(component => component.weapon === undefined && isPrintableMekInventoryEquipment(
+            component.equipment,
+            component.locations.map(location => location.code),
+            snapshot.identity.form === 'quadvee',
+        ))
         .map(component => Object.freeze({
             kind: 'equipment' as const,
             componentIds: Object.freeze([component.componentId]),
             baseLabel: component.label,
             label: component.label,
-            location: formatEquipmentLocationCodes(component.locations.map(location => location.code)),
+            location: '',
             status: component.status,
             ammo: false,
-            heat: '—',
-            damage: miscInventoryDamage(component.equipment),
-            minimumRange: '—',
-            ranges: Object.freeze(['—', '—', '—']),
+            heat: '',
+            damage: '',
+            minimumRange: '',
+            ranges: Object.freeze([]),
             modes: Object.freeze([]),
-        }))
-        .sort((left, right) => {
-            const name = left.label.localeCompare(right.label);
-            return name !== 0 ? name : left.location.localeCompare(right.location);
-        });
+        }));
     const physical = snapshot.physicalAttacks?.kind !== 'supported'
         ? []
         : snapshot.physicalAttacks.attacks.map(attack => {
@@ -956,13 +969,13 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
                     : []),
                 baseLabel: attack.label,
                 label: attack.label,
-                location: attack.locationCodes.join('/'),
+                location: formatEquipmentLocationCodes(attack.locationCodes),
                 status: attack.available ? 'available' : 'disabled',
                 ammo: false,
-                heat: '',
+                heat: '—',
                 damage,
-                minimumRange: '',
-                ranges: Object.freeze([]),
+                minimumRange: '—',
+                ranges: Object.freeze(['—', '—', '—']),
                 modes: Object.freeze([]),
                 selection: Object.freeze({
                     selected: selection !== undefined,
@@ -972,28 +985,13 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
                 ...(attack.available && attack.selectable ? { actionTarget: attack.target } : {}),
             });
         });
-    return Object.freeze([...weapons, ...equipment, ...physical]);
-}
-
-function isPrintableMekInventoryComponent(
-    component: MekRecordSheetSnapshot['equipment'][number],
-): boolean {
-    const equipment = component.equipment;
-    if (!equipment || equipment.type !== 'misc' || !equipment.hittable) return false;
-    if (component.locations.length === 0
-        || component.locations.some(location => location.code === 'Engine' || location.code === 'Unallocated')) {
-        return false;
-    }
-    if (isHeatSinkEquipment(equipment) || isJumpJetEquipment(equipment)) return false;
-    return !isMekRecordSheetInventorySupport(equipment);
-}
-
-function miscInventoryDamage(
-    equipment: MekRecordSheetSnapshot['equipment'][number]['equipment'],
-): string {
-    if (!equipment) return '—';
-    if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
-    return isTargetingComputerEquipment(equipment) ? '[E]' : '—';
+    // A physical weapon's attack takes over the weapon's own equipment row, as the sheet lists it once.
+    const attackComponents = new Set(physical.flatMap(row => row.componentIds));
+    return Object.freeze([
+        ...weapons,
+        ...equipment.filter(row => !row.componentIds.some(componentId => attackComponents.has(componentId))),
+        ...physical,
+    ]);
 }
 
 function compareRecordSheetWeaponRows(
@@ -1144,11 +1142,10 @@ function renderCrew(
         write(svg, `#gunnerySkill${occurrence}`, vacant ? '—' : position.gunnery);
         write(svg, `#aeroGunnerySkill${occurrence}`, vacant ? '—' : position.aeroGunnery ?? 4);
         write(svg, `#aeroPilotingSkill${occurrence}`, vacant ? '—' : position.aeroPiloting ?? 5);
-        if (vacant) write(svg, `#pilotingSkill${occurrence}`, '—');
-        else renderPilotingSkillDisplay(
-            svg.querySelector<SVGElement>(`#pilotingSkill${occurrence}`),
-            position.piloting,
-            permanentPsrModifier,
+        renderPilotingSkillDisplay(
+            svg.querySelector<SVGTextElement>(`#pilotingSkill${occurrence}`),
+            vacant ? '—' : String(position.piloting),
+            vacant ? 0 : permanentPsrModifier,
         );
         renderRecordSheetCrewControls(svg, position, bind, context, () =>
             currentSnapshot().crew.find(row => row.positionId === position.positionId)?.state.wounds ?? 0);
@@ -1167,33 +1164,59 @@ function renderCrew(
 }
 
 function renderPilotingSkillDisplay(
-    element: SVGElement | null,
-    pilotingSkill: number,
+    element: SVGTextElement | null,
+    skill: string,
     controlRollModifier: number,
 ): void {
     if (!element) return;
-    const controlRollLabel = 'PSR';
-    const displayText = formatPilotingDisplay(pilotingSkill, controlRollModifier, controlRollLabel);
-    element.textContent = displayText;
-    if (!controlRollModifier) return;
+    element.textContent = skill;
+    const modifier = controlRollText(element, 'modifier');
+    const label = controlRollText(element, 'label');
+    if (!controlRollModifier) {
+        modifier.remove();
+        label.remove();
+        return;
+    }
+    // Each part is its own text at measured coordinates, after wherever the skill digits end. Relative tspan
+    // offsets, baselines and chunk anchors render differently in Firefox and Safari.
+    const x = Number.parseFloat(element.getAttribute('x') ?? '0');
+    const y = Number.parseFloat(element.getAttribute('y') ?? '0');
+    const size = Number.parseFloat(element.getAttribute('font-size') ?? '') || 12;
+    const skillWidth = measureSvgTextCanvas(element, skill);
+    const anchor = element.getAttribute('text-anchor');
+    const skillEnd = anchor === 'middle' ? x + skillWidth / 2 : anchor === 'end' ? x : x + skillWidth;
+    const modifierText = `${controlRollModifier > 0 ? '+' : ''}${controlRollModifier}`;
+    // The modifier shares the skill's baseline, half a space after it; the label rises so its top meets the
+    // modifier's cap height (Roboto's caps are 0.711 em). These sizes keep "5 -2PSR" inside the crew frame.
+    const modifierScale = 0.65;
+    const labelScale = 0.33;
+    setAttributes(modifier, { y: formatNumber(y), 'font-size': formatNumber(size * modifierScale) });
+    modifier.textContent = modifierText;
+    const modifierX = skillEnd + measureSvgTextCanvas(modifier, ' ') / 2;
+    modifier.setAttribute('x', formatNumber(modifierX));
+    setAttributes(label, {
+        x: formatNumber(modifierX + measureSvgTextCanvas(modifier, modifierText)),
+        y: formatNumber(y - size * (modifierScale - labelScale) * 0.711),
+        'font-size': formatNumber(size * labelScale),
+        'font-family': 'Roboto Condensed',
+    });
+    label.textContent = 'PSR';
+    element.after(modifier, label);
+}
 
-    const suffixStart = String(pilotingSkill).length;
-    const labelStart = displayText.lastIndexOf(controlRollLabel);
-    element.textContent = displayText.slice(0, suffixStart);
-    const suffix = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-    suffix.setAttribute('class', 'controlRollModifier');
-    suffix.setAttribute('font-size', '0.72em');
-    suffix.setAttribute('dominant-baseline', 'central');
-    suffix.setAttribute('dy', '-0.15em');
-    suffix.textContent = displayText.slice(suffixStart, labelStart);
-    const label = element.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-    label.setAttribute('class', 'controlRollLabel');
-    label.setAttribute('font-size', '0.5em');
-    label.setAttribute('font-family', 'Roboto Condensed');
-    label.setAttribute('dy', '-0.3em');
-    label.textContent = controlRollLabel;
-    suffix.appendChild(label);
-    element.appendChild(suffix);
+/** The control-roll modifier's own text beside a piloting skill, created on first use. */
+function controlRollText(skill: SVGTextElement, part: 'modifier' | 'label'): SVGTextElement {
+    const id = `${skill.id}-control-roll-${part}`;
+    const existing = skill.parentElement?.querySelector<SVGTextElement>(`:scope > [id="${id}"]`);
+    if (existing) return existing;
+    const text = svgElement('text');
+    setAttributes(text, {
+        id,
+        class: `skillValue ${part === 'modifier' ? 'controlRollModifier' : 'controlRollLabel'}`,
+        'font-weight': skill.getAttribute('font-weight') ?? '700',
+        'pointer-events': 'none',
+    });
+    return text;
 }
 
 function renderCrewState(
@@ -1358,13 +1381,9 @@ function resetUnitDataLayout(
             child.removeAttribute('inventory-id');
             child.removeAttribute('mode');
         });
-        // Linked enhancement lines are printed once; name and damage keep their laid-out lines
-        // because every shown row rewrites them in place.
+        // Design text stays as laid out: shown weapon and attack rows rewrite theirs in place.
         if (element.classList.contains('linked')) return;
-        for (const field of [
-            'quantity', 'location', 'heat', 'hitmod',
-            'range_min', 'range_short', 'range_medium', 'range_long', 'range_extreme',
-        ]) writeInventoryField(element, field, '');
+        for (const field of ['quantity', 'hitmod']) writeInventoryField(element, field, '');
     });
     svg.querySelectorAll<SVGElement>(manifest.selectors.crewHit).forEach(element => {
         element.style.display = 'none';

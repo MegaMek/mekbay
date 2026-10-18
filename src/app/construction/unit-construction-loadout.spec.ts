@@ -2580,11 +2580,9 @@ describe('construction component blocks', () => {
       expect(buttons.length).toBeGreaterThan(0);
       expect(buttons.every((button) => button.title === `Inspect ${label}`)).toBeTrue();
       const entity = f.editor.entity() as MekEntity;
-      const slot = entity
-        .criticalSlotGrid()
-        .get(location)!
-        .find((slot) => slot.type === 'system' && slot.systemType === system);
-      expect(mekCriticalSlotLines(slot, entity)).toEqual([label]);
+      const slots = entity.criticalSlotGrid().get(location)!;
+      const slotIndex = slots.findIndex((slot) => slot.type === 'system' && slot.systemType === system);
+      expect(mekCriticalSlotLines(slots[slotIndex], entity, location, slotIndex)).toEqual([label]);
       f.editor.closeInstalledInspector();
       f.view.detectChanges();
       await f.view.whenStable();

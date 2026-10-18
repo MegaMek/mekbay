@@ -256,7 +256,10 @@ function compatibleLoadout(
         mixed: entity.mixedTech(),
         techBase: entity.techBase() === 'Clan' ? 'Clan' as const : 'Inner Sphere' as const,
     };
-    if (!AmmoValidityUtil.isAmmoCompatible(source.equipment, equipment, unit)) return null;
+    // The authored munition is a unit fact; validity rules only govern replacement munitions.
+    if (equipment !== source.equipment && !AmmoValidityUtil.isAmmoCompatible(source.equipment, equipment, unit)) {
+        return null;
+    }
     return Object.freeze({
         munitionKey: equipment.internalName,
         capacity: source.intrinsic || equipment === source.equipment

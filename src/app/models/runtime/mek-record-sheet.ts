@@ -5,7 +5,12 @@ import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
-import { formatMekCriticalSlotLines, mekCriticalMountName, mekSystemLabel } from '../../utils/mek-critical-display.util';
+import {
+    formatMekCriticalSlotLines,
+    mekCriticalMountName,
+    mekSystemSlotLabel,
+} from '../../utils/mek-critical-display.util';
+import { isCoolantPodEquipment } from './component-coolant-pod';
 import { recordSheetAmmoName } from '../../utils/record-sheet-ammo.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { CrewMemberRuntimeState,CrewMemberState } from '../crew-member.model';
@@ -18,6 +23,7 @@ CriticalSlotId,
 LocationId,
 } from '../entity/entity-identifiers';
 import type { EntityTechBase,MekLocation } from '../entity/types';
+import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../entity/types/move';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { MiscEquipment } from '../equipment.model';
 import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
@@ -384,8 +390,10 @@ export function projectMekRecordSheet(
                 if (!component) throw new Error(`Slot ${slot.id} references unknown component ${componentId}`);
                 const label = component.kind === 'equipment'
                     ? mekCriticalMountName(entity, component.mount)
-                    : mekSystemLabel(component.systemType, entity);
-                const loadouts = mekAmmoLoadouts(entity, index, componentId, ruleset);
+                    : mekSystemSlotLabel(entity, component.systemType, location.code, slot.slotIndex);
+                // Coolant pods are catalogued as ammunition but print as equipment, as MegaMekLab does.
+                const loadouts = component.kind === 'equipment' && isCoolantPodEquipment(component.mount.equipment)
+                    ? [] : mekAmmoLoadouts(entity, index, componentId, ruleset);
                 const ammo = loadouts.length === 0
                     ? undefined
                     : (() => {
@@ -535,8 +543,8 @@ export function projectMekRecordSheet(
         construction,
         battleValue,
         movement: Object.freeze({
-            walkMp: entity.walkMP(),
-            runMp: entity.runMP(),
+            walkMp: entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset }),
+            runMp: entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset }),
             jumpMp: entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP(),
             secondaryMode: entity.umuMP() > 0 ? 'UMU' : 'jump',
             motiveType: entity.motiveType(),

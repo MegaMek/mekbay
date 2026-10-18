@@ -3,6 +3,8 @@
 // Author: Drake
 
 import type { BaseEntity } from '../base-entity';
+import type { CBTRuleset } from '../../cbt-ruleset.model';
+import type { EntityMovementStateView } from '../entity-state-view';
 import { BV_MOVEMENT_CALCULATION } from '../types';
 import { isMekEntity } from './entity-type-guards';
 
@@ -16,14 +18,24 @@ export function offensiveSpeedFactor(mp: number): number {
   return Math.round(Math.pow(1 + (mp - 5) / 10, 1.2) * 100) / 100;
 }
 
+/** Undamaged BV-calculation movement (`max*MP`), not transient in-game movement state. */
+export function entityBattleValueMovement(entity: BaseEntity, ruleset?: CBTRuleset): EntityMovementStateView {
+  const options = { ...BV_MOVEMENT_CALCULATION, ruleset };
+  return {
+    walk: entity.computeWalkMP(options),
+    run: entity.computeRunMP(options),
+    jump: entity.computeJumpMP(BV_MOVEMENT_CALCULATION),
+    umu: entity.umuMP(),
+  };
+}
+
 /**
  * Select the movement value used by MegaMek's BV calculator for the
- * offensive speed factor.  Movement values use the BV calculation settings
- * (`max*MP`), not transient in-game movement state.
+ * offensive speed factor. The same family rules apply to undamaged and
+ * runtime-current movement.
  */
-export function offensiveSpeedFactorMP(entity: BaseEntity): number {
-  const run = entity.maxRunMP();
-  const jump = entity.computeJumpMP(BV_MOVEMENT_CALCULATION);
+export function offensiveSpeedFactorMP(entity: BaseEntity, movement: EntityMovementStateView): number {
+  const { walk, run, jump, umu } = movement;
 
   switch (entity.entityType) {
     case 'Aero':
@@ -42,10 +54,10 @@ export function offensiveSpeedFactorMP(entity: BaseEntity): number {
       return 0;
 
     case 'BattleArmor':
-      return Math.max(entity.maxWalkMP(), jump, entity.umuMP());
+      return Math.max(walk, jump, umu);
 
     case 'Infantry':
-      return Math.max(run, jump, entity.umuMP());
+      return Math.max(run, jump, umu);
 
     case 'Tank':
     case 'Naval':
@@ -56,22 +68,20 @@ export function offensiveSpeedFactorMP(entity: BaseEntity): number {
     case 'LargeSupportTank': {
       // BV uses cruise MP for trains and treats a zero-MP trailer as MP 1.
       const vehicleRun = entity.originalWalkMP() === 0 ? 1
-        : entity.motiveType() === 'Rail' || entity.motiveType() === 'MagLev' ? entity.maxWalkMP()
+        : entity.motiveType() === 'Rail' || entity.motiveType() === 'MagLev' ? walk
           : run;
       return vehicleRun + Math.round(jump / 2);
     }
 
     default:
-      if (isMekEntity(entity)) {
-        if (entity.isLandAirMek()) return run + Math.round(entity.airMekFlankMP() / 2);
-      }
-      return run + Math.round(Math.max(jump, entity.umuMP()) / 2);
+      if (isMekEntity(entity) && entity.isLandAirMek()) return run + Math.round(entity.airMekFlankMP(jump) / 2);
+      return run + Math.round(Math.max(jump, umu) / 2);
   }
 }
 
 /** Return the entity's exported offensive BV speed factor. */
-export function getOffensiveSpeedFactor(entity: BaseEntity): number {
-  return offensiveSpeedFactor(offensiveSpeedFactorMP(entity));
+export function getOffensiveSpeedFactor(entity: BaseEntity, ruleset?: CBTRuleset): number {
+  return offensiveSpeedFactor(offensiveSpeedFactorMP(entity, entityBattleValueMovement(entity, ruleset)));
 }
 
 export { calculateBattleValue, calculateBattleValueDetails, getBVCalculator } from './battle-value/factory';

@@ -57,6 +57,107 @@ describe('direct V2 Mek shield rules', () => {
     });
 
     for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+        for (const baseWalkMp of [0, 1, 2]) {
+            it(`caps shield Walking MP loss only under CORE, with base ${baseWalkMp} in ${ruleset}`, () => {
+                const fixture = createDirectShieldRuntimeFixture(ruleset, 'medium', undefined, {
+                    baseWalkMp,
+                    dualShields: baseWalkMp === 2,
+                });
+                const walkMp = ruleset === 'core-2026' && baseWalkMp > 0 ? 1 : 0;
+                expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                    walkMp,
+                    runMp: walkMp * 2,
+                }));
+                if (baseWalkMp > 0) {
+                    expect(fixture.instance.query().mekBattleValue()).toEqual(jasmine.objectContaining({
+                        kind: 'complete',
+                        battleValue: fixture.entity.battleValue(ruleset),
+                    }));
+                }
+            });
+        }
+    }
+
+    for (const configuration of ['biped', 'tripod'] as const) {
+        it(`preserves CORE's new base after ${configuration} leg loss and ignores surviving-leg damage`, () => {
+            const fixture = createDirectShieldRuntimeFixture('core-2026', 'large', undefined, {
+                configuration,
+                baseWalkMp: 4,
+            });
+            destroyLeg(fixture, 'LL');
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({ walkMp: 1, runMp: 2 }));
+
+            for (const system of ['Hip', 'Upper Leg Actuator', 'Lower Leg Actuator', 'Foot Actuator']) {
+                hitSystem(fixture, system, 'RL');
+            }
+            if (configuration === 'tripod') hitSystem(fixture, 'Foot Actuator', 'CL');
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({ walkMp: 1, runMp: 2 }));
+
+            setHeat(fixture, 5);
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                walkMp: 0, runMp: 0, immobile: false,
+            }));
+            setHeat(fixture, 0);
+            destroyLeg(fixture, 'RL');
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                walkMp: 0, runMp: 0,
+            }));
+        });
+
+        it(`does not restore ${configuration} movement when ordinary leg damage reaches its CORE minimum`, () => {
+            const fixture = createDirectShieldRuntimeFixture('core-2026', 'large', undefined, {
+                configuration,
+                baseWalkMp: 4,
+            });
+            hitSystem(fixture, 'Upper Leg Actuator', 'LL');
+            hitSystem(fixture, 'Lower Leg Actuator', 'LL');
+            expect(supportedMovement(fixture).walkMp).toBe(1);
+            hitSystem(fixture, 'Foot Actuator', 'LL');
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                walkMp: 0, runMp: 0, immobile: false,
+            }));
+            hitSystem(fixture, 'Foot Actuator', 'RL');
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                walkMp: 0, runMp: 0, immobile: false,
+            }));
+        });
+    }
+
+    for (const equipment of ['includeModularArmor', 'includeChainDrape'] as const) {
+        it(`applies ${equipment} after the CORE leg-loss minimum`, () => {
+            const fixture = createDirectShieldRuntimeFixture('core-2026', 'large', undefined, {
+                [equipment]: true,
+            });
+            destroyLeg(fixture, 'LL');
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                walkMp: 0, runMp: 0, immobile: false,
+            }));
+        });
+    }
+
+    for (const baseWalkMp of [1, 2]) {
+        it(`keeps chain drape penalties separate from the CORE shield cap with base ${baseWalkMp}`, () => {
+            const fixture = createDirectShieldRuntimeFixture('core-2026', 'large', undefined, {
+                baseWalkMp,
+                includeChainDrape: true,
+            });
+            expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({
+                walkMp: 0, runMp: 0, immobile: false,
+            }));
+            hitSystem(fixture, 'Foot Actuator', 'LL');
+            expect(supportedMovement(fixture).walkMp).toBe(0);
+        });
+    }
+
+    it('does not increase an original zero Walking MP after CORE leg loss', () => {
+        const fixture = createDirectShieldRuntimeFixture('core-2026', 'large', undefined, {
+            baseWalkMp: 0,
+        });
+        destroyLeg(fixture, 'LL');
+        expect(supportedMovement(fixture)).toEqual(jasmine.objectContaining({ walkMp: 0, runMp: 0 }));
+    });
+
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
         for (const size of ['medium', 'large'] as const) {
             it(`updates BV speed for committed ${size} shield damage in ${ruleset}`, () => {
                 const fixture = createDirectShieldRuntimeFixture(ruleset, size);
@@ -242,15 +343,25 @@ function hitCritical(fixture: DirectMekRuntimeFixture, slotId: ReturnType<typeof
     }).accepted).toBeTrue();
 }
 
-function hitSystem(fixture: DirectMekRuntimeFixture, systemType: string): void {
+function hitSystem(fixture: DirectMekRuntimeFixture, systemType: string, locationCode = 'LA'): void {
     const slot = [...fixture.index.slots.values()].find(candidate =>
-        fixture.index.locations.get(candidate.locationId)?.code === 'LA'
+        fixture.index.locations.get(candidate.locationId)?.code === locationCode
         && candidate.componentIds.some(componentId => {
             const component = fixture.index.components.get(componentId);
             return component?.kind === 'system' && component.systemType === systemType;
         }));
     if (!slot) throw new Error(`Missing ${systemType}`);
     hitCritical(fixture, slot.id);
+}
+
+function destroyLeg(fixture: DirectMekRuntimeFixture, locationCode: string): void {
+    const location = [...fixture.index.locations.values()].find(candidate => candidate.code === locationCode)!;
+    expect(fixture.instance.dispatch({
+        type: 'damage-internal',
+        locationId: location.id,
+        amount: location.internalPoints,
+        target: 'committed',
+    }).accepted).toBeTrue();
 }
 
 function setHeat(fixture: DirectMekRuntimeFixture, heat: number): void {

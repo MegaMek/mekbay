@@ -38,7 +38,11 @@ import { PPC_CAPACITOR_HEAT_BONUS, isPpcCapacitorEquipment, isPpcEquipment } fro
 import { NO_BOMB_CAPACITY, type BombCapacity } from '../aerospace-bomb.model';
 import { isCaseIIEquipment, isStandardCaseEquipment } from '../case-equipment.model';
 import { isChassisSystemEquipment } from '../chassis-equipment.model';
-import { isBlueShieldEquipment } from '../escalating-equipment.model';
+import {
+  isBlueShieldEquipment,
+  isEmergencyCoolantSystemEquipment,
+  isRadicalHeatSinkEquipment,
+} from '../escalating-equipment.model';
 import { c3SystemTypeForEquipment } from '../c3-network.model';
 import { resolveShieldSize } from './utils/physical-weapon';
 import { isJumpJetEquipment, isUmuEquipment } from '../jump-equipment.model';
@@ -122,6 +126,13 @@ export interface AddEquipmentOptions {
  * instead of returning at the first detection.  Useful for debugging.
  */
 export const COLLECT_ALL_MIXED_TECH_REASONS = true;
+
+/** A one-turn heat dissipation boost; a RISC ECS adds its bonus plus the margin of success of its roll. */
+export interface HeatDissipationBoost {
+  readonly source: 'RHS' | 'Coolant Pod' | 'RISC ECS';
+  readonly bonus: number;
+  readonly marginOfSuccess: boolean;
+}
 
 /** Result of mixed-tech detection, with diagnostic reasons. */
 export interface MixedTechResult {
@@ -936,7 +947,27 @@ export abstract class BaseEntity implements EntityTechnology {
   }
 
   protected computeMaximumHeatDissipation(normal: number): number {
-    return normal;
+    return normal + this.heatDissipationBoosts().reduce((total, boost) => total + boost.bonus, 0);
+  }
+
+  /** One-turn dissipation boosts over normal dissipation, in the order MegaMekLab prints them. */
+  readonly heatDissipationBoosts = computed<readonly HeatDissipationBoost[]>(() =>
+    this.tracksHeat() ? this.computeHeatDissipationBoosts() : []);
+
+  protected computeHeatDissipationBoosts(): readonly HeatDissipationBoost[] {
+    return [];
+  }
+
+  /** Radical heat sinks and a coolant pod each add the unit's heat sinks; a RISC ECS adds 6 plus its margin. */
+  protected heatDissipationBoostsForSinks(sinks: number): readonly HeatDissipationBoost[] {
+    const equipment = this.equipment();
+    return Object.freeze([
+      ...(equipment.some(mount => isRadicalHeatSinkEquipment(mount.equipment))
+        ? [{ source: 'RHS', bonus: sinks, marginOfSuccess: false } as const] : []),
+      ...(this.hasCoolantPod() ? [{ source: 'Coolant Pod', bonus: sinks, marginOfSuccess: false } as const] : []),
+      ...equipment.filter(mount => isEmergencyCoolantSystemEquipment(mount.equipment))
+        .map(() => ({ source: 'RISC ECS', bonus: 6, marginOfSuccess: true } as const)),
+    ]);
   }
 
   /** Exporter's historical engine-sink count. */

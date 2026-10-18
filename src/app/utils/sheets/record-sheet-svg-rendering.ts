@@ -4,7 +4,7 @@ import { RECORD_SHEET_FONT } from './record-sheet-typography';
 
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
 import { isCaseEquipment } from '../../models/case-equipment.model';
-import type { BaseEntity } from '../../models/entity/base-entity';
+import type { BaseEntity, HeatDissipationBoost } from '../../models/entity/base-entity';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import { asComponentId } from '../../models/entity/entity-identifiers';
 import type { EntityDamageLocation, EntityMountedEquipment, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
@@ -14,6 +14,7 @@ import { laserInsulatorAdjustedHeat } from '../../models/laser-insulator.model';
 import { isRiscLaserPulseModule, RISC_LASER_PULSE_HEAT_BONUS } from '../../models/risc-laser-mode.model';
 import { isWeaponEnhancementEquipment } from '../../models/weapon-enhancement.model';
 import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/runtime/component-ppc-capacitor';
+import { isCoolantPodEquipment } from '../../models/runtime/component-coolant-pod';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
 import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
 import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
@@ -293,16 +294,50 @@ export function drawCriticalDamageBox(
 
 /** Marks the inventory heat line with the design's maximum heat, which binders keep while dissipation changes. */
 export const HEAT_PROFILE_MAXIMUM_ATTRIBUTE = 'data-maximum-heat';
+/** The design's one-turn dissipation boosts, which binders print after the live dissipation. */
+export const HEAT_PROFILE_BOOSTS_ATTRIBUTE = 'data-dissipation-boosts';
 
-/** The inventory's heat line: the heat of firing every weapon, and the heat the unit dissipates. */
-export function recordSheetHeatProfileText(heat: number | string, dissipation: number | string): string {
-  return `Maximum Heat (Dissipation): ${heat} (${dissipation})`;
+/**
+ * The inventory's heat line: the heat of firing every weapon, and the heat the unit dissipates, followed like
+ * MegaMekLab by what each one-turn boost raises it to ("26, 39 with Coolant Pod").
+ */
+export function recordSheetHeatProfileText(
+  heat: number | string,
+  dissipation: number,
+  boosts: readonly HeatDissipationBoost[] = [],
+): string {
+  let capacity = dissipation;
+  const steps = boosts.map(boost => {
+    if (boost.marginOfSuccess) return `${capacity + boost.bonus}+MoS with ${boost.source}`;
+    capacity += boost.bonus;
+    return `${capacity} with ${boost.source}`;
+  });
+  return `Maximum Heat (Dissipation): ${heat} (${[String(dissipation), ...steps].join(', ')})`;
 }
 
 /** The inventory's heat line, as both generators print it and the binders rewrite it. */
-export function markRecordSheetHeatProfile(text: SVGTextElement, heat: number): void {
+export function addRecordSheetHeatProfile(
+  entity: BaseEntity,
+  draw: (text: string) => SVGTextElement,
+): SVGTextElement {
+  const heat = Math.max(0, entity.heatGeneration());
+  const boosts = entity.heatDissipationBoosts();
+  const text = draw(recordSheetHeatProfileText(heat, Math.max(0, entity.heatDissipationRange()?.[0] ?? 0), boosts));
   text.id = 'heatProfile';
   text.setAttribute(HEAT_PROFILE_MAXIMUM_ATTRIBUTE, String(heat));
+  if (boosts.length > 0) text.setAttribute(HEAT_PROFILE_BOOSTS_ATTRIBUTE, JSON.stringify(boosts));
+  return text;
+}
+
+/** Range columns as MegaMekLab prints them: a bracket that reaches no further than the one before it is a dash. */
+export function recordSheetRangeTexts(ranges: readonly number[]): readonly string[] {
+  return Object.freeze(ranges.map((range, index) =>
+    range > 0 && (index === 0 || range > ranges[index - 1]) ? String(range) : '—'));
+}
+
+/** The heat column of an inventory row; like MegaMekLab, a weapon that makes no heat prints a dash. */
+export function recordSheetHeatText(heat: number): string {
+  return heat > 0 ? String(heat) : '—';
 }
 
 /** The reference inventory sorts ground ranges descending, including aerospace units. */
@@ -345,18 +380,14 @@ export function recordSheetInventoryWeapons(
     return {
       name: mount.displayName(),
       location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
-      heat: String(laserInsulatorAdjustedHeat(mount.equipment.heat, enhancement?.equipment, mount.equipment)),
+      heat: recordSheetHeatText(laserInsulatorAdjustedHeat(mount.equipment.heat, enhancement?.equipment, mount.equipment)),
       damage: ammoModes.length > 0 ? (semanticDamage.match(/\[[^\]]+\]\s*$/u)?.[0] ?? '') : semanticDamage,
       minimumRange:
         ammoModes.length > 0 ? '' : mount.equipment.minimumRange > 0 ? String(mount.equipment.minimumRange) : '—',
       ranges:
         ammoModes.length > 0
           ? Object.freeze(['', '', ''])
-          : Object.freeze(
-              recordSheetWeaponRanges(mount.equipment)
-                .slice(0, 3)
-                .map((value) => (value > 0 ? String(value) : '—')),
-            ),
+          : recordSheetRangeTexts(recordSheetWeaponRanges(mount.equipment).slice(0, 3)),
       componentIds: Object.freeze([mount.mountId]),
       quantity: 1,
       linkedEquipment: recordSheetLinkedEquipment(entity, mount, enhancement, semanticDamage),
@@ -510,6 +541,8 @@ function recordSheetModeDamage(profile: AmmoWeaponProfile): string {
 export function recordSheetAmmoProfile(entity: BaseEntity): readonly string[] {
   return recordSheetAmmoEntries(
     entity.equipment().flatMap((mount) => {
+      // Coolant pods are catalogued as ammunition but print as equipment, as MegaMekLab does.
+      if (isCoolantPodEquipment(mount.equipment)) return [];
       const shots = mount.getAmmoShots();
       // MegaMekLab keys ammo by its type's short name, as the live profile does; placement modifiers such as
       // a battle armor "(Body)" mount never print.
@@ -790,7 +823,8 @@ export function drawCrewHitGrid(
   const group = svgElement('g');
   group.setAttribute('class', 'crew-hit-grid');
   parent.appendChild(group);
-  const baseline = y + cellHeight * 7 / 9;
+  // Digits centre on their cell: half their cap height below the middle, as in the cluster table.
+  const baseline = y + cellHeight / 2 + 5.8 * fontScale * 0.35;
   for (let index = 0; index < 6; index++) {
     const cellX = x + index * cellWidth;
     const hit = svgElement('rect');
@@ -1315,13 +1349,15 @@ export function drawHeatScale(svg: SVGSVGElement, box: Box, family: 'mek' | 'aer
   );
   group.appendChild(overflowButton);
   group.appendChild(overflow);
-  const overflowText = addText(group, 'Overflow', x(8.396), y(28.5), {
+  const overflowLabel = addText(group, 'Overflow', x(8.396), y(28.5), {
     size: font(4.7),
     anchor: 'middle',
-    class: 'overflowText',
+    class: 'overflowLabel',
   });
-  overflowText.setAttribute('textLength', formatNumber(x(15.5)));
-  overflowText.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+  overflowLabel.setAttribute('textLength', formatNumber(x(15.5)));
+  overflowLabel.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+  // The heat above 30, written under the label by the bound sheet.
+  addText(group, '', x(8.396), y(39), { size: font(7.2), weight: 700, anchor: 'middle', class: 'overflowText' });
 
   const cellTop = 47.667;
   const cellHeight = 10.3333333333;
@@ -1377,8 +1413,12 @@ export function drawClusterHitsReference(
   box: Box,
   rackColumns: readonly number[],
   presentation: 'auto' | 'full-width' = 'auto',
+  notes: readonly string[] = [],
 ): void {
   const profile = clusterHitsReferenceProfile(box, rackColumns.length, presentation);
+  // Equipment notes (Artemis, Apollo, HAG) take the frame's bottom lines; the grid fits above them.
+  const noteLineHeight = RECORD_SHEET_FONT.small * 1.2;
+  const notesHeight = notes.length * noteLineHeight;
   const group = addReferenceTableFrame(svg, 'CLUSTER HITS TABLE', box);
   group.setAttribute('data-mekbay-reference', 'cluster-hits');
   const table = svgElement('g');
@@ -1386,7 +1426,7 @@ export function drawClusterHitsReference(
   // and proportions while the frame keeps the utility's standard geometry.
   const tableTop = 22.5;
   const scaleX = box.width / profile.width;
-  const scaleY = (box.height - tableTop) / (profile.height - 22.5);
+  const scaleY = (box.height - tableTop - notesHeight) / (profile.height - 22.5);
   table.setAttribute('transform', `translate(${formatNumber(3 * scaleX)} ${tableTop})`);
   const safeRackCount = Math.max(1, rackColumns.length);
   const rollColumnX = profile.rollColumnX * scaleX;
@@ -1436,6 +1476,11 @@ export function drawClusterHitsReference(
     });
   }
   group.appendChild(table);
+  notes.forEach((note, index) => addText(group, note, 6, box.height - 4 - (notes.length - 1 - index) * noteLineHeight, {
+    size: RECORD_SHEET_FONT.small,
+    class: 'reference-table-note',
+    maxWidth: box.width - 12,
+  }));
 }
 
 interface ClusterHitsReferenceProfile {

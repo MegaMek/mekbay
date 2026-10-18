@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { computed, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { CriticalSlotView, MekConfig, type MekSystemType, type TechRatingSource } from '../../types';
 import { getLamConstructionTech } from '../../components';
 import { BipedMekEntity } from './biped-mek-entity';
@@ -25,11 +25,9 @@ export class LamEntity extends BipedMekEntity {
     return this.lamType().toLowerCase() !== 'bimodal';
   }
 
-  /** Mirrors LandAirMek.getAirMekFlankMP(BV_CALCULATION). */
-  readonly bvAirMekFlankMP = computed(() => Math.ceil(this.maxJumpMP() * 3 * 1.5));
-
-  override airMekFlankMP(): number {
-    return this.bvAirMekFlankMP();
+  /** Mirrors LandAirMek.getAirMekFlankMP: AirMek cruise is jump MP x 3. */
+  override airMekFlankMP(jumpMP: number): number {
+    return Math.ceil(jumpMP * 3 * 1.5);
   }
 
   protected override constructionTechAdvancement(): TechRatingSource {

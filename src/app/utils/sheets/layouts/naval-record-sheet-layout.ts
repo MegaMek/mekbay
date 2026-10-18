@@ -6,7 +6,7 @@ import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { systemDamageControls,systemDamageLocationControls } from '../../../models/runtime/system-damage-presentation';
-import { clusterTableForEntity } from '../../record-sheet-reference-table';
+import { clusterTableForEntity, recordSheetClusterNotes } from '../../record-sheet-reference-table';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
 import {
 type Box,
@@ -108,9 +108,11 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             { airborne: false },
         );
         drawNavalCriticalPanel(svg, entity, at({ x: 231.366, y: 165.905, width: 150.1, height: 88.548 }));
-        const clusterRacks = clusterTableForEntity(entity).clusterSizes;
+        const cluster = clusterTableForEntity(entity);
         const referenceBox = at({ x: 230.4, y: 261.952, width: 154.6, height: 96.048 });
-        if (clusterRacks.length > 0) drawClusterHitsReference(svg, referenceBox, clusterRacks);
+        if (cluster.clusterSizes.length > 0) {
+            drawClusterHitsReference(svg, referenceBox, cluster.clusterSizes, 'auto', recordSheetClusterNotes(cluster.equipment));
+        }
         else addFrame(svg, 'NOTES', referenceBox);
         drawNavalHitLocationReference(
             svg,

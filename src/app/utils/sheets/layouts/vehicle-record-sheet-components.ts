@@ -4,9 +4,6 @@ import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumb
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
-import { isBapEquipment } from '../../../models/bap-equipment.model';
-import { isNovaC3Equipment } from '../../../models/c3-network.model';
-import { isAngelEcmEquipment,isEcmEquipment,isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
 import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/fire-control';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
@@ -15,19 +12,27 @@ import { getBayTransporterType } from '../../../models/entity/bays/bay-definitio
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
-import { isEquipmentForPlatform } from '../../../models/equipment-platform.model';
 import type { Equipment } from '../../../models/equipment.model';
 import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { isJumpJetEquipment,isUmuEquipment } from '../../../models/jump-equipment.model';
 import { buildNonMekRuntimeIndex } from '../../../models/runtime/non-mek-runtime-index';
-import { sensorEquipmentKind } from '../../../models/sensor-equipment.model';
 import { PaperdollGenerator, type PaperdollPipLayout } from '../paperdoll-generator';
 import { SvgFrameUtil } from '../svg-frame.util';
-import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory } from '../record-sheet-ammo-rendering';
+import {
+    appendRecordSheetAmmoProfile,
+    markAmmoBefore,
+    markAmmoInventory,
+    measureRecordSheetAmmoProfile,
+} from '../record-sheet-ammo-rendering';
 import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import { createBattleTechLogo,createCatalystGameLabsLogo } from '../record-sheet-brand';
-import { isRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
+import {
+    isRecordSheetInventorySupport,
+    recordSheetElectronicWarfareRange,
+    recordSheetEquipmentDamage,
+    recordSheetInventoryMountName,
+} from '../record-sheet-inventory-equipment';
 import {
 crewSkillValueX,
 CREW_STATE_MENU_SPACE,
@@ -257,22 +262,29 @@ function appendCompactVehicleInventory(
     const rowLines = (row: { name: string; location?: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number, nameX = 8.41) =>
         inventoryRowLineCount([[row.name, x(100.38 - 9 - 3 - nameX)], [row.location ?? '', x(18)],
             [row.damage, x(54)], [row.minimumRange, x(12)], ...row.ranges.map(value => [value, x(12)] as const)], font(size));
-    const metrics = fitInventoryText((y(firstDetailBaseline - (detailRows.length ? 13.689 : 0) - 101.162)
-        - (ammo.length ? y(9.126) : 0)) / (box.width / 220.4), fontSize => {
+    const ammoPrefix = recordSheetNonMekAmmoPrefix(entity);
+    // Like the Mek footer, half a row separates the physical attacks from the ammo profile under them.
+    const ammoGap = ammo.length > 0 && physical.length > 0 ? 0.5 : 0;
+    const metrics = fitInventoryText(y(firstDetailBaseline - (detailRows.length ? 13.689 : 0) - 101.162)
+        / (box.width / 220.4), fontSize => {
         const rows = weapons.map(row => [rowLines(row, fontSize),
             ...(row.linkedEquipment ? [rowLines(vehicleLinkedEquipmentFields(row.linkedEquipment), fontSize, 12.738)] : []),
             ...row.alternativeModes.map(mode => rowLines(mode, fontSize, 12.738))]);
         const physicalRows = physical.map(row => rowLines(row, fontSize));
         const cargoRows = cargoLabels.map(label => inventoryRowLineCount([[label, box.width - x(15)]], font(fontSize)));
+        // The ammo profile prints at the fitted row size and lifts the physical rows by its lines.
+        const ammoLines = ammo.length === 0 ? 0 : measureRecordSheetAmmoProfile(ammo, {
+            width: box.width - x(17), fontSize: font(fontSize), prefix: ammoPrefix,
+        }).lines.length;
         return { lineCount: rows.flat().reduce((a, b) => a + b, 0) + physicalRows.reduce((a, b) => a + b, 0)
-            + cargoRows.reduce((a, b) => a + b, cargoRows.length ? 1 : 0),
+            + cargoRows.reduce((a, b) => a + b, cargoRows.length ? 1 : 0) + ammoLines + ammoGap,
             badgeRows: rows.flat(), content: { rows, physicalRows, cargoRows } };
     });
     const rowSpans = metrics.content.rows.map(rows => rows.map(lines => inventoryRowSpan(lines, metrics.lineStep)));
     const weaponStep = metrics.lineStep * box.width / 220.4;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
     const physicalStart = y(firstDetailBaseline - (detailRows.length ? 13.689 : 0))
-        - Math.max(0, metrics.content.physicalRows.reduce((a, b) => a + b, 0) - 1) * weaponStep;
+        - (Math.max(0, metrics.content.physicalRows.reduce((a, b) => a + b, 0) - 1) + ammoGap) * weaponStep;
     const inventory = svgElement('g');
     group.appendChild(inventory);
     let displayLine = 0;
@@ -369,9 +381,9 @@ function appendCompactVehicleInventory(
         x: x(8.41),
         y: y(firstDetailBaseline - (detailLineCount > 0 ? 9.126 : 0)),
         width: box.width - x(17),
-        fontSize: font(RECORD_SHEET_FONT.inventory),
+        fontSize: inventoryFont(RECORD_SHEET_FONT.inventory),
         lineHeight: weaponStep,
-        prefix: recordSheetNonMekAmmoPrefix(entity),
+        prefix: ammoPrefix,
     });
 }
 
@@ -464,12 +476,12 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 || isHeatSinkEquipment(equipment)
                 || isJumpJetEquipment(equipment)
                 || isUmuEquipment(equipment)) return [];
-            const range = compactElectronicWarfareRange(equipment);
+            const range = recordSheetElectronicWarfareRange(equipment);
             return Object.freeze({
                 name: compactVehicleWeaponName(recordSheetInventoryMountName(entity, mount)),
                 location: compactVehicleLocation(mount.getOccupiedLocations().join('/')),
                 heat: '—',
-                damage: equipment.hasFlag('F_AP_POD') ? '[PB,OS,AI]' : String(mount.getPhysicalWeaponDamage()?.value ?? '[E]'),
+                damage: recordSheetEquipmentDamage(mount),
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([mount.mountId]),
@@ -479,21 +491,6 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
             });
         });
     return Object.freeze([...weaponRows, ...miscRows]);
-}
-
-function compactElectronicWarfareRange(equipment: Equipment): number | undefined {
-    const sensorKind = sensorEquipmentKind(equipment);
-    if (!isEcmEquipment(equipment) && !isBapEquipment(equipment)) return undefined;
-    if (isAngelEcmEquipment(equipment) && isEquipmentForPlatform(equipment, 'battle-armor')) return 2;
-    if (sensorKind === 'electronic-warfare'
-        || sensorKind === 'watchdog'
-        || isNovaC3Equipment(equipment)) return 3;
-    if (isSingleHexEcmEquipment(equipment)) return 0;
-    if (isEcmEquipment(equipment)) return 6;
-    if (sensorKind === 'bloodhound') return 8;
-    if (/light active probe/iu.test(equipment.id)) return 3;
-    if (/improved active probe/iu.test(equipment.id)) return 2;
-    return equipment.techBase === 'Clan' ? 5 : 4;
 }
 
 function compactVehicleWeaponName(value: string): string {

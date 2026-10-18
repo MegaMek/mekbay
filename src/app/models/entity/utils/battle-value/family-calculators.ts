@@ -156,7 +156,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
 
   protected override runningTmm(): number {
     if (!this.entity.isLandAirMek()) return super.runningTmm();
-    const airMekFlankMP = this.state ? this.jumpMP * 3 * 1.5 : this.entity.airMekFlankMP();
+    const airMekFlankMP = this.entity.airMekFlankMP(this.jumpMP);
     return airMekFlankMP === 0 ? 0 : targetMovementModifier(airMekFlankMP, false, true);
   }
 
@@ -387,7 +387,7 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     if (coolantPods > 0) efficiency += Math.ceil(this.entity.totalHeatSinks() * coolantPods / 5);
     let moveHeat: number;
     if (standardLam) {
-      moveHeat = Math.round(this.entity.airMekFlankMP() / 3);
+      moveHeat = Math.round(this.entity.airMekFlankMP(this.jumpMP) / 3);
     } else {
       moveHeat = this.movementHeat().heat;
     }
@@ -456,11 +456,6 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     this.offensiveValue += this.entity.tonnage() * aesMultiplier * myomerMultiplier;
     const modifiers = `${aesMultiplier === 1 ? '' : ` x ${this.format(aesMultiplier)}`}${myomerMultiplier === 1 ? '' : ` x ${this.format(myomerMultiplier)}`}`;
     this.addValueLine('Weight', `+ ${this.format(this.entity.tonnage())}${modifiers}`, before);
-  }
-
-  protected override currentOffensiveSpeedFactorMP(): number {
-    if (!this.entity.isLandAirMek()) return super.currentOffensiveSpeedFactorMP();
-    return this.runMP + Math.round(this.jumpMP * 3 * 1.5 / 2);
   }
 
   protected override processOffensiveTypeModifier(): void {

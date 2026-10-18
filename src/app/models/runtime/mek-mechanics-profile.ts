@@ -185,7 +185,9 @@ export interface MekEmergencyC3Endpoint extends MekEquipmentGroup {
 }
 
 export interface MekMechanicsMovement {
-    /** Pristine construction MP before damage, heat, boosters, or equipment penalties. */
+    /** Design Walking MP before damage, heat, boosters, or equipment penalties. */
+    readonly originalWalkMp: number;
+    /** Construction MP including fixed equipment penalties, but excluding shields and modular armor. */
     readonly baseWalkMp: number;
     readonly baseRunMp: number;
     readonly baseJumpMp: number;
@@ -511,6 +513,7 @@ export function compileMekMechanicsProfile(
         sensors,
         limbs: Object.freeze(limbs),
         movement: Object.freeze({
+            originalWalkMp: entity.originalWalkMP(),
             baseWalkMp,
             baseRunMp,
             baseJumpMp,

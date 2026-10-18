@@ -1109,7 +1109,7 @@ function slotOccupants(unit: MekRestoreUnit, slotId: CriticalSlotId): readonly s
     if (!slot) return [];
     const location = unit.index.locations.get(slot.locationId)!;
     const sheetSlot = unit.entity.criticalSlotGrid().get(location.code)?.[slot.slotIndex];
-    return [...mekCriticalSlotLines(sheetSlot, unit.entity), ...slot.componentIds.flatMap(id => {
+    return [...mekCriticalSlotLines(sheetSlot, unit.entity, location.code, slot.slotIndex), ...slot.componentIds.flatMap(id => {
         const component = unit.index.components.get(id);
         if (!component) return [];
         return component.kind === 'equipment'

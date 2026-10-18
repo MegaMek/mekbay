@@ -18,6 +18,14 @@ import { isSponsonTurretEquipment } from '../../models/turret-equipment.model';
 import { isHarJelEquipment, isMassEquipment } from '../../models/utility-equipment.model';
 import { isFireControlEquipment } from '../../models/entity/utils/fire-control';
 import { isTalonEquipment } from '../../models/entity/utils/physical-weapon';
+import { isBapEquipment } from '../../models/bap-equipment.model';
+import { isNovaC3Equipment } from '../../models/c3-network.model';
+import { isAngelEcmEquipment, isEcmEquipment, isSingleHexEcmEquipment } from '../../models/ecm-mode.model';
+import { isEquipmentForPlatform } from '../../models/equipment-platform.model';
+import { isHeatSinkEquipment } from '../../models/heat-equipment.model';
+import { isJumpJetEquipment } from '../../models/jump-equipment.model';
+import { isCoolantPodEquipment } from '../../models/runtime/component-coolant-pod';
+import { sensorEquipmentKind } from '../../models/sensor-equipment.model';
 
 /** Equipment represented elsewhere on a record sheet rather than as an inventory row. */
 export function isRecordSheetInventorySupport(
@@ -42,6 +50,49 @@ export function isMekRecordSheetInventorySupport(
     equipment: Equipment | null | undefined,
 ): boolean {
     return isRecordSheetInventorySupport(equipment) || isMascEquipment(equipment);
+}
+
+/**
+ * The non-weapon equipment a Mek inventory lists, for the generated sheet and its binding alike. Coolant pods are
+ * catalogued as ammunition but print as equipment, as MegaMekLab does.
+ */
+export function isPrintableMekInventoryEquipment(
+    equipment: Equipment | null | undefined,
+    locationCodes: readonly string[],
+    quadVee: boolean,
+): boolean {
+    if (!equipment || !equipment.hittable) return false;
+    if (locationCodes.length === 0 || locationCodes.some(code => code === 'Engine' || code === 'Unallocated')) return false;
+    if (isCoolantPodEquipment(equipment)) return true;
+    if (equipment.type !== 'misc' || isHeatSinkEquipment(equipment) || isJumpJetEquipment(equipment)) return false;
+    if (quadVee && equipment.hasFlag('F_TRACKS')) return false;
+    return !isMekRecordSheetInventorySupport(equipment);
+}
+
+/** The damage column of a non-weapon inventory row: its special codes, physical damage, or [E] for equipment. */
+export function recordSheetEquipmentDamage(mount: EntityMountedEquipment): string {
+    const equipment = mount.equipment;
+    if (!equipment) return '—';
+    if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
+    if (isCoolantPodEquipment(equipment)) return '[PE,OS,X]';
+    const physicalDamage = mount.getPhysicalWeaponDamage();
+    return physicalDamage === undefined ? '[E]' : String(physicalDamage.value);
+}
+
+/** The long-range column MegaMekLab prints for electronic warfare equipment: its effect radius in hexes. */
+export function recordSheetElectronicWarfareRange(equipment: Equipment): number | undefined {
+    const sensorKind = sensorEquipmentKind(equipment);
+    if (!isEcmEquipment(equipment) && !isBapEquipment(equipment)) return undefined;
+    if (isAngelEcmEquipment(equipment) && isEquipmentForPlatform(equipment, 'battle-armor')) return 2;
+    if (sensorKind === 'electronic-warfare'
+        || sensorKind === 'watchdog'
+        || isNovaC3Equipment(equipment)) return 3;
+    if (isSingleHexEcmEquipment(equipment)) return 0;
+    if (isEcmEquipment(equipment)) return 6;
+    if (sensorKind === 'bloodhound') return 8;
+    if (/light active probe/iu.test(equipment.id)) return 3;
+    if (/improved active probe/iu.test(equipment.id)) return 2;
+    return equipment.techBase === 'Clan' ? 5 : 4;
 }
 
 /** Inventory names share construction sizes and MML's mixed-tech disambiguation. */

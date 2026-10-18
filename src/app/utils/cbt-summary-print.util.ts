@@ -7,6 +7,8 @@ import { formatUnitChassis } from './unit-display-name.util';
 import { isCaseEquipment } from '../models/case-equipment.model';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../models/entity/types/move';
 import type { EntityTechBase } from '../models/entity/types';
 import { AmmoEquipment } from '../models/equipment.model';
 import type { CBTForceMember } from '../models/force-member.model';
@@ -158,7 +160,7 @@ export class CBTSummaryPrintUtil {
                 <td class="col-tons is-numeric">${this.formatNumber(entity.tonnage())}</td>
                 <td class="col-year">${entity.year() || '—'}</td>
                 <td class="col-rules">${this.escapeHtml(this.formatTechBase(entity.techBase(), entity.mixedTech()))}<br/>${this.escapeHtml(entity.staticTechLevel())}</td>
-                <td class="col-move">${this.escapeHtml(this.formatMovement(entity))}</td>
+                <td class="col-move">${this.escapeHtml(this.formatMovement(entity, member.ruleset() ?? undefined))}</td>
                 <td class="col-as is-numeric">${this.formatNumber(entity.totalArmorPoints()) || '0'}/${this.formatNumber(entity.totalInternalPoints()) || '0'}</td>
                 <td class="col-firepower is-numeric">${this.formatNumber(maximumDamage) || '—'}</td>
                 <td class="col-equipment">${this.formatEquipmentSummary(entity)}</td>
@@ -173,9 +175,10 @@ export class CBTSummaryPrintUtil {
         return member.currentBaseBattleValue() ?? member.pristineBattleValue();
     }
 
-    private static formatMovement(entity: BaseEntity): string {
+    private static formatMovement(entity: BaseEntity, ruleset: CBTRuleset | undefined): string {
         const parts: string[] = [];
-        if (entity.walkMP()) parts.push(`${entity.walkMP()}/${entity.runMP()}`);
+        const walkMp = entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset });
+        if (walkMp) parts.push(`${walkMp}/${entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset })}`);
         if (entity.jumpMP()) parts.push(String(entity.jumpMP()));
         if (entity.umuMP()) parts.push(String(entity.umuMP()));
         return parts.join('/');

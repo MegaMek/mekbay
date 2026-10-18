@@ -15,6 +15,7 @@ import {
     isSpotWelderEquipment,
 } from '../entity/utils/physical-weapon';
 import type { IntrinsicWeapon } from '../entity/types/weapon';
+import { intrinsicActionBaseDamageText } from '../entity/utils/mek-intrinsic-actions';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import { VIBROBLADE_ON_MODE } from '../vibroblade-mode.model';
 import type { AttackerActionSelection, AttackerActionTarget } from './attacker-targeting-state';
@@ -233,6 +234,8 @@ function intrinsicEffect(
             weakened: false,
             boosted: false,
             movementDistance: facts.movementDistance,
+            // Until the unit has moved, its damage is the per-hex rate the sheet prints.
+            ...(facts.movementDistance > 0 ? {} : { displayFormula: intrinsicActionBaseDamageText(action) }),
         });
     }
 

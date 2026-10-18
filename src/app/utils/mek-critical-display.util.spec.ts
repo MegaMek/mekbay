@@ -27,7 +27,7 @@ describe('Mek critical display', () => {
             omniPod: false,
         };
 
-        expect(mekCriticalSlotLines(slot, entity)).toEqual(['Ammo (AC/20) 5']);
+        expect(mekCriticalSlotLines(slot, entity, 'LT', 0)).toEqual(['Ammo (AC/20) 5']);
     });
 
     it('sums superheavy bins of one ammo into a single line', () => {
@@ -47,7 +47,7 @@ describe('Mek critical display', () => {
             omniPod: true,
         };
 
-        expect(mekCriticalSlotLines(slot, entity)).toEqual(['Ammo (Streak SRM 6) 30']);
+        expect(mekCriticalSlotLines(slot, entity, 'RA', 0)).toEqual(['Ammo (Streak SRM 6) 30']);
     });
 
     it('gives each munition sharing a superheavy slot its own line and counts shared heat sinks', () => {

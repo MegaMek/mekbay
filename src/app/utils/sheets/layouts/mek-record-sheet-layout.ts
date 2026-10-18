@@ -16,16 +16,14 @@ import { RUN_WITHOUT_MASC_CALCULATION, STANDARD_MOVEMENT_CALCULATION } from '../
 import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { resolveShieldProfile } from '../../../models/entity/utils/physical-weapon';
-import { isHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import { mekCriticalDamageThreshold } from '../../../models/runtime/equipment-status-kernel';
-import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
 import { mekCriticalCaseLabel,mekCriticalSlotLines } from '../../mek-critical-display.util';
 import { mekCriticalLocationCells,mekCriticalTableRowCount } from '../../mek-location-layout.util';
-import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,mekHitLocationTable,mekPhysicalLocationTableRows,referenceTableNotes } from '../../record-sheet-reference-table';
+import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,mekHitLocationTable,mekPhysicalLocationTableRows,recordSheetClusterNotes } from '../../record-sheet-reference-table';
 import { MekPaperdollGenerator, usesBipedMekPaperdoll, type MekStructureTonnage } from '../mek-paperdoll-generator';
 import type { PaperdollOptions, PaperdollPipLayout } from '../paperdoll-generator';
 import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
@@ -41,7 +39,12 @@ writeMekCriticalSlotLines,
 import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { appendDataPanelEraIcon } from '../record-sheet-embedded-art';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
-import { isMekRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
+import {
+    isPrintableMekInventoryEquipment,
+    recordSheetElectronicWarfareRange,
+    recordSheetEquipmentDamage,
+    recordSheetInventoryMountName,
+} from '../record-sheet-inventory-equipment';
 import {
 fullRecordSheetLayoutProfile,
 recordSheetPageProfile,
@@ -57,6 +60,7 @@ addFrame,
 addReferenceTableFrame,
 addReferenceShade,
 addLine,
+addRecordSheetHeatProfile,
 addText,
 appendBattleValue,
 appendLegacyIdentityAnchors,
@@ -82,10 +86,8 @@ formatMovementWithMaximum,
 formatNumber,
 formatTechBase,
 makeDistributedPips,
-markRecordSheetHeatProfile,
 paperdollPipOptions,
 recordSheetAmmoProfile,
-recordSheetHeatProfileText,
 recordSheetInventoryWeapons,
 setAttributes,
 setInventoryComponentIds,
@@ -317,18 +319,19 @@ export function drawMekDataPanel(
     const lamLayout = entity.chassisConfig === 'LAM';
     const quadVeeLayout = entity.chassisConfig === 'QuadVee';
     if (lamLayout) {
-        drawLamMekDataHeader(group, entity, { x, y, font, fontScale });
+        drawLamMekDataHeader(group, entity, { x, y, font, fontScale }, ruleset);
     } else if (quadVeeLayout) {
         drawQuadVeeMekDataHeader(group, entity, { x, y, font });
     } else {
         addText(group, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
-        const boosted = { ...STANDARD_MOVEMENT_CALCULATION, forceTSM: true };
+        const standard = { ...STANDARD_MOVEMENT_CALCULATION, ruleset };
+        const boosted = { ...standard, forceTSM: true };
         const movement = { labelX: 6, valueX: 56, anchor: 'middle' } as const;
         appendDataPanelFacts(group, [
             { ...movement, label: 'Walking:', baseline: 47, id: 'mpWalk', field: 'walk',
-                value: formatMovementWithMaximum(entity.walkMP(), entity.computeWalkMP(boosted)) },
+                value: formatMovementWithMaximum(entity.computeWalkMP(standard), entity.computeWalkMP(boosted)) },
             { ...movement, label: 'Running:', baseline: 56, id: 'mpRun', field: 'run',
-                value: formatMovementWithMaximum(entity.computeRunMP(RUN_WITHOUT_MASC_CALCULATION), entity.computeRunMP(boosted)) },
+                value: formatMovementWithMaximum(entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset }), entity.computeRunMP(boosted)) },
             { ...movement, label: entity.umuMP() > 0 ? 'Underwater:' : 'Jumping:', baseline: 65, id: 'mpJump', field: 'jump',
                 value: String(entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP()) },
             ...mekDataPanelFacts(entity, [38, 47, 56, 65]),
@@ -370,6 +373,7 @@ function drawLamMekDataHeader(
         readonly font: (value: number) => number;
         readonly fontScale: number;
     },
+    ruleset: CBTRuleset,
 ): void {
     const { x, y, font } = scale;
     const [tonnage, techBase, role, engineType] = mekDataPanelFacts(entity, [38, 38, 47, 47]);
@@ -383,13 +387,15 @@ function drawLamMekDataHeader(
     addText(group, 'BattleMech', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
     addText(group, 'AirMech', x(105.312), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, anchor: 'middle' });
     addText(group, 'Fighter', x(163.968), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-    const airWalk = Math.ceil(entity.walkMP() * 0.33);
+    const standard = { ...STANDARD_MOVEMENT_CALCULATION, ruleset };
+    const walkMp = entity.computeWalkMP(standard);
+    const airWalk = Math.ceil(walkMp * 0.33);
     const airRun = Math.ceil(airWalk * 1.5);
     const fighterCruise = entity.jumpMP() * 3;
     const fighterFlank = Math.ceil(fighterCruise * 1.5);
     const movementRows: readonly [string, string, string, string, string, string, string][] = [
-        ['Walking:', String(entity.walkMP()), 'Walking:', String(airWalk), 'Cruising:', String(fighterCruise), 'Safe Thrust:'],
-        ['Running:', String(entity.runMP()), 'Running:', String(airRun), 'Flanking:', String(fighterFlank), 'Max Thrust:'],
+        ['Walking:', String(walkMp), 'Walking:', String(airWalk), 'Cruising:', String(fighterCruise), 'Safe Thrust:'],
+        ['Running:', String(entity.computeRunMP({ ...RUN_WITHOUT_MASC_CALCULATION, ruleset })), 'Running:', String(airRun), 'Flanking:', String(fighterFlank), 'Max Thrust:'],
         ['Jumping:', String(entity.jumpMP()), '', '', '', '', ''],
     ];
     movementRows.forEach(([label, battleMek, airLabel, airMek, fighterLabel, fighterValue, thrustLabel], index) => {
@@ -540,14 +546,8 @@ function appendMekInventoryRows(
     const physicalGroup = svgElement('g');
     markAmmoBefore(physicalGroup);
     group.appendChild(physicalGroup);
-    const maximumHeat = Math.max(0, entity.heatGeneration());
-    markRecordSheetHeatProfile(addCell(
-        inventoryGroup,
-        recordSheetHeatProfileText(maximumHeat, Math.max(0, entity.heatDissipation())),
-        x(8.41),
-        heatProfileY,
-        { size: font(RECORD_SHEET_FONT.inventory), maxWidth: box.width - x(17) },
-    ), maximumHeat);
+    addRecordSheetHeatProfile(entity, text => addCell(inventoryGroup, text, x(8.41), heatProfileY,
+        { size: font(RECORD_SHEET_FONT.inventory), maxWidth: box.width - x(17) }));
 
     const rowCount = equipmentRows.length + physicalAttacks.length;
     for (let index = 0; index < rowCount; index++) {
@@ -723,37 +723,24 @@ function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheet
     });
     const rangedMounts = new Set<EntityMountedEquipment>(entity.rangedWeapons());
     const equipmentRows: MekRecordSheetInventoryRow[] = entity.equipment()
-        .filter(mount => !rangedMounts.has(mount) && isPrintableMekInventoryMount(entity, mount))
-        .map(mount => Object.freeze({
-            name: recordSheetInventoryMountName(entity, mount),
-            location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
-            heat: '—',
-            damage: mekMiscInventoryDamage(mount),
-            minimumRange: '—',
-            ranges: Object.freeze(['—', '—', '—']),
-            componentIds: Object.freeze([String(mount.mountId)]),
-            quantity: 1,
-            linkedEquipment: null,
-            alternativeModes: Object.freeze([]),
-        }));
+        .filter(mount => !rangedMounts.has(mount)
+            && isPrintableMekInventoryEquipment(mount.equipment, [mount.location], entity.chassisConfig === 'QuadVee'))
+        .map(mount => {
+            const range = recordSheetElectronicWarfareRange(mount.equipment!);
+            return Object.freeze({
+                name: recordSheetInventoryMountName(entity, mount),
+                location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
+                heat: '—',
+                damage: recordSheetEquipmentDamage(mount),
+                minimumRange: '—',
+                ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
+                componentIds: Object.freeze([String(mount.mountId)]),
+                quantity: 1,
+                linkedEquipment: null,
+                alternativeModes: Object.freeze([]),
+            });
+        });
     return Object.freeze([...weaponRows, ...equipmentRows]);
-}
-
-function isPrintableMekInventoryMount(entity: MekEntity, mount: EntityMountedEquipment): boolean {
-    const equipment = mount.equipment;
-    if (!equipment || equipment.type !== 'misc' || !equipment.hittable) return false;
-    if (mount.location === 'Engine' || mount.location === 'Unallocated') return false;
-    if (isHeatSinkEquipment(equipment) || isJumpJetEquipment(equipment)) return false;
-    if (entity.chassisConfig === 'QuadVee' && equipment.hasFlag('F_TRACKS')) return false;
-    return !isMekRecordSheetInventorySupport(equipment);
-}
-
-function mekMiscInventoryDamage(mount: EntityMountedEquipment): string {
-    const equipment = mount.equipment;
-    if (!equipment) return '—';
-    if (equipment.hasFlag('F_AP_POD')) return '[PB,OS,AI]';
-    const physicalDamage = mount.getPhysicalWeaponDamage();
-    return physicalDamage === undefined ? '[E]' : String(physicalDamage.value);
 }
 
 function mekPhysicalInventoryRows(entity: MekEntity): readonly {
@@ -767,7 +754,7 @@ function mekPhysicalInventoryRows(entity: MekEntity): readonly {
 }[] {
     return Object.freeze(entity.intrinsicWeapons().map(attack => Object.freeze({
         name: attack.name,
-        location: attack.locations.join('/'),
+        location: formatEquipmentLocationCodes(attack.locations),
         heat: '—',
         damage: mekPhysicalDamageText(attack),
         minimumRange: '—',
@@ -840,17 +827,21 @@ function drawLamSkillRow(
     gunneryId: string,
     pilotingId: string,
 ): void {
-    addText(group, 'Gunnery Skill:', x(3), y(baseline), { size: font(5.7), weight: 700 });
-    const gunnery = addCrewSkillValue(group, '4', x(49), y(baseline), font(1), 'middle');
+    // Like the Mek station, each value sits the same distance after its caption, leaving the piloting
+    // skill room for its control-roll modifier inside the frame.
+    const gunneryCaption = addText(group, 'Gunnery Skill:', x(3), y(baseline), { size: font(5.7), weight: 700 });
+    const gunneryX = crewSkillValueX(gunneryCaption, 0, font(1));
+    const gunnery = addCrewSkillValue(group, '4', gunneryX, y(baseline), font(1));
     gunnery.id = gunneryId;
-    const gunButton = transparentRect(x(43), y(baseline - 9), x(13), y(12) - y(0), 'crewSkillButton');
+    const gunButton = transparentRect(gunneryX - x(3), y(baseline - 9), x(13), y(12) - y(0), 'crewSkillButton');
     gunButton.setAttribute('crewId', String(crewId));
     gunButton.setAttribute('skill', gunneryId.startsWith('aero') ? 'aero-gunnery' : 'gunnery');
     group.appendChild(gunButton);
-    addText(group, 'Piloting Skill:', x(72), y(baseline), { size: font(5.7), weight: 700 });
-    const piloting = addCrewSkillValue(group, '5', x(132), y(baseline), font(1), 'middle');
+    const pilotingCaption = addText(group, 'Piloting Skill:', x(72), y(baseline), { size: font(5.7), weight: 700 });
+    const pilotingX = crewSkillValueX(pilotingCaption, 0, font(1));
+    const piloting = addCrewSkillValue(group, '5', pilotingX, y(baseline), font(1));
     piloting.id = pilotingId;
-    const pilotButton = transparentRect(x(124), y(baseline - 9), x(16), y(12) - y(0), 'crewSkillButton');
+    const pilotButton = transparentRect(pilotingX - x(3), y(baseline - 9), x(16), y(12) - y(0), 'crewSkillButton');
     pilotButton.setAttribute('crewId', String(crewId));
     pilotButton.setAttribute('skill', pilotingId.startsWith('aero') ? 'aero-piloting' : 'piloting');
     group.appendChild(pilotButton);
@@ -901,26 +892,29 @@ function appendMekCrewStation(
 
     const gunneryLabel = addText(block, 'Gunnery Skill:', 3, 24, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
     gunneryLabel.id = `gunnerySkillText${occurrence}`;
-    const gunnery = addCrewSkillValue(block, '4', crewSkillValueX(gunneryLabel, 48.632), 24);
+    // Both values sit the same distance after their captions; the blanks start where the values do.
+    const gunneryX = crewSkillValueX(gunneryLabel, 0);
+    const gunnery = addCrewSkillValue(block, '4', gunneryX, 24);
     gunnery.id = `gunnerySkill${occurrence}`;
     const blankGunnery = svgElement('path');
     setAttributes(blankGunnery, {
         id: `blankGunnerySkill${occurrence}`,
         class: 'skillBlank hidden',
-        d: 'M 48.632 25 H 67.17',
+        d: `M ${formatNumber(gunneryX)} 25 H 67.17`,
         stroke: '#000', 'stroke-width': 0.72, 'stroke-linejoin': 'round', fill: 'none',
     });
     block.appendChild(blankGunnery);
 
     const pilotingLabel = addText(block, 'Piloting Skill:', 71.3, 24, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
     pilotingLabel.id = `pilotingSkillText${occurrence}`;
-    const piloting = addCrewSkillValue(block, '5', crewSkillValueX(pilotingLabel, 116.932), 24);
+    const pilotingX = crewSkillValueX(pilotingLabel, 0);
+    const piloting = addCrewSkillValue(block, '5', pilotingX, 24);
     piloting.id = `pilotingSkill${occurrence}`;
     const blankPiloting = svgElement('path');
     setAttributes(blankPiloting, {
         id: `blankPilotingSkill${occurrence}`,
         class: 'skillBlank hidden',
-        d: `M 116.932 25 H ${formatNumber(width)}`,
+        d: `M ${formatNumber(pilotingX)} 25 H ${formatNumber(width)}`,
         stroke: '#000', 'stroke-width': 0.72, 'stroke-linejoin': 'round', fill: 'none',
     });
     block.appendChild(blankPiloting);
@@ -1751,7 +1745,7 @@ async function drawCanonicalMekCriticalContents(
             });
             label.setAttribute('data-mekbay-max-width', formatNumber(
                 x(locationLayout.rightEdge - locationLayout.textX - 5) - textX - (extraHit ? font(7) : 0)));
-            writeMekCriticalSlotLines(label, mekCriticalSlotLines(slot, entity));
+            writeMekCriticalSlotLines(label, mekCriticalSlotLines(slot, entity, location, slotIndex));
             if (slot?.armored) {
                 const armorPip = circle(
                     font(2.8),
@@ -2099,14 +2093,6 @@ function drawMekHeatDataContents(group: SVGGElement, entity: MekEntity, box: Box
     }
 }
 
-const MML_REFERENCE_NOTE_TEXT: Readonly<Record<string, string>> = {
-    artemisIV: 'Artemis IV FCS: +2',
-    artemisV: 'Artemis V FCS: +3',
-    artemisProto: 'Prototype Artemis FCS: +1',
-    apollo: 'Apollo MRM FCS: -1',
-    hag: 'HAG: short range +2, long range -2',
-};
-
 export function drawMekHitLocationAndClusterPanel(
     svg: SVGSVGElement,
     entity: MekEntity,
@@ -2130,14 +2116,12 @@ export function drawMekHitLocationAndClusterPanel(
     const group = addMekReferenceFrame(svg, 'HIT LOCATION AND CLUSTER TABLE', box);
     group.setAttribute('data-mekbay-reference', 'mek-hit-location-cluster');
     const body = createMekReferenceBody(group, 3, 22.5);
-    const equipmentNotes = referenceTableNotes(undefined, data.equipment)
-        .map(note => MML_REFERENCE_NOTE_TEXT[note.id] ?? note.text);
     const notes = [
         '*A result of 2 may inflict a critical hit.',
         ...(table === 'tripod'
             ? ['†Roll 1d6 and apply modifier: 0-2: RL, 3-4: CL, 5-7: LL']
             : []),
-        ...equipmentNotes,
+        ...recordSheetClusterNotes(data.equipment),
     ];
     drawMmlReferenceTableBody(body, {
         bodyWidth: box.width - 3,

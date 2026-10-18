@@ -276,7 +276,7 @@ function renderCrew(
         const gunnery = svg.getElementById(`gunnerySkill${occurrence}`);
         if (gunnery) gunnery.textContent = vacant ? '—' : String(position.gunnery);
         const piloting = svg.getElementById(`pilotingSkill${occurrence}`);
-        if (piloting) piloting.textContent = vacant ? '—' : String(position.piloting);
+        if (piloting) piloting.textContent = vacant || position.piloting === null ? '—' : String(position.piloting);
         renderRecordSheetCrewControls(svg, position, bind, () => current().editContext, () =>
             current().crew.find(row => row.positionId === position.positionId)?.state.wounds ?? 0);
         const display = position.effectiveState === 'healthy'

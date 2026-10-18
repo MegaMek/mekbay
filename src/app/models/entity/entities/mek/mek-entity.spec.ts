@@ -10,11 +10,12 @@ import {
   STANDARD_STRUCTURE_EQUIPMENT,
 } from '../../components';
 import { BaseEntity } from '../../base-entity';
-import { BV_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
+import { AS_MOVEMENT_CALCULATION, BV_MOVEMENT_CALCULATION, STANDARD_MOVEMENT_CALCULATION, EntityMountedEquipment } from '../../types';
 import {
   TestBipedMekEntity as BipedMekEntity,
   TestLamEntity as LamEntity,
   TestQuadMekEntity as QuadMekEntity,
+  TestTripodMekEntity as TripodMekEntity,
 } from '../../testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../testing/test-mounted-equipment';
 import { EquipmentRegistry } from '../../../equipment-lookup';
@@ -503,6 +504,41 @@ describe('MekEntity jumpMP', () => {
     expect(entity.maxWalkMP()).toBe(5);
     expect(entity.maxRunMP()).toBe(8);
   });
+
+  for (const Entity of [BipedMekEntity, TripodMekEntity]) {
+    it(`caps only CORE shield walking penalties for ${Entity.name}`, () => {
+      const entity = new Entity();
+      addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+      addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_LARGE'], { location: 'LA' });
+      const core = { ...STANDARD_MOVEMENT_CALCULATION, ruleset: 'core-2026' as const };
+      const tw = { ...STANDARD_MOVEMENT_CALCULATION, ruleset: 'total-warfare' as const };
+
+      for (const [baseWalkMp, coreWalkMp, twWalkMp] of [[0, 0, 0], [1, 1, 0], [2, 1, 0], [4, 2, 2]]) {
+        entity.originalWalkMP.set(baseWalkMp);
+        expect(entity.computeWalkMP(core)).withContext(`CORE base ${baseWalkMp}`)
+          .toBe(coreWalkMp);
+        expect(entity.computeWalkMP(tw)).withContext(`TW base ${baseWalkMp}`)
+          .toBe(twWalkMp);
+        expect(entity.computeWalkMP(AS_MOVEMENT_CALCULATION)).withContext(`AS base ${baseWalkMp}`)
+          .toBe(twWalkMp);
+      }
+      entity.originalWalkMP.set(2);
+      expect(entity.computeRunMP(core)).toBe(2);
+      expect(entity.computeRunMP(tw)).toBe(0);
+      expect(entity.computeWalkMP({ ...core, ignoreShield: true })).toBe(2);
+    });
+  }
+
+  for (const equipmentFlag of ['F_MODULAR_ARMOR', 'F_CHAIN_DRAPE'] as const) {
+    it(`allows ${equipmentFlag} to reduce CORE walking MP below the shield minimum`, () => {
+      const entity = new BipedMekEntity();
+      entity.originalWalkMP.set(2);
+      addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+      addTestEquipmentWithFlags(entity, equipmentFlag, { location: 'CT' });
+
+      expect(entity.computeWalkMP({ ...STANDARD_MOVEMENT_CALCULATION, ruleset: 'core-2026' })).toBe(0);
+    });
+  }
 
   it('uses TSM and movement boosters for maximum movement', () => {
     const entity = new BipedMekEntity();

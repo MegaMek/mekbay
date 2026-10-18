@@ -14,7 +14,9 @@ import {
     type EquipmentPanelSnapshot,
 } from '../../models/runtime/equipment-panel';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
+import type { HeatDissipationBoost } from '../../models/entity/base-entity';
 import {
+    HEAT_PROFILE_BOOSTS_ATTRIBUTE,
     HEAT_PROFILE_MAXIMUM_ATTRIBUTE,
     recordSheetHeatProfileText,
     svgElement,
@@ -154,6 +156,7 @@ export function renderRecordSheetHeatProfile(
     const profile = svg.querySelector<SVGElement>('#heatProfile');
     const maximum = profile?.getAttribute(HEAT_PROFILE_MAXIMUM_ATTRIBUTE) ?? null;
     if (!profile || maximum === null) return;
+    const boosts = JSON.parse(profile.getAttribute(HEAT_PROFILE_BOOSTS_ATTRIBUTE) ?? '[]') as HeatDissipationBoost[];
     const selected = inventory === null ? null : selectedWeaponHeat(inventory.panel);
     if (selected?.hasSelection) {
         const value = svgElement('tspan');
@@ -161,7 +164,7 @@ export function renderRecordSheetHeatProfile(
         value.textContent = String(selected.value);
         profile.replaceChildren('Selected Heat (Dissipation): ', value, ` (${dissipation})`);
     } else {
-        profile.textContent = recordSheetHeatProfileText(maximum, dissipation);
+        profile.textContent = recordSheetHeatProfileText(maximum, dissipation, boosts);
     }
 }
 

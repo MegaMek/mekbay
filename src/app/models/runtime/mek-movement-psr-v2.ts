@@ -17,6 +17,7 @@ import type {
     MekMechanicsProfile,
 } from './mek-mechanics-profile';
 import type { CBTRuleset } from '../cbt-ruleset.model';
+import { shieldWalkMpReduction } from '../entity/utils/physical-weapon-kernel';
 import type { MekDestructionFactsV2 } from './mek-destruction-state-v2';
 import { mekHeatEffects } from '../rules/mek-heat-rules';
 import { physicalAttackCheckModifier } from '../rules/physical-attack-rules';
@@ -678,7 +679,7 @@ export function projectMekMovementPsrV2(
     const disconnected = facts.conditions.has('disconnected');
     const controlled = facts.functionalCrew || numbers.controlledByDrone;
     const damageAvailableMovement = [
-        profile.movement.baseWalkMp > 0 ? numbers.damageWalkMp : null,
+        profile.movement.originalWalkMp > 0 ? numbers.damageWalkMp : null,
         profile.movement.baseJumpMp > 0 && !facts.conditions.has('prone') ? numbers.jumpMp : null,
         profile.movement.baseUmuMp > 0 && !facts.conditions.has('prone') ? numbers.umuMp : null,
     ].filter((value): value is number => value !== null);
@@ -1577,27 +1578,31 @@ function movementNumbers(
         shield.size === 'large' && shield.retainsMobilityPenalty).length;
     const modularArmorActive = !options.battleValue && profile.modularArmor.some(group =>
         groupAvailable(group, facts) && facts.modularArmorRemaining(group.componentId) > 0);
-    let walk = Math.max(
+    const core = facts.rulesFlavor === 'core-2026';
+    const shieldCount = activeMediumShields + activeLargeShields;
+    let shieldBaseWalkMp = profile.movement.originalWalkMp;
+    const preDamageWalk = Math.max(
         0,
         profile.movement.baseWalkMp
-            - activeMediumShields
-            - activeLargeShields
+            - shieldWalkMpReduction(facts.rulesFlavor, shieldBaseWalkMp, shieldCount)
             - (modularArmorActive ? 1 : 0),
     );
-    const preDamageWalk = walk;
+    let walk = core ? profile.movement.originalWalkMp : preDamageWalk;
     let runDisabled = false;
     let runCap: number | null = null;
     let applyActuatorDamage = true;
     let impaired = false;
-    if (facts.rulesFlavor === 'core-2026') {
+    if (core) {
         if (!quadruped) {
             if (destroyedLegs === 1) {
                 walk = Math.min(walk, 1);
+                shieldBaseWalkMp = walk;
                 runCap = Math.min(profile.movement.baseRunMp, 2);
                 applyActuatorDamage = false;
                 impaired = true;
             } else if (destroyedLegs >= 2) {
                 walk = 0;
+                shieldBaseWalkMp = 0;
                 runDisabled = true;
                 impaired = true;
             } else {
@@ -1608,12 +1613,14 @@ function movementNumbers(
             impaired ||= destroyedHips > 0;
             if (destroyedLegs <= 2) walk -= destroyedLegs;
             else if (destroyedLegs === 3) {
-                walk = Math.min(walk, 1);
+                walk = Math.min(profile.movement.originalWalkMp, 1);
+                shieldBaseWalkMp = walk;
                 runCap = Math.min(profile.movement.baseRunMp, 2);
                 applyActuatorDamage = false;
                 impaired = true;
             } else {
                 walk = 0;
+                shieldBaseWalkMp = 0;
                 runDisabled = true;
                 impaired = true;
             }
@@ -1657,14 +1664,26 @@ function movementNumbers(
     }
     if (applyActuatorDamage) walk -= destroyedLegActuators + destroyedFeet;
     impaired ||= destroyedLegActuators > 0 || destroyedFeet > 0 || destroyedLegs > 0;
-    const legDamageMinimumWalk = facts.rulesFlavor === 'core-2026'
-        && preDamageWalk > 0
+    const legDamageMinimumWalk = core
+        && profile.movement.originalWalkMp > 0
         && destroyedLegs < (quadruped ? 4 : 2)
         ? 1
         : 0;
-    walk = Math.max(legDamageMinimumWalk, Math.min(profile.movement.baseWalkMp, walk));
+    walk = Math.max(legDamageMinimumWalk, Math.min(
+        core ? profile.movement.originalWalkMp : profile.movement.baseWalkMp,
+        walk,
+    ));
+    // CORE p. 49: MP lost to equipment or heat does not establish immobility.
     const damageWalk = walk;
-
+    if (core) {
+        // CORE pp. 90, 195: leg loss resets base MP; other leg damage does not.
+        // Equipment applies after the leg minimum, with only shields capped against that base.
+        const fixedEquipmentPenalty = profile.movement.originalWalkMp - profile.movement.baseWalkMp;
+        walk = Math.max(0, walk
+            - shieldWalkMpReduction(facts.rulesFlavor, shieldBaseWalkMp, shieldCount)
+            - fixedEquipmentPenalty
+            - (modularArmorActive ? 1 : 0));
+    }
     const heatModifier = mekHeatEffects(facts.currentHeat).moveModifier;
     walk = Math.max(0, walk + heatModifier);
     const standardTsm = profile.tripleStrengthMyomer.filter(group => group.kind === 'standard');

@@ -1,13 +1,31 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
+import { TestBipedMekEntity, TestTripodMekEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import { AmmoEquipment, ArmorEquipment, MiscEquipment, WeaponEquipment } from '../../../models/equipment.model';
 import { MountedArmor } from '../../../models/entity/components/armor';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 
 describe('Mek printed equipment and movement alternatives', () => {
+    for (const Entity of [TestBipedMekEntity, TestTripodMekEntity]) {
+        it(`prints shield-limited walking and running MP by ruleset for ${Entity.name}`, async () => {
+            const entity = new Entity();
+            entity.setTonnage(55);
+            entity.originalWalkMP.set(2);
+            addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+            addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'LA' });
+
+            for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+                const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset });
+                expect(svg.querySelector('#mpWalk')?.textContent).withContext(ruleset)
+                    .toBe(ruleset === 'core-2026' ? '1' : '0');
+                expect(svg.querySelector('#mpRun')?.textContent).withContext(ruleset)
+                    .toBe(ruleset === 'core-2026' ? '2' : '0');
+            }
+        });
+    }
+
     for (const ruleset of ['core-2026', 'total-warfare'] as const) {
         it(`${ruleset}: marks armored slots and single-slot autocannon extra-hit boxes`, async () => {
             const entity = new TestBipedMekEntity();

@@ -4,8 +4,11 @@
 import { isCaseIIEquipment, isStandardCaseEquipment } from '../models/case-equipment.model';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { CriticalSlotView, EntityMountedEquipment } from '../models/entity/types';
+import type { MekLocation } from '../models/entity/types/locations';
 import type { MekSystemType } from '../models/entity/types/mek';
+import { isCoolantPodEquipment } from '../models/runtime/component-coolant-pod';
 import { recordSheetAmmoName } from './record-sheet-ammo.util';
+import { COCKPIT_CREW_ROLES } from '../models/entity/components/cockpit-data';
 
 export type MekCriticalCaseLabel = 'CASE' | 'CASE II';
 
@@ -50,15 +53,37 @@ export function formatMekCriticalSlotLines(items: readonly MekCriticalSlotItem[]
 export function mekCriticalSlotLines(
     slot: CriticalSlotView | undefined,
     entity: MekEntity,
+    location: string,
+    slotIndex: number,
 ): readonly string[] {
     if (!slot || slot.type === 'empty') return formatMekCriticalSlotLines([]);
-    if (slot.type === 'system') return [mekSystemLabel(slot.systemType, entity)];
+    if (slot.type === 'system') return [mekSystemSlotLabel(entity, slot.systemType, location, slotIndex)];
     return formatMekCriticalSlotLines(slot.mounts.map(mount => {
         const shots = mount.getAmmoShots();
-        return shots === undefined
+        // Coolant pods are catalogued as ammunition but print as equipment, as MegaMekLab does.
+        return shots === undefined || isCoolantPodEquipment(mount.equipment)
             ? { label: mekCriticalMountName(entity, mount) }
             : { ammo: { name: recordSheetAmmoName(mount.displayName()), shots } };
     }));
+}
+
+/**
+ * A system slot's critical-table name. Cockpits name their crew station as MegaMekLab does: a robotic control
+ * system replaces the cockpit, a command console's first station is the cockpit, and dual and QuadVee cockpits
+ * print each station's role. A station is the slot's order among the location's cockpit slots.
+ */
+export function mekSystemSlotLabel(entity: MekEntity, system: MekSystemType, location: string, slotIndex: number): string {
+    if (system !== 'Cockpit') return mekSystemLabel(system, entity);
+    const robotics = entity.equipment().find(mount => mount.equipment?.hasFlag('F_SRCS'))?.equipment;
+    if (robotics) return robotics.shortName || robotics.name;
+    const station = (entity.criticalSlotGrid().get(location as MekLocation) ?? []).slice(0, slotIndex)
+        .filter(slot => slot?.type === 'system' && slot.systemType === 'Cockpit').length;
+    const cockpit = entity.cockpitType();
+    if (cockpit === 'Command Console' && station === 0) return 'Cockpit';
+    if (cockpit === 'Dual' || cockpit === 'QuadVee') {
+        return COCKPIT_CREW_ROLES[entity.mountedCockpit().crewType][station] ?? mekSystemLabel(system, entity);
+    }
+    return mekSystemLabel(system, entity);
 }
 
 /** Configured system name shared by loadout and record-sheet presentations. */

@@ -1057,7 +1057,8 @@ const EQUIPMENT_CONSTRUCTORS: Record<EquipmentType, new (data: EquipmentRawData)
 /** Short equipment label, with an explicit ammo designation and optional shot count. */
 export function formatEquipmentName(equipment: Equipment, ammoShots?: number): string {
     let name = equipment.shortName || equipment.name || equipment.id;
-    if (equipment instanceof AmmoEquipment) {
+    // A coolant pod is catalogued as ammunition but is a piece of equipment to the player, as MegaMek names it.
+    if (equipment instanceof AmmoEquipment && equipment.ammoType !== 'COOLANT_POD') {
         if (!/\bammo\b/i.test(name)) name += ' Ammo';
         if (ammoShots !== undefined) name += ` (${ammoShots})`;
     }

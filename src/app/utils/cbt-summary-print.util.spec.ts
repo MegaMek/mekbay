@@ -6,6 +6,8 @@ import { AmmoEquipment } from '../models/equipment.model';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { CBTForce } from '../models/cbt-force.model';
 import type { CBTForceMember } from '../models/force-member.model';
+import { TestBipedMekEntity } from '../models/entity/testing/test-entities';
+import { addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
 import { CBTSummaryPrintUtil } from './cbt-summary-print.util';
 
 describe('CBTSummaryPrintUtil', () => {
@@ -74,6 +76,23 @@ describe('CBTSummaryPrintUtil', () => {
         expect(withPilot).toContain('<td class="col-rules">IS<br/>Standard</td>');
     });
 
+    it('prints shield-limited movement using the member ruleset', () => {
+        const force = createForce();
+        const entity = new TestBipedMekEntity();
+        entity.originalWalkMP.set(1);
+        addTestEquipmentWithFlags(entity, ['F_SHIELD', 'S_SHIELD_MEDIUM'], { location: 'RA' });
+        for (const ruleset of ['core-2026', 'total-warfare'] as const) {
+            const member = {
+                ...createMember(force as unknown as CBTForce, 'Shield Mek', 'alpha'),
+                entity,
+                ruleset: () => ruleset,
+            } as unknown as CBTForceMember;
+            const row = createRosterTableRow(member, false);
+            expect(row).withContext(ruleset)
+                .toContain(`<td class="col-move">${ruleset === 'core-2026' ? '1/2' : ''}</td>`);
+        }
+    });
+
     it('keeps CASE-protected and unprotected Entity ammo bins separate', () => {
         const ammunition = new AmmoEquipment({
             id: 'LRM 10 Ammo',
@@ -140,8 +159,8 @@ function createMember(force: CBTForce, chassis: string, rosterGroupId: string): 
         techBase: () => 'IS',
         mixedTech: () => false,
         staticTechLevel: () => 'Standard',
-        walkMP: () => 5,
-        runMP: () => 8,
+        computeWalkMP: () => 5,
+        computeRunMP: () => 8,
         jumpMP: () => 0,
         umuMP: () => 0,
         totalArmorPoints: () => 160,
@@ -153,6 +172,7 @@ function createMember(force: CBTForce, chassis: string, rosterGroupId: string): 
         force,
         entity,
         rosterGroupId,
+        ruleset: () => 'total-warfare',
         pristineBattleValue: () => 900,
         currentBaseBattleValue: () => 900,
         adjustedBattleValue: () => 1_100,

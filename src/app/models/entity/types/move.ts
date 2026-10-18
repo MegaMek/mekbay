@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import type { CBTRuleset } from '../../cbt-ruleset.model';
+
 /** Movement-mode names exposed by MegaMek's unit data, see getMovementModeAsString */
 export type MoveType =
   | 'Aerodyne'
@@ -32,6 +34,8 @@ export type MoveType =
   | 'ERROR';
 
 export interface MovementCalculationOptions {
+  /** Absent for ruleset-independent conversion and existing Total Warfare movement. */
+  readonly ruleset?: CBTRuleset;
   readonly ignoreGravity: boolean;
   readonly ignoreHeat: boolean;
   readonly ignoreModularArmor: boolean;

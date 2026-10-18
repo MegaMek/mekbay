@@ -1261,8 +1261,8 @@ function projectNonMekStateViewFromProjection(
             BV_MOVEMENT_CALCULATION.ignoreMyomerBooster)
         : null;
     const movement = Object.freeze({
-        walk: immobile ? 0 : vehicle?.movement.walk ?? proto?.walk ?? entity.computeWalkMP(BV_MOVEMENT_CALCULATION),
-        run: immobile ? 0 : vehicle?.movement.maxRun ?? proto?.run ?? entity.computeRunMP(BV_MOVEMENT_CALCULATION),
+        walk: immobile ? 0 : vehicle?.battleValueMovement.walk ?? proto?.walk ?? entity.computeWalkMP(BV_MOVEMENT_CALCULATION),
+        run: immobile ? 0 : vehicle?.battleValueMovement.maxRun ?? proto?.run ?? entity.computeRunMP(BV_MOVEMENT_CALCULATION),
         jump: immobile ? 0 : proto?.jump ?? entity.computeJumpMP(BV_MOVEMENT_CALCULATION),
         umu: immobile ? 0 : protoUmu ?? entity.umuMP(),
     });
