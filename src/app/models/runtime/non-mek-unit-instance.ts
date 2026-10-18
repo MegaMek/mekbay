@@ -30,8 +30,9 @@ import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model
 import type { MotiveModes } from '../motiveModes.model';
 import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import { gameRulesFor } from '../rules/game-rules';
+import { compareTurnPositions, HEAT_TURN_STEP, isMarkableTurnStep, isStoredTurnStep } from '../rules/turn-sequence';
 import { projectInfantryRuntimeRules,type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
-import { projectProtoMekRuntimeRules,type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
+import { projectProtoMekRuntimeRules,protoMekMovement,type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
 import { isCumulativeSystemDamage,type SystemDamageKind } from '../rules/system-damage-rules';
 import { projectVehicleRuntimeRules,type VehicleRuntimeRulesProjection } from '../rules/vehicle-runtime-rules';
 import { getDefaultAttackerMovementModifier,getTargetMovementBracketForDistance,getTargetUnitTypeModifier,TN_AIRBORNE_MOVE_TYPE_MODIFIER,TN_IMMOBILE,TN_SKIDDING_MODIFIER } from '../target-number-calculator.model';
@@ -55,6 +56,7 @@ type VelocityRecordEntry,
 import { bombastLaserEquipmentModes,bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import { ECMMode } from '../common.model';
 import { isJumpJetEquipment,isUmuEquipment } from '../jump-equipment.model';
+import { laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { prototypeLaserHeatForRoll,prototypeLaserHeatRollMap,prototypeLaserMaximumExtraHeat,type PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonComponentModes } from '../rapid-fire-autocannon-mode.model';
 import { type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeState,type RuntimeStatePerspective } from './cbt-unit-runtime';
@@ -68,6 +70,7 @@ import type { EndTurnCheckpoint } from './end-turn-checkpoint';
 import type { EquipmentChoiceSurface,EquipmentInteractionChoice } from './equipment-interaction';
 import { canonicalNonMekAirborneState,canSwitchNonMekAirGroundState,projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
 import { applyWeaponTargetPolicies,reconcileWeaponTargetPolicies,type WeaponTargetSubject,type WeaponTargetSubjectResolver } from './weapon-target-policy';
+import { componentIdForMount } from './unit-runtime-index';
 
 export type NonMekEntityType = Exclude<EntityType, 'Mek'>;
 export interface NonMekComponentModeDefinition {
@@ -201,6 +204,13 @@ export interface NonMekTurnRuntimeState {
     /** Durable origin/next phase-dirty marker, cleared only by a phase boundary. */
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    /** Real-phase steps of this turn the unit has completed (see turn-sequence). */
+    readonly turnStep: number;
+    /**
+     * The real-phase step this unit joined the turn at, when it was added after the turn's Movement: it acts
+     * after the Initiative order. Absent otherwise.
+     */
+    readonly joinedStep?: number;
     readonly controlRecovery?: NonMekControlRecoveryWorkflow;
 }
 
@@ -292,7 +302,7 @@ export function projectNonMekMovementCapabilities(
     }));
     const ordinaryRun = hpgMovementBlocked || !canTakeActiveActions
         ? 0
-        : entityMovementMaximum('run', false, state, entity, vehicle, immobile);
+        : entityMovementMaximum('run', false, state, entity, vehicle, protoMek, immobile);
     return Object.freeze({
         destroyed,
         immobile,
@@ -302,22 +312,22 @@ export function projectNonMekMovementCapabilities(
             stationary: 0,
             walk: hpgMovementBlocked || !canTakeActiveActions
                 ? 0
-                : entityMovementMaximum('walk', false, state, entity, vehicle, immobile),
+                : entityMovementMaximum('walk', false, state, entity, vehicle, protoMek, immobile),
             run: boosterComponentIds.length > 0
                 ? hpgMovementBlocked || !canTakeActiveActions
                     ? 0
-                    : entityMovementMaximum('run', true, state, entity, vehicle, immobile)
+                    : entityMovementMaximum('run', true, state, entity, vehicle, protoMek, immobile)
                 : ordinaryRun,
             sprint: 0,
             jump: hpgMovementBlocked || !canTakeActiveActions
                 ? 0
-                : entityMovementMaximum('jump', false, state, entity, vehicle, immobile),
+                : entityMovementMaximum('jump', false, state, entity, vehicle, protoMek, immobile),
             UMU: hpgMovementBlocked || !canTakeActiveActions
                 ? 0
-                : entityMovementMaximum('UMU', false, state, entity, vehicle, immobile),
+                : entityMovementMaximum('UMU', false, state, entity, vehicle, protoMek, immobile),
             VTOL: hpgMovementBlocked || !canTakeActiveActions
                 ? 0
-                : entityMovementMaximum('VTOL', false, state, entity, vehicle, immobile),
+                : entityMovementMaximum('VTOL', false, state, entity, vehicle, protoMek, immobile),
         }),
         ordinaryRun,
         boosterComponentIds,
@@ -496,18 +506,24 @@ export function createPristineNonMekUnitState(entity: BaseEntity): NonMekUnitRun
         crew: new Map(),
         conditions: new Set(),
         heat: Object.freeze({ current: 0, previous: 0, heatsinksOff: 0 }),
-        turn: Object.freeze({
-            turnCounter: 0,
-            airborne: canonicalNonMekAirborneState(entity, null),
-            movement: null,
-            weaponsHeat: 0,
-            heatSettled: false,
-            cover: null,
-            spotting: false,
-            phaseStateChanged: false,
-        }),
+        turn: pristineNonMekTurn(entity),
         attackerTargeting: createPristineAttackerTargetingState(),
         pendingCombat: emptyPendingCombat(),
+    });
+}
+
+/** The turn facts a unit starts a turn with (the counter starts at 0 for turn 1). */
+function pristineNonMekTurn(entity: BaseEntity, turnCounter = 0): NonMekTurnRuntimeState {
+    return Object.freeze({
+        turnCounter,
+        airborne: canonicalNonMekAirborneState(entity, null),
+        movement: null,
+        weaponsHeat: 0,
+        heatSettled: false,
+        cover: null,
+        spotting: false,
+        phaseStateChanged: false,
+        turnStep: 0,
     });
 }
 
@@ -537,6 +553,8 @@ export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRu
             ...(state.turn.endTurnCheckpoint === undefined
                 ? {}
                 : { endTurnCheckpoint: state.turn.endTurnCheckpoint }),
+            turnStep: state.turn.turnStep,
+            ...(state.turn.joinedStep === undefined ? {} : { joinedStep: state.turn.joinedStep }),
             ...(state.turn.controlRecovery === undefined
                 ? {}
                 : { controlRecovery: Object.freeze({ ...state.turn.controlRecovery }) }),
@@ -751,23 +769,32 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
     let heat = 0;
     const vehicle = isVehicleEntity(binding.entity) ? projectVehicleRuntimeRules(binding.entity, binding.index, state, binding.ruleset, binding.crewAssignment) : null;
     const infantry = isInfantryFamilyEntity(binding.entity) ? projectInfantryRuntimeRules(binding.entity, binding.index, state) : null;
+    const protoMek = query.projection().protoMek;
     if (hasVacantNonMekCrew(binding.index, binding.crewAssignment)
         || query.destroyed() || query.hasCondition('shutdown')) return unchanged();
     for (const [weaponId, targeting] of selected) {
         const component = binding.index.components.get(weaponId);
         const weapon = component?.mount.equipment;
-        if (!(weapon instanceof WeaponEquipment)
-            || component?.mount.isPhysicalWeapon()
+        if (!component || !(weapon instanceof WeaponEquipment)
+            || component.mount.isPhysicalWeapon()
             || query.componentStatus(weaponId, 'committed') !== 'available'
             || state.components.get(weaponId)?.jammed === true
             || vehicle?.fireBlockedComponentIds.has(weaponId) === true
-            || infantry?.fireBlockedComponentIds.has(weaponId) === true) {
+            || infantry?.fireBlockedComponentIds.has(weaponId) === true
+            || protoMek?.fireBlockedComponentIds.has(weaponId) === true) {
             return unchanged();
         }
         const mode = query.componentMode(weaponId);
         const shots = rapidFireAutocannonShotCount(weapon, mode);
         const bombast = bombastLaserEquipmentProfile(weapon, binding.ruleset, mode);
-        heat += (bombast?.heat ?? weapon.heat) * shots;
+        const linkedEnhancement = binding.entity.getLinkingMount(component.mount);
+        heat += laserInsulatorAdjustedHeat(
+            bombast?.heat ?? weapon.heat,
+            linkedEnhancement?.equipment,
+            weapon,
+            linkedEnhancement !== undefined
+                && query.componentStatus(componentIdForMount(linkedEnhancement), 'committed') === 'available',
+        ) * shots;
         const maximumPrototypeHeat = prototypeLaserMaximumExtraHeat(weapon.internalName);
         if (binding.entity.tracksHeat() && maximumPrototypeHeat > 0) {
             if (binding.entity.unitType() === 'Aero') {
@@ -1229,10 +1256,14 @@ function projectNonMekStateViewFromProjection(
     const protoUmu = protoMek === null ? null : [...index.components.values()]
         .filter(component => isUmuEquipment(component.mount.equipment)
             && status(component.id) === 'available').length;
+    const proto = protoMek && isProtoMekEntity(entity)
+        ? protoMekMovement(entity, protoMek.criticalHits, entity.computeWalkMP(BV_MOVEMENT_CALCULATION), protoJump ?? 0,
+            BV_MOVEMENT_CALCULATION.ignoreMyomerBooster)
+        : null;
     const movement = Object.freeze({
-        walk: immobile ? 0 : vehicle?.movement.walk ?? entity.computeWalkMP(BV_MOVEMENT_CALCULATION),
-        run: immobile ? 0 : vehicle?.movement.maxRun ?? entity.computeRunMP(BV_MOVEMENT_CALCULATION),
-        jump: immobile ? 0 : protoJump ?? entity.computeJumpMP(BV_MOVEMENT_CALCULATION),
+        walk: immobile ? 0 : vehicle?.movement.walk ?? proto?.walk ?? entity.computeWalkMP(BV_MOVEMENT_CALCULATION),
+        run: immobile ? 0 : vehicle?.movement.maxRun ?? proto?.run ?? entity.computeRunMP(BV_MOVEMENT_CALCULATION),
+        jump: immobile ? 0 : proto?.jump ?? entity.computeJumpMP(BV_MOVEMENT_CALCULATION),
         umu: immobile ? 0 : protoUmu ?? entity.umuMP(),
     });
     return Object.freeze({
@@ -1688,6 +1719,46 @@ function reduceNonMekUnitState(
             };
             break;
         }
+        case 'complete-turn-step': {
+            if (!isMarkableTurnStep(command.step) || command.step !== state.turn.turnStep) {
+                throw new Error('Invalid real-phase step');
+            }
+            candidate = { ...state, turn: Object.freeze({ ...state.turn, turnStep: command.step + 1 }) };
+            break;
+        }
+        case 'rewind-turn-step': {
+            if (!isStoredTurnStep(command.step) || command.step >= state.turn.turnStep) {
+                throw new Error('Invalid real-phase rewind');
+            }
+            candidate = { ...state, turn: Object.freeze({ ...state.turn, turnStep: command.step }) };
+            break;
+        }
+        case 'join-turn': {
+            if (!Number.isSafeInteger(command.turn) || !isStoredTurnStep(command.step)
+                || compareTurnPositions(command, { turn: state.turn.turnCounter, step: state.turn.turnStep }) <= 0) {
+                throw new Error('Invalid real-phase join');
+            }
+            const { joinedStep: _previous, ...turn } = state.turn;
+            candidate = {
+                ...state,
+                turn: Object.freeze({
+                    ...turn,
+                    turnCounter: command.turn,
+                    turnStep: command.step,
+                    ...(command.step === 0 ? {} : { joinedStep: command.step }),
+                }),
+            };
+            break;
+        }
+        case 'reset-turn-state':
+            candidate = {
+                ...state,
+                conditions: conditionsCarriedIntoNextTurn(state.conditions),
+                heat: withPendingHeat(state.heat, undefined),
+                pendingCombat: emptyPendingCombat(),
+                turn: pristineNonMekTurn(entity),
+            };
+            break;
         case 'set-spotting': {
             if (typeof command.spotting !== 'boolean'
                 || (command.spotting && state.turn.movement?.mode === 'sprint')
@@ -1789,14 +1860,7 @@ function reduceNonMekUnitState(
                 ...committed,
                 conditions: conditionsCarriedIntoNextTurn(committed.conditions),
                 turn: Object.freeze({
-                    turnCounter: state.turn.turnCounter + 1,
-                    airborne: canonicalNonMekAirborneState(entity, null),
-                    movement: null,
-                    weaponsHeat: 0,
-                    heatSettled: false,
-                    cover: null,
-                    spotting: false,
-                    phaseStateChanged: false,
+                    ...pristineNonMekTurn(entity, state.turn.turnCounter + 1),
                     ...(state.turn.controlRecovery === undefined
                         ? {}
                         : { controlRecovery: state.turn.controlRecovery }),
@@ -2370,28 +2434,32 @@ function entityMovementMaximum(
     state: NonMekUnitRuntimeState,
     entity: BaseEntity,
     vehicle: VehicleRuntimeRulesProjection | null,
+    protoMek: ProtoMekRuntimeRulesProjection | null,
     immobile: boolean,
 ): number {
     if (mode === 'stationary') return 0;
     if (immobile) return 0;
     const movement = nonMekMovementCalculation(state);
+    const proto = protoMek && isProtoMekEntity(entity)
+        ? protoMekMovement(entity, protoMek.criticalHits, entity.computeWalkMP(movement),
+            entity.computeJumpMP(STANDARD_MOVEMENT_CALCULATION), !boosted)
+        : null;
     if (mode === 'walk') {
         if (entity.unitType() === 'VTOL' && state.turn.airborne !== true) return 0;
         return vehicle?.movement.walk
+            ?? proto?.walk
             ?? Math.max(0, entity.computeWalkMP(movement));
     }
     if (mode === 'run') {
         if (entity.unitType() === 'Infantry'
             || (entity.unitType() === 'VTOL' && state.turn.airborne !== true)) return 0;
         if (vehicle) return boosted ? vehicle.movement.maxRun : vehicle.movement.run;
-        return Math.max(0, entity.computeRunMP(isProtoMekEntity(entity) && !boosted
-            ? { ...movement, ignoreMyomerBooster: true }
-            : movement));
+        return proto?.run ?? Math.max(0, entity.computeRunMP(movement));
     }
     if (mode === 'jump') {
         return state.turn.airborne === true
             ? 0
-            : Math.max(0, entity.computeJumpMP(STANDARD_MOVEMENT_CALCULATION));
+            : proto?.jump ?? Math.max(0, entity.computeJumpMP(STANDARD_MOVEMENT_CALCULATION));
     }
     if (mode === 'UMU') return Math.max(0, entity.umuMP());
     return 0;
@@ -2520,6 +2588,10 @@ function validateState(
         || typeof state.turn.spotting !== 'boolean'
         || typeof state.turn.phaseStateChanged !== 'boolean'
         || typeof state.turn.heatSettled !== 'boolean'
+        || !Number.isSafeInteger(state.turn.turnStep) || state.turn.turnStep < 0
+        || state.turn.turnStep > HEAT_TURN_STEP
+        || (state.turn.joinedStep !== undefined && (!Number.isSafeInteger(state.turn.joinedStep)
+            || state.turn.joinedStep < 1 || state.turn.joinedStep > HEAT_TURN_STEP))
         || (state.turn.spotting && state.turn.movement?.mode === 'sprint')) {
         throw new Error('Runtime has invalid non-Mek turn state');
     }

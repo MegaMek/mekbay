@@ -285,7 +285,7 @@ export class ForceBudgetOptimizerDialogComponent {
 
     private createCBTOptions(member: CBTForceMember): OptimizationChoice[] {
         const entity = member.entity;
-        const preSkillBv = member.currentBaseBattleValue() ?? entity.battleValue();
+        const preSkillBv = member.currentBaseBattleValue() ?? member.pristineBattleValue();
         const priorities = this.getCBTSkillPriorities(entity);
         const optionsByCost = new Map<number, OptimizationChoice>();
         const [minGunnery, maxGunnery] = this.gunnerySkillRange();
@@ -394,7 +394,7 @@ export class ForceBudgetOptimizerDialogComponent {
 
     private memberCost(member: ForceMember): number {
         if (member instanceof ASForceUnit) return member.getBv();
-        return member.adjustedBattleValue() ?? member.entity.battleValue();
+        return member.adjustedBattleValue() ?? member.pristineBattleValue();
     }
 
     private getCBTSkillPriorities(entity: BaseEntity): CBTSkillPriorities {

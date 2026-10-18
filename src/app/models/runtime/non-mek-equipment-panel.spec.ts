@@ -3,7 +3,7 @@
 
 import type { WeaponAttackContext } from './equipment-panel';
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
-import { CORE_2026_RULESET } from '../cbt-ruleset.model';
+import { CORE_2026_RULESET,TOTAL_WARFARE_RULESET } from '../cbt-ruleset.model';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
 TestAeroSpaceFighterEntity,
@@ -14,7 +14,7 @@ TestProtoMekEntity,
 TestTankEntity,
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
-import { addTestEquipment } from '../entity/testing/test-mounted-equipment';
+import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { AmmoEquipment,createEquipment,WeaponEquipment } from '../equipment.model';
 import {
 projectTargetingTarget,
@@ -29,7 +29,127 @@ import { type InstanceBaselineRef } from './runtime-state';
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 describe('Entity equipment panel projection', () => {
-    it('omits prohibited TW vehicle charges while retaining the existing Core actions', () => {
+    it('passes linked Artemis support to vehicle ammo selection', () => {
+        const weapon = new WeaponEquipment({
+            id: 'LRM 15', name: 'LRM 15', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],
+            weapon: { ammoType: 'LRM', rackSize: 15 },
+        });
+        const ammo = new AmmoEquipment({
+            id: 'LRM 15 Artemis-capable Ammo', name: 'Artemis ammo', type: 'ammo',
+            ammo: { type: 'LRM', rackSize: 15, shots: 8, munitionType: ['M_ARTEMIS_CAPABLE'] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({
+            [weapon.id]: weapon, [ammo.id]: ammo,
+        }));
+        entity.uuid.set(UUID);
+        const location = entity.locationOrder[0];
+        const weaponMount = addTestEquipment(entity, weapon, { location });
+        const enhancement = addTestEquipmentWithFlags(entity, 'F_ARTEMIS', { location });
+        entity.linkEquipment(enhancement, weaponMount);
+        const ammoMount = addTestEquipment(entity, ammo, { location, shotsCount: 8 });
+        const runtime = createNonMekRuntimeForTest(
+            'unit:tank-artemis-ammo', baseline(), entity, CORE_2026_RULESET,
+        );
+
+        const panel = projectNonMekEquipmentPanel(
+            entity, runtime.getIndex(), CORE_2026_RULESET,
+            runtime.snapshot(), runtime.query(), { revision: 0, targets: [] },
+        );
+        const ammoRow = panel.components.find(row => row.componentId === asComponentId(ammoMount.mountId));
+
+        expect(ammoRow?.ammo?.compatibilityFacts).toEqual({
+            artemisIV: [ammo.internalName], artemisV: [],
+        });
+    });
+
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        it(`uses linked vehicle Artemis V only for operational direct fire with matching ammo in ${ruleset}`, () => {
+            const weapon = new WeaponEquipment({
+                id: 'GuidedLRM15', name: 'LRM 15', type: 'weapon',
+                flags: ['F_ARTEMIS_COMPATIBLE', 'F_MISSILE'],
+                weapon: { ammoType: 'LRM', rackSize: 15, damage: 'cluster', ranges: [7, 14, 21, 28] },
+            });
+            const guided = new AmmoEquipment({
+                id: 'GuidedLRM15Ammo', name: 'Artemis V ammo', type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 15, shots: 8, munitionType: ['M_ARTEMIS_V_CAPABLE'] },
+            });
+            const standard = new AmmoEquipment({
+                id: 'StandardLRM15Ammo', name: 'Standard ammo', type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 15, shots: 8 },
+            });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({
+                [weapon.id]: weapon, [guided.id]: guided, [standard.id]: standard,
+            }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, weapon, { location: 'Front' });
+            const enhancement = addTestEquipmentWithFlags(entity, 'F_ARTEMIS_V', { location: 'Front' });
+            entity.linkEquipment(enhancement, mount);
+            const ammoMount = addTestEquipment(entity, guided, { location: 'Front', shotsCount: 8 });
+            const runtime = createNonMekRuntimeForTest(
+                'unit:tank-artemis-v', { ...baseline(), ruleset }, entity, ruleset,
+            );
+            const weaponId = asComponentId(mount.mountId);
+            const enhancementId = asComponentId(enhancement.mountId);
+            const ammoId = asComponentId(ammoMount.mountId);
+            const registry = { revision: 0, targets: [] };
+            expect(runtime.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-ammo', componentId: weaponId,
+                    ammo: { munitionKey: guided.id, preferredSourceId: ammoId } },
+            }, registry, false).accepted).toBeTrue();
+            const row = () => projectNonMekEquipmentPanel(
+                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry,
+            ).components.find(component => component.componentId === weaponId)!;
+
+            expect(row().weapon?.hit.default.value).toBe(-1);
+            expect(row().weapon?.artemisVModifier).toBe(-1);
+            expect(row().weapon?.hit.indirectByRange.short.value).toBe(0);
+            runtime.dispatch({ type: 'set-component-status', componentId: enhancementId, status: 'disabled', target: 'committed' });
+            expect(row().weapon?.hit.default.value).toBe(0);
+            expect(row().weapon?.hit.default.weakened).toBeTrue();
+            runtime.dispatch({ type: 'set-component-status', componentId: enhancementId, status: 'available', target: 'committed' });
+            runtime.dispatch({ type: 'set-condition', condition: 'jammed', active: true });
+            expect(row().weapon?.hit.default.value).toBe(0);
+            expect(row().weapon?.hit.default.weakened).toBeTrue();
+            runtime.dispatch({ type: 'set-condition', condition: 'jammed', active: false });
+            runtime.dispatch({ type: 'configure-ammo-source', componentId: ammoId, munitionKey: standard.id, remaining: 8 });
+            expect(runtime.dispatchAttackerTargeting({
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-component-ammo', componentId: weaponId,
+                    ammo: { munitionKey: standard.id, preferredSourceId: ammoId } },
+            }, registry, false).accepted).toBeTrue();
+            expect(row().weapon?.hit.default.value).toBe(0);
+            expect(row().weapon?.hit.default.modifierBreakdown).toContain(jasmine.objectContaining({
+                label: 'Incompatible Ammo (Standard ammo)', modifier: 0, weakened: true,
+            }));
+        });
+
+        it(`uses the linked vehicle Apollo passive bonus only in Total Warfare (${ruleset})`, () => {
+            const weapon = new WeaponEquipment({
+                id: 'GuidedMRM20', name: 'MRM 20', type: 'weapon',
+                flags: ['F_MISSILE'], stats: { toHitModifier: 1 },
+                weapon: { ammoType: 'MRM', rackSize: 20, damage: 'cluster', ranges: [3, 8, 15, 22] },
+            });
+            const entity = new TestTankEntity(createTestEquipmentRegistry({ [weapon.id]: weapon }));
+            entity.uuid.set(UUID);
+            const mount = addTestEquipment(entity, weapon, { location: 'Front' });
+            const enhancement = addTestEquipmentWithFlags(entity, ['F_APOLLO', 'F_WEAPON_ENHANCEMENT'], { location: 'Front' });
+            entity.linkEquipment(enhancement, mount);
+            const runtime = createNonMekRuntimeForTest(
+                'unit:tank-apollo', { ...baseline(), ruleset }, entity, ruleset,
+            );
+            const row = () => projectNonMekEquipmentPanel(
+                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), { revision: 0, targets: [] },
+            ).components.find(component => component.componentId === asComponentId(mount.mountId))!;
+            expect(row().weapon?.hit.default.value).toBe(ruleset === TOTAL_WARFARE_RULESET ? 0 : 1);
+            runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(enhancement.mountId),
+                status: 'destroyed', target: 'committed' });
+            expect(row().weapon?.hit.default.value).toBe(1);
+            expect(row().weapon?.hit.default.weakened).toBe(ruleset === TOTAL_WARFARE_RULESET);
+        });
+    }
+
+    it('omits VTOL and WiGE charges under both rulesets (TW p.149; Core does not address them)', () => {
         for (const ruleset of ['total-warfare', 'core-2026'] as const) {
             for (const motive of ['Tracked', 'VTOL', 'WiGE'] as const) {
                 const entity = new TestTankEntity();
@@ -42,7 +162,7 @@ describe('Entity equipment panel projection', () => {
                     runtime.query(),
                     { revision: 0, targets: [] });
                 expect(panel.physicalAttacks).withContext(`${ruleset} ${motive}`)
-                    .toHaveSize(ruleset === 'total-warfare' && motive !== 'Tracked' ? 0 : 1);
+                    .toHaveSize(motive === 'Tracked' ? 1 : 0);
             }
         }
     });

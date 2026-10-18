@@ -9,10 +9,16 @@ import {
     equipmentWeaponToHitModifier,
     projectTargetingTarget,
     projectWeaponTargetPresentation,
+    selectedWeaponHeat,
     type EquipmentPanelComponent,
     type EquipmentPanelSnapshot,
 } from '../../models/runtime/equipment-panel';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
+import {
+    HEAT_PROFILE_MAXIMUM_ATTRIBUTE,
+    recordSheetHeatProfileText,
+    svgElement,
+} from '../../utils/sheets/record-sheet-svg-rendering';
 import type { RecordSheetBind } from './record-sheet-dom';
 
 const COMPONENT_IDS_ATTRIBUTE = 'data-mekbay-component-ids';
@@ -134,6 +140,29 @@ export function renderRecordSheetInventorySelection(row: SVGElement, selection: 
     else row.style.removeProperty('--inventory-control-selection-color');
     renderInventoryBadge(row, 'targetTn', selection.targetNumberText);
     renderInventoryBadge(row, 'hitMod', selection.hitModifierText);
+}
+
+/**
+ * The inventory heat line against the unit's live dissipation: the design's maximum heat, or the heat of the
+ * selected weapons while any are selected.
+ */
+export function renderRecordSheetHeatProfile(
+    svg: SVGSVGElement,
+    dissipation: number,
+    inventory: RecordSheetInventorySource | null,
+): void {
+    const profile = svg.querySelector<SVGElement>('#heatProfile');
+    const maximum = profile?.getAttribute(HEAT_PROFILE_MAXIMUM_ATTRIBUTE) ?? null;
+    if (!profile || maximum === null) return;
+    const selected = inventory === null ? null : selectedWeaponHeat(inventory.panel);
+    if (selected?.hasSelection) {
+        const value = svgElement('tspan');
+        value.setAttribute('font-weight', '700');
+        value.textContent = String(selected.value);
+        profile.replaceChildren('Selected Heat (Dissipation): ', value, ` (${dissipation})`);
+    } else {
+        profile.textContent = recordSheetHeatProfileText(maximum, dissipation);
+    }
 }
 
 function renderInventoryBadge(row: SVGElement, kind: 'hitMod' | 'targetTn', value: string | undefined): void {

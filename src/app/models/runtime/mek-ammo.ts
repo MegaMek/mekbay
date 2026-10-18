@@ -18,7 +18,8 @@ import {
     resolveChangedAmmoCapacity,
     type AmmoCapacityFacts,
 } from '../rules/ammo-capacity-rules';
-import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
+import { AmmoValidityUtil, type AmmoSelectionCompatibilityFacts } from '../../utils/ammo-validity.util';
+import { artemisKind } from '../artemis-equipment.model';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import type { CBTUnitQueryPort, CBTUnitRuntimeIndex } from './cbt-unit-runtime';
 import {
@@ -78,6 +79,27 @@ export function entityWeaponTechBasesForAmmo(
         if (weapon.techBase !== 'All' || entity.mixedTech()) return [weapon.techBase];
         return [entity.techBase()];
     }))]);
+}
+
+/** Guided-ammo support comes from an installed enhancement linked to a matching weapon. */
+export function entityAmmoSelectionCompatibilityFacts(
+    entity: BaseEntity,
+    ammoOptions: readonly AmmoEquipment[],
+): AmmoSelectionCompatibilityFacts {
+    const guidedWeapons = entity.equipment().flatMap(mount => {
+        const weapon = mount.equipment;
+        if (!(weapon instanceof WeaponEquipment)) return [];
+        const kind = artemisKind(entity.getLinkingMount(mount)?.equipment);
+        return kind === null ? [] : [{ weapon, kind }];
+    });
+    return Object.freeze({
+        artemisIV: Object.freeze(ammoOptions.filter(ammo => guidedWeapons.some(({ weapon, kind }) =>
+            (kind === 'iv' || kind === 'prototype') && ammoMatchesWeapon(weapon, ammo)
+        )).map(ammo => ammo.internalName)),
+        artemisV: Object.freeze(ammoOptions.filter(ammo => guidedWeapons.some(({ weapon, kind }) =>
+            kind === 'v' && ammoMatchesWeapon(weapon, ammo)
+        )).map(ammo => ammo.internalName)),
+    });
 }
 
 /** Compatible loadouts for one ordinary Entity ammunition mount. */

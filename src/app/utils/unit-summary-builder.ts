@@ -5,6 +5,7 @@
 import { BaseEntity } from '../models/entity/base-entity';
 import { StaticEmplacementEntity } from '../models/entity/entities/misc/static-emplacement-entity';
 import type { EntityType } from '../models/entity/types';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import { UNIT_SUMMARY_VERSION } from '../models/unit-summary.model';
 import type {
   AlphaStrikeUnitStats,
@@ -30,6 +31,8 @@ import { validateConstruction } from '../construction/domain/construction-rules'
 export interface UnitSummaryBuildContext {
   readonly entryKey: CatalogEntryKey;
   readonly format?: NativeUnitFormat;
+  /** The rules the summary's BV is priced under: Core for catalog rows, the member's for a force member. */
+  readonly ruleset: CBTRuleset;
 }
 
 /** Total, versioned-catalog-ready projection from one parsed entity. */
@@ -47,7 +50,7 @@ export class UnitSummaryBuilder {
       return this.buildStaticEmplacement(entity, context, uuid);
     }
 
-    const metadata = this.metadataBuilder.build(entity);
+    const metadata = this.metadataBuilder.build(entity, context.ruleset);
     const components = cloneComponents(metadata.comp);
 
     return {

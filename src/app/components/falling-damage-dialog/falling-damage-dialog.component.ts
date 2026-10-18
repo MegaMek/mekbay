@@ -21,6 +21,8 @@ export interface FallingDamageDialogData {
     readonly ruleset: CBTRuleset;
     readonly tons: number;
     readonly levelsFallen: number;
+    /** Every damage group strikes the rear (a missed death from above); facing is still rolled. */
+    readonly alwaysRear?: boolean;
     readonly waterDepth: number;
     readonly hitLocationTable: MekHitLocationTable;
     readonly armorNote?: string;
@@ -81,7 +83,7 @@ export class FallingDamageDialogComponent {
     readonly twoD6Rolls = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
     readonly orientation = computed(() => {
         const roll = this.orientationRoll();
-        return roll === null ? null : resolveMekFallOrientation(this.data.ruleset, roll);
+        return roll === null ? null : resolveMekFallOrientation(this.data.ruleset, roll, this.data.alwaysRear);
     });
     readonly groupRows = computed<readonly FallingDamageGroupRow[]>(() => {
         const orientation = this.orientation();
@@ -174,7 +176,7 @@ export function resolveAutomaticFallingDamage(
         data.levelsFallen,
         data.waterDepth,
     );
-    const orientation = resolveMekFallOrientation(data.ruleset, randomD6(random));
+    const orientation = resolveMekFallOrientation(data.ruleset, randomD6(random), data.alwaysRear);
     const groups = resolvedMekFallDamageGroups(damage).map(group => {
         const roll = rollDamageGroup(data.hitLocationTable, orientation.hitArc, random);
         return Object.freeze({

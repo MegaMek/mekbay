@@ -18,6 +18,51 @@
                 </label>
             </div>
 
+            <section class="lobby-settings" aria-label="Lobby game settings">
+                <div class="lobby-setting lobby-ruleset">
+                    <span class="lobby-setting-label">Rules</span>
+                    @if (lobby.isHost) {
+                        <mode-switch
+                            [leftLabel]="rulesetLabels['total-warfare']"
+                            [rightLabel]="rulesetLabels['core-2026']"
+                            ariaLabel="Lobby rules"
+                            switchAriaLabel="Switch lobby rules"
+                            [selectedRight]="lobby.settings.ruleset === 'core-2026'"
+                            [disabled]="lobbyService.switchingRuleset()"
+                            (selectedRightChange)="onRulesetChange($event)"
+                        ></mode-switch>
+                    } @else {
+                        <strong class="lobby-setting-value">{{ rulesetLabels[lobby.settings.ruleset] }}</strong>
+                    }
+                </div>
+                <div class="lobby-setting">
+                    <span class="lobby-setting-label" id="lobby-initiative-order-label">Initiative order</span>
+                    @if (lobby.isHost) {
+                        <select class="bt-select" aria-labelledby="lobby-initiative-order-label" [disabled]="lobby.settings.ruleset === 'core-2026' || lobbyService.switchingRuleset()" (change)="onInitiativeOrderChange($event)">
+                            @for (choice of initiativeOrderChoices; track choice.value) {
+                                <option [value]="choice.value" [selected]="lobby.settings.initiativeOrder === choice.value" [title]="choice.hint">{{ choice.label }}</option>
+                            }
+                        </select>
+                    } @else {
+                        <span class="lobby-setting-value" [class.inactive]="lobby.settings.ruleset === 'core-2026'">{{ initiativeOrderLabel() }}</span>
+                    }
+                </div>
+                <div class="lobby-setting">
+                    <span class="lobby-setting-label" id="lobby-initiative-die-label">Initiative Die</span>
+                    @if (lobby.isHost) {
+                        <select class="bt-select" aria-labelledby="lobby-initiative-die-label" [value]="lobby.settings.initiativeDie" [disabled]="lobbyService.switchingRuleset()" (change)="onInitiativeDieChange($event)">
+                            <option value="false">Disabled</option>
+                            <option value="true">Enabled</option>
+                        </select>
+                    } @else {
+                        <span class="lobby-setting-value">{{ lobby.settings.initiativeDie ? 'Enabled' : 'Disabled' }}</span>
+                    }
+                </div>
+                @if (lobby.settings.ruleset === 'core-2026') {
+                    <p class="lobby-settings-note">Core fixes the order: extra units act first.</p>
+                }
+            </section>
+
             <div class="op-sides lobby-sides" cdkDropListGroup>
                 <section class="op-side">
                     <div class="op-side-label friendly-label">Friendly</div>

@@ -35,6 +35,7 @@ import { DbService } from '../../services/db.service';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
 import { CBTForce } from '../../models/cbt-force.model';
 import { isCBTForceMember, isCBTMekForceMember } from '../../models/force-member.model';
+import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import { HeatDiffMarkerComponent, type HeatDiffMarkerData } from '../heat-diff-marker/heat-diff-marker.component';
 import {
     PageViewerCanvasService,
@@ -339,6 +340,7 @@ export class PageViewerComponent implements AfterViewInit {
         let previousPageFormat = this.pageFormat();
         let previousShowQuirks = this.showQuirks();
         let previousArtworkRevision = this.fluffImages.revision();
+        let previousRuleset: CBTRuleset | null = null;
         let unitEffectRunId = 0;
 
         effect((onCleanup) => {
@@ -354,6 +356,8 @@ export class PageViewerComponent implements AfterViewInit {
             const pageFormat = this.pageFormat();
             const showQuirks = this.showQuirks();
             const artworkRevision = this.fluffImages.revision();
+            // A rules switch rebinds the unit; its printed rule tables are regenerated.
+            const ruleset = currentUnit?.ruleset() ?? null;
 
             // Skip if view isn't ready yet
             if (!this.viewInitialized()) {
@@ -391,8 +395,10 @@ export class PageViewerComponent implements AfterViewInit {
                     this.updateDimensions();
                     this.initialRenderComplete = false;
                     this.displayUnit({ fromSwipe: true });
-                } else if (pipLayout !== previousPipLayout || showQuirks !== previousShowQuirks || artworkRevision !== previousArtworkRevision) this.displayUnit({ fromSwipe: true });
+                } else if (pipLayout !== previousPipLayout || showQuirks !== previousShowQuirks || artworkRevision !== previousArtworkRevision
+                    || (currentUnit === previousUnit && ruleset !== previousRuleset)) this.displayUnit({ fromSwipe: true });
                 else this.applySelectionChange(previousUnit, currentUnit);
+                previousRuleset = ruleset;
                 previousPipLayout = pipLayout;
                 previousPageFormat = pageFormat;
                 previousShowQuirks = showQuirks;

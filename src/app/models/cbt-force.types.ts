@@ -63,6 +63,27 @@ export type CBTUnitRepairResult =
         readonly reason: 'READ_ONLY' | 'NOT_READY' | 'FORCE_CHANGED' | 'REPAIR_FAILED' | 'PERSISTENCE_REJECTED';
     }>;
 
+/** Per unit, the saved state new scenario rules could not keep. */
+export type CBTScenarioRebindDrops = readonly Readonly<{ readonly unit: string; readonly items: readonly string[] }>[];
+
+/** What binding a force to new scenario rules did. */
+export type CBTScenarioRebindResult = Readonly<{
+    /** Every unit plays the requested rules afterwards; false leaves the force untouched on its old rules. */
+    readonly bound: boolean;
+    readonly dropped: CBTScenarioRebindDrops;
+}>;
+
+/** A force's rebind to new scenario rules, prepared but not installed. */
+export type CBTScenarioRebind =
+    /** The force cannot play the requested rules and keeps its own. */
+    | Readonly<{ readonly bound: false }>
+    | Readonly<{
+        readonly bound: true;
+        readonly dropped: CBTScenarioRebindDrops;
+        /** Installs the rebind in one commit; resolves false, installing nothing, when the force changed since. */
+        readonly install: () => Promise<boolean>;
+    }>;
+
 export type CBTUnitTransferResult =
     | Readonly<{
         readonly accepted: true;

@@ -42,13 +42,12 @@ MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,
 type MekRuleCheckTokenV2,
 } from '../models/runtime/mek-destruction-state-v2';
 import {
-resolveMekFallArmorDamage,
 resolveMekFallDamage,
 resolveMekFallOrientation,
 resolveMekHitLocation,
 resolveMekStructureDamage,
 } from '../models/runtime/mek-fall-rules';
-import { projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
+import { mekHeadHitPilotHits, projectMekLifeSupportPilotDamage } from '../models/runtime/mek-life-support';
 import type { MekRuntimeIndex } from '../models/runtime/mek-runtime-index';
 import { resolveMekUnitWaterState } from '../models/runtime/mek-targeting-rules';
 import type {
@@ -60,7 +59,8 @@ MekPendingFallConsequencesV2,
 } from '../models/runtime/mek-turn-state-v2';
 import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
-import type { MekHitLocationTable } from '../utils/record-sheet-reference-table';
+import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
+import { FALL_DAMAGE, resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
 import { uuidv4 } from '../utils/uuid.util';
 import {
 automationCheckBatchIsFullyAutomatic,
@@ -103,6 +103,16 @@ export interface PreparedDirectMekAutomationCommand {
     readonly heatEffects?: PreparedEndTurnHeatEffects<StagedMekHeatEffects>;
     readonly phaseBoundary?: PreparedMekPhaseBoundary;
     readonly pilotCheckFall?: PreparedMekFall;
+}
+
+/** One damage group read on the Mek's hit-location table: where it lands, how much, and what dealt it. */
+export interface MekDamageGroup {
+    readonly location: string;
+    readonly rear: boolean;
+    readonly damage: number;
+    readonly arc: MekHitArcV2;
+    readonly throughArmorCritical: boolean;
+    readonly source: DamageSource;
 }
 
 export interface DirectMekEndTurnAutomationRequest {
@@ -156,6 +166,8 @@ interface StagedMekPilotCheck {
     readonly reason: string;
     readonly targetNumber: number;
     readonly triggerKind: string;
+    /** Rolled at once (see `MekPilotCheckRecordV2.immediate`): the boundary never skips it. */
+    readonly immediate: boolean;
 }
 
 interface PreparedMekPilotCheck extends StagedMekPilotCheck {
@@ -202,6 +214,8 @@ interface StagedMekPhaseBoundaryReview {
     readonly checks: readonly StagedMekPilotCheck[];
     readonly ruleCheck: StagedMekRuleCheck | null;
     readonly hadAutomaticFall: boolean;
+    /** The phase's single fall is then the 2-level, rear-arc missed death from above fall. */
+    readonly missedDeathFromAbove: boolean;
     readonly recoveries: readonly StagedCrewRecovery[];
 }
 
@@ -436,6 +450,9 @@ export class DirectMekAutomationService {
         result: CBTForceUnitCommandResult,
         dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
+        // The phase is over: its owed Core consciousness rolls come now, never from a mid-phase badge.
+        if (result.accepted && prepared.command.type === 'end-phase'
+            && !await this.rollDueConsciousness(force, instanceId, dispatch)) return false;
         if (!result.accepted || !result.changed) return true;
         const command = prepared.command;
         if (prepared.deferredPilotHits > 0) {
@@ -444,6 +461,8 @@ export class DirectMekAutomationService {
                 instanceId,
                 prepared.deferredPilotHits,
                 dispatch,
+                false,
+                'target' in command && command.target === 'pending' ? 'pending' : 'committed',
             )) return false;
         }
         if (prepared.pilotCheckFall?.accepted
@@ -505,9 +524,6 @@ export class DirectMekAutomationService {
         const includeRecoveries = phaseWork !== 'pilot-checks';
         const includePilotChecks = phaseWork !== 'unit-checks';
         const pilotSkillMode = this.options.cbtAutomationMode('pilotSkillCheck');
-        // `no` skips PSRs only at the phase boundary. Clicking their badge is an
-        // explicit request to resolve them and therefore uses the manual workflow.
-        const pilotChecksEnabled = pilotSkillMode !== 'no' || review.interactive === true;
         const rows = requests.map(request => {
             const snapshot = this.snapshot(force, request.instanceId);
             return Object.freeze({
@@ -515,6 +531,12 @@ export class DirectMekAutomationService {
                 staged: snapshot ? this.stagePhaseBoundary(snapshot, request.command) : null,
             });
         });
+        // `no` skips PSRs only at the phase boundary. Clicking their badge is an
+        // explicit request to resolve them and therefore uses the manual workflow,
+        // as does an immediate check, which the phase can never end without rolling.
+        const manualPilotChecks = review.interactive === true || pilotSkillMode === 'no'
+            && rows.some(row => row.staged?.checks.some(check => check.immediate) === true);
+        const pilotChecksEnabled = pilotSkillMode !== 'no' || manualPilotChecks;
         // Origin/next resolves every eligible recovery before presenting PSRs.
         // Project that ordering during preflight so cancellation remains atomic.
         const recoveries = await this.crewHitAutomation.resolveRecoveries(
@@ -593,7 +615,7 @@ export class DirectMekAutomationService {
                 title: 'Piloting Skill Rolls',
                 initiallyFailedGroups,
                 interactive: review.interactive,
-                manualResolution: review.interactive,
+                manualResolution: manualPilotChecks,
             },
         );
         if (reviewedCheckResults === null) return null;
@@ -620,6 +642,7 @@ export class DirectMekAutomationService {
                 true,
                 false,
                 review.interactive === true,
+                staged.missedDeathFromAbove,
             );
             if (fall === null) return null;
             falls.set(row.request.instanceId, fall);
@@ -676,13 +699,14 @@ export class DirectMekAutomationService {
         const preview = snapshot.query.previewEndPhase();
         if (!preview.accepted) return null;
 
-        const checks = Object.freeze(preview.state.movementPsr.checks
+        const checks = Object.freeze(snapshot.query.previewEndPhasePilotChecks()
             .filter(check => check.status === 'pending')
             .map(check => Object.freeze({
                 checkId: check.checkId,
                 reason: check.reason,
                 targetNumber: check.targetNumber,
                 triggerKind: check.source.triggerKind,
+                immediate: check.immediate === true,
             } satisfies StagedMekPilotCheck)));
         const movement = snapshot.query.mekMovementPsr();
         const torsoCheck = preview.state.ruleChecks.get(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY);
@@ -702,6 +726,8 @@ export class DirectMekAutomationService {
             checks,
             ruleCheck,
             hadAutomaticFall,
+            missedDeathFromAbove: preview.state.movementPsr.automaticFalls
+                .some(fall => fall.triggerKind === 'missed-death-from-above'),
             recoveries: this.crewHitAutomation.stageRecoveries(snapshot),
         });
     }
@@ -841,6 +867,23 @@ export class DirectMekAutomationService {
             if (!result.accepted) return false;
         }
         return true;
+    }
+
+    /** Core p.117: after the phase's damage, PSRs and falls, each hit warrior makes one consciousness roll. */
+    private async rollDueConsciousness(
+        force: CBTForce,
+        instanceId: string,
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        const snapshot = this.snapshot(force, instanceId);
+        const due = snapshot?.state.turn.consciousnessRollsDue;
+        if (!snapshot || !due) return snapshot !== null;
+        const resolved = await this.crewHitAutomation.resolveDueConsciousness(
+            snapshot, due, `consciousness:${instanceId}:${snapshot.query.stateRevision}`);
+        if (resolved === null
+            || !await this.crewHitAutomation.applyResolvedHits(snapshot, resolved, dispatch)) return false;
+        this.crewHitAutomation.showConsciousnessToasts(snapshot, resolved);
+        return (await dispatch({ type: 'set-consciousness-rolls-due', positionIds: [] }, false)).accepted;
     }
 
     private async resolveCriticalChance(
@@ -1524,20 +1567,26 @@ export class DirectMekAutomationService {
         allowCancel: boolean,
         forceSeatbeltFailure = false,
         interactive = false,
+        missedDeathFromAbove = false,
     ): Promise<PreparedMekFall | null> {
         const waterDepth = coverWaterDepth(snapshot.query.turnState().cover);
-        const table = hitLocationTable(snapshot);
+        const table = mekHitLocationTable(snapshot.entity);
         const eventId = `fall:${snapshot.instanceId}:${snapshot.query.stateRevision}`;
+        // Core and TW: a missed death from above falls 2 levels and its damage always strikes the rear.
+        const levelsFallen = missedDeathFromAbove ? 2 : 0;
         const result = await this.fallingAutomation.resolve(Object.freeze({
             unitName: this.subject(snapshot),
-            sourceMessage: /stand|get.?up/i.test(reason)
-                ? 'The stand-up attempt failed, so the Mek falls again.'
-                : reason === 'Automatic fall'
-                    ? 'The Mek falls automatically.'
-                    : 'A failed Piloting Skill Roll caused the Mek to fall.',
+            sourceMessage: missedDeathFromAbove
+                ? 'The missed death from above drops the Mek 2 levels; all damage strikes the rear.'
+                : /stand|get.?up/i.test(reason)
+                    ? 'The stand-up attempt failed, so the Mek falls again.'
+                    : reason === 'Automatic fall'
+                        ? 'The Mek falls automatically.'
+                        : 'A failed Piloting Skill Roll caused the Mek to fall.',
             ruleset: snapshot.ruleset,
             tons: snapshot.entity.tonnage(),
-            levelsFallen: 0,
+            levelsFallen,
+            alwaysRear: missedDeathFromAbove,
             waterDepth,
             hitLocationTable: table,
             ...(snapshot.entity.armorLocations.some(location =>
@@ -1549,15 +1598,15 @@ export class DirectMekAutomationService {
         const applyFall = result.action === 'accept';
         const damage = applyFall
             ? result.damage
-            : resolveMekFallDamage(snapshot.ruleset, snapshot.entity.tonnage(), 0, waterDepth);
+            : resolveMekFallDamage(snapshot.ruleset, snapshot.entity.tonnage(), levelsFallen, waterDepth);
         const orientation = applyFall
             ? result.orientation
-            : resolveMekFallOrientation(snapshot.ruleset, 1);
+            : resolveMekFallOrientation(snapshot.ruleset, 1, missedDeathFromAbove);
         const locations = applyFall
             ? result.groups.map(group => Object.freeze({ damage: group.damage, result: group }))
             : Object.freeze([]);
         const headHits = applyFall
-            ? locations.filter(row => row.result.location === 'HD').length
+            ? locations.filter(row => row.result.location === 'HD').length * mekHeadHitPilotHits(snapshot.entity)
             : 0;
         const reviewedPilotHits = headHits > 0
             ? await this.reviewPilotHits(
@@ -1604,18 +1653,14 @@ export class DirectMekAutomationService {
         let headHits = 0;
         for (const row of prepared.locations) {
             if (!row.result.location) continue;
-            const applied = await this.applyFallDamageGroup(
-                force,
-                instanceId,
-                row.result.location,
-                row.result.rear,
-                row.damage,
-                prepared.orientation.hitArc,
-                row.result.throughArmorCritical,
-                dispatch,
-                prepared.interactive,
-            );
-            if (row.result.location === 'HD' && applied) headHits += 1;
+            headHits += await this.applyDamageGroup(force, instanceId, {
+                location: row.result.location,
+                rear: row.result.rear,
+                damage: row.damage,
+                arc: prepared.orientation.hitArc,
+                throughArmorCritical: row.result.throughArmorCritical,
+                source: FALL_DAMAGE,
+            }, 'committed', dispatch, prepared.interactive);
         }
         const settled = this.snapshot(force, instanceId);
         if (!settled) return false;
@@ -1789,31 +1834,55 @@ export class DirectMekAutomationService {
         }));
     }
 
-    private async applyFallDamageGroup(
+    /**
+     * Applies accepted weapon hits as one damage group each, with the same armor, transfer and critical
+     * rules as falls; their head hits wound the crew through the shared crew-hit rules.
+     */
+    async applyWeaponHits(
         force: CBTForce,
         instanceId: string,
-        sourceCode: string,
-        rearArc: boolean,
-        incomingDamage: number,
-        hitArc: MekHitArcV2,
-        throughArmorCritical: boolean,
+        hits: readonly MekDamageGroup[],
+        target: 'committed' | 'pending',
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        let headHits = 0;
+        for (const hit of hits) headHits += await this.applyDamageGroup(force, instanceId, hit, target, dispatch, true);
+        const snapshot = this.snapshot(force, instanceId);
+        if (!snapshot) return false;
+        const pilotHits = await this.reviewPilotHits(snapshot, headHits,
+            `weapon-hits:${instanceId}:${snapshot.query.stateRevision}:head`, false, true);
+        // A declined review leaves the pilot unhurt; the damage itself is already applied.
+        return !pilotHits || this.applyPilotHits(force, instanceId, pilotHits, dispatch, true, target);
+    }
+
+    /**
+     * Applies one damage group with armor, transfer and critical rules. Resolves to the pilot hits it
+     * dealt: a head hit that damaged the 'Mech wounds the crew (TW p.41, Core p.117).
+     */
+    private async applyDamageGroup(
+        force: CBTForce,
+        instanceId: string,
+        group: MekDamageGroup,
+        target: 'committed' | 'pending',
         dispatch: CBTForceUnitCommandDispatch,
         interactive = false,
-    ): Promise<boolean> {
+    ): Promise<number> {
+        const { location: sourceCode, rear: rearArc, damage: incomingDamage, arc: hitArc, throughArmorCritical } = group;
+        const perspective = target === 'pending' ? 'preview' : 'committed';
         let damage = incomingDamage;
         let code: string | null = sourceCode;
         let applied = false;
         let groupDamaged = false;
         let sharedCompositePip = false;
         const initial = this.snapshot(force, instanceId);
-        if (!initial) return false;
+        if (!initial) return 0;
         const topology = getTopologyFor([...initial.index.locations.values()].map(location => location.code));
         const initialLocation = [...initial.index.locations.values()].find(row => row.code === sourceCode);
         const initialRear = rearArc && MEK_TORSO_LOCATIONS.has(sourceCode);
         const initialFace = initialLocation?.armorFaceIds
             .map(faceId => initial.index.armorFaces.get(faceId))
             .find(candidate => candidate?.face === (initialRear ? 'rear' : 'front'));
-        const initialArmor = initialFace ? initial.query.remainingArmor(initialFace.id) : 0;
+        const initialArmor = initialFace ? initial.query.remainingArmor(initialFace.id, perspective) : 0;
         const initialArmorType = initialLocation?.armor.type ?? null;
         const visited = new Set<string>();
         while (code && (damage > 0 || sharedCompositePip) && !visited.has(code)) {
@@ -1835,37 +1904,35 @@ export class DirectMekAutomationService {
                     .filter(([componentId]) => [...snapshot!.index.slots.values()].some(slot =>
                         slot.locationId === location.id && slot.componentIds.includes(componentId)))
                     .reduce((sum, [componentId]) =>
-                        sum + snapshot!.query.modularArmorRemaining(componentId), 0);
+                        sum + snapshot!.query.modularArmorRemaining(componentId, perspective), 0);
                 modularDamage = Math.min(damage, modular);
                 damage -= modularDamage;
             }
-            const remainingArmor = snapshot.query.remainingArmor(face.id);
+            const remainingArmor = snapshot.query.remainingArmor(face.id, perspective);
             const hardenedArmorApplies = location.armor.type === 'HARDENED' && remainingArmor > 0;
-            const armor = resolveMekFallArmorDamage(
+            const armor = resolveArmorDamage(
                 snapshot.ruleset,
                 damage,
                 remainingArmor,
                 location.armor.type,
+                group.source,
             );
             const armorPips = modularDamage + armor.armorDamage;
             if (armorPips > 0) {
                 const armorCommand: CBTUnitCommand = {
-                    type: 'damage-armor', faceId: face.id, amount: armorPips, target: 'committed',
+                    type: 'damage-armor', faceId: face.id, amount: armorPips, target,
                 };
                 const result = await dispatch(armorCommand, false);
                 applied ||= result.accepted;
                 groupDamaged ||= result.accepted;
                 if (result.accepted) {
-                    await this.resolveBreachOrFlood(force, instanceId, {
-                        faceId: face.id,
-                        target: 'committed',
-                    }, dispatch);
+                    await this.resolveBreachOrFlood(force, instanceId, { faceId: face.id, target }, dispatch);
                 }
             }
             damage = armor.remainingDamage;
             snapshot = this.snapshot(force, instanceId);
             if (!snapshot) break;
-            const remainingInternal = snapshot.query.remainingInternal(location.id);
+            const remainingInternal = snapshot.query.remainingInternal(location.id, perspective);
             const receivedSharedCompositePip: boolean = sharedCompositePip;
             const sharedInternalDamage: number = receivedSharedCompositePip && remainingInternal > 0 ? 1 : 0;
             sharedCompositePip = false;
@@ -1883,7 +1950,7 @@ export class DirectMekAutomationService {
                     type: 'damage-internal',
                     locationId: location.id,
                     amount: internalDamage,
-                    target: 'committed',
+                    target,
                     hardenedArmorApplies,
                     armorDamagedBySameHit: armorPips > 0,
                 }, false);
@@ -1894,7 +1961,7 @@ export class DirectMekAutomationService {
                         force,
                         instanceId,
                         location.id,
-                        'committed',
+                        target,
                         { hardenedArmorApplies },
                         dispatch,
                         interactive,
@@ -1908,7 +1975,7 @@ export class DirectMekAutomationService {
                 && remainingInternal % 2 === 1
                 && construction === 'composite'
                 && internalDamage === remainingInternal
-                && this.canShareCompositePip(force, instanceId, nextCode, rearArc);
+                && this.canShareCompositePip(force, instanceId, nextCode, rearArc, perspective);
             code = nextCode;
         }
         const blockedAblativeCritical = initial?.ruleset === 'core-2026'
@@ -1922,7 +1989,7 @@ export class DirectMekAutomationService {
                     force,
                     instanceId,
                     location.id,
-                    'committed',
+                    target,
                     {
                         floatingHitArc: hitArc,
                         hardenedArmorApplies: initialArmorType === 'HARDENED' && initialArmor > 0,
@@ -1932,7 +1999,7 @@ export class DirectMekAutomationService {
                 );
             }
         }
-        return applied;
+        return applied && sourceCode === 'HD' ? mekHeadHitPilotHits(initial.entity) : 0;
     }
 
     private canShareCompositePip(
@@ -1940,6 +2007,7 @@ export class DirectMekAutomationService {
         instanceId: string,
         locationCode: string | null,
         rearArc: boolean,
+        perspective: 'committed' | 'preview',
     ): boolean {
         if (!locationCode) return false;
         const snapshot = this.snapshot(force, instanceId);
@@ -1951,14 +2019,14 @@ export class DirectMekAutomationService {
         const face = location.armorFaceIds
             .map(faceId => snapshot.index.armorFaces.get(faceId))
             .find(candidate => candidate?.face === (rear ? 'rear' : 'front'));
-        if (!face || snapshot.query.remainingArmor(face.id) > 0
-            || snapshot.query.remainingInternal(location.id) <= 0) return false;
+        if (!face || snapshot.query.remainingArmor(face.id, perspective) > 0
+            || snapshot.query.remainingInternal(location.id, perspective) <= 0) return false;
         return [...snapshot.index.components.entries()]
             .filter(([, component]) => component.kind === 'equipment'
                 && isModularArmorEquipment(component.mount.equipment))
             .filter(([componentId]) => [...snapshot.index.slots.values()].some(slot =>
                 slot.locationId === location.id && slot.componentIds.includes(componentId)))
-            .every(([componentId]) => snapshot.query.modularArmorRemaining(componentId) === 0);
+            .every(([componentId]) => snapshot.query.modularArmorRemaining(componentId, perspective) === 0);
     }
 
     private async reviewPilotHits(
@@ -1991,6 +2059,7 @@ export class DirectMekAutomationService {
         hits: number,
         dispatch: CBTForceUnitCommandDispatch,
         interactive = false,
+        target: 'committed' | 'pending' = 'committed',
     ): Promise<boolean> {
         if (hits <= 0) return true;
         const snapshot = this.snapshot(force, instanceId);
@@ -2002,6 +2071,7 @@ export class DirectMekAutomationService {
             dispatch,
             `pilot-hits:${instanceId}:${snapshot.query.stateRevision}`,
             interactive,
+            target,
         );
     }
 
@@ -2071,7 +2141,10 @@ export class DirectMekAutomationService {
         return Object.freeze(resolvedGroups.map(group => group.notification));
     }
 
-    /** Preflights every consciousness roll before any crew mutation; a number hits every station. */
+    /**
+     * Wounds the crew, preflighting every consciousness roll before any crew mutation; a number hits every
+     * station. A roll held for the end of the phase is recorded on the unit.
+     */
     private async applyCrewHits(
         force: CBTForce,
         instanceId: string,
@@ -2079,6 +2152,7 @@ export class DirectMekAutomationService {
         dispatch: CBTForceUnitCommandDispatch,
         eventPrefix: string,
         interactive = false,
+        target: 'committed' | 'pending' = 'committed',
     ): Promise<boolean> {
         if (typeof hits !== 'number' && ![...hits.values()].some(value => value > 0)) return true;
         const initial = this.snapshot(force, instanceId);
@@ -2087,7 +2161,11 @@ export class DirectMekAutomationService {
             initial,
             hits,
             eventPrefix,
-            { interactive },
+            {
+                interactive,
+                combatPhase: target === 'pending',
+                consciousnessRollsDue: new Set(initial.state.turn.consciousnessRollsDue ?? []),
+            },
         );
         if (resolved === null) return false;
         if (!await this.crewHitAutomation.applyResolvedHits(
@@ -2096,7 +2174,16 @@ export class DirectMekAutomationService {
             dispatch,
         )) return false;
         this.crewHitAutomation.showConsciousnessToasts(initial, resolved);
-        return true;
+        const deferred = resolved.filter(plan => plan.consciousness === 'deferred').map(plan => plan.id as CrewPositionId);
+        if (deferred.length === 0) return true;
+        const latest = this.snapshot(force, instanceId);
+        if (!latest) return false;
+        const owing = [...new Set([...latest.state.turn.consciousnessRollsDue ?? [], ...deferred])]
+            .filter(positionId => {
+                const state = latest.query.crewState(positionId);
+                return state.isAliveAboard() && !state.unconscious;
+            });
+        return (await dispatch({ type: 'set-consciousness-rolls-due', positionIds: owing }, false)).accepted;
     }
 
     private async explodeAmmo(
@@ -2188,11 +2275,11 @@ export class DirectMekAutomationService {
     private rollHitLocation(snapshot: MekSnapshot, hitArc: MekHitArcV2) {
         const dice = roll2D6();
         let result = resolveMekHitLocation(
-            hitLocationTable(snapshot), hitArc, twoD6Total(dice),
+            mekHitLocationTable(snapshot.entity), hitArc, twoD6Total(dice),
         );
         if (result.location === null) {
             result = resolveMekHitLocation(
-                hitLocationTable(snapshot), hitArc, twoD6Total(dice), rollD6(),
+                mekHitLocationTable(snapshot.entity), hitArc, twoD6Total(dice), rollD6(),
             );
         }
         return result;
@@ -2255,12 +2342,6 @@ function lifeSupportReviewDescriptions(staged: StagedMekHeatEffects): readonly s
             })]
             : []),
     ]);
-}
-
-function hitLocationTable(snapshot: MekSnapshot): MekHitLocationTable {
-    return snapshot.entity.chassisConfig === 'Tripod' ? 'tripod'
-        : snapshot.entity.chassisConfig === 'Quad' || snapshot.entity.chassisConfig === 'QuadVee'
-            ? 'quad' : 'biped';
 }
 
 function coverWaterDepth(cover: string | null): number {

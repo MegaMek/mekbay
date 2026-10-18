@@ -30,6 +30,7 @@ import {
   WeaponEquipment,
 } from '../models/equipment.model';
 import { CBTForceMember } from '../models/force-member.model';
+import type { Era } from '../models/eras.model';
 import { createMekUnit } from '../models/runtime/cbt-mek-unit';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import {
@@ -238,6 +239,7 @@ describe('construction component blocks', () => {
       },
     );
     const force = {
+      era: signal<Era | null>(null),
       readOnly: () => false,
       getMekRecordSheetSnapshot: () => ({ revision: instance.revision() }),
       getUnitSnapshot: () => ({ entity, ruleset: instance.ruleset(), ...instance.captureRuntime() }),
@@ -1211,6 +1213,8 @@ describe('construction component blocks', () => {
 
   it('shows a staged custom ammo name, marker and primary color, then clears them for the original loadout', async () => {
     const f = await create({ ammo: true, editDesign: false });
+    const era: Era = { id: 1, name: 'Test Era', years: { from: 2900, to: 3000 }, factions: [], units: [] };
+    f.force.era.set(era);
     const mountedName = () => f.root.querySelector<HTMLButtonElement>('[data-location="RT"] .mounted-name')!;
     mountedName().click();
     f.view.detectChanges();
@@ -1226,7 +1230,7 @@ describe('construction component blocks', () => {
       expect(dialogs.createDialog).toHaveBeenCalledWith(
         SetAmmoDialogComponent,
         jasmine.objectContaining({
-          data: jasmine.objectContaining({ originalAmmo: ammo, originalTotalAmmo: 20 }),
+          data: jasmine.objectContaining({ era, originalAmmo: ammo, originalTotalAmmo: 20 }),
         }),
       );
       expect(mountedName().textContent).toContain(name);
@@ -1583,7 +1587,7 @@ describe('construction component blocks', () => {
     const f = await create();
     const dialog = TestBed.inject(DialogsService).createDialog as jasmine.Spy;
     for (const [kind, total] of [
-      ['bv', f.editor.entity().battleValue()],
+      ['bv', f.editor.entity().battleValue('core-2026')],
       ['cost', f.editor.entity().cost()],
       ['weight', f.editor.mass()],
     ] as const) {

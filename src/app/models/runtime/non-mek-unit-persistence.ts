@@ -32,6 +32,11 @@ createPristineAttackerTargetingState,
 } from './attacker-targeting-state';
 import type { CrewAssignment } from './crew-assignment';
 import { assertCanonicalCrewAssignment } from './crew-assignment';
+import { componentEscalatingFailureProfile } from './component-escalating-failure';
+import { rapidFireAutocannonSupportsJamming } from './component-rapid-fire-autocannon';
+import { entityAmmoLoadout } from './mek-ammo';
+import { gameRulesFor } from '../rules/game-rules';
+import { HEAT_TURN_STEP } from '../rules/turn-sequence';
 import { isEndTurnCheckpoint,type EndTurnCheckpoint } from './end-turn-checkpoint';
 import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
 import { buildNonMekRuntimeIndex,type NonMekRuntimeIndex } from './non-mek-runtime-index';
@@ -140,6 +145,8 @@ export interface SerializedNonMekUnit {
         readonly spotting?: true;
         readonly phaseStateChanged?: true;
         readonly endTurnCheckpoint?: EndTurnCheckpoint;
+        readonly turnStep?: number;
+        readonly joinedStep?: number;
         readonly controlRecovery?: NonMekUnitRuntimeState['turn']['controlRecovery'];
     }>;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
@@ -354,11 +361,16 @@ export function restoreNonMekRuntime(
             && entry.mode !== modes.defaultMode
             ? entry.mode
             : undefined;
+        // Like a mode, a jam or failure step the ruleset does not have is skipped, not refused.
+        const equipment = component?.mount.equipment;
+        const failureSteps = equipment === undefined
+            ? 0
+            : componentEscalatingFailureProfile(equipment.flags, ruleset)?.targets.length ?? 0;
         const restored: ComponentRuntimeState = Object.freeze({
             ...(entry.status === undefined ? {} : { statusOverride: entry.status }),
             ...(mode === undefined ? {} : { mode }),
-            ...(entry.jammed === true ? { jammed: true } : {}),
-            ...(entry.escalatingFailure === undefined
+            ...(entry.jammed === true && rapidFireAutocannonSupportsJamming(equipment, ruleset) ? { jammed: true } : {}),
+            ...(entry.escalatingFailure === undefined || entry.escalatingFailure.sequence > failureSteps
                 ? {}
                 : { escalatingFailure: Object.freeze({ ...entry.escalatingFailure }) }),
         });
@@ -377,8 +389,13 @@ export function restoreNonMekRuntime(
     for (const entry of saved.ammoState ?? []) {
         const componentId = asComponentId(entry.componentId);
         if (ammo.has(componentId)) throw new Error(`Duplicate persisted ammunition ${componentId}`);
+        const mount = index.components.get(componentId)?.mount;
+        // Rulesets size some munitions differently; spent shots never exceed the bin.
+        const capacity = mount === undefined
+            ? undefined
+            : entityAmmoLoadout(entity, mount, ruleset, entry.munitionOverride)?.capacity;
         ammo.set(componentId, Object.freeze({
-            shotsSpent: entry.shotsSpent,
+            shotsSpent: capacity === undefined ? entry.shotsSpent : Math.min(entry.shotsSpent, capacity),
             ...(entry.munitionOverride === undefined ? {} : { munitionOverride: entry.munitionOverride }),
             ...(entry.hotLoaded === undefined ? {} : { hotLoaded: entry.hotLoaded }),
         }));
@@ -401,7 +418,9 @@ export function restoreNonMekRuntime(
     if (new Set(persistedConditions).size !== persistedConditions.length) {
         throw new Error('Duplicate persisted condition');
     }
-    const conditions = new Set(persistedConditions.filter(condition => condition !== 'crippled'));
+    // Crippled is derived; a condition the ruleset lacks, such as skidding under Core, is skipped.
+    const conditions = new Set(persistedConditions.filter(condition => condition !== 'crippled'
+        && (condition !== 'skidding' || gameRulesFor(ruleset).supportsSkidding)));
     const equipmentRowOrder = freezeEquipmentRowOrder(saved.equipmentRowOrder);
     const bombs = restoreBombLoads(saved.bombState, entity);
     const velocityRecord = restoreVelocityRecord(saved.velocityRecord);
@@ -475,6 +494,8 @@ function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUni
         && turn.weaponsHeat === 0 && !turn.heatSettled && turn.cover === null && !turn.spotting
         && !turn.phaseStateChanged
         && turn.endTurnCheckpoint === undefined
+        && turn.turnStep === 0
+        && turn.joinedStep === undefined
         && turn.controlRecovery === undefined) return undefined;
     return Object.freeze({
         ...serializeSharedTurnFacts(turn),
@@ -515,6 +536,8 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
         ...(saved.turn?.endTurnCheckpoint === undefined
             ? {}
             : { endTurnCheckpoint: saved.turn.endTurnCheckpoint }),
+        turnStep: saved.turn?.turnStep ?? 0,
+        ...(saved.turn?.joinedStep === undefined ? {} : { joinedStep: saved.turn.joinedStep }),
         ...(saved.turn?.controlRecovery === undefined
             ? {}
             : { controlRecovery: Object.freeze({ ...saved.turn.controlRecovery }) }),
@@ -534,7 +557,8 @@ function validateSerializedNonMekTurn(value: unknown): void {
     if (keys.some(key => key !== 'turnCounter' && key !== 'airborne'
         && key !== 'movement' && key !== 'weaponsHeat' && key !== 'heatSettled'
         && key !== 'cover' && key !== 'spotting' && key !== 'endTurnCheckpoint'
-        && key !== 'controlRecovery' && key !== 'phaseStateChanged')) {
+        && key !== 'controlRecovery' && key !== 'phaseStateChanged' && key !== 'turnStep'
+        && key !== 'joinedStep')) {
         throw new Error('Non-Mek turn contains unknown fields');
     }
     if (turn['turnCounter'] !== undefined) requireInteger(turn['turnCounter'], 'entity turn counter');
@@ -553,6 +577,14 @@ function validateSerializedNonMekTurn(value: unknown): void {
     }
     if (turn['phaseStateChanged'] !== undefined && turn['phaseStateChanged'] !== true) {
         throw new Error('Non-Mek phase state marker must be true when present');
+    }
+    if (turn['turnStep'] !== undefined && (!Number.isSafeInteger(turn['turnStep'])
+        || (turn['turnStep'] as number) < 1 || (turn['turnStep'] as number) > HEAT_TURN_STEP)) {
+        throw new Error('Non-Mek real-phase step must be a positive step index when present');
+    }
+    if (turn['joinedStep'] !== undefined && (!Number.isSafeInteger(turn['joinedStep'])
+        || (turn['joinedStep'] as number) < 1 || (turn['joinedStep'] as number) > HEAT_TURN_STEP)) {
+        throw new Error('Non-Mek late join must be a step after Movement when present');
     }
     if (turn['endTurnCheckpoint'] !== undefined
         && !isEndTurnCheckpoint(turn['endTurnCheckpoint'])) {

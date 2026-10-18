@@ -21,6 +21,7 @@ import type { CrewAssignment } from './crew-assignment';
 import type { C3NetworkType, C3Role } from '../c3-network.model';
 import {
     adjustMekStandAttemptsV2,
+    appendMekPhysicalAttackChecksV2,
     declareMekActionV2,
     declareMekMovementV2,
     prepareMekStandUpV2,
@@ -28,6 +29,8 @@ import {
     projectMekMovementPsrV2,
     projectMekPilotChecksV2,
     reconcileMekPilotChecksV2,
+    dismissPendingMekPilotChecksV2,
+    dropMekPilotChecksUnraisedByRulesV2,
     resolveMekPilotCheckV2,
     resolveMekStandAttemptV2,
     synthesizeCommittedMekDamagePilotChecksV2,
@@ -40,9 +43,10 @@ import {
     type MekMovementPsrRuntimeFactsV2,
     type MekMovementPsrStateV2,
     type MekMovementStateTransitionV2,
+    type MekPhysicalAttackCheckTriggerKindV2,
     type MekPilotCheckDiceEvidenceV2,
     type MekPilotCheckResolutionResultV2,
-    type MekPilotCheckV2,
+    type MekPilotCheckProjectionResultV2,
     type MekStandAttemptResolutionV2,
 } from './mek-movement-psr-v2';
 import {
@@ -353,13 +357,9 @@ export type MekCommittedDamagePilotCheckContextResultV2 =
     }
     | Extract<MekMovementPsrProjectionResultV2, { readonly kind: 'unsupported' }>;
 
-export type MekPilotCheckProjectionContextResultV2 =
-    | { readonly kind: 'supported'; readonly checks: readonly MekPilotCheckV2[] }
-    | Extract<MekMechanicsContextCapabilityV2, { readonly kind: 'unsupported' }>;
-
 export type MekPilotCheckResolutionContextResultV2 =
     | { readonly kind: 'supported'; readonly resolution: MekPilotCheckResolutionResultV2 }
-    | Extract<MekMechanicsContextCapabilityV2, { readonly kind: 'unsupported' }>;
+    | Extract<MekMovementPsrProjectionResultV2, { readonly kind: 'unsupported' }>;
 
 /** Bounded destruction projection; the private profile/rules never escape the context. */
 export function projectMekDestructionContextV2(
@@ -458,38 +458,61 @@ export function projectMekMovementPsrContextV2(
         : projectMekMovementPsrV2(resolved.profile, resolved.facts, state);
 }
 
-/** Projects the rules-owned pilot-check list without exposing the compiled profile. */
+/** Projects the rules-owned pilot-check list, with derived targets, without exposing the compiled profile. */
 export function projectMekPilotChecksContextV2(
     context: MekMechanicsContextV2,
     entity: MekEntity,
+    input: MekMovementRuntimeContextInputV2,
     state: MekMovementPsrStateV2,
-): MekPilotCheckProjectionContextResultV2 {
-    const binding = requireBinding(context);
-    const mismatch = entityMismatchCapability(binding, entity);
-    if (mismatch) return mismatch;
-    if (binding.kind === 'unsupported') return binding.capability;
-    return Object.freeze({
-        kind: 'supported',
-        checks: projectMekPilotChecksV2(binding.profile, state),
-    });
+): MekPilotCheckProjectionResultV2 {
+    const resolved = movementRuntimeFacts(context, entity, input);
+    return resolved.kind === 'unsupported'
+        ? resolved
+        : projectMekPilotChecksV2(resolved.profile, resolved.facts, state);
 }
 
 /** Resolves one displayed roll, including Core same-leg grouped checks. */
 export function resolveMekPilotCheckContextV2(
     context: MekMechanicsContextV2,
     entity: MekEntity,
+    input: MekMovementRuntimeContextInputV2,
     state: MekMovementPsrStateV2,
     checkId: string,
     evidence: MekPilotCheckDiceEvidenceV2,
 ): MekPilotCheckResolutionContextResultV2 {
+    const resolved = movementRuntimeFacts(context, entity, input);
+    return resolved.kind === 'unsupported'
+        ? resolved
+        : Object.freeze({
+            kind: 'supported',
+            resolution: resolveMekPilotCheckV2(resolved.profile, resolved.facts, state, checkId, evidence),
+        });
+}
+
+/** Dismisses displayed pending rolls, each with every check it stands for; throws on an unknown or settled check. */
+export function dismissMekPilotChecksContextV2(
+    context: MekMechanicsContextV2,
+    entity: MekEntity,
+    state: MekMovementPsrStateV2,
+    checkIds?: readonly string[],
+): MekMovementPsrStateV2 {
     const binding = requireBinding(context);
-    const mismatch = entityMismatchCapability(binding, entity);
-    if (mismatch) return mismatch;
-    if (binding.kind === 'unsupported') return binding.capability;
-    return Object.freeze({
-        kind: 'supported',
-        resolution: resolveMekPilotCheckV2(binding.profile, state, checkId, evidence),
-    });
+    if (entityMismatchCapability(binding, entity) || binding.kind === 'unsupported') {
+        throw new Error('Mek pilot checks cannot be dismissed without supported mechanics');
+    }
+    return dismissPendingMekPilotChecksV2(binding.profile, state, checkIds);
+}
+
+/** Drops the pending checks the bound rules raise no roll for (see the PSR ledger). */
+export function dropMekPilotChecksUnraisedByRulesContextV2(
+    context: MekMechanicsContextV2,
+    entity: MekEntity,
+    state: MekMovementPsrStateV2,
+): MekMovementPsrStateV2 {
+    const binding = requireBinding(context);
+    return entityMismatchCapability(binding, entity) || binding.kind === 'unsupported'
+        ? state
+        : dropMekPilotChecksUnraisedByRulesV2(binding.profile, state);
 }
 
 /** Projects committed-damage movement for BV without exposing the profile. */
@@ -578,11 +601,12 @@ export function declareMekMovementContextV2(
     state: MekMovementPsrStateV2,
     declaration: MekMovementDeclarationV2,
     producingRevision: number,
+    immediate: boolean,
 ): MekMovementStateTransitionV2 {
     const resolved = movementRuntimeFacts(context, entity, input);
     return resolved.kind === 'unsupported'
         ? Object.freeze({ accepted: false, reason: 'UNSUPPORTED' as const, blockers: resolved.blockers })
-        : declareMekMovementV2(resolved.profile, resolved.facts, state, declaration, producingRevision);
+        : declareMekMovementV2(resolved.profile, resolved.facts, state, declaration, producingRevision, immediate);
 }
 
 export function declareMekActionContextV2(
@@ -592,11 +616,12 @@ export function declareMekActionContextV2(
     state: MekMovementPsrStateV2,
     action: MekActionDeclarationV2,
     producingRevision: number,
+    immediate: boolean,
 ): MekMovementStateTransitionV2 {
     const resolved = movementRuntimeFacts(context, entity, input);
     return resolved.kind === 'unsupported'
         ? Object.freeze({ accepted: false, reason: 'UNSUPPORTED' as const, blockers: resolved.blockers })
-        : declareMekActionV2(resolved.profile, resolved.facts, state, action, producingRevision);
+        : declareMekActionV2(resolved.profile, resolved.facts, state, action, producingRevision, immediate);
 }
 
 export function prepareMekStandUpContextV2(
@@ -678,6 +703,30 @@ export function reconcileMekPilotChecksContextV2(
     return resolved.kind === 'unsupported'
         ? resolved
         : reconcileMekPilotChecksV2(resolved.profile, resolved.facts, state);
+}
+
+export function appendMekPhysicalAttackChecksContextV2(
+    context: MekMechanicsContextV2,
+    entity: MekEntity,
+    input: MekMovementRuntimeContextInputV2,
+    state: MekMovementPsrStateV2,
+    attackId: string,
+    checks: readonly MekPhysicalAttackCheckTriggerKindV2[],
+    missedDeathFromAbove: boolean,
+    producingRevision: number,
+): MekMovementPsrStateV2 | Extract<MekMovementPsrProjectionResultV2, { readonly kind: 'unsupported' }> {
+    const resolved = movementRuntimeFacts(context, entity, input);
+    return resolved.kind === 'unsupported'
+        ? resolved
+        : appendMekPhysicalAttackChecksV2(
+            resolved.profile,
+            resolved.facts,
+            state,
+            attackId,
+            checks,
+            missedDeathFromAbove,
+            producingRevision,
+        );
 }
 
 type MekMovementRuntimeFactsResolutionV2 =

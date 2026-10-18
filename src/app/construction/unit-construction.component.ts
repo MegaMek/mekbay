@@ -300,7 +300,7 @@ type EquipmentSortColumn = 'name' | 'slots' | 'tons' | 'damage' | 'range' | 'bv'
 export class UnitConstructionComponent {
   readonly unitBV = computed(() => {
     try {
-      return this.entity().battleValue();
+      return this.entity().battleValue(this.ruleset());
     } catch {
       return null;
     }
@@ -369,7 +369,9 @@ export class UnitConstructionComponent {
   readonly unitNames = inject(UnitNameService);
   private readonly layout = inject(LayoutService);
   private readonly optionsService = inject(OptionsService);
-  private readonly gameRules = computed(() => gameRulesFor(this.optionsService.options().CBTRules));
+  /** A force member keeps the rules its force plays; a standalone design follows the options. */
+  private readonly ruleset = computed(() => this.forceMember()?.ruleset() ?? this.optionsService.options().CBTRules);
+  private readonly gameRules = computed(() => gameRulesFor(this.ruleset()));
   private readonly toast = inject(ToastService);
   private readonly injector = inject(Injector);
   private readonly equipmentToggle = viewChild<ElementRef<HTMLButtonElement>>('equipmentToggle');
@@ -676,7 +678,7 @@ export class UnitConstructionComponent {
     const kind = this.detailsView();
     if (kind === null || kind === 'issues') return null;
     try {
-      const data = constructionBreakdown(this.entity(), kind);
+      const data = constructionBreakdown(this.entity(), kind, this.ruleset());
       return Number.isFinite(data.total) ? data : null;
     } catch {
       return null;
@@ -980,7 +982,7 @@ export class UnitConstructionComponent {
     const source = this.repairSnapshot(),
       component = this.selectedRepairComponent();
     if (!source || !(component?.mount?.equipment instanceof AmmoEquipment)) return null;
-    const data = mountedAmmoDialogData(source, component.id);
+    const data = mountedAmmoDialogData(source, component.id, this.forceMember()?.force.era() ?? null);
     return data ? { componentId: component.id, data } : null;
   });
   async setRuntimeAmmo(): Promise<void> {
@@ -1389,6 +1391,7 @@ export class UnitConstructionComponent {
         sourceRevision: '',
       },
       format: nativeEntityFormat(entity),
+      ruleset: this.ruleset(),
     });
     return { ...summary, isCustom: true, canon: false };
   });

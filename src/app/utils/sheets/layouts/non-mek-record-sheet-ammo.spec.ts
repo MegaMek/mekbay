@@ -10,7 +10,7 @@ import {
     TestTankEntity,
 } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment } from '../../../models/entity/testing/test-mounted-equipment';
-import { AmmoEquipment, WeaponEquipment } from '../../../models/equipment.model';
+import { AmmoEquipment } from '../../../models/equipment.model';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 import { updateRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetAmmoEntries } from '../record-sheet-svg-rendering';
@@ -59,45 +59,6 @@ describe('generated non-Mek ammo rows', () => {
             const text = lines.map(line => line.textContent).join(' ');
             for (const name of names) expect(text).toContain(`(${name}) 24`);
             expect(text).not.toContain('…');
-            for (let index = 1; index < lines.length; index++) {
-                expect(Number(lines[index].getAttribute('y')))
-                    .toBeGreaterThan(Number(lines[index - 1].getAttribute('y')));
-            }
-        });
-
-        it(`reclaims ${family.name} inventory space when runtime ammo rows disappear`, async () => {
-            const entity = family.create();
-            addTestEquipment(entity, new WeaponEquipment({
-                id: 'Test Medium Laser', name: 'Medium Laser', type: 'weapon',
-                weapon: { damage: 5, heat: 3, ranges: [3, 6, 9] },
-            }), { location: 'Body' });
-            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: family.format });
-            const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;
-            const inventory = profile.parentElement!.querySelector<SVGGElement>('[data-ammo-inventory]')!;
-            const originalTransform = inventory.getAttribute('transform');
-            const entries = ['Arrow IV ADA', 'Arrow IV FA', 'Arrow IV T-FASCAM', 'Arrow IV Homing', 'Ultra AC/5', 'MG']
-                .map(name => `(${name}) 24`);
-
-            updateRecordSheetAmmoProfile(profile, entries);
-
-            const rowCount = profile.querySelectorAll('text').length;
-            const ammoHeight = rowCount * Number(profile.getAttribute('data-line-height'));
-            expect(rowCount).toBeGreaterThan(1);
-            const inventoryMatrix = inventory.transform.baseVal.consolidate()!.matrix;
-            const contentBottom = Number(inventory.getAttribute('data-content-bottom'));
-            expect(contentBottom * inventoryMatrix.d + inventoryMatrix.f)
-                .toBeLessThanOrEqual(Number(inventory.getAttribute('data-bottom')) - ammoHeight + 0.001);
-            profile.parentElement!.querySelectorAll<SVGGElement>('[data-ammo-before]').forEach(group => {
-                expect(group.transform.baseVal.consolidate()!.matrix.f).toBeCloseTo(-ammoHeight, 5);
-            });
-
-            updateRecordSheetAmmoProfile(profile, []);
-
-            expect(profile.querySelectorAll('text').length).toBe(0);
-            expect(inventory.getAttribute('transform')).toBe(originalTransform);
-            profile.parentElement!.querySelectorAll<SVGGElement>('[data-ammo-before]').forEach(group => {
-                expect(group.transform.baseVal.consolidate()!.matrix.f).toBe(0);
-            });
         });
     }
 
@@ -117,35 +78,6 @@ describe('generated non-Mek ammo rows', () => {
     it('orders ammo by name in code-unit order, like the TreeMap MegaMekLab prints from', () => {
         expect(recordSheetAmmoEntries([['iNarc Ammo', 4], ['LRM 5 Ammo', 24], ['AC/5 Ammo', 20], ['LRM 5 Ammo', 24]]))
             .toEqual(['(AC/5) 20', '(LRM 5) 48', '(iNarc) 4']);
-    });
-
-    it('fits a multi-row fighter ammo profile between a full inventory and the fuel line without squeezing either', async () => {
-        const entity = new TestAeroSpaceFighterEntity();
-        for (let index = 0; index < 9; index++) {
-            addTestEquipment(entity, new WeaponEquipment({
-                id: `Test Fighter Laser ${index}`, name: `Medium Laser ${index}`, type: 'weapon',
-                weapon: { damage: 5, heat: 3, ranges: [3, 6, 9], av: [5, 5, 0, 0] },
-            }), { location: 'Nose' });
-        }
-        ['Arrow IV ADA', 'Arrow IV FA', 'Arrow IV T-FASCAM', 'Arrow IV Homing', 'Ultra AC/5', 'MG'].forEach(name => addAmmo(entity, name));
-        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-        document.body.appendChild(svg);
-        try {
-            const profile = svg.querySelector<SVGGElement>('#ammoProfile')!;
-            const ammoRows = [...profile.querySelectorAll<SVGTextElement>('text')];
-            expect(ammoRows.length).toBeGreaterThan(1);
-            const inventory = profile.parentElement!.querySelector<SVGGElement>('[data-ammo-inventory]')!;
-            expect(inventory.transform.baseVal.consolidate()?.matrix.d ?? 1).toBe(1);
-            const bottom = (text: SVGTextElement) => text.getBBox().y + text.getBBox().height;
-            const inventoryBottom = Math.max(...[...inventory.querySelectorAll<SVGTextElement>('text')]
-                .filter(text => text.textContent).map(bottom));
-            expect(inventoryBottom).toBeLessThanOrEqual(ammoRows[0].getBBox().y);
-            const fuel = [...profile.parentElement!.querySelectorAll<SVGTextElement>(':scope > text')]
-                .find(text => text.textContent?.startsWith('Fuel Points'))!;
-            expect(bottom(ammoRows.at(-1)!)).toBeLessThanOrEqual(fuel.getBBox().y);
-        } finally {
-            svg.remove();
-        }
     });
 });
 

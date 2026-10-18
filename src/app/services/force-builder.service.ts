@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { effect, Injectable, Injector, inject } from '@angular/core';
+import { computed, effect, Injectable, Injector, inject, untracked } from '@angular/core';
 import {
     Force,
 } from '../models/force.model';
@@ -16,6 +16,7 @@ import { GameSystem } from '../models/common.model';
 import {
     CBTForce,
 } from '../models/cbt-force.model';
+import type { CBTScenarioRebind, CBTScenarioRebindDrops } from '../models/cbt-force.types';
 import { ASForce } from '../models/as-force.model';
 import { GameService } from './game.service';
 import type { ForceSlot, ForceAlignment } from '../models/force-slot.model';
@@ -26,6 +27,13 @@ import { ForceDialogsService } from './force-dialogs.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
 import { OptionsService } from './options.service';
+import { ToastService } from './toast.service';
+import { CBT_RULESET_LABELS, type CBTRuleset } from '../models/cbt-ruleset.model';
+import { scenarioRuleset, scenarioRulesFromOptions, type ScenarioRules } from '../models/runtime/unit-state-initializer';
+import { jsonValuesEqual } from '../utils/json-value.util';
+
+/** A loaded force's rebind, prepared and not yet installed. */
+type PreparedForceRebind = Readonly<{ force: CBTForce; rebind: Extract<CBTScenarioRebind, { readonly bound: true }> }>;
 
 @Injectable({
     providedIn: 'root'
@@ -42,6 +50,14 @@ export class ForceBuilderService {
     private readonly workspace = inject(ForceWorkspaceStateService);
     private readonly slotLifecycle = inject(ForceSlotLifecycleService);
     private readonly options = inject(OptionsService);
+    private readonly toast = inject(ToastService);
+
+    /** The rules every loaded CBT force plays: the options are their one source. */
+    private readonly scenarioRules = computed(
+        () => scenarioRulesFromOptions(this.options.options()),
+        { equal: jsonValuesEqual },
+    );
+    private scenarioRebind: Promise<unknown> = Promise.resolve();
 
     private readonly forceLoaded = new Subject<void>();
     /** Emits whenever ForceImportService successfully applies a force entry. */
@@ -69,17 +85,122 @@ export class ForceBuilderService {
         });
         this.forceUrl.start();
         this.opforTargets.connect(this.workspace.loadedForces);
+        // Every loaded force, one loaded later included, plays the rules in the options.
         effect(() => {
             if (!this.options.initialized()) return;
-            const { forcedWithdrawal, sprinting, hotLoadedAmmo } = this.options.options().CBTOptionalRules;
-            for (const slot of this.workspace.loadedForces()) {
-                if (!(slot.force instanceof CBTForce)) continue;
-                void slot.force.synchronizeOptionalRules({ forcedWithdrawal, sprinting, hotLoadedAmmo })
-                    .catch(error => this.logger.error(
-                        `ForceBuilderService: Optional-rule synchronization failed: ${String(error)}`,
-                    ));
-            }
+            this.scenarioRules();
+            this.workspace.loadedForces();
+            untracked(() => void this.queueRebind(() => this.bindLoadedForces(this.scenarioRules())));
         });
+    }
+
+    /**
+     * Switches the CBT rules live, all or nothing: every loaded force prepares its rebind first,
+     * and only when every one can switch are they installed and the choice saved. Otherwise
+     * nothing changes, the player is told which force cannot switch, and this resolves false.
+     *
+     * A force that changes between preparing and installing installs nothing; the switch still
+     * completes and that force is bound again from its current state, the player being told if it
+     * still cannot switch. Choosing the rules every force already plays changes nothing.
+     */
+    switchCBTRules(ruleset: CBTRuleset): Promise<boolean> {
+        return this.queueRebind(async () => {
+            const scenario = scenarioRulesFromOptions({ ...this.options.options(), CBTRules: ruleset });
+            const prepared = await this.prepareLoadedForces(scenario);
+            if (prepared.failed.length > 0) {
+                this.toast.showToast(
+                    `${prepared.failed.join(', ')} could not switch to ${CBT_RULESET_LABELS[ruleset]}, so every force keeps ${CBT_RULESET_LABELS[this.options.options().CBTRules]}.`,
+                    'error',
+                );
+                return false;
+            }
+            const stale = await this.installPrepared(prepared.rebinds);
+            if (this.options.options().CBTRules !== ruleset) await this.options.setOption('CBTRules', ruleset);
+            if (stale.length > 0) await this.bindLoadedForces(scenario);
+            return true;
+        });
+    }
+
+    /**
+     * Binds every loaded force to `scenario` independently: a force that cannot switch keeps its
+     * rules, and the player is told which.
+     */
+    private async bindLoadedForces(scenario: ScenarioRules): Promise<void> {
+        const failed: string[] = [];
+        const dropped: CBTScenarioRebindDrops[number][] = [];
+        for (const slot of this.workspace.loadedForces()) {
+            if (!(slot.force instanceof CBTForce)) continue;
+            const result = await slot.force.rebindScenarioRules(scenario).catch(error => {
+                this.logger.error(`ForceBuilderService: Rule rebinding failed: ${String(error)}`);
+                return null;
+            });
+            if (result?.bound) dropped.push(...result.dropped);
+            else failed.push(slot.force.displayName());
+        }
+        this.reportDropped(dropped);
+        if (failed.length > 0) {
+            this.toast.showToast(
+                `${failed.join(', ')} could not switch to ${CBT_RULESET_LABELS[scenarioRuleset(scenario)]} and keep${failed.length === 1 ? 's' : ''} ${failed.length === 1 ? 'its' : 'their'} previous rules.`,
+                'error',
+            );
+        }
+    }
+
+    /** Rebinds run one at a time, so the forces always end on the latest requested rules. */
+    private queueRebind<T>(job: () => Promise<T>): Promise<T> {
+        const next = this.scenarioRebind.then(job, job);
+        this.scenarioRebind = next.catch(() => undefined);
+        return next;
+    }
+
+    /** Prepares every loaded CBT force's rebind to `scenario`; nothing is installed. */
+    private async prepareLoadedForces(scenario: ScenarioRules): Promise<Readonly<{
+        rebinds: readonly PreparedForceRebind[];
+        failed: readonly string[];
+    }>> {
+        const rebinds: PreparedForceRebind[] = [];
+        const failed: string[] = [];
+        for (const slot of this.workspace.loadedForces()) {
+            if (!(slot.force instanceof CBTForce)) continue;
+            const force = slot.force;
+            const rebind = await force.prepareScenarioRebind(scenario).catch(error => {
+                this.logger.error(`ForceBuilderService: Rule rebinding failed: ${String(error)}`);
+                return null;
+            });
+            if (rebind?.bound) rebinds.push({ force, rebind });
+            else failed.push(force.displayName());
+        }
+        return Object.freeze({ rebinds: Object.freeze(rebinds), failed: Object.freeze(failed) });
+    }
+
+    /**
+     * Installs prepared rebinds and tells the player what the installed rules could not keep.
+     * Resolves the forces that changed since preparing and so installed nothing.
+     */
+    private async installPrepared(
+        rebinds: readonly PreparedForceRebind[],
+    ): Promise<readonly string[]> {
+        const stale: string[] = [];
+        const dropped: CBTScenarioRebindDrops[number][] = [];
+        for (const { force, rebind } of rebinds) {
+            const installed = await rebind.install().catch(error => {
+                this.logger.error(`ForceBuilderService: Rule rebinding failed: ${String(error)}`);
+                return false;
+            });
+            if (installed) dropped.push(...rebind.dropped);
+            else stale.push(force.displayName());
+        }
+        this.reportDropped(dropped);
+        return Object.freeze(stale);
+    }
+
+    /** Tells the player what installed rules could not keep. */
+    private reportDropped(dropped: CBTScenarioRebindDrops): void {
+        if (dropped.length === 0) return;
+        this.toast.showToast(
+            `The new rules could not keep: ${dropped.map(unit => `${unit.unit} (${unit.items.join(', ')})`).join('; ')}.`,
+            'info',
+        );
     }
 
     /** Import workflow notification used by UI that outlives nested force dialogs. */

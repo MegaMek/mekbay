@@ -39,6 +39,7 @@ import { createEquipment, type EquipmentMap, type RawEquipmentData } from '../sr
 import { equipmentCatalogEntriesIncludingSupplements } from '../src/app/models/equipment-catalog-supplements';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { UnitMetadataBuilder } from '../src/app/utils/unit-metadata-builder';
+import { CORE_2026_RULESET } from '../src/app/models/cbt-ruleset.model';
 import type { SpriteManifest } from '../src/app/services/sprite-storage.service';
 import { createUnitIconResolver } from '../src/app/utils/unit-sprite-resolver';
 import type { Sourcebook } from '../src/app/models/sourcebook.model';
@@ -810,7 +811,7 @@ function processUnit(
 
   try {
     const summaryStartedAt = profileNow();
-    const metadata = builder.build(entity, oracle.unitFile) as unknown as Record<string, unknown>;
+    const metadata = builder.build(entity, CORE_2026_RULESET, oracle.unitFile) as unknown as Record<string, unknown>;
     recordProfileStage('summary', summaryStartedAt);
 
     // Compare fields

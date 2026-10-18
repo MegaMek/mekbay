@@ -58,9 +58,9 @@ export function currentUnitBaseBattleValue(unit: CBTUnit): number | null {
     return unit.captureRuntime().query.currentBaseBattleValue();
 }
 
-/** Immutable entity BV before runtime damage, TAG, C3, or skills. */
+/** Immutable entity BV under the unit's rules, before runtime damage, TAG, C3, or skills. */
 export function pristineUnitBattleValue(unit: CBTUnit): number {
-    return unit.getUnit().battleValue();
+    return unit.getUnit().battleValue(unit.ruleset());
 }
 
 /**

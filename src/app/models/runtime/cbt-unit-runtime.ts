@@ -144,6 +144,13 @@ export interface CBTTurnRuntimeState {
     /** A committed phase-scoped edit exists and has not crossed End Phase yet. */
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    /** Real-phase steps of this turn the unit has completed (see turn-sequence); 0 until it acts. */
+    readonly turnStep: number;
+    /**
+     * The real-phase step this unit joined the turn at, when it was added after the turn's Movement: it acts
+     * after the Initiative order. Absent otherwise.
+     */
+    readonly joinedStep?: number;
 }
 
 /** Sparse wire form of the turn facts every family shares; each family's wire adds its own facts after them. */
@@ -156,6 +163,8 @@ export function serializeSharedTurnFacts(turn: CBTTurnRuntimeState) {
         ...(turn.spotting ? { spotting: true as const } : {}),
         ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
         ...(turn.endTurnCheckpoint === undefined ? {} : { endTurnCheckpoint: turn.endTurnCheckpoint }),
+        ...(turn.turnStep === 0 ? {} : { turnStep: turn.turnStep }),
+        ...(turn.joinedStep === undefined ? {} : { joinedStep: turn.joinedStep }),
     };
 }
 

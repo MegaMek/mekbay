@@ -25,7 +25,7 @@ import { isUnitBuildingLevel,resolveUnitBuildingCoverState,type UnitBuildingCove
 import { movementBoosterUsableWhile } from './component-escalating-failure';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
 import type { MekHeatProjectionResultV2,MekHeatStateV2 } from './mek-heat-state-v2';
-import type { MekMovementModeV2,MekMovementPsrProjectionResultV2,MekMovementPsrStateV2 } from './mek-movement-psr-v2';
+import type { MekMovementModeV2,MekMovementPsrProjectionResultV2,MekMovementPsrStateV2,MekPilotCheckV2 } from './mek-movement-psr-v2';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { mekUnitHeight,resolveMekUnitWaterState } from './mek-targeting-rules';
 import type { MekTurnStateV2 } from './mek-turn-state-v2';
@@ -50,7 +50,8 @@ export interface MekTurnPanelSnapshot {
     readonly hasPendingCombat: boolean;
     readonly hasPendingPhaseChanges: boolean;
     readonly movement: MekMovementPsrProjectionResultV2;
-    readonly movementState: MekMovementPsrStateV2;
+    /** The movement/PSR state with this phase's checks as the rules present them, targets included. */
+    readonly movementState: Omit<MekMovementPsrStateV2, 'checks'> & { readonly checks: readonly MekPilotCheckV2[] };
     readonly ruleChecks: readonly MekTurnPanelRuleCheck[];
     readonly activeBoosterComponentIds: readonly ComponentId[];
     readonly locationLabels: Readonly<Record<string, string>>;
@@ -98,11 +99,7 @@ export function projectMekTurnPanel(
     const prone = conditions.includes('prone');
     const height = mekUnitHeight(entity, prone);
     const movement = query.mekMovementPsr();
-    const runtimeMovementState = query.mekMovementPsrState();
-    const pilotChecks = query.mekPilotChecks();
-    const movementState = pilotChecks === runtimeMovementState.checks
-        ? runtimeMovementState
-        : Object.freeze({ ...runtimeMovementState, checks: pilotChecks });
+    const movementState = Object.freeze({ ...query.mekMovementPsrState(), checks: query.mekPilotChecks() });
     const torsoCheck = query.mekRuleCheck(MEK_TORSO_CRIPPLING_RULE_CHECK_KEY);
     const ruleChecks = torsoCheck?.status === 'pending'
         ? Object.freeze([Object.freeze({
@@ -213,7 +210,7 @@ export function mekTurnPanelPhase(snapshot: MekTurnPanelSnapshot): 'M' | 'W' | '
 
 function projectMekDefenseModifierBreakdown(
     ruleset: CBTRuleset,
-    movementState: MekMovementPsrStateV2,
+    movementState: Pick<MekMovementPsrStateV2, 'movement'>,
     turn: MekTurnStateV2,
     conditions: readonly UnitConditionKey[],
 ): readonly UnitModifierBreakdownEntry[] {

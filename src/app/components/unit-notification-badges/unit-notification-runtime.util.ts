@@ -24,7 +24,11 @@ import {
     orderedCrewPositions,
 } from '../../models/runtime/mek-automation-rules';
 import { projectMekLifeSupportPilotDamage } from '../../models/runtime/mek-life-support';
-import type { MekAutomaticFallV2, MekPilotCheckV2 } from '../../models/runtime/mek-movement-psr-v2';
+import {
+    mekAutomaticFallReasonV2,
+    type MekAutomaticFallV2,
+    type MekPilotCheckV2,
+} from '../../models/runtime/mek-movement-psr-v2';
 import { projectNonMekEndTurnHeat } from '../../models/runtime/non-mek-unit-instance';
 import { actionableMekPilotChecks } from '../page-viewer/overlay/page-turn-summary.util';
 import type { TooltipLine } from '../tooltip/tooltip.component';
@@ -81,10 +85,10 @@ function projectMekNotifications(
     const preview = snapshot.query.hasPendingPhaseChanges()
         ? snapshot.query.previewEndPhase()
         : null;
-    const phaseState = preview?.accepted && preview.state !== null
-        ? preview.state
-        : snapshot.state;
+    const previewed = preview?.accepted === true && preview.state !== null;
+    const phaseState = previewed ? preview!.state! : snapshot.state;
     const movementState = phaseState.movementPsr;
+    const pilotChecks = previewed ? snapshot.query.previewEndPhasePilotChecks() : snapshot.query.mekPilotChecks();
     const pendingEvents: RuntimeUnitNotificationEvent[] = [];
 
     const pendingFall = snapshot.state.turn.pendingFallConsequences;
@@ -131,7 +135,7 @@ function projectMekNotifications(
     const movement = snapshot.query.mekMovementPsr();
     const pilotCanControl = activeCrewController(snapshot, 'piloting') !== null
         || movement.kind === 'supported' && movement.controlledByDrone;
-    const pendingChecks = movementState.checks.filter(check => check.status === 'pending');
+    const pendingChecks = pilotChecks.filter(check => check.status === 'pending');
     const actionableChecks = actionableMekPilotChecks(pendingChecks, automaticFall);
     const actionableCheckIds = new Set(actionableChecks.map(check => check.checkId));
     const automaticallyFallingChecks = pendingChecks.filter(check =>
@@ -377,6 +381,6 @@ function automaticFallTooltip(
     if (falls.length === 0) return null;
     return Object.freeze(falls.map(fall => Object.freeze({
         label: 'Automatic fall',
-        value: fall.triggerKind === 'gyro-destroyed' ? 'Gyro destroyed' : 'Leg destroyed',
+        value: mekAutomaticFallReasonV2(fall.triggerKind),
     })));
 }

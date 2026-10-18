@@ -5,6 +5,7 @@
 import { GameSystem } from "./common.model";
 import type { CBTRuleset } from './cbt-ruleset.model';
 import type { PrintAllOptions } from './print-options.model';
+import { INITIATIVE_ORDER_MODES, type InitiativeOrderMode } from './rules/initiative-rules';
 
 export const OPTION_VALUES = {
     colorScheme: ['default', 'night'],
@@ -13,7 +14,7 @@ export const OPTION_VALUES = {
     mouseWheelAction: ['scroll', 'zoom'],
     swipeToNextSheet: ['vertical', 'horizontal', 'disabled'],
     unitDisplayName: ['chassisModel', 'alias', 'both'],
-    displayUnitNameFormat: ['innerSphereClan', 'clanInnerSphere'],
+    displayUnitNameFormat: ['innerSphereClan', 'clanInnerSphere', 'innerSphereOnly', 'clanOnly'],
     gameSystem: [GameSystem.CBT, GameSystem.AS],
     availabilitySource: ['mul', 'megamek'],
     forceViewerBVPVDisplay: ['adjustedPostSkill', 'adjustedPreSkill', 'both'],
@@ -27,7 +28,16 @@ export const OPTION_VALUES = {
     cbtUnitViewMode: ['sheet', 'tactical'],
     ASVehiclesCriticalHitTable: ['default', 'scouringSands'],
     automationMode: ['yes', 'ask', 'no'],
+    initiativeOrder: INITIATIVE_ORDER_MODES,
 } as const;
+
+/** The Unequal Numbers order choices, shared by the options and lobby dialogs. Only Total Warfare games use them. */
+export const INITIATIVE_ORDER_CHOICES: readonly { readonly value: InitiativeOrderMode; readonly label: string; readonly hint: string }[] = [
+    { value: 'rules', label: 'By the rules', hint: 'Total Warfare: extra units act last' },
+    { value: 'front-loaded', label: 'Front-loaded', hint: 'extra units act first' },
+    { value: 'back-loaded', label: 'Back-loaded', hint: 'extra units act last' },
+    { value: 'spread', label: 'Spread evenly', hint: 'extra units spread over the phase' },
+];
 
 type OptionValue<K extends keyof typeof OPTION_VALUES> = (typeof OPTION_VALUES)[K][number];
 
@@ -121,6 +131,14 @@ export interface Options {
     },
     sidebarLipPosition?: string;
     trackPhaseAndTurn: boolean;
+    /** Units share a real turn/phase clock and advance step by step (requires trackPhaseAndTurn). */
+    realPhases: boolean;
+    /** Firing opens the attack resolution dialog, which can send the hits to the target's owner. */
+    attackResolution: boolean;
+    /** How a side with more units spreads them over a phase (Total Warfare only; Core fixes it). */
+    initiativeOrder: InitiativeOrderMode;
+    /** The optional Initiative Die (Core p.39): a losing side gains +1 per consecutive loss, up to +6. */
+    initiativeDie: boolean;
     cbtUnitViewMode: CBTUnitViewMode;
     cbtAutomationOptions: CBTAutomationOptions;
     CBTOptionalRules: CBTOptionalRules;

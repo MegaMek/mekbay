@@ -3,6 +3,9 @@
 
 import type { CBTRuleset } from './cbt-ruleset.model';
 import { isWeaponEnhancementEquipment } from './weapon-enhancement.model';
+import type { Equipment } from './equipment.model';
+import type { EquipmentStatus } from './equipment-status.model';
+import type { ToHitAdjustment } from './rules/game-rules';
 
 export const APOLLO_STANDARD_MODE = 'Standard';
 export const APOLLO_SATURATION_MODE = 'Saturation';
@@ -40,4 +43,26 @@ export function isApolloLink(
     return isApolloEquipment(source)
         && isWeaponEnhancementEquipment(source)
         && isApolloCompatibleWeapon(target);
+}
+
+/** Total Warfare's passive bonus for an installed Apollo-to-MRM link. */
+export function apolloToHitAdjustment(
+    source: Equipment | undefined,
+    weapon: Equipment | undefined,
+    status: EquipmentStatus,
+    ruleset: CBTRuleset,
+): ToHitAdjustment | null {
+    if (!source || !isApolloLink(source, weapon) || supportsApolloSaturationModeForRuleset(ruleset)) return null;
+    const label = source.shortName || source.name;
+    const weakened = status !== 'available';
+    return Object.freeze({
+        kind: 'add' as const,
+        label: status === 'destroyed'
+            ? `${label} Destroyed`
+            : status === 'disabled'
+                ? `${label} Disabled`
+                : label,
+        modifier: weakened ? 0 : -1,
+        weakened,
+    });
 }

@@ -62,6 +62,17 @@ export class ForceWorkspaceStateService {
         this.selectedUnit.set(unit);
     }
 
+    /** Selects a unit, turning the sidebar to its side when it shows the other one. */
+    revealUnit(unit: ForceMember): void {
+        const alignment = this.loadedForces().find(slot => slot.force === unit.force)?.alignment;
+        const filter = this.alignmentFilter();
+        if (alignment && filter !== 'all' && filter !== alignment) {
+            this.savedSelectionByFilter.set(filter, this.selectedUnit()?.id ?? null);
+            this.alignmentFilter.set(alignment);
+        }
+        this.selectUnit(unit);
+    }
+
     cycleAlignmentFilter(): void {
         const current = this.alignmentFilter();
         this.savedSelectionByFilter.set(current, this.selectedUnit()?.id ?? null);

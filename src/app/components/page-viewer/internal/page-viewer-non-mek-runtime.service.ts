@@ -40,7 +40,7 @@ import {
 bindNonMekRecordSheet,
 type NonMekRecordSheetBinding,
 } from '../non-mek-record-sheet-binder';
-import { nonMekHitArcs,resolveNonMekHitLocation,type NonMekHitArc } from '../non-mek-hit-location';
+import { nonMekHitArcs,resolveNonMekHitLocation,type NonMekHitArc } from '../../../models/runtime/non-mek-hit-location';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
 
 interface BoundEntitySheetPage {
@@ -670,13 +670,17 @@ export function nonMekDamageParts(
     interaction: Extract<RecordSheetInteraction, { readonly kind: 'armor' | 'internal' }>;
     delta: number;
 }>[] {
-    if (interaction.kind === 'internal') return delta === 0 ? [] : [{ interaction, delta }];
     const location = snapshot.locations.find(candidate => candidate.locationId === interaction.locationId);
-    const face = location?.armor.find(candidate => candidate.faceId === interaction.faceId);
-    if (!location || !face) return [];
+    if (!location) return [];
+    const internalRemaining = pending ? location.previewRemainingInternal : location.remainingInternal;
+    if (interaction.kind === 'internal') {
+        const amount = delta > 0 ? Math.min(delta, internalRemaining) : delta;
+        return amount === 0 ? [] : [{ interaction, delta: amount }];
+    }
+    const face = location.armor.find(candidate => candidate.faceId === interaction.faceId);
+    if (!face) return [];
     const internal = { kind: 'internal' as const, locationId: location.locationId, context: interaction.context };
     const armorRemaining = pending ? face.previewRemaining : face.remaining;
-    const internalRemaining = pending ? location.previewRemainingInternal : location.remainingInternal;
     const [first, firstAmount, second] = delta > 0
         ? [interaction, Math.min(delta, armorRemaining), internal] as const
         : location.combinedPips
@@ -684,6 +688,7 @@ export function nonMekDamageParts(
             : [interaction, delta, internal] as const;
     return [
         { interaction: first, delta: firstAmount },
-        { interaction: second, delta: delta - firstAmount },
+        // Damage beyond the remaining structure has nowhere left to go in this location.
+        { interaction: second, delta: delta > 0 ? Math.min(delta - firstAmount, internalRemaining) : delta - firstAmount },
     ].filter(part => part.delta !== 0);
 }

@@ -34,10 +34,11 @@ import {
     type MekTurnPanelSnapshot,
 } from '../../models/runtime/mek-turn-panel';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
-import { OptionsService } from '../../services/options.service';
+import { heatAutomationPolicy, OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { AttackResolutionService } from '../../services/attack-resolution.service';
 import { PageTurnSummaryPanelComponent } from '../page-viewer/overlay/page-turn-summary-panel.component';
 import { AmmoLoadoutPanelComponent } from './ammo-loadout-panel.component';
 import type { EquipmentDialogData, EquipmentDialogTab } from './equipment-dialog.model';
@@ -69,6 +70,7 @@ export class EquipmentDialogComponent {
     private readonly options = inject(OptionsService);
     private readonly toast = inject(ToastService);
     private readonly dialogs = inject(DialogsService);
+    private readonly attacks = inject(AttackResolutionService);
     private readonly targetsOverlay = new WeaponTargetsOverlayController({
         overlay: this.overlay,
         overlayManager: this.overlayManager,
@@ -383,7 +385,7 @@ export class EquipmentDialogComponent {
     }
 
     private createRuntime(member: CBTForceMember): EquipmentDialogRuntimeController {
-        return new EquipmentDialogRuntimeController(member, this.options, this.toast, this.dialogs);
+        return new EquipmentDialogRuntimeController(member, this.options, this.toast, this.dialogs, this.attacks);
     }
 
     private formatUnitLabel(unit: CBTForceMember | null): string {
@@ -412,9 +414,7 @@ export class EquipmentDialogComponent {
         if (!isCBTMekForceMember(member)) return null;
         return member.force.getMekTurnPanelSnapshot(
             member.id,
-            this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-                ? 'automatic'
-                : 'manual',
+            heatAutomationPolicy(this.options),
         );
     }
 }

@@ -54,7 +54,8 @@ resolveUnitWaterState,
 type UnitCover,
 } from '../../../models/unit-cover.model';
 import { DialogsService } from '../../../services/dialogs.service';
-import { OptionsService } from '../../../services/options.service';
+import { GameTurnService } from '../../../services/game-turn.service';
+import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
@@ -62,11 +63,11 @@ import type { TooltipLine } from '../../tooltip/tooltip.component';
 import {
 MekTurnSummaryRuntimeController,
 } from './mek-turn-summary-runtime.controller';
-import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
+import { openPsrWarningOverlay, togglePsrWarningOverlay } from './page-psr-warning-panel.component';
 import { toggleStandingUpOverlay } from './page-standing-up-panel.component';
 import {
-composeMekPsrDisplayModifiers,
 composeTurnSummaryHeatRows,
+mekPsrDisplayModifiers,
 runWithTurnSummaryCloseBlocked,
 } from './page-turn-summary.util';
 
@@ -111,6 +112,8 @@ export abstract class TurnTrackerControls {
     private readonly destroyRef = inject(DestroyRef);
 
     readonly member = input<CBTForceMember | null>(null);
+    /** Real phases: the game clock owns phase and turn boundaries, so per-unit End Phase/Turn are hidden. */
+    readonly realPhases = inject(GameTurnService).enabled;
 
     private controller: MekTurnSummaryRuntimeController | null = null;
     private readonly forceRuntimeVersion = signal(0);
@@ -224,6 +227,9 @@ export abstract class TurnTrackerControls {
             : 0;
     });
     readonly hasPSRChecks = computed(() => (this.runtime()?.pendingChecks().length ?? 0) > 0);
+    /** A check the full phase system rolls at once holds the unit until it is rolled. */
+    readonly immediatePilotCheckPending = computed(() =>
+        this.runtime()?.pendingChecks().some(check => check.immediate === true) ?? false);
     readonly falling = computed(() =>
         (this.runtime()?.snapshot().movementState.automaticFalls.length ?? 0) > 0);
     readonly PSRChecksCount = computed(() => this.runtime()?.pendingChecks().length ?? 0);
@@ -385,10 +391,7 @@ export abstract class TurnTrackerControls {
     readonly psrModifiers = computed(() => {
         const snapshot = this.runtime()?.snapshot();
         if (!snapshot) return this.entityControlRoll()?.modifiers ?? [];
-        const permanent = snapshot?.movement.kind === 'supported'
-            ? snapshot.movement.permanentPsrModifiers
-            : [];
-        return composeMekPsrDisplayModifiers(permanent, snapshot?.movementState.checks ?? []);
+        return mekPsrDisplayModifiers(snapshot.movement);
     });
 
     readonly airborne = computed(() => this.runtime()?.snapshot().turn.airborne
@@ -565,7 +568,7 @@ export abstract class TurnTrackerControls {
         const runtime = this.runtime();
         const action = runtime?.movementActions().find(candidate => candidate.kind === mode);
         if (runtime && action) {
-            void runtime.selectMovement(action);
+            void runtime.selectMovement(action).then(() => this.rollImmediatePilotChecks());
             return;
         }
         const snapshot = this.entitySnapshot();
@@ -586,7 +589,7 @@ export abstract class TurnTrackerControls {
     isMoveModeDisabled(mode: MotiveModes): boolean {
         if (mode === 'VTOL') return true;
         if (this.prone() && (mode === 'jump' || mode === 'sprint')) return true;
-        if (this.currentMoveMode() === mode) return false;
+        if (this.currentMoveMode() === mode) return this.immediatePilotCheckPending();
         const runtime = this.runtime();
         return runtime
             ? runtime.movementAction(mode)?.legal !== true
@@ -690,7 +693,7 @@ export abstract class TurnTrackerControls {
     commitMoveDistance(value: number): void {
         const runtime = this.runtime();
         if (runtime) {
-            void runtime.setMovementDistance(value);
+            void runtime.setMovementDistance(value).then(() => this.rollImmediatePilotChecks());
             return;
         }
         const snapshot = this.entitySnapshot();
@@ -778,6 +781,13 @@ export abstract class TurnTrackerControls {
         this.overlayManager.closeManagedOverlay(`turnSummary-${this.member()?.id}`);
     }
 
+    /** Opens the existing roll panel at once for a check the full phase system rolls at once (TW p.59; Core p.113). */
+    private rollImmediatePilotChecks(): void {
+        const member = this.member();
+        if (!this.immediatePilotCheckPending() || !isCBTMekForceMember(member)) return;
+        openPsrWarningOverlay(member, this.overlayManager, this.injector, this.overlay);
+    }
+
     private entityMovementMaximum(mode: MotiveModes): number {
         return this.entityMovementCapabilities()?.maximum[mode] ?? 0;
     }
@@ -827,9 +837,7 @@ export abstract class TurnTrackerControls {
     }
 
     private heatPolicy(): 'automatic' | 'manual' {
-        return this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-            ? 'automatic'
-            : 'manual';
+        return heatAutomationPolicy(this.options);
     }
 
     private confirmForceBoundary(message: string, title: string): Promise<boolean> {

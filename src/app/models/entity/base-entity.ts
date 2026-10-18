@@ -96,7 +96,7 @@ import { EquipmentRegistry } from '../equipment-lookup';
 import { getBayTransporterType, isQuartersBay } from './bays/bay-definitions';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 import { calculateEntityCostDetails } from './utils/cost/entity-cost';
-import { calculateBattleValueDetails, getOffensiveSpeedFactor } from './utils/battle-value';
+import { calculateBattleValueDetails, getOffensiveSpeedFactor, type BattleValueBreakdown } from './utils/battle-value';
 import { reconcileEquipmentRelationships } from './utils/equipment-relationship-rules';
 import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
 import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
@@ -553,12 +553,17 @@ export abstract class BaseEntity implements EntityTechnology {
   /** Construction cost, sourced from the same calculation as `costDetails`. */
   readonly cost = computed(() => this.costDetails().total);
 
-  /** One reactive traversal supplies both pristine BV and its structured report. */
-  readonly #battleValueCalculation = computed(() => calculateBattleValueDetails(this));
-  /** Pristine BV, honoring an authored override like Java Entity.calculateBattleValue. */
-  readonly battleValue = computed(() => this.#battleValueCalculation().base);
-  /** Calculated evidence and any authored override used by the effective BV. */
-  readonly battleValueDetails = computed(() => this.#battleValueCalculation().details);
+  /** Per ruleset, one reactive traversal supplies both pristine BV and its structured report. */
+  readonly #battleValueCalculation: Readonly<Record<CBTRuleset, Signal<BattleValueBreakdown>>> = Object.freeze({
+    'total-warfare': computed(() => calculateBattleValueDetails(this, undefined, 'total-warfare')),
+    'core-2026': computed(() => calculateBattleValueDetails(this, undefined, 'core-2026')),
+  });
+  /** Pristine BV under `ruleset`, honoring an authored override like Java Entity.calculateBattleValue. */
+  readonly battleValue = (ruleset: CBTRuleset): number =>
+    this.#battleValueCalculation[ruleset]().base;
+  /** Calculated evidence and any authored override used by the effective BV under `ruleset`. */
+  readonly battleValueDetails = (ruleset: CBTRuleset) =>
+    this.#battleValueCalculation[ruleset]().details;
 
   /** Current BV from this same entity calculator plus an external runtime state view. */
   battleValueFor(state: EntityStateView, ruleset: CBTRuleset = CORE_2026_RULESET): number {

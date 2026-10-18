@@ -131,7 +131,7 @@ describe('PagePsrWarningPanelComponent', () => {
         const dispatch = jasmine.createSpy('dispatchUnitCommand').and.callFake(async () => {
             current = panelSnapshot({
                 automaticFalls: current.movementState.automaticFalls,
-                checks: [{ ...shutdownCheck, status: 'success', resolution: { dice: [2, 6], total: 8 } }],
+                checks: [{ ...shutdownCheck, status: 'success', resolution: { dice: [2, 6], total: 8, targetNumber: 8 } }],
                 revision: 2,
             });
             return { accepted: true, changed: true, revision: 2 };
@@ -231,6 +231,7 @@ describe('PagePsrWarningPanelComponent', () => {
                         resolution: {
                             dice: command.evidence.dice,
                             total: command.evidence.dice[0] + command.evidence.dice[1],
+                            targetNumber: check.targetNumber,
                         },
                     }
                     : check),
@@ -299,8 +300,6 @@ function pilotCheck(
             witness: '{}',
             criticalSlotIds: [],
             locationIds: [],
-            baseTarget: targetNumber,
-            triggerModifier: 0,
         },
         producingRevision: 1,
         ordinal: 0,

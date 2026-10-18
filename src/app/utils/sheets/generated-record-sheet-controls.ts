@@ -9,7 +9,7 @@ import {
   isVehicleEntity,
 } from '../../models/entity/utils/entity-type-guards';
 import { isDroneOperatingSystemEquipment } from '../../models/drone-operating-system.model';
-import { MEK_UNIT_CONDITION_CONTROLS } from '../../models/mek-record-sheet-controls';
+import { mekUnitConditionControls } from '../../models/mek-record-sheet-controls';
 import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import { gameRulesFor } from '../../models/rules/game-rules';
@@ -62,7 +62,7 @@ export function generatedUnitConditionControls(
   entity: BaseEntity,
   ruleset: CBTRuleset,
 ): readonly UnitConditionControl[] {
-  if (isMekEntity(entity)) return MEK_UNIT_CONDITION_CONTROLS;
+  if (isMekEntity(entity)) return mekUnitConditionControls(ruleset);
   if (!isVehicleEntity(entity) && !isProtoMekEntity(entity) && !isAeroEntity(entity)) return [];
 
   const drone = entity.equipment().some((mount) => isDroneOperatingSystemEquipment(mount.equipment));

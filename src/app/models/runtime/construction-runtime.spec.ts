@@ -30,10 +30,10 @@ describe('construction effective Battle Value', () => {
         draft.removeEquipment(weapon);
         const value = await constructionRuntimeBattleValue(f.instance, draft, origins, [{ type: 'repair-all' }],
             { id: 'megamek', ruleset: f.instance.ruleset() });
-        expect(value.effective).toBe(draft.battleValue());
+        expect(value.effective).toBe(draft.battleValue(f.instance.ruleset()));
         expect(value.beforeRepairs).not.toBeNull();
         expect(value.beforeRepairs!).toBeLessThan(value.effective!);
-        expect(value.effective).toBeLessThan(f.entity.battleValue());
+        expect(value.effective).toBeLessThan(f.entity.battleValue(f.instance.ruleset()));
         expect(constructionRuntimeSource(f.instance)).toBe(source);
     });
 });

@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { CBTRuleset } from './cbt-ruleset.model';
+import { gameRulesFor } from './rules/game-rules';
 import {
     crewStateDefinitions,
     unitConditionControls,
@@ -10,8 +12,11 @@ import {
     type UnitConditionControl,
 } from './unit-status-presentation';
 
-export const MEK_UNIT_CONDITION_CONTROLS: readonly UnitConditionControl[] =
-    unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'ecm-shielded', 'skidding', 'jammed']);
+/** A Mek's condition controls under its ruleset: Core has no skidding. */
+export function mekUnitConditionControls(ruleset: CBTRuleset): readonly UnitConditionControl[] {
+    const skidding = gameRulesFor(ruleset).supportsSkidding;
+    return unitConditionControls(['shutdown', 'prone', 'swarmed', 'tagged', 'ecm-shielded', ...(skidding ? ['skidding' as const] : []), 'jammed']);
+}
 
 export const MEK_CREW_STATE_CONTROLS: readonly CrewStateControlDefinition[] =
     crewStateDefinitions(['unconscious', 'ejected']) as readonly CrewStateControlDefinition[];

@@ -620,17 +620,27 @@ export class WeaponEquipment extends Equipment {
         return this.hasFlag('F_INFANTRY') && this.infantry !== undefined;
     }
 
-    getClusterSize(ammo?: AmmoEquipment | null, fallbackProfile?: AmmoWeaponProfile | null): number {
+    /**
+     * Damage points per hit-location group. ATMs group by ruleset; without rules this is the printed
+     * Core notation (C6).
+     */
+    getClusterSize(
+        ammo?: AmmoEquipment | null,
+        fallbackProfile?: AmmoWeaponProfile | null,
+        rules?: Pick<CBTGameRules, 'atmClusterSize'>,
+    ): number {
+        if (this.hasFlag('F_ATM') || this.ammoType === 'ATM' || this.ammoType === 'IATM') {
+            return rules?.atmClusterSize ?? 6;
+        }
         let clusterSize = 0;
         const ammoProfile = resolveAmmoWeaponProfile(ammo) ?? fallbackProfile;
         if (ammoProfile) {
-            clusterSize = ammoProfile.clusterSize;
-        } else if (this.hasFlag('F_SRM')) {
+            clusterSize = ammoProfile.clusterSize ?? 0;
+        } else if (this.hasFlag('F_SRM') || this.ammoType === 'SRM_TORPEDO') {
             clusterSize = 2;
-        } else if (this.hasAnyFlag(['F_LRM', 'F_MRM']) || isHagEquipment(this)) {
+        } else if (this.hasAnyFlag(['F_LRM', 'F_MRM']) || isHagEquipment(this)
+            || ['LRM_TORPEDO', 'NLRM_TORPEDO', 'ROCKET_LAUNCHER'].includes(this.ammoType)) {
             clusterSize = 5;
-        } else if (this.hasFlag('F_ATM')) {
-            clusterSize = 6;
         } else if (this.hasFlag('F_M_POD') || this.ammoType === 'SBGAUSS') {
             clusterSize = 1;
         }

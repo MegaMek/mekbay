@@ -36,6 +36,11 @@ export interface CrewHitRecipient {
     readonly unconscious: boolean;
     readonly unavailable: boolean;
     readonly hits: number;
+    /**
+     * Core p.117 timing: `deferred` hits wound now and roll at the end of the combat phase;
+     * `due` is that one end-of-phase roll, at the warrior's current hits.
+     */
+    readonly consciousness?: 'deferred' | 'due';
 }
 
 export interface ResolvedCrewConsciousnessCheck {
@@ -48,6 +53,8 @@ export interface ResolvedCrewHits {
     readonly wounds: number;
     readonly unconscious: boolean;
     readonly checks: readonly ResolvedCrewConsciousnessCheck[];
+    /** Core p.117: `deferred` when this warrior's consciousness roll waits for the end of the combat phase. */
+    readonly consciousness?: 'deferred';
 }
 
 export interface CrewHitAutomationOptions {
@@ -58,6 +65,10 @@ export interface CrewHitAutomationOptions {
 export interface UnitCrewHitOptions extends CrewHitAutomationOptions {
     /** Crew health after earlier hit groups that are preflighted but not yet applied. */
     readonly projected?: ReadonlyMap<CrewPositionId, Readonly<{ wounds: number; unconscious: boolean }>>;
+    /** The hits come from combat-phase damage, which resolves at the end of the phase. */
+    readonly combatPhase?: boolean;
+    /** Crew members already owing this phase's consciousness roll. */
+    readonly consciousnessRollsDue?: ReadonlySet<CrewPositionId>;
 }
 
 /** A recovery roll due at a phase boundary. */
@@ -263,35 +274,74 @@ export class CBTCrewHitAutomationService {
         return true;
     }
 
-    /** Preflights every consciousness roll the hits cause; a number hits every station. */
+    /**
+     * Preflights every consciousness roll the hits cause; a number hits every station. Total Warfare
+     * rolls for every hit at once (p.41). Core (p.117) rolls once at the warrior's total hits, and holds a
+     * combat-phase roll, or one the warrior already owes, for the end of the phase.
+     */
     resolveUnitHits(
         initial: CBTUnitSnapshot,
         hits: number | ReadonlyMap<CrewPositionId, number>,
         eventPrefix: string,
         options: UnitCrewHitOptions = {},
     ): Promise<readonly ResolvedCrewHits[] | null> {
-        const positions = orderedCrewPositions(initial);
+        const deferred = (positionId: CrewPositionId): boolean => initial.ruleset === 'core-2026'
+            && (options.combatPhase === true || options.consciousnessRollsDue?.has(positionId) === true);
         return this.resolve(
             this.subject(initial),
             initial.ruleset,
             eventPrefix,
-            positions.flatMap(position => {
+            orderedCrewPositions(initial).flatMap(position => {
                 const positionHits = typeof hits === 'number' ? hits : hits.get(position.id) ?? 0;
-                if (positionHits <= 0) return [];
-                const state = initial.query.crewState(position.id);
-                const current = options.projected?.get(position.id) ?? state;
-                const name = positions.length > 1 ? assignedCrewName(initial, position.id) : undefined;
-                return [Object.freeze({
-                    id: position.id,
-                    ...(name === undefined ? {} : { name }),
-                    wounds: current.wounds,
-                    unconscious: current.unconscious,
-                    unavailable: !state.isAboard() || current.wounds >= MAX_CREW_WOUNDS,
-                    hits: positionHits,
-                })];
+                return positionHits <= 0 ? [] : [this.recipient(
+                    initial,
+                    position.id,
+                    positionHits,
+                    deferred(position.id) ? 'deferred' : undefined,
+                    options.projected?.get(position.id),
+                )];
             }),
             { interactive: options.interactive },
         );
+    }
+
+    /** Core p.117: one consciousness roll per listed crew member, at their current hits. */
+    resolveDueConsciousness(
+        snapshot: CBTUnitSnapshot,
+        positionIds: readonly CrewPositionId[],
+        eventPrefix: string,
+        options: CrewHitAutomationOptions = {},
+    ): Promise<readonly ResolvedCrewHits[] | null> {
+        return this.resolve(
+            this.subject(snapshot),
+            snapshot.ruleset,
+            eventPrefix,
+            orderedCrewPositions(snapshot)
+                .filter(position => positionIds.includes(position.id))
+                .map(position => this.recipient(snapshot, position.id, 0, 'due')),
+            options,
+        );
+    }
+
+    /** One crew member as a hit recipient; `current` is health after hits preflighted but not yet applied. */
+    private recipient(
+        snapshot: CBTUnitSnapshot,
+        positionId: CrewPositionId,
+        hits: number,
+        consciousness: CrewHitRecipient['consciousness'],
+        current: Readonly<{ wounds: number; unconscious: boolean }> = snapshot.query.crewState(positionId),
+    ): CrewHitRecipient {
+        const state = snapshot.query.crewState(positionId);
+        const name = orderedCrewPositions(snapshot).length > 1 ? assignedCrewName(snapshot, positionId) : undefined;
+        return Object.freeze({
+            id: positionId,
+            ...(name === undefined ? {} : { name }),
+            wounds: current.wounds,
+            unconscious: current.unconscious,
+            unavailable: !state.isAboard() || current.wounds >= MAX_CREW_WOUNDS,
+            hits,
+            ...(consciousness === undefined ? {} : { consciousness }),
+        });
     }
 
     /** Commits preflighted crew hits; a newly unconscious member schedules recovery. */
@@ -417,6 +467,7 @@ export class CBTCrewHitAutomationService {
                 unconscious: plan.recipient.unconscious
                     || resolvedChecks.some(row => row.resolution.outcome === 'failed'),
                 checks: Object.freeze(resolvedChecks),
+                ...(plan.recipient.consciousness === 'deferred' ? { consciousness: 'deferred' as const } : {}),
             });
         }));
     }
@@ -442,8 +493,9 @@ export class CBTCrewHitAutomationService {
         recipient: CrewHitRecipient,
         finalWounds: number,
     ): readonly number[] {
-        if (recipient.unavailable || recipient.unconscious
-            || finalWounds <= recipient.wounds || finalWounds >= MAX_CREW_WOUNDS) return [];
+        if (recipient.unavailable || recipient.unconscious || recipient.consciousness === 'deferred') return [];
+        if (recipient.consciousness === 'due') return finalWounds > 0 && finalWounds < MAX_CREW_WOUNDS ? [finalWounds] : [];
+        if (finalWounds <= recipient.wounds || finalWounds >= MAX_CREW_WOUNDS) return [];
         if (ruleset === 'core-2026') return [finalWounds];
         return Array.from(
             { length: finalWounds - recipient.wounds },

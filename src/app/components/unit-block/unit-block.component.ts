@@ -5,6 +5,7 @@
 import { crewSkillsForUnit } from '../../models/unit-crew-policy';
 import { UnitNameService } from '../../services/unit-name.service';
 import { Component, ChangeDetectionStrategy, computed, effect, input, output, inject, signal } from '@angular/core';
+import { merge } from 'rxjs';
 import { NgTemplateOutlet, UpperCasePipe } from '@angular/common';
 import { FormatTonsPipe } from '../../pipes/format-tons.pipe';
 import { OptionsService } from '../../services/options.service';
@@ -173,7 +174,8 @@ export class UnitBlockComponent {
         effect(onCleanup => {
             const member = this.forceUnit();
             if (!member || !isCBTForceMember(member)) return;
-            const subscription = member.force.changed.subscribe(changedUnitIds => {
+            // A force this client does not own changes in memory only (a rules switch), through its session.
+            const subscription = merge(member.force.changed, member.force.sessionChanged).subscribe(changedUnitIds => {
                 if (changedUnitIds?.includes(member.id) ?? true) {
                     this.runtimeRevision.update(value => value + 1);
                 }
@@ -493,7 +495,7 @@ export class UnitBlockComponent {
             const externalStores = forceUnit.externalStoresBattleValue();
             const skills = forceUnit.skillBattleValue();
             const adjusted = forceUnit.adjustedBattleValue();
-            if (pristine === null || current === null || tag === null || c3 === null
+            if (current === null || tag === null || c3 === null
                 || externalStores === null || skills === null || adjusted === null
                 || (current === pristine && tag === 0 && c3 === 0 && externalStores === 0 && skills === 0)) return null;
             const formatBv = (value: number) => FormatBvPipe.formatValue(value);

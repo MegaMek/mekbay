@@ -69,7 +69,7 @@ export class CBTSummaryPrintUtil {
             if (groupMembers.length === 0) continue;
 
             const rows = groupMembers.map(member => {
-                totalBaseBv += this.getBaseBv(member);
+                totalBaseBv += member.pristineBattleValue();
                 totalFinalBv += this.getPrintableBv(member, printPilotData);
                 return this.createRosterTableRow(member, printPilotData, nameFormat);
             });
@@ -152,7 +152,7 @@ export class CBTSummaryPrintUtil {
                 </td>
                 <td class="col-type">${this.escapeHtml(typeSubtype)}</td>
                 <td class="col-role">${this.escapeHtml(entity.role() && entity.role() !== 'None' ? entity.role() : '')}</td>
-                <td class="col-base-bv is-numeric">${this.formatNumber(this.getBaseBv(member))}</td>
+                <td class="col-base-bv is-numeric">${this.formatNumber(member.pristineBattleValue())}</td>
                 <td class="col-gp is-numeric">${printPilotData && primaryCrew ? `${primaryCrew.gunnery}/${primaryCrew.piloting}` : ''}</td>
                 <td class="col-bv is-numeric is-bold">${this.formatNumber(this.getPrintableBv(member, printPilotData))}</td>
                 <td class="col-tons is-numeric">${this.formatNumber(entity.tonnage())}</td>
@@ -166,15 +166,11 @@ export class CBTSummaryPrintUtil {
         `;
     }
 
-    private static getBaseBv(member: CBTForceMember): number {
-        return member.pristineBattleValue() ?? member.entity.battleValue();
-    }
-
     private static getPrintableBv(member: CBTForceMember, printPilotData: boolean): number {
         if (printPilotData) {
-            return member.adjustedBattleValue() ?? member.entity.battleValue();
+            return member.adjustedBattleValue() ?? member.pristineBattleValue();
         }
-        return member.currentBaseBattleValue() ?? this.getBaseBv(member);
+        return member.currentBaseBattleValue() ?? member.pristineBattleValue();
     }
 
     private static formatMovement(entity: BaseEntity): string {

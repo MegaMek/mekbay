@@ -10,6 +10,8 @@ effectiveAerospaceMaximumBracket,
 } from '../../utils/aerospace-range.util';
 import { compareText } from '../../utils/string.util';
 import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
+import { artemisVToHitAdjustment } from '../artemis-equipment.model';
+import { apolloToHitAdjustment } from '../apollo-mode.model';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
@@ -20,7 +22,7 @@ import { isVehicleEntity } from '../entity/utils/entity-type-guards';
 import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
 import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from '../equipment.model';
-import { isLaserInsulatorEquipment } from '../laser-insulator.model';
+import { isLaserInsulatorEquipment,laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import {
 gameRulesFor,
@@ -28,7 +30,7 @@ type ComponentToHitSubject,
 type ComponentToHitTargetingComputerFacts,
 type ToHitModifierBreakdownEntry,
 } from '../rules/game-rules';
-import type { ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
+import { protoMekCriticalModifiers, type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
 import {
 vehicleHasChargeAttack,
 type VehicleRuntimeRulesProjection,
@@ -52,6 +54,7 @@ type MekPhysicalAttackRow,
 import {
 entityAmmoLoadout,
 entityAmmoLoadouts,
+entityAmmoSelectionCompatibilityFacts,
 entityWeaponTechBasesForAmmo,
 weaponAcceptsAmmo,
 type AmmoLoadout,
@@ -141,7 +144,7 @@ export function projectNonMekEquipmentPanel(
             piloting: effectiveEntityPilotingSkill(entity, skills.piloting),
         }),
         components,
-        physicalAttacks: vehicleRules !== null && isVehicleEntity(entity) && vehicleHasChargeAttack(entity, ruleset)
+        physicalAttacks: vehicleRules !== null && isVehicleEntity(entity) && vehicleHasChargeAttack(entity)
             ? Object.freeze([projectVehicleCharge(entity, state, vehicleRules, ruleset)])
             : protoMekRules !== null
                 ? Object.freeze([projectProtoMekFrenzy(entity, state, protoMekRules, ruleset)])
@@ -175,7 +178,7 @@ function projectComponent(
     const mount = component.mount;
     const equipment = mount.equipment;
     const componentState = state.components.get(componentId);
-    const { vehicle: vehicleRules, infantry: infantryRules, aero: aeroRules } = query.projection();
+    const { vehicle: vehicleRules, infantry: infantryRules, protoMek: protoMekRules, aero: aeroRules } = query.projection();
     const status = query.componentStatus(componentId, 'committed');
     const previewStatus = query.componentStatus(componentId, 'preview');
     const modeDefinition = nonMekComponentModes(entity, equipment, ruleset);
@@ -226,6 +229,7 @@ function projectComponent(
         : undefined;
     const stateModifiers = Object.freeze([
         ...(aeroRules?.modifiers.ranged ?? []),
+        ...(protoMekRules === null ? [] : protoMekCriticalModifiers(protoMekRules.criticalHits, mount.getOccupiedLocations())),
         ...(vehicleRules === null ? [] : [
             ...vehicleRules.modifiers.ranged,
             ...(vehicleRules.stabilizerAffectedComponentIds.has(componentId)
@@ -238,6 +242,29 @@ function projectComponent(
         ]),
     ] satisfies readonly ToHitModifierBreakdownEntry[]);
     const rules = gameRulesFor(ruleset);
+    const linkedEnhancement = entity.getLinkingMount(mount);
+    const linkedEnhancementId = linkedEnhancement === undefined
+        ? undefined
+        : asComponentId(linkedEnhancement.mountId);
+    const linkedEnhancementStatus = linkedEnhancementId === undefined
+        ? 'available'
+        : query.componentStatus(linkedEnhancementId, 'committed');
+    const linkedEnhancementEquipment = linkedEnhancement?.equipment;
+    const artemisVToHit = artemisVToHitAdjustment(
+        linkedEnhancementEquipment, equipment, linkedEnhancementStatus,
+        selectedAmmo, query.hasCondition('jammed'), false,
+    );
+    const apolloToHit = apolloToHitAdjustment(linkedEnhancementEquipment, equipment, linkedEnhancementStatus, ruleset);
+    const bombast = bombastLaserEquipmentProfile(equipment, ruleset, mode);
+    const indirectAdjustments = [
+        ...(bombast === null ? [] : [{
+            kind: 'replace-base' as const,
+            value: bombast.toHitModifier,
+            label: 'Bombast Laser',
+        }]),
+        ...(apolloToHit === null ? [] : [apolloToHit]),
+    ];
+    const adjustments = artemisVToHit === null ? indirectAdjustments : [...indirectAdjustments, artemisVToHit];
     const hit = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? projectEquipmentPanelHit(rules, {
             subject: installedWeaponToHitSubject(
@@ -248,9 +275,9 @@ function projectComponent(
                 targetingComputer,
             ),
             stateModifiers,
-        })
+            adjustments,
+        }, indirectAdjustments)
         : null;
-    const bombast = bombastLaserEquipmentProfile(equipment, ruleset, mode);
     const effectiveDamage = equipment instanceof WeaponEquipment
         ? bombast?.damage ?? equipment.damage
         : 0;
@@ -274,14 +301,6 @@ function projectComponent(
             effectiveWeaponTypes,
         )
         : null;
-    const linkedEnhancement = entity.getLinkingMount(mount);
-    const linkedEnhancementId = linkedEnhancement === undefined
-        ? undefined
-        : asComponentId(linkedEnhancement.mountId);
-    const linkedEnhancementStatus = linkedEnhancementId === undefined
-        ? 'available'
-        : query.componentStatus(linkedEnhancementId, 'committed');
-    const linkedEnhancementEquipment = linkedEnhancement?.equipment;
     const modifiers = linkedEnhancementEquipment !== undefined
         && isWeaponEnhancementEquipment(linkedEnhancementEquipment)
         ? Object.freeze([Object.freeze({
@@ -295,7 +314,12 @@ function projectComponent(
         ? prototypeLaserMaximumExtraHeat(equipment.internalName)
         : 0;
     const displayedHeat = equipment instanceof WeaponEquipment
-        ? equipment.heat + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
+        ? laserInsulatorAdjustedHeat(
+            bombast?.heat ?? equipment.heat,
+            linkedEnhancementEquipment,
+            equipment,
+            linkedEnhancementStatus === 'available',
+        ) + (entity.unitType() === 'Aero' ? prototypeMaximumHeat : 0)
         : 0;
     const weapon = equipment instanceof WeaponEquipment && !mount.isPhysicalWeapon()
         ? Object.freeze({
@@ -309,15 +333,18 @@ function projectComponent(
                 && componentState?.jammed !== true
                 && vehicleRules?.fireBlockedComponentIds.has(componentId) !== true
                 && infantryRules?.fireBlockedComponentIds.has(componentId) !== true
+                && protoMekRules?.fireBlockedComponentIds.has(componentId) !== true
                 && !hpgBlocksWeaponFire,
             damage: effectiveDamage,
             damageText: damage!.default,
             damageTextByRange: damage!.byRange,
+            damageByRange: damage!.valuesByRange,
             hit: hit!,
             toHitModifier: hit!.default.profile.length === 1
                 ? hit!.default.profile[0]!
                 : Object.freeze([...hit!.default.profile]),
             hitModifierBreakdown: Object.freeze([...hit!.default.modifierBreakdown]),
+            ...(artemisVToHit === null ? {} : { artemisVModifier: artemisVToHit.modifier }),
             ranges: Object.freeze([...(ammoProfile?.ranges ?? equipment.ranges)]),
             minimumRange: selectedAmmoIsHotLoaded(ammoSources, targeting?.ammo)
                 ? 0 : ammoProfile?.minimumRange ?? equipment.minimumRange,
@@ -459,6 +486,7 @@ function projectWeaponBayComponent(
         damageText: AEROSPACE_RANGE_BRACKETS.map((range, index) =>
             `${range[0].toUpperCase()}:${attackValues[index] > 0 ? attackValues[index] : '—'}`).join(' '),
         damageTextByRange: damageByRange,
+        damageByRange: undefined,
         ...(aerospace === undefined ? {} : { aerospace }),
         ...(selection === undefined ? { selection: undefined } : { selection }),
         ...(ammoSelection === undefined ? { ammoSelection: undefined } : { ammoSelection }),
@@ -756,6 +784,7 @@ function projectAmmo(
         hotLoaded: query.ammoHotLoaded(componentId),
         loadouts: freezeLoadouts(loadouts),
         weaponTechBases: entityWeaponTechBasesForAmmo(entity, current.equipment),
+        compatibilityFacts: entityAmmoSelectionCompatibilityFacts(entity, loadouts.map(loadout => loadout.equipment)),
     });
 }
 

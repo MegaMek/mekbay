@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import type { RawEquipmentData, EquipmentMap } from '../src/app/models/equipment.model';
 import { equipmentCatalogEntriesIncludingSupplements } from '../src/app/models/equipment-catalog-supplements';
 import type { BaseEntity } from '../src/app/models/entity/base-entity';
+import { CORE_2026_RULESET } from '../src/app/models/cbt-ruleset.model';
 
 const args = process.argv.slice(2);
 const argument = (name: string): string | undefined => {
@@ -54,6 +55,7 @@ async function loadImplementation(sourceRoot: string) {
                     sourceRevision: catalog.asSourceHash(createHash('sha1').update(content).digest('base64url')),
                 },
                 format: file.toLowerCase().endsWith('.mtf') ? 'mtf' : 'blk',
+                ruleset: CORE_2026_RULESET,
             });
         }
         catch (error) { summary = { error: `metadata: ${message(error)}` }; }

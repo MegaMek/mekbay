@@ -24,7 +24,7 @@ import { ToastService } from '../../../services/toast.service';
 import { DiceRollerComponent } from '../../dice-roller/dice-roller.component';
 import { MekTurnSummaryRuntimeController } from './mek-turn-summary-runtime.controller';
 import {
-    composeMekPsrDisplayModifiers,
+    mekPsrDisplayModifiers,
     openTurnSummaryChildOverlay,
     PAGE_TURN_MEMBER,
 } from './page-turn-summary.util';
@@ -112,12 +112,9 @@ export class PageStandingUpPanelComponent {
     readonly modifiersList = computed(() => {
         const standing = this.standing();
         if (!standing) return [];
-        const snapshot = this.runtime?.snapshot();
-        const permanent = snapshot?.movement.kind === 'supported'
-            ? snapshot.movement.permanentPsrModifiers
-            : [];
+        const movement = this.runtime?.snapshot().movement;
         return [
-            ...composeMekPsrDisplayModifiers(permanent, snapshot?.movementState.checks ?? []),
+            ...(movement ? mekPsrDisplayModifiers(movement) : []),
             ...(standing.standingModifier === 0
                 ? []
                 : [{ reason: 'Standing up', modifier: standing.standingModifier }]),

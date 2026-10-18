@@ -5,6 +5,7 @@ import { MekEntity } from '../../models/entity/entities/mek/mek-entity';
 import { calculateMekEquipmentWeightDetails } from '../../models/entity/utils/weight/mek-weight';
 import type { BattleValueDetail } from '../../models/entity/utils/battle-value/bv-calculator';
 import { calculateEntityWeightBreakdown } from '../../models/entity/utils/weight/entity-weight';
+import { CORE_2026_RULESET, type CBTRuleset } from '../../models/cbt-ruleset.model';
 export interface ConstructionBreakdownRow {
     readonly label: string;
     readonly calculation?: string;
@@ -19,7 +20,11 @@ export interface ConstructionBreakdownData {
 }
 
 
-export function constructionBreakdown(entity: BaseEntity, kind: 'bv' | 'weight' | 'cost'): ConstructionBreakdownData {
+export function constructionBreakdown(
+    entity: BaseEntity,
+    kind: 'bv' | 'weight' | 'cost',
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+): ConstructionBreakdownData {
     if (kind === 'bv') {
         const rows: ConstructionBreakdownRow[] = [];
         const append = (details: readonly BattleValueDetail[], depth: number) => {
@@ -28,8 +33,8 @@ export function constructionBreakdown(entity: BaseEntity, kind: 'bv' | 'weight' 
                 if (detail.details) append(detail.details, depth + 1);
             }
         };
-        append(entity.battleValueDetails(), 0);
-        return { title: 'Battle Value breakdown', unit: 'BV', total: entity.battleValue(), rows };
+        append(entity.battleValueDetails(ruleset), 0);
+        return { title: 'Battle Value breakdown', unit: 'BV', total: entity.battleValue(ruleset), rows };
     }
     if (kind === 'cost') {
         const cost = entity.costDetails();

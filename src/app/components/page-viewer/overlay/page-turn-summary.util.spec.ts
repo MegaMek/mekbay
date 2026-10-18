@@ -3,12 +3,12 @@
 
 import {
     actionableMekPilotChecks,
-    composeMekPsrDisplayModifiers,
     composeTurnSummaryHeatRows,
+    mekPsrDisplayModifiers,
     runWithTurnSummaryCloseBlocked,
 } from './page-turn-summary.util';
-import { asLocationId } from '../../../models/entity/entity-identifiers';
 import type { MekPilotCheckV2 } from '../../../models/runtime/mek-movement-psr-v2';
+import { createDirectMekRuntimeFixture } from '../../../models/runtime/testing/direct-mek-runtime-fixture';
 import type { OverlayManagerService } from '../../../services/overlay-manager.service';
 
 describe('runWithTurnSummaryCloseBlocked', () => {
@@ -112,27 +112,31 @@ describe('composeTurnSummaryHeatRows', () => {
     });
 });
 
-describe('composeMekPsrDisplayModifiers', () => {
-    it('keeps rules-owned permanent modifiers and adds phase-only modifiers in production order', () => {
-        expect(composeMekPsrDisplayModifiers([
-            { modifier: 1, reason: 'Hip Destroyed', locationId: asLocationId('location:left-leg') },
-            { modifier: -2, reason: 'Mounts AES in its legs' },
-        ], [{
-            reason: 'Received 20 damage',
-            source: { triggerKind: 'damage-total-20', triggerModifier: 1 },
-        }])).toEqual([
-            { modifier: -2, reason: 'Mounts AES in its legs' },
-            { modifier: 1, reason: 'Hip Destroyed', locationId: 'location:left-leg' },
-            { modifier: 1, reason: 'Received 20 damage' },
-        ]);
+describe('mekPsrDisplayModifiers', () => {
+    it('shows the damage the unit holds and the 20+ damage event every roll of the phase adds', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const query = () => fixture.instance.query();
+        for (const face of fixture.index.armorFaces.values()) {
+            if (query().mekMovementPsrState().damageThisPhase >= 20) break;
+            if (face.maximumPoints === 0) continue;
+            expect(fixture.instance.dispatch({ type: 'damage-armor', faceId: face.id, amount: face.maximumPoints,
+                target: 'committed' }).accepted).toBeTrue();
+        }
+        const rows = mekPsrDisplayModifiers(query().mekMovementPsr());
+        expect(rows).toContain({ modifier: 1, reason: `Received ${query().mekMovementPsrState().damageThisPhase} damage` });
+        const target = fixture.instance.query().mekPilotChecks()[0]!.targetNumber;
+        expect(target).toBe(5 + rows.reduce((sum, row) => sum + row.modifier, 0));
     });
 
-    it('shows the current gyro check instead of double-counting committed gyro damage', () => {
-        expect(composeMekPsrDisplayModifiers([
-            { modifier: 3, reason: 'Gyro damaged' },
-        ], [{
-            reason: 'Gyro hit',
-            source: { triggerKind: 'gyro-hit', triggerModifier: 3 },
-        }])).toEqual([{ modifier: 3, reason: 'Gyro hit' }]);
+    it('counts a gyro hit once: the damage the unit holds is the hit (TW p.60)', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const gyro = [...fixture.index.slots.values()].find(slot => slot.componentIds.some(componentId => {
+            const component = fixture.index.components.get(componentId);
+            return component?.kind === 'system' && component.systemType === 'Gyro';
+        }))!;
+        expect(fixture.instance.dispatch({ type: 'hit-critical', slotId: gyro.id, hits: 1, target: 'committed' })
+            .accepted).toBeTrue();
+        expect(mekPsrDisplayModifiers(fixture.instance.query().mekMovementPsr())
+            .filter(row => row.reason.includes('Gyro'))).toEqual([{ modifier: 3, reason: 'Gyro damaged' }]);
     });
 });

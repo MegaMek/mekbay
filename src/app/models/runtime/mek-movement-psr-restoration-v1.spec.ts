@@ -50,7 +50,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
 
         expect(result.kind).toBe('supported');
         if (result.kind !== 'supported') return;
-        expect(serializeMekMovementPsrStateV2(result.state)).toEqual({ schemaVersion: 2 });
+        expect(serializeMekMovementPsrStateV2(result.state)).toEqual({ schemaVersion: 3 });
         expect(Object.isFrozen(result)).toBeTrue();
         expect(Object.isFrozen(result.state)).toBeTrue();
     });
@@ -65,7 +65,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         expect(result.kind).toBe('supported');
         if (result.kind !== 'supported') return;
         expect(serializeMekMovementPsrStateV2(result.state)).toEqual({
-            schemaVersion: 2,
+            schemaVersion: 3,
             movement: {
                 schemaVersion: 1,
                 mode: 'walk',
@@ -87,7 +87,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         expect(result.kind).toBe('supported');
         if (result.kind !== 'supported') return;
         expect(serializeMekMovementPsrStateV2(result.state)).toEqual({
-            schemaVersion: 2,
+            schemaVersion: 3,
             movement: {
                 schemaVersion: 1,
                 mode: 'walk',

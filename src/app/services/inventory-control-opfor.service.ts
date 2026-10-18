@@ -14,8 +14,13 @@ import {
     type EncounterTarget,
     type TargetRegistryCommandResult,
 } from '../models/runtime/encounter-runtime';
+import type { CBTForceMember } from '../models/force-member.model';
+import { GameEventsService, type TargetDistanceEvent } from './game-events.service';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
+
+/** Typing a distance edits on every keystroke; only the settled value is mirrored. */
+const DISTANCE_MIRROR_DEBOUNCE_MS = 400;
 
 @Injectable({ providedIn: 'root' })
 export class InventoryControlOpforService {
@@ -23,11 +28,20 @@ export class InventoryControlOpforService {
     private readonly injector = inject(Injector);
     private readonly logger = inject(LoggerService);
     private readonly toastService = inject(ToastService);
+    private readonly gameEvents = inject(GameEventsService);
     private loadedForces: () => readonly ForceSlot[] = () => [];
     private monitor: EffectRef | null = null;
+    private readonly pendingMirrors = new Map<string, ReturnType<typeof setTimeout>>();
 
     constructor() {
-        inject(DestroyRef).onDestroy(() => this.monitor?.destroy());
+        const received = this.gameEvents.received.subscribe(({ toForce, event }) => {
+            if (event.kind === 'target-distance') this.applyMirroredDistance(toForce, event);
+        });
+        inject(DestroyRef).onDestroy(() => {
+            this.monitor?.destroy();
+            received.unsubscribe();
+            for (const timer of this.pendingMirrors.values()) clearTimeout(timer);
+        });
     }
 
     connect(loadedForces: Signal<readonly ForceSlot[]>): void {
@@ -37,17 +51,58 @@ export class InventoryControlOpforService {
     }
 
     targetName(targetId: string, fallback: string): string {
+        const target = this.resolveOpforTarget(targetId);
+        return target ? this.unitNames.name(target.member.entity) : fallback;
+    }
+
+    /** The loaded unit an OPFOR target stands for, if its force is open here. */
+    resolveOpforTarget(targetId: string): { readonly forceId: string; readonly member: CBTForceMember } | null {
         for (const slot of this.loadedForces()) {
             if (!(slot.force instanceof CBTForce)) continue;
             const forceId = slot.force.instanceId();
             if (!forceId) continue;
             for (const member of slot.force.getCBTMembers()) {
-                if (forceOpforTargetId(forceId, member.id) === targetId) {
-                    return this.unitNames.name(member.entity);
-                }
+                if (forceOpforTargetId(forceId, member.id) === targetId) return { forceId, member };
             }
         }
-        return fallback;
+        return null;
+    }
+
+    /**
+     * A player set how far their unit is from an opposing unit: give the opposing unit's owner the
+     * same distance to this unit, so only one player has to track it (either side may overwrite it).
+     */
+    mirrorTargetDistance(attacker: CBTForceMember, targetId: string, distance: number): void {
+        const target = this.resolveOpforTarget(targetId);
+        const fromForce = attacker.force.instanceId();
+        if (!target || !fromForce) return;
+        const key = `${fromForce}:${attacker.id}:${targetId}`;
+        const pending = this.pendingMirrors.get(key);
+        if (pending) clearTimeout(pending);
+        this.pendingMirrors.set(key, setTimeout(() => {
+            this.pendingMirrors.delete(key);
+            void this.gameEvents.send(target.forceId, {
+                kind: 'target-distance', fromForce, fromUnit: attacker.id, toUnit: target.member.id, distance,
+            });
+        }, DISTANCE_MIRROR_DEBOUNCE_MS));
+    }
+
+    private applyMirroredDistance(toForce: string, event: TargetDistanceEvent): void {
+        const force = this.loadedForces()
+            .map(slot => slot.force)
+            .find((candidate): candidate is CBTForce => candidate instanceof CBTForce
+                && candidate.instanceId() === toForce && !candidate.readOnly());
+        const member = force?.getCBTMembers().find(candidate => candidate.id === event.toUnit);
+        if (!force || !member) return;
+        const targetId = forceOpforTargetId(event.fromForce, event.fromUnit);
+        // Only a target this player already tracks (their OPFOR includes the attacker) takes the distance.
+        if (!force.queryInventoryControlTargetRegistry().targets.some(target => target.id === targetId)) return;
+        const current = force.getAttackerTargeting(member.id)?.state.targets.get(targetId);
+        if (current?.distance === event.distance) return;
+        void force.dispatchAttackerTargeting(member.id, {
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-target-facts', targetId, facts: { ...current, distance: event.distance } },
+        });
     }
 
     isAvailable(force: CBTForce): boolean {

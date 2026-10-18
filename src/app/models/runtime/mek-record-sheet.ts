@@ -500,7 +500,7 @@ export function projectMekRecordSheet(
     const movementOptions = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
     const construction = constructionLabels(index);
     const battleValue = suppliedBattleValue ?? Object.freeze({
-        pristine: safePristineMekBattleValue(entity),
+        pristine: safePristineMekBattleValue(entity, ruleset),
         current: safeCurrentMekBattleValue(query),
         adjusted: null,
     });
@@ -593,9 +593,9 @@ function safeCurrentMekBattleValue(query: MekUnitQueryPort): number | null {
     }
 }
 
-function safePristineMekBattleValue(entity: MekEntity): number | null {
+function safePristineMekBattleValue(entity: MekEntity, ruleset: CBTRuleset): number | null {
     try {
-        return entity.battleValue();
+        return entity.battleValue(ruleset);
     } catch {
         return null;
     }

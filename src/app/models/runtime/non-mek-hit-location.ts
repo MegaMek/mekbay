@@ -1,20 +1,27 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { BaseEntity } from '../../models/entity/base-entity';
+import type { BaseEntity } from '../entity/base-entity';
 import {
     isAeroEntity,
     isProtoMekEntity,
     isVehicleEntity,
-} from '../../models/entity/utils/entity-type-guards';
-import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
+} from '../entity/utils/entity-type-guards';
+import { aeroCriticalType, type AeroCriticalType } from '../rules/aero-critical-rules';
+import type { NonMekRecordSheetSnapshot } from './non-mek-record-sheet';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 
 export type NonMekHitArc = MekHitArc | 'front-left' | 'front-right' | 'rear-left' | 'rear-right';
 
+/** Vehicle table markers: a critical hit check, or a motive system (VTOL: rotor) hit. */
+export type NonMekHitEffect = 'critical' | 'motive';
+
 export interface NonMekHitLocation {
     readonly locationCode: string;
     readonly transferredFrom?: string;
+    readonly effects?: readonly NonMekHitEffect[];
+    /** Aerospace: the critical damage this roll threatens. */
+    readonly aeroCritical?: AeroCriticalType;
 }
 
 const FRONT_BACK_ARCS: readonly NonMekHitArc[] = ['front', 'right', 'rear', 'left'];
@@ -34,6 +41,8 @@ export function resolveNonMekHitLocation(
     d6: () => number,
 ): NonMekHitLocation | null {
     let code: string | null = null;
+    let aeroCritical: AeroCriticalType | undefined;
+    const effects: NonMekHitEffect[] = [];
     if (isVehicleEntity(entity)) {
         const facing = ({ front: 'Front', rear: 'Rear', left: 'Left', right: 'Right',
             'front-left': 'Front Left', 'front-right': 'Front Right',
@@ -45,6 +54,8 @@ export function resolveNonMekHitLocation(
             if (roll === 4) code = entity.hasTurret() ? 'Turret' : 'Rotor';
             if (roll === 5) code = side ? 'Front' : 'Right';
             if (roll === 9) code = side ? 'Rear' : 'Left';
+            if (roll === 2 || roll === 12 || (roll === 8 && side)) effects.push('critical');
+            if (code === 'Rotor') effects.push('motive');
         } else {
             if (nonMekHitArcs(entity).length === 6) {
                 if (roll === 3) {
@@ -56,6 +67,10 @@ export function resolveNonMekHitLocation(
                 if (roll === 5) code = side ? 'Front' : 'Left';
                 if (roll === 9) code = side ? 'Rear' : arc === 'rear' ? 'Right' : 'Left';
             }
+            const sixArcs = nonMekHitArcs(entity).length === 6;
+            const quarter = arc !== 'front' && arc !== 'rear';
+            if (roll === 2 || roll === 12 || (roll === 8 && (sixArcs ? quarter : side))) effects.push('critical');
+            if ([3, 4, 9].includes(roll) || (roll === 5 && (!sixArcs || !quarter))) effects.push('motive');
             if (roll >= 10 && entity.hasTurret()) {
                 code = entity.hasDualTurret()
                     ? d6() + (arc === 'front' ? -2 : arc === 'rear' ? 2 : 0) <= 3
@@ -79,6 +94,7 @@ export function resolveNonMekHitLocation(
         const smallCraft = entity.entityType === 'SmallCraft' || entity.entityType === 'DropShip';
         const left = capital ? 'FLS' : smallCraft ? 'Left Side' : 'Left Wing';
         const right = capital ? 'FRS' : smallCraft ? 'Right Side' : 'Right Wing';
+        aeroCritical = aeroCriticalType(entity, arc, roll);
         if (arc === 'front' || arc === 'rear') {
             code = roll === 4 || roll === 5 ? capital && arc === 'rear' ? 'ARS' : right
                 : roll === 9 || roll === 10 ? capital && arc === 'rear' ? 'ALS' : left
@@ -96,5 +112,11 @@ export function resolveNonMekHitLocation(
         }
     }
     const location = snapshot.locations.find(candidate => candidate.code === code);
-    return location?.sheetCode ? { locationCode: location.sheetCode } : null;
+    return location?.sheetCode
+        ? {
+            locationCode: location.sheetCode,
+            ...(effects.length === 0 ? {} : { effects: Object.freeze(effects) }),
+            ...(aeroCritical === undefined ? {} : { aeroCritical }),
+        }
+        : null;
 }

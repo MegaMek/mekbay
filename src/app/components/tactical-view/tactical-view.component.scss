@@ -1,564 +1,1073 @@
 @use '../../styles/wedged-panel' as wedge;
 
 :host {
-    --tactical-accent: var(--bt-yellow);
-    --tactical-cyan: var(--primary-focus-color);
-    --tactical-danger: var(--damage-color, #db4d43);
-    --tactical-panel: var(--background-color-menu);
-    --tactical-panel-strong: color-mix(in srgb, var(--text-color) 5%, var(--background-color));
-    --tactical-line: var(--border-color);
-    --tactical-panel-gap: 8px;
-    --tactical-label: var(--text-color-tertiary);
-    position: relative;
-    display: block;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    color: var(--text-color);
-    background: var(--background-color);
-    container: tactical-view / inline-size;
+  --tactical-accent: var(--bt-yellow);
+  --tactical-cyan: var(--primary-focus-color);
+  --tactical-danger: var(--damage-color, #db4d43);
+  --tactical-panel: var(--background-color-menu);
+  --tactical-panel-strong: color-mix(in srgb, var(--text-color) 5%, var(--background-color));
+  --tactical-line: var(--border-color);
+  --tactical-panel-gap: 8px;
+  --tactical-label: var(--text-color-tertiary);
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text-color);
+  background: var(--background-color);
+  container: tactical-view / inline-size;
 }
 
-* { box-sizing: border-box; }
-button { font: inherit; touch-action: manipulation; }
-h1, h2, h3, p { margin: 0; }
-button:disabled { cursor: default; opacity: .45; }
-button:focus-visible { outline: 2px solid var(--primary-focus-color); outline-offset: 2px; }
-[tabindex='-1'] { scroll-margin-top: 8px; }
-[tabindex='-1']:focus { outline: none; }
+* {
+  box-sizing: border-box;
+}
+button {
+  font: inherit;
+  touch-action: manipulation;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+button:focus-visible {
+  outline: 2px solid var(--primary-focus-color);
+  outline-offset: 2px;
+}
+[tabindex='-1'] {
+  scroll-margin-top: 8px;
+}
+[tabindex='-1']:focus {
+  outline: none;
+}
 
 /* Shell: fixed toolbar and unit navigation around one scrolling page. */
-.tactical-shell { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+.tactical-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
 .tactical-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: grid;
-    align-content: start;
-    gap: var(--tactical-panel-gap);
-    overflow: auto;
-    overscroll-behavior: contain;
-    padding: 6px max(8px, var(--safe-area-inset-right)) 12px max(8px, var(--safe-area-inset-left));
-    scrollbar-gutter: stable;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: var(--tactical-panel-gap);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px max(8px, var(--safe-area-inset-right)) 12px max(8px, var(--safe-area-inset-left));
+  scrollbar-gutter: stable;
 }
-.tactical-scroll > * { width: min(100%, 1920px); min-width: 0; margin-inline: auto; }
+.tactical-scroll > * {
+  width: min(100%, 1920px);
+  min-width: 0;
+  margin-inline: auto;
+}
 .tactical-toolbar {
-    flex: 0 0 auto;
-    z-index: 30;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 44px;
-    padding: max(4px, var(--safe-area-inset-top)) max(8px, var(--safe-area-inset-right)) 4px max(8px, var(--safe-area-inset-left));
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--background-color-menu);
+  flex: 0 0 auto;
+  z-index: 30;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: max(4px, var(--safe-area-inset-top)) max(8px, var(--safe-area-inset-right)) 4px
+    max(8px, var(--safe-area-inset-left));
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--background-color-menu);
 }
-.toolbar-spacer { flex: 1; }
-.toolbar-icon-button, .toolbar-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-height: 38px;
-    color: var(--text-color);
-    font-size: .8rem;
-    cursor: pointer;
+.toolbar-spacer {
+  flex: 1;
 }
-.toolbar-icon-button { width: 38px; flex: 0 0 38px; border: 0; background: transparent; }
-.toolbar-button { padding: 6px 10px; }
-.toolbar-button svg, .toolbar-icon-button svg { width: 20px; height: 20px; flex-shrink: 0; }
-.toolbar-count { color: var(--primary-focus-color); font-variant-numeric: tabular-nums; }
-.section-shortcuts { display: flex; gap: 2px; margin-left: 12px; }
+.toolbar-icon-button,
+.toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  color: var(--text-color);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.toolbar-icon-button {
+  width: 38px;
+  flex: 0 0 38px;
+  border: 0;
+  background: transparent;
+}
+.toolbar-button {
+  padding: 6px 10px;
+}
+.toolbar-button svg,
+.toolbar-icon-button svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.toolbar-count {
+  color: var(--primary-focus-color);
+  font-variant-numeric: tabular-nums;
+}
+.section-shortcuts {
+  display: flex;
+  gap: 2px;
+  margin-left: 12px;
+}
 .section-shortcuts button {
-    min-height: 38px;
-    padding: 6px 12px;
-    border: 0;
-    background: transparent;
-    color: var(--text-color-secondary);
-    font-size: .82rem;
-    font-weight: 700;
-    cursor: pointer;
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-color-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
 }
-.section-shortcuts button:hover, .toolbar-icon-button:hover:not(:disabled) { background: var(--hover-highlight-transparent); color: var(--text-color); }
+.section-shortcuts button:hover,
+.toolbar-icon-button:hover:not(:disabled) {
+  background: var(--hover-highlight-transparent);
+  color: var(--text-color);
+}
 
 /* Unit header: identity and conditions on the left, the crew roster on the right. */
 .unit-header {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 6px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 16px;
 }
-.unit-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.unit-icon { flex: 0 0 40px; }
-.unit-title-block { display: grid; gap: 5px; min-width: 0; }
-.unit-title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; }
-h1 { font-size: 20px; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
-.unit-meta { display: inline-flex; flex-wrap: wrap; gap: 2px 10px; color: var(--text-color-secondary); font-size: .75rem; }
-.hero-condition-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.unit-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.unit-icon {
+  flex: 0 0 40px;
+}
+.unit-title-block {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.unit-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-width: 0;
+}
+h1 {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.unit-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  color: var(--text-color-secondary);
+  font-size: 0.75rem;
+}
+.hero-condition-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
 .state-chip {
-    min-height: 26px;
-    padding: 3px 8px;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-color-secondary);
-    font-size: .68rem;
-    font-weight: 700;
-    letter-spacing: .03em;
-    text-transform: uppercase;
-    white-space: nowrap;
-    cursor: pointer;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.state-chip.active { border-color: var(--state-color); background: color-mix(in srgb, var(--state-color) 35%, var(--background-color)); color: var(--text-color); }
-.state-chip:hover:not(:disabled) { background-color: var(--hover-highlight-transparent); }
-.state-chip.active:hover:not(:disabled) { background: color-mix(in srgb, var(--state-color) 45%, var(--background-color)); }
-.condition-menu-toggle { width: 30px; padding-inline: 0; }
-.condition-status-chip { display: inline-flex; align-items: center; cursor: default; }
+.state-chip.active {
+  border-color: var(--state-color);
+  background: color-mix(in srgb, var(--state-color) 35%, var(--background-color));
+  color: var(--text-color);
+}
+.state-chip:hover:not(:disabled) {
+  background-color: var(--hover-highlight-transparent);
+}
+.state-chip.active:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--state-color) 45%, var(--background-color));
+}
+.condition-menu-toggle {
+  width: 30px;
+  padding-inline: 0;
+}
+.condition-status-chip {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
 
 /* One aligned line per crew member: identity, skills, wounds, states. */
 .crew-roster {
-    --frame-color: #aaa;
-    display: grid;
-    grid-template-columns: minmax(84px, max-content) max-content max-content max-content;
-    column-gap: 14px;
-    min-width: 0;
-    padding: 2px 10px;
-    background-color: var(--tactical-panel);
+  --frame-color: #aaa;
+  display: grid;
+  grid-template-columns: minmax(84px, max-content) max-content max-content max-content;
+  column-gap: 14px;
+  min-width: 0;
+  padding: 2px 10px;
+  background-color: var(--tactical-panel);
 }
-.crew-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; min-height: 36px; padding: 3px 0; }
-.crew-row + .crew-row { border-top: 1px solid var(--border-color); }
+.crew-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  min-height: 36px;
+  padding: 3px 0;
+}
+.crew-row + .crew-row {
+  border-top: 1px solid var(--border-color);
+}
 .crew-identity {
-    display: grid;
-    justify-items: start;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--text-color);
-    text-align: left;
-    cursor: pointer;
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
 }
-.crew-identity:disabled, .skill-rating:disabled, .wound-button:disabled { opacity: 1; }
-.crew-position { color: var(--tactical-label); font-size: .6rem; font-weight: 700; letter-spacing: .08em; line-height: 1.1; text-transform: uppercase; }
-.crew-name { max-width: 22ch; overflow: hidden; font-size: .82rem; font-weight: 600; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-.crew-name.muted { color: var(--text-color-secondary); font-weight: 500; }
-.crew-row.incapacitated .crew-name { color: var(--text-color-secondary); }
-.crew-vacant-note { grid-column: 2 / -1; color: var(--text-color-secondary); font-size: .75rem; }
-.crew-skills { display: inline-flex; align-items: center; gap: 10px; }
-.skill-rating { display: inline-flex; align-items: baseline; gap: 3px; padding: 0; border: 0; background: transparent; color: var(--text-color-secondary); font-size: .7rem; cursor: pointer; }
-.skill-rating abbr { text-decoration: none; }
-.skill-rating strong { color: var(--primary-focus-color); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-.psr-modifier { display: inline-flex; align-items: baseline; gap: 2px; padding: 2px 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-color); font-size: .78rem; font-weight: 700; cursor: help; }
-.psr-modifier small { color: var(--text-color-secondary); font-size: .58rem; font-weight: 600; }
-.psr-modifier.danger { border-color: color-mix(in srgb, var(--damage-color) 60%, transparent); color: var(--damage-color); }
-.psr-modifier.bonus { border-color: #54af65; color: #54af65; }
-.wound-track { display: inline-flex; }
+.crew-identity:disabled,
+.skill-rating:disabled,
+.wound-button:disabled {
+  opacity: 1;
+}
+.crew-position {
+  color: var(--tactical-label);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+.crew-name {
+  max-width: 22ch;
+  overflow: hidden;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crew-name.muted {
+  color: var(--text-color-secondary);
+  font-weight: 500;
+}
+.crew-row.incapacitated .crew-name {
+  color: var(--text-color-secondary);
+}
+.crew-vacant-note {
+  grid-column: 2 / -1;
+  color: var(--text-color-secondary);
+  font-size: 0.75rem;
+}
+.crew-skills {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.skill-rating {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color-secondary);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.skill-rating abbr {
+  text-decoration: none;
+}
+.skill-rating strong {
+  color: var(--primary-focus-color);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.psr-modifier {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: help;
+}
+.psr-modifier small {
+  color: var(--text-color-secondary);
+  font-size: 0.58rem;
+  font-weight: 600;
+}
+.psr-modifier.danger {
+  border-color: color-mix(in srgb, var(--damage-color) 60%, transparent);
+  color: var(--damage-color);
+}
+.psr-modifier.bonus {
+  border-color: #54af65;
+  color: #54af65;
+}
+.wound-track {
+  display: inline-flex;
+}
 .wound-button {
-    width: 30px;
-    height: 26px;
-    padding: 0;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-color);
-    font-size: .68rem;
-    font-weight: 700;
-    cursor: pointer;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
 }
-.wound-button + .wound-button { margin-left: -1px; }
-.wound-button:not(.active):hover:not(:disabled) { background: var(--hover-highlight-transparent); }
-.wound-button.active { position: relative; border-color: var(--damage-color); background: var(--damage-color); color: #fff; }
-.crew-states { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.wound-button + .wound-button {
+  margin-left: -1px;
+}
+.wound-button:not(.active):hover:not(:disabled) {
+  background: var(--hover-highlight-transparent);
+}
+.wound-button.active {
+  position: relative;
+  border-color: var(--damage-color);
+  background: var(--damage-color);
+  color: #fff;
+}
+.crew-states {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 
 /* Destroyed units: a hazard banner, a struck name, and a desaturated (still editable) sheet. */
 .destroyed-banner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 12px;
-    padding: 8px 14px;
-    border: 1px solid var(--tactical-danger);
-    background: repeating-linear-gradient(-45deg,
-            color-mix(in srgb, var(--tactical-danger) 30%, var(--background-color)) 0 12px,
-            color-mix(in srgb, var(--tactical-danger) 14%, var(--background-color)) 12px 24px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--tactical-danger);
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--tactical-danger) 30%, var(--background-color)) 0 12px,
+    color-mix(in srgb, var(--tactical-danger) 14%, var(--background-color)) 12px 24px
+  );
 }
-.destroyed-banner svg { width: 22px; height: 22px; flex: 0 0 22px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.destroyed-banner strong { font-size: 1.05rem; font-weight: 800; letter-spacing: .24em; text-transform: uppercase; }
-.destroyed-banner span { color: var(--text-color); font-size: .78rem; }
-.unit-destroyed h1 { text-decoration: line-through; text-decoration-color: var(--tactical-danger); text-decoration-thickness: 2px; }
-.unit-destroyed .turn-summary-host, .unit-destroyed .tactical-grid { filter: grayscale(.75); opacity: .72; }
+.destroyed-banner svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.destroyed-banner strong {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+.destroyed-banner span {
+  color: var(--text-color);
+  font-size: 0.78rem;
+}
+.unit-destroyed h1 {
+  text-decoration: line-through;
+  text-decoration-color: var(--tactical-danger);
+  text-decoration-thickness: 2px;
+}
+.unit-destroyed .turn-summary-host,
+.unit-destroyed .tactical-grid {
+  filter: grayscale(0.75);
+  opacity: 0.72;
+}
 
 /* Panels and the responsive page grid. */
-.turn-summary-host { display: flex; }
-.tactical-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--tactical-panel-gap); align-items: start; }
-.main-column { display: grid; gap: var(--tactical-panel-gap); min-width: 0; }
-.tactical-panel { --frame-color: #aaa; min-width: 0; padding-inline: 2px; background-color: var(--tactical-panel); }
-.panel-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px 12px;
-    min-height: 30px;
-    padding: 3px 8px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: var(--background-color-menu);
+.turn-summary-host {
+  display: flex;
 }
-.panel-heading h2 { font-size: 14px; font-weight: 600; }
-.panel-kicker { color: var(--bt-yellow); font-size: .72rem; }
-weapons-equipment-panel { display: block; min-width: 0; }
-.ammo-loadout-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 24px; padding: 2px 6px; font-size: .75rem; }
-.tactical-ammo-loadout { padding: 12px; border-bottom: 1px solid var(--border-color); container-type: inline-size; }
+.tactical-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--tactical-panel-gap);
+  align-items: start;
+}
+.main-column {
+  display: grid;
+  gap: var(--tactical-panel-gap);
+  min-width: 0;
+}
+.tactical-panel {
+  --frame-color: #aaa;
+  min-width: 0;
+  padding-inline: 2px;
+  background-color: var(--tactical-panel);
+}
+.panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 30px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--background-color-menu);
+}
+.panel-heading h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.panel-kicker {
+  color: var(--bt-yellow);
+  font-size: 0.72rem;
+}
+weapons-equipment-panel {
+  display: block;
+  min-width: 0;
+}
+.ammo-loadout-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+}
+.tactical-ammo-loadout {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  container-type: inline-size;
+}
 
 /* Footer: previous/next unit and the fire controls of the selected weapons. */
-.tactical-navigation-toolbar { position: relative; flex: 0 0 auto; z-index: 40; width: 100%; display: grid; grid-template-columns: minmax(40px, 1fr) auto minmax(40px, 1fr); align-items: center; gap: 12px; min-height: 44px; padding: 2px max(8px, var(--safe-area-inset-right)) calc(2px + var(--safe-area-inset-bottom)) max(8px, var(--safe-area-inset-left)); border-top: 1px solid var(--border-color); background-color: var(--background-color-menu); }
-.tactical-footer-nav { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--text-color-secondary); cursor: pointer; text-align: left; }
-.tactical-footer-nav-right { justify-self: end; text-align: right; }
-.tactical-footer-nav:hover { color: var(--text-color); }
-.tactical-footer-nav.hidden { visibility: hidden; }
-.nav-arrow-symbol { --chevron-size: 24px; }
-.nav-unit-name { display: block; min-width: 0; max-width: 20ch; font-size: .85rem; font-weight: 600; }
-.nav-unit-model, .nav-unit-chassis { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.nav-unit-model { font-size: .72rem; color: var(--text-color-tertiary); }
-.tactical-footer-center { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.unit-position { color: var(--text-color-secondary); font-size: .85rem; }
-.fire-heat { display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 8px; font-size: .72rem; }
-.fire-heat strong { grid-column: 2; grid-row: 1 / 3; font-size: 1.6rem; }
-.fire-heat small { color: var(--text-color-secondary); }
-.fire-heat .hot { color: var(--damage-color); }
-.fire-button, .clear-selection { min-height: 44px; }
-.damage-strip:hover:not(:disabled), .critical-row:hover:not(:disabled), .system-stage:hover:not(:disabled) { background: var(--hover-highlight-transparent); border-color: var(--primary-focus-color); }
+.tactical-navigation-toolbar {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 40;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(40px, 1fr) auto minmax(40px, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 2px max(8px, var(--safe-area-inset-right)) calc(2px + var(--safe-area-inset-bottom))
+    max(8px, var(--safe-area-inset-left));
+  border-top: 1px solid var(--border-color);
+  background-color: var(--background-color-menu);
+}
+.tactical-footer-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+.tactical-footer-nav-right {
+  justify-self: end;
+  text-align: right;
+}
+.tactical-footer-nav:hover {
+  color: var(--text-color);
+}
+.tactical-footer-nav.hidden {
+  visibility: hidden;
+}
+.nav-arrow-symbol {
+  flex: 0 0 auto;
+  font-size: 2rem;
+  line-height: 1;
+}
+.nav-unit-name {
+  display: block;
+  min-width: 0;
+  max-width: 20ch;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.nav-unit-model,
+.nav-unit-chassis {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.nav-unit-model {
+  font-size: 0.72rem;
+  color: var(--text-color-tertiary);
+}
+.tactical-footer-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.unit-position {
+  color: var(--text-color-secondary);
+  font-size: 0.85rem;
+}
+.fire-heat {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 0 8px;
+  font-size: 0.72rem;
+}
+.fire-heat strong {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  font-size: 1.6rem;
+}
+.fire-heat small {
+  color: var(--text-color-secondary);
+}
+.fire-heat .hot {
+  color: var(--damage-color);
+}
+.fire-button,
+.clear-selection {
+  min-height: 44px;
+}
+.damage-strip:hover:not(:disabled),
+.critical-row:hover:not(:disabled),
+.system-stage:hover:not(:disabled) {
+  background: var(--hover-highlight-transparent);
+  border-color: var(--primary-focus-color);
+}
 /* Joined stage boxes overlap by a pixel; lift the hovered or focused one so its whole border shows. */
-.system-stage:hover, .system-stage:focus-visible { position: relative; z-index: 1; }
+.system-stage:hover,
+.system-stage:focus-visible {
+  position: relative;
+  z-index: 1;
+}
 
 /* Armor + structure: pips grouped in fives per location. */
 .location-block {
-    border-bottom: 1px solid var(--tactical-line);
+  border-bottom: 1px solid var(--tactical-line);
 }
 
 .location-block:last-child {
-    border-bottom: 0;
+  border-bottom: 0;
 }
 
 .location-block.destroyed {
-    background: color-mix(in srgb, var(--tactical-danger) 10%, transparent);
+  background: color-mix(in srgb, var(--tactical-danger) 10%, transparent);
 }
 
 .location-line {
-    display: grid;
-    grid-template-columns: 31px minmax(0, 1fr);
-    align-items: stretch;
-    min-height: 25px;
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 25px;
 }
 
-.location-line+.location-line {
-    border-top: 1px dashed color-mix(in srgb, var(--tactical-line) 60%, transparent);
+.location-line + .location-line {
+  border-top: 1px dashed color-mix(in srgb, var(--tactical-line) 60%, transparent);
 }
 
 .location-name {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 1px;
-    border-right: 1px solid var(--tactical-line);
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border-right: 1px solid var(--tactical-line);
 }
 
 .location-name strong {
-    font-size: 0.66rem;
+  font-size: 0.66rem;
 }
 
 .location-name span {
-    color: var(--tactical-danger);
-    font-size: 0.4rem;
-    font-weight: 900;
+  color: var(--tactical-danger);
+  font-size: 0.4rem;
+  font-weight: 900;
 }
 
 .location-tracks {
-    display: flex;
-    min-width: 0;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 2px 5px;
-    padding: 2px 3px;
+  display: flex;
+  min-width: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px 5px;
+  padding: 2px 3px;
 }
 
 .damage-strip {
-    display: inline-flex;
-    flex: 1 1 auto;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    min-height: 22px;
-    padding: 1px 3px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-color);
-    text-align: left;
-    cursor: pointer;
-    container: damage-strip / inline-size;
-    overflow: hidden;
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 22px;
+  padding: 1px 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-color);
+  text-align: left;
+  cursor: pointer;
+  container: damage-strip / inline-size;
+  overflow: hidden;
 }
 
 .internal-strip {
-    border-left-color: color-mix(in srgb, var(--tactical-cyan) 48%, var(--tactical-line));
+  border-left-color: color-mix(in srgb, var(--tactical-cyan) 48%, var(--tactical-line));
 }
 
 .armor-panel.damage-tracks-wrapped .location-tracks {
-    flex-direction: column;
-    align-items: stretch;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .armor-panel.damage-tracks-wrapped .damage-strip {
-    width: 100%;
-    flex: 0 0 auto;
+  width: 100%;
+  flex: 0 0 auto;
 }
 
 .armor-panel.damage-tracks-wrapped .internal-strip {
-    border-left-color: transparent;
+  border-left-color: transparent;
 }
 
 .track-value {
-    min-width: 31px;
-    flex: 0 0 31px;
-    color: var(--text-color-secondary);
-    font-size: 0.6rem;
-    font-variant-numeric: tabular-nums;
-    text-align: center;
+  min-width: 31px;
+  flex: 0 0 31px;
+  color: var(--text-color-secondary);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .numeric-damage-strip {
-    min-height: 36px;
-    justify-content: center;
-    border-color: color-mix(in srgb, var(--text-color) 18%, transparent);
-    background: color-mix(in srgb, var(--text-color) 3%, transparent);
+  min-height: 36px;
+  justify-content: center;
+  border-color: color-mix(in srgb, var(--text-color) 18%, transparent);
+  background: color-mix(in srgb, var(--text-color) 3%, transparent);
 }
 
 .numeric-damage-strip.internal-strip {
-    border-color: color-mix(in srgb, var(--tactical-cyan) 48%, var(--tactical-line));
+  border-color: color-mix(in srgb, var(--tactical-cyan) 48%, var(--tactical-line));
 }
 
 .large-track-value {
-    max-width: 100%;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--text-color);
-    font-size: clamp(0.78rem, 8cqi, 1.05rem);
-    font-variant-numeric: tabular-nums;
-    font-weight: 900;
-    letter-spacing: 0.02em;
-    line-height: 1;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-color);
+  font-size: clamp(0.78rem, 8cqi, 1.05rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .numeric-damage-strip.internal-strip .large-track-value {
-    color: color-mix(in srgb, var(--tactical-cyan) 78%, var(--text-color));
+  color: color-mix(in srgb, var(--tactical-cyan) 78%, var(--text-color));
 }
 
 .pip-matrix {
-    --pip-size: 9px;
-    --pip-group-width: 49px;
-    --pip-column-gap: 10px;
-    --pip-rows: 2;
-    display: grid;
-    width: max-content;
-    max-width: 100%;
-    flex: 0 1 auto;
-    grid-template-rows: repeat(var(--pip-rows), var(--pip-size));
-    grid-auto-flow: column;
-    grid-auto-columns: var(--pip-group-width);
-    column-gap: var(--pip-column-gap);
-    row-gap: 2px;
-    align-items: center;
-    align-self: center;
-    background: repeating-linear-gradient(to right,
-            transparent 0 54px,
-            color-mix(in srgb, var(--text-color) 30%, transparent) 54px 55px,
-            transparent 55px 59px);
+  --pip-size: 9px;
+  --pip-group-width: 49px;
+  --pip-column-gap: 10px;
+  --pip-rows: 2;
+  display: grid;
+  width: max-content;
+  max-width: 100%;
+  flex: 0 1 auto;
+  grid-template-rows: repeat(var(--pip-rows), var(--pip-size));
+  grid-auto-flow: column;
+  grid-auto-columns: var(--pip-group-width);
+  column-gap: var(--pip-column-gap);
+  row-gap: 2px;
+  align-items: center;
+  align-self: center;
+  background: repeating-linear-gradient(
+    to right,
+    transparent 0 54px,
+    color-mix(in srgb, var(--text-color) 30%, transparent) 54px 55px,
+    transparent 55px 59px
+  );
 }
 
 .pip-group {
-    display: flex;
-    width: 49px;
-    min-width: 0;
-    align-items: center;
-    gap: 1px;
+  display: flex;
+  width: 49px;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
 }
 
 .pip-matrix.single-line {
-    --pip-rows: 1;
+  --pip-rows: 1;
 }
 
 .damage-pip {
-    display: block;
-    width: 9px;
-    height: 9px;
-    flex: 0 0 auto;
-    border: 1px solid color-mix(in srgb, var(--text-color) 42%, transparent);
-    border-radius: 50%;
-    background: transparent;
+  display: block;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--text-color) 42%, transparent);
+  border-radius: 50%;
+  background: transparent;
 }
 
 .damage-pip.damaged {
-    border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff);
-    background: var(--tactical-danger);
+  border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff);
+  background: var(--tactical-danger);
 }
 
 .structure-pip {
-    border-radius: 1px;
-    border-color: color-mix(in srgb, var(--tactical-cyan) 58%, transparent);
+  border-radius: 1px;
+  border-color: color-mix(in srgb, var(--tactical-cyan) 58%, transparent);
 }
 
 .structure-pip.damaged {
-    border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff);
+  border-color: color-mix(in srgb, var(--tactical-danger) 86%, #fff);
 }
 
-.location-line { min-height: 36px; grid-template-columns: 38px minmax(0, 1fr); }
-.location-name strong { font-size: .8rem; }
-.location-name span { font-size: .6rem; }
-.track-value { font-size: .78rem; }
-.damage-strip { min-height: 32px; }
-.read-only .damage-strip { opacity: 1; }
+.location-line {
+  min-height: 36px;
+  grid-template-columns: 38px minmax(0, 1fr);
+}
+.location-name strong {
+  font-size: 0.8rem;
+}
+.location-name span {
+  font-size: 0.6rem;
+}
+.track-value {
+  font-size: 0.78rem;
+}
+.damage-strip {
+  min-height: 32px;
+}
+.read-only .damage-strip {
+  opacity: 1;
+}
 
 /*
  * Critical hit table, laid out like the printed sheet: arms outside, torsos and legs inside,
  * head and center torso in the middle. Each stack is its own column so cells never align rows.
  */
-.critical-panel { container: critical-table / inline-size; }
-.critical-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 6px; padding: 6px; }
-.critical-stack { display: contents; }
-.critical-group { @include wedge.panel; align-self: start; }
-.critical-stack[data-stack^='left'] .critical-group { --wedge-left: 0px; }
-.critical-stack[data-stack^='right'] .critical-group { --wedge-right: 0px; }
+.critical-panel {
+  container: critical-table / inline-size;
+}
+.critical-group {
+  @include wedge.panel;
+  align-self: start;
+}
+.critical-stack[data-stack^='left'] .critical-group {
+  --wedge-left: 0px;
+}
+.critical-stack[data-stack^='right'] .critical-group {
+  --wedge-right: 0px;
+}
 .critical-group h3 {
-    min-height: 22px;
-    padding: 4px max(8px, var(--wedge-left)) 3px;
-    border-bottom: 1px solid #ffffff30;
-    background-color: var(--background-color-menu);
-    color: var(--text-color);
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: .07em;
-    line-height: 1.3;
-    text-transform: uppercase;
+  @include wedge.inner-clip;
+  min-height: 22px;
+  padding-block: 4px 3px;
+  padding-inline: max(8px, var(--wedge-left)) max(8px, var(--wedge-right));
+  border-bottom: 1px solid #ffffff30;
+  background-color: var(--background-color-menu);
+  color: var(--text-color);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  line-height: 1.3;
+  text-transform: uppercase;
 }
-.critical-group.destroyed h3 { background: color-mix(in srgb, var(--tactical-danger) 40%, var(--background-color-menu)); }
-.critical-group.destroyed .critical-slots { opacity: .55; }
-.critical-block { display: grid; grid-template-columns: minmax(0, 1fr); }
-.critical-block.rolled { grid-template-columns: 20px minmax(0, 1fr); }
-.critical-block + .critical-block { border-top: 1px solid color-mix(in srgb, var(--text-color) 22%, transparent); }
+.critical-group.destroyed h3 {
+  background: color-mix(in srgb, var(--tactical-danger) 40%, var(--background-color-menu));
+}
+.critical-group.destroyed .critical-slots {
+  opacity: 0.55;
+}
+.critical-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.critical-block.rolled {
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+.critical-block + .critical-block {
+  border-top: 1px solid color-mix(in srgb, var(--text-color) 22%, transparent);
+}
 .roll-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-right: 1px solid color-mix(in srgb, var(--tactical-line) 70%, transparent);
-    background: color-mix(in srgb, var(--text-color) 4%, transparent);
-    color: var(--tactical-label);
-    font-size: 9px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid color-mix(in srgb, var(--tactical-line) 70%, transparent);
+  background: color-mix(in srgb, var(--text-color) 4%, transparent);
+  color: var(--tactical-label);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
-.critical-slots { min-width: 0; }
+.critical-slots {
+  min-width: 0;
+}
 .critical-row {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-    min-height: 20px;
-    align-items: center;
-    gap: 4px;
-    padding: 1px 4px 1px 2px;
-    border: 1px solid transparent;
-    border-top-color: color-mix(in srgb, var(--tactical-line) 45%, transparent);
-    background: transparent;
-    color: var(--text-color);
-    font-size: 11px;
-    text-align: left;
-    cursor: pointer;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 20px;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px 1px 2px;
+  border: 1px solid transparent;
+  border-top-color: color-mix(in srgb, var(--tactical-line) 45%, transparent);
+  background: transparent;
+  color: var(--text-color);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
 }
-.critical-row:first-child { border-top-color: transparent; }
-.critical-row.hit { background: color-mix(in srgb, var(--tactical-danger) 9%, transparent); }
-.critical-row.destroyed { background: color-mix(in srgb, var(--tactical-danger) 18%, transparent); }
-.critical-row.destroyed .critical-name { color: #ff9582; text-decoration: line-through; text-decoration-thickness: 1px; }
-.critical-row.unhittable { color: var(--text-color-secondary); }
-.critical-row:disabled { opacity: 1; }
-.read-only .critical-row.unhittable, .critical-row.unhittable:disabled { opacity: .5; }
-.slot-number { flex: 0 0 11px; color: var(--tactical-label); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-.critical-name { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; white-space: pre-line; font-weight: 500; line-height: 1.2; }
+.critical-row:first-child {
+  border-top-color: transparent;
+}
+.critical-row.hit {
+  background: color-mix(in srgb, var(--tactical-danger) 9%, transparent);
+}
+.critical-row.destroyed {
+  background: color-mix(in srgb, var(--tactical-danger) 18%, transparent);
+}
+.critical-row.destroyed .critical-name {
+  color: #ff9582;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.critical-row.unhittable {
+  color: var(--text-color-secondary);
+}
+.critical-row:disabled {
+  opacity: 1;
+}
+.read-only .critical-row.unhittable,
+.critical-row.unhittable:disabled {
+  opacity: 0.5;
+}
+.slot-number {
+  flex: 0 0 11px;
+  color: var(--tactical-label);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.critical-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  font-weight: 500;
+  line-height: 1.2;
+}
 .critical-pip {
-    display: block;
-    width: 8px;
-    height: 8px;
-    flex: 0 0 auto;
-    border: 1px solid color-mix(in srgb, var(--text-color) 48%, transparent);
-    background: transparent;
+  display: block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--text-color) 48%, transparent);
+  background: transparent;
 }
-.armor-critical-pip { border-radius: 50%; }
-.extra-critical-pip { border-radius: 1px; }
-.critical-pip.hit { border-color: #ff9b81; background: var(--tactical-danger); box-shadow: 0 0 4px color-mix(in srgb, var(--tactical-danger) 60%, transparent); }
+.armor-critical-pip {
+  border-radius: 50%;
+}
+.extra-critical-pip {
+  border-radius: 1px;
+}
+.critical-pip.hit {
+  border-color: #ff9b81;
+  background: var(--tactical-danger);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--tactical-danger) 60%, transparent);
+}
 
-@container critical-table (min-width: 440px) {
-    .critical-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto 1fr; }
-    .critical-stack { display: grid; align-content: start; gap: 6px; min-width: 0; }
-    .critical-stack[data-stack='left-arm'] { grid-area: 1 / 1; }
-    .critical-stack[data-stack='left-body'] { grid-area: 2 / 1; }
-    .critical-stack[data-stack='center'] { grid-area: 1 / 2 / 3; }
-    .critical-stack[data-stack='right-body'] { grid-area: 2 / 3; }
-    .critical-stack[data-stack='right-arm'] { grid-area: 1 / 3; }
+/* Default 3 columns */
+.critical-columns {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto 1fr;
 }
+.critical-stack {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+.critical-stack[data-stack='left-arm'] {
+  grid-area: 1 / 1;
+}
+.critical-stack[data-stack='left-body'] {
+  grid-area: 2 / 1;
+}
+.critical-stack[data-stack='center'] {
+  grid-area: 1 / 2 / 3;
+}
+.critical-stack[data-stack='right-body'] {
+  grid-area: 2 / 3;
+}
+.critical-stack[data-stack='right-arm'] {
+  grid-area: 1 / 3;
+}
+
+@container critical-table (max-width: 440px) {
+  .critical-columns {
+    padding: 6px 2px;
+    gap: 4px;
+  }
+  .critical-row {
+    padding: 1px;
+  }
+  .slot-number {
+    flex-basis: 6px;
+  }
+}
+
 @container critical-table (min-width: 820px) {
-    .critical-columns { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: auto; }
-    .critical-stack[data-stack='left-arm'] { grid-area: 1 / 1; }
-    .critical-stack[data-stack='left-body'] { grid-area: 1 / 2; }
-    .critical-stack[data-stack='center'] { grid-area: 1 / 3; }
-    .critical-stack[data-stack='right-body'] { grid-area: 1 / 4; }
-    .critical-stack[data-stack='right-arm'] { grid-area: 1 / 5; }
+  .critical-columns {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-rows: auto;
+  }
+  .critical-stack[data-stack='left-arm'] {
+    grid-area: 1 / 1;
+  }
+  .critical-stack[data-stack='left-body'] {
+    grid-area: 1 / 2;
+  }
+  .critical-stack[data-stack='center'] {
+    grid-area: 1 / 3;
+  }
+  .critical-stack[data-stack='right-body'] {
+    grid-area: 1 / 4;
+  }
+  .critical-stack[data-stack='right-arm'] {
+    grid-area: 1 / 5;
+  }
 }
 
 /* Non-Mek system damage: one row per system, one control per printed stage. */
-.system-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); column-gap: 16px; padding: 2px 8px 4px; }
+.system-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr));
+  column-gap: 16px;
+  padding: 2px 8px 4px;
+}
 .system-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-    min-height: 32px;
-    border-bottom: 1px solid color-mix(in srgb, var(--tactical-line) 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  border-bottom: 1px solid color-mix(in srgb, var(--tactical-line) 50%, transparent);
 }
-.system-label { min-width: 0; color: var(--text-color-secondary); font-size: .78rem; font-weight: 600; }
-.system-stages { display: inline-flex; flex: 0 0 auto; }
+.system-label {
+  min-width: 0;
+  color: var(--text-color-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.system-stages {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
 .system-stage {
-    display: inline-flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 1px;
-    min-width: 30px;
-    height: 24px;
-    padding: 4px 5px 0;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--text-color);
-    font-size: .72rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1px;
+  min-width: 30px;
+  height: 24px;
+  padding: 4px 5px 0;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-color);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
-.system-stage + .system-stage { margin-left: -1px; }
-.system-stage small { font-size: .62rem; }
-.system-stage.hit, .system-stage.hit:hover:not(:disabled) { position: relative; border-color: var(--tactical-danger); background: var(--tactical-danger); color: #fff; }
-.read-only .system-stage { opacity: 1; }
+.system-stage + .system-stage {
+  margin-left: -1px;
+}
+.system-stage small {
+  font-size: 0.62rem;
+}
+.system-stage.hit,
+.system-stage.hit:hover:not(:disabled) {
+  position: relative;
+  border-color: var(--tactical-danger);
+  background: var(--tactical-danger);
+  color: #fff;
+}
+.read-only .system-stage {
+  opacity: 1;
+}
 
 @media (pointer: coarse) {
-    .critical-row { min-height: 28px; }
-    .system-row { min-height: 40px; }
-    .system-stage { min-width: 36px; height: 32px; padding-top: 8px; }
-    .wound-button { height: 30px; }
+  .critical-row {
+    min-height: 28px;
+  }
+  .system-row {
+    min-height: 40px;
+  }
+  .system-stage {
+    min-width: 36px;
+    height: 32px;
+    padding-top: 8px;
+  }
+  .wound-button {
+    height: 30px;
+  }
 }
 
-.tactical-empty { display: grid; width: 100%; height: 100%; place-items: center; color: var(--text-color-secondary); }
+.tactical-empty {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--text-color-secondary);
+}
 
 /*
  * Page layout. One column on phones; weapons and heat beside armor from tablet width,
@@ -566,60 +1075,151 @@ weapons-equipment-panel { display: block; min-width: 0; }
  * Spanning panels sit over `auto 1fr` rows so their extra height never opens gaps elsewhere.
  */
 @container tactical-view (min-width: 960px) {
-    .tactical-grid { grid-template-columns: minmax(0, 1fr) minmax(380px, .55fr); grid-template-rows: auto 1fr; }
-    .main-column { grid-area: 1 / 1; }
-    .armor-panel { grid-area: 1 / 2 / 3; }
-    .critical-panel { grid-area: 2 / 1; }
-    .entity-grid .main-column { grid-area: 1 / 1 / 3; }
-    .entity-grid .armor-panel { grid-area: 1 / 2; }
-    .systems-panel { grid-area: 2 / 2; }
+  .tactical-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 0.55fr);
+    grid-template-rows: auto 1fr;
+  }
+  .main-column {
+    grid-area: 1 / 1;
+  }
+  .armor-panel {
+    grid-area: 1 / 2 / 3;
+  }
+  .critical-panel {
+    grid-area: 2 / 1;
+  }
+  .entity-grid .main-column {
+    grid-area: 1 / 1 / 3;
+  }
+  .entity-grid .armor-panel {
+    grid-area: 1 / 2;
+  }
+  .systems-panel {
+    grid-area: 2 / 2;
+  }
 }
 @container tactical-view (min-width: 1560px) {
-    .mek-grid { grid-template-columns: minmax(0, 1fr) minmax(400px, .5fr) minmax(460px, .55fr); grid-template-rows: auto; }
-    .mek-grid .armor-panel { grid-area: 1 / 2; }
-    .mek-grid .critical-panel { grid-area: 1 / 3; }
+  .mek-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 0.5fr) minmax(460px, 0.55fr);
+    grid-template-rows: auto;
+  }
+  .mek-grid .armor-panel {
+    grid-area: 1 / 2;
+  }
+  .mek-grid .critical-panel {
+    grid-area: 1 / 3;
+  }
 }
 @container tactical-view (max-width: 959px) {
-    .unit-header { grid-template-columns: minmax(0, 1fr); }
-    .crew-roster { width: 100%; grid-template-columns: minmax(84px, 1fr) max-content max-content max-content; }
+  .unit-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .crew-roster {
+    width: 100%;
+    grid-template-columns: minmax(84px, 1fr) max-content max-content max-content;
+  }
 }
 @container tactical-view (max-width: 760px) {
-    .section-shortcuts { margin-left: 0; }
-    .section-shortcuts button { padding-inline: 8px; font-size: 12px; }
-    .toolbar-button { padding-inline: 6px; font-size: 12px; }
-    .toolbar-button svg { width: 16px; height: 16px; }
-    .tactical-footer-center { gap: 6px; }
-    .nav-unit-name { display: none; }
-    .fire-heat { font-size: .65rem; gap: 0 4px; }
-    .fire-heat strong { font-size: 1.3rem; }
-    .fire-button, .clear-selection { padding-inline: 10px; font-size: .8rem; }
+  .section-shortcuts {
+    margin-left: 0;
+  }
+  .section-shortcuts button {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .toolbar-button {
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+  .toolbar-button svg {
+    width: 16px;
+    height: 16px;
+  }
+  .tactical-footer-center {
+    gap: 6px;
+  }
+  .nav-unit-name {
+    display: none;
+  }
+  .fire-heat {
+    font-size: 0.65rem;
+    gap: 0 4px;
+  }
+  .fire-heat strong {
+    font-size: 1.3rem;
+  }
+  .fire-button,
+  .clear-selection {
+    padding-inline: 10px;
+    font-size: 0.8rem;
+  }
 }
 /* Phones: each crew member takes two lines, identity and skills above wounds and states. */
 @container tactical-view (max-width: 640px) {
-    .crew-roster { display: block; padding-inline: 8px; }
-    .crew-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas: 'identity skills' 'wounds states';
-        gap: 4px 10px;
-        padding: 5px 0;
-    }
-    .crew-identity { grid-area: identity; }
-    .crew-skills { grid-area: skills; }
-    .wound-track { grid-area: wounds; }
-    .crew-states { grid-area: states; justify-content: flex-end; }
-    .crew-vacant-note { grid-column: 1 / -1; }
-    .crew-name { max-width: none; }
+  .crew-roster {
+    display: block;
+    padding-inline: 8px;
+  }
+  .crew-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'identity skills' 'wounds states';
+    gap: 4px 10px;
+    padding: 5px 0;
+  }
+  .crew-identity {
+    grid-area: identity;
+  }
+  .crew-skills {
+    grid-area: skills;
+  }
+  .wound-track {
+    grid-area: wounds;
+  }
+  .crew-states {
+    grid-area: states;
+    justify-content: flex-end;
+  }
+  .crew-vacant-note {
+    grid-column: 1 / -1;
+  }
+  .crew-name {
+    max-width: none;
+  }
 }
 @container tactical-view (max-width: 580px) {
-    .tactical-toolbar { flex-wrap: wrap; gap: 2px; }
-    .section-shortcuts { order: 5; width: 100%; border-top: 1px solid var(--border-color); }
-    .section-shortcuts button { flex: 1; min-height: 32px; }
-    .tactical-scroll { padding-inline: 6px; }
-    h1 { font-size: 18px; }
-    .unit-icon { display: none; }
+  .tactical-toolbar {
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+  .section-shortcuts {
+    order: 5;
+    width: 100%;
+    border-top: 1px solid var(--border-color);
+  }
+  .section-shortcuts button {
+    flex: 1;
+    min-height: 32px;
+  }
+  .tactical-scroll {
+    padding-inline: 6px;
+  }
+  h1 {
+    font-size: 18px;
+  }
+  .unit-icon {
+    display: none;
+  }
 }
 @container tactical-view (max-width: 400px) {
-    .wound-button { width: 27px; }
-    .crew-states .state-chip { padding-inline: 6px; }
+  .wound-button {
+    width: 27px;
+  }
+  .crew-states .state-chip {
+    padding-inline: 6px;
+  }
 }
-@media print { :host { display: none !important; } }
+@media print {
+  :host {
+    display: none !important;
+  }
+}

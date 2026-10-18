@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { computed, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { By } from '@angular/platform-browser';
@@ -222,11 +222,11 @@ describe('responsive construction details', () => {
         const details = entity.battleValueDetails;
         const total = entity.battleValue;
         const state = signal<'valid' | 'throws' | 'nonfinite'>('valid');
-        spyOn(entity, 'battleValueDetails').and.callFake(computed(() => {
+        spyOn(entity, 'battleValueDetails').and.callFake(ruleset => {
             if (state() === 'throws') throw new Error('Incomplete configuration');
-            return details();
-        }));
-        spyOn(entity, 'battleValue').and.callFake(computed(() => state() === 'nonfinite' ? NaN : total()));
+            return details(ruleset);
+        });
+        spyOn(entity, 'battleValue').and.callFake(ruleset => state() === 'nonfinite' ? NaN : total(ruleset));
         await render();
         button('Show pristine Battle Value breakdown').click(); await render();
         const before = report()!.data().total;

@@ -605,7 +605,7 @@ describe('EquipmentDialogRuntimeController', () => {
         expect(controller.supportsTargetingTools()).toBeTrue();
         expect(controller.supportsMekTurnTools()).toBeFalse();
         expect(controller.canFireSelectedWeapons()).toBeTrue();
-        await controller.selectTarget(weapon, 'target:b');
+        await controller.selectTarget([weapon], 'target:b');
         await controller.selectWeaponAmmo(weapon, `${ammoId}\u0000Ammo_AC_10`);
         await controller.resetSelections();
         await controller.fire();
@@ -694,7 +694,7 @@ describe('EquipmentDialogRuntimeController', () => {
             { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
         );
 
-        await controller.selectTarget(row, 'range:long');
+        await controller.selectTarget([row], 'range:long');
         await controller.changeStatus(row);
 
         expect(dispatchTargeting).toHaveBeenCalledOnceWith('dropship-1', jasmine.objectContaining({
@@ -710,6 +710,58 @@ describe('EquipmentDialogRuntimeController', () => {
             status: 'destroyed',
             target: 'committed',
         }), undefined);
+        controller.dispose();
+    });
+
+    it('selects several weapon rows as one batch sharing ammo reservations', async () => {
+        const firstId = 'mount:ac-1' as ComponentId;
+        const secondId = 'mount:ac-2' as ComponentId;
+        const binA = 'mount:ammo-a' as ComponentId;
+        const binB = 'mount:ammo-b' as ComponentId;
+        const ammoSources = [binA, binB].map(componentId => ({
+            componentId,
+            status: 'available',
+            remaining: 1,
+            munitionKey: 'Ammo_AC_10',
+        }));
+        const rows = [firstId, secondId].map(componentId => ({
+            componentId,
+            weapon: { selectable: true, ammoSources },
+        })) as unknown as EquipmentPanelComponent[];
+        const dispatchTargeting = jasmine.createSpy('dispatchAttackerTargeting').and.resolveTo({
+            accepted: true,
+            idempotent: false,
+            currentRevision: 1,
+        });
+        const force = {
+            changed: new Subject<void>(),
+            sessionChanged: new Subject<void>(),
+            getEquipmentPanelSnapshot: () => ({ ...snapshot('Batch fixture'), components: rows }),
+            getEquipmentInteractions: () => [],
+            dispatchAttackerTargeting: dispatchTargeting,
+        };
+        const controller = new EquipmentDialogRuntimeController(
+            { kind: 'cbt', id: 'tank-1', force, entity: new TestTankEntity() } as unknown as CBTForceMember,
+            { options: () => ({}) } as unknown as OptionsService,
+            { showToast: jasmine.createSpy('showToast') } as unknown as ToastService,
+        );
+
+        await controller.selectTarget(rows, 'selected');
+
+        expect(dispatchTargeting.calls.allArgs().map(args => args[1].edit)).toEqual([
+            {
+                kind: 'set-component-ammos',
+                updates: [
+                    { componentId: firstId, ammo: { preferredSourceId: binA, munitionKey: 'Ammo_AC_10' } },
+                    { componentId: secondId, ammo: { preferredSourceId: binB, munitionKey: 'Ammo_AC_10' } },
+                ],
+            },
+            {
+                kind: 'set-component-selections',
+                componentIds: [firstId, secondId],
+                selection: { kind: 'selected' },
+            },
+        ]);
         controller.dispose();
     });
 
@@ -730,7 +782,8 @@ describe('EquipmentDialogRuntimeController', () => {
                 componentId: weaponId,
                 label: equipment.name,
                 equipment,
-                weapon: { selection: { kind: 'selected' } },
+                status: 'available',
+                weapon: { selectable: true, selection: { kind: 'selected' } },
             } as unknown as EquipmentPanelComponent],
         } as EquipmentPanelSnapshot;
         const fire = jasmine.createSpy('fireSelectedWeapons').and.resolveTo({

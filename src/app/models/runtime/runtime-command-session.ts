@@ -127,6 +127,25 @@ export function appendRuntimeCommandEntry(
     });
 }
 
+/**
+ * Folds the commands recorded since `mark` (a cursor) into one undo step, keeping each event for the log.
+ * Commands that touched different units stay separate.
+ */
+export function foldRuntimeCommandEntries(session: RuntimeCommandSession, mark: number): RuntimeCommandSession {
+    const folded = session.entries.slice(mark, session.cursor);
+    if (mark > session.cursor || folded.length < 2
+        || new Set(folded.map(runtimeCommandScope)).size !== 1) return session;
+    const last = folded[folded.length - 1]!;
+    const entries = Object.freeze([...session.entries.slice(0, mark), Object.freeze({
+        turn: last.turn,
+        phase: last.phase,
+        events: Object.freeze(folded.flatMap(entry => entry.events)),
+        before: mergeCheckpoints(folded, 'before'),
+        after: mergeCheckpoints(folded, 'after'),
+    } satisfies RuntimeCommandEntry)]);
+    return Object.freeze({ ...session, cursor: entries.length, entries });
+}
+
 export function prepareRuntimeCommandUndo(session: RuntimeCommandSession): RuntimeCommandMove | null {
     const entry = session.entries[session.cursor - 1];
     if (!entry) return null;

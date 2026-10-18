@@ -19,7 +19,7 @@ import { createMekHeatContextV2,type MekHeatRuntimeContextV2 } from './mek-heat-
 import { createMekMechanicsContextV2,type MekMechanicsContextV2 } from './mek-mechanics-context-v2';
 import type { SerializedCBTUnitV2,SerializedDeploymentConfigurationV2 } from './persistence-v2';
 import { restoreSerializedCBTUnitV2,type V2StateRestoreWarning } from './runtime-state-codec-v2';
-import { createMekRuntimeBinding } from './unit-instance';
+import { createMekRuntimeBinding, dropMekPilotChecksUnraisedByRules } from './unit-instance';
 import type { ScenarioRules } from './unit-state-initializer';
 import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
 
@@ -304,6 +304,9 @@ export async function createMekUnit(
  * Restores one validated persisted V2 snapshot into the same authoritative
  * unit owner used for fresh and legacy-restored Meks. The
  * tolerant V2 restorer reports translation warnings; no legacy projection is used.
+ * No ruleset is saved, so the restore binds the unit to the scenario's rules: a pending pilot check
+ * those rules raise no roll for is dropped and reported. Under the rules it was saved under, a unit
+ * restores exactly; pending checks record no target, the rules derive it.
  */
 export async function restoreMekUnit(
     saved: SerializedCBTUnitV2,
@@ -338,15 +341,24 @@ export async function restoreMekUnit(
         await bindMekHeatRuntimeContext(entity, runtimeIndex, initialized.baselineRef.ruleset, options.scenario),
         bindMekMechanicsContext(entity, runtimeIndex, initialized.baselineRef.ruleset, options.scenario),
     );
+    const state = dropMekPilotChecksUnraisedByRules(prepared.binding, prepared.state);
     const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
         schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
         values: initialized.deployment,
     });
     const unit = new CBTUnit<'mek'>({
         uuid, instanceId: saved.instanceId, baselineRef: restored.baselineRef,
-        runtime: { kind: 'mek', ...prepared, deployment }, nativeSource,
+        runtime: { kind: 'mek', binding: prepared.binding, state, deployment }, nativeSource,
     });
     for (const warning of restored.warnings) diagnostics.onWarning?.(warning);
+    const kept = new Set(state.movementPsr.checks.map(check => check.checkId));
+    for (const check of prepared.state.movementPsr.checks) {
+        if (check.status !== 'pending' || kept.has(check.checkId)) continue;
+        diagnostics.onWarning?.(Object.freeze({
+            code: 'STATE_SKIPPED',
+            message: `Saved state was skipped: these rules raise no "${check.reason}" piloting roll.`,
+        }));
+    }
     return unit;
 }
 

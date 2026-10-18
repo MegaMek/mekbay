@@ -219,7 +219,7 @@ describe('battle value family dispatch', () => {
     entity.setEquipment([laser]);
 
     const state = entityState(entity, new Map([[laser.mountId, 'destroyed']]));
-    expect(entity.battleValueFor(state)).toBeLessThan(entity.battleValue());
+    expect(entity.battleValueFor(state)).toBeLessThan(entity.battleValue('core-2026'));
     expect(entity.battleValueFor({ ...state, destroyed: true })).toBe(0);
   });
 
@@ -233,7 +233,7 @@ describe('battle value family dispatch', () => {
     entity.setEquipment([mount(ammo, 'LT')]);
 
     expect(entity.automaticClanCaseLocations().has('LT')).toBeTrue();
-    expect(entity.battleValueFor(entityState(entity))).toBe(entity.battleValue());
+    expect(entity.battleValueFor(entityState(entity))).toBe(entity.battleValue('core-2026'));
   });
 
   it('counts F_SHIELD equipment defensively instead of offensively', () => {
@@ -366,7 +366,7 @@ describe('battle value family dispatch', () => {
       entity.manualBV.set(9999);
 
       expect(calculateBattleValue(entity, undefined, ruleset)).toBe(9999);
-      expect(entity.battleValue()).toBe(9999);
+      expect(entity.battleValue(ruleset)).toBe(9999);
       const report = calculateBattleValueDetails(entity, undefined, ruleset);
       expect(report.base).toBe(9999);
       expect(report.defensive).toBe(calculated.defensive);
@@ -380,7 +380,7 @@ describe('battle value family dispatch', () => {
       expect(entity.battleValueFor(destroyed, ruleset)).toBe(9999);
       expect(getBVCalculator(entity, destroyed, ruleset).calculateBaseBV()).toBe(0);
       entity.manualBV.set(1234);
-      expect(entity.battleValue()).toBe(1234);
+      expect(entity.battleValue(ruleset)).toBe(1234);
       entity.manualBV.set(0);
       expect(calculateBattleValueDetails(entity, undefined, ruleset)).toEqual(calculated);
       expect(entity.battleValueFor(destroyed, ruleset)).toBe(0);
@@ -524,12 +524,12 @@ describe('structured battle value details', () => {
   it('exposes reactive BaseEntity value and details computed from current state', () => {
     const entity = new TestTankEntity();
     entity.setTonnage(10);
-    const initial = entity.battleValue();
-    expect(entity.battleValueDetails()).toBe(entity.battleValueDetails());
+    const initial = entity.battleValue('core-2026');
+    expect(entity.battleValueDetails('core-2026')).toBe(entity.battleValueDetails('core-2026'));
 
     entity.setTonnage(30);
-    expect(entity.battleValue()).not.toBe(initial);
-    expect(findDetail(entity.battleValueDetails(), 'Weight')?.calculation).toContain('+ 30');
+    expect(entity.battleValue('core-2026')).not.toBe(initial);
+    expect(findDetail(entity.battleValueDetails('core-2026'), 'Weight')?.calculation).toContain('+ 30');
   });
 
 });

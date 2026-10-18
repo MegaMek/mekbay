@@ -90,6 +90,8 @@ import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipmen
 import { createPristineAttackerTargetingState } from './attacker-targeting-state';
 import { resolveShieldProfileFromFlags } from '../entity/utils/physical-weapon-kernel';
 import { isShieldEquipment } from '../entity/utils/physical-weapon';
+import { SHIELD_ACTIVE_MODE } from './component-shield-mode';
+import { gameRulesFor } from '../rules/game-rules';
 import {
     createMekTorsoCripplingRuleCheckTokenV2,
     freezeRuleChecks,
@@ -907,6 +909,8 @@ export async function restoreSerializedCBTUnitV2(
         else accumulator.translations.set(entry.target, currentTarget.ref);
     });
 
+    lowerExtraCoreShields(components, accumulator);
+
     forEachUnique(saved.ammoState, '$.ammoState', entry => {
         const target = sourceTarget(accumulator, entry.target, 'ammo-source', '$.ammoState');
         const requested = requireNonnegativeInteger(entry.shotsSpent, '$.ammoState.shotsSpent');
@@ -1083,7 +1087,7 @@ export async function restoreSerializedCBTUnitV2(
                 );
             }
             return condition;
-        }).filter(condition => condition !== 'crippled'));
+        }).filter(condition => condition !== 'crippled' && !skippedRuleCondition(condition, accumulator)));
     let heat = initialized.state.heat;
     if (saved.heat !== undefined) {
         const current = requireNonnegativeFinite(saved.heat.heat, '$.heat.heat');
@@ -2589,6 +2593,47 @@ function deserializeComponentState(
             ? {}
             : { modularArmorDamage: entry.modularArmorDamage }),
     };
+}
+
+/** A condition the bound rules do not have, such as skidding under Core, is skipped with a warning. */
+function skippedRuleCondition(condition: UnitConditionKey, accumulator: RestoreAccumulator): boolean {
+    if (condition !== 'skidding' || gameRulesFor(accumulator.unit.ruleset).supportsSkidding) return false;
+    warn(accumulator, {
+        code: 'STATE_SKIPPED',
+        message: 'Saved state was skipped: these rules have no skidding condition.',
+    });
+    return true;
+}
+
+/**
+ * Core raises one shield at a time (Core p.195). A save with more raised, such as one made under
+ * Total Warfare, keeps the first in index order raised and lowers the rest.
+ */
+function lowerExtraCoreShields(
+    components: Map<ComponentId, ComponentRuntimeState>,
+    accumulator: RestoreAccumulator,
+): void {
+    const { index, ruleset } = accumulator.unit;
+    if (ruleset !== 'core-2026') return;
+    let raised: string | undefined;
+    for (const [componentId, component] of index.components) {
+        const state = components.get(componentId);
+        if (component.kind !== 'equipment'
+            || !isShieldEquipment(component.mount.equipment)
+            || state?.mode !== SHIELD_ACTIVE_MODE) continue;
+        if (raised === undefined) {
+            raised = component.mount.displayName();
+            continue;
+        }
+        const { mode: _lowered, ...rest } = state;
+        if (hasComponentState(rest)) components.set(componentId, Object.freeze(rest));
+        else components.delete(componentId);
+        warn(accumulator, {
+            code: 'STATE_SKIPPED',
+            message: `Saved state was skipped: Core raises one shield at a time, so ${component.mount.displayName()} was lowered and ${raised} stays raised.`,
+            currentTargetRef: accumulator.current.componentById.get(componentId)?.ref,
+        });
+    }
 }
 
 function hasComponentState(state: ComponentRuntimeState): boolean {

@@ -842,6 +842,7 @@
 /*
  * Phones: a two-line card per row, shared by the dialog and the tactical view. Identity on top;
  * below, a stat strip with small captions over the values and the range boxes pushed right.
+ * Each row wraps its range boxes onto their own line only when they don't fit beside its stats.
  */
 @mixin card-layout {
     .weapon-equipment-grid { display: flex; flex-direction: column; gap: 0; }
@@ -853,10 +854,9 @@
     .mobile-group-selection input, .mobile-group-selection button { width: 18px; height: 18px; }
     .weapon-equipment-list { display: flex; flex-direction: column; margin: 0; gap: 0; }
     .weapon-equipment-row, .weapon-equipment-row:last-child {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas: 'identity identity' 'stats ranges' 'actions actions';
-        align-items: end;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
         gap: 3px 10px;
         box-sizing: border-box;
         width: 100%;
@@ -870,13 +870,13 @@
     .mga-branch { flex: 0 0 14px; width: 14px; height: 14px; margin: -14px 0 0; }
     .mga-membership-badge { font-size: .7rem; }
     .grouped-cells { display: flex; align-items: center; gap: 8px; min-width: 0; }
-    .group-identity { grid-area: identity; min-height: 26px; }
+    .group-identity { flex-basis: 100%; min-height: 26px; }
     .select-cell { flex: 0 0 24px; }
     .tn-cell { flex: 0 0 28px; }
     .name-cell { flex: 1; min-width: 0; font-size: .85rem; }
-    .group-stats { grid-area: stats; flex-wrap: wrap; align-items: flex-end; gap: 2px 14px; }
-    .group-ranges { grid-area: ranges; align-items: flex-end; gap: 6px; }
-    .group-actions { grid-area: actions; padding-left: 0; }
+    .group-stats { flex-wrap: wrap; align-items: flex-end; gap: 2px 14px; }
+    .group-ranges { margin-left: auto; align-items: flex-end; gap: 6px; }
+    .group-actions { flex-basis: 100%; padding-left: 0; }
     .meta-cell { flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 2px; width: auto; min-width: 0; line-height: 1.1; }
     .meta-cell::before, .range-cell::before {
         content: attr(data-label);
@@ -890,10 +890,13 @@
     }
     .hit-cell .hit-value { font-size: 1.1em; line-height: 1; }
     .damage-cell { flex-grow: 0; }
-    .min-cell { align-items: center; }
     .range-cells.meta-cell::before, .ammo-cell::before { display: none; }
     .range-cells { display: flex; gap: 3px; }
-    .range-cell { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 34px; height: 32px; padding: 0 3px; font-size: .8rem; line-height: 1; }
+    .range-cell { display: inline-flex; flex-direction: column; align-items: center; min-width: 34px; padding: 0 3px; font-size: .8rem; }
+    /* Stats and MIN are borderless boxes like the range bands beside them, so their labels and values line up. */
+    .group-stats .meta-cell, .min-cell, .range-cell { box-sizing: border-box; justify-content: center; gap: 2px; min-height: 32px; line-height: 1; }
+    .group-stats .meta-cell, .min-cell { border: 1px solid transparent; }
+    .min-cell { align-items: center; }
     .actions-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
     .ammo-cell { flex-direction: row; align-items: center; flex: 0 1 auto; max-width: 100%; }
     .ammo-cell > .grouped-cells { flex-wrap: nowrap; gap: 4px; }
@@ -912,14 +915,6 @@
         @include card-layout;
         .group-actions { display: none; }
         .controls-expanded .group-actions { display: block; padding-left: 8px; }
-    }
-}
-
-/* Very narrow phones, or four range bands: the range boxes take their own line. */
-@container weapons-panel (max-width: 340px) {
-    .weapons-equipment-panel {
-        .weapon-equipment-row, .weapon-equipment-row:last-child { grid-template-areas: 'identity identity' 'stats stats' 'ranges ranges'; }
-        .group-ranges { justify-content: flex-end; }
     }
 }
 

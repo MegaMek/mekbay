@@ -5,10 +5,14 @@ import { RECORD_SHEET_FONT } from './record-sheet-typography';
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
 import { isCaseEquipment } from '../../models/case-equipment.model';
 import type { BaseEntity } from '../../models/entity/base-entity';
+import type { CBTRuleset } from '../../models/cbt-ruleset.model';
 import { asComponentId } from '../../models/entity/entity-identifiers';
-import type { EntityDamageLocation, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
+import type { EntityDamageLocation, EntityMountedEquipment, EntityMountedWeapon, EntityTechBase } from '../../models/entity/types';
 import type { WeaponEquipment } from '../../models/equipment.model';
 import { isPpcCapacitorEquipment, PPC_CAPACITOR_HEAT_BONUS } from '../../models/ppc-capacitor.model';
+import { laserInsulatorAdjustedHeat } from '../../models/laser-insulator.model';
+import { isRiscLaserPulseModule, RISC_LASER_PULSE_HEAT_BONUS } from '../../models/risc-laser-mode.model';
+import { isWeaponEnhancementEquipment } from '../../models/weapon-enhancement.model';
 import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/runtime/component-ppc-capacitor';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
 import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
@@ -287,6 +291,20 @@ export function drawCriticalDamageBox(
   return control;
 }
 
+/** Marks the inventory heat line with the design's maximum heat, which binders keep while dissipation changes. */
+export const HEAT_PROFILE_MAXIMUM_ATTRIBUTE = 'data-maximum-heat';
+
+/** The inventory's heat line: the heat of firing every weapon, and the heat the unit dissipates. */
+export function recordSheetHeatProfileText(heat: number | string, dissipation: number | string): string {
+  return `Maximum Heat (Dissipation): ${heat} (${dissipation})`;
+}
+
+/** The inventory's heat line, as both generators print it and the binders rewrite it. */
+export function markRecordSheetHeatProfile(text: SVGTextElement, heat: number): void {
+  text.id = 'heatProfile';
+  text.setAttribute(HEAT_PROFILE_MAXIMUM_ATTRIBUTE, String(heat));
+}
+
 /** The reference inventory sorts ground ranges descending, including aerospace units. */
 export function recordSheetInventoryWeaponMounts(entity: BaseEntity): readonly EntityMountedWeapon[] {
   return [...entity.rangedWeapons()].sort((left, right) => {
@@ -317,36 +335,17 @@ export function recordSheetInventoryWeapons(
   readonly ranges: readonly string[];
   readonly componentIds: readonly string[];
   readonly quantity: number;
+  readonly linkedEquipment: RecordSheetLinkedEquipment | null;
   readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
 }[] {
   const unmerged = recordSheetInventoryWeaponMounts(entity).map((mount) => {
     const ammoModes = recordSheetAlternativeModes(mount.equipment);
-    const alternativeModes = [...ammoModes];
+    const enhancement = entity.getLinkingMount(mount);
     const semanticDamage = defaultRecordSheetWeaponDamageText(mount.equipment, entity.getEquipmentRegistry());
-    if (isPpcCapacitorEquipment(entity.getLinkingMount(mount)?.equipment)) {
-      const damage = resolveInventoryControlDamageText(
-        { componentId: asComponentId(mount.mountId), physical: false, weapon: mount.equipment },
-        {
-          selectedRange: null,
-          selectedAmmo: null,
-          equipmentCatalog: entity.getEquipmentRegistry(),
-          damageOverride: ppcCapacitorWeaponDamage(mount.equipment.damage, true),
-        },
-        { applyWeaponTypes: (_id, types) => ppcCapacitorWeaponTypes(types, true) },
-      );
-      alternativeModes.push({
-        displayOnly: true,
-        name: 'w/Capacitor',
-        heat: String(mount.equipment.heat + PPC_CAPACITOR_HEAT_BONUS),
-        damage: formatRecordSheetWeaponDamageText(mount.equipment, damage ?? semanticDamage),
-        minimumRange: '',
-        ranges: ['', '', ''],
-      });
-    }
     return {
       name: mount.displayName(),
       location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
-      heat: String(mount.equipment.heat),
+      heat: String(laserInsulatorAdjustedHeat(mount.equipment.heat, enhancement?.equipment, mount.equipment)),
       damage: ammoModes.length > 0 ? (semanticDamage.match(/\[[^\]]+\]\s*$/u)?.[0] ?? '') : semanticDamage,
       minimumRange:
         ammoModes.length > 0 ? '' : mount.equipment.minimumRange > 0 ? String(mount.equipment.minimumRange) : '—',
@@ -360,7 +359,8 @@ export function recordSheetInventoryWeapons(
             ),
       componentIds: Object.freeze([mount.mountId]),
       quantity: 1,
-      alternativeModes: Object.freeze(alternativeModes),
+      linkedEquipment: recordSheetLinkedEquipment(entity, mount, enhancement, semanticDamage),
+      alternativeModes: ammoModes,
     };
   });
   if (!mergeIdentical) return Object.freeze(unmerged.map((row) => Object.freeze(row)));
@@ -376,11 +376,13 @@ export function recordSheetInventoryWeapons(
       ranges: readonly string[];
       componentIds: string[];
       quantity: number;
+      linkedEquipment: RecordSheetLinkedEquipment | null;
       alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
     }
   >();
   unmerged.forEach((row) => {
-    const key = JSON.stringify({ ...row, componentIds: undefined });
+    const linked = row.linkedEquipment && { ...row.linkedEquipment, componentId: undefined };
+    const key = JSON.stringify({ ...row, componentIds: undefined, linkedEquipment: linked });
     const existing = rows.get(key);
     if (existing) {
       existing.componentIds.push(...row.componentIds);
@@ -401,12 +403,57 @@ export function recordSheetInventoryWeapons(
 
 export interface RecordSheetInventoryAlternativeMode {
   readonly name: string;
-  /** Printed equipment profile, not an ammunition/firing mode the binder may select. */
-  readonly displayOnly?: boolean;
   readonly heat?: string;
   readonly damage: string;
   readonly minimumRange: string;
   readonly ranges: readonly [string, string, string];
+}
+
+/** The weapon enhancement printed on its own line under the weapon it is linked to. */
+export interface RecordSheetLinkedEquipment {
+  /** The enhancement's own mount, so bound sheets show its damage and hover with its slots. */
+  readonly componentId: string;
+  readonly name: string;
+  readonly heat: string;
+  readonly damage: string;
+}
+
+/**
+ * The line for the weapon enhancement linked to a weapon (Artemis, Apollo, PPC Capacitor, RISC Laser Pulse Module,
+ * Laser Insulator), labelled like the equipment panel's modifier. Enhancements that add a firing profile print its
+ * heat and damage; the others only name themselves.
+ */
+function recordSheetLinkedEquipment(
+  entity: BaseEntity,
+  mount: EntityMountedWeapon,
+  linking: EntityMountedEquipment | undefined,
+  semanticDamage: string,
+): RecordSheetLinkedEquipment | null {
+  const enhancement = linking?.equipment;
+  if (!linking || !enhancement || !isWeaponEnhancementEquipment(enhancement)) return null;
+  const weapon = mount.equipment;
+  const line = { componentId: linking.mountId, name: enhancement.shortName || enhancement.name } as const;
+  if (isPpcCapacitorEquipment(enhancement)) {
+    const damage = resolveInventoryControlDamageText(
+      { componentId: asComponentId(mount.mountId), physical: false, weapon },
+      {
+        selectedRange: null,
+        selectedAmmo: null,
+        equipmentCatalog: entity.getEquipmentRegistry(),
+        damageOverride: ppcCapacitorWeaponDamage(weapon.damage, true),
+      },
+      { applyWeaponTypes: (_id, types) => ppcCapacitorWeaponTypes(types, true) },
+    );
+    return Object.freeze({
+      ...line,
+      heat: String(weapon.heat + PPC_CAPACITOR_HEAT_BONUS),
+      damage: formatRecordSheetWeaponDamageText(weapon, damage ?? semanticDamage),
+    });
+  }
+  if (isRiscLaserPulseModule(enhancement)) {
+    return Object.freeze({ ...line, heat: String(weapon.heat + RISC_LASER_PULSE_HEAT_BONUS), damage: '' });
+  }
+  return Object.freeze({ ...line, heat: '—', damage: '' });
 }
 
 function recordSheetSortRanges(weapon: WeaponEquipment): readonly number[] {
@@ -493,7 +540,7 @@ export function recordSheetNonMekAmmoPrefix(entity: BaseEntity): string {
   return entity.equipment().some((mount) => isCaseEquipment(mount.equipment)) ? 'Ammo (CASE):' : 'Ammo:';
 }
 
-export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): void {
+export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box, ruleset: CBTRuleset): void {
   const group = addFrame(svg, entity.entityType.toUpperCase(), box);
   const content = innerBox(box, 8, 22);
   const lines: readonly [string, string, string?][] = [
@@ -504,7 +551,7 @@ export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: B
     ['ROLE', entity.role() || '—', 'role'],
     ['MOTIVE', entity.getMotiveTypeAsString() ?? entity.entityType, undefined],
     ['MOVEMENT', `${entity.walkMP()} / ${entity.runMP()} / ${entity.jumpMP()}`, undefined],
-    ['BATTLE VALUE', formatWholeNumber(entity.battleValue()), 'bv'],
+    ['BATTLE VALUE', formatWholeNumber(entity.battleValue(ruleset)), 'bv'],
   ];
   const available = Math.max(1, content.height);
   const rowHeight = Math.min(14, available / lines.length);
@@ -520,10 +567,10 @@ export function drawIdentityPanel(svg: SVGSVGElement, entity: BaseEntity, box: B
     if (index < lines.length - 1)
       addLine(group, content.x - box.x, y + 3, content.x - box.x + content.width, y + 3, '#ddd', 0.5);
   });
-  appendLegacyIdentityAnchors(group, entity, box);
+  appendLegacyIdentityAnchors(group, entity, box, ruleset);
 }
 
-export function appendLegacyIdentityAnchors(group: SVGGElement, entity: BaseEntity, box: Box): void {
+export function appendLegacyIdentityAnchors(group: SVGGElement, entity: BaseEntity, box: Box, ruleset: CBTRuleset): void {
   const values: Readonly<Record<string, string>> = {
     type: entity.displayName(),
     unitName: entity.displayName(),
@@ -535,7 +582,7 @@ export function appendLegacyIdentityAnchors(group: SVGGElement, entity: BaseEnti
     mpWalk: String(entity.walkMP()),
     mpRun: String(entity.runMP()),
     mpJump: String(entity.jumpMP()),
-    bv: formatWholeNumber(entity.battleValue()),
+    bv: formatWholeNumber(entity.battleValue(ruleset)),
   };
   Object.entries(values).forEach(([id, value]) => {
     if (group.ownerSVGElement?.getElementById(id)) return;

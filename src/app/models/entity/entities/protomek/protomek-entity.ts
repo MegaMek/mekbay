@@ -95,13 +95,14 @@ export class ProtoMekEntity extends BaseEntity {
   }
 
   override computeRunMP(options: MovementCalculationOptions): number {
-    const walkMP = this.computeWalkMP(options);
-    return (
-    !options.ignoreMyomerBooster
-      && this.equipment().some(mount => isMascEquipment(mount.equipment))
+    return this.runMPFromWalk(this.computeWalkMP(options), options.ignoreMyomerBooster);
+  }
+
+  /** Running MP from a Walking MP, which leg critical hits may have reduced. */
+  runMPFromWalk(walkMP: number, ignoreMyomerBooster: boolean): number {
+    return !ignoreMyomerBooster && this.equipment().some(mount => isMascEquipment(mount.equipment))
       ? walkMP * 2
-      : Math.ceil(walkMP * 1.5)
-    );
+      : Math.ceil(walkMP * 1.5);
   }
 
   protected override computeMaximumArmorPoints(): number {

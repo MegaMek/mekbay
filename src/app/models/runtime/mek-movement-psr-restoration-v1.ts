@@ -88,6 +88,7 @@ export function projectLegacyMekTurnStateV1(
         heatDissipationConsumed: turn.heatDissipationConsumed,
         spotting: turn.spotting,
         phaseStateChanged: turn.equipmentStateChanged,
+        turnStep: 0,
     });
 }
 

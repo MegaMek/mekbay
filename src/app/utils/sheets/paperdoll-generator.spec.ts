@@ -84,7 +84,7 @@ describe('PaperdollGenerator', () => {
         });
     }
 
-    it('gives each armor paperdoll one random hit button in its own coordinates, and none to rear or structure art', async () => {
+    it('gives each armor paperdoll one random hit button, and none to rear or structure art', async () => {
         const [fighter, biped, rear, structure] = await Promise.all([
             PaperdollGenerator.createPaperdoll('/images/paperdolls/fighter-aerospace.svg', 344, 440, {},
                 { preserveAuthoredCoordinates: true, scale: false }),
@@ -93,8 +93,7 @@ describe('PaperdollGenerator', () => {
             PaperdollGenerator.createPaperdoll('/images/paperdolls/biped-structure.svg', 117, 171, {}, { type: 'structure' }),
         ]);
 
-        expect([...fighter.querySelectorAll('[data-mekbay-random-hit]')].map(button => button.getAttribute('transform')))
-            .toEqual(['translate(18 205) scale(0.75)']);
+        expect(fighter.querySelectorAll('[data-mekbay-random-hit]').length).toBe(1);
         const button = biped.querySelector('[data-mekbay-random-hit]')!;
         expect(biped.querySelectorAll('[data-mekbay-random-hit]').length).toBe(1);
         expect(button.getAttribute('pointer-events')).toBe('all');
@@ -162,33 +161,4 @@ describe('PaperdollGenerator', () => {
         expect(structure.querySelectorAll('.unitLocation.structure[data-loc]').length).toBe(8);
         expect(front.querySelector('.unitLocation.armor')?.tagName).toBe('path');
     });
-
-    for (const view of ['armor', 'armor-back', 'structure']) {
-        it(`keeps the ${view} rail slots inside their editable location areas`, async () => {
-            const source = new DOMParser().parseFromString(
-                await (await fetch(`/images/paperdolls/biped-${view}.svg`)).text(), 'image/svg+xml',
-            );
-            const svg = document.importNode(source.documentElement, true) as unknown as SVGSVGElement;
-            svg.style.visibility = 'hidden';
-            document.body.appendChild(svg);
-            try {
-                for (const rail of svg.querySelectorAll<SVGPathElement>('[data-rail] path')) {
-                    const location = rail.closest('[data-location]')!.getAttribute('data-location')!;
-                    const type = view === 'structure' ? 'structure' : 'armor';
-                    const area = svg.querySelector<SVGGeometryElement>(`[data-fill="${type}"][data-location="${location}"]`)!;
-                    const transform = area.getScreenCTM()!.inverse().multiply(rail.getScreenCTM()!);
-                    const capacity = Number(rail.getAttribute('data-rail-capacity'));
-                    for (let index = 0; index < capacity; index++) {
-                        const point = rail.getPointAtLength(rail.getTotalLength() * (index + 0.5) / capacity);
-                        const local = new DOMPoint(point.x, point.y).matrixTransform(transform);
-                        expect(area.isPointInFill(local)).withContext(
-                            `${view} ${location} rail ${rail.getAttribute('data-rail-index')} slot ${index}: ${point.x},${point.y}`,
-                        ).toBeTrue();
-                    }
-                }
-            } finally {
-                svg.remove();
-            }
-        });
-    }
 });

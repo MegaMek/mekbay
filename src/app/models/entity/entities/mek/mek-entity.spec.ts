@@ -563,7 +563,7 @@ describe('MekEntity weapons', () => {
 
     const attacks = entity.intrinsicWeapons();
     expect(attacks.map(attack => attack.name)).toEqual([
-      'Punch', 'Punch', 'Kick', 'Club (Club/Improvised)', 'Charge', 'Push',
+      'Punch', 'Punch', 'Kick', 'Club/Improvised', 'Charge', 'Push',
     ]);
     expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')?.damage).toEqual({
       kind: 'fixed', value: 6,

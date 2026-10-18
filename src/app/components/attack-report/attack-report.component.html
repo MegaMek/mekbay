@@ -1,0 +1,68 @@
+<ng-template #rollChip let-dice="dice" let-weapon="weapon" let-roll="roll" let-label="label">
+    <span class="roll-chip" [class.editable]="editable()">
+        <dice-roller [small]="true" [diceCount]="dice.length" [initialResults]="dice" />
+        @if (editable()) {
+            <select [attr.aria-label]="label" [title]="label" (change)="setRoll(weapon, roll, $event)">
+                @for (total of totals(dice); track total) {
+                    <option [value]="total" [selected]="total === sum(dice)">{{ total }}</option>
+                }
+            </select>
+        }
+    </span>
+</ng-template>
+
+<ol class="attack-weapons">
+    @for (weapon of weapons(); track $index; let w = $index) {
+        <li class="attack-weapon" [class.hit]="weapon.hit" [class.miss]="!weapon.hit">
+            <div class="weapon-line">
+                <strong class="weapon-name">{{ weapon.name }}</strong>
+                <span class="weapon-roll">
+                    <span class="tn" title="Target number">TN {{ weapon.targetNumber }}</span>
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: weapon.toHit, weapon: w, roll: 'to-hit', label: 'Set ' + weapon.name + ' to-hit roll' }" />
+                    <span class="verdict">{{ weapon.hit ? 'HIT' : 'MISS' }}</span>
+                    @if (weapon.jammed) { <span class="jammed" title="The weapon jammed; its shots still fire">JAMMED</span> }
+                    @if (editable()) {
+                        <button type="button" class="reroll" [attr.aria-label]="'Re-roll ' + weapon.name"
+                            title="Re-roll this weapon" (click)="rerolled.emit(w)"></button>
+                    }
+                </span>
+            </div>
+            @if (weapon.hit && weapon.cluster; as cluster) {
+                <div class="cluster-line">
+                    <span class="step-label">Cluster</span>
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: cluster.dice, weapon: w, roll: 'cluster', label: 'Set ' + weapon.name + ' cluster roll' }" />
+                    @if (editable()) {
+                        <select class="modifier" [attr.aria-label]="'Cluster modifier for ' + weapon.name"
+                            title="Cluster modifier (Artemis, NARC, AMS…)" (change)="setClusterModifier(w, $event)">
+                            @for (modifier of clusterModifiers; track modifier) {
+                                <option [value]="modifier" [selected]="modifier === cluster.modifier">{{ signed(modifier) }}</option>
+                            }
+                        </select>
+                    } @else if (cluster.modifier !== 0) {
+                        <span class="modifier">{{ signed(cluster.modifier) }}</span>
+                    }
+                    <span class="cluster-hits"><strong>{{ cluster.hits }}</strong> / {{ cluster.projectiles }} hit</span>
+                </div>
+            }
+            @if (weapon.groups.length > 0) {
+                <ol class="hit-groups">
+                    @for (group of weapon.groups; track $index; let g = $index) {
+                        <li class="hit-group">
+                            <span class="damage" title="Damage">{{ group.damage }}</span>
+                            <ng-container *ngTemplateOutlet="rollChip; context: {
+                                dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
+                            @if (group.label !== null) {
+                                <span class="location">
+                                    {{ group.label }}
+                                    @if (group.throughArmorCritical) { <em>TAC check</em> }
+                                </span>
+                            }
+                        </li>
+                    }
+                </ol>
+            }
+        </li>
+    }
+</ol>

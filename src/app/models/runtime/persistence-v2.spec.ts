@@ -610,7 +610,7 @@ function v2Unit(instanceId: string, uuid: typeof UUID_A): SerializedCBTUnitV2 {
         },
         stateRevision: 3,
         ruleChecks: { schemaVersion: 1, entries: [] },
-        movementPsr: { schemaVersion: 2 },
+        movementPsr: { schemaVersion: 3 },
         locationState: [{ target, damage: 2 }],
         crew: { schemaVersion: 1, positions: [] },
         family: { kind: 'mek' },

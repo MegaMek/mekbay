@@ -23,6 +23,9 @@ import { OptionsService } from './services/options.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { ConnectionStatusBadgeComponent } from './components/connection-status-badge/connection-status-badge.component';
 import { ModeSwitchComponent } from './components/mode-switch/mode-switch.component';
+import { GameTurnTrackerComponent } from './components/game-turn-tracker/game-turn-tracker.component';
+import { GameTurnService } from './services/game-turn.service';
+import { AttackResolutionService } from './services/attack-resolution.service';
 import { ToastsComponent } from './components/toasts/toasts.component';
 import { SavedSearchesService } from './services/saved-searches.service';
 import { WsService } from './services/ws.service';
@@ -69,6 +72,7 @@ declare global {
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
     ToastsComponent,
+    GameTurnTrackerComponent,
     PageViewerComponent,
     TacticalViewComponent,
     AlphaStrikeViewerComponent,
@@ -110,6 +114,9 @@ export class App {
     public unitSearchFiltersService = inject(UnitSearchFiltersService);
     public injector = inject(Injector);
     public gameService = inject(GameService);
+    protected readonly gameTurn = inject(GameTurnService);
+    /** Created at start so attacks sent to this player's units are always heard. */
+    private readonly attackResolution = inject(AttackResolutionService);
     private accountAuthService = inject(AccountAuthService);
     private accountProtectionService = inject(AccountProtectionService);
     private router = inject(Router);

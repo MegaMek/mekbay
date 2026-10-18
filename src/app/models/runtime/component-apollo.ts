@@ -15,7 +15,6 @@ type ApolloMode,
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentStatus } from '../equipment-status.model';
-import type { ToHitAdjustment } from '../rules/game-rules';
 import type { WeaponType } from '../weapon-types.model';
 import { type CBTMekUnit } from './cbt-unit';
 import {
@@ -111,31 +110,6 @@ export function componentApolloMode(
     }
     const mode = runtime.componentMode(definition.parent.componentId);
     return isApolloMode(mode) ? mode : APOLLO_STANDARD_MODE;
-}
-
-export function componentApolloToHitAdjustment(
-    index: MekRuntimeIndex,
-    runtime: ComponentApolloRuntimeView,
-    parentId: ComponentId,
-    ruleset: CBTRuleset,
-): ToHitAdjustment | null {
-    const sourceId = index.relationships.linkedSourceByTarget.get(parentId);
-    if (sourceId === undefined) return null;
-    const definition = resolveComponentApolloDefinition(index, sourceId, parentId, ruleset);
-    if (definition === null) return null;
-    if (definition.supportsSaturationMode) return null;
-    const status = runtime.componentStatus(sourceId);
-    const weakened = status !== 'available';
-    return Object.freeze({
-        kind: 'add' as const,
-        label: status === 'destroyed'
-            ? `${definition.sourceLabel} Destroyed`
-            : status === 'disabled'
-                ? `${definition.sourceLabel} Disabled`
-                : definition.sourceLabel,
-        modifier: weakened ? 0 : -1,
-        weakened,
-    });
 }
 
 export function applyComponentApolloWeaponTypes(

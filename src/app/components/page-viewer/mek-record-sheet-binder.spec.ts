@@ -1466,7 +1466,7 @@ describe('Mek record-sheet binder', () => {
         const base = snapshot();
         const damaged = {
             ...base,
-            lifeSupport: { damaged: true, heatHits: 2, oxygenHits: 1, headHitHits: 1 },
+            lifeSupport: { damaged: true, heatHits: 2, oxygenHits: 1 },
         } as MekRecordSheetSnapshot;
         const binding = bindMekRecordSheet(
             svg,
@@ -1487,7 +1487,7 @@ describe('Mek record-sheet binder', () => {
 
         binding.render({
             ...base,
-            lifeSupport: { damaged: false, heatHits: 0, oxygenHits: 0, headHitHits: 1 },
+            lifeSupport: { damaged: false, heatHits: 0, oxygenHits: 0 },
         } as MekRecordSheetSnapshot);
         expect(warning.querySelectorAll('use').length).toBe(0);
         expect(warning.getAttribute('display')).toBe('none');
@@ -1536,20 +1536,32 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
-    it('preserves printed equipment profiles independently of selectable weapon modes', () => {
+    it('keeps a linked enhancement line under its weapon and shows the enhancement damage', () => {
         const svg = sheet();
         svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
-            <g class="equipmentProfile"><text class="name">w/Capacitor</text>
-                <text class="heat">20</text><g class="damage"><text>15 [DE,X]</text></g></g>
+            <g class="inventoryEntry linked" id="linked" data-mekbay-component-ids="capacitor-component">
+                <text class="name">PPC Capacitor</text><text class="heat">20</text>
+                <g class="damage"><text>15 [DE,X]</text></g></g>
         `);
         const base = snapshot();
-        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, base);
-        binding.render(base);
-        const profile = svg.querySelector<SVGGElement>('.equipmentProfile')!;
-        expect(profile.style.display).not.toBe('none');
-        expect(profile.querySelector('.name')?.textContent).toBe('w/Capacitor');
-        expect(profile.querySelector('.heat')?.textContent).toBe('20');
-        expect(profile.querySelector('.damage')?.textContent).toBe('15 [DE,X]');
+        const withCapacitor = (status: 'available' | 'destroyed') => ({
+            ...base,
+            equipment: [...base.equipment, {
+                componentId: 'capacitor-component', label: 'PPC Capacitor',
+                locations: [{ locationId: 'location-ct', code: 'CT' }],
+                status, previewStatus: status, modes: [], jammed: false,
+            }],
+        } as MekRecordSheetSnapshot);
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, withCapacitor('available'));
+        const linked = svg.querySelector<SVGGElement>('.inventoryEntry.linked')!;
+        expect(linked.style.display).not.toBe('none');
+        expect(linked.querySelector('.name')?.textContent).toBe('PPC Capacitor');
+        expect(linked.querySelector('.heat')?.textContent).toBe('20');
+        expect(linked.querySelector('.damage')?.textContent).toBe('15 [DE,X]');
+        expect(linked.getAttribute('data-mekbay-component-ids')).toBe('capacitor-component');
+        expect(linked.classList.contains('damaged')).toBeFalse();
+        binding.render(withCapacitor('destroyed'));
+        expect(linked.classList.contains('damaged')).toBeTrue();
         binding.destroy();
     });
 
@@ -2021,7 +2033,7 @@ function snapshot(): MekRecordSheetSnapshot {
                 hasPendingSettlement: true,
             },
         },
-        lifeSupport: { damaged: false, heatHits: 0, oxygenHits: 0, headHitHits: 1 },
+        lifeSupport: { damaged: false, heatHits: 0, oxygenHits: 0 },
         destroyed: false,
         crippled: false,
         conditions: ['prone'],

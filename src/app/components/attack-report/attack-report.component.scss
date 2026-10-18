@@ -1,0 +1,149 @@
+:host { display: block; }
+
+.attack-weapons,
+.hit-groups {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.attack-weapons {
+    display: grid;
+    gap: 6px;
+}
+
+.attack-weapon {
+    display: grid;
+    gap: 4px;
+    padding: 6px 8px;
+    border-left: 3px solid var(--border-color);
+    background: var(--background-input);
+
+    &.hit { border-left-color: var(--success); }
+    &.miss { opacity: 0.72; }
+}
+
+.weapon-line,
+.cluster-line,
+.hit-group,
+.weapon-roll {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.weapon-line {
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.weapon-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.weapon-roll { margin-left: auto; }
+
+.tn,
+.step-label,
+.cluster-hits,
+.modifier {
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+    white-space: nowrap;
+}
+
+.step-label {
+    min-width: 52px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.cluster-hits strong { color: var(--text-color); font-size: 1.2em; }
+
+.verdict {
+    min-width: 40px;
+    font-weight: 800;
+    text-align: center;
+
+    .hit & { color: var(--success); }
+    .miss & { color: var(--danger); }
+}
+
+.jammed {
+    padding: 1px 4px;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-size: 0.72em;
+    font-weight: 800;
+}
+
+.roll-chip {
+    position: relative;
+    display: inline-flex;
+    border-radius: 3px;
+
+    &.editable {
+        cursor: pointer;
+        outline: 1px dashed transparent;
+        outline-offset: 2px;
+
+        &:hover,
+        &:focus-within { outline-color: var(--bt-yellow); }
+    }
+
+    select {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        opacity: 0;
+        cursor: pointer;
+    }
+}
+
+select.modifier {
+    padding: 2px 4px;
+    border: 1px solid var(--border-color);
+    background: var(--background-color);
+    color: var(--text-color);
+}
+
+.reroll {
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    border: 1px solid var(--border-color);
+    background: url('/images/random.svg') center / 20px no-repeat;
+    cursor: pointer;
+}
+
+.hit-groups {
+    display: grid;
+    gap: 4px;
+    padding-left: 12px;
+}
+
+.hit-group .damage {
+    min-width: 28px;
+    color: var(--damage-color);
+    font-weight: 800;
+    text-align: right;
+    white-space: nowrap;
+
+    &::after { content: ' dmg'; font-size: 0.7em; font-weight: 600; color: var(--text-color-secondary); }
+}
+
+.location {
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+
+    em {
+        margin-left: 4px;
+        color: var(--bt-yellow);
+        font-size: 0.8em;
+        font-style: normal;
+        font-weight: 700;
+    }
+}

@@ -35,7 +35,7 @@ describe('projectNonMekRecordSheet', () => {
                 { location: 'Squad', baMountLocation: 'Body' });
             const runtime = createNonMekRuntimeForTest('unit:burdened-ba-sheet', { ...baseline(), ruleset }, entity, ruleset);
             const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), ruleset, runtime.query(),
-                runtime.query().currentBaseBattleValue()!, entity.battleValue());
+                runtime.query().currentBaseBattleValue()!, entity.battleValue(ruleset));
             expect(sheet.movement.jump).toBe(0);
             expect(entity.baseJumpMP()).toBe(3);
         });
@@ -146,7 +146,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             fighterRuntime.query(),
             fighterRuntime.query().currentBaseBattleValue()!,
-            fighter.battleValue(),
+            fighter.battleValue(CORE_2026_RULESET),
         );
         expect(grounded.conditions).toContain('grounded');
         expect(grounded.conditions).not.toContain('airborne');
@@ -166,7 +166,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             jumpShipRuntime.query(),
             jumpShipRuntime.query().currentBaseBattleValue()!,
-            jumpShip.battleValue(),
+            jumpShip.battleValue(CORE_2026_RULESET),
         );
         expect(spaceOnly.conditions).not.toContain('airborne');
         expect(spaceOnly.conditions).not.toContain('grounded');
@@ -264,7 +264,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             runtime.query(),
             runtime.query().currentBaseBattleValue()!,
-            entity.battleValue(),
+            entity.battleValue(CORE_2026_RULESET),
         );
 
         expect(snapshot.locations.map(location => location.sheetCode)).toEqual(['T1', 'T2', 'T3', 'T4']);
@@ -309,7 +309,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             runtime.query(),
             runtime.query().currentBaseBattleValue()!,
-            entity.battleValue(),
+            entity.battleValue(CORE_2026_RULESET),
         );
 
         expect(snapshot.destroyed).toBeTrue();
@@ -335,7 +335,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             runtime.query(),
             runtime.query().currentBaseBattleValue()!,
-            entity.battleValue(),
+            entity.battleValue(CORE_2026_RULESET),
         );
 
         expect(snapshot.locations).toEqual([jasmine.objectContaining({
@@ -373,7 +373,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             runtime.query(),
             runtime.query().currentBaseBattleValue()!,
-            entity.battleValue(),
+            entity.battleValue(CORE_2026_RULESET),
         );
 
         expect(snapshot.conditions).toContain('immobile');
@@ -416,7 +416,7 @@ describe('projectNonMekRecordSheet', () => {
             CORE_2026_RULESET,
             runtime.query(),
             runtime.query().currentBaseBattleValue()!,
-            entity.battleValue(),
+            entity.battleValue(CORE_2026_RULESET),
         );
 
         expect(snapshot.heat).toEqual(jasmine.objectContaining({

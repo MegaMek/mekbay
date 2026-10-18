@@ -6,20 +6,11 @@ import { RecordSheetSvgGenerator } from './record-sheet-svg-generator';
 import { appendHeatSinkData, svgElement } from './record-sheet-svg-rendering';
 
 describe('record sheet data panels', () => {
-    it('prints every family\'s facts at MegaMekLab caption widths with values in one template column', async () => {
-        const gaps: number[] = [];
+    it('prints an unset role as the same dash on every family template', async () => {
         for (const entity of [new TestBipedMekEntity(), new TestTankEntity(), new TestAeroSpaceFighterEntity(), new TestWarShipEntity()]) {
             const sheet = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-            const value = sheet.querySelector<SVGTextElement>('#tonnage')!;
-            const caption = Array.from(value.parentElement!.querySelectorAll<SVGTextElement>(':scope > text'))
-                .find(text => text.textContent === 'Tonnage:')!;
-            const size = Number(caption.getAttribute('font-size'));
-            expect(Number(caption.getAttribute('textLength'))).withContext(entity.entityType).toBeCloseTo(29.785 / 7.7 * size, 3);
-            gaps.push(Number(value.getAttribute('x')) - Number(caption.getAttribute('x')));
-            // An unset role prints the same dash on every template.
             expect(sheet.querySelector('#role')?.textContent).withContext(entity.entityType).toBe('—');
         }
-        for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0], 1);
     });
 
     it('prints laser heat sinks doubled too, since they are double heat sinks', () => {

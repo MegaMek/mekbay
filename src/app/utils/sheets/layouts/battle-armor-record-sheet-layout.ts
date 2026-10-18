@@ -46,7 +46,7 @@ import {
     appendEmbeddedRasterUse,
     appendRecordSheetEraIcon,
 } from '../record-sheet-embedded-art';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
     canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
@@ -105,7 +105,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         });
     }
 
-    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
         if (!isBattleArmorEntity(entity)) throw new Error('Battle Armor layout requires a Battle Armor entity');
         await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/battle-armor.svg', MASTHEAD_ART_ID);
         setCompactClusterRacks(svg, battleArmorClusterRacks(entity));
@@ -176,13 +176,13 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     });
     addText(group, 'Role:', x(255), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     addText(group, entity.role() || '—', x(272.5), y(129.166), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(55) });
-    appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5), {
+    appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(request.ruleset), 4, 5), {
         x: x(332.966), valueX: x(346.209), y: y(129.166), size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(31),
     }, `/${formatWholeNumber(new BattleArmorBVCalculator(entity).singleTrooperBattleValue())}`);
         await appendRecordSheetEraIcon(svg, group, entity.year(), {
             x: x(165.966), y: y(11.752), width: x(20), height: y(20),
         });
-        appendLegacyIdentityAnchors(group, entity, frameBox);
+        appendLegacyIdentityAnchors(group, entity, frameBox, request.ruleset);
     }
 }
 
@@ -521,7 +521,7 @@ function drawCompactBattleArmorInventory(
             const modeLineCount = rowLines(mode, rowFont);
             const modeBaselineValue = firstBaseline + modeLine * lineStep;
             const alternative = svgElement('g');
-            alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
+            alternative.setAttribute('class', 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
             alternative.appendChild(transparentRect(x(3.966), y(modeBaselineValue - lineStep), x(182),
                 y(lineStep * modeLineCount), 'inventoryEntryButton alternativeModeButton'));

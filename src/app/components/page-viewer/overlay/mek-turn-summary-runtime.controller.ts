@@ -19,7 +19,7 @@ type MekPilotCheckOutcomeV2,
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import type { UnitCover } from '../../../models/unit-cover.model';
 
-import type { OptionsService } from '../../../services/options.service';
+import { heatAutomationPolicy, type OptionsService } from '../../../services/options.service';
 import type { ToastService } from '../../../services/toast.service';
 import { actionableMekPilotChecks } from './page-turn-summary.util';
 
@@ -337,9 +337,7 @@ export class MekTurnSummaryRuntimeController {
     }
 
     private heatPolicy(): 'automatic' | 'manual' {
-        return this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-            ? 'automatic'
-            : 'manual';
+        return heatAutomationPolicy(this.options);
     }
 }
 

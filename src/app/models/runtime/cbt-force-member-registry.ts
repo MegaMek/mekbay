@@ -42,6 +42,14 @@ export class CBTForceMemberRegistry {
         return this.byId.get(instanceId) ?? null;
     }
 
+    /** Invalidates session-carrying projections of the members a session-only edit changed; null means all. */
+    public bindSessionEdit(changedUnitIds: readonly string[] | null): void {
+        const members = changedUnitIds === null
+            ? [...this.byId.values()]
+            : changedUnitIds.flatMap(instanceId => this.byId.get(instanceId) ?? []);
+        members.forEach(member => member.bindSessionEdit());
+    }
+
     public dependOnBattleValueInputs(): void {
         this.battleValueInputRevision();
     }

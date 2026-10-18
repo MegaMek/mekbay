@@ -94,7 +94,7 @@ export function buildMekIntrinsicActions(
     const clawModifier = facts.equipment.some(item =>
       isImprovisedClawFlags(item.flags)) ? 2 : 0;
     attacks.push(action(
-      'club', 'club', 'Club (Club/Improvised)', [],
+      'club', 'club', 'Club/Improvised', [],
       fixedDamage(Math.ceil(facts.tonnage / 5), tsm),
       clawModifier - (armAes ? 1 : 0),
     ));

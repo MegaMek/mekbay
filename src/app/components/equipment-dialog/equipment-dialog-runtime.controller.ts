@@ -43,8 +43,9 @@ isBoobyTrapDetonated,
 } from '../../models/runtime/component-booby-trap';
 import type { WeaponAttackContext } from '../../models/runtime/equipment-panel';
 import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
+import type { AttackResolutionService } from '../../services/attack-resolution.service';
 import type { DialogsService } from '../../services/dialogs.service';
-import type { OptionsService } from '../../services/options.service';
+import { heatAutomationPolicy, type OptionsService } from '../../services/options.service';
 import type { ToastService } from '../../services/toast.service';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 
@@ -68,6 +69,7 @@ export class EquipmentDialogRuntimeController {
     private readonly options: OptionsService;
     private readonly toast: ToastService;
     private readonly dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>;
+    private readonly attacks?: Pick<AttackResolutionService, 'resolveFired' | 'resolvesAttacks' | 'inPhysicalPhase'>;
     private readonly forceChanges: Subscription;
 
     public hasSelections(): boolean {
@@ -94,9 +96,7 @@ export class EquipmentDialogRuntimeController {
         if (isCBTMekForceMember(this.member)) {
             const turn = this.member.force.getMekTurnPanelSnapshot(
                 this.member.id,
-                this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-                    ? 'automatic'
-                    : 'manual',
+                heatAutomationPolicy(this.options),
             );
             if (!turn || turn.heatProjection.kind !== 'supported') return null;
             const projection = turn.heatProjection.projection;
@@ -131,11 +131,13 @@ export class EquipmentDialogRuntimeController {
         options: OptionsService,
         toast: ToastService,
         dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>,
+        attacks?: Pick<AttackResolutionService, 'resolveFired' | 'resolvesAttacks' | 'inPhysicalPhase'>,
     ) {
         this.member = member;
         this.options = options;
         this.toast = toast;
         this.dialogs = dialogs;
+        this.attacks = attacks;
         this.snapshot = signal(this.requiredSnapshot());
         this.interactions = signal(this.interactionRows());
         this.weapons = computed(() => this.snapshot().components.filter(row => row.weapon !== undefined));
@@ -228,9 +230,10 @@ export class EquipmentDialogRuntimeController {
         }
     }
 
-    public async selectTarget(row: EquipmentPanelComponent, value: string): Promise<void> {
-        if (!row.weapon || this.busy()) return;
-        const allMembers = attackMembers(row);
+    /** Applies one selection to every attack member of the rows as a single targeting batch. */
+    public async selectTarget(rows: readonly EquipmentPanelComponent[], value: string): Promise<void> {
+        if (this.busy()) return;
+        const allMembers = rows.filter(row => row.weapon).flatMap(attackMembers);
         const members = value === '' ? allMembers : allMembers.filter(member => member.selectable);
         if (members.length === 0) return;
         if (value !== '') {
@@ -271,8 +274,7 @@ export class EquipmentDialogRuntimeController {
     }
 
     public async selectPhysicalTarget(row: MekPhysicalAttackRow, value: string): Promise<void> {
-        if (!row.available || !row.selectable || this.busy()
-            || !isCBTMekForceMember(this.member)) return;
+        if (!row.available || !row.selectable || this.busy()) return;
         const selection = value === ''
             ? null
             : value === 'selected'
@@ -398,22 +400,30 @@ export class EquipmentDialogRuntimeController {
     public async fire(): Promise<void> {
         if (this.busy()) return;
         const current = this.snapshot();
+        const attack = this.attacks ? this.attackContext() : null;
+        // Physical attacks fire nothing: they are only resolved. In the Physical Attack Phase the weapons
+        // still selected from the Weapon Attack Phase must not fire again.
+        if (!selectedWeaponHeat(current).hasSelection || this.attacks?.inPhysicalPhase(this.member) === true) {
+            await this.attacks?.resolveFired(this.member, current, attack);
+            return;
+        }
         this.busy.set(true);
+        let fired = false;
         try {
             const prototypeHeatRolls = this.prototypeHeatRolls(current);
             const result = await this.member.force.fireSelectedWeapons(this.member.id, {
                 type: 'fire-selected-weapons',
-                heatPolicy: this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-                    ? 'automatic'
-                    : 'manual',
+                heatPolicy: heatAutomationPolicy(this.options),
                 ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
             });
+            fired = result.accepted;
             if (!result.accepted) this.rejectCommand();
             else this.reportPrototypeHeat(current, result.prototypeHeat ?? Object.freeze([]));
         } finally {
             this.busy.set(false);
             this.refresh();
         }
+        if (fired) await this.attacks?.resolveFired(this.member, current, attack);
     }
 
     private prototypeHeatRolls(snapshot: EquipmentPanelSnapshot): readonly PrototypeLaserHeatRoll[] {
@@ -441,29 +451,18 @@ export class EquipmentDialogRuntimeController {
 
     public async resetSelections(): Promise<void> {
         if (this.busy()) return;
-        const selected = this.weapons().filter(row => row.weapon?.selection !== undefined);
-        if (!isCBTMekForceMember(this.member) && selected.length > 0) {
-            await this.dispatchComponentSelections(
-                selected.flatMap(row => attackMembers(row).map(member => member.componentId)),
-                null,
-            );
-        } else {
-            for (const row of selected) {
-                await this.dispatchTargeting({
-                    kind: 'set-component-selection',
-                    componentId: row.componentId,
-                    selection: null,
-                });
-            }
-        }
-        if (isCBTMekForceMember(this.member)) {
-            for (const row of this.snapshot().physicalAttacks.filter(attack => attack.selection !== undefined)) {
-                await this.dispatchTargeting({
-                    kind: 'set-action-selection',
-                    target: row.target,
-                    selection: null,
-                });
-            }
+        await this.dispatchComponentSelections(
+            this.weapons()
+                .filter(row => row.weapon?.selection !== undefined)
+                .flatMap(row => attackMembers(row).map(member => member.componentId)),
+            null,
+        );
+        for (const row of this.snapshot().physicalAttacks.filter(attack => attack.selection !== undefined)) {
+            await this.dispatchTargeting({
+                kind: 'set-action-selection',
+                target: row.target,
+                selection: null,
+            });
         }
     }
 
@@ -570,7 +569,10 @@ export class EquipmentDialogRuntimeController {
     }
 
     public canFireSelectedWeapons(): boolean {
-        return selectedWeaponHeat(this.snapshot()).hasSelection;
+        const snapshot = this.snapshot();
+        return selectedWeaponHeat(snapshot).hasSelection
+            || (this.attacks?.resolvesAttacks() === true
+                && snapshot.physicalAttacks.some(row => row.available && row.selectable && row.selection?.kind === 'target'));
     }
 
     private async dispatchTargeting(

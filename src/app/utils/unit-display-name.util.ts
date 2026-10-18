@@ -21,7 +21,12 @@ export function formatChassisName(
     const clan = clanName?.trim() ?? '';
     if (!innerSphere) return clan;
     if (!clan) return innerSphere;
-    return format === 'clanInnerSphere' ? `${clan} (${innerSphere})` : `${innerSphere} (${clan})`;
+    switch (format) {
+        case 'clanInnerSphere': return `${clan} (${innerSphere})`;
+        case 'innerSphereOnly': return innerSphere;
+        case 'clanOnly': return clan;
+        default: return `${innerSphere} (${clan})`;
+    }
 }
 
 /** Format from the separate names; never reinterpret parentheses in a chassis. */

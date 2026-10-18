@@ -1,18 +1,11 @@
 @if (member(); as activeMember) {
 <div class="tactical-shell" [class.read-only]="readOnly()" [class.unit-destroyed]="unitDestroyed()">
     <nav class="tactical-toolbar glass" aria-label="Tactical view tools">
-            <button type="button" class="toolbar-icon-button" [disabled]="!canUndo()" (click)="undoRuntimeCommand()"
-                aria-label="Undo" title="Undo">
+            <button type="button" class="toolbar-icon-button" (click)="openLog($event)" aria-label="Logs" title="Logs">
                 <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M9 7 4 12l5 5" />
-                    <path d="M4 12h9a7 7 0 0 1 7 7" />
-                </svg>
-            </button>
-            <button type="button" class="toolbar-icon-button" [disabled]="!canRedo()" (click)="redoRuntimeCommand()"
-                aria-label="Redo" title="Redo">
-                <svg aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="m15 7 5 5-5 5" />
-                    <path d="M20 12h-9a7 7 0 0 0-7 7" />
+                    <path d="M3 12a9 9 0 1 0 3-6.7" />
+                    <path d="M3 4v6h6" />
+                    <path d="M12 7v5l3 2" />
                 </svg>
             </button>
             <div class="section-shortcuts" role="group" aria-label="Jump to section">
@@ -400,7 +393,7 @@
             [class.hidden]="!canNavigate()" [disabled]="!canNavigate()" (click)="previousUnit()"
             [attr.aria-label]="previousNavigationUnit() ? 'Previous Unit: ' + unitNames.name(previousNavigationUnit()!.entity) : 'Previous Unit'"
             [title]="unitNames.name(previousNavigationUnit()?.entity)">
-            <span class="chevron chevron-left nav-arrow-symbol" aria-hidden="true"></span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10094;</span>
             <span class="nav-unit-name">
                 <span class="nav-unit-model">{{ previousNavigationUnit()?.entity?.model() }}</span>
                 <span class="nav-unit-chassis">{{ unitNames.chassis(previousNavigationUnit()?.entity) }}</span>
@@ -429,7 +422,7 @@
                 <span class="nav-unit-model">{{ nextNavigationUnit()?.entity?.model() }}</span>
                 <span class="nav-unit-chassis">{{ unitNames.chassis(nextNavigationUnit()?.entity) }}</span>
             </span>
-            <span class="chevron chevron-right nav-arrow-symbol" aria-hidden="true"></span>
+            <span class="nav-arrow-symbol" aria-hidden="true">&#10095;</span>
         </button>
     </nav>
 </div>

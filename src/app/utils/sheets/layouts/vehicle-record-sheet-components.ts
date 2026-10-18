@@ -5,7 +5,6 @@ import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
 import { isBapEquipment } from '../../../models/bap-equipment.model';
-import { artemisKind } from '../../../models/artemis-equipment.model';
 import { isNovaC3Equipment } from '../../../models/c3-network.model';
 import { isAngelEcmEquipment,isEcmEquipment,isSingleHexEcmEquipment } from '../../../models/ecm-mode.model';
 import { fireControlFeatureFromFlagLookup } from '../../../models/entity/utils/fire-control';
@@ -62,7 +61,8 @@ recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
-transparentRect
+transparentRect,
+type RecordSheetLinkedEquipment,
 } from '../record-sheet-svg-rendering';
 
 export interface CompactVehicleInventoryPresentation {
@@ -186,11 +186,11 @@ export function drawCompactVehicleDataPanel(
     appendCompactVehicleInventory(content, entity, { x, y, font }, box, presentation);
     const footerOffset = presentation.footerBaselineOffset ?? 0;
     addLine(content, x(3), y(257.643 + footerOffset), box.width - x(3), y(257.643 + footerOffset), '#111', 0.8 * fontScale);
-    appendBattleValue(content, entity.battleValue(), {
+    appendBattleValue(content, entity.battleValue(presentation.ruleset), {
         x: x(13.845), valueX: x(28.927), y: y(268.143 + footerOffset), size: font(RECORD_SHEET_FONT.body),
     });
     appendDataPanelEraIcon(svg, content, entity.year(), { x, y }, 260 + footerOffset);
-    appendLegacyIdentityAnchors(content, entity, box);
+    appendLegacyIdentityAnchors(content, entity, box, presentation.ruleset);
     return group;
 }
 
@@ -208,7 +208,7 @@ function appendCompactVehicleInventory(
     const { x, y, font } = scale;
     const weapons = compactVehicleInventoryRows(entity);
     const physical = (presentation.includePhysicalAttacks && isVehicleEntity(entity)
-        && vehicleHasChargeAttack(entity, presentation.ruleset) ? entity.intrinsicWeapons() : []).map(attack => ({
+        && vehicleHasChargeAttack(entity) ? entity.intrinsicWeapons() : []).map(attack => ({
         name: attack.name,
         location: attack.locations.join('/') || '—',
         heat: '—',
@@ -260,7 +260,7 @@ function appendCompactVehicleInventory(
     const metrics = fitInventoryText((y(firstDetailBaseline - (detailRows.length ? 13.689 : 0) - 101.162)
         - (ammo.length ? y(9.126) : 0)) / (box.width / 220.4), fontSize => {
         const rows = weapons.map(row => [rowLines(row, fontSize),
-            ...(row.linkedEquipment ? [inventoryRowLineCount([[row.linkedEquipment.name, x(150)]], font(fontSize))] : []),
+            ...(row.linkedEquipment ? [rowLines(vehicleLinkedEquipmentFields(row.linkedEquipment), fontSize, 12.738)] : []),
             ...row.alternativeModes.map(mode => rowLines(mode, fontSize, 12.738))]);
         const physicalRows = physical.map(row => rowLines(row, fontSize));
         const cargoRows = cargoLabels.map(label => inventoryRowLineCount([[label, box.width - x(15)]], font(fontSize)));
@@ -301,14 +301,14 @@ function appendCompactVehicleInventory(
             const linkedBaseline = baseline + rowSpans[index][0] * weaponStep;
             linked.appendChild(transparentRect(x(6), linkedBaseline - weaponStep, x(160), weaponStep,
                 'inventoryEntryButton mainButton'));
-            addInventoryText(linked, row.linkedEquipment.name, x(12.738), linkedBaseline,
-                { class: 'name', size: inventoryFont(RECORD_SHEET_FONT.inventory), maxWidth: x(150), lineHeight: weaponStep });
+            drawCompactVehicleInventoryFields(linked, vehicleLinkedEquipmentFields(row.linkedEquipment), linkedBaseline,
+                x, inventoryFont, 12.738, weaponStep);
             entry.appendChild(linked);
         }
         row.alternativeModes.forEach((mode, modeIndex) => {
             const modeBaseline = baseline + rowSpans[index].slice(0, modeIndex + 1 + (row.linkedEquipment ? 1 : 0)).reduce((a, b) => a + b, 0) * weaponStep;
             const alternative = svgElement('g');
-            alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
+            alternative.setAttribute('class', 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
             alternative.appendChild(transparentRect(x(6), modeBaseline - weaponStep, x(160), weaponStep,
                 'inventoryEntryButton alternativeModeButton'));
@@ -373,6 +373,11 @@ function appendCompactVehicleInventory(
         lineHeight: weaponStep,
         prefix: recordSheetNonMekAmmoPrefix(entity),
     });
+}
+
+/** Vehicle inventories have no heat column; a linked enhancement prints its name and damage profile. */
+function vehicleLinkedEquipmentFields(linked: RecordSheetLinkedEquipment) {
+    return { name: linked.name, location: '', damage: linked.damage, minimumRange: '', ranges: ['', '', ''] } as const;
 }
 
 function drawCompactVehicleInventoryFields(
@@ -442,16 +447,10 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
     const mountsById = new Map(entity.equipment().map(mount => [String(mount.mountId), mount]));
     const weaponRows = recordSheetInventoryWeapons(entity).map(row => {
         const mount = mountsById.get(row.componentIds[0]);
-        const linkingMount = mount && entity.getLinkingMount(mount);
-        const artemis = artemisKind(linkingMount?.equipment);
         return Object.freeze({
             ...row,
             name: compactVehicleWeaponName(mount ? recordSheetInventoryMountName(entity, mount) : row.name),
             location: compactVehicleLocation(row.location),
-            linkedEquipment: linkingMount && artemis ? {
-                componentId: linkingMount.mountId,
-                name: artemis === 'v' ? 'w/Artemis V' : artemis === 'iv' ? 'w/Artemis IV' : 'w/Prototype Artemis IV',
-            } : null,
         });
     });
     const weaponMountIds = new Set(entity.rangedWeapons().map(mount => mount.mountId));

@@ -120,6 +120,19 @@ describe('OptionsService theme migration', () => {
         expect(service.options().CBTRules).toBe('core-2026');
     });
 
+    it('restores saved Initiative options and defaults invalid ones', async () => {
+        savedOptions = { initiativeOrder: 'spread', initiativeDie: true };
+        let service = await createService();
+
+        expect(service.options()).toEqual(jasmine.objectContaining({ initiativeOrder: 'spread', initiativeDie: true }));
+
+        TestBed.resetTestingModule();
+        savedOptions = { initiativeOrder: 'random', initiativeDie: 'yes' };
+        service = await createService();
+
+        expect(service.options()).toEqual(jasmine.objectContaining({ initiativeOrder: 'rules', initiativeDie: false }));
+    });
+
     it('defaults record sheets to the Canon pip layout', async () => {
         savedOptions = null;
 
@@ -166,12 +179,12 @@ describe('OptionsService theme migration', () => {
         expect(service.options().enableForceSyncConflictDialog).toBeTrue();
     });
 
-    it('defaults CBT force BV to the current damaged state', async () => {
+    it('defaults CBT force BV to the pristine state', async () => {
         savedOptions = null;
 
         const service = await createService();
 
-        expect(service.options().forceViewerBVPVDisplayDamage).toBe('damaged');
+        expect(service.options().forceViewerBVPVDisplayDamage).toBe('pristine');
     });
 
     it('defaults absent or invalid force BV/PV display preferences to adjusted after skills', async () => {
@@ -208,11 +221,11 @@ describe('OptionsService theme migration', () => {
     }
 
     it('restores and validates the CBT force BV damage policy', async () => {
-        savedOptions = { forceViewerBVPVDisplayDamage: 'pristine' };
+        savedOptions = { forceViewerBVPVDisplayDamage: 'damaged' };
 
         const service = await createService();
 
-        expect(service.options().forceViewerBVPVDisplayDamage).toBe('pristine');
+        expect(service.options().forceViewerBVPVDisplayDamage).toBe('damaged');
     });
 
     it('uses complete print defaults', async () => {

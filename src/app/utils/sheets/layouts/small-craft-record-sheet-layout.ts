@@ -36,7 +36,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
             panelTitle: 'CRAFT DATA', identity: 'small-craft',
             inventoryRows: this.smallCraftInventoryRows(entity),
             flowCargoAfterInventory: true, showAmmoSummary: true,
-            showQuirks: request.showQuirks,
+            showQuirks: request.showQuirks, ruleset: request.ruleset,
         });
         await drawAeroPaperdoll(svg, entity, at({ x: 249.651, y: 18, width: 344, height: 440 }), 440, {
             assetUrl: `/images/paperdolls/smallcraft-${motive.includes('SPHEROID') ? 'spheroid' : 'aerodyne'}.svg`,

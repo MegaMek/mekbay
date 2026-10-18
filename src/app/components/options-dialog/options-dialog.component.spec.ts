@@ -13,6 +13,7 @@ import { DataService } from '../../services/data.service';
 import { DbService } from '../../services/db.service';
 import { DialogsService } from '../../services/dialogs.service';
 import { GameService } from '../../services/game.service';
+import { LobbyService } from '../../services/lobby.service';
 import { LoggerService } from '../../services/logger.service';
 import { OptionsService } from '../../services/options.service';
 import { PublicTagsService } from '../../services/public-tags.service';
@@ -22,6 +23,7 @@ import { TagsService } from '../../services/tags.service';
 import { ToastService } from '../../services/toast.service';
 import { UserStateService } from '../../services/userState.service';
 import { DisplayNameService } from '../../services/display-name.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import { OptionsDialogComponent } from './options-dialog.component';
 import { UnitArtworkService } from '../../services/unit-artwork.service';
 import { ProvidedFluffImageService } from '../../services/catalogs/provided-fluff-image.service';
@@ -63,7 +65,9 @@ describe('OptionsDialogComponent', () => {
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
                 { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
+                { provide: ForceBuilderService, useValue: {} },
                 { provide: GameService, useValue: {} },
+                { provide: LobbyService, useValue: { hasLobby: signal(false) } },
                 { provide: LoggerService, useValue: {} },
                 { provide: OptionsService, useValue: optionsService },
                 { provide: PublicTagsService, useValue: { version: signal(0), getOwnTagSubscriberCounts: () => Promise.resolve({}) } },
@@ -330,7 +334,9 @@ describe('OptionsDialogComponent', () => {
                 { provide: DialogRef, useValue: { close: () => undefined } },
                 { provide: DialogsService, useValue: {} },
                 { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
+                { provide: ForceBuilderService, useValue: {} },
                 { provide: GameService, useValue: {} },
+                { provide: LobbyService, useValue: { hasLobby: signal(false) } },
                 { provide: LoggerService, useValue: {} },
                 { provide: OptionsService, useValue: { options: () => ({}) } },
                 { provide: PublicTagsService, useValue: { version: signal(0), getOwnTagSubscriberCounts: () => Promise.resolve({}) } },

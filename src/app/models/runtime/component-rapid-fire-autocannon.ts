@@ -44,6 +44,20 @@ export function rapidFireAutocannonSupportsJamming(
             && ['AC_ULTRA', 'AC_ULTRA_THB'].includes(equipment.ammoType));
 }
 
+/**
+ * The to-hit roll at or below which a rapid-firing autocannon jams (TW p.140, Core p.183): 2 for two or
+ * three shots, plus 1 for every two more. Null when a single shot or this weapon cannot jam.
+ */
+export function rapidFireAutocannonJamRoll(
+    equipment: Equipment | undefined,
+    ruleset: CBTRuleset,
+    shots: number,
+): number | null {
+    return shots > 1 && rapidFireAutocannonSupportsJamming(equipment, ruleset)
+        ? 2 + Math.floor((shots - 2) / 2)
+        : null;
+}
+
 /** The jam control of one component in either runtime family; null when it cannot jam. */
 export function componentJamDefinition(
     componentId: ComponentId,

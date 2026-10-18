@@ -914,6 +914,23 @@ describe('bindNonMekRecordSheet', () => {
         binding.destroy();
     });
 
+    it('shows the selected weapons heat in a generated aerospace heat line while any are selected', async () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        const svg = await RecordSheetSvgGenerator.generate(fighter, { ruleset: 'total-warfare' });
+        const maximum = `Maximum Heat (Dissipation): ${Math.max(0, fighter.heatGeneration())} (16)`;
+        const binding = bindNonMekRecordSheet(svg, heatSnapshot());
+        expect(svg.querySelector('#heatProfile')?.textContent).toBe(maximum);
+        const selected = {
+            components: [{ status: 'available', weapon: { selectable: true, firingHeat: 10, selection: { kind: 'manual-range', range: 'short' } } }],
+            physicalAttacks: [],
+        } as unknown as EquipmentPanelSnapshot;
+        binding.render(heatSnapshot(), inventory(selected));
+        expect(svg.querySelector('#heatProfile')?.textContent).toBe('Selected Heat (Dissipation): 10 (16)');
+        binding.render(heatSnapshot(), null);
+        expect(svg.querySelector('#heatProfile')?.textContent).toBe(maximum);
+        binding.destroy();
+    });
+
     it('keeps heat-cell events on the sheet and binds the scale again after the binding is destroyed', () => {
         const svg = heatSheet();
         const cell = () => svg.querySelector<SVGElement>('#heatScale .heat[heat="5"]')!;

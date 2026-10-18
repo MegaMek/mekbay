@@ -505,5 +505,7 @@ describe('Battle Armor trooper damage picker', () => {
         expect(parts(trooper(0, 0), -1)).toEqual([['internal', -1]]);
         expect(parts(trooper(1, 1), -2)).toEqual([['armor', -2]]);
         expect(parts(trooper(0, 0, false), -2)).toEqual([['armor', -2]]);
+        // Damage beyond the location's remaining structure is not applied there.
+        expect(parts(trooper(2, 1), 20)).toEqual([['armor', 2], ['internal', 1]]);
     });
 });

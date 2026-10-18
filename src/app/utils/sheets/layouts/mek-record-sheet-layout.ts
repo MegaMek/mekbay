@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -25,7 +25,7 @@ import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-pres
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
 import { mekCriticalCaseLabel,mekCriticalSlotLines } from '../../mek-critical-display.util';
 import { mekCriticalLocationCells,mekCriticalTableRowCount } from '../../mek-location-layout.util';
-import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,recordSheetPhysicalLocationRows,referenceTableNotes } from '../../record-sheet-reference-table';
+import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,mekHitLocationTable,mekPhysicalLocationTableRows,referenceTableNotes } from '../../record-sheet-reference-table';
 import { MekPaperdollGenerator, usesBipedMekPaperdoll, type MekStructureTonnage } from '../mek-paperdoll-generator';
 import type { PaperdollOptions, PaperdollPipLayout } from '../paperdoll-generator';
 import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
@@ -82,16 +82,18 @@ formatMovementWithMaximum,
 formatNumber,
 formatTechBase,
 makeDistributedPips,
+markRecordSheetHeatProfile,
 paperdollPipOptions,
 recordSheetAmmoProfile,
+recordSheetHeatProfileText,
 recordSheetInventoryWeapons,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
 transparentRect,
-wrapRecordSheetText,
 type Box,
 type RecordSheetInventoryAlternativeMode,
+type RecordSheetLinkedEquipment,
 } from '../record-sheet-svg-rendering';
 import type {
 RecordSheetLayout,
@@ -127,7 +129,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
             ({ ...box, x: box.x + widthDelta });
         drawPageChrome(svg, mekRecordSheetTitle(entity), page, false);
 
-        drawMekDataPanel(svg, entity, { x: 18.966, y: 87.857, width: 220.4 + widthDelta, height: 301.5 }, request.showQuirks);
+        drawMekDataPanel(svg, entity, { x: 18.966, y: 87.857, width: 220.4 + widthDelta, height: 301.5 }, request.ruleset, request.showQuirks);
         const crewCount = Math.max(1, entity.crewSlotCount());
         const lamLayout = entity.chassisConfig === 'LAM';
         const crewHeight = lamLayout ? 107 : 31 + crewCount * MEK_CREW_STATION_HEIGHT;
@@ -151,6 +153,7 @@ export class MekRecordSheetLayout implements RecordSheetLayout {
                 svg,
                 entity,
                 at({ x: 249.366, y: 309.312, width: 145.6, height: 80 }),
+                request.ruleset,
             );
         } else {
             const referenceY = 95.857 + crewHeight;
@@ -295,6 +298,7 @@ export function drawMekDataPanel(
     svg: SVGSVGElement,
     entity: MekEntity,
     box: Box,
+    ruleset: CBTRuleset,
     showQuirks = true,
 ): void {
     const group = addFrame(svg, "'MECH DATA", box, {
@@ -352,8 +356,8 @@ export function drawMekDataPanel(
     });
 
     addLine(group, x(3), y(275.143), box.width - x(3), y(275.143), '#111', 1.932 * fontScale);
-    appendBattleValue(group, entity.battleValue(), { x: x(13.845), valueX: x(32.79), y: y(287.143), size: font(9.67) });
-    appendLegacyIdentityAnchors(group, entity, box);
+    appendBattleValue(group, entity.battleValue(ruleset), { x: x(13.845), valueX: x(32.79), y: y(287.143), size: font(9.67) });
+    appendLegacyIdentityAnchors(group, entity, box, ruleset);
     appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, 278.25);
 }
 
@@ -466,6 +470,9 @@ function mekDataPanelFacts(entity: MekEntity, baselines: readonly [number, numbe
     ];
 }
 
+/** Weapon names run up to halfway between the location (89.56) and heat (103.626) columns. */
+const MEK_INVENTORY_NAME_WIDTH = 89.56 - (103.626 - 89.56) / 2 - 8.41 - 1;
+
 interface MekInventoryGeometry {
     readonly showQuirks?: boolean;
     readonly firstBaselineReference: number;
@@ -487,15 +494,17 @@ function appendMekInventoryRows(
     const physicalAttacks = mekPhysicalInventoryRows(entity);
     const ammo = recordSheetAmmoProfile(entity);
     const quirks = recordSheetQuirksText(entity, geometry.showQuirks);
-    const rowLines = (row: { name: string; location?: string; heat?: string; damage: string; minimumRange?: string; ranges: readonly string[] }, size: number, nameWidth = 68) =>
+    const rowLines = (row: { name: string; location?: string; heat?: string; damage: string; minimumRange?: string; ranges: readonly string[] }, size: number, nameWidth = MEK_INVENTORY_NAME_WIDTH) =>
         inventoryRowLineCount([[row.name, x(nameWidth)], [row.location ?? '', x(18)], [row.heat ?? '', x(8)],
             [row.damage, x(54)], [row.minimumRange ?? '', x(12)], ...row.ranges.map(value => [value, x(12)] as const)], font(size));
     const metrics = fitInventoryText(273.143 - geometry.firstBaselineReference, fontSize => {
         const equipment = equipmentRows.map(row => [rowLines(row, fontSize),
+            ...(row.linkedEquipment ? [rowLines({ ...row.linkedEquipment, ranges: [] }, fontSize, 66)] : []),
             ...row.alternativeModes.map(mode => rowLines(mode, fontSize, 66))]);
         const physical = physicalAttacks.map(row => rowLines(row, fontSize));
         const ammoLines = measureRecordSheetAmmoProfile(ammo, { width: x(209.38), fontSize: font(fontSize) }).lines;
-        const quirkLines = wrapRecordSheetText(quirks, 209.38, fontSize * 0.9);
+        // Measured like addInventoryText, so each line renders without wrapping again.
+        const quirkLines = quirks ? inventoryCellLines(quirks, x(209.38), font(fontSize) * 0.9) : [];
         return { lineCount: equipment.flat().reduce((a, b) => a + b, 0) + physical.reduce((a, b) => a + b, 0)
             + ammoLines.length + quirkLines.length + 2,
             badgeRows: [...equipment.flat(), ...physical], content: { equipment, physical, ammoLines, quirkLines } };
@@ -531,15 +540,14 @@ function appendMekInventoryRows(
     const physicalGroup = svgElement('g');
     markAmmoBefore(physicalGroup);
     group.appendChild(physicalGroup);
-    const heatProfile = addCell(
+    const maximumHeat = Math.max(0, entity.heatGeneration());
+    markRecordSheetHeatProfile(addCell(
         inventoryGroup,
-        `Maximum Heat (Dissipation): ${Math.max(0, entity.heatGeneration())} (${Math.max(0, entity.heatDissipation())})`,
+        recordSheetHeatProfileText(maximumHeat, Math.max(0, entity.heatDissipation())),
         x(8.41),
         heatProfileY,
         { size: font(RECORD_SHEET_FONT.inventory), maxWidth: box.width - x(17) },
-    );
-    heatProfile.id = 'heatProfile';
-    heatProfile.setAttribute('data-maximum-heat', String(Math.max(0, entity.heatGeneration())));
+    ), maximumHeat);
 
     const rowCount = equipmentRows.length + physicalAttacks.length;
     for (let index = 0; index < rowCount; index++) {
@@ -580,7 +588,7 @@ function appendMekInventoryRows(
         appendInventoryHitModifier(row, localBaseline, fontScale, rowStep);
 
         const name = addCell(row, rowData?.name ?? '', x(8.41), localBaseline, {
-            class: 'name', size: rowFont, maxWidth: x(68),
+            class: 'name', size: rowFont, maxWidth: x(MEK_INVENTORY_NAME_WIDTH),
         });
         name.setAttribute('data-mekbay-field', 'inventory-name');
         addCell(row, rowData?.location ?? '', x(89.56), localBaseline, {
@@ -606,13 +614,30 @@ function appendMekInventoryRows(
             class: className, size: rowFont, anchor: 'middle', maxWidth: x(12),
         }));
         if (rowData) {
+            const linked = isEquipment ? equipmentRows[index]?.linkedEquipment ?? null : null;
+            if (linked) {
+                const entry = svgElement('g');
+                setAttributes(entry, { class: 'inventoryEntry linked', id: `generated-inventory-linked-row@${index}` });
+                setInventoryComponentIds(entry, [linked.componentId]);
+                const linkedBaseline = localBaseline + equipmentSpans[index][0] * rowStep;
+                addCell(entry, linked.name, x(12.738), linkedBaseline, { class: 'name', size: rowFont, maxWidth: x(66) });
+                addCell(entry, linked.heat, x(103.626), linkedBaseline, {
+                    class: 'heat', size: rowFont, anchor: 'middle', maxWidth: x(8),
+                });
+                const linkedDamage = svgElement('g');
+                linkedDamage.setAttribute('class', 'damage');
+                addCell(linkedDamage, linked.damage, x(111.2), linkedBaseline, { size: rowFont, maxWidth: x(54) });
+                entry.appendChild(linkedDamage);
+                row.appendChild(entry);
+            }
             alternativeModes.forEach((mode, modeIndex) => {
                 const alternative = svgElement('g');
-                alternative.setAttribute('class', mode.displayOnly ? 'equipmentProfile' : 'alternativeMode');
+                alternative.setAttribute('class', 'alternativeMode');
                 alternative.setAttribute('data-mekbay-mode', mode.name);
                 alternative.setAttribute('data-mekbay-static-mode-profile', '1');
                 alternative.setAttribute('data-mekbay-mode-label-only', '1');
-                const alternativeY = equipmentSpans[index].slice(0, modeIndex + 1).reduce((a, b) => a + b, 0) * rowStep;
+                const alternativeY = equipmentSpans[index].slice(0, modeIndex + 1 + (linked ? 1 : 0))
+                    .reduce((a, b) => a + b, 0) * rowStep;
                 alternative.appendChild(transparentRect(
                     x(2), controlY + alternativeY, x(177.104), controlHeight,
                     'inventoryEntryButton alternativeModeButton',
@@ -681,6 +706,7 @@ interface MekRecordSheetInventoryRow {
     readonly ranges: readonly string[];
     readonly componentIds: readonly string[];
     readonly quantity: number;
+    readonly linkedEquipment: RecordSheetLinkedEquipment | null;
     readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
 }
 
@@ -707,6 +733,7 @@ function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheet
             ranges: Object.freeze(['—', '—', '—']),
             componentIds: Object.freeze([String(mount.mountId)]),
             quantity: 1,
+            linkedEquipment: null,
             alternativeModes: Object.freeze([]),
         }));
     return Object.freeze([...weaponRows, ...equipmentRows]);
@@ -739,7 +766,7 @@ function mekPhysicalInventoryRows(entity: MekEntity): readonly {
     readonly componentIds: readonly string[];
 }[] {
     return Object.freeze(entity.intrinsicWeapons().map(attack => Object.freeze({
-        name: attack.name === 'Club (Club/Improvised)' ? 'Club' : attack.name,
+        name: attack.name,
         location: attack.locations.join('/'),
         heat: '—',
         damage: mekPhysicalDamageText(attack),
@@ -2134,9 +2161,9 @@ export function drawMekPunchKickPanel(
     svg: SVGSVGElement,
     entity: MekEntity,
     box: Box,
+    ruleset: CBTRuleset,
 ): void {
-    const table = clusterTableForMekEntity(entity).hitLocationTable ?? 'biped';
-    const rows = recordSheetPhysicalLocationRows(table).map(row => [
+    const rows = mekPhysicalLocationTableRows(mekHitLocationTable(entity), ruleset).map(row => [
         String(row.roll),
         row.punchLeftSide,
         row.punchFrontRear,

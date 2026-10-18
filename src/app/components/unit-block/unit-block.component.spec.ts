@@ -46,6 +46,7 @@ describe('UnitBlockComponent capability badges', () => {
         const occupant = signal<typeof person | undefined>(person);
         const force = {
             changed: new Subject<void>(),
+            sessionChanged: new Subject<void>(),
             getUnitCrewPolicy: () => ({ positions: [{ positionId: 'crew:0', label: 'Pilot' },
                 { positionId: 'crew:1', label: 'Gunner' }] }),
             getAssignedPerson: (_unitId: string, positionId: string) => positionId === 'crew:0' ? occupant() : undefined,
@@ -110,7 +111,7 @@ describe('UnitBlockComponent capability badges', () => {
                 componentMode: () => undefined,
             },
         });
-        const force = { changed, getUnitSnapshot } as unknown as CBTForce;
+        const force = { changed, sessionChanged: new Subject<void>(), getUnitSnapshot } as unknown as CBTForce;
         const member = new CBTForceMember(
             'unit:classic-capability-card',
             force,
@@ -143,6 +144,7 @@ describe('UnitBlockComponent capability badges', () => {
         const changed = new Subject<void>();
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getUnitSnapshot: (instanceId: string) => ({
                 instanceId,
                 entity: runtime.entity,
@@ -168,6 +170,7 @@ describe('UnitBlockComponent capability badges', () => {
         const changed = new Subject<void>();
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekUnitStatusSnapshot: () => ({
                 conditions: ['prone', 'immobile', 'crippled', 'spotting'],
                 crew: [{ effectiveState: 'unconscious' }],
@@ -201,6 +204,7 @@ describe('UnitBlockComponent capability badges', () => {
         const changed = new Subject<void>();
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getMekTurnPanelSnapshot: () => ({
                 movementState: {
                     movement: { mode: 'walk', distance: 1, boosterComponentIds: [] },
@@ -270,6 +274,7 @@ describe('UnitBlockComponent capability badges', () => {
         const changed = new Subject<void>();
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             getUnitConditions: () => ['jammed'],
             getNonMekRecordSheetSnapshot: () => ({
                 unitType: 'Tank',
@@ -300,6 +305,7 @@ describe('UnitBlockComponent capability badges', () => {
             .and.returnValue({ unitType: 'Tank', crew: [] });
         const force = {
             changed,
+            sessionChanged: new Subject<void>(),
             gameSystem: GameSystem.CBT,
             readOnly: () => false,
             getUnitDestroyed: () => false,

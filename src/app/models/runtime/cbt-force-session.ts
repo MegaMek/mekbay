@@ -19,6 +19,7 @@ import {
 import {
     createRuntimeCommandSession,
     prepareRuntimeCommandRedo,
+    foldRuntimeCommandEntries,
     prepareRuntimeCommandUndo,
     pruneRuntimeCommandSession,
     runtimeHistoryRows,
@@ -108,6 +109,15 @@ export class CBTForceSession {
         );
         this.commandSession = recorded.session;
         return recorded.changedUnitIds;
+    }
+
+    /** The undo cursor, to fold what follows into one step. */
+    public undoMark(): number {
+        return this.commandSession.cursor;
+    }
+
+    public foldSince(mark: number): void {
+        this.commandSession = foldRuntimeCommandEntries(this.commandSession, mark);
     }
 
     public prepare(direction: 'undo' | 'redo'): RuntimeCommandMove | null {

@@ -320,7 +320,7 @@ export class C3NetworkDialogComponent implements AfterViewInit {
                     isC3EndpointOperational: (_index: number, endpoint: C3Component) => endpoint.componentId !== undefined
                         && endpoint.emergencyFried !== true
                         && member.force.isC3EndpointOperational(member.id, endpoint.componentId),
-                    getBaseBv: () => member.currentBaseBattleValue() ?? member.entity.battleValue(),
+                    getBaseBv: () => member.currentBaseBattleValue() ?? member.pristineBattleValue(),
                     tagBV: () => member.tagBattleValue() ?? 0,
                     externalStoresBv: () => member.externalStoresBattleValue() ?? 0,
                     gunnerySkill: () => crew?.gunnery ?? 4,

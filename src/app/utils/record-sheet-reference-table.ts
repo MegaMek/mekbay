@@ -7,7 +7,9 @@ import { WeaponEquipment, type Equipment } from '../models/equipment.model';
 import type { EquipmentFlag } from '../models/equipment-flags.type';
 import type { MekEntity } from '../models/entity/entities/mek/mek-entity';
 import type { BaseEntity } from '../models/entity/base-entity';
-import { TW_GAME_RULES, type PhysicalLocationRow } from '../models/rules/game-rules';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
+import { gameRulesFor, type PhysicalLocationRow } from '../models/rules/game-rules';
+import { getMekLocationAbbreviation } from '../models/entity/types/mek';
 import { clusterHits } from './cluster-hit-table';
 import { isHagEquipment } from '../models/hag-mode.model';
 import { isApolloEquipment } from '../models/apollo-mode.model';
@@ -73,10 +75,10 @@ const HIT_LOCATION_CELLS = {
     LEFT_TORSO_CRITICAL: locationCell('LT(C)', 'LT', 'LT', true),
     CENTER_TORSO_CRITICAL: locationCell('CT(C)', 'CT', 'CT', true),
     RIGHT_TORSO_CRITICAL: locationCell('RT(C)', 'RT', 'RT', true),
-    LEFT_FRONT_LEG: locationCell('LFL', 'FLL'),
-    RIGHT_FRONT_LEG: locationCell('RFL', 'FRL'),
-    LEFT_REAR_LEG: locationCell('LRL', 'RLL'),
-    RIGHT_REAR_LEG: locationCell('RRL', 'RRL'),
+    LEFT_FRONT_LEG: locationCell(getMekLocationAbbreviation('FLL'), 'FLL'),
+    RIGHT_FRONT_LEG: locationCell(getMekLocationAbbreviation('FRL'), 'FRL'),
+    LEFT_REAR_LEG: locationCell(getMekLocationAbbreviation('RLL'), 'RLL'),
+    RIGHT_REAR_LEG: locationCell(getMekLocationAbbreviation('RRL'), 'RRL'),
     TRIPOD_LEFT_LEG: tripodLegCell('Leg (+1)†', 'Leg (+1)', 1),
     TRIPOD_CENTER_LEG: tripodLegCell('Leg†', 'Leg', 0),
     TRIPOD_RIGHT_LEG: tripodLegCell('Leg (-1)†', 'Leg (-1)', -1),
@@ -128,38 +130,6 @@ const LOCATION_ROWS: Readonly<Record<MekHitLocationTable, readonly HitLocationRo
     tripod: displayHitLocationRows(TRIPOD_DEFINITION_ROWS),
 };
 
-const BIPED_RECORD_SHEET_PHYSICAL_ROWS: readonly PhysicalLocationRow[] = [
-    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'RT', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
-    { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'RA', punchRightSide: 'RA', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
-    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
-];
-
-const QUAD_RECORD_SHEET_PHYSICAL_ROWS: readonly PhysicalLocationRow[] = [
-    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LFL/LRL', punchRightSide: 'RT', kickLeftSide: 'LFL', kickFrontRear: 'RFL/RRL', kickRightSide: 'RFL' },
-    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LFL', kickFrontRear: 'RFL/RRL', kickRightSide: 'RFL' },
-    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LFL', kickFrontRear: 'RFL/RRL', kickRightSide: 'RFL' },
-    { roll: 4, punchLeftSide: 'LFL', punchFrontRear: 'RT', punchRightSide: 'RFL', kickLeftSide: 'LRL', kickFrontRear: 'LFL/LRL', kickRightSide: 'RRL' },
-    { roll: 5, punchLeftSide: 'LRL', punchFrontRear: 'RFL/RRL', punchRightSide: 'RRL', kickLeftSide: 'LRL', kickFrontRear: 'LFL/LRL', kickRightSide: 'RRL' },
-    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LRL', kickFrontRear: 'LFL/LRL', kickRightSide: 'RRL' },
-];
-
-const TRIPOD_RECORD_SHEET_PHYSICAL_ROWS: readonly PhysicalLocationRow[] = [
-    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'LA', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'LL' },
-    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'CL' },
-    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'LL', kickFrontRear: 'CL', kickRightSide: 'CL' },
-    { roll: 4, punchLeftSide: 'LA', punchFrontRear: 'RT', punchRightSide: 'RA', kickLeftSide: 'CL', kickFrontRear: 'CL', kickRightSide: 'RL' },
-    { roll: 5, punchLeftSide: 'LA', punchFrontRear: 'RA', punchRightSide: 'RA', kickLeftSide: 'CL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'RL', kickFrontRear: 'RL', kickRightSide: 'RL' },
-];
-
-const RECORD_SHEET_PHYSICAL_ROWS: Readonly<Record<MekHitLocationTable, readonly PhysicalLocationRow[]>> = {
-    biped: BIPED_RECORD_SHEET_PHYSICAL_ROWS,
-    quad: QUAD_RECORD_SHEET_PHYSICAL_ROWS,
-    tripod: TRIPOD_RECORD_SHEET_PHYSICAL_ROWS,
-};
 
 const NOTE_TEXT: Readonly<Record<string, string>> = {
     tripodLeg: '† For a tripod, apply the indicated modifier when determining the leg hit.',
@@ -228,11 +198,48 @@ function displayHitLocationRows(rows: readonly HitLocationDefinitionRow[]): read
     })));
 }
 
-/** MegaMekLab-compatible punch/kick rows for the printed record sheet. */
-export function recordSheetPhysicalLocationRows(
+/**
+ * The punch/kick location rows a Mek is struck on, naming location codes. Core Appendix A: a tripod uses the
+ * standard tables and every leg hit rolls for its leg, so its punches read the biped table and its kicks the leg roll.
+ */
+export function mekPhysicalLocationRows(
     table: MekHitLocationTable,
+    ruleset: CBTRuleset,
 ): readonly PhysicalLocationRow[] {
-    return RECORD_SHEET_PHYSICAL_ROWS[table];
+    const rules = gameRulesFor(ruleset);
+    if (table === 'biped') return rules.physicalLocationRows;
+    if (table === 'quad') return rules.quadPhysicalLocationRows;
+    return Object.freeze(rules.physicalLocationRows.map(row => Object.freeze({
+        ...row,
+        kickLeftSide: tripodLegLocation(row.roll + 1),
+        kickFrontRear: tripodLegLocation(row.roll),
+        kickRightSide: tripodLegLocation(row.roll - 1),
+    })));
+}
+
+/** The punch/kick location rows as printed tables show them. */
+export function mekPhysicalLocationTableRows(
+    table: MekHitLocationTable,
+    ruleset: CBTRuleset,
+): readonly PhysicalLocationRow[] {
+    const text = (cell: string): string => cell.split('/').map(getMekLocationAbbreviation).join('/');
+    return Object.freeze(mekPhysicalLocationRows(table, ruleset).map(row => Object.freeze({
+        roll: row.roll,
+        punchLeftSide: text(row.punchLeftSide),
+        punchFrontRear: text(row.punchFrontRear),
+        punchRightSide: text(row.punchRightSide),
+        kickLeftSide: text(row.kickLeftSide),
+        kickFrontRear: text(row.kickFrontRear),
+        kickRightSide: text(row.kickRightSide),
+    })));
+}
+
+/**
+ * Core Appendix A: the leg a tripod leg hit strikes, from 1D6 with +1 for an attack from the left side and -1 from
+ * the right side.
+ */
+export function tripodLegLocation(modifiedRoll: number): 'RL' | 'CL' | 'LL' {
+    return modifiedRoll <= 2 ? 'RL' : modifiedRoll <= 4 ? 'CL' : 'LL';
 }
 
 export function referenceTableNotes(
@@ -256,11 +263,16 @@ export function clusterTableForUnit(unit: Pick<UnitSummary, 'type' | 'subtype' |
     return clusterTableForEquipment(hitLocationTable, equipment);
 }
 
+/** The hit-location table a live Mek is struck on. */
+export function mekHitLocationTable(entity: Pick<MekEntity, 'chassisConfig'>): MekHitLocationTable {
+    return entity.chassisConfig === 'Tripod' ? 'tripod'
+        : entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee' ? 'quad' : 'biped';
+}
+
 /** Derives the printed hit-location and cluster columns directly from a live Mek. */
 export function clusterTableForMekEntity(entity: MekEntity): ClusterTableData {
     return clusterTableForEquipment(
-        entity.chassisConfig === 'Tripod' ? 'tripod'
-            : entity.chassisConfig === 'Quad' || entity.chassisConfig === 'QuadVee' ? 'quad' : 'biped',
+        mekHitLocationTable(entity),
         entity.equipment()
             .map(mount => mount.equipment)
             .filter((equipment): equipment is Equipment => equipment !== undefined),

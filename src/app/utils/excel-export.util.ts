@@ -158,7 +158,6 @@ function entityToCBTRow(unit: BaseEntity): Record<string, unknown> {
         chassis: unit.fullChassis(),
         model: unit.model(),
         year: unit.year(),
-        BV: unit.battleValue(),
         cost: unit.cost(),
         tonnage: unit.tonnage(),
         weightClass: unit.weightClass(),
@@ -305,7 +304,7 @@ function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<
         }
         const crew = member.force.getUnitCrewAssignment(member.id)?.positions[0];
         const crewState = crew ? snapshot.state.crew.get(crew.positionId) : undefined;
-        const pristineBv = member.pristineBattleValue() ?? unit.battleValue();
+        const pristineBv = member.pristineBattleValue();
         const currentBv = member.adjustedBattleValue() ?? pristineBv;
         return {
             group: groupName,
@@ -334,7 +333,7 @@ function forceMemberToCBTRow(member: CBTForceMember, groupName: string): Record<
             + Math.max(0, face.maximum - face.committedRemaining), 0), 0);
     const totalInternalDamage = snapshot.locations.reduce((total, location) => total
         + Math.max(0, location.maximumInternal - location.committedRemainingInternal), 0);
-    const pristineBv = snapshot.battleValue.pristine ?? unit.battleValue();
+    const pristineBv = snapshot.battleValue.pristine ?? member.pristineBattleValue();
     const currentBv = snapshot.battleValue.current ?? pristineBv;
     return {
         group: groupName,

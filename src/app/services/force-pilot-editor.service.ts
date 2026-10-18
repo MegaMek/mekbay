@@ -100,7 +100,7 @@ export class ForcePilotEditorService {
               ? {
                   fixedPiloting: fixedCBTPilotingSkill(skillFacts) ?? undefined,
                   preSkillBv:
-                    (member.currentBaseBattleValue() ?? member.entity.battleValue()) +
+                    (member.currentBaseBattleValue() ?? member.pristineBattleValue()) +
                     (member.tagBattleValue() ?? 0) +
                     (member.c3BattleValue() ?? 0) +
                     (member.externalStoresBattleValue() ?? 0),

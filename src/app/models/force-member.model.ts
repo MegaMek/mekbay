@@ -39,6 +39,11 @@ export class CBTForceMember {
         owner: object | null;
         revision: number | null;
     }>>(Object.freeze({ owner: null, revision: null }));
+    /**
+     * Session-only edits (weapon selections, target facts, the target registry) replace the unit state without
+     * advancing its durable revision; record-sheet projections carry that state and its edit context.
+     */
+    readonly #session = signal(0);
     readonly #tacticalInventoryExpandedRows = signal<ReadonlySet<string>>(new Set());
 
     /** Current entity + rules + sparse-runtime BV; only this unit can invalidate it. */
@@ -47,20 +52,34 @@ export class CBTForceMember {
         return this.force.getUnitCurrentBaseBattleValue(this.id);
     });
 
-    /** One reactive record-sheet projection per exact runtime revision. */
+    /** One reactive record-sheet projection per runtime revision and session edit (selections, targets). */
     readonly mekRecordSheetSnapshot = computed(() => {
         this.#runtime();
+        this.#session();
         return this.force.getMekRecordSheetSnapshot(this.id);
     });
 
-    /** One reactive non-Mek record-sheet projection per exact runtime revision. */
+    /** One reactive non-Mek record-sheet projection per runtime revision and session edit (selections, targets). */
     readonly nonMekRecordSheetSnapshot = computed<NonMekRecordSheetSnapshot | null>(() => {
         this.#runtime();
+        this.#session();
         return this.force.getNonMekRecordSheetSnapshot(this.id);
     });
 
-    /** Immutable entity BV before damage and force-level adjustments. */
-    readonly pristineBattleValue = computed(() => this.force.getUnitPristineBattleValue(this.id));
+    /** The rules this member plays; it changes only when its force switches rules. */
+    readonly ruleset = computed<CBTRuleset | null>(() => {
+        this.#runtime();
+        return this.force.getUnitSnapshot(this.id)?.ruleset ?? null;
+    });
+
+    /** Entity BV under the member's rules, before damage and force-level adjustments. */
+    readonly pristineBattleValue = computed(() => {
+        this.#battleValueRuntime();
+        const value = this.force.getUnitPristineBattleValue(this.id);
+        // Only a member dropped from its force has no bound rules to price its entity under.
+        if (value === null) throw new Error(`CBT force member ${this.id} is no longer owned`);
+        return value;
+    });
 
     /** TAG + configured, intact C3 topology + skills over current base BV. */
     readonly adjustedBattleValue = computed(() => this.force.getUnitAdjustedBattleValue(this.id));
@@ -177,6 +196,11 @@ export class CBTForceMember {
         Object.freeze(this);
     }
 
+    /** Invalidates projections that carry session-only state, after such an edit to this member. */
+    public bindSessionEdit(): void {
+        this.#session.update(revision => revision + 1);
+    }
+
     /** Publishes a new runtime witness only when this exact member changed. */
     public bindRuntime(
         owner: object | null,
@@ -287,8 +311,8 @@ export function forceMemberAdjustedValue(
 ): number {
     if (!isCBTForceMember(value)) return value.getBv();
     return damageMode === 'pristine'
-        ? value.pristineAdjustedBattleValue() ?? value.entity.battleValue()
-        : value.adjustedBattleValue() ?? value.entity.battleValue();
+        ? value.pristineAdjustedBattleValue() ?? value.pristineBattleValue()
+        : value.adjustedBattleValue() ?? value.pristineBattleValue();
 }
 
 /** Rounded force-adjusted BV/PV without skills under the selected CBT damage policy. */
@@ -298,8 +322,8 @@ export function forceMemberAdjustedPreSkillValue(
 ): number {
     if (!isCBTForceMember(value)) return value.getPreSkillBv();
     return damageMode === 'pristine'
-        ? value.pristineAdjustedPreSkillBattleValue() ?? value.entity.battleValue()
-        : value.adjustedPreSkillBattleValue() ?? value.entity.battleValue();
+        ? value.pristineAdjustedPreSkillBattleValue() ?? value.pristineBattleValue()
+        : value.adjustedPreSkillBattleValue() ?? value.pristineBattleValue();
 }
 
 export function forceMemberCommander(value: ForceMember): boolean {

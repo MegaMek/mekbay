@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { measureSvgTextCanvas } from '../svg-text.util';
-import { addText, setAttributes, svgElement } from './record-sheet-svg-rendering';
+import { addText, formatNumber, setAttributes, svgElement } from './record-sheet-svg-rendering';
 import { INVENTORY_BADGE, RECORD_SHEET_FONT } from './record-sheet-typography';
 
 export const MIN_INVENTORY_FONT = 4.5;
 export const MIN_INVENTORY_LINE_RATIO = 0.93;
+/** The wrap width addInventoryText laid a cell out at. */
+export const INVENTORY_TEXT_WIDTH_ATTRIBUTE = 'data-mekbay-max-width';
 
 /** Match MegaMekLab: tighten line spacing, then reduce type, preserving a readable minimum. */
 export function fitInventoryText<T>(height: number,
@@ -71,6 +73,8 @@ export function addInventoryText(parent: SVGElement, value: string, x: number, y
     options: Parameters<typeof addText>[4] & { readonly lineHeight?: number } = {}): SVGTextElement {
     const { maxWidth, lineHeight = (options.size ?? RECORD_SHEET_FONT.inventory) * 1.35, ...style } = options;
     const text = addText(parent, '', x, y, { ...style, size: style.size ?? RECORD_SHEET_FONT.inventory });
+    // Binders rewrap live values at this width, so they keep the lines laid out here.
+    if (maxWidth) text.setAttribute(INVENTORY_TEXT_WIDTH_ATTRIBUTE, formatNumber(maxWidth));
     const lines = maxWidth ? inventoryCellLines(value, maxWidth, style.size) : [value];
     if (lines.length === 1) text.textContent = lines[0];
     else {

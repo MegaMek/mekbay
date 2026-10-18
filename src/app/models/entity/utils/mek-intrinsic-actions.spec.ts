@@ -74,7 +74,7 @@ describe('Mek intrinsic actions', () => {
     ] }));
 
     expect(actions.find(action => action.kind === 'club')).toEqual(jasmine.objectContaining({
-      name: 'Club (Club/Improvised)',
+      name: 'Club/Improvised',
       hitModifierAdjustment: 1,
     }));
     expect(actions.filter(action => action.kind === 'punch')).toHaveSize(2);

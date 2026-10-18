@@ -32,6 +32,7 @@ import {
 import { addTestEquipmentWithFlags } from '../models/entity/testing/test-mounted-equipment';
 import { ArmorEquipment, MiscEquipment, StructureEquipment, WeaponEquipment } from '../models/equipment.model';
 import { UnitMetadataBuilder } from './unit-metadata-builder';
+import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 import { getOffensiveSpeedFactor, offensiveSpeedFactor } from '../models/entity/utils/battle-value';
 import type { Sourcebook } from '../models/sourcebook.model';
 import type { UnitSubtype } from '../models/entity/types';
@@ -41,7 +42,7 @@ describe('UnitMetadataBuilder', () => {
   const builder = new UnitMetadataBuilder();
 
   it('builds Mek metadata from the canonical entity', () => {
-    const metadata = builder.build(new BipedMekEntity());
+    const metadata = builder.build(new BipedMekEntity(), CORE_2026_RULESET);
     expect(metadata.type).toBe('Mek');
     expect(metadata.as?.TP).toBe('BM');
   });
@@ -49,21 +50,21 @@ describe('UnitMetadataBuilder', () => {
   it('exports the path returned by the unit icon resolver', () => {
     const entity = new TankEntity();
     const resolver = jasmine.createSpy('resolver').and.returnValue('units/Test.png');
-    const metadata = new UnitMetadataBuilder(resolver).build(entity);
+    const metadata = new UnitMetadataBuilder(resolver).build(entity, CORE_2026_RULESET);
 
     expect(resolver).toHaveBeenCalledOnceWith(entity);
     expect(metadata.icon).toBe('units/Test.png');
-    expect(builder.build(entity).icon).toBe('');
+    expect(builder.build(entity, CORE_2026_RULESET).icon).toBe('');
   });
 
   it('exports conventional infantry anti-Mek training from installed gear', () => {
     const entity = new InfantryEntity();
 
-    expect(builder.build(entity).canAntiMech).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeFalse();
 
     addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR');
     expect(entity.hasAntiMekGear()).toBeTrue();
-    expect(builder.build(entity).canAntiMech).toBeTrue();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeTrue();
   });
 
   it('exports Battle Armor anti-Mek capability from its attack requirements', () => {
@@ -71,18 +72,18 @@ describe('UnitMetadataBuilder', () => {
     entity.declaredWeightClass.set('Medium');
 
     addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
-    expect(builder.build(entity).canAntiMech).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeFalse();
 
     addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR');
     expect(entity.legAttackCapable()).toBeTrue();
-    expect(builder.build(entity).canAntiMech).toBeTrue();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeTrue();
 
     entity.declaredWeightClass.set('Heavy');
-    expect(builder.build(entity).canAntiMech).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canAntiMech).toBeFalse();
   });
 
   it('exports false anti-Mek capability for non-infantry units', () => {
-    expect(builder.build(new TankEntity()).canAntiMech).toBeFalse();
+    expect(builder.build(new TankEntity(), CORE_2026_RULESET).canAntiMech).toBeFalse();
   });
 
 
@@ -137,7 +138,7 @@ describe('UnitMetadataBuilder', () => {
 
     expect(offensiveSpeedFactor(6)).toBe(1.12);
     expect(getOffensiveSpeedFactor(entity)).toBe(1.12);
-    expect(builder.build(entity).offSpeedFactor).toBe(1.12);
+    expect(builder.build(entity, CORE_2026_RULESET).offSpeedFactor).toBe(1.12);
   });
 
 
@@ -151,7 +152,7 @@ describe('UnitMetadataBuilder', () => {
 
     expect(entity.maxJumpMP()).toBe(7);
     expect(entity.computeJumpMP(BV_MOVEMENT_CALCULATION)).toBe(5);
-    expect(builder.build(entity).offSpeedFactor).toBe(1.37);
+    expect(builder.build(entity, CORE_2026_RULESET).offSpeedFactor).toBe(1.37);
   });
 
   it('classifies support naval vehicles without changing their canonical entity type', () => {
@@ -162,15 +163,15 @@ describe('UnitMetadataBuilder', () => {
       .toBe('NavalEntity');
     expect(entity.isSupportVehicle()).toBeTrue();
     expect(entity.entityType).toBe('SupportNaval');
-    expect(builder.build(entity).type).toBe('Naval');
+    expect(builder.build(entity, CORE_2026_RULESET).type).toBe('Naval');
   });
 
   it('keeps non-naval support vehicles in the tank category', () => {
     const entity = new SupportTankEntity();
     entity.motiveType.set('Tracked');
 
-    expect(builder.build(entity).type).toBe('Tank');
-    expect(builder.build(entity).structureType).toBeNull();
+    expect(builder.build(entity, CORE_2026_RULESET).type).toBe('Tank');
+    expect(builder.build(entity, CORE_2026_RULESET).structureType).toBeNull();
 
     const structure = new StructureEquipment({
         id: 'Standard',
@@ -179,7 +180,7 @@ describe('UnitMetadataBuilder', () => {
         structure: { typeId: 0 },
     });
     entity.setUniformStructure(new MountedStructure({ tonnage: entity.tonnage(), structure }));
-    expect(builder.build(entity).structureType).toBe('Standard');
+    expect(builder.build(entity, CORE_2026_RULESET).structureType).toBe('Standard');
   });
 
   it('exports hybrid Mek structure distribution', () => {
@@ -198,7 +199,7 @@ describe('UnitMetadataBuilder', () => {
     }));
     entity.setStructureAt('LA', new MountedStructure({ tonnage: 60, structure: endo }));
 
-    const metadata = builder.build(entity);
+    const metadata = builder.build(entity, CORE_2026_RULESET);
     expect(metadata.structureType).toBe('Hybrid');
     expect(metadata.hybridLayout).toEqual({
       HD: { type: 0, clan: false },
@@ -222,7 +223,7 @@ describe('UnitMetadataBuilder', () => {
     });
     entity.setArmorEquipmentAt('LA', impactResistant, 'Clan');
 
-    const metadata = builder.build(entity);
+    const metadata = builder.build(entity, CORE_2026_RULESET);
     expect(metadata.armorType).toBe('Patchwork');
     expect(metadata.patchworkLayout?.['LA']).toEqual({ type: 25, clan: true });
     expect(metadata.patchworkLayout?.['CT']).toEqual({ type: 0, clan: false });
@@ -238,7 +239,7 @@ describe('UnitMetadataBuilder', () => {
     });
     entity.setArmorEquipmentAt('Left Wing', reflective, 'IS');
 
-    expect(builder.build(entity).patchworkLayout).toEqual({
+    expect(builder.build(entity, CORE_2026_RULESET).patchworkLayout).toEqual({
       NOS: { type: 0, clan: false },
       LWG: { type: 3, clan: false },
       RWG: { type: 0, clan: false },
@@ -253,18 +254,18 @@ describe('UnitMetadataBuilder', () => {
     const conventionalFighter = new ConvFighterEntity();
     conventionalFighter.setTonnage(50);
     expect(conventionalFighter.weightClass()).toBe('Medium');
-    expect(builder.build(conventionalFighter).weightClass).toBe('Medium');
+    expect(builder.build(conventionalFighter, CORE_2026_RULESET).weightClass).toBe('Medium');
 
     const supportVehicle = new SupportTankEntity();
     supportVehicle.motiveType.set('Tracked');
     supportVehicle.setTonnage(4);
     expect(supportVehicle.weightClass()).toBe('Small Support');
-    expect(builder.build(supportVehicle).weightClass).toBe('Small Support Vehicle');
+    expect(builder.build(supportVehicle, CORE_2026_RULESET).weightClass).toBe('Small Support Vehicle');
 
     const dropShip = new DropShipEntity();
     dropShip.setTonnage(5000);
     expect(dropShip.weightClass()).toBe('Medium DropShip');
-    expect(builder.build(dropShip).weightClass).toBe('Medium DropShip');
+    expect(builder.build(dropShip, CORE_2026_RULESET).weightClass).toBe('Medium DropShip');
 
     const capitalShips = [
       [new JumpShipEntity(), 'Small JumpShip'],
@@ -274,7 +275,7 @@ describe('UnitMetadataBuilder', () => {
     for (const [entity, expected] of capitalShips) {
       entity.setTonnage(500000);
       expect(entity.weightClass()).toBe('Small Capital');
-      expect(builder.build(entity).weightClass).toBe(expected);
+      expect(builder.build(entity, CORE_2026_RULESET).weightClass).toBe(expected);
     }
   });
 
@@ -289,7 +290,7 @@ describe('UnitMetadataBuilder', () => {
     jumpShip.lifeboats.set(6);
     jumpShip.gravDecks.set([95, 55]);
 
-    expect(builder.build(jumpShip).capital).toEqual({
+    expect(builder.build(jumpShip, CORE_2026_RULESET).capital).toEqual({
       dropshipCapacity: 2,
       escapePods: 4,
       lifeBoats: 6,
@@ -301,8 +302,8 @@ describe('UnitMetadataBuilder', () => {
 
     const warShip = new WarShipEntity();
     warShip.setTonnage(100000);
-    expect(builder.build(warShip).capital?.sailIntegrity).toBe(3);
-    expect(builder.build(warShip).capital?.kfIntegrity).toBe(6);
+    expect(builder.build(warShip, CORE_2026_RULESET).capital?.sailIntegrity).toBe(3);
+    expect(builder.build(warShip, CORE_2026_RULESET).capital?.kfIntegrity).toBe(6);
   });
 
   it('zeros absent capital sail and drive integrity', () => {
@@ -311,13 +312,13 @@ describe('UnitMetadataBuilder', () => {
 
     expect(entity.sail()).toBeFalse();
     expect(entity.driveCoreType()).toBe('None');
-    expect(builder.build(entity).capital?.sailIntegrity).toBe(0);
-    expect(builder.build(entity).capital?.kfIntegrity).toBe(0);
+    expect(builder.build(entity, CORE_2026_RULESET).capital?.sailIntegrity).toBe(0);
+    expect(builder.build(entity, CORE_2026_RULESET).capital?.kfIntegrity).toBe(0);
 
     entity.driveCoreType.set('Standard');
     expect(entity.jumpDriveWeight()).toBe(0);
 
-    expect(builder.build(new SupportTankEntity()).capital).toBeUndefined();
+    expect(builder.build(new SupportTankEntity(), CORE_2026_RULESET).capital).toBeUndefined();
   });
 
   it('uses Java primitive jump-range drive weight defaults', () => {
@@ -336,10 +337,10 @@ describe('UnitMetadataBuilder', () => {
   it('exports Java role values for undetermined and explicit roles', () => {
     const entity = new SupportTankEntity();
 
-    expect(builder.build(entity).role).toBe('None');
+    expect(builder.build(entity, CORE_2026_RULESET).role).toBe('None');
 
     entity.role.set('Scout');
-    expect(builder.build(entity).role).toBe('Scout');
+    expect(builder.build(entity, CORE_2026_RULESET).role).toBe('Scout');
   });
 
   it('exports source and publication lists without reparsing them', () => {
@@ -350,22 +351,22 @@ describe('UnitMetadataBuilder', () => {
     ]);
     entity.published.set([sourcebook('RS:3050')]);
 
-    expect(builder.build(entity).source).toEqual(['TR:3050', 'Unknown']);
-    expect(builder.build(entity).published).toEqual(['RS:3050']);
+    expect(builder.build(entity, CORE_2026_RULESET).source).toEqual(['TR:3050', 'Unknown']);
+    expect(builder.build(entity, CORE_2026_RULESET).published).toEqual(['RS:3050']);
   });
 
   it('derives canon state from sourcebook references', () => {
     const entity = new SupportTankEntity();
 
-    expect(builder.build(entity).canon).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canon).toBeFalse();
 
     const canonSource = sourcebook('TR:3050');
     entity.source.set([canonSource]);
     expect(entity.source()[0]).toBe(canonSource);
-    expect(builder.build(entity).canon).toBeTrue();
+    expect(builder.build(entity, CORE_2026_RULESET).canon).toBeTrue();
 
     entity.source.set([{ abbrev: 'Unknown', canon: false, unresolved: true }]);
-    expect(builder.build(entity).canon).toBeFalse();
+    expect(builder.build(entity, CORE_2026_RULESET).canon).toBeFalse();
   });
 
   it('exports Battle Armor squad armor from its per-trooper value', () => {
@@ -374,10 +375,10 @@ describe('UnitMetadataBuilder', () => {
     entity.armorValues.set(new Map([['Squad', locationArmor(7)]]));
 
     expect(entity.tonnage()).toBe(5);
-    expect(builder.build(entity).tons).toBe(5);
-    expect(builder.build(entity).loadoutTons).toBe(entity.loadoutTonnage());
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(5);
+    expect(builder.build(entity, CORE_2026_RULESET).loadoutTons).toBe(entity.loadoutTonnage());
     expect(entity.totalArmorPoints()).toBe(35);
-    expect(builder.build(entity).armor).toBe(35);
+    expect(builder.build(entity, CORE_2026_RULESET).armor).toBe(35);
   });
 
   it('exports calculated conventional infantry tonnage', () => {
@@ -385,18 +386,18 @@ describe('UnitMetadataBuilder', () => {
     entity.squadSize.set(7);
     entity.squadCount.set(4);
 
-    expect(builder.build(entity).tons).toBe(2.5);
-    expect(builder.build(entity).loadoutTons).toBe(2.5);
-    expect(builder.build(entity).squadSize).toBe(7);
-    expect(builder.build(entity).squads).toBe(4);
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(2.5);
+    expect(builder.build(entity, CORE_2026_RULESET).loadoutTons).toBe(2.5);
+    expect(builder.build(entity, CORE_2026_RULESET).squadSize).toBe(7);
+    expect(builder.build(entity, CORE_2026_RULESET).squads).toBe(4);
 
     entity.specializations.set(new Set(['bridge-engineers', 'paramedics']));
     addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR', { location: 'Infantry' });
-    expect(builder.build(entity).tons).toBe(7);
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(7);
   });
 
   it('exports zero loadout tonnage for an unimplemented family', () => {
-    expect(builder.build(new TankEntity()).loadoutTons).toBe(0);
+    expect(builder.build(new TankEntity(), CORE_2026_RULESET).loadoutTons).toBe(0);
   });
 
   it('exports Battle Armor as one squad with one member per trooper', () => {
@@ -404,15 +405,15 @@ describe('UnitMetadataBuilder', () => {
     entity.trooperCount.set(5);
 
     expect(entity.totalInternalPoints()).toBe(5);
-    expect(builder.build(entity).internal).toBe(5);
-    expect(builder.build(entity).squadSize).toBe(5);
-    expect(builder.build(entity).squads).toBe(1);
+    expect(builder.build(entity, CORE_2026_RULESET).internal).toBe(5);
+    expect(builder.build(entity, CORE_2026_RULESET).squadSize).toBe(5);
+    expect(builder.build(entity, CORE_2026_RULESET).squads).toBe(1);
   });
 
   it('marks infantry, Battle Armor, and ProtoMeks as small units', () => {
-    expect(builder.build(new InfantryEntity()).su).toBe(1);
-    expect(builder.build(new BattleArmorEntity()).su).toBe(1);
-    expect(builder.build(new ProtoMekEntity()).su).toBe(1);
+    expect(builder.build(new InfantryEntity(), CORE_2026_RULESET).su).toBe(1);
+    expect(builder.build(new BattleArmorEntity(), CORE_2026_RULESET).su).toBe(1);
+    expect(builder.build(new ProtoMekEntity(), CORE_2026_RULESET).su).toBe(1);
   });
 
   it('exports the unit subtype, including form, motive, military, and Omni qualifiers', () => {
@@ -452,7 +453,7 @@ describe('UnitMetadataBuilder', () => {
 
     for (const [entity, expected] of cases) {
       expect(entity.unitSubtype()).withContext(entity.constructor.name).toBe(expected);
-      expect(builder.build(entity).subtype).withContext(`${entity.constructor.name} metadata`).toBe(expected);
+      expect(builder.build(entity, CORE_2026_RULESET).subtype).withContext(`${entity.constructor.name} metadata`).toBe(expected);
     }
   });
 
@@ -468,7 +469,7 @@ describe('UnitMetadataBuilder', () => {
       techBase: 'IS',
     }));
 
-    expect(builder.build(entity).armorType).toBe('Industrial');
+    expect(builder.build(entity, CORE_2026_RULESET).armorType).toBe('Industrial');
   });
 
   it('lets entities report their exported unit type directly', () => {
@@ -526,7 +527,7 @@ describe('UnitMetadataBuilder', () => {
       secondaryGroundMP: 0, uwEndurance: 0,
     });
 
-    expect(builder.build(entity).tons).toBe(4);
+    expect(builder.build(entity, CORE_2026_RULESET).tons).toBe(4);
   });
 
   it('combines physical inheritance with the shared support capability', () => {

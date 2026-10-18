@@ -1,0 +1,40 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">Incoming fire</div>
+    <div class="body incoming-body">
+        <div class="incoming-context">
+            <div>
+                <strong>{{ data.event.attacker }} → {{ data.unitName }}</strong>
+                <span>
+                    @if (data.fromDisplayName) { {{ data.fromDisplayName }} · }
+                    Turn {{ data.event.turn + 1 }} · {{ arcLabel }} arc
+                </span>
+            </div>
+            <div class="incoming-total">
+                <span>Damage</span>
+                <strong>{{ totalDamage() }}</strong>
+            </div>
+        </div>
+        @if (summary().length > 0) {
+            <ul class="location-summary" aria-label="Damage by location">
+                @for (row of summary(); track row.label) {
+                    <li><span>{{ row.label }}</span><strong>{{ row.damage }}</strong></li>
+                }
+            </ul>
+        }
+        <attack-report [weapons]="weapons()" />
+        @if (!applicable()) {
+            <p class="incoming-note">This unit takes damage by trooper: apply it on the sheet.</p>
+        } @else if (totalDamage() > 0) {
+            @if (data.pending) { <p class="incoming-note">Accepted damage is marked pending until the phase ends.</p> }
+            @if (manualCriticals) { <p class="incoming-note">Roll critical and motive effects on the sheet.</p> }
+        }
+    </div>
+    <div class="actions">
+        @if (applicable() && totalDamage() > 0) {
+            <button type="button" class="bt-button primary" (click)="accept()">ACCEPT DAMAGE</button>
+            <button type="button" class="bt-button" (click)="ignore()">IGNORE</button>
+        } @else {
+            <button type="button" class="bt-button primary" (click)="ignore()">OK</button>
+        }
+    </div>
+</div>

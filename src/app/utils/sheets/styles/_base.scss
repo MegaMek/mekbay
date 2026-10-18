@@ -169,13 +169,16 @@
     filter: opacity(0.3) !important;
   }
 
-  .random-hit-location-highlight {
-    stroke: var(--bt-yellow) !important;
-    stroke-width: 4;
-    stroke-linejoin: round;
-    paint-order: fill stroke;
-    filter: drop-shadow(0 0 4px var(--damage-color));
+  // Many contours are plain rectangles clipped to the hull, so only a fill follows the location's visible shape;
+  // an outline would show just their inner edges. Opaque contours are their location's paper and stay opaque,
+  // as in the paperdoll hover highlight (_interaction.scss).
+  .unitLocation.random-hit-location-highlight {
+    fill: color-mix(in srgb, var(--bt-yellow) var(--random-hit-tint, 45%), transparent) !important;
     animation: random-hit-location-pulse 650ms ease-in-out infinite alternate;
+
+    &.opaque-location {
+      fill: color-mix(in srgb, var(--bt-yellow) var(--random-hit-tint, 45%), var(--svg-fg-color-inv, #fff)) !important;
+    }
   }
 
   .mek-random-hit-result {
@@ -232,17 +235,25 @@
 
 }
 
+// Registered so the pulse interpolates the tint; without @property support it alternates between the two
+// keyframes and the highlight falls back to the same initial tint.
+@property --random-hit-tint {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 45%;
+}
+
 @keyframes random-hit-location-pulse {
   from {
-    filter: drop-shadow(0 0 2px var(--damage-color));
+    --random-hit-tint: 30%;
   }
   to {
-    filter: drop-shadow(0 0 6px var(--damage-color));
+    --random-hit-tint: 65%;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mekbay-sheet .random-hit-location-highlight {
+  .mekbay-sheet .unitLocation.random-hit-location-highlight {
     animation: none;
   }
 }

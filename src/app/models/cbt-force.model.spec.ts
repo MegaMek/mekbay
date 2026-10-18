@@ -36,7 +36,9 @@ import { decodeForceFromStorage,encodeForceForStorage } from './runtime/force-st
 import { OptionsService } from '../services/options.service';
 import { ForceCustomDesignsService } from '../services/force-custom-designs.service';
 import { MM_DATA_UNIT_PROVIDER_ID,asUnitUuid } from '../services/unit-catalog/unit-catalog.types';
-import { CORE_2026_RULESET } from './cbt-ruleset.model';
+import { CORE_2026_RULESET,TOTAL_WARFARE_RULESET,type CBTRuleset } from './cbt-ruleset.model';
+import type { ScenarioRules } from './runtime/unit-state-initializer';
+import { addTestEquipment } from './entity/testing/test-mounted-equipment';
 import { hasMekRuntime,hasNonMekRuntime } from './cbt-unit-snapshot';
 import { CBTUnitStore } from './cbt-unit-store';
 import type { BaseEntity } from './entity/base-entity';
@@ -90,6 +92,14 @@ const injector = {
             ? jasmine.createSpyObj<LoggerService>('LoggerService', ['error', 'warn'])
             : null,
 } as unknown as Injector;
+
+/** The scenario the test options bind, with the given ruleset and optional rules. */
+function scenarioRules(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    optional: Readonly<{ sprinting?: boolean }> = {},
+): ScenarioRules {
+    return { id: 'megamek', ruleset, options: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false, ...optional } };
+}
 
 function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
     return { networks: [] };
@@ -261,6 +271,187 @@ async function readyCloneForce(): Promise<{
     };
     return { force, armorFaceId, createTargetForce, reload };
 }
+
+describe('CBTForce game restart', () => {
+    it('returns Meks to turn 1 Movement, discards uncommitted damage and starts an empty log without undo', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [first, second] = force.getCBTMembers();
+        expect((await force.dispatchUnitCommand(first.id, { type: 'complete-turn-step', step: 0 })).changed).toBeTrue();
+        await force.dispatchUnitCommand(first.id, { type: 'set-condition', condition: 'tagged', active: true });
+        await force.dispatchUnitCommand(second.id, { type: 'damage-armor', faceId: armorFaceId, amount: 2, target: 'pending' });
+        const committedArmor = force.getUnitSnapshot(first.id)!.query.remainingArmor(armorFaceId);
+        expect(force.getRuntimeUndoState().canUndo).toBeTrue();
+
+        expect(await force.restartGame()).toBeTrue();
+
+        const restarted = mekRuntimeSnapshot(force, first.id);
+        expect(restarted.state.turn.turnCounter).toBe(0);
+        expect(restarted.state.turn.turnStep).toBe(0);
+        expect(restarted.query.conditions()).not.toContain('tagged');
+        expect(restarted.query.remainingArmor(armorFaceId)).toBe(committedArmor);
+        expect(mekRuntimeSnapshot(force, second.id).query.hasPendingPhaseChanges()).toBeFalse();
+        expect(force.getRuntimeHistory()).toEqual([]);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect((await force.serializeForPersistence()).cbt!.history.t).toEqual([]);
+    });
+
+    it('returns a non-Mek to turn 1 Movement', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        await force.dispatchUnitCommand(instanceId, { type: 'end-turn', policy: 'automatic' });
+        expect(entityRuntimeSnapshot(force, instanceId).state.turn.turnCounter).toBe(1);
+
+        expect(await force.restartGame()).toBeTrue();
+
+        expect(entityRuntimeSnapshot(force, instanceId).state.turn.turnCounter).toBe(0);
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+    });
+});
+
+describe('CBTForce rules switch', () => {
+    it('rebinds an owned force to the new ruleset, saves it and starts undo over while the log stays', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        await force.dispatchUnitCommand(mek.id, { type: 'damage-armor', faceId: armorFaceId, amount: 2, target: 'committed' });
+        const armor = mekRuntimeSnapshot(force, mek.id).query.remainingArmor(armorFaceId);
+        const log = force.getRuntimeHistory();
+        expect(log.length).toBeGreaterThan(0);
+        expect(force.getRuntimeUndoState().canUndo).toBeTrue();
+        const revision = force.serialize().cbt!.forceRevision;
+        const saves = jasmine.createSpy('changed');
+        force.changed.subscribe(saves);
+
+        expect(await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).toEqual({ bound: true, dropped: [] });
+
+        expect(force.getUnitSnapshot(mek.id)!.ruleset).toBe(TOTAL_WARFARE_RULESET);
+        expect(mek.ruleset()).toBe(TOTAL_WARFARE_RULESET);
+        expect(mekRuntimeSnapshot(force, mek.id).query.remainingArmor(armorFaceId)).toBe(armor);
+        // Checkpoints from the old rules cannot be restored; what they did stays in the log, saved with the force.
+        expect(force.getRuntimeUndoState()).toEqual({ canUndo: false, canRedo: false });
+        expect(force.getRuntimeHistory()).toEqual(log);
+        expect(saves).toHaveBeenCalled();
+        const saved = await force.serializeForPersistence();
+        expect(saved.cbt!.forceRevision).toBeGreaterThan(revision);
+        expect(saved.cbt!.history).toEqual(force.serialize().cbt!.history);
+        expect(saved.cbt!.history.t).not.toEqual([]);
+
+        // The unit plays on under the new rules.
+        const intact = [...mekRuntimeSnapshot(force, mek.id).index.armorFaces.keys()].find(faceId =>
+            mekRuntimeSnapshot(force, mek.id).query.remainingArmor(faceId) > 0)!;
+        expect((await force.dispatchUnitCommand(mek.id, {
+            type: 'damage-armor', faceId: intact, amount: 1, target: 'committed',
+        })).changed).toBeTrue();
+        expect(force.getRuntimeUndoState().canUndo).toBeTrue();
+    });
+
+    it('rebinds a force this player only views in memory, without saving it', async () => {
+        const { force, reload } = await readyCloneForce();
+        const viewed = await reload({ ...await force.serializeForPersistence(), owned: false } as SerializedCBTForce);
+        expect(viewed.readOnly()).toBeTrue();
+        const [mek] = viewed.getCBTMembers();
+        const revision = viewed.serialize().cbt!.forceRevision;
+        const saves = jasmine.createSpy('changed');
+        const redraws = jasmine.createSpy('sessionChanged');
+        viewed.changed.subscribe(saves);
+        viewed.sessionChanged.subscribe(redraws);
+
+        expect((await viewed.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).bound).toBeTrue();
+
+        expect(viewed.getUnitSnapshot(mek.id)!.ruleset).toBe(TOTAL_WARFARE_RULESET);
+        expect(mek.ruleset()).toBe(TOTAL_WARFARE_RULESET);
+        expect(saves).not.toHaveBeenCalled();
+        expect(redraws).toHaveBeenCalled();
+        expect(viewed.serialize().cbt!.forceRevision).toBe(revision);
+    });
+
+    it('ends a fall paused after its head hits and keeps the other pending rolls', async () => {
+        const { force } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        const crewId = [...mekRuntimeSnapshot(force, mek.id).index.crewPositions.keys()][0]!;
+        for (const command of [
+            { type: 'set-pending-fall-consequences', pending: {
+                eventId: 'fall:1', totalDamage: 10, hitArcLabel: 'Front', applyPilotHits: true,
+                forceSeatbeltFailure: false, seatbeltPositionIds: [crewId], headHits: 1, stage: 'crew-hits',
+            } },
+            { type: 'set-consciousness-rolls-due', positionIds: [crewId] },
+            { type: 'record-mek-physical-attack-checks', attackId: 'attack:1', checks: ['kicked'] },
+        ] as const) {
+            expect((await force.dispatchUnitCommand(mek.id, command)).changed).toBeTrue();
+        }
+
+        // Total Warfare applies falling head hits before the seatbelt rolls, Core after them: resuming either way would skip or repeat them.
+        expect(await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).toEqual({
+            bound: true,
+            dropped: [{ unit: force.runtimeHistoryUnitLabel(mek.id), items: ['the rest of an unfinished fall'] }],
+        });
+        const state = mekRuntimeSnapshot(force, mek.id).state;
+        expect(state.turn.pendingFallConsequences).toBeUndefined();
+        expect(state.turn.consciousnessRollsDue).toEqual([crewId]);
+        expect(state.movementPsr.checks.map(check => check.status)).toEqual(['pending']);
+    });
+
+    it('drops skidding under Core, which has no skidding', async () => {
+        const { force } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        expect((await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).bound).toBeTrue();
+        expect((await force.dispatchUnitCommand(mek.id, { type: 'set-condition', condition: 'skidding', active: true })).changed)
+            .toBeTrue();
+
+        expect(await force.rebindScenarioRules(scenarioRules())).toEqual({
+            bound: true,
+            dropped: [{ unit: force.runtimeHistoryUnitLabel(mek.id), items: ['skidding condition'] }],
+        });
+        expect(force.getUnitConditions(mek.id)).not.toContain('skidding');
+    });
+
+    it('drops a jam the new rules do not have instead of failing the switch', async () => {
+        const ultra = new WeaponEquipment({
+            id: 'TestUltraAC5', name: 'Test Ultra AC/5', type: 'weapon',
+            flags: ['F_AC', 'F_BALLISTIC', 'F_DIRECT_FIRE'], modes: ['Single', 'Ultra'],
+            weapon: { ammoType: 'AC_ULTRA', rackSize: 5, damage: 5, heat: 1, ranges: [3, 6, 9, 12] },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [ultra.id]: ultra }));
+        const ultraId = asComponentId(addTestEquipment(entity, ultra, { location: entity.locationOrder[0] }).mountId);
+        const { force, instanceId } = await readyEntityForce({ entity });
+        expect((await force.rebindScenarioRules(scenarioRules(TOTAL_WARFARE_RULESET))).bound).toBeTrue();
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-component-jammed', componentId: ultraId, jammed: true,
+        })).changed).toBeTrue();
+
+        // Under Core only Rotary ACs jam.
+        expect(await force.rebindScenarioRules(scenarioRules())).toEqual({
+            bound: true,
+            dropped: [{
+                unit: force.runtimeHistoryUnitLabel(instanceId),
+                items: [force.runtimeHistoryTargetLabel(instanceId, 'component', ultraId)],
+            }],
+        });
+        expect(entityRuntimeSnapshot(force, instanceId).state.components.get(ultraId)?.jammed).toBeUndefined();
+        expect(force.getUnitSnapshot(instanceId)!.ruleset).toBe(CORE_2026_RULESET);
+    });
+});
+
+describe('CBTForce real-phase rewind', () => {
+    it('moves a unit back within its turn without undoing what it did', async () => {
+        const { force, armorFaceId } = await readyCloneForce();
+        const [mek] = force.getCBTMembers();
+        await force.dispatchUnitCommand(mek.id, { type: 'complete-turn-step', step: 0 });
+        await force.dispatchUnitCommand(mek.id, { type: 'damage-armor', faceId: armorFaceId, amount: 2, target: 'committed' });
+        await force.dispatchUnitCommand(mek.id, { type: 'complete-turn-step', step: 1 });
+        const armor = mekRuntimeSnapshot(force, mek.id).query.remainingArmor(armorFaceId);
+
+        expect((await force.dispatchUnitCommand(mek.id, { type: 'rewind-turn-step', step: 2 })).changed).toBeFalse();
+        expect((await force.dispatchUnitCommand(mek.id, { type: 'rewind-turn-step', step: 0 })).changed).toBeTrue();
+
+        const rewound = mekRuntimeSnapshot(force, mek.id);
+        expect(rewound.state.turn.turnStep).toBe(0);
+        expect(rewound.query.remainingArmor(armorFaceId)).toBe(armor);
+
+        const { force: entityForce, instanceId } = await readyEntityForce();
+        await entityForce.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 });
+        await entityForce.dispatchUnitCommand(instanceId, { type: 'rewind-turn-step', step: 0 });
+        expect(entityRuntimeSnapshot(entityForce, instanceId).state.turn.turnStep).toBe(0);
+    });
+});
 
 describe('CBTForce construction refits', () => {
     it('refuses a requested design update while the unit is damaged', async () => {
@@ -845,6 +1036,20 @@ describe('CBTForce V2 encounter persistence', () => {
             type: 'set-condition', condition: 'shutdown', active: true,
         }, context)).accepted).toBeFalse();
         expect(force.getUnitConditions(instanceId)).toEqual([]);
+    });
+
+    it('hands the record sheet the edit context of a targeting change made without a durable revision change', async () => {
+        const { force, instanceId } = await readyEntityForce();
+        createTarget(force);
+        const targetId = force.queryInventoryControlTargetRegistry().targets[0]!.id;
+        const member = force.getCBTMembers().find(candidate => candidate.id === instanceId)!;
+        expect(member.nonMekRecordSheetSnapshot()?.editContext.state).toBe(force.getUnitSnapshot(instanceId)!.editContext.state);
+        expect((await force.dispatchAttackerTargeting(instanceId, {
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-target-facts', targetId, facts: { distance: 6 } },
+        })).accepted).toBeTrue();
+        // A sheet still holding the old context would have its next selection rejected as stale.
+        expect(member.nonMekRecordSheetSnapshot()?.editContext.state).toBe(force.getUnitSnapshot(instanceId)!.editContext.state);
     });
 
     it('rejects a queued crew-profile edit after its source snapshot changes', async () => {
@@ -2320,11 +2525,7 @@ describe('CBTForce V2 encounter persistence', () => {
         if (beforeMovement.kind !== 'supported') return;
         expect(beforeMovement.actions.find(action => action.kind === 'sprint')?.legal).toBeFalse();
 
-        expect(await force.synchronizeOptionalRules({
-            forcedWithdrawal: true,
-            sprinting: true,
-            hotLoadedAmmo: false,
-        })).toBeTrue();
+        expect((await force.rebindScenarioRules(scenarioRules(CORE_2026_RULESET, { sprinting: true }))).bound).toBeTrue();
         const enabled = mekRuntimeSnapshot(force, instanceId);
         const enabledMovement = enabled.query.mekMovementPsr();
         expect(enabledMovement.kind).toBe('supported');
@@ -2334,11 +2535,10 @@ describe('CBTForce V2 encounter persistence', () => {
         );
         expect(enabled.query.heatProjection('manual').kind).toBe('supported');
         expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
-        expect(await force.synchronizeOptionalRules({
-            forcedWithdrawal: true,
-            sprinting: true,
-            hotLoadedAmmo: false,
-        })).toBeFalse();
+        const revision = force.serialize().cbt!.forceRevision;
+        expect(await force.rebindScenarioRules(scenarioRules(CORE_2026_RULESET, { sprinting: true })))
+            .toEqual({ bound: true, dropped: [] });
+        expect(force.serialize().cbt!.forceRevision).toBe(revision);
 
         const declared = await force.dispatchUnitCommand(instanceId, {
             type: 'declare-mek-movement',
@@ -2359,11 +2559,7 @@ describe('CBTForce V2 encounter persistence', () => {
             expect(sprintHeat.projection.sources.find(source => source.id === 'movement')?.value).toBe(3);
         }
 
-        expect(await force.synchronizeOptionalRules({
-            forcedWithdrawal: true,
-            sprinting: false,
-            hotLoadedAmmo: false,
-        })).toBeTrue();
+        expect((await force.rebindScenarioRules(scenarioRules())).bound).toBeTrue();
         expect(mekRuntimeSnapshot(force, instanceId).state.movementPsr.movement).toBeNull();
         expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
     });
@@ -2982,12 +3178,99 @@ describe('CBTForce V2 encounter persistence', () => {
             cover: null,
             spotting: false,
             phaseStateChanged: false,
+            turnStep: 0,
         });
         const saved = await force.serializeForPersistence();
         const entity = saved.cbt!.units.find(row => row.instanceId === instanceId)!;
         expect(isSerializedNonMekUnit(entity.unit)
             ? entity.unit.turn?.turnCounter
             : null).toBe(1);
+    });
+
+    it('persists real-phase step progress and restarts it when the unit ends its turn', async () => {
+        for (const { force, reload } of [await readyCloneForce(), await readyEntityForce()]) {
+            const instanceId = force.members()[0].id;
+            const turnStep = (target: CBTForce) => target.getUnitSnapshot(instanceId)!.state.turn.turnStep;
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 })).changed)
+                .toBeTrue();
+            // Steps complete strictly in order.
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'complete-turn-step', step: 0 })).changed)
+                .toBeFalse();
+            expect(turnStep(force)).toBe(1);
+
+            const saved = await force.serializeForPersistence() as SerializedCBTForce;
+            const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+            expect(turnStep(restored)).toBe(1);
+
+            expect((await force.endTurnForAllUnits()).accepted).toBeTrue();
+            expect(turnStep(force)).toBe(0);
+        }
+    });
+
+    it('undoes everything a single step did on one unit at once', async () => {
+        const { force } = await readyCloneForce();
+        const instanceId = force.members()[0].id;
+        const unit = force.getUnitSnapshot(instanceId)!;
+        const armorFaceId = [...unit.index.armorFaces.keys()].find(faceId => unit.query.remainingArmor(faceId) > 3)!;
+        const armor = () => force.getUnitSnapshot(instanceId)!.query.remainingArmor(armorFaceId, 'preview');
+        const before = armor();
+
+        await force.runAsOneUndoStep(async () => {
+            for (let hit = 0; hit < 3; hit += 1) {
+                await force.dispatchUnitCommand(instanceId, {
+                    type: 'damage-armor', faceId: armorFaceId, amount: 1, target: 'pending',
+                });
+            }
+        });
+        expect(armor()).toBe(before - 3);
+
+        expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
+        expect(armor()).toBe(before);
+    });
+
+    it('joins a game under way only by moving forward', async () => {
+        for (const { force } of [await readyCloneForce(), await readyEntityForce()]) {
+            const instanceId = force.members()[0].id;
+            const position = () => {
+                const turn = force.getUnitSnapshot(instanceId)!.state.turn;
+                return [turn.turnCounter, turn.turnStep];
+            };
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 2, step: 3 })).changed)
+                .toBeTrue();
+            expect(position()).toEqual([2, 3]);
+            expect((await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 1, step: 0 })).changed)
+                .toBeFalse();
+            expect(position()).toEqual([2, 3]);
+        }
+    });
+
+    it('marks a unit that joins after Movement, through the compact codec, until its turn ends', async () => {
+        for (const { force, reload } of [await readyCloneForce(), await readyEntityForce()]) {
+            const instanceId = force.members()[0].id;
+            await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 2, step: 3 });
+            expect(force.getUnitSnapshot(instanceId)!.state.turn.joinedStep).withContext('joined').toBe(3);
+
+            const saved = await force.serializeForPersistence() as SerializedCBTForce;
+            const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+            expect(restored.getUnitSnapshot(restored.members()[0].id)!.state.turn.joinedStep).withContext('restored').toBe(3);
+
+            await force.dispatchUnitCommand(instanceId, { type: 'join-turn', turn: 3, step: 0 });
+            expect(force.getUnitSnapshot(instanceId)!.state.turn.joinedStep).toBeUndefined();
+        }
+    });
+
+    it('persists the crew owing a Core consciousness roll through the compact codec', async () => {
+        const { force, reload } = await readyCloneForce();
+        const instanceId = force.members()[0].id;
+        const pilotId = [...force.getUnitSnapshot(instanceId)!.index.crewPositions.keys()][0]!;
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-consciousness-rolls-due', positionIds: [pilotId],
+        })).changed).toBeTrue();
+
+        const saved = await force.serializeForPersistence() as SerializedCBTForce;
+        const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
+        expect(restored.getUnitSnapshot(instanceId)!.state.turn).toEqual(
+            jasmine.objectContaining({ consciousnessRollsDue: [pilotId] }));
     });
 
     it('folds movement implicitly cleared by an Entity airborne change', async () => {

@@ -6,10 +6,11 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injec
 import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 
-import type {
-    MekAutomaticFallV2,
-    MekPilotCheckOutcomeV2,
-    MekPilotCheckV2,
+import {
+    mekAutomaticFallReasonV2,
+    type MekAutomaticFallV2,
+    type MekPilotCheckOutcomeV2,
+    type MekPilotCheckV2,
 } from '../../../models/runtime/mek-movement-psr-v2';
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import { OptionsService } from '../../../services/options.service';
@@ -21,7 +22,7 @@ import {
 } from './mek-turn-summary-runtime.controller';
 import {
     actionableMekPilotChecks,
-    composeMekPsrDisplayModifiers,
+    mekPsrDisplayModifiers,
     openTurnSummaryChildOverlay,
     PAGE_TURN_MEMBER,
 } from './page-turn-summary.util';
@@ -37,7 +38,26 @@ export function psrRollOutcome(sum: number, target: number): MekPilotCheckOutcom
     return sum >= target ? 'success' : 'failed';
 }
 
+function psrWarningKey(unitId: string): string {
+    return `psrWarning-${unitId}`;
+}
+
 export function togglePsrWarningOverlay(
+    member: CBTMekForceMember | null,
+    overlayManager: OverlayManagerService,
+    injector: Injector,
+    overlay: Overlay,
+    beforeOpen?: () => void
+): void {
+    if (member && overlayManager.has(psrWarningKey(member.id))) {
+        overlayManager.closeManagedOverlay(psrWarningKey(member.id));
+        return;
+    }
+    openPsrWarningOverlay(member, overlayManager, injector, overlay, beforeOpen);
+}
+
+/** Opens the unit's Piloting Skill Roll panel unless it is already open. */
+export function openPsrWarningOverlay(
     member: CBTMekForceMember | null,
     overlayManager: OverlayManagerService,
     injector: Injector,
@@ -47,11 +67,8 @@ export function togglePsrWarningOverlay(
     const unitId = member?.id;
     if (!unitId) return;
 
-    const overlayKey = `psrWarning-${unitId}`;
-    if (overlayManager.has(overlayKey)) {
-        overlayManager.closeManagedOverlay(overlayKey);
-        return;
-    }
+    const overlayKey = psrWarningKey(unitId);
+    if (overlayManager.has(overlayKey)) return;
 
     beforeOpen?.();
     const customInjector = Injector.create({
@@ -112,11 +129,8 @@ export class PagePsrWarningPanelComponent {
             ?? 0;
     });
     readonly modifiersList = computed(() => {
-        const snapshot = this.runtime()?.snapshot();
-        const permanent = snapshot?.movement.kind === 'supported'
-            ? snapshot.movement.permanentPsrModifiers
-            : [];
-        return composeMekPsrDisplayModifiers(permanent, snapshot?.movementState.checks ?? []);
+        const movement = this.runtime()?.snapshot().movement;
+        return movement ? mekPsrDisplayModifiers(movement) : [];
     });
     private readonly resolutionStates = computed<ReadonlyMap<string, PsrOutcomeState>>(() => {
         const states = new Map<string, PsrOutcomeState>();
@@ -149,7 +163,7 @@ export class PagePsrWarningPanelComponent {
     });
 
     automaticFallReason(fall: MekAutomaticFallV2): string {
-        return fall.triggerKind === 'gyro-destroyed' ? 'Gyro destroyed' : 'Leg destroyed';
+        return mekAutomaticFallReasonV2(fall.triggerKind);
     }
 
     locationLabel(locationId: string | undefined): string | null {
@@ -159,7 +173,7 @@ export class PagePsrWarningPanelComponent {
     }
 
     close(): void {
-        this.overlayManager.closeManagedOverlay(`psrWarning-${this.member.id}`);
+        this.overlayManager.closeManagedOverlay(psrWarningKey(this.member.id));
     }
 
     roll(check: MekPilotCheckV2): void {

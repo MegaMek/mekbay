@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { BaseEntity } from '../../models/entity/base-entity';
+import type { BaseEntity } from '../entity/base-entity';
 import {
     TestAeroSpaceFighterEntity,
     TestLargeSupportTankEntity,
@@ -11,8 +11,8 @@ import {
     TestTankEntity,
     TestVtolEntity,
     TestWarShipEntity,
-} from '../../models/entity/testing/test-entities';
-import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
+} from '../entity/testing/test-entities';
+import type { NonMekRecordSheetSnapshot } from './non-mek-record-sheet';
 import { nonMekHitArcs,resolveNonMekHitLocation,type NonMekHitArc } from './non-mek-hit-location';
 
 describe('non-Mek paperdoll hit locations', () => {

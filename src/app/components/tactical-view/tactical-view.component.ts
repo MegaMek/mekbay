@@ -49,7 +49,7 @@ import { CrewMember,MAX_CREW_WOUNDS,type CrewMemberState } from '../../models/cr
 import { getMekLocationLabel, type MekLocation } from '../../models/entity/types';
 import {
 MEK_CREW_STATE_CONTROLS,
-MEK_UNIT_CONDITION_CONTROLS,
+mekUnitConditionControls,
 } from '../../models/mek-record-sheet-controls';
 import type { UnitConditionKey } from '../../models/unit-condition.model';
 import {
@@ -62,6 +62,7 @@ import type { SystemDamageKind } from '../../models/rules/system-damage-rules';
 import { compareSystemDamageScopes, systemDamageStageCaption, systemDamageSystemLabel } from '../../models/runtime/system-damage-presentation';
 import { CBTAutomationToastService } from '../../services/cbt-automation-toast.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { AttackResolutionService } from '../../services/attack-resolution.service';
 import { ForcePilotEditorService } from '../../services/force-pilot-editor.service';
 import { ForceWorkspaceCommandsService } from '../../services/force-workspace-commands.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -81,7 +82,8 @@ import { PageViewerNonMekRuntimeService } from '../page-viewer/internal/page-vie
 import { PageViewerOverlayService } from '../page-viewer/internal/page-viewer-overlay.service';
 import { PageViewerStateService } from '../page-viewer/internal/page-viewer-state.service';
 import { recordSheetCommand } from '../page-viewer/mek-record-sheet-interaction.util';
-import { composeMekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-summary.util';
+import { toggleRuntimeHistoryOverlay } from '../page-viewer/overlay/page-runtime-history-panel.component';
+import { mekPsrDisplayModifiers } from '../page-viewer/overlay/page-turn-summary.util';
 import { PageViewerZoomPanService } from '../page-viewer/page-viewer-zoom-pan.service';
 import type { TooltipLine } from '../tooltip/tooltip.component';
 import { UnitIconComponent } from '../unit-icon/unit-icon.component';
@@ -166,6 +168,7 @@ export class TacticalViewComponent {
     private readonly options = inject(OptionsService);
     private readonly toast = inject(ToastService);
     private readonly dialogs = inject(DialogsService);
+    private readonly attacks = inject(AttackResolutionService);
     private readonly pilotEditor = inject(ForcePilotEditorService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly host = inject(ElementRef<HTMLElement>);
@@ -232,11 +235,7 @@ export class TacticalViewComponent {
     });
     protected readonly mekPsrModifiers = computed(() => {
         const snapshot = this.mekSnapshot();
-        if (!snapshot) return Object.freeze([]);
-        const permanent = snapshot.movement.projection.kind === 'supported'
-            ? snapshot.movement.projection.permanentPsrModifiers
-            : [];
-        return composeMekPsrDisplayModifiers(permanent, snapshot.movement.psr.checks);
+        return snapshot ? mekPsrDisplayModifiers(snapshot.movement.projection) : Object.freeze([]);
     });
     protected readonly mekPsrModifierTotal = computed(() => this.mekPsrModifiers()
         .reduce((total, modifier) => total + modifier.modifier, 0));
@@ -258,8 +257,10 @@ export class TacticalViewComponent {
         const snapshot = this.nonMekSnapshot();
         return snapshot && !this.readOnly() ? unitConditionControls(snapshot.conditionControlKeys) : [];
     });
-    protected readonly mekConditionControls = computed(() =>
-        this.mekSnapshot() && !this.readOnly() ? MEK_UNIT_CONDITION_CONTROLS : []);
+    protected readonly mekConditionControls = computed(() => {
+        const snapshot = this.mekSnapshot();
+        return snapshot && !this.readOnly() ? mekUnitConditionControls(snapshot.ruleset) : [];
+    });
     protected readonly activeConditionControls = computed<readonly UnitConditionControl[]>(() =>
         this.mekSnapshot() ? this.mekConditionControls() : this.nonMekConditionControls());
     protected readonly primaryConditionControls = computed(() => Object.freeze(
@@ -424,6 +425,7 @@ export class TacticalViewComponent {
                 this.options,
                 this.toast,
                 this.dialogs,
+                this.attacks,
             );
             this.equipmentRuntime.set(runtime);
             onCleanup(() => {
@@ -496,26 +498,20 @@ export class TacticalViewComponent {
         });
     }
 
-    protected canUndo(): boolean {
-        return this.force()?.getRuntimeUndoState().canUndo === true && !this.readOnly();
-    }
-
-    protected canRedo(): boolean {
-        return this.force()?.getRuntimeUndoState().canRedo === true && !this.readOnly();
-    }
-
-    protected async undoRuntimeCommand(): Promise<void> {
+    protected openLog(event: MouseEvent): void {
+        event.stopPropagation();
         const force = this.force();
-        if (!force || !this.canUndo()) return;
-        const result = await force.undoRuntimeCommand();
-        if (!result.accepted) this.showRejectedEdit(result.reason);
-    }
-
-    protected async redoRuntimeCommand(): Promise<void> {
-        const force = this.force();
-        if (!force || !this.canRedo()) return;
-        const result = await force.redoRuntimeCommand();
-        if (!result.accepted) this.showRejectedEdit(result.reason);
+        if (!force) return;
+        toggleRuntimeHistoryOverlay(
+            force,
+            this.member()?.id ?? null,
+            event.currentTarget as HTMLElement,
+            this.host.nativeElement,
+            this.overlayManager,
+            this.overlay,
+            this.injector,
+            () => this.overlayManager.closeAllManagedOverlays(),
+        );
     }
 
     protected pips(maximum: number): readonly number[] {

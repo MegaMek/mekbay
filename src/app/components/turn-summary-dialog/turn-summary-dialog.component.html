@@ -1,0 +1,76 @@
+<div class="content">
+  <h2>TURN {{ turnNumber() }}</h2>
+  <div class="step-name">{{ stepName() }}</div>
+
+  @if (initiative.sides().length > 1) {
+    <section class="initiative" aria-label="Initiative">
+      <div class="section-title">
+        <span>Initiative</span>
+        @if (initiative.record()?.order) {
+          <span class="how">set by hand</span>
+        } @else if (initiative.order()) {
+          <span class="how">rolled</span>
+        } @else {
+          <span class="how pending">{{ initiative.due().size }} still to roll</span>
+        }
+      </div>
+      <ol class="ranking">
+        @for (row of ranking(); track row.side.id; let last = $last) {
+          <li class="side" [class.friendly]="row.side.friendly">
+            <span class="place">
+              @if (initiative.order()) {
+                {{ row.place === 0 ? '★' : row.place + 1 }}
+              }
+            </span>
+            <span class="marker" aria-hidden="true"></span>
+            <span class="name">{{ row.side.label }}</span>
+            @if (initiative.order()) {
+              <span class="role">{{ row.place === 0 ? 'wins · acts last' : last ? 'acts first' : '' }}</span>
+            }
+            @if (row.total !== null) {
+              <span
+                class="roll"
+                [title]="row.ties ? 'Rerolled ' + row.ties + ' tie' + (row.ties === 1 ? '' : 's') : ''"
+              >
+                {{ row.firstRoll![0] }}+{{ row.firstRoll![1] }}{{ signed(row.modifier) }}
+                @if (row.ties) {
+                  <span class="tie">tie</span>
+                }
+                <strong>{{ row.total }}</strong>
+              </span>
+            }
+            <span class="acted" title="Units that acted on this step">{{ row.acted }}/{{ row.units }} acted</span>
+          </li>
+        }
+      </ol>
+    </section>
+  }
+
+  <section class="order" aria-label="Acting order">
+    <div class="section-title">
+      <span>Acting order</span><span class="how">{{ stepName() }}</span>
+    </div>
+    @if (pips().length) {
+      <initiative-pips size="large" [pips]="pips()" />
+    } @else {
+      <span class="empty">No units in play</span>
+    }
+    <p class="legend">
+      @for (entry of legend; track entry.label) {
+        <span class="legend-entry"><initiative-pips [pips]="[entry.pip]" /> {{ entry.label }}</span>
+      }
+    </p>
+  </section>
+
+  <div class="actions">
+    @if (initiative.sides().length > 1) {
+      <button type="button" class="bt-button" (click)="openInitiative()">
+        {{ initiative.myDue().length ? 'ROLL INITIATIVE' : initiative.canReorder() ? 'INITIATIVE ORDER' : 'SEE ROLLS' }}
+      </button>
+    }
+    @if (canRestart()) {
+      <button type="button" class="bt-button danger" (click)="restart()">RESTART GAME</button>
+    }
+    <button type="button" class="bt-button primary" (click)="close()">DISMISS</button>
+  </div>
+</div>

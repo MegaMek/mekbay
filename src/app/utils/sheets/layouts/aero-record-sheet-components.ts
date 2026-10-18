@@ -11,6 +11,7 @@ import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import { JumpShipEntity } from '../../../models/entity/entities/largecraft/jumpship-entity';
 import { type EntityDamageLocation } from '../../../models/entity/types';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
@@ -41,8 +42,10 @@ formatRecordSheetTonnage,
 formatTechBase,
 formatWholeNumber,
 makePips,
+markRecordSheetHeatProfile,
 paperdollPipOptions,
 recordSheetAmmoProfile,
+recordSheetHeatProfileText,
 recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
@@ -89,6 +92,7 @@ export interface AeroDataPanelContent {
     readonly showQuirks?: boolean;
     readonly featureText?: string;
     readonly cargoInFeatures?: boolean;
+    readonly ruleset: CBTRuleset;
 }
 
 export interface AeroPaperdollPresentation {
@@ -261,10 +265,10 @@ export function drawAeroDataPanel(
         }
     }
     if (entity.tracksHeat() && detailY < referenceHeight - footerReserve - 5) {
-        const heatProfile = addText(inventory,
-            `Maximum Heat (Dissipation): ${Math.max(0, entity.heatGeneration())} (${Math.max(0, entity.heatDissipation())})`,
-            x(8.41), inventoryY(detailY), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204) });
-        heatProfile.id = 'heatProfile';
+        const maximumHeat = Math.max(0, entity.heatGeneration());
+        markRecordSheetHeatProfile(addText(inventory,
+            recordSheetHeatProfileText(maximumHeat, Math.max(0, entity.heatDissipation())),
+            x(8.41), inventoryY(detailY), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(204) }), maximumHeat);
         contentBottom = detailY;
     }
     // With n ammo rows the content must end above `bottom - n * footer row`, the reserve fitted above.
@@ -292,11 +296,11 @@ export function drawAeroDataPanel(
     }
     addLine(group, x(3), box.height - y(26.214 + largeVesselFooterShift), x(219.4),
         box.height - y(26.214 + largeVesselFooterShift), '#000', 1.932 * fontScale);
-    appendBattleValue(group, entity.battleValue(), {
+    appendBattleValue(group, entity.battleValue(content.ruleset), {
         x: x(13.845), valueX: x(32.79), y: box.height - y(14.214 + largeVesselFooterShift), size: font(9.67),
     });
     appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, referenceHeight - 14.214 - largeVesselFooterShift - 8.893);
-    appendLegacyIdentityAnchors(group, entity, box);
+    appendLegacyIdentityAnchors(group, entity, box, content.ruleset);
     return group;
 }
 

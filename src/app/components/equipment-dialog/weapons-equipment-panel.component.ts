@@ -33,6 +33,7 @@ import type {
     MekPhysicalAttackRow,
 } from '../../models/runtime/equipment-panel';
 import {
+    physicalAttackTargetNumber,
     projectWeaponTargetPresentation,
     projectTargetingTarget,
 } from '../../models/runtime/equipment-panel';
@@ -461,7 +462,7 @@ export class WeaponsEquipmentPanelComponent {
                 const target = targetId ? this.targets().find(candidate => candidate.id === targetId) : null;
                 if (target && this.targetDisabledReason(row, target) !== null) return;
                 if (row.physical) void this.runtime().selectPhysicalTarget(row.physical, targetId ?? '');
-                else void this.runtime().selectTarget(row.component!, targetId ?? '');
+                else void this.runtime().selectTarget([row.component!], targetId ?? '');
             },
             this.targetChoiceTargetNumberTexts(row),
             this.targetChoiceDisabledReasons([row]),
@@ -521,9 +522,7 @@ export class WeaponsEquipmentPanelComponent {
         const rows = targetId ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
         const target = targetId ? this.targets().find(candidate => candidate.id === targetId) : null;
         if (target && rows.some(row => this.targetDisabledReason(row, target) !== null)) return;
-        for (const row of rows) {
-            if (row.component?.weapon) void this.runtime().selectTarget(row.component, targetId ?? '');
-        }
+        void this.runtime().selectTarget(rows.flatMap(row => row.component ?? []), targetId ?? '');
     }
 
     private openTargetChoiceOverlay(
@@ -672,7 +671,7 @@ export class WeaponsEquipmentPanelComponent {
         const selected = this.isSelected(row);
         if (!selected && (row.disabled || row.destroyed)) return;
         if (row.component?.weapon) {
-            void this.runtime().selectTarget(row.component, selected ? '' : 'selected');
+            void this.runtime().selectTarget([row.component], selected ? '' : 'selected');
         } else if (row.physical) {
             void this.runtime().selectPhysicalTarget(row.physical, selected ? '' : 'selected');
         }
@@ -693,9 +692,7 @@ export class WeaponsEquipmentPanelComponent {
         if (this.readOnly() || group.id !== 'ranged') return;
         const selected = !this.groupAllSelectableRowsSelected(group);
         const rows = selected ? this.groupActiveSelectableRows(group) : this.groupSelectableRows(group);
-        rows.forEach(row => {
-            if (row.component?.weapon) void this.runtime().selectTarget(row.component, selected ? 'selected' : '');
-        });
+        void this.runtime().selectTarget(rows.flatMap(row => row.component ?? []), selected ? 'selected' : '');
     }
 
     resetSelections(): void {
@@ -717,7 +714,7 @@ export class WeaponsEquipmentPanelComponent {
         if (!this.canSelectRange(row, range)) return;
         if (row.component?.weapon) {
             const selected = this.runtime().selectedTarget(row.component) === `range:${range}`;
-            void this.runtime().selectTarget(row.component, selected ? '' : `range:${range}`);
+            void this.runtime().selectTarget([row.component], selected ? '' : `range:${range}`);
         }
     }
 
@@ -950,7 +947,7 @@ export class WeaponsEquipmentPanelComponent {
             targetNumberText: target === null
                 ? ''
                 : typeof modifier === 'number'
-                    ? String(piloting + numericModifier + attackModifier + targetModifier)
+                    ? String(physicalAttackTargetNumber(row.physical!, piloting, this.runtime().attackContext(), target))
                     : formatPhysicalHitModifier(modifier),
             targetNumberTooltip: tooltip,
             breakdown: null,

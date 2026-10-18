@@ -1,0 +1,69 @@
+@use '../attack-report/attack-dialog';
+
+:host { display: block; }
+
+@include attack-dialog.frame(720px, 860px);
+
+.attack-body {
+    display: grid;
+    gap: 12px;
+}
+
+.reroll-all {
+    display: flex;
+    width: 100%;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.roll-icon {
+    width: 22px;
+    height: 22px;
+    background: url('/images/random.svg') center / contain no-repeat;
+}
+
+.attack-target {
+    display: grid;
+    gap: 6px;
+}
+
+.target-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-left: 3px solid var(--danger);
+    background: var(--background-input);
+}
+
+.target-letter {
+    display: inline-grid;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    color: #000;
+    font-weight: 800;
+}
+
+.target-name {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+
+    strong { overflow-wrap: anywhere; }
+    span { color: var(--text-color-secondary); font-size: 0.78em; }
+}
+
+.target-totals {
+    display: grid;
+    margin-left: auto;
+    justify-items: end;
+    text-align: right;
+
+    span { color: var(--text-color-secondary); font-size: 0.72em; font-weight: 700; text-transform: uppercase; }
+    strong { color: var(--damage-color); font-size: 1.8em; line-height: 1; }
+}

@@ -9,9 +9,12 @@ import { AmmoEquipment } from '../../models/equipment.model';
 import type { Era } from '../../models/eras.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { OptionsService } from '../../services/options.service';
-import { SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
+import { mountedAmmoDialogData, SetAmmoDialogComponent, type SetAmmoDialogData } from './set-ammo.dialog.component';
+import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { getAmmoInfoItems } from './set-ammo-dropdown.component';
 import { EquipmentTechBase } from '../../models/entity/types/tech';
+import { createDirectMekRuntimeFixture, emptyCBTEncounterSnapshot } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import { projectMekEquipmentPanel } from '../../models/runtime/equipment-panel';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
     return {
@@ -44,14 +47,34 @@ function createAmmo(
     });
 }
 
+describe('mountedAmmoDialogData', () => {
+    for (const era of [null, createEra(2900, 3000)]) {
+        it(`preserves the selected force era (${era?.name ?? 'none'})`, () => {
+            const { entity, index, instance, equipmentComponent } = createDirectMekRuntimeFixture();
+            const state = instance.snapshot();
+            const data = mountedAmmoDialogData({
+                instanceId: instance.instanceId, uuid: instance.uuid,
+                entity, index, ruleset: instance.ruleset(), crewAssignment: instance.getCrewAssignment(),
+                editContext: { owner: instance, state }, state, query: instance.query(),
+            }, equipmentComponent('Test Artemis Ammo').id, era)!;
+
+            expect(data.era).toBe(era);
+        });
+    }
+});
+
 describe('SetAmmoDialogComponent', () => {
     let overlayContainerElement: HTMLElement;
 
-    function configureDialog(data: SetAmmoDialogData, allowMixedTechBaseAmmo = false, hotLoadedAmmo = false) {
+    function configureDialog(
+        data: Omit<SetAmmoDialogData, 'gameRules'> & Partial<Pick<SetAmmoDialogData, 'gameRules'>>,
+        allowMixedTechBaseAmmo = false,
+        hotLoadedAmmo = false,
+    ) {
         TestBed.configureTestingModule({
             imports: [SetAmmoDialogComponent],
             providers: [
-                { provide: DIALOG_DATA, useValue: data },
+                { provide: DIALOG_DATA, useValue: { gameRules: CORE_2026_GAME_RULES, ...data } },
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false) } },
                 { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo, hotLoadedAmmo } }) } },
@@ -264,6 +287,31 @@ describe('SetAmmoDialogComponent', () => {
 
         expect(fixture.componentInstance.selectedAmmoSelectionIssues()).toEqual([]);
         expect(fixture.nativeElement.querySelector('.ammo-selection-issue')).toBeNull();
+    });
+
+    it('carries installed Artemis links through mounted-bin dialog data and the equipment panel', () => {
+        const { entity, index, instance, equipmentComponent } = createDirectMekRuntimeFixture();
+        const ammoId = equipmentComponent('Test Artemis Ammo').id;
+        const state = instance.snapshot();
+        const data = mountedAmmoDialogData({
+            instanceId: instance.instanceId,
+            uuid: instance.uuid,
+            entity,
+            index,
+            ruleset: instance.ruleset(),
+            crewAssignment: instance.getCrewAssignment(),
+            editContext: { owner: instance, state },
+            state,
+            query: instance.query(),
+        }, ammoId, null)!;
+        expect(data.compatibilityFacts?.artemisV).toContain('Test Artemis Ammo');
+        const fixture = configureDialog(data);
+        expect(fixture.componentInstance.selectedAmmoSelectionIssues()).toEqual([]);
+        expect(fixture.nativeElement.querySelector('.ammo-selection-issue')).toBeNull();
+
+        const panel = projectMekEquipmentPanel(entity, index, instance.ruleset(), instance.query(), emptyCBTEncounterSnapshot());
+        expect(panel.components.find(row => row.componentId === ammoId)?.ammo?.compatibilityFacts)
+            .toEqual(data.compatibilityFacts);
     });
 
     it('shows compact ammo details in the dialog and expanded dropdown details', () => {

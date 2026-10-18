@@ -490,6 +490,7 @@ describe('CBT V1 force converter', () => {
             cover: null,
             spotting: false,
             phaseStateChanged: false,
+            turnStep: 0,
         });
         expect(restored.query().remainingArmor(location.armorFaceIds[0])).toBe(3);
 

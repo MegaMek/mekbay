@@ -3,6 +3,7 @@
 // Author: Drake
 
 import { BaseEntity } from '../models/entity/base-entity';
+import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import { BattleArmorEntity } from '../models/entity/entities/infantry/battle-armor-entity';
 import { InfantryBaseEntity } from '../models/entity/entities/infantry/infantry-base-entity';
@@ -34,11 +35,11 @@ export class UnitMetadataBuilder {
   constructor(private readonly resolveIcon: UnitIconResolver = createUnitIconResolver(undefined)) {}
 
   /**
-   * Build metadata for a single entity.
+   * Build metadata for a single entity, pricing BV under `ruleset`.
    *
    * Use the compare-unit-output script to validate against units.json.
    */
-  build(entity: BaseEntity, unitFile?: string): UnitMetadata {
+  build(entity: BaseEntity, ruleset: CBTRuleset, unitFile?: string): UnitMetadata {
     const me = entity.mountedEngine();
     const alphaStrikeUnitStats = convertEntityToAlphaStrike(entity);
     return {
@@ -110,7 +111,7 @@ export class UnitMetadataBuilder {
       crewSize: entity.crewSlotCount(),
       features: this.buildFeatures(entity),
       cost: Math.round(entity.cost()),
-      bv: entity.battleValue(),
+      bv: entity.battleValue(ruleset),
       offSpeedFactor: entity.offensiveSpeedFactor(),
       as: alphaStrikeUnitStats,
     };

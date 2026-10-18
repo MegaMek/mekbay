@@ -168,7 +168,7 @@ export class ForceRemoteSyncService {
         source: ForceUpdateSource = 'live',
         conflictAlreadyQueued: boolean = false,
         retainedReceiptGeneration?: number,
-    ) {
+    ): Promise<void> {
         if (!targetForce) return;
         let incomingSnapshot: SerializedForce;
         try {
@@ -192,6 +192,9 @@ export class ForceRemoteSyncService {
             incomingSnapshot.instanceId,
         );
         if (!initialTarget) return;
+        // Ownership is the viewer's relationship to the force. The owner's payload omits it
+        // (defaulting to owned), so a live update must never turn someone else's force into ours.
+        if (!initialTarget.force.owned()) incomingSnapshot = { ...incomingSnapshot, owned: false };
         let currentTarget = initialTarget.force;
         let expectedSlot = initialTarget.slot;
         let commitFence = captureRemoteForceCommitFence(currentTarget);
@@ -215,6 +218,13 @@ export class ForceRemoteSyncService {
             );
             if (!resolvedTarget) return;
             if (resolvedTarget.force === currentTarget) {
+                if (resolvedTarget.slot === expectedSlot && !currentTarget.owned()
+                    && !matchesRemoteForceCommitFence(currentTarget, commitFence)) {
+                    // A force this client does not own changes here only when it is bound to other
+                    // rules (a rules switch): stage the update again against it instead of losing it.
+                    return await this.reconcileRemoteForce(
+                        currentTarget, incomingSnapshot, source, conflictAlreadyQueued, receiptGeneration);
+                }
                 if (resolvedTarget.slot !== expectedSlot
                     || !matchesRemoteForceCommitFence(currentTarget, commitFence)) {
                     this.logger.warn(`Ignoring remote force update for instance ${currentTarget.instanceId()}: local authority changed while staging.`);

@@ -22,6 +22,7 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
+import { AttackResolutionService } from '../../services/attack-resolution.service';
 import { EquipmentDialogComponent } from './equipment-dialog.component';
 import type { EquipmentDialogData } from './equipment-dialog.model';
 
@@ -212,6 +213,7 @@ function createDialog(data: EquipmentDialogData) {
             } },
             { provide: ToastService, useValue: toast },
             { provide: KeyboardShortcutService, useValue: keyboardShortcuts },
+            { provide: AttackResolutionService, useValue: { resolveFired: async () => undefined, resolvesAttacks: () => false, inPhysicalPhase: () => false } },
         ],
     });
     const fixture = TestBed.createComponent(EquipmentDialogComponent);

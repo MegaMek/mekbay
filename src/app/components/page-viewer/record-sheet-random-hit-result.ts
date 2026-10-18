@@ -19,10 +19,13 @@ export class RecordSheetRandomHitResult {
         transferredFrom?: string,
     ): void {
         this.clear();
-        const armorZones = [...svg.querySelectorAll<SVGElement>('.unitLocation.armor[data-loc]')]
-            .filter(element => element.dataset['loc'] === locationCode);
-        const matchingZones = armorZones.filter(element => element.hasAttribute('data-rear') === rear);
-        const highlighted = matchingZones.length > 0 ? matchingZones : armorZones;
+        // The hit location's contours on the armor paperdolls: its armor and, where that diagram draws them inside
+        // the location (vehicles, ProtoMeks), its internal structure bands. A separate structure diagram stays unmarked.
+        const zones = [...svg.querySelectorAll<SVGElement>(
+            '[data-mekbay-paperdoll][data-type="armor"] .unitLocation:is(.armor, .structure)[data-loc]',
+        )].filter(element => element.dataset['loc'] === locationCode);
+        const matchingZones = zones.filter(element => element.hasAttribute('data-rear') === rear);
+        const highlighted = matchingZones.length > 0 ? matchingZones : zones;
         highlighted.forEach(element => element.classList.add('random-hit-location-highlight'));
 
         const result = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -32,29 +35,28 @@ export class RecordSheetRandomHitResult {
         badge.setAttribute('class', 'mek-random-hit-result-badge');
         const background = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         background.setAttribute('class', 'mek-random-hit-result-background');
-        background.setAttribute('cx', '11');
-        background.setAttribute('cy', '11');
         background.setAttribute('r', '17');
         badge.appendChild(background);
         const locationText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         locationText.setAttribute('class', 'mek-random-hit-result-location');
-        locationText.setAttribute('x', '11');
-        locationText.setAttribute('y', transferredFrom ? '7' : '11');
+        locationText.setAttribute('y', transferredFrom ? '-4' : '0');
         locationText.setAttribute('dy', '.35em');
         locationText.textContent = locationCode;
         badge.appendChild(locationText);
         if (transferredFrom) {
             const transferText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             transferText.setAttribute('class', 'mek-random-hit-result-transferred-from');
-            transferText.setAttribute('x', '11');
-            transferText.setAttribute('y', '18');
+            transferText.setAttribute('y', '7');
             transferText.textContent = `from ${transferredFrom}`;
             badge.appendChild(transferText);
         }
         const buttonMatrix = button instanceof SVGGraphicsElement ? button.getCTM() : null;
         const svgMatrix = svg.getCTM();
         if (buttonMatrix && svgMatrix) {
-            badge.setAttribute('transform', this.rootRelativeTransform(svgMatrix, buttonMatrix));
+            // The badge replaces the button in place, so it is centred on the button's own geometry.
+            const bounds = (button as SVGGraphicsElement).getBBox();
+            const center = buttonMatrix.translate(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+            badge.setAttribute('transform', this.rootRelativeTransform(svgMatrix, center));
         }
         result.appendChild(badge);
         const armorLayer = svg.querySelector<SVGGraphicsElement>('[data-mekbay-paperdoll-view="front"]')

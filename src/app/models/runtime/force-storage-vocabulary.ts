@@ -186,6 +186,10 @@ export const CBT_MOVEMENT_SOURCE_FIELD = {
     witness: 'w',
     criticalSlotIds: 'c',
     locationIds: 'l',
+} as const;
+
+/** Source fields of check rows saved before targets were derived (row[4] then held the target). */
+export const CBT_LEGACY_MOVEMENT_SOURCE_FIELD = {
     baseTarget: 'b',
     triggerModifier: 'm',
 } as const;
@@ -202,6 +206,9 @@ export const CBT_TURN_FIELD = {
     endTurnCheckpoint: 'p',
     pendingFallConsequences: 'f',
     pendingCriticalEvents: 'q',
+    turnStep: 'g',
+    joinedStep: 'j',
+    consciousnessRollsDue: 'k',
 } as const;
 
 export const CBT_PENDING_COMBAT_FIELD = {

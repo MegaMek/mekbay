@@ -199,7 +199,7 @@
                 </button>
             }
 
-            @if (phaseDirty() || endPhaseForAllButtonVisible()) {
+            @if (!realPhases() && (phaseDirty() || endPhaseForAllButtonVisible())) {
                 <div class="command-group">
                     @if (phaseDirty()) {
                         <button type="button" class="bt-button commit-command phase" (click)="endPhase($event)">
@@ -213,7 +213,7 @@
                 </div>
             }
 
-            @if (dirty() || endTurnForAllButtonVisible()) {
+            @if (!realPhases() && (dirty() || endTurnForAllButtonVisible())) {
                 <div class="command-group">
                     @if (dirty()) {
                         <button type="button" class="bt-button commit-command turn" (click)="endTurn()">

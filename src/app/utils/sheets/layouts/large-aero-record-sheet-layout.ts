@@ -9,6 +9,7 @@ import { isMobileHpgEquipment } from '../../../models/aerospace-support-equipmen
 import { isApolloEquipment } from '../../../models/apollo-mode.model';
 import { artemisKind } from '../../../models/artemis-equipment.model';
 import type { BaseEntity } from '../../../models/entity/base-entity';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
 import { SmallCraftEntity } from '../../../models/entity/entities/aero/small-craft-entity';
@@ -149,7 +150,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             height: dataPanelHeight + page.height - recordSheetPageProfile().height,
         });
         if (capital || content.plan.pageCount > 1 || content.capitalRows.length > 0) {
-            drawCapitalAeroDataPanel(svg, entity, dataPanelBox, content);
+            drawCapitalAeroDataPanel(svg, entity, dataPanelBox, content, request.ruleset);
         } else {
             drawAeroDataPanel(svg, entity, dataPanelBox, dataPanelHeight, {
                 panelTitle: this.dataPanelTitle(entity),
@@ -158,6 +159,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
                 flowCargoAfterInventory: true,
                 showAmmoSummary: false,
                 showQuirks: request.showQuirks,
+                ruleset: request.ruleset,
                 featureText: capitalAeroFeatures(entity),
             });
         }
@@ -506,6 +508,7 @@ function drawCapitalAeroDataPanel(
     entity: AeroEntity,
     box: Box,
     content: LargeAeroPageContent,
+    ruleset: CBTRuleset,
 ): SVGGElement {
     const group = addFrame(svg, capitalAeroDataPanelTitle(entity), box, {
         bottomLeftNotchWidth: box.width * 0.36,
@@ -552,9 +555,9 @@ function drawCapitalAeroDataPanel(
         drawLargeAeroFooter(geometry, footer, fuelBaseline - Math.max(0, footer.length - 2) * rowStep);
     }
     addLine(group, x(3), y(392.543), x(219.4), y(392.543), '#000', 1.932 * Math.min(sx, sy));
-    appendBattleValue(group, entity.battleValue(), { x: x(13.845), valueX: x(32.79), y: y(404.543), size: font(9.67) });
+    appendBattleValue(group, entity.battleValue(ruleset), { x: x(13.845), valueX: x(32.79), y: y(404.543), size: font(9.67) });
     appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, 395.65);
-    appendLegacyIdentityAnchors(group, entity, box);
+    appendLegacyIdentityAnchors(group, entity, box, ruleset);
     return group;
 }
 

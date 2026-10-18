@@ -21,7 +21,7 @@ describe('BLK aerospace engine rating', () => {
       source.mountedEngine.set(new MountedEngine({ type: 'ICE', rating: 1, techBase: 'IS' }));
       const entity = parseEntity(encodeNativeEntity(source), 'support.blk', source.getEquipmentRegistry()).entity;
       expect(entity.mountedEngine().rating).toBe(rating);
-      expect(new UnitMetadataBuilder().build(entity).engineRating).toBe(rating);
+      expect(new UnitMetadataBuilder().build(entity, 'core-2026').engineRating).toBe(rating);
       const reloaded = parseEntity(encodeNativeEntity(entity), 'support.blk', source.getEquipmentRegistry()).entity;
       expect(reloaded.mountedEngine().rating).toBe(rating);
     });

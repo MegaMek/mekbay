@@ -11,7 +11,11 @@ export interface MekLifeSupportPilotDamage {
     readonly damaged: boolean;
     readonly heatHits: number;
     readonly oxygenHits: number;
-    readonly headHitHits: number;
+}
+
+/** Pilot hits each head hit deals: none when a torso-mounted (or VRRP) cockpit keeps the warrior out of the head. */
+export function mekHeadHitPilotHits(entity: MekEntity): number {
+    return entity.mountedCockpit().hasTorsoSlots ? 0 : 1;
 }
 
 /** Life Support effects derived only from the Mek blueprint and sparse runtime state. */
@@ -37,7 +41,6 @@ export function projectMekLifeSupportPilotDamage(
         damaged,
         heatHits: damaged ? lifeSupportHeatHits(ruleset, torsoMountedCockpit, heat) : 0,
         oxygenHits: damaged && submerged ? 1 : 0,
-        headHitHits: torsoMountedCockpit ? 0 : 1,
     });
 }
 

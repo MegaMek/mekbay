@@ -24,7 +24,8 @@ import { mekTurnPanelPhase } from '../../../models/runtime/mek-turn-panel';
 import { CBTAutomationToastService } from '../../../services/cbt-automation-toast.service';
 import { DialogsService } from '../../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../../services/force-workspace-state.service';
-import { OptionsService } from '../../../services/options.service';
+import { GameTurnService } from '../../../services/game-turn.service';
+import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
@@ -39,11 +40,10 @@ import { projectRuntimeUnitNotifications } from '../../unit-notification-badges/
 import { PageViewerStateService } from '../internal/page-viewer-state.service';
 import type { PageViewerMember } from '../internal/types';
 import { togglePsrWarningOverlay } from './page-psr-warning-panel.component';
-import { PageRuntimeHistoryPanelComponent } from './page-runtime-history-panel.component';
+import { toggleRuntimeHistoryOverlay } from './page-runtime-history-panel.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
 
 const PAGE_TARGETS_OVERLAY_PREFIX = 'page-viewer-targets';
-const PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX = 'page-viewer-runtime-history';
 
 /*
  * 
@@ -92,23 +92,12 @@ export class PageInteractionOverlayComponent {
         const member = this.member();
         return member !== null && member.force.getAttackerTargeting(member.id) !== null;
     });
-    canUndo(): boolean {
-        return this.force()?.getRuntimeUndoState().canUndo === true
-            && this.force()?.readOnly() !== true;
-    }
-
-    canRedo(): boolean {
-        return this.force()?.getRuntimeUndoState().canRedo === true
-            && this.force()?.readOnly() !== true;
-    }
     readonly turn = computed(() => {
         this.runtimeVersion();
         const member = this.member();
         return isCBTMekForceMember(member) ? member.force.getMekTurnPanelSnapshot(
             member.id,
-            this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-                ? 'automatic'
-                : 'manual',
+            heatAutomationPolicy(this.optionsService),
         ) : null;
     });
     readonly notificationSnapshot = computed(() => {
@@ -149,6 +138,7 @@ export class PageInteractionOverlayComponent {
         return this.host.nativeElement;
     }
 
+    protected readonly gameTurn = inject(GameTurnService);
     dirtyPhase = computed(() => {
         this.runtimeVersion();
         const member = this.member();
@@ -298,49 +288,16 @@ export class PageInteractionOverlayComponent {
         if (!this.turnTrackerVisible()) return;
         const force = this.force();
         if (!force) return;
-        const overlayKey = `${PAGE_RUNTIME_HISTORY_OVERLAY_PREFIX}-${force.instanceId() ?? 'force'}`;
-        if (this.overlayManager.has(overlayKey)) {
-            this.overlayManager.closeManagedOverlay(overlayKey);
-            return;
-        }
-        this.closeAllOverlays();
-        const portal = new ComponentPortal(PageRuntimeHistoryPanelComponent, null, this.injector);
-        const { componentRef } = this.overlayManager.createManagedOverlay<PageRuntimeHistoryPanelComponent>(
-            overlayKey,
+        toggleRuntimeHistoryOverlay(
+            force,
+            this.member()?.id ?? null,
             event.currentTarget as HTMLElement,
-            portal,
-            {
-                hasBackdrop: false,
-                panelClass: 'runtime-history-overlay-panel',
-                closeOnOutsideClick: false,
-                closeOnOutsideClickOnly: true,
-                sensitiveAreaReferenceElement: this.nativeElement,
-                scrollStrategy: this.overlay.scrollStrategies.reposition(),
-            },
+            this.nativeElement,
+            this.overlayManager,
+            this.overlay,
+            this.injector,
+            () => this.closeAllOverlays(),
         );
-        componentRef?.setInput('force', force);
-        componentRef?.setInput('activeUnitId', this.member()?.id ?? null);
-        componentRef?.setInput('selectUnit', (instanceId: string) => {
-            const unit = force.members().find(candidate => candidate.id === instanceId);
-            if (unit) this.forceWorkspace.selectUnit(unit);
-        });
-        componentRef?.setInput('close', () => this.overlayManager.closeManagedOverlay(overlayKey));
-    }
-
-    async undoRuntimeCommand(event: MouseEvent): Promise<void> {
-        event.stopPropagation();
-        const force = this.force();
-        if (!force || !this.canUndo()) return;
-        const result = await force.undoRuntimeCommand();
-        if (!result.accepted) this.toastService.showToast(`Undo failed: ${result.reason}`, 'error');
-    }
-
-    async redoRuntimeCommand(event: MouseEvent): Promise<void> {
-        event.stopPropagation();
-        const force = this.force();
-        if (!force || !this.canRedo()) return;
-        const result = await force.redoRuntimeCommand();
-        if (!result.accepted) this.toastService.showToast(`Redo failed: ${result.reason}`, 'error');
     }
 
     openWeaponEquipmentDialog(event: Event, initialTab: 'weapons' | 'ammo' = 'weapons'): void {
@@ -387,9 +344,7 @@ export class PageInteractionOverlayComponent {
                 ? await member.force.dispatchUnitCommand(member.id, type === 'end-turn'
                     ? {
                         type,
-                        policy: this.optionsService.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-                            ? 'automatic'
-                            : 'manual',
+                        policy: heatAutomationPolicy(this.optionsService),
                     }
                     : {
                         type,

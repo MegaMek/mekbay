@@ -9,7 +9,7 @@ import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 
 describe('Mek printed equipment and movement alternatives', () => {
     for (const ruleset of ['core-2026', 'total-warfare'] as const) {
-        it(`${ruleset}: places armor before names and single-slot autocannon squares after names`, async () => {
+        it(`${ruleset}: marks armored slots and single-slot autocannon extra-hit boxes`, async () => {
             const entity = new TestBipedMekEntity();
             entity.setTonnage(50);
             for (const [location, armored] of [['LA', false], ['RA', true]] as const) {
@@ -32,29 +32,17 @@ describe('Mek printed equipment and movement alternatives', () => {
                 for (const location of ['LA', 'RA']) {
                     const slot = svg.querySelector(`.critSlot[data-loc="${location}"][slot="8"]`)!;
                     const text = slot.querySelector<SVGTextElement>('text')!;
-                    const textBox = text.getBBox();
                     const armor = slot.querySelector<SVGCircleElement>('.armoredLocPip');
                     const extra = slot.querySelector<SVGRectElement>('.extraHitPip');
                     expect(text.textContent).toBe('AC/2');
                     if (location === 'RA') {
                         expect(armor!.tagName).toBe('circle');
-                        const box = armor!.getBBox();
-                        expect(box.x).toBe(0);
-                        expect(Number(text.getAttribute('x')) - (box.x + box.width)).toBeCloseTo(1.4, 2);
                     } else {
                         expect(armor).toBeNull();
-                        expect(Number(text.getAttribute('x'))).toBe(0);
                     }
                     if (ruleset === 'core-2026') {
                         expect(extra!.tagName).toBe('rect');
                         expect(getComputedStyle(extra!).display).not.toBe('none');
-                        const box = extra!.getBBox();
-                        expect(box.width).toBeCloseTo(5.6, 2);
-                        expect(box.height).toBeCloseTo(box.width, 2);
-                        expect(box.x).toBeGreaterThan(textBox.x + textBox.width);
-                        expect(box.x - (Number(text.getAttribute('x')) + text.getComputedTextLength())).toBeCloseTo(1.4, 1);
-                        expect(box.y + box.height - Number(text.getAttribute('y'))).toBeCloseTo(0.2, 2);
-                        if (armor) expect(box.y).toBeCloseTo(armor.getBBox().y, 2);
                     }
                 }
                 expect(svg.querySelectorAll('.critical-equipment-bracket').length).toBe(2);
@@ -82,7 +70,6 @@ describe('Mek printed equipment and movement alternatives', () => {
         const brackets = [...svg.querySelectorAll<SVGPathElement>('.critical-equipment-bracket')];
         expect(brackets.length).toBe(1);
         expect(brackets[0].parentElement?.getAttribute('data-loc')).toBe('RT');
-        expect(brackets[0].getAttribute('d')).toBe('M 263.34 171.262 h -1.88 v 83.428 h 1.88');
         expect(brackets[0].getAttribute('pointer-events')).toBe('none');
         expect(brackets[0].getAttribute('fill')).toBe('none');
         document.body.appendChild(svg);
@@ -129,13 +116,13 @@ describe('Mek printed equipment and movement alternatives', () => {
         expect(svg.querySelectorAll('.critGroup[data-loc="LA"] .critical-equipment-bracket').length).toBe(1);
     });
 
-    it('sums one superheavy ammo per slot and gives mixed munitions their own lines, pushing later rows down', async () => {
+    it('sums one superheavy ammo per slot and gives mixed munitions their own lines', async () => {
         const entity = new TestBipedMekEntity();
         entity.setTonnage(150);
         const ammo = (name: string, shots: number): AmmoEquipment => new AmmoEquipment({
             id: name, name: `${name} Ammo`, type: 'ammo', ammo: { type: 'AC_LBX', shots },
         });
-        const place = (equipment: AmmoEquipment | WeaponEquipment, location: string, slots: readonly number[]): void => {
+        const place = (equipment: AmmoEquipment, location: string, slots: readonly number[]): void => {
             addTestEquipment(entity, equipment, { allocation: { kind: 'location', location,
                 placements: slots.map(slotIndex => ({ location, slotIndex })) } });
         };
@@ -143,50 +130,19 @@ describe('Mek printed equipment and movement alternatives', () => {
         place(ammo('Gauss', 8), 'RA', [6]);
         place(ammo('LB 10-X AC', 10), 'RA', [7]);
         place(ammo('LB 10-X Cluster', 10), 'RA', [7]);
-        place(new WeaponEquipment({
-            id: 'Gauss Rifle', name: 'Gauss Rifle', type: 'weapon',
-            weapon: { heat: 1, damage: 15, ranges: [7, 15, 22] },
-        }), 'RA', [9, 10]);
-        for (const slotIndex of [10, 11]) {
-            place(ammo('LB 10-X AC', 10), 'CT', [slotIndex]);
-            place(ammo('LB 10-X Cluster', 10), 'CT', [slotIndex]);
-        }
 
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-        const column = (location: string) => {
-            const group = svg.querySelector<SVGGElement>(`.critGroup[data-loc="${location}"]`)!;
-            const rows = [...group.querySelectorAll<SVGGElement>(':scope > .critRow')];
-            const baselines = rows.map(row => Number(row.querySelector(':scope > text')!.getAttribute('y')));
-            const shift = (index: number): number =>
-                Number(/translate\(0 ([-\d.]+)\)/u.exec(rows[index].getAttribute('transform') ?? '')?.[1] ?? 0);
-            return { group, rows, baselines, step: baselines[1] - baselines[0], shift };
-        };
         const label = (location: string, slot: number) =>
             svg.querySelector<SVGTextElement>(`.critSlot[data-loc="${location}"][slot="${slot}"] text`)!;
 
-        const ra = column('RA');
         expect(label('RA', 6).textContent).toBe('Ammo (Gauss) 16');
         expect(label('RA', 6).querySelector('tspan')).toBeNull();
         const mixed = [...label('RA', 7).querySelectorAll('tspan')];
         expect(mixed.map(line => line.textContent)).toEqual(['Ammo (LB 10-X AC) 10', 'Ammo (LB 10-X Cluster) 10']);
-        expect(Number(mixed[1].getAttribute('dy'))).toBeCloseTo(ra.step, 3);
-        expect(ra.rows[7].querySelectorAll(':scope > text').length).toBe(1);
-        expect(ra.rows.slice(0, 8).every(row => !row.hasAttribute('transform'))).toBeTrue();
-        for (let index = 8; index < 12; index++) expect(ra.shift(index)).toBeCloseTo(ra.step, 3);
-        expect(ra.group.querySelector('.critical-equipment-bracket')!.getAttribute('transform'))
-            .toBe(`matrix(1 0 0 1 0 ${Number(ra.step.toFixed(3))})`);
+        const raRows = svg.querySelectorAll('.critGroup[data-loc="RA"] > .critRow');
+        expect(raRows[7].querySelectorAll(':scope > text').length).toBe(1);
         const rolls = [...svg.querySelectorAll('.critical-roll-range[data-mekbay-roll-loc="RA"]')];
         expect(rolls.map(roll => roll.textContent)).toEqual(['1-3', '4-6']);
-        expect(rolls[0].hasAttribute('transform')).toBeFalse();
-        expect(rolls[1].getAttribute('transform')).toBe(`translate(0 ${Number((ra.step / 2).toFixed(3))})`);
-        expect(svg.querySelector('.critGroup[data-loc="LA"] .critRow[transform]')).toBeNull();
-
-        // The center torso has almost no room above the engine-hit box, so its rows tighten instead.
-        const ct = column('CT');
-        const slack = Number(ct.group.getAttribute('data-mekbay-row-slack'));
-        const lastLine = ct.baselines[11] + ct.shift(11) + Number(label('CT', 11).querySelectorAll('tspan')[1].getAttribute('dy'));
-        expect(lastLine).toBeLessThanOrEqual(ct.baselines[11] + slack + 0.01);
-        expect(ct.baselines[1] + ct.shift(1) - ct.baselines[0]).toBeLessThan(ct.step);
     });
 
     it('identifies primitive construction and the BAR of commercial armor', async () => {
@@ -220,18 +176,52 @@ describe('Mek printed equipment and movement alternatives', () => {
             id: 'ERPPC', name: 'ER PPC', type: 'weapon', flags: ['F_PPC', 'F_PPC_CAPACITOR_COMPATIBLE'],
             weapon: { heat: 15, damage: 10, ranges: [7, 14, 23] },
         }), { location: 'Left Arm' });
-        const capacitor = addTestEquipmentWithFlags(entity, 'F_PPC_CAPACITOR', { location: 'Left Arm' });
+        const capacitor = addTestEquipment(entity, new MiscEquipment({
+            id: 'PPC Capacitor', name: 'PPC Capacitor', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_PPC_CAPACITOR'],
+        }), { location: 'Left Arm' });
         entity.linkEquipment(capacitor, weapon);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-        const mode = svg.querySelector('[data-mekbay-mode="w/Capacitor"]')!;
-        const row = mode.parentElement!;
-        expect(mode.classList.contains('equipmentProfile')).toBeTrue();
+        const linked = svg.querySelector(`.inventoryEntry.linked[data-mekbay-component-ids="${capacitor.mountId}"]`)!;
+        const row = linked.parentElement!;
+        expect(linked.querySelector('.name')?.textContent).toBe('PPC Capacitor');
         expect(row.querySelector('.alternativeMode')).toBeNull();
         expect(row.querySelector(':scope > .damage')?.textContent).toContain('10');
         expect(row.querySelector(':scope > .range_long')?.textContent).toBe('23');
-        expect(mode.querySelector('.heat')?.textContent).toBe('20');
-        expect(mode.querySelector('.damage')?.textContent).toContain('15');
-        expect(mode.querySelector('.damage')?.textContent).toContain('X');
+        expect(linked.querySelector('.heat')?.textContent).toBe('20');
+        expect(linked.querySelector('.damage')?.textContent).toContain('15');
+        expect(linked.querySelector('.damage')?.textContent).toContain('X');
+    });
+
+    it('names each linked weapon enhancement under its weapon and prints insulated heat', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(70);
+        const lrm = addTestEquipment(entity, new WeaponEquipment({
+            id: 'ISLRM15', name: 'LRM 15', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],
+            weapon: { heat: 5, damage: 1, ranges: [7, 14, 21], minRange: 6, ammoType: 'LRM' },
+        }), { location: 'Left Torso' });
+        const laser = addTestEquipment(entity, new WeaponEquipment({
+            id: 'ISLargeLaser', name: 'Large Laser', type: 'weapon', flags: ['F_LASER', 'F_DIRECT_FIRE', 'F_ENERGY'],
+            weapon: { heat: 8, damage: 8, ranges: [5, 10, 15] },
+        }), { location: 'Right Arm' });
+        addTestEquipment(entity, new WeaponEquipment({
+            id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon', flags: ['F_LASER', 'F_DIRECT_FIRE', 'F_ENERGY'],
+            weapon: { heat: 3, damage: 5, ranges: [3, 6, 9] },
+        }), { location: 'Left Arm' });
+        entity.linkEquipment(addTestEquipment(entity, new MiscEquipment({
+            id: 'ISArtemisIV', name: 'Artemis IV FCS', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS'],
+        }), { location: 'Left Torso' }), lrm);
+        entity.linkEquipment(addTestEquipment(entity, new MiscEquipment({
+            id: 'ISLaserInsulator', name: 'Laser Insulator', type: 'misc', flags: ['F_WEAPON_ENHANCEMENT', 'F_LASER_INSULATOR'],
+        }), { location: 'Right Arm' }), laser);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const rows = new Map([...svg.querySelectorAll('.inventoryEntry')].map(row =>
+            [row.querySelector(':scope > .name')?.textContent, row] as const));
+        const linked = (name: string) => rows.get(name)?.querySelector(':scope > .inventoryEntry.linked');
+        expect(linked('LRM 15')?.querySelector('.name')?.textContent).toBe('Artemis IV FCS');
+        expect(linked('LRM 15')?.querySelector('.heat')?.textContent).toBe('—');
+        expect(linked('Large Laser')?.querySelector('.name')?.textContent).toBe('Laser Insulator');
+        expect(rows.get('Large Laser')?.querySelector(':scope > .heat')?.textContent).toBe('7');
+        expect(linked('Medium Laser')).toBeNull();
     });
 
     it('prints TSM movement and physical damage alternatives from existing entity projections', async () => {

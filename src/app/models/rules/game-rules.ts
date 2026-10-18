@@ -196,6 +196,26 @@ const TW_PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
     { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'LL', kickFrontRear: 'LL', kickRightSide: 'RL' },
 ];
 
+/** Core p.239: the four-legged punch Front/Rear column mirrors Total Warfare's, like the biped one. Cells name location codes. */
+const CORE_2026_QUAD_PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
+    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'FRL/RRL', punchRightSide: 'RT', kickLeftSide: 'FLL', kickFrontRear: 'FRL/RRL', kickRightSide: 'FRL' },
+    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'RT', punchRightSide: 'RT', kickLeftSide: 'FLL', kickFrontRear: 'FRL/RRL', kickRightSide: 'FRL' },
+    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'FLL', kickFrontRear: 'FRL/RRL', kickRightSide: 'FRL' },
+    { roll: 4, punchLeftSide: 'FLL', punchFrontRear: 'LT', punchRightSide: 'FRL', kickLeftSide: 'RLL', kickFrontRear: 'FLL/RLL', kickRightSide: 'RRL' },
+    { roll: 5, punchLeftSide: 'RLL', punchFrontRear: 'FLL/RLL', punchRightSide: 'RRL', kickLeftSide: 'RLL', kickFrontRear: 'FLL/RLL', kickRightSide: 'RRL' },
+    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'RLL', kickFrontRear: 'FLL/RLL', kickRightSide: 'RRL' },
+];
+
+/** TW pp.145 and 147, four-legged 'Mech columns. A Front/Rear leg pair names the front-arc leg, then the rear-arc leg. */
+const TW_QUAD_PHYSICAL_LOCATION_ROWS: readonly PhysicalLocationRow[] = [
+    { roll: 1, punchLeftSide: 'LT', punchFrontRear: 'FLL/RLL', punchRightSide: 'RT', kickLeftSide: 'FLL', kickFrontRear: 'FRL/RRL', kickRightSide: 'FRL' },
+    { roll: 2, punchLeftSide: 'LT', punchFrontRear: 'LT', punchRightSide: 'RT', kickLeftSide: 'FLL', kickFrontRear: 'FRL/RRL', kickRightSide: 'FRL' },
+    { roll: 3, punchLeftSide: 'CT', punchFrontRear: 'CT', punchRightSide: 'CT', kickLeftSide: 'FLL', kickFrontRear: 'FRL/RRL', kickRightSide: 'FRL' },
+    { roll: 4, punchLeftSide: 'FLL', punchFrontRear: 'RT', punchRightSide: 'FRL', kickLeftSide: 'RLL', kickFrontRear: 'FLL/RLL', kickRightSide: 'RRL' },
+    { roll: 5, punchLeftSide: 'RLL', punchFrontRear: 'FRL/RRL', punchRightSide: 'RRL', kickLeftSide: 'RLL', kickFrontRear: 'FLL/RLL', kickRightSide: 'RRL' },
+    { roll: 6, punchLeftSide: 'HD', punchFrontRear: 'HD', punchRightSide: 'HD', kickLeftSide: 'RLL', kickFrontRear: 'FLL/RLL', kickRightSide: 'RRL' },
+];
+
 const TO_HIT_MODIFIER_RANGE_INDEX: Record<RangeBrackets, number> = {
     short: 0,
     medium: 1,
@@ -227,6 +247,8 @@ export abstract class CBTGameRules {
     abstract readonly emergencyCoolantSystemFailureTargets: readonly number[];
     abstract readonly viralJammerFailureTargets: readonly number[];
     abstract readonly usesUacJamming: boolean;
+    /** Damage points per ATM hit-location group (TW 5, Core 6 "C6"). */
+    abstract readonly atmClusterSize: number;
     abstract readonly supportsSkidding: boolean;
     abstract readonly supportsSecondaryTargetSideBack: boolean;
     abstract readonly supportsLargeTarget: boolean;
@@ -240,6 +262,7 @@ export abstract class CBTGameRules {
     abstract readonly semiGuidedIgnoresCover: boolean;
     abstract readonly semiGuidedIgnoresIndirectFireModifier: boolean;
     abstract readonly physicalLocationRows: readonly PhysicalLocationRow[];
+    abstract readonly quadPhysicalLocationRows: readonly PhysicalLocationRow[];
 
     abstract resolveC3Targeting(target: TargetingTarget, degradationSource: C3DegradationSource): C3TargetingResolution;
     abstract resolveC3TargetingModifier(degradationSource: C3DegradationSource, rangeBracketImprovement: number): ToHitModifierBreakdownEntry | null;
@@ -462,6 +485,7 @@ export class GameRules extends CBTGameRules {
     readonly emergencyCoolantSystemFailureTargets = this.escalatingFailureTargets;
     readonly viralJammerFailureTargets = this.escalatingFailureTargets;
     readonly usesUacJamming = false;
+    readonly atmClusterSize = 6;
     readonly supportsSkidding = false;
     readonly supportsSecondaryTargetSideBack = false;
     readonly supportsLargeTarget = true;
@@ -475,6 +499,7 @@ export class GameRules extends CBTGameRules {
     readonly semiGuidedIgnoresCover = true;
     readonly semiGuidedIgnoresIndirectFireModifier = false;
     readonly physicalLocationRows = CORE_2026_PHYSICAL_LOCATION_ROWS;
+    readonly quadPhysicalLocationRows = CORE_2026_QUAD_PHYSICAL_LOCATION_ROWS;
 
     override resolveC3Targeting(target: TargetingTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return { target, degradationSource };
@@ -592,6 +617,7 @@ export class TWGameRules extends CBTGameRules {
         4, 5, 6, 7, 8, 9, 10, 11, 12, ESCALATING_FAILURE_AUTO_FAIL_TARGET,
     ] as const;
     readonly usesUacJamming = true;
+    readonly atmClusterSize = 5;
     readonly supportsSkidding = true;
     readonly supportsSecondaryTargetSideBack = true;
     readonly supportsLargeTarget = false;
@@ -605,6 +631,7 @@ export class TWGameRules extends CBTGameRules {
     readonly semiGuidedIgnoresCover = false;
     readonly semiGuidedIgnoresIndirectFireModifier = true;
     readonly physicalLocationRows = TW_PHYSICAL_LOCATION_ROWS;
+    readonly quadPhysicalLocationRows = TW_QUAD_PHYSICAL_LOCATION_ROWS;
 
     override resolveC3Targeting(target: TargetingTarget, degradationSource: C3DegradationSource): C3TargetingResolution {
         return {

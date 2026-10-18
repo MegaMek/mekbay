@@ -28,6 +28,11 @@ import type {
     RecordSheetDoubleTapZoomResetMode,
     RecordSheetPipLayout,
 } from '../../models/options.model';
+import { INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
+import { CBT_RULESET_LABELS } from '../../models/cbt-ruleset.model';
+import type { InitiativeOrderMode } from '../../models/rules/initiative-rules';
+import { LobbyService } from '../../services/lobby.service';
+import { ForceBuilderService } from '../../services/force-builder.service';
 import type { PrintAllOptions } from '../../models/print-options.model';
 import { SpriteStorageService } from '../../services/sprite-storage.service';
 import { DataService } from '../../services/data.service';
@@ -209,6 +214,11 @@ export class OptionsDialogComponent {
     forceGenFailureSearchWindowStepMs = FORCE_GEN_FAILURE_SEARCH_WINDOW_STEP_MS;
     cbtAutomationModes = CBT_AUTOMATION_MODES;
     cbtAutomationOptions = CBT_AUTOMATION_OPTIONS;
+    readonly initiativeOrderChoices = INITIATIVE_ORDER_CHOICES;
+    readonly rulesetLabels = CBT_RULESET_LABELS;
+    /** A lobby sets the rules (and Initiative settings) its players use. */
+    readonly inLobby = inject(LobbyService).hasLobby;
+    private readonly forceBuilder = inject(ForceBuilderService);
     readonly cbtOptionalRules: ReadonlyArray<{ key: keyof CBTOptionalRules; label: string }> = [
         { key: 'quirks', label: 'Quirks' },
         { key: 'floatingCriticals', label: 'Floating criticals' },
@@ -417,15 +427,14 @@ export class OptionsDialogComponent {
     async onCBTRulesChange(useCore2026: boolean) {
         const value = useCore2026 ? 'core-2026' : 'total-warfare';
         const confirmed = await this.dialogsService.requestConfirmation(
-            'Changing the rules system will reload the application. Any uncommitted changes may be lost.',
+            `Every loaded force switches to ${CBT_RULESET_LABELS[value]} now. Undo starts over, and state the new rules don't support is dropped.`,
             'Change Rules System?',
             'warning'
         );
         if (!confirmed) {
             return;
         }
-        await this.optionsService.setOption('CBTRules', value);
-        window.location.reload();
+        await this.forceBuilder.switchCBTRules(value);
     }
 
     onRecordSheetPaperSizeChange(event: Event) {
@@ -521,6 +530,22 @@ export class OptionsDialogComponent {
     onTrackPhaseAndTurn(event: Event) {
         const value = (event.target as HTMLSelectElement).value === 'true';
         this.optionsService.setOption('trackPhaseAndTurn', value);
+    }
+
+    onRealPhasesChange(event: Event): void {
+        this.optionsService.setOption('realPhases', (event.target as HTMLSelectElement).value === 'true');
+    }
+
+    onAttackResolutionChange(event: Event): void {
+        this.optionsService.setOption('attackResolution', (event.target as HTMLSelectElement).value === 'true');
+    }
+
+    onInitiativeOrderChange(event: Event): void {
+        this.optionsService.setOption('initiativeOrder', (event.target as HTMLSelectElement).value as InitiativeOrderMode);
+    }
+
+    onInitiativeDieChange(event: Event): void {
+        this.optionsService.setOption('initiativeDie', (event.target as HTMLSelectElement).value === 'true');
     }
 
     onCBTUnitViewModeChange(event: Event): void {

@@ -129,6 +129,35 @@ describe('PageTurnSummaryPanelComponent', () => {
         expect(runButton().classList.contains('danger')).toBeTrue();
     });
 
+    it('opens the roll panel at once for an immediate check and holds the movement until it is rolled', async () => {
+        const base = turnSnapshot();
+        if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
+        const runAction = { kind: 'run' as const, legal: true, minimumMp: 0, maximumMp: 5, reasons: [], warnings: [] };
+        const ready = { ...base, movement: { ...base.movement, actions: [...base.movement.actions, runAction] } };
+        const declared = turnSnapshot({ selectedMode: 'run', distance: 0 });
+        const immediateCheck = {
+            checkId: 'mek-psr:2:0', producingRevision: 2, ordinal: 0, reason: 'Running with damaged gyro',
+            status: 'pending', immediate: true, targetNumber: 8,
+            source: { sourceKind: 'movement', triggerKind: 'move-damaged-gyro', witness: '{}', criticalSlotIds: [], locationIds: [] },
+        };
+        const harness = turnMember(ready as MekTurnPanelSnapshot);
+        harness.dispatch.and.callFake(async () => {
+            harness.set({ ...declared, movementState: { ...declared.movementState, checks: [immediateCheck] } } as MekTurnPanelSnapshot);
+            return { accepted: true, changed: true };
+        });
+        const manager = overlayManager();
+        const fixture = createComponent(harness.member, manager);
+        const component = fixture.componentInstance;
+
+        component.selectMove('run');
+        await new Promise(resolve => setTimeout(resolve));
+
+        expect(harness.dispatch).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({ type: 'declare-mek-movement' }));
+        expect(manager.createManagedOverlay.calls.mostRecent().args[0]).toBe('psrWarning-mek-1');
+        // Not even the declared mode may be retracted until the roll is made.
+        expect(component.isMoveModeDisabled('run')).toBeTrue();
+    });
+
     it('marks a movement row as crowded when more than four modes are visible', () => {
         const base = turnSnapshot();
         if (base.movement.kind !== 'supported') throw new Error('Turn fixture movement must be supported');
@@ -264,6 +293,7 @@ describe('PageTurnSummaryPanelComponent', () => {
             movement: {
                 ...base.movement,
                 permanentPsrModifiers: [{ modifier: 1, reason: 'Torso-mounted cockpit' }],
+                phasePsrModifiers: [{ modifier: 1, reason: 'Torso-mounted cockpit' }],
             },
         } as MekTurnPanelSnapshot;
         const fixture = createComponent(turnMember(withPsrModifier).member, overlayManager());
@@ -745,6 +775,7 @@ function turnSnapshot(options: {
             immobile: options.immobile ?? false,
             actions,
             permanentPsrModifiers: [],
+            phasePsrModifiers: [],
             standing: {
                 attempts,
                 carefulStand: false,

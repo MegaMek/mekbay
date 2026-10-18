@@ -20,6 +20,7 @@ import { SetBombsDialogComponent, type SetBombsDialogData, type SetBombsDialogRe
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
 import { DialogsService } from '../../services/dialogs.service';
+import { gameRulesFor } from '../../models/rules/game-rules';
 
 interface AmmoControlGroupLocation {
     readonly loc: string;
@@ -743,10 +744,13 @@ export class AmmoLoadoutPanelComponent {
                             loadout.munitionKey === row.ammo?.defaultMunitionKey)?.capacity ?? 0
                     ), 0),
                     ammoOptions,
+                    era: runtime.member.force.era(),
+                    compatibilityFacts: first.ammo.compatibilityFacts,
                     quantity: rows.reduce((sum, row) => sum + (row.ammo?.remaining ?? 0), 0),
                     maxQuantity,
                     hotLoaded: first.ammo.hotLoaded,
                     unitType: runtime.snapshot().unitType,
+                    gameRules: gameRulesFor(runtime.snapshot().ruleset),
                     equipmentRegistry: registry,
                     weaponTechBases: Object.freeze([...new Set(rows.flatMap(row =>
                         row.ammo?.weaponTechBases ?? []

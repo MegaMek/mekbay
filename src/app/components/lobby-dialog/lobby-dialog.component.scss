@@ -83,6 +83,61 @@
     cursor: default;
 }
 
+.lobby-settings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 20px;
+    margin: 4px 0 8px;
+    padding: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.lobby-setting {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 32px;
+}
+
+.lobby-setting-label {
+    color: var(--text-color-secondary);
+    font-size: 0.75em;
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.lobby-setting-value {
+    font-weight: bold;
+    white-space: nowrap;
+
+    &.inactive {
+        opacity: 0.55;
+    }
+}
+
+.lobby-ruleset .lobby-setting-value {
+    color: var(--bt-yellow);
+    font-size: 1.1em;
+    text-transform: uppercase;
+}
+
+.lobby-setting .bt-select {
+    min-width: 0;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.lobby-settings-note {
+    flex: 1 1 100%;
+    margin: 0;
+    text-align: left;
+    color: var(--text-color-secondary);
+    font-size: 0.8em;
+}
+
 .lobby-sides {
     min-height: 220px;
 }
@@ -192,6 +247,11 @@
 
     .lobby-code-label {
         font-size: 0.68em;
+    }
+
+    .lobby-setting {
+        flex: 1 1 100%;
+        justify-content: space-between;
     }
 
     .lobby-sides {

@@ -38,13 +38,13 @@ describe('Entity crew-skill facts', () => {
 
   it('separates conventional infantry physical capability from gear and preserves neutral BV', () => {
     const entity = new TestInfantryEntity();
-    const neutralBV = entity.battleValue();
+    const neutralBV = entity.battleValue('core-2026');
     expect(entity.canMakeAntiMekAttacks()).toBeTrue();
     expect(entity.hasAntiMekGear()).toBeFalse();
     expect(effectiveEntityPilotingSkill(entity, 5)).toBe(8);
     expect(adjustEntityBattleValueForSkills(entity, 68, 4, 5)).toBe(58);
     expect(adjustEntityBattleValueForSkills(entity, neutralBV, 4, 5)).toBe(Math.round(neutralBV * 0.85));
-    expect(entity.battleValue()).toBe(neutralBV);
+    expect(entity.battleValue('core-2026')).toBe(neutralBV);
 
     const gear = addTestEquipmentWithFlags(entity, 'F_ANTI_MEK_GEAR');
     expect(entity.hasAntiMekGear()).toBeTrue();

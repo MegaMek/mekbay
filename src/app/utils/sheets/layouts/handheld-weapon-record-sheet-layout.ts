@@ -23,7 +23,7 @@ import {
     formatNumber, makeDistributedPips, recordSheetInventoryWeapons, scalePageBox, setAttributes, setCompactClusterRacks,
     setInventoryComponentIds, svgElement, transparentRect,
 } from '../record-sheet-svg-rendering';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 
 const BLOCK_WIDTH = 575.71887;
 const STANDARD_HEIGHT = 74.533607;
@@ -94,7 +94,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         });
     }
 
-    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
+    protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
         setCompactClusterRacks(svg, clusterTableForEntity(entity).clusterSizes);
         await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/handheld-weapon.svg', MASTHEAD_ART_ID);
         const large = isLargeHandheldLayout(entity);
@@ -120,7 +120,7 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
         addText(group, formatProtectionCounter(entity.getArmorValue('Gun')), 251.3, 30.51, { size: 8.2, anchor: 'middle' }).id = 'textArmor_GUN';
         addText(group, entity.uniformArmor()?.armor.shortName ?? 'Standard', 251.3, 38.968,
             { size: 8.2, anchor: 'middle', maxWidth: 41 }).id = 'armorType';
-        appendBattleValue(group, entity.battleValue(), { x: 530.06, valueX: 545.836, y: 19.491, size: 8.2 });
+        appendBattleValue(group, entity.battleValue(request.ruleset), { x: 530.06, valueX: 545.836, y: 19.491, size: 8.2 });
 
         // This strip has no authored rails; every non-canonical mode uses its rectangular fill.
         const armor = makeDistributedPips(entity.getArmorValue('Gun'), 160, 34.94 + extra, 'armor', 'GUN');
@@ -209,7 +209,7 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
         appendInventoryTargetNumber(entry, 0, baseline, 1, step);
         row.alternativeModes.forEach(mode => {
             const alternative = svgElement('g');
-            setAttributes(alternative, { class: mode.displayOnly ? 'equipmentProfile' : 'alternativeMode', 'data-mekbay-mode': mode.name });
+            setAttributes(alternative, { class: 'alternativeMode', 'data-mekbay-mode': mode.name });
             entry.appendChild(alternative);
             draw(alternative, mode.name, mode.damage, mode.minimumRange, mode.ranges);
         });

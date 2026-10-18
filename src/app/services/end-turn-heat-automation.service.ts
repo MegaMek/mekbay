@@ -290,7 +290,8 @@ export class EndTurnHeatAutomationService {
         const command = prepared.command;
         if (command.type !== 'end-turn') return prepared;
         const initial = adapter.snapshot(force, instanceId);
-        if (!initial) return null;
+        // Units the adapter does not track (non-aerospace non-Meks) have no end-turn heat to settle.
+        if (!initial) return force.getUnitSnapshot(instanceId) ? prepared : null;
         const heatMode = this.options.cbtAutomationMode('heatAndDissipationResolution');
         const automaticHeat = command.policy === 'automatic';
         const finalHeat = automaticHeat

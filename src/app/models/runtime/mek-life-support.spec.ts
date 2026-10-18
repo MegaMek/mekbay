@@ -1,5 +1,5 @@
 
-import { projectMekLifeSupportPilotDamage } from './mek-life-support';
+import { mekHeadHitPilotHits, projectMekLifeSupportPilotDamage } from './mek-life-support';
 import type { DirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 import {
     createDirectMekRuntimeFixture,
@@ -20,8 +20,8 @@ describe('Mek Life Support rules', () => {
         const fixture = damagedLifeSupport(createDirectTorsoCockpitRuntimeFixture());
 
         expect([1, 14, 15].map(heat => projection(fixture, heat).heatHits)).toEqual([1, 1, 2]);
-        expect(projection(fixture, 1).headHitHits).toBe(0);
-        expect(projection(createDirectMekRuntimeFixture(), 30).headHitHits).toBe(1);
+        expect(mekHeadHitPilotHits(fixture.entity)).toBe(0);
+        expect(mekHeadHitPilotHits(createDirectMekRuntimeFixture().entity)).toBe(1);
     });
 
     it('uses preview damage and prone-aware water depth for oxygen deprivation', () => {

@@ -4,6 +4,7 @@
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
+import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
 import { StaticEmplacementEntity } from '../../../models/entity/entities/misc/static-emplacement-entity';
 import { BUILDING_SIDE_LABELS, buildingLocationName, buildingSheetGrid } from '../../../models/entity/types/building';
 import {
@@ -69,7 +70,7 @@ function drawBuildingSheet(svg: SVGSVGElement, entity: StaticEmplacementEntity, 
     const locations = new Map(grid.hexes.flatMap(cell => Array.from({ length: floors }, (_, floor) =>
         [buildingLocationName(cell.hex, floor), entity.displayLocation(buildingLocationName(cell.hex, floor), true)] as const)));
     drawPageChrome(svg, 'STRUCTURE RECORD SHEET', page, false);
-    drawBuildingData(svg, entity, at({ x: 18, y: 94, width: 224, height: 347 }), inventoryPage);
+    drawBuildingData(svg, entity, at({ x: 18, y: 94, width: 224, height: 347 }), inventoryPage, request.ruleset);
     drawBuildingProtection(svg, entity, at({ x: 18, y: 449, width: 224, height: 266 }), locations, pageIndex);
     const crew = addFrame(svg, 'CREW DATA', at({ x: 18, y: 723, width: 224, height: 33 }), {
         cornerAngleDegrees: { topRight: 45, bottomLeft: 0, bottomRight: 0 },
@@ -84,7 +85,7 @@ function drawBuildingSheet(svg: SVGSVGElement, entity: StaticEmplacementEntity, 
 }
 
 function drawBuildingData(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box,
-    inventoryPage: BuildingInventoryPage | undefined): void {
+    inventoryPage: BuildingInventoryPage | undefined, ruleset: CBTRuleset): void {
     const group = addFrame(svg, 'STRUCTURE DATA', box, { headerWidth: 112, headerHeight: 12, headerFontSize: 10,
         bottomLeftNotchWidth: box.width * .45, cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 } });
     const right = box.width * .64;
@@ -116,7 +117,7 @@ function drawBuildingData(svg: SVGSVGElement, entity: StaticEmplacementEntity, b
     let cost = '—';
     try { cost = entity.cost().toLocaleString('en-US'); } catch { /* An unresolved design still has a printable inventory. */ }
     addText(group, cost, 32, box.height - 12, { size: 7, maxWidth: 80 }).id = 'cost';
-    appendBattleValue(group, entity.battleValue(), { x: 123, valueX: 140, y: box.height - 12, size: 7, maxWidth: box.width - 151 });
+    appendBattleValue(group, entity.battleValue(ruleset), { x: 123, valueX: 140, y: box.height - 12, size: 7, maxWidth: box.width - 151 });
 }
 
 function drawBuildingProtection(svg: SVGSVGElement, entity: StaticEmplacementEntity, box: Box,

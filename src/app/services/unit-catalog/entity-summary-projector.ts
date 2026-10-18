@@ -6,6 +6,7 @@ import type { UnitSummary } from '../../models/unit-summary.model';
 import { nativeSourceHashCanary } from '../../models/source-hash-canary';
 import { EquipmentRegistry } from '../../models/equipment-lookup';
 import { parseEntity } from '../../models/entity/parse-entity';
+import { CORE_2026_RULESET } from '../../models/cbt-ruleset.model';
 import type { ParseContextOptions, EntityLoadIssue } from '../../models/entity/parsers/parse-context';
 import { UnitSummaryBuilder } from '../../utils/unit-summary-builder';
 import {
@@ -69,9 +70,11 @@ export class EntityUnitSummaryProjector implements UnitSummaryProjector {
 
         try {
             const parsed = parseEntity(raw, input.file, this.equipmentRegistry, this.parseOptions);
+            // Catalog and search BV are Core whatever rules a force plays.
             const base = this.summaryBuilder.build(parsed.entity, {
                 entryKey: input.entryKey,
                 format: input.format,
+                ruleset: CORE_2026_RULESET,
             });
             return {
                 summary: { ...base, sourceHashCanary: await nativeSourceHashCanary(raw, input.format) },

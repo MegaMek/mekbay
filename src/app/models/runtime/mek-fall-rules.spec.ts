@@ -3,7 +3,6 @@
 
 import {
     mekFallDamageGroups,
-    resolveMekFallArmorDamage,
     resolveMekFallDamage,
     resolveMekHitLocation,
     resolveMekFallOrientation,
@@ -20,6 +19,15 @@ describe('direct Mek falling rules', () => {
         }));
         expect(resolveMekFallOrientation('total-warfare', 4)).toEqual(jasmine.objectContaining({
             facingOffset: 3, hitArc: 'rear',
+        }));
+    });
+
+    it('keeps the rolled facing of a missed death from above but always strikes the rear', () => {
+        expect(resolveMekFallOrientation('total-warfare', 2, true)).toEqual(jasmine.objectContaining({
+            facingOffset: 1, hitArc: 'rear', hitArcLabel: 'Rear',
+        }));
+        expect(resolveMekFallOrientation('core-2026', 6, true)).toEqual(jasmine.objectContaining({
+            facingOffset: 0, hitArc: 'rear', hitArcLabel: 'Rear',
         }));
     });
 
@@ -45,13 +53,7 @@ describe('direct Mek falling rules', () => {
         }));
     });
 
-    it('applies special fall armor and composite structure rules', () => {
-        expect(resolveMekFallArmorDamage('core-2026', 5, 10, 'IMPACT_RESISTANT'))
-            .toEqual({ armorDamage: 2, remainingDamage: 0, appliedDamage: 2 });
-        expect(resolveMekFallArmorDamage('total-warfare', 5, 10, 'IMPACT_RESISTANT'))
-            .toEqual({ armorDamage: 4, remainingDamage: 0, appliedDamage: 4 });
-        expect(resolveMekFallArmorDamage('core-2026', 5, 2, 'REFLECTIVE'))
-            .toEqual({ armorDamage: 2, remainingDamage: 4, appliedDamage: 2 });
+    it('applies composite structure rules', () => {
         expect(resolveMekStructureDamage(3, 5, 'composite'))
             .toEqual({ internalDamage: 5, overflowDamage: 0 });
     });

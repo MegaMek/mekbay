@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import type { ArmorType } from '../entity/types';
 import { getMekLocationLabel } from '../entity/types';
 import {
     hitLocationCellDefinition,
+    tripodLegLocation,
     type MekHitArc,
     type MekHitLocationTable,
 } from '../../utils/record-sheet-reference-table';
@@ -38,12 +38,6 @@ export interface MekFallDamageBreakdown {
     readonly totalDamage: number;
 }
 
-export interface MekFallArmorDamageResolution {
-    readonly armorDamage: number;
-    readonly remainingDamage: number;
-    readonly appliedDamage: number;
-}
-
 export interface MekStructureDamageResolution {
     readonly internalDamage: number;
     readonly overflowDamage: number;
@@ -58,10 +52,18 @@ const TW_ORIENTATION: Readonly<Record<number, Omit<MekFallOrientation, 'roll'>>>
     6: orientation(-1, 'Turn 1 hexside to the left', 'left', 'Left side', 'The new facing is one hexside counter-clockwise.'),
 };
 
-export function resolveMekFallOrientation(ruleset: CBTRuleset, roll: number): MekFallOrientation {
+/**
+ * Facing after a fall. `alwaysRear` (a missed death from above) still rolls the facing,
+ * but every damage group strikes the rear.
+ */
+export function resolveMekFallOrientation(
+    ruleset: CBTRuleset,
+    roll: number,
+    alwaysRear = false,
+): MekFallOrientation {
     assertIntegerInRange(roll, 1, 6, 'Fall orientation roll');
     if (ruleset === 'core-2026') {
-        const rear = roll === 1;
+        const rear = alwaysRear || roll === 1;
         return Object.freeze({
             roll,
             facingOffset: 0,
@@ -73,7 +75,16 @@ export function resolveMekFallOrientation(ruleset: CBTRuleset, roll: number): Me
                 : 'The Mek keeps its existing facing; all fall damage goes to the front.',
         });
     }
-    return Object.freeze({ roll, ...TW_ORIENTATION[roll] });
+    const orientation = TW_ORIENTATION[roll];
+    return Object.freeze(alwaysRear
+        ? {
+            roll,
+            ...orientation,
+            hitArc: 'rear' as const,
+            hitArcLabel: 'Rear',
+            rulesExplanation: `${orientation.rulesExplanation} All fall damage goes to the rear.`,
+        }
+        : { roll, ...orientation });
 }
 
 export function mekFallDamage(tons: number, levelsFallen = 0): number {
@@ -138,7 +149,7 @@ export function resolveMekHitLocation(
     let adjustedTripodLegRoll: number | undefined;
     if (cell.tripodLegModifier !== undefined && tripodLegRoll !== undefined) {
         adjustedTripodLegRoll = tripodLegRoll + cell.tripodLegModifier;
-        location = adjustedTripodLegRoll <= 2 ? 'RL' : adjustedTripodLegRoll <= 4 ? 'CL' : 'LL';
+        location = tripodLegLocation(adjustedTripodLegRoll);
     }
     return Object.freeze({
         hitLocationRoll,
@@ -151,55 +162,6 @@ export function resolveMekHitLocation(
         ...(cell.tripodLegModifier === undefined ? {} : { tripodLegModifier: cell.tripodLegModifier }),
         ...(tripodLegRoll === undefined || cell.tripodLegModifier === undefined ? {} : { tripodLegRoll }),
         ...(adjustedTripodLegRoll === undefined ? {} : { adjustedTripodLegRoll }),
-    });
-}
-
-/** Armor pip mutation and remaining physical damage from one fall group. */
-export function resolveMekFallArmorDamage(
-    ruleset: CBTRuleset,
-    damage: number,
-    remainingArmor: number,
-    armorType: ArmorType | null,
-): MekFallArmorDamageResolution {
-    const incoming = normalizedInteger(damage);
-    const armor = normalizedInteger(remainingArmor);
-    if (incoming === 0 || armor === 0) {
-        return Object.freeze({ armorDamage: 0, remainingDamage: incoming, appliedDamage: 0 });
-    }
-    if (armorType === 'REFLECTIVE') {
-        const modifiedDamage = incoming + Math.min(incoming, Math.floor(armor / 2));
-        if (armor >= modifiedDamage) {
-            return Object.freeze({
-                armorDamage: modifiedDamage, remainingDamage: 0, appliedDamage: modifiedDamage,
-            });
-        }
-        const absorbedDamage = Math.ceil(armor / 2);
-        return Object.freeze({
-            armorDamage: armor,
-            remainingDamage: Math.max(0, incoming - absorbedDamage),
-            appliedDamage: absorbedDamage * 2,
-        });
-    }
-    if (armorType === 'HARDENED') {
-        const absorbedDamage = Math.min(incoming, armor);
-        return Object.freeze({
-            armorDamage: absorbedDamage,
-            remainingDamage: incoming - absorbedDamage,
-            appliedDamage: fullDoubleDamagePipsRemoved(armor, absorbedDamage),
-        });
-    }
-    const modifiedDamage = armorType === 'FERRO_LAMELLOR'
-        ? Math.floor(incoming * 4 / 5)
-        : armorType === 'IMPACT_RESISTANT'
-            ? ruleset === 'core-2026'
-                ? Math.max(1, Math.floor(incoming / 2))
-                : Math.max(1, 2 * Math.floor(incoming / 3) + incoming % 3)
-            : incoming;
-    const armorDamage = Math.min(armor, modifiedDamage);
-    return Object.freeze({
-        armorDamage,
-        remainingDamage: modifiedDamage - armorDamage,
-        appliedDamage: armorDamage,
     });
 }
 
@@ -216,10 +178,6 @@ export function resolveMekStructureDamage(
         ? Math.ceil(internalDamage / 2)
         : internalDamage);
     return Object.freeze({ internalDamage, overflowDamage: incoming - absorbed });
-}
-
-export function fullDoubleDamagePipsRemoved(remaining: number, damage: number): number {
-    return Math.ceil(remaining / 2) - Math.ceil((remaining - damage) / 2);
 }
 
 function orientation(

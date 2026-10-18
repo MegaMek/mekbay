@@ -9,12 +9,14 @@ import {
 DirectMekAutomationService,
 type DirectMekEndPhaseAutomationRequest,
 type DirectMekEndTurnAutomationRequest,
+type MekDamageGroup,
 type PreparedDirectMekAutomationCommand,
 } from '../../services/direct-mek-automation.service';
 import {
 DirectNonMekAutomationService,
 type DirectNonMekEndPhaseAutomationRequest,
 type DirectNonMekEndTurnAutomationRequest,
+type NonMekDamageGroup,
 type PreparedDirectNonMekAutomationCommand,
 } from '../../services/direct-non-mek-automation.service';
 import type { CBTForce } from '../cbt-force.model';
@@ -65,6 +67,11 @@ function stateRevision(snapshot: CBTUnitSnapshot | null): number | null {
     return snapshot?.query.stateRevision ?? null;
 }
 
+/** Accepted weapon hits, read on the struck unit's own hit-location table. */
+export type WeaponHits =
+    | Readonly<{ family: 'mek'; groups: readonly MekDamageGroup[] }>
+    | Readonly<{ family: 'non-mek'; groups: readonly NonMekDamageGroup[] }>;
+
 export interface CBTForceUnitCommandBoundary {
     readonly readOnly: () => boolean;
     readonly instanceIds: () => readonly string[];
@@ -114,15 +121,17 @@ export class CBTForceUnitCommandDispatcher {
         return command.type === 'end-turn' ? this.enqueueBoundary(run) : run();
     }
 
-    endTurnForAll(): Promise<CBTForceEndTurnAllResult> {
-        if (!this.mekAutomation() && !this.nonMekAutomation()) {
+    /** Ends the turn of every unit, or of the listed ones, with one combined review. */
+    endTurnForAll(instanceIds?: readonly string[]): Promise<CBTForceEndTurnAllResult> {
+        if (!instanceIds && !this.mekAutomation() && !this.nonMekAutomation()) {
             return this.boundary.endTurnForAllCore();
         }
-        return this.enqueueBoundaryForAll('turn');
+        return this.enqueueBoundaryForAll('turn', instanceIds);
     }
 
-    endPhaseForAll(): Promise<CBTForceEndTurnAllResult> {
-        return this.enqueueBoundaryForAll('phase');
+    /** Ends the phase of every unit, or of the listed ones, with one combined review. */
+    endPhaseForAll(instanceIds?: readonly string[]): Promise<CBTForceEndTurnAllResult> {
+        return this.enqueueBoundaryForAll('phase', instanceIds);
     }
 
     hasPendingEndTurn(instanceId: string): boolean {
@@ -146,10 +155,37 @@ export class CBTForceUnitCommandDispatcher {
         });
     }
 
-    private enqueueBoundaryForAll(kind: 'phase' | 'turn'): Promise<CBTForceEndTurnAllResult> {
+    /** Applies accepted weapon hits through the unit family's damage automation, as one owned action. */
+    applyWeaponHits(instanceId: string, hits: WeaponHits, target: 'committed' | 'pending'): Promise<boolean> {
+        const owner = this.boundary.snapshot(instanceId)?.editContext.owner;
+        return this.enqueueBoundary(async () => {
+            const snapshot = this.boundary.snapshot(instanceId);
+            if (this.boundary.readOnly() || !snapshot || snapshot.editContext.owner !== owner) return false;
+            const mekAutomation = this.mekAutomation();
+            const nonMekAutomation = this.nonMekAutomation();
+            const apply = hits.family === 'mek'
+                ? hasMekRuntime(snapshot) && mekAutomation
+                    ? (dispatch: CBTForceUnitCommandDispatch) =>
+                        mekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch)
+                    : null
+                : hasNonMekRuntime(snapshot) && nonMekAutomation
+                    ? (dispatch: CBTForceUnitCommandDispatch) =>
+                        nonMekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch)
+                    : null;
+            if (!apply) return false;
+            const completion = await this.completeAutomatedCommand(
+                instanceId, owner, { accepted: true, changed: false, state: snapshot.state }, apply);
+            return completion.completed && completion.result.accepted;
+        });
+    }
+
+    private enqueueBoundaryForAll(
+        kind: 'phase' | 'turn',
+        instanceIds: readonly string[] = this.boundary.instanceIds(),
+    ): Promise<CBTForceEndTurnAllResult> {
         // A phase request expires on any state edit; a turn request survives phase settlement.
         const versionOf = kind === 'turn' ? turnCounter : stateRevision;
-        const requested = this.boundary.instanceIds().map(instanceId => Object.freeze({
+        const requested = instanceIds.map(instanceId => Object.freeze({
             instanceId,
             owner: this.boundary.snapshot(instanceId)?.editContext.owner,
             version: versionOf(this.boundary.snapshot(instanceId)),

@@ -8,7 +8,8 @@ import { STRUCTURE_TYPE } from '../entity/types';
 import { ArmorEquipment, StructureEquipment } from '../equipment.model';
 import { createMekHeatContextV2 } from './mek-heat-state-v2';
 import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
-import { resolveMekFallArmorDamage, resolveMekStructureDamage } from './mek-fall-rules';
+import { FALL_DAMAGE, resolveArmorDamage } from '../rules/armor-damage-rules';
+import { resolveMekStructureDamage } from './mek-fall-rules';
 import { buildMekRuntimeIndex } from './mek-runtime-index';
 import { restoreSerializedCBTUnitV2, serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
@@ -104,7 +105,7 @@ describe('double-damage protection', () => {
     it('uses the last half-pip before transferring overflow damage', () => {
         expect(resolveMekStructureDamage(3, 1, 'reinforced')).toEqual({ internalDamage: 1, overflowDamage: 2 });
         expect(resolveMekStructureDamage(3, 4, 'reinforced')).toEqual({ internalDamage: 3, overflowDamage: 0 });
-        expect(resolveMekFallArmorDamage('core-2026', 3, 1, 'HARDENED'))
-            .toEqual({ armorDamage: 1, remainingDamage: 2, appliedDamage: 1 });
+        expect(resolveArmorDamage('core-2026', 3, 1, 'HARDENED', FALL_DAMAGE))
+            .toEqual({ armorDamage: 1, remainingDamage: 2 });
     });
 });

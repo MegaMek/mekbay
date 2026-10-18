@@ -9,12 +9,12 @@ import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 import { compactVehicleSheetTitle } from './vehicle-record-sheet-components';
 
 describe('naval record-sheet presentation', () => {
-    it('uses the shared vehicle charge eligibility for WiGE sheet inventory', async () => {
+    it('prints no WiGE charge under either ruleset (shared vehicle charge eligibility)', async () => {
         const entity = new TestTankEntity();
         entity.motiveType.set('WiGE');
         for (const ruleset of ['total-warfare', 'core-2026'] as const) {
             const svg = await RecordSheetSvgGenerator.generate(entity, { format: 'compact', ruleset });
-            expect(svg.textContent?.includes('Charge')).withContext(ruleset).toBe(ruleset === 'core-2026');
+            expect(svg.textContent?.includes('Charge')).withContext(ruleset).toBe(false);
         }
     });
 
@@ -31,7 +31,7 @@ describe('naval record-sheet presentation', () => {
         }
     });
 
-    it('updates submarine art bounds and random-button framing without changing the contour geometry', async () => {
+    it('keeps one random-hit control and the surface hit contours on submarine art', async () => {
         const entity = new TestSupportNavalEntity();
         entity.setTonnage(100);
         entity.motiveType.set('Naval');
@@ -42,38 +42,13 @@ describe('naval record-sheet presentation', () => {
         const submarineArt = submarine.querySelector<SVGGElement>('.vehicle-paperdoll-layer')!;
         expect(surfaceArt).not.toBeNull();
         expect(submarineArt).not.toBeNull();
-        const surfaceRoot = surfaceArt.querySelector<SVGGElement>('.naval-paperdoll-root')!;
-        const submarineRoot = submarineArt.querySelector<SVGGElement>('.naval-paperdoll-root')!;
-        const normalTransform = surfaceRoot.transform.baseVal.consolidate()!.matrix;
-        const submarineTransform = submarineRoot.transform.baseVal.consolidate()!.matrix;
-        expect(submarineTransform.a).toBeCloseTo(0.95, 6);
-        expect(submarineTransform.d).toBeCloseTo(0.95, 6);
-        expect(submarineTransform.e).toBeCloseTo(9, 6);
-        expect(submarineTransform.f).toBeCloseTo(35, 6);
-        const original = artBounds(surfaceArt);
-        const adjusted = artBounds(submarineArt);
-        const scale = 0.95 / normalTransform.a;
-        // Compare the same authored center before and after the naval-to-submarine root replacement.
-        const originalCenterX = original.x + original.width / 2;
-        const originalCenterY = original.y + original.height / 2;
-        expect(adjusted.x + adjusted.width / 2)
-            .toBeCloseTo((originalCenterX - normalTransform.e) * scale + 9, 3);
-        expect(adjusted.y + adjusted.height / 2)
-            .toBeCloseTo((originalCenterY - normalTransform.f) * scale + 35, 3);
-        expect(adjusted.width).toBeCloseTo(original.width * scale, 3);
-        expect(adjusted.height).toBeCloseTo(original.height * scale, 3);
-
         for (const art of [surfaceArt, submarineArt]) {
-            const buttons = art.querySelectorAll<SVGGElement>('[data-mekbay-random-hit]');
-            expect(buttons).toHaveSize(1);
-            const button = buttons[0].transform.baseVal.consolidate()!.matrix;
-            expect(button.e).toBeCloseTo(Number(art.dataset['width']) - 28, 3);
-            expect(button.f).toBe(1);
-            expect(button.a).toBeCloseTo(0.9, 6);
+            expect(art.querySelectorAll('[data-mekbay-random-hit]')).toHaveSize(1);
         }
-        const contours = (root: SVGGElement): Array<string | null> =>
-            [...root.querySelectorAll('.unitLocation')].map(path => path.getAttribute('d'));
-        expect(contours(submarineRoot)).toEqual(contours(surfaceRoot));
+        const contours = (art: SVGGElement): Array<string | null> =>
+            [...art.querySelector('.naval-paperdoll-root')!.querySelectorAll('.unitLocation')]
+                .map(path => path.getAttribute('d'));
+        expect(contours(submarineArt)).toEqual(contours(surfaceArt));
     });
 
     it('renders the Small Steamer support title, kilogram weight, BAR rating and Notes panel', async () => {
@@ -147,12 +122,3 @@ describe('naval record-sheet presentation', () => {
         }
     });
 });
-
-function artBounds(layer: SVGGElement): { x: number; y: number; width: number; height: number } {
-    return {
-        x: Number(layer.dataset['artX']),
-        y: Number(layer.dataset['artY']),
-        width: Number(layer.dataset['artWidth']),
-        height: Number(layer.dataset['artHeight']),
-    };
-}

@@ -16,6 +16,7 @@ createDirectCommandConsoleRuntimeFixture,
 createDirectExplosionRuntimeFixture,
 createDirectHotLoadedAmmoRuntimeFixture,
 createDirectMekRuntimeFixture,
+createDirectTorsoCockpitRuntimeFixture,
 createDirectTripodRuntimeFixture,
 type DirectMekRuntimeFixture,
 } from '../models/runtime/testing/direct-mek-runtime-fixture';
@@ -105,6 +106,90 @@ describe('DirectMekAutomationService', () => {
         expect(fixture.instance.query().componentStatus(ammoId)).toBe('destroyed');
     });
     }
+
+    const laser = { kind: 'weapon' as const, types: ['DE' as const] };
+
+    it('applies accepted weapon hits as pending damage, transferring inward and wounding on head hits', async () => {
+        const harness = createHarness('total-warfare');
+        const query = () => harness.fixture.instance.query();
+        const location = (code: string) => [...harness.fixture.index.locations.values()].find(row => row.code === code)!;
+        const front = (code: string) => location(code).armorFaceIds
+            .find(faceId => harness.fixture.index.armorFaces.get(faceId)!.face === 'front')!;
+        const arm = location('LA');
+        const armDurability = query().remainingArmor(front('LA'), 'preview') + query().remainingInternal(arm.id, 'preview');
+        const torsoArmor = query().remainingArmor(front('LT'), 'committed');
+        const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;
+        spyOn(Math, 'random').and.returnValue(0);
+
+        expect(await service.applyWeaponHits(harness.force, harness.instanceId, [
+            { location: 'LA', rear: false, damage: armDurability + 2, arc: 'front', throughArmorCritical: false, source: laser },
+            { location: 'HD', rear: false, damage: 1, arc: 'front', throughArmorCritical: false, source: laser },
+        ], 'pending', harness.dispatch)).toBeTrue();
+
+        expect(query().remainingInternal(arm.id, 'preview')).toBe(0);
+        expect(query().remainingArmor(front('LT'), 'preview')).toBe(torsoArmor - 2);
+        // Pending damage leaves the committed sheet as it was until the phase ends.
+        expect(query().remainingArmor(front('LT'), 'committed')).toBe(torsoArmor);
+        expect(query().crewState(pilotId).wounds).toBe(1);
+    });
+
+    describe('weapon head hits and consciousness', () => {
+        const headHit = { location: 'HD', rear: false, damage: 1, arc: 'front' as const, throughArmorCritical: false, source: laser };
+        const consciousnessTargets = () => resolveChecksAutomation.calls.allArgs()
+            .filter(args => args[0] === 'pilotHitsAndConsciousnessCheck')
+            .map(args => (args[1] as readonly { readonly targetNumber: number }[]).map(check => check.targetNumber))
+            .filter(targets => targets.length > 0);
+
+        it('rolls Total Warfare consciousness for every head hit at once', async () => {
+            const harness = createHarness('total-warfare');
+            const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;
+            spyOn(Math, 'random').and.returnValue(0.99);
+
+            expect(await service.applyWeaponHits(
+                harness.force, harness.instanceId, [headHit, headHit], 'pending', harness.dispatch)).toBeTrue();
+
+            expect(harness.fixture.instance.query().crewState(pilotId).wounds).toBe(2);
+            expect(consciousnessTargets()).toEqual([[3], [5]]);
+            expect(harness.fixture.instance.snapshot().turn.consciousnessRollsDue).toBeUndefined();
+        });
+
+        it('holds Core consciousness for one roll at the end of the combat phase', async () => {
+            const harness = createHarness('core-2026');
+            const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;
+            spyOn(Math, 'random').and.returnValue(0.99);
+
+            expect(await service.applyWeaponHits(
+                harness.force, harness.instanceId, [headHit, headHit], 'pending', harness.dispatch)).toBeTrue();
+            // Both hits are dealt now; the roll waits for the end of the phase.
+            expect(harness.fixture.instance.query().crewState(pilotId).wounds).toBe(2);
+            expect(consciousnessTargets()).toEqual([]);
+            expect(harness.fixture.instance.snapshot().turn.consciousnessRollsDue).toEqual([pilotId]);
+
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, { type: 'end-phase' });
+            const settled = await service.settleBeforeCommand(harness.force, harness.instanceId, prepared, harness.dispatch);
+            expect(settled).not.toBeNull();
+            // Resolving the phase's checks (as the PSR badge does) does not roll yet.
+            expect(consciousnessTargets()).toEqual([]);
+            const before = harness.snapshot();
+            const result = await harness.dispatch(settled!.command);
+            expect(await service.afterCommand(
+                harness.force, harness.instanceId, before, settled!, result, harness.dispatch)).toBeTrue();
+
+            expect(consciousnessTargets()).toEqual([[5]]);
+            expect(harness.fixture.instance.snapshot().turn.consciousnessRollsDue).toBeUndefined();
+        });
+
+        it('does not wound a warrior in a torso-mounted cockpit for head hits', async () => {
+            const harness = createHarnessForFixture(
+                createDirectTorsoCockpitRuntimeFixture('total-warfare'), 'total-warfare', 'unit:direct-torso-cockpit-fixture');
+            const pilotId = [...harness.fixture.index.crewPositions.keys()][0]!;
+
+            expect(await service.applyWeaponHits(
+                harness.force, harness.instanceId, [headHit], 'committed', harness.dispatch)).toBeTrue();
+
+            expect(harness.fixture.instance.query().crewState(pilotId).wounds).toBe(0);
+        });
+    });
 
     it('reports automatically resolved heat through the shared automation notifier', async () => {
         const harness = createHarness();
@@ -1392,6 +1477,56 @@ describe('DirectMekAutomationService', () => {
         }));
     });
 
+    describe('an immediate Movement check at the phase boundary', () => {
+        /** Under the full phase system, a run on a damaged gyro raises an immediate check (TW p.59; Core p.113). */
+        function runOnDamagedGyro() {
+            const harness = createHarness('total-warfare');
+            const { instance, index } = harness.fixture;
+            const gyro = [...index.slots.values()].find(slot => slot.componentIds.some(componentId => {
+                const component = index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === 'Gyro';
+            }))!;
+            expect(instance.dispatch({ type: 'hit-critical', slotId: gyro.id, hits: 1, target: 'committed' }).accepted)
+                .toBeTrue();
+            expect(instance.dispatch({ type: 'resolve-mek-pilot-check', checkId: instance.query().mekPilotChecks()[0]!.checkId,
+                evidence: { dice: [6, 6] } }).accepted).toBeTrue();
+            expect(instance.dispatch({ type: 'declare-mek-movement', realPhases: true,
+                declaration: { schemaVersion: 1, mode: 'run', distance: 2, boosterComponentIds: [] } }).changed).toBeTrue();
+            return harness;
+        }
+
+        it('asks for the roll even with PSR automation off, then ends the phase', async () => {
+            const harness = runOnDamagedGyro();
+            automationModes['pilotSkillCheck'] = 'no';
+            spyOn(Math, 'random').and.returnValue(0.99);
+
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, { type: 'end-phase' });
+            const settled = await service.settleBeforeCommand(harness.force, harness.instanceId, prepared, harness.dispatch);
+
+            const review = resolveChecksAutomation.calls.allArgs().find(args => args[0] === 'pilotSkillCheck');
+            expect(review?.[1]).toEqual([jasmine.objectContaining({ description: 'Running with damaged gyro' })]);
+            expect(review?.[2]).toEqual(jasmine.objectContaining({ manualResolution: true }));
+            expect(harness.fixture.instance.query().mekPilotChecks().map(check => check.status))
+                .toEqual(['success', 'success']);
+            expect(harness.fixture.instance.dispatch(settled!.command).changed).toBeTrue();
+            expect(harness.fixture.instance.query().mekPilotChecks()).toEqual([]);
+        });
+
+        it('keeps the phase open while the roll is not made', async () => {
+            const harness = runOnDamagedGyro();
+            automationModes['pilotSkillCheck'] = 'no';
+            resolveChecksAutomation.and.resolveTo(null);
+
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, { type: 'end-phase' });
+
+            expect(prepared.cancelled).toBeTrue();
+            expect(harness.fixture.instance.dispatch({ type: 'end-phase' }).changed).toBeFalse();
+            expect(harness.fixture.instance.query().mekPilotChecks()[1]).toEqual(jasmine.objectContaining({
+                status: 'pending', immediate: true,
+            }));
+        });
+    });
+
     it('keeps the Mek prone when falling automation skips damage after a failed PSR', async () => {
         const harness = createHarness('total-warfare');
         automationModes['pilotSkillCheck'] = 'yes';
@@ -1509,6 +1644,49 @@ describe('DirectMekAutomationService', () => {
         expect(harness.fixture.instance.query().mekMovementPsrState().automaticFalls).toEqual([]);
         expect(harness.fixture.instance.dispatch(settled!.command).accepted).toBeTrue();
         expect(harness.fixture.instance.query().hasCondition('prone')).toBeFalse();
+    });
+
+    it('resolves a missed death from above as a 2-level fall onto the rear', async () => {
+        const harness = createHarness('total-warfare');
+        automationModes['criticalHitChanceCheck'] = 'no';
+        // Orientation 1 lands an ordinary Total Warfare fall on its front; both groups then roll 6: right torso.
+        const rolls = [1, 3, 3, 3, 3].map(d6Random);
+        resolveFalling.and.callFake(async data => resolveAutomaticFallingDamage(data, () => rolls.shift()!));
+        const location = (code: string) => [...harness.fixture.index.locations.values()]
+            .find(candidate => candidate.code === code)!;
+        const rightTorsoFront = location('RT').armorFaceIds
+            .map(faceId => harness.fixture.index.armorFaces.get(faceId)!)
+            .find(face => face.face === 'front')!;
+        const query = () => harness.fixture.instance.query();
+        expect(harness.fixture.instance.dispatch({
+            type: 'record-mek-physical-attack-checks',
+            attackId: 'attack:dfa',
+            checks: [],
+            missedDeathFromAbove: true,
+        }).changed).toBeTrue();
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, { type: 'end-phase' });
+        const settled = await service.settleBeforeCommand(
+            harness.force,
+            harness.instanceId,
+            prepared,
+            harness.dispatch,
+        );
+
+        expect(settled).not.toBeNull();
+        expect(resolveFalling).toHaveBeenCalledOnceWith(
+            jasmine.objectContaining({ levelsFallen: 2, alwaysRear: true }),
+            jasmine.anything(),
+        );
+        // 20 tons falling 2 levels deals 2 × 3 = 6: five through the empty rear armor into the
+        // right torso, and the last point transfers to the center torso's rear.
+        expect(query().remainingArmor(rightTorsoFront.id, 'committed')).toBe(rightTorsoFront.maximumPoints);
+        expect(query().remainingInternal(location('RT').id, 'committed')).toBe(0);
+        expect(query().remainingInternal(location('CT').id, 'committed'))
+            .toBe(location('CT').internalPoints - 1);
+        expect(query().hasCondition('prone')).toBeTrue();
+        expect(query().mekMovementPsrState().automaticFalls).toEqual([]);
+        expect(harness.fixture.instance.dispatch(settled!.command).accepted).toBeTrue();
     });
 
     it('keeps pending combat uncommitted when the phase PSR review is cancelled', async () => {

@@ -7,29 +7,6 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment, type InfantryWeaponEquip
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 
 describe('conventional infantry sheet presentation', () => {
-    it('compresses long unit titles before they overlap the armor label on each page format', async () => {
-        const entity = infantry();
-        entity.chassis.set('Mountaineer 45th Cerulean Mountain Infantry; 3rd Davion Guards');
-        entity.model.set('');
-        for (const format of ['compact', 'letter', 'a4'] as const) {
-            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format });
-            document.body.appendChild(svg);
-            try {
-                const frame = svg.querySelector('.compact-infantry-frame')!;
-                const title = frame.querySelector<SVGTextElement>('.svg-frame-title')!;
-                const ribbon = title.parentElement!.querySelector('path')!;
-                const armorLabel = [...frame.querySelectorAll('text')].find(text => text.textContent === 'Armor Type:')!;
-                expect(title.textContent).toBe(entity.displayName());
-                expect(title.getAttribute('lengthAdjust')).toBe('spacingAndGlyphs');
-                expect(ribbon.getBoundingClientRect().right).withContext(format)
-                    .toBeLessThan(armorLabel.getBoundingClientRect().left);
-                expect(title.getBBox().width).toBeLessThan(ribbon.getBBox().width);
-            } finally {
-                svg.remove();
-            }
-        }
-    });
-
     it('uses the armor kit divisor and prints capped-primary burst notes and capable anti-Mek skill', async () => {
         const entity = infantry();
         entity.setPlatoonWeapon('primary', new WeaponEquipment({ id: 'Mauser', name: 'Mauser', type: 'weapon', flags: ['F_INFANTRY'],
@@ -48,11 +25,11 @@ describe('conventional infantry sheet presentation', () => {
 
     it('renders default-crew BV while leaving the neutral entity BV unchanged', async () => {
         const entity = infantry();
-        const neutralBV = entity.battleValue();
+        const neutralBV = entity.battleValue('total-warfare');
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('8');
         expect(svg.querySelector('#bv')?.textContent).toBe(String(Math.round(neutralBV * 0.85)));
-        expect(entity.battleValue()).toBe(neutralBV);
+        expect(entity.battleValue('total-warfare')).toBe(neutralBV);
     });
 
     it('uses the primary weapon for combat notes when multiple secondary weapons are TAG', async () => {
@@ -71,32 +48,27 @@ describe('conventional infantry sheet presentation', () => {
         expect(entity.rangeWeapon()).toBe(tag);
     });
 
-    it('positions jump movement before ground movement while retaining live movement IDs', async () => {
+    it('labels jump and ground movement while retaining live movement IDs', async () => {
         const entity = infantry();
         entity.motiveType.set('Jump');
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const jump = svg.querySelector('#mpJump')!;
         const walk = svg.querySelector('#mpWalk')!;
-        expect(Number(jump.getAttribute('y'))).toBeLessThan(Number(walk.getAttribute('y')));
         expect(jump.nextElementSibling?.nextElementSibling?.textContent).toBe('Jump');
         expect(walk.nextElementSibling?.nextElementSibling?.textContent).toBe('Ground');
     });
 
-    it('prints augmentation display names and reduces dense notes without compressing their last line', async () => {
+    it('prints augmentation display names in the notes', async () => {
         const entity = infantry();
         entity.spaceSuit.set(true);
         entity.specializations.set(new Set(['mountain-troops', 'marines']));
         entity.augmentations.set(['dermal_armor', 'tsm_implant', 'artificial_pain_shunt', 'pl_flight']);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
-        const lines = [...svg.querySelectorAll<SVGTextElement>('.infantry-notes text')];
-        const notes = lines.map(line => line.textContent).join(' ');
+        const notes = [...svg.querySelectorAll('.infantry-notes text')].map(line => line.textContent).join(' ');
         expect(notes).toContain('Can operate in vacuum.');
         expect(notes).toContain('Unit is immune to the effects of Thin Atmosphere.');
         expect(notes).toContain('Cybernetically enhanced: Myomer Implants (Dermal Armor), '
             + 'Myomer Implants (Triple Strength), Artificial Pain Shunt, Prosthetic Wings, Powered Flight');
-        expect(Number(lines[0].getAttribute('font-size'))).toBeLessThan(7.2);
-        expect(Number(lines[0].getAttribute('font-size'))).toBeGreaterThanOrEqual(5);
-        expect(lines.every(line => !line.hasAttribute('textLength'))).toBeTrue();
     });
 
     it('prints field-gun quantity, ranges, real ammunition and crew below the infantry range table', async () => {

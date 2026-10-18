@@ -173,6 +173,7 @@ function standingSnapshot(
             kind: 'supported',
             rulesFlavor: 'total-warfare',
             permanentPsrModifiers: [],
+            phasePsrModifiers: [],
             actions: [{ kind: 'get-up', legal: true, reasons: [], warnings: [] }],
             standing: {
                 attempts,

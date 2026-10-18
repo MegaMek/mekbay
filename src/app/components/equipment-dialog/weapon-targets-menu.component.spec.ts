@@ -599,3 +599,25 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
         expect(component.c3DistanceInputValue(TARGET)).toBe(12);
     });
 });
+
+describe('WeaponTargetsMenuComponent attack direction', () => {
+    it('sets the attack direction from the target row, keeping the other calculator facts', () => {
+        TestBed.configureTestingModule({ imports: [WeaponTargetsMenuComponent] });
+        const fixture = TestBed.createComponent(WeaponTargetsMenuComponent);
+        const target: TargetingTarget = { ...TARGET, tnCalculator: { partialCover: true } };
+        fixture.componentRef.setInput('targets', [target]);
+        fixture.detectChanges();
+        const emitted = jasmine.createSpy('updateRequest');
+        fixture.componentInstance.updateRequest.subscribe(emitted);
+
+        const select = fixture.nativeElement.querySelector('.direction-select') as HTMLSelectElement;
+        expect(select.value).toBe('front');
+        select.value = 'rear';
+        select.dispatchEvent(new Event('change'));
+
+        expect(emitted).toHaveBeenCalledWith({
+            targetId: 'A', patch: { tnCalculator: { partialCover: true, attackDirection: 'rear' } },
+        });
+    });
+});
+

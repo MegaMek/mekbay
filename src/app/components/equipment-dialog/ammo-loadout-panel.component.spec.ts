@@ -2,11 +2,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 
+import { CORE_2026_RULESET } from '../../models/cbt-ruleset.model';
 import { asComponentId } from '../../models/entity/entity-identifiers';
+import { createTestEquipmentRegistry } from '../../models/entity/testing/test-equipment-registry';
+import { AmmoEquipment } from '../../models/equipment.model';
+import type { Era } from '../../models/eras.model';
 import type { EquipmentPanelBombs, EquipmentPanelComponent } from '../../models/runtime/equipment-panel';
 import { DialogsService } from '../../services/dialogs.service';
 import { EquipmentCatalogService } from '../../services/catalogs/equipment-catalog.service';
+import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
+import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { AmmoLoadoutPanelComponent } from './ammo-loadout-panel.component';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 
@@ -55,6 +62,7 @@ function createComponent(
     rows: readonly EquipmentPanelComponent[] | (() => readonly EquipmentPanelComponent[]),
     readOnly = false,
     bombs: EquipmentPanelBombs | null = null,
+    era: Era | null = null,
 ) {
     const currentRows = () => typeof rows === 'function' ? rows() : rows;
     const changeAmmo = jasmine.createSpy('changeAmmo').and.callFake(
@@ -73,7 +81,8 @@ function createComponent(
     const runtime = {
         ammo: currentRows,
         bombs: () => bombs,
-        member: { force: { readOnly: () => readOnly } },
+        snapshot: () => ({ unitType: 'Mek', ruleset: CORE_2026_RULESET }),
+        member: { force: { readOnly: () => readOnly, era: () => era } },
         changeAmmo,
         configureAmmo,
         setBombsSpent,
@@ -92,6 +101,75 @@ function createComponent(
 }
 
 describe('AmmoLoadoutPanelComponent', () => {
+    for (const scope of ['group', 'bin'] as const) {
+        for (const period of ['future', 'extinct', 'unrestricted'] as const) {
+            it(`preserves the force era for ${period} ammunition in the ${scope} dialog`, async () => {
+                const ammo = new AmmoEquipment({
+                    id: 'Test Era Ammo', name: 'Test Era Ammo', type: 'ammo',
+                    tech: { base: 'IS', advancement: { is: { production: '2700', extinct: '2850', reintroduced: '3050' } } },
+                    ammo: { type: 'AC', rackSize: 20, shots: 5 },
+                });
+                const era: Era | null = period === 'unrestricted' ? null : {
+                    id: 1, name: 'Test Era', factions: [], units: [],
+                    years: period === 'future' ? { from: 2500, to: 2600 } : { from: 2900, to: 3000 },
+                };
+                const rows = ['LT', 'RT'].map(location => ammoRow(`ammo:${location}`, location, 5, 'available', {
+                    displayName: ammo.name, munitionKey: ammo.internalName,
+                }));
+                const { component } = createComponent(rows, false, null, era);
+                spyOn(TestBed.inject(EquipmentCatalogService), 'getEquipmentRegistry').and.returnValue(
+                    createTestEquipmentRegistry({ [ammo.id]: ammo }),
+                );
+                const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+                dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+                const group = component.groups()[0];
+
+                if (scope === 'group') await component.setAmmo(group);
+                else await component.setAmmoBin(group.entries[0]);
+
+                const data = dialogs.createDialog.calls.mostRecent().args[1]?.data as SetAmmoDialogData;
+                expect(data.era).toBe(era);
+                expect(AmmoValidityUtil.getAmmoSelectionIssues(ammo, data).map(issue => issue.reason)).toEqual(
+                    period === 'unrestricted' ? [] : [period === 'future' ? 'not-yet-existing-in-era' : 'extinct-in-era'],
+                );
+            });
+        }
+    }
+
+    for (const scope of ['group', 'bin'] as const) {
+        it(`preserves Artemis compatibility when opening the ${scope} ammo dialog`, async () => {
+            const guidedAmmo = new AmmoEquipment({
+                id: 'IS LRM 15 Artemis Ammo', name: 'LRM 15 Artemis-capable Ammo', type: 'ammo',
+                ammo: { type: 'LRM', rackSize: 15, shots: 8, munitionType: ['M_ARTEMIS_CAPABLE'] },
+            });
+            const compatibilityFacts = { artemisIV: [guidedAmmo.internalName], artemisV: [] };
+            const rows = ['LT', 'RT'].map(location => {
+                const row = ammoRow(`ammo:${location}`, location, 24, 'available', {
+                    capacity: 24, displayName: guidedAmmo.name, munitionKey: guidedAmmo.internalName,
+                });
+                return { ...row, ammo: { ...row.ammo!, compatibilityFacts } };
+            });
+            const { component } = createComponent(rows);
+            spyOn(TestBed.inject(EquipmentCatalogService), 'getEquipmentRegistry').and.returnValue(
+                createTestEquipmentRegistry({ [guidedAmmo.id]: guidedAmmo }),
+            );
+            const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+            dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+            const group = component.groups()[0];
+
+            if (scope === 'group') await component.setAmmo(group);
+            else await component.setAmmoBin(group.entries[0]);
+
+            expect(dialogs.createDialog).toHaveBeenCalledTimes(1);
+            const [dialog, options] = dialogs.createDialog.calls.mostRecent().args;
+            expect(dialog).toBe(SetAmmoDialogComponent);
+            const data = options?.data as SetAmmoDialogData;
+            expect(data.quantity).toBe(scope === 'group' ? 48 : 24);
+            expect(data.compatibilityFacts).toEqual(compatibilityFacts);
+            expect(AmmoValidityUtil.getAmmoSelectionIssues(guidedAmmo, data)).toEqual([]);
+        });
+    }
+
     it('lists carried bombs with hardpoint use and spends or restores them without ammo bins', () => {
         const load = { section: 'external', bombId: 'HEBomb', count: 3, spent: 1 } as const;
         const { fixture, setBombsSpent } = createComponent([], false, {

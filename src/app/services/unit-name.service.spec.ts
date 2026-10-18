@@ -33,12 +33,20 @@ describe('Unit name presentation', () => {
         expect(entity.fullChassis()).toBe(summary.chassis);
         expect(summary.chassis).toBe('Mad Cat (Timber Wolf)');
 
+        options.set({ displayUnitNameFormat: 'innerSphereOnly' });
+        expect(liveName()).toBe('Mad Cat Prime');
+        expect(summaryName()).toBe(liveName());
+
+        options.set({ displayUnitNameFormat: 'clanOnly' });
+        expect(liveName()).toBe('Timber Wolf Prime');
+        expect(summaryName()).toBe(liveName());
+
         options.set({ displayUnitNameFormat: 'innerSphereClan' });
         expect(summaryName()).toBe('Mad Cat (Timber Wolf) Prime');
     });
 
-    it('shows the available name alone in either format and preserves chassis parentheses', () => {
-        for (const format of ['innerSphereClan', 'clanInnerSphere'] as const) {
+    it('shows the available name alone in every format and preserves chassis parentheses', () => {
+        for (const format of ['innerSphereClan', 'clanInnerSphere', 'innerSphereOnly', 'clanOnly'] as const) {
             expect(formatUnitChassis({ chassis: 'King Crab' }, format)).toBe('King Crab');
             expect(formatUnitChassis({ chassis: '', clanName: 'Timber Wolf' }, format)).toBe('Timber Wolf');
             expect(formatUnitName({ chassis: '', clanName: 'Timber Wolf', model: 'Prime' }, format)).toBe('Timber Wolf Prime');

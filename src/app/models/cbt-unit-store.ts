@@ -453,6 +453,10 @@ export class CBTUnitStore {
         }
         const effectiveRules = scenarioRules ?? this.binding?.scenarioRules;
         if (!effectiveRules) throw new Error('CBT runtime owner has no scenario rules');
+        const ruleset = scenarioRuleset(effectiveRules);
+        if ([...units.values()].some(unit => unit.ruleset() !== ruleset)) {
+            throw new Error('Every unit of a force must play its scenario rules');
+        }
         this.binding = Object.freeze({
             envelope,
             units,
@@ -467,11 +471,9 @@ export class CBTUnitStore {
         return Object.freeze([...(this.binding?.units.keys() ?? [])]);
     }
 
+    /** The rules the unit's own runtime is bound to; every unit of the force shares them. */
     public ruleset(instanceId: string): CBTRuleset | null {
-        const binding = this.binding;
-        return binding?.units.has(instanceId) === true
-            ? scenarioRuleset(binding.scenarioRules)
-            : null;
+        return this.cbtUnit(instanceId)?.ruleset() ?? null;
     }
 
     public scenarioRules(): ScenarioRules | null {

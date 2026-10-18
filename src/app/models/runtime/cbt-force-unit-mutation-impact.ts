@@ -110,10 +110,15 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'resolve-mek-pilot-check':
         case 'dismiss-mek-pilot-checks':
         case 'dismiss-mek-automatic-falls':
+        case 'record-mek-physical-attack-checks':
         case 'replace-turn-state':
         case 'set-pending-fall-consequences':
+        case 'set-consciousness-rolls-due':
         case 'reset-turn-state':
         case 'mark-end-turn-heat-staged':
+        case 'complete-turn-step':
+        case 'join-turn':
+        case 'rewind-turn-step':
         case 'cancel-pending':
             return false;
         default: {

@@ -184,7 +184,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     // The footer runs along the block's lower edge, right of the raised notch.
     const footerY = at({ x: 0, y: 133.5, width: 576, height: 1 }).y;
     const footerScale = readViewBox(svg).width / RECORD_SHEET_CONTENT_WIDTH;
-    appendBattleValue(svg, entity.battleValue(), {
+    appendBattleValue(svg, entity.battleValue(request.ruleset), {
         x: at({ x: 99.667, y: 0, width: 1, height: 1 }).x,
         valueX: at({ x: 111.806, y: 0, width: 1, height: 1 }).x,
         y: footerY,
@@ -207,7 +207,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     }
         const eraBox = at({ x: 75.667, y: 66.191, width: 20, height: 20 });
         await appendRecordSheetEraIcon(svg, outer, entity.year(), eraBox);
-        appendLegacyIdentityAnchors(outer, entity, at({ x: 0, y: 0, width: 576, height: 139.2 }));
+        appendLegacyIdentityAnchors(outer, entity, at({ x: 0, y: 0, width: 576, height: 139.2 }), request.ruleset);
     }
 }
 

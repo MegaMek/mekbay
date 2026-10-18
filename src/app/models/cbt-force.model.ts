@@ -47,6 +47,7 @@ type TargetRegistryCommandResult,
 type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
+emptyRuntimeHistory,
 validateSerializedCBTForceV2,
 type SerializedCBTEncounterStateV2,
 type SerializedCBTForceV2,
@@ -74,6 +75,7 @@ prepareDirectUnitAdmission,
 type PreparedCBTForcePersistenceV2,
 } from './runtime/force-persistence-boundary';
 import {
+scenarioRuleset,
 scenarioRulesFromOptions,
 type DeploymentConfiguration,
 type ScenarioRules,
@@ -81,11 +83,10 @@ type ScenarioRules,
 
 import { DialogsService } from '../services/dialogs.service';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
-import { OptionsService } from '../services/options.service';
+import { heatAutomationPolicy, OptionsService, realPhasesEnabled } from '../services/options.service';
 import { ToastService } from '../services/toast.service';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
-import type { CBTOptionalRules } from './options.model';
 import { evaluateCBTMekRuntimeCapability } from './runtime/cbt-unit-validation';
 import { type CrewAssignment,type CrewAssignmentPosition } from './runtime/crew-assignment';
 import type { EquipmentInteractionQueryContext } from './runtime/equipment-interaction';
@@ -126,7 +127,7 @@ unitHistory,
 type RuntimeHistoryInput,
 } from './runtime/cbt-force-runtime-history';
 import { CBTForceSession,type CapturedRuntimeCommandMutation } from './runtime/cbt-force-session';
-import { CBTForceUnitCommandDispatcher } from './runtime/cbt-force-unit-command-dispatcher';
+import { CBTForceUnitCommandDispatcher, type WeaponHits } from './runtime/cbt-force-unit-command-dispatcher';
 import { commandMayChangeBaseBattleValue,commandMayChangeOperationalC3 } from './runtime/cbt-force-unit-mutation-impact';
 import { readOnlyTargetRegistry } from './runtime/encounter-runtime';
 import { projectMekEquipmentPanel,type EquipmentPanelSnapshot,type WeaponAttackContext } from './runtime/equipment-panel';
@@ -146,7 +147,7 @@ runtimeHistoryMessageUnitId,
 type RuntimeHistoryTargetKind,
 } from './runtime/runtime-history';
 
-import type { AttackerTargetingCommandResult,AttackerTargetingSnapshot,C3State,CBTDirectUnitAdmissionRequest,CBTDirectUnitAdmissionResult,CBTEquipmentChoiceCommand,CBTEquipmentChoiceDispatchResult,CBTEquipmentInteraction,CBTForceEndTurnAllResult,CBTForceTargetRegistryAuthority,CBTForceUnitCommandResult,CBTUnitRepairResult,CBTUnitTransferResult,InventoryControlTargetRosterRow,RuntimeUndoCommandResult,SelectedWeaponFireCommandResult } from './cbt-force.types';
+import type { AttackerTargetingCommandResult,AttackerTargetingSnapshot,C3State,CBTDirectUnitAdmissionRequest,CBTDirectUnitAdmissionResult,CBTEquipmentChoiceCommand,CBTEquipmentChoiceDispatchResult,CBTEquipmentInteraction,CBTForceEndTurnAllResult,CBTForceTargetRegistryAuthority,CBTForceUnitCommandResult,CBTScenarioRebind,CBTScenarioRebindResult,CBTUnitRepairResult,CBTUnitTransferResult,InventoryControlTargetRosterRow,RuntimeUndoCommandResult,SelectedWeaponFireCommandResult } from './cbt-force.types';
 
 type PreparedCBTForcePersistenceWithFence = PreparedCBTForcePersistenceV2 & Readonly<{
     unitStoreSnapshot: CBTUnitStoreSnapshot;
@@ -295,6 +296,12 @@ export class CBTForce extends Force<never> {
             runtimeForceInputsChanged,
             runtimeOperationalC3InputsChanged,
         );
+    }
+
+    /** Publishes a presentation change, first invalidating member projections that carry session state. */
+    private publishSession(changedUnitIds: readonly string[] | null): void {
+        this.memberRegistry.bindSessionEdit(changedUnitIds);
+        this.session.publish(changedUnitIds);
     }
 
     /** One force-owned presentation handle for each currently resolvable roster member. */
@@ -552,111 +559,101 @@ export class CBTForce extends Force<never> {
     }
 
     /**
-     * Rebinds force-owned Mek mechanics to the current bounded application
-     * options. Runtime wrappers and persistence are replaced in one authority
-     * commit, so no unit can observe mixed scenario rules.
+     * Binds every unit to `scenario` now: `prepareScenarioRebind`, then its install, preparing again
+     * when the force changed in between.
      */
-    public synchronizeOptionalRules(
-        rules: Pick<CBTOptionalRules, 'forcedWithdrawal' | 'sprinting' | 'hotLoadedAmmo'>,
-    ): Promise<boolean> {
-        const requested = Object.freeze({
-            forcedWithdrawal: rules.forcedWithdrawal,
-            sprinting: rules.sprinting,
-            hotLoadedAmmo: rules.hotLoadedAmmo,
-        });
-        return this.enqueueCBTMutation(async () => {
-            if (this.readOnly()) return false;
-            const context = this.beginCBTForceMutation();
-            const current = context.previous;
-            if (!current) return false;
+    public async rebindScenarioRules(scenario: ScenarioRules): Promise<CBTScenarioRebindResult> {
+        for (;;) {
+            const prepared = await this.prepareScenarioRebind(scenario);
+            if (!prepared.bound) return Object.freeze({ bound: false, dropped: Object.freeze([]) });
+            if (await prepared.install()) return Object.freeze({ bound: true, dropped: prepared.dropped });
+        }
+    }
 
-            const previousScenario = this.unitStore.scenarioRules();
-            if (!previousScenario) return false;
-            const scenario: ScenarioRules = Object.freeze({
-                ...previousScenario,
-                options: Object.freeze({
-                    ...(previousScenario.options ?? {}),
-                    ...requested,
-                }),
-            });
-            if (previousScenario.options?.['forcedWithdrawal'] === requested.forcedWithdrawal
-                && previousScenario.options?.['sprinting'] === requested.sprinting
-                && previousScenario.options?.['hotLoadedAmmo'] === requested.hotLoadedAmmo) return false;
-
-            let replacements: ReadonlyMap<string, CBTUnit>;
-            try {
-                const rows = await Promise.all(this.unitStore.liveUnits().flatMap<
-                    Promise<readonly [string, CBTUnit]>
-                >(unit =>
-                    isCBTMekUnit(unit)
-                        ? [cloneMekForOwner(unit, scenario).then(candidate => {
-                            const movement = candidate.query().mekMovementPsr();
-                            if (movement.kind === 'unsupported') {
-                                throw new Error('Scenario rebinding made Mek movement unsupported');
-                            }
-                            if (candidate.snapshot().movementPsr.movement?.mode === 'sprint') {
-                                if (movement.declaration?.legal !== true) {
-                                    const cleared = candidate.dispatch({
-                                        type: 'clear-mek-movement',
-                                    });
-                                    if (!cleared.accepted) throw new Error('Invalid restored Sprint could not be cleared');
-                                } else if (candidate.query().turnState().spotting) {
-                                    const turn = candidate.query().turnState();
-                                    const cleared = candidate.dispatch({
-                                        type: 'replace-turn-state',
-                                        turn: { ...turn, spotting: false },
-                                    });
-                                    if (!cleared.accepted) throw new Error('Restored Sprint spotting could not be cleared');
-                                }
-                            }
-                            return [unit.instanceId, candidate] as const;
-                        })]
-                        : isCBTNonMekUnit(unit)
-                            ? [Promise.resolve([
-                                unit.instanceId,
-                                cloneNonMekForOwner(unit, scenario),
-                            ] as const)]
-                            : []));
-                replacements = new Map(rows);
-            } catch {
-                return false;
+    /**
+     * Prepares binding every unit to `scenario` (its CBT ruleset and optional rules) without
+     * installing anything: the rebuilt units, the validated envelope and what the new rules drop.
+     * Nothing changes until `install`, so callers can bind several forces all or nothing.
+     *
+     * The install is one commit, so no unit observes mixed rules. It installs nothing and resolves
+     * false when the force changed since it was prepared. An owned force persists the rebuilt units;
+     * a force this client does not own is rebound in memory only, because its owner saves it under
+     * its own rules. Any change of rules starts a new undo session, because undo checkpoints hold
+     * states made under the old rules; the log keeps every applied entry.
+     */
+    public prepareScenarioRebind(scenario: ScenarioRules): Promise<CBTScenarioRebind> {
+        const requested: ScenarioRules = structuredClone(scenario);
+        return this.enqueueCBTMutation(async (): Promise<CBTScenarioRebind> => {
+            const previous = this.unitStore.scenarioRules();
+            const current = this.unitStore.envelope();
+            // A force without bound units takes the rules from the options when it binds.
+            if (!previous || !current || jsonValuesEqual(previous, requested)) {
+                return Object.freeze({ bound: true, dropped: Object.freeze([]), install: () => Promise.resolve(true) });
             }
-
-            let envelope = current;
+            let rebound: readonly ReboundUnit[];
             try {
-                const units = current.units.map(entry => {
-                    const ready = replacements.get(entry.instanceId)
-                        ?? this.unitStore.cbtUnit(entry.instanceId);
-                    if (!ready) throw new Error(`Scenario rebinding lost runtime ${entry.instanceId}`);
-                    const unit = ready.serialize();
-                    return jsonValuesEqual(unit, entry.unit)
-                        ? entry
-                        : Object.freeze({
-                            instanceId: entry.instanceId,
-                            stateRevision: unit.stateRevision,
-                            unit,
-                        });
-                });
-                if (units.some((entry, index) => entry !== current.units[index])) {
+                const registry = this.queryInventoryControlTargetRegistry();
+                rebound = await Promise.all(this.unitStore.liveUnits().map(unit => rebindUnit(unit, requested)));
+                for (const { candidate } of rebound) candidate.planTargetingReconciliation(registry)?.();
+            } catch {
+                return Object.freeze({ bound: false });
+            }
+            const replacements = new Map(rebound.map(({ candidate }) => [candidate.instanceId, candidate] as const));
+            const dropped = Object.freeze(rebound.flatMap(({ candidate, dropped: items }) => items.length === 0
+                ? []
+                : [Object.freeze({ unit: this.runtimeHistoryUnitLabel(candidate.instanceId), items })]));
+            let envelope = current;
+            if (!this.readOnly()) {
+                try {
                     envelope = await validateSerializedCBTForceV2({
                         ...current,
                         forceRevision: nextForceRevision(current.forceRevision),
-                        units,
+                        units: current.units.map(entry => {
+                            const unit = replacements.get(entry.instanceId)!.serialize();
+                            return jsonValuesEqual(unit, entry.unit)
+                                ? entry
+                                : Object.freeze({ instanceId: entry.instanceId, stateRevision: unit.stateRevision, unit });
+                        }),
+                        // Undo restarts on install, so the log takes over every entry the session applied.
+                        history: this.session.serializeHistory(current.history),
                     });
+                } catch {
+                    return Object.freeze({ bound: false });
                 }
-            } catch {
-                return false;
             }
-
-            const prepared: PreparedCBTForcePersistenceV2 = Object.freeze({ envelope, reused: false });
-            this.commitCBTForceMutation(
-                context,
-                prepared,
-                () => this.unitStore.replace(envelope, replacements, { scenarioRules: scenario }),
-            );
-            this.emitChangedFromReservedIntent(Object.freeze([...replacements.keys()]));
-            return true;
+            const install = () => this.enqueueCBTMutation(() => {
+                if (this.unitStore.envelope() !== current || !jsonValuesEqual(this.unitStore.scenarioRules(), previous)) {
+                    return false;
+                }
+                this.installScenarioRebind(current, envelope, replacements, requested);
+                return true;
+            });
+            return Object.freeze({ bound: true, dropped, install });
         });
+    }
+
+    /** The one commit of a prepared rebind; see `prepareScenarioRebind`. */
+    private installScenarioRebind(
+        current: SerializedCBTForceV2,
+        envelope: SerializedCBTForceV2,
+        replacements: ReadonlyMap<string, CBTUnit>,
+        scenario: ScenarioRules,
+    ): void {
+        const changedUnitIds = Object.freeze([...replacements.keys()]);
+        if (this.readOnly()) {
+            this.unitStore.replace(current, replacements, { scenarioRules: scenario });
+            this.session.resetRuntime();
+            this.refreshForceMemberDependencies(changedUnitIds);
+            this.publishSession(changedUnitIds);
+            return;
+        }
+        this.commitCBTForceMutation(
+            this.beginCBTForceMutation(),
+            Object.freeze({ envelope, reused: false }),
+            () => this.unitStore.replace(envelope, replacements, { scenarioRules: scenario }),
+        );
+        this.session.resetRuntime();
+        this.emitChangedFromReservedIntent(changedUnitIds);
     }
 
     private repairMembers(
@@ -1024,7 +1021,7 @@ export class CBTForce extends Force<never> {
             }
             let scenario: ScenarioRules;
             try {
-                scenario = this.currentScenarioRules();
+                scenario = await this.loadedScenarioRules();
             } catch (error) {
                 return directAdmissionFailure('CANDIDATE_PREPARATION_FAILED', errorMessage(error));
             }
@@ -1384,6 +1381,38 @@ export class CBTForce extends Force<never> {
         return this.restoreRuntimeCommand('redo');
     }
 
+    /**
+     * Starts the game over: every unit returns to turn 1 Movement (`reset-turn-state`) and the log,
+     * undo and redo start empty, so nothing before the restart can be undone. Committed damage stays.
+     */
+    public restartGame(): Promise<boolean> {
+        return this.enqueueCBTMutation(async () => {
+            if (this.readOnly()) return false;
+            const context = this.beginCBTForceMutation();
+            const current = context.previous;
+            if (!current) return false;
+            // Live units serialize on the next save; the envelope carries the cleared durable log.
+            const envelope = await validateSerializedCBTForceV2({
+                ...current,
+                forceRevision: nextForceRevision(current.forceRevision),
+                history: emptyRuntimeHistory(),
+                ...(context.typedEncounterState === undefined ? {} : { encounter: context.typedEncounterState }),
+            });
+            const instanceIds = current.units.map(entry => entry.instanceId);
+            for (const instanceId of instanceIds) {
+                this.unitStore.dispatchUnitCommand(instanceId, { type: 'reset-turn-state' }, false);
+            }
+            this.commitCBTForceMutation(
+                context,
+                Object.freeze({ envelope, reused: false }),
+                () => this.unitStore.replace(envelope, new Map()),
+            );
+            this.session.resetRuntime();
+            this.emitChangedFromReservedIntent(instanceIds);
+            return true;
+        });
+    }
+
     private restoreRuntimeCommand(
         direction: 'undo' | 'redo',
     ): Promise<RuntimeUndoCommandResult> {
@@ -1482,7 +1511,14 @@ export class CBTForce extends Force<never> {
         command: CBTUnitCommand,
         context?: UnitEditContext,
     ): Promise<CBTForceUnitCommandResult> {
-        return this.unitCommandDispatcher.dispatch(instanceId, command, context);
+        return this.unitCommandDispatcher.dispatch(instanceId, this.withPhaseSystem(command), context);
+    }
+
+    /** A declaration tells the rules whether the full phase system is on (see `MekPilotCheckRecordV2.immediate`). */
+    private withPhaseSystem(command: CBTUnitCommand): CBTUnitCommand {
+        if (command.type !== 'declare-mek-movement' && command.type !== 'declare-mek-action') return command;
+        const options = this.injector.get(OptionsService, null, { optional: true });
+        return options && realPhasesEnabled(options) ? { ...command, realPhases: true } : command;
     }
 
     private dispatchUnitCommandCore(
@@ -1738,7 +1774,7 @@ export class CBTForce extends Force<never> {
                 this.c3Encounter.networks,
                 this.readOnly(),
             );
-            if (result.accepted && result.changed) this.session.publish([capturedInstanceId]);
+            if (result.accepted && result.changed) this.publishSession([capturedInstanceId]);
             return result;
         });
     }
@@ -1896,12 +1932,28 @@ export class CBTForce extends Force<never> {
     }
 
     /** Commits the current phase for every canonical V2 unit after shared preflight. */
-    public endPhaseForAllUnits(): Promise<CBTForceEndTurnAllResult> {
-        return this.unitCommandDispatcher.endPhaseForAll();
+    /** Ends the phase of every unit, or of the listed ones, with one combined review. */
+    public endPhaseForAllUnits(instanceIds?: readonly string[]): Promise<CBTForceEndTurnAllResult> {
+        return this.unitCommandDispatcher.endPhaseForAll(instanceIds);
     }
 
     public hasPendingEndTurnForUnit(instanceId: string): boolean {
         return this.unitCommandDispatcher.hasPendingEndTurn(instanceId);
+    }
+
+    /** Runs `work` so that everything it changes on one unit is undone in a single step. */
+    public async runAsOneUndoStep<T>(work: () => Promise<T>): Promise<T> {
+        const mark = this.session.undoMark();
+        try {
+            return await work();
+        } finally {
+            this.session.foldSince(mark);
+        }
+    }
+
+    /** Applies accepted weapon hits with the unit family's transfer, critical and crew automation. */
+    public applyWeaponHits(instanceId: string, hits: WeaponHits, target: 'committed' | 'pending'): Promise<boolean> {
+        return this.unitCommandDispatcher.applyWeaponHits(instanceId, hits, target);
     }
 
     /** Resolves badge-advertised work without committing the phase or resetting the turn. */
@@ -1910,8 +1962,9 @@ export class CBTForce extends Force<never> {
     }
 
     /** Ends every canonical V2 turn through one owner boundary. */
-    public endTurnForAllUnits(): Promise<CBTForceEndTurnAllResult> {
-        return this.unitCommandDispatcher.endTurnForAll();
+    /** Ends the turn of every unit, or of the listed ones, with one combined review. */
+    public endTurnForAllUnits(instanceIds?: readonly string[]): Promise<CBTForceEndTurnAllResult> {
+        return this.unitCommandDispatcher.endTurnForAll(instanceIds);
     }
 
     private endTurnForAllUnitsCore(): Promise<CBTForceEndTurnAllResult> {
@@ -1936,10 +1989,10 @@ export class CBTForce extends Force<never> {
         });
     }
 
+    /** Without an options service (headless use), heat resolves automatically. */
     private currentHeatPolicy(): HeatAutomationPolicy {
-        const mode = this.injector.get(OptionsService, null, { optional: true })
-            ?.cbtAutomationMode('heatAndDissipationResolution') ?? 'yes';
-        return mode === 'yes' ? 'automatic' : 'manual';
+        const options = this.injector.get(OptionsService, null, { optional: true });
+        return options ? heatAutomationPolicy(options) : 'automatic';
     }
 
     protected override reconcileCBTForceV2Projection(): void {
@@ -2075,7 +2128,7 @@ export class CBTForce extends Force<never> {
         const restored = await this.unitStore.restore(
             envelope,
             this.injector.get(CBTUnitService),
-            this.currentScenarioRules(),
+            await this.loadedScenarioRules(),
         );
         const unitIds = new Set(restored.envelope.units.map(entry => entry.instanceId));
         const basePersonnel = suppliedPersonnel ?? EMPTY_FORCE_PERSONNEL;
@@ -2172,6 +2225,12 @@ export class CBTForce extends Force<never> {
     private currentScenarioRules(): ScenarioRules {
         return this.unitStore.scenarioRules()
             ?? scenarioRulesFromOptions(this.injector.get(OptionsService).options());
+    }
+
+    /** `currentScenarioRules` once the saved options have loaded, so units restored early are not bound to their defaults. */
+    private async loadedScenarioRules(): Promise<ScenarioRules> {
+        await this.injector.get(OptionsService).ready;
+        return this.currentScenarioRules();
     }
 
     protected override restoreCBTEncounterPersistence(state: SerializedCBTEncounterStateV2): void {
@@ -2280,7 +2339,7 @@ export class CBTForce extends Force<never> {
         const result = this.session.dispatchTargetRegistry(authorized);
         if (result.accepted && result.changed) {
             this.unitStore.installTargetingReconciliation(targetingReconciliation);
-            this.session.publish(null);
+            this.publishSession(null);
         }
         return result;
     }
@@ -2393,6 +2452,70 @@ export class CBTForce extends Force<never> {
             this.dataService, this.injector
         );
     }
+}
+
+type ReboundUnit = Readonly<{ candidate: CBTUnit; dropped: readonly string[] }>;
+
+/**
+ * Rebuilds one unit under `scenario` and names the saved state its rules could not keep: the
+ * restore skips equipment state the rules lack and drops the pending piloting rolls they do not
+ * raise (the others derive their targets under the new rules), and a new ruleset ends a fall paused
+ * after its head hits, because the rulesets apply those pilot hits at different stages.
+ */
+async function rebindUnit(unit: CBTUnit, scenario: ScenarioRules): Promise<ReboundUnit> {
+    if (isCBTNonMekUnit(unit)) {
+        const candidate = cloneNonMekForOwner(unit, scenario);
+        return Object.freeze({ candidate, dropped: droppedState(unit, candidate) });
+    }
+    if (!isCBTMekUnit(unit)) throw new Error(`Unknown CBT runtime family ${unit.instanceId}`);
+    const candidate = await cloneMekForOwner(unit, scenario);
+    const movement = candidate.query().mekMovementPsr();
+    if (movement.kind === 'unsupported') throw new Error('Scenario rebinding made Mek movement unsupported');
+    if (candidate.snapshot().movementPsr.movement?.mode === 'sprint') {
+        if (movement.declaration?.legal !== true) {
+            if (!candidate.dispatch({ type: 'clear-mek-movement' }).accepted) {
+                throw new Error('Invalid restored Sprint could not be cleared');
+            }
+        } else if (candidate.query().turnState().spotting) {
+            const turn = candidate.query().turnState();
+            if (!candidate.dispatch({ type: 'replace-turn-state', turn: { ...turn, spotting: false } }).accepted) {
+                throw new Error('Restored Sprint spotting could not be cleared');
+            }
+        }
+    }
+    const dropped = droppedState(unit, candidate);
+    const fall = candidate.snapshot().turn.pendingFallConsequences;
+    if (fall && fall.stage !== 'head-hits' && candidate.ruleset() !== unit.ruleset()) {
+        if (!candidate.dispatch({ type: 'set-pending-fall-consequences', pending: null }).accepted) {
+            throw new Error('An unfinished fall could not be ended');
+        }
+        dropped.push('the rest of an unfinished fall');
+    }
+    return Object.freeze({ candidate, dropped: Object.freeze(dropped) });
+}
+
+/** The equipment state, conditions and pending rolls the rebuilt unit no longer holds; equipment is named as the log names it. */
+function droppedState(before: CBTUnit, after: CBTUnit): string[] {
+    const was = before.snapshot();
+    const now = after.snapshot();
+    const componentIds = new Set<ComponentId>();
+    for (const [componentId, state] of was.components) {
+        if (!jsonValuesEqual(state, now.components.get(componentId))) componentIds.add(componentId);
+    }
+    for (const [componentId, state] of was.ammo) {
+        if (!jsonValuesEqual(state, now.ammo.get(componentId))) componentIds.add(componentId);
+    }
+    const dropped = [...componentIds].map(componentId => historyTargetLabel(before, 'component', componentId));
+    for (const condition of was.conditions) {
+        if (!now.conditions.has(condition)) dropped.push(`${condition} condition`);
+    }
+    if (isCBTMekUnit(before) && isCBTMekUnit(after)) {
+        const kept = new Set(after.snapshot().movementPsr.checks.map(check => check.checkId));
+        for (const check of before.snapshot().movementPsr.checks) {
+            if (check.status === 'pending' && !kept.has(check.checkId)) dropped.push(`${check.reason} piloting roll`);
+        }
+    }
+    return dropped;
 }
 
 function directAdmissionFailure(

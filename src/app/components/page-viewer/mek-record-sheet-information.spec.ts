@@ -3,6 +3,7 @@
 
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../../models/cbt-ruleset.model';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
+import type { EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import { projectMekRecordSheet } from '../../models/runtime/mek-record-sheet';
 import { createDirectTorsoCockpitRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
@@ -36,7 +37,7 @@ describe('bound Mek record-sheet information', () => {
                 .toContain(mixedTechLabel!);
             expect(svg.querySelector('#hsType')!.textContent).toBe(sinkType);
             expect(svg.querySelector('#heatProfile')!.textContent)
-                .toContain(`Maximum Heat: ${entity.heatGeneration()}`);
+                .toContain(`Maximum Heat (Dissipation): ${entity.heatGeneration()}`);
             expect(original.heatProjection.kind).toBe('supported');
             if (original.heatProjection.kind !== 'supported') throw new Error('Expected heat projection');
             binding.render({
@@ -47,7 +48,24 @@ describe('bound Mek record-sheet information', () => {
                 },
             });
             expect(svg.querySelector('#heatProfile')!.textContent)
-                .toBe(`Maximum Heat: ${entity.heatGeneration()}; Projected: 9 (Dissipation 5)`);
+                .toBe(`Maximum Heat (Dissipation): ${entity.heatGeneration()} (5)`);
+            const projected = {
+                ...original,
+                heatProjection: {
+                    ...original.heatProjection,
+                    projection: { ...original.heatProjection.projection, capacity: 5 },
+                },
+            };
+            const selectedPanel = {
+                components: [{ status: 'available', weapon: { selectable: true, firingHeat: 10, selection: { kind: 'manual-range', range: 'short' } } }],
+                physicalAttacks: [],
+            } as unknown as EquipmentPanelSnapshot;
+            binding.render(projected, { panel: selectedPanel, attack: null });
+            expect(svg.querySelector('#heatProfile')!.textContent).toBe('Selected Heat (Dissipation): 10 (5)');
+            expect(svg.querySelector('#heatProfile > tspan')?.getAttribute('font-weight')).toBe('700');
+            binding.render(projected, null);
+            expect(svg.querySelector('#heatProfile')!.textContent)
+                .toBe(`Maximum Heat (Dissipation): ${entity.heatGeneration()} (5)`);
             expect(svg.querySelector('#hsCount')!.textContent).toBe(`${entity.heatSinkCount()} (5)`);
             expect(svg.querySelector('#hsType')!.textContent).toBe(sinkType);
             binding.destroy();

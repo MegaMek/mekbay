@@ -21,7 +21,7 @@ import type { C3EmergencyMasterOperatingTurns,MekLocationConditionKey } from './
 import type { UnitCover } from '../unit-cover.model';
 import type { AttackerTargetingEdit } from './attacker-targeting-state';
 import type { MekRuleCheckKeyV2,MekRuleCheckOutcomeV2,MekRuleCheckTokenV2 } from './mek-destruction-state-v2';
-import type { MekActionDeclarationV2,MekMovementDeclarationV2,MekPilotCheckDiceEvidenceV2 } from './mek-movement-psr-v2';
+import type { MekActionDeclarationV2,MekMovementDeclarationV2,MekPhysicalAttackCheckTriggerKindV2,MekPilotCheckDiceEvidenceV2 } from './mek-movement-psr-v2';
 import type { NonMekControlRecoveryWorkflow,NonMekMovementDeclaration } from './non-mek-unit-instance';
 
 export interface CBTUnitAttackerTargetingCommand {
@@ -279,11 +279,15 @@ export type CBTUnitCommand =
     | {
         readonly type: 'declare-mek-movement';
         readonly declaration: MekMovementDeclarationV2;
+        /** The full phase system is on: the checks raised in the unit's Movement step are rolled at once. */
+        readonly realPhases?: true;
     }
     | { readonly type: 'clear-mek-movement' }
     | {
         readonly type: 'declare-mek-action';
         readonly action: MekActionDeclarationV2;
+        /** As for `declare-mek-movement`. */
+        readonly realPhases?: true;
     }
     | { readonly type: 'clear-mek-action' }
     | { readonly type: 'prepare-mek-stand' }
@@ -308,6 +312,16 @@ export type CBTUnitCommand =
     }
     | { readonly type: 'dismiss-mek-automatic-falls' }
     | {
+        /**
+         * Records the piloting checks one physical attack caused this Mek, and the automatic
+         * 2-level fall of a missed death from above. Recording the same `attackId` again adds nothing.
+         */
+        readonly type: 'record-mek-physical-attack-checks';
+        readonly attackId: string;
+        readonly checks: readonly MekPhysicalAttackCheckTriggerKindV2[];
+        readonly missedDeathFromAbove?: true;
+    }
+    | {
         readonly type: 'replace-turn-state';
         readonly turn: MekTurnStateV2;
     }
@@ -315,6 +329,15 @@ export type CBTUnitCommand =
         readonly type: 'set-pending-fall-consequences';
         readonly pending: MekPendingFallConsequencesV2 | null;
     }
+    | {
+        /** Crew members owing one Core consciousness roll at the end of this phase; empty clears it. */
+        readonly type: 'set-consciousness-rolls-due';
+        readonly positionIds: readonly CrewPositionId[];
+    }
+    /**
+     * The game starts over: the unit returns to turn 1 Movement with its per-turn facts, turn-scoped
+     * conditions and uncommitted changes discarded. Committed damage and lasting conditions stay.
+     */
     | { readonly type: 'reset-turn-state' }
     | {
         readonly type: 'end-phase';
@@ -323,6 +346,15 @@ export type CBTUnitCommand =
     }
     | { readonly type: 'mark-end-turn-heat-staged' }
     | { readonly type: 'end-turn'; readonly policy: HeatAutomationPolicy }
+    /** Real-phase mode: the unit finished `step` of its current turn (see turn-sequence). */
+    | { readonly type: 'complete-turn-step'; readonly step: number }
+    /** Real-phase mode: a unit added to a game under way moves forward to the game's position. */
+    | { readonly type: 'join-turn'; readonly turn: number; readonly step: number }
+    /**
+     * Real-phase mode: the unit goes back to act on an earlier `step` of its current turn. Only its
+     * position moves: nothing it did on the later steps is reverted or replayed.
+     */
+    | { readonly type: 'rewind-turn-step'; readonly step: number }
     | { readonly type: 'commit-pending' }
     | { readonly type: 'cancel-pending' }
     | { readonly type: 'set-destroyed'; readonly destroyed: boolean }

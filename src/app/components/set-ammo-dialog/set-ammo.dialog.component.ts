@@ -7,11 +7,11 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { AmmoEquipment } from '../../models/equipment.model';
 import { hasMekRuntime, type CBTUnitSnapshot } from '../../models/cbt-unit-snapshot';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
-import { entityAmmoLoadouts, entityWeaponTechBasesForAmmo, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from '../../models/runtime/mek-ammo';
+import { entityAmmoLoadouts, entityAmmoSelectionCompatibilityFacts, entityWeaponTechBasesForAmmo, mekAmmoDefaultMunitionKey, mekAmmoLoadouts } from '../../models/runtime/mek-ammo';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import type { Era } from '../../models/eras.model';
 import type { EquipmentTechBase } from '../../models/entity/types/tech';
-import { CORE_2026_GAME_RULES, gameRulesFor, type CBTGameRules } from '../../models/rules/game-rules';
+import { gameRulesFor, type CBTGameRules } from '../../models/rules/game-rules';
 import type { UnitType } from '../../models/unit-summary.model';
 import { DialogsService } from '../../services/dialogs.service';
 import { OptionsService } from '../../services/options.service';
@@ -30,7 +30,8 @@ export interface SetAmmoDialogData {
     unitType?: UnitType;
     era?: Era | null;
     compatibilityFacts?: AmmoSelectionCompatibilityFacts;
-    gameRules?: CBTGameRules;
+    /** The rules of the unit whose ammunition is set. */
+    gameRules: CBTGameRules;
     equipmentRegistry?: EquipmentRegistry;
     weaponTechBases?: readonly EquipmentTechBase[];
     hotLoaded?: boolean;
@@ -44,7 +45,11 @@ export interface SetAmmoDialogResult {
 }
 
 /** Dialog data for one runtime bin, shared by construction and record-sheet actions. */
-export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: ComponentId): SetAmmoDialogData | null {
+export function mountedAmmoDialogData(
+    source: CBTUnitSnapshot,
+    componentId: ComponentId,
+    era: Era | null,
+): SetAmmoDialogData | null {
     const mount = source.index.components.get(componentId)?.mount;
     if (!mount) return null;
     const loadouts = hasMekRuntime(source)
@@ -58,10 +63,13 @@ export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: Comp
     const currentAmmo = source.query.ammoEquipment(componentId);
     const selected = loadouts.find(loadout => loadout.equipment.id === currentAmmo?.id);
     if (!selected || !currentAmmo) return null;
+    const ammoOptions = loadouts.map(loadout => loadout.equipment);
     return {
         currentAmmo, originalAmmo: original.equipment,
         originalTotalAmmo: original.capacity,
-        ammoOptions: loadouts.map(loadout => loadout.equipment),
+        ammoOptions,
+        era,
+        compatibilityFacts: entityAmmoSelectionCompatibilityFacts(source.entity, ammoOptions),
         quantity: source.query.remainingAmmo(componentId), maxQuantity: selected.capacity,
         hotLoaded: source.state.ammo.get(componentId)?.hotLoaded === true,
         unitType: source.entity.unitType(), gameRules: gameRulesFor(source.ruleset),
@@ -92,7 +100,7 @@ export function mountedAmmoDialogData(source: CBTUnitSnapshot, componentId: Comp
                         [value]="selectedAmmoName()"
                         [currentAmmo]="data.currentAmmo"
                         [originalAmmo]="data.originalAmmo"
-                        [gameRules]="data.gameRules ?? defaultGameRules"
+                        [gameRules]="data.gameRules"
                         [equipmentRegistry]="data.equipmentRegistry ?? null"
                         (valueChange)="setSelectedAmmo($event)"
                     />
@@ -309,7 +317,6 @@ export class SetAmmoDialogComponent {
     inputQuantityRef = viewChild.required<ElementRef<HTMLInputElement>>('inputQuantityRef');
     public dialogRef = inject<DialogRef<SetAmmoDialogResult | null, SetAmmoDialogComponent>>(DialogRef);
     readonly data: SetAmmoDialogData = inject(DIALOG_DATA);
-    readonly defaultGameRules = CORE_2026_GAME_RULES;
     public totalKgAvailable: number;
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
@@ -339,14 +346,14 @@ export class SetAmmoDialogComponent {
     
     public currentMaxQuantity = computed(() => {
         return Math.floor(this.totalKgAvailable / this.selectedAmmo().getEffectiveKgPerShot(
-            this.data.gameRules ?? this.defaultGameRules,
+            this.data.gameRules,
             this.data.equipmentRegistry,
         ));
     });
 
     constructor() {
         this.totalKgAvailable = this.data.originalAmmo.getEffectiveKgPerShot(
-            this.data.gameRules ?? this.defaultGameRules,
+            this.data.gameRules,
             this.data.equipmentRegistry,
         ) * this.data.originalTotalAmmo;
     }

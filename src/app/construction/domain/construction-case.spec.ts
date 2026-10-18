@@ -17,7 +17,9 @@ const ammo = new AmmoEquipment({ id: 'CASE Test Ammo', name: 'CASE Test Ammo', t
     stats: { explosive: true, criticalSlots: 1, tonnage: 1 }, ammo: { shots: 10 } });
 const caseII = new MiscEquipment({ id: 'CLCASEII', name: 'CASE II', type: 'misc',
     flags: ['F_CASE_II'], stats: { criticalSlots: 1, tonnage: .5, cost: 175000 } });
-const registry = createTestEquipmentRegistry({ [ammo.id]: ammo, [caseII.id]: caseII,
+const clanCase = new MiscEquipment({ id: 'CLCASE', name: 'CASE', type: 'misc',
+    flags: ['F_CASE'], stats: { criticalSlots: 0, tonnage: 0, cost: 50000 } });
+const registry = createTestEquipmentRegistry({ [ammo.id]: ammo, [caseII.id]: caseII, [clanCase.id]: clanCase,
     [STANDARD_STRUCTURE_EQUIPMENT.id]: STANDARD_STRUCTURE_EQUIPMENT });
 
 describe('construction automatic Clan CASE', () => {
@@ -58,6 +60,22 @@ describe('construction automatic Clan CASE', () => {
             tonnage: entity.tonnage(), techBase: 'IS' }));
         expect(entity.automaticClanCaseLocations().size).toBe(0);
         expect(calculateMountedEquipmentCostBreakdown(entity).total).toBe(0);
+    });
+
+    it('keeps explicit Clan CASE on a Clan chassis with IS structure through MTF', () => {
+        const entity = createConstructionEntity('Biped', registry);
+        entity.techBase.set('Clan');
+        entity.mixedTech.set(true);
+        entity.setUniformStructure(new MountedStructure({ structure: STANDARD_STRUCTURE_EQUIPMENT,
+            tonnage: entity.tonnage(), techBase: 'IS' }));
+        addTestEquipment(entity, ammo, { location: 'RT' });
+        addTestEquipment(entity, clanCase, { location: 'RT' });
+        expect(entity.automaticClanCaseLocations().size).toBe(0);
+        const source = encodeNativeEntity(entity);
+        expect(source).toContain('nocrit:CLCASE:RT');
+        const restored = parseEntity(source, 'mixed-clan.mtf', registry).entity;
+        expect(restored.techBase()).toBe('Clan');
+        expect(restored.locationHasCaseProtection('RT')).toBeTrue();
     });
 
     it('resolves hybrid structure technology per location', () => {

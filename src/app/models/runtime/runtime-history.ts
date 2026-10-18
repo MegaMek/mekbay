@@ -3,6 +3,12 @@
 import type { JsonValue } from '../persisted-unit-state';
 import { isMekLocationConditionKey } from './runtime-state';
 import { CBT_HISTORY_FIELD, CBT_HISTORY_TURN_FIELD } from './force-storage-vocabulary';
+import { TURN_STEPS } from '../rules/turn-sequence';
+import {
+    isMekPhysicalAttackCheckTriggerKindV2,
+    mekAutomaticFallReasonV2,
+    mekPhysicalAttackCheckReasonV2,
+} from './mek-movement-psr-v2';
 
 /** Stable wire IDs. Existing numeric meanings must never be reassigned. */
 export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
@@ -37,6 +43,10 @@ export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
     AMMO_LOADOUT_RESET: 29,
     BOMBS_CHANGED: 30,
     VELOCITY_RECORD_CHANGED: 31,
+    TURN_STEP_COMPLETED: 32,
+    TURN_JOINED: 33,
+    PHYSICAL_ATTACK_CHECKS: 34,
+    TURN_STEP_REWOUND: 35,
 } as const);
 
 export type RuntimeHistoryMessageId = typeof RUNTIME_HISTORY_MESSAGE[keyof typeof RUNTIME_HISTORY_MESSAGE];
@@ -218,6 +228,14 @@ export function formatRuntimeHistoryMessage(
             return scoped('Updated bombs');
         case RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED:
             return scoped('Updated velocity record');
+        case RUNTIME_HISTORY_MESSAGE.TURN_STEP_COMPLETED:
+            return scoped(`Finished ${TURN_STEPS[number(data[1])]?.label ?? 'step'}`);
+        case RUNTIME_HISTORY_MESSAGE.TURN_JOINED:
+            return scoped(`Joined the game at turn ${number(data[1]) + 1}`);
+        case RUNTIME_HISTORY_MESSAGE.TURN_STEP_REWOUND:
+            return scoped(`Moved back to ${TURN_STEPS[number(data[1])]?.label ?? 'an earlier step'}`);
+        case RUNTIME_HISTORY_MESSAGE.PHYSICAL_ATTACK_CHECKS:
+            return scoped(formatPhysicalAttackChecks(data));
         case RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET:
             return scoped(formatAmmoLoadoutReset(data, context, instanceId));
         case RUNTIME_HISTORY_MESSAGE.WEAPONS_FIRED:
@@ -259,6 +277,19 @@ function formatWeaponFire(
     if (!munitionKey) return `Fired ${weapon}`;
     const ammo = context.ammoLabel?.(instanceId, munitionKey) ?? munitionKey;
     return `Fired ${weapon} using ${ammo}`;
+}
+
+/** Data: missed death from above (1/0), then the recorded check trigger kinds. */
+function formatPhysicalAttackChecks(data: readonly JsonValue[]): string {
+    const reasons = data.slice(2).map(kind => isMekPhysicalAttackCheckTriggerKindV2(kind)
+        ? mekPhysicalAttackCheckReasonV2(kind)
+        : words(kind));
+    return [
+        ...(reasons.length === 0 ? [] : [
+            `Piloting Skill Roll${reasons.length === 1 ? '' : 's'} required: ${reasons.join(', ')}`,
+        ]),
+        ...(data[1] === 1 ? [`Automatic fall: ${mekAutomaticFallReasonV2('missed-death-from-above')}`] : []),
+    ].join('; ');
 }
 
 function formatMovementChange(data: readonly JsonValue[]): string {

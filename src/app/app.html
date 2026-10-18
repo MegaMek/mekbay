@@ -16,6 +16,9 @@
             </div>
             <div class="main-content">
                 @if (this.hasForces()) {
+                @if (gameTurn.enabled() && hasForceUnits() && !gameService.isAlphaStrike()) {
+                <game-turn-tracker></game-turn-tracker>
+                }
                 <div class="content-area">
                     @if (gameService.isAlphaStrike()) { @defer (when
                     gameService.isAlphaStrike()) {

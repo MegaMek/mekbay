@@ -414,6 +414,7 @@ export function unitCommandHistory(
                 : unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_COMMITTED, instanceId);
         case 'mark-end-turn-heat-staged':
         case 'set-pending-fall-consequences':
+        case 'set-consciousness-rolls-due':
         case 'set-control-recovery':
             return undefined;
         case 'cancel-pending':
@@ -458,6 +459,19 @@ export function unitCommandHistory(
             return unitHistory(RUNTIME_HISTORY_MESSAGE.BOMBS_CHANGED, instanceId);
         case 'set-velocity-record':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED, instanceId);
+        case 'complete-turn-step':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.TURN_STEP_COMPLETED, instanceId, command.step);
+        case 'join-turn':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.TURN_JOINED, instanceId, command.turn);
+        case 'rewind-turn-step':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.TURN_STEP_REWOUND, instanceId, command.step);
+        case 'record-mek-physical-attack-checks':
+            return unitHistory(
+                RUNTIME_HISTORY_MESSAGE.PHYSICAL_ATTACK_CHECKS,
+                instanceId,
+                command.missedDeathFromAbove ? 1 : 0,
+                ...command.checks,
+            );
         case 'set-heat':
         case 'set-pending-heat':
         case 'set-heatsinks-off':

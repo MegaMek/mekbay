@@ -8,7 +8,7 @@ projectEncounterC3Components,
 validateEncounterNetworks,
 type C3EncounterPresentationUnit,
 } from './c3-network-presentation';
-import { C3Role,projectNonMekC3Components,type C3Component } from './c3-network.model';
+import { C3Role,isNovaC3Equipment,projectNonMekC3Components,type C3Component } from './c3-network.model';
 import type { C3State } from './cbt-force.types';
 import type { ComponentId } from './entity/entity-identifiers';
 import { isCBTMekUnit,isCBTNonMekUnit,type CBTMekUnit,type CBTUnit } from './runtime/cbt-unit';
@@ -23,6 +23,7 @@ type ComponentC3EmergencyMasterDefinition,
 import type { EncounterNetwork } from './runtime/encounter-runtime';
 import { c3EndpointKey,projectEffectiveMekC3Networks } from './runtime/mek-c3-runtime';
 import { equipmentForComponent } from './runtime/mek-runtime-index';
+import { powerEffectivelyEnabled } from './runtime/component-electronic-suite';
 
 export interface C3EmergencyMasterNotice {
     readonly message: string;
@@ -63,6 +64,9 @@ export class CBTForceC3 {
         const unit = this.currentUnits()?.get(instanceId);
         if (!unit) return false;
         try {
+            const component = unit.getIndex().components.get(componentId);
+            if (component?.kind === 'equipment' && isNovaC3Equipment(component.mount.equipment)
+                && !powerEffectivelyEnabled(unit.query().componentMode(componentId))) return false;
             if (isCBTMekUnit(unit)) {
                 const query = unit.query();
                 return !query.hasCondition('shutdown')

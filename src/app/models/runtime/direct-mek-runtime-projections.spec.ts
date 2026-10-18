@@ -234,7 +234,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(panelLaser.status).toBe('destroyed');
         expect(panel.physicalAttackBlockers).toEqual([]);
         expect(panel.physicalAttacks.map(attack => attack.label)).toEqual([
-            'Punch', 'Punch', 'Kick', 'Club (Club/Improvised)', 'Charge', 'Push',
+            'Punch', 'Punch', 'Kick', 'Club/Improvised', 'Charge', 'Push',
         ]);
         expect(panel.physicalAttacks.map(attack => attack.hitModifiers)).toEqual([
             [-1], [-1], [-1], [-1], ['versus'], [-1],
@@ -892,7 +892,7 @@ describe('direct Mek entity/runtime projections', () => {
             if (!row) throw new Error(`Missing ${label}`);
             return row;
         };
-        expect(action(armRows(), 'Club (Club/Improvised)').hitModifierBreakdown).toContain(jasmine.objectContaining({
+        expect(action(armRows(), 'Club/Improvised').hitModifierBreakdown).toContain(jasmine.objectContaining({
             label: 'Paired Arm AES', modifier: -1,
         }));
         expect(action(armRows(), 'Push').hitModifierBreakdown).toContain(jasmine.objectContaining({
@@ -903,7 +903,7 @@ describe('direct Mek entity/runtime projections', () => {
             componentId: aesAt(arms, 'LA').id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
-        expect(action(armRows(), 'Club (Club/Improvised)').hitModifierBreakdown).toContain(jasmine.objectContaining({
+        expect(action(armRows(), 'Club/Improvised').hitModifierBreakdown).toContain(jasmine.objectContaining({
             label: 'Arm AES (RA)', modifier: -1,
         }));
         expect(action(armRows(), 'Push').hitModifierBreakdown).toContain(jasmine.objectContaining({
@@ -947,7 +947,7 @@ describe('direct Mek entity/runtime projections', () => {
             'Punch',
             'Punch',
             'Kick',
-            'Club (Club/Improvised)',
+            'Club/Improvised',
             'Charge',
             'Push',
         ]);
@@ -2602,15 +2602,8 @@ describe('direct Mek entity/runtime projections', () => {
         expect(projection.kind).toBe('supported');
         if (projection.kind !== 'supported') return;
         expect(projection.permanentPsrModifier).toBe(1);
-        expect(fixture.instance.query().mekPilotChecks()).toEqual([
-            jasmine.objectContaining({
-                reason: 'Gyro hit',
-                targetNumber: projection.pilotingTargetNumber,
-                source: jasmine.objectContaining({ locationIds: jasmine.arrayWithExactContents([
-                    slots[0]!.locationId,
-                ]) }),
-            }),
-        ]);
+        // The first hit forces no roll; it only adds +1 to later ones.
+        expect(fixture.instance.query().mekPilotChecks()).toEqual([]);
 
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
@@ -2622,13 +2615,18 @@ describe('direct Mek entity/runtime projections', () => {
             targetNumber: projection.pilotingTargetNumber,
         }));
 
-        for (let index = 1; index < 3; index += 1) {
-            expect(fixture.instance.dispatch({
-                type: 'hit-critical',
+        // The second hit counts as a standard gyro's first: it forces a roll.
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical', slotId: slots[1]!.id, hits: 1, target: 'committed',
+        }).accepted).toBeTrue();
+        expect(fixture.instance.query().mekPilotChecks()).toContain(jasmine.objectContaining({
+            reason: 'Gyro hit',
+            source: jasmine.objectContaining({ criticalSlotIds: [slots[1]!.id] }),
+        }));
 
-                slotId: slots[index]!.id, hits: 1, target: 'committed',
-            }).accepted).toBeTrue();
-        }
+        expect(fixture.instance.dispatch({
+            type: 'hit-critical', slotId: slots[2]!.id, hits: 1, target: 'committed',
+        }).accepted).toBeTrue();
         projection = fixture.instance.query().mekMovementPsr();
         expect(projection.kind).toBe('supported');
         if (projection.kind !== 'supported') return;

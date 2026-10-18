@@ -136,7 +136,7 @@ export class CBTPrintUtil {
                     pageContentY: profile.pageContentY,
                     pristineBattleValue: snapshot.battleValue.pristine
                         ?? snapshot.battleValue.current
-                        ?? entity.battleValue(),
+                        ?? member.pristineBattleValue(),
                 });
             });
         }

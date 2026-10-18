@@ -16,6 +16,7 @@ import {
     type UnitCover,
 } from '../unit-cover.model';
 import { serializeSharedTurnFacts } from './cbt-unit-runtime';
+import { HEAT_TURN_STEP } from '../rules/turn-sequence';
 import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export const MAX_MEK_TURN_COLLECTION_ENTRIES = 256;
@@ -90,8 +91,19 @@ export interface MekTurnStateV2 {
     readonly spotting: boolean;
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    readonly turnStep: number;
+    /**
+     * The real-phase step this unit joined the turn at, when it was added after the turn's Movement: it acts
+     * after the Initiative order. Absent otherwise.
+     */
+    readonly joinedStep?: number;
     readonly pendingFallConsequences?: MekPendingFallConsequencesV2;
     readonly pendingCriticalEvents?: readonly MekPendingCriticalEventV2[];
+    /**
+     * Core p.117: crew members hit by this combat phase's damage, each owing one consciousness roll
+     * at the end of the phase. Absent when nobody owes a roll.
+     */
+    readonly consciousnessRollsDue?: readonly CrewPositionId[];
 }
 
 /** Canonical sparse wire form. Map entries are unique and ascending by key. */
@@ -109,8 +121,11 @@ export interface SerializedMekTurnStateV2 {
     readonly spotting?: true;
     readonly phaseStateChanged?: true;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
+    readonly turnStep?: number;
+    readonly joinedStep?: number;
     readonly pendingFallConsequences?: MekPendingFallConsequencesV2;
     readonly pendingCriticalEvents?: readonly MekPendingCriticalEventV2[];
+    readonly consciousnessRollsDue?: readonly CrewPositionId[];
 }
 
 export class MekTurnStateValidationError extends Error {
@@ -130,14 +145,19 @@ const TURN_KEYS = Object.freeze([
     'spotting',
     'phaseStateChanged',
     'endTurnCheckpoint',
+    'turnStep',
+    'joinedStep',
     'pendingFallConsequences',
     'pendingCriticalEvents',
+    'consciousnessRollsDue',
 ] as const);
 
 const REQUIRED_TURN_KEYS = TURN_KEYS.filter(key =>
     key !== 'endTurnCheckpoint'
+    && key !== 'joinedStep'
     && key !== 'pendingFallConsequences'
-    && key !== 'pendingCriticalEvents');
+    && key !== 'pendingCriticalEvents'
+    && key !== 'consciousnessRollsDue');
 
 const PRISTINE_MEK_TURN_STATE = freezeMekTurnState({
     turnCounter: 0,
@@ -148,6 +168,7 @@ const PRISTINE_MEK_TURN_STATE = freezeMekTurnState({
     heatDissipationConsumed: 0,
     spotting: false,
     phaseStateChanged: false,
+    turnStep: 0,
 });
 
 export function createPristineMekTurnStateV2(turnCounter = 0): MekTurnStateV2 {
@@ -184,6 +205,8 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
         ...(record['endTurnCheckpoint'] === undefined
             ? {}
             : { endTurnCheckpoint: checkpoint(record['endTurnCheckpoint'], '$.endTurnCheckpoint') }),
+        turnStep: turnStepNumber(record['turnStep'], '$.turnStep'),
+        ...(record['joinedStep'] === undefined ? {} : { joinedStep: joinedStepNumber(record['joinedStep'], '$.joinedStep') }),
         ...(record['pendingFallConsequences'] === undefined
             ? {}
             : {
@@ -200,6 +223,9 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
                     '$.pendingCriticalEvents',
                 ),
             }),
+        ...(record['consciousnessRollsDue'] === undefined
+            ? {}
+            : { consciousnessRollsDue: dueCrewPositionIds(record['consciousnessRollsDue'], '$.consciousnessRollsDue') }),
     });
 }
 
@@ -221,6 +247,9 @@ export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTur
         ...(turn.pendingCriticalEvents === undefined
             ? {}
             : { pendingCriticalEvents: turn.pendingCriticalEvents }),
+        ...(turn.consciousnessRollsDue === undefined
+            ? {}
+            : { consciousnessRollsDue: turn.consciousnessRollsDue }),
     });
 }
 
@@ -253,6 +282,8 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
         ...(record['endTurnCheckpoint'] === undefined
             ? {}
             : { endTurnCheckpoint: checkpoint(record['endTurnCheckpoint'], '$.endTurnCheckpoint') }),
+        turnStep: sparseTurnStep(record['turnStep'], '$.turnStep'),
+        ...(record['joinedStep'] === undefined ? {} : { joinedStep: joinedStepNumber(record['joinedStep'], '$.joinedStep') }),
         ...(record['pendingFallConsequences'] === undefined
             ? {}
             : {
@@ -269,6 +300,9 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
                     '$.pendingCriticalEvents',
                 ),
             }),
+        ...(record['consciousnessRollsDue'] === undefined
+            ? {}
+            : { consciousnessRollsDue: dueCrewPositionIds(record['consciousnessRollsDue'], '$.consciousnessRollsDue') }),
     });
 }
 
@@ -499,6 +533,13 @@ function canonicalInteger(value: unknown, path: string, minimum: number, maximum
     return value as number;
 }
 
+/** A present list is never empty: nobody owing a roll is the absent field. */
+function dueCrewPositionIds(value: unknown, path: string): readonly CrewPositionId[] {
+    const ids = canonicalCrewPositionIds(value, path);
+    if (ids.length === 0) fail('must name at least one crew position', path);
+    return ids;
+}
+
 function canonicalCrewPositionIds(value: unknown, path: string): readonly CrewPositionId[] {
     const ids = requireArray(value, path).map((item, index) =>
         asCrewPositionId(canonicalText(item, `${path}[${index}]`, MAX_MEK_TURN_TEXT_LENGTH)));
@@ -618,6 +659,28 @@ function turnNumber(value: unknown, path: string): number {
         fail(`must be a canonical number from 0 to ${MAX_MEK_TURN_NUMBER}`, path);
     }
     return value;
+}
+
+/** Completed real-phase steps: only steps up to Heat are marked; Heat itself ends the turn. */
+function turnStepNumber(value: unknown, path: string): number {
+    if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > HEAT_TURN_STEP) {
+        fail(`must be an integer from 0 to ${HEAT_TURN_STEP}`, path);
+    }
+    return value as number;
+}
+
+/** A late join happens after Movement: a positive stored step. */
+function joinedStepNumber(value: unknown, path: string): number {
+    const step = turnStepNumber(value, path);
+    if (step === 0) fail('must be a step after Movement', path);
+    return step;
+}
+
+function sparseTurnStep(value: unknown, path: string): number {
+    if (value === undefined) return 0;
+    const step = turnStepNumber(value, path);
+    if (step === 0) fail('sparse number must be positive', path);
+    return step;
 }
 
 function sparsePositiveNumber(value: unknown, path: string): number {

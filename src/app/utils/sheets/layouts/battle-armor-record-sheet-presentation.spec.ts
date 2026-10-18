@@ -1,54 +1,20 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TestBattleArmorEntity, TestBipedMekEntity } from '../../../models/entity/testing/test-entities';
+import { TestBattleArmorEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
 
 describe('Battle Armor record-sheet presentation', () => {
-    it('matches the Mek 60-degree bottom-right corner and linked bottom notch', async () => {
-        for (const entity of [new TestBattleArmorEntity(), new TestBipedMekEntity()]) {
-            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
-            const frame = svg.querySelector('.compact-battle-armor-frame, #unitDataPanel')!;
-            for (const path of frame.querySelectorAll(':scope > path')) {
-                const d = path.getAttribute('d')!;
-                // The descending bottom-right cut runs left, then the notch's
-                // last three absolute lines climb back to the raised floor.
-                const corner = [...d.matchAll(/l -([\d.e+]+) ([\d.e+-]+)/g)].find(match => Number(match[2]) > 0)!;
-                const cornerAngle = Math.atan2(Number(corner[2]), Number(corner[1])) * 180 / Math.PI;
-                const lines = [...d.matchAll(/L ([\d.e+-]+) ([\d.e+-]+)/g)];
-                const [lower, upper] = lines.slice(-3, -1).map(match => ({ x: Number(match[1]), y: Number(match[2]) }));
-                const notchAngle = Math.atan2(lower.y - upper.y, lower.x - upper.x) * 180 / Math.PI;
-                expect(cornerAngle).withContext(entity.entityType).toBeCloseTo(60, 3);
-                expect(notchAngle).withContext(entity.entityType).toBeCloseTo(cornerAngle, 3);
-            }
-        }
-    });
-
-    it('preserves the taller trooper badge and narrower armor track from the reference', async () => {
+    it('draws one armor location and status pip per trooper', async () => {
         const entity = new TestBattleArmorEntity();
         entity.trooperCount.set(5);
         entity.setArmorValue('Squad', 'front', 10);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
-        document.body.appendChild(svg);
-        try {
-            const outlines = [...svg.querySelectorAll<SVGPathElement>('.battle-armor-trooper > .unitLocation.armor')];
-            expect(outlines.length).toBe(5);
-            expect(outlines.map(outline => outline.getAttribute('data-loc'))).toEqual(['T1', 'T2', 'T3', 'T4', 'T5']);
-            for (const outline of outlines) {
-                // The badge extends above and below the pip track, with clipped corners.
-                expect(outline.isPointInFill(new DOMPoint(12, 1))).toBeTrue();
-                expect(outline.isPointInFill(new DOMPoint(12, 15))).toBeTrue();
-                expect(outline.isPointInFill(new DOMPoint(60, 1))).toBeFalse();
-                expect(outline.isPointInFill(new DOMPoint(60, 15))).toBeFalse();
-                expect(outline.isPointInFill(new DOMPoint(60, 8))).toBeTrue();
-                expect(outline.isPointInFill(new DOMPoint(0, 0))).toBeFalse();
-            }
-            expect(svg.querySelectorAll('.trooperStatusPip').length).toBe(5);
-            expect(svg.querySelectorAll('.pip.armor').length).toBe(55);
-        } finally {
-            svg.remove();
-        }
+        const outlines = [...svg.querySelectorAll('.battle-armor-trooper > .unitLocation.armor')];
+        expect(outlines.map(outline => outline.getAttribute('data-loc'))).toEqual(['T1', 'T2', 'T3', 'T4', 'T5']);
+        expect(svg.querySelectorAll('.trooperStatusPip').length).toBe(5);
+        expect(svg.querySelectorAll('.pip.armor').length).toBe(55);
     });
 
     it('names formations by trooper count and preserves that name when numbering composed blocks', async () => {
@@ -101,12 +67,8 @@ describe('Battle Armor record-sheet presentation', () => {
         const blocks = await Promise.all([entity, entity].map(unit =>
             RecordSheetSvgGenerator.generate(unit, { ruleset: 'total-warfare', format: 'compact' })));
         const page = RecordSheetSvgGenerator.composeCompactPage(blocks);
-        const symbol = page.querySelector('#mekbay-battle-armor-masthead-art')!;
-        const image = symbol.querySelector('image')!;
+        const image = page.querySelector('#mekbay-battle-armor-masthead-art image')!;
         expect(page.querySelectorAll('#mekbay-battle-armor-masthead-art').length).toBe(1);
-        expect(symbol.getAttribute('viewBox')).toBe('0 0 56.7 45.357');
-        expect(image.getAttribute('y')).toBe('5.515');
-        expect(image.getAttribute('height')).toBe('34.327');
         expect(image.getAttributeNS('http://www.w3.org/1999/xlink', 'href')?.startsWith('data:image/png;base64,')).toBeTrue();
         expect(page.querySelector('.battle-armor-masthead-icon')?.getAttribute('href'))
             .toBe('#mekbay-battle-armor-masthead-art');

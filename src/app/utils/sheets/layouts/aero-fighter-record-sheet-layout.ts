@@ -96,6 +96,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 flowCargoAfterInventory: false,
                 showAmmoSummary: true,
                 showQuirks: request.showQuirks,
+                ruleset: request.ruleset,
                 featureText: fighterFeatures(entity).join(', '),
                 ...(entity.entityType === 'FixedWingSupport' ? {
                     featureText: fixedWingSupportFeatures(entity),

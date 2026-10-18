@@ -19,7 +19,7 @@ import type { CBTMekForceMember } from '../../../models/force-member.model';
 import {
 MEK_CREW_STATE_CONTROLS,
 MEK_LOCATION_CONDITION_CONTROLS,
-MEK_UNIT_CONDITION_CONTROLS,
+mekUnitConditionControls,
 } from '../../../models/mek-record-sheet-controls';
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import { resolveMekHitLocation } from '../../../models/runtime/mek-fall-rules';
@@ -39,7 +39,7 @@ MekCriticalChanceResult,
 MekCriticalMutationTarget,
 } from '../../../models/runtime/mek-critical-hit-v2';
 import { DialogsService } from '../../../services/dialogs.service';
-import { OptionsService } from '../../../services/options.service';
+import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
 import { ToastService } from '../../../services/toast.service';
 import { recordSheetAmmoName } from '../../../utils/record-sheet-ammo.util';
 import { clusterTableForMekEntity,type MekHitArc } from '../../../utils/record-sheet-reference-table';
@@ -453,7 +453,7 @@ export class PageViewerMekInteractionService {
         } else if (value.startsWith('set-ammo:')) {
             const componentId = value.slice('set-ammo:'.length) as ComponentId;
             const current = this.currentMekUnit(member, interaction.context);
-            const data = current && mountedAmmoDialogData(current, componentId);
+            const data = current && mountedAmmoDialogData(current, componentId, member.force.era());
             if (!data) return null;
             const ref = this.dialogs.createDialog<SetAmmoDialogResult | null>(SetAmmoDialogComponent, { data });
             const selection = await firstValueFrom(ref.closed);
@@ -536,11 +536,12 @@ export class PageViewerMekInteractionService {
         interaction: Extract<RecordSheetInteraction, { readonly kind: 'condition-menu' }>,
         event: Event,
     ): void {
-        if (!this.currentMekUnit(member, interaction.context)) return;
+        const unit = this.currentMekUnit(member, interaction.context);
+        if (!unit) return;
         this.overlays.openConditionMenu(
             member,
             event,
-            MEK_UNIT_CONDITION_CONTROLS.filter(control => control.placement === 'menu'),
+            mekUnitConditionControls(unit.ruleset).filter(control => control.placement === 'menu'),
             condition => this.currentMekUnit(member)?.query.hasCondition(condition) === true,
             interaction.context,
         );
@@ -993,9 +994,7 @@ export class PageViewerMekInteractionService {
         return Object.freeze({
             query: unit.query,
             heatSinkCount: unit.entity.totalHeatSinks(),
-            heatPolicy: this.options.cbtAutomationMode('heatAndDissipationResolution') === 'yes'
-                ? 'automatic'
-                : 'manual',
+            heatPolicy: heatAutomationPolicy(this.options),
         });
     }
 

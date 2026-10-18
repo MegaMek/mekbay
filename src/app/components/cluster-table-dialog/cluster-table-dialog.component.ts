@@ -19,7 +19,7 @@ import { DialogRef, DIALOG_DATA } from '@angular/cdk/dialog';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { BaseEntity } from '../../models/entity/base-entity';
 import type { MekEntity } from '../../models/entity/entities/mek/mek-entity';
-import { CBTGameRules, CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
+import { CBTGameRules } from '../../models/rules/game-rules';
 import { ReferenceTableRollHistoryService } from '../../services/reference-table-roll-history.service';
 import {
     buildReferenceTableView,
@@ -43,6 +43,7 @@ import {
     clusterTableForEntity,
     clusterTableForMekEntity,
     clusterTableForUnit,
+    mekPhysicalLocationTableRows,
     referenceTableNotes,
 } from '../../utils/record-sheet-reference-table';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
@@ -64,7 +65,8 @@ interface ReferenceRollResult {
 
 export interface ClusterTableDialogData {
     readonly unit: UnitSummary | BaseEntity;
-    readonly gameRules?: CBTGameRules;
+    /** The rules of the unit the tables are opened for. */
+    readonly gameRules: CBTGameRules;
     readonly hasHotLoadedAmmo?: boolean;
 }
 
@@ -97,14 +99,14 @@ export class ClusterTableDialogComponent {
     private combinedRequiredWidth = 0;
 
     readonly data = inject<ClusterTableDialogData>(DIALOG_DATA);
-    readonly gameRules = this.data.gameRules ?? CORE_2026_GAME_RULES;
+    readonly gameRules = this.data.gameRules;
     readonly table = this.data.unit instanceof BaseEntity
         ? this.data.unit.entityType === 'Mek'
             ? clusterTableForMekEntity(this.data.unit as MekEntity)
             : clusterTableForEntity(this.data.unit)
         : clusterTableForUnit(this.data.unit);
     readonly tableGroups = REFERENCE_TABLE_GROUPS;
-    readonly physicalRows = this.gameRules.physicalLocationRows;
+    readonly physicalRows = mekPhysicalLocationTableRows(this.table.hitLocationTable ?? 'biped', this.gameRules.id);
     private readonly allNotes = referenceTableNotes(this.table.hitLocationTable, this.table.equipment);
     readonly clusterNotes = this.allNotes.filter(note => note.id !== 'tripodLeg');
 

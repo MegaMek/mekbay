@@ -209,6 +209,7 @@ describe('unit-search-executor', () => {
             sourceRevision: asSourceHash('AAAAAAAAAAAAAAAAAAAAAAAAAAA'),
           },
           format: 'blk',
+          ruleset: 'core-2026',
         });
       });
 

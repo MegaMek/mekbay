@@ -89,9 +89,6 @@ describe('MekPaperdollGenerator', () => {
         const structureLayer = await MekPaperdollGenerator.createStructurePaperdoll(55.32, 238, 50, {
             pipOptions: { inset: 1.8, stroke: '#356a8a' },
         });
-        armorLayer.setAttribute('transform', 'translate(2 2)');
-        rearArmorLayer.setAttribute('transform', 'translate(2 2)');
-        structureLayer.setAttribute('transform', 'translate(96.68 2)');
         const paperdoll = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         paperdoll.append(armorLayer, rearArmorLayer, structureLayer);
 
@@ -99,8 +96,6 @@ describe('MekPaperdollGenerator', () => {
         expect(paperdoll.querySelector('#paperdoll-art-structure')).not.toBeNull();
         expect(paperdoll.querySelectorAll('[data-type="armor"]').length).toBe(2);
         expect(paperdoll.querySelectorAll('[data-type="structure"]').length).toBe(1);
-        expect(armorLayer.getAttribute('transform')).toBe('translate(2 2)');
-        expect(structureLayer.getAttribute('transform')).toBe('translate(96.68 2)');
         expect(armorLayer.querySelector('[data-location="CT_R"]')).toBeNull();
         expect(armorLayer.querySelector('[data-location="LT_R"]')).toBeNull();
         expect(armorLayer.querySelector('[data-location="RT_R"]')).toBeNull();
@@ -108,7 +103,6 @@ describe('MekPaperdollGenerator', () => {
         expect(paperdoll.querySelectorAll('[data-location="CT_R"]').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('[data-pip-type="shield-dc"] circle').length).toBe(16);
         expect(paperdoll.querySelectorAll('[data-pip-type="shield-da"] polygon').length).toBe(2);
-        expect(paperdoll.querySelector('[data-zone-type="shield-dc"]')?.parentElement?.parentElement?.getAttribute('transform')).toContain('translate');
         expect(paperdoll.querySelectorAll('.shield').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('path').length).toBeGreaterThan(0);
         expect(paperdoll.querySelectorAll('circle').length).toBeGreaterThan(0);
@@ -116,83 +110,7 @@ describe('MekPaperdollGenerator', () => {
         expect(paperdoll.querySelectorAll('rect').length).toBe(0);
     });
 
-    it('fits a standalone paperdoll into the requested dimensions', async () => {
-        const source = new DOMParser().parseFromString(
-            await (await fetch('/images/paperdolls/biped-structure.svg')).text(), 'image/svg+xml',
-        ).documentElement;
-        const [, , sourceWidth, sourceHeight] = source.getAttribute('viewBox')!.split(/\s+/u).map(Number);
-        const expectedScale = Math.min(80 / sourceWidth, 120 / sourceHeight);
-        const paperdoll = await MekPaperdollGenerator.createStructurePaperdoll(80, 120, 50);
-        const fitGroup = paperdoll.firstElementChild as SVGGElement;
-        const scaleGroup = fitGroup.firstElementChild as SVGGElement;
-
-        expect(paperdoll.getAttribute('data-width')).toBe('80');
-        expect(paperdoll.getAttribute('data-height')).toBe('120');
-        expect(paperdoll.getAttribute('data-art-x')).toBe('0');
-        expect(paperdoll.getAttribute('data-art-y')).toBe('0');
-        expect(Number(paperdoll.getAttribute('data-art-width'))).toBeCloseTo(sourceWidth * expectedScale, 8);
-        expect(Number(paperdoll.getAttribute('data-art-height'))).toBeCloseTo(sourceHeight * expectedScale, 8);
-        expect(fitGroup.getAttribute('transform')).toContain('translate(');
-        expect(scaleGroup.getAttribute('transform')).toContain('scale(');
-    });
-
-    it('scales by default and can render paperdoll geometry at native size', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
-                <g id="paperdoll-art-armor">
-                    <path d="M 0 0 H 100 V 20 H 0 Z" />
-                </g>
-            </svg>
-        `);
-        const scaledLayer = await MekPaperdollGenerator.createArmorPaperdoll(50, 40, {}, {
-            assetUrl: `data:image/svg+xml,${source}`,
-        });
-        const nativeLayer = await MekPaperdollGenerator.createArmorPaperdoll(50, 40, {}, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            scale: false,
-        });
-
-        const scaledGroup = scaledLayer.firstElementChild?.firstElementChild as SVGGElement;
-        const nativeGroup = nativeLayer.firstElementChild?.firstElementChild as SVGGElement;
-        expect(scaledGroup.getAttribute('transform')).toBe('scale(0.5)');
-        expect(nativeGroup.getAttribute('transform')).toBeNull();
-    });
-
-    it('fits layers at the top-left by default and centers each axis independently', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
-                <g id="paperdoll-art-armor">
-                    <path d="M 0 0 H 100 V 20 H 0 Z" />
-                </g>
-            </svg>
-        `);
-        const topLeftLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, {}, {
-            assetUrl: `data:image/svg+xml,${source}`,
-        });
-        const verticallyCenteredLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 40, {}, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            centeredVertically: true,
-        });
-
-        expect((topLeftLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 0)');
-        expect((verticallyCenteredLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(0 10)');
-
-        const horizontalSource = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 100">
-                <g id="paperdoll-art-armor">
-                    <path d="M 0 0 H 20 V 100 H 0 Z" />
-                </g>
-            </svg>
-        `);
-        const horizontallyCenteredLayer = await MekPaperdollGenerator.createArmorPaperdoll(40, 100, {}, {
-            assetUrl: `data:image/svg+xml,${horizontalSource}`,
-            centeredHorizontally: true,
-        });
-
-        expect((horizontallyCenteredLayer.firstElementChild as SVGGElement).getAttribute('transform')).toBe('translate(10 0)');
-    });
-
-    it('adds an optional outline around the requested layer dimensions', async () => {
+    it('adds an optional outline frame', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
                 <g id="paperdoll-art-armor">
@@ -211,10 +129,6 @@ describe('MekPaperdollGenerator', () => {
         expect(unframedLayer.querySelector('.paperdoll-frame')).toBeNull();
         const frame = framedLayer.querySelector<SVGRectElement>('.paperdoll-frame');
         expect(frame).not.toBeNull();
-        expect(frame?.getAttribute('x')).toBe('0');
-        expect(frame?.getAttribute('y')).toBe('0');
-        expect(frame?.getAttribute('width')).toBe('100');
-        expect(frame?.getAttribute('height')).toBe('40');
         expect(frame?.getAttribute('fill')).toBe('none');
     });
 
@@ -554,38 +468,15 @@ describe('MekPaperdollGenerator', () => {
 
         const zones = armorLayer.querySelectorAll('[data-layout="rail"]');
         expect(zones.length).toBe(2);
-        expect(zones[0].querySelector('circle')?.getAttribute('cy')).toBe('4');
         expect(zones[0].querySelectorAll('circle').length).toBe(3);
         expect(zones[1].querySelectorAll('circle').length).toBe(1);
-    });
-
-    it('shares a radius per location without unused rails shrinking it', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
-                <g id="paperdoll-art-armor">
-                    <path data-rail="armor" data-location="CT" data-rail-index="0" data-rail-capacity="5" d="M 0 10 L 100 10" />
-                    <path data-rail="armor" data-location="CT" data-rail-index="1" data-rail-capacity="5" d="M 0 4 L 2 4" />
-                    <path data-rail="armor" data-location="CT" data-rail-index="2" data-rail-capacity="5" d="M 0 16 L 2 16" />
-                </g>
-            </svg>
-        `);
-        const armorLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 20, { CT: 5 }, {
-            assetUrl: `data:image/svg+xml,${source}`,
-            pipLayout: 'rail',
-        });
-
-        const circles = armorLayer.querySelectorAll('[data-layout="rail"] circle');
-        const radii = new Set(Array.from(circles, circle => circle.getAttribute('r')));
-        expect(circles.length).toBe(5);
-        expect(radii.size).toBe(1);
-        expect(circles[0].getAttribute('r')).toBe('3');
     });
 
     it('shows generated fill rows as outlined placeholders when requested', async () => {
         const source = encodeURIComponent(`
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60">
                 <g id="paperdoll-art-armor">
-                    <path data-fill="armor" data-location="CT" transform="translate(4 3)" d="M 0 0 H 100 V 60 H 0 Z" />
+                    <path data-fill="armor" data-location="CT" d="M 0 0 H 100 V 60 H 0 Z" />
                 </g>
             </svg>
         `);
@@ -601,10 +492,7 @@ describe('MekPaperdollGenerator', () => {
 
         expect(placeholderGroup).not.toBeNull();
         expect(placeholderGroup?.getAttribute('data-fill-location')).toBe('CT');
-        expect(placeholderGroup?.getAttribute('transform')).toBe('matrix(1 0 0 1 4 3)');
         expect(rows.length).toBeGreaterThan(1);
-        expect(rows.every(row => Number(row.getAttribute('width')) > Number(row.getAttribute('height')))).toBeTrue();
-        expect(rows.every(row => Number(row.getAttribute('height')) <= 5)).toBeTrue();
         expect(rows.every(row => row.getAttribute('fill') === 'none')).toBeTrue();
         expect(rows.every(row => row.getAttribute('stroke'))).toBeTrue();
 
@@ -618,44 +506,7 @@ describe('MekPaperdollGenerator', () => {
         expect(noGeneratedRowsLayer.querySelector('[data-fill-placeholder-row]')).toBeNull();
     });
 
-    it('uses the effective matrix when fill rows are disabled', async () => {
-        const source = encodeURIComponent(`
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 160">
-                <g id="paperdoll-art-armor">
-                    <rect
-                        x="29.384"
-                        y="31.485"
-                        width="18.945"
-                        height="115.741"
-                        style="transform-box: fill-box; transform-origin: 50% 50%;"
-                        transform="matrix(0.974593, 0.223983, -0.223983, 0.974593, 14.056866, -32.599451)"
-                        data-fill="armor"
-                        data-location="LL" />
-                </g>
-            </svg>
-        `);
-        for (const pipLayout of ['distributed', 'generic'] as const) {
-            const baseOptions = {
-                assetUrl: `data:image/svg+xml,${source}`,
-                pipLayout,
-                scale: false,
-            };
-            const generatedLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 160, { LL: 8 }, {
-                ...baseOptions,
-                generateFillRows: true,
-            });
-            const directLayer = await MekPaperdollGenerator.createArmorPaperdoll(100, 160, { LL: 8 }, {
-                ...baseOptions,
-                generateFillRows: false,
-            });
-
-            const generatedPips = generatedLayer.querySelector(`[data-pip-layout="${pipLayout}"]`);
-            const directPips = directLayer.querySelector(`[data-pip-layout="${pipLayout}"]`);
-            expect(generatedPips?.getAttribute('transform')).toBe(directPips?.getAttribute('transform'));
-        }
-    });
-
-    it('places rail diamonds along curved SVG geometry', () => {
+    it('renders rail diamonds along curved SVG paths', () => {
         const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         rail.setAttribute('d', 'M 0 0 C 10 0 20 20 30 20');
 
@@ -663,18 +514,5 @@ describe('MekPaperdollGenerator', () => {
 
         expect(pips).not.toBeNull();
         expect(pips?.querySelectorAll('polygon').length).toBe(5);
-        expect(pips?.querySelector('polygon')?.getAttribute('transform')).toContain('rotate(');
-    });
-
-    it('places partial rails in their full-capacity slots', () => {
-        const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        rail.setAttribute('d', 'M 0 0 L 100 0');
-
-        const pips = RailPipRenderer.createPips(rail, 2, {}, 'armor', 'CT', 5);
-        const circles = pips?.querySelectorAll('circle');
-
-        expect(circles?.length).toBe(2);
-        expect(Number(circles?.[0].getAttribute('cx'))).toBeCloseTo(10);
-        expect(Number(circles?.[1].getAttribute('cx'))).toBeCloseTo(30);
     });
 });

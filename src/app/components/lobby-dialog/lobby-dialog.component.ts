@@ -6,12 +6,16 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@a
 import { DecimalPipe } from '@angular/common';
 import { DialogRef } from '@angular/cdk/dialog';
 import { type CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
-import type { LobbyParticipant } from '../../models/lobby.model';
+import { CBT_RULESET_LABELS, type CBTRuleset } from '../../models/cbt-ruleset.model';
+import type { LobbyGameSettings, LobbyParticipant } from '../../models/lobby.model';
 import { getFactionImg } from '../../models/factions.model';
+import { INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
+import type { InitiativeOrderMode } from '../../models/rules/initiative-rules';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
 import { LobbyService } from '../../services/lobby.service';
 import { ToastService } from '../../services/toast.service';
+import { ModeSwitchComponent } from '../mode-switch/mode-switch.component';
 
 interface LobbyDisplayForce {
     instanceId: string;
@@ -37,7 +41,7 @@ interface LobbySideTotals {
 @Component({
     selector: 'lobby-dialog',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [DecimalPipe, DragDropModule],
+    imports: [DecimalPipe, DragDropModule, ModeSwitchComponent],
     host: { class: 'fullscreen-dialog-host glass' },
     templateUrl: './lobby-dialog.component.html',
     styleUrl: './lobby-dialog.component.scss',
@@ -48,6 +52,10 @@ export class LobbyDialogComponent {
     private readonly dialogsService = inject(DialogsService);
     private readonly toastService = inject(ToastService);
     private readonly dialogRef = inject(DialogRef<void>);
+    readonly rulesetLabels = CBT_RULESET_LABELS;
+    readonly initiativeOrderChoices = INITIATIVE_ORDER_CHOICES;
+    readonly initiativeOrderLabel = computed(() => INITIATIVE_ORDER_CHOICES
+        .find(choice => choice.value === this.lobbyService.settings()?.initiativeOrder)?.label ?? '');
 
     readonly participants = computed<LobbyDisplayParticipant[]>(() => {
         const slotsById = new Map(
@@ -108,6 +116,24 @@ export class LobbyDialogComponent {
         this.lobbyService.setLocked((event.target as HTMLInputElement).checked);
     }
 
+    async onRulesetChange(useCore2026: boolean): Promise<void> {
+        const ruleset: CBTRuleset = useCore2026 ? 'core-2026' : 'total-warfare';
+        const confirmed = await this.dialogsService.requestConfirmation(
+            `Every player in the lobby, you included, switches to ${CBT_RULESET_LABELS[ruleset]} now. Undo starts over.`,
+            'Change Lobby Rules?',
+            'warning',
+        );
+        if (confirmed) this.updateSettings({ ruleset });
+    }
+
+    onInitiativeOrderChange(event: Event): void {
+        this.updateSettings({ initiativeOrder: (event.target as HTMLSelectElement).value as InitiativeOrderMode });
+    }
+
+    onInitiativeDieChange(event: Event): void {
+        this.updateSettings({ initiativeDie: (event.target as HTMLSelectElement).value === 'true' });
+    }
+
     async copyCode(): Promise<void> {
         const code = this.lobbyService.state()?.code;
         if (!code) return;
@@ -134,6 +160,12 @@ export class LobbyDialogComponent {
 
     close(): void {
         this.dialogRef.close();
+    }
+
+    /** Settings wait while the host's forces switch rules, so a change cannot carry the rules being replaced. */
+    private updateSettings(change: Partial<LobbyGameSettings>): void {
+        const settings = this.lobbyService.settings();
+        if (settings && !this.lobbyService.switchingRuleset()) void this.lobbyService.setSettings({ ...settings, ...change });
     }
 
     private participantLabel(participant: LobbyParticipant): string {

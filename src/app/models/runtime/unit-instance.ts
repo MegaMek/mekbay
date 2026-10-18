@@ -30,6 +30,7 @@ import { isGaussEquipment } from '../gauss-equipment.model';
 import { canChangeAirborneGround,motiveModeFactsForEntity } from '../motiveModes.model';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
+import { compareTurnPositions, isMarkableTurnStep, isStoredTurnStep, TURN_STEPS } from '../rules/turn-sequence';
 import { activeStealthHeatComponents,getActiveStealthTnModifiers,hasFunctionalEcmForStealth,isStealthEquipment,isStealthSystemEquipment,isSwitchableStealthEquipment,isVoidSignatureEquipment,nextStealthState,STEALTH_DISABLING_MODE,STEALTH_ENABLING_MODE,stealthStateForMode,unitHasActiveC3DisruptingStealth,unitHasActiveVoidSignature,type StealthEquipmentFacts,type StealthState } from '../stealth-equipment.model';
 import type { TnStealthModifiers } from '../target-number-calculator.model';
 import { conditionsCarriedIntoNextTurn,isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
@@ -70,8 +71,8 @@ import { projectMekBlowOffV2,projectMekCriticalChanceV2,projectMekCriticalRollPr
 import { mekCriticalSlotDirectHitThreshold,mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import { createMekTorsoCripplingRuleCheckTokenV2,MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,type MekDamageStateViewV2,type MekRuleCheckKeyV2,type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
 import { applyPendingMekHeatContextV2,assertMekHeatContextEntityV2,buildMekHeatKernelInputV2,canonicalizeMekHeatStateV2,createUnboundMekHeatContextV2,disableMekHeatContextV2,MAX_MEK_HEATSINKS_OFF_V2,mekHeatCapabilityV2,mekHeatSourceSignatureV2,projectMekHeatContextV2,resolveEndTurnMekHeatContextV2,validateMekHeatContextStateV2,type MekHeatCapabilityV2,type MekHeatKernelInputV2,type MekHeatProjectionResultV2,type MekHeatRuntimeContextV2,type MekHeatStateV2 } from './mek-heat-state-v2';
-import { adjustMekStandAttemptsContextV2,assertMekMechanicsContextEntityV2,createUnboundMekMechanicsContextV2,declareMekActionContextV2,declareMekMovementContextV2,prepareMekStandUpContextV2,projectMekBattleValueMovementContextV2,projectMekC3EndpointCapabilitiesV2,projectMekCombatModifiersContextV2,projectMekDestructionContextV2,projectMekMovementPsrContextV2,projectMekPhysicalAttacksContextV2,projectMekPilotChecksContextV2,projectMekShieldsContextV2,reconcileMekPilotChecksContextV2,reconcileMekRuleChecksContextV2,resolveMekPilotCheckContextV2,resolveMekRuleCheckContextV2,resolveMekStandAttemptContextV2,synthesizeCommittedMekDamagePilotChecksContextV2,type MekC3EndpointCapabilitiesResultV2,type MekDestructionProjectionResultV2,type MekMechanicsContextV2,type MekMovementRuntimeContextInputV2,type MekShieldProjectionResultV2 } from './mek-mechanics-context-v2';
-import { canonicalizeMekMovementPsrStateV2,clearMekActionV2,clearMekMovementV2,createPristineMekMovementPsrStateV2,dismissMekAutomaticFallsV2,dismissPendingMekPilotChecksV2,mekMovementPsrStatesEqualV2,resetMekMovementPsrPhaseV2,resetMekMovementPsrTurnV2,type MekCommittedDamageMutationV2,type MekMovementModeV2,type MekMovementPsrProjectionResultV2,type MekMovementPsrStateV2,type MekPilotCheckV2 } from './mek-movement-psr-v2';
+import { adjustMekStandAttemptsContextV2,appendMekPhysicalAttackChecksContextV2,assertMekMechanicsContextEntityV2,createUnboundMekMechanicsContextV2,declareMekActionContextV2,declareMekMovementContextV2,prepareMekStandUpContextV2,projectMekBattleValueMovementContextV2,projectMekC3EndpointCapabilitiesV2,projectMekCombatModifiersContextV2,projectMekDestructionContextV2,projectMekMovementPsrContextV2,projectMekPhysicalAttacksContextV2,projectMekPilotChecksContextV2,projectMekShieldsContextV2,reconcileMekPilotChecksContextV2,reconcileMekRuleChecksContextV2,dismissMekPilotChecksContextV2,dropMekPilotChecksUnraisedByRulesContextV2,resolveMekPilotCheckContextV2,resolveMekRuleCheckContextV2,resolveMekStandAttemptContextV2,synthesizeCommittedMekDamagePilotChecksContextV2,type MekC3EndpointCapabilitiesResultV2,type MekDestructionProjectionResultV2,type MekMechanicsContextV2,type MekMovementRuntimeContextInputV2,type MekShieldProjectionResultV2 } from './mek-mechanics-context-v2';
+import { canonicalizeMekMovementPsrStateV2,clearMekActionV2,clearMekMovementV2,createPristineMekMovementPsrStateV2,dismissMekAutomaticFallsV2,mekMovementPsrStatesEqualV2,resetMekMovementPsrPhaseV2,resetMekMovementPsrTurnV2,type MekCommittedDamageMutationV2,type MekMovementModeV2,type MekMovementPsrProjectionResultV2,type MekMovementPsrStateV2,type MekPilotCheckV2 } from './mek-movement-psr-v2';
 import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-v2';
 import { componentLocationIds,equipmentForComponent,type MekIndexedBay,type MekIndexedCriticalSlot,type MekRuntimeIndex } from './mek-runtime-index';
 import { mekWeaponTargetSubject,resolveMekUnitWaterState } from './mek-targeting-rules';
@@ -166,9 +167,12 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     heatProjection(policy: HeatAutomationPolicy): MekHeatProjectionResultV2;
     mekMovementPsr(): MekMovementPsrProjectionResultV2;
     mekMovementPsrState(): MekMovementPsrStateV2;
+    /** This phase's pilot checks with the targets they roll against (derived for pending checks). */
     mekPilotChecks(): readonly MekPilotCheckV2[];
     /** Pure preview of the exact phase-boundary reduction; never mutates runtime state. */
     previewEndPhase(): MekUnitCommandResult;
+    /** The pilot checks that boundary leaves to roll, with their targets once pending damage is committed. */
+    previewEndPhasePilotChecks(): readonly MekPilotCheckV2[];
     mekMovementMode():
         | { readonly kind: 'supported'; readonly mode: MekMovementModeV2 | null }
         | { readonly kind: 'unsupported' };
@@ -223,6 +227,19 @@ export function createMekRuntimeBinding(
     const state = freezeRuntimeState({ ...reconciled,
         crew: assignedCrewRuntimeState(reconciled.crew, assignment) });
     return Object.freeze({ binding, state });
+}
+
+/** Drops the pending pilot checks the rules the unit is bound to raise no roll for (see the PSR ledger). */
+export function dropMekPilotChecksUnraisedByRules(
+    binding: MekRuntimeBinding,
+    state: MekUnitRuntimeState,
+): MekUnitRuntimeState {
+    const movementPsr = dropMekPilotChecksUnraisedByRulesContextV2(
+        binding.mechanicsContext,
+        requireCanonicalMek(binding.source),
+        state.movementPsr,
+    );
+    return movementPsr === state.movementPsr ? state : freezeRuntimeState({ ...state, movementPsr });
 }
 
 export function queryMekRuntime(binding: MekRuntimeBinding, state: MekUnitRuntimeState): MekUnitQueryPort {
@@ -388,11 +405,17 @@ class MekRuntimeQuery {
             projectedDerivedConditions = new ImmutableSet(conditions);
             return projectedDerivedConditions;
         };
-        const pilotChecksProjection = () => projectMekPilotChecksContextV2(
+        let pilotChecksResult: readonly MekPilotCheckV2[] | undefined;
+        const pilotChecks = (): readonly MekPilotCheckV2[] => pilotChecksResult ??= projectRuntimeMekPilotChecks(
+            unit,
+            state,
+            statusTopology,
+            this.#source.crewAssignment,
             this.#mechanicsContext,
-            this.#source.entity,
-            state.movementPsr,
+            projectionContext(),
         );
+        let endPhaseResult: MekUnitCommandResult | undefined;
+        const previewEndPhase = (): MekUnitCommandResult => endPhaseResult ??= this.preview({ type: 'end-phase' });
         const battleValueProjection = () => projectRuntimeMekBattleValue(
             unit,
             this.#source.index,
@@ -684,10 +707,7 @@ class MekRuntimeQuery {
             },
             mekMovementPsr: movementProjection,
             mekMovementPsrState: () => state.movementPsr,
-            mekPilotChecks: () => {
-                const projection = pilotChecksProjection();
-                return projection.kind === 'supported' ? projection.checks : state.movementPsr.checks;
-            },
+            mekPilotChecks: pilotChecks,
             mekMovementMode: () => movementProjection().kind === 'unsupported'
                 ? Object.freeze({ kind: 'unsupported' as const })
                 : Object.freeze({ kind: 'supported' as const, mode: state.movementPsr.movement?.mode ?? null }),
@@ -713,9 +733,19 @@ class MekRuntimeQuery {
                     : CrewMember.vacant;
             },
             turnState: () => state.turn,
-            previewEndPhase: () => this.preview({
-                type: 'end-phase',
-            }),
+            previewEndPhase,
+            previewEndPhasePilotChecks: () => {
+                const preview = previewEndPhase();
+                return preview.accepted && preview.state !== null
+                    ? projectRuntimeMekPilotChecks(
+                        unit,
+                        preview.state,
+                        statusTopology,
+                        this.#source.crewAssignment,
+                        this.#mechanicsContext,
+                    )
+                    : Object.freeze([]);
+            },
             linkedTarget: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
                 unit.index.relationships.linkedTargetBySource.get(componentId)),
             linkedSource: (componentId: ComponentId) => requireComponent(unit, componentId, () =>
@@ -1849,6 +1879,7 @@ function reduce(
                 state.movementPsr,
                 command.declaration,
                 nextRevision,
+                raisesImmediatePilotChecks(state, command.realPhases),
             );
             if (!transition.accepted) {
                 return unchanged(state);
@@ -1896,6 +1927,7 @@ function reduce(
                 state.movementPsr,
                 command.action,
                 nextRevision,
+                raisesImmediatePilotChecks(state, command.realPhases),
             );
             if (!transition.accepted) {
                 return unchanged(state);
@@ -2000,9 +2032,14 @@ function reduce(
             break;
         }
         case 'resolve-mek-pilot-check': {
+            const input = createMovementRuntimeInput(
+                unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
+            );
+            if (!input) return unchanged(state);
             const projectedResolution = resolveMekPilotCheckContextV2(
                 mechanicsContext,
                 entity,
+                input,
                 state.movementPsr,
                 command.checkId,
                 command.evidence,
@@ -2025,7 +2062,9 @@ function reduce(
         }
         case 'dismiss-mek-pilot-checks': {
             try {
-                const movementPsr = dismissPendingMekPilotChecksV2(
+                const movementPsr = dismissMekPilotChecksContextV2(
+                    mechanicsContext,
+                    entity,
                     state.movementPsr,
                     command.checkIds,
                 );
@@ -2042,6 +2081,60 @@ function reduce(
             changed = mekMovementPsrStatesEqualV2(state.movementPsr, movementPsr)
                 ? null
                 : { ...state, movementPsr };
+            break;
+        }
+        case 'record-mek-physical-attack-checks': {
+            const input = createMovementRuntimeInput(
+                unit, state, statusTopology, runtime.crewAssignment(), mechanicsContext,
+            );
+            if (!input) return unchanged(state);
+            let movementPsr: MekMovementPsrStateV2;
+            try {
+                const appended = appendMekPhysicalAttackChecksContextV2(
+                    mechanicsContext,
+                    entity,
+                    input,
+                    state.movementPsr,
+                    command.attackId,
+                    command.checks,
+                    command.missedDeathFromAbove ?? false,
+                    nextRevision,
+                );
+                if ('kind' in appended) return unchanged(state);
+                movementPsr = appended;
+            } catch {
+                return unchanged(state);
+            }
+            changed = mekMovementPsrStatesEqualV2(state.movementPsr, movementPsr)
+                ? null
+                : { ...state, movementPsr };
+            break;
+        }
+        case 'complete-turn-step': {
+            if (!isMarkableTurnStep(command.step) || command.step !== state.turn.turnStep) return unchanged(state);
+            changed = { ...state, turn: canonicalizeMekTurnStateV2({ ...state.turn, turnStep: command.step + 1 }) };
+            break;
+        }
+        case 'rewind-turn-step': {
+            if (!isStoredTurnStep(command.step) || command.step >= state.turn.turnStep) return unchanged(state);
+            changed = { ...state, turn: canonicalizeMekTurnStateV2({ ...state.turn, turnStep: command.step }) };
+            break;
+        }
+        case 'join-turn': {
+            if (!Number.isSafeInteger(command.turn) || !isStoredTurnStep(command.step)
+                || compareTurnPositions(command, { turn: state.turn.turnCounter, step: state.turn.turnStep }) <= 0) {
+                return unchanged(state);
+            }
+            const { joinedStep: _previous, ...turn } = state.turn;
+            changed = {
+                ...state,
+                turn: canonicalizeMekTurnStateV2({
+                    ...turn,
+                    turnCounter: command.turn,
+                    turnStep: command.step,
+                    ...(command.step === 0 ? {} : { joinedStep: command.step }),
+                }),
+            };
             break;
         }
         case 'replace-turn-state': {
@@ -2076,11 +2169,26 @@ function reduce(
             changed = mekTurnStatesEqualV2(state.turn, turn) ? null : { ...state, turn };
             break;
         }
-        case 'reset-turn-state': {
-            const turn = createPristineMekTurnStateV2(state.turn.turnCounter);
+        case 'set-consciousness-rolls-due': {
+            const { consciousnessRollsDue: _discarded, ...baseTurn } = state.turn;
+            const positionIds = [...new Set(command.positionIds)].sort(compareText);
+            if (positionIds.some(positionId => !index.crewPositions.has(positionId))) return unchanged(state);
+            const turn = canonicalizeMekTurnStateV2(positionIds.length === 0
+                ? baseTurn
+                : { ...baseTurn, consciousnessRollsDue: positionIds });
             changed = mekTurnStatesEqualV2(state.turn, turn) ? null : { ...state, turn };
             break;
         }
+        case 'reset-turn-state':
+            changed = {
+                ...state,
+                conditions: new ImmutableSet(conditionsCarriedIntoNextTurn(state.conditions)),
+                heat: withPendingHeat(state.heat, undefined),
+                movementPsr: createPristineMekMovementPsrStateV2(),
+                turn: createPristineMekTurnStateV2(),
+                pendingCombat: emptyPending(),
+            };
+            break;
         case 'end-phase':
             changed = endPhase(
                 unit,
@@ -2172,12 +2280,17 @@ function reduce(
     });
 }
 
+/** Under the full phase system the checks a unit raises in its Movement step are rolled at once (TW p.59; Core p.113). */
+function raisesImmediatePilotChecks(state: MekUnitRuntimeState, realPhases: true | undefined): boolean {
+    return realPhases === true && TURN_STEPS[state.turn.turnStep]?.phase === 'movement';
+}
+
 function movementBoundaryNeedsEvaluation(
     state: MekUnitRuntimeState,
     commandType: CBTUnitCommand['type'],
 ): boolean {
     const phaseBoundary = commandType === 'end-phase';
-    const turnBoundary = commandType === 'end-turn' || commandType === 'reset-turn-state';
+    const turnBoundary = commandType === 'end-turn';
     if (phaseBoundary) return true;
     if (!turnBoundary) return false;
 
@@ -2252,7 +2365,7 @@ function reconcileMovementAfterCommand(
         try {
             if (command.type === 'end-phase') {
                 changed = { ...changed, movementPsr: resetMekMovementPsrPhaseV2(changed.movementPsr) };
-            } else if (command.type === 'end-turn' || command.type === 'reset-turn-state') {
+            } else if (command.type === 'end-turn') {
                 changed = {
                     ...changed,
                     movementPsr: resetMekMovementPsrTurnV2(changed.movementPsr),
@@ -2262,9 +2375,7 @@ function reconcileMovementAfterCommand(
             return null;
         }
     }
-    if (command.type === 'end-phase'
-        || command.type === 'end-turn'
-        || command.type === 'reset-turn-state') {
+    if (command.type === 'end-phase' || command.type === 'end-turn') {
         if (automaticFallPending) {
             const conditions = new Set(changed.conditions);
             conditions.add('prone');
@@ -2372,6 +2483,22 @@ function hasDetonatedBoobyTrap(unit: MekRuntimeSource, state: MekUnitRuntimeStat
 interface MekRuntimeProjectionContext {
     readonly committedStatus: RuntimeEquipmentStatusKernel;
     readonly destruction: MekDestructionProjectionResultV2;
+}
+
+/** The phase's pilot checks with their derived targets; none when the Mek's movement rules are unsupported. */
+function projectRuntimeMekPilotChecks(
+    unit: MekRuntimeSource,
+    state: MekUnitRuntimeState,
+    statusTopology: RuntimeEquipmentStatusTopology,
+    crewAssignment: CrewAssignment,
+    mechanicsContext: MekMechanicsContextV2,
+    context?: MekRuntimeProjectionContext,
+): readonly MekPilotCheckV2[] {
+    const input = createMovementRuntimeInput(unit, state, statusTopology, crewAssignment, mechanicsContext, context);
+    const projection = input === null
+        ? null
+        : projectMekPilotChecksContextV2(mechanicsContext, requireCanonicalMek(unit), input, state.movementPsr);
+    return projection?.kind === 'supported' ? projection.checks : Object.freeze([]);
 }
 
 function projectRuntimeMekMovementPsr(

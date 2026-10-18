@@ -78,6 +78,18 @@ describe('Mek V2 turn state', () => {
         }).endTurnCheckpoint).toBe('heat-staged');
     });
 
+    it('round-trips the crew owing a consciousness roll and never stores an empty list', () => {
+        const due = [asCrewPositionId('crew:0'), asCrewPositionId('crew:1')];
+        const state = canonicalizeMekTurnStateV2({ ...createPristineMekTurnStateV2(), consciousnessRollsDue: due });
+        const serialized = serializeMekTurnStateV2(state);
+
+        expect(serialized.consciousnessRollsDue).toEqual(due);
+        expect(mekTurnStatesEqualV2(deserializeMekTurnStateV2(JSON.parse(JSON.stringify(serialized))), state))
+            .toBeTrue();
+        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, consciousnessRollsDue: [] }))
+            .toThrowError(MekTurnStateValidationError);
+    });
+
     it('round-trips the exact ordered critical cursor without rerolling it', () => {
         const locationId = asLocationId('mek:location:CT');
         const state = canonicalizeMekTurnStateV2({

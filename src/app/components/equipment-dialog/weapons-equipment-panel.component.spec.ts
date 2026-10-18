@@ -289,7 +289,7 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
         const row = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
         (row.querySelector('.equipment-name') as HTMLElement).click();
-        expect(harness.selectTarget).toHaveBeenCalledOnceWith(harness.weaponRow, 'selected');
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith([harness.weaponRow], 'selected');
         harness.selectTarget.calls.reset();
         (row.querySelector('.secondary-controls-toggle') as HTMLButtonElement).click();
         fixture.detectChanges();
@@ -305,10 +305,33 @@ describe('WeaponsEquipmentPanelComponent', () => {
         fixture.detectChanges();
         const row = fixture.nativeElement.querySelector('.weapon-equipment-row') as HTMLElement;
         (row.querySelector('.select-cell input') as HTMLInputElement).click();
-        expect(harness.selectTarget).toHaveBeenCalledOnceWith(harness.weaponRow, 'selected');
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith([harness.weaponRow], 'selected');
         harness.selectTarget.calls.reset();
         (row.querySelector('.range-short') as HTMLButtonElement).click();
-        expect(harness.selectTarget).toHaveBeenCalledOnceWith(harness.weaponRow, 'range:short');
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith([harness.weaponRow], 'range:short');
+    });
+
+    it('selects every usable ranged weapon from the group checkbox in one runtime call', () => {
+        const harness = createRuntime();
+        const secondRow = { ...harness.weaponRow, componentId: asComponentId('component:laser-2') };
+        const destroyedRow = {
+            ...harness.weaponRow,
+            componentId: asComponentId('component:laser-3'),
+            status: 'destroyed',
+            previewStatus: 'destroyed',
+        } as EquipmentPanelComponent;
+        const weapons = [harness.weaponRow, secondRow, destroyedRow];
+        const snapshot = { ...harness.runtime.snapshot(), components: [...weapons, harness.ammoRow] };
+        const runtime = {
+            ...harness.runtime,
+            snapshot: () => snapshot,
+            weapons: () => weapons,
+        } as unknown as EquipmentDialogRuntimeController;
+        const { fixture } = createComponent(runtime);
+
+        (fixture.nativeElement.querySelector('.ranged-select-all') as HTMLInputElement).click();
+
+        expect(harness.selectTarget).toHaveBeenCalledOnceWith([harness.weaponRow, secondRow], 'selected');
     });
 
     it('keeps row activation opt-in and prevents changes in a read-only tactical view', () => {
@@ -457,8 +480,8 @@ describe('WeaponsEquipmentPanelComponent', () => {
         (fixture.nativeElement.querySelector('.ammo-stepper-button') as HTMLButtonElement).click();
         (fixture.nativeElement.querySelector('.controls-cell .bt-button') as HTMLButtonElement).click();
 
-        expect(harness.selectTarget).toHaveBeenCalledWith(harness.weaponRow, 'selected');
-        expect(harness.selectTarget).toHaveBeenCalledWith(harness.weaponRow, 'range:short');
+        expect(harness.selectTarget).toHaveBeenCalledWith([harness.weaponRow], 'selected');
+        expect(harness.selectTarget).toHaveBeenCalledWith([harness.weaponRow], 'range:short');
         expect(harness.configureAmmo).toHaveBeenCalledWith(harness.ammoRow, 'ammo:laser', 3);
         expect(harness.chooseInteraction).toHaveBeenCalled();
     });

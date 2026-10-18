@@ -61,6 +61,7 @@ bindRecordSheetInventoryButtons,
 NO_INVENTORY_SELECTION,
 projectRecordSheetWeaponSelection,
 readRecordSheetComponentIds,
+renderRecordSheetHeatProfile,
 renderRecordSheetInventorySelection,
 writeRecordSheetComponentIds,
 type RecordSheetInventorySource,
@@ -213,7 +214,7 @@ export function bindNonMekRecordSheet(
             }), 'value');
         }
         renderInventorySelections(svg, inventory, bind, context);
-        renderHeat(svg, snapshot, issues, bind, bindHeatCell, context);
+        renderHeat(svg, snapshot, issues, bind, bindHeatCell, context, inventory);
         renderRecordSheetDestroyed(svg, snapshot.destroyed);
         firstRender = false;
         return Object.freeze(issues);
@@ -600,8 +601,10 @@ function renderHeat(
     bind: RecordSheetBind,
     bindHeatCell: (element: SVGElement, heat: number) => void,
     context: () => UnitEditContext,
+    inventory: RecordSheetInventorySource | null,
 ): void {
     if (!snapshot.heat.tracked) return;
+    renderRecordSheetHeatProfile(svg, snapshot.heat.dissipation, inventory);
     if (!svg.querySelector('#heatScale .heat[heat]')) issues.push('Missing heat scale');
     renderRecordSheetHeatScale(svg, nonMekRecordSheetHeatScale(snapshot), 'aero', bindHeatCell);
     bindRecordSheetHeatControls(svg, bind, context);

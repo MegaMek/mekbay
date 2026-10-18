@@ -126,6 +126,7 @@ describe('PageViewerMekInteractionService', () => {
             },
         });
         force = {
+            era: () => null,
             getMekRecordSheetSnapshot: jasmine.createSpy().and.callFake(() => currentSnapshot),
             getEquipmentPanelSnapshot: jasmine.createSpy().and.callFake(() => panel),
             dispatchUnitCommand: jasmine.createSpy().and.callFake(async (_unitId: string, command: any) => {
@@ -333,6 +334,8 @@ describe('PageViewerMekInteractionService', () => {
 
     for (const outcome of ['selected', 'cancelled', 'stale', 'intrinsic'] as const) {
         it(`opens Set Ammo for the clicked slot and handles a ${outcome} selection`, async () => {
+            const era = { id: 1, name: 'Test Era', years: { from: 2900, to: 3000 }, factions: [], units: [] };
+            force.era = () => era;
             const ammo = new AmmoEquipment({ id: 'standard', name: 'AC/20 Ammo', type: 'ammo',
                 ammo: { type: 'AC', rackSize: 20, shots: 5 } });
             const flak = new AmmoEquipment({ id: 'flak', name: 'Flak AC/20 Ammo', type: 'ammo',
@@ -358,7 +361,7 @@ describe('PageViewerMekInteractionService', () => {
             } as unknown as RecordSheetInteraction, anchoredMouseEvent());
             choiceConfig!.onPick(choiceConfig!.values.find(choice => choice.label === 'Set Ammo')!);
             expect(dialogs.createDialog).toHaveBeenCalledWith(SetAmmoDialogComponent, {
-                data: jasmine.objectContaining({ originalAmmo: ammo, currentAmmo: ammo, originalTotalAmmo: intrinsic ? 1 : 5,
+                data: jasmine.objectContaining({ era, originalAmmo: ammo, currentAmmo: ammo, originalTotalAmmo: intrinsic ? 1 : 5,
                     quantity: intrinsic ? 1 : 3, maxQuantity: intrinsic ? 1 : 5, ammoOptions: jasmine.arrayContaining([ammo, flak]) }),
             });
             expect(TestBed.inject(PageViewerOverlayService).openEquipment).not.toHaveBeenCalled();
@@ -429,7 +432,7 @@ describe('PageViewerMekInteractionService', () => {
         ]);
     });
 
-    it('ports every production Mek condition-menu control through direct sparse state', () => {
+    it('ports every production Mek condition-menu control of its Core unit (no skidding) through direct sparse state', () => {
         service.handle(member, {
             kind: 'condition-menu', context: editContext(1),
         } as unknown as RecordSheetInteraction, anchoredMouseEvent());
@@ -439,7 +442,6 @@ describe('PageViewerMekInteractionService', () => {
             'SWARMED',
             'TAGGED',
             'ECM SHIELDED',
-            'SKIDDING',
             'JAMMED',
         ]);
 

@@ -81,21 +81,42 @@ describe('RecordSheetRandomHitResult', () => {
         }
     });
 
-    it('highlights all matching front or rear location fragments and never their pips', () => {
+    it('centres the result badge on the button it replaces', () => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.innerHTML = '<g transform="translate(20 30) scale(2)">'
+            + '<g id="button" transform="translate(40 50)"><circle cx="14" cy="14" r="15"></circle></g></g>';
+        document.body.appendChild(svg);
+        const display = new RecordSheetRandomHitResult();
+        try {
+            display.show('unit', svg, svg.querySelector<SVGElement>('#button')!, 'LS', false, false);
+            expect(svg.querySelector('.mek-random-hit-result-badge')?.getAttribute('transform'))
+                .toBe('matrix(2 0 0 2 128 158)');
+        } finally {
+            display.clear();
+            svg.remove();
+        }
+    });
+
+    it('highlights the location\'s front or rear armor paperdoll fragments and never their pips', () => {
         jasmine.clock().install();
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.innerHTML = '<g id="button"></g>'
+            + '<g data-mekbay-paperdoll="1" data-type="armor">'
             + '<path class="unitLocation armor" data-loc="RT"></path>'
             + '<path class="unitLocation armor" data-loc="RT"></path>'
-            + '<path class="unitLocation armor" data-loc="RT" data-rear="1"></path>'
             + '<path class="unitLocation structure" data-loc="RT"></path>'
-            + '<circle class="pip armor" data-loc="RT"></circle>';
+            + '<circle class="pip armor" data-loc="RT"></circle></g>'
+            + '<g data-mekbay-paperdoll="1" data-type="armor">'
+            + '<path class="unitLocation armor" data-loc="RT" data-rear="1"></path></g>'
+            + '<g data-mekbay-paperdoll="1" data-type="structure">'
+            + '<path id="structure-diagram" class="unitLocation structure" data-loc="RT"></path></g>';
         const display = new RecordSheetRandomHitResult();
         const button = svg.querySelector<SVGElement>('#button')!;
         try {
             display.show('unit', svg, button, 'RT', false, false);
-            expect(svg.querySelectorAll('.random-hit-location-highlight')).toHaveSize(2);
+            expect(svg.querySelectorAll('.random-hit-location-highlight')).toHaveSize(3);
             expect(svg.querySelector('.pip')?.classList.contains('random-hit-location-highlight')).toBeFalse();
+            expect(svg.querySelector('#structure-diagram')?.classList.contains('random-hit-location-highlight')).toBeFalse();
             display.show('unit', svg, button, 'RT', true, false);
             expect(svg.querySelectorAll('.random-hit-location-highlight')).toHaveSize(1);
             expect(svg.querySelector('[data-rear]')?.classList.contains('random-hit-location-highlight')).toBeTrue();

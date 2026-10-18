@@ -251,15 +251,17 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
       `base chassis heat sinks:${entity.mountedEngine().getBaseChassisHeatSinks(entity.heatSinkType() === 'Compact')}`,
     );
   }
-  // Nocrit: misc equipment with 0 crit slots, excluding CASE, armor, and structure
-  // (matches MegaMek's Mek.getMtf() nocrit logic)
+  // Nocrit: misc equipment with 0 crit slots, excluding armor, structure, and Clan CASE that
+  // every loader regenerates (Clan chassis with Clan structure; matches MegaMek's Mek.getMtf()).
+  // A Clan chassis on IS structure must keep its Clan CASE explicit.
   const nocritMounts = entity.equipment().filter((m) => {
     if (m.allocation.kind !== 'location') return false;
     const eq = m.equipment;
     if (!eq) return false;
     if (eq.type !== 'misc') return false;
     if (eq.critSlots !== 0) return false;
-    if (isStandardCaseEquipment(eq)) return false;
+    if (isStandardCaseEquipment(eq) && entity.techBase() === 'Clan' && entity.supportsAutomaticClanCaseAt(m.location))
+      return false;
     return true;
   });
   for (const m of nocritMounts) {

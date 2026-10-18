@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { Injector, signal } from '@angular/core';
+import { Injector, provideZonelessChangeDetection, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { GameSystem } from '../models/common.model';
 import type { Faction } from '../models/factions.model';
@@ -26,6 +27,14 @@ import { CBTForceMember } from '../models/force-member.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { createEmptyCBTForceForTest, createTestMekEntity } from '../testing/unit-test-helpers';
 import { OptionsService } from './options.service';
+import { DataService } from './data.service';
+import { ForceOperationService } from './force-operation.service';
+import { ForcePersistenceService } from './force-persistence.service';
+import { ForceUrlStateService } from './force-url-state.service';
+import { ForceWorkspaceStateService } from './force-workspace-state.service';
+import { InventoryControlOpforService } from './inventory-control-opfor.service';
+import { LoggerService } from './logger.service';
+import { ToastService } from './toast.service';
 
 function createFaction(id: number, name: string): Faction {
     return {
@@ -556,6 +565,18 @@ describe('ForceBuilderService remote force updates', () => {
 
         expect(service.forcePersistence.acceptRemoteForceSnapshot).not.toHaveBeenCalled();
         expect(service.forcePersistence.discardRemoteForceSnapshot).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a viewed force read-only when its owner publishes an update', async () => {
+        const { service, remoteSync, targetForce } = createUpdateHarness(createSerializedForce({ owned: false }));
+
+        // The owner's payload never carries `owned`; decoding alone would default it to true.
+        await remoteSync.reconcileRemoteForce(targetForce, createSerializedForce({
+            timestamp: '2026-08-06T20:01:00.000Z',
+        }));
+
+        expect(service.forcePersistence.stageRemoteForceSnapshot)
+            .toHaveBeenCalledWith(jasmine.objectContaining({ owned: false }));
     });
 
     it('skips an older remote snapshot', async () => {
@@ -1404,5 +1425,122 @@ describe('ForceBuilderService production V2 unit selection', () => {
         expect(requestClosePanels)
             .toHaveBeenCalledOnceWith({ exitExpandedView: true });
         expect(service.formations.generateFactionAndForceNameIfNeeded).toHaveBeenCalledOnceWith(force, true);
+    });
+});
+
+describe('ForceBuilderService rules switch', () => {
+    function loadedCBTForce(name: string, bound = true, dropped: { unit: string; items: string[] }[] = []) {
+        const force = Object.create(CBTForce.prototype) as any;
+        force.displayName = () => name;
+        force.install = jasmine.createSpy(`${name} install`).and.resolveTo(true);
+        force.prepareScenarioRebind = jasmine.createSpy('prepareScenarioRebind').and.callFake(async () =>
+            bound ? { bound, dropped, install: force.install } : { bound });
+        return force as CBTForce & { prepareScenarioRebind: jasmine.Spy; install: jasmine.Spy };
+    }
+
+    function createService(forces: readonly CBTForce[]) {
+        const options = signal({
+            CBTRules: 'core-2026',
+            CBTOptionalRules: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false },
+        } as any);
+        const optionsService = {
+            initialized: signal(true),
+            options,
+            setOption: jasmine.createSpy('setOption').and.callFake(async (key: string, value: unknown) => {
+                options.update(current => ({ ...current, [key]: value }));
+            }),
+        };
+        const toast = { showToast: jasmine.createSpy('showToast') };
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                { provide: LoggerService, useValue: jasmine.createSpyObj('LoggerService', ['error', 'warn']) },
+                { provide: DataService, useValue: {} },
+                { provide: ForcePersistenceService, useValue: {} },
+                { provide: ForceOperationService, useValue: { configure: () => undefined } },
+                { provide: InventoryControlOpforService, useValue: { connect: () => undefined } },
+                { provide: ForceUrlStateService, useValue: { configure: () => undefined, start: () => undefined } },
+                { provide: ForceDialogsService, useValue: {} },
+                { provide: ForceWorkspaceStateService, useValue: {
+                    loadedForces: signal(forces.map(force => ({ force, alignment: 'friendly' }))),
+                } },
+                { provide: ForceSlotLifecycleService, useValue: {} },
+                { provide: OptionsService, useValue: optionsService },
+                { provide: ToastService, useValue: toast },
+            ],
+        });
+        const service = TestBed.inject(ForceBuilderService);
+        return { service, optionsService, toast };
+    }
+
+    async function settled(): Promise<void> {
+        TestBed.flushEffects();
+        for (let index = 0; index < 10; index += 1) await Promise.resolve();
+    }
+
+    it('saves the rules and rebinds every loaded force live, preparing all before installing any', async () => {
+        const alpha = loadedCBTForce('Alpha');
+        const bravo = loadedCBTForce('Bravo');
+        const { service, optionsService, toast } = createService([alpha, bravo]);
+        await settled();
+        const order: string[] = [];
+        for (const [name, force] of [['Alpha', alpha], ['Bravo', bravo]] as const) {
+            force.prepareScenarioRebind.calls.reset();
+            force.install.and.callFake(async () => { order.push(`install ${name}`); return true; });
+            force.prepareScenarioRebind.and.callFake(async () => {
+                order.push(`prepare ${name}`);
+                return { bound: true, dropped: [], install: force.install };
+            });
+        }
+
+        expect(await service.switchCBTRules('total-warfare')).toBeTrue();
+
+        expect(optionsService.setOption).toHaveBeenCalledOnceWith('CBTRules', 'total-warfare');
+        expect(alpha.prepareScenarioRebind).toHaveBeenCalledWith(jasmine.objectContaining({ ruleset: 'total-warfare' }));
+        expect(order.slice(0, 4)).toEqual(['prepare Alpha', 'prepare Bravo', 'install Alpha', 'install Bravo']);
+        expect(toast.showToast).not.toHaveBeenCalled();
+    });
+
+    it('keeps the saved rules when they are already in play, still checking every force plays them', async () => {
+        const alpha = loadedCBTForce('Alpha');
+        const { service, optionsService } = createService([alpha]);
+        await settled();
+        alpha.prepareScenarioRebind.calls.reset();
+
+        expect(await service.switchCBTRules('core-2026')).toBeTrue();
+        await settled();
+
+        expect(optionsService.setOption).not.toHaveBeenCalled();
+        // The saved option is no proof that every force plays it: a force that failed to bind earlier would not.
+        expect(alpha.prepareScenarioRebind).toHaveBeenCalledOnceWith(jasmine.objectContaining({ ruleset: 'core-2026' }));
+    });
+
+    it('switches all forces or none: a force that cannot switch leaves the others uninstalled and keeps the saved rules', async () => {
+        const alpha = loadedCBTForce('Alpha', true, [{ unit: 'Atlas', items: ['Ultra AC/5'] }]);
+        const bravo = loadedCBTForce('Bravo', false);
+        const { service, optionsService, toast } = createService([alpha, bravo]);
+        await settled();
+        alpha.install.calls.reset();
+        toast.showToast.calls.reset();
+
+        expect(await service.switchCBTRules('total-warfare')).toBeFalse();
+
+        expect(alpha.install).not.toHaveBeenCalled();
+        expect(optionsService.setOption).not.toHaveBeenCalled();
+        expect(toast.showToast).toHaveBeenCalledOnceWith(
+            'Bravo could not switch to Total Warfare, so every force keeps Core 2026.',
+            'error',
+        );
+    });
+
+    it('reports a force that cannot play the rules the options hold', async () => {
+        const alpha = loadedCBTForce('Alpha', false);
+        const { toast } = createService([alpha]);
+        await settled();
+
+        expect(toast.showToast).toHaveBeenCalledOnceWith(
+            'Alpha could not switch to Core 2026 and keeps its previous rules.',
+            'error',
+        );
     });
 });

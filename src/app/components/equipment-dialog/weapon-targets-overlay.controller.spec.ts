@@ -79,7 +79,7 @@ function createHarness(readOnly = false) {
     const member = new CBTForceMember(instanceId, force, entity) as CBTMekForceMember;
     const opforService = jasmine.createSpyObj<InventoryControlOpforService>(
         'InventoryControlOpforService',
-        ['setEnabled', 'isAvailable'],
+        ['setEnabled', 'isAvailable', 'mirrorTargetDistance'],
     );
     opforService.setEnabled.and.returnValue(true);
     opforService.isAvailable.and.returnValue(true);
@@ -346,6 +346,7 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
         expect(harness.query).not.toHaveBeenCalled();
         expect(harness.dispatch).not.toHaveBeenCalled();
         expect(harness.dispatchTargeting).not.toHaveBeenCalled();
+        expect(harness.opforService.mirrorTargetDistance).not.toHaveBeenCalled();
     });
 
     it('projects and edits retained V2 target facts through the original target overlay', async () => {

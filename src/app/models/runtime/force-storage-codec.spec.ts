@@ -48,6 +48,62 @@ UNIT_STATE_INITIALIZER_REVISION,
 } from './unit-state-initializer';
 
 describe('force storage codec', () => {
+    it('loads checks saved with frozen targets, keeping only the target a rolled check was rolled against', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const slot = (systemType: string) => [...fixture.index.slots.values()].find(candidate =>
+            candidate.componentIds.some(componentId => {
+                const component = fixture.index.components.get(componentId);
+                return component?.kind === 'system' && component.systemType === systemType;
+            }))!;
+        for (const systemType of ['Hip', 'Gyro']) {
+            expect(fixture.instance.dispatch({ type: 'hit-critical', slotId: slot(systemType).id, hits: 1,
+                target: 'committed' }).accepted).toBeTrue();
+        }
+        const [rolled] = fixture.instance.query().mekPilotChecks();
+        expect(fixture.instance.dispatch({ type: 'resolve-mek-pilot-check', checkId: rolled!.checkId,
+            evidence: { dice: [6, 6] } }).accepted).toBeTrue();
+        const targets = new Map(fixture.instance.query().mekPilotChecks().map(check => [check.checkId, check.targetNumber]));
+        const unit = fixture.instance.serialize();
+        const stored = JSON.parse(JSON.stringify(encodeForceForStorage(forceWithUnit(unit, 'force:legacy-psr', 'Legacy PSR'))));
+        const movement = storedUnitState(stored)['m'] as Record<string, unknown>;
+        // Rows written before targets were derived: [id, source + frozen target parts, revision, ordinal,
+        // target, reason, status, [dice, total]].
+        movement['k'] = (movement['k'] as unknown[][]).map(([checkId, source, revision, ordinal, reason, status, resolution]) => {
+            const target = targets.get(checkId as string)!;
+            return [checkId, { ...source as object, b: target, m: 0 }, revision, ordinal, target, reason, status,
+                ...(resolution === undefined ? [] : [(resolution as unknown[]).slice(0, 2)])];
+        });
+
+        const decoded = decodeForceFromStorage(JSON.parse(JSON.stringify(stored)));
+        expect((decoded.cbt!.units[0].unit as SerializedCBTUnitV2).movementPsr).toEqual((unit as SerializedCBTUnitV2).movementPsr);
+    });
+
+    it('stores whether a check is immediate, and loads a row saved without it as an end-of-phase check', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const gyro = [...fixture.index.slots.values()].find(candidate => candidate.componentIds.some(componentId => {
+            const component = fixture.index.components.get(componentId);
+            return component?.kind === 'system' && component.systemType === 'Gyro';
+        }))!;
+        expect(fixture.instance.dispatch({ type: 'hit-critical', slotId: gyro.id, hits: 1, target: 'committed' })
+            .accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'declare-mek-movement',
+            declaration: { schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION, mode: 'run', distance: 2, boosterComponentIds: [] },
+            realPhases: true,
+        }).changed).toBeTrue();
+        const unit = fixture.instance.serialize() as SerializedCBTUnitV2;
+        const stored = JSON.parse(JSON.stringify(encodeForceForStorage(forceWithUnit(unit, 'force:immediate-psr', 'PSR')))) as Record<string, unknown>;
+        const rows = (storedUnitState(stored)['m'] as Record<string, unknown[][]>)['k']!;
+        // [id, source, revision, ordinal, reason, status, resolution (null while pending), immediate]
+        expect(rows.map(row => row.slice(5))).toEqual([['pending'], ['pending', null, 1]]);
+
+        const decode = () => (decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.units[0].unit as SerializedCBTUnitV2)
+            .movementPsr;
+        expect(decode()).toEqual(unit.movementPsr);
+        rows[1] = rows[1]!.slice(0, 6);
+        expect(decode().checks!.map(check => check.immediate)).toEqual([undefined, undefined]);
+    });
+
     it('keeps omitted aerospace ratings at their defaults independently of ground ratings', () => {
         const force = damagedForce();
         const people = force.personnel!.people.map(person => ({ ...person, gunnery: 2, piloting: 3 }));

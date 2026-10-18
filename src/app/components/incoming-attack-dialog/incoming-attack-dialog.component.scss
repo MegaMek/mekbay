@@ -1,0 +1,63 @@
+@use '../attack-report/attack-dialog';
+
+:host { display: block; }
+
+@include attack-dialog.frame(620px, 820px);
+
+.incoming-body {
+    display: grid;
+    gap: 10px;
+}
+
+.incoming-context {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-left: 3px solid var(--danger);
+    background: var(--background-input);
+
+    > div:first-child {
+        display: grid;
+        min-width: 0;
+        gap: 2px;
+
+        strong { overflow-wrap: anywhere; }
+        span { color: var(--text-color-secondary); font-size: 0.78em; }
+    }
+}
+
+.incoming-total {
+    display: grid;
+    justify-items: end;
+
+    span { color: var(--text-color-secondary); font-size: 0.72em; font-weight: 700; text-transform: uppercase; }
+    strong { color: var(--damage-color); font-size: 2em; line-height: 1; }
+}
+
+.location-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        padding: 3px 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 3px;
+    }
+
+    strong { color: var(--damage-color); }
+}
+
+.incoming-note {
+    margin: 0 4px;
+    color: var(--bt-yellow);
+    font-size: 0.8em;
+}

@@ -116,6 +116,26 @@ describe('DirectNonMekAutomationService', () => {
         expect(runtime.query().remainingAmmo(ammoId)).toBe(12);
     });
 
+    it('ends the turn of a unit with no heat to review instead of stalling at the phase boundary', async () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        entity.setTonnage(20);
+        const runtime = createNonMekUnit(entity, { instanceId: 'heatless-vehicle', uuid: UUID,
+            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        const force = { getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
+            index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
+            editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
+        }) } as unknown as CBTForce;
+        const dispatch = async (command: Parameters<typeof runtime.dispatch>[0]) => runtime.dispatch(command);
+
+        const prepared = await service.prepareCommand(force, runtime.instanceId, { type: 'end-turn', policy: 'automatic' });
+        expect(prepared.cancelled).toBeFalsy();
+        const settled = await service.settleBeforeCommand(force, runtime.instanceId, prepared, dispatch);
+        expect(settled).not.toBeNull();
+        runtime.dispatch(settled!.command);
+        expect(runtime.snapshot().turn.turnCounter).toBe(1);
+    });
+
     it('reports automatically resolved aerospace heat through the shared notifier', async () => {
         const harness = createHarness();
         setHeat(harness.runtime, 10, 'pending');

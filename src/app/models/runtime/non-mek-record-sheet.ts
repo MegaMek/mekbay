@@ -16,7 +16,8 @@ SystemDamageTrackId,
 import type { BombLoad } from '../aerospace-bomb.model';
 import type { EntityTechBase } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
-import { isInfantryEntity } from '../entity/utils/entity-type-guards';
+import { isInfantryEntity, isProtoMekEntity } from '../entity/utils/entity-type-guards';
+import { protoMekMovement } from '../rules/protomek-runtime-rules';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import {
@@ -264,6 +265,10 @@ export function projectNonMekRecordSheet(
     const movementBlocked = destroyed || query.hasCondition('immobile');
     const capabilities = projectNonMekMovementCapabilities(entity, index, state, ruleset, crewAssignment);
     const movementCalculation = nonMekMovementCalculation(state);
+    const protoMovement = protoMekRules && isProtoMekEntity(entity)
+        ? protoMekMovement(entity, protoMekRules.criticalHits, entity.computeWalkMP(movementCalculation),
+            entity.computeJumpMP(movementCalculation), movementCalculation.ignoreMyomerBooster)
+        : null;
     const airborne = state.turn.airborne === true;
     const movementModes = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
     return Object.freeze({
@@ -290,13 +295,13 @@ export function projectNonMekRecordSheet(
             }))),
         }),
         movement: Object.freeze({
-            walk: movementBlocked ? 0 : vehicleRules?.movement.walk
+            walk: movementBlocked ? 0 : vehicleRules?.movement.walk ?? protoMovement?.walk
                 ?? entity.computeWalkMP(movementCalculation),
-            run: movementBlocked ? 0 : vehicleRules?.movement.run
+            run: movementBlocked ? 0 : vehicleRules?.movement.run ?? protoMovement?.run
                 ?? entity.computeRunMP(movementCalculation),
-            maxRun: movementBlocked ? 0 : vehicleRules?.movement.maxRun
+            maxRun: movementBlocked ? 0 : vehicleRules?.movement.maxRun ?? protoMovement?.run
                 ?? entity.computeRunMP(movementCalculation),
-            jump: movementBlocked ? 0 : entity.computeJumpMP(movementCalculation),
+            jump: movementBlocked ? 0 : protoMovement?.jump ?? entity.computeJumpMP(movementCalculation),
             umu: movementBlocked ? 0 : entity.umuMP(),
         }),
         armorType: armor?.armor.name ?? 'Patchwork',

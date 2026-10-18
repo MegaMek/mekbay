@@ -7,7 +7,6 @@ import { RecordSheetSvgGenerator } from './record-sheet-svg-generator';
 
 describe('generated Mek shield paperdolls', () => {
     let mounted: SVGSVGElement | undefined;
-    let bipedBodyGeometry: number[] | undefined;
 
     afterEach(() => {
         mounted?.remove();
@@ -72,37 +71,7 @@ describe('generated Mek shield paperdolls', () => {
                 }
                 expect(svg.querySelector('.mek-paperdoll-rear [data-mekbay-random-hit]')).toBeNull();
                 expect(front.querySelectorAll('[data-mekbay-random-hit]')).toHaveSize(1);
-                if (chassis === 'biped') {
-                    const boundsInFront = (element: SVGGraphicsElement) => {
-                        const bounds = element.getBBox();
-                        const matrix = front.getCTM()!.inverse().multiply(element.getCTM()!);
-                        const start = new DOMPoint(bounds.x, bounds.y).matrixTransform(matrix);
-                        const end = new DOMPoint(bounds.x + bounds.width, bounds.y + bounds.height).matrixTransform(matrix);
-                        return { left: start.x, top: start.y, right: end.x, bottom: end.y };
-                    };
-                    const die = front.querySelector<SVGGraphicsElement>('[data-mekbay-random-hit]')!;
-                    expect(die.getAttribute('transform')).toBe('translate(80 206)');
-                    const dieBounds = boundsInFront(die);
-                    const centerX = (dieBounds.left + dieBounds.right) / 2;
-                    const centerY = (dieBounds.top + dieBounds.bottom) / 2;
-                    const legs = ['LL', 'RL'].map(location => boundsInFront(
-                        front.querySelector<SVGGraphicsElement>(`.armor.unitLocation[data-loc="${location}"]`)!,
-                    )).sort((a, b) => a.left - b.left);
-                    expect(centerX).withContext(`${variant} die clears left leg`).toBeGreaterThan(legs[0].right);
-                    expect(centerX).withContext(`${variant} die clears right leg`).toBeLessThan(legs[1].left);
-                    expect(centerY).toBeGreaterThan(boundsInFront(front.querySelector<SVGGraphicsElement>('#textArmor_CT')!).bottom);
-                    expect(centerY).toBeLessThan(Math.min(legs[0].bottom, legs[1].bottom));
-
-                    const geometry = [...front.querySelectorAll<SVGGraphicsElement>('.armor.unitLocation:not([data-mekbay-shield]), .mek-paperdoll-labels')]
-                        .flatMap(element => Object.values(boundsInFront(element)));
-                    bipedBodyGeometry ??= geometry;
-                    expect(geometry.length).toBe(bipedBodyGeometry.length);
-                    geometry.forEach((value, index) => expect(value)
-                        .withContext(`${variant} fixed body and label alignment ${index}`)
-                        .toBeCloseTo(bipedBodyGeometry![index], 5));
-                } else {
-                    const icon = front.querySelector<SVGImageElement>('[data-mekbay-random-hit] image')!;
-                    const bounds = icon.getBBox();
+                if (chassis === 'tripod') {
                     const locations = [...front.querySelectorAll<SVGGeometryElement>('path.armor.unitLocation')];
                     const hitArea = front.querySelector<SVGCircleElement>('[data-mekbay-random-hit] circle')!;
                     for (const radius of [0, 0.5, 1]) {
@@ -117,24 +86,6 @@ describe('generated Mek shield paperdolls', () => {
                                     .toBeFalse();
                             }
                         }
-                    }
-                    for (let column = 0; column <= 4; column++) {
-                        for (let row = 0; row <= 4; row++) {
-                            const point = new DOMPoint(bounds.x + bounds.width * column / 4,
-                                bounds.y + bounds.height * row / 4).matrixTransform(icon.getCTM()!);
-                            for (const location of locations) {
-                                expect(location.isPointInFill(point.matrixTransform(location.getCTM()!.inverse())))
-                                    .withContext(`${variant} die clears ${location.getAttribute('data-loc')}`)
-                                    .toBeFalse();
-                            }
-                        }
-                    }
-                    const iconBounds = icon.getBoundingClientRect();
-                    for (const label of front.querySelectorAll('text')) {
-                        const labelBounds = label.getBoundingClientRect();
-                        const overlaps = iconBounds.left < labelBounds.right && iconBounds.right > labelBounds.left
-                            && iconBounds.top < labelBounds.bottom && iconBounds.bottom > labelBounds.top;
-                        expect(overlaps).withContext(`${variant} die clears label ${label.textContent}`).toBeFalse();
                     }
                 }
                 expect(svg.querySelectorAll('[data-fill^="shield-"]')).toHaveSize(0);

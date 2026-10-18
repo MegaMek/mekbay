@@ -90,6 +90,7 @@ import {
     deserializeMekMovementPsrStateV2,
     MEK_ACTION_DECLARATION_SCHEMA_VERSION,
     MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
+    MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION,
     serializeMekMovementPsrStateV2,
     type SerializedMekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
@@ -136,6 +137,7 @@ import {
     CBT_MOVEMENT_DECLARATION_INDEX,
     CBT_MOVEMENT_FIELD,
     CBT_MOVEMENT_SOURCE_FIELD,
+    CBT_LEGACY_MOVEMENT_SOURCE_FIELD,
     CBT_NON_MEK_PENDING_COMBAT_FIELD,
     CBT_PENDING_COMBAT_FIELD,
     CBT_PPC_CAPACITOR_FIELD,
@@ -1347,12 +1349,14 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
             ],
         value.phaseStateChanged ? 1 : undefined,
         value.heatSettled ? 1 : undefined,
+        value.turnStep,
+        value.joinedStep,
     );
 }
 
 function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedNonMekUnit['turn']> {
     const turn = array(value, path);
-    if (turn.length < 1 || turn.length > 10) throw new Error(`${path} is not a compact non-Mek turn`);
+    if (turn.length < 1 || turn.length > 12) throw new Error(`${path} is not a compact non-Mek turn`);
     const turnCounter = rowInteger(turn, 0, path);
     const airborneCode = optionalInteger(turn[1], `${path}[1]`) ?? 0;
     if (airborneCode !== -1 && airborneCode !== 0 && airborneCode !== 1) {
@@ -1384,6 +1388,12 @@ function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedN
         }),
         ...(turn[9] === undefined || turn[9] === null ? {} : {
             heatSettled: truthyOne(turn[9], `${path}[9]`),
+        }),
+        ...(turn[10] === undefined || turn[10] === null ? {} : {
+            turnStep: rowInteger(turn, 10, path),
+        }),
+        ...(turn[11] === undefined || turn[11] === null ? {} : {
+            joinedStep: rowInteger(turn, 11, path),
         }),
     };
 }
@@ -1780,15 +1790,15 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
                 [CBT_MOVEMENT_SOURCE_FIELD.locationIds]: check.source.locationIds.length
                     ? [...check.source.locationIds]
                     : undefined,
-                [CBT_MOVEMENT_SOURCE_FIELD.baseTarget]: check.source.baseTarget,
-                [CBT_MOVEMENT_SOURCE_FIELD.triggerModifier]: check.source.triggerModifier,
             }),
             check.producingRevision,
             check.ordinal,
-            check.targetNumber,
             check.reason,
             check.status,
-            check.resolution && [[...check.resolution.dice], check.resolution.total],
+            check.resolution
+                ? [[...check.resolution.dice], check.resolution.total, check.resolution.targetNumber]
+                : check.immediate ? null : undefined,
+            check.immediate ? 1 : undefined,
         )),
         [CBT_MOVEMENT_FIELD.automaticFalls]: value.automaticFalls === undefined
             ? undefined : clone(value.automaticFalls),
@@ -1796,12 +1806,19 @@ function packMovement(value: SerializedMekMovementPsrStateV2): unknown {
     return Object.keys(compact).length === 0 ? undefined : compact;
 }
 
+/**
+ * Rows saved before check targets were derived hold the target at [4] (a number, where the reason now
+ * sits) and the frozen target parts in the source; they unpack as movement/PSR schema 2, which the
+ * movement/PSR decoder migrates.
+ */
 function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrStateV2 {
-    if (value === undefined) return { schemaVersion: 2 };
+    if (value === undefined) return { schemaVersion: MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION };
     const movement = record(value, path);
     exactKeys(movement, Object.values(CBT_MOVEMENT_FIELD), path);
+    const rows = movement[CBT_MOVEMENT_FIELD.checks];
+    const legacyTargets = Array.isArray(rows) && rows.some(row => Array.isArray(row) && typeof row[4] === 'number');
     const expanded = compactObject({
-        schemaVersion: 2,
+        schemaVersion: legacyTargets ? 2 : MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION,
         movement: movement[CBT_MOVEMENT_FIELD.movement] === undefined
             ? undefined
             : unpackMekMovementDeclaration(
@@ -1836,10 +1853,15 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
             `${path}.${CBT_MOVEMENT_FIELD.checks}`,
             (row, rowPath) => {
             const source = record(row[1], `${rowPath}[1]`);
-            const resolution = row[7] === undefined ? undefined : array(row[7], `${rowPath}[7]`);
+            const at = legacyTargets ? 1 : 0;
+            // [7] marks an immediate check; a pending one holds null at the resolution's [6].
+            const immediate = row[7 + at] === undefined ? undefined : truthyOne(row[7 + at], `${rowPath}[${7 + at}]`);
+            const resolution = row[6 + at] === undefined || (row[6 + at] === null && immediate)
+                ? undefined
+                : array(row[6 + at], `${rowPath}[${6 + at}]`);
             return compactObject({
                 checkId: rowText(row, 0, rowPath),
-                source: {
+                source: compactObject({
                     sourceKind: text(
                         source[CBT_MOVEMENT_SOURCE_FIELD.sourceKind],
                         `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.sourceKind}`,
@@ -1860,23 +1882,28 @@ function unpackMovement(value: unknown, path: string): SerializedMekMovementPsrS
                         source[CBT_MOVEMENT_SOURCE_FIELD.locationIds] ?? [],
                         `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.locationIds}`,
                     ),
-                    baseTarget: integer(
-                        source[CBT_MOVEMENT_SOURCE_FIELD.baseTarget],
-                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.baseTarget}`,
-                    ),
-                    triggerModifier: integer(
-                        source[CBT_MOVEMENT_SOURCE_FIELD.triggerModifier],
-                        `${rowPath}[1].${CBT_MOVEMENT_SOURCE_FIELD.triggerModifier}`,
-                    ),
-                },
+                    ...(legacyTargets ? {
+                        baseTarget: integer(
+                            source[CBT_LEGACY_MOVEMENT_SOURCE_FIELD.baseTarget],
+                            `${rowPath}[1].${CBT_LEGACY_MOVEMENT_SOURCE_FIELD.baseTarget}`,
+                        ),
+                        triggerModifier: integer(
+                            source[CBT_LEGACY_MOVEMENT_SOURCE_FIELD.triggerModifier],
+                            `${rowPath}[1].${CBT_LEGACY_MOVEMENT_SOURCE_FIELD.triggerModifier}`,
+                        ),
+                    } : {}),
+                }),
                 producingRevision: rowInteger(row, 2, rowPath),
                 ordinal: rowInteger(row, 3, rowPath),
-                targetNumber: rowInteger(row, 4, rowPath),
-                reason: rowText(row, 5, rowPath),
-                status: rowText(row, 6, rowPath),
-                resolution: resolution === undefined ? undefined : {
-                    dice: clone(resolution[0]), total: rowInteger(resolution, 1, `${rowPath}[7]`),
-                },
+                targetNumber: legacyTargets ? rowInteger(row, 4, rowPath) : undefined,
+                reason: rowText(row, 4 + at, rowPath),
+                status: rowText(row, 5 + at, rowPath),
+                resolution: resolution === undefined ? undefined : compactObject({
+                    dice: clone(resolution[0]),
+                    total: rowInteger(resolution, 1, `${rowPath}[${6 + at}]`),
+                    targetNumber: legacyTargets ? undefined : rowInteger(resolution, 2, `${rowPath}[${6 + at}]`),
+                }),
+                immediate,
             });
             },
         ),
@@ -1929,6 +1956,8 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
         [CBT_TURN_FIELD.spotting]: value.spotting ? 1 : undefined,
         [CBT_TURN_FIELD.phaseStateChanged]: value.phaseStateChanged ? 1 : undefined,
         [CBT_TURN_FIELD.endTurnCheckpoint]: packEndTurnCheckpoint(value.endTurnCheckpoint),
+        [CBT_TURN_FIELD.turnStep]: value.turnStep,
+        [CBT_TURN_FIELD.joinedStep]: value.joinedStep,
         [CBT_TURN_FIELD.pendingFallConsequences]: value.pendingFallConsequences === undefined
             ? undefined
             : tuple(
@@ -1946,6 +1975,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
         [CBT_TURN_FIELD.pendingCriticalEvents]: value.pendingCriticalEvents === undefined
             ? undefined
             : clone(value.pendingCriticalEvents),
+        [CBT_TURN_FIELD.consciousnessRollsDue]: value.consciousnessRollsDue?.slice(),
     });
     return Object.keys(compact).length === 0 ? undefined : compact;
 }
@@ -1997,6 +2027,14 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
                 turn[CBT_TURN_FIELD.endTurnCheckpoint],
                 `${path}.${CBT_TURN_FIELD.endTurnCheckpoint}`,
             ),
+        turnStep: optionalInteger(
+            turn[CBT_TURN_FIELD.turnStep],
+            `${path}.${CBT_TURN_FIELD.turnStep}`,
+        ),
+        joinedStep: optionalInteger(
+            turn[CBT_TURN_FIELD.joinedStep],
+            `${path}.${CBT_TURN_FIELD.joinedStep}`,
+        ),
         pendingFallConsequences: turn[CBT_TURN_FIELD.pendingFallConsequences] === undefined
             ? undefined
             : unpackPendingFallConsequences(
@@ -2008,6 +2046,11 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
             : clone(
                 turn[CBT_TURN_FIELD.pendingCriticalEvents],
             ) as SerializedMekTurnStateV2['pendingCriticalEvents'],
+        consciousnessRollsDue: turn[CBT_TURN_FIELD.consciousnessRollsDue] === undefined
+            ? undefined
+            : clone(
+                turn[CBT_TURN_FIELD.consciousnessRollsDue],
+            ) as SerializedMekTurnStateV2['consciousnessRollsDue'],
     });
     return serializeMekTurnStateV2(deserializeMekTurnStateV2(expanded));
 }

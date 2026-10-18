@@ -38,7 +38,7 @@ import {
   svgElement,
 } from '../record-sheet-svg-rendering';
 import { appendEmbeddedSvgDefinition, appendMastheadArt } from '../record-sheet-embedded-art';
-import { CompactRecordSheetLayout } from './record-sheet-layout';
+import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
   canonicalReferenceContent,
 } from './record-sheet-reference-table-components';
@@ -94,7 +94,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     });
   }
 
-  protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity): Promise<void> {
+  protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
     if (!isInfantryEntity(entity)) throw new Error('Infantry layout requires a conventional Infantry entity');
     await appendEmbeddedSvgDefinition(svg, '/images/record-sheet-art/infantry.svg', 'mekbay-infantry-masthead-art');
     const at = (box: Box): Box => scaleCompactBox(svg, box, 174);
@@ -166,7 +166,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     );
 
     drawCompactInfantryTrack(svg, group, entity, { x, y, font });
-    appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(), 4, 5), {
+    appendBattleValue(group, adjustEntityBattleValueForSkills(entity, entity.battleValue(request.ruleset), 4, 5), {
       x: x(116.6),
       valueX: x(130.701),
       y: y(154.786),
@@ -184,7 +184,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
       addText(group, 'Type:', x(429), y(baseline), { size: font(7.2), weight: 700 });
       addText(group, movement.label, x(448.523), y(baseline), { size: font(7.2), maxWidth: x(120) });
     });
-    appendLegacyIdentityAnchors(group, entity, frameBox);
+    appendLegacyIdentityAnchors(group, entity, frameBox, request.ruleset);
   }
 }
 

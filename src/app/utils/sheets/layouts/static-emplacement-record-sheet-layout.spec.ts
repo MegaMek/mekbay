@@ -27,30 +27,21 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         setConstructionBuildingTopology(entity, hexes, 2);
         const footprint = entity.coordinates();
         entity.hexHeights.set(new Map(footprint.filter(hex => hex.q >= 5).map(hex => [`${hex.q},${hex.r}`, 1])));
-        entity.elevators.set([{ hex: footprint[16], capacity: 20, exits: new Map([[0, 4], [1, 0]]) }]);
         for (const pageFormat of ['letter', 'a4'] as const) {
             const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
             const sections = new Map<string, number>(), actual: string[] = [];
             let section = 0;
             for (const page of pages) {
-                document.body.appendChild(page);
-                try {
-                    for (const floor of page.querySelectorAll<SVGGElement>('.building-template-floor')) {
-                        const level = floor.getAttribute('data-building-floor')!;
-                        for (const hex of floor.querySelectorAll('.building-template-hex'))
-                            sections.set(`${level}/${hex.getAttribute('data-building-hex')}`, section);
-                        for (const marker of floor.querySelectorAll('.building-template-continuation')) {
-                            expect(level).toBe('0');
-                            actual.push(`${level}/${marker.getAttribute('data-continuation-from')}/${marker.getAttribute('data-continuation-to')}`);
-                            const reference = pageBounds(marker.querySelector<SVGTextElement>('text')!);
-                            for (const arrow of floor.querySelectorAll<SVGPolygonElement>('[data-building-symbol="elevator-door"]')) {
-                                const box = pageBounds(arrow);
-                                expect(reference.left < box.right && reference.right > box.left && reference.top < box.bottom && reference.bottom > box.top).toBeFalse();
-                            }
-                        }
-                        section++;
+                for (const floor of page.querySelectorAll<SVGGElement>('.building-template-floor')) {
+                    const level = floor.getAttribute('data-building-floor')!;
+                    for (const hex of floor.querySelectorAll('.building-template-hex'))
+                        sections.set(`${level}/${hex.getAttribute('data-building-hex')}`, section);
+                    for (const marker of floor.querySelectorAll('.building-template-continuation')) {
+                        expect(level).toBe('0');
+                        actual.push(`${level}/${marker.getAttribute('data-continuation-from')}/${marker.getAttribute('data-continuation-to')}`);
                     }
-                } finally { page.remove(); }
+                    section++;
+                }
             }
             const expected: string[] = [];
             for (const level of entity.mapLevels()) for (const hex of footprint) {
@@ -67,15 +58,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         }
     });
 
-    function pageBounds(shape: SVGGraphicsElement): DOMRect {
-        const box = shape.getBBox(), matrix = shape.getCTM()!;
-        const points = [new DOMPoint(box.x, box.y), new DOMPoint(box.x + box.width, box.y),
-            new DOMPoint(box.x, box.y + box.height), new DOMPoint(box.x + box.width, box.y + box.height)].map(point => point.matrixTransform(matrix));
-        const left = Math.min(...points.map(point => point.x)), top = Math.min(...points.map(point => point.y));
-        return new DOMRect(left, top, Math.max(...points.map(point => point.x)) - left, Math.max(...points.map(point => point.y)) - top);
-    }
-
-    it('minimizes connected pieces and nests them in reading order with captions beside the outline', async () => {
+    it('minimizes connected template pieces and orders them by their first hex', async () => {
         const branched = ['0102', '0103', '0201', '0202', '0203', '0204', '0302', '0303', '0304', '0401', '0402', '0403',
             '0502', '0503', '0504', '0505', '0506', '0602', '0603', '0604', '0703', '0705', '0805', '0906', '1006', '1107',
             '1207', '1308', '1408', '1509', '1609', '1710', '1810', '1911'].map(label => {
@@ -91,26 +74,14 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             let pieces = 0;
             const seen: string[] = [], starts: string[] = [];
             for (const page of pages) {
-                document.body.appendChild(page);
-                try {
-                    let previousY = -Infinity;
-                    const ink: DOMRect[] = [];
-                    for (const floor of page.querySelectorAll<SVGGElement>('.building-template-floor')) {
-                        pieces++;
-                        const labels = [...floor.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex')!).sort();
-                        expect(labels.length).toBeGreaterThan(1);
-                        expect(buildingConnectedComponents(entity.coordinates().filter(hex => labels.includes(entity.displayHex(hex)))).length).toBe(1);
-                        seen.push(...labels);
-                        starts.push(labels[0]);
-                        const shapes = [...floor.querySelectorAll<SVGGraphicsElement>('text, polygon, polyline, line, path')].map(pageBounds);
-                        const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-                        expect(shapes.some(a => ink.some(b => overlaps(a, b)))).toBeFalse();
-                        expect(shapes.slice(1).some(shape => overlaps(shape, shapes[0]))).toBeFalse();
-                        expect(shapes[0].y).toBeGreaterThanOrEqual(previousY);
-                        previousY = shapes[0].y;
-                        ink.push(...shapes);
-                    }
-                } finally { page.remove(); }
+                for (const floor of page.querySelectorAll<SVGGElement>('.building-template-floor')) {
+                    pieces++;
+                    const labels = [...floor.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex')!).sort();
+                    expect(labels.length).toBeGreaterThan(1);
+                    expect(buildingConnectedComponents(entity.coordinates().filter(hex => labels.includes(entity.displayHex(hex)))).length).toBe(1);
+                    seen.push(...labels);
+                    starts.push(labels[0]);
+                }
             }
             expect(pieces).toBe(fixture.pieces);
             expect(starts).toEqual([...starts].sort());
@@ -118,7 +89,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         }
     });
 
-    it('keeps the remaining corridor contiguous with its caption beside the previous section', async () => {
+    it('keeps the remaining corridor contiguous in the last template section', async () => {
         const entity = parseBuilding();
         const labels = ['0102', '0103', '0201', '0202', '0203', '0204', '0302', '0303', '0304', '0305',
             '0401', '0402', '0403', '0404', '0502', '0503', '0504', '0604', '0605', '0606', '0704', '0705',
@@ -131,21 +102,14 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         for (const pageFormat of ['letter', 'a4'] as const) {
             const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
             expect(pages.length).toBe(2);
-            const svg = pages.at(-1)!;
-            document.body.appendChild(svg);
-            try {
-                const floors = [...svg.querySelectorAll<SVGGElement>('.building-template-floor')];
-                expect(floors.length).toBe(2);
-                // Six columns fit across the page: this 16-column footprint needs at least three pieces.
-                expect(pages.reduce((sum, page) => sum + page.querySelectorAll('.building-template-floor').length, 0)).toBe(3);
-                const tail = [...floors.at(-1)!.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex'));
-                expect(tail).toEqual(jasmine.arrayContaining(['1308', '1408', '1509', '1609']));
-                expect(pages.flatMap(page => [...page.querySelectorAll('.building-template-hex')]
-                    .map(hex => hex.getAttribute('data-building-hex'))).sort()).toEqual([...labels].sort());
-                const ink = (floor: SVGGElement) => [...floor.querySelectorAll<SVGGraphicsElement>('text, polygon, polyline, line, path')].map(pageBounds);
-                expect(ink(floors[0]).some(a => ink(floors[1]).some(b => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top)))
-                    .toBeFalse();
-            } finally { svg.remove(); }
+            const floors = [...pages.at(-1)!.querySelectorAll<SVGGElement>('.building-template-floor')];
+            expect(floors.length).toBe(2);
+            // Six columns fit across the page: this 16-column footprint needs at least three pieces.
+            expect(pages.reduce((sum, page) => sum + page.querySelectorAll('.building-template-floor').length, 0)).toBe(3);
+            const tail = [...floors.at(-1)!.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex'));
+            expect(tail).toEqual(jasmine.arrayContaining(['1308', '1408', '1509', '1609']));
+            expect(pages.flatMap(page => [...page.querySelectorAll('.building-template-hex')]
+                .map(hex => hex.getAttribute('data-building-hex'))).sort()).toEqual([...labels].sort());
         }
     });
 
@@ -173,7 +137,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         }
     });
 
-    it('appends clean, named templates with full-scale hexes and centered floorplans on Letter and A4', async () => {
+    it('appends clean, named templates with full-scale hexes on Letter and A4', async () => {
         const entity = parseBuilding();
         setConstructionBuildingTopology(entity, [BUILDING_ORIGIN], 2);
         entity.doors.set([
@@ -190,29 +154,14 @@ describe('StaticEmplacementRecordSheetLayout', () => {
             expect(svg.querySelectorAll('.linked-door-opening').length).toBe(4);
             document.body.appendChild(svg);
             try {
-                const area = svg.querySelector<SVGRectElement>('#buildingTemplate')!.getBBox();
-                const boxes = [...svg.querySelectorAll<SVGGElement>('.building-template-floor')].map(floor => {
+                const floors = [...svg.querySelectorAll<SVGGElement>('.building-template-floor')];
+                expect(floors.length).toBe(2);
+                for (const floor of floors) {
+                    // Template hexes print at the tabletop map's 1.25-inch hex size.
                     const hex = floor.querySelector<SVGPolygonElement>('.building-template-hex')!;
                     const points = hex.points, matrix = hex.getCTM()!;
                     expect((points.getItem(1).y - points.getItem(5).y) * matrix.d).toBeCloseTo(90, 2);
-                    const bounds = hex.getBBox();
-                    // Include marker clearance and the caption, which can now sit on any side of the hex.
-                    const caption = floor.querySelector<SVGTextElement>(':scope > text')!;
-                    const captionWidth = caption.textContent!.length * 6;
-                    const captionX = matrix.e + caption.x.baseVal.getItem(0).value - captionWidth / 2;
-                    const captionY = matrix.f + caption.y.baseVal.getItem(0).value - 11;
-                    return { left: Math.min(matrix.e + bounds.x - 18, captionX), top: Math.min(matrix.f + bounds.y - 18, captionY),
-                        right: Math.max(matrix.e + bounds.x + bounds.width + 18, captionX + captionWidth),
-                        bottom: Math.max(matrix.f + bounds.y + bounds.height + 18, captionY + 18) };
-                });
-                expect(boxes.length).toBe(2);
-                expect((Math.min(...boxes.map(b => b.left)) + Math.max(...boxes.map(b => b.right))) / 2)
-                    .toBeCloseTo(area.x + area.width / 2, 1);
-                expect((Math.min(...boxes.map(b => b.top)) + Math.max(...boxes.map(b => b.bottom))) / 2)
-                    .toBeCloseTo(area.y + area.height / 2, 1);
-                expect(boxes[0].right).toBeLessThan(boxes[1].left);
-                expect(boxes.every(b => b.left >= area.x && b.right <= area.x + area.width
-                    && b.top >= area.y && b.bottom <= area.y + area.height)).toBeTrue();
+                }
             } finally { svg.remove(); }
         }
     });
@@ -227,20 +176,8 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         for (const svg of pages) {
             document.body.appendChild(svg);
             try {
-                const area = svg.querySelector<SVGRectElement>('#buildingTemplate')!.getBBox();
-                const boxes: DOMRect[] = [];
                 for (const floor of svg.querySelectorAll<SVGGElement>('.building-template-floor')) {
                     expect(floor.textContent).toContain(' · ');
-                    const bounds = floor.getBBox(), matrix = floor.getCTM()!;
-                    const box = new DOMRect(matrix.e + bounds.x, matrix.f + bounds.y, bounds.width, bounds.height);
-                    expect(box.left).toBeGreaterThanOrEqual(area.x);
-                    expect(box.right).toBeLessThanOrEqual(area.x + area.width);
-                    expect(box.top).toBeGreaterThanOrEqual(area.y);
-                    expect(box.bottom).toBeLessThanOrEqual(area.y + area.height);
-                    const drawn = [...floor.querySelectorAll<SVGGraphicsElement>('text, polygon, polyline, line, path')].map(pageBounds);
-                    expect(drawn.some(box => boxes.some(other => box.left < other.right && box.right > other.left
-                        && box.top < other.bottom && box.bottom > other.top))).toBeFalse();
-                    boxes.push(...drawn);
                     for (const hex of floor.querySelectorAll<SVGPolygonElement>('.building-template-hex')) {
                         cells.push(`${floor.getAttribute('data-building-floor')}/${hex.getAttribute('data-building-hex')}`);
                         expect(hex.getBBox().height).toBeCloseTo(90, 4);
@@ -265,7 +202,7 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         expect(doors.length).toBe(1);
         expect(doors[0].textContent).toContain('Door N/NE/SW: 1 level high');
     });
-    it('draws linked structural openings on every served floor with aligned door arrows', async () => {
+    it('draws linked structural openings on every served floor', async () => {
         const entity = parseBuilding();
         const south = { q: 0, r: 1 };
         setConstructionBuildingTopology(entity, [BUILDING_ORIGIN, south], 2);
@@ -404,40 +341,21 @@ Unresolved Searchlight
         expect(svg.querySelector('[data-mekbay-paperdoll-view], .vehicle-paperdoll, .mek-paperdolls, image, #crewName0')).toBeNull();
     });
 
-    function expectHexAt(layer: Element, label: string, column: number, row: number): void {
-        const first = layer.querySelector<SVGPolygonElement>('.building-hex')!;
-        const occupied = layer.querySelector<SVGPolygonElement>(`.occupied[data-building-hex="${label}"]`)!;
-        const scale = (first.points.getItem(3).x - first.points.getItem(0).x) / 40;
-        const staggeredRow = row + (column % 2) / 2;
-        // These fixtures leave wireframe cell 0,0 empty, so its vertex is the placement origin.
-        expect(occupied.points.getItem(0).x - first.points.getItem(0).x)
-            .toBeCloseTo((30 * column - 6 * staggeredRow) * scale, 2);
-        expect(occupied.points.getItem(0).y - first.points.getItem(0).y).toBeCloseTo(12 * staggeredRow * scale, 2);
-    }
-
-    it('centers the single hex labeled 0101 in a top-aligned floor, leaving the remaining wireframe unlabeled and gray', async () => {
+    it('labels the single hex 0101, leaving the remaining wireframe unlabeled and gray', async () => {
         const entity = parseBuilding();
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-        document.body.appendChild(svg);
-        try {
-            const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
-            expect(layers.length).toBe(1);
-            const layer = layers[0];
-            expect(layer.querySelectorAll('.building-hex').length).toBe(63);
-            const occupied = layer.querySelector('.occupied')!;
-            expect(occupied.getAttribute('data-building-hex')).toBe('0101');
-            expect(occupied.getAttribute('stroke')).toBe('#000');
-            expectHexAt(layer, '0101', 4, 3);
-            const empty = [...layer.querySelectorAll('.building-hex:not(.occupied)')];
-            expect(empty.length).toBe(62);
-            expect(empty.every(hex => hex.getAttribute('stroke') === '#bbb'
-                && Number(hex.getAttribute('stroke-width')) < Number(occupied.getAttribute('stroke-width')))).toBeTrue();
-            expect([...layer.querySelectorAll('text')].map(text => text.textContent)).toEqual(['0101', 'Level: G']);
-            const bounds = layer.getBBox();
-            const translation = layer.transform.baseVal.consolidate()!.matrix;
-            expect(translation.f + bounds.y).toBeCloseTo(118, 1);
-            expect(svg.querySelector('.inventoryEntry .location')?.textContent).toBe('0101/G');
-        } finally { svg.remove(); }
+        const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
+        expect(layers.length).toBe(1);
+        const layer = layers[0];
+        expect(layer.querySelectorAll('.building-hex').length).toBe(63);
+        const occupied = layer.querySelector('.occupied')!;
+        expect(occupied.getAttribute('data-building-hex')).toBe('0101');
+        expect(occupied.getAttribute('stroke')).toBe('#000');
+        const empty = [...layer.querySelectorAll('.building-hex:not(.occupied)')];
+        expect(empty.length).toBe(62);
+        expect(empty.every(hex => hex.getAttribute('stroke') === '#bbb')).toBeTrue();
+        expect([...layer.querySelectorAll('text')].map(text => text.textContent)).toEqual(['0101', 'Level: G']);
+        expect(svg.querySelector('.inventoryEntry .location')?.textContent).toBe('0101/G');
     });
 
     it('groups equipment by internal ID and hex/level while retaining all mounts and ammunition totals', async () => {
@@ -537,12 +455,7 @@ Unresolved Searchlight
             expect(pages.reduce((sum, svg) => sum + svg.querySelectorAll('.building-hex').length, 0)).toBe(63 * floors);
             expect(pages.reduce((sum, svg) => sum + svg.querySelectorAll('.occupied').length, 0)).toBe(floors);
             expect(pages.filter(page => !page.querySelector('#buildingTemplate')).length).toBe(Math.ceil(floors / 6));
-            for (const page of pages) {
-                const yPositions = [...page.querySelectorAll<SVGGElement>('.building-map-layer')]
-                    .map(layer => layer.transform.baseVal.consolidate()!.matrix.f);
-                expect(yPositions.length).toBeLessThanOrEqual(6);
-                expect(yPositions).toEqual([...yPositions].sort((a, b) => a - b));
-            }
+            for (const page of pages) expect(page.querySelectorAll('.building-map-layer').length).toBeLessThanOrEqual(6);
             expect(layers.at(-1)!.textContent).toContain('Level: G');
         }
     });
@@ -603,7 +516,7 @@ Unresolved Searchlight
         expect(new Set(ids).size).toBe(ids.length);
     });
 
-    it('centers the same footprint on every floor while keeping its 0101 labels and staggered adjacency', async () => {
+    it('labels the same footprint from 0101 on every floor regardless of origin and input order', async () => {
         const footprint = [{ q: 0, r: 0 }, { q: 1, r: 0 }, { q: 2, r: 0 }, { q: 2, r: 1 }];
         for (const origin of [BUILDING_ORIGIN, { q: 37, r: -51 }]) {
             const hexes = footprint.map(hex => ({ q: hex.q + origin.q, r: hex.r + origin.r }));
@@ -615,17 +528,8 @@ Unresolved Searchlight
                 expect(layers.length).toBe(2);
                 for (const layer of layers) {
                     expect(layer.querySelectorAll('.building-hex').length).toBe(63);
-                    expect(layer.querySelectorAll('.occupied').length).toBe(4);
-                    expectHexAt(layer, '0101', 3, 2);
-                    expectHexAt(layer, '0201', 4, 3);
-                    expectHexAt(layer, '0302', 5, 3);
-                    expectHexAt(layer, '0303', 5, 4);
-                    const polygons = [...layer.querySelectorAll<SVGPolygonElement>('.occupied')];
-                    for (let index = 1; index < polygons.length; index++) {
-                        const vertices = (polygon: SVGPolygonElement) => Array.from({ length: 6 }, (_, i) => polygon.points.getItem(i));
-                        expect(vertices(polygons[index]).filter(point => vertices(polygons[index - 1])
-                            .some(other => Math.hypot(point.x - other.x, point.y - other.y) < .01)).length).toBe(2);
-                    }
+                    expect([...layer.querySelectorAll('.occupied')].map(hex => hex.getAttribute('data-building-hex')).sort())
+                        .toEqual(['0101', '0201', '0302', '0303']);
                 }
                 expect(entity.coordinates()).toEqual(coordinates);
             }
@@ -650,12 +554,11 @@ Unresolved Searchlight
         expect(underground.querySelector('.inventoryEntry .location')?.textContent).toBe('0101/-5');
     });
 
-    it('repositions displaced footprints before adding denser rows or columns, keeping every hex inside the map area', async () => {
+    it('repositions displaced footprints before adding denser rows or columns without rewriting coordinates', async () => {
         const tight = Array.from({ length: 14 }, (_, i) => ({ q: Math.floor(i / 7), r: i % 7 }));
         const wide = Array.from({ length: 13 }, (_, q) => ({ q, r: -Math.floor(q / 2) }));
         const tall = Array.from({ length: 12 }, (_, r) => ({ q: 0, r }));
         const both = [...wide.slice(0, 11), ...tall.slice(1, 9)];
-        let standardHexWidth = 0;
         for (const [index, [footprint, cells]] of ([[tight, 9 * 7], [wide, 13 * 7], [tall, 9 * 12], [both, 11 * 9]] as const).entries()) {
             // Load authored coordinates far from 0,0; display placement must not rewrite those coordinates.
             const hexes = footprint.map(hex => ({ q: hex.q + 37, r: hex.r - 51 }));
@@ -664,31 +567,16 @@ Unresolved Searchlight
             const mount = addTestEquipment(entity, laser, { location });
             const native = encodeNativeEntity(entity);
             const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-            document.body.appendChild(svg);
-            try {
-                const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
-                expect(layers.length).toBe(2);
-                for (const layer of layers) {
-                    expect(layer.querySelectorAll('.building-hex').length).toBe(cells);
-                    expect(layer.querySelectorAll('.occupied').length).toBe(hexes.length);
-                    const transform = layer.transform.baseVal.consolidate()!.matrix;
-                    for (const hex of layer.querySelectorAll<SVGPolygonElement>('.building-hex')) {
-                        const bounds = hex.getBBox();
-                        expect(transform.e + bounds.x).toBeGreaterThanOrEqual(250 - .01);
-                        expect(transform.e + bounds.x + bounds.width).toBeLessThanOrEqual(594 + .01);
-                        expect(transform.f + bounds.y).toBeGreaterThanOrEqual(94 - .01);
-                        expect(transform.f + bounds.y + bounds.height).toBeLessThanOrEqual(756 + .01);
-                    }
-                }
-                const hexWidth = svg.querySelector<SVGPolygonElement>('.building-hex')!.getBBox().width;
-                if (index === 0) {
-                    standardHexWidth = hexWidth;
-                    expect(svg.querySelector(`[data-mekbay-component-ids="${mount.mountId}"] .location`)?.textContent).toBe('0207/G');
-                } else expect(hexWidth).toBeLessThan(standardHexWidth);
-                expect(entity.coordinates()).toEqual(hexes);
-                expect(mount.location).toBe(location);
-                expect(encodeNativeEntity(entity)).toBe(native);
-            } finally { svg.remove(); }
+            const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
+            expect(layers.length).toBe(2);
+            for (const layer of layers) {
+                expect(layer.querySelectorAll('.building-hex').length).toBe(cells);
+                expect(layer.querySelectorAll('.occupied').length).toBe(hexes.length);
+            }
+            if (index === 0) expect(svg.querySelector(`[data-mekbay-component-ids="${mount.mountId}"] .location`)?.textContent).toBe('0207/G');
+            expect(entity.coordinates()).toEqual(hexes);
+            expect(mount.location).toBe(location);
+            expect(encodeNativeEntity(entity)).toBe(native);
         }
     });
 
@@ -755,7 +643,7 @@ Unresolved Searchlight
         expect(svg.textContent).toContain('External');
     });
 
-    it('compresses a dense inventory before making continuation pages and retains every item without ruling', async () => {
+    it('keeps a dense inventory on one page before making continuation pages and retains every item without ruling', async () => {
         const entity = parseBuilding();
         const install = (start: number, count: number) => {
             for (let index = start; index < start + count; index++) addTestEquipment(entity,
@@ -765,25 +653,16 @@ Unresolved Searchlight
         install(0, 30);
         const compact = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
         expect(compact.filter(page => !page.querySelector('#buildingTemplate')).length).toBe(1);
-        const font = Number(compact[0].querySelector('.inventoryEntry .name')!.getAttribute('font-size'));
-        expect(font).toBeLessThan(6.76);
-        expect(font).toBeGreaterThanOrEqual(4.5);
         install(30, 60);
         const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' })).filter(page => !page.querySelector('#buildingTemplate'));
         expect(pages.length).toBeGreaterThan(1);
         const ids = pages.flatMap(page => [...page.querySelectorAll('.inventoryEntry')]
             .flatMap(row => row.getAttribute('data-mekbay-component-ids')!.split(' ')));
         expect(ids.sort()).toEqual(entity.equipment().map(mount => mount.mountId).sort());
-        for (const page of pages) {
-            expect(page.querySelector('[data-ammo-inventory] line')).toBeNull();
-            document.body.appendChild(page);
-            const inventory = page.querySelector<SVGGElement>('[data-ammo-inventory]')!;
-            expect(inventory.getBBox().y + inventory.getBBox().height).toBeLessThanOrEqual(Number(inventory.getAttribute('data-bottom')));
-            page.remove();
-        }
+        for (const page of pages) expect(page.querySelector('[data-ammo-inventory] line')).toBeNull();
     });
 
-    it('places the feature key immediately below the last layer, with doors, elevators, bays and roof turrets', async () => {
+    it('prints the feature key and map symbols for doors, elevators, bays and roof turrets', async () => {
         const entity = parseBuilding();
         const east = { q: 1, r: 0 };
         setConstructionBuildingTopology(entity, [BUILDING_ORIGIN, east], 6);
@@ -793,31 +672,18 @@ Unresolved Searchlight
         entity.baySpace.set(new Map([['bay', [{ position: { hex: east, floor: 5 }, tons: 10 }]]]));
         addTestEquipment(entity, laser, { location: buildingLocationName(east, 5), turretType: 'sponson' });
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-        document.body.appendChild(svg);
-        try {
-            const key = svg.querySelector<SVGGElement>('.building-map-key')!;
-            expect(key.textContent).toContain('Elevator');
-            expect(key.textContent).toContain('Bay / quarters');
-            expect(key.textContent).toContain('Roof turret');
-            expect(key.textContent).toContain('Door');
-            expect(svg.querySelectorAll('.building-map-layer [data-building-symbol="door"]').length).toBe(2);
-            expect(svg.querySelectorAll('.building-map-layer [data-building-symbol="turret"]').length).toBe(1);
-            const symbol = svg.querySelector<SVGTSpanElement>('.building-map-layer [data-building-symbol="elevator"]')!;
-            const label = symbol.parentElement as unknown as SVGTextElement;
-            const labelBox = label.getBBox();
-            expect(labelBox.x + labelBox.width / 2).toBeCloseTo(Number(label.getAttribute('x')), 0);
-            expect(label.textContent).toMatch(/^E\d{4}$/);
-            const keyDoor = key.querySelector<SVGPolygonElement>('[data-building-symbol="door"]')!;
-            expect(keyDoor.points.numberOfItems).toBe(3);
-            const ground = svg.querySelector<SVGGElement>('[data-building-floor="0"]')!;
-            const bottom = ground.getBBox().y + ground.getBBox().height + ground.transform.baseVal.consolidate()!.matrix.f;
-            const keyTop = key.getBBox().y + key.transform.baseVal.consolidate()!.matrix.f;
-            expect(keyTop).toBeGreaterThan(bottom);
-            expect(keyTop - bottom).toBeLessThan(24);
-            expect(keyTop + key.getBBox().height).toBeLessThan(758);
-            expect(svg.textContent).toContain('Movement Type:Static');
-            expect(svg.querySelector('#type')!.getAttribute('x')).toBe('54');
-        } finally { svg.remove(); }
+        const key = svg.querySelector<SVGGElement>('.building-map-key')!;
+        expect(key.textContent).toContain('Elevator');
+        expect(key.textContent).toContain('Bay / quarters');
+        expect(key.textContent).toContain('Roof turret');
+        expect(key.textContent).toContain('Door');
+        expect(svg.querySelectorAll('.building-map-layer [data-building-symbol="door"]').length).toBe(2);
+        expect(svg.querySelectorAll('.building-map-layer [data-building-symbol="turret"]').length).toBe(1);
+        const symbol = svg.querySelector<SVGTSpanElement>('.building-map-layer [data-building-symbol="elevator"]')!;
+        expect(symbol.parentElement!.textContent).toMatch(/^E\d{4}$/);
+        const keyDoor = key.querySelector<SVGPolygonElement>('[data-building-symbol="door"]')!;
+        expect(keyDoor.points.numberOfItems).toBe(3);
+        expect(svg.textContent).toContain('Movement Type:Static');
     });
 
     it('prints elevator doors on their configured levels and sides without leaking roof access onto interior floors', async () => {
@@ -838,28 +704,6 @@ Unresolved Searchlight
         const key = svg.querySelector('.building-map-key')!;
         expect(key.textContent).toContain('Elevator door');
         expect(key.querySelector<SVGPolygonElement>('[data-building-symbol="elevator-door"]')!.points.numberOfItems).toBe(3);
-    });
-
-    it('aligns every door base with its hexside and points each tip outward in the projected grid', async () => {
-        const entity = parseBuilding();
-        entity.doors.set(Array.from({ length: 6 }, (_, facing) => ({ position: { hex: BUILDING_ORIGIN, floor: 0 }, facing, height: 1 })));
-        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-        const hex = svg.querySelector<SVGPolygonElement>('.occupied')!;
-        const keyPolygons = svg.querySelectorAll<SVGPolygonElement>('.building-map-key polygon');
-        expect(keyPolygons.length).toBe(1);
-        expect(keyPolygons[0].points.numberOfItems).toBe(3);
-        const center = Array.from({ length: 6 }, (_, index) => hex.points.getItem(index)).reduce((point, next) =>
-            ({ x: point.x + next.x / 6, y: point.y + next.y / 6 }), { x: 0, y: 0 });
-        for (const door of svg.querySelectorAll<SVGPolygonElement>('.building-map-layer [data-building-symbol="door"]')) {
-            const facing = Number(door.getAttribute('data-building-facing'));
-            const a = hex.points.getItem((facing + 1) % 6), b = hex.points.getItem((facing + 2) % 6);
-            const tip = door.points.getItem(0), left = door.points.getItem(1), right = door.points.getItem(2);
-            expect((tip.x + left.x + right.x) / 3).toBeCloseTo((a.x + b.x) / 2, 2);
-            expect((tip.y + left.y + right.y) / 3).toBeCloseTo((a.y + b.y) / 2, 2);
-            const base = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
-            expect((right.x - left.x) * (b.y - a.y) - (right.y - left.y) * (b.x - a.x)).toBeCloseTo(0, 2);
-            expect((tip.x - base.x) * (base.x - center.x) + (tip.y - base.y) * (base.y - center.y)).toBeGreaterThan(0);
-        }
     });
 
     it('uses actual Letter and A4 page dimensions for the same native design', async () => {

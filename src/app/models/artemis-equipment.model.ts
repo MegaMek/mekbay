@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { EquipmentFlag } from './equipment-flags.type';
-import type { Equipment } from './equipment.model';
+import type { AmmoEquipment, Equipment } from './equipment.model';
+import type { EquipmentStatus } from './equipment-status.model';
+import type { ToHitAdjustment } from './rules/game-rules';
 
 const ARTEMIS_IV_FLAG = 'F_ARTEMIS' as const;
 const ARTEMIS_V_FLAG = 'F_ARTEMIS_V' as const;
@@ -32,6 +34,37 @@ export function isArtemisVEquipment(equipment: Equipment | null | undefined): bo
 
 export function isArtemisCompatibleWeapon(equipment: Equipment | null | undefined): boolean {
   return equipment?.hasFlag(ARTEMIS_COMPATIBLE_FLAG) === true;
+}
+
+/** Direct-fire adjustment for a canonical linked Artemis V system. */
+export function artemisVToHitAdjustment(
+  source: Equipment | undefined,
+  weapon: Equipment | undefined,
+  status: EquipmentStatus,
+  ammo: AmmoEquipment | null,
+  jammed: boolean,
+  stealthEcm: boolean,
+): Extract<ToHitAdjustment, { readonly kind: 'add' }> | null {
+  if (!source || !isArtemisVEquipment(source) || !isArtemisCompatibleWeapon(weapon)) return null;
+  const compatibleAmmo = ammo?.hasMunitionType('M_ARTEMIS_V_CAPABLE') === true;
+  const weakened = status !== 'available' || jammed || stealthEcm || !compatibleAmmo;
+  const label = source.shortName || source.name;
+  return Object.freeze({
+    kind: 'add' as const,
+    label: status === 'destroyed'
+      ? `${label} Destroyed`
+      : status === 'disabled'
+        ? `${label} Disabled`
+        : jammed
+          ? 'Unit Jammed'
+          : stealthEcm
+            ? 'Stealth ECM'
+            : ammo === null
+              ? 'Artemis V Ammo Not Selected'
+              : compatibleAmmo ? label : `Incompatible Ammo (${ammo.name})`,
+    modifier: weakened ? 0 : -1,
+    weakened,
+  });
 }
 
 export function artemisBattleValueMultiplier(

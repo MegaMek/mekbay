@@ -32,6 +32,7 @@ isPointInCenterPanel,
 resolveCenterPanelCursorElements,
 } from '../../utils/record-sheet-center-panel.util';
 import { formatRecordSheetWeaponDamageText } from '../../utils/record-sheet-weapon-info.util';
+import { INVENTORY_TEXT_WIDTH_ATTRIBUTE } from '../../utils/sheets/inventory-text-layout';
 import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 import { isMekRecordSheetInventorySupport } from '../../utils/sheets/record-sheet-inventory-equipment';
 import { formatMovementWithMaximum, formatTechBase, formatWholeNumber } from '../../utils/sheets/record-sheet-svg-rendering';
@@ -68,6 +69,7 @@ bindRecordSheetInventoryButtons,
 NO_INVENTORY_SELECTION,
 projectRecordSheetWeaponSelection,
 readRecordSheetComponentIds,
+renderRecordSheetHeatProfile,
 renderRecordSheetInventorySelection,
 writeRecordSheetComponentIds,
 type RecordSheetInventorySelection,
@@ -120,6 +122,11 @@ export function bindMekRecordSheet(
         () => current.editContext, abort.signal, onInteraction);
 
     let currentInventory = initialInventory;
+    // The generator's row-to-component layout, read before the first render resets the rows.
+    const inventoryLayout: ReadonlyMap<SVGElement, string> = new Map(
+        [...svg.querySelectorAll<SVGElement>(manifest.selectors.inventoryRow)]
+            .map(row => [row, readRecordSheetComponentIds(row).join(' ')] as const),
+    );
     const bind = createRecordSheetBind(abort.signal, onInteraction);
     const bindPresentation = createRecordSheetBind(abort.signal, onPresentationInteraction);
 
@@ -151,7 +158,7 @@ export function bindMekRecordSheet(
         if (firstRender) resetUnitDataLayout(svg, manifest);
         renderIdentity(svg, snapshot);
         renderConditions(svg, snapshot, bind, context);
-        renderHeatSinks(svg, manifest, snapshot);
+        renderHeatSinks(svg, manifest, snapshot, inventory);
 
         for (const location of snapshot.locations) {
             renderLocation(highlights, svg, location, issues, bind, context, markChanges);
@@ -228,7 +235,8 @@ export function bindMekRecordSheet(
         renderSystemDamage(svg, snapshot, bind, context);
 
         renderCrew(svg, snapshot, issues, bind, () => current);
-        renderInventory(svg, manifest, snapshot, issues, bind, context, inventory, onInteraction !== undefined);
+        renderInventory(svg, manifest, snapshot, issues, bind, context, inventory, onInteraction !== undefined,
+            inventoryLayout);
         if (onInteraction || onPresentationInteraction) bindEquipmentHover(svg, abort.signal);
         renderRecordSheetAmmoProfile(svg, snapshot.equipment, onInteraction !== undefined);
         renderHeat(svg, snapshot, bindHeat);
@@ -405,6 +413,7 @@ function renderHeatSinks(
     svg: SVGSVGElement,
     manifest: MekSheetBindingManifestV1,
     snapshot: MekRecordSheetSnapshot,
+    inventory: RecordSheetInventorySource | null,
 ): void {
     const pips = [...svg.querySelectorAll<SVGElement>(manifest.selectors.heatSinkPip)]
         .filter((pip, index, all) => all.indexOf(pip) === index);
@@ -423,15 +432,7 @@ function renderHeatSinks(
     write(svg, '#hsCount', capacity !== null && capacity !== snapshot.heatSinks.count
         ? `${snapshot.heatSinks.count} (${capacity})`
         : snapshot.heatSinks.count);
-    const profile = svg.querySelector<SVGElement>('#heatProfile');
-    if (profile) {
-        const maximum = profile.getAttribute('data-maximum-heat');
-        profile.textContent = capacity === null
-            ? maximum === null ? '' : `Maximum Heat: ${maximum}`
-            : maximum === null
-                ? `Projected Heat: ${projection!.projected} (Dissipation ${capacity})`
-                : `Maximum Heat: ${maximum}; Projected: ${projection!.projected} (Dissipation ${capacity})`;
-    }
+    if (capacity !== null) renderRecordSheetHeatProfile(svg, capacity, inventory);
     const partialWing = svg.getElementById('partialWingBonus');
     if (partialWing) {
         partialWing.textContent = '';
@@ -683,13 +684,24 @@ function renderInventory(
     context: () => UnitEditContext,
     source: RecordSheetInventorySource | null,
     interactive: boolean,
+    layout: ReadonlyMap<SVGElement, string>,
 ): void {
     const layoutRows = [...svg.querySelectorAll<SVGElement>(manifest.selectors.inventoryRow)]
         .filter(row => row.parentElement?.closest('.inventoryEntry') === null);
     const rows = recordSheetEquipmentRows(snapshot);
-    rows.forEach((row, index) => {
-        const element = layoutRows[index];
-        if (!element) return;
+    const assigned = assignInventoryLayoutRows(layoutRows, rows, layout);
+    const componentsById = new Map(snapshot.equipment.map(component => [component.componentId, component] as const));
+    layoutRows.forEach((element, index) => {
+        const row = assigned[index];
+        if (!row) {
+            element.style.display = 'none';
+            writeInventoryName(element, '');
+            writeInventoryDamage(element, '');
+            writeRecordSheetComponentIds(element, []);
+            element.classList.remove('damaged', 'disabled', 'disabledInventory');
+            renderRecordSheetInventorySelection(element, NO_INVENTORY_SELECTION);
+            return;
+        }
         element.style.display = '';
         writeRecordSheetComponentIds(element, row.componentIds);
         element.classList.toggle('interactive', interactive
@@ -739,6 +751,15 @@ function renderInventory(
             }
             if (row.kind === 'weapon') bindRecordSheetInventoryButtons(modeElement, row.componentIds, mode, bind, context);
         });
+        // A linked weapon enhancement keeps its printed line and shows its own component's damage.
+        element.querySelectorAll<SVGElement>(':scope > .inventoryEntry.linked').forEach(linked => {
+            const componentIds = (layout.get(linked) ?? '').split(' ').filter(Boolean) as ComponentId[];
+            const status = componentIds.length === 0 ? undefined : componentsById.get(componentIds[0])?.status;
+            linked.style.display = '';
+            writeRecordSheetComponentIds(linked, componentIds);
+            linked.classList.toggle('damaged', status === 'destroyed');
+            linked.classList.toggle('disabled', status === 'disabled');
+        });
         renderRecordSheetInventorySelection(element, selection);
         if (row.kind === 'weapon') {
             bindRecordSheetInventoryButtons(element, row.componentIds, undefined, bind, context);
@@ -751,15 +772,34 @@ function renderInventory(
             }), 'control');
         }
     });
-    layoutRows.slice(rows.length).forEach(element => {
-        element.style.display = 'none';
-        writeRecordSheetComponentIds(element, []);
-        element.classList.remove('damaged', 'disabled', 'disabledInventory');
-        renderRecordSheetInventorySelection(element, NO_INVENTORY_SELECTION);
-    });
     if (layoutRows.length < rows.length) {
         issues.push(`Missing equipment layout rows: ${layoutRows.length}/${rows.length}`);
     }
+}
+
+/**
+ * Keeps each weapon and equipment row on the layout row generated for its components, so the
+ * layout's printed sub-rows (enhancements, ammo profiles) stay under their weapon however the
+ * runtime orders its rows. Rows without a matching layout row, such as physical attacks, fill
+ * the remaining layout rows in order.
+ */
+function assignInventoryLayoutRows(
+    layoutRows: readonly SVGElement[],
+    rows: readonly RecordSheetEquipmentRow[],
+    layout: ReadonlyMap<SVGElement, string>,
+): readonly (RecordSheetEquipmentRow | undefined)[] {
+    const byComponents = new Map<string, RecordSheetEquipmentRow>();
+    rows.filter(row => row.kind !== 'physical' && row.componentIds.length > 0)
+        .forEach(row => byComponents.set(row.componentIds.join(' '), row));
+    const placed = new Set<RecordSheetEquipmentRow>();
+    const assigned = layoutRows.map(element => {
+        const row = byComponents.get(layout.get(element) ?? '');
+        if (row === undefined || placed.has(row)) return undefined;
+        placed.add(row);
+        return row;
+    });
+    const remaining = rows.filter(row => !placed.has(row));
+    return assigned.map(row => row ?? remaining.shift());
 }
 
 /** The equipment panel's rows for a sheet row's weapons, which carry the selection and every attack modifier. */
@@ -1005,7 +1045,7 @@ function writeInventoryName(row: SVGElement, value: string): void {
         return;
     }
     writeSvgTextLines(field, value, {
-        maxWidth: inventoryNameLineWidth(row, lines[0]),
+        maxWidth: generatedInventoryTextWidth(field) ?? inventoryNameLineWidth(row, lines[0]),
         measure: measureSvgTextCanvas,
     });
 }
@@ -1018,10 +1058,17 @@ function writeInventoryDamage(row: SVGElement, value: string | number): void {
         return;
     }
     writeSvgTextLines(field, String(value), {
-        maxWidth: inventoryDamageLineWidth(row, lines[0]),
+        maxWidth: generatedInventoryTextWidth(field) ?? inventoryDamageLineWidth(row, lines[0]),
         allowFinalLineOverflow: true,
         measure: measureSvgTextCanvas,
     });
+}
+
+/** The width the sheet generator wrapped this cell at; authored layouts derive it from their columns. */
+function generatedInventoryTextWidth(field: SVGElement | null): number | null {
+    const text = field?.matches('text') ? field : field?.querySelector('text');
+    const width = Number.parseFloat(text?.getAttribute(INVENTORY_TEXT_WIDTH_ATTRIBUTE) ?? '');
+    return Number.isFinite(width) ? width : null;
 }
 
 function inventoryNameLineWidth(row: SVGElement, line: SVGTextContentElement): number | null {
@@ -1311,8 +1358,11 @@ function resetUnitDataLayout(
             child.removeAttribute('inventory-id');
             child.removeAttribute('mode');
         });
+        // Linked enhancement lines are printed once; name and damage keep their laid-out lines
+        // because every shown row rewrites them in place.
+        if (element.classList.contains('linked')) return;
         for (const field of [
-            'quantity', 'name', 'location', 'heat', 'damage', 'hitmod',
+            'quantity', 'location', 'heat', 'hitmod',
             'range_min', 'range_short', 'range_medium', 'range_long', 'range_extreme',
         ]) writeInventoryField(element, field, '');
     });

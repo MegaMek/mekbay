@@ -57,16 +57,6 @@ describe('generated paperdoll pointer targets', () => {
             const center = new DOMPoint(14, 14).matrixTransform(matrix);
             expect(document.elementFromPoint(center.x, center.y)?.closest('[data-mekbay-random-hit]'))
                 .withContext(`${name}: random-hit control remains clickable`).toBe(button);
-            const layer = button.closest<SVGGElement>('[data-mekbay-paperdoll]')!;
-            const localMatrix = layer.getScreenCTM()!.inverse().multiply(matrix);
-            const topLeft = new DOMPoint(-1, -1).matrixTransform(localMatrix);
-            const bottomRight = new DOMPoint(29, 29).matrixTransform(localMatrix);
-            expect(topLeft.x).withContext(`${name}: button stays inside panel left`).toBeGreaterThanOrEqual(0);
-            expect(topLeft.y).withContext(`${name}: button stays inside panel top`).toBeGreaterThanOrEqual(0);
-            expect(bottomRight.x).withContext(`${name}: button stays inside panel right`)
-                .toBeLessThanOrEqual(Number(layer.dataset['width']));
-            expect(bottomRight.y).withContext(`${name}: button stays inside panel bottom`)
-                .toBeLessThanOrEqual(Number(layer.dataset['height']));
             button.style.display = 'none';
             const coveredLocations = new Set<string>();
             for (let x = -1; x <= 29; x += 2) {

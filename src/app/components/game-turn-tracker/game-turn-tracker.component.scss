@@ -1,0 +1,70 @@
+:host { display: block; flex: 0 0 auto; min-width: 0; }
+* { box-sizing: border-box; }
+button { font: inherit; }
+
+.game-turn-tracker {
+    --friendly-color: #5bb7e5;
+    --hostile-color: #e35845;
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+    min-height: 54px;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--background-color-menu);
+}
+
+.turn-box { display: grid; align-content: center; justify-items: center; gap: 3px; flex: 0 0 auto; padding: 0 12px 0 0; border-right: 1px solid var(--border-color); }
+.turn-label { display: grid; place-items: center; align-content: center; padding: 0; border: 0; background: none; color: inherit; line-height: 1; }
+.turn-label:enabled { cursor: pointer; }
+.turn-label:enabled:hover strong { color: var(--bt-yellow); }
+.turn-caption { color: var(--text-color-tertiary); font-size: .6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.turn-label strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+/* The prompt to decide this turn's Initiative. */
+.initiative-chip { max-width: 76px; padding: 1px 5px; overflow: hidden; border: 1px solid var(--border-color); background: none; color: var(--text-color-secondary); font-size: .58rem; font-weight: 800; letter-spacing: .04em; line-height: 1.3; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+button.initiative-chip { cursor: pointer; }
+.initiative-chip.pending { border-color: var(--bt-yellow); background: var(--bt-yellow-background); color: var(--bt-yellow); }
+.initiative-chip.waiting { font-style: italic; }
+
+/* Phases sit side by side; each column stacks unit dots above its step label. */
+/*
+ * The scrollbar always keeps its room, so the bar's height never changes as the actions beside it widen or narrow;
+ * it shows only while the pointer is over the steps.
+ */
+.timeline { display: flex; flex: 1 1 auto; align-items: stretch; gap: 6px; min-width: 0; overflow-x: scroll; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.timeline:hover, .timeline:focus-within { scrollbar-color: var(--text-color-tertiary) transparent; }
+.phase { display: grid; grid-template-rows: auto 1fr; flex: 0 0 auto; }
+.phase-label { padding: 0 4px 2px; border-bottom: 1px solid color-mix(in srgb, var(--text-color) 25%, transparent); color: var(--text-color-secondary); font-size: .6rem; font-weight: 700; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
+.phase:not(.compound) { grid-template-rows: 1fr; }
+.steps { display: flex; align-items: stretch; }
+.step { display: grid; grid-template-rows: 1fr auto; justify-items: center; gap: 2px; min-width: 52px; padding: 2px 4px; border-bottom: 2px solid transparent; }
+.step-label { padding: 0; border: 0; background: none; color: var(--text-color-tertiary); font-size: .66rem; font-weight: 600; white-space: nowrap; }
+.step-label:enabled { cursor: pointer; }
+.step-label:enabled:hover { color: var(--text-color); text-decoration: underline; }
+.step.past .step-label { color: color-mix(in srgb, var(--text-color-tertiary) 60%, transparent); }
+.step.current { border-bottom-color: var(--bt-yellow); background: color-mix(in srgb, var(--bt-yellow) 7%, transparent); }
+.step.current .step-label { color: var(--text-color); font-weight: 800; }
+
+/* The step under way carries its acting order above its label. */
+.dots { display: flex; align-self: end; min-height: 6px; padding-top: 3px; }
+
+.tracker-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex: 0 0 auto; }
+.tracker-actions .bt-button { flex: 0 0 auto; white-space: nowrap; }
+.done-button { display: inline-flex; align-items: center; gap: 4px; min-height: 38px; padding: 4px 8px; --btn-border-color: var(--bt-yellow); background: var(--bt-yellow-background); color: var(--text-color); font-size: .8rem; }
+.done-button svg { flex: 0 0 auto; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.all-button { min-height: 38px; padding: 4px 8px; background: transparent; color: var(--text-color-secondary); font-size: .72rem; }
+.waiting { min-width: 0; overflow: hidden; color: var(--text-color-secondary); font-size: .75rem; font-style: italic; text-overflow: ellipsis; white-space: nowrap; }
+.advance-button { min-height: 38px; padding: 4px 8px; border-color: var(--bt-yellow); color: var(--bt-yellow); font-size: .72rem; }
+.away-player { display: inline-flex; align-items: center; gap: 6px; color: var(--text-color-secondary); font-size: .72rem; white-space: nowrap; }
+.resume-button { min-height: 28px; padding: 2px 8px; font-size: .7rem; }
+
+/* Two rows: the turn with its actions, then the steps. The actions shrink rather than wrap below the turn. */
+@media (max-width: 640px) {
+    .game-turn-tracker { flex-wrap: wrap; gap: 6px; padding: 4px 6px; }
+    .turn-box { padding-right: 8px; }
+    .timeline { order: 3; flex-basis: 100%; }
+    .tracker-actions { flex: 1 1 0; gap: 4px; min-width: 0; }
+    .done-button, .all-button, .advance-button { min-height: 34px; padding: 2px 6px; }
+    .step { min-width: 44px; }
+}
+@media print { :host { display: none; } }

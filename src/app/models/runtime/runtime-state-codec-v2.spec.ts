@@ -144,7 +144,7 @@ describe('direct Mek V2 state codec', () => {
 
         const saved = serialize(fixture);
         expect(saved.movementPsr).toEqual(jasmine.objectContaining({
-            schemaVersion: 2,
+            schemaVersion: 3,
             automaticFalls: [{
                 triggerKind: 'leg-destroyed-auto-fall',
                 locationIds: [leg.id],

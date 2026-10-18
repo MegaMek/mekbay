@@ -1,0 +1,165 @@
+:host {
+    --friendly-color: #5bb7e5;
+    --hostile-color: #e35845;
+}
+
+.content {
+    display: block;
+    width: min(560px, 100vw);
+    box-sizing: border-box;
+    padding: 16px;
+    text-align: center;
+}
+
+h2 {
+    margin: 8px 0 0;
+    letter-spacing: 0.08em;
+}
+
+.step-name {
+    color: var(--text-color-secondary);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+section {
+    margin-top: 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.3);
+    text-align: left;
+}
+
+.section-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: var(--text-color-secondary);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+
+    .how {
+        font-weight: 600;
+        letter-spacing: normal;
+        text-transform: none;
+    }
+
+    .pending {
+        color: var(--bt-yellow, #eaae3f);
+    }
+}
+
+.ranking {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.side {
+    --side-color: var(--hostile-color);
+    display: grid;
+    grid-template-columns: 1.5em auto minmax(0, 1fr) auto auto;
+    grid-template-areas: 'place marker name roll acted' 'place marker role roll acted';
+    align-items: center;
+    column-gap: 8px;
+
+    &.friendly {
+        --side-color: var(--friendly-color);
+    }
+}
+
+.place {
+    grid-area: place;
+    color: var(--bt-yellow, #eaae3f);
+    font-weight: 800;
+    text-align: center;
+}
+
+.marker {
+    grid-area: marker;
+    inline-size: 10px;
+    block-size: 10px;
+    background: var(--side-color);
+    transform: rotate(45deg);
+
+    .friendly & {
+        border-radius: 50%;
+        transform: none;
+    }
+}
+
+.name {
+    grid-area: name;
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.role {
+    grid-area: role;
+    color: var(--text-color-secondary);
+    font-size: 0.72rem;
+}
+
+.roll {
+    grid-area: roll;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    color: var(--text-color-secondary);
+    font-variant-numeric: tabular-nums;
+
+    strong {
+        color: var(--text-color);
+        font-size: 1.3rem;
+    }
+
+    .tie {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+    }
+}
+
+.acted {
+    grid-area: acted;
+    white-space: nowrap;
+    color: var(--text-color-secondary);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.empty {
+    color: var(--text-color-secondary);
+    font-size: 0.85rem;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin: 10px 0 0;
+    color: var(--text-color-secondary);
+    font-size: 0.72rem;
+}
+
+.legend-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+}

@@ -16,12 +16,49 @@ import { systemDamageId } from './system-damage-rules';
 
 import { isProtoMekEntity } from '../entity/utils/entity-type-guards';
 import { type InstanceBaselineRef } from '../runtime/runtime-state';
-import { projectProtoMekRuntimeRules } from './protomek-runtime-rules';
+import { projectNonMekMovementCapabilities } from '../runtime/non-mek-unit-instance';
+import { componentIdForMount } from '../runtime/unit-runtime-index';
+import { projectProtoMekRuntimeRules, protoMekCriticalModifiers } from './protomek-runtime-rules';
 
 describe('ProtoMek runtime rules', () => {
+    it('applies leg and torso critical hits to movement, rounding the half up', () => {
+        const { runtime } = harness();
+        const maximum = () => projectNonMekMovementCapabilities(
+            runtime.getUnit(), runtime.getIndex(), runtime.snapshot(), runtime.ruleset()).maximum;
+        const critical = (system: 'legs' | 'torso', level: number) => expect(runtime.dispatch({
+            type: 'set-system-damage-level', system, level, target: 'committed', timestamp: 1,
+        }).accepted).toBeTrue();
+        expect([maximum().walk, maximum().run, maximum().jump]).toEqual([6, 9, 1]);
+        critical('legs', 1);
+        expect([maximum().walk, maximum().run]).toEqual([5, 8]);
+        critical('legs', 2);
+        expect([maximum().walk, maximum().run]).toEqual([3, 5]);
+        critical('torso', 1);
+        expect(maximum().jump).toBe(0);
+    });
+
+    it('adds head and arm critical modifiers, and blocks the main gun once both arms are gone', () => {
+        const hits = { head: 1, torso: 0, legs: 0, 'Left Arm': 1, 'Right Arm': 2 };
+        expect(protoMekCriticalModifiers(hits, ['Left Arm']).map(row => [row.label, row.modifier]))
+            .toEqual([['Head critical', 1], ['Left Arm critical', 1]]);
+        expect(protoMekCriticalModifiers(hits, ['Main Gun']).reduce((sum, row) => sum + row.modifier, 0)).toBe(4);
+        expect(protoMekCriticalModifiers({ ...hits, head: 2 }, ['Torso']).map(row => row.modifier)).toEqual([2]);
+
+        const entity = new TestProtoMekEntity();
+        entity.uuid.set(UUID);
+        entity.setTonnage(6);
+        const mainGun = componentIdForMount(addTestEquipmentWithFlags(entity, 'F_ENERGY', { location: 'Main Gun' }));
+        const runtime = createNonMekRuntimeForTest('unit:proto:main-gun', baseline(CORE_2026_RULESET), entity, CORE_2026_RULESET);
+        runtime.dispatch({ type: 'set-system-damage-level', system: 'left-arm', level: 2, target: 'committed', timestamp: 1 });
+        expect(project(runtime).fireBlockedComponentIds.has(mainGun)).toBeFalse();
+        runtime.dispatch({ type: 'set-system-damage-level', system: 'right-arm', level: 2, target: 'committed', timestamp: 1 });
+        expect(project(runtime).criticalHits).toEqual(jasmine.objectContaining({ 'Left Arm': 2, 'Right Arm': 2 }));
+        expect(project(runtime).fireBlockedComponentIds.has(mainGun)).toBeTrue();
+    });
+
     it('ports the production attack movement modifiers', () => {
         const { entity, runtime } = harness();
-        expect(runtime.query().currentBaseBattleValue()).toBe(entity.battleValue());
+        expect(runtime.query().currentBaseBattleValue()).toBe(entity.battleValue(runtime.ruleset()));
         const expected = [
             ['stationary', 0, 0],
             ['walk', 1, 1],

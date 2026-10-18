@@ -37,15 +37,27 @@ const MEK_LOCATION_LABELS: Readonly<Record<MekLocation, string>> = {
   LL: 'Left Leg',
   RL: 'Right Leg',
   CL: 'Center Leg',
-  FLL: 'Front Left Leg',
-  FRL: 'Front Right Leg',
-  RLL: 'Rear Left Leg',
-  RRL: 'Rear Right Leg',
+  // The rulebooks name quad legs side first; the codes keep MegaMek's front/rear-first order of unit files and saves.
+  FLL: 'Left Front Leg',
+  FRL: 'Right Front Leg',
+  RLL: 'Left Rear Leg',
+  RRL: 'Right Rear Leg',
+};
+
+const MEK_LOCATION_ABBREVIATIONS: Readonly<Partial<Record<MekLocation, string>>> = {
+  FLL: 'LFL',
+  FRL: 'RFL',
+  RLL: 'LRL',
 };
 
 /** Full display label for a canonical Mek location. */
 export function getMekLocationLabel(location: string | undefined): string | null {
   return location && isMekLocation(location) ? MEK_LOCATION_LABELS[location] : null;
+}
+
+/** Short display form of a location code, abbreviating quad legs as the rulebooks name them (LFL, RFL, LRL, RRL). */
+export function getMekLocationAbbreviation(location: string): string {
+  return isMekLocation(location) ? MEK_LOCATION_ABBREVIATIONS[location] ?? location : location;
 }
 
 // ============================================================================

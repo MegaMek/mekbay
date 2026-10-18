@@ -25,7 +25,7 @@ import {
 calculateChargeDamage,
 type ChargeDamageProjection,
 } from './charge-damage';
-import type { ToHitModifierBreakdownEntry } from './game-rules';
+import { gameRulesFor, type ToHitModifierBreakdownEntry } from './game-rules';
 import { type SystemDamageKind } from './system-damage-rules';
 
 export interface VehicleMotiveHit {
@@ -84,9 +84,12 @@ export interface VehicleRuntimeRulesProjection {
     readonly stabilizerAffectedComponentIds: ReadonlySet<ComponentId>;
 }
 
-/** TW p. 149 excludes VTOLs and WiGEs from charging; aerospace is a separate entity family. */
-export function vehicleHasChargeAttack(entity: VehicleEntity, ruleset: CBTRuleset): boolean {
-    return ruleset !== 'total-warfare' || !['VTOL', 'WiGE'].includes(entity.motiveType());
+/**
+ * TW p. 149 excludes VTOLs and WiGEs from charging. Core supersedes the charge damage but does not address them,
+ * so the limit holds under both rulesets. Aerospace is a separate entity family.
+ */
+export function vehicleHasChargeAttack(entity: VehicleEntity): boolean {
+    return !['VTOL', 'WiGE'].includes(entity.motiveType());
 }
 
 export function projectVehicleRuntimeRules(
@@ -186,7 +189,7 @@ export function projectVehicleRuntimeRules(
         }
     }
     const conditionControlKeys: UnitConditionKey[] = ['swarmed', 'tagged', 'ecm-shielded'];
-    if (ruleset === 'total-warfare') conditionControlKeys.push('skidding');
+    if (gameRulesFor(ruleset).supportsSkidding) conditionControlKeys.push('skidding');
     conditionControlKeys.push('jammed');
     if (hasDroneOperatingSystem) conditionControlKeys.push('disconnected');
     const movementMode = state.turn.movement?.mode ?? null;

@@ -18,14 +18,18 @@ import { activeCrewController,DEFAULT_PILOTING_SKILL } from '../models/crew-memb
 import { isDroneOperatingSystemEquipment } from '../models/drone-operating-system.model';
 import type { BaseEntity } from '../models/entity/base-entity';
 import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
-import type { CrewPositionId } from '../models/entity/entity-identifiers';
-import { isAeroEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
+import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
+import { isAeroEntity, isProtoMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
+import { resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
+import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
+import type { AeroCriticalType } from '../models/rules/aero-critical-rules';
 import type { WeaponEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
 import { heatAmmoExplosionCandidates, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
 import { ammoExplosionDamagePerShot } from '../models/runtime/mek-critical-hit-v2';
 import { hotLoadedAmmoForWeapon } from '../models/runtime/mek-ammo';
+import type { CBTRuntimeLocation } from '../models/runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
 import type { UnitConditionKey } from '../models/unit-condition.model';
@@ -45,6 +49,7 @@ type EndTurnHeatAdapter,
 type PreparedEndTurnHeatEffects,
 type StagedEndTurnHeat,
 } from './end-turn-heat-automation.service';
+import { NonMekCriticalAutomationService } from './non-mek-critical-automation.service';
 import { OptionsService } from './options.service';
 import type { Toast } from './toast.service';
 
@@ -53,6 +58,27 @@ type AeroSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readon
     index: NonMekRuntimeIndex;
     state: NonMekUnitRuntimeState;
 }>;
+
+/** One damage group read on a non-Mek's own hit-location table, with that table's markers. */
+export interface NonMekDamageGroup {
+    readonly locationId: LocationId;
+    readonly damage: number;
+    readonly arc: NonMekHitArc;
+    readonly effects: readonly NonMekHitEffect[];
+    readonly source: DamageSource;
+    /** Aerospace: the critical damage the hit-location roll threatens. */
+    readonly aeroCritical?: AeroCriticalType;
+    /** Aerospace: the first group a natural-12 attack puts on this location (TW p.239 lucky hit). */
+    readonly luckyHit?: boolean;
+}
+
+/** What one applied damage group did, for the critical and motive rules that follow it. */
+export interface NonMekDamageGroupOutcome {
+    /** Locations whose internal structure took damage, in the order struck. */
+    readonly structureDamaged: readonly LocationId[];
+    /** Aerospace: points of structural integrity lost. */
+    readonly structuralIntegrityDamage: number;
+}
 
 type NonMekSnapshot = Omit<CBTUnitSnapshot, 'entity' | 'index' | 'state'> & Readonly<{
     entity: BaseEntity;
@@ -125,6 +151,7 @@ export class DirectNonMekAutomationService {
     private readonly crewHitAutomation = inject(CBTCrewHitAutomationService);
     private readonly options = inject(OptionsService);
     private readonly endTurnHeat = inject(EndTurnHeatAutomationService);
+    private readonly criticals = inject(NonMekCriticalAutomationService);
     private readonly endTurnHeatAdapter: EndTurnHeatAdapter<AeroSnapshot, StagedAeroHeatEffects> = {
         snapshot: (force, instanceId) => this.snapshot(force, instanceId),
         projectHeat: snapshot => {
@@ -147,6 +174,85 @@ export class DirectNonMekAutomationService {
         applyEffects: (force, instanceId, prepared, dispatch) =>
             this.applyAeroHeatEffects(force, instanceId, prepared, dispatch),
     };
+
+    /**
+     * Applies accepted weapon hits to a non-Mek, one damage group at a time: armor by type, then structure,
+     * then a ProtoMech's torso or an aerospace unit's structural integrity.
+     */
+    async applyWeaponHits(
+        force: CBTForce,
+        instanceId: string,
+        groups: readonly NonMekDamageGroup[],
+        target: 'committed' | 'pending',
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        for (const group of groups) {
+            const outcome = await this.applyDamageGroup(force, instanceId, group, target, dispatch);
+            if (!outcome || !await this.criticals.resolveDamageGroup(force, instanceId, group, outcome, target, dispatch)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private async applyDamageGroup(
+        force: CBTForce,
+        instanceId: string,
+        group: NonMekDamageGroup,
+        target: 'committed' | 'pending',
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<NonMekDamageGroupOutcome | null> {
+        const perspective = target === 'pending' ? 'preview' : 'committed';
+        const structureDamaged: LocationId[] = [];
+        let structuralIntegrityDamage = 0;
+        // TW p.197: a weapon striking a VTOL's rotors deals 1 point per 10 (or fraction) of its damage value.
+        let damage = group.source.kind === 'weapon'
+            && this.nonMekSnapshot(force, instanceId)?.index.locations.get(group.locationId)?.code === 'Rotor'
+            ? Math.ceil(group.damage / 10)
+            : group.damage;
+        let locationId: LocationId | null = group.locationId;
+        while (locationId !== null && damage > 0) {
+            const snapshot = this.nonMekSnapshot(force, instanceId);
+            const location: CBTRuntimeLocation | undefined = snapshot?.index.locations.get(locationId);
+            if (!snapshot || !location) return null;
+            const face = location.armorFaceIds.map(faceId => snapshot.index.armorFaces.get(faceId))
+                .find(candidate => candidate?.face === 'front') ?? snapshot.index.armorFaces.get(location.armorFaceIds[0]!);
+            if (face) {
+                const armor = resolveArmorDamage(snapshot.ruleset, damage, snapshot.query.remainingArmor(face.id, perspective),
+                    snapshot.entity.armorAt(location.code)?.type ?? null, group.source);
+                if (armor.armorDamage > 0 && !(await dispatch({
+                    type: 'damage-armor', faceId: face.id, amount: armor.armorDamage, target,
+                }, false)).accepted) return null;
+                damage = armor.remainingDamage;
+            }
+            if (damage <= 0) break;
+            const structuralIntegrity = isAeroEntity(snapshot.entity)
+                ? [...snapshot.index.locations.values()].find(candidate => candidate.code === 'SI')
+                : undefined;
+            if (structuralIntegrity && structuralIntegrity.id !== location.id) {
+                // MegaMek: damage past an aerospace location's armor reaches the SI at half (round), minimum 1.
+                structuralIntegrityDamage = Math.min(Math.max(1, Math.round(damage / 2)),
+                    snapshot.query.remainingInternal(structuralIntegrity.id, perspective));
+                if (structuralIntegrityDamage > 0 && !(await dispatch({
+                    type: 'damage-internal', locationId: structuralIntegrity.id, amount: structuralIntegrityDamage, target,
+                }, false)).accepted) return null;
+                break;
+            }
+            const internal = Math.min(damage, snapshot.query.remainingInternal(location.id, perspective));
+            if (internal > 0) {
+                if (!(await dispatch({ type: 'damage-internal', locationId: location.id, amount: internal, target }, false))
+                    .accepted) return null;
+                structureDamaged.push(location.id);
+            }
+            damage -= internal;
+            // MegaMek: a ProtoMech's destroyed location passes the rest to its torso; other units lose it.
+            const torso: CBTRuntimeLocation | undefined = isProtoMekEntity(snapshot.entity) && location.code !== 'Torso'
+                ? [...snapshot.index.locations.values()].find(candidate => candidate.code === 'Torso')
+                : undefined;
+            locationId = torso?.id ?? null;
+        }
+        return Object.freeze({ structureDamaged: Object.freeze(structureDamaged), structuralIntegrityDamage });
+    }
 
     async prepareCommand(
         force: CBTForce,

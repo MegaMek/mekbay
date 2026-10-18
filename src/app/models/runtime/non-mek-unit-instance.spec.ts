@@ -751,6 +751,7 @@ describe('NonMekUnitInstance', () => {
             cover: null,
             spotting: false,
             phaseStateChanged: false,
+            turnStep: 0,
         });
     });
 
@@ -1538,6 +1539,66 @@ describe('NonMekUnitInstance', () => {
         expect(fixture.runtime.snapshot().turn.weaponsHeat).toBe(0);
     });
 
+    for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
+        for (const { status, heat, expectedHeat, bombastMode } of [
+            { status: 'available', heat: 5, expectedHeat: 4, bombastMode: undefined },
+            { status: 'disabled', heat: 5, expectedHeat: 5, bombastMode: undefined },
+            { status: 'destroyed', heat: 5, expectedHeat: 5, bombastMode: undefined },
+            { status: 'available', heat: 1, expectedHeat: 1, bombastMode: undefined },
+            { status: 'available', heat: 12, expectedHeat: ruleset === CORE_2026_RULESET ? 5 : 7, bombastMode: 'Damage 8' },
+        ] as const) {
+            it(`uses the ${status} laser insulator for displayed and fired aerospace heat ${heat} in ${ruleset}`, () => {
+                const laser = new WeaponEquipment({
+                    id: 'InsulatedLaser', name: 'Insulated Laser', type: 'weapon',
+                    flags: ['F_LASER', 'F_ENERGY', 'F_DIRECT_FIRE', ...(bombastMode === undefined ? [] : ['F_BOMBAST_LASER' as const])],
+                    weapon: { damage: 5, heat, ranges: [3, 6, 9, 12], av: [5, 0, 0, 0] },
+                });
+                const entity = new TestAeroSpaceFighterEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+                entity.uuid.set(UUID);
+                const mount = addTestEquipment(entity, laser, { location: 'Nose' });
+                const insulator = addTestEquipmentWithFlags(entity, 'F_LASER_INSULATOR', { location: 'Nose' });
+                entity.linkEquipment(insulator, mount);
+                const runtime = createNonMekRuntimeForTest(
+                    'unit:aero-insulated-laser', { ...baseline(), ruleset }, entity, ruleset,
+                );
+                if (status !== 'available') {
+                    expect(runtime.dispatch({
+                        type: 'set-component-status', componentId: componentIdForMount(insulator),
+                        status, target: 'committed',
+                    }).changed).toBeTrue();
+                }
+                const weaponId = componentIdForMount(mount);
+                if (bombastMode !== undefined) {
+                    expect(runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode: bombastMode }).changed).toBeTrue();
+                }
+                const targetId = asEncounterTargetId('target:aero-insulator');
+                const registry: TargetRegistrySnapshot = {
+                    revision: 0,
+                    targets: [{ id: targetId, letter: 'A', name: 'Target A', color: '#ff0000', source: 'manual', readOnly: false }],
+                };
+                expect(runtime.dispatchAttackerTargeting({
+                    type: 'edit-attacker-targeting',
+                    edit: { kind: 'set-component-selection', componentId: weaponId, selection: { kind: 'target', targetId } },
+                }, registry, false).accepted).toBeTrue();
+
+                const panel = projectNonMekEquipmentPanel(
+                    entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry,
+                );
+                const row = panel.components.find(component => component.componentId === weaponId)!;
+                expect(row.weapon?.heat).toBe(expectedHeat);
+                expect(row.weapon?.firingHeat).toBe(expectedHeat);
+                expect(row.heatWeakened).toBe(status !== 'available');
+                if (bombastMode !== undefined) {
+                    expect(row.weapon?.hit.default.value).toBe(ruleset === CORE_2026_RULESET ? 0 : 1);
+                }
+                expect(runtime.dispatchSelectedWeaponFire({
+                    type: 'fire-selected-weapons', heatPolicy: 'automatic',
+                }, registry, false, false).changed).toBeTrue();
+                expect(runtime.snapshot().turn.weaponsHeat).toBe(expectedHeat);
+            });
+        }
+    }
+
     it('uses maximum prototype-laser heat for aerospace fire without die evidence', () => {
         const weapon = new WeaponEquipment({
             id: 'ISMediumPulseLaserPrototype',
@@ -2100,6 +2161,7 @@ describe('NonMekUnitInstance', () => {
             cover: null,
             spotting: false,
             phaseStateChanged: false,
+            turnStep: 0,
         });
     });
 
@@ -2320,7 +2382,7 @@ describe('NonMekUnitInstance', () => {
         const arm = [...runtime.getIndex().locations.values()]
             .find(location => location.code === 'Left Arm')!;
         const pristine = runtime.query().currentBaseBattleValue()!;
-        expect(pristine).toBe(entity.battleValue());
+        expect(pristine).toBe(entity.battleValue(runtime.ruleset()));
 
         expect(runtime.dispatch({
             type: 'damage-internal',

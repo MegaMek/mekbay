@@ -16,6 +16,7 @@ import { getUnitConditionDefinition, NARC_CONDITION_COLOR } from '../../models/u
 import { CORE_2026_GAME_RULES, type C3DegradationLabel, type CBTGameRules } from '../../models/rules/game-rules';
 import {
     calculateTargetTnModifierBreakdown,
+    type TnAttackDirection,
     type TnTargetModifierBreakdownEntry,
     type TnTargetNumberCalculatorState,
 } from '../../models/target-number-calculator.model';
@@ -130,6 +131,14 @@ export interface WeaponTargetCalculatorRequest {
                                                 <button class="bt-button square-small" type="button" [disabled]="readOnly()" (click)="stepTnModifier(target, 1)">+</button>
                                             </span>
                                         </div>
+                                        <label class="target-number-field direction-field">
+                                            <span>Direction</span>
+                                            <select class="bt-select direction-select" [disabled]="readOnly()" [attr.aria-label]="'Attack direction against ' + targetNames.targetName(target.id, target.name)" title="The side of the target the attack strikes: it picks the hit location table column" (change)="updateAttackDirection(target, $any($event.target).value)">
+                                                @for (direction of attackDirections; track direction.value) {
+                                                    <option [value]="direction.value" [selected]="direction.value === attackDirection(target)">{{ direction.label }}</option>
+                                                }
+                                            </select>
+                                        </label>
                                         <button class="bt-button square primary calculator-button" type="button" [disabled]="readOnly()" (click)="openTnCalculator(target.id, $event)" aria-label="Open TN calculator" title="Open TN calculator">
                                             <svg fill="currentColor" width="16px" height="16px" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M116,184a12,12,0,0,1-12,12H84v20a12,12,0,0,1-24,0V196H40a12,12,0,0,1,0-24H60V152a12,12,0,0,1,24,0v20h20A12,12,0,0,1,116,184ZM104,60H40a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm48,116.06641h64a12,12,0,0,0,0-24H152a12,12,0,0,0,0,24Zm64,15.86718H152a12,12,0,0,0,0,24h64a12,12,0,0,0,0-24Zm-64.48535-87.44824a12.00033,12.00033,0,0,0,16.9707,0L184,88.9707l15.51465,15.51465a12.0001,12.0001,0,0,0,16.9707-16.9707L200.9707,72l15.51465-15.51465a12.0001,12.0001,0,0,0-16.9707-16.9707L184,55.0293,168.48535,39.51465a12.0001,12.0001,0,0,0-16.9707,16.9707L167.0293,72,151.51465,87.51465A12.00062,12.00062,0,0,0,151.51465,104.48535Z"/>
@@ -538,6 +547,14 @@ export interface WeaponTargetCalculatorRequest {
             white-space: nowrap;
         }
 
+        .direction-select {
+            block-size: var(--target-control-height);
+            min-inline-size: 0;
+            padding-block: 0;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
         .disabled-field {
             opacity: 0.45;
         }
@@ -724,6 +741,24 @@ export class WeaponTargetsMenuComponent {
     readonly updateRequest = output<WeaponTargetUpdateRequest>();
     readonly deleteRequest = output<EncounterTargetId>();
     readonly calculatorRequest = output<WeaponTargetCalculatorRequest>();
+
+    readonly attackDirections: readonly Readonly<{ value: TnAttackDirection; label: string }>[] = [
+        { value: 'front', label: 'Front' },
+        { value: 'left', label: 'Left' },
+        { value: 'right', label: 'Right' },
+        { value: 'rear', label: 'Rear' },
+    ];
+
+    attackDirection(target: TargetingTarget): TnAttackDirection {
+        return target.tnCalculator?.attackDirection ?? 'front';
+    }
+
+    /** The calculator replaces the attacker's facts as a whole, so the direction travels with the rest of them. */
+    updateAttackDirection(target: TargetingTarget, value: string): void {
+        const direction = this.attackDirections.find(candidate => candidate.value === value)?.value;
+        if (this.readOnly() || !direction) return;
+        this.updateRequest.emit({ targetId: target.id, patch: { tnCalculator: { ...target.tnCalculator, attackDirection: direction } } });
+    }
 
     addTarget(): void {
         if (!this.readOnly()) this.addRequest.emit();

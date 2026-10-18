@@ -31,6 +31,65 @@ describe('InventoryControlOpforService', () => {
         expect(entity.chassis()).toBe('Mad Cat');
     });
 
+    describe('mirrored target distances', () => {
+        const attackerTargetId = forceOpforTargetId('my-force', 'my-unit');
+
+        function mirrorHarness(readOnly = false, tracked = true) {
+            const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;
+            const dispatchAttackerTargeting = jasmine.createSpy('dispatchAttackerTargeting').and.resolveTo({ accepted: true });
+            const myUnit = { id: 'my-unit', force: { instanceId: () => 'my-force' } };
+            const myForce = Object.assign(Object.create(CBTForce.prototype), {
+                instanceId: () => 'my-force', readOnly: () => false, getCBTMembers: () => [myUnit],
+            });
+            const enemyForce = Object.assign(Object.create(CBTForce.prototype), {
+                instanceId: () => 'enemy-force',
+                readOnly: () => readOnly,
+                getCBTMembers: () => [{ id: 'enemy-unit' }],
+                queryInventoryControlTargetRegistry: () => ({ revision: 1, targets: tracked ? [{ id: attackerTargetId }] : [] }),
+                getAttackerTargeting: () => ({ state: { targets: new Map([[attackerTargetId, { useC3: true }]]) } }),
+                dispatchAttackerTargeting,
+            });
+            const send = jasmine.createSpy('send');
+            Object.assign(service, {
+                loadedForces: () => [{ force: myForce }, { force: enemyForce }],
+                gameEvents: { send },
+                pendingMirrors: new Map(),
+            });
+            return { service, myUnit, send, dispatchAttackerTargeting };
+        }
+
+        it('sends the settled distance to the owner of the opposing unit', () => {
+            jasmine.clock().install();
+            try {
+                const { service, myUnit, send } = mirrorHarness();
+                const enemyTargetId = forceOpforTargetId('enemy-force', 'enemy-unit');
+                service.mirrorTargetDistance(myUnit as any, enemyTargetId, 1);
+                service.mirrorTargetDistance(myUnit as any, enemyTargetId, 10);
+                jasmine.clock().tick(500);
+                expect(send).toHaveBeenCalledOnceWith('enemy-force', {
+                    kind: 'target-distance', fromForce: 'my-force', fromUnit: 'my-unit', toUnit: 'enemy-unit', distance: 10,
+                });
+            } finally {
+                jasmine.clock().uninstall();
+            }
+        });
+
+        it('applies a received distance to the tracked target and keeps its other facts', () => {
+            const event = { kind: 'target-distance', fromForce: 'my-force', fromUnit: 'my-unit', toUnit: 'enemy-unit', distance: 10 };
+            const owned = mirrorHarness();
+            (owned.service as any).applyMirroredDistance('enemy-force', event);
+            expect(owned.dispatchAttackerTargeting).toHaveBeenCalledOnceWith('enemy-unit', {
+                type: 'edit-attacker-targeting',
+                edit: { kind: 'set-target-facts', targetId: attackerTargetId, facts: { useC3: true, distance: 10 } },
+            });
+
+            for (const ignored of [mirrorHarness(true), mirrorHarness(false, false)]) {
+                (ignored.service as any).applyMirroredDistance('enemy-force', event);
+                expect(ignored.dispatchAttackerTargeting).not.toHaveBeenCalled();
+            }
+        });
+    });
+
     function createOpforHarness() {
         const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;
         let targets: EncounterTarget[] = [];

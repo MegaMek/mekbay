@@ -19,6 +19,7 @@ import {
 import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-options.model';
 import { GameSystem } from '../models/common.model';
 import { isCBTRuleset } from '../models/cbt-ruleset.model';
+import type { HeatAutomationPolicy } from '../models/runtime/cbt-unit-runtime';
 
 const DEFAULT_OPTIONS: Options = {
   canvasInput: 'all',
@@ -28,7 +29,7 @@ const DEFAULT_OPTIONS: Options = {
   gameSystem: GameSystem.CBT,
   availabilitySource: 'mul',
   forceViewerBVPVDisplay: 'adjustedPostSkill',
-  forceViewerBVPVDisplayDamage: 'damaged',
+  forceViewerBVPVDisplayDamage: 'pristine',
   megaMekAvailabilityFiltersUseAllScopedOptions: true,
   c3NetworkConnectionsAboveNodes: false,
   automaticallyConvertFiltersToSemantic: false,
@@ -57,6 +58,10 @@ const DEFAULT_OPTIONS: Options = {
   recordSheetPipLayout: 'classic',
   syncZoomBetweenSheets: true,
   trackPhaseAndTurn: true,
+  realPhases: false,
+  attackResolution: false,
+  initiativeOrder: 'rules',
+  initiativeDie: false,
   cbtUnitViewMode: 'sheet',
   cbtAutomationOptions: {
     pilotSkillCheck: 'no',
@@ -295,6 +300,10 @@ export class OptionsService {
     recordSheetDoubleTapZoomReset: DEFAULT_OPTIONS.recordSheetDoubleTapZoomReset,
     recordSheetPipLayout: DEFAULT_OPTIONS.recordSheetPipLayout,
     trackPhaseAndTurn: DEFAULT_OPTIONS.trackPhaseAndTurn,
+    realPhases: DEFAULT_OPTIONS.realPhases,
+    attackResolution: DEFAULT_OPTIONS.attackResolution,
+    initiativeOrder: DEFAULT_OPTIONS.initiativeOrder,
+    initiativeDie: DEFAULT_OPTIONS.initiativeDie,
     cbtUnitViewMode: DEFAULT_OPTIONS.cbtUnitViewMode,
     cbtAutomationOptions: { ...DEFAULT_OPTIONS.cbtAutomationOptions },
     CBTOptionalRules: { ...DEFAULT_OPTIONS.CBTOptionalRules },
@@ -317,8 +326,11 @@ export class OptionsService {
     forceBudgetOptimizerLastSkills: DEFAULT_OPTIONS.forceBudgetOptimizerLastSkills,
   });
 
+  /** Settles once the saved options have loaded, or failed to. */
+  readonly ready: Promise<void>;
+
   constructor() {
-    this.initOptions();
+    this.ready = this.initOptions().catch(() => undefined);
   }
 
   async initOptions() {
@@ -366,6 +378,14 @@ export class OptionsService {
       lastCanvasState: saved?.lastCanvasState,
       sidebarLipPosition: saved?.sidebarLipPosition,
       trackPhaseAndTurn: saved?.trackPhaseAndTurn ?? DEFAULT_OPTIONS.trackPhaseAndTurn,
+      realPhases: saved?.realPhases ?? DEFAULT_OPTIONS.realPhases,
+      attackResolution: saved?.attackResolution ?? DEFAULT_OPTIONS.attackResolution,
+      initiativeOrder: resolveSavedValue(
+        saved?.initiativeOrder,
+        DEFAULT_OPTIONS.initiativeOrder,
+        OPTION_VALUES.initiativeOrder,
+      ),
+      initiativeDie: resolveSavedValue(saved?.initiativeDie, DEFAULT_OPTIONS.initiativeDie),
       cbtUnitViewMode: resolveSavedValue(
         saved?.cbtUnitViewMode,
         DEFAULT_OPTIONS.cbtUnitViewMode,
@@ -430,4 +450,15 @@ export class OptionsService {
     this.options.set(updated);
     await this.dbService.saveOptions(updated);
   }
+}
+
+/** End-of-turn heat is resolved automatically only when the heat automation is enabled. */
+export function heatAutomationPolicy(options: Pick<OptionsService, 'cbtAutomationMode'>): HeatAutomationPolicy {
+  return options.cbtAutomationMode('heatAndDissipationResolution') === 'yes' ? 'automatic' : 'manual';
+}
+
+/** The full phase system: units advance through the shared real turn/phase clock (`GameTurnService`). */
+export function realPhasesEnabled(options: Pick<OptionsService, 'options'>): boolean {
+  const { realPhases, trackPhaseAndTurn } = options.options();
+  return realPhases && trackPhaseAndTurn;
 }

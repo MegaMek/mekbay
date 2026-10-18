@@ -504,7 +504,11 @@ export class WeaponTargetsOverlayController {
                 facts: Object.keys(next).length === 0 ? null : next,
             },
         });
-        if (!result.accepted) this.reportTargetingRejection('update target');
+        if (!result.accepted) {
+            this.reportTargetingRejection('update target');
+        } else if (request.patch.distance !== undefined) {
+            this.opforService().mirrorTargetDistance(member, request.targetId, request.patch.distance);
+        }
     }
 
     private reportTargetingRejection(action: string): void {

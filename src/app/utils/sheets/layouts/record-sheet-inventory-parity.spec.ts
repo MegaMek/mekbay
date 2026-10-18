@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { WeaponEquipment, createEquipment } from '../../../models/equipment.model';
+import { MiscEquipment, WeaponEquipment, createEquipment } from '../../../models/equipment.model';
 import { TestAeroSpaceFighterEntity, TestConvFighterEntity, TestDropShipEntity, TestBipedMekEntity, TestQuadVeeEntity, TestSupportTankEntity, TestTankEntity } from '../../../models/entity/testing/test-entities';
 import { addTestEquipment, addTestEquipmentWithFlags } from '../../../models/entity/testing/test-mounted-equipment';
 import { createTestEquipmentRegistry } from '../../../models/entity/testing/test-equipment-registry';
@@ -119,14 +119,15 @@ describe('record-sheet inventory content parity', () => {
         const launcher = addTestEquipment(entity, new WeaponEquipment({ id: 'LRM 20', name: 'LRM 20', type: 'weapon',
             flags: ['F_LRM', 'F_MISSILE', 'F_ARTEMIS_COMPATIBLE'],
             weapon: { damage: '1/Msl', ammoType: 'LRM', rackSize: 20, ranges: [7, 14, 21] } }), { location: 'TU' });
-        const artemis = addTestEquipmentWithFlags(entity, 'F_ARTEMIS_V', { location: 'TU' });
+        const artemis = addTestEquipment(entity, new MiscEquipment({ id: 'CLArtemisV', name: 'Artemis V FCS', type: 'misc',
+            flags: ['F_WEAPON_ENHANCEMENT', 'F_ARTEMIS_V'] }), { location: 'TU' });
         entity.linkEquipment(artemis, launcher);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
         const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${launcher.mountId}"]`)!;
         const linked = row.querySelector('.inventoryEntry.linked');
 
         expect(linked?.getAttribute('data-mekbay-component-ids')).toBe(artemis.mountId);
-        expect(linked?.querySelector('.name')?.textContent).toBe('w/Artemis V');
+        expect(linked?.querySelector('.name')?.textContent).toBe('Artemis V FCS');
         expect(linked?.classList.contains('alternativeMode')).toBeFalse();
         expect(row.querySelector(':scope > .range_long')?.textContent).toBe('21');
         expect(svg.querySelectorAll(`.inventoryEntry[data-mekbay-component-ids="${artemis.mountId}"]`).length).toBe(1);

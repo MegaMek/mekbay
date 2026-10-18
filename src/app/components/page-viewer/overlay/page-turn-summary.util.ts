@@ -5,9 +5,8 @@ import { InjectionToken } from '@angular/core';
 
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import type {
+    MekMovementPsrProjectionResultV2,
     MekPilotCheckV2,
-    MekPilotCheckSourceV2,
-    MekPsrModifier,
 } from '../../../models/runtime/mek-movement-psr-v2';
 import type { ManagedOverlayRef, OverlayManagerService } from '../../../services/overlay-manager.service';
 
@@ -88,37 +87,14 @@ export function composeTurnSummaryHeatRows(
     return Object.freeze(rows.map(row => Object.freeze(row)));
 }
 
-/** Combines permanent rules facts with phase-only checks for the retained overlay. */
-export function composeMekPsrDisplayModifiers(
-    permanent: readonly MekPsrModifier[],
-    checks: readonly {
-        readonly reason: string;
-        readonly source: Pick<MekPilotCheckSourceV2, 'triggerKind' | 'triggerModifier'>;
-    }[],
-): readonly MekPsrDisplayModifier[] {
-    const gyroChecks = checks.filter(check => check.source.triggerKind === 'gyro-hit');
-    const rows: MekPsrDisplayModifier[] = permanent
-        .filter(entry => gyroChecks.length === 0 || !entry.reason.includes('Gyro'))
-        .map(entry => ({
-            modifier: entry.modifier,
-            reason: entry.modifierReason ?? entry.reason,
-            ...(entry.locationId === undefined ? {} : { locationId: entry.locationId }),
-        }));
-    for (const check of checks) {
-        if (check.source.triggerModifier === 0 || check.source.triggerKind === 'gyro-hit') continue;
-        rows.push({ modifier: check.source.triggerModifier, reason: check.reason });
-    }
-    const gyroCheck = gyroChecks[gyroChecks.length - 1];
-    if (gyroCheck && gyroCheck.source.triggerModifier !== 0) {
-        rows.push({ modifier: gyroCheck.source.triggerModifier, reason: gyroCheck.reason });
-    }
-    rows.sort((left, right) => {
-        const leftNegative = left.modifier < 0;
-        const rightNegative = right.modifier < 0;
-        if (leftNegative !== rightNegative) return leftNegative ? -1 : 1;
-        return left.reason < right.reason ? -1 : left.reason > right.reason ? 1 : 0;
-    });
-    return Object.freeze(rows.map(row => Object.freeze(row)));
+/** The modifiers every Piloting Skill Roll of the phase adds, as the rules derive them, labelled for the overlays. */
+export function mekPsrDisplayModifiers(movement: MekMovementPsrProjectionResultV2): readonly MekPsrDisplayModifier[] {
+    if (movement.kind !== 'supported') return Object.freeze([]);
+    return Object.freeze(movement.phasePsrModifiers.map(entry => Object.freeze({
+        modifier: entry.modifier,
+        reason: entry.modifierReason ?? entry.reason,
+        ...(entry.locationId === undefined ? {} : { locationId: entry.locationId }),
+    })));
 }
 
 /** Prevent a modal confirmation from being mistaken for an outside click. */

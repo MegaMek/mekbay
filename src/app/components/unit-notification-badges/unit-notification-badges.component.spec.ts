@@ -139,8 +139,6 @@ describe('direct runtime unit notifications', () => {
                 witness: '{}',
                 criticalSlotIds: Object.freeze([]),
                 locationIds: Object.freeze([]),
-                baseTarget: 8,
-                triggerModifier: 0,
             }),
             producingRevision: 1,
             ordinal: 0,
@@ -150,6 +148,7 @@ describe('direct runtime unit notifications', () => {
         });
         const snapshot: CBTMekUnitSnapshot = Object.freeze({
             ...base,
+            query: Object.freeze({ ...base.query, mekPilotChecks: () => Object.freeze([shutdownCheck]) }),
             state: Object.freeze({
                 ...base.state,
                 movementPsr: Object.freeze({

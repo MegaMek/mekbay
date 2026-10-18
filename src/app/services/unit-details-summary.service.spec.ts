@@ -171,7 +171,8 @@ describe('UnitDetailsSummaryService', () => {
         const entity = new TestBipedMekEntity();
         entity.uuid.set(uuid);
         entity.quirks.set([{ quirk: { key: 'battle_fists_la', name: 'Battle Fists (LA)', type: 'positive', description: '' } }]);
-        const member = { id: 'unit:quirks', entity, force: { getUnitSnapshot: () => undefined } } as unknown as CBTForceMember;
+        const member = { id: 'unit:quirks', entity, ruleset: () => 'core-2026',
+            force: { getUnitSnapshot: () => undefined } } as unknown as CBTForceMember;
         for (const left of [true, false, true]) {
             entity.hasHandActuator.update(hands => ({ ...hands, left }));
             const summary = service.resolveForceMember(member);
@@ -193,7 +194,7 @@ describe('UnitDetailsSummaryService', () => {
         const hash = asSourceHash(await sha1Base64Url(bytes));
         const nativeSource = { format: 'blk', file: makeUnitFileName(uuid, 'blk'),
             sourceHash: hash, bytes, isCustom: true };
-        const member = { id: 'unit:refit', entity,
+        const member = { id: 'unit:refit', entity, ruleset: () => 'core-2026',
             force: { getUnitSnapshot: () => ({ entity, nativeSource }) },
         } as unknown as CBTForceMember;
         return { member, hash };

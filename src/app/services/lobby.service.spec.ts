@@ -11,6 +11,7 @@ import { ForceBuilderService } from './force-builder.service';
 import { ForcePersistenceService } from './force-persistence.service';
 import { ForceWorkspaceStateService } from './force-workspace-state.service';
 import { LobbyService } from './lobby.service';
+import { OptionsService } from './options.service';
 import { ToastService } from './toast.service';
 import { WsService } from './ws.service';
 
@@ -20,6 +21,22 @@ function createForce(instanceId: string, owned: boolean, units: any[] = []) {
         owned: signal(owned),
         units: signal<any[]>(units),
     } as any;
+}
+
+const LOBBY_SETTINGS = { ruleset: 'core-2026', initiativeOrder: 'rules', initiativeDie: false } as const;
+
+function lobbyState(isHost: boolean, settings: object = LOBBY_SETTINGS) {
+    return {
+        action: 'lobbyState',
+        code: 'room',
+        locked: false,
+        settings,
+        initiative: null,
+        isHost,
+        participants: [
+            { publicId: 'self', self: true, host: isHost, connected: true, alignment: 'friendly', away: false, instanceIds: [] },
+        ],
+    };
 }
 
 async function settleEffects(): Promise<void> {
@@ -37,6 +54,7 @@ describe('LobbyService', () => {
     let dialogsService: any;
     let toastService: any;
     let displayNameService: any;
+    let optionsService: any;
 
     beforeEach(() => {
         handlers = new Map();
@@ -63,6 +81,10 @@ describe('LobbyService', () => {
             removeLoadedForce: jasmine.createSpy('removeLoadedForce').and.callFake(async (force: any) => {
                 forceBuilderService.loadedForces.update((slots: any[]) => slots.filter(slot => slot.force !== force));
             }),
+            switchCBTRules: jasmine.createSpy('switchCBTRules').and.callFake(async (ruleset: string) => {
+                optionsService.options.update((options: any) => ({ ...options, CBTRules: ruleset }));
+                return true;
+            }),
         };
         forcePersistence = {
             getForce: jasmine.createSpy('getForce'),
@@ -80,10 +102,16 @@ describe('LobbyService', () => {
             save: jasmine.createSpy('save').and.resolveTo('Specter'),
         };
 
+        optionsService = {
+            initialized: signal(true),
+            options: signal({ CBTRules: 'core-2026', initiativeOrder: 'rules', initiativeDie: false }),
+        };
+
         TestBed.configureTestingModule({
             providers: [
                 provideZonelessChangeDetection(),
                 LobbyService,
+                { provide: OptionsService, useValue: optionsService },
                 { provide: WsService, useValue: wsService },
                 { provide: ForceBuilderService, useValue: forceBuilderService },
                 { provide: ForceWorkspaceStateService, useValue: forceWorkspace },
@@ -101,7 +129,7 @@ describe('LobbyService', () => {
                 state: {
                     action: 'lobbyState',
                     code: 'a1b2',
-                    locked: false,
+                    locked: false, settings: LOBBY_SETTINGS, initiative: null,
                     isHost: true,
                     participants: [{
                         publicId: 'public-host',
@@ -121,7 +149,7 @@ describe('LobbyService', () => {
 
         expect(displayNameService.save).toHaveBeenCalledOnceWith('Specter');
         expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
-            { action: 'createLobby' },
+            { action: 'createLobby', settings: LOBBY_SETTINGS },
             { suppressGlobalError: true },
         );
         expect(JSON.stringify(wsService.sendAndWaitForResponse.calls.allArgs())).not.toContain('uuid');
@@ -136,7 +164,7 @@ describe('LobbyService', () => {
             state: {
                 action: 'lobbyState',
                 code: 'a1b2',
-                locked: false,
+                locked: false, settings: LOBBY_SETTINGS, initiative: null,
                 isHost: true,
                 participants: [{
                     publicId: 'public-host',
@@ -162,7 +190,7 @@ describe('LobbyService', () => {
         );
         expect(displayNameService.save).toHaveBeenCalledOnceWith('Barn Owl');
         expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
-            { action: 'createLobby' },
+            { action: 'createLobby', settings: LOBBY_SETTINGS },
             { suppressGlobalError: true },
         );
     });
@@ -176,7 +204,7 @@ describe('LobbyService', () => {
 
         expect(displayNameService.save).not.toHaveBeenCalled();
         expect(wsService.sendAndWaitForResponse).not.toHaveBeenCalledWith(
-            { action: 'createLobby' },
+            jasmine.objectContaining({ action: 'createLobby' }),
             jasmine.anything(),
         );
     });
@@ -189,7 +217,7 @@ describe('LobbyService', () => {
                     state: {
                         action: 'lobbyState',
                         code: 'a1b2',
-                        locked: false,
+                        locked: false, settings: LOBBY_SETTINGS, initiative: null,
                         isHost: false,
                         participants: [{
                             publicId: 'self-public',
@@ -212,6 +240,8 @@ describe('LobbyService', () => {
             { suppressGlobalError: true },
         );
         expect(service.state()?.code).toBe('a1b2');
+        // The lobby plays this player's rules: nothing to ask.
+        expect(dialogsService.requestConfirmation).not.toHaveBeenCalled();
     });
 
     it('joins as a spectator through the shared lobby prompt', async () => {
@@ -225,7 +255,7 @@ describe('LobbyService', () => {
                     state: {
                         action: 'lobbyState',
                         code: 'a1b2',
-                        locked: false,
+                        locked: false, settings: LOBBY_SETTINGS, initiative: null,
                         isHost: false,
                         participants: [{
                             publicId: 'public-spectator',
@@ -303,7 +333,7 @@ describe('LobbyService', () => {
             state: {
                 action: 'lobbyState',
                 code: 'a1b2',
-                locked: false,
+                locked: false, settings: LOBBY_SETTINGS, initiative: null,
                 isHost: true,
                 participants: [{
                     publicId: 'public-host',
@@ -332,7 +362,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'x7y8',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: false,
             participants: [
                 { publicId: 'self', self: true, host: false, connected: true, alignment: 'friendly', instanceIds: ['own-force'] },
@@ -356,7 +386,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'x7y8',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: false,
             participants: [
                 { publicId: 'self', self: true, host: false, connected: true, alignment: 'friendly', instanceIds: ['own-force'] },
@@ -376,7 +406,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: false,
             participants: [
                 { publicId: 'spectator', self: true, host: false, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -391,10 +421,13 @@ describe('LobbyService', () => {
         });
     });
 
-    it('publishes friendly local forces regardless of cloud ownership', async () => {
-        const sharedForce = createForce('shared-force', false);
+    it('shares only the friendly forces the player owns, not ones they merely opened', async () => {
         forceBuilderService.loadedForces.set([{
-            force: sharedForce,
+            force: createForce('owned-force', true),
+            alignment: 'friendly',
+            changeSub: null,
+        }, {
+            force: createForce('opened-force', false),
             alignment: 'friendly',
             changeSub: null,
         }]);
@@ -403,7 +436,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -413,7 +446,7 @@ describe('LobbyService', () => {
 
         expect(wsService.send).toHaveBeenCalledWith({
             action: 'syncLobbyForces',
-            instanceIds: ['shared-force'],
+            instanceIds: ['owned-force'],
         });
     });
 
@@ -429,7 +462,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: false,
             participants: [
                 { publicId: 'self', self: true, host: false, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -454,7 +487,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: ['hostile-force'] },
@@ -485,7 +518,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self-public', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -511,7 +544,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -534,7 +567,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -562,7 +595,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self-public', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },
@@ -580,12 +613,184 @@ describe('LobbyService', () => {
         );
     });
 
+    it('creates a lobby with the local rules and Initiative settings', async () => {
+        optionsService.options.set({ CBTRules: 'total-warfare', initiativeOrder: 'spread', initiativeDie: true });
+        wsService.sendAndWaitForResponse.and.resolveTo({ action: 'lobbyCreated', state: lobbyState(true) });
+        const service = TestBed.inject(LobbyService);
+
+        await service.createLobby();
+
+        expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
+            { action: 'createLobby', settings: { ruleset: 'total-warfare', initiativeOrder: 'spread', initiativeDie: true } },
+            { suppressGlobalError: true },
+        );
+    });
+
+    describe('with other rules than the player', () => {
+        const TOTAL_WARFARE = { ...LOBBY_SETTINGS, ruleset: 'total-warfare' } as const;
+
+        /** A started service whose resume check found no lobby, and a server that admits the join. */
+        async function joinableService(settings: object): Promise<LobbyService> {
+            wsService.sendAndWaitForResponse.and.callFake(async (payload: { action: string }) => payload.action === 'joinLobby'
+                ? { action: 'lobbyJoined', state: lobbyState(false, settings) }
+                : { action: 'lobbyStateResult', state: null });
+            const service = TestBed.inject(LobbyService);
+            await settleEffects();
+            return service;
+        }
+
+        async function settle<T>(work: Promise<T>): Promise<T> {
+            for (let index = 0; index < 4; index += 1) await settleEffects();
+            return work;
+        }
+
+        it('asks before joining, switches the rules live, then joins', async () => {
+            const owned = createForce('own-force', true, [{ id: 'unit' }]);
+            forceWorkspace.loadedForces.set([{ force: owned, alignment: 'friendly' }]);
+            dialogsService.requestConfirmation.and.resolveTo(true);
+            const service = await joinableService(TOTAL_WARFARE);
+            let joinedBeforeSwitch: unknown;
+            forceBuilderService.switchCBTRules.and.callFake(async (ruleset: string) => {
+                joinedBeforeSwitch = service.state();
+                expect(wsService.send).not.toHaveBeenCalledWith(jasmine.objectContaining({ action: 'syncLobbyForces' }));
+                optionsService.options.update((options: any) => ({ ...options, CBTRules: ruleset }));
+                return true;
+            });
+
+            await settle(service.joinLobby('room'));
+
+            expect(dialogsService.requestConfirmation).toHaveBeenCalledOnceWith(
+                "This lobby plays Total Warfare rules; you're on Core 2026. Switch to Total Warfare and join?",
+                'Switch Rules?',
+                'warning',
+            );
+            expect(forceBuilderService.switchCBTRules).toHaveBeenCalledOnceWith('total-warfare');
+            expect(joinedBeforeSwitch).toBeNull();
+            expect(service.state()?.code).toBe('room');
+            expect(wsService.send).toHaveBeenCalledWith({ action: 'syncLobbyForces', instanceIds: ['own-force'] });
+        });
+
+        it('does not join, and sends nothing of the player, when they keep their rules', async () => {
+            const owned = createForce('own-force', true, [{ id: 'unit' }]);
+            forceWorkspace.loadedForces.set([{ force: owned, alignment: 'friendly' }]);
+            dialogsService.requestConfirmation.and.resolveTo(false);
+            const service = await joinableService(TOTAL_WARFARE);
+
+            await expectAsync(settle(service.joinLobby('room')))
+                .toBeRejectedWithError('You kept your rules, so you did not join the lobby.');
+
+            expect(forceBuilderService.switchCBTRules).not.toHaveBeenCalled();
+            expect(service.state()).toBeNull();
+            expect(wsService.send.calls.allArgs()).toEqual([[{ action: 'leaveLobby' }]]);
+            // A broadcast the server sent before the player left changes nothing.
+            handlers.get('lobbyState')?.(lobbyState(false, TOTAL_WARFARE));
+            await settleEffects();
+            expect(dialogsService.requestConfirmation).toHaveBeenCalledTimes(1);
+            expect(service.state()).toBeNull();
+        });
+
+        it('follows the host to new rules in the lobby without asking, and says so', async () => {
+            const service = TestBed.inject(LobbyService);
+            handlers.get('lobbyState')?.(lobbyState(false));
+            expect(service.state()?.settings).toEqual(LOBBY_SETTINGS);
+
+            handlers.get('lobbyState')?.(lobbyState(false, TOTAL_WARFARE));
+            await settle(Promise.resolve());
+
+            expect(dialogsService.requestConfirmation).not.toHaveBeenCalled();
+            expect(forceBuilderService.switchCBTRules).toHaveBeenCalledOnceWith('total-warfare');
+            expect(service.state()?.settings).toEqual(TOTAL_WARFARE);
+            expect(wsService.send).not.toHaveBeenCalledWith({ action: 'leaveLobby' });
+            expect(toastService.showToast).toHaveBeenCalledWith('The host switched the lobby to Total Warfare rules.', 'info');
+        });
+
+        it('decides only once the local options have loaded', async () => {
+            optionsService.initialized.set(false);
+            dialogsService.requestConfirmation.and.resolveTo(true);
+            const service = TestBed.inject(LobbyService);
+
+            handlers.get('lobbyState')?.(lobbyState(false, TOTAL_WARFARE));
+            await settle(Promise.resolve());
+            expect(dialogsService.requestConfirmation).not.toHaveBeenCalled();
+            expect(service.state()).toBeNull();
+
+            optionsService.initialized.set(true);
+            await settle(Promise.resolve());
+            expect(forceBuilderService.switchCBTRules).toHaveBeenCalledOnceWith('total-warfare');
+            expect(service.state()?.settings).toEqual(TOTAL_WARFARE);
+        });
+
+        it('ignores the answer when the host changes the rules back meanwhile', async () => {
+            let answer!: (value: boolean) => void;
+            dialogsService.requestConfirmation.and.returnValue(new Promise<boolean>(resolve => answer = resolve));
+            const service = TestBed.inject(LobbyService);
+
+            handlers.get('lobbyState')?.(lobbyState(false, TOTAL_WARFARE));
+            await settle(Promise.resolve());
+            handlers.get('lobbyState')?.(lobbyState(false));
+            expect(service.state()?.settings).toEqual(LOBBY_SETTINGS);
+            answer(true);
+            await settle(Promise.resolve());
+
+            expect(forceBuilderService.switchCBTRules).not.toHaveBeenCalled();
+            expect(service.state()?.settings).toEqual(LOBBY_SETTINGS);
+        });
+    });
+
+    it('sends lobby settings and Initiative only as the host', async () => {
+        const service = TestBed.inject(LobbyService);
+        const settings = { ruleset: 'total-warfare', initiativeOrder: 'front-loaded', initiativeDie: true } as const;
+        const initiative = { turn: 1, rolls: [{ side: 'self', dice: [[6, 5] as const], modifier: 1 }], order: ['enemy', 'self'] };
+
+        handlers.get('lobbyState')?.(lobbyState(false));
+        await service.setSettings(settings);
+        service.setInitiative(initiative);
+        expect(wsService.send).not.toHaveBeenCalled();
+
+        handlers.get('lobbyState')?.(lobbyState(true));
+        await service.setSettings(settings);
+        service.setInitiative(initiative);
+        service.setInitiative(null);
+        expect(wsService.send.calls.allArgs()).toEqual([
+            [{ action: 'setLobbySettings', settings }],
+            [{ action: 'setLobbyInitiative', initiative }],
+            [{ action: 'setLobbyInitiative', initiative: null }],
+        ]);
+        // The host chose the rules, so switches to them without being asked.
+        expect(forceBuilderService.switchCBTRules).toHaveBeenCalledOnceWith('total-warfare');
+        expect(dialogsService.requestConfirmation).not.toHaveBeenCalled();
+    });
+
+    it('sends new rules only once the host plays them, and keeps the other settings when the host cannot switch', async () => {
+        const service = TestBed.inject(LobbyService);
+        handlers.get('lobbyState')?.(lobbyState(true));
+        forceBuilderService.switchCBTRules.and.resolveTo(false);
+
+        await service.setSettings({ ruleset: 'total-warfare', initiativeOrder: 'rules', initiativeDie: true });
+
+        expect(wsService.send.calls.allArgs()).toEqual([
+            [{ action: 'setLobbySettings', settings: { ...LOBBY_SETTINGS, initiativeDie: true } }],
+        ]);
+    });
+
+    it('rolls Initiative for an own force as any lobby member', () => {
+        const service = TestBed.inject(LobbyService);
+        const roll = { turn: 2, side: 'own-force', dice: [3, 4] as const, modifier: 1, carriedDice: { 'own-force': 2 } };
+
+        service.rollInitiative(roll);
+        expect(wsService.send).not.toHaveBeenCalled();
+
+        handlers.get('lobbyState')?.(lobbyState(false));
+        service.rollInitiative(roll);
+        expect(wsService.send).toHaveBeenCalledOnceWith({ action: 'rollLobbyInitiative', ...roll });
+    });
+
     it('keeps lobby state during transport loss and clears it only when resume fails', async () => {
         const service = TestBed.inject(LobbyService);
         handlers.get('lobbyState')?.({
             action: 'lobbyState',
             code: 'room',
-            locked: false,
+            locked: false, settings: LOBBY_SETTINGS, initiative: null,
             isHost: true,
             participants: [
                 { publicId: 'self-public', self: true, host: true, connected: true, alignment: 'friendly', instanceIds: [] },

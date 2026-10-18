@@ -63,7 +63,6 @@ describe('ammo weapon profiles', () => {
         expect(ATM_HIGH_EXPLOSIVE_PROFILE).toEqual(jasmine.objectContaining({
             minimumRange: 0,
             ranges: [3, 6, 9, 12],
-            clusterSize: 6
         }));
         expect('fallbackDamagePerShot' in MML_LRM_PROFILE).toBeFalse();
         expect('fallbackDamagePerShot' in ATM_HIGH_EXPLOSIVE_PROFILE).toBeFalse();

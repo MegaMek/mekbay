@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { compareText } from '../../utils/string.util';
+import type { AmmoSelectionCompatibilityFacts } from '../../utils/ammo-validity.util';
+import { comparativePilotingModifier } from '../rules/physical-attack-rules';
 import { recordSheetInventoryMountName } from '../../utils/sheets/record-sheet-inventory-equipment';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asComponentId, type ComponentId, type LocationId } from '../entity/entity-identifiers';
@@ -47,6 +49,7 @@ import {
 import { componentLocationIds, equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import {
     entityWeaponTechBasesForAmmo,
+    entityAmmoSelectionCompatibilityFacts,
     hotLoadedAmmoForWeapon,
     mekAmmoDefaultMunitionKey,
     mekAmmoLoadouts,
@@ -91,7 +94,9 @@ import { projectMekSpottingModifier } from './mek-turn-panel';
 import { applyHagEquipmentWeaponTypes, hagEquipmentToHitAdjustments } from './component-hag-mode';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { applyGaussPowerWeaponTypes } from './mek-gauss-power';
-import { applyComponentApolloWeaponTypes, componentApolloToHitAdjustment } from './component-apollo';
+import { applyComponentApolloWeaponTypes } from './component-apollo';
+import { apolloToHitAdjustment } from '../apollo-mode.model';
+import { artemisVToHitAdjustment } from '../artemis-equipment.model';
 import {
     PPC_CAPACITOR_HEAT_BONUS,
     ppcCapacitorChargedForWeapon,
@@ -104,14 +109,12 @@ import type { UnitModifierBreakdownEntry } from '../combat-modifier';
 import type { MotiveModes } from '../motiveModes.model';
 import {
     inventoryControlDamageRange,
-    resolveInventoryControlDamageText,
+    resolveInventoryControlWeaponDamage,
 } from '../../utils/inventory-control-damage.util';
 import type { EquipmentRegistry } from '../equipment-lookup';
 import { resolveAmmoWeaponProfile } from '../ammo-weapon-profile.model';
 import type { TooltipLine } from '../../components/tooltip/tooltip.component';
 import {
-    isArtemisVCompatibleWeapon,
-    isArtemisVEquipment,
     isWeaponEnhancementEquipment,
 } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
@@ -155,6 +158,8 @@ export interface EquipmentPanelWeapon {
     readonly damage: WeaponEquipment['damage'];
     readonly damageText: string;
     readonly damageTextByRange: Readonly<Record<TnRangeBracket, string>>;
+    /** Absent for aerospace bays, which attack with a combined value instead. */
+    readonly damageByRange?: Readonly<Record<TnRangeBracket, WeaponDamage | null>>;
     /** Exact rules-owned hit resolution; the UI never rebuilds equipment rules. */
     readonly hit: EquipmentPanelHitResolution;
     readonly toHitModifier: WeaponEquipment['toHitModifier'];
@@ -195,6 +200,8 @@ export interface EquipmentPanelModifier {
 export interface EquipmentPanelWeaponDamage {
     readonly default: string;
     readonly byRange: Readonly<Record<TnRangeBracket, string>>;
+    /** The resolved damage each text above formats. */
+    readonly valuesByRange: Readonly<Record<TnRangeBracket, WeaponDamage | null>>;
 }
 
 export interface EquipmentPanelAttackMember {
@@ -240,6 +247,7 @@ export interface EquipmentPanelComponent {
         readonly loadouts: readonly EquipmentPanelAmmoLoadout[];
         readonly hotLoaded?: boolean;
         readonly weaponTechBases?: readonly EquipmentTechBase[];
+        readonly compatibilityFacts?: AmmoSelectionCompatibilityFacts;
     }>;
 }
 
@@ -266,6 +274,8 @@ export interface WeaponTargetPresentation {
     readonly targetModifierBreakdown: readonly EffectiveTargetModifier[] | null;
     readonly hitResolution: ToHitResolution | null;
     readonly hitText: string;
+    /** The bracket the weapon's damage is read at: the real range, never the C3-shortened one. */
+    readonly damageRange: TnRangeBracket | null;
     readonly damageText: string;
     readonly targetNumberBreakdown: Readonly<{
         readonly total: number;
@@ -423,6 +433,7 @@ export function projectWeaponTargetPresentation(
         targetModifierBreakdown: targetProjection?.breakdown ?? null,
         hitResolution,
         hitText: formatEquipmentPanelHit(hitResolution, attackModifierBreakdown, target !== null, weaponRuleRange !== null),
+        damageRange: weaponRuleRange,
         damageText: weaponRuleRange === null
             ? weapon.damageText
             : weapon.damageTextByRange[weaponRuleRange],
@@ -480,17 +491,22 @@ export function projectEquipmentPanelWeaponDamage(
             }),
         }),
     } as const;
-    const damageAt = (range: TnRangeBracket | null): string =>
-        resolveInventoryControlDamageText(component, {
+    const resolveAt = (range: TnRangeBracket | null) =>
+        resolveInventoryControlWeaponDamage(component, {
             ...context,
             selectedRange: inventoryControlDamageRange(range),
-        }, rules) ?? '—';
+        }, rules);
+    const byRange = AEROSPACE_RANGE_BRACKETS.map(range => [range, resolveAt(range)] as const);
     return Object.freeze({
-        default: damageAt(null),
-        byRange: Object.freeze(Object.fromEntries(AEROSPACE_RANGE_BRACKETS.map(range => [
+        default: resolveAt(null)?.text ?? '—',
+        byRange: Object.freeze(Object.fromEntries(byRange.map(([range, resolved]) => [
             range,
-            damageAt(range),
+            resolved?.text ?? '—',
         ])) as Record<TnRangeBracket, string>),
+        valuesByRange: Object.freeze(Object.fromEntries(byRange.map(([range, resolved]) => [
+            range,
+            resolved?.damage ?? null,
+        ])) as Record<TnRangeBracket, WeaponDamage | null>),
     });
 }
 
@@ -577,6 +593,7 @@ function emptyWeaponTargetPresentation(): WeaponTargetPresentation {
         targetModifierBreakdown: null,
         hitResolution: null,
         hitText: '',
+        damageRange: null,
         damageText: '—',
         targetNumberBreakdown: null,
     });
@@ -699,7 +716,7 @@ function sumTargetModifiers(entries: readonly EffectiveTargetModifier[]): number
     );
 }
 
-function resolveEffectiveWeaponTypes(
+export function resolveEffectiveWeaponTypes(
     row: EquipmentPanelComponent,
     selectedAmmo: AmmoEquipment | null,
 ): readonly WeaponType[] {
@@ -797,6 +814,26 @@ export interface MekPhysicalAttackRow {
     readonly effect: MekPhysicalAttackEffectV2;
     readonly firingHeat: number;
     readonly selection?: AttackerSelection;
+}
+
+/**
+ * A physical attack's target number against one target: Piloting plus the attack's, the attacker's and the
+ * target's modifiers. Charges and DFAs also take the comparative Piloting modifier, so they need the target's
+ * skill; without it there is no number.
+ */
+export function physicalAttackTargetNumber(
+    row: Pick<MekPhysicalAttackRow, 'hitModifiers'>,
+    piloting: number,
+    attack: Pick<WeaponAttackContext, 'attackModifierBreakdown'> | null,
+    target: Pick<TargetingTarget, 'tnModifier'>,
+    comparative?: Readonly<{ piloting: number; immobile: boolean }>,
+): number | null {
+    const [base, extra] = row.hitModifiers;
+    const attackModifier = (attack?.attackModifierBreakdown ?? []).reduce((total, item) => total + item.modifier, 0);
+    if (typeof base === 'number') return piloting + base + attackModifier + target.tnModifier;
+    if (base !== 'versus' || !comparative) return null;
+    return piloting + comparativePilotingModifier(piloting, comparative.piloting, comparative.immobile)
+        + (typeof extra === 'number' ? extra : 0) + attackModifier + target.tnModifier;
 }
 
 export type MekPhysicalAttackPresentation =
@@ -1190,16 +1227,25 @@ function projectMekEquipmentComponents(
             const bombastToHit = bombast === null
                 ? undefined
                 : bombastCharged ? 0 : bombast.toHitModifier;
+            const linkedEnhancementId = index.relationships.linkedSourceByTarget.get(componentId);
+            const linkedEnhancement = linkedEnhancementId === undefined
+                ? undefined
+                : equipmentForComponent(index, linkedEnhancementId);
+            const linkedEnhancementStatus = linkedEnhancementId === undefined
+                ? 'available'
+                : query.componentStatus(linkedEnhancementId);
             const artemisVToHit = equipment instanceof WeaponEquipment
                 ? artemisVToHitAdjustment(
-                    index,
-                    query,
-                    componentId,
+                    linkedEnhancement,
+                    equipment,
+                    linkedEnhancementStatus,
                     selectedAmmo,
+                    query.hasCondition('jammed'),
+                    query.c3DisruptedByStealth(),
                 )
                 : null;
             const apolloToHit = equipment instanceof WeaponEquipment
-                ? componentApolloToHitAdjustment(index, query, componentId, ruleset)
+                ? apolloToHitAdjustment(linkedEnhancement, equipment, linkedEnhancementStatus, ruleset)
                 : null;
             const riscLaserPulse = equipment instanceof WeaponEquipment
                 ? mekRiscLaserPulseLink(index, componentId)
@@ -1289,13 +1335,6 @@ function projectMekEquipmentComponents(
                     machineGunArrayMemberCount,
                 )
                 : null;
-            const linkedEnhancementId = index.relationships.linkedSourceByTarget.get(componentId);
-            const linkedEnhancement = linkedEnhancementId === undefined
-                ? undefined
-                : equipmentForComponent(index, linkedEnhancementId);
-            const linkedEnhancementStatus = linkedEnhancementId === undefined
-                ? 'available'
-                : query.componentStatus(linkedEnhancementId);
             const laserInsulatorWeakened = equipment instanceof WeaponEquipment
                 ? mekLaserInsulatorWeakened(index, query, componentId)
                 : null;
@@ -1326,6 +1365,7 @@ function projectMekEquipmentComponents(
                     damage: effectiveDamage,
                     damageText: damage!.default,
                     damageTextByRange: damage!.byRange,
+                    damageByRange: damage!.valuesByRange,
                     hit: hit!,
                     toHitModifier: hit!.default.profile.length === 1
                         ? hit!.default.profile[0]!
@@ -1367,44 +1407,6 @@ function projectMekEquipmentComponents(
                 ...(ammo === undefined ? {} : { ammo }),
             });
         }));
-}
-
-function artemisVToHitAdjustment(
-    index: MekRuntimeIndex,
-    query: MekUnitQueryPort,
-    weaponId: ComponentId,
-    ammo: AmmoEquipment | null,
-): Extract<ToHitAdjustment, { readonly kind: 'add' }> | null {
-    const sourceId = index.relationships.linkedSourceByTarget.get(weaponId);
-    if (sourceId === undefined) return null;
-    const source = equipmentForComponent(index, sourceId);
-    const weapon = equipmentForComponent(index, weaponId);
-    if (!source || !weapon
-        || !isArtemisVEquipment(source)
-        || !isArtemisVCompatibleWeapon(weapon)) return null;
-
-    const status = query.componentStatus(sourceId);
-    const jammed = query.hasCondition('jammed');
-    const stealthEcm = query.c3DisruptedByStealth();
-    const compatibleAmmo = ammo?.hasMunitionType('M_ARTEMIS_V_CAPABLE') === true;
-    const weakened = status !== 'available' || jammed || stealthEcm || !compatibleAmmo;
-    const label = source.shortName || source.name;
-    return Object.freeze({
-        kind: 'add' as const,
-        label: status === 'destroyed'
-            ? `${label} Destroyed`
-            : status === 'disabled'
-                ? `${label} Disabled`
-                : jammed
-                    ? 'Unit Jammed'
-                    : stealthEcm
-                        ? 'Stealth ECM'
-                        : ammo === null
-                            ? 'Artemis V Ammo Not Selected'
-                            : compatibleAmmo ? label : `Incompatible Ammo (${ammo.name})`,
-        modifier: weakened ? 0 : -1,
-        weakened,
-    });
 }
 
 function installedTargetingComputer(
@@ -1569,6 +1571,7 @@ function ammoSnapshot(
         hotLoaded: query.ammoHotLoaded(componentId),
         loadouts: freezeLoadouts(loadouts),
         weaponTechBases: entityWeaponTechBasesForAmmo(entity, selected.equipment),
+        compatibilityFacts: entityAmmoSelectionCompatibilityFacts(entity, loadouts.map(loadout => loadout.equipment)),
     });
 }
 

@@ -18,7 +18,7 @@ interface InventoryRow {
     readonly cells: readonly string[];
     readonly mounts?: readonly EntityMountedEquipment[];
     readonly note?: boolean;
-    readonly mode?: { readonly name: string; readonly displayOnly?: boolean };
+    readonly mode?: { readonly name: string };
 }
 export interface BuildingInventoryPage {
     readonly rows: readonly InventoryRow[];
@@ -202,7 +202,7 @@ export function drawBuildingInventory(group: SVGGElement, entity: StaticEmplacem
         let parent = entry;
         if (row.mode) {
             parent = svgElement('g');
-            setAttributes(parent, { class: row.mode.displayOnly ? 'equipmentProfile' : 'alternativeMode', 'data-mekbay-mode': row.mode.name });
+            setAttributes(parent, { class: 'alternativeMode', 'data-mekbay-mode': row.mode.name });
             entry.appendChild(parent);
         }
         const y = 32 + fontSize + index * lineStep;

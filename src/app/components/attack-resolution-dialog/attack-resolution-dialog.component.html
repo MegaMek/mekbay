@@ -1,0 +1,38 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" (click)="$event.stopPropagation()">
+    <div class="header">Attack · {{ data.attacker }}</div>
+    <div class="body attack-body">
+        <button type="button" class="bt-button reroll-all" (click)="rerollAll()">
+            <span class="roll-icon" aria-hidden="true"></span>
+            <span>RE-ROLL ALL</span>
+        </button>
+        @for (row of targets(); track $index; let t = $index) {
+            <section class="attack-target">
+                <div class="target-heading">
+                    <span class="target-letter" [style.background]="row.target.color">{{ row.target.letter }}</span>
+                    <div class="target-name">
+                        <strong>{{ row.target.name }}</strong>
+                        <span>{{ arcLabels[row.target.arc] }} arc
+                            @if (row.target.delivery) { · hits go to its owner } @else { · apply on the target's sheet }
+                        </span>
+                    </div>
+                    <div class="target-totals">
+                        <span>{{ row.hits }} hit{{ row.hits === 1 ? '' : 's' }}</span>
+                        <strong>{{ row.damage }}</strong>
+                    </div>
+                </div>
+                <attack-report [weapons]="row.weapons" [editable]="true"
+                    (rollSet)="setRoll(t, $event)"
+                    (clusterModifierSet)="setClusterModifier(t, $event)"
+                    (rerolled)="reroll(t, $event)" />
+            </section>
+        }
+    </div>
+    <div class="actions">
+        @if (deliverable().length > 0) {
+            <button type="button" class="bt-button primary" (click)="send()">SEND HITS</button>
+            <button type="button" class="bt-button" (click)="close()">CLOSE</button>
+        } @else {
+            <button type="button" class="bt-button primary" (click)="close()">DONE</button>
+        }
+    </div>
+</div>

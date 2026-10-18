@@ -19,6 +19,7 @@ import {
   type CatalogEntryKey,
 } from '../services/unit-catalog/unit-catalog.types';
 import { UnitSummaryBuilder } from './unit-summary-builder';
+import { CORE_2026_RULESET } from '../models/cbt-ruleset.model';
 
 describe('UnitSummaryBuilder', () => {
   const uuid = asUnitUuid('019f583e-a182-7f8d-a210-1cb31c1114cb');
@@ -50,6 +51,7 @@ describe('UnitSummaryBuilder', () => {
   it('builds a gameplay-ready Mek summary from the canonical entity', () => {
     const summary = new UnitSummaryBuilder().build(mek(), {
       entryKey,
+      ruleset: CORE_2026_RULESET,
       format: 'mtf',
     });
     expect(summary.uuid).toBe(uuid);
@@ -65,7 +67,7 @@ describe('UnitSummaryBuilder', () => {
     } })));
     for (const left of [false, true]) {
       entity.hasHandActuator.update(hands => ({ ...hands, left }));
-      const summary = new UnitSummaryBuilder().build(entity, { entryKey, format: 'mtf' });
+      const summary = new UnitSummaryBuilder().build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'mtf' });
       expect(summary.assignedQuirks).toEqual(['Battle Fists (LA)', 'Battle Fists (RA)']);
       expect(summary.quirks).toEqual(left ? summary.assignedQuirks : ['Battle Fists (RA)']);
       expect(summary.loadIssues.some(issue => issue.code.includes('QUIRK'))).toBeFalse();
@@ -77,6 +79,7 @@ describe('UnitSummaryBuilder', () => {
       entity.mulId.set(123);
       const summary = new UnitSummaryBuilder().build(entity, {
         entryKey,
+        ruleset: CORE_2026_RULESET,
         format: entity instanceof StaticEmplacementEntity ? 'blk' : 'mtf',
       });
       expect(summary.mul1id).toBe(123);
@@ -91,7 +94,7 @@ describe('UnitSummaryBuilder', () => {
       [new TestAeroSpaceFighterEntity(), true],
     ] as const) {
       entity.uuid.set(uuid);
-      const summary = new UnitSummaryBuilder().build(entity, { entryKey, format: 'blk' });
+      const summary = new UnitSummaryBuilder().build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'blk' });
       expect(summary.heat).withContext(entity.entityType).toBe(tracksHeat ? entity.heatGeneration() : null);
       expect(summary.dissipation).withContext(entity.entityType).toBe(tracksHeat ? entity.heatDissipation() : null);
       expect(JSON.parse(JSON.stringify(summary)).heat).toBe(summary.heat);
@@ -109,6 +112,7 @@ describe('UnitSummaryBuilder', () => {
 
     const summary = new UnitSummaryBuilder().build(entity, {
       entryKey,
+      ruleset: CORE_2026_RULESET,
       format: 'mtf',
     });
 
@@ -134,7 +138,7 @@ describe('UnitSummaryBuilder', () => {
     const originalDiagnostics = [...entity.loadIssues()];
 
     const builder = new UnitSummaryBuilder();
-    const summary = builder.build(entity, { entryKey, format: 'mtf' });
+    const summary = builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'mtf' });
 
     expect(summary.loadIssues).toEqual(jasmine.arrayContaining([
       ...originalDiagnostics,
@@ -143,7 +147,7 @@ describe('UnitSummaryBuilder', () => {
     ]));
     expect(summary.loadIssues[0]).not.toBe(entity.loadIssues()[0]);
     expect(entity.loadIssues()).toEqual(originalDiagnostics);
-    expect(builder.build(entity, { entryKey, format: 'mtf' }).loadIssues).toEqual(summary.loadIssues);
+    expect(builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'mtf' }).loadIssues).toEqual(summary.loadIssues);
     expect(JSON.parse(JSON.stringify(summary)).loadIssues).toEqual(summary.loadIssues);
   });
 
@@ -155,17 +159,17 @@ describe('UnitSummaryBuilder', () => {
       code: 'ENGINE_RATING_MISMATCH', severity: 'warning',
     }));
 
-    const summary = new UnitSummaryBuilder().build(entity, { entryKey, format: 'mtf' });
+    const summary = new UnitSummaryBuilder().build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'mtf' });
     expect(summary.loadIssues.some(issue => issue.code === 'ENGINE_RATING_MISMATCH')).toBeFalse();
   });
 
   it('includes construction errors for static families and leaves valid designs issue-free', () => {
     const entity = staticEntity();
     const builder = new UnitSummaryBuilder();
-    expect(builder.build(entity, { entryKey, format: 'blk' }).loadIssues).toEqual([]);
+    expect(builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'blk' }).loadIssues).toEqual([]);
 
     entity.originalBuildYear.set(entity.year() + 1);
-    expect(builder.build(entity, { entryKey, format: 'blk' }).loadIssues).toEqual([
+    expect(builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'blk' }).loadIssues).toEqual([
       jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', field: 'tech' }),
     ]);
   });
@@ -175,13 +179,16 @@ describe('UnitSummaryBuilder', () => {
     expect(() => builder.build(staticEntity(), {
       entryKey: { ...entryKey, design: { ...entryKey.design, uuid: asUnitUuid('019f583e-a185-783a-a706-48217ac1f149') } },
       format: 'blk',
+      ruleset: CORE_2026_RULESET,
     })).toThrowError(/does not match catalog UUID/u);
     expect(() => builder.build(staticEntity(), {
       entryKey,
+      ruleset: CORE_2026_RULESET,
       format: 'mtf',
     })).toThrowError(/requires native BLK/u);
     expect(() => builder.build(staticEntity(), {
       entryKey,
+      ruleset: CORE_2026_RULESET,
     })).toThrowError(/MegaMek summary entries require/u);
   });
 
@@ -191,6 +198,7 @@ describe('UnitSummaryBuilder', () => {
 
     const summary = new UnitSummaryBuilder().build(entity, {
       entryKey,
+      ruleset: CORE_2026_RULESET,
       format: 'blk',
     });
     expect(summary.type).toBe('Building');
@@ -211,6 +219,7 @@ describe('UnitSummaryBuilder', () => {
       entity.manualBV.set(1234);
       const summary = new UnitSummaryBuilder().build(entity, {
         entryKey,
+        ruleset: CORE_2026_RULESET,
         format: entity.entityType === 'Mek' ? 'mtf' : 'blk',
       });
       expect(summary.bv).withContext(entity.entityType).toBe(1234);

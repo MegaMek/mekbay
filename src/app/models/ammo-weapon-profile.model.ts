@@ -14,7 +14,8 @@ export interface AmmoWeaponProfile {
   readonly minimumRange: number;
   readonly ranges: readonly [short: number, medium: number, long: number, extreme: number];
   readonly maximumAerospaceBracket: RangeBrackets;
-  readonly clusterSize: number;
+  /** MML modes only: ATM grouping is a game rule (`CBTGameRules.atmClusterSize`). */
+  readonly clusterSize?: number;
 }
 
 /** Canonical inventory-control modes shared by entity and runtime rules. */
@@ -55,7 +56,6 @@ export const ATM_STANDARD_PROFILE: AmmoWeaponProfile = {
   minimumRange: 4,
   ranges: [5, 10, 15, 20],
   maximumAerospaceBracket: 'medium',
-  clusterSize: 6,
 };
 
 export const ATM_EXTENDED_RANGE_PROFILE: AmmoWeaponProfile = {
@@ -64,7 +64,6 @@ export const ATM_EXTENDED_RANGE_PROFILE: AmmoWeaponProfile = {
   minimumRange: 4,
   ranges: [9, 18, 27, 36],
   maximumAerospaceBracket: 'extreme',
-  clusterSize: 6,
 };
 
 export const ATM_HIGH_EXPLOSIVE_PROFILE: AmmoWeaponProfile = {
@@ -73,7 +72,6 @@ export const ATM_HIGH_EXPLOSIVE_PROFILE: AmmoWeaponProfile = {
   minimumRange: 0,
   ranges: [3, 6, 9, 12],
   maximumAerospaceBracket: 'short',
-  clusterSize: 6,
 };
 
 export const MML_AMMO_PROFILES: readonly AmmoWeaponProfile[] = [MML_LRM_PROFILE, MML_SRM_PROFILE];

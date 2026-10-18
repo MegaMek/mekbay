@@ -1,0 +1,90 @@
+<div class="content">
+    <h2>INITIATIVE</h2>
+    <div class="turn-label">Turn {{ turnNumber() }}</div>
+
+    <ol class="sides">
+        @for (row of rows(); track row.side.id; let i = $index; let first = $first; let last = $last) {
+            <li class="side" [class.friendly]="row.side.friendly" [class.winner]="ranked() && first">
+                <div class="place">
+                    @if (ranked() && first) {
+                        <span class="badge win">WINS</span>
+                        <span class="note">acts last</span>
+                    } @else if (ranked() && last) {
+                        <span class="badge">LOSES</span>
+                        <span class="note">acts first</span>
+                    } @else if (ranked()) {
+                        <span class="badge">{{ i + 1 }}</span>
+                    } @else if (row.tied) {
+                        <span class="badge tie">TIE</span>
+                        <span class="note">reroll</span>
+                    } @else if (row.roll) {
+                        <span class="badge">✓</span>
+                    }
+                </div>
+                <div class="identity">
+                    <span class="name-line">
+                        <span class="marker" aria-hidden="true"></span>
+                        <strong class="name">{{ row.side.label }}</strong>
+                    </span>
+                    @if (row.die > 0) {
+                        <span class="die" title="Initiative Die: +1 for each Initiative lost in a row">Initiative Die {{ signed(row.die) }}</span>
+                    }
+                </div>
+                <div class="modifier">
+                    @if (row.side.mine && !row.roll) {
+                        <span class="modifier-control" title="The force's highest Initiative modifier (command equipment, abilities, scenario)">
+                            <button type="button" class="bt-button square-small" (click)="setModifier(row.side, -1)">-</button>
+                            <span class="modifier-value">{{ signed(row.modifier - row.die) }}</span>
+                            <button type="button" class="bt-button square-small" (click)="setModifier(row.side, 1)">+</button>
+                        </span>
+                    }
+                    @if (row.due) {
+                        @if (row.side.mine) {
+                            <button type="button" class="bt-button primary roll-button" (click)="roll(row.side)">{{ row.tied ? 'REROLL TIE' : 'ROLL' }}</button>
+                        } @else {
+                            <span class="waiting">{{ row.tied ? 'Rerolling the tie…' : 'Waiting for its roll…' }}</span>
+                        }
+                    }
+                </div>
+                <div class="roll">
+                    <dice-roller [diceCount]="2" [initialResults]="row.latest" [modifier]="row.modifier" [rollDurationMs]="700" />
+                    @for (total of row.earlier; track $index) {
+                        <span class="reroll" title="Tied, so rerolled">tie {{ total }}</span>
+                    }
+                </div>
+                @if (initiative.canReorder() && rows().length > 1) {
+                    <div class="reorder">
+                        <button type="button" class="bt-button square-small" [disabled]="first" [attr.aria-label]="'Move ' + row.side.label + ' up'" (click)="move(i, -1)">▲</button>
+                        <button type="button" class="bt-button square-small" [disabled]="last" [attr.aria-label]="'Move ' + row.side.label + ' down'" (click)="move(i, 1)">▼</button>
+                    </div>
+                }
+            </li>
+        }
+    </ol>
+
+    @if (initiative.currentPips().length) {
+        <section class="order">
+            <span class="order-title">Acting order</span>
+            <initiative-pips size="large" [pips]="initiative.currentPips()" />
+        </section>
+    }
+
+    <p class="hint">
+        @if (initiative.record()?.order) {
+            The order was set by hand.
+        } @else if (ranked()) {
+            Rolls are final. The winner acts last.
+        } @else {
+            Each force rolls once; tied forces roll again. Rolls are final.
+        }
+    </p>
+    <div class="actions">
+        @if (myDue().length > 1) {
+            <button type="button" class="bt-button primary" (click)="rollAllMine()">ROLL ALL MINE</button>
+        }
+        @if (initiative.canReorder() && initiative.record()?.order) {
+            <button type="button" class="bt-button" (click)="useRolledOrder()">USE ROLLED ORDER</button>
+        }
+        <button type="button" class="bt-button" [class.primary]="myDue().length === 0" (click)="close()">{{ myDue().length ? 'LATER' : 'CLOSE' }}</button>
+    </div>
+</div>

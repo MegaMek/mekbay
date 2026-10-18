@@ -210,17 +210,17 @@ describe('Mobile Structure construction (TO:AUE pp. 76–84)', () => {
 
   it('uses mobile BV protection once per hex and maximum MP without vehicle mass or facing discounts', () => {
     const entity = create();
-    expect(entity.battleValue()).toBe(114); // (80 CF × 1.5) × .5 + (2 hexes × 50) × .54
+    expect(entity.battleValue('core-2026')).toBe(114); // (80 CF × 1.5) × .5 + (2 hexes × 50) × .54
     setConstructionBuildingTopology(entity, [origin, east], 3);
-    expect(entity.battleValue()).toBe(114);
+    expect(entity.battleValue('core-2026')).toBe(114);
     entity.buildingClass.set(2); setConstructionArmor(entity, buildingLocationName(origin, 0), 16);
     const gun = new WeaponEquipment({ id: 'MobileBVWeapon', name: 'BV weapon', type: 'weapon',
       stats: { tonnage: 1, bv: 100 }, flags: ['F_TANK_WEAPON'], weapon: { ranges: [3, 6, 9, 12] } });
     addTestEquipment(entity, gun, { location: buildingLocationName(origin, 0), facing: 0 });
     addTestEquipment(entity, gun, { location: buildingLocationName(east, 0), facing: 3 });
-    expect(entity.battleValue()).toBe(262); // (80 + 120) × .5 + 300 × .54
+    expect(entity.battleValue('core-2026')).toBe(262); // (80 + 120) × .5 + 300 × .54
     entity.motiveType.set('Submarine'); entity.originalWalkMP.set(4);
-    expect(entity.battleValue()).toBe(364); // Same defense; 300 × .88 offense.
+    expect(entity.battleValue('core-2026')).toBe(364); // Same defense; 300 × .88 offense.
     expect(entity.battleValueFor({
       destroyed: false, movement: { walk: 0, run: 0, jump: 0, umu: 0 }, engineHits: 0,
       equipmentStatus: () => 'available', armorRemaining: (location, face) => entity.getArmorValue(location, face),

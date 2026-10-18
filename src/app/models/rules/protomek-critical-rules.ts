@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { EntityMountedEquipment } from '../entity/types/equipment';
 import type { ProtoMekEntity } from '../entity/entities/protomek/protomek-entity';
 import { isJumpJetEquipment } from '../jump-equipment.model';
 import { systemDamageDefinitions,type SystemDamageKind } from './system-damage-rules';
@@ -45,19 +46,32 @@ export function protoMekCriticalReferences(entity: ProtoMekEntity): readonly Pro
         .map(row => supported.has(row.system) ? row : { ...row, effects: [] });
 }
 
-/** A torso critical allocates one die face per quad weapon, two per biped weapon. */
+/** Filled critical boxes that wound the pilot, one hit each; the record sheet shades them (TW p.185; MegaMek). */
+const SHADED_CRITICAL_BOXES: Partial<Record<SystemDamageKind, readonly number[]>> = {
+    head: [2], 'left-arm': [2], 'right-arm': [2], torso: [1, 2, 3], legs: [3],
+};
+
+/** Pilot hits from filling a location's critical boxes after `filled` up to `to`. */
+export function protoMekCriticalPilotHits(system: SystemDamageKind, filled: number, to: number): number {
+    return (SHADED_CRITICAL_BOXES[system] ?? []).filter(box => box > filled && box <= to).length;
+}
+
+/**
+ * A torso critical allocates one die face per quad weapon, two per biped weapon. The first and second
+ * torso criticals each roll once; a face with no weapon has no effect (TW p.186).
+ */
 export function protoMekTorsoCriticalResults(entity: ProtoMekEntity): readonly Readonly<{
-    firstRoll: number; lastRoll: number; weapon?: string;
+    firstRoll: number; lastRoll: number; weapon?: string; mount?: EntityMountedEquipment;
 }>[] {
     const weapons = entity.equipment().filter(mount => mount.getOccupiedLocations().includes('Torso')
         && mount.getAmmoShots() === undefined && !isJumpJetEquipment(mount.equipment));
     const facesPerWeapon = entity.isQuad() ? 1 : 2;
-    const results: { firstRoll: number; lastRoll: number; weapon?: string }[] = [];
+    const results: { firstRoll: number; lastRoll: number; weapon?: string; mount?: EntityMountedEquipment }[] = [];
     let roll = 1;
     for (const weapon of weapons) {
         if (roll > 6) break;
         const end = Math.min(6, roll + facesPerWeapon - 1);
-        results.push({ firstRoll: roll, lastRoll: end, weapon: weapon.displayName() });
+        results.push({ firstRoll: roll, lastRoll: end, weapon: weapon.displayName(), mount: weapon });
         roll = end + 1;
     }
     if (roll <= 6) results.push({ firstRoll: roll, lastRoll: 6 });
