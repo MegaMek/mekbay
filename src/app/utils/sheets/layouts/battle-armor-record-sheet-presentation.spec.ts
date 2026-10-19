@@ -30,6 +30,21 @@ describe('Battle Armor record-sheet presentation', () => {
         expect(page.textContent).toContain('BATTLE ARMOR: POINT 2');
     });
 
+    it('counts identical equipment in a quantity column shown only while something is grouped', async () => {
+        const entity = new TestBattleArmorEntity();
+        const left = addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR', { location: 'Squad' });
+        addTestEquipmentWithFlags(entity, 'F_BASIC_MANIPULATOR', { location: 'Squad' });
+        const grouped = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const quantities = [...grouped.querySelectorAll('.inventoryEntry .quantity')].map(cell => cell.textContent);
+        expect(quantities).toEqual(['2']);
+        expect([...grouped.querySelectorAll('text')].some(text => text.textContent === '#')).toBeTrue();
+
+        entity.removeEquipment(left);
+        const single = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        expect(single.querySelector('.inventoryEntry .quantity')).toBeNull();
+        expect([...single.querySelectorAll('text')].some(text => text.textContent === '#')).toBeFalse();
+    });
+
     it('derives AP capability from installed anti-personnel mounts', async () => {
         const entity = new TestBattleArmorEntity();
         const mount = addTestEquipmentWithFlags(entity, 'F_AP_MOUNT', { location: 'Squad' });

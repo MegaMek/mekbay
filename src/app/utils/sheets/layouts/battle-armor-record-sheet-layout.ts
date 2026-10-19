@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import { groupRecordSheetEquipmentRows } from '../record-sheet-inventory-equipment';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -52,8 +53,7 @@ import {
 
 const MASTHEAD_ART_ID = 'mekbay-battle-armor-masthead-art';
 /** Inventory names start where the Mek and vehicle names do (only bays print a quantity) and keep their right edge. */
-const BA_NAME_X = 8.41;
-const BA_NAME_WIDTH = 91.1 - BA_NAME_X;
+const BA_NAME_RIGHT = 91.1;
 
 export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     public constructor() {
@@ -422,8 +422,8 @@ function drawCompactBattleArmorInventory(
     });
 
     const rows = [
-        ...weapons,
-        ...miscRows.map(row => ({
+        ...weapons.map(row => ({ ...row, quantity: 1 })),
+        ...groupRecordSheetEquipmentRows(miscRows, row => row.name).map(row => ({
             ...row,
             location: '',
             heat: '',
@@ -433,9 +433,13 @@ function drawCompactBattleArmorInventory(
             alternativeModes: Object.freeze([]),
         })),
     ];
+    // The quantity column appears only when equipment is grouped; names otherwise start where the Mek and vehicle names do.
+    const showQuantity = rows.some(row => row.quantity > 1);
+    const nameX = showQuantity ? 12.1 : 8.41;
+    const nameWidth = BA_NAME_RIGHT - nameX;
     const ammo = recordSheetAmmoProfile(entity);
     const rowLines = (row: { name: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
-        inventoryRowLineCount([[row.name, x(BA_NAME_WIDTH)], [row.damage, x(31)], [row.minimumRange, x(INVENTORY_RANGE_VALUE_WIDTH)],
+        inventoryRowLineCount([[row.name, x(nameWidth)], [row.damage, x(31)], [row.minimumRange, x(INVENTORY_RANGE_VALUE_WIDTH)],
             ...row.ranges.map(value => [value, x(INVENTORY_RANGE_VALUE_WIDTH)] as const)], font(size));
     const firstBaseline = 66.666;
     const metrics = fitInventoryText(105.2 - firstBaseline, fontSize => ({
@@ -447,7 +451,10 @@ function drawCompactBattleArmorInventory(
     const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, yPos, { ...options, lineHeight: y(lineStep) });
 
-    addText(group, 'Type', x(BA_NAME_X), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    if (showQuantity) {
+        addText(group, '#', x(7.55), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle' });
+    }
+    addText(group, 'Type', x(nameX), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     addText(group, 'Dmg', x(94), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const columns = inventoryRangeColumns(3.966, 186.54);
     const rangePositions = columns.ranges;
@@ -472,8 +479,13 @@ function drawCompactBattleArmorInventory(
         const buttons = inventoryRangeButtons(columns, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
         appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
-        addCell(entry, row.name, x(BA_NAME_X), baseline, {
-            class: 'name', size: font(rowFont), maxWidth: x(BA_NAME_WIDTH),
+        if (showQuantity) {
+            addCell(entry, String(row.quantity), x(7.55), baseline, {
+                class: 'quantity', size: font(rowFont), anchor: 'middle',
+            });
+        }
+        addCell(entry, row.name, x(nameX), baseline, {
+            class: 'name', size: font(rowFont), maxWidth: x(nameWidth),
         });
         const damage = svgElement('g');
         damage.setAttribute('class', 'damage');

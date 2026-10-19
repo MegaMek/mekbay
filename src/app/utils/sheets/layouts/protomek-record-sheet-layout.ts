@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import { groupRecordSheetEquipmentRows } from '../record-sheet-inventory-equipment';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
@@ -219,9 +220,7 @@ const PROTOMEK_DIAGRAM_WIDTH = 94;
 const PROTOMEK_HEADINGS_BASELINE = 22.65;
 /** The inventory's Lng box ends half its former gutter from the frame, as on the full-width sheets. */
 const PROTOMEK_INVENTORY_COLUMNS = inventoryRangeColumns(3, 193.2);
-/** Inventory names start where the Mek and vehicle names do (only bays print a quantity) and keep their right edge. */
-const PROTOMEK_NAME_X = 8.41;
-const PROTOMEK_NAME_WIDTH = 75.45 - PROTOMEK_NAME_X;
+const PROTOMEK_NAME_RIGHT = 75.45;
 
 /** Every panel inside the ProtoMek block shares one compact title tab, 11 high with the frame's padding. */
 const PROTOMEK_PANEL_TAB = Object.freeze({ headerFontSize: RECORD_SHEET_FONT.body, headerHeight: 6 });
@@ -245,14 +244,6 @@ function drawCompactProtoMekInventory(
     const x = (value: number): number => value * sx;
     const y = (value: number): number => value * sy;
     const font = (value: number): number => value * fontScale;
-    const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
-        ['Type', PROTOMEK_NAME_X, 'start'], ['Loc', 87.05, 'middle'], ['Dmg', 96.5, 'start'],
-        ...inventoryRangeHeadings(PROTOMEK_INVENTORY_COLUMNS),
-    ];
-    // Headings keep their natural width; a fitted width would stretch the short ones.
-    headings.forEach(([label, position, anchor]) => addText(group, label, x(position), y(PROTOMEK_HEADINGS_BASELINE), {
-        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
-    }));
 
     const weapons = recordSheetInventoryWeapons(entity);
     const weaponComponentIds = new Set(weapons.flatMap(row => row.componentIds));
@@ -270,8 +261,8 @@ function drawCompactProtoMekInventory(
         miscRows.push({ name: mount.displayName(), location, damage, componentIds: [mount.mountId] });
     });
     const regularRows = [
-        ...weapons.map(row => ({ ...row, location: compactLocationLabel(row.location) })),
-        ...miscRows.map(row => ({
+        ...weapons.map(row => ({ ...row, location: compactLocationLabel(row.location), quantity: 1 })),
+        ...groupRecordSheetEquipmentRows(miscRows, row => `${row.name}\u0000${row.location}\u0000${row.damage}`).map(row => ({
             ...row,
             heat: '—',
             minimumRange: '—',
@@ -279,11 +270,24 @@ function drawCompactProtoMekInventory(
             alternativeModes: Object.freeze([]),
         })),
     ];
+    // The quantity column appears only when equipment is grouped; names otherwise start where the Mek and vehicle names do.
+    const showQuantity = regularRows.some(row => row.quantity > 1);
+    const nameX = showQuantity ? 11.45 : 8.41;
+    const nameWidth = PROTOMEK_NAME_RIGHT - nameX;
+    const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
+        ...(showQuantity ? [['#', 6.725, 'middle'] as const] : []),
+        ['Type', nameX, 'start'], ['Loc', 87.05, 'middle'], ['Dmg', 96.5, 'start'],
+        ...inventoryRangeHeadings(PROTOMEK_INVENTORY_COLUMNS),
+    ];
+    // Headings keep their natural width; a fitted width would stretch the short ones.
+    headings.forEach(([label, position, anchor]) => addText(group, label, x(position), y(PROTOMEK_HEADINGS_BASELINE), {
+        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
+    }));
     const rangePositions = PROTOMEK_INVENTORY_COLUMNS.ranges;
     const rangeClasses = ['range_min', 'range_short', 'range_medium', 'range_long'] as const;
     const damageWidth = PROTOMEK_INVENTORY_COLUMNS.bandRight - 96.5;
     const rowLines = (row: { name: string; location: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
-        inventoryRowLineCount([[row.name, x(PROTOMEK_NAME_WIDTH)], [row.location, x(16)], [row.damage, x(damageWidth)],
+        inventoryRowLineCount([[row.name, x(nameWidth)], [row.location, x(16)], [row.damage, x(damageWidth)],
             [row.minimumRange, x(INVENTORY_RANGE_VALUE_WIDTH)],
             ...row.ranges.map(value => [value, x(INVENTORY_RANGE_VALUE_WIDTH)] as const)], font(size));
     // Weapon rows fill from just under the headings down to the intrinsic attacks and
@@ -313,6 +317,7 @@ function drawCompactProtoMekInventory(
             minimumRange: string;
             ranges: readonly string[];
             componentIds: readonly string[];
+            quantity?: number;
         }>,
         baselineValue: number,
         index: string,
@@ -329,7 +334,12 @@ function drawCompactProtoMekInventory(
         const buttons = inventoryRangeButtons(PROTOMEK_INVENTORY_COLUMNS, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
         appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
-        addCell(entry, data.name, x(PROTOMEK_NAME_X), baseline, { class: 'name', maxWidth: x(PROTOMEK_NAME_WIDTH) });
+        if (showQuantity && data.quantity !== undefined) {
+            addCell(entry, String(data.quantity), x(6.725), baseline, {
+                class: 'quantity', size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle',
+            });
+        }
+        addCell(entry, data.name, x(nameX), baseline, { class: 'name', maxWidth: x(nameWidth) });
         addCell(entry, data.location, x(87.05), baseline, {
             class: 'location', size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(16),
         });

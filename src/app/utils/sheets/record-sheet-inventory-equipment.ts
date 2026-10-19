@@ -117,3 +117,24 @@ function insertInventoryNameSuffix(name: string, suffix: string): string {
     return modifierIndex < 0 ? `${name} ${suffix}`
         : `${name.slice(0, modifierIndex)} ${suffix}${name.slice(modifierIndex)}`;
 }
+
+/**
+ * Identical non-weapon equipment shares one counted row; weapons always keep a row each. A layout prints its "#"
+ * column only when some row counts more than one.
+ */
+export function groupRecordSheetEquipmentRows<T extends { readonly componentIds: readonly string[] }>(
+    rows: readonly T[],
+    key: (row: T) => string,
+): (T & { readonly quantity: number })[] {
+    const groups = new Map<string, T & { quantity: number; componentIds: string[] }>();
+    for (const row of rows) {
+        const existing = groups.get(key(row));
+        if (existing) {
+            existing.quantity += row.componentIds.length;
+            existing.componentIds.push(...row.componentIds);
+        } else {
+            groups.set(key(row), { ...row, quantity: row.componentIds.length, componentIds: [...row.componentIds] });
+        }
+    }
+    return [...groups.values()];
+}
