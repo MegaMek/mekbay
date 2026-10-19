@@ -107,15 +107,23 @@ const COMMAND_PROFILE_COVERAGE = Object.freeze({
     'set-armor-damage': 'non-mek-only',
     'damage-track': 'non-mek-only',
     'repair-damage-track': 'non-mek-only',
-    'set-sensor-damage-level': 'non-mek-only',
+    'set-system-damage-level': 'non-mek-only',
     'set-component-statuses': 'non-mek-only',
-    'set-ammo-spent': 'non-mek-only',
     'set-airborne': 'non-mek-only',
     'set-movement': 'non-mek-only',
     'set-cover': 'non-mek-only',
     'set-spotting': 'non-mek-only',
     'set-control-recovery': 'non-mek-only',
-} satisfies Readonly<Record<CBTUnitCommand['type'], 'profiled' | 'non-mek-only'>>);
+    'configure-bombs': 'non-mek-only',
+    'set-bombs-spent': 'non-mek-only',
+    'set-velocity-record': 'non-mek-only',
+    // These reach the Mek runtime but have no benchmark scenario yet; the report lists them.
+    'complete-turn-step': 'unprofiled',
+    'join-turn': 'unprofiled',
+    'rewind-turn-step': 'unprofiled',
+    'record-mek-physical-attack-checks': 'unprofiled',
+    'set-consciousness-rolls-due': 'unprofiled',
+} satisfies Readonly<Record<CBTUnitCommand['type'], 'profiled' | 'non-mek-only' | 'unprofiled'>>);
 
 type ProfiledCommandType = {
     [Type in keyof typeof COMMAND_PROFILE_COVERAGE]: typeof COMMAND_PROFILE_COVERAGE[Type] extends 'profiled' ? Type : never;
@@ -126,6 +134,8 @@ const REQUIRED_COMMAND_TYPES = Object.freeze(COMMAND_TYPES.filter((type): type i
     COMMAND_PROFILE_COVERAGE[type] === 'profiled'));
 const NON_MEK_ONLY_COMMAND_TYPES = Object.freeze(COMMAND_TYPES.filter(type =>
     COMMAND_PROFILE_COVERAGE[type] === 'non-mek-only'));
+const UNPROFILED_COMMAND_TYPES = Object.freeze(COMMAND_TYPES.filter(type =>
+    COMMAND_PROFILE_COVERAGE[type] === 'unprofiled'));
 
 const REQUIRED_TARGETING_EDIT_KINDS = Object.freeze({
     'set-component-selection': true,
@@ -379,7 +389,8 @@ function main(): void {
                 exhaustiveMutationCount: REQUIRED_MUTATIONS.length,
                 coveredMutations: Object.freeze([...REQUIRED_MUTATIONS]),
                 nonMekOnlyCommands: NON_MEK_ONLY_COMMAND_TYPES,
-                exhaustiveness: 'all direct Mek sparse-mutation entrypoints and discriminated mutation variants',
+                unprofiledCommands: UNPROFILED_COMMAND_TYPES,
+                exhaustiveness: 'all direct Mek sparse-mutation entrypoints and discriminated mutation variants except unprofiledCommands',
                 parameterCoverage: 'representative valid transitions, not the Cartesian product of payloads and runtime states',
                 scope: 'paired runtime-only and full-sheet cohorts over the direct sparse reducer; full-sheet adds dependency-aware runtime BV refresh and complete headless model projection',
                 excluded: Object.freeze([
@@ -1490,7 +1501,7 @@ function pristineBattleValue(fixture: DirectMekRuntimeFixture): number | null {
     if (cached !== undefined) return cached;
     let value: number | null;
     try {
-        value = fixture.entity.battleValue();
+        value = fixture.entity.battleValue(fixture.instance.ruleset());
     } catch {
         value = null;
     }

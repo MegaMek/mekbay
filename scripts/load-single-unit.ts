@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseArgs } from 'node:util';
 import type { RawEquipmentData } from '../src/app/models/equipment.model';
+import { CORE_2026_RULESET } from '../src/app/models/cbt-ruleset.model';
 import type { BaseEntity } from '../src/app/models/entity/base-entity';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { getMekLocationLabel } from '../src/app/models/entity/types/mek';
@@ -32,7 +33,7 @@ import {
 import { buildEquipmentRegistry } from '../src/app/services/catalogs/equipment-catalog-builder';
 import {
   mekCriticalCaseLabel,
-  mekCriticalSlotLabel,
+  mekCriticalSlotLines,
 } from '../src/app/utils/mek-critical-display.util';
 import {
   mekCriticalLocationMatrix,
@@ -278,8 +279,8 @@ function main(): void {
     printSection('BV DETAILS — unavailable');
     console.log('  Battle Value is not calculated for static catalog entities.');
   } else {
-    printSection(`BV DETAILS — ${formatDiagnosticNumber(entity.battleValue())}`);
-    for (const line of formatBattleValueDetails(entity.battleValueDetails())) console.log(`  ${line}`);
+    printSection(`BV DETAILS — ${formatDiagnosticNumber(entity.battleValue(CORE_2026_RULESET))}`);
+    for (const line of formatBattleValueDetails(entity.battleValueDetails(CORE_2026_RULESET))) console.log(`  ${line}`);
   }
 
   if (entity instanceof MekEntity) {
@@ -293,7 +294,7 @@ function main(): void {
       const slots = grid.get(loc);
       if (!slots || i >= slots.length) return '';
       const s = slots[i];
-      const label = mekCriticalSlotLabel(s, mek);
+      const label = mekCriticalSlotLines(s, mek, loc, i).join(' ');
       const flags = [s.armored ? '(A)' : '', s.omniPod ? '(O)' : ''].filter(Boolean).join('');
       const slotNumber = mekCriticalTableRowCount(loc) === 12 ? i % 6 + 1 : i + 1;
       return `${String(slotNumber).padStart(2)}. ${label}${flags ? ' ' + flags : ''}`;

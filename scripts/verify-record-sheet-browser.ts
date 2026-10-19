@@ -11,7 +11,7 @@ import { createMekHeatContextV2 } from '../src/app/models/runtime/mek-heat-state
 import { initializeUnitState } from '../src/app/models/runtime/unit-state-initializer';
 import { projectMekRecordSheet } from '../src/app/models/runtime/mek-record-sheet';
 import { projectNonMekRecordSheet } from '../src/app/models/runtime/non-mek-record-sheet';
-import { createNonMekRuntimeBinding } from '../src/app/models/runtime/non-mek-unit-instance';
+import { createNonMekRuntimeBinding, queryNonMekRuntime } from '../src/app/models/runtime/non-mek-unit-instance';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../src/app/models/mek-sheet-binding';
 import { bindMekRecordSheet } from '../src/app/components/page-viewer/mek-record-sheet-binder';
 import { bindNonMekRecordSheet } from '../src/app/components/page-viewer/non-mek-record-sheet-binder';
@@ -121,7 +121,8 @@ w.sheetAuditGenerate = async (nativeText:string, file:string, ruleset:any) => {
             for(const svg of pages){const binding=bindMekRecordSheet(svg,MM_DATA_MEK_SHEET_BINDING_MANIFEST,snapshot);binding.render(snapshot);binding.destroy();}
         } else {
             const prepared=createNonMekRuntimeBinding(entity,ruleset);
-            snapshot={...projectNonMekRecordSheet(entity,prepared.binding.index,prepared.state,ruleset,bv,bv,prepared.binding.crewAssignment),editContext:{owner:{},state:prepared.state}};
+            snapshot={...projectNonMekRecordSheet(entity,prepared.binding.index,prepared.state,ruleset,
+                queryNonMekRuntime(prepared.binding,prepared.state),bv,bv),editContext:{owner:{},state:prepared.state}};
             for(const svg of pages){const binding=bindNonMekRecordSheet(svg,snapshot);binding.render(snapshot);binding.destroy();}
         }
     } catch(e) { bindingError=e instanceof Error ? e.stack ?? String(e) : String(e); }
@@ -138,6 +139,6 @@ w.sheetAuditGenerate = async (nativeText:string, file:string, ruleset:any) => {
     const printPages=profile.compact?[RecordSheetSvgGenerator.composeCompactPage(pages,'letter')]:pages;
     for(const svg of printPages)svg.classList.add('print-preview');
     return {entityType:entity.entityType,name:entity.displayName(),ruleset,diagnostics,bindingError,
-        facts:{bv,nativeBv:entity.battleValue(),tonnage:entity.tonnage(),walk:entity.walkMP(),run:entity.runMP(),jump:entity.jumpMP(),equipment:entity.equipment().map(m=>({id:m.equipmentId,mountId:m.mountId,location:m.location,name:m.equipment?.name,size:m.size,shots:m.getAmmoShots()}))},
+        facts:{bv,nativeBv:entity.battleValue(ruleset),tonnage:entity.tonnage(),walk:entity.walkMP(),run:entity.runMP(),jump:entity.jumpMP(),equipment:entity.equipment().map(m=>({id:m.equipmentId,mountId:m.mountId,location:m.location,name:m.equipment?.name,size:m.size,shots:m.getAmmoShots()}))},
         raw,screen,compactComposition:profile.compact,pages:printPages.map(svg=>inspect(svg)),svgs:printPages.map(svg=>new XMLSerializer().serializeToString(svg))};
 };
