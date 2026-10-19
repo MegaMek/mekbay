@@ -903,9 +903,15 @@ weapons-equipment-panel {
   --critical-run-line-x: 3px;
   position: relative;
 }
-.critical-row[data-run='middle'],
+.critical-row[data-run='start'] {
+  border-bottom-style: dashed;
+}
+.critical-row[data-run='middle'] {
+  border-top-style: dashed;
+  border-bottom-style: dashed;
+}
 .critical-row[data-run='end'] {
-  border-top-color: transparent;
+  border-top-style: dashed;
 }
 .critical-row[data-run]::before {
   content: '';
