@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { RECORD_SHEET_FONT } from './record-sheet-typography';
+import { RECORD_SHEET_CAP_HEIGHT, RECORD_SHEET_FONT } from './record-sheet-typography';
 
 import { ATM_AMMO_PROFILES, MML_AMMO_PROFILES, type AmmoWeaponProfile } from '../../models/ammo-weapon-profile.model';
 import { isCaseEquipment } from '../../models/case-equipment.model';
@@ -730,27 +730,38 @@ export function appendDataPanelFacts(
   }
 }
 
-/**
- * X for a crew value following its caption: the layout's column, or just past the
- * caption's natural width when the caption needs more room. Captions are never squeezed.
- */
-export function crewSkillValueX(caption: SVGTextElement, column: number, fontScale = 1): number {
-  const captionEnd = Number(caption.getAttribute('x')) + measureSvgTextCanvas(caption, caption.textContent ?? '');
-  return Math.max(column, captionEnd + 3 * fontScale);
+/** Every unit's crew values sit the same gap after their caption's natural width; captions are never squeezed. */
+export function crewSkillValueX(caption: SVGTextElement, fontScale = 1): number {
+  return Number(caption.getAttribute('x')) + measureSvgTextCanvas(caption, caption.textContent ?? '') + 3 * fontScale;
 }
 
-/** Crew values share a readable size while retaining each layout's scale and baseline. */
+/** Crew values share a readable size, vertically centred on their caption rather than sharing its baseline. */
 export function addCrewSkillValue(
   parent: SVGElement,
   value: string,
   x: number,
-  y: number,
+  caption: SVGTextElement,
   fontScale = 1,
-  anchor: 'start' | 'middle' | 'end' = 'start',
 ): SVGTextElement {
-  return addText(parent, value, x, y, {
-    size: 12 * fontScale, weight: 700, class: 'skillValue', anchor,
-  });
+  const size = 12 * fontScale;
+  const captionSize = Number(caption.getAttribute('font-size'));
+  const y = Number(caption.getAttribute('y')) + RECORD_SHEET_CAP_HEIGHT * (size - captionSize) / 2;
+  return addText(parent, value, x, y, { size, weight: 700, class: 'skillValue' });
+}
+
+/**
+ * A crew skill's click target, centred on its value's digit so the skill picker opens over it; drawn after the value
+ * so the digit cannot swallow the click.
+ */
+export function addCrewSkillButton(parent: SVGElement, value: SVGTextElement, crewId: number, skill: string): SVGRectElement {
+  const size = Number(value.getAttribute('font-size'));
+  const centreX = Number(value.getAttribute('x')) + measureSvgTextCanvas(value, value.textContent ?? '') / 2;
+  const centreY = Number(value.getAttribute('y')) - RECORD_SHEET_CAP_HEIGHT * size / 2;
+  const button = transparentRect(centreX - size, centreY - size / 2, 2 * size, size, 'crewSkillButton');
+  button.setAttribute('crewId', String(crewId));
+  button.setAttribute('skill', skill);
+  parent.appendChild(button);
+  return button;
 }
 
 /** Width a layout reserves after its crew-name field for the crew-state menu and its gap. */
@@ -779,28 +790,19 @@ export function drawGenericCrewPanel(svg: SVGSVGElement, entity: BaseEntity, box
     nameButton.setAttribute('crewId', String(occurrence));
     nameButton.setAttribute('textElement', name.id);
     position.appendChild(nameButton);
-    addText(position, 'GUNNERY', 9, y + 11, { size: 5.7, weight: 700 });
-    const gunnery = addCrewSkillValue(position, '4', 47, y + 11);
+    const gunneryCaption = addText(position, 'GUNNERY', 9, y + 11, { size: 5.7, weight: 700 });
+    const gunnery = addCrewSkillValue(position, '4', crewSkillValueX(gunneryCaption), gunneryCaption);
     gunnery.id = `gunnerySkill${occurrence}`;
-    const gunButton = transparentRect(39, y + 2, 17, 13, 'crewSkillButton');
-    gunButton.setAttribute('crewId', String(occurrence));
-    gunButton.setAttribute('skill', 'gunnery');
-    position.appendChild(gunButton);
-    addText(position, 'PILOTING', 60, y + 11, { size: 5.7, weight: 700 });
-    const piloting = addCrewSkillValue(position, '5', 96, y + 11);
+    addCrewSkillButton(position, gunnery, occurrence, 'gunnery');
+    const pilotingCaption = addText(position, 'PILOTING', 60, y + 11, { size: 5.7, weight: 700 });
+    const piloting = addCrewSkillValue(position, '5', crewSkillValueX(pilotingCaption), pilotingCaption);
     piloting.id = `pilotingSkill${occurrence}`;
-    const pilotButton = transparentRect(90, y + 2, 17, 13, 'crewSkillButton');
-    pilotButton.setAttribute('crewId', String(occurrence));
-    pilotButton.setAttribute('skill', 'piloting');
-    position.appendChild(pilotButton);
+    addCrewSkillButton(position, piloting, occurrence, 'piloting');
     drawCrewHitGrid(position, occurrence, {
       x: 52, y: y + 15, cellWidth: (box.width - 58) / 6,
       cellHeight: Math.min(7, (rowHeight - 20) / 2),
       labelX: 6, labelWidth: 44, fontScale: Math.min(7, (rowHeight - 20) / 2) / 9,
     });
-    const state = transparentRect(6, y - 11, box.width - 12, rowHeight - 1, 'crewStateButton');
-    state.setAttribute('crewId', String(occurrence));
-    position.insertBefore(state, name);
   }
 }
 

@@ -105,16 +105,3 @@ export function crewStateDefinitions(keys: readonly CrewMemberState[]): readonly
     }));
 }
 
-export function formatPilotingDisplay(
-    pilotingSkill: number,
-    controlRollModifier: number,
-    controlRollLabel = 'PSR',
-): string {
-    if (!controlRollModifier) return pilotingSkill.toString();
-    return `${pilotingSkill} ${controlRollModifier > 0 ? '+' : ''}${controlRollModifier}${controlRollLabel}`;
-}
-
-export function formatGunneryDisplay(gunnerySkill: number, attackerModifier: number): string {
-    if (!attackerModifier) return gunnerySkill.toString();
-    return `${gunnerySkill}${attackerModifier > 0 ? '+' : ''}${attackerModifier}`;
-}

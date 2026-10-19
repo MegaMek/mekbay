@@ -317,7 +317,7 @@ describe('generated record-sheet styles', () => {
         });
     }
 
-    it('keeps the generic crew-state target behind the shared wound cells', () => {
+    it('keeps the generic crew panel wound cells clickable', () => {
         const svg = createRoot(200, 200, 'generic');
         drawGenericCrewPanel(svg, new TestBipedMekEntity(), { x: 0, y: 0, width: 150, height: 160 });
         verifyWoundClicks(svg);

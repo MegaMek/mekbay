@@ -778,16 +778,20 @@ export function selectedAmmoIsHotLoaded(
     return source?.hotLoaded === true;
 }
 
-export function equipmentWeaponToHitModifier(
+/** A weapon's own to-hit modifier, and whether damage or other impairment weakened it (shown red). */
+export function equipmentWeaponToHit(
     row: EquipmentPanelComponent,
     target: TargetingTarget | null = null,
     range: TnRangeBracket | null = null,
-): number {
+): Readonly<{ modifier: number; weakened: boolean }> {
     if (row.weapon?.hit !== undefined) {
         const indirect = target !== null
             && activeTargetCalculator(target)?.indirectFire === true;
-        const value = equipmentPanelHitAtRange(row.weapon.hit, range, indirect).value;
-        return typeof value === 'number' ? value : 0;
+        const resolution = equipmentPanelHitAtRange(row.weapon.hit, range, indirect);
+        return Object.freeze({
+            modifier: typeof resolution.value === 'number' ? resolution.value : 0,
+            weakened: resolution.weakened,
+        });
     }
     const modifier = row.weapon?.toHitModifier ?? row.equipment?.toHitModifier;
     const base = typeof modifier === 'number'
@@ -799,7 +803,7 @@ export function equipmentWeaponToHitModifier(
             : 0;
     const indirect = target !== null
         && activeTargetCalculator(target)?.indirectFire === true;
-    return indirect ? base - (row.weapon?.artemisVModifier ?? 0) : base;
+    return Object.freeze({ modifier: indirect ? base - (row.weapon?.artemisVModifier ?? 0) : base, weakened: false });
 }
 
 export interface MekPhysicalAttackRow {

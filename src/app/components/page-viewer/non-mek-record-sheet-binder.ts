@@ -47,6 +47,7 @@ renderRecordSheetCrewName,
 renderRecordSheetCrewState,
 renderRecordSheetCrewVacancies,
 renderRecordSheetDestroyed,
+renderRecordSheetPilotingSkill,
 renderRecordSheetPips,
 type RecordSheetBind,
 } from './record-sheet-dom';
@@ -264,6 +265,7 @@ function renderCrew(
     current: () => NonMekRecordSheetSnapshot,
 ): void {
     const displays = crewStateDefinitions(snapshot.crewStateDisplayKeys);
+    const controlRollModifier = snapshot.controlRoll.modifiers.reduce((total, entry) => total + entry.modifier, 0);
     renderRecordSheetCrewVacancies(svg, snapshot.crew);
     for (const position of snapshot.crew) {
         const occurrence = position.occurrence;
@@ -275,8 +277,13 @@ function renderCrew(
         }
         const gunnery = svg.getElementById(`gunnerySkill${occurrence}`);
         if (gunnery) gunnery.textContent = vacant ? '—' : String(position.gunnery);
-        const piloting = svg.getElementById(`pilotingSkill${occurrence}`);
-        if (piloting) piloting.textContent = vacant || position.piloting === null ? '—' : String(position.piloting);
+        const unskilled = vacant || position.piloting === null;
+        renderRecordSheetPilotingSkill(
+            svg.querySelector<SVGTextElement>(`#pilotingSkill${occurrence}`),
+            unskilled ? '—' : String(position.piloting),
+            unskilled ? 0 : controlRollModifier,
+            snapshot.controlRoll.shortLabel,
+        );
         renderRecordSheetCrewControls(svg, position, bind, () => current().editContext, () =>
             current().crew.find(row => row.positionId === position.positionId)?.state.wounds ?? 0);
         const display = position.effectiveState === 'healthy'

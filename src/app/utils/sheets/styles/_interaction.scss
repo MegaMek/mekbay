@@ -1,5 +1,5 @@
 // Only live viewers opt into interaction; generated sheets remain passive.
-$outlined-controls: '.crewNameButton, .crewSkillButton, .velocityCell';
+$outlined-controls: '.crewNameButton, .velocityCell';
 
 @media screen {
   // Opt-in qualifiers must not outrank existing damage/selection styles.

@@ -141,13 +141,10 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     ];
     const captions = facts.map(([label, , baseline]) =>
       addText(group, label, x(3), y(baseline), { size: font(7.2), weight: 700 }));
-    // Both skill values share one column, clear of the longer caption.
-    const skillColumn = Math.max(...facts.flatMap(([, , , id], index) =>
-      id ? [crewSkillValueX(captions[index], x(55.8), fontScale)] : []));
-    facts.forEach(([label, value, baseline, id]) => {
+    facts.forEach(([label, value, baseline, id], index) => {
       if (!value) return;
       const node = id
-        ? addCrewSkillValue(group, value, skillColumn, y(baseline), fontScale)
+        ? addCrewSkillValue(group, value, crewSkillValueX(captions[index], fontScale), captions[index], fontScale)
         : addText(group, value, x(label === 'Role:' ? 21.702 : 55.8), y(baseline), {
             size: font(7.2),
             maxWidth: x(58),

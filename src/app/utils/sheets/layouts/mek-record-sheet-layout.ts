@@ -54,6 +54,7 @@ type RecordSheetPageFormat,
 import {
 crewSkillValueX,
 CREW_STATE_MENU_SPACE,
+addCrewSkillButton,
 addCrewSkillValue,
 addDiagramHeading,
 addFrame,
@@ -830,21 +831,13 @@ function drawLamSkillRow(
     // Like the Mek station, each value sits the same distance after its caption, leaving the piloting
     // skill room for its control-roll modifier inside the frame.
     const gunneryCaption = addText(group, 'Gunnery Skill:', x(3), y(baseline), { size: font(5.7), weight: 700 });
-    const gunneryX = crewSkillValueX(gunneryCaption, 0, font(1));
-    const gunnery = addCrewSkillValue(group, '4', gunneryX, y(baseline), font(1));
+    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryCaption, font(1)), gunneryCaption, font(1));
     gunnery.id = gunneryId;
-    const gunButton = transparentRect(gunneryX - x(3), y(baseline - 9), x(13), y(12) - y(0), 'crewSkillButton');
-    gunButton.setAttribute('crewId', String(crewId));
-    gunButton.setAttribute('skill', gunneryId.startsWith('aero') ? 'aero-gunnery' : 'gunnery');
-    group.appendChild(gunButton);
+    addCrewSkillButton(group, gunnery, crewId, gunneryId.startsWith('aero') ? 'aero-gunnery' : 'gunnery');
     const pilotingCaption = addText(group, 'Piloting Skill:', x(72), y(baseline), { size: font(5.7), weight: 700 });
-    const pilotingX = crewSkillValueX(pilotingCaption, 0, font(1));
-    const piloting = addCrewSkillValue(group, '5', pilotingX, y(baseline), font(1));
+    const piloting = addCrewSkillValue(group, '5', crewSkillValueX(pilotingCaption, font(1)), pilotingCaption, font(1));
     piloting.id = pilotingId;
-    const pilotButton = transparentRect(pilotingX - x(3), y(baseline - 9), x(16), y(12) - y(0), 'crewSkillButton');
-    pilotButton.setAttribute('crewId', String(crewId));
-    pilotButton.setAttribute('skill', pilotingId.startsWith('aero') ? 'aero-piloting' : 'piloting');
-    group.appendChild(pilotButton);
+    addCrewSkillButton(group, piloting, crewId, pilotingId.startsWith('aero') ? 'aero-piloting' : 'piloting');
 }
 
 /** Left gutter of the station content; the reference sheet indents captions by three more units. */
@@ -893,8 +886,8 @@ function appendMekCrewStation(
     const gunneryLabel = addText(block, 'Gunnery Skill:', 3, 24, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
     gunneryLabel.id = `gunnerySkillText${occurrence}`;
     // Both values sit the same distance after their captions; the blanks start where the values do.
-    const gunneryX = crewSkillValueX(gunneryLabel, 0);
-    const gunnery = addCrewSkillValue(block, '4', gunneryX, 24);
+    const gunneryX = crewSkillValueX(gunneryLabel);
+    const gunnery = addCrewSkillValue(block, '4', gunneryX, gunneryLabel);
     gunnery.id = `gunnerySkill${occurrence}`;
     const blankGunnery = svgElement('path');
     setAttributes(blankGunnery, {
@@ -907,8 +900,8 @@ function appendMekCrewStation(
 
     const pilotingLabel = addText(block, 'Piloting Skill:', 71.3, 24, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
     pilotingLabel.id = `pilotingSkillText${occurrence}`;
-    const pilotingX = crewSkillValueX(pilotingLabel, 0);
-    const piloting = addCrewSkillValue(block, '5', pilotingX, 24);
+    const pilotingX = crewSkillValueX(pilotingLabel);
+    const piloting = addCrewSkillValue(block, '5', pilotingX, pilotingLabel);
     piloting.id = `pilotingSkill${occurrence}`;
     const blankPiloting = svgElement('path');
     setAttributes(blankPiloting, {
@@ -927,18 +920,8 @@ function appendMekCrewStation(
     });
     block.appendChild(damage);
 
-    const gunButton = transparentRect(38.632, 15.3, 30, 12, 'crewSkillButton');
-    gunButton.id = `crewSkillButton_${occurrence}_gunnery`;
-    gunButton.setAttribute('crewId', String(occurrence));
-    gunButton.setAttribute('skill', 'gunnery');
-    gunButton.setAttribute('textElement', gunnery.id);
-    block.appendChild(gunButton);
-    const pilotButton = transparentRect(106.932, 15.3, 30, 12, 'crewSkillButton');
-    pilotButton.id = `crewSkillButton_${occurrence}_piloting`;
-    pilotButton.setAttribute('crewId', String(occurrence));
-    pilotButton.setAttribute('skill', 'piloting');
-    pilotButton.setAttribute('textElement', piloting.id);
-    block.appendChild(pilotButton);
+    addCrewSkillButton(block, gunnery, occurrence, 'gunnery');
+    addCrewSkillButton(block, piloting, occurrence, 'piloting');
     content.appendChild(block);
 }
 

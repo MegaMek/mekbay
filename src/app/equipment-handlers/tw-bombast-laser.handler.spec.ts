@@ -18,7 +18,7 @@ import {
     setComponentBombastLaserCharge,
 } from '../models/runtime/component-bombast-laser';
 import {
-    equipmentWeaponToHitModifier,
+    equipmentWeaponToHit,
     projectMekEquipmentPanel,
 } from '../models/runtime/equipment-panel';
 import { createDirectBombastRuntimeFixture,emptyCBTEncounterSnapshot } from '../models/runtime/testing/direct-mek-runtime-fixture';
@@ -79,7 +79,7 @@ describe('TwBombastLaserHandler direct V2 runtime', () => {
                 heat: profile.heat,
                 toHitModifier: profile.toHitModifier,
             }));
-            expect(equipmentWeaponToHitModifier(row)).toBe(profile.toHitModifier);
+            expect(equipmentWeaponToHit(row).modifier).toBe(profile.toHitModifier);
 
             const fired = setup.runtime.dispatch({
                 type: 'fire-weapons',

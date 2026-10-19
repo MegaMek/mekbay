@@ -17,6 +17,7 @@ import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-
 import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { bindMekRecordSheet } from './mek-record-sheet-binder';
 import { RECORD_SHEET_FRESH_DAMAGE_DURATION_MS } from '../../utils/sheets/record-sheet-damage-highlights';
+import { RECORD_SHEET_CAP_HEIGHT } from '../../utils/sheets/record-sheet-typography';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
 
 const editContext = createUnitEditContextFixture();
@@ -1608,6 +1609,29 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
+    it('turns a damage-worsened hit modifier red like the equipment dialog', () => {
+        const svg = sheet();
+        svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
+            <rect class="hitMod-rect" display="none"></rect><text class="hitMod-text" display="none"></text>`);
+        const base = snapshot();
+        const withHit = (weakened: boolean) => ({
+            ...base,
+            equipment: base.equipment.map((component, index) => index === 0
+                ? { ...component, weapon: { ...component.weapon!, hit: equipmentHit(1, weakened) } }
+                : component),
+        } as unknown as MekRecordSheetSnapshot);
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, withHit(true), undefined, undefined,
+            inventoryFrom(withHit(true)));
+        const row = svg.querySelector('.inventoryEntry') as SVGElement;
+        expect(row.querySelector('.hitMod-text')?.textContent).toBe('+1');
+        expect(row.classList.contains('weakenedHitMod')).toBeTrue();
+
+        binding.render(withHit(false), inventoryFrom(withHit(false)));
+        expect(row.querySelector('.hitMod-text')?.textContent).toBe('+1');
+        expect(row.classList.contains('weakenedHitMod')).toBeFalse();
+        binding.destroy();
+    });
+
     it('adds the attacker movement to the target number and takes the hit modifier at the selected range', () => {
         const svg = sheet();
         svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
@@ -1732,7 +1756,7 @@ describe('Mek record-sheet binder', () => {
         expect(svg.querySelector('#pilotingSkillText0')?.textContent).toBe('Piloting Skill:');
         expect(svg.querySelector('#gunnerySkill0')?.textContent).toBe('3');
         expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('4');
-        // Separate texts at their own coordinates: the modifier on the skill's baseline after its digits,
+        // Separate texts at their own coordinates: the modifier vertically centred on the skill after its digits,
         // the label raised after the modifier.
         const skill = svg.querySelector<SVGTextElement>('#pilotingSkill0')!;
         const modifier = svg.querySelector<SVGTextElement>('#pilotingSkill0-control-roll-modifier')!;
@@ -1740,7 +1764,9 @@ describe('Mek record-sheet binder', () => {
         expect(modifier.textContent).toBe('+3');
         expect(label.textContent).toBe('PSR');
         const coordinate = (text: SVGTextElement, axis: 'x' | 'y') => Number(text.getAttribute(axis) ?? 0);
-        expect(coordinate(modifier, 'y')).toBe(coordinate(skill, 'y'));
+        const capCentre = (text: SVGTextElement) =>
+            coordinate(text, 'y') - Number(text.getAttribute('font-size') ?? 12) * RECORD_SHEET_CAP_HEIGHT / 2;
+        expect(capCentre(modifier)).toBeCloseTo(capCentre(skill), 3);
         expect(coordinate(label, 'y')).toBeLessThan(coordinate(modifier, 'y'));
         expect(coordinate(modifier, 'x')).toBeGreaterThan(coordinate(skill, 'x'));
         expect(coordinate(label, 'x')).toBeGreaterThan(coordinate(modifier, 'x'));
@@ -1956,12 +1982,12 @@ function sheet(): SVGSVGElement {
     return svg;
 }
 
-function equipmentHit(value: number) {
+function equipmentHit(value: number, weakened = false) {
     const resolution = Object.freeze({
         profile: Object.freeze([value]),
         value,
         changed: false,
-        weakened: false,
+        weakened,
         modifierBreakdown: Object.freeze(value === 0 ? [] : [{ label: 'Weapon', modifier: value }]),
     });
     const byRange = Object.freeze({

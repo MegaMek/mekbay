@@ -16,7 +16,7 @@ setComponentBombastLaserCharge,
 setComponentBombastLaserMode,
 } from '../models/runtime/component-bombast-laser';
 import {
-equipmentWeaponToHitModifier,
+equipmentWeaponToHit,
 projectMekEquipmentPanel,
 } from '../models/runtime/equipment-panel';
 import { canPerformMekAction } from '../models/runtime/mek-action-availability';
@@ -62,7 +62,7 @@ describe('BombastLaserHandler direct V2 runtime', () => {
             heat: 12,
             toHitModifier: 2,
         }));
-        expect(equipmentWeaponToHitModifier(row)).toBe(2);
+        expect(equipmentWeaponToHit(row).modifier).toBe(2);
     });
 
     it('charges for one turn, blocks firing while charging, and suppresses its TN when charged', () => {

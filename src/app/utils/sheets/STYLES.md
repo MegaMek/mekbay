@@ -116,7 +116,6 @@ checked before removing rules.
 | `.wounded .checkbox-rect` | No generated/runtime checkbox class pair. |
 | `.locationConditionButton`, `.locConditionButton` | No producer. Current headings use `.locationConditionControl`; the stale zoom-suppression selector now uses that name. |
 | `:not(.counterGroup)` | No production writer. Removed the qualifier while retaining critical-track state rules, and removed stale fixture classes. |
-| `.weakenedHitMod` | Only reset/removal references remained. Removed those references and the unused styling. |
 | `.clickPassthrough` | No producer; current hit targets and pointer-event rules remain. |
 | `.noPsrCheck` | No producer. The live `.movePsrWarning` styling remains. |
 | `:not(.targetAimedShotWarning-text)` | No warning element producer; removed only the exclusion. |

@@ -22,6 +22,7 @@ PaperdollGenerator,
 import { CapitalShipPipRenderer } from '../capital-ship-pip-renderer';
 import {
 type Box,
+addCrewSkillButton,
 addCrewSkillValue,
 addDiagramHeading,
 addFrame,
@@ -566,17 +567,17 @@ export function appendAeroSkillRows(
     { x, y, font }: { readonly x: (value: number) => number; readonly y: (value: number) => number; readonly font: (value: number) => number },
     baseline: number,
 ): void {
-    const gunneryLabel = addText(group, 'Gunnery Skill:', x(3), y(baseline), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, x(47.672), font(1)), y(baseline), font(1)).id = 'gunnerySkill0';
-    addLine(group, x(47.672), y(baseline + 1), x(65.82), y(baseline + 1), '#000', 0.72);
-    const pilotingLabel = addText(group, 'Piloting Skill:', x(69.8), y(baseline), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    addCrewSkillValue(group, '5', crewSkillValueX(pilotingLabel, x(114.472), font(1)), y(baseline), font(1)).id = 'pilotingSkill0';
-    addLine(group, x(114.472), y(baseline + 1), x(136.6), y(baseline + 1), '#000', 0.72);
-    for (const [skill, left, width] of [['gunnery', 44, 24], ['piloting', 111, 27]] as const) {
-        const button = transparentRect(x(left), y(baseline - 9), x(width), y(13), 'crewSkillButton');
-        button.setAttribute('crewId', '0');
-        button.setAttribute('skill', skill);
-        group.appendChild(button);
+    // Write-in blanks start where the values do, shown only when pilot data is left off the print (as on 'Mek sheets).
+    for (const [skill, caption, left, blankEnd, value] of [
+        ['gunnery', 'Gunnery Skill:', 3, 65.82, '4'],
+        ['piloting', 'Piloting Skill:', 69.8, 136.6, '5'],
+    ] as const) {
+        const label = addText(group, caption, x(left), y(baseline), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+        const valueX = crewSkillValueX(label, font(1));
+        const skillValue = addCrewSkillValue(group, value, valueX, label, font(1));
+        skillValue.id = `${skill}Skill0`;
+        addLine(group, valueX, y(baseline + 1), x(blankEnd), y(baseline + 1), '#000', 0.72).setAttribute('class', 'skillBlank hidden');
+        addCrewSkillButton(group, skillValue, 0, skill);
     }
 }
 

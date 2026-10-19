@@ -29,6 +29,7 @@ formatGeometryNumber,
 crewSkillValueX,
 CREW_STATE_MENU_SPACE,
 type Box,
+addCrewSkillButton,
 addCrewSkillValue,
 drawCrewHitGrid,
 addFrame,
@@ -601,17 +602,14 @@ function drawCompactProtoMekPilot(svg: SVGSVGElement, box: Box): void {
     nameButton.setAttribute('crewId', '0');
     nameButton.setAttribute('textElement', 'crewName0');
     group.appendChild(nameButton);
-    const skillButton = transparentRect(x(7), y(22.5), x(83), y(10), 'crewSkillButton');
-    skillButton.setAttribute('crewId', '0');
-    skillButton.setAttribute('skill', 'gunnery');
-    group.appendChild(skillButton);
     addText(group, 'Name:', x(9.845), y(21.668), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const name = addText(group, '', x(32.073), y(21.668), { size: font(RECORD_SHEET_FONT.inventory), maxWidth: nameEnd - x(32.073) });
     name.id = 'crewName0';
     addLine(group, x(32.073), y(22.668), nameEnd, y(22.668), '#111', 0.72 * fontScale);
     const gunneryLabel = addText(group, 'Gunnery Skill:', x(9.845), y(30.941), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const skill = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, x(52.392), fontScale), y(30.941), fontScale);
+    const skill = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, fontScale), gunneryLabel, fontScale);
     skill.id = 'gunnerySkill0';
+    addCrewSkillButton(group, skill, 0, 'gunnery');
     // The wound track sits near the right border, centred between the top border and the bottom.
     const cellWidth = x(87.05 / 6);
     const cellHeight = y(9);

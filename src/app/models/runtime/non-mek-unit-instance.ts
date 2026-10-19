@@ -368,25 +368,30 @@ export function nonMekAttackMovementModifier(
         : 0;
 }
 
-/**
- * Origin/next control-roll presentation derived from the admitted Entity and
- * its sparse runtime. Vehicles use DSR terminology and expose their permanent
- * damage/armor modifiers; other non-Mek families retain the empty base PSR
- * projection.
- */
+/** Origin/next control-roll presentation derived from the admitted Entity and its sparse runtime. */
 export function projectNonMekControlRoll(
     entity: BaseEntity,
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
+    crewAssignment?: CrewAssignment,
 ): NonMekControlRollProjection {
-    if (!isVehicleEntity(entity)) return Object.freeze({
+    return nonMekControlRoll(isVehicleEntity(entity)
+        ? projectVehicleRuntimeRules(entity, index, state, ruleset, crewAssignment)
+        : null);
+}
+
+/**
+ * Vehicles use DSR terminology and expose their permanent damage/armor modifiers; other non-Mek families retain the
+ * empty base PSR projection.
+ */
+export function nonMekControlRoll(vehicle: VehicleRuntimeRulesProjection | null): NonMekControlRollProjection {
+    if (!vehicle) return Object.freeze({
         shortLabel: 'PSR',
         fullLabel: 'Piloting Skill Rolls',
         modifiers: Object.freeze([]),
     });
-    const modifiers = projectVehicleRuntimeRules(entity, index, state, ruleset)
-        .modifiers.psr
+    const modifiers = vehicle.modifiers.psr
         .filter(entry => entry.modifier !== 0)
         .map(entry => Object.freeze({ modifier: entry.modifier, reason: entry.label }))
         .sort((left, right) => {

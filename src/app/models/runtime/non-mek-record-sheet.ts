@@ -35,7 +35,7 @@ import type { NonMekUnitQueryPort,NonMekUnitRuntimeState } from './non-mek-unit-
 import { systemDamagePresentation } from './system-damage-presentation';
 import type { UnitEditContext } from './unit-edit-context';
 import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
-import { nonMekAttackMovementModifier, nonMekMovementCalculation, projectNonMekEndTurnHeat, projectNonMekMovementCapabilities,type NonMekEndTurnHeatProjection } from './non-mek-unit-instance';
+import { nonMekAttackMovementModifier, nonMekControlRoll, nonMekMovementCalculation, projectNonMekEndTurnHeat, projectNonMekMovementCapabilities,type NonMekControlRollProjection,type NonMekEndTurnHeatProjection } from './non-mek-unit-instance';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 import type { RecordSheetMovementSelection } from './record-sheet-movement';
 
@@ -128,6 +128,8 @@ export interface NonMekRecordSheetSnapshot {
     readonly structureType: string;
     readonly crewSize: number;
     readonly crew: readonly NonMekRecordSheetCrewPosition[];
+    /** Permanent control-roll modifiers shown beside the piloting/driving skill. */
+    readonly controlRoll: NonMekControlRollProjection;
     readonly conditions: readonly UnitConditionKey[];
     readonly conditionControlKeys: readonly UnitConditionKey[];
     readonly crewStateControlKeys: readonly CrewMemberState[];
@@ -313,6 +315,7 @@ export function projectNonMekRecordSheet(
         structureType: structure?.structure.name ?? '',
         crewSize: crew.length,
         crew: Object.freeze(crew),
+        controlRoll: nonMekControlRoll(vehicleRules),
         conditions: query.conditions(),
         conditionControlKeys: vehicleRules?.conditionControlKeys
             ?? protoMekRules?.conditionControlKeys

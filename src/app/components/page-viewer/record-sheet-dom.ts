@@ -11,7 +11,9 @@ import type {
 } from '../../models/unit-status-presentation';
 import { updateRecordSheetAmmoProfile } from '../../utils/sheets/record-sheet-ammo-rendering';
 import type { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
-import { recordSheetAmmoEntries, setAttributes, svgElement } from '../../utils/sheets/record-sheet-svg-rendering';
+import { formatNumber, recordSheetAmmoEntries, setAttributes, svgElement } from '../../utils/sheets/record-sheet-svg-rendering';
+import { RECORD_SHEET_CAP_HEIGHT } from '../../utils/sheets/record-sheet-typography';
+import { measureSvgTextCanvas } from '../../utils/svg-text.util';
 import type { RecordSheetInteraction, RecordSheetInteractionHandler } from './record-sheet-interaction';
 
 /**
@@ -291,6 +293,68 @@ export function renderRecordSheetCrewVacancies(
     svg.querySelectorAll<SVGElement>('[data-mekbay-crew-position]').forEach(position => {
         position.classList.toggle('crew-position-vacant', vacant.has(position.dataset['mekbayCrewPosition']!));
     });
+}
+
+/**
+ * A piloting skill with its permanent control-roll modifier (e.g. "5 -2PSR" or "5 +3DSR"); nobody seated, no
+ * modifier.
+ */
+export function renderRecordSheetPilotingSkill(
+    element: SVGTextElement | null,
+    skill: string,
+    controlRollModifier: number,
+    controlRollLabel: string,
+): void {
+    if (!element) return;
+    element.textContent = skill;
+    const modifier = controlRollText(element, 'modifier');
+    const label = controlRollText(element, 'label');
+    if (!controlRollModifier) {
+        modifier.remove();
+        label.remove();
+        return;
+    }
+    // Each part is its own text at measured coordinates, after wherever the skill digits end. Relative tspan
+    // offsets, baselines and chunk anchors render differently in Firefox and Safari.
+    const x = Number.parseFloat(element.getAttribute('x') ?? '0');
+    const y = Number.parseFloat(element.getAttribute('y') ?? '0');
+    const size = Number.parseFloat(element.getAttribute('font-size') ?? '') || 12;
+    const skillWidth = measureSvgTextCanvas(element, skill);
+    const anchor = element.getAttribute('text-anchor');
+    const skillEnd = anchor === 'middle' ? x + skillWidth / 2 : anchor === 'end' ? x : x + skillWidth;
+    const modifierText = `${controlRollModifier > 0 ? '+' : ''}${controlRollModifier}`;
+    // The modifier is vertically centred on the skill (as the skill is on its caption), half a space after it;
+    // the label rises so its top meets the modifier's cap height. These sizes keep "5 -2PSR" inside the crew frame.
+    const modifierScale = 0.65;
+    const labelScale = 0.33;
+    const modifierY = y - size * (1 - modifierScale) * RECORD_SHEET_CAP_HEIGHT / 2;
+    setAttributes(modifier, { y: formatNumber(modifierY), 'font-size': formatNumber(size * modifierScale) });
+    modifier.textContent = modifierText;
+    const modifierX = skillEnd + measureSvgTextCanvas(modifier, ' ') / 2;
+    modifier.setAttribute('x', formatNumber(modifierX));
+    setAttributes(label, {
+        x: formatNumber(modifierX + measureSvgTextCanvas(modifier, modifierText)),
+        y: formatNumber(modifierY - size * (modifierScale - labelScale) * RECORD_SHEET_CAP_HEIGHT),
+        'font-size': formatNumber(size * labelScale),
+        'font-family': 'Roboto Condensed',
+    });
+    label.textContent = controlRollLabel;
+    element.after(modifier, label);
+}
+
+/** The control-roll modifier's own text beside a piloting skill, created on first use. */
+function controlRollText(skill: SVGTextElement, part: 'modifier' | 'label'): SVGTextElement {
+    const id = `${skill.id}-control-roll-${part}`;
+    const existing = skill.parentElement?.querySelector<SVGTextElement>(`:scope > [id="${id}"]`);
+    if (existing) return existing;
+    const text = svgElement('text');
+    setAttributes(text, {
+        id,
+        class: `skillValue ${part === 'modifier' ? 'controlRollModifier' : 'controlRollLabel'}`,
+        'font-weight': skill.getAttribute('font-weight') ?? '700',
+        'pointer-events': 'none',
+    });
+    return text;
 }
 
 /** A crew name replaces its writing line whenever a value is present. */

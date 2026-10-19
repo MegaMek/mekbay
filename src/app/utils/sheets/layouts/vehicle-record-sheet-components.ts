@@ -37,6 +37,7 @@ import {
 crewSkillValueX,
 CREW_STATE_MENU_SPACE,
 type Box,
+addCrewSkillButton,
 addCrewSkillValue,
 addDiagramHeading,
 addFrame,
@@ -515,10 +516,6 @@ export function drawCompactVehicleCrewPanel(
     const group = addFrame(svg, 'CREW DATA', box, {
         cornerAngleDegrees: { topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
-    const state = transparentRect(2, 17, box.width - 4, box.height - 20, 'crewStateButton');
-    state.setAttribute('crewId', '0');
-    group.insertBefore(state, group.children[2] ?? null);
-
     addText(group, 'Crew:', 3, 30, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
     // The name line leaves the crew-state menu room before the right gutter.
     const nameEnd = SvgFrameUtil.innerRight(box.width) - 2 - CREW_STATE_MENU_SPACE;
@@ -531,20 +528,14 @@ export function drawCompactVehicleCrewPanel(
     addLine(group, 23.036, 31, nameEnd, 31, '#111', 0.72);
 
     const gunneryLabel = addText(group, 'Gunnery Skill:', 3, 42, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
-    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, 49.592), 42);
+    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel), gunneryLabel);
     gunnery.id = 'gunnerySkill0';
-    const gunButton = transparentRect(46, 33, 24, 12, 'crewSkillButton');
-    gunButton.setAttribute('crewId', '0');
-    gunButton.setAttribute('skill', 'gunnery');
-    group.appendChild(gunButton);
+    addCrewSkillButton(group, gunnery, 0, 'gunnery');
 
     const drivingLabel = addText(group, 'Driving Skill:', 72.8, 42, { size: RECORD_SHEET_FONT.inventory, weight: 700 });
-    const piloting = addCrewSkillValue(group, '5', crewSkillValueX(drivingLabel, 119.392), 42);
+    const piloting = addCrewSkillValue(group, '5', crewSkillValueX(drivingLabel), drivingLabel);
     piloting.id = 'pilotingSkill0';
-    const pilotButton = transparentRect(116, 33, 27, 12, 'crewSkillButton');
-    pilotButton.setAttribute('crewId', '0');
-    pilotButton.setAttribute('skill', 'piloting');
-    group.appendChild(pilotButton);
+    addCrewSkillButton(group, piloting, 0, 'piloting');
 
     const isVtol = presentation.airborne;
     drawVehicleDamageCheckbox(group, isVtol ? 'copilot_hit' : 'commander_hit', 57.52, 58, '+1');

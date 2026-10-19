@@ -819,6 +819,31 @@ describe('bindNonMekRecordSheet', () => {
         binding.destroy();
     });
 
+    it('shows the permanent DSR modifier beside the driving skill', () => {
+        const svg = stateSheet();
+        const crewed = stateSnapshot(0);
+        const damaged = Object.freeze({
+            ...crewed,
+            controlRoll: Object.freeze({
+                shortLabel: 'DSR' as const,
+                fullLabel: 'Driving Skill Rolls' as const,
+                modifiers: Object.freeze([
+                    { modifier: 1, reason: 'Commander hit' },
+                    { modifier: 2, reason: 'Driver/Pilot hit' },
+                ]),
+            }),
+        });
+        const binding = bindNonMekRecordSheet(svg, damaged);
+
+        expect(svg.querySelector('#pilotingSkill0')?.textContent).toBe('5');
+        expect(svg.querySelector('#pilotingSkill0-control-roll-modifier')?.textContent).toBe('+3');
+        expect(svg.querySelector('#pilotingSkill0-control-roll-label')?.textContent).toBe('DSR');
+
+        binding.render(crewed);
+        expect(svg.querySelector('#pilotingSkill0-control-roll-modifier')).toBeNull();
+        binding.destroy();
+    });
+
     it('renders and binds the shared vehicle condition and crew controls', () => {
         const svg = stateSheet();
         const interactions: RecordSheetInteraction[] = [];
@@ -1286,6 +1311,7 @@ function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapsh
         structureType: 'Standard',
         crewSize: 1,
         crew: Object.freeze([]),
+        controlRoll: Object.freeze({ shortLabel: 'DSR', fullLabel: 'Driving Skill Rolls', modifiers: Object.freeze([]) }),
         conditions: Object.freeze([]),
         conditionControlKeys: Object.freeze([]),
         crewStateControlKeys: Object.freeze([]),

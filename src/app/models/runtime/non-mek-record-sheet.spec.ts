@@ -22,6 +22,7 @@ import { type InstanceBaselineRef } from './runtime-state';
 import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
 import { projectNonMekRecordSheet } from './non-mek-record-sheet';
 import { componentIdForMount } from './unit-runtime-index';
+import { systemDamageId } from '../rules/system-damage-rules';
 
 describe('projectNonMekRecordSheet', () => {
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
@@ -243,6 +244,30 @@ describe('projectNonMekRecordSheet', () => {
             remaining: 2,
             previewRemaining: 2,
         }));
+    });
+
+    it('carries the permanent Driving Skill Roll modifiers of a damaged tank', () => {
+        const entity = new TestTankEntity();
+        entity.uuid.set(UUID);
+        entity.originalWalkMP.set(8);
+        const runtime = createNonMekRuntimeForTest('unit:tank-dsr', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity,
+            TOTAL_WARFARE_RULESET);
+        for (const [system, timestamp] of [['commander', 10], ['driver', 20]] as const) {
+            expect(runtime.dispatch({
+                type: 'damage-track', damageTrackId: systemDamageId(system), amount: 1, target: 'committed', timestamp,
+            }).accepted).toBeTrue();
+        }
+
+        const sheet = projectNonMekRecordSheet(
+            entity, runtime.getIndex(), runtime.snapshot(), TOTAL_WARFARE_RULESET, runtime.query(), 100, 100,
+        );
+
+        // TW: Commander Hit +1 and Driver Hit +2 to all Driving Skill Rolls.
+        expect(sheet.controlRoll.shortLabel).toBe('DSR');
+        expect(sheet.controlRoll.modifiers).toEqual([
+            { modifier: 1, reason: 'Commander hit' },
+            { modifier: 2, reason: 'Driver/Pilot hit' },
+        ]);
     });
 
     it('projects one combined armor/internal row per Battle Armor trooper', () => {

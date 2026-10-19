@@ -6,7 +6,7 @@ import type { ComponentId } from '../../models/entity/entity-identifiers';
 import type { CBTForceMember } from '../../models/force-member.model';
 import { sameAttackerSelection } from '../../models/runtime/attacker-targeting-state';
 import {
-    equipmentWeaponToHitModifier,
+    equipmentWeaponToHit,
     projectTargetingTarget,
     projectWeaponTargetPresentation,
     selectedWeaponHeat,
@@ -91,6 +91,8 @@ export interface RecordSheetInventorySelection {
     readonly targetColor?: string;
     readonly targetNumberText?: string;
     readonly hitModifierText?: string;
+    /** Damage or another impairment worsened the hit modifier; its badge turns red as in the equipment dialog. */
+    readonly hitModifierWeakened?: boolean;
 }
 
 export const NO_INVENTORY_SELECTION: RecordSheetInventorySelection = Object.freeze({ selected: false });
@@ -118,14 +120,17 @@ export function projectRecordSheetWeaponSelection(
         ? projectWeaponTargetPresentation(weapons[0], runtimeTarget, attack, source!.panel.ruleset)
         : null;
     const range = presentation?.rangeSelection?.range;
-    const modifier = equipmentWeaponToHitModifier(weapons[0], runtimeTarget, range ?? null);
+    const hit = equipmentWeaponToHit(weapons[0], runtimeTarget, range ?? null);
     return Object.freeze({
         selected,
         ...(range === undefined ? {} : { range }),
         ...(presentation?.outOfRange ? { outOfRange: true } : {}),
         ...(target === undefined ? {} : { targetColor: target.color }),
         ...(presentation?.targetNumberText ? { targetNumberText: presentation.targetNumberText } : {}),
-        ...(unavailable || modifier === 0 ? {} : { hitModifierText: `${modifier > 0 ? '+' : ''}${modifier}` }),
+        ...(unavailable || hit.modifier === 0 ? {} : {
+            hitModifierText: `${hit.modifier > 0 ? '+' : ''}${hit.modifier}`,
+            ...(hit.weakened ? { hitModifierWeakened: true } : {}),
+        }),
     });
 }
 
@@ -142,6 +147,7 @@ export function renderRecordSheetInventorySelection(row: SVGElement, selection: 
     else row.style.removeProperty('--inventory-control-selection-color');
     renderInventoryBadge(row, 'targetTn', selection.targetNumberText);
     renderInventoryBadge(row, 'hitMod', selection.hitModifierText);
+    row.classList.toggle('weakenedHitMod', selection.hitModifierWeakened === true);
 }
 
 /**

@@ -34,13 +34,10 @@ import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-dam
 import { isPrintableMekInventoryEquipment } from '../../utils/sheets/record-sheet-inventory-equipment';
 import {
 formatMovementWithMaximum,
-formatNumber,
 formatTechBase,
 formatWholeNumber,
 recordSheetHeatText,
 recordSheetRangeTexts,
-setAttributes,
-svgElement,
 } from '../../utils/sheets/record-sheet-svg-rendering';
 import { getSvgTextLines,measureSvgTextCanvas,writeSvgTextLines } from '../../utils/svg-text.util';
 import {
@@ -61,6 +58,7 @@ renderRecordSheetCrewName,
 renderRecordSheetCrewState,
 renderRecordSheetCrewVacancies,
 renderRecordSheetDestroyed,
+renderRecordSheetPilotingSkill,
 renderRecordSheetPips,
 type RecordSheetBind,
 } from './record-sheet-dom';
@@ -980,6 +978,7 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
                 selection: Object.freeze({
                     selected: selection !== undefined,
                     ...(hitModifierText === '' ? {} : { hitModifierText }),
+                    ...(attack.hitModifierBreakdown.some(item => item.weakened === true) ? { hitModifierWeakened: true } : {}),
                     ...(selectedTarget === undefined ? {} : { targetColor: selectedTarget.color }),
                 }),
                 ...(attack.available && attack.selectable ? { actionTarget: attack.target } : {}),
@@ -1142,10 +1141,11 @@ function renderCrew(
         write(svg, `#gunnerySkill${occurrence}`, vacant ? '—' : position.gunnery);
         write(svg, `#aeroGunnerySkill${occurrence}`, vacant ? '—' : position.aeroGunnery ?? 4);
         write(svg, `#aeroPilotingSkill${occurrence}`, vacant ? '—' : position.aeroPiloting ?? 5);
-        renderPilotingSkillDisplay(
+        renderRecordSheetPilotingSkill(
             svg.querySelector<SVGTextElement>(`#pilotingSkill${occurrence}`),
             vacant ? '—' : String(position.piloting),
             vacant ? 0 : permanentPsrModifier,
+            'PSR',
         );
         renderRecordSheetCrewControls(svg, position, bind, context, () =>
             currentSnapshot().crew.find(row => row.positionId === position.positionId)?.state.wounds ?? 0);
@@ -1161,62 +1161,6 @@ function renderCrew(
     if (snapshot.crew.length > 0 && !svg.querySelector('.crewHit, [id^="crewName"]')) {
         issues.push('Missing crew layout');
     }
-}
-
-function renderPilotingSkillDisplay(
-    element: SVGTextElement | null,
-    skill: string,
-    controlRollModifier: number,
-): void {
-    if (!element) return;
-    element.textContent = skill;
-    const modifier = controlRollText(element, 'modifier');
-    const label = controlRollText(element, 'label');
-    if (!controlRollModifier) {
-        modifier.remove();
-        label.remove();
-        return;
-    }
-    // Each part is its own text at measured coordinates, after wherever the skill digits end. Relative tspan
-    // offsets, baselines and chunk anchors render differently in Firefox and Safari.
-    const x = Number.parseFloat(element.getAttribute('x') ?? '0');
-    const y = Number.parseFloat(element.getAttribute('y') ?? '0');
-    const size = Number.parseFloat(element.getAttribute('font-size') ?? '') || 12;
-    const skillWidth = measureSvgTextCanvas(element, skill);
-    const anchor = element.getAttribute('text-anchor');
-    const skillEnd = anchor === 'middle' ? x + skillWidth / 2 : anchor === 'end' ? x : x + skillWidth;
-    const modifierText = `${controlRollModifier > 0 ? '+' : ''}${controlRollModifier}`;
-    // The modifier shares the skill's baseline, half a space after it; the label rises so its top meets the
-    // modifier's cap height (Roboto's caps are 0.711 em). These sizes keep "5 -2PSR" inside the crew frame.
-    const modifierScale = 0.65;
-    const labelScale = 0.33;
-    setAttributes(modifier, { y: formatNumber(y), 'font-size': formatNumber(size * modifierScale) });
-    modifier.textContent = modifierText;
-    const modifierX = skillEnd + measureSvgTextCanvas(modifier, ' ') / 2;
-    modifier.setAttribute('x', formatNumber(modifierX));
-    setAttributes(label, {
-        x: formatNumber(modifierX + measureSvgTextCanvas(modifier, modifierText)),
-        y: formatNumber(y - size * (modifierScale - labelScale) * 0.711),
-        'font-size': formatNumber(size * labelScale),
-        'font-family': 'Roboto Condensed',
-    });
-    label.textContent = 'PSR';
-    element.after(modifier, label);
-}
-
-/** The control-roll modifier's own text beside a piloting skill, created on first use. */
-function controlRollText(skill: SVGTextElement, part: 'modifier' | 'label'): SVGTextElement {
-    const id = `${skill.id}-control-roll-${part}`;
-    const existing = skill.parentElement?.querySelector<SVGTextElement>(`:scope > [id="${id}"]`);
-    if (existing) return existing;
-    const text = svgElement('text');
-    setAttributes(text, {
-        id,
-        class: `skillValue ${part === 'modifier' ? 'controlRollModifier' : 'controlRollLabel'}`,
-        'font-weight': skill.getAttribute('font-weight') ?? '700',
-        'pointer-events': 'none',
-    });
-    return text;
 }
 
 function renderCrewState(

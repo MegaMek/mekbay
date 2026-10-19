@@ -132,10 +132,10 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     type.id = 'type';
     type.setAttribute('data-mekbay-field', 'display-name');
     const gunneryLabel = addText(group, 'Gunnery Skill:', x(6.966), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, x(49.513), fontScale), y(37.966), fontScale);
+    const gunnery = addCrewSkillValue(group, '4', crewSkillValueX(gunneryLabel, fontScale), gunneryLabel, fontScale);
     gunnery.id = 'gunnerySkill0';
     const antiMekLabel = addText(group, "Anti-'Mech Skill:", x(99.466), y(37.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const piloting = addCrewSkillValue(group, String(effectiveEntityPilotingSkill(entity, 5)), crewSkillValueX(antiMekLabel, x(148.855), fontScale), y(37.966), fontScale);
+    const piloting = addCrewSkillValue(group, String(effectiveEntityPilotingSkill(entity, 5)), crewSkillValueX(antiMekLabel, fontScale), antiMekLabel, fontScale);
     piloting.id = 'pilotingSkill0';
     addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(RECORD_SHEET_FONT.inventory) });

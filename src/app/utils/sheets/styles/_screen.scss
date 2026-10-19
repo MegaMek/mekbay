@@ -32,6 +32,15 @@
       stroke: #ccc;
     }
 
+    // A hit modifier worsened by damage, red as in the equipment dialog.
+    .inventoryEntry.weakenedHitMod > .hitMod-rect {
+      fill: var(--damage-color) !important;
+    }
+
+    .inventoryEntry.weakenedHitMod > .hitMod-text {
+      fill: #fff !important;
+    }
+
     .skillValue,
     .velocityValue,
     .customAmmoLoadout {
