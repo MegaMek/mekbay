@@ -262,7 +262,8 @@ describe('UnitBlockComponent capability badges', () => {
             getNonMekRecordSheetSnapshot: () => ({ unitType: 'Tank', crew: [] }),
             getMekTurnPanelSnapshot: () => null,
             getUnitSnapshot: () => ({
-                entity, index: runtime.getIndex(), state: runtime.snapshot(), ruleset: CORE_2026_RULESET,
+                entity, index: runtime.getIndex(), state: runtime.snapshot(), query: runtime.query(),
+                ruleset: CORE_2026_RULESET,
             }),
         } as unknown as CBTForce;
         const member = new CBTForceMember('unit:vehicle-movement-card', force, entity);
