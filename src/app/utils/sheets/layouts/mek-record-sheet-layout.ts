@@ -21,7 +21,7 @@ import { mekCriticalDamageThreshold } from '../../../models/runtime/equipment-st
 import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
-import { mekCriticalCaseLabel,mekCriticalSlotLines } from '../../mek-critical-display.util';
+import { mekCriticalCaseLabel,mekCriticalEquipmentRuns,mekCriticalSlotLines } from '../../mek-critical-display.util';
 import { mekCriticalLocationCells,mekCriticalTableRowCount } from '../../mek-location-layout.util';
 import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,mekHitLocationTable,mekPhysicalLocationTableRows,recordSheetClusterNotes } from '../../record-sheet-reference-table';
 import { MekPaperdollGenerator, usesBipedMekPaperdoll, type MekStructureTonnage } from '../mek-paperdoll-generator';
@@ -1635,23 +1635,12 @@ async function drawCanonicalMekCriticalContents(
         const slotCount = mekCriticalTableRowCount(location);
         const slotBaseline = (slotIndex: number): number => locationLayout.firstBaseline
             + slotIndex * locationLayout.step + (slotCount === 12 && slotIndex >= 6 ? 5.15 : 0);
-        const equipmentRuns = new Map<string, { first: number; last: number }[]>();
         for (let slotIndex = 0; slotIndex < slotCount; slotIndex++) {
             const row = svgElement('g');
             row.setAttribute('class', 'critRow');
             criticalGroup.appendChild(row);
             const slot = slots[slotIndex];
             const baseline = slotBaseline(slotIndex);
-            if (slot?.type === 'equipment') {
-                for (const mount of slot.mounts) {
-                    if (mount.equipment?.hittable !== true) continue;
-                    const runs = equipmentRuns.get(mount.mountId) ?? [];
-                    const previous = runs.at(-1);
-                    if (previous?.last === slotIndex - 1) previous.last = slotIndex;
-                    else runs.push({ first: slotIndex, last: slotIndex });
-                    equipmentRuns.set(mount.mountId, runs);
-                }
-            }
             const number = slotCount === 12 ? slotIndex % 6 + 1 : slotIndex + 1;
             addText(row, `${number}.`, x(locationLayout.numberX), y(baseline), {
                 size: font(7),
@@ -1720,21 +1709,21 @@ async function drawCanonicalMekCriticalContents(
             }
             row.appendChild(slotGroup);
         }
-        for (const runs of equipmentRuns.values()) {
-            for (const run of runs) {
-                if (run.first === run.last) continue;
-                const bracket = svgElement('path');
-                const top = slotBaseline(run.first) - locationLayout.step * MEK_CRITICAL_BRACKET_TOP;
-                setAttributes(bracket, {
-                    class: 'critical-equipment-bracket',
-                    'data-mekbay-slots': `${run.first} ${run.last}`,
-                    d: `M ${formatNumber(x(locationLayout.textX - 1))} ${formatNumber(y(top))}`
-                        + ` h ${formatNumber(x(-1.88))}`
-                        + ` v ${formatNumber(y(slotBaseline(run.last) - top))} h ${formatNumber(x(1.88))}`,
-                    fill: 'none', stroke: '#000', 'stroke-width': font(0.72), 'pointer-events': 'none',
-                });
-                criticalGroup.appendChild(bracket);
-            }
+        const runs = mekCriticalEquipmentRuns(slots.map(slot => slot?.type === 'equipment'
+            ? slot.mounts.filter(mount => mount.equipment?.hittable === true).map(mount => mount.mountId)
+            : []));
+        for (const run of runs) {
+            const bracket = svgElement('path');
+            const top = slotBaseline(run.first) - locationLayout.step * MEK_CRITICAL_BRACKET_TOP;
+            setAttributes(bracket, {
+                class: 'critical-equipment-bracket',
+                'data-mekbay-slots': `${run.first} ${run.last}`,
+                d: `M ${formatNumber(x(locationLayout.textX - 1))} ${formatNumber(y(top))}`
+                    + ` h ${formatNumber(x(-1.88))}`
+                    + ` v ${formatNumber(y(slotBaseline(run.last) - top))} h ${formatNumber(x(1.88))}`,
+                fill: 'none', stroke: '#000', 'stroke-width': font(0.72), 'pointer-events': 'none',
+            });
+            criticalGroup.appendChild(bracket);
         }
         criticalGroup.setAttribute('data-mekbay-row-slack',
             formatNumber(y(locationLayout.lastBaseline - slotBaseline(slotCount - 1))));

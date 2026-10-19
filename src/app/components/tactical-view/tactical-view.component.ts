@@ -70,6 +70,7 @@ import { KeyboardShortcutService } from '../../services/keyboard-shortcut.servic
 import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
+import { mekCriticalEquipmentRuns } from '../../utils/mek-critical-display.util';
 import {
 mekCriticalLocationMatrix,
 mekCriticalTableRowCount,
@@ -98,6 +99,8 @@ import { TacticalTurnTrackerComponent } from './tactical-turn-tracker.component'
 interface MekCriticalBlock {
     readonly roll: '1-3' | '4-6' | null;
     readonly slots: readonly MekRecordSheetCriticalSlot[];
+    /** Where each multi-slot equipment slot sits in its run, cut at the block edge; absent for single slots. */
+    readonly runs: ReadonlyMap<number, 'start' | 'middle' | 'end'>;
 }
 
 interface MekCriticalGroup {
@@ -337,12 +340,33 @@ export class TacticalViewComponent {
             const slots = code === null ? undefined : slotsByCode.get(code);
             if (code === null || !slots) return null;
             const location = locations.get(code);
+            // The sheet's runs: consecutive slots each holding only the same hittable equipment.
+            const slotEquipment: string[][] = [];
+            for (const slot of slots) {
+                const [component, ...others] = slot.components;
+                if (slot.hittable && component && others.length === 0 && component.system === undefined) {
+                    slotEquipment[slot.slotIndex] = [component.componentId];
+                }
+            }
+            const runs = mekCriticalEquipmentRuns(slotEquipment);
+            const block = (roll: MekCriticalBlock['roll'], first: number, last: number): MekCriticalBlock => {
+                const positions = new Map<number, 'start' | 'middle' | 'end'>();
+                for (const run of runs) {
+                    const start = Math.max(run.first, first);
+                    const end = Math.min(run.last, last);
+                    for (let slotIndex = start; start < end && slotIndex <= end; slotIndex++) {
+                        positions.set(slotIndex, slotIndex === start ? 'start' : slotIndex === end ? 'end' : 'middle');
+                    }
+                }
+                return {
+                    roll,
+                    slots: slots.filter(slot => slot.slotIndex >= first && slot.slotIndex <= last),
+                    runs: positions,
+                };
+            };
             const blocks = mekCriticalTableRowCount(code) === 12
-                ? [
-                    { roll: '1-3' as const, slots: slots.filter(slot => slot.slotIndex < 6) },
-                    { roll: '4-6' as const, slots: slots.filter(slot => slot.slotIndex >= 6) },
-                ].filter(block => block.slots.length > 0)
-                : [{ roll: null, slots }];
+                ? [block('1-3', 0, 5), block('4-6', 6, 11)].filter(entry => entry.slots.length > 0)
+                : [block(null, 0, Number.MAX_SAFE_INTEGER)];
             return Object.freeze({
                 code,
                 label: getMekLocationLabel(code) ?? code,

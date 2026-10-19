@@ -264,7 +264,8 @@
                                 <div class="critical-slots">
                                     @for (slot of block.slots; track slot.slotId) {
                                     @let hits = mekCriticalHits(slot);
-                                    <button type="button" class="critical-row" [class.hit]="hits > 0"
+                                    @let run = block.runs.get(slot.slotIndex);
+                                    <button type="button" class="critical-row" [attr.data-run]="run" [class.hit]="hits > 0"
                                         [class.destroyed]="criticalDestroyed(slot)" [class.unhittable]="!slot.hittable"
                                         [disabled]="readOnly() || !slot.hittable" (click)="activateMekCritical(slot, $event)"
                                         [attr.aria-label]="criticalLabel(slot) + ', ' + hits + ' of ' + slot.hitCapacity + ' critical hits'">

@@ -895,6 +895,38 @@ weapons-equipment-panel {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+/*
+ * Multi-slot equipment reads as one item: its rows join (no separators inside) and one vertical line between the slot
+ * numbers and the names connects them, in the gap the row already has. Each slot stays its own button.
+ */
+.critical-row[data-run] {
+  --critical-run-line-x: 3px;
+  position: relative;
+}
+.critical-row[data-run='middle'],
+.critical-row[data-run='end'] {
+  border-top-color: transparent;
+}
+.critical-row[data-run]::before {
+  content: '';
+  position: absolute;
+  left: var(--critical-run-line-x);
+  width: 2px;
+  background: color-mix(in srgb, var(--text-color) 70%, transparent);
+  pointer-events: none;
+}
+.critical-row[data-run='start']::before {
+  top: 1px;
+  bottom: -1px;
+}
+.critical-row[data-run='middle']::before {
+  top: -1px;
+  bottom: -1px;
+}
+.critical-row[data-run='end']::before {
+  top: -1px;
+  bottom: 1px;
+}
 .critical-name {
   min-width: 0;
   flex: 1 1 auto;
@@ -925,8 +957,12 @@ weapons-equipment-panel {
 
 /* Default 3 columns */
 .critical-columns {
+  display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: auto 1fr;
+  align-items: start;
+  gap: 6px;
+  padding: 6px;
 }
 .critical-stack {
   display: grid;
@@ -957,6 +993,9 @@ weapons-equipment-panel {
   }
   .critical-row {
     padding: 1px;
+  }
+  .critical-row[data-run] {
+    --critical-run-line-x: -1px;
   }
   .slot-number {
     flex-basis: 6px;

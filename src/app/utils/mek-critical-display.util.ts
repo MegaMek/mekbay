@@ -49,6 +49,32 @@ export function formatMekCriticalSlotLines(items: readonly MekCriticalSlotItem[]
         : line.count === 1 ? line.text : `${line.count} ${line.text}s`);
 }
 
+/** Two or more consecutive slots of one location held by the same equipment. */
+export interface MekCriticalEquipmentRun {
+    readonly first: number;
+    readonly last: number;
+}
+
+/**
+ * Multi-slot equipment runs from the equipment ids each slot holds, indexed by slot (holes break a run): the record
+ * sheet brackets them and the tactical view joins their rows.
+ */
+export function mekCriticalEquipmentRuns(
+    slotEquipment: readonly (readonly string[] | undefined)[],
+): readonly MekCriticalEquipmentRun[] {
+    const runs = new Map<string, { first: number; last: number }[]>();
+    slotEquipment.forEach((ids, slotIndex) => {
+        for (const id of ids ?? []) {
+            const equipmentRuns = runs.get(id) ?? [];
+            const previous = equipmentRuns.at(-1);
+            if (previous?.last === slotIndex - 1) previous.last = slotIndex;
+            else equipmentRuns.push({ first: slotIndex, last: slotIndex });
+            runs.set(id, equipmentRuns);
+        }
+    });
+    return Object.freeze([...runs.values()].flat().filter(run => run.last > run.first).map(run => Object.freeze(run)));
+}
+
 /** Critical-table lines for one derived (construction-time) Mek critical slot. */
 export function mekCriticalSlotLines(
     slot: CriticalSlotView | undefined,

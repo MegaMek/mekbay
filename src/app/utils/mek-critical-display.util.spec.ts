@@ -8,9 +8,28 @@ import {
     addTestEquipmentWithFlags,
 } from '../models/entity/testing/test-mounted-equipment';
 import type { CriticalSlotView } from '../models/entity/types';
-import { formatMekCriticalSlotLines, mekCriticalCaseLabel, mekCriticalSlotLines } from './mek-critical-display.util';
+import {
+    formatMekCriticalSlotLines,
+    mekCriticalCaseLabel,
+    mekCriticalEquipmentRuns,
+    mekCriticalSlotLines,
+} from './mek-critical-display.util';
 
 describe('Mek critical display', () => {
+    it('finds multi-slot equipment runs that empty slots break and shared slots join', () => {
+        const slots: (readonly string[] | undefined)[] = [];
+        slots[0] = ['lrm'];
+        slots[1] = ['lrm'];
+        slots[2] = ['lrm', 'heat-sink'];
+        slots[3] = ['heat-sink'];
+        slots[4] = ['laser'];
+        slots[6] = ['laser'];
+        expect(mekCriticalEquipmentRuns(slots)).toEqual([
+            { first: 0, last: 2 },
+            { first: 2, last: 3 },
+        ]);
+    });
+
     it('formats ammo through its mounted display name and includes the shot count', () => {
         const entity = new TestBipedMekEntity();
         const ammo = addTestEquipment(entity, new AmmoEquipment({
