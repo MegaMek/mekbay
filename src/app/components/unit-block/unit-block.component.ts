@@ -34,7 +34,7 @@ import {
     isCBTMekForceMember,
     type ForceMember,
 } from '../../models/force-member.model';
-import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
+import { mekTurnMovementIndicator, nonMekTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 import { hasMekRuntime, hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
 import { UnitNotificationBadgesComponent } from '../unit-notification-badges/unit-notification-badges.component';
 import { effectiveEntityPilotingSkill } from '../../models/entity/utils/battle-value/skill-facts';
@@ -258,11 +258,11 @@ export class UnitBlockComponent {
 
     movementIndicator = computed(() => {
         if (!this.optionsService.options().trackPhaseAndTurn) return null;
-        const snapshot = this.mekTurnSnapshot();
-        return getTurnMovementIndicator(
-            snapshot?.movementState.movement?.mode,
-            snapshot?.defenseModifierTotal?.modifier ?? 0,
-        );
+        // Read directly: for other units the Mek turn panel stays null, so it never signals a change.
+        this.runtimeRevision();
+        const member = this.forceUnit();
+        return mekTurnMovementIndicator(this.mekTurnSnapshot())
+            ?? (isCBTForceMember(member) ? nonMekTurnMovementIndicator(member.force.getUnitSnapshot(member.id)) : null);
     });
 
     activeConditions = computed<UnitConditionDisplay[]>(() => {

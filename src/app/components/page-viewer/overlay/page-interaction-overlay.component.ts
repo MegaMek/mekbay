@@ -28,7 +28,7 @@ import { GameTurnService } from '../../../services/game-turn.service';
 import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
-import { getTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
+import { mekTurnMovementIndicator, nonMekTurnMovementIndicator } from '../../../utils/turn-movement-indicator.util';
 import { EquipmentDialogComponent } from '../../equipment-dialog/equipment-dialog.component';
 import type { EquipmentDialogData } from '../../equipment-dialog/equipment-dialog.model';
 import { WeaponTargetsOverlayController } from '../../equipment-dialog/weapon-targets-overlay.controller';
@@ -150,13 +150,8 @@ export class PageInteractionOverlayComponent {
         return turn ? mekTurnPanelPhase(turn) : this.entityTurn() ? 'T' : 'M';
     });
 
-    readonly movementIndicator = computed(() => {
-        const turn = this.turn();
-        return getTurnMovementIndicator(
-            turn?.movementState.movement?.mode,
-            turn?.defenseModifierTotal?.modifier ?? 0,
-        );
-    });
+    readonly movementIndicator = computed(() =>
+        mekTurnMovementIndicator(this.turn()) ?? nonMekTurnMovementIndicator(this.entityTurn()));
 
     turnTrackerVisible = computed(() => !this.pageViewerState.inventoryDialogOpen());
 

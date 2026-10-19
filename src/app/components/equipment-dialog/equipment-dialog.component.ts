@@ -45,7 +45,7 @@ import type { EquipmentDialogData, EquipmentDialogTab } from './equipment-dialog
 import { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
 import { WeaponTargetsOverlayController } from './weapon-targets-overlay.controller';
 import { WeaponsEquipmentPanelComponent } from './weapons-equipment-panel.component';
-import { getTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
+import { mekTurnMovementIndicator } from '../../utils/turn-movement-indicator.util';
 
 const WEAPON_TARGETS_OVERLAY_KEY = 'weapon-equipment-targets';
 const WEAPON_TARGET_CHOICE_OVERLAY_KEY = 'weapon-equipment-target-choice';
@@ -154,11 +154,7 @@ export class EquipmentDialogComponent {
     }
 
     turnSummaryMovement() {
-        const snapshot = this.turnSnapshot();
-        return getTurnMovementIndicator(
-            snapshot?.movementState.movement?.mode,
-            snapshot?.defenseModifierTotal?.modifier ?? 0,
-        );
+        return mekTurnMovementIndicator(this.turnSnapshot());
     }
 
     openTurnSummary(event: MouseEvent): void {

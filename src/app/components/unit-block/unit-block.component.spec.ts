@@ -19,6 +19,9 @@ import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
 import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from '../../models/runtime/mek-movement-psr-v2';
 import { projectMekTurnPanel } from '../../models/runtime/mek-turn-panel';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import { createNonMekRuntimeForTest } from '../../models/runtime/testing/unit-runtime-owner-fixture';
+import { CORE_2026_RULESET } from '../../models/cbt-ruleset.model';
+import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { createUnitTagEcmCapabilitySummary } from '../../models/unit-capability-summary.model';
 import { OptionsService } from '../../services/options.service';
 import { projectRuntimePendingNotification } from '../unit-notification-badges/unit-notification-badges.component';
@@ -224,6 +227,59 @@ describe('UnitBlockComponent capability badges', () => {
             color: 'walk',
             letter: 'W0',
         });
+        fixture.destroy();
+    });
+
+    it('follows a vehicle movement badge through its runtime changes', () => {
+        const changed = new Subject<readonly string[] | null>();
+        const entity = new TestTankEntity();
+        entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+        entity.originalWalkMP.set(8);
+        const runtime = createNonMekRuntimeForTest('unit:vehicle-movement-card', {
+            entity: entity.uuid(),
+            ruleset: CORE_2026_RULESET,
+            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+        }, entity, CORE_2026_RULESET);
+        const force = {
+            changed,
+            sessionChanged: new Subject<void>(),
+            gameSystem: GameSystem.CBT,
+            readOnly: () => false,
+            getUnitDestroyed: () => false,
+            getUnitCrewAssignment: () => ({ positions: [] }),
+            getUnitCrewPolicy: () => ({ positions: [] }),
+            getUnitAdjustedBattleValue: () => 0,
+            getUnitAdjustedPreSkillBattleValue: () => 0,
+            getUnitCurrentBaseBattleValue: () => 0,
+            getUnitPristineBattleValue: () => 0,
+            getUnitTagBattleValue: () => 0,
+            getUnitC3BattleValue: () => 0,
+            getUnitExternalStoresBattleValue: () => 0,
+            getUnitSkillBattleValue: () => 0,
+            getC3State: () => 'none',
+            isUnitCommander: () => false,
+            getUnitConditions: () => [],
+            getNonMekRecordSheetSnapshot: () => ({ unitType: 'Tank', crew: [] }),
+            getMekTurnPanelSnapshot: () => null,
+            getUnitSnapshot: () => ({
+                entity, index: runtime.getIndex(), state: runtime.snapshot(), ruleset: CORE_2026_RULESET,
+            }),
+        } as unknown as CBTForce;
+        const member = new CBTForceMember('unit:vehicle-movement-card', force, entity);
+        const fixture = TestBed.createComponent(UnitBlockComponent);
+        fixture.componentRef.setInput('forceUnit', member);
+        fixture.detectChanges();
+        const flank = (distance: number) => {
+            expect(runtime.dispatch({
+                type: 'set-movement', movement: { mode: 'run', distance, boosterComponentIds: [] },
+            }).accepted).toBeTrue();
+            changed.next([member.id]);
+        };
+
+        flank(4);
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'run', letter: 'R1' });
+        flank(6);
+        expect(fixture.componentInstance.movementIndicator()).toEqual({ color: 'run', letter: 'R2' });
         fixture.destroy();
     });
 
