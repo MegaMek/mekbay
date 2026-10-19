@@ -145,8 +145,9 @@ export function renderRecordSheetInventorySelection(row: SVGElement, selection: 
         selection.selected && row.querySelector(':scope > .alternativeMode.selected') !== null);
     if (selection.targetColor) row.style.setProperty('--inventory-control-selection-color', selection.targetColor);
     else row.style.removeProperty('--inventory-control-selection-color');
+    // The target number takes the hit modifier's slot while a target is selected.
     renderInventoryBadge(row, 'targetTn', selection.targetNumberText);
-    renderInventoryBadge(row, 'hitMod', selection.hitModifierText);
+    renderInventoryBadge(row, 'hitMod', selection.targetNumberText ? undefined : selection.hitModifierText);
     row.classList.toggle('weakenedHitMod', selection.hitModifierWeakened === true);
 }
 

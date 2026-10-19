@@ -736,14 +736,14 @@ describe('RecordSheetSvgGenerator', () => {
         const hitModRect = inventory.querySelector('.hitMod-rect')!;
         const hitModText = inventory.querySelector('.hitMod-text')!;
         const name = inventory.querySelector('.name')!;
-        const quantity = inventory.querySelector<SVGTextElement>('.quantity')!;
         const shortButton = inventory.querySelector('.inventoryEntryButton.shrButton')!;
         const shortText = inventory.querySelector('.range_short')!;
         expect(children.indexOf(mainButton)).toBeLessThan(children.indexOf(name));
         expect(children.indexOf(shortButton)).toBeLessThan(children.indexOf(shortText));
         expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(name));
         expect(children.indexOf(hitModRect)).toBeLessThan(children.indexOf(hitModText));
-        expect(quantity).not.toBeNull();
+        // Only bays print a quantity; every other inventory lists one row per mount.
+        expect(inventory.querySelector('.quantity')).toBeNull();
         expect(name).not.toBeNull();
     });
 

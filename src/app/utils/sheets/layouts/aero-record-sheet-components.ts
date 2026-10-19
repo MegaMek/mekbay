@@ -4,7 +4,7 @@
 import { VELOCITY_RECORD_FIELDS, VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowSpan, inventoryCellLines, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, fitInventoryText, inventoryRowSpan, inventoryCellLines, inventoryRowLineCount } from '../inventory-text-layout';
 import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
@@ -50,7 +50,6 @@ recordSheetNonMekAmmoPrefix,
 setAttributes,
 setInventoryComponentIds,
 svgElement,
-transparentRect,
 appendHeatPanelControls,
 appendHeatEffectRows,
 appendHeatSinkData,
@@ -197,13 +196,12 @@ export function drawAeroDataPanel(
         entry.setAttribute('class', row.kind === 'bay' ? 'inventoryEntry bay' : 'inventoryEntry');
         entry.id = row.id;
         setInventoryComponentIds(entry, row.componentIds);
-        entry.appendChild(transparentRect(x(2), baseline - y(rowStep), x(139.5), y(rowStep * lineCount),
-            'inventoryEntryButton mainButton'));
-        [143.5, 160.97, 178.28, 195.94].forEach((position, rangeIndex) => entry.appendChild(
-            transparentRect(x(position), baseline - y(rowStep), x(rangeIndex === 3 ? 16.63 : 17.31), y(rowStep),
-                `inventoryEntryButton ${['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex]}`),
-        ));
-        appendInventoryHitModifier(entry, baseline, fontScale, yStep);
+        appendInventoryRowButtons(entry, baseline, fontScale, yStep, lineCount, [x(2), x(139.5)],
+            [143.5, 160.97, 178.28, 195.94].map((position, rangeIndex) => [
+                ['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex], x(position),
+                x(rangeIndex === 3 ? 16.63 : 17.31),
+            ] as const));
+        appendInventoryBadges(entry, baseline, fontScale, yStep);
         if (row.quantity !== undefined) {
             addCell(entry, String(row.quantity), x(8.41), baseline, {
                 class: 'quantity', size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
@@ -228,7 +226,6 @@ export function drawAeroDataPanel(
                 size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(16.312),
             },
         ));
-        appendInventoryTargetNumber(entry, x(216), baseline, fontScale, yStep);
         inventory.appendChild(entry);
         displayLine += lineCount;
     });

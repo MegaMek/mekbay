@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { addInventoryText, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryRowButtons, fitInventoryText, inventoryRowLineCount } from '../inventory-text-layout';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import {
     createRoot,
@@ -10,12 +10,13 @@ import {
     drawDamagePanel,
     drawGeneratedFooter,
     drawIdentityPanel,
-    addFrame, setAttributes, svgElement, transparentRect, type Box,
+    addFrame, setAttributes, svgElement, type Box,
     drawNotesPanel,
     drawPageChrome,
     drawReferencePanel,
     scalePageBox,
 } from '../record-sheet-svg-rendering';
+import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import type { RecordSheetLayout, RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
     fullRecordSheetLayoutProfile,
@@ -78,8 +79,8 @@ function drawInventoryPanel(svg: SVGSVGElement, entity: BaseEntity, box: Box): v
         setAttributes(entry, { class: 'inventoryEntry', id: (row.mount?.equipmentId ?? 'unused') + '@' + index });
         group.appendChild(entry);
         const y = 22 + offset * metrics.lineStep;
-        const height = metrics.content[index] * metrics.lineStep;
-        entry.appendChild(transparentRect(7, y, box.width - 14, height, 'inventoryEntryButton mainButton'));
+        appendInventoryRowButtons(entry, y + metrics.fontSize, metrics.fontSize / RECORD_SHEET_FONT.inventory,
+            metrics.lineStep, metrics.content[index], [7, box.width - 14]);
         addInventoryText(entry, row.name, 10, y + metrics.fontSize, {
             class: 'name', size: metrics.fontSize, maxWidth: nameWidth, lineHeight: metrics.lineStep });
         addInventoryText(entry, row.location, box.width - 7, y + metrics.fontSize, {

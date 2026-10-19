@@ -9,9 +9,10 @@ import { buildingDoorGroups, buildingLinkedDoorGeometry } from '../../../models/
 import { getBayRecordSheetName, getBayRecordSheetCapacity } from '../../../models/entity/bays/bay-definitions';
 import { appendRecordSheetAmmoProfile, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
-import { inventoryCellLines, fitInventoryText, MIN_INVENTORY_FONT, MIN_INVENTORY_LINE_RATIO } from '../inventory-text-layout';
+import { appendInventoryRowButtons, inventoryCellLines, inventoryRangeButtons, inventoryRangeColumns, fitInventoryText, MIN_INVENTORY_FONT, MIN_INVENTORY_LINE_RATIO } from '../inventory-text-layout';
 import { addText, formatNumber, recordSheetAmmoProfile, recordSheetInventoryWeapons, setAttributes,
-    setInventoryComponentIds, svgElement, transparentRect } from '../record-sheet-svg-rendering';
+    setInventoryComponentIds, svgElement } from '../record-sheet-svg-rendering';
+import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 interface InventoryRow {
     readonly key: number;
@@ -178,7 +179,9 @@ export function buildingInventoryPages(entity: StaticEmplacementEntity, width: n
 export function drawBuildingInventory(group: SVGGElement, entity: StaticEmplacementEntity, width: number, height: number,
     page: BuildingInventoryPage | undefined): void {
     const scale = width / 224;
-    const xs = [12, 24, 119, 147, 166, 182, 198, 213].map(x => x * scale);
+    const columns = inventoryRangeColumns(7, 220);
+    const buttons = inventoryRangeButtons(columns, x => x * scale);
+    const xs = [12, 24, 119, 147, ...columns.ranges].map(x => x * scale);
     addText(group, 'Weapons & Equipment Inventory', 9, 14, { size: 8.6, weight: 700, maxWidth: width - 42 });
     addText(group, '(hexes)', width - 9, 14, { size: 6, anchor: 'end' });
     ['Qty', 'Type', 'Hex/Loc', 'Dmg', 'Min', 'Sht', 'Med', 'Lng'].forEach((label, index) =>
@@ -206,14 +209,15 @@ export function drawBuildingInventory(group: SVGGElement, entity: StaticEmplacem
             entry.appendChild(parent);
         }
         const y = 32 + fontSize + index * lineStep;
-        if (row.mounts) parent.appendChild(transparentRect(7, y - fontSize, width - 14, lineStep, 'inventoryEntryButton mainButton'));
+        if (row.mounts) {
+            appendInventoryRowButtons(parent, y, fontSize / RECORD_SHEET_FONT.inventory, lineStep, 1, buttons.band,
+                buttons.ranges.filter((_, index) => row.cells[index + 5]));
+        }
         row.cells.forEach((value, column) => {
             if (!value) return;
             const classes = ['qty', 'name', 'location', 'damage', 'range_min', 'range_short', 'range_medium', 'range_long'];
             addText(parent, value, xs[column], y, { class: classes[column], size: fontSize,
                 anchor: column === 1 ? 'start' : 'middle' });
-            if (row.mounts && column > 4) parent.appendChild(transparentRect(xs[column] - 7 * scale, y - fontSize,
-                14 * scale, lineStep, `inventoryEntryButton ${['shrButton', 'medButton', 'lngButton'][column - 5]}`));
         });
     });
     appendRecordSheetAmmoProfile(group, recordSheetAmmoProfile(entity), {

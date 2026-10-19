@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -37,7 +37,6 @@ import {
     setCompactClusterRacks,
     setInventoryComponentIds,
     svgElement,
-    transparentRect,
 } from '../record-sheet-svg-rendering';
 import {
     BATTLE_ARMOR_DEFAULT_ART,
@@ -52,6 +51,9 @@ import {
 } from './record-sheet-reference-table-components';
 
 const MASTHEAD_ART_ID = 'mekbay-battle-armor-masthead-art';
+/** Inventory names start where the Mek and vehicle names do (only bays print a quantity) and keep their right edge. */
+const BA_NAME_X = 8.41;
+const BA_NAME_WIDTH = 91.1 - BA_NAME_X;
 
 export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     public constructor() {
@@ -397,25 +399,14 @@ function drawCompactBattleArmorInventory(
     },
 ): void {
     const { x, y, font } = scale;
-    const rawWeapons = recordSheetInventoryWeapons(entity, true);
+    const rawWeapons = recordSheetInventoryWeapons(entity);
     const weaponComponentIds = new Set(rawWeapons.flatMap(row => row.componentIds));
     const antiPersonnelWeaponIds = new Set<string>(entity.equipment()
         .filter(mount => mount.isAPM)
         .map(mount => mount.mountId));
-    const weapons = rawWeapons.flatMap(row => {
-        const componentIds = row.componentIds.filter(id => !antiPersonnelWeaponIds.has(id));
-        return componentIds.length === 0 ? [] : [{
-            ...row,
-            componentIds: Object.freeze(componentIds),
-            quantity: componentIds.length,
-        }];
-    });
+    const weapons = rawWeapons.filter(row => row.componentIds.every(id => !antiPersonnelWeaponIds.has(id)));
     const armorName = (entity.uniformArmor()?.armor.name ?? '').toLowerCase();
-    const miscRows = new Map<string, {
-        quantity: number;
-        name: string;
-        componentIds: string[];
-    }>();
+    const miscRows: { name: string; componentIds: readonly string[] }[] = [];
     entity.equipment().forEach(mount => {
         if (weaponComponentIds.has(mount.mountId) || mount.getAmmoShots() !== undefined) return;
         const name = mount.displayName();
@@ -427,19 +418,12 @@ function drawCompactBattleArmorInventory(
             || isUmuEquipment(mount.equipment)
             || mount.isAPM
             || normalized.includes('anti-personnel weapon mount')) return;
-        const key = name;
-        const existing = miscRows.get(key);
-        if (existing) {
-            existing.quantity++;
-            existing.componentIds.push(mount.mountId);
-        } else {
-            miscRows.set(key, { quantity: 1, name, componentIds: [mount.mountId] });
-        }
+        miscRows.push({ name, componentIds: [mount.mountId] });
     });
 
     const rows = [
         ...weapons,
-        ...[...miscRows.values()].map(row => ({
+        ...miscRows.map(row => ({
             ...row,
             location: '',
             heat: '',
@@ -451,8 +435,8 @@ function drawCompactBattleArmorInventory(
     ];
     const ammo = recordSheetAmmoProfile(entity);
     const rowLines = (row: { name: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number) =>
-        inventoryRowLineCount([[row.name, x(79)], [row.damage, x(31)], [row.minimumRange, x(13)],
-            ...row.ranges.map(value => [value, x(13)] as const)], font(size));
+        inventoryRowLineCount([[row.name, x(BA_NAME_WIDTH)], [row.damage, x(31)], [row.minimumRange, x(INVENTORY_RANGE_VALUE_WIDTH)],
+            ...row.ranges.map(value => [value, x(INVENTORY_RANGE_VALUE_WIDTH)] as const)], font(size));
     const firstBaseline = 66.666;
     const metrics = fitInventoryText(105.2 - firstBaseline, fontSize => ({
         lineCount: rows.reduce((sum, row) => sum + rowLines(row, fontSize)
@@ -463,18 +447,14 @@ function drawCompactBattleArmorInventory(
     const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, yPos, { ...options, lineHeight: y(lineStep) });
 
-    addText(group, '#', x(7.55), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle' });
-    addText(group, 'Type', x(12.1), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
+    addText(group, 'Type', x(BA_NAME_X), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     addText(group, 'Dmg', x(94), y(56.766), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
-    const rangePositions = [134.04, 149.146, 164.07, 179.54] as const;
-    [['Min', rangePositions[0]], ['Sht', rangePositions[1]], ['Med', rangePositions[2]], ['Lng', rangePositions[3]]]
-        .forEach(([label, position]) => {
-        addText(group, String(label), x(Number(position)), y(56.766), {
-            size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle',
-        });
-    });
+    const columns = inventoryRangeColumns(3.966, 186.54);
+    const rangePositions = columns.ranges;
+    inventoryRangeHeadings(columns).forEach(([label, position]) => addText(group, label, x(position), y(56.766), {
+        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor: 'middle',
+    }));
 
-    const rangeClasses = ['', 'shrButton', 'medButton', 'lngButton'] as const;
     const inventory = svgElement('g');
     group.appendChild(inventory);
     let displayLine = 0;
@@ -486,20 +466,14 @@ function drawCompactBattleArmorInventory(
         entry.setAttribute('class', 'inventoryEntry');
         entry.setAttribute('id', `generated-ba-inventory-row@${index}`);
         setInventoryComponentIds(entry, row.componentIds);
-        entry.appendChild(transparentRect(x(3.966), y(baselineValue - lineStep), x(182), y(lineStep * lineCount),
-            'inventoryEntryButton mainButton'));
-        rangeClasses.slice(1).forEach((className, rangeIndex) => entry.appendChild(
-            transparentRect(x(rangePositions[rangeIndex + 1] - 7), y(baselineValue - lineStep), x(14), y(lineStep),
-                `inventoryEntryButton ${className}`),
-        ));
         const baseline = y(baselineValue);
         // Compact blocks compress vertically; badges take the smaller scale so they fit their rows.
-        appendInventoryHitModifier(entry, baseline, Math.min(font(1), y(1)), y(lineStep));
-        addCell(entry, String(row.quantity), x(7.55), baseline, {
-            class: 'quantity', size: font(rowFont), anchor: 'middle',
-        });
-        addCell(entry, row.name, x(12.1), baseline, {
-            class: 'name', size: font(rowFont), maxWidth: x(79),
+        const badgeScale = Math.min(font(1), y(1));
+        const buttons = inventoryRangeButtons(columns, x);
+        appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
+        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
+        addCell(entry, row.name, x(BA_NAME_X), baseline, {
+            class: 'name', size: font(rowFont), maxWidth: x(BA_NAME_WIDTH),
         });
         const damage = svgElement('g');
         damage.setAttribute('class', 'damage');
@@ -511,9 +485,8 @@ function drawCompactBattleArmorInventory(
         const rangeValues = [row.minimumRange, ...row.ranges.slice(0, 3)];
         const rangeTextClasses = ['range_min', 'range_short', 'range_medium', 'range_long'];
         rangeValues.forEach((value, rangeIndex) => addCell(entry, value, x(rangePositions[rangeIndex]), baseline, {
-            class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(13),
+            class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(INVENTORY_RANGE_VALUE_WIDTH),
         }));
-        appendInventoryTargetNumber(entry, 0, baseline, Math.min(font(1), y(1)), y(lineStep));
 
         let modeLine = displayLine + inventoryRowSpan(lineCount, lineStep);
         row.alternativeModes.forEach(mode => {
@@ -523,12 +496,8 @@ function drawCompactBattleArmorInventory(
             const alternative = svgElement('g');
             alternative.setAttribute('class', 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
-            alternative.appendChild(transparentRect(x(3.966), y(modeBaselineValue - lineStep), x(182),
-                y(lineStep * modeLineCount), 'inventoryEntryButton alternativeModeButton'));
-            rangeClasses.slice(1).forEach((className, rangeIndex) => alternative.appendChild(
-                transparentRect(x(rangePositions[rangeIndex + 1] - 7), y(modeBaselineValue - lineStep), x(14), y(lineStep),
-                    `inventoryEntryButton ${className}`),
-            ));
+            appendInventoryRowButtons(alternative, y(modeBaselineValue), badgeScale, y(lineStep), modeLineCount,
+                buttons.band, buttons.ranges, 'alternativeModeButton');
             addCell(alternative, mode.name, x(12.1), y(modeBaselineValue), {
                 class: 'name', size: font(rowFont), maxWidth: x(79),
             });
@@ -536,7 +505,8 @@ function drawCompactBattleArmorInventory(
                 y(modeBaselineValue + damageIndex * lineStep), { size: font(rowFont), maxWidth: x(31) }));
             [mode.minimumRange, ...mode.ranges].forEach((value, rangeIndex) => addCell(alternative, value,
                 x(rangePositions[rangeIndex]), y(modeBaselineValue), {
-                    class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle', maxWidth: x(13),
+                    class: rangeTextClasses[rangeIndex], size: font(rowFont), anchor: 'middle',
+                    maxWidth: x(INVENTORY_RANGE_VALUE_WIDTH),
                 }));
             entry.appendChild(alternative);
             modeLine += modeLineCount;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { SvgFrameUtil } from '../svg-frame.util';
 
@@ -21,7 +21,7 @@ import {
 import {
     type Box, addText, appendBattleValue, compactClusterRacks, drawClusterHitsReference, drawGeneratedFooter,
     formatNumber, makeDistributedPips, recordSheetInventoryWeapons, scalePageBox, setAttributes, setCompactClusterRacks,
-    setInventoryComponentIds, svgElement, transparentRect,
+    setInventoryComponentIds, svgElement,
 } from '../record-sheet-svg-rendering';
 import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 
@@ -160,7 +160,9 @@ function isLargeHandheldLayout(entity: BaseEntity): boolean {
 }
 
 function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: number): void {
-    const xs = [16.811, 117.168, 177.382, 189.636, 202.735, 216.468];
+    const columns = inventoryRangeColumns(11.529, 222.468);
+    const xs = [16.811, 117.168, ...columns.ranges];
+    const damageWidth = columns.bandRight - xs[1];
     ['Type', 'Dmg', 'Min', 'Sht', 'Med', 'Lng'].forEach((label, index) => {
         addText(group, label, xs[index], 33.489, { size: RECORD_SHEET_FONT.inventory, weight: 700,
             anchor: index > 1 ? 'middle' : 'start' });
@@ -168,8 +170,8 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
     addText(group, 'Loc', 106.604, 33.489, { size: RECORD_SHEET_FONT.inventory, weight: 700, anchor: 'middle' });
     const rows = recordSheetInventoryWeapons(entity);
     const rowLines = (name: string, location: string, damage: string, minimum: string, ranges: readonly string[], fontSize: number) =>
-        inventoryRowLineCount([[name, 77], [location, 19], [damage, 52], [minimum, 11],
-            ...ranges.map(value => [value, 11] as const)], fontSize);
+        inventoryRowLineCount([[name, 77], [location, 19], [damage, damageWidth], [minimum, INVENTORY_RANGE_VALUE_WIDTH],
+            ...ranges.map(value => [value, INVENTORY_RANGE_VALUE_WIDTH] as const)], fontSize);
     const mainLines = (fontSize: number) => rows.map(row =>
         rowLines(row.name, entity.componentLocationLabel(row.location), row.damage, row.minimumRange, row.ranges, fontSize));
     const metrics = fitInventoryText(26 + extra, fontSize => ({ lineCount: rows.reduce((sum, row, index) => sum
@@ -191,22 +193,20 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
             const lineCount = rowLines(name, entity.componentLocationLabel(row.location), damage, min, ranges, metrics.fontSize);
             // The entry row carries the to-hit badges and keeps their minimum height.
             index += host === entry ? inventoryRowSpan(lineCount, step) : lineCount;
-            host.appendChild(transparentRect(11.529, y - step + 1, 211.277, lineCount * step, 'inventoryEntryButton mainButton'));
+            const buttons = inventoryRangeButtons(columns, value => value);
+            appendInventoryRowButtons(host, y, 1, step, lineCount, buttons.band, buttons.ranges);
             addCell(host, name, xs[0], y, { class: 'name', size: RECORD_SHEET_FONT.inventory, maxWidth: 77 });
             addCell(host, entity.componentLocationLabel(row.location), 106.604, y,
                 { class: 'location', size: RECORD_SHEET_FONT.inventory, anchor: 'middle', maxWidth: 19 });
-            addCell(host, damage, xs[1], y, { class: 'damage', size: RECORD_SHEET_FONT.inventory, maxWidth: 52 });
+            addCell(host, damage, xs[1], y, { class: 'damage', size: RECORD_SHEET_FONT.inventory, maxWidth: damageWidth });
             [min, ...ranges].forEach((value, column) => {
                 addCell(host, value, xs[column + 2], y, { class: ['range_min', 'range_short', 'range_medium', 'range_long'][column],
-                    size: RECORD_SHEET_FONT.inventory, anchor: 'middle', maxWidth: 11 });
-                if (column > 0) host.appendChild(transparentRect(xs[column + 2] - 6, y - step + 1, 12, step,
-                    `inventoryEntryButton ${['', 'shrButton', 'medButton', 'lngButton'][column]}`));
+                    size: RECORD_SHEET_FONT.inventory, anchor: 'middle', maxWidth: INVENTORY_RANGE_VALUE_WIDTH });
             });
         };
         const baseline = 43.389 + index * step;
         draw(entry, row.name, row.damage, row.minimumRange, row.ranges);
-        appendInventoryHitModifier(entry, baseline, 1, step);
-        appendInventoryTargetNumber(entry, 0, baseline, 1, step);
+        appendInventoryBadges(entry, baseline, 1, step);
         row.alternativeModes.forEach(mode => {
             const alternative = svgElement('g');
             setAttributes(alternative, { class: 'alternativeMode', 'data-mekbay-mode': mode.name });

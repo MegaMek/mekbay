@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryCellLines, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, fitInventoryText, inventoryCellLines, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import type { SystemDamageKind } from '../../../models/rules/system-damage-rules';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
@@ -52,7 +52,6 @@ formatWholeNumber,
 scalePageBox,
 setInventoryComponentIds,
 svgElement,
-transparentRect,
 wrapRecordSheetText,
 type Box,
 } from '../record-sheet-svg-rendering';
@@ -577,7 +576,6 @@ interface LargeAeroInventoryColumns {
     readonly gravDeckSecondColumnX: number;
     readonly gravDeckColumnWidth: number;
     readonly cargoMaxWidth: number;
-    readonly targetNumberX: number;
 }
 
 const FRONT_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
@@ -596,7 +594,6 @@ const FRONT_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
     gravDeckSecondColumnX: 110.328,
     gravDeckColumnWidth: 99,
     cargoMaxWidth: 205,
-    targetNumberX: 216,
 });
 
 const REVERSE_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
@@ -615,7 +612,6 @@ const REVERSE_INVENTORY_COLUMNS: LargeAeroInventoryColumns = Object.freeze({
     gravDeckSecondColumnX: 143.92,
     gravDeckColumnWidth: 130,
     cargoMaxWidth: 262,
-    targetNumberX: 269,
 });
 
 interface LargeAeroInventoryGeometry {
@@ -714,14 +710,13 @@ function drawLargeAeroInventoryTable(
         entry.setAttribute('class', 'inventoryEntry bay');
         entry.id = `${pageRole}_${scale}_bay_${index + 1}`;
         setInventoryComponentIds(entry, row.componentIds);
-        entry.appendChild(transparentRect(x(3), y(baseline - rowStep), x(columns.mainButtonWidth), y(rowStep * lineCount),
-            'inventoryEntryButton mainButton'));
-        columns.rangeX.forEach((position, rangeIndex) => entry.appendChild(
-            transparentRect(x(position - columns.rangeMaxWidth / 2), y(baseline - rowStep),
-                x(columns.rangeMaxWidth), y(rowStep),
-                `inventoryEntryButton ${['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex]}`),
-        ));
-        appendInventoryHitModifier(entry, y(baseline), geometry.badgeScale, y(rowStep));
+        appendInventoryRowButtons(entry, y(baseline), geometry.badgeScale, y(rowStep), lineCount,
+            [x(3), x(columns.mainButtonWidth)],
+            columns.rangeX.map((position, rangeIndex) => [
+                ['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex],
+                x(position - columns.rangeMaxWidth / 2), x(columns.rangeMaxWidth),
+            ] as const));
+        appendInventoryBadges(entry, y(baseline), geometry.badgeScale, y(rowStep));
         nameLines.forEach((name, lineIndex) => {
             addCell(entry, name, x(lineIndex === 0 ? columns.nameX : columns.continuationX),
                 y(baseline + lineIndex * rowStep), {
@@ -740,7 +735,6 @@ function drawLargeAeroInventoryTable(
                 class: ['range_short', 'range_medium', 'range_long', 'range_extreme'][rangeIndex],
                 size: font(textSize), anchor: 'middle', maxWidth: x(columns.rangeMaxWidth),
             }));
-        appendInventoryTargetNumber(entry, x(columns.targetNumberX), y(baseline), geometry.badgeScale, y(rowStep));
         group.appendChild(entry);
         displayLine += inventoryRowSpan(lineCount, rowStep);
     });

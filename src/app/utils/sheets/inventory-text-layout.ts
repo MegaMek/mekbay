@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { measureSvgTextCanvas } from '../svg-text.util';
-import { addText, formatNumber, setAttributes, svgElement } from './record-sheet-svg-rendering';
+import { addText, formatNumber, setAttributes, svgElement, transparentRect } from './record-sheet-svg-rendering';
 import { INVENTORY_BADGE, RECORD_SHEET_FONT } from './record-sheet-typography';
 
 export const MIN_INVENTORY_FONT = 4.5;
@@ -95,30 +95,102 @@ export function addInventoryText(parent: SVGElement, value: string, x: number, y
     return text;
 }
 
-/** Weapon to-hit modifier, centred on the frame's left border. */
-export function appendInventoryHitModifier(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale): void {
-    appendInventoryBadge(parent, 'hitMod', 0, baseline, scale, lineHeight);
+const RANGE_BOX_WIDTH = 12.4;
+const RANGE_BOX_GAP = 1.4;
+/** The widest value a range column prints before it wraps. */
+export const INVENTORY_RANGE_VALUE_WIDTH = 12;
+
+/** An inventory's row band and Min/Sht/Med/Lng columns, in its template units. */
+export interface InventoryRangeColumns {
+    readonly bandLeft: number;
+    readonly bandRight: number;
+    /** Centres of the Min, Sht, Med and Lng columns. */
+    readonly ranges: readonly number[];
 }
 
-/** Selected-target number; templates differ only in where the badge sits. */
-export function appendInventoryTargetNumber(parent: SVGElement, x: number, baseline: number, scale = 1,
-    lineHeight = 9 * scale): void {
-    appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
+/**
+ * Min/Sht/Med/Lng columns whose Lng box ends at `lngRight`: equal range boxes a constant gap apart, and the row band
+ * from `bandLeft` to that gap before Min, so every inventory spaces its ranges alike.
+ */
+export function inventoryRangeColumns(bandLeft: number, lngRight: number): InventoryRangeColumns {
+    const pitch = RANGE_BOX_WIDTH + RANGE_BOX_GAP;
+    const ranges = [3, 2, 1, 0].map(step => lngRight - RANGE_BOX_WIDTH / 2 - step * pitch);
+    return Object.freeze({
+        bandLeft,
+        bandRight: ranges[0] - RANGE_BOX_WIDTH / 2 - RANGE_BOX_GAP,
+        ranges: Object.freeze(ranges),
+    });
+}
+
+/** The full-width ('Mek and vehicle) inventory, its Lng box close to the frame. */
+export const STANDARD_INVENTORY_COLUMNS = inventoryRangeColumns(6, 221.6);
+
+/** Min/Sht/Med/Lng headings centred on their columns. */
+export function inventoryRangeHeadings(columns: InventoryRangeColumns): readonly (readonly [string, number, 'middle'])[] {
+    return (['Min', 'Sht', 'Med', 'Lng'] as const).map((label, index) => [label, columns.ranges[index], 'middle'] as const);
+}
+
+/** The row band and Sht/Med/Lng boxes through a layout's template-to-sheet x scale. */
+export function inventoryRangeButtons(columns: InventoryRangeColumns, x: (value: number) => number): Readonly<{
+    band: readonly [x: number, width: number];
+    ranges: readonly (readonly [className: string, x: number, width: number])[];
+}> {
+    return Object.freeze({
+        band: [x(columns.bandLeft), x(columns.bandRight - columns.bandLeft)] as const,
+        ranges: (['shrButton', 'medButton', 'lngButton'] as const).map((className, index) =>
+            [className, x(columns.ranges[index + 1] - RANGE_BOX_WIDTH / 2), x(RANGE_BOX_WIDTH)] as const),
+    });
+}
+
+/** Vertical middle of an inventory line's text, shared by its badges and click targets. */
+function inventoryLineMiddle(baseline: number, scale: number): number {
+    return baseline - 2.5 * scale;
+}
+
+/**
+ * An inventory row's click targets: the main (or alternative-mode) button and the range buttons, each a band of whole
+ * line pitches centred on the row's text like its badges, so the selection highlight sits on the row in every layout.
+ */
+export function appendInventoryRowButtons(
+    row: SVGElement,
+    baseline: number,
+    scale: number,
+    lineHeight: number,
+    lines: number,
+    main: readonly [x: number, width: number],
+    ranges: readonly (readonly [className: string, x: number, width: number])[] = [],
+    mainClass: 'mainButton' | 'alternativeModeButton' = 'mainButton',
+): void {
+    const top = inventoryLineMiddle(baseline, scale) - lineHeight / 2;
+    const height = lines * lineHeight;
+    row.appendChild(transparentRect(main[0], top, main[1], height, `inventoryEntryButton ${mainClass}`));
+    for (const [className, x, width] of ranges) {
+        row.appendChild(transparentRect(x, top, width, height, `inventoryEntryButton ${className}`));
+    }
+}
+
+/**
+ * A row's weapon to-hit modifier and selected-target number, sharing one slot centred on the frame's left border: the
+ * target number takes the modifier's place while a target is selected.
+ */
+export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale): void {
+    appendInventoryBadge(parent, 'hitMod', baseline, scale, lineHeight);
+    appendInventoryBadge(parent, 'targetTn', baseline, scale, lineHeight);
 }
 
 /** Mek-reference width and type stay fixed; only the background height follows dense leading. */
-function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number,
-    scale: number, lineHeight: number): void {
+function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', baseline: number, scale: number,
+    lineHeight: number): void {
     const height = Math.min(INVENTORY_BADGE.height * scale, Math.max(INVENTORY_BADGE.minimumHeight * scale, lineHeight));
-    const center = baseline - 2.5 * scale;
+    const center = inventoryLineMiddle(baseline, scale);
     const hitModifier = kind === 'hitMod';
     const rect = svgElement('rect');
-    setAttributes(rect, { x: x - INVENTORY_BADGE.width * scale / 2, y: center - height / 2,
+    setAttributes(rect, { x: -INVENTORY_BADGE.width * scale / 2, y: center - height / 2,
         width: INVENTORY_BADGE.width * scale, height,
         fill: hitModifier ? '#000' : '#fff', stroke: hitModifier ? undefined : '#000',
         'stroke-width': hitModifier ? undefined : 0.8 * scale, class: `${kind}-rect`, display: 'none' });
     parent.appendChild(rect);
-    const text = addText(parent, '', x, center + INVENTORY_BADGE.fontSize * scale / 3, {
+    const text = addText(parent, '', 0, center + INVENTORY_BADGE.fontSize * scale / 3, {
         class: `${kind}-text`, size: INVENTORY_BADGE.fontSize * scale, weight: 700,
         fill: hitModifier ? '#fff' : undefined, anchor: 'middle' });
     text.setAttribute('font-family', 'monospace');

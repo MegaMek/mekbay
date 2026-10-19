@@ -1566,7 +1566,7 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
-    it('renders target color, target number, out-of-range state, and hit modifier from Entity plus runtime facts', () => {
+    it('renders target color, out-of-range state, and the target number in the hit modifier slot', () => {
         const svg = sheet();
         svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
             <rect class="hitMod-rect" display="none"></rect><text class="hitMod-text" display="none"></text>
@@ -1602,8 +1602,7 @@ describe('Mek record-sheet binder', () => {
         expect(row.style.getPropertyValue('--inventory-control-selection-color')).toBe('#d64545');
         expect(row.querySelector('.targetTn-text')?.textContent).toBe('10');
         expect(row.querySelector('.targetTn-rect')?.getAttribute('display')).toBe('block');
-        expect(row.querySelector('.hitMod-text')?.textContent).toBe('+1');
-        expect(row.querySelector('.hitMod-rect')?.getAttribute('display')).toBe('block');
+        expect(row.querySelector('.hitMod-rect')?.getAttribute('display')).toBe('none');
         expect(row.classList.contains('selected-range-medium')).toBeTrue();
         expect(row.classList.contains('selected-target-out-of-range')).toBeFalse();
         binding.destroy();
@@ -1655,7 +1654,14 @@ describe('Mek record-sheet binder', () => {
             inventoryFrom(standing));
         const row = svg.querySelector('.inventoryEntry') as SVGElement;
         const standingTargetNumber = Number(row.querySelector('.targetTn-text')?.textContent);
-        expect(row.querySelector('.hitMod-text')?.textContent).toBe('+2');
+        const flat = {
+            ...standing,
+            equipment: standing.equipment.map((component, index) => index === 0
+                ? { ...component, weapon: { ...component.weapon!, hit: equipmentHit(0) } }
+                : component),
+        } as unknown as MekRecordSheetSnapshot;
+        binding.render(flat, inventoryFrom(flat));
+        expect(Number(row.querySelector('.targetTn-text')?.textContent)).toBe(standingTargetNumber - 2);
 
         binding.render(running, inventoryFrom(running));
         expect(Number(row.querySelector('.targetTn-text')?.textContent)).toBe(standingTargetNumber + 2);

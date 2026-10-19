@@ -719,7 +719,6 @@ function renderInventory(
         const heat = typeof row.heat === 'number' ? recordSheetHeatText(row.heat) : row.heat;
         const ranges = row.ranges.every(range => typeof range === 'number')
             ? recordSheetRangeTexts(row.ranges as readonly number[]) : row.ranges;
-        writeInventoryField(element, 'quantity', row.componentIds.length > 1 ? row.componentIds.length : '');
         writeInventoryName(element, row.label);
         // Equipment rows print design facts the generator laid out; only weapons and attacks change in play.
         if (row.kind !== 'equipment') {
@@ -731,7 +730,6 @@ function renderInventory(
             writeInventoryField(element, 'range_medium', ranges[1] ?? '');
             writeInventoryField(element, 'range_long', ranges[2] ?? '');
             writeInventoryField(element, 'range_extreme', ranges[3] ?? '');
-            writeGeneratedInventorySummary(element, row);
         }
         const alternativeModes = [...element.querySelectorAll<SVGElement>(':scope > .alternativeMode')];
         const modes = alternativeModes.some(mode => mode.dataset['mekbayStaticModeProfile'] === '1')
@@ -1007,18 +1005,6 @@ function compareRecordSheetWeaponRows(
 
 function formatDamage(value: string | number | readonly number[]): string {
     return Array.isArray(value) ? value.join('/') : String(value);
-}
-
-function writeGeneratedInventorySummary(rowElement: SVGElement, row: RecordSheetEquipmentRow): void {
-    const field = rowElement.querySelector<SVGElement>('.mekbay-inventory-summary');
-    if (!field) return;
-    const ranges = row.ranges.join('/');
-    field.textContent = [
-        row.componentIds.length > 1 ? `×${row.componentIds.length}` : '',
-        row.heat === '' ? '' : `H${row.heat}`,
-        row.damage === '' ? '' : `D${formatDamage(row.damage)}`,
-        ranges ? `R${row.minimumRange ? `${row.minimumRange}/` : ''}${ranges}` : '',
-    ].filter(Boolean).join(' ');
 }
 
 function writeInventoryField(row: SVGElement, className: string, value: string | number): void {
@@ -1327,7 +1313,7 @@ function resetUnitDataLayout(
         });
         // Design text stays as laid out: shown weapon and attack rows rewrite theirs in place.
         if (element.classList.contains('linked')) return;
-        for (const field of ['quantity', 'hitmod']) writeInventoryField(element, field, '');
+        writeInventoryField(element, 'hitmod', '');
     });
     svg.querySelectorAll<SVGElement>(manifest.selectors.crewHit).forEach(element => {
         element.style.display = 'none';

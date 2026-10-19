@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -345,13 +345,13 @@ export function drawMekDataPanel(
         size: font(RECORD_SHEET_FONT.section), weight: 700,
     });
     addText(group, '(hexes)', x(171.132), y(inventoryTitleY), { size: font(RECORD_SHEET_FONT.inventory) });
-    const headings: readonly [string, number, 'start' | 'middle'][] = [
+    const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
         ['Type', 8.41, 'start'], ['Loc', 89.56, 'middle'], ['Ht', 103.626, 'middle'],
-        ['Dmg', 111.2, 'start'], ['Min', 172.874, 'middle'], ['Sht', 185.425, 'middle'],
-        ['Med', 198.842, 'middle'], ['Lng', 212.908, 'middle'],
+        ['Dmg', 111.2, 'start'], ...inventoryRangeHeadings(STANDARD_INVENTORY_COLUMNS),
     ];
+    // Headings keep their natural width; a fitted width would stretch the short ones.
     headings.forEach(([label, position, anchor]) => addText(group, label, x(position), y(inventoryHeadingY), {
-        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor, maxWidth: anchor === 'middle' ? x(11) : undefined,
+        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
     }));
     appendMekInventoryRows(group, entity, box, { sx, sy, fontScale }, {
         showQuirks,
@@ -527,7 +527,6 @@ function appendMekInventoryRows(
     const rowFont = font(metrics.fontSize);
     const addCell = (parent: SVGElement, value: string, x: number, y: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, y, { ...options, lineHeight: rowStep });
-    const rowFontScale = metrics.fontSize / RECORD_SHEET_FONT.inventory;
     const heatProfileY = geometry.heatProfileReference === undefined
         ? firstBaseline + equipmentDisplayLines * rowStep + rowStep * 0.5
         : y(geometry.heatProfileReference);
@@ -572,21 +571,11 @@ function appendMekInventoryRows(
         }
 
         const localBaseline = rowStep - y(1.4);
-        const controlY = localBaseline - y(6.5) * rowFontScale;
-        const controlHeight = Math.max(y(8) * rowFontScale, (isEquipment ? equipmentSpans[index][0] : physicalSpans[index - equipmentRows.length]) * rowStep);
-        row.appendChild(transparentRect(
-            x(2), controlY, x(177.104), controlHeight, 'inventoryEntryButton mainButton',
-        ));
-        const buttons: readonly [string, number, number][] = [
-            ['shrButton', 180.304, 10.448],
-            ['medButton', 192.154, 13.569],
-            ['lngButton', 207.252, 11.447],
-        ];
-        buttons.forEach(([className, position, width]) => row.appendChild(
-            transparentRect(x(position), controlY, x(width), controlHeight, `inventoryEntryButton ${className}`),
-        ));
-
-        appendInventoryHitModifier(row, localBaseline, fontScale, rowStep);
+        const buttons = inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x);
+        appendInventoryRowButtons(row, localBaseline, fontScale, rowStep,
+            isEquipment ? equipmentSpans[index][0] : physicalSpans[index - equipmentRows.length],
+            buttons.band, buttons.ranges);
+        appendInventoryBadges(row, localBaseline, fontScale, rowStep);
 
         const name = addCell(row, rowData?.name ?? '', x(8.41), localBaseline, {
             class: 'name', size: rowFont, maxWidth: x(MEK_INVENTORY_NAME_WIDTH),
@@ -605,15 +594,13 @@ function appendMekInventoryRows(
         });
         row.appendChild(damage);
         const ranges = rowData?.ranges ?? [];
-        const rangeColumns: readonly [string, number, string][] = [
-            ['range_min', 172.874, rowData?.minimumRange ?? ''],
-            ['range_short', 185.425, ranges[0] ?? ''],
-            ['range_medium', 198.842, ranges[1] ?? ''],
-            ['range_long', 212.908, ranges[2] ?? ''],
-        ];
-        rangeColumns.forEach(([className, position, value]) => addCell(row, String(value), x(position), localBaseline, {
-            class: className, size: rowFont, anchor: 'middle', maxWidth: x(12),
-        }));
+        const addRangeValues = (parent: SVGElement, values: readonly (string | number | undefined)[], baseline: number) =>
+            STANDARD_INVENTORY_COLUMNS.ranges.forEach((position, rangeIndex) => addCell(parent,
+                String(values[rangeIndex] ?? ''), x(position), baseline, {
+                    class: ['range_min', 'range_short', 'range_medium', 'range_long'][rangeIndex], size: rowFont,
+                    anchor: 'middle', maxWidth: x(INVENTORY_RANGE_VALUE_WIDTH),
+                }));
+        addRangeValues(row, [rowData?.minimumRange, ...ranges], localBaseline);
         if (rowData) {
             const linked = isEquipment ? equipmentRows[index]?.linkedEquipment ?? null : null;
             if (linked) {
@@ -639,15 +626,10 @@ function appendMekInventoryRows(
                 alternative.setAttribute('data-mekbay-mode-label-only', '1');
                 const alternativeY = equipmentSpans[index].slice(0, modeIndex + 1 + (linked ? 1 : 0))
                     .reduce((a, b) => a + b, 0) * rowStep;
-                alternative.appendChild(transparentRect(
-                    x(2), controlY + alternativeY, x(177.104), controlHeight,
-                    'inventoryEntryButton alternativeModeButton',
-                ));
-                buttons.forEach(([className, position, width]) => alternative.appendChild(
-                    transparentRect(x(position), controlY + alternativeY, x(width), controlHeight,
-                        `inventoryEntryButton ${className}`),
-                ));
                 const modeBaseline = localBaseline + alternativeY;
+                appendInventoryRowButtons(alternative, modeBaseline, fontScale, rowStep,
+                    equipmentSpans[index][modeIndex + 1 + (linked ? 1 : 0)], buttons.band, buttons.ranges,
+                    'alternativeModeButton');
                 const modeName = addCell(alternative, mode.name, x(12.738), modeBaseline, {
                     class: 'name', size: rowFont, maxWidth: x(66),
                 });
@@ -664,21 +646,11 @@ function appendMekInventoryRows(
                     size: rowFont, maxWidth: x(54),
                 });
                 alternative.appendChild(modeDamage);
-                const modeValues = [mode.minimumRange, ...mode.ranges];
-                rangeColumns.forEach(([className, position], rangeIndex) => addCell(
-                    alternative,
-                    modeValues[rangeIndex] ?? '',
-                    x(position),
-                    modeBaseline,
-                    { class: className, size: rowFont, anchor: 'middle', maxWidth: x(12) },
-                ));
+                addRangeValues(alternative, [mode.minimumRange, ...mode.ranges], modeBaseline);
                 row.appendChild(alternative);
             });
         }
-        addCell(row, '', x(-4), localBaseline, { class: 'quantity', size: font(6.1) * rowFontScale });
-        addCell(row, '', x(106), localBaseline, { class: 'mekbay-inventory-summary', size: 0.1, fill: '#fff' });
 
-        appendInventoryTargetNumber(row, 0, localBaseline, fontScale, rowStep);
         (isEquipment ? inventoryGroup : physicalGroup).appendChild(row);
     }
 
@@ -706,7 +678,6 @@ interface MekRecordSheetInventoryRow {
     readonly minimumRange: string;
     readonly ranges: readonly string[];
     readonly componentIds: readonly string[];
-    readonly quantity: number;
     readonly linkedEquipment: RecordSheetLinkedEquipment | null;
     readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
 }
@@ -736,7 +707,6 @@ function mekRecordSheetInventoryRows(entity: MekEntity): readonly MekRecordSheet
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([String(mount.mountId)]),
-                quantity: 1,
                 linkedEquipment: null,
                 alternativeModes: Object.freeze([]),
             });

@@ -358,10 +358,8 @@ export function recordSheetInventoryWeaponMounts(entity: BaseEntity): readonly E
   });
 }
 
-export function recordSheetInventoryWeapons(
-  entity: BaseEntity,
-  mergeIdentical = false,
-): readonly {
+/** One row per weapon mount; only bays (aerospace layouts) print a quantity. */
+export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
   readonly name: string;
   readonly location: string;
   readonly heat: string;
@@ -369,15 +367,14 @@ export function recordSheetInventoryWeapons(
   readonly minimumRange: string;
   readonly ranges: readonly string[];
   readonly componentIds: readonly string[];
-  readonly quantity: number;
   readonly linkedEquipment: RecordSheetLinkedEquipment | null;
   readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
 }[] {
-  const unmerged = recordSheetInventoryWeaponMounts(entity).map((mount) => {
+  return Object.freeze(recordSheetInventoryWeaponMounts(entity).map((mount) => {
     const ammoModes = recordSheetAlternativeModes(mount.equipment);
     const enhancement = entity.getLinkingMount(mount);
     const semanticDamage = defaultRecordSheetWeaponDamageText(mount.equipment, entity.getEquipmentRegistry());
-    return {
+    return Object.freeze({
       name: mount.displayName(),
       location: formatEquipmentLocationCodes(mount.getOccupiedLocations()),
       heat: recordSheetHeatText(laserInsulatorAdjustedHeat(mount.equipment.heat, enhancement?.equipment, mount.equipment)),
@@ -389,47 +386,10 @@ export function recordSheetInventoryWeapons(
           ? Object.freeze(['', '', ''])
           : recordSheetRangeTexts(recordSheetWeaponRanges(mount.equipment).slice(0, 3)),
       componentIds: Object.freeze([mount.mountId]),
-      quantity: 1,
       linkedEquipment: recordSheetLinkedEquipment(entity, mount, enhancement, semanticDamage),
       alternativeModes: ammoModes,
-    };
-  });
-  if (!mergeIdentical) return Object.freeze(unmerged.map((row) => Object.freeze(row)));
-
-  const rows = new Map<
-    string,
-    {
-      name: string;
-      location: string;
-      heat: string;
-      damage: string;
-      minimumRange: string;
-      ranges: readonly string[];
-      componentIds: string[];
-      quantity: number;
-      linkedEquipment: RecordSheetLinkedEquipment | null;
-      alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
-    }
-  >();
-  unmerged.forEach((row) => {
-    const linked = row.linkedEquipment && { ...row.linkedEquipment, componentId: undefined };
-    const key = JSON.stringify({ ...row, componentIds: undefined, linkedEquipment: linked });
-    const existing = rows.get(key);
-    if (existing) {
-      existing.componentIds.push(...row.componentIds);
-      existing.quantity += row.quantity;
-    } else {
-      rows.set(key, { ...row, componentIds: [...row.componentIds] });
-    }
-  });
-  return Object.freeze(
-    [...rows.values()].map((row) =>
-      Object.freeze({
-        ...row,
-        componentIds: Object.freeze([...row.componentIds]),
-      }),
-    ),
-  );
+    });
+  }));
 }
 
 export interface RecordSheetInventoryAlternativeMode {

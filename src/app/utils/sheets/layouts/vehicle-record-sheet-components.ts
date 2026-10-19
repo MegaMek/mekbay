@@ -1,6 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { addInventoryText, appendInventoryHitModifier, appendInventoryTargetNumber, fitInventoryText, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
+import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { systemDamageControls,systemDamageLocationControls,systemDamagePresentation } from '../../../models/runtime/system-damage-presentation';
 
@@ -181,13 +181,12 @@ export function drawCompactVehicleDataPanel(
     addLine(content, x(3), y(71.462), box.width - x(3), y(71.462), '#111', 0.8 * fontScale);
     addTemplateCaption(content, 'Weapons & Equipment Inventory', x(3), y(80.462), { size: font(RECORD_SHEET_FONT.section), weight: 700 });
     addText(content, '(hexes)', x(171.132), y(80.462), { size: font(RECORD_SHEET_FONT.inventory) });
-    const headings: readonly [string, number, 'start' | 'middle'][] = [
-        ['Type', 8.41, 'start'], ['Loc', 100.38, 'middle'], ['Dmg', 111.2, 'start'],
-        ['Min', 172.874, 'middle'], ['Sht', 185.425, 'middle'],
-        ['Med', 198.842, 'middle'], ['Lng', 212.908, 'middle'],
+    const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
+        ['Type', 8.41, 'start'], ['Loc', 100.38, 'middle'], ['Dmg', 111.2, 'start'], ...inventoryRangeHeadings(STANDARD_INVENTORY_COLUMNS),
     ];
+    // Headings keep their natural width; a fitted width would stretch the short ones.
     headings.forEach(([label, position, anchor]) => addText(content, label, x(position), y(91.262), {
-        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor, maxWidth: anchor === 'middle' ? x(11) : undefined,
+        size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
     }));
     appendCompactVehicleInventory(content, entity, { x, y, font }, box, presentation);
     const footerOffset = presentation.footerBaselineOffset ?? 0;
@@ -295,25 +294,17 @@ function appendCompactVehicleInventory(
         entry.setAttribute('class', 'inventoryEntry');
         entry.setAttribute('id', `generated-vehicle-inventory-row@${index}`);
         setInventoryComponentIds(entry, row.componentIds);
-        entry.appendChild(transparentRect(x(6), baseline - weaponStep, x(160), weaponStep * rowSpans[index][0],
-            'inventoryEntryButton mainButton'));
-        const rangeButtons: readonly [string, number][] = [
-            ['shrButton', 179], ['medButton', 192.4], ['lngButton', 206.2],
-        ];
-        rangeButtons.forEach(([className, position]) => entry.appendChild(
-            transparentRect(x(position), baseline - weaponStep, x(13.4), weaponStep,
-                `inventoryEntryButton ${className}`),
-        ));
-        appendInventoryHitModifier(entry, baseline, box.width / 220.4, weaponStep);
+        const badgeScale = box.width / 220.4;
+        const buttons = inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x);
+        appendInventoryRowButtons(entry, baseline, badgeScale, weaponStep, rowSpans[index][0], buttons.band, buttons.ranges);
+        appendInventoryBadges(entry, baseline, badgeScale, weaponStep);
         drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, 8.41, weaponStep);
-        appendInventoryTargetNumber(entry, x(164.5), baseline, box.width / 220.4, weaponStep);
         if (row.linkedEquipment) {
             const linked = svgElement('g');
             setAttributes(linked, { class: 'inventoryEntry linked', id: `generated-vehicle-linked-row@${index}` });
             setInventoryComponentIds(linked, [row.linkedEquipment.componentId]);
             const linkedBaseline = baseline + rowSpans[index][0] * weaponStep;
-            linked.appendChild(transparentRect(x(6), linkedBaseline - weaponStep, x(160), weaponStep,
-                'inventoryEntryButton mainButton'));
+            appendInventoryRowButtons(linked, linkedBaseline, badgeScale, weaponStep, rowSpans[index][1], buttons.band);
             drawCompactVehicleInventoryFields(linked, vehicleLinkedEquipmentFields(row.linkedEquipment), linkedBaseline,
                 x, inventoryFont, 12.738, weaponStep);
             entry.appendChild(linked);
@@ -323,12 +314,9 @@ function appendCompactVehicleInventory(
             const alternative = svgElement('g');
             alternative.setAttribute('class', 'alternativeMode');
             alternative.setAttribute('data-mekbay-mode', mode.name);
-            alternative.appendChild(transparentRect(x(6), modeBaseline - weaponStep, x(160), weaponStep,
-                'inventoryEntryButton alternativeModeButton'));
-            rangeButtons.forEach(([className, position]) => alternative.appendChild(
-                transparentRect(x(position), modeBaseline - weaponStep, x(13.4), weaponStep,
-                    `inventoryEntryButton ${className}`),
-            ));
+            appendInventoryRowButtons(alternative, modeBaseline, badgeScale, weaponStep,
+                rowSpans[index][modeIndex + 1 + (row.linkedEquipment ? 1 : 0)], buttons.band, buttons.ranges,
+                'alternativeModeButton');
             drawCompactVehicleInventoryFields(alternative, {
                 name: mode.name,
                 location: '',
@@ -367,8 +355,8 @@ function appendCompactVehicleInventory(
         entry.setAttribute('class', 'inventoryEntry');
         entry.setAttribute('id', `generated-vehicle-physical-row@${index}`);
         setInventoryComponentIds(entry, row.componentIds);
-        entry.appendChild(transparentRect(x(6), baseline - weaponStep, x(160), weaponStep,
-            'inventoryEntryButton mainButton'));
+        appendInventoryRowButtons(entry, baseline, box.width / 220.4, weaponStep, metrics.content.physicalRows[index],
+            inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x).band);
         drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, 8.41, weaponStep);
         physicalRows.appendChild(entry);
     });
@@ -421,10 +409,10 @@ function drawCompactVehicleInventoryFields(
     addCell(damage, row.damage, x(111.2), baseline, { size: font(RECORD_SHEET_FONT.inventory), maxWidth: x(54) });
     group.appendChild(damage);
     const values = [row.minimumRange, ...row.ranges];
-    const positions = [172.874, 185.425, 198.842, 212.908];
     const classes = ['range_min', 'range_short', 'range_medium', 'range_long'];
-    values.forEach((value, rangeIndex) => addCell(group, value, x(positions[rangeIndex]), baseline, {
-        class: classes[rangeIndex], size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle', maxWidth: x(12),
+    values.forEach((value, rangeIndex) => addCell(group, value, x(STANDARD_INVENTORY_COLUMNS.ranges[rangeIndex]), baseline, {
+        class: classes[rangeIndex], size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle',
+        maxWidth: x(INVENTORY_RANGE_VALUE_WIDTH),
     }));
 }
 
@@ -486,7 +474,6 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([mount.mountId]),
-                quantity: 1,
                 alternativeModes: Object.freeze([]),
                 linkedEquipment: null,
             });
