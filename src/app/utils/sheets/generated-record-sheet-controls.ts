@@ -28,7 +28,8 @@ import {
   transparentRect,
 } from './record-sheet-svg-rendering';
 import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
-import { INVENTORY_BADGE, RECORD_SHEET_FONT } from './record-sheet-typography';
+import { recordSheetBadgeSize } from './inventory-text-layout';
+import { INVENTORY_BADGE, RECORD_SHEET_CAP_HEIGHT, RECORD_SHEET_FONT } from './record-sheet-typography';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 export interface GeneratedRecordSheetControlOptions {
@@ -278,6 +279,14 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
     caption.after(stationary);
     movements.push({ id: stationary.id, mode: 'stationary' });
   }
+  // The closest two movement rows of a panel set one badge size for all of its modes.
+  const rowPitch = (parent: Element): number => {
+    const rows = [...new Set(movements.flatMap(movement => {
+      const node = svg.getElementById(movement.id);
+      return node?.parentNode === parent ? [Number(node.getAttribute('y')) || 0] : [];
+    }))].sort((left, right) => left - right);
+    return Math.min(...rows.slice(1).map((row, index) => row - rows[index]).filter(gap => gap > 0.01), Infinity);
+  };
   for (const movement of movements) {
     const value = svg.getElementById(movement.id) as SVGTextElement | null;
     if (!value || value.getAttribute('aria-hidden') === 'true') continue;
@@ -306,14 +315,16 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
       value.setAttribute('data-mekbay-move-value-width', String(fontSize * 1.45));
     }
     const labelX = Number(label.getAttribute('x')) || 0;
-    // Sized and placed like the inventory badges, at the body text's scale.
-    const badgeScale = fontSize / RECORD_SHEET_FONT.body;
-    const badgeWidth = INVENTORY_BADGE.width * badgeScale;
+    // The inventory's badge, at the layout's scale (the body text's unless the layout states it) and
+    // shrunk only for movement rows closer together than its height.
+    const layoutScale = Number(parent.getAttribute('data-mekbay-movement-badge-scale')) || fontSize / RECORD_SHEET_FONT.body;
+    const badgeSize = recordSheetBadgeSize(layoutScale, rowPitch(parent));
+    const badgeWidth = badgeSize.width;
     // First-column modifiers straddle the frame in the inventory badges' column; secondary
     // movement columns (LAM modes, jumping vehicles) keep their badges beside their labels.
     const frameX = Number(parent.getAttribute('data-mekbay-movement-frame-x'));
     const badgeX = labelX < fontSize * 2
-      ? frameX + INVENTORY_BADGE.offsetX * badgeScale - badgeWidth / 2
+      ? frameX + INVENTORY_BADGE.offsetX * layoutScale - badgeWidth / 2
       : labelX - badgeWidth - fontSize * 0.15;
     const control = svgElement('g');
     control.setAttribute('class', 'movementControl screen-only');
@@ -329,21 +340,23 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
     badgeGroup.setAttribute('display', 'none');
     const badge = svgElement('rect');
     badge.id = `${movement.id}-turnState-move-rect`;
+    // Centred on the row's digits.
+    const badgeCenterY = valueY - fontSize * RECORD_SHEET_CAP_HEIGHT / 2;
     setAttributes(badge, {
       x: badgeX,
-      y: valueY - fontSize,
+      y: badgeCenterY - badgeSize.height / 2,
       width: badgeWidth,
-      height: fontSize * 1.15,
+      height: badgeSize.height,
       fill: '#000',
     });
     badgeGroup.appendChild(badge);
     // The binder supplies rule-derived modifiers from the unit runtime.
-    addText(badgeGroup, '', badgeX + badgeWidth / 2, valueY - fontSize * 0.05, {
-      size: fontSize * 0.9,
+    addText(badgeGroup, '', badgeX + badgeWidth / 2, badgeCenterY + badgeSize.fontSize / 3, {
+      size: badgeSize.fontSize,
       weight: 700,
       fill: '#fff',
       anchor: 'middle',
-    });
+    }).setAttribute('font-family', 'monospace');
     control.appendChild(badgeGroup);
     parent.appendChild(control);
 

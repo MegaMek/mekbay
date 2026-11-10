@@ -131,6 +131,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     identityGroup.setAttribute('transform', `translate(${formatNumber(identity.x)} ${formatNumber(identity.y)})`);
     identityGroup.setAttribute('data-mekbay-movement-frame-x', formatNumber(-identity.x));
     const identityScale = identity.width / 91;
+    identityGroup.setAttribute('data-mekbay-movement-badge-scale', formatNumber(identityScale));
     const jumpLabel = entity.umuMP() > 0 ? 'Underwater:' : 'Jump:';
     const jumpValue = entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP();
     const movementLines: readonly [string, string, string, string][] = entity.isGlider()

@@ -3,7 +3,7 @@
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
-import { RECORD_SHEET_FONT } from '../record-sheet-typography';
+import { INVENTORY_BADGE, RECORD_SHEET_FONT } from '../record-sheet-typography';
 import { drawRecordSheetInventory, groupRecordSheetWeaponRows, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import { SvgFrameUtil } from '../svg-frame.util';
 
@@ -222,7 +222,8 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
             addCell(entry, String(row.quantity), quantityX, baseline,
                 { class: 'quantity', size: RECORD_SHEET_FONT.inventory, anchor: 'middle' });
         }
-        appendInventoryBadges(entry, baseline, 1, step);
+        // The strip's rows start further inside its frame than a data panel's (8.41); the badges keep that distance.
+        appendInventoryBadges(entry, baseline, 1, step, quantityX - 8.41 + INVENTORY_BADGE.offsetX);
         row.alternativeModes.forEach(mode => {
             const alternative = svgElement('g');
             setAttributes(alternative, { class: 'alternativeMode', 'data-mekbay-mode': mode.name });

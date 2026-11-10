@@ -3,7 +3,7 @@
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
-import { RECORD_SHEET_FONT } from '../record-sheet-typography';
+import { INVENTORY_BADGE, RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { type MekEntity } from '../../../models/entity/entities/mek/mek-entity';
@@ -395,6 +395,8 @@ function drawLamMekDataHeader(
         role,
     ], { x, y, font });
     addText(group, 'Movement Points:', x(6), y(56), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
+    // The mode columns print smaller than body text.
+    group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(scale.fontScale));
     addText(group, 'BattleMech', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
     addText(group, 'AirMech', x(105.312), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, anchor: 'middle' });
     addText(group, 'Fighter', x(163.968), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
@@ -446,9 +448,9 @@ function drawQuadVeeMekDataHeader(
     },
 ): void {
     const { x, y, font } = scale;
-    addText(group, 'Movement Points:', x(6), y(38), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
-    addText(group, 'BattleMech', x(6.023), y(47), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-    addText(group, 'Vehicle', x(60.85), y(47), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
+    const size = font(RECORD_SHEET_FONT.body);
+    addText(group, 'Movement Points:', x(6), y(38), { size, weight: 700 }).id = 'movementPointsLabel';
+    addText(group, 'BattleMech', x(6.023), y(47), { size, weight: 700 });
 
     const battleRun = formatMovementWithMaximum(entity.runMP(), entity.maxRunMP());
     const cruise = entity.originalWalkMP() + (entity.motiveType() === 'Wheel' ? 1 : 0);
@@ -459,20 +461,35 @@ function drawQuadVeeMekDataHeader(
         ['Running:', battleRun, 'mpRun', 'Flanking:', formatMovementWithMaximum(flank, maximumFlank), 'mpFlank', 'run'],
         ['Jumping:', String(entity.jumpMP()), 'mpJump', '', '', '', 'jump'],
     ];
+    // Each column follows the widest text of the one before it: a mode's values (two digits at least, both of a
+    // boosted "9 [12]") end clear of the next mode's modifier badge, and the facts move right for what is left.
+    const widest = (texts: readonly string[], weight?: 700): number => Math.max(...texts.map(text => {
+        const probe = addText(group, text, 0, 0, { size, weight });
+        const width = measureSvgTextCanvas(probe, text);
+        probe.remove();
+        return width;
+    }));
+    const gap = font(2);
+    const battleValueX = x(6) + widest(movementRows.map(row => row[0]), 700) + gap;
+    // The vehicle modes' badges sit just left of their labels.
+    const vehicleX = battleValueX + widest(['00', ...movementRows.map(row => row[1])]) + gap
+        + font(INVENTORY_BADGE.width) + size * 0.15;
+    const vehicleValueX = vehicleX + widest(movementRows.map(row => row[3]), 700) + gap;
+    const factsLeft = vehicleValueX + widest(['00', ...movementRows.map(row => row[4])]) + gap * 2;
+    addText(group, 'Vehicle', vehicleX, y(47), { size, weight: 700 });
     movementRows.forEach(([battleLabel, battleValue, battleId, vehicleLabel, vehicleValue, vehicleId, field], index) => {
         const baseline = y(56 + index * 9);
-        addText(group, battleLabel, x(6), baseline, { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        const battle = addText(group, battleValue, x(48), baseline, { size: font(RECORD_SHEET_FONT.body), anchor: 'middle' });
+        addText(group, battleLabel, x(6), baseline, { size, weight: 700 });
+        const battle = addText(group, battleValue, battleValueX, baseline, { size });
         battle.id = battleId;
         battle.setAttribute('data-mekbay-field', field);
-        if (vehicleLabel) addText(group, vehicleLabel, x(60.85), baseline, { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-        if (vehicleValue) {
-            const vehicle = addText(group, vehicleValue, x(102.85), baseline, { size: font(RECORD_SHEET_FONT.body), anchor: 'middle' });
-            vehicle.id = vehicleId;
-        }
+        if (vehicleLabel) addText(group, vehicleLabel, vehicleX, baseline, { size, weight: 700 });
+        if (vehicleValue) addText(group, vehicleValue, vehicleValueX, baseline, { size }).id = vehicleId;
     });
 
-    appendDataPanelFacts(group, mekDataPanelFacts(entity, [38, 47, 56, 65]), { x, y, font });
+    const factsX = Math.max(115.7, factsLeft / x(1));
+    appendDataPanelFacts(group, mekDataPanelFacts(entity, [38, 47, 56, 65])
+        .map(fact => ({ ...fact, labelX: factsX, valueX: factsX + 42.54, maxWidth: 216.24 - (factsX + 42.54) })), { x, y, font });
 }
 
 /** Tonnage, tech base, role and engine facts of every Mek data panel, at the given baselines. */

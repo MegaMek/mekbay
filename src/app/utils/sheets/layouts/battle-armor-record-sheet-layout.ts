@@ -143,6 +143,7 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
     addText(group, 'Ground MP:', x(6.966), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 });
     const walk = addText(group, String(entity.walkMP()), x(45.03), y(45.966), { size: font(RECORD_SHEET_FONT.inventory) });
     walk.id = 'mpWalk';
+    group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(fontScale));
     const secondaryMovement = compactBattleArmorSecondaryMovement(entity);
     // The runtime "Stationary" mode follows the movement columns, clear of their modifier badges.
     addText(group, '', x(150), y(45.966), { size: font(RECORD_SHEET_FONT.inventory), weight: 700 }).id = 'movementPointsLabel';

@@ -172,6 +172,7 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     addText(group, 'Transport Wt:', x(173.4), y(154.786), { size: font(7.2), weight: 700 });
     addText(group, `${entity.tonnage().toFixed(1)} tons`, x(221.502), y(154.786), { size: font(7.2) });
     addText(group, '', x(387), y(154.786), { size: font(7.2), weight: 700 }).id = 'movementPointsLabel';
+    group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(fontScale));
     addText(group, 'Movement MP:', x(315.4), y(154.786), { size: font(7.2), weight: 700 });
     infantryMovementRows(entity).forEach((movement, index) => {
       const baseline = 154.786 + index * 11.777;

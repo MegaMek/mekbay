@@ -171,21 +171,30 @@ export function appendInventoryRowButtons(
 
 /**
  * A row's weapon to-hit modifier and selected-target number, sharing one slot straddling the frame's left border: the
- * target number takes the modifier's place while a target is selected.
+ * target number takes the modifier's place while a target is selected. A layout whose rows start further inside its
+ * frame gives the slot's centre `x`.
  */
-export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale): void {
-    const x = INVENTORY_BADGE.offsetX * scale;
+export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale,
+    x = INVENTORY_BADGE.offsetX * scale): void {
     appendInventoryBadge(parent, 'hitMod', x, baseline, scale, lineHeight);
     appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
 }
 
-/** On dense leading the whole badge shrinks with its row, keeping the Mek reference's proportions. */
-function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number, scale: number,
-    lineHeight: number): void {
+/**
+ * The one modifier badge of every sheet, for inventory rows and movement modes alike: the standard size at the layout's
+ * `scale`, shrunk as a whole, keeping its proportions, only where rows `lineHeight` apart are too dense for it.
+ */
+export function recordSheetBadgeSize(scale: number, lineHeight: number): {
+    readonly scale: number; readonly width: number; readonly height: number; readonly fontSize: number;
+} {
     const height = Math.min(INVENTORY_BADGE.height * scale, Math.max(INVENTORY_BADGE.minimumHeight * scale, lineHeight));
     const badgeScale = height / INVENTORY_BADGE.height;
-    const width = INVENTORY_BADGE.width * badgeScale;
-    const fontSize = INVENTORY_BADGE.fontSize * badgeScale;
+    return { scale: badgeScale, width: INVENTORY_BADGE.width * badgeScale, height, fontSize: INVENTORY_BADGE.fontSize * badgeScale };
+}
+
+function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number, scale: number,
+    lineHeight: number): void {
+    const { scale: badgeScale, width, height, fontSize } = recordSheetBadgeSize(scale, lineHeight);
     const center = inventoryLineMiddle(baseline, scale);
     const hitModifier = kind === 'hitMod';
     const rect = svgElement('rect');
