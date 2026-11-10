@@ -38,7 +38,7 @@ export function fitInventoryText<T>(height: number,
     }
 }
 
-/** Keep enough leading for the fixed-size badge text after its background gets shorter. */
+/** Keep enough leading for a row's badge to stay legible as it shrinks with dense leading. */
 export function inventoryRowSpan(lines: number, lineStep: number): number {
     return Math.max(lines, INVENTORY_BADGE.minimumHeight / lineStep);
 }
@@ -179,20 +179,22 @@ export function appendInventoryBadges(parent: SVGElement, baseline: number, scal
     appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
 }
 
-/** Mek-reference width and type stay fixed; only the background height follows dense leading. */
+/** On dense leading the whole badge shrinks with its row, keeping the Mek reference's proportions. */
 function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number, scale: number,
     lineHeight: number): void {
     const height = Math.min(INVENTORY_BADGE.height * scale, Math.max(INVENTORY_BADGE.minimumHeight * scale, lineHeight));
+    const badgeScale = height / INVENTORY_BADGE.height;
+    const width = INVENTORY_BADGE.width * badgeScale;
+    const fontSize = INVENTORY_BADGE.fontSize * badgeScale;
     const center = inventoryLineMiddle(baseline, scale);
     const hitModifier = kind === 'hitMod';
     const rect = svgElement('rect');
-    setAttributes(rect, { x: x - INVENTORY_BADGE.width * scale / 2, y: center - height / 2,
-        width: INVENTORY_BADGE.width * scale, height,
+    setAttributes(rect, { x: x - width / 2, y: center - height / 2, width, height,
         fill: hitModifier ? '#000' : '#fff', stroke: hitModifier ? undefined : '#000',
-        'stroke-width': hitModifier ? undefined : 0.8 * scale, class: `${kind}-rect`, display: 'none' });
+        'stroke-width': hitModifier ? undefined : 0.8 * badgeScale, class: `${kind}-rect`, display: 'none' });
     parent.appendChild(rect);
-    const text = addText(parent, '', x, center + INVENTORY_BADGE.fontSize * scale / 3, {
-        class: `${kind}-text`, size: INVENTORY_BADGE.fontSize * scale, weight: 700,
+    const text = addText(parent, '', x, center + fontSize / 3, {
+        class: `${kind}-text`, size: fontSize, weight: 700,
         fill: hitModifier ? '#fff' : undefined, anchor: 'middle' });
     text.setAttribute('font-family', 'monospace');
     text.setAttribute('display', 'none');

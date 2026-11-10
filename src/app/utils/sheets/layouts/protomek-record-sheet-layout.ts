@@ -210,7 +210,7 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         svg.appendChild(group);
     }
         // Clear of the hit-modifier badges that straddle the inventory's left border.
-        const eraBox = at({ x: 72, y: 66.191, width: 20, height: 20 });
+        const eraBox = at({ x: 69.5, y: 66.191, width: 20, height: 20 });
         await appendRecordSheetEraIcon(svg, outer, entity.year(), eraBox);
         appendLegacyIdentityAnchors(outer, entity, at({ x: 0, y: 0, width: 576, height: 139.2 }), request.ruleset);
     }
