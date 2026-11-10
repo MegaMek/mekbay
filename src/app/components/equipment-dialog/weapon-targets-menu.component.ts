@@ -232,7 +232,7 @@ export interface WeaponTargetCalculatorRequest {
             --target-control-height: 28px;
             container-type: inline-size;
             box-sizing: border-box;
-            width: min(560px, calc(100dvw - 16px));
+            width: min(600px, calc(100dvw - 16px));
             max-height: min(620px, calc(100dvh - 16px));
             display: flex;
             flex-direction: column;
@@ -306,14 +306,26 @@ export interface WeaponTargetCalculatorRequest {
             }
         }
 
+        /*
+         * Two columns shared by the main and the C3 row: the controls take the width their captions and steppers
+         * need, so none of them overlaps or cuts its caption, and the target's name gets the rest.
+         */
         .target-wrapper {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
             gap: 10px;
-            align-items: stretch;
-            flex-wrap: nowrap;
+            align-items: end;
             flex: 1 1 auto;
             min-width: 0;
+        }
+
+        .target-main-row,
+        .target-secondary-row {
+            display: contents;
+        }
+
+        .target-modifier-pills-fallback {
+            grid-column: 1 / -1;
         }
 
         .target-modifier-pills {
@@ -426,19 +438,11 @@ export interface WeaponTargetCalculatorRequest {
             opacity: 0.45;
         }
 
-        .target-main-row,
-        .target-secondary-row {
-            display: flex;
-            gap: 10px;
-            align-items: end;
-            min-width: 0;
-        }
         .target-identity-row,
         .target-identity-spacer {
             display: flex;
             gap: 8px;
             align-items: end;
-            flex: 1 1 180px;
             min-width: 0;
         }
 
@@ -450,7 +454,6 @@ export interface WeaponTargetCalculatorRequest {
             display: flex;
             gap: 8px;
             align-items: end;
-            flex: 1 1 220px;
             min-width: 0;
         }
 
@@ -484,10 +487,11 @@ export interface WeaponTargetCalculatorRequest {
             color: var(--jammed-condition-color);
         }
 
+        /* The calculator is a square button; the C3 row leaves its width free so both rows' fields end together. */
         .calculator-button,
         .calculator-spacer {
-            flex: 0 0 var(--target-control-height);
-            inline-size: var(--target-control-height);
+            flex: 0 0 40px;
+            inline-size: 40px;
         }
 
         .target-delete-row {
@@ -537,13 +541,11 @@ export interface WeaponTargetCalculatorRequest {
             font-weight: 700;
             text-transform: uppercase;
             align-self: end;
-            flex: 1 1 0;
-            min-width: 0;
+            /* Never narrower than its caption or its control; spare width is shared between the fields. */
+            flex: 1 0 auto;
         }
 
         .target-number-field > span:first-child {
-            overflow: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap;
         }
 
@@ -680,21 +682,20 @@ export interface WeaponTargetCalculatorRequest {
             color: black;
         }
 
-        @container (max-width: 500px) {
+        /* Too narrow for the name beside the controls: stack them, and let the controls wrap on a phone. */
+        @container (max-width: 560px) {
             .weapon-target-row {
                 gap: 4px;
             }
 
-            .target-main-row,
-            .target-secondary-row {
-                flex-direction: column;
-                align-items: stretch;
+            .target-wrapper {
+                grid-template-columns: minmax(0, 1fr);
                 gap: 8px;
                 padding: 4px 2px 4px 0px;
             }
 
-            .target-wrapper {
-                gap: 4px;
+            .target-controls-row {
+                flex-wrap: wrap;
             }
 
             .target-identity-spacer {
@@ -703,12 +704,6 @@ export interface WeaponTargetCalculatorRequest {
 
             .target-wrapper.has-c3-distance .target-modifier-pills-fallback {
                 display: flex;
-            }
-
-            .target-identity-row,
-            .target-controls-row {
-                flex: 1 1 100%;
-                width: 100%;
             }
 
             .target-delete {

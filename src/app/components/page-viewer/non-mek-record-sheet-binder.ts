@@ -62,12 +62,14 @@ bindRecordSheetInventoryButtons,
 NO_INVENTORY_SELECTION,
 projectRecordSheetWeaponSelection,
 readRecordSheetComponentIds,
+recordSheetInventoryStateKey,
 renderRecordSheetHeatProfile,
 renderRecordSheetInventorySelection,
 writeRecordSheetComponentIds,
 type RecordSheetInventorySource,
 type RecordSheetPanelWeapon,
 } from './record-sheet-inventory';
+import { regroupRecordSheetInventory, type InventoryWeaponStateKey } from '../../utils/sheets/record-sheet-weapon-grouping';
 import type { RecordSheetInteraction, RecordSheetInteractionHandler } from './record-sheet-interaction';
 import { bindRecordSheetMovement } from './record-sheet-movement';
 
@@ -123,6 +125,8 @@ export function bindNonMekRecordSheet(
         currentInventory = inventory;
         const issues: string[] = [];
         const markChanges = !firstRender;
+        // A grouped inventory lays its rows out again as its weapons' states regroup them.
+        regroupRecordSheetInventory(svg, inventoryStateKey(snapshot, inventory));
         renderIdentity(svg, snapshot);
         renderMovementSelection(snapshot.movementSelection);
         bindRecordSheetRandomHit(svg, bindPresentation, context);
@@ -800,6 +804,32 @@ function renderInventorySelections(
         });
         renderRecordSheetInventorySelection(row, selection);
     }
+}
+
+/** Each weapon's live state, for a grouped inventory: its damage, mode, and everything its selection shows. */
+function inventoryStateKey(
+    snapshot: NonMekRecordSheetSnapshot,
+    source: RecordSheetInventorySource | null,
+): InventoryWeaponStateKey {
+    const keys = new Map<string, string>();
+    return componentId => {
+        let key = keys.get(componentId);
+        if (key === undefined) {
+            const component = snapshot.components.find(candidate => candidate.componentId === componentId);
+            const panelRow = source?.panel.components.find(candidate =>
+                equipmentPanelAttackComponentIds(candidate).some(memberId => memberId === componentId));
+            const weapon = panelRow?.weapon === undefined ? undefined : panelRow as RecordSheetPanelWeapon;
+            key = recordSheetInventoryStateKey(
+                component?.status ?? panelRow?.status ?? 'available',
+                projectRecordSheetWeaponSelection(weapon === undefined ? [] : [weapon], source),
+                weapon,
+                source,
+                [component?.previewStatus, panelRow?.mode, weapon?.weapon.minimumRange],
+            );
+            keys.set(componentId, key);
+        }
+        return key;
+    };
 }
 
 function inventoryRowAssignments(

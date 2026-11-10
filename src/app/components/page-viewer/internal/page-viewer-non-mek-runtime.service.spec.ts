@@ -263,8 +263,8 @@ describe('PageViewerNonMekRuntimeService random hits', () => {
             editContext: context, locations: [{ code: 'Front', sheetCode: 'FR' }],
         }) } as unknown as CBTForceMember;
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.innerHTML = '<g data-mekbay-random-hit="1"></g>'
-            + '<path class="unitLocation armor" data-loc="FR"></path>';
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><g data-mekbay-paperdoll="1" data-type="armor">'
+            + '<path class="unitLocation armor" data-loc="FR"></path></g>';
         const button = svg.querySelector<SVGElement>('[data-mekbay-random-hit]')!;
         spyOn(Math, 'random').and.returnValue(0.4);
         service.handle(member, { kind: 'random-hit', element: button, context }, new PointerEvent('pointerdown'));

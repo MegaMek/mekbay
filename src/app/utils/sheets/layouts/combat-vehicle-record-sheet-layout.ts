@@ -86,7 +86,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             entity,
             dataBox,
             { includePhysicalAttacks: !airborne, lastDetailBaseline: 251.58,
-                showQuirks: request.showQuirks, ruleset: request.ruleset },
+                showQuirks: request.showQuirks, groupWeapons: request.groupWeapons, ruleset: request.ruleset },
         );
         drawCompactVehicleCrewPanel(
             svg,

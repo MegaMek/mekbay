@@ -1123,6 +1123,46 @@ describe('bindNonMekRecordSheet', () => {
         });
     }
 
+    it('counts identical vehicle weapons on one row and splits it as some are selected or destroyed', async () => {
+        const laser = new WeaponEquipment({ id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon',
+            weapon: { heat: 3, damage: 5, ranges: [3, 6, 9] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+        entity.uuid.set(uuid);
+        entity.setTonnage(50);
+        const ids = [0, 1, 2].map(() => componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] })));
+        const unit = createNonMekUnit(entity, { instanceId: 'grouped-vehicle', uuid,
+            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
+            0, 0), editContext: { owner: unit, state: unit.snapshot() } });
+        const panel = () => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), unit.query(), emptyCBTEncounterSnapshot());
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', groupWeapons: true });
+        const interactions: RecordSheetInteraction[] = [];
+        const binding = bindNonMekRecordSheet(svg, recordSheet(), interaction => interactions.push(interaction), undefined, inventory(panel()));
+        const rows = () => [...svg.querySelectorAll<SVGElement>('.inventoryEntry[id]')]
+            .filter(row => row.querySelector(':scope > .name')?.textContent === 'Medium Laser');
+        const state = () => rows().map(row => [row.querySelector(':scope > .quantity')?.textContent,
+            row.classList.contains('selected'), row.classList.contains('damaged')]);
+
+        expect([...svg.querySelectorAll('text')].some(text => text.textContent === '#')).toBeTrue();
+        expect(state()).toEqual([['3', false, false]]);
+        rows()[0].querySelector('.mainButton')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions[0]).toEqual(jasmine.objectContaining({ kind: 'inventory-selection', divisible: true, componentIds: ids }));
+
+        unit.installAttackerTargetingSessionState({ ...unit.query().attackerTargetingState(),
+            components: new Map([[ids[0], { selection: { kind: 'selected' } }]]) });
+        unit.dispatch({ type: 'set-component-status', componentId: ids[2], status: 'destroyed', target: 'committed' });
+        binding.render(recordSheet(), inventory(panel()));
+        expect(state()).toEqual([['1', false, false], ['1', true, false], ['1', false, true]]);
+        expect(rows().map(row => row.getAttribute('data-mekbay-component-ids'))).toEqual([ids[1], ids[0], ids[2]]);
+
+        unit.installAttackerTargetingSessionState({ ...unit.query().attackerTargetingState(), components: new Map() });
+        unit.dispatch({ type: 'set-component-status', componentId: ids[2], status: 'available', target: 'committed' });
+        binding.render(recordSheet(), inventory(panel()));
+        expect(state()).toEqual([['3', false, false]]);
+        binding.destroy();
+    });
+
     it('aggregates generated bay-row status directly from its stable component IDs', () => {
         const svg = groupedInventorySheet();
         const firstId = asComponentId('weapon-1');

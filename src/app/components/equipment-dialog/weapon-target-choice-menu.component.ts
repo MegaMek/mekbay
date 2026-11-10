@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
-import { ChangeDetectionStrategy, Component, input, output, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, model, output, inject } from '@angular/core';
 import type { EncounterTargetId } from '../../models/runtime/encounter-runtime';
 
 /** Detached presentation row shared by legacy and Entity/runtime target surfaces. */
@@ -19,6 +19,21 @@ export interface WeaponTargetChoiceRow {
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
         <div class="weapon-target-choice-menu glass framed-borders has-shadow">
+            @if (quantityMax() > 1) {
+                <div class="quantity-choice" role="group" aria-label="How many weapons">
+                    <span class="quantity-label">How many of {{ quantityMax() }}?</span>
+                    <div class="quantity-values">
+                        @for (value of quantities(); track value) {
+                            <button
+                                class="quantity-value"
+                                type="button"
+                                [class.selected-choice]="value === quantity()"
+                                [attr.aria-pressed]="value === quantity()"
+                                (click)="quantity.set(value)">{{ value }}</button>
+                        }
+                    </div>
+                </div>
+            }
             <button
                 class="target-choice empty-choice"
                 type="button"
@@ -71,6 +86,47 @@ export interface WeaponTargetChoiceRow {
             display: flex;
             flex-direction: column;
             gap: 6px;
+        }
+
+        .quantity-choice {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding-block-end: 6px;
+            border-block-end: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .quantity-label {
+            padding-inline: 2px;
+            color: var(--text-color-secondary);
+            font-size: 0.8em;
+        }
+
+        .quantity-values {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+            gap: 4px;
+        }
+
+        .quantity-value {
+            min-block-size: 30px;
+            padding: 0;
+            border: 2px solid transparent;
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-color);
+            font: inherit;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+
+            &:hover {
+                background: var(--hover-bg-color, rgba(255, 255, 255, 0.08));
+            }
+
+            &.selected-choice {
+                border-color: var(--bt-yellow);
+                background-color: var(--bt-yellow-background);
+            }
         }
 
         .target-choice {
@@ -159,6 +215,11 @@ export class WeaponTargetChoiceMenuComponent {
     readonly selectedTargetId = input<EncounterTargetId | null>(null);
     readonly targetNumberTexts = input<Readonly<Record<EncounterTargetId, string>>>({});
     readonly disabledTargetReasons = input<Readonly<Record<EncounterTargetId, string>>>({});
+    /** Above one, the menu also asks how many of that many weapons the chosen target takes. */
+    readonly quantityMax = input(0);
+    /** How many weapons take the chosen target; whoever opens the menu reads it when a target is selected. */
+    readonly quantity = model(0);
+    readonly quantities = computed(() => Array.from({ length: this.quantityMax() }, (_, index) => index + 1));
     readonly selected = output<EncounterTargetId | null>();
 
     targetNumberText(targetId: EncounterTargetId): string {

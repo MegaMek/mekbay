@@ -128,6 +128,7 @@ export class PageViewerComponent implements AfterViewInit {
     private optionsService = inject(OptionsService);
     private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
     private readonly showQuirks = computed(() => this.optionsService.options().CBTOptionalRules?.quirks !== false);
+    private readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons);
     protected readonly pageFormat = computed(() => this.optionsService.options().printAllOptions.paperSize);
     private dbService = inject(DbService);
     private pageViewerState = inject(PageViewerStateService);
@@ -339,6 +340,7 @@ export class PageViewerComponent implements AfterViewInit {
         let previousPipLayout = this.optionsService.options().recordSheetPipLayout;
         let previousPageFormat = this.pageFormat();
         let previousShowQuirks = this.showQuirks();
+        let previousGroupWeapons = this.groupWeapons();
         let previousArtworkRevision = this.fluffImages.revision();
         let previousRuleset: CBTRuleset | null = null;
         let unitEffectRunId = 0;
@@ -355,6 +357,7 @@ export class PageViewerComponent implements AfterViewInit {
             const pipLayout = this.pipLayout();
             const pageFormat = this.pageFormat();
             const showQuirks = this.showQuirks();
+            const groupWeapons = this.groupWeapons();
             const artworkRevision = this.fluffImages.revision();
             // A rules switch rebinds the unit; its printed rule tables are regenerated.
             const ruleset = currentUnit?.ruleset() ?? null;
@@ -395,13 +398,15 @@ export class PageViewerComponent implements AfterViewInit {
                     this.updateDimensions();
                     this.initialRenderComplete = false;
                     this.displayUnit({ fromSwipe: true });
-                } else if (pipLayout !== previousPipLayout || showQuirks !== previousShowQuirks || artworkRevision !== previousArtworkRevision
+                } else if (pipLayout !== previousPipLayout || showQuirks !== previousShowQuirks
+                    || groupWeapons !== previousGroupWeapons || artworkRevision !== previousArtworkRevision
                     || (currentUnit === previousUnit && ruleset !== previousRuleset)) this.displayUnit({ fromSwipe: true });
                 else this.applySelectionChange(previousUnit, currentUnit);
                 previousRuleset = ruleset;
                 previousPipLayout = pipLayout;
                 previousPageFormat = pageFormat;
                 previousShowQuirks = showQuirks;
+                previousGroupWeapons = groupWeapons;
                 previousArtworkRevision = artworkRevision;
                 previousUnit = currentUnit;
             })());

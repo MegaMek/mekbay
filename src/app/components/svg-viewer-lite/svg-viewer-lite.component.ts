@@ -29,6 +29,7 @@ export class SvgViewerLiteComponent {
     private optionsService = inject(OptionsService);
     private readonly pipLayout = computed(() => this.optionsService.options().recordSheetPipLayout);
     private readonly showQuirks = computed(() => this.optionsService.options().CBTOptionalRules?.quirks !== false);
+    private readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons);
     private fluffImages = inject(UnitFluffImageService);
     private nativeEntities = inject(NativeEntityService);
     private recordSheets = inject(RecordSheetSourceService);
@@ -88,6 +89,7 @@ export class SvgViewerLiteComponent {
             const nativeEntity = this.nativeEntity();
             const pipLayout = this.pipLayout();
             const showQuirks = this.showQuirks();
+            const groupWeapons = this.groupWeapons();
             const paperSize = this.sheetPaperSize();
             this.fluffImages.revision();
             const fluffImageUrl = this.fluffImageUrl();
@@ -109,7 +111,7 @@ export class SvgViewerLiteComponent {
                 try {
                     const entity = nativeEntity ?? (await this.nativeEntities.load(u!.uuid)).entity;
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;
-                    const sheets = await this.recordSheets.load(entity, { pipLayout, showQuirks, format: paperSize, pageFormat: paperSize, ...(fluffImageUrl === undefined ? {} : { fluffImageUrl }) }, {
+                    const sheets = await this.recordSheets.load(entity, { pipLayout, showQuirks, groupWeapons, format: paperSize, pageFormat: paperSize, ...(fluffImageUrl === undefined ? {} : { fluffImageUrl }) }, {
                         design: u ? { provider: u.provider, uuid: u.uuid } : undefined,
                     });
                     if (!this.isCurrentSheetLoad(loadGeneration)) return;

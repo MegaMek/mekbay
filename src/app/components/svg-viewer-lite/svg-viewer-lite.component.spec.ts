@@ -51,6 +51,7 @@ describe('SvgViewerLiteComponent', () => {
     let originalResizeObserver: typeof ResizeObserver | undefined;
     let triggerResize: (() => void) | null;
     const options = signal({ mouseWheelAction: 'scroll' as 'scroll' | 'zoom', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic' as RecordSheetPipLayout,
+        recordSheetGroupWeapons: false,
         printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
 
     beforeEach(() => {
@@ -69,7 +70,7 @@ describe('SvgViewerLiteComponent', () => {
             svg.setAttribute('viewBox', '0 0 612 792');
             return { svgs: [svg] };
         });
-        options.set({ mouseWheelAction: 'scroll', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
+        options.set({ mouseWheelAction: 'scroll', CBTOptionalRules: { quirks: true }, recordSheetPipLayout: 'classic', recordSheetGroupWeapons: false, printAllOptions: { paperSize: 'letter' as 'a4' | 'letter', recordSheetCenterPanelContent: 'clusterTable' } });
         triggerResize = null;
         originalResizeObserver = window.ResizeObserver;
         window.ResizeObserver = class implements ResizeObserver {
@@ -349,8 +350,17 @@ describe('SvgViewerLiteComponent', () => {
         options.update(current => ({ ...current, recordSheetPipLayout: 'rail' }));
         await fixture.whenStable();
         expect(recordSheets.load).toHaveBeenCalledTimes(2);
-        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, format: 'letter', pageFormat: 'letter' });
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, groupWeapons: false, format: 'letter', pageFormat: 'letter' });
         expect(nativeEntities.load).toHaveBeenCalledTimes(2);
+        expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
+    });
+
+    it('regenerates an open preview when identical weapons become grouped', async () => {
+        const { fixture, svg } = await createViewer();
+        options.update(current => ({ ...current, recordSheetGroupWeapons: true }));
+        await fixture.whenStable();
+        expect(recordSheets.load).toHaveBeenCalledTimes(2);
+        expect(recordSheets.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
         expect(fixture.nativeElement.querySelector('svg')).not.toBe(svg);
     });
 
@@ -376,7 +386,7 @@ describe('SvgViewerLiteComponent', () => {
         await settle();
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
         expect(fixture.componentInstance.ready()).toBeTrue();
-        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, format: 'a4', pageFormat: 'a4' });
+        expect(recordSheets.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, groupWeapons: false, format: 'a4', pageFormat: 'a4' });
         expect(nativeEntities.load).not.toHaveBeenCalled();
     });
 

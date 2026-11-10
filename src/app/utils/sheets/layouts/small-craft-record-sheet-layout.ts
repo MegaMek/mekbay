@@ -6,6 +6,7 @@ import type { AeroEntity } from '../../../models/entity/entities/aero/aero-entit
 import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
 import { fullRecordSheetLayoutProfile, type RecordSheetLayoutProfile, type RecordSheetPageFormat } from '../record-sheet-layout';
+import { groupRecordSheetWeaponRows, recordSheetWeaponMountKey, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import { createRoot, drawGeneratedFooter, drawHeatScale, drawPageChrome, recordSheetInventoryWeaponMounts, type Box } from '../record-sheet-svg-rendering';
 import { drawFighterCriticalPanel, drawFighterPilotPanel } from './aero-fighter-record-sheet-controls';
 import { aeroPageBox, aeroWeaponSheetName, drawAeroArtworkRegion, drawAeroDiagramHeader, drawAeroDataPanel, drawAeroHeatDataPanel, drawAeroMovementCompass, drawAeroPaperdoll, drawAeroVelocityPanel, AERO_LOWER_PANEL_BOX, type AeroDataInventoryRow } from './aero-record-sheet-components';
@@ -34,7 +35,8 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         const dataBox = at({ x: 18.966, y: 87.857, width: 222.4, height: 310.143 });
         drawAeroDataPanel(svg, entity, dataBox, 310.143, {
             panelTitle: 'CRAFT DATA', identity: 'small-craft',
-            inventoryRows: this.smallCraftInventoryRows(entity),
+            inventoryRows: stateKey => this.smallCraftInventoryRows(entity, stateKey),
+            groupWeapons: request.groupWeapons,
             flowCargoAfterInventory: true, showAmmoSummary: true,
             showQuirks: request.showQuirks, ruleset: request.ruleset,
         });
@@ -55,10 +57,13 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
         return svg;
     }
 
-    /** Small Craft use one standard-scale record-sheet row per mounted weapon. */
-    private smallCraftInventoryRows(entity: AeroEntity): readonly AeroDataInventoryRow[] {
+    /**
+     * Small Craft use one standard-scale record-sheet row per mounted weapon; a grouped inventory counts identical
+     * weapons per row.
+     */
+    private smallCraftInventoryRows(entity: AeroEntity, stateKey: InventoryWeaponStateKey | null): readonly AeroDataInventoryRow[] {
         const spheroid = entity.motiveType() === 'Spheroid';
-        const rows = recordSheetInventoryWeaponMounts(entity).map((mount, index): AeroDataInventoryRow => {
+        const weapons = recordSheetInventoryWeaponMounts(entity).map(mount => {
             const ranges = aerospaceAttackValues(mount.equipment, null);
             const name = aeroWeaponSheetName(mount.displayName(), mount.equipment);
             const occupied = mount.getOccupiedLocations();
@@ -68,8 +73,7 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
                 ? { LS: mount.rearMounted ? 'ALS' : 'FLS', RS: mount.rearMounted ? 'ARS' : 'FRS' }
                 : { LS: 'LWG', RS: 'RWG' };
             return {
-                id: `generated-small-craft-inventory-row@${index}`,
-                kind: 'equipment',
+                kind: 'equipment' as const,
                 quantity: 1,
                 nameLines: [name],
                 location: sideArcs[code] ?? (code || '—'),
@@ -77,8 +81,12 @@ export class SmallCraftRecordSheetLayout implements RecordSheetLayout {
                 damageByRange: ranges.map(value => value > 0 ? String(value) : '—') as
                     [string, string, string, string],
                 componentIds: [mount.mountId],
+                mountKey: recordSheetWeaponMountKey(mount),
             };
         });
+        const rows = (stateKey === null ? weapons : groupRecordSheetWeaponRows(weapons, stateKey))
+            .map(({ mountKey: _mountKey, ...row }, index): AeroDataInventoryRow =>
+                ({ ...row, id: `generated-small-craft-inventory-row@${index}` }));
 
         const implicit = entity.implicitSystemEquipment().map((equipment, index): AeroDataInventoryRow => ({
             id: `generated-small-craft-system-row@${index}`,

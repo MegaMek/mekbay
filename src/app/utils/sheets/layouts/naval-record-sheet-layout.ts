@@ -97,6 +97,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
                 includePhysicalAttacks: true,
                 ruleset: request.ruleset,
                 showQuirks: request.showQuirks,
+                groupWeapons: request.groupWeapons,
                 lastDetailBaseline: 254.58,
                 verticalContentScale: 0.992,
                 footerBaselineOffset: 3,

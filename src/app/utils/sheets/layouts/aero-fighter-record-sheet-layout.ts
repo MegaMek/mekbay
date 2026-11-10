@@ -10,6 +10,7 @@ import { isAeroEntity } from '../../../models/entity/utils/entity-type-guards';
 import { isSingleHeatSinkEquipment } from '../../../models/heat-equipment.model';
 import { aerospaceAttackValues } from '../../aerospace-range.util';
 import { isRecordSheetInventorySupport, recordSheetInventoryMountName } from '../record-sheet-inventory-equipment';
+import { groupRecordSheetWeaponRows, recordSheetWeaponMountKey, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import {
 fullRecordSheetLayoutProfile,
 type RecordSheetLayoutProfile,
@@ -92,7 +93,8 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             {
                 panelTitle: 'FIGHTER DATA',
                 identity: 'fighter',
-                inventoryRows: this.inventoryRows(entity),
+                inventoryRows: stateKey => this.inventoryRows(entity, stateKey),
+                groupWeapons: request.groupWeapons,
                 flowCargoAfterInventory: false,
                 showAmmoSummary: true,
                 showQuirks: request.showQuirks,
@@ -139,7 +141,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
     }
 
     /** Fighter inventory projection belongs to the fighter family, not to the shared panel renderer. */
-    private inventoryRows(entity: AeroEntity): readonly AeroDataInventoryRow[] {
+    private inventoryRows(entity: AeroEntity, stateKey: InventoryWeaponStateKey | null): readonly AeroDataInventoryRow[] {
         interface MutableRow {
             quantity: number;
             name: string;
@@ -148,28 +150,19 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
             damageByRange: [string, string, string, string];
             componentIds: string[];
         }
-        const rows = new Map<string, MutableRow>();
         const ranged = new Set(entity.rangedWeapons());
-        for (const mount of entity.rangedWeapons()) {
-            const equipment = mount.equipment;
-            const row: MutableRow = {
-                quantity: 1,
-                name: aeroWeaponSheetName(mount.displayName(), equipment),
-                location: this.inventoryLocation(entity, mount.getOccupiedLocations()),
-                heat: String(equipment.heat),
-                damageByRange: aerospaceAttackValues(equipment, null)
-                    .map(value => value > 0 ? String(value) : '—') as [string, string, string, string],
-                componentIds: [mount.mountId],
-            };
-            const key = JSON.stringify({ ...row, quantity: 0, componentIds: undefined });
-            const existing = rows.get(key);
-            if (existing) {
-                existing.quantity++;
-                existing.componentIds.push(mount.mountId);
-            } else {
-                rows.set(key, row);
-            }
-        }
+        const weapons = groupRecordSheetWeaponRows(entity.rangedWeapons().map(mount => ({
+            name: aeroWeaponSheetName(mount.displayName(), mount.equipment),
+            location: this.inventoryLocation(entity, mount.getOccupiedLocations()),
+            heat: String(mount.equipment.heat),
+            damageByRange: aerospaceAttackValues(mount.equipment, null)
+                .map(value => value > 0 ? String(value) : '—') as [string, string, string, string],
+            componentIds: [mount.mountId],
+            // A fighter always counts weapons that print alike, as MegaMekLab does; a grouped inventory also tells
+            // their mounts and live states apart.
+            mountKey: stateKey === null ? '' : recordSheetWeaponMountKey(mount),
+        })), stateKey ?? (() => ''));
+        const rows = new Map<string, MutableRow>();
         for (const mount of entity.equipment()) {
             if (ranged.has(mount as never) || mount.getAmmoShots() !== undefined) continue;
             const equipment = mount.equipment;
@@ -195,7 +188,7 @@ export class AeroFighterRecordSheetLayout implements RecordSheetLayout {
                 rows.set(key, row);
             }
         }
-        return [...rows.values()].map((row, index) => ({
+        return [...weapons, ...rows.values()].map((row, index) => ({
             id: `generated-aero-inventory-row@${index}`,
             kind: 'equipment',
             quantity: row.quantity,

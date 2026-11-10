@@ -32,6 +32,7 @@ import { formatRecordSheetWeaponDamageText } from '../../utils/record-sheet-weap
 import { INVENTORY_TEXT_WIDTH_ATTRIBUTE } from '../../utils/sheets/inventory-text-layout';
 import { RecordSheetDamageHighlights } from '../../utils/sheets/record-sheet-damage-highlights';
 import { isPrintableMekInventoryEquipment } from '../../utils/sheets/record-sheet-inventory-equipment';
+import { regroupRecordSheetInventory, type InventoryWeaponStateKey } from '../../utils/sheets/record-sheet-weapon-grouping';
 import {
 formatMovementWithMaximum,
 formatTechBase,
@@ -73,6 +74,7 @@ bindRecordSheetInventoryButtons,
 NO_INVENTORY_SELECTION,
 projectRecordSheetWeaponSelection,
 readRecordSheetComponentIds,
+recordSheetInventoryStateKey,
 renderRecordSheetHeatProfile,
 renderRecordSheetInventorySelection,
 writeRecordSheetComponentIds,
@@ -126,11 +128,12 @@ export function bindMekRecordSheet(
         () => current.editContext, abort.signal, onInteraction);
 
     let currentInventory = initialInventory;
-    // The generator's row-to-component layout, read before the first render resets the rows.
-    const inventoryLayout: ReadonlyMap<SVGElement, string> = new Map(
+    // The generator's row-to-component layout, read before a render resets the rows.
+    const readInventoryLayout = (): ReadonlyMap<SVGElement, readonly ComponentId[]> => new Map(
         [...svg.querySelectorAll<SVGElement>(manifest.selectors.inventoryRow)]
-            .map(row => [row, readRecordSheetComponentIds(row).join(' ')] as const),
+            .map(row => [row, readRecordSheetComponentIds(row)] as const),
     );
+    let inventoryLayout = readInventoryLayout();
     const bind = createRecordSheetBind(abort.signal, onInteraction);
     const bindPresentation = createRecordSheetBind(abort.signal, onPresentationInteraction);
 
@@ -159,6 +162,11 @@ export function bindMekRecordSheet(
         const issues: string[] = [];
         const markChanges = !firstRender;
 
+        // A grouped inventory lays its rows out again as its weapons' states regroup them.
+        const inventoryRows = recordSheetEquipmentRows(snapshot);
+        if (regroupRecordSheetInventory(svg, inventoryStateKey(snapshot, inventoryRows, inventory))) {
+            inventoryLayout = readInventoryLayout();
+        }
         if (firstRender) resetUnitDataLayout(svg, manifest);
         renderIdentity(svg, snapshot);
         renderConditions(svg, snapshot, bind, context);
@@ -239,8 +247,8 @@ export function bindMekRecordSheet(
         renderSystemDamage(svg, snapshot, bind, context);
 
         renderCrew(svg, snapshot, issues, bind, () => current);
-        renderInventory(svg, manifest, snapshot, issues, bind, context, inventory, onInteraction !== undefined,
-            inventoryLayout);
+        renderInventory(svg, manifest, snapshot, inventoryRows, issues, bind, context, inventory,
+            onInteraction !== undefined, inventoryLayout);
         if (onInteraction || onPresentationInteraction) bindEquipmentHover(svg, abort.signal);
         renderRecordSheetAmmoProfile(svg, snapshot.equipment, onInteraction !== undefined);
         renderHeat(svg, snapshot, bindHeat);
@@ -683,16 +691,16 @@ function renderInventory(
     svg: SVGSVGElement,
     manifest: MekSheetBindingManifestV1,
     snapshot: MekRecordSheetSnapshot,
+    rows: readonly RecordSheetEquipmentRow[],
     issues: string[],
     bind: RecordSheetBind,
     context: () => UnitEditContext,
     source: RecordSheetInventorySource | null,
     interactive: boolean,
-    layout: ReadonlyMap<SVGElement, string>,
+    layout: ReadonlyMap<SVGElement, readonly ComponentId[]>,
 ): void {
     const layoutRows = [...svg.querySelectorAll<SVGElement>(manifest.selectors.inventoryRow)]
         .filter(row => row.parentElement?.closest('.inventoryEntry') === null);
-    const rows = recordSheetEquipmentRows(snapshot);
     const assigned = assignInventoryLayoutRows(layoutRows, rows, layout);
     const componentsById = new Map(snapshot.equipment.map(component => [component.componentId, component] as const));
     layoutRows.forEach((element, index) => {
@@ -761,7 +769,8 @@ function renderInventory(
         });
         // A linked weapon enhancement keeps its printed line and shows its own component's damage.
         element.querySelectorAll<SVGElement>(':scope > .inventoryEntry.linked').forEach(linked => {
-            const componentIds = (layout.get(linked) ?? '').split(' ').filter(Boolean) as ComponentId[];
+            // A row counting several weapons counts enhancements in one state, so the first stands for all.
+            const componentIds = layout.get(linked) ?? [];
             const status = componentIds.length === 0 ? undefined : componentsById.get(componentIds[0])?.status;
             linked.style.display = '';
             writeRecordSheetComponentIds(linked, componentIds);
@@ -788,26 +797,57 @@ function renderInventory(
 /**
  * Keeps each row on the layout row generated for its components, so the layout's printed sub-rows
  * (enhancements, ammo profiles) stay under their weapon however the runtime orders its rows, and a
- * physical weapon's attack lands on that weapon's row. Rows without components, the intrinsic
+ * physical weapon's attack lands on that weapon's row. A layout row counting several weapons, all in
+ * one state, shows its first weapon and stands for them all. Rows without components, the intrinsic
  * physical attacks, fill the remaining layout rows in order.
  */
 function assignInventoryLayoutRows(
     layoutRows: readonly SVGElement[],
     rows: readonly RecordSheetEquipmentRow[],
-    layout: ReadonlyMap<SVGElement, string>,
+    layout: ReadonlyMap<SVGElement, readonly ComponentId[]>,
 ): readonly (RecordSheetEquipmentRow | undefined)[] {
-    const byComponents = new Map<string, RecordSheetEquipmentRow>();
-    rows.filter(row => row.componentIds.length > 0)
-        .forEach(row => byComponents.set(row.componentIds.join(' '), row));
+    const byComponent = new Map<ComponentId, RecordSheetEquipmentRow>();
+    rows.forEach(row => row.componentIds.forEach(componentId => byComponent.set(componentId, row)));
     const placed = new Set<RecordSheetEquipmentRow>();
     const assigned = layoutRows.map(element => {
-        const row = byComponents.get(layout.get(element) ?? '');
-        if (row === undefined || placed.has(row)) return undefined;
-        placed.add(row);
-        return row;
+        const componentIds = layout.get(element) ?? [];
+        const counted = componentIds.flatMap(componentId => byComponent.get(componentId) ?? []);
+        if (counted.length === 0 || counted.some(row => placed.has(row))) return undefined;
+        counted.forEach(row => placed.add(row));
+        return counted.length === 1 ? counted[0] : Object.freeze({ ...counted[0], componentIds });
     });
     const remaining = rows.filter(row => !placed.has(row));
     return assigned.map(row => row ?? remaining.shift());
+}
+
+/**
+ * Each weapon's and enhancement's live state, for a grouped inventory: everything its row shows in play. Rows of one
+ * design list their untouched weapons first, then the selected ones by target, then disabled and destroyed ones.
+ */
+function inventoryStateKey(
+    snapshot: MekRecordSheetSnapshot,
+    rows: readonly RecordSheetEquipmentRow[],
+    source: RecordSheetInventorySource | null,
+): InventoryWeaponStateKey {
+    const keys = new Map<string, string>();
+    return componentId => {
+        let key = keys.get(componentId);
+        if (key === undefined) {
+            const row = rows.find(candidate => candidate.componentIds.includes(componentId as ComponentId));
+            if (row === undefined) {
+                key = snapshot.equipment.find(component => component.componentId === componentId)?.status ?? '';
+            } else {
+                const weapons = row.kind === 'weapon' ? panelWeapons(source, row.componentIds) : [];
+                const selection = row.kind === 'weapon'
+                    ? projectRecordSheetWeaponSelection(weapons, source)
+                    : row.selection ?? NO_INVENTORY_SELECTION;
+                key = recordSheetInventoryStateKey(row.status, selection, weapons[0], source,
+                    { ...row, componentIds: null, actionTarget: row.actionTarget !== undefined });
+            }
+            keys.set(componentId, key);
+        }
+        return key;
+    };
 }
 
 /** The equipment panel's rows for a sheet row's weapons, which carry the selection and every attack modifier. */

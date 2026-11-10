@@ -600,6 +600,64 @@ describe('WeaponTargetsMenuComponent C3 degradation', () => {
     });
 });
 
+describe('WeaponTargetsMenuComponent row layout', () => {
+    function render(width: number, showC3Distance: boolean): HTMLElement {
+        TestBed.configureTestingModule({ imports: [WeaponTargetsMenuComponent] });
+        const fixture = TestBed.createComponent(WeaponTargetsMenuComponent);
+        fixture.componentRef.setInput('targets', [
+            { ...TARGET, tnModifier: 3, manualTnModifier: 3 },
+            { ...TARGET, id: asEncounterTargetId('B'), letter: 'B', name: 'Target B', distance: 1 },
+        ]);
+        fixture.componentRef.setInput('showC3Distance', showC3Distance);
+        fixture.detectChanges();
+        const menu = fixture.nativeElement.querySelector('.weapon-targets-menu') as HTMLElement;
+        menu.style.width = `${width}px`;
+        return menu;
+    }
+
+    for (const width of [600, 561, 480, 320]) {
+        for (const showC3Distance of [false, true]) {
+            it(`keeps every caption and control apart at ${width}px${showC3Distance ? ' with C3' : ''}`, () => {
+                const menu = render(width, showC3Distance);
+                for (const row of menu.querySelectorAll<HTMLElement>('.weapon-target-row')) {
+                    const bounds = row.getBoundingClientRect();
+                    const parts = [...row.querySelectorAll<HTMLElement>([
+                        '.target-square', '.target-name', '.target-number-field > span:first-child:not(.target-stepper)',
+                        '.c3-distance-caption',
+                        '.target-stepper > *', '.direction-select', '.use-c3-toggle', '.calculator-button', '.target-delete',
+                    ].join(','))].map(part => ({ part, box: part.getBoundingClientRect() }))
+                        .filter(({ box }) => box.width > 0 && box.height > 0);
+
+                    expect(parts.length).toBeGreaterThan(10);
+                    for (const { part, box } of parts) {
+                        expect(box.left).withContext(part.className).toBeGreaterThanOrEqual(bounds.left - 0.5);
+                        expect(box.right).withContext(part.className).toBeLessThanOrEqual(bounds.right + 0.5);
+                        expect(part.scrollWidth).withContext(part.className).toBeLessThanOrEqual(part.clientWidth + 1);
+                    }
+                    for (const [index, first] of parts.entries()) {
+                        for (const second of parts.slice(index + 1)) {
+                            const apart = first.box.right <= second.box.left + 0.5 || second.box.right <= first.box.left + 0.5
+                                || first.box.bottom <= second.box.top + 0.5 || second.box.bottom <= first.box.top + 0.5;
+                            expect(apart).withContext(`${first.part.className} / ${second.part.className}`).toBeTrue();
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    it('keeps the C3 controls under the main controls, ending at the calculator', () => {
+        const menu = render(600, true);
+        const row = menu.querySelector('.weapon-target-row')!;
+        const [main, c3] = [...row.querySelectorAll<HTMLElement>('.target-controls-row')].map(controls => controls.getBoundingClientRect());
+
+        expect(c3.left).toBeCloseTo(main.left, 0);
+        expect(c3.right).toBeCloseTo(main.right, 0);
+        expect(row.querySelector('.calculator-spacer')!.getBoundingClientRect().left)
+            .toBeCloseTo(row.querySelector('.calculator-button')!.getBoundingClientRect().left, 0);
+    });
+});
+
 describe('WeaponTargetsMenuComponent attack direction', () => {
     it('sets the attack direction from the target row, keeping the other calculator facts', () => {
         TestBed.configureTestingModule({ imports: [WeaponTargetsMenuComponent] });

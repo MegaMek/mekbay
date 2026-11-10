@@ -25,7 +25,7 @@ export interface PrintOptionsDialogData {
     <div class="wide-dialog print-dialog">
         <h2 class="wide-dialog-title">Print Options</h2>
         <div class="wide-dialog-body">
-            <p class="message">Changes are saved. Paper size and center panel also apply to the record sheets.</p>
+            <p class="message">Changes are saved. Paper size, center panel and weapon grouping also apply to the record sheets.</p>
 
             <div class="option-grid">
                 <div class="option-col">
@@ -76,6 +76,21 @@ export interface PrintOptionsDialogData {
                             <option value="clusterTable">Hit location and cluster table</option>
                             <option value="fluffImage">Artwork</option>
                         </select>
+                    </div>
+                </div>
+
+                <div class="option-col">
+                    <div class="option-row">
+                        <label for="recordSheetGroupWeapons">Group identical weapons:</label>
+                        <select id="recordSheetGroupWeapons" class="bt-select option-select"
+                            [value]="groupWeapons()"
+                            (change)="onGroupWeaponsChange($event)">
+                            <option value="false">Disabled</option>
+                            <option value="true">Enabled</option>
+                        </select>
+                    </div>
+                    <div class="description">
+                        <p>Count identical weapons on one inventory row instead of printing a row each.</p>
                     </div>
                 </div>
                 }
@@ -212,6 +227,7 @@ export class PrintOptionsDialogComponent {
     private optionsService = inject(OptionsService);
 
     protected readonly printOptions = computed(() => this.optionsService.options().printAllOptions);
+    protected readonly groupWeapons = computed(() => this.optionsService.options().recordSheetGroupWeapons);
     protected readonly isPrinting = signal(false);
 
     protected readonly isCBT = computed(() => this.data.gameSystem === GameSystem.CBT);
@@ -220,6 +236,10 @@ export class PrintOptionsDialogComponent {
     protected onBooleanChange(key: 'clean' | 'printPilotData' | 'ASPrintPageBreakOnGroups', event: Event): void {
         const value = (event.target as HTMLSelectElement).value === 'true';
         void this.optionsService.setPrintOption(key, value);
+    }
+
+    protected onGroupWeaponsChange(event: Event): void {
+        void this.optionsService.setOption('recordSheetGroupWeapons', (event.target as HTMLSelectElement).value === 'true');
     }
 
     protected onCenterPanelChange(event: Event): void {

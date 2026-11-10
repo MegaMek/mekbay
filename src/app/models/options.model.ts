@@ -125,6 +125,8 @@ export interface Options {
     printAllOptions: PrintAllOptions;
     recordSheetDoubleTapZoomReset: RecordSheetDoubleTapZoomResetMode;
     recordSheetPipLayout: RecordSheetPipLayout;
+    /** Record sheets count identical weapons on one inventory row, which splits as their states diverge. */
+    recordSheetGroupWeapons: boolean;
     lastCanvasState?: {
         brushSize: number;
         eraserSize: number;

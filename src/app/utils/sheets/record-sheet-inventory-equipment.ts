@@ -119,8 +119,8 @@ function insertInventoryNameSuffix(name: string, suffix: string): string {
 }
 
 /**
- * Identical non-weapon equipment shares one counted row; weapons always keep a row each. A layout prints its "#"
- * column only when some row counts more than one.
+ * Identical non-weapon equipment shares one counted row; weapons are counted by `groupRecordSheetWeaponRows`. A layout
+ * prints its "#" column only when some row counts more than one.
  */
 export function groupRecordSheetEquipmentRows<T extends { readonly componentIds: readonly string[] }>(
     rows: readonly T[],

@@ -169,28 +169,34 @@ export function appendInventoryRowButtons(
     }
 }
 
+/** How far left of the frame's border a grouped inventory centres its badges, clear of the counts beside them. */
+const GROUPED_INVENTORY_BADGE_X = -2.5;
+
 /**
  * A row's weapon to-hit modifier and selected-target number, sharing one slot centred on the frame's left border: the
- * target number takes the modifier's place while a target is selected.
+ * target number takes the modifier's place while a target is selected. A `grouped` inventory, whose "#" column starts
+ * at that border, moves the slot left.
  */
-export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale): void {
-    appendInventoryBadge(parent, 'hitMod', baseline, scale, lineHeight);
-    appendInventoryBadge(parent, 'targetTn', baseline, scale, lineHeight);
+export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale,
+    grouped = false): void {
+    const x = grouped ? GROUPED_INVENTORY_BADGE_X * scale : 0;
+    appendInventoryBadge(parent, 'hitMod', x, baseline, scale, lineHeight);
+    appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
 }
 
 /** Mek-reference width and type stay fixed; only the background height follows dense leading. */
-function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', baseline: number, scale: number,
+function appendInventoryBadge(parent: SVGElement, kind: 'hitMod' | 'targetTn', x: number, baseline: number, scale: number,
     lineHeight: number): void {
     const height = Math.min(INVENTORY_BADGE.height * scale, Math.max(INVENTORY_BADGE.minimumHeight * scale, lineHeight));
     const center = inventoryLineMiddle(baseline, scale);
     const hitModifier = kind === 'hitMod';
     const rect = svgElement('rect');
-    setAttributes(rect, { x: -INVENTORY_BADGE.width * scale / 2, y: center - height / 2,
+    setAttributes(rect, { x: x - INVENTORY_BADGE.width * scale / 2, y: center - height / 2,
         width: INVENTORY_BADGE.width * scale, height,
         fill: hitModifier ? '#000' : '#fff', stroke: hitModifier ? undefined : '#000',
         'stroke-width': hitModifier ? undefined : 0.8 * scale, class: `${kind}-rect`, display: 'none' });
     parent.appendChild(rect);
-    const text = addText(parent, '', 0, center + INVENTORY_BADGE.fontSize * scale / 3, {
+    const text = addText(parent, '', x, center + INVENTORY_BADGE.fontSize * scale / 3, {
         class: `${kind}-text`, size: INVENTORY_BADGE.fontSize * scale, weight: 700,
         fill: hitModifier ? '#fff' : undefined, anchor: 'middle' });
     text.setAttribute('font-family', 'monospace');

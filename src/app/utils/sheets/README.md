@@ -146,6 +146,37 @@ plus the changed family/paperdoll specs, with the installed headless browser.
 Application theme ownership, global loading, and the selector cleanup audit are
 documented in [STYLES.md](STYLES.md).
 
+## Grouped inventories
+
+`recordSheetGroupWeapons` (Classic BattleTech options and the print dialog) counts
+identical weapons on one inventory row under a `#` column. It is a record-sheet
+presentation only; the equipment dialog and tactical view keep a row per weapon.
+`record-sheet-weapon-grouping.ts` owns it:
+
+- `groupRecordSheetWeaponRows` merges rows with the same `mountKey` (equipment,
+  locations, rear/turret/facing, size, armored), the same printed cells and the same
+  live state, linked enhancements included. Rows without a `mountKey` (non-weapon
+  equipment) keep their place uncounted; melee weapons carry one and are counted.
+- `drawRecordSheetInventory` draws a family's inventory. With grouping on it draws
+  into a block of its own (`data-mekbay-inventory-block`), and
+  `regroupRecordSheetInventory` draws that block again, refitting its type, whenever
+  a weapon's state key changes. A family's draw function must therefore add nothing
+  outside the parent it is given. `appendSheetContent` copies compact blocks, so it
+  hands each copy its block's drawing with `adoptRecordSheetInventoryBlocks`.
+- The binders supply the state keys (`recordSheetInventoryStateKey`): status,
+  selection and target, mode, and whatever else the row shows. A design's rows list
+  untouched weapons first, then selected ones by target, then disabled and destroyed.
+  Both binders regroup at the top of `render`, before anything binds a row.
+- A row counting several weapons in a regrouping inventory emits a `divisible`
+  `inventory-selection`. The page viewer then asks how many weapons the selection
+  takes: a vertical list at the pointer, or the target menu's "How many of N?" when
+  there are several targets.
+
+Meks, vehicles and naval units, ProtoMeks, Battle Armor, handheld weapons,
+aerospace fighters and Small Craft regroup. Buildings and DropShip/capital bays keep
+their own fixed grouping. Grouped inventories centre their hit-modifier badges left
+of the frame border, clear of the counts.
+
 ## Inventory typography and wrapping
 
 `record-sheet-typography.ts` defines the shared point sizes: 10.6 for frame captions,

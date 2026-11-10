@@ -8,6 +8,7 @@ import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, fit
 import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
+import { drawRecordSheetInventory, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 
 import { projectRecordSheetBays } from '../../../models/entity/bays/record-sheet-bay-projection';
 import { type AeroEntity } from '../../../models/entity/entities/aero/aero-entity';
@@ -85,7 +86,10 @@ export interface AeroDataInventoryRow {
 export interface AeroDataPanelContent {
     readonly panelTitle: string;
     readonly identity: 'fighter' | 'small-craft' | 'large-vessel';
-    readonly inventoryRows: readonly AeroDataInventoryRow[];
+    /** The inventory's rows; a grouped inventory asks again as its weapons' live states regroup them. */
+    readonly inventoryRows: (stateKey: InventoryWeaponStateKey | null) => readonly AeroDataInventoryRow[];
+    /** Count identical weapons per row and split the rows as their states diverge. */
+    readonly groupWeapons?: boolean;
     readonly flowCargoAfterInventory: boolean;
     readonly showAmmoSummary: boolean;
     readonly showQuirks?: boolean;
@@ -144,6 +148,38 @@ export function drawAeroDataPanel(
         size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
     }));
 
+    const largeVesselFooterShift = content.identity === 'fighter' ? 0 : 1.5;
+    drawRecordSheetInventory(group, content.groupWeapons, (parent, stateKey) => drawAeroDataInventory(parent, entity, box,
+        referenceHeight, content, { x, y, font, fontScale, inventoryY, largeVesselFooterShift }, stateKey));
+    addLine(group, x(3), box.height - y(26.214 + largeVesselFooterShift), x(219.4),
+        box.height - y(26.214 + largeVesselFooterShift), '#000', 1.932 * fontScale);
+    appendBattleValue(group, entity.battleValue(content.ruleset), {
+        x: x(13.845), valueX: x(32.79), y: box.height - y(14.214 + largeVesselFooterShift), size: font(9.67),
+    });
+    appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, referenceHeight - 14.214 - largeVesselFooterShift - 8.893);
+    appendLegacyIdentityAnchors(group, entity, box, content.ruleset);
+    return group;
+}
+
+/** The data panel's inventory rows and the footer lines whose place follows the rows' fitted leading. */
+function drawAeroDataInventory(
+    group: SVGGElement,
+    entity: AeroEntity,
+    box: Box,
+    referenceHeight: number,
+    content: AeroDataPanelContent,
+    scale: {
+        readonly x: (value: number) => number;
+        readonly y: (value: number) => number;
+        readonly font: (value: number) => number;
+        readonly fontScale: number;
+        readonly inventoryY: (value: number) => number;
+        readonly largeVesselFooterShift: number;
+    },
+    stateKey: InventoryWeaponStateKey | null,
+): void {
+    const { x, y, font, fontScale, inventoryY, largeVesselFooterShift } = scale;
+    const rows = content.inventoryRows(stateKey);
     const footerStep = 9.126;
     let rowStep = footerStep;
     const features = svgElement('g');
@@ -174,7 +210,7 @@ export function drawAeroDataPanel(
     const footerReserve = baseFooterReserve
         + Math.max(0, measureRecordSheetAmmoProfile(ammo, ammoProfile).lines.length - 1) * footerStep;
     const metrics = fitInventoryText(referenceHeight - 110.5 - footerReserve, fontSize => {
-        const lineCounts = content.inventoryRows.map(row => Math.max(
+        const lineCounts = rows.map(row => Math.max(
             row.nameLines.flatMap(name => inventoryCellLines(name, x(82), font(fontSize))).length, inventoryRowLineCount([
             [row.location, x(21)], [row.heat, x(12)],
             ...row.damageByRange.map(value => [value, x(16.312)] as const)], font(fontSize))));
@@ -182,7 +218,6 @@ export function drawAeroDataPanel(
     });
     rowStep = metrics.lineStep;
     const inventoryFont = (size: number) => font(size * metrics.fontSize / RECORD_SHEET_FONT.inventory);
-    const rows = content.inventoryRows;
     const addCell = (parent: SVGElement, value: string, x: number, y: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, y, { ...options, lineHeight: yStep });
     const yStep = y(rowStep);
@@ -201,7 +236,7 @@ export function drawAeroDataPanel(
                 ['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex], x(position),
                 x(rangeIndex === 3 ? 16.63 : 17.31),
             ] as const));
-        appendInventoryBadges(entry, baseline, fontScale, yStep);
+        appendInventoryBadges(entry, baseline, fontScale, yStep, stateKey !== null);
         if (row.quantity !== undefined) {
             addCell(entry, String(row.quantity), x(8.41), baseline, {
                 class: 'quantity', size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',
@@ -272,7 +307,6 @@ export function drawAeroDataPanel(
         bottom: inventoryY(referenceHeight - baseFooterReserve) + y(footerStep),
         contentBottom: inventoryY(contentBottom),
     });
-    const largeVesselFooterShift = content.identity === 'fighter' ? 0 : 1.5;
     if (content.showAmmoSummary) {
         appendRecordSheetAmmoProfile(group, ammo, {
             ...ammoProfile,
@@ -289,14 +323,6 @@ export function drawAeroDataPanel(
         features.setAttribute('transform', `translate(0 ${formatNumber(box.height - y(32.777 + largeVesselFooterShift + featureHeight - rowStep))})`);
         group.appendChild(features);
     }
-    addLine(group, x(3), box.height - y(26.214 + largeVesselFooterShift), x(219.4),
-        box.height - y(26.214 + largeVesselFooterShift), '#000', 1.932 * fontScale);
-    appendBattleValue(group, entity.battleValue(content.ruleset), {
-        x: x(13.845), valueX: x(32.79), y: box.height - y(14.214 + largeVesselFooterShift), size: font(9.67),
-    });
-    appendDataPanelEraIcon(svg, group, entity.year(), { x, y }, referenceHeight - 14.214 - largeVesselFooterShift - 8.893);
-    appendLegacyIdentityAnchors(group, entity, box, content.ruleset);
-    return group;
 }
 
 function aeroCargoLines(entity: AeroEntity): readonly string[] {

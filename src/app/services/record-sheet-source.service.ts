@@ -45,6 +45,7 @@ export class RecordSheetSourceService {
             ruleset: generatorOptions.ruleset ?? currentOptions.CBTRules,
             pipLayout: generatorOptions.pipLayout ?? currentOptions.recordSheetPipLayout,
             showQuirks: currentOptions.CBTOptionalRules?.quirks !== false,
+            groupWeapons: generatorOptions.groupWeapons ?? currentOptions.recordSheetGroupWeapons,
             fluffImageUrl: generatorOptions.fluffImageUrl === undefined
                 ? await this.fluffImages.loadEntityUrl(entity, context.design) : generatorOptions.fluffImageUrl,
         });

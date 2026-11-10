@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { groupRecordSheetEquipmentRows } from '../record-sheet-inventory-equipment';
+import { drawRecordSheetInventory, groupRecordSheetWeaponRows, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -155,7 +156,8 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         jump.id = 'mpJump';
     }
 
-    drawCompactBattleArmorInventory(group, entity, { x, y, font });
+    drawRecordSheetInventory(group, request.groupWeapons, (parent, stateKey) =>
+        drawCompactBattleArmorInventory(parent, entity, { x, y, font }, stateKey));
     drawCompactBattleArmorTroopers(svg, group, entity, { x, y, font }, frameBox);
 
     const flags: readonly [string, boolean, number, number][] = [
@@ -397,6 +399,7 @@ function drawCompactBattleArmorInventory(
         readonly y: (value: number) => number;
         readonly font: (value: number) => number;
     },
+    stateKey: InventoryWeaponStateKey | null,
 ): void {
     const { x, y, font } = scale;
     const rawWeapons = recordSheetInventoryWeapons(entity);
@@ -421,10 +424,13 @@ function drawCompactBattleArmorInventory(
         miscRows.push({ name, componentIds: [mount.mountId] });
     });
 
+    const weaponRows = weapons.map(row => ({ ...row, quantity: 1 }));
     const rows = [
-        ...weapons.map(row => ({ ...row, quantity: 1 })),
+        ...(stateKey === null ? weaponRows : groupRecordSheetWeaponRows(weaponRows, stateKey)),
         ...groupRecordSheetEquipmentRows(miscRows, row => row.name).map(row => ({
             ...row,
+            // Beside counted weapons, equipment prints its count only when it stands for several.
+            quantity: stateKey !== null && row.quantity === 1 ? undefined : row.quantity,
             location: '',
             heat: '',
             damage: '',
@@ -433,8 +439,8 @@ function drawCompactBattleArmorInventory(
             alternativeModes: Object.freeze([]),
         })),
     ];
-    // The quantity column appears only when equipment is grouped; names otherwise start where the Mek and vehicle names do.
-    const showQuantity = rows.some(row => row.quantity > 1);
+    // The quantity column appears only when weapons or equipment are grouped; names otherwise start where the Mek and vehicle names do.
+    const showQuantity = stateKey !== null || rows.some(row => (row.quantity ?? 1) > 1);
     const nameX = showQuantity ? 12.1 : 8.41;
     const nameWidth = BA_NAME_RIGHT - nameX;
     const ammo = recordSheetAmmoProfile(entity);
@@ -478,8 +484,8 @@ function drawCompactBattleArmorInventory(
         const badgeScale = Math.min(font(1), y(1));
         const buttons = inventoryRangeButtons(columns, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
-        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
-        if (showQuantity) {
+        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep), stateKey !== null);
+        if (showQuantity && row.quantity !== undefined) {
             addCell(entry, String(row.quantity), x(7.55), baseline, {
                 class: 'quantity', size: font(rowFont), anchor: 'middle',
             });

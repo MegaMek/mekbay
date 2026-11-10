@@ -70,10 +70,18 @@ svgElement,
 transparentRect,
 type RecordSheetLinkedEquipment,
 } from '../record-sheet-svg-rendering';
+import {
+    drawRecordSheetInventory,
+    groupRecordSheetWeaponRows,
+    recordSheetWeaponMountKey,
+    type InventoryWeaponStateKey,
+} from '../record-sheet-weapon-grouping';
 
 export interface CompactVehicleInventoryPresentation {
     readonly ruleset: CBTRuleset;
     readonly showQuirks?: boolean;
+    /** Count identical weapons on one inventory row instead of printing a row each. */
+    readonly groupWeapons?: boolean;
     readonly includePhysicalAttacks: boolean;
     readonly lastDetailBaseline: number;
     /** MML's full-height naval template compresses unit-data content vertically. */
@@ -181,14 +189,18 @@ export function drawCompactVehicleDataPanel(
     addLine(content, x(3), y(71.462), box.width - x(3), y(71.462), '#111', 0.8 * fontScale);
     addTemplateCaption(content, 'Weapons & Equipment Inventory', x(3), y(80.462), { size: font(RECORD_SHEET_FONT.section), weight: 700 });
     addText(content, '(hexes)', x(171.132), y(80.462), { size: font(RECORD_SHEET_FONT.inventory) });
+    const groupWeapons = presentation.groupWeapons === true;
     const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
-        ['Type', 8.41, 'start'], ['Loc', 100.38, 'middle'], ['Dmg', 111.2, 'start'], ...inventoryRangeHeadings(STANDARD_INVENTORY_COLUMNS),
+        ...(groupWeapons ? [['#', VEHICLE_INVENTORY_QUANTITY_X, 'middle'] as const] : []),
+        ['Type', vehicleInventoryNameX(groupWeapons), 'start'], ['Loc', 100.38, 'middle'], ['Dmg', 111.2, 'start'],
+        ...inventoryRangeHeadings(STANDARD_INVENTORY_COLUMNS),
     ];
     // Headings keep their natural width; a fitted width would stretch the short ones.
     headings.forEach(([label, position, anchor]) => addText(content, label, x(position), y(91.262), {
         size: font(RECORD_SHEET_FONT.inventory), weight: 700, anchor,
     }));
-    appendCompactVehicleInventory(content, entity, { x, y, font }, box, presentation);
+    drawRecordSheetInventory(content, groupWeapons, (parent, stateKey) =>
+        appendCompactVehicleInventory(parent, entity, { x, y, font }, box, presentation, stateKey));
     const footerOffset = presentation.footerBaselineOffset ?? 0;
     addLine(content, x(3), y(257.643 + footerOffset), box.width - x(3), y(257.643 + footerOffset), '#111', 0.8 * fontScale);
     appendBattleValue(content, entity.battleValue(presentation.ruleset), {
@@ -197,6 +209,13 @@ export function drawCompactVehicleDataPanel(
     appendDataPanelEraIcon(svg, content, entity.year(), { x, y }, 260 + footerOffset);
     appendLegacyIdentityAnchors(content, entity, box, presentation.ruleset);
     return group;
+}
+
+/** The "#" column of a grouped inventory, where the aerospace inventories print theirs. */
+const VEHICLE_INVENTORY_QUANTITY_X = 8.41;
+/** Names start at the frame's padding, or after the "#" column of a grouped inventory. */
+function vehicleInventoryNameX(groupWeapons: boolean): number {
+    return groupWeapons ? 13.82 : 8.41;
 }
 
 function appendCompactVehicleInventory(
@@ -209,9 +228,13 @@ function appendCompactVehicleInventory(
     },
     box: Box,
     presentation: CompactVehicleInventoryPresentation,
+    stateKey: InventoryWeaponStateKey | null,
 ): void {
     const { x, y, font } = scale;
-    const weapons = compactVehicleInventoryRows(entity);
+    const nameX = vehicleInventoryNameX(stateKey !== null);
+    // Enhancement and ammo-profile lines are indented under their weapon.
+    const subrowX = nameX + 12.738 - 8.41;
+    const weapons = compactVehicleInventoryRows(entity, stateKey);
     const physical = (presentation.includePhysicalAttacks && isVehicleEntity(entity)
         && vehicleHasChargeAttack(entity) ? entity.intrinsicWeapons() : []).map(attack => ({
         name: attack.name,
@@ -259,8 +282,8 @@ function appendCompactVehicleInventory(
         const capacities = bay.members.map(member => formatWholeNumber(member.capacity)).join('/');
         return `Bay ${bay.bayNumber}: ${names} (${capacities}) (${bay.doors} ${bay.doors === 1 ? 'Door' : 'Doors'})`;
     });
-    const rowLines = (row: { name: string; location?: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number, nameX = 8.41) =>
-        inventoryRowLineCount([[row.name, x(100.38 - 9 - 3 - nameX)], [row.location ?? '', x(18)],
+    const rowLines = (row: { name: string; location?: string; damage: string; minimumRange: string; ranges: readonly string[] }, size: number, left = nameX) =>
+        inventoryRowLineCount([[row.name, x(100.38 - 9 - 3 - left)], [row.location ?? '', x(18)],
             [row.damage, x(54)], [row.minimumRange, x(12)], ...row.ranges.map(value => [value, x(12)] as const)], font(size));
     const ammoPrefix = recordSheetNonMekAmmoPrefix(entity);
     // Like the Mek footer, half a row separates the physical attacks from the ammo profile under them.
@@ -268,8 +291,8 @@ function appendCompactVehicleInventory(
     const metrics = fitInventoryText(y(firstDetailBaseline - (detailRows.length ? 13.689 : 0) - 101.162)
         / (box.width / 220.4), fontSize => {
         const rows = weapons.map(row => [rowLines(row, fontSize),
-            ...(row.linkedEquipment ? [rowLines(vehicleLinkedEquipmentFields(row.linkedEquipment), fontSize, 12.738)] : []),
-            ...row.alternativeModes.map(mode => rowLines(mode, fontSize, 12.738))]);
+            ...(row.linkedEquipment ? [rowLines(vehicleLinkedEquipmentFields(row.linkedEquipment), fontSize, subrowX)] : []),
+            ...row.alternativeModes.map(mode => rowLines(mode, fontSize, subrowX))]);
         const physicalRows = physical.map(row => rowLines(row, fontSize));
         const cargoRows = cargoLabels.map(label => inventoryRowLineCount([[label, box.width - x(15)]], font(fontSize)));
         // The ammo profile prints at the fitted row size and lifts the physical rows by its lines.
@@ -297,16 +320,21 @@ function appendCompactVehicleInventory(
         const badgeScale = box.width / 220.4;
         const buttons = inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, weaponStep, rowSpans[index][0], buttons.band, buttons.ranges);
-        appendInventoryBadges(entry, baseline, badgeScale, weaponStep);
-        drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, 8.41, weaponStep);
+        appendInventoryBadges(entry, baseline, badgeScale, weaponStep, stateKey !== null);
+        if (row.quantity !== undefined) {
+            addInventoryText(entry, String(row.quantity), x(VEHICLE_INVENTORY_QUANTITY_X), baseline, {
+                class: 'quantity', size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle', lineHeight: weaponStep,
+            });
+        }
+        drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, nameX, weaponStep);
         if (row.linkedEquipment) {
             const linked = svgElement('g');
             setAttributes(linked, { class: 'inventoryEntry linked', id: `generated-vehicle-linked-row@${index}` });
-            setInventoryComponentIds(linked, [row.linkedEquipment.componentId]);
+            setInventoryComponentIds(linked, row.linkedEquipment.componentIds);
             const linkedBaseline = baseline + rowSpans[index][0] * weaponStep;
             appendInventoryRowButtons(linked, linkedBaseline, badgeScale, weaponStep, rowSpans[index][1], buttons.band);
             drawCompactVehicleInventoryFields(linked, vehicleLinkedEquipmentFields(row.linkedEquipment), linkedBaseline,
-                x, inventoryFont, 12.738, weaponStep);
+                x, inventoryFont, subrowX, weaponStep);
             entry.appendChild(linked);
         }
         row.alternativeModes.forEach((mode, modeIndex) => {
@@ -323,7 +351,7 @@ function appendCompactVehicleInventory(
                 damage: mode.damage,
                 minimumRange: mode.minimumRange,
                 ranges: mode.ranges,
-            }, modeBaseline, x, inventoryFont, 12.738, weaponStep);
+            }, modeBaseline, x, inventoryFont, subrowX, weaponStep);
             entry.appendChild(alternative);
         });
         inventory.appendChild(entry);
@@ -357,7 +385,7 @@ function appendCompactVehicleInventory(
         setInventoryComponentIds(entry, row.componentIds);
         appendInventoryRowButtons(entry, baseline, box.width / 220.4, weaponStep, metrics.content.physicalRows[index],
             inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x).band);
-        drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, 8.41, weaponStep);
+        drawCompactVehicleInventoryFields(entry, row, baseline, x, inventoryFont, nameX, weaponStep);
         physicalRows.appendChild(entry);
     });
     let detailLine = 0;
@@ -444,7 +472,7 @@ function compactVehicleFeatureText(entity: BaseEntity): string {
 }
 
 /** MML prints usable misc equipment in the same interactive inventory as weapons. */
-function compactVehicleInventoryRows(entity: BaseEntity) {
+function compactVehicleInventoryRows(entity: BaseEntity, stateKey: InventoryWeaponStateKey | null) {
     const mountsById = new Map(entity.equipment().map(mount => [String(mount.mountId), mount]));
     const weaponRows = recordSheetInventoryWeapons(entity).map(row => {
         const mount = mountsById.get(row.componentIds[0]);
@@ -474,11 +502,14 @@ function compactVehicleInventoryRows(entity: BaseEntity) {
                 minimumRange: '—',
                 ranges: Object.freeze(['—', '—', range === undefined ? '—' : String(range)]),
                 componentIds: Object.freeze([mount.mountId]),
+                ...(mount.isPhysicalWeapon() ? { mountKey: recordSheetWeaponMountKey(mount) } : {}),
                 alternativeModes: Object.freeze([]),
                 linkedEquipment: null,
             });
         });
-    return Object.freeze([...weaponRows, ...miscRows]);
+    const rows: readonly ((typeof weaponRows[number] | typeof miscRows[number]) & { readonly quantity?: number })[]
+        = [...weaponRows, ...miscRows];
+    return Object.freeze(stateKey === null ? rows : groupRecordSheetWeaponRows(rows, stateKey));
 }
 
 function compactVehicleWeaponName(value: string): string {

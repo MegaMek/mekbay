@@ -21,6 +21,7 @@ import {
     recordSheetHeatProfileText,
     svgElement,
 } from '../../utils/sheets/record-sheet-svg-rendering';
+import { isRegroupingInventoryRow } from '../../utils/sheets/record-sheet-weapon-grouping';
 import type { RecordSheetBind } from './record-sheet-dom';
 
 const COMPONENT_IDS_ATTRIBUTE = 'data-mekbay-component-ids';
@@ -58,7 +59,10 @@ export function writeRecordSheetComponentIds(element: Element, componentIds: rea
     else element.removeAttribute(COMPONENT_IDS_ATTRIBUTE);
 }
 
-/** Binds a row's (or one of its mode rows') main and range buttons to select its weapons, in that mode and range. */
+/**
+ * Binds a row's (or one of its mode rows') main and range buttons to select its weapons, in that mode and range. A row
+ * counting several weapons in a grouped inventory is divisible: its selection may take only some of them.
+ */
 export function bindRecordSheetInventoryButtons(
     row: SVGElement,
     componentIds: readonly ComponentId[],
@@ -66,11 +70,13 @@ export function bindRecordSheetInventoryButtons(
     bind: RecordSheetBind,
     context: () => UnitEditContext,
 ): void {
+    const divisible = componentIds.length > 1 && isRegroupingInventoryRow(row);
     const select = (range?: 'short' | 'medium' | 'long' | 'extreme') => () => Object.freeze({
         kind: 'inventory-selection' as const,
         componentIds,
         ...(mode === undefined ? {} : { mode }),
         ...(range === undefined ? {} : { range }),
+        ...(divisible ? { divisible } : {}),
         context: context(),
     });
     const main = row.querySelector<SVGElement>(mode === undefined
@@ -132,6 +138,28 @@ export function projectRecordSheetWeaponSelection(
             ...(hit.weakened ? { hitModifierWeakened: true } : {}),
         }),
     });
+}
+
+/**
+ * A weapon's live state as a grouped inventory's key: its status, its selection and whatever else its row `shows` in
+ * play. Rows of one design then list their untouched weapons first, the selected ones by target, the disabled and the
+ * destroyed.
+ */
+export function recordSheetInventoryStateKey(
+    status: string,
+    selection: RecordSheetInventorySelection,
+    weapon: RecordSheetPanelWeapon | undefined,
+    source: RecordSheetInventorySource | null,
+    shows: unknown,
+): string {
+    const targeted = weapon?.weapon.selection;
+    const target = targeted?.kind === 'target' && source !== null
+        ? source.panel.targets.findIndex(candidate => candidate.targetId === targeted.targetId)
+        : -1;
+    const order = status === 'destroyed' || status === 'missing' ? 3
+        : status !== 'available' ? 2
+            : selection.selected ? 1 : 0;
+    return `${order}${String(target + 1).padStart(3, '0')}${JSON.stringify([status, selection, shows])}`;
 }
 
 /** Shows a row's selection; its mode rows must already mark the selected mode, which then carries the highlight. */

@@ -154,7 +154,7 @@ export abstract class LargeAeroRecordSheetLayout implements RecordSheetLayout {
             drawAeroDataPanel(svg, entity, dataPanelBox, dataPanelHeight, {
                 panelTitle: this.dataPanelTitle(entity),
                 identity: 'large-vessel',
-                inventoryRows: this.standardBayInventoryRows(entity),
+                inventoryRows: () => this.standardBayInventoryRows(entity),
                 flowCargoAfterInventory: true,
                 showAmmoSummary: false,
                 showQuirks: request.showQuirks,

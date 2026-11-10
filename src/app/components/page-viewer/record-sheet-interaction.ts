@@ -98,6 +98,8 @@ export type RecordSheetInteractionPayload =
         componentIds: readonly ComponentId[];
         mode?: string;
         range?: 'short' | 'medium' | 'long' | 'extreme';
+        /** The row counts several weapons and splits by state, so the selection asks how many of them it takes. */
+        divisible?: boolean;
     }>
     | Readonly<{
         kind: 'action-selection';

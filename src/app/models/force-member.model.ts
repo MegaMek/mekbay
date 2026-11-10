@@ -28,6 +28,7 @@ export class CBTForceMember {
     #recordSheetPipLayout: RecordSheetPipLayout = 'classic';
     #recordSheetPageFormat: RecordSheetPageFormat = 'letter';
     #recordSheetShowQuirks = true;
+    #recordSheetGroupWeapons = false;
     #recordSheetArtwork: string | null = null;
     #recordSheetRuleset: CBTRuleset | undefined;
     readonly #recordSheetIndex = signal(0);
@@ -129,8 +130,10 @@ export class CBTForceMember {
         showQuirks = true,
         fluffImageUrl: string | null = null,
         ruleset?: CBTRuleset,
+        groupWeapons = false,
     ): Promise<readonly SVGSVGElement[]> {
-        if (this.#recordSheetPipLayout !== pipLayout || this.#recordSheetPageFormat !== pageFormat || this.#recordSheetShowQuirks !== showQuirks || this.#recordSheetArtwork !== fluffImageUrl || this.#recordSheetRuleset !== ruleset) {
+        if (this.#recordSheetPipLayout !== pipLayout || this.#recordSheetPageFormat !== pageFormat || this.#recordSheetShowQuirks !== showQuirks || this.#recordSheetArtwork !== fluffImageUrl || this.#recordSheetRuleset !== ruleset || this.#recordSheetGroupWeapons !== groupWeapons) {
+            this.#recordSheetGroupWeapons = groupWeapons;
             this.#recordSheetRuleset = ruleset;
             this.#recordSheetArtwork = fluffImageUrl;
             this.#recordSheetShowQuirks = showQuirks;

@@ -31,6 +31,8 @@ export interface RecordSheetSvgGeneratorOptions {
     readonly fluffImageUrl?: string | null;
     readonly pipLayout?: RecordSheetPipLayout;
     readonly showQuirks?: boolean;
+    /** Count identical weapons on one inventory row instead of printing a row each. */
+    readonly groupWeapons?: boolean;
 }
 
 /** Thin entry point: family layout classes own all sheet composition. */
@@ -60,7 +62,7 @@ export class RecordSheetSvgGenerator {
                 ? 'canon' : 'distributed'
             : requestedPipLayout;
         const request = { format, page, profile, pipLayout, ruleset: options.ruleset,
-            showQuirks: options.showQuirks ?? true } as const;
+            showQuirks: options.showQuirks ?? true, groupWeapons: options.groupWeapons ?? false } as const;
         const pages = layout.generatePages
             ? [...await layout.generatePages(entity, request)]
             : [await layout.generate(entity, request)];

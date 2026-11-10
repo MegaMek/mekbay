@@ -21,10 +21,10 @@ import { PageViewerSheetSourceService } from './page-viewer-sheet-source.service
 describe('PageViewerSheetSourceService', () => {
     let source: jasmine.SpyObj<Pick<RecordSheetSourceService, 'load'>>;
     let service: PageViewerSheetSourceService;
-    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; printAllOptions: { paperSize: 'a4' | 'letter' }; CBTRules: CBTRuleset }>({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
+    const options = signal<{ recordSheetPipLayout: RecordSheetPipLayout; recordSheetGroupWeapons: boolean; printAllOptions: { paperSize: 'a4' | 'letter' }; CBTRules: CBTRuleset }>({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: false, printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
 
     beforeEach(() => {
-        options.set({ recordSheetPipLayout: 'classic', printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
+        options.set({ recordSheetPipLayout: 'classic', recordSheetGroupWeapons: false, printAllOptions: { paperSize: 'letter' }, CBTRules: 'total-warfare' });
         source = jasmine.createSpyObj('RecordSheetSourceService', ['load']);
         source.load.and.callFake(async (entity, options) => ({
             svgs: [await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', ...options })],
@@ -48,7 +48,7 @@ describe('PageViewerSheetSourceService', () => {
         await service.load(member);
         expect(member.recordSheet()).not.toBe(letter);
         expect(member.recordSheet()?.getAttribute('viewBox')).toBe('0 0 595.276 841.89');
-        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, format: 'a4', pageFormat: 'a4', fluffImageUrl: null, ruleset: 'total-warfare' });
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'classic', showQuirks: true, groupWeapons: false, format: 'a4', pageFormat: 'a4', fluffImageUrl: null, ruleset: 'total-warfare' });
     });
 
     it('regenerates a cached sheet when local artwork changes or is purged', async () => {
@@ -158,7 +158,26 @@ describe('PageViewerSheetSourceService', () => {
         options.update(value => ({ ...value, recordSheetPipLayout: 'rail' }));
         await service.load(member);
         expect(member.recordSheet()).not.toBe(first);
-        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, format: 'letter', pageFormat: 'letter', fluffImageUrl: null, ruleset: 'total-warfare' });
+        expect(source.load.calls.mostRecent().args[1]).toEqual({ pipLayout: 'rail', showQuirks: true, groupWeapons: false, format: 'letter', pageFormat: 'letter', fluffImageUrl: null, ruleset: 'total-warfare' });
+    });
+
+    it('regenerates cached pages when identical weapons become grouped or ungrouped', async () => {
+        const member = createMember('Tank', new TestTankEntity());
+        await service.load(member);
+        const ungrouped = member.recordSheet();
+        expect(ungrouped?.querySelector('[data-mekbay-inventory-block]')).toBeNull();
+
+        options.update(value => ({ ...value, recordSheetGroupWeapons: true }));
+        await service.load(member);
+        const grouped = member.recordSheet();
+        expect(grouped).not.toBe(ungrouped);
+        expect(grouped?.querySelector('[data-mekbay-inventory-block]')).not.toBeNull();
+        expect(source.load.calls.mostRecent().args[1]?.groupWeapons).toBeTrue();
+
+        options.update(value => ({ ...value, recordSheetGroupWeapons: false }));
+        await service.load(member);
+        expect(member.recordSheet()).not.toBe(grouped);
+        expect(member.recordSheet()?.querySelector('[data-mekbay-inventory-block]')).toBeNull();
     });
 
     it('allows the member to retry after generation fails', async () => {

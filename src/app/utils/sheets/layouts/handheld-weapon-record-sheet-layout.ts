@@ -4,6 +4,7 @@
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
+import { drawRecordSheetInventory, groupRecordSheetWeaponRows, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import { SvgFrameUtil } from '../svg-frame.util';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
@@ -132,7 +133,8 @@ export class HandheldWeaponRecordSheetLayout extends CompactRecordSheetLayout {
             });
             group.appendChild(armor);
         }
-        drawHandheldInventory(group, entity, extra);
+        drawRecordSheetInventory(group, request.groupWeapons, (parent, stateKey) =>
+            drawHandheldInventory(parent, entity, extra, stateKey));
         drawHandheldAmmo(group, handheldAmmoGroups(entity), extra);
     }
 }
@@ -159,18 +161,28 @@ function isLargeHandheldLayout(entity: BaseEntity): boolean {
         || ammo.length > 2 || rounds > 200 || ammo.length > 1 && rounds > 125;
 }
 
-function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: number): void {
+function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: number,
+    stateKey: InventoryWeaponStateKey | null): void {
     const columns = inventoryRangeColumns(11.529, 222.468);
-    const xs = [16.811, 117.168, ...columns.ranges];
+    // A grouped inventory counts its weapons in a "#" column where the names otherwise start.
+    const quantityX = 16.811;
+    const nameX = stateKey === null ? quantityX : quantityX + 5.41;
+    const nameWidth = 77 - (nameX - quantityX);
+    const xs = [nameX, 117.168, ...columns.ranges];
     const damageWidth = columns.bandRight - xs[1];
     ['Type', 'Dmg', 'Min', 'Sht', 'Med', 'Lng'].forEach((label, index) => {
         addText(group, label, xs[index], 33.489, { size: RECORD_SHEET_FONT.inventory, weight: 700,
             anchor: index > 1 ? 'middle' : 'start' });
     });
+    if (stateKey !== null) {
+        addText(group, '#', quantityX, 33.489, { size: RECORD_SHEET_FONT.inventory, weight: 700, anchor: 'middle' });
+    }
     addText(group, 'Loc', 106.604, 33.489, { size: RECORD_SHEET_FONT.inventory, weight: 700, anchor: 'middle' });
-    const rows = recordSheetInventoryWeapons(entity);
+    const weapons: readonly (ReturnType<typeof recordSheetInventoryWeapons>[number] & { readonly quantity?: number })[]
+        = recordSheetInventoryWeapons(entity);
+    const rows = stateKey === null ? weapons : groupRecordSheetWeaponRows(weapons, stateKey);
     const rowLines = (name: string, location: string, damage: string, minimum: string, ranges: readonly string[], fontSize: number) =>
-        inventoryRowLineCount([[name, 77], [location, 19], [damage, damageWidth], [minimum, INVENTORY_RANGE_VALUE_WIDTH],
+        inventoryRowLineCount([[name, nameWidth], [location, 19], [damage, damageWidth], [minimum, INVENTORY_RANGE_VALUE_WIDTH],
             ...ranges.map(value => [value, INVENTORY_RANGE_VALUE_WIDTH] as const)], fontSize);
     const mainLines = (fontSize: number) => rows.map(row =>
         rowLines(row.name, entity.componentLocationLabel(row.location), row.damage, row.minimumRange, row.ranges, fontSize));
@@ -195,7 +207,7 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
             index += host === entry ? inventoryRowSpan(lineCount, step) : lineCount;
             const buttons = inventoryRangeButtons(columns, value => value);
             appendInventoryRowButtons(host, y, 1, step, lineCount, buttons.band, buttons.ranges);
-            addCell(host, name, xs[0], y, { class: 'name', size: RECORD_SHEET_FONT.inventory, maxWidth: 77 });
+            addCell(host, name, xs[0], y, { class: 'name', size: RECORD_SHEET_FONT.inventory, maxWidth: nameWidth });
             addCell(host, entity.componentLocationLabel(row.location), 106.604, y,
                 { class: 'location', size: RECORD_SHEET_FONT.inventory, anchor: 'middle', maxWidth: 19 });
             addCell(host, damage, xs[1], y, { class: 'damage', size: RECORD_SHEET_FONT.inventory, maxWidth: damageWidth });
@@ -206,6 +218,10 @@ function drawHandheldInventory(group: SVGGElement, entity: BaseEntity, extra: nu
         };
         const baseline = 43.389 + index * step;
         draw(entry, row.name, row.damage, row.minimumRange, row.ranges);
+        if (row.quantity !== undefined) {
+            addCell(entry, String(row.quantity), quantityX, baseline,
+                { class: 'quantity', size: RECORD_SHEET_FONT.inventory, anchor: 'middle' });
+        }
         appendInventoryBadges(entry, baseline, 1, step);
         row.alternativeModes.forEach(mode => {
             const alternative = svgElement('g');

@@ -9,6 +9,7 @@ import { ArmorEquipment,MiscEquipment,StructureEquipment,WeaponEquipment } from 
 import { MountedArmor } from '../../models/entity/components/armor';
 import { MountedStructure } from '../../models/entity/components/structure';
 import { TestBipedMekEntity } from '../../models/entity/testing/test-entities';
+import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
 import { applyRecordSheetPipMaterials } from '../../utils/sheets/record-sheet-pip-materials';
 import { RecordSheetSvgGenerator } from '../../utils/sheets/record-sheet-svg-generator';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../../models/mek-sheet-binding';
@@ -1537,6 +1538,63 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
+    it('splits a grouped inventory row by weapon state and marks a counted row divisible', async () => {
+        const entity = new TestBipedMekEntity();
+        entity.setTonnage(50);
+        const laser = new WeaponEquipment({
+            id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon',
+            weapon: { heat: 3, damage: 5, ranges: [3, 6, 9] },
+        });
+        const mounts = [0, 1, 2].map(() => addTestEquipment(entity, laser, { location: 'LA' }));
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'core-2026', groupWeapons: true });
+        const base = snapshot();
+        const lasers = (selected: number, destroyed: number) => ({
+            ...base,
+            movementSelection: { options: [], selectedMode: null, airborne: false },
+            equipment: mounts.map((mount, index) => ({
+                ...base.equipment[0],
+                componentId: mount.mountId,
+                label: 'Medium Laser',
+                equipment: laser,
+                locations: [{ locationId: 'location-la', code: 'LA' }],
+                status: index >= mounts.length - destroyed ? 'destroyed' : 'available',
+                weapon: {
+                    ...base.equipment[0].weapon!,
+                    ...(index < selected ? { selection: { kind: 'selected' } } : {}),
+                },
+            })),
+        } as unknown as MekRecordSheetSnapshot);
+        const interactions: RecordSheetInteraction[] = [];
+        const untouched = lasers(0, 0);
+        const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, untouched,
+            interaction => interactions.push(interaction), undefined, inventoryFrom(untouched));
+        const laserRows = () => [...svg.querySelectorAll<SVGElement>('.inventoryEntry')]
+            .filter(row => row.style.display !== 'none' && row.querySelector(':scope > .name')?.textContent === 'Medium Laser');
+        const quantities = () => laserRows().map(row => row.querySelector(':scope > .quantity')?.textContent);
+
+        expect(quantities()).toEqual(['3']);
+        laserRows()[0].querySelector('.mainButton')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions[0]).toEqual(jasmine.objectContaining({
+            kind: 'inventory-selection', divisible: true, componentIds: mounts.map(mount => mount.mountId),
+        }));
+
+        const divided = lasers(1, 1);
+        binding.render(divided, inventoryFrom(divided));
+        expect(quantities()).toEqual(['1', '1', '1']);
+        expect(laserRows().map(row => [row.classList.contains('selected'), row.classList.contains('damaged')]))
+            .toEqual([[false, false], [true, false], [false, true]]);
+        expect(laserRows().map(row => row.getAttribute('data-mekbay-component-ids')))
+            .toEqual([mounts[1].mountId, mounts[0].mountId, mounts[2].mountId]);
+        laserRows()[1].querySelector('.mainButton')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect((interactions[1] as { divisible?: boolean }).divisible).toBeUndefined();
+
+        const selected = lasers(3, 0);
+        binding.render(selected, inventoryFrom(selected));
+        expect(quantities()).toEqual(['3']);
+        expect(laserRows()[0].classList.contains('selected')).toBeTrue();
+        binding.destroy();
+    });
+
     it('keeps a linked enhancement line under its weapon and shows the enhancement damage', () => {
         const svg = sheet();
         svg.querySelector('.inventoryEntry')?.insertAdjacentHTML('beforeend', `
@@ -2189,7 +2247,9 @@ function inventoryFrom(snapshot: MekRecordSheetSnapshot): RecordSheetInventorySo
     const movementMode = snapshot.movement.declared.kind === 'supported' ? snapshot.movement.declared.mode : null;
     const movementModifier = getDefaultAttackerMovementModifier(movementMode);
     return {
-        panel: { components: snapshot.equipment, targets: snapshot.targets, ruleset: snapshot.ruleset } as unknown as EquipmentPanelSnapshot,
+        panel: {
+            components: snapshot.equipment, physicalAttacks: [], targets: snapshot.targets, ruleset: snapshot.ruleset,
+        } as unknown as EquipmentPanelSnapshot,
         attack: {
             gunnery: snapshot.crew[0]?.gunnery ?? 4,
             pilotingSkill: 5,

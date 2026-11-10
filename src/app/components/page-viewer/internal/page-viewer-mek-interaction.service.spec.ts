@@ -713,6 +713,68 @@ describe('PageViewerMekInteractionService', () => {
         }), editContext(1), 2);
     });
 
+    describe('a divisible inventory row counting three weapons', () => {
+        const weaponIds = ['weapon-1', 'weapon-2', 'weapon-3'];
+        const select = (mode?: string) => service.handle(member, {
+            kind: 'inventory-selection', componentIds: weaponIds, divisible: true, ...(mode ? { mode } : {}), context: editContext(1),
+        } as unknown as RecordSheetInteraction, anchoredMouseEvent());
+
+        beforeEach(() => {
+            panel = { ...panel, components: weaponIds.map(componentId => ({
+                ...panel.components[0], componentId, mode: 'normal', modes: ['normal', 'rapid'],
+            })) } as unknown as EquipmentPanelSnapshot;
+        });
+
+        it('asks how many in a vertical list on the full count and selects that many', async () => {
+            select();
+
+            expect(choiceConfig).toEqual(jasmine.objectContaining({
+                title: 'How many weapons?', selected: 3, style: 'linear', horizontal: false, position: { x: 10, y: 20 },
+            }));
+            expect(choiceConfig!.values.map(choice => choice.value)).toEqual([1, 2, 3]);
+            expect(force.dispatchAttackerTargeting).not.toHaveBeenCalled();
+            choiceConfig!.onPick({ label: '2', value: 2 });
+            await settleAsyncHandlers();
+            expect(force.dispatchAttackerTargeting).toHaveBeenCalledOnceWith('unit-1', jasmine.objectContaining({
+                edit: { kind: 'set-component-selections', componentIds: ['weapon-1', 'weapon-2'], selection: { kind: 'selected' } },
+            }), editContext(1), 2);
+        });
+
+        it('asks how many in the target menu and gives only those the target and the mode', async () => {
+            panel = { ...panel, targets: ['target-a', 'target-b'].map((targetId, index) => ({
+                targetId, letter: 'AB'[index], name: `Target ${'AB'[index]}`, color: '#fff',
+            })) } as unknown as EquipmentPanelSnapshot;
+            force.getWeaponAttackContext = jasmine.createSpy().and.returnValue(null);
+            const picked = new Subject<string | null>();
+            const inputs = new Map<string, unknown>();
+            overlayManager.createManagedOverlay.and.returnValue({
+                componentRef: {
+                    setInput: (name: string, value: unknown) => inputs.set(name, value),
+                    changeDetectorRef: { detectChanges: () => undefined },
+                    instance: { selected: picked, quantity: () => 2 },
+                },
+                closed: new Subject<void>(),
+            } as never);
+
+            select('rapid');
+
+            expect(choiceConfig).toBeNull();
+            expect(inputs.get('quantityMax')).toBe(3);
+            expect(inputs.get('quantity')).toBe(3);
+            expect(force.dispatchUnitCommand).not.toHaveBeenCalled();
+            picked.next('target-b');
+            await settleAsyncHandlers();
+            expect(force.dispatchUnitCommand.calls.allArgs().map(([, command]: [string, unknown]) => command)).toEqual([
+                { type: 'set-component-mode', componentId: 'weapon-1', mode: 'rapid' },
+                { type: 'set-component-mode', componentId: 'weapon-2', mode: 'rapid' },
+            ]);
+            expect(force.dispatchAttackerTargeting).toHaveBeenCalledOnceWith('unit-1', jasmine.objectContaining({
+                edit: { kind: 'set-component-selections', componentIds: ['weapon-1', 'weapon-2'],
+                    selection: { kind: 'target', targetId: 'target-b' } },
+            }), jasmine.any(Object), 2);
+        });
+    });
+
     it('routes an authored physical-attack row through the typed action-selection owner', async () => {
         panel = {
             ...panel,
@@ -790,8 +852,8 @@ describe('PageViewerMekInteractionService', () => {
         svg.innerHTML = '<g data-mekbay-paperdoll="1" data-mekbay-paperdoll-view="front" '
             + 'data-type="armor" data-art-x="10" data-art-y="20" '
             + 'data-art-width="200" data-art-height="300">'
-            + '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g></g>'
-            + '<path class="unitLocation armor" data-loc="CT"></path>';
+            + '<g data-mekbay-random-hit="1"><circle class="mek-random-hit-area"></circle></g>'
+            + '<path class="unitLocation armor" data-loc="CT"></path></g>';
         const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
         const event = new PointerEvent('pointerdown', { button: 0 });
         spyOn(Math, 'random').and.returnValues(0, 0);
@@ -845,7 +907,8 @@ describe('PageViewerMekInteractionService', () => {
             },
         });
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><path class="unitLocation armor" data-loc="LT"></path>';
+        svg.innerHTML = '<g data-mekbay-random-hit="1"></g><g data-mekbay-paperdoll="1" data-type="armor">'
+            + '<path class="unitLocation armor" data-loc="LT"></path></g>';
         const control = svg.querySelector<SVGElement>('[data-mekbay-random-hit="1"]')!;
         spyOn(Math, 'random').and.returnValues(0.8, 0.8);
 

@@ -314,7 +314,7 @@ export class PageViewerOverlayService {
         this.picker = null;
     }
 
-    /** Opens a choice picker beside the control that was used. */
+    /** Opens a choice picker beside the control that was used, or `atPointer` for a control as wide as an inventory row. */
     openChoicePicker(
         unitId: string,
         event: Event,
@@ -325,6 +325,7 @@ export class PageViewerOverlayService {
             style?: 'linear' | 'radial' | 'auto';
             suggestedStyle?: 'linear' | 'radial' | 'auto';
             targetType?: PickerTargetType;
+            atPointer?: boolean;
             onPick: (choice: PickerChoice) => void;
         }>,
     ): void {
@@ -332,7 +333,7 @@ export class PageViewerOverlayService {
         const rect = target?.getBoundingClientRect();
         const inventory = options.targetType === 'inventory';
         const critical = options.targetType === 'crit';
-        const position = rect
+        const position = rect && !options.atPointer
             ? inventory ? { x: rect.right + 4, y: rect.top + rect.height / 2 }
                 : critical ? { x: rect.left, y: rect.top }
                     : { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
@@ -621,8 +622,10 @@ export class PageViewerOverlayService {
 
     /**
      * Selects inventory weapons the same way for every unit: a mode button applies its mode and keeps the weapons
-     * selected, a range button selects that range, and several targets offer a target menu. Rows without weapons go to
-     * `openEquipment` when the family has other equipment actions.
+     * selected, a range button selects that range, and several targets offer a target menu, whose choice applies the
+     * mode too. A divisible row, counting several weapons, also asks how many of them the selection takes: in the
+     * target menu, or in a list of counts when there is no target to choose. Rows without weapons go to `openEquipment`
+     * when the family has other equipment actions.
      */
     async selectInventory(
         member: CBTForceMember,
@@ -630,40 +633,57 @@ export class PageViewerOverlayService {
         event: Event,
         openEquipment?: (context: UnitEditContext) => void,
     ): Promise<void> {
-        let context = interaction.context;
         const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
-        let panel = member.force.getEquipmentPanelSnapshot(member.id);
-        if (registryRevision === undefined || !panel || !this.isCurrent(member, context)) return;
-        const mode = interaction.mode;
-        const changesMode = mode !== undefined && interaction.componentIds
-            .some(componentId => equipmentPanelComponentById(panel!, componentId)?.mode !== mode);
-        if (mode !== undefined) {
-            for (const componentId of interaction.componentIds) {
-                const row = equipmentPanelComponentById(member.force.getEquipmentPanelSnapshot(member.id) ?? panel,
-                    componentId);
-                if (!row?.modes.includes(mode) || row.mode === mode) continue;
-                const next = await this.dispatch(member, { type: 'set-component-mode', componentId, mode }, context);
-                if (!next) return;
-                context = next;
-            }
-            panel = member.force.getEquipmentPanelSnapshot(member.id);
-            if (!panel) return;
+        const panel = member.force.getEquipmentPanelSnapshot(member.id);
+        if (registryRevision === undefined || !panel || !this.isCurrent(member, interaction.context)) return;
+        const selectable = equipmentPanelWeapons(panel, interaction.componentIds)
+            .filter(row => row.weapon.selectable)
+            .map(row => row.componentId);
+        const counted = interaction.divisible === true && selectable.length > 1;
+        if (panel.targets.length > 1 && selectable.length > 0) {
+            this.openWeaponTargetMenu(member, counted ? selectable : interaction.componentIds, panel, event,
+                interaction, counted, registryRevision);
+        } else if (counted) {
+            // A vertical list at the pointer, on the full count: a second click there takes every weapon.
+            this.openChoicePicker(member.id, event, {
+                values: selectable.map((_, index) => ({ label: String(index + 1), value: index + 1 })),
+                selected: selectable.length,
+                title: 'How many weapons?',
+                style: 'linear',
+                atPointer: true,
+                onPick: choice => {
+                    this.closePicker();
+                    void this.selectWeapons(member, interaction, selectable.slice(0, Number(choice.value)), registryRevision);
+                },
+            });
+        } else {
+            await this.selectWeapons(member, interaction, interaction.componentIds, registryRevision, openEquipment);
         }
+    }
+
+    /** Applies an inventory selection to these weapons when there is no target to choose: their mode, then the selection. */
+    private async selectWeapons(
+        member: CBTForceMember,
+        interaction: InventorySelection,
+        componentIds: readonly ComponentId[],
+        registryRevision: number,
+        openEquipment?: (context: UnitEditContext) => void,
+    ): Promise<void> {
+        const before = member.force.getEquipmentPanelSnapshot(member.id);
+        if (!before || !this.isCurrent(member, interaction.context)) return;
+        const mode = interaction.mode;
+        const changesMode = mode !== undefined && componentIds
+            .some(componentId => equipmentPanelComponentById(before, componentId)?.mode !== mode);
+        const context = await this.setComponentModes(member, componentIds, mode, interaction.context);
+        const panel = member.force.getEquipmentPanelSnapshot(member.id);
+        if (!context || !panel) return;
         if (member.force.getAttackerTargeting(member.id)?.registryRevision !== registryRevision) return;
-        const weapons = [...new Set(interaction.componentIds
-            .map(componentId => equipmentPanelComponentById(panel!, componentId)))]
-            .filter((row): row is EquipmentPanelComponent & {
-                readonly weapon: NonNullable<EquipmentPanelComponent['weapon']>;
-            } => row?.weapon !== undefined);
+        const weapons = equipmentPanelWeapons(panel, componentIds);
         if (weapons.length === 0) {
             openEquipment?.(context);
             return;
         }
-        if (weapons.every(row => !row.weapon.selectable)) return;
-        if (panel.targets.length > 1) {
-            this.openWeaponTargetMenu(member, interaction.componentIds, panel, event, context, registryRevision);
-            return;
-        }
+        if (weapons.every(row => !row.weapon.selectable) || panel.targets.length > 1) return;
         const desired: AttackerSelection = panel.targets.length === 1
             ? { kind: 'target', targetId: panel.targets[0].targetId }
             : interaction.range !== undefined
@@ -673,21 +693,44 @@ export class PageViewerOverlayService {
         const selection = !changesMode && allSelected ? null : desired;
         await this.setComponentSelections(
             member,
-            equipmentPanelSelectionComponentIds(panel, interaction.componentIds, selection),
+            equipmentPanelSelectionComponentIds(panel, componentIds, selection),
             selection,
             context,
             registryRevision,
         );
     }
 
-    /** Offers the force's targets, each with the selected weapons' target number. */
+    /** Switches the components that offer `mode` to it; resolves to the next edit context, or null when rejected. */
+    private async setComponentModes(
+        member: CBTForceMember,
+        componentIds: readonly ComponentId[],
+        mode: string | undefined,
+        context: UnitEditContext,
+    ): Promise<UnitEditContext | null> {
+        if (mode === undefined) return context;
+        for (const componentId of componentIds) {
+            const panel = member.force.getEquipmentPanelSnapshot(member.id);
+            const row = panel ? equipmentPanelComponentById(panel, componentId) : undefined;
+            if (!row?.modes.includes(mode) || row.mode === mode) continue;
+            const next = await this.dispatch(member, { type: 'set-component-mode', componentId, mode }, context);
+            if (!next) return null;
+            context = next;
+        }
+        return context;
+    }
+
+    /**
+     * Offers the force's targets, each with the selected weapons' target number. Above one, `quantityMax` also asks how
+     * many of that many weapons take the target, all of them unless changed.
+     */
     openTargetMenu(
         member: CBTForceMember,
         panel: EquipmentPanelSnapshot,
         event: Event,
         selectedTargetId: EncounterTargetId | null,
         targetNumberTexts: Readonly<Record<string, string>>,
-        select: (targetId: EncounterTargetId | null) => void,
+        select: (targetId: EncounterTargetId | null, quantity: number) => void,
+        quantityMax = 0,
     ): void {
         const anchor = event.currentTarget;
         if (!(anchor instanceof Element)) return;
@@ -716,21 +759,29 @@ export class PageViewerOverlayService {
         })));
         componentRef.setInput('selectedTargetId', selectedTargetId);
         componentRef.setInput('targetNumberTexts', targetNumberTexts);
+        componentRef.setInput('quantityMax', quantityMax);
+        componentRef.setInput('quantity', quantityMax);
         componentRef.changeDetectorRef.detectChanges();
         outputToObservable(componentRef.instance.selected).pipe(takeUntil(closed)).subscribe(targetId => {
             select(targetId === null
                 ? null
-                : panel.targets.find(row => row.targetId === targetId)?.targetId ?? null);
+                : panel.targets.find(row => row.targetId === targetId)?.targetId ?? null,
+                componentRef.instance.quantity());
             this.closeMenu('weapon-target');
         });
     }
 
+    /**
+     * Offers the targets for these weapons; the chosen target also applies the interaction's mode. For a `counted` row
+     * the menu asks how many of the weapons take the target.
+     */
     private openWeaponTargetMenu(
         member: CBTForceMember,
         componentIds: readonly ComponentId[],
         panel: EquipmentPanelSnapshot,
         event: Event,
-        context: UnitEditContext,
+        interaction: InventorySelection,
+        counted: boolean,
         registryRevision: number,
     ): void {
         const selectedIds = componentIds
@@ -757,16 +808,30 @@ export class PageViewerOverlayService {
                     panel.ruleset,
                 ).targetNumberText,
             ]));
-        this.openTargetMenu(member, panel, event, selectedTargetId, targetNumberTexts, targetId => {
-            const selection = targetId === null ? null : { kind: 'target' as const, targetId };
-            void this.setComponentSelections(
-                member,
-                equipmentPanelSelectionComponentIds(panel, componentIds, selection),
-                selection,
-                context,
-                registryRevision,
-            );
-        });
+        this.openTargetMenu(member, panel, event, selectedTargetId, targetNumberTexts, (targetId, quantity) =>
+            void this.targetWeapons(member, counted ? componentIds.slice(0, quantity) : componentIds, targetId,
+                interaction, registryRevision), counted ? componentIds.length : 0);
+    }
+
+    /** Switches these weapons to the interaction's mode and gives them the target, or none. */
+    private async targetWeapons(
+        member: CBTForceMember,
+        componentIds: readonly ComponentId[],
+        targetId: EncounterTargetId | null,
+        interaction: InventorySelection,
+        registryRevision: number,
+    ): Promise<void> {
+        const context = await this.setComponentModes(member, componentIds, interaction.mode, interaction.context);
+        const panel = member.force.getEquipmentPanelSnapshot(member.id);
+        if (!context || !panel) return;
+        const selection = targetId === null ? null : { kind: 'target' as const, targetId };
+        await this.setComponentSelections(
+            member,
+            equipmentPanelSelectionComponentIds(panel, componentIds, selection),
+            selection,
+            context,
+            registryRevision,
+        );
     }
 
     private async setComponentSelections(
@@ -815,6 +880,17 @@ export function equipmentPanelComponentById(
 ): EquipmentPanelComponent | undefined {
     return panel.components.find(row => row.componentId === componentId
         || row.attack?.members.some(member => member.componentId === componentId) === true);
+}
+
+/** The distinct panel rows with a weapon among these components. */
+function equipmentPanelWeapons(
+    panel: EquipmentPanelSnapshot,
+    componentIds: readonly ComponentId[],
+): readonly (EquipmentPanelComponent & { readonly weapon: NonNullable<EquipmentPanelComponent['weapon']> })[] {
+    return [...new Set(componentIds.map(componentId => equipmentPanelComponentById(panel, componentId)))]
+        .filter((row): row is EquipmentPanelComponent & {
+            readonly weapon: NonNullable<EquipmentPanelComponent['weapon']>;
+        } => row?.weapon !== undefined);
 }
 
 /** The components a selection applies to: every selectable member of a grouped attack, or the row itself. */

@@ -727,6 +727,26 @@
                 <p>Canon uses the standard pip layout for biped 'Mechs up to 100 tons. Other units use Distributed.</p>
               </div>
             </div>
+            <div class="option-col">
+              <div class="option-row">
+                <label for="recordSheetGroupWeapons">Group identical weapons:</label>
+                <select
+                  id="recordSheetGroupWeapons"
+                  class="bt-select"
+                  [value]="optionsService.options().recordSheetGroupWeapons"
+                  (change)="onRecordSheetGroupWeaponsChange($event)"
+                >
+                  <option value="false">Disabled (default)</option>
+                  <option value="true">Enabled</option>
+                </select>
+              </div>
+              <div class="description">
+                <p>
+                  Record sheets count identical weapons on one inventory row. The row splits when you select, target or
+                  damage only some of them.
+                </p>
+              </div>
+            </div>
             <div class="option-row">
               <label for="recordSheetPaperSize">Paper size:</label>
               <select

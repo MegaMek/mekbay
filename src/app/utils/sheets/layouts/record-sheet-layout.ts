@@ -28,6 +28,8 @@ export type RecordSheetSvgFormat = RecordSheetPageFormat | 'compact' | 'auto';
 export interface RecordSheetLayoutRequest {
     readonly ruleset: CBTRuleset;
     readonly showQuirks?: boolean;
+    /** Count identical weapons on one inventory row instead of printing a row each. */
+    readonly groupWeapons?: boolean;
     readonly format: RecordSheetSvgFormat;
     readonly page: RecordSheetPageProfile;
     readonly profile: RecordSheetLayoutProfile;

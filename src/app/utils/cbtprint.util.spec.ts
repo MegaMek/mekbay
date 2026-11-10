@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { TestAeroSpaceFighterEntity, TestBattleArmorEntity, TestBipedMekEntity, TestInfantryEntity, TestProtoMekEntity, TestTankEntity } from '../models/entity/testing/test-entities';
+import { createTestEquipmentRegistry } from '../models/entity/testing/test-equipment-registry';
+import { addTestEquipment } from '../models/entity/testing/test-mounted-equipment';
+import { WeaponEquipment } from '../models/equipment.model';
+import { componentIdForMount } from '../models/runtime/unit-runtime-index';
 import { renderRecordSheetCrewName } from '../components/page-viewer/record-sheet-dom';
 import { CBTForce } from '../models/cbt-force.model';
 import { CORE_2026_RULESET, TOTAL_WARFARE_RULESET } from '../models/cbt-ruleset.model';
@@ -141,6 +145,42 @@ describe('bulk record sheet pagination and printing', () => {
             });
         }
     }
+
+    it('prints a grouped inventory in its current state, damaged weapons on a row of their own', async () => {
+        const laser = new WeaponEquipment({ id: 'ISMediumLaser', name: 'Medium Laser', type: 'weapon',
+            weapon: { heat: 3, damage: 5, ranges: [3, 6, 9] } });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [laser.id]: laser }));
+        entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
+        entity.setTonnage(50);
+        const ids = [0, 1, 2].map(() => componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] })));
+        const runtime = createNonMekRuntimeForTest('grouped-print-unit', {
+            entity: entity.uuid(), ruleset: CORE_2026_RULESET,
+            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+        }, entity, CORE_2026_RULESET);
+        expect(runtime.dispatch({ type: 'set-component-status', componentId: ids[2], status: 'destroyed', target: 'committed' })
+            .accepted).toBeTrue();
+        const force = {
+            getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),
+            getNonMekRecordSheetSnapshot: () => ({
+                ...projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, runtime.query(), 100, 100),
+                editContext: { owner: runtime, state: runtime.snapshot() },
+            }),
+        } as unknown as CBTForce;
+        const source = jasmine.createSpyObj<RecordSheetSourceService>('recordSheets', ['load', 'applyUnitName']);
+        source.load.and.callFake(async (loadedEntity, options) => ({
+            svgs: await RecordSheetSvgGenerator.generatePages(loadedEntity, { ...options, ruleset: CORE_2026_RULESET, groupWeapons: true }),
+        }));
+
+        const sheets = await (CBTPrintUtil as unknown as {
+            createPrintSheets: (member: CBTForceMember, clean: boolean, paper: 'letter', source: RecordSheetSourceService)
+                => Promise<readonly { svg: SVGSVGElement }[]>;
+        }).createPrintSheets(new CBTForceMember('grouped-print-unit', force, entity), false, 'letter', source);
+
+        const lasers = [...sheets[0].svg.querySelectorAll('.inventoryEntry')]
+            .filter(row => row.querySelector(':scope > .name')?.textContent === 'Medium Laser');
+        expect(lasers.map(row => [row.querySelector(':scope > .quantity')?.textContent, row.classList.contains('damaged')]))
+            .toEqual([['2', false], ['1', true]]);
+    });
 
     for (const format of ['letter', 'a4'] as const) {
         for (const Factory of [TestAeroSpaceFighterEntity, TestTankEntity]) {

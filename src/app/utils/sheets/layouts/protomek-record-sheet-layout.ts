@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeColumns, inventoryRangeHeadings, fitInventoryText, inventoryRowLineCount, inventoryRowSpan } from '../inventory-text-layout';
 import { groupRecordSheetEquipmentRows } from '../record-sheet-inventory-equipment';
+import { drawRecordSheetInventory, groupRecordSheetWeaponRows, type InventoryWeaponStateKey } from '../record-sheet-weapon-grouping';
 import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 
 import { isElectronicInterfaceEquipment } from '../../../models/battle-armor-equipment.model';
@@ -177,7 +178,8 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
 
     // Inner panels keep a 3-point gutter from the block border and from each other. The
     // pilot tab tucks under the inventory, whose cut corner runs parallel to the tab's slope.
-    drawCompactProtoMekInventory(svg, entity, at({ x: 97.667, y: 12.6, width: 190.86, height: PROTOMEK_INVENTORY_HEIGHT }));
+    drawCompactProtoMekInventory(svg, entity, at({ x: 97.667, y: 12.6, width: 190.86, height: PROTOMEK_INVENTORY_HEIGHT }),
+        request.groupWeapons);
     drawCompactProtoMekCriticals(svg, entity, at({ x: 291.53, y: 12.6, width: 182, height: PROTOMEK_CRITICALS_HEIGHT }));
     await drawCompactProtoMekDiagram(svg, entity,
         at({ x: 476.53, y: 12.6, width: PROTOMEK_DIAGRAM_WIDTH, height: PROTOMEK_CRITICALS_HEIGHT }), request.pipLayout);
@@ -229,6 +231,7 @@ function drawCompactProtoMekInventory(
     svg: SVGSVGElement,
     entity: ProtoMekEntity,
     box: Box,
+    groupWeapons: boolean | undefined,
 ): void {
     // Panels inside the unit block are nested: a thin border without its own shadow.
     const group = addFrame(svg, 'WEAPONS INVENTORY', box, {
@@ -237,6 +240,16 @@ function drawCompactProtoMekInventory(
         ...PROTOMEK_PANEL_TAB,
         cornerAngleDegrees: { topLeft: 45, topRight: 45, bottomLeft: 45, bottomRight: 45 },
     });
+    drawRecordSheetInventory(group, groupWeapons, (parent, stateKey) =>
+        drawCompactProtoMekInventoryRows(parent, entity, box, stateKey));
+}
+
+function drawCompactProtoMekInventoryRows(
+    group: SVGGElement,
+    entity: ProtoMekEntity,
+    box: Box,
+    stateKey: InventoryWeaponStateKey | null,
+): void {
     // Keep the authored columns inside the frame's right border and padding.
     const sx = (box.width - 6) / 191.95;
     const sy = box.height / PROTOMEK_INVENTORY_HEIGHT;
@@ -260,18 +273,21 @@ function drawCompactProtoMekInventory(
         const damage = isElectronicInterfaceEquipment(equipment) ? '[E]' : '—';
         miscRows.push({ name: mount.displayName(), location, damage, componentIds: [mount.mountId] });
     });
+    const weaponRows = weapons.map(row => ({ ...row, location: compactLocationLabel(row.location), quantity: 1 }));
     const regularRows = [
-        ...weapons.map(row => ({ ...row, location: compactLocationLabel(row.location), quantity: 1 })),
+        ...(stateKey === null ? weaponRows : groupRecordSheetWeaponRows(weaponRows, stateKey)),
         ...groupRecordSheetEquipmentRows(miscRows, row => `${row.name}\u0000${row.location}\u0000${row.damage}`).map(row => ({
             ...row,
+            // Beside counted weapons, equipment prints its count only when it stands for several.
+            quantity: stateKey !== null && row.quantity === 1 ? undefined : row.quantity,
             heat: '—',
             minimumRange: '—',
             ranges: Object.freeze(['—', '—', '—']),
             alternativeModes: Object.freeze([]),
         })),
     ];
-    // The quantity column appears only when equipment is grouped; names otherwise start where the Mek and vehicle names do.
-    const showQuantity = regularRows.some(row => row.quantity > 1);
+    // The quantity column appears only when weapons or equipment are grouped; names otherwise start where the Mek and vehicle names do.
+    const showQuantity = stateKey !== null || regularRows.some(row => (row.quantity ?? 1) > 1);
     const nameX = showQuantity ? 11.45 : 8.41;
     const nameWidth = PROTOMEK_NAME_RIGHT - nameX;
     const headings: readonly (readonly [string, number, 'start' | 'middle'])[] = [
@@ -333,7 +349,7 @@ function drawCompactProtoMekInventory(
         const badgeScale = Math.min(fontScale, sy);
         const buttons = inventoryRangeButtons(PROTOMEK_INVENTORY_COLUMNS, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
-        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
+        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep), stateKey !== null);
         if (showQuantity && data.quantity !== undefined) {
             addCell(entry, String(data.quantity), x(6.725), baseline, {
                 class: 'quantity', size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle',

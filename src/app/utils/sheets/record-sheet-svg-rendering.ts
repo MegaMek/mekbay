@@ -38,6 +38,7 @@ import {
   type RecordSheetPageProfile,
 } from './record-sheet-layout';
 import { SvgFrameUtil } from './svg-frame.util';
+import { adoptRecordSheetInventoryBlocks, recordSheetWeaponMountKey } from './record-sheet-weapon-grouping';
 import { measureSvgTextCanvas } from '../svg-text.util';
 import recordSheetIntrinsicStyle from './styles/record-sheet-intrinsic.css' with { loader: 'text' };
 
@@ -358,7 +359,7 @@ export function recordSheetInventoryWeaponMounts(entity: BaseEntity): readonly E
   });
 }
 
-/** One row per weapon mount; only bays (aerospace layouts) print a quantity. */
+/** One row per weapon mount; layouts count identical ones per row with `groupRecordSheetWeaponRows`. */
 export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
   readonly name: string;
   readonly location: string;
@@ -367,6 +368,7 @@ export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
   readonly minimumRange: string;
   readonly ranges: readonly string[];
   readonly componentIds: readonly string[];
+  readonly mountKey: string;
   readonly linkedEquipment: RecordSheetLinkedEquipment | null;
   readonly alternativeModes: readonly RecordSheetInventoryAlternativeMode[];
 }[] {
@@ -386,6 +388,7 @@ export function recordSheetInventoryWeapons(entity: BaseEntity): readonly {
           ? Object.freeze(['', '', ''])
           : recordSheetRangeTexts(recordSheetWeaponRanges(mount.equipment).slice(0, 3)),
       componentIds: Object.freeze([mount.mountId]),
+      mountKey: recordSheetWeaponMountKey(mount),
       linkedEquipment: recordSheetLinkedEquipment(entity, mount, enhancement, semanticDamage),
       alternativeModes: ammoModes,
     });
@@ -402,8 +405,8 @@ export interface RecordSheetInventoryAlternativeMode {
 
 /** The weapon enhancement printed on its own line under the weapon it is linked to. */
 export interface RecordSheetLinkedEquipment {
-  /** The enhancement's own mount, so bound sheets show its damage and hover with its slots. */
-  readonly componentId: string;
+  /** The enhancements' own mounts, one per weapon on the row, so bound sheets show their damage and hover with their slots. */
+  readonly componentIds: readonly string[];
   readonly name: string;
   readonly heat: string;
   readonly damage: string;
@@ -423,7 +426,7 @@ function recordSheetLinkedEquipment(
   const enhancement = linking?.equipment;
   if (!linking || !enhancement || !isWeaponEnhancementEquipment(enhancement)) return null;
   const weapon = mount.equipment;
-  const line = { componentId: linking.mountId, name: enhancement.shortName || enhancement.name } as const;
+  const line = { componentIds: Object.freeze([linking.mountId]), name: enhancement.shortName || enhancement.name } as const;
   if (isPpcCapacitorEquipment(enhancement)) {
     const damage = resolveInventoryControlDamageText(
       { componentId: asComponentId(mount.mountId), physical: false, weapon },
@@ -1953,7 +1956,8 @@ export function appendSheetContent(
       child.classList.contains('compact-vehicle-unit-chrome')
     )
       continue;
-    target.appendChild(document.importNode(child, true));
+    const copy = target.appendChild(document.importNode(child, true));
+    if (child instanceof Element) adoptRecordSheetInventoryBlocks(child, copy as Element);
   }
 }
 
