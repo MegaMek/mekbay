@@ -169,17 +169,12 @@ export function appendInventoryRowButtons(
     }
 }
 
-/** How far left of the frame's border a grouped inventory centres its badges, clear of the counts beside them. */
-const GROUPED_INVENTORY_BADGE_X = -2.5;
-
 /**
- * A row's weapon to-hit modifier and selected-target number, sharing one slot centred on the frame's left border: the
- * target number takes the modifier's place while a target is selected. A `grouped` inventory, whose "#" column starts
- * at that border, moves the slot left.
+ * A row's weapon to-hit modifier and selected-target number, sharing one slot straddling the frame's left border: the
+ * target number takes the modifier's place while a target is selected.
  */
-export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale,
-    grouped = false): void {
-    const x = grouped ? GROUPED_INVENTORY_BADGE_X * scale : 0;
+export function appendInventoryBadges(parent: SVGElement, baseline: number, scale = 1, lineHeight = 9 * scale): void {
+    const x = INVENTORY_BADGE.offsetX * scale;
     appendInventoryBadge(parent, 'hitMod', x, baseline, scale, lineHeight);
     appendInventoryBadge(parent, 'targetTn', x, baseline, scale, lineHeight);
 }

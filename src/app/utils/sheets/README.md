@@ -111,7 +111,8 @@ MegaMekLab's `PipType.forAT` / `forST` mappings. Trooper-status and shield-capac
 pips remain circles, shield absorption remains diamonds, and capital square
 tables retain their separate `PrintCapitalShip` arrangement.
 Each pip represents one construction armor/internal point. Hardened Armor and
-Reinforced Structure diamonds are split into two independently marked halves.
+Reinforced Structure diamonds are split into two independently marked halves,
+left then right, with no line between them: unmarked, a pair reads as one pip.
 Their runtime damage capacities are twice the construction values, with integer
 damage per half. Counters retain construction-point units and show half points
 when needed. Construction values and saved damage amounts remain unchanged.

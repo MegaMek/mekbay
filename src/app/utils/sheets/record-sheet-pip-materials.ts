@@ -59,17 +59,24 @@ export function applyRecordSheetPipMaterials(svg: SVGSVGElement, entity: BaseEnt
     }
 }
 
-/** Adjacent triangles retain the diamond footprint and each consume one damage mark. */
+/**
+ * Two open halves replace the diamond and each consume one damage mark, the left one first. Each strokes only its two
+ * outer edges and fills up to the diagonal between its ends, so the pair reads as a single pip; square caps complete
+ * the diamond's corners.
+ */
 function splitDoubleDamagePip(pip: SVGElement): void {
     if (!(pip instanceof SVGPolygonElement) || pip.points.numberOfItems !== 4) return;
     const points = Array.from({ length: 4 }, (_, index) => {
         const point = pip.points.getItem(index);
         return `${point.x},${point.y}`;
     });
-    const half = pip.cloneNode(true) as SVGPolygonElement;
-    if (half.id) half.id += '-half';
-    half.classList.add('half');
-    pip.setAttribute('points', [points[0], points[2], points[3]].join(' '));
-    half.setAttribute('points', [points[0], points[1], points[2]].join(' '));
-    pip.after(half);
+    const left = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    for (const attribute of pip.attributes) left.setAttribute(attribute.name, attribute.value);
+    left.setAttribute('stroke-linecap', 'square');
+    const right = left.cloneNode(true) as SVGPolylineElement;
+    if (right.id) right.id += '-half';
+    right.classList.add('half');
+    left.setAttribute('points', [points[2], points[3], points[0]].join(' '));
+    right.setAttribute('points', [points[0], points[1], points[2]].join(' '));
+    pip.replaceWith(left, right);
 }

@@ -28,6 +28,7 @@ import {
   transparentRect,
 } from './record-sheet-svg-rendering';
 import { applyRecordSheetPipMaterials } from './record-sheet-pip-materials';
+import { INVENTORY_BADGE, RECORD_SHEET_FONT } from './record-sheet-typography';
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 export interface GeneratedRecordSheetControlOptions {
@@ -305,11 +306,15 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
       value.setAttribute('data-mekbay-move-value-width', String(fontSize * 1.45));
     }
     const labelX = Number(label.getAttribute('x')) || 0;
-    const badgeWidth = fontSize * 1.35;
-    // First-column modifiers straddle the frame; secondary movement columns
-    // (LAM modes, jumping vehicles) keep their badges beside their labels.
+    // Sized and placed like the inventory badges, at the body text's scale.
+    const badgeScale = fontSize / RECORD_SHEET_FONT.body;
+    const badgeWidth = INVENTORY_BADGE.width * badgeScale;
+    // First-column modifiers straddle the frame in the inventory badges' column; secondary
+    // movement columns (LAM modes, jumping vehicles) keep their badges beside their labels.
     const frameX = Number(parent.getAttribute('data-mekbay-movement-frame-x'));
-    const badgeX = labelX < fontSize * 2 ? frameX - badgeWidth / 2 : labelX - badgeWidth - fontSize * 0.15;
+    const badgeX = labelX < fontSize * 2
+      ? frameX + INVENTORY_BADGE.offsetX * badgeScale - badgeWidth / 2
+      : labelX - badgeWidth - fontSize * 0.15;
     const control = svgElement('g');
     control.setAttribute('class', 'movementControl screen-only');
     control.setAttribute('data-mekbay-movement-control', movement.id);
@@ -489,7 +494,7 @@ function appendPipHitAreas(svg: SVGSVGElement): void {
         ? `M ${pip.cx.baseVal.value - pip.r.baseVal.value} ${pip.cy.baseVal.value}` +
           `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${pip.r.baseVal.value * 2} 0` +
           `a ${pip.r.baseVal.value} ${pip.r.baseVal.value} 0 1 1 ${-pip.r.baseVal.value * 2} 0z`
-        : pip instanceof SVGPolygonElement
+        : pip instanceof SVGPolygonElement || pip instanceof SVGPolylineElement
           ? `M ${pip.getAttribute('points')} Z`
           : null;
     if (outline === null) {

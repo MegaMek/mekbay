@@ -628,7 +628,7 @@ describe('bindNonMekRecordSheet', () => {
         try {
             const pips = [...svg.querySelectorAll<SVGElement>('.pip.armor, .pip.structure')];
             expect(pips.length).toBe(10);
-            expect(pips.every(pip => pip.tagName === 'polygon' && pip.style.display !== 'none')).toBeTrue();
+            expect(pips.every(pip => pip.tagName === 'polyline' && pip.style.display !== 'none')).toBeTrue();
             expect(svg.querySelectorAll('.half').length).toBe(5);
             expect(svg.querySelectorAll('.armor.pip.damaged').length).toBe(1);
             const pending: NonMekRecordSheetSnapshot = {

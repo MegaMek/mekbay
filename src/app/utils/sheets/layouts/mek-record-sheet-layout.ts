@@ -599,7 +599,7 @@ function appendMekInventoryRows(
         appendInventoryRowButtons(row, localBaseline, fontScale, rowStep,
             isEquipment ? equipmentSpans[index][0] : physicalSpans[index - equipmentRows.length],
             buttons.band, buttons.ranges);
-        appendInventoryBadges(row, localBaseline, fontScale, rowStep, stateKey !== null);
+        appendInventoryBadges(row, localBaseline, fontScale, rowStep);
 
         const quantity = isEquipment ? equipmentRows[index].quantity : undefined;
         if (quantity !== undefined) {

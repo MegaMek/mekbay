@@ -236,7 +236,7 @@ function drawAeroDataInventory(
                 ['shrButton', 'medButton', 'lngButton', 'extButton'][rangeIndex], x(position),
                 x(rangeIndex === 3 ? 16.63 : 17.31),
             ] as const));
-        appendInventoryBadges(entry, baseline, fontScale, yStep, stateKey !== null);
+        appendInventoryBadges(entry, baseline, fontScale, yStep);
         if (row.quantity !== undefined) {
             addCell(entry, String(row.quantity), x(8.41), baseline, {
                 class: 'quantity', size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle',

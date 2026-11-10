@@ -6,4 +6,5 @@ export const RECORD_SHEET_FONT = Object.freeze({ caption: 10.6, section: 8.6, bo
 /** Roboto's cap (and digit) height in em, for centring text of different sizes on each other. */
 export const RECORD_SHEET_CAP_HEIGHT = 0.711;
 export const INVENTORY_LINE_HEIGHT = RECORD_SHEET_FONT.inventory * 1.35;
-export const INVENTORY_BADGE = Object.freeze({ width: 10, height: 9, minimumHeight: 6.5, fontSize: RECORD_SHEET_FONT.inventory * 1.1 });
+/** Badges straddle their frame's left border, centred `offsetX` left of it, clear of the first column's text. */
+export const INVENTORY_BADGE = Object.freeze({ width: 10, height: 9, minimumHeight: 6.5, offsetX: -2.5, fontSize: RECORD_SHEET_FONT.inventory * 1.1 });

@@ -209,7 +209,8 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         }).setAttribute('font-style', 'italic');
         svg.appendChild(group);
     }
-        const eraBox = at({ x: 75.667, y: 66.191, width: 20, height: 20 });
+        // Clear of the hit-modifier badges that straddle the inventory's left border.
+        const eraBox = at({ x: 72, y: 66.191, width: 20, height: 20 });
         await appendRecordSheetEraIcon(svg, outer, entity.year(), eraBox);
         appendLegacyIdentityAnchors(outer, entity, at({ x: 0, y: 0, width: 576, height: 139.2 }), request.ruleset);
     }
@@ -349,7 +350,7 @@ function drawCompactProtoMekInventoryRows(
         const badgeScale = Math.min(fontScale, sy);
         const buttons = inventoryRangeButtons(PROTOMEK_INVENTORY_COLUMNS, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
-        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep), stateKey !== null);
+        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
         if (showQuantity && data.quantity !== undefined) {
             addCell(entry, String(data.quantity), x(6.725), baseline, {
                 class: 'quantity', size: font(RECORD_SHEET_FONT.inventory), anchor: 'middle',

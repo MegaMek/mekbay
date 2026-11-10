@@ -780,8 +780,9 @@ describe('RecordSheetSvgGenerator', () => {
         expect(ctStructure.length).toBe(entity.structureValues().get('CT')!);
         expect(svg.querySelectorAll('.pip.structure[data-loc="CT"].half').length).toBe(ctStructure.length);
         expect(svg.querySelectorAll('.pip.structure[data-loc="LT"].half').length).toBe(0);
-        expect(ctArmor[0].tagName).toBe('polygon');
-        expect(ctStructure[0].tagName).toBe('polygon');
+        // Open halves: neither strokes the diagonal they share.
+        expect(ctArmor[0].tagName).toBe('polyline');
+        expect(ctStructure[0].tagName).toBe('polyline');
     });
 
     for (const [family, createEntity] of [

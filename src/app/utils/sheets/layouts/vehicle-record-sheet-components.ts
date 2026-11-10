@@ -320,7 +320,7 @@ function appendCompactVehicleInventory(
         const badgeScale = box.width / 220.4;
         const buttons = inventoryRangeButtons(STANDARD_INVENTORY_COLUMNS, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, weaponStep, rowSpans[index][0], buttons.band, buttons.ranges);
-        appendInventoryBadges(entry, baseline, badgeScale, weaponStep, stateKey !== null);
+        appendInventoryBadges(entry, baseline, badgeScale, weaponStep);
         if (row.quantity !== undefined) {
             addInventoryText(entry, String(row.quantity), x(VEHICLE_INVENTORY_QUANTITY_X), baseline, {
                 class: 'quantity', size: inventoryFont(RECORD_SHEET_FONT.inventory), anchor: 'middle', lineHeight: weaponStep,

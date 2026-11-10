@@ -484,7 +484,7 @@ function drawCompactBattleArmorInventory(
         const badgeScale = Math.min(font(1), y(1));
         const buttons = inventoryRangeButtons(columns, x);
         appendInventoryRowButtons(entry, baseline, badgeScale, y(lineStep), lineCount, buttons.band, buttons.ranges);
-        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep), stateKey !== null);
+        appendInventoryBadges(entry, baseline, badgeScale, y(lineStep));
         if (showQuantity && row.quantity !== undefined) {
             addCell(entry, String(row.quantity), x(7.55), baseline, {
                 class: 'quantity', size: font(rowFont), anchor: 'middle',
