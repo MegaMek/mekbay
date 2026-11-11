@@ -1719,8 +1719,7 @@ export class CBTForce extends Force<never> {
             : nonMek?.state.turn.movement?.mode ?? null;
         const airborne = mek ? mek.query.turnState().airborne === true : nonMek?.state.turn.airborne === true;
         const modifier = (mode: MotiveModes, isAirborne: boolean): number => mek
-            ? mekAttackMovementModifier(mek.entity, mode as MekMovementModeV2, isAirborne,
-                mek.query.conversionMode())
+            ? mekAttackMovementModifier(mode as MekMovementModeV2, isAirborne, mek.query.conversionMode())
             : nonMekAttackMovementModifier(unit.entity, mode);
         const facts = motiveModeFactsForEntity(unit.entity);
         const movementModifier = movementMode === null ? 0 : modifier(movementMode, airborne);

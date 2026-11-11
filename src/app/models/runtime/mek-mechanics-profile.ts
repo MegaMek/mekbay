@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { isQuadVeeTracksEquipment, isTracksEquipment } from '../chassis-equipment.model';
+import { isTracksEquipment } from '../chassis-equipment.model';
 import { isPlainRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import {
@@ -221,8 +221,8 @@ export interface MekMechanicsProfile {
     readonly umus: readonly MekEquipmentGroup[];
     readonly partialWings: readonly MekEquipmentGroup[];
     /**
-     * The Tracks a Mek may move on instead of its feet (TW p. 143), one entry per leg that carries one: a track is
-     * lost with its critical slot or its leg. Empty for a QuadVee, whose tracks belong to its Vehicle mode.
+     * The tracks (or a QuadVee's wheels), one entry per leg that carries one: a track is lost with its critical slot
+     * or its leg. A Mek moves on them instead of its feet (TW p. 143); a QuadVee drives its Vehicle mode on them.
      */
     readonly tracks: readonly MekEquipmentGroup[];
     readonly tripleStrengthMyomer: readonly MekTripleStrengthMyomerGroup[];
@@ -532,8 +532,7 @@ export function compileMekMechanicsProfile(
         jumpJets: Object.freeze(features.jumpJets),
         umus: Object.freeze(features.umus),
         partialWings: Object.freeze(features.partialWings),
-        // A QuadVee's tracks drive its Vehicle mode, which the conversion mode governs.
-        tracks: Object.freeze(entity.chassisConfig === 'QuadVee' ? [] : features.tracks),
+        tracks: Object.freeze(features.tracks),
         tripleStrengthMyomer: Object.freeze(features.tripleStrengthMyomer),
         masc: Object.freeze(features.masc),
         superchargers: Object.freeze(features.superchargers),
@@ -808,7 +807,7 @@ function compileFeatures(
             boundedFeature = true;
             result.partialWings.push(base);
         }
-        if (isTracksEquipment(equipment) && !isQuadVeeTracksEquipment(equipment)) {
+        if (isTracksEquipment(equipment)) {
             boundedFeature = true;
             for (const locationId of base.locationIds) {
                 result.tracks.push(Object.freeze({

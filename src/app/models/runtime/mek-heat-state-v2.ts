@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekConvertedMode } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import { isObjectLiteralRecord } from '../../utils/json-value.util';
@@ -87,6 +88,8 @@ export interface MekHeatKernelInputV2 {
     readonly turn: MekTurnStateV2;
     readonly movement: MekMovementHeatInputV2 | null;
     readonly standAttempts: number;
+    /** The mode a LAM or QuadVee has converted to; absent in BattleMech mode. */
+    readonly conversionMode?: MekConvertedMode;
     readonly destroyed: boolean;
     readonly shutdown: boolean;
     readonly water: UnitWaterState;
@@ -123,6 +126,7 @@ export interface MekMovementHeatFactsV2 {
     readonly movement: MekMovementHeatInputV2 | null;
     readonly standAttempts: number;
     readonly airborne: boolean;
+    readonly conversionMode?: MekConvertedMode;
     readonly committedUnavailableCriticalSlots: ReadonlySet<CriticalSlotId>;
     readonly committedUnavailableComponents: ReadonlySet<ComponentId>;
 }
@@ -568,6 +572,7 @@ function buildCommittedHeatSources(
         movement: input.movement,
         standAttempts: input.standAttempts,
         airborne: input.turn.airborne === true,
+        ...(input.conversionMode === undefined ? {} : { conversionMode: input.conversionMode }),
         committedUnavailableCriticalSlots: input.committedUnavailableCriticalSlots,
         committedUnavailableComponents: input.committedUnavailableComponents,
     });
@@ -699,6 +704,7 @@ function movementSignature(profile: MekHeatProfile, input: MekHeatKernelInputV2)
         unavailableJumpBoosters,
         unavailableScm,
         unavailableWingSlots,
+        ...(input.conversionMode === undefined ? [] : [input.conversionMode]),
     ]);
 }
 
@@ -709,6 +715,8 @@ export function projectMekMovementHeatV2(
     // TW p. 143: tracked movement generates heat as walking does, none on an ICE-equipped Mek.
     const moveMode = input.movement?.mode === 'tracked' ? 'walk' : input.movement?.mode;
     const standHeat = profile.heatPerStandAttempt * input.standAttempts;
+    // IO:AE p. 107: a LAM in Fighter mode generates heat as an aerospace fighter, whose thrust generates none.
+    if (input.conversionMode === 'fighter') return standHeat;
     const scmActive = profile.superCooledMyomer.componentIds.length > 0
         && profile.superCooledMyomer.componentIds.some(
             componentId => !input.committedUnavailableComponents.has(componentId),
@@ -717,7 +725,7 @@ export function projectMekMovementHeatV2(
         if (profile.engine.heatlessIndustrialGroundMovement && moveMode !== 'stationary') {
             return standHeat;
         }
-        if (profile.landAirMek && input.airborne && moveMode !== 'stationary') {
+        if (input.conversionMode === 'airmek' && input.airborne && moveMode !== 'stationary') {
             return Math.round(jumpMovementHeat(profile, input) / 3) + standHeat;
         }
         return (scmActive ? 0 : profile.engine.movementHeatByMode[moveMode]) + standHeat;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { mekMovesOnTracks } from '../chassis-equipment.model';
-import { mekAirborne, mekConversionModes, mekConvertedMotiveModes } from '../mek-conversion-mode';
+import { mekConversionModes, mekConvertedMotiveModes } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -509,19 +509,20 @@ export function projectMekRecordSheet(
     const conversionModes = mekConversionModes(entity);
     const conversionMode = query.conversionMode();
     const declaredAirborne = query.turnState().airborne;
-    const airborne = mekAirborne(conversionMode, declaredAirborne);
-    // An AirMech offers its ground and its airborne movement side by side; every other mode has one set.
+    const airborne = declaredAirborne === true;
+    // An AirMech offers its ground and its airborne movement side by side. A fighter's one column offers its flight
+    // until it is declared landed. Every other mode has one set.
     const movementOptions = conversionMode === 'mek'
         ? [...getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne),
             ...(mekMovesOnTracks(entity) ? ['tracked' as const] : [])]
             .map(mode => ({ mode, airborne, ownState: false }))
-        : (conversionMode === 'airmek' ? [false, true] : [airborne]).flatMap(state =>
+        : (conversionMode === 'airmek' ? [false, true]
+            : conversionMode === 'fighter' ? [declaredAirborne !== false] : [airborne]).flatMap(state =>
             mekConvertedMotiveModes(conversionMode, state).map(mode => ({
-                // Choosing an AirMech's movement, or a fighter's before it declared itself landed or flying, also
-                // declares the air/ground state it belongs to.
-                mode, airborne: state, ownState: mode !== 'stationary' && (conversionMode === 'airmek'
-                    || (conversionMode === 'fighter' && declaredAirborne === null)),
+                // Choosing a movement in a state the unit has not declared also declares that state.
+                mode, airborne: state, ownState: mode !== 'stationary' && state !== declaredAirborne,
             })));
+    const airGroundMp = movement.kind === 'supported' ? movement.airGroundMp : undefined;
     const construction = constructionLabels(index);
     const battleValue = suppliedBattleValue ?? Object.freeze({
         pristine: safePristineMekBattleValue(entity, ruleset),
@@ -579,8 +580,14 @@ export function projectMekRecordSheet(
                 if (mode === 'VTOL') return [];
                 const action = movement.kind === 'supported'
                     ? movement.actions.find(action => action.kind === mode) : undefined;
-                return [{ mode, modifier: mekAttackMovementModifier(entity, mode, option.airborne, conversionMode),
-                    legal: action?.legal === true, minimumMp: action?.minimumMp ?? 0,
+                // The projection moves in the declared state; the other state is judged on its own MP.
+                const stateMp = airGroundMp?.[option.airborne ? 'airborne' : 'grounded'];
+                const legal = option.airborne === airborne || stateMp === undefined || mode === 'stationary'
+                    ? action?.legal === true
+                    : action !== undefined && action.reasons.every(reason => reason.code === 'NO_MOVEMENT_POINTS')
+                        && (mode === 'run' ? stateMp.runMp : stateMp.walkMp) > 0;
+                return [{ mode, modifier: mekAttackMovementModifier(mode, option.airborne, conversionMode),
+                    legal, minimumMp: action?.minimumMp ?? 0,
                     ...(option.ownState ? { airborne: option.airborne } : {}) }];
             })),
         }),

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { mekConversionModes } from '../mek-conversion-mode';
+import { isMekConvertedModeCondition, mekConversionModes } from '../mek-conversion-mode';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { isSparseCrewMemberState,MAX_CREW_WOUNDS,type CrewMemberRuntimeState } from '../crew-member.model';
 import { decodePinnedCustomUnitSource } from '../pinned-custom-unit-source';
@@ -1089,7 +1089,8 @@ export async function restoreSerializedCBTUnitV2(
                 );
             }
             return condition;
-        }).filter(condition => condition !== 'crippled' && !skippedRuleCondition(condition, accumulator)));
+        }).filter(condition => condition !== 'crippled' && !isMekConvertedModeCondition(condition)
+            && !skippedRuleCondition(condition, accumulator)));
     let heat = initialized.state.heat;
     if (saved.heat !== undefined) {
         const current = requireNonnegativeFinite(saved.heat.heat, '$.heat.heat');

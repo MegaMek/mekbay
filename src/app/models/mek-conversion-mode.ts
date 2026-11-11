@@ -32,6 +32,11 @@ export function mekConvertedModeCondition(mode: MekConvertedMode): UnitCondition
     return `${mode}-mode`;
 }
 
+/** Whether a condition is one of the display conditions derived from the conversion mode. */
+export function isMekConvertedModeCondition(condition: UnitConditionKey): boolean {
+    return MEK_CONVERTED_MODES.some(mode => mekConvertedModeCondition(mode) === condition);
+}
+
 /** The modes this Mek converts between, BattleMech mode first; empty for a Mek that does not convert. */
 export function mekConversionModes(entity: MekEntity): readonly MekConversionMode[] {
     if (entity.chassisConfig === 'QuadVee') return ['mek', 'vehicle'];
@@ -45,14 +50,9 @@ export function mekConversionModeLabel(mode: MekConversionMode): string {
 }
 
 /**
- * Whether the unit is in the air this turn. An AirMech is on the ground until it declares its airborne movement; a
- * fighter flies unless it is declared landed; BattleMech and Vehicle modes stay on the ground.
+ * Only an AirMech and a fighter choose between the ground and the air. They declare it every turn, as an aerospace
+ * fighter does; until then they count as on the ground.
  */
-export function mekAirborne(mode: MekConversionMode, declared: boolean | null): boolean {
-    return mode === 'fighter' ? declared !== false : declared === true;
-}
-
-/** Only an AirMech and a fighter choose between the ground and the air. */
 export function mekChoosesAirborne(mode: MekConversionMode): boolean {
     return mode === 'airmek' || mode === 'fighter';
 }

@@ -313,6 +313,22 @@ export function createDirectVibrobladeRuntimeFixture(
     return createFixture(ruleset, instanceId, { includeVibroblade: true });
 }
 
+/** Parsed Standard Land-Air Mek: Walking 5, Jumping 3. */
+export function createDirectLamRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-lam-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { lam: true });
+}
+
+/** Parsed tracked QuadVee with a track in every leg: Walking 5. */
+export function createDirectQuadVeeRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-quadvee-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { configuration: 'quad', quadVee: true });
+}
+
 /** Parsed Mek with Tracks in both legs. */
 export function createDirectTracksRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
@@ -475,6 +491,8 @@ interface DirectFixtureOptions {
     readonly includeVibroblade?: boolean;
     readonly includeSupercharger?: boolean;
     readonly includeTracks?: boolean;
+    readonly lam?: boolean;
+    readonly quadVee?: boolean;
     readonly includeJetBooster?: boolean;
     readonly includeEscalatingFailureEquipment?: boolean;
     readonly includeExplosionEquipment?: boolean;
@@ -994,6 +1012,7 @@ function directMekEquipmentRegistry() {
 
 function directMekMtf(options: DirectFixtureOptions): string {
     if (options.includePartialWing) return directPartialWingMekMtf();
+    if (options.lam) return directLamMekMtf();
     if (options.shieldSize) return directShieldMekMtf(options.shieldSize, options);
     if (options.includeMachineGunArray) return directMachineGunArrayMtf();
     const includeBombast = options.includeBombast ?? false;
@@ -1239,6 +1258,37 @@ ${Array(7).fill('-Empty-').join('\n')}
 `;
 }
 
+function directLamMekMtf(): string {
+    return `uuid:${UUID}
+chassis:Direct LAM Fixture
+model:DLAM-1
+Config:LAM
+techbase:Inner Sphere
+era:3050
+mass:50
+engine:250 Fusion Engine
+gyro:Standard
+structure:Standard
+heat sinks:10 Single
+walk mp:5
+jump mp:3
+armor:Standard(Inner Sphere)
+LA armor:5
+RA armor:5
+LT armor:5
+RT armor:5
+CT armor:5
+HD armor:3
+LL armor:5
+RL armor:5
+Left Torso:
+Test Jump Jet
+Test Jump Jet
+Test Jump Jet
+${Array(9).fill('-Empty-').join('\n')}
+`;
+}
+
 function directPartialWingMekMtf(): string {
     return `uuid:${UUID}
 chassis:Direct Partial Wing Fixture
@@ -1365,11 +1415,12 @@ function directQuadMekMtf(options: DirectFixtureOptions): string {
 Upper Leg Actuator
 Lower Leg Actuator
 Foot Actuator
-${Array(8).fill('-Empty-').join('\n')}`;
+${options.quadVee ? 'Test Tracks' : '-Empty-'}
+${Array(7).fill('-Empty-').join('\n')}`;
     return `uuid:${UUID}
 chassis:Direct Quad Fixture
 model:DQ-1
-Config:Quad
+Config:${options.quadVee ? 'QuadVee' : 'Quad'}
 techbase:Inner Sphere
 era:3050
 mass:20

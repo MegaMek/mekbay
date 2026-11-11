@@ -87,6 +87,42 @@ describe('Mek tracked movement', () => {
             expect(falls('tracked')).toEqual([]);
         });
 
+        it(`${ruleset}: keeps the declared tracks or feet once the phase has judged damage`, () => {
+            const damage = (fixture: DirectMekRuntimeFixture) => {
+                const face = [...fixture.index.armorFaces.values()].find(candidate => candidate.maximumPoints > 0)!;
+                expect(fixture.instance.dispatch({ type: 'damage-armor', faceId: face.id, amount: 1, target: 'committed' })
+                    .accepted).toBeTrue();
+            };
+            // Tracked when the damage landed: its gyro hit raised no roll, so it cannot go back to its feet.
+            const tracked = createDirectTracksRuntimeFixture(ruleset);
+            expect(declare(tracked, 'tracked', 1)).toBeTrue();
+            expect(declare(tracked, 'walk', 1)).toBeTrue();
+            expect(declare(tracked, 'tracked', 1)).toBeTrue();
+            damage(tracked);
+            hit(tracked, systemSlot(tracked, 'Gyro'));
+            expect(action(tracked, 'walk').reasons.map(reason => reason.code)).toContain('TRACKS_OR_FEET_DECLARED');
+            expect(action(tracked, 'tracked').legal).toBeTrue();
+            expect(declare(tracked, 'walk', 1)).toBeFalse();
+            expect(tracked.instance.dispatch({ type: 'clear-mek-movement' }).changed).toBeFalse();
+            expect(tracked.instance.query().mekMovementPsrState().movement?.mode).toBe('tracked');
+            expect(declare(tracked, 'tracked', 2)).toBeTrue();
+
+            // On foot when the damage landed: its roll stands, and it cannot take to its tracks to shed it.
+            const onFoot = createDirectTracksRuntimeFixture(ruleset);
+            expect(declare(onFoot, 'walk', 1)).toBeTrue();
+            damage(onFoot);
+            hit(onFoot, systemSlot(onFoot, 'Gyro'));
+            expect(declare(onFoot, 'tracked', 1)).toBeFalse();
+            expect(declare(onFoot, 'run', 2)).toBeTrue();
+            expect(onFoot.instance.query().mekPilotChecks().map(check => check.source.triggerKind)).toContain('gyro-hit');
+
+            // A Mek without tracks is never held to its movement.
+            const plain = createDirectMekRuntimeFixture(ruleset);
+            expect(declare(plain, 'walk', 1)).toBeTrue();
+            damage(plain);
+            expect(plain.instance.dispatch({ type: 'clear-mek-movement' }).changed).toBeTrue();
+        });
+
         it(`${ruleset}: heats and attacks as a Mek that walked`, () => {
             const heat = (mode: MekMovementModeV2) => {
                 const fixture = createDirectTracksRuntimeFixture(ruleset);

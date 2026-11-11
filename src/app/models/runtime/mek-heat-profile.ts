@@ -183,7 +183,6 @@ export interface MekHeatProfile {
     readonly schemaVersion: typeof MEK_HEAT_PROFILE_SCHEMA_VERSION;
     /** Total Warfare adds one heat for every stand-up attempt; Core does not. */
     readonly heatPerStandAttempt: 0 | 1;
-    readonly landAirMek: boolean;
     readonly declaredHeatSinkUnits: number;
     readonly baseDissipation: number;
     /** V1 turns off anonymous sink pips at the engine sink rate. */
@@ -309,7 +308,6 @@ export function compileMekHeatProfile(
     const profile: MekHeatProfile = Object.freeze({
         schemaVersion: MEK_HEAT_PROFILE_SCHEMA_VERSION,
         heatPerStandAttempt: ruleset === 'total-warfare' ? 1 : 0,
-        landAirMek: entity.isLandAirMek(),
         declaredHeatSinkUnits,
         baseDissipation: heatSinks.reduce((total, group) => total + group.dissipation, 0),
         dissipationPerDisabledSink: disabledRate,

@@ -32,12 +32,13 @@ function movementHeat(
     mode: NonNullable<MekMovementHeatFactsV2['movement']>['mode'],
     distance = mode === 'stationary' ? 0 : 1,
     options: Partial<Pick<MekMovementHeatFactsV2,
-        'airborne' | 'committedUnavailableComponents' | 'committedUnavailableCriticalSlots'>> = {},
+        'airborne' | 'conversionMode' | 'committedUnavailableComponents' | 'committedUnavailableCriticalSlots'>> = {},
 ): number {
     return projectMekMovementHeatV2(profile, {
         movement: { mode, distance },
         standAttempts: 0,
         airborne: options.airborne ?? false,
+        ...(options.conversionMode === undefined ? {} : { conversionMode: options.conversionMode }),
         committedUnavailableComponents: options.committedUnavailableComponents ?? NO_COMPONENTS,
         committedUnavailableCriticalSlots: options.committedUnavailableCriticalSlots ?? NO_CRITICALS,
     });
@@ -131,16 +132,18 @@ describe('origin/next Mek movement and engine heat parity', () => {
         expect(movementHeat(xxl, 'UMU')).toBe(2);
     });
 
-    it('uses one-third rounded jump heat for airborne AirMek ground modes', () => {
-        const base = heatProfile(createDirectMekRuntimeFixture(
+    it('uses one-third rounded jump heat for an AirMech flying, ground heat for one walking, and none for a fighter', () => {
+        const profile = heatProfile(createDirectMekRuntimeFixture(
             'core-2026', 'unit:heat:airmek-base',
         ));
-        const airMek = Object.freeze({ ...base, landAirMek: true });
 
         expect([1, 4, 5].map(distance => movementHeat(
-            airMek, 'run', distance, { airborne: true },
+            profile, 'run', distance, { airborne: true, conversionMode: 'airmek' },
         ))).toEqual([1, 1, 2]);
-        expect(movementHeat(airMek, 'run', 5)).toBe(2);
+        expect(movementHeat(profile, 'run', 5, { conversionMode: 'airmek' })).toBe(2);
+        // IO:AE p. 107: a fighter generates heat as an aerospace fighter, whose thrust generates none.
+        expect(movementHeat(profile, 'run', 5, { airborne: true, conversionMode: 'fighter' })).toBe(0);
+        expect(movementHeat(profile, 'walk', 1, { conversionMode: 'fighter' })).toBe(0);
     });
 
     it('uses a working jump booster only when no conventional jet is available', () => {

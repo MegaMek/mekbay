@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { MEK_CONVERTED_MODES, mekAirborne, mekChoosesAirborne, mekConversionModes, mekConvertedModeCondition, type MekConversionMode } from '../mek-conversion-mode';
+import { isMekConvertedModeCondition, mekChoosesAirborne, mekConversionModes, mekConvertedModeCondition, type MekConversionMode } from '../mek-conversion-mode';
 import { withAmmoConfiguration,withAmmoShotsSpent,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
 import { mekHotLoadedAmmoEnabled } from './mek-mechanics-context-v2';
 import type { HotLoadExplosionRoll } from './mek-critical-hit-v2';
@@ -78,9 +78,6 @@ import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-
 import { componentLocationIds,equipmentForComponent,type MekIndexedBay,type MekIndexedCriticalSlot,type MekRuntimeIndex } from './mek-runtime-index';
 import { mekWeaponTargetSubject,resolveMekUnitWaterState } from './mek-targeting-rules';
 import { applyWeaponTargetPolicies,reconcileWeaponTargetPolicies,type WeaponTargetSubjectResolver } from './weapon-target-policy';
-
-/** Shown for a converted unit's mode, derived from `conversionMode` and never stored or set directly. */
-const CONVERSION_MODE_CONDITIONS: ReadonlySet<UnitConditionKey> = new Set(MEK_CONVERTED_MODES.map(mekConvertedModeCondition));
 
 export type MekHitArcV2 = 'front' | 'rear' | 'left' | 'right';
 
@@ -355,7 +352,7 @@ class MekRuntimeQuery {
             && mekChoosesAirborne(state.conversionMode ?? 'mek');
         const storedDisplayConditions = new ImmutableSet<UnitConditionKey>([...state.conditions].filter(condition =>
             condition !== 'airborne' && condition !== 'grounded' && condition !== 'crippled'
-            && !CONVERSION_MODE_CONDITIONS.has(condition)));
+            && !isMekConvertedModeCondition(condition)));
         const effectiveCrewState = (positionId: CrewPositionId): CrewMemberEffectiveState => {
             const position = unit.index.crewPositions.get(positionId);
             if (!position) throw new Error(`Unknown crew position ${positionId}`);
@@ -1793,7 +1790,7 @@ function reduce(
             if (command.condition === 'airborne'
                 || command.condition === 'grounded'
                 || command.condition === 'crippled'
-                || CONVERSION_MODE_CONDITIONS.has(command.condition)) {
+                || isMekConvertedModeCondition(command.condition)) {
                 return unchanged(state);
             }
             // Shutdown is owned by typed shutdown/startup actions. Generic
@@ -2838,7 +2835,7 @@ function createMovementRuntimeInput(
     }
     return Object.freeze({
         currentHeat: state.heat.current,
-        airborne: mekAirborne(state.conversionMode ?? 'mek', state.turn.airborne),
+        airborne: state.turn.airborne === true,
         conversionMode: state.conversionMode ?? 'mek',
         crewAssignment,
         crewState: (positionId: CrewPositionId) => CrewMember.from(state.crew.get(positionId)),
@@ -5093,6 +5090,7 @@ function buildHeatKernelInput(
             ? null
             : Object.freeze({ mode: movement.mode, distance: movement.distance }),
         standAttempts: state.movementPsr.standAttempts,
+        ...(state.conversionMode === undefined ? {} : { conversionMode: state.conversionMode }),
         destroyed: state.destroyed,
         shutdown: state.conditions.has('shutdown'),
         water: resolveMekUnitWaterState(

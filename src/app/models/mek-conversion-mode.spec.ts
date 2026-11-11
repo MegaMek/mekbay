@@ -4,7 +4,6 @@
 import { TestBipedMekEntity, TestLamEntity, TestQuadVeeEntity } from './entity/testing/test-entities';
 import {
     isMekConvertedMode,
-    mekAirborne,
     mekChoosesAirborne,
     mekConversionModes,
     mekConvertedMotiveLabel,
@@ -22,9 +21,7 @@ describe('Mek conversion modes', () => {
         expect(mekConversionModes(new TestBipedMekEntity())).toEqual([]);
     });
 
-    it('keeps a fighter in the air unless it is declared landed, and an AirMech on the ground until it takes off', () => {
-        expect([null, true, false].map(declared => mekAirborne('fighter', declared))).toEqual([true, true, false]);
-        expect([null, true, false].map(declared => mekAirborne('airmek', declared))).toEqual([false, true, false]);
+    it('lets only an AirMech and a fighter choose between the ground and the air', () => {
         expect(['mek', 'airmek', 'fighter', 'vehicle'].map(mode => mekChoosesAirborne(mode as 'mek')))
             .toEqual([false, true, true, false]);
     });

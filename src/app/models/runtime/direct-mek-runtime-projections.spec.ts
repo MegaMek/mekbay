@@ -1070,11 +1070,16 @@ describe('direct Mek entity/runtime projections', () => {
         expect(panel.spottingModifier).toBe(1);
     });
 
-    it('uses the production airborne LAM attack movement modifiers', () => {
-        const lam = { chassisConfig: 'LAM' } as unknown as Parameters<typeof mekAttackMovementModifier>[0];
-        expect(mekAttackMovementModifier(lam, 'walk', true)).toBe(3);
-        expect(mekAttackMovementModifier(lam, 'run', true)).toBe(4);
-        expect(mekAttackMovementModifier(lam, 'walk', false)).toBe(1);
+    it('uses the AirMech and fighter attack movement modifiers', () => {
+        // IO:AE p. 106: an AirMech walks and runs at +1/+2 and cruises and flanks at +3/+4.
+        expect(mekAttackMovementModifier('walk', true, 'airmek')).toBe(3);
+        expect(mekAttackMovementModifier('run', true, 'airmek')).toBe(4);
+        expect(mekAttackMovementModifier('walk', false, 'airmek')).toBe(1);
+        expect(mekAttackMovementModifier('run', false, 'airmek')).toBe(2);
+        // A fighter has no attacker movement modifier; BattleMech and Vehicle modes use the ordinary ones.
+        expect(mekAttackMovementModifier('run', true, 'fighter')).toBe(0);
+        expect(mekAttackMovementModifier('run', false, 'vehicle')).toBe(2);
+        expect(mekAttackMovementModifier('walk', false)).toBe(1);
     });
 
     it('composes ruleset bases with sparse Spotting and Skidding attack modifiers once', () => {

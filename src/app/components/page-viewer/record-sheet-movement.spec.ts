@@ -179,7 +179,7 @@ describe('record-sheet movement controls', () => {
             selection = { airborne: false, selectedMode: null, conversion: { mode, modes },
                 options: (mode === 'airmek' ? [false, true] : [mode === 'fighter']).flatMap(airborne =>
                     (['walk', 'run'] as const).map(motive => ({
-                        mode: motive, modifier: mekAttackMovementModifier(entity, motive, airborne, mode),
+                        mode: motive, modifier: mekAttackMovementModifier(motive, airborne, mode),
                         legal: true, minimumMp: 0, ...(mode === 'airmek' ? { airborne } : {}),
                     }))) };
             render(selection);
@@ -197,7 +197,7 @@ describe('record-sheet movement controls', () => {
 
         selection = { ...selection!, conversion: { mode: 'airmek', modes }, options: [false, true].flatMap(airborne =>
             (['walk', 'run'] as const).map(motive => ({
-                mode: motive, modifier: mekAttackMovementModifier(entity, motive, airborne, 'airmek'),
+                mode: motive, modifier: mekAttackMovementModifier(motive, airborne, 'airmek'),
                 legal: true, minimumMp: 0, airborne,
             }))) };
         render(selection);

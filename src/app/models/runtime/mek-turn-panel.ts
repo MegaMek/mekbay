@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { mekAirborne, mekConversionModes, type MekConversionMode } from '../mek-conversion-mode';
+import { mekConversionModes, type MekConversionMode } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -120,15 +120,15 @@ export function projectMekTurnPanel(
         height,
     );
     const conversionMode = query.conversionMode();
-    const airborne = mekAirborne(conversionMode, turn.airborne);
+    const airborne = turn.airborne === true;
     const attackMovementModifiers = Object.freeze({
         stationary: 0,
-        walk: mekAttackMovementModifier(entity, 'walk', airborne, conversionMode),
-        run: mekAttackMovementModifier(entity, 'run', airborne, conversionMode),
+        walk: mekAttackMovementModifier('walk', airborne, conversionMode),
+        run: mekAttackMovementModifier('run', airborne, conversionMode),
         sprint: 0,
-        jump: mekAttackMovementModifier(entity, 'jump', airborne, conversionMode),
-        UMU: mekAttackMovementModifier(entity, 'UMU', airborne, conversionMode),
-        tracked: mekAttackMovementModifier(entity, 'tracked', airborne, conversionMode),
+        jump: mekAttackMovementModifier('jump', airborne, conversionMode),
+        UMU: mekAttackMovementModifier('UMU', airborne, conversionMode),
+        tracked: mekAttackMovementModifier('tracked', airborne, conversionMode),
     });
     const defenseModifierBreakdown = projectMekDefenseModifierBreakdown(
         ruleset,
@@ -167,17 +167,16 @@ export function projectMekTurnPanel(
 }
 
 /**
- * Production Mek attacker movement rule, including airborne LAM movement (IO:AE p. 106: AirMech Cruise +3, Flank +4).
- * A LAM in Fighter mode attacks as an aerospace fighter, which has no attacker movement modifier.
+ * Production Mek attacker movement rule. An AirMech flying attacks at +3 (Cruise) or +4 (Flank) (IO:AE p. 106); a LAM
+ * in Fighter mode attacks as an aerospace fighter, which has no attacker movement modifier.
  */
 export function mekAttackMovementModifier(
-    entity: MekEntity,
     mode: MekMovementModeV2,
     airborne: boolean,
     conversionMode: MekConversionMode = 'mek',
 ): number {
     if (conversionMode === 'fighter') return 0;
-    if (entity.chassisConfig === 'LAM' && airborne) {
+    if (conversionMode === 'airmek' && airborne) {
         if (mode === 'walk') return 3;
         if (mode === 'run') return 4;
     }
