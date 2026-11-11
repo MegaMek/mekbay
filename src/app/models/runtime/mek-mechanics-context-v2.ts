@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekConversionMode } from '../mek-conversion-mode';
 import { compareText } from '../../utils/string.util';
 import type {
     MekMechanicsProfile,
@@ -320,6 +321,8 @@ export type MekRuleCheckContextResolutionV2 =
 export interface MekMovementRuntimeContextInputV2 {
     readonly currentHeat: number;
     readonly airborne: boolean;
+    /** The unit's conversion mode; BattleMech mode when absent. */
+    readonly conversionMode?: MekConversionMode;
     readonly crewAssignment: CrewAssignment;
     crewState(positionId: CrewPositionId): CrewMemberRuntimeState;
     readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
@@ -761,6 +764,12 @@ function movementRuntimeFacts(
             sprintingAllowed: binding.rules.sprinting,
             currentHeat: input.currentHeat,
             airborne: input.airborne,
+            ...(input.conversionMode === undefined || input.conversionMode === 'mek' ? {} : {
+                conversion: Object.freeze({
+                    mode: input.conversionMode,
+                    wheeled: entity.motiveType() === 'Wheel',
+                }),
+            }),
             pilotingSkill,
             functionalCrew: selected !== undefined,
             dedicatedPilotFunctional: occurrenceZero !== undefined

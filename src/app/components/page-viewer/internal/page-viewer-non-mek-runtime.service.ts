@@ -260,11 +260,20 @@ export class PageViewerNonMekRuntimeService {
         interaction: Extract<RecordSheetInteraction, { kind: 'movement' }>,
         snapshot: NonMekRecordSheetSnapshot,
     ): Promise<void> {
-        const selected = snapshot.movementSelection.selectedMode === interaction.mode;
-        const option = snapshot.movementSelection.options.find(option => option.mode === interaction.mode);
+        const current = member.force.getUnitSnapshot(member.id);
+        if (!current || !hasNonMekRuntime(current)) return;
+        // A Glider ProtoMek's Ground, Cruise and Flank each declare whether it is on the ground or in the air.
+        const airborne = interaction.airborne;
+        const changesAirborne = airborne !== undefined && current.state.turn.airborne !== airborne;
+        const selected = snapshot.movementSelection.selectedMode === interaction.mode && !changesAirborne;
+        const option = snapshot.movementSelection.options.find(option => option.mode === interaction.mode
+            && (option.airborne === undefined || airborne === undefined || option.airborne === airborne));
         if (!selected && !option?.legal) return;
+        const context = changesAirborne
+            ? await this.overlays.dispatch(member, { type: 'set-airborne', airborne }, interaction.context)
+            : interaction.context;
         const unit = member.force.getUnitSnapshot(member.id);
-        if (!unit || !hasNonMekRuntime(unit)) return;
+        if (!context || !unit || !hasNonMekRuntime(unit)) return;
         const capabilities = projectNonMekMovementCapabilities(unit.entity, unit.index, unit.state,
             unit.ruleset, unit.crewAssignment);
         await this.overlays.dispatch(member, {
@@ -273,7 +282,7 @@ export class PageViewerNonMekRuntimeService {
                 mode: interaction.mode, distance: option!.minimumMp,
                 boosterComponentIds: interaction.mode === 'run' ? capabilities.boosterComponentIds : [],
             },
-        }, interaction.context);
+        }, context);
     }
 
     private openRandomHitPicker(

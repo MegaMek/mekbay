@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { mekChoosesAirborne, mekConversionModeLabel, mekConvertedMotiveLabel, mekConvertedMotiveModes, type MekConversionMode } from '../../../models/mek-conversion-mode';
 import { Overlay } from '@angular/cdk/overlay';
 import { computed,DestroyRef,Directive,effect,inject,Injector,input,signal } from '@angular/core';
 import { merge } from 'rxjs';
@@ -399,25 +400,41 @@ export abstract class TurnTrackerControls {
         ?? this.entitySnapshot()?.state.turn.airborne
         ?? null);
 
+    /** A LAM's or QuadVee's conversion modes, for its mode selector; empty for every other unit. */
+    readonly conversionModes = computed(() => (this.runtime()?.snapshot().conversion.modes ?? [])
+        .map(mode => ({ mode, label: mekConversionModeLabel(mode) })));
+
+    readonly conversionMode = computed(() => this.runtime()?.snapshot().conversion.mode ?? 'mek');
+
     readonly canSwitchAirborneMode = computed(() => {
         const entity = this.entitySnapshot()?.entity;
         if (entity) return canSwitchNonMekAirGroundState(entity);
         const member = this.member();
         const mekEntity = member?.force.getUnitSnapshot?.(member.id)?.entity;
         return this.runtime() !== null && mekEntity !== undefined
-            ? canChangeAirborneGround(motiveModeFactsForEntity(mekEntity))
+            ? canChangeAirborneGround(motiveModeFactsForEntity(mekEntity)) && mekChoosesAirborne(this.conversionMode())
             : false;
     });
 
     readonly moveModes = computed<MotiveModeOption[]>(() => {
         const runtime = this.runtime();
-        if (runtime) return runtime.movementActions().map(action => ({
-            mode: action.kind as MotiveModes,
-            label: action.kind === 'UMU'
-                ? 'UMU'
-                : action.kind.charAt(0).toUpperCase() + action.kind.slice(1),
-            psr: action.requiresPilotCheck === true,
-        }));
+        if (runtime) {
+            // A converted LAM or QuadVee declares its mode's movement, under that mode's names.
+            const conversionMode = this.conversionMode();
+            const airborne = runtime.snapshot().turn.airborne === true;
+            const converted = conversionMode === 'mek' ? null : mekConvertedMotiveModes(conversionMode, airborne);
+            return runtime.movementActions()
+                .filter(action => converted === null || converted.includes(action.kind as MotiveModes))
+                .map(action => ({
+                    mode: action.kind as MotiveModes,
+                    label: conversionMode !== 'mek'
+                        ? mekConvertedMotiveLabel(conversionMode, airborne, action.kind as MotiveModes)
+                        : action.kind === 'UMU'
+                            ? 'UMU'
+                            : action.kind.charAt(0).toUpperCase() + action.kind.slice(1),
+                    psr: action.requiresPilotCheck === true,
+                }));
+        }
         const snapshot = this.entitySnapshot();
         if (!snapshot) return [];
         const facts = motiveModeFactsForEntity(snapshot.entity);
@@ -549,6 +566,10 @@ export abstract class TurnTrackerControls {
         return runtime
             ? runtime.movementMaximum(mode as MekMovementModeV2)
             : this.entityMovementMaximum(mode);
+    }
+
+    setConversionMode(mode: MekConversionMode): void {
+        if (mode !== this.conversionMode()) void this.runtime()?.setConversionMode(mode);
     }
 
     setAirborne(airborne: boolean): void {

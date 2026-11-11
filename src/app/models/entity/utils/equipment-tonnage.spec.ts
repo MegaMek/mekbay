@@ -4,7 +4,6 @@
 
 import { AmmoEquipment, Equipment, MiscEquipment, WeaponEquipment } from '../../equipment.model';
 import {
-    TestBattleArmorEntity as BattleArmorEntity,
     TestBipedMekEntity as BipedMekEntity,
     TestDropShipEntity as DropShipEntity,
     TestHandheldWeaponEntity as HandheldWeaponEntity,
@@ -291,14 +290,11 @@ describe('EntityMountedEquipment.getTonnage', () => {
         expect(mount(variableEquipment('CLMASC', ['F_MASC'], 'Clan')).getTonnage(entity)).toBe(3);
     });
 
-    it('resolves ProtoMek and Battle Armor myomer-booster tonnage', () => {
+    it('resolves ProtoMek myomer-booster tonnage', () => {
         const protoMek = new ProtoMekEntity();
         protoMek.setTonnage(6);
-        const battleArmor = new BattleArmorEntity();
 
         expect(mount(variableEquipment('proto booster', ['F_MASC'], 'Clan')).getTonnage(protoMek)).toBe(0.15);
-        expect(mount(variableEquipment('BA booster', ['F_MASC', 'F_BA_EQUIPMENT'], 'Clan')).getTonnage(battleArmor))
-            .toBeCloseTo(0.083333, 6);
     });
 
     it('resolves supercharger tonnage for Meks and combat vehicles', () => {

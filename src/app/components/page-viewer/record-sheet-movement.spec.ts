@@ -13,7 +13,7 @@ import { projectMekRecordSheet } from '../../models/runtime/mek-record-sheet';
 import { projectNonMekRecordSheet } from '../../models/runtime/non-mek-record-sheet';
 import type { RecordSheetMovementSelection } from '../../models/runtime/record-sheet-movement';
 import { mekAttackMovementModifier } from '../../models/runtime/mek-turn-panel';
-import { nonMekAttackMovementModifier } from '../../models/runtime/non-mek-unit-instance';
+import { nonMekAttackMovementModifier, projectNonMekMovementCapabilities } from '../../models/runtime/non-mek-unit-instance';
 import { createDirectMekRuntimeFixture, createDirectPartialWingRuntimeFixture, emptyCBTEncounterSnapshot } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { createNonMekRuntimeForTest } from '../../models/runtime/testing/unit-runtime-owner-fixture';
 import { createUnitEditContextFixture } from '../../models/runtime/testing/unit-edit-context-fixture';
@@ -161,7 +161,7 @@ describe('record-sheet movement controls', () => {
         }
     });
 
-    it('tracks the LAM ground and airborne columns with their runtime modifiers', async () => {
+    it('keeps only the columns of the LAM conversion mode live and selects a mode from its heading', async () => {
         const entity = new TestLamEntity();
         const svg = await mount(entity);
         const abort = new AbortController();
@@ -169,23 +169,55 @@ describe('record-sheet movement controls', () => {
         let selection: RecordSheetMovementSelection;
         const interactions = jasmine.createSpy('movement');
         const render = bindRecordSheetMovement(svg, () => selection, () => editContext(1), abort.signal, interactions);
-        for (const airborne of [false, true]) {
-            selection = { airborne, selectedMode: 'walk', options: (['walk', 'run'] as const).map(mode => ({
-                mode, modifier: mekAttackMovementModifier(entity, mode, airborne), legal: true, minimumMp: 0,
-            })) };
+        const modes = ['mek', 'airmek', 'fighter'] as const;
+        const columns = { mek: ['mpWalk'], airmek: ['mpAirMekWalk', 'mpAirMekCruise'], fighter: ['mpSafeThrust'] };
+        const heading = (mode: string) => svg.querySelector<SVGElement>(`[data-mekbay-conversion-mode="${mode}"]`)!;
+        const headingControl = (mode: string) =>
+            svg.querySelector<SVGGElement>(`[data-mekbay-conversion-control="${mode}"]`)!;
+        for (const mode of modes) {
+            // An AirMech offers its ground and its airborne movement at once.
+            selection = { airborne: false, selectedMode: null, conversion: { mode, modes },
+                options: (mode === 'airmek' ? [false, true] : [mode === 'fighter']).flatMap(airborne =>
+                    (['walk', 'run'] as const).map(motive => ({
+                        mode: motive, modifier: mekAttackMovementModifier(entity, motive, airborne, mode),
+                        legal: true, minimumMp: 0, ...(mode === 'airmek' ? { airborne } : {}),
+                    }))) };
             render(selection);
-            for (const id of ['mpWalk', 'mpAirMekWalk']) {
-                expect(svg.getElementById(id)!.classList.contains('currentMoveMode')).toBe(!airborne);
-                expect(svg.getElementById(`${id}-label`)!.classList.contains('currentMoveMode')).toBe(!airborne);
+            for (const other of modes) {
+                expect(heading(other).classList.contains('currentConversionMode')).toBe(other === mode);
+                expect(heading(other).classList.contains('unusedMoveMode')).toBe(other !== mode);
+                for (const id of columns[other]) {
+                    expect(badge(svg, id).getAttribute('display')).withContext(`${mode}: ${id}`)
+                        .toBe(other === mode ? 'inline' : 'none');
+                    expect(svg.getElementById(id)!.classList.contains('unusedMoveMode')).toBe(other !== mode);
+                }
             }
-            for (const id of ['mpAirMekCruise', 'mpSafeThrust']) {
-                expect(svg.getElementById(id)!.classList.contains('currentMoveMode')).toBe(airborne);
-                expect(badge(svg, id).getAttribute('display')).toBe(airborne ? 'inline' : 'none');
-            }
-            control(svg, airborne ? 'mpWalk' : 'mpAirMekCruise').dispatchEvent(new MouseEvent('click'));
-            expect(interactions).not.toHaveBeenCalled();
         }
-        expect(badge(svg, 'mpAirMekCruise').textContent).toBe('+3');
+        expect(badge(svg, 'mpSafeThrust').textContent).toBe('+0');
+
+        selection = { ...selection!, conversion: { mode: 'airmek', modes }, options: [false, true].flatMap(airborne =>
+            (['walk', 'run'] as const).map(motive => ({
+                mode: motive, modifier: mekAttackMovementModifier(entity, motive, airborne, 'airmek'),
+                legal: true, minimumMp: 0, airborne,
+            }))) };
+        render(selection);
+        expect(['mpAirMekWalk', 'mpAirMekRun', 'mpAirMekCruise', 'mpAirMekFlank'].map(id => badge(svg, id).textContent))
+            .toEqual(['+1', '+2', '+3', '+4']);
+        // A column outside the mode is inert; the AirMech's airborne column names its air state.
+        control(svg, 'mpWalk').dispatchEvent(new MouseEvent('click'));
+        expect(interactions).not.toHaveBeenCalled();
+        control(svg, 'mpAirMekCruise').dispatchEvent(new MouseEvent('click'));
+        expect(interactions.calls.mostRecent().args[0])
+            .toEqual(jasmine.objectContaining({ kind: 'movement', mode: 'walk', airborne: true }));
+        // A heading converts to its mode; the current mode's heading is inert.
+        interactions.calls.reset();
+        headingControl('airmek').dispatchEvent(new MouseEvent('click'));
+        expect(interactions).not.toHaveBeenCalled();
+        for (const mode of ['fighter', 'mek']) {
+            headingControl(mode).dispatchEvent(new MouseEvent('click'));
+            expect(interactions.calls.mostRecent().args[0])
+                .toEqual(jasmine.objectContaining({ kind: 'conversion-mode', mode }));
+        }
     });
 
     it('keeps a jumping vehicle badge clear of the Flanking value and adjacent facts', async () => {
@@ -234,6 +266,43 @@ describe('record-sheet movement controls', () => {
             expect(svg.getElementById('mpWalk')?.classList).not.toContain('currentMoveMode');
         });
     }
+
+    it('offers a Glider ProtoMek its landed walk and its airborne cruise and flank as three choices', async () => {
+        const entity = new TestProtoMekEntity();
+        const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
+        entity.uuid.set(uuid);
+        entity.isGlider.set(true);
+        entity.motiveType.set('WiGE');
+        entity.originalWalkMP.set(5);
+        const unit = createNonMekRuntimeForTest('sheet-glider', { entity: uuid, ruleset: 'total-warfare',
+            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' } },
+            entity, 'total-warfare');
+        const svg = await mount(entity);
+        const snapshot = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(),
+            'total-warfare', unit.query(), 0, 0), editContext: editContext(unit.snapshot().stateRevision) });
+        const interactions = jasmine.createSpy('movement');
+        const binding = bindNonMekRecordSheet(svg, snapshot(), interactions);
+        cleanups.push(() => binding.destroy());
+
+        // IO:AE p. 93: landed, it only walks; it never runs on the ground.
+        expect(snapshot().movementSelection.options.map(option => [option.mode, option.airborne, option.modifier]))
+            .toEqual([['stationary', undefined, 0], ['walk', false, 1], ['walk', true, 1], ['run', true, 2]]);
+        for (const [id, airborne] of [['mpGround', false], ['mpWalk', true], ['mpRun', true]] as const) {
+            expect(badge(svg, id).getAttribute('display')).toBe('inline');
+            control(svg, id).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            expect(interactions.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({ kind: 'movement', airborne }));
+        }
+        for (const airborne of [false, true]) {
+            expect(unit.dispatch({ type: 'set-airborne', airborne }).accepted).toBeTrue();
+            const maximum = projectNonMekMovementCapabilities(entity, unit.getIndex(), unit.snapshot(), 'total-warfare').maximum;
+            expect([maximum.walk, maximum.run]).toEqual(airborne ? [5, 8] : [1, 0]);
+            expect(unit.dispatch({ type: 'set-movement', movement: { mode: 'walk', distance: 1, boosterComponentIds: [] } })
+                .accepted).toBeTrue();
+            binding.render(snapshot());
+            expect(svg.getElementById('mpGround')!.classList.contains('currentMoveMode')).toBe(!airborne);
+            expect(svg.getElementById('mpWalk')!.classList.contains('currentMoveMode')).toBe(airborne);
+        }
+    });
 
     it('provides controls for both QuadVee movement columns', async () => {
         const svg = await mount(new TestQuadVeeEntity());

@@ -81,6 +81,7 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
             return true;
         case 'set-component-mode':
         case 'set-airborne':
+        case 'set-mek-conversion-mode':
         case 'set-velocity-record':
         case 'set-movement':
         case 'set-cover':

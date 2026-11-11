@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekConversionMode } from '../../../models/mek-conversion-mode';
 import { DestroyRef,computed,signal,type Signal,type WritableSignal } from '@angular/core';
 import { merge } from 'rxjs';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
@@ -23,7 +24,7 @@ import { heatAutomationPolicy, type OptionsService } from '../../../services/opt
 import type { ToastService } from '../../../services/toast.service';
 import { actionableMekPilotChecks } from './page-turn-summary.util';
 
-const MOVEMENT_MODES = new Set<MekMovementModeV2>(['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU']);
+const MOVEMENT_MODES = new Set<MekMovementModeV2>(['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'tracked']);
 
 /** Typed runtime adapter for the established turn-summary presentation. */
 export class MekTurnSummaryRuntimeController {
@@ -177,6 +178,10 @@ export class MekTurnSummaryRuntimeController {
         });
         this.movementDistancePreview.set(preview);
         return preview;
+    }
+
+    public async setConversionMode(mode: MekConversionMode): Promise<void> {
+        await this.dispatch({ type: 'set-mek-conversion-mode', mode });
     }
 
     public async setAirborne(airborne: boolean | null): Promise<void> {

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isQuadVeeTracksEquipment, isTracksEquipment } from '../chassis-equipment.model';
 import { isPlainRecord } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import {
@@ -219,6 +220,11 @@ export interface MekMechanicsProfile {
     readonly jumpJets: readonly MekJumpJetGroup[];
     readonly umus: readonly MekEquipmentGroup[];
     readonly partialWings: readonly MekEquipmentGroup[];
+    /**
+     * The Tracks a Mek may move on instead of its feet (TW p. 143), one entry per leg that carries one: a track is
+     * lost with its critical slot or its leg. Empty for a QuadVee, whose tracks belong to its Vehicle mode.
+     */
+    readonly tracks: readonly MekEquipmentGroup[];
     readonly tripleStrengthMyomer: readonly MekTripleStrengthMyomerGroup[];
     readonly masc: readonly MekEquipmentGroup[];
     readonly superchargers: readonly MekEquipmentGroup[];
@@ -317,6 +323,7 @@ interface CompiledFeatures {
     readonly jumpJets: MekJumpJetGroup[];
     readonly umus: MekEquipmentGroup[];
     readonly partialWings: MekEquipmentGroup[];
+    readonly tracks: MekEquipmentGroup[];
     readonly tripleStrengthMyomer: MekTripleStrengthMyomerGroup[];
     readonly masc: MekEquipmentGroup[];
     readonly superchargers: MekEquipmentGroup[];
@@ -525,6 +532,8 @@ export function compileMekMechanicsProfile(
         jumpJets: Object.freeze(features.jumpJets),
         umus: Object.freeze(features.umus),
         partialWings: Object.freeze(features.partialWings),
+        // A QuadVee's tracks drive its Vehicle mode, which the conversion mode governs.
+        tracks: Object.freeze(entity.chassisConfig === 'QuadVee' ? [] : features.tracks),
         tripleStrengthMyomer: Object.freeze(features.tripleStrengthMyomer),
         masc: Object.freeze(features.masc),
         superchargers: Object.freeze(features.superchargers),
@@ -771,7 +780,7 @@ function compileFeatures(
     blockers: MekMechanicsProfileBlocker[],
 ): CompiledFeatures {
     const result: CompiledFeatures = {
-        jumpJets: [], umus: [], partialWings: [], tripleStrengthMyomer: [], masc: [], superchargers: [],
+        jumpJets: [], umus: [], partialWings: [], tracks: [], tripleStrengthMyomer: [], masc: [], superchargers: [],
         actuatorEnhancementSystems: [], droneOperatingSystems: [], modularArmor: [],
         spikes: [], ramPlates: [], physicalWeapons: [], shields: [],
         ordinaryC3Endpoints: [], emergencyC3Endpoints: [],
@@ -798,6 +807,17 @@ function compileFeatures(
         if (isPartialWingEquipment(equipment)) {
             boundedFeature = true;
             result.partialWings.push(base);
+        }
+        if (isTracksEquipment(equipment) && !isQuadVeeTracksEquipment(equipment)) {
+            boundedFeature = true;
+            for (const locationId of base.locationIds) {
+                result.tracks.push(Object.freeze({
+                    ...base,
+                    locationIds: Object.freeze([locationId]),
+                    criticalSlotIds: Object.freeze(base.criticalSlotIds
+                        .filter(slotId => index.slots.get(slotId)?.locationId === locationId)),
+                }));
+            }
         }
         const tsmKind = tripleStrengthMyomerKind(equipment);
         if (tsmKind !== undefined) {

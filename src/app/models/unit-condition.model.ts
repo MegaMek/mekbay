@@ -20,6 +20,10 @@ export const UNIT_CONDITION_KEYS = Object.freeze([
     'stealth',
     'airborne',
     'grounded',
+    // Derived from a LAM's or QuadVee's conversion mode for display; never stored.
+    'airmek-mode',
+    'fighter-mode',
+    'vehicle-mode',
 ] as const);
 
 export type UnitConditionKey = typeof UNIT_CONDITION_KEYS[number];

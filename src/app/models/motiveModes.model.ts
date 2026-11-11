@@ -5,7 +5,8 @@
 import type { BaseEntity } from './entity/base-entity';
 import type { UnitSubtype, UnitType } from './entity/types';
 
-export type MotiveModes = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU' | 'VTOL';
+/** `tracked` is a Mek moving on its Tracks instead of its feet (TW p. 143). */
+export type MotiveModes = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU' | 'VTOL' | 'tracked';
 
 export interface MotiveModeOption {
     mode: MotiveModes;
@@ -64,6 +65,8 @@ export function getMotiveModeLabel(mode: MotiveModes, unit: MotiveModeUnitFacts,
             return 'Jump';
         case 'UMU':
             return 'UMU';
+        case 'tracked':
+            return 'Tracked';
         default:
             return mode;
     }

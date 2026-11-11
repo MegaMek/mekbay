@@ -5,6 +5,19 @@
                 <div class="summary-row immobile-status" role="status">Unit is immobile</div>
             }
             @if (showMovementControls()) {
+            @if (conversionModes().length > 0) {
+                <div class="button-row" role="group" aria-label="Conversion mode">
+                    @for (conversion of conversionModes(); track conversion.mode) {
+                        <button
+                            type="button"
+                            class="bt-button move-button"
+                            [class.selected]="conversionMode() === conversion.mode"
+                            [attr.aria-pressed]="conversionMode() === conversion.mode"
+                            (click)="setConversionMode(conversion.mode)"
+                        >{{ conversion.label }}</button>
+                    }
+                </div>
+            }
             @if (canSwitchAirborneMode()) {
                 <div class="button-row">
                     <button

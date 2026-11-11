@@ -313,6 +313,14 @@ export function createDirectVibrobladeRuntimeFixture(
     return createFixture(ruleset, instanceId, { includeVibroblade: true });
 }
 
+/** Parsed Mek with Tracks in both legs. */
+export function createDirectTracksRuntimeFixture(
+    ruleset: CBTRuleset = CORE_2026_RULESET,
+    instanceId = 'unit:direct-tracks-fixture',
+): DirectMekRuntimeFixture {
+    return createFixture(ruleset, instanceId, { includeTracks: true });
+}
+
 /** Parsed Mek with independent MASC and Supercharger components. */
 export function createDirectBoosterRuntimeFixture(
     ruleset: CBTRuleset = CORE_2026_RULESET,
@@ -466,6 +474,7 @@ interface DirectFixtureOptions {
     readonly includeClaw?: boolean;
     readonly includeVibroblade?: boolean;
     readonly includeSupercharger?: boolean;
+    readonly includeTracks?: boolean;
     readonly includeJetBooster?: boolean;
     readonly includeEscalatingFailureEquipment?: boolean;
     readonly includeExplosionEquipment?: boolean;
@@ -855,6 +864,10 @@ function directMekEquipmentRegistry() {
         id: 'Test Supercharger', name: 'Supercharger', type: 'misc',
         flags: ['F_MASC', 'S_SUPERCHARGER'], stats: { criticalSlots: 1 },
     });
+    const tracks = new MiscEquipment({
+        id: 'Test Tracks', name: 'Tracks', type: 'misc',
+        flags: ['F_MEK_EQUIPMENT', 'F_TRACKS'], stats: { criticalSlots: 2, spreadable: true },
+    });
     const jetBooster = new MiscEquipment({
         id: 'Test Jet Booster', name: 'Jet Booster', type: 'misc',
         flags: ['F_MASC', 'F_JET_BOOSTER'], stats: { criticalSlots: 1 },
@@ -964,6 +977,7 @@ function directMekEquipmentRegistry() {
         [vibroblade.id]: vibroblade,
         [spotWelder.id]: spotWelder,
         [supercharger.id]: supercharger,
+        [tracks.id]: tracks,
         [jetBooster.id]: jetBooster,
         [explosiveWeapon.id]: explosiveWeapon,
         [inertWeapon.id]: inertWeapon,
@@ -1003,6 +1017,7 @@ function directMekMtf(options: DirectFixtureOptions): string {
     const includeClaw = options.includeClaw ?? false;
     const includeVibroblade = options.includeVibroblade ?? false;
     const includeSupercharger = options.includeSupercharger ?? false;
+    const includeTracks = options.includeTracks ?? false;
     const includeJetBooster = options.includeJetBooster ?? false;
     const includeEscalatingFailureEquipment = options.includeEscalatingFailureEquipment ?? false;
     const includeExplosionEquipment = options.includeExplosionEquipment ?? false;
@@ -1094,6 +1109,7 @@ ${[...rightTorsoEquipment, ...Array(12 - rightTorsoEquipment.length).fill('-Empt
     const leftLegEquipment = [
         ...(includeLegAes || includeCompleteLegAes ? ['Test AES'] : []),
         ...(includeChargeEquipment ? ['Test Spikes'] : []),
+        ...(includeTracks ? ['Test Tracks'] : []),
     ];
     const leftLeg = leftLegEquipment.length === 0 ? '' : `Left Leg:
 Hip
@@ -1108,6 +1124,13 @@ Upper Leg Actuator
 Lower Leg Actuator
 Foot Actuator
 Test AES
+${Array(7).fill('-Empty-').join('\n')}
+` : includeTracks ? `Right Leg:
+Hip
+Upper Leg Actuator
+Lower Leg Actuator
+Foot Actuator
+Test Tracks
 ${Array(7).fill('-Empty-').join('\n')}
 ` : '';
     return `uuid:${UUID}

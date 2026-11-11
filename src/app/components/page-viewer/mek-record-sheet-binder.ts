@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekConvertedMode } from '../../models/mek-conversion-mode';
 import { renderProtectionCounter } from '../../utils/sheets/record-sheet-protection-counter';
 
 import type {
@@ -332,6 +333,33 @@ function renderIdentity(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): v
     }
 }
 
+/** The text each movement cell was generated with: a cell outside the current conversion mode shows it again. */
+const printedMovementCells = new WeakMap<Element, string>();
+
+/** Writes a movement cell's live value, or with null the value it was generated with. */
+function writeMovementCell(element: Element | null, value: string | null, impaired?: boolean): void {
+    if (!element) return;
+    if (!printedMovementCells.has(element)) printedMovementCells.set(element, element.textContent ?? '');
+    element.textContent = value ?? printedMovementCells.get(element)!;
+    if (value === null) element.classList.remove('damaged');
+    else if (impaired !== undefined) element.classList.toggle('damaged', impaired);
+}
+
+/** The cells a LAM's or QuadVee's converted mode prints its Walking-type and Running-type MP in. */
+function convertedMovementCells(
+    mode: MekConvertedMode,
+    airborne: boolean,
+): { readonly walk: string; readonly run: string } {
+    if (mode === 'fighter') return { walk: 'mpSafeThrust', run: 'mpMaxThrust' };
+    if (mode === 'vehicle') return { walk: 'mpCruise', run: 'mpFlank' };
+    return airborne
+        ? { walk: 'mpAirMekCruise', run: 'mpAirMekFlank' }
+        : { walk: 'mpAirMekWalk', run: 'mpAirMekRun' };
+}
+
+const MOVEMENT_CELL_IDS = Object.freeze(['mpWalk', 'mpRun', 'mpJump', 'mp_2', 'mpTracked', 'mpAirMekWalk', 'mpAirMekRun',
+    'mpAirMekCruise', 'mpAirMekFlank', 'mpSafeThrust', 'mpMaxThrust', 'mpCruise', 'mpFlank']);
+
 function renderMovement(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): void {
     const projection = snapshot.movement.projection;
     const underwater = snapshot.movement.secondaryMode === 'UMU';
@@ -352,29 +380,27 @@ function renderMovement(svg: SVGSVGElement, snapshot: MekRecordSheetSnapshot): v
             runMaximum: snapshot.movement.runMp,
             impairment: { walk: false, run: false, jump: false, umu: false },
         });
-    const values = Object.freeze({
-        mpWalk: formatMovementWithMaximum(current.walk, current.walkMaximum),
-        mpRun: formatMovementWithMaximum(current.run, current.runMaximum),
-        mpJump: String(current.jump),
-        mp_2: String(current.jump),
-    });
-    for (const [id, value] of Object.entries(values)) {
-        const element = svg.getElementById(id);
-        if (!element) continue;
-        element.textContent = value;
-        const impaired = id === 'mpWalk' ? current.impairment.walk : id === 'mpRun' ? current.impairment.run
-            : underwater ? current.impairment.umu : current.impairment.jump;
-        element.classList.toggle('damaged', impaired);
+    const walk = formatMovementWithMaximum(current.walk, current.walkMaximum);
+    const run = formatMovementWithMaximum(current.run, current.runMaximum);
+    const jump = String(current.jump);
+    // The projection moves in the unit's conversion mode, so its MP belongs in that mode's cells only.
+    const conversionMode = snapshot.movementSelection.conversion?.mode ?? 'mek';
+    const cells = conversionMode === 'mek'
+        ? null
+        : convertedMovementCells(conversionMode, snapshot.movementSelection.airborne);
+    const jumpImpaired = underwater ? current.impairment.umu : current.impairment.jump;
+    const values: Readonly<Record<string, readonly [string, boolean]>> = cells === null
+        ? { mpWalk: [walk, current.impairment.walk], mpRun: [run, current.impairment.run],
+            mpJump: [jump, jumpImpaired], mp_2: [jump, jumpImpaired],
+            ...(projection.kind === 'supported' ? { mpTracked: [String(projection.trackedMp), false] as const } : {}) }
+        : { [cells.walk]: [walk, current.impairment.walk], [cells.run]: [run, current.impairment.run] };
+    for (const id of MOVEMENT_CELL_IDS) {
+        writeMovementCell(svg.getElementById(id), values[id]?.[0] ?? null, values[id]?.[1]);
     }
-    svg.querySelectorAll<SVGElement>('[data-mekbay-field="walk"]').forEach(element => {
-        element.textContent = values.mpWalk;
-    });
-    svg.querySelectorAll<SVGElement>('[data-mekbay-field="run"]').forEach(element => {
-        element.textContent = values.mpRun;
-    });
-    svg.querySelectorAll<SVGElement>('[data-mekbay-field="jump"]').forEach(element => {
-        element.textContent = values.mpJump;
-    });
+    for (const [field, value] of [['walk', walk], ['run', run], ['jump', jump]] as const) {
+        svg.querySelectorAll<SVGElement>(`[data-mekbay-field="${field}"]`).forEach(element =>
+            writeMovementCell(element, cells === null ? value : null));
+    }
 
     const declared = snapshot.movement.declared.kind === 'supported'
         ? snapshot.movement.declared.mode

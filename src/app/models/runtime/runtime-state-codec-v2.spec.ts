@@ -382,6 +382,13 @@ describe('direct Mek V2 state codec', () => {
         }));
     });
 
+    it('rejects a conversion mode the unit does not convert to', async () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const saved = { ...serialize(fixture), conversionMode: 'airmek' as const };
+        await expectAsync(restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized))
+            .toBeRejectedWithError(/does not convert to this mode/u);
+    });
+
     it('rejects a snapshot for another unit UUID', async () => {
         const fixture = createDirectMekRuntimeFixture();
         const original = serialize(fixture);

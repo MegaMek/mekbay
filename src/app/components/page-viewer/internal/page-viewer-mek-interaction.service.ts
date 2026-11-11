@@ -87,6 +87,10 @@ export class PageViewerMekInteractionService {
             case 'movement':
                 void this.selectMovement(member, interaction);
                 return;
+            case 'conversion-mode':
+                void this.dispatchCommand(member, { type: 'set-mek-conversion-mode', mode: interaction.mode },
+                    interaction.context);
+                return;
             case 'open-equipment':
                 this.overlays.openEquipment(member.id, event, interaction.tab);
                 return;
@@ -161,14 +165,25 @@ export class PageViewerMekInteractionService {
         const snapshot = this.currentSnapshot(member, interaction.context);
         const mode = interaction.mode;
         if (!snapshot || mode === 'VTOL') return;
-        if (snapshot.movementSelection.selectedMode === mode) {
+        const turn = member.force.getMekTurnPanelSnapshot(member.id, snapshot.heatPolicy);
+        if (!turn) return;
+        // An AirMech's movement also declares whether it stays on the ground or takes to the air.
+        const airborne = interaction.airborne;
+        const changesAirborne = airborne !== undefined && turn.turn.airborne !== airborne;
+        if (snapshot.movementSelection.selectedMode === mode && !changesAirborne) {
             await this.dispatchCommand(member, { type: 'clear-mek-movement' }, interaction.context);
             return;
         }
-        const option = snapshot.movementSelection.options.find(option => option.mode === mode);
+        const option = snapshot.movementSelection.options.find(option => option.mode === mode
+            && (option.airborne === undefined || airborne === undefined || option.airborne === airborne));
         if (!option?.legal) return;
-        const turn = member.force.getMekTurnPanelSnapshot(member.id, snapshot.heatPolicy);
-        if (!turn) return;
+        const context = changesAirborne
+            ? await this.dispatchCommand(member, {
+                type: 'replace-turn-state',
+                turn: { ...turn.turn, airborne, phaseStateChanged: true },
+            }, interaction.context)
+            : interaction.context;
+        if (!context) return;
         await this.dispatchCommand(member, {
             type: 'declare-mek-movement',
             declaration: {
@@ -176,7 +191,7 @@ export class PageViewerMekInteractionService {
                 mode, distance: option.minimumMp,
                 boosterComponentIds: mode === 'run' || mode === 'sprint' ? turn.activeBoosterComponentIds : [],
             },
-        }, interaction.context);
+        }, context);
     }
 
     private openRandomHitPicker(

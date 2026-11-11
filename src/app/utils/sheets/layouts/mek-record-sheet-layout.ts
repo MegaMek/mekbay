@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekMovesOnTracks } from '../../../models/chassis-equipment.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
 import { INVENTORY_BADGE, RECORD_SHEET_FONT } from '../record-sheet-typography';
@@ -26,7 +27,7 @@ import { mekCriticalLocationCells,mekCriticalTableRowCount } from '../../mek-loc
 import { clusterTableForMekEntity,clusterTableRows,hitLocationRows,mekHitLocationTable,mekPhysicalLocationTableRows,recordSheetClusterNotes } from '../../record-sheet-reference-table';
 import { MekPaperdollGenerator, usesBipedMekPaperdoll, type MekStructureTonnage } from '../mek-paperdoll-generator';
 import type { PaperdollOptions, PaperdollPipLayout } from '../paperdoll-generator';
-import { appendGeneratedMekCriticalHeadingControls } from '../generated-record-sheet-controls';
+import { appendGeneratedMekCriticalHeadingControls, CONVERSION_MODE_ATTRIBUTE } from '../generated-record-sheet-controls';
 import { SvgFrameUtil } from '../svg-frame.util';
 import { measureSvgTextCanvas } from '../../svg-text.util';
 import { COCKPIT_CREW_ROLES } from '../../../models/entity/components/cockpit-data';
@@ -345,6 +346,14 @@ export function drawMekDataPanel(
                 value: String(entity.umuMP() > 0 ? entity.umuMP() : entity.jumpMP()) },
             ...mekDataPanelFacts(entity, [38, 47, 56, 65]),
         ], { x, y, font });
+        if (mekMovesOnTracks(entity)) {
+            // TW p. 143: Track MP equals the Walking MP. The printed sheet has no line for it; a live sheet offers
+            // it beside Walking as a movement of its own.
+            addText(group, 'Tracked:', x(76), y(47), { size: font(7), weight: 700, class: 'screen-only' });
+            const tracked = addText(group, String(entity.computeWalkMP(standard)), x(108), y(47),
+                { size: font(RECORD_SHEET_FONT.body), anchor: 'middle', class: 'screen-only' });
+            tracked.id = 'mpTracked';
+        }
     }
     const inventoryTitleY = lamLayout ? 105.5 : quadVeeLayout ? 87.5 : 80.462;
     const inventoryHeadingY = lamLayout ? 116.3 : quadVeeLayout ? 98.3 : 91.262;
@@ -397,9 +406,13 @@ function drawLamMekDataHeader(
     addText(group, 'Movement Points:', x(6), y(56), { size: font(RECORD_SHEET_FONT.body), weight: 700 }).id = 'movementPointsLabel';
     // The mode columns print smaller than body text.
     group.setAttribute('data-mekbay-movement-badge-scale', formatNumber(scale.fontScale));
-    addText(group, 'BattleMech', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
-    addText(group, 'AirMech', x(105.312), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, anchor: 'middle' });
-    addText(group, 'Fighter', x(163.968), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 });
+    // The headings select the conversion mode on a live sheet.
+    addText(group, 'BattleMech', x(6), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 })
+        .setAttribute(CONVERSION_MODE_ATTRIBUTE, 'mek');
+    addText(group, 'AirMech', x(105.312), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700, anchor: 'middle' })
+        .setAttribute(CONVERSION_MODE_ATTRIBUTE, 'airmek');
+    addText(group, 'Fighter', x(163.968), y(65), { size: font(RECORD_SHEET_FONT.body), weight: 700 })
+        .setAttribute(CONVERSION_MODE_ATTRIBUTE, 'fighter');
     const standard = { ...STANDARD_MOVEMENT_CALCULATION, ruleset };
     const walkMp = entity.computeWalkMP(standard);
     const airWalk = Math.ceil(walkMp * 0.33);
@@ -450,7 +463,8 @@ function drawQuadVeeMekDataHeader(
     const { x, y, font } = scale;
     const size = font(RECORD_SHEET_FONT.body);
     addText(group, 'Movement Points:', x(6), y(38), { size, weight: 700 }).id = 'movementPointsLabel';
-    addText(group, 'BattleMech', x(6.023), y(47), { size, weight: 700 });
+    // The headings select the conversion mode on a live sheet.
+    addText(group, 'BattleMech', x(6.023), y(47), { size, weight: 700 }).setAttribute(CONVERSION_MODE_ATTRIBUTE, 'mek');
 
     const battleRun = formatMovementWithMaximum(entity.runMP(), entity.maxRunMP());
     const cruise = entity.originalWalkMP() + (entity.motiveType() === 'Wheel' ? 1 : 0);
@@ -476,7 +490,7 @@ function drawQuadVeeMekDataHeader(
         + font(INVENTORY_BADGE.width) + size * 0.15;
     const vehicleValueX = vehicleX + widest(movementRows.map(row => row[3]), 700) + gap;
     const factsLeft = vehicleValueX + widest(['00', ...movementRows.map(row => row[4])]) + gap * 2;
-    addText(group, 'Vehicle', vehicleX, y(47), { size, weight: 700 });
+    addText(group, 'Vehicle', vehicleX, y(47), { size, weight: 700 }).setAttribute(CONVERSION_MODE_ATTRIBUTE, 'vehicle');
     movementRows.forEach(([battleLabel, battleValue, battleId, vehicleLabel, vehicleValue, vehicleId, field], index) => {
         const baseline = y(56 + index * 9);
         addText(group, battleLabel, x(6), baseline, { size, weight: 700 });

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { MEK_CONVERTED_MODES, mekAirborne, mekChoosesAirborne, mekConversionModes, mekConvertedModeCondition, type MekConversionMode } from '../mek-conversion-mode';
 import { withAmmoConfiguration,withAmmoShotsSpent,withComponentJammed,withComponentMode,withComponentStatuses,withPendingComponentStatuses } from './component-state-change';
 import { mekHotLoadedAmmoEnabled } from './mek-mechanics-context-v2';
 import type { HotLoadExplosionRoll } from './mek-critical-hit-v2';
@@ -77,6 +78,9 @@ import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-
 import { componentLocationIds,equipmentForComponent,type MekIndexedBay,type MekIndexedCriticalSlot,type MekRuntimeIndex } from './mek-runtime-index';
 import { mekWeaponTargetSubject,resolveMekUnitWaterState } from './mek-targeting-rules';
 import { applyWeaponTargetPolicies,reconcileWeaponTargetPolicies,type WeaponTargetSubjectResolver } from './weapon-target-policy';
+
+/** Shown for a converted unit's mode, derived from `conversionMode` and never stored or set directly. */
+const CONVERSION_MODE_CONDITIONS: ReadonlySet<UnitConditionKey> = new Set(MEK_CONVERTED_MODES.map(mekConvertedModeCondition));
 
 export type MekHitArcV2 = 'front' | 'rear' | 'left' | 'right';
 
@@ -179,6 +183,8 @@ export interface MekUnitQueryPort extends CBTUnitQueryPort {
     /** Effective station state, including death from a destroyed cockpit or command console. */
     crewEffectiveState(positionId: CrewPositionId): CrewMemberEffectiveState;
     turnState(): MekTurnStateV2;
+    /** A LAM's or QuadVee's current mode; BattleMech mode for every other Mek. */
+    conversionMode(): MekConversionMode;
     linkedTarget(componentId: ComponentId): ComponentId | undefined;
     linkedSource(componentId: ComponentId): ComponentId | undefined;
     baysForMember(componentId: ComponentId): readonly MekIndexedBay[];
@@ -345,9 +351,11 @@ class MekRuntimeQuery {
                 && isDroneOperatingSystemEquipment(component.mount.equipment))
             .map(component => component.id);
         const hasDroneOperatingSystem = droneOperatingSystemIds.length > 0;
-        const hasAirGroundSelection = canChangeAirborneGround(motiveModeFactsForEntity(unit.entity));
+        const hasAirGroundSelection = canChangeAirborneGround(motiveModeFactsForEntity(unit.entity))
+            && mekChoosesAirborne(state.conversionMode ?? 'mek');
         const storedDisplayConditions = new ImmutableSet<UnitConditionKey>([...state.conditions].filter(condition =>
-            condition !== 'airborne' && condition !== 'grounded' && condition !== 'crippled'));
+            condition !== 'airborne' && condition !== 'grounded' && condition !== 'crippled'
+            && !CONVERSION_MODE_CONDITIONS.has(condition)));
         const effectiveCrewState = (positionId: CrewPositionId): CrewMemberEffectiveState => {
             const position = unit.index.crewPositions.get(positionId);
             if (!position) throw new Error(`Unknown crew position ${positionId}`);
@@ -372,6 +380,7 @@ class MekRuntimeQuery {
             if (projectedDerivedConditions) return projectedDerivedConditions;
             const conditions = new Set<UnitConditionKey>();
             if (state.turn.spotting) conditions.add('spotting');
+            if (state.conversionMode !== undefined) conditions.add(mekConvertedModeCondition(state.conversionMode));
             if (hasAirGroundSelection) {
                 if (state.turn.airborne === true) conditions.add('airborne');
                 else if (state.turn.airborne === false) conditions.add('grounded');
@@ -733,6 +742,7 @@ class MekRuntimeQuery {
                     : CrewMember.vacant;
             },
             turnState: () => state.turn,
+            conversionMode: () => state.conversionMode ?? 'mek',
             previewEndPhase,
             previewEndPhasePilotChecks: () => {
                 const preview = previewEndPhase();
@@ -1782,7 +1792,8 @@ function reduce(
             }
             if (command.condition === 'airborne'
                 || command.condition === 'grounded'
-                || command.condition === 'crippled') {
+                || command.condition === 'crippled'
+                || CONVERSION_MODE_CONDITIONS.has(command.condition)) {
                 return unchanged(state);
             }
             // Shutdown is owned by typed shutdown/startup actions. Generic
@@ -1798,6 +1809,21 @@ function reduce(
                 else conditions.delete(command.condition);
                 changed = { ...state, conditions: new ImmutableSet(conditions) };
             }
+            break;
+        }
+        case 'set-mek-conversion-mode': {
+            const mode = command.mode;
+            if (!mekConversionModes(entity).includes(mode) || mode === (state.conversionMode ?? 'mek')) {
+                return unchanged(state);
+            }
+            // The declared movement and air/ground state belong to the mode they were declared in.
+            const { conversionMode: _previous, ...rest } = state;
+            changed = {
+                ...rest,
+                ...(mode === 'mek' ? {} : { conversionMode: mode }),
+                turn: canonicalizeMekTurnStateV2({ ...state.turn, airborne: null, phaseStateChanged: true }),
+                movementPsr: clearMekMovementV2(state.movementPsr),
+            };
             break;
         }
         case 'set-mek-shutdown-state': {
@@ -2804,7 +2830,8 @@ function createMovementRuntimeInput(
     }
     return Object.freeze({
         currentHeat: state.heat.current,
-        airborne: state.turn.airborne === true,
+        airborne: mekAirborne(state.conversionMode ?? 'mek', state.turn.airborne),
+        conversionMode: state.conversionMode ?? 'mek',
         crewAssignment,
         crewState: (positionId: CrewPositionId) => CrewMember.from(state.crew.get(positionId)),
         conditions: new ImmutableSet(conditions),

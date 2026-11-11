@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekAirborne, mekConversionModes, type MekConversionMode } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -69,6 +70,8 @@ export interface MekTurnPanelSnapshot {
     readonly heat: MekHeatStateV2;
     readonly heatProjection: MekHeatProjectionResultV2;
     readonly conditions: readonly UnitConditionKey[];
+    /** A LAM's or QuadVee's current mode and the modes it converts between; `modes` is empty for every other Mek. */
+    readonly conversion: Readonly<{ mode: MekConversionMode; modes: readonly MekConversionMode[] }>;
 }
 
 export function projectMekTurnPanel(
@@ -116,13 +119,16 @@ export function projectMekTurnPanel(
         isUnitBuildingLevel(turn.cover) ? turn.cover : undefined,
         height,
     );
+    const conversionMode = query.conversionMode();
+    const airborne = mekAirborne(conversionMode, turn.airborne);
     const attackMovementModifiers = Object.freeze({
         stationary: 0,
-        walk: mekAttackMovementModifier(entity, 'walk', turn.airborne === true),
-        run: mekAttackMovementModifier(entity, 'run', turn.airborne === true),
+        walk: mekAttackMovementModifier(entity, 'walk', airborne, conversionMode),
+        run: mekAttackMovementModifier(entity, 'run', airborne, conversionMode),
         sprint: 0,
-        jump: mekAttackMovementModifier(entity, 'jump', turn.airborne === true),
-        UMU: mekAttackMovementModifier(entity, 'UMU', turn.airborne === true),
+        jump: mekAttackMovementModifier(entity, 'jump', airborne, conversionMode),
+        UMU: mekAttackMovementModifier(entity, 'UMU', airborne, conversionMode),
+        tracked: mekAttackMovementModifier(entity, 'tracked', airborne, conversionMode),
     });
     const defenseModifierBreakdown = projectMekDefenseModifierBreakdown(
         ruleset,
@@ -156,15 +162,21 @@ export function projectMekTurnPanel(
         heat: query.heatState(),
         heatProjection: query.heatProjection(heatPolicy),
         conditions: Object.freeze(conditions),
+        conversion: Object.freeze({ mode: conversionMode, modes: Object.freeze(mekConversionModes(entity)) }),
     });
 }
 
-/** Production Mek attacker movement rule, including airborne LAM movement. */
+/**
+ * Production Mek attacker movement rule, including airborne LAM movement (IO:AE p. 106: AirMech Cruise +3, Flank +4).
+ * A LAM in Fighter mode attacks as an aerospace fighter, which has no attacker movement modifier.
+ */
 export function mekAttackMovementModifier(
     entity: MekEntity,
     mode: MekMovementModeV2,
     airborne: boolean,
+    conversionMode: MekConversionMode = 'mek',
 ): number {
+    if (conversionMode === 'fighter') return 0;
     if (entity.chassisConfig === 'LAM' && airborne) {
         if (mode === 'walk') return 3;
         if (mode === 'run') return 4;

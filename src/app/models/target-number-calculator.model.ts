@@ -537,6 +537,8 @@ export function calculateTargetTnModifierBreakdown(
 export function getDefaultAttackerMovementModifier(moveMode: MotiveModes | null | undefined): number {
     switch (moveMode) {
         case 'walk': return 1;
+        // A Mek on its Tracks moves at its Walking MP and attacks as one that walked.
+        case 'tracked': return 1;
         case 'run': return 2;
         case 'jump':
         case 'UMU': return 3;

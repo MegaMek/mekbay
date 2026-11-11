@@ -287,6 +287,10 @@
       opacity: 0.5;
     }
 
+    .currentConversionMode {
+      text-decoration: underline;
+    }
+
     .movePsrWarning {
       fill: var(--svg-fg-color, #000);
       font-family: Roboto, sans-serif;

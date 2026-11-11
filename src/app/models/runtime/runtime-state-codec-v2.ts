@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekConversionModes } from '../mek-conversion-mode';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { isSparseCrewMemberState,MAX_CREW_WOUNDS,type CrewMemberRuntimeState } from '../crew-member.model';
 import { decodePinnedCustomUnitSource } from '../pinned-custom-unit-source';
@@ -495,6 +496,7 @@ export function serializeCBTUnitStateV2(
         family: { kind: 'mek' },
         ruleChecks,
         movementPsr,
+        ...(input.state.conversionMode === undefined ? {} : { conversionMode: input.state.conversionMode }),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(conditions.length === 0 ? {} : { conditions: { values: conditions } }),
         turn,
@@ -1132,6 +1134,9 @@ export async function restoreSerializedCBTUnitV2(
             error instanceof Error ? error.message : 'invalid equipment row order',
         );
     }
+    if (saved.conversionMode !== undefined && !mekConversionModes(entity).includes(saved.conversionMode)) {
+        codecFail('INVALID_SERIALIZED_STATE', '$.conversionMode', 'the unit does not convert to this mode');
+    }
     const { equipmentRowOrder: _initializedOrder, ...initializedState } = initialized.state;
     const state = freezeRuntimeState({
         ...initializedState,
@@ -1147,6 +1152,7 @@ export async function restoreSerializedCBTUnitV2(
         conditions,
         heat,
         movementPsr: restoredMovement,
+        ...(saved.conversionMode === undefined ? {} : { conversionMode: saved.conversionMode }),
         attackerTargeting: createPristineAttackerTargetingState(),
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         turn,
@@ -3052,7 +3058,7 @@ function assertExactSerializedUnitKeys(
         'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState',
         'ammoState', 'crew', 'heat', 'family',
-        'ruleChecks', 'movementPsr',
+        'ruleChecks', 'movementPsr', 'conversionMode',
         'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ]);
     for (const key of Object.keys(saved)) if (!allowed.has(key)) {

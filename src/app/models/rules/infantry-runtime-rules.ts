@@ -25,6 +25,7 @@ const INFANTRY_MOVEMENT_MINIMUMS: Readonly<Record<MotiveModes, number>> = Object
     jump: 1,
     UMU: 0,
     VTOL: 0,
+    tracked: 0,
 });
 
 /** Production Infantry/Battle Armor rules over the canonical Entity and sparse state. */

@@ -97,6 +97,7 @@ export const CBT_UNIT_FIELD = {
     heat: 'z',
     ruleChecks: 'rC',
     movementPsr: 'm',
+    conversionMode: 'cm',
     equipmentRowOrder: 'y',
     conditions: 'o',
     c3Position: 'c3',

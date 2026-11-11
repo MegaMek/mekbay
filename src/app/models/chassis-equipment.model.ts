@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekEntity } from './entity/entities/mek/mek-entity';
 import type { EquipmentFlag } from './equipment-flags.type';
 import type { Equipment } from './equipment.model';
 import { isEquipmentForPlatform } from './equipment-platform.model';
@@ -177,6 +178,13 @@ export function isStolOrVstolEquipment(equipment: Equipment | null | undefined):
 
 export function isTracksEquipment(equipment: Equipment | null | undefined): boolean {
   return chassisEquipmentKind(equipment) === 'tracks';
+}
+
+/**
+ * Whether a Mek may move on Tracks instead of its feet (TW p. 143). A QuadVee's tracks drive its Vehicle mode instead.
+ */
+export function mekMovesOnTracks(entity: Pick<MekEntity, 'chassisConfig' | 'equipment'>): boolean {
+    return entity.chassisConfig !== 'QuadVee' && entity.equipment().some(mount => isTracksEquipment(mount.equipment));
 }
 
 export function isQuadVeeTracksEquipment(equipment: Equipment | null | undefined): boolean {

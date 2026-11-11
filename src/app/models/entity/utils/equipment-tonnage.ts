@@ -133,7 +133,6 @@ export function getEquipmentTonnage(
         return standardRound(getEquipmentEngineWeight(entity) / 10, entity);
     } else if (isMascEquipment(equipment)) {
         if (entity.entityType === 'ProtoMek') return nearestKg(tonnage * 0.025);
-        if (entity.entityType === 'BattleArmor') return 0.25 / 3;
         return Math.max(Math.round(tonnage * (equipment.techBase === 'Clan' ? 0.04 : 0.05)), 1);
     } else if (targetingComputerTonnage !== null) {
         return targetingComputerTonnage;

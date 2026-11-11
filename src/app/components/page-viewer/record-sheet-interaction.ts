@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekConversionMode } from '../../models/mek-conversion-mode';
 import type { ArmorFaceId,ComponentId,CrewPositionId,CriticalSlotId,LocationId,SystemDamageTrackId } from '../../models/entity/entity-identifiers';
 import type { AttackerActionTarget } from '../../models/runtime/attacker-targeting-state';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
@@ -9,7 +10,10 @@ import type { VelocityRecordField } from '../../models/aerospace-velocity-record
 import type { MotiveModes } from '../../models/motiveModes.model';
 
 export type RecordSheetInteractionPayload =
-    | Readonly<{ kind: 'movement'; mode: MotiveModes }>
+    /** Converts a LAM or QuadVee to the mode whose heading was used. */
+    | Readonly<{ kind: 'conversion-mode'; mode: MekConversionMode }>
+    /** `airborne` is set when the chosen movement belongs to the air/ground state the unit is not in. */
+    | Readonly<{ kind: 'movement'; mode: MotiveModes; airborne?: boolean }>
     | Readonly<{
         kind: 'armor';
         faceId: ArmorFaceId;

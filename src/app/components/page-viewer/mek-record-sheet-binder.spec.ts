@@ -2083,6 +2083,7 @@ function snapshot(): MekRecordSheetSnapshot {
         },
         construction: { armor: 'Standard Armor', structure: 'Endo Steel' },
         battleValue: { pristine: 1810, adjusted: 1897 },
+        movementSelection: { options: [], selectedMode: null, airborne: false },
         movement: {
             walkMp: 3,
             runMp: 5,

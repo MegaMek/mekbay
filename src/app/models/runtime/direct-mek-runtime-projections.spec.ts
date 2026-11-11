@@ -1056,7 +1056,7 @@ describe('direct Mek entity/runtime projections', () => {
             'manual',
         );
         expect(panel.attackMovementModifiers).toEqual({
-            stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3,
+            stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3, tracked: 1,
         });
         expect(panel.defenseModifierBreakdown).toEqual([
             { label: 'Skidding', modifier: 2 },

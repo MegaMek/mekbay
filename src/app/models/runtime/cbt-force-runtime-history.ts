@@ -642,6 +642,7 @@ function movementModeHistoryCode(mode: MotiveModes | null): number {
         case 'UMU': return 5;
         case 'VTOL': return 6;
         case 'sprint': return 7;
+        case 'tracked': return 8;
         default: return 0;
     }
 }

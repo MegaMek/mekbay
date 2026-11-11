@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekConversionModes, type MekConversionMode } from '../../models/mek-conversion-mode';
+import { measureSvgTextCanvas } from '../svg-text.util';
 import type { BaseEntity } from '../../models/entity/base-entity';
 import {
   isAeroEntity,
@@ -249,24 +251,45 @@ function directDefs(svg: SVGSVGElement): SVGDefsElement {
   return defs;
 }
 
+/** Marks a LAM's or QuadVee's mode heading with the conversion mode it selects. */
+export const CONVERSION_MODE_ATTRIBUTE = 'data-mekbay-conversion-mode';
+
 function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): void {
   const lam = isMekEntity(entity) && entity.chassisConfig === 'LAM';
   const secondaryMode: MotiveModes =
     entity.umuMP() > 0 ? 'UMU' : entity.motiveType() === 'VTOL' && entity.unitType() !== 'VTOL' ? 'VTOL' : 'jump';
-  const movements: { id: string; mode: MotiveModes; airborne?: boolean }[] = [
-    { id: 'mpWalk', mode: 'walk', ...(lam ? { airborne: false } : {}) },
-    { id: 'mpRun', mode: 'run', ...(lam ? { airborne: false } : {}) },
-    { id: svg.getElementById('mpJump') ? 'mpJump' : 'mp_2', mode: secondaryMode },
-    { id: 'mpGround', mode: 'walk' },
-    { id: 'mpAirMekWalk', mode: 'walk', airborne: false },
-    { id: 'mpAirMekRun', mode: 'run', airborne: false },
-    { id: 'mpAirMekCruise', mode: 'walk', airborne: true },
-    { id: 'mpAirMekFlank', mode: 'run', airborne: true },
-    { id: 'mpSafeThrust', mode: 'walk', airborne: true },
-    { id: 'mpMaxThrust', mode: 'run', airborne: true },
-    { id: 'mpCruise', mode: 'walk' },
-    { id: 'mpFlank', mode: 'run' },
+  // A LAM's or QuadVee's own walk, run and jump belong to its BattleMech mode.
+  const battleMek = isMekEntity(entity) && mekConversionModes(entity).length > 0 ? { conversion: 'mek' as const } : {};
+  // A Glider ProtoMek prints its landed Ground MP beside the Cruise and Flank MP it flies on.
+  const gliding = isProtoMekEntity(entity) && entity.isGlider() ? { airborne: true } : {};
+  const movements: { id: string; mode: MotiveModes; airborne?: boolean; conversion?: MekConversionMode }[] = [
+    { id: 'mpWalk', mode: 'walk', ...battleMek, ...gliding },
+    { id: 'mpRun', mode: 'run', ...battleMek, ...gliding },
+    { id: svg.getElementById('mpJump') ? 'mpJump' : 'mp_2', mode: secondaryMode, ...battleMek },
+    { id: 'mpGround', mode: 'walk', airborne: false },
+    { id: 'mpTracked', mode: 'tracked' },
+    { id: 'mpAirMekWalk', mode: 'walk', airborne: false, conversion: 'airmek' },
+    { id: 'mpAirMekRun', mode: 'run', airborne: false, conversion: 'airmek' },
+    { id: 'mpAirMekCruise', mode: 'walk', airborne: true, conversion: 'airmek' },
+    { id: 'mpAirMekFlank', mode: 'run', airborne: true, conversion: 'airmek' },
+    { id: 'mpSafeThrust', mode: 'walk', conversion: 'fighter' },
+    { id: 'mpMaxThrust', mode: 'run', conversion: 'fighter' },
+    { id: 'mpCruise', mode: 'walk', conversion: 'vehicle' },
+    { id: 'mpFlank', mode: 'run', conversion: 'vehicle' },
   ];
+  // A mode heading selects its mode; the binder mutes the columns of the other modes.
+  svg.querySelectorAll<SVGTextElement>(`[${CONVERSION_MODE_ATTRIBUTE}]`).forEach(heading => {
+    const fontSize = Number(heading.getAttribute('font-size')) || RECORD_SHEET_FONT.body;
+    const width = measureSvgTextCanvas(heading, heading.textContent ?? '');
+    const x = Number(heading.getAttribute('x')) - (heading.getAttribute('text-anchor') === 'middle' ? width / 2 : 0);
+    const control = svgElement('g');
+    control.setAttribute('class', 'movementControl screen-only');
+    control.setAttribute('data-mekbay-conversion-control', heading.getAttribute(CONVERSION_MODE_ATTRIBUTE)!);
+    control.setAttribute('display', 'none');
+    control.appendChild(transparentRect(x - fontSize * 0.2, Number(heading.getAttribute('y')) - fontSize,
+      width + fontSize * 0.4, fontSize * 1.2, 'movementHitArea'));
+    heading.after(control);
+  });
   const caption = svg.getElementById('movementPointsLabel');
   if (caption) {
     const stationary = caption.cloneNode(true) as SVGTextElement;
@@ -306,6 +329,7 @@ function appendMovementPresentation(svg: SVGSVGElement, entity: BaseEntity): voi
     label.classList.add('movementType');
     value.setAttribute('data-mekbay-move-mode', movement.mode);
     if (movement.airborne !== undefined) value.setAttribute('data-mekbay-move-airborne', String(movement.airborne));
+    if (movement.conversion !== undefined) value.setAttribute('data-mekbay-move-conversion', movement.conversion);
     const parent = value.parentElement as SVGElement | null;
     if (!parent) continue;
     const valueX = Number(value.getAttribute('x')) || 0;

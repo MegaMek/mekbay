@@ -806,6 +806,7 @@ function turnSnapshot(options: {
         heat: createPristineMekHeatStateV2(),
         heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
         conditions: attempts > 0 ? ['prone'] : [],
+        conversion: { mode: 'mek', modes: [] },
         hasPendingCombat: false,
         hasPendingPhaseChanges: false,
     } as unknown as MekTurnPanelSnapshot;

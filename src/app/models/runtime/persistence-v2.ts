@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isMekConvertedMode, type MekConvertedMode } from '../mek-conversion-mode';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { isUnitConditionKey, type UnitConditionKey } from '../unit-condition.model';
@@ -444,6 +445,8 @@ export interface SerializedCBTUnitV2 {
     readonly ruleChecks: SerializedMekRuleChecksV1;
     /** Required sole durable movement/PSR owner. */
     readonly movementPsr: SerializedMekMovementPsrStateV2;
+    /** The mode a LAM or QuadVee has converted to; absent in BattleMech mode. */
+    readonly conversionMode?: MekConvertedMode;
     readonly equipmentRowOrder?: EquipmentRowOrderState;
     readonly conditions?: SerializedCommonConditionStateV2;
     readonly turn: SerializedMekTurnStateV2;
@@ -808,7 +811,7 @@ function validateV2Unit(
     exactKeys(record, [
         'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState', 'ammoState', 'crew', 'heat',
-        'family', 'ruleChecks', 'movementPsr',
+        'family', 'ruleChecks', 'movementPsr', 'conversionMode',
         'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ], path);
     if (record['schemaVersion'] !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
@@ -888,6 +891,9 @@ function validateV2Unit(
     exactKeys(family, ['kind'], `${path}.family`);
     if (family['kind'] !== 'mek') fail('INVALID_SHAPE', `${path}.family.kind`, 'only Mek semantic V2 state is supported');
     validateMekRuleChecks(record['ruleChecks'], `${path}.ruleChecks`, targets, revision);
+    if (record['conversionMode'] !== undefined && !isMekConvertedMode(record['conversionMode'])) {
+        fail('INVALID_SHAPE', `${path}.conversionMode`, 'must be a converted Mek mode');
+    }
     {
         let movementPsr: SerializedMekMovementPsrStateV2;
         try {

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekConvertedMovementPoints, type MekConvertedMode } from '../mek-conversion-mode';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import { compareText } from '../../utils/string.util';
 import { isObjectLiteralRecord } from '../../utils/json-value.util';
@@ -35,7 +36,7 @@ export const MAX_MEK_PILOT_CHECK_WITNESS_LENGTH_V2 = 16_384;
 export const MAX_MEK_MOVEMENT_MP_V2 = 1_000;
 export const MAX_MEK_PILOT_TARGET_V2 = 100;
 
-export type MekMovementModeV2 = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU';
+export type MekMovementModeV2 = 'stationary' | 'walk' | 'run' | 'sprint' | 'jump' | 'UMU' | 'tracked';
 /** Detached movement facts consumed by heat settlement, including retained VTOL recovery. */
 export interface MekMovementHeatInputV2 {
     readonly mode: MekMovementModeV2 | 'VTOL';
@@ -148,11 +149,19 @@ export interface MekMovementPsrStateV2 {
     readonly automaticFalls: readonly MekAutomaticFallV2[];
 }
 
+export interface MekConversionFactsV2 {
+    readonly mode: MekConvertedMode;
+    /** A wheeled QuadVee cruises one MP faster than it walks. */
+    readonly wheeled: boolean;
+}
+
 export interface MekMovementPsrRuntimeFactsV2 extends MekShieldRuntimeFactsV2 {
     readonly rulesFlavor: CBTRuleset;
     readonly sprintingAllowed: boolean;
     readonly currentHeat: number;
     readonly airborne: boolean;
+    /** The mode a LAM or QuadVee has converted to; absent in BattleMech mode and for every other Mek. */
+    readonly conversion?: MekConversionFactsV2;
     readonly pilotingSkill: number;
     readonly functionalCrew: boolean;
     /**
@@ -182,6 +191,7 @@ export type MekMovementBlockReasonCodeV2 =
     | 'NO_MOVEMENT_POINTS'
     | 'OPTION_DISABLED'
     | 'AIRBORNE'
+    | 'NOT_BATTLEMECH_MODE'
     | 'INSUFFICIENT_HIPS'
     | 'RUN_UNAVAILABLE'
     | 'CAREFUL_STAND'
@@ -251,6 +261,8 @@ export interface MekMovementPsrProjectionV2 {
     readonly maximumSprintMp: number;
     readonly jumpMp: number;
     readonly umuMp: number;
+    /** The MP a Mek has on its Tracks (TW p. 143); zero without them. */
+    readonly trackedMp: number;
     readonly movementImpaired: boolean;
     readonly movementImpairment: Readonly<{ walk: boolean; run: boolean; jump: boolean; umu: boolean }>;
     readonly permanentPsrModifier: number;
@@ -461,6 +473,8 @@ interface MovementNumbersV2 {
     readonly activeSprintMp: number;
     readonly jumpMp: number;
     readonly umuMp: number;
+    /** The MP a Mek has on its Tracks; zero without them. */
+    readonly trackedMp: number;
     readonly hardened: boolean;
     readonly tsmActive: boolean;
     readonly tsmPotential: boolean;
@@ -487,8 +501,10 @@ interface CoreLegPilotCheckGroup {
 }
 
 const MOVEMENT_MODES = Object.freeze([
-    'stationary', 'walk', 'run', 'sprint', 'jump', 'UMU',
+    'stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'tracked',
 ] as const satisfies readonly MekMovementModeV2[]);
+/** The damage rolls a Mek moving on its tracks does not make: leg actuator (hips included) and gyro critical hits. */
+const TRACKED_EXEMPT_CHECKS: ReadonlySet<string> = new Set(['leg-actuator-hit', 'hip-hit', 'gyro-hit']);
 const ACTION_KINDS = Object.freeze([
     'shutdown', 'startup',
 ] as const satisfies readonly MekActionIntentKindV2[]);
@@ -682,6 +698,7 @@ export function projectMekMovementPsrV2(
         profile.movement.originalWalkMp > 0 ? numbers.damageWalkMp : null,
         profile.movement.baseJumpMp > 0 && !facts.conditions.has('prone') ? numbers.jumpMp : null,
         profile.movement.baseUmuMp > 0 && !facts.conditions.has('prone') ? numbers.umuMp : null,
+        profile.tracks.length > 0 && !facts.conditions.has('prone') ? numbers.trackedMp : null,
     ].filter((value): value is number => value !== null);
     const damageImmobile = damageAvailableMovement.length > 0
         && damageAvailableMovement.every(value => value <= 0);
@@ -770,6 +787,8 @@ export function projectMekMovementPsrV2(
             numbers.jumpMp, movementPilotChecks('jump').length > 0),
         movementAction('UMU', 0, numbers.umuMp, destroyed, shutdown, controlled, immobile,
             facts.conditions.has('prone'), canonicalState.carefulStand, warnings),
+        movementAction('tracked', 0, numbers.trackedMp, destroyed, shutdown, controlled, immobile,
+            facts.conditions.has('prone'), canonicalState.carefulStand, warnings),
         getUpAction(standing, warnings),
         shutdownAction(destroyed, shutdown, controlled),
         startupAction(destroyed, shutdown, controlled),
@@ -790,6 +809,7 @@ export function projectMekMovementPsrV2(
         maximumSprintMp: numbers.maximumSprintMp,
         jumpMp: numbers.jumpMp,
         umuMp: numbers.umuMp,
+        trackedMp: numbers.trackedMp,
         movementImpaired: numbers.movementImpaired,
         movementImpairment: numbers.movementImpairment,
         permanentPsrModifier,
@@ -1113,11 +1133,15 @@ export function synthesizeCommittedMekDamagePilotChecksV2(
     if (!canonicalNonnegativeInteger(nextDamage, 1_000_000)) {
         throw new Error('Mek phase damage exceeds its bounded range');
     }
+    // TW p. 143: a Mek moving on its tracks this turn makes no roll for leg actuator or gyro critical hits, and does
+    // not fall when its gyro is destroyed. Rolls for 20 points of damage and for a lost leg remain.
+    const tracked = canonical.movement?.mode === 'tracked';
     const seeds: MekPilotCheckSeedV2[] = [];
     for (const mutation of validated) {
-        seeds.push(...damageMutationSeeds(profile, facts, mutation));
+        seeds.push(...damageMutationSeeds(profile, facts, mutation)
+            .filter(item => !tracked || !TRACKED_EXEMPT_CHECKS.has(item.source.triggerKind)));
     }
-    seeds.push(...gyroDamageMutationSeeds(profile, facts, validated));
+    if (!tracked) seeds.push(...gyroDamageMutationSeeds(profile, facts, validated));
     if (canonical.damageThisPhase < 20 && nextDamage >= 20) {
         seeds.push(seed({
             sourceKind: 'damage',
@@ -1138,7 +1162,8 @@ export function synthesizeCommittedMekDamagePilotChecksV2(
         checks: appendSeeds(canonical.checks, seeds, producingRevision),
         automaticFalls: canonicalAutomaticFalls([
             ...canonical.automaticFalls,
-            ...synthesizeAutomaticFalls(profile, facts, validated),
+            ...synthesizeAutomaticFalls(profile, facts, validated)
+                .filter(fall => !tracked || fall.triggerKind !== 'gyro-destroyed'),
         ]),
     }));
     return Object.freeze({ state: nextState });
@@ -1592,7 +1617,19 @@ function movementNumbers(
     let runCap: number | null = null;
     let applyActuatorDamage = true;
     let impaired = false;
-    if (core) {
+    // Battle Value rates the BattleMech mode.
+    const conversion = options.battleValue ? undefined : facts.conversion;
+    const vehicleMode = conversion?.mode === 'vehicle';
+    const cruiseBonus = vehicleMode && conversion.wheeled ? 1 : 0;
+    if (vehicleMode) {
+        // IO:AE p. 127: leg actuator hits do not slow Vehicle mode. Each lost leg takes a quarter of the Cruise MP,
+        // as MegaMek's QuadVee.getCruiseMP does.
+        const cruise = walk + cruiseBonus;
+        walk = destroyedLegs >= legs.length ? 0 : cruise - Math.floor(cruise * destroyedLegs / legs.length);
+        runDisabled = walk <= 0;
+        applyActuatorDamage = false;
+        impaired = destroyedLegs > 0;
+    } else if (core) {
         if (!quadruped) {
             if (destroyedLegs === 1) {
                 walk = Math.min(walk, 1);
@@ -1663,14 +1700,14 @@ function movementNumbers(
         impaired ||= destroyedHips > 0 || destroyedLegs > 0;
     }
     if (applyActuatorDamage) walk -= destroyedLegActuators + destroyedFeet;
-    impaired ||= destroyedLegActuators > 0 || destroyedFeet > 0 || destroyedLegs > 0;
+    impaired ||= destroyedLegs > 0 || (!vehicleMode && (destroyedLegActuators > 0 || destroyedFeet > 0));
     const legDamageMinimumWalk = core
         && profile.movement.originalWalkMp > 0
         && destroyedLegs < (quadruped ? 4 : 2)
         ? 1
         : 0;
     walk = Math.max(legDamageMinimumWalk, Math.min(
-        core ? profile.movement.originalWalkMp : profile.movement.baseWalkMp,
+        (core ? profile.movement.originalWalkMp : profile.movement.baseWalkMp) + cruiseBonus,
         walk,
     ));
     // CORE p. 49: MP lost to equipment or heat does not establish immobility.
@@ -1754,6 +1791,14 @@ function movementNumbers(
     const umu = activeLargeShields > 0
         ? 0
         : Math.max(0, profile.movement.baseUmuMp - lostUmus);
+    // TW p. 143: Track MP equals the Walking MP and has no Running MP. Actuator hits do not reduce it; each track
+    // lost to a critical hit or with its leg takes its share (half on two legs, a quarter on four). Heat still slows
+    // it, but triple-strength myomer does not speed it. A converted LAM or QuadVee does not move on tracks.
+    const lostTracks = profile.tracks.filter(track => !trackAvailable(track, facts)).length;
+    const tracked = profile.tracks.length === 0 || conversion !== undefined
+        ? 0
+        : Math.max(0, Math.floor(preDamageWalk * (profile.tracks.length - lostTracks) / profile.tracks.length)
+            + heatModifier);
     impaired ||= heatModifier < 0 || lostJets > 0 || wingSlotLoss > 0 || lostUmus > 0;
     // Compare with the current equipment configuration, not the original design.
     // Expended modular armor and discarded shields can improve that baseline.
@@ -1765,6 +1810,26 @@ function movementNumbers(
 
     const drone = profile.droneOperatingSystems.some(group => groupAvailable(group, facts));
     const psr = permanentPsr(profile, facts, legs, drone, hardened, modularArmorActive);
+    // An AirMech or fighter moves on MP converted from the BattleMech mode's, without boosters; only BattleMech mode
+    // jumps or sprints.
+    const converted = conversion === undefined || conversion.mode === 'vehicle'
+        ? null
+        : mekConvertedMovementPoints(conversion.mode, facts.airborne, walk, jump);
+    const convertedNumbers = converted !== null ? {
+        walkMp: converted.walkMp,
+        damageWalkMp: converted.walkMp,
+        potentialWalkMp: converted.walkMp,
+        runMp: converted.runMp,
+        maximumRunMp: converted.runMp,
+        activeRunMp: converted.runMp,
+        runningMinimumMp: 0,
+    } : {};
+    const battleMekOnlyNumbers = conversion === undefined ? {} : {
+        sprintMp: 0,
+        maximumSprintMp: 0,
+        activeSprintMp: 0,
+        jumpMp: 0,
+    };
     return Object.freeze({
         controlledByDrone: !facts.functionalCrew && drone,
         allLimbsDestroyed: profile.limbs.length > 0
@@ -1784,12 +1849,15 @@ function movementNumbers(
         activeSprintMp: activeSprint,
         jumpMp: jump,
         umuMp: umu,
+        trackedMp: tracked,
         hardened,
         tsmActive,
         tsmPotential,
         partialWingDamaged: wingSlotLoss > 0,
         permanentPsrModifier: psr.modifier,
         permanentPsrModifiers: psr.modifiers,
+        ...convertedNumbers,
+        ...battleMekOnlyNumbers,
     });
 }
 
@@ -2051,6 +2119,7 @@ function movementCapacityForDeclaration(
     if (declaration.mode === 'walk') return numbers.walkMp;
     if (declaration.mode === 'jump') return numbers.jumpMp;
     if (declaration.mode === 'UMU') return numbers.umuMp;
+    if (declaration.mode === 'tracked') return numbers.trackedMp;
     return declaration.mode === 'sprint'
         ? selectedSprintCapacity(profile, facts, numbers, declaration.boosterComponentIds)
         : selectedRunCapacity(profile, facts, numbers, declaration.boosterComponentIds);
@@ -2067,6 +2136,7 @@ function sprintBlockReasons(
         'Sprinting is disabled by the force scenario',
     ));
     if (facts.airborne) reasons.push(blocker('AIRBORNE', 'An airborne Mek cannot Sprint'));
+    if (facts.conversion) reasons.push(blocker('NOT_BATTLEMECH_MODE', 'Only BattleMech mode can Sprint'));
     if (facts.conditions.has('prone')) reasons.push(blocker('PRONE', 'A prone Mek cannot Sprint'));
     if (numbers.runMp <= 0) reasons.push(blocker(
         'RUN_UNAVAILABLE',
@@ -2104,6 +2174,8 @@ function movementAction(
     if (!controlled) reasons.push(blocker('NO_FUNCTIONAL_CONTROL', 'No functional crew or drone operating system is available'));
     if (carefulStand) reasons.push(blocker('CAREFUL_STAND', 'A careful stand consumes all remaining movement'));
     if (kind === 'jump' && prone) reasons.push(blocker('PRONE', 'A prone Mek cannot jump'));
+    // TW p. 143: a Mek uses its tracks only when it starts the Movement Phase on its feet.
+    if (kind === 'tracked' && prone) reasons.push(blocker('PRONE', 'A prone Mek cannot move on its tracks'));
     if (kind !== 'stationary' && immobile) reasons.push(blocker('IMMOBILE', 'The Mek is immobile'));
     if (kind !== 'stationary' && maximumMp <= 0) {
         reasons.push(blocker('NO_MOVEMENT_POINTS', `${kind} has no available MP`));
@@ -3898,6 +3970,12 @@ function remapRejected(
         accepted: false as const,
         unresolved: canonicalRemapUnresolved(unresolved),
     });
+}
+
+/** A track works while its own critical slot and its leg do; a hit on the other leg's track leaves it running. */
+function trackAvailable(track: MekExactComponentGroup, facts: MekMovementPsrRuntimeFactsV2): boolean {
+    return track.criticalSlotIds.every(slotId => !facts.criticalSlotUnavailable(slotId))
+        && track.locationIds.every(locationId => !facts.locationDestroyed(locationId));
 }
 
 function groupAvailable(

@@ -78,6 +78,21 @@ describe('force storage codec', () => {
         expect((decoded.cbt!.units[0].unit as SerializedCBTUnitV2).movementPsr).toEqual((unit as SerializedCBTUnitV2).movementPsr);
     });
 
+    it('stores a converted unit\u2019s mode as one field and nothing for BattleMech mode', () => {
+        const fixture = createDirectMekRuntimeFixture('total-warfare');
+        const battleMek = fixture.instance.serialize() as SerializedCBTUnitV2;
+        const store = (unit: SerializedCBTUnitV2) =>
+            JSON.parse(JSON.stringify(encodeForceForStorage(forceWithUnit(unit, 'force:conversion', 'Mode')))) as Record<string, unknown>;
+        const load = (stored: unknown) => decodeForceFromStorage(stored).cbt!.units[0].unit as SerializedCBTUnitV2;
+        expect('cm' in storedUnitState(store(battleMek))).toBeFalse();
+
+        const stored = store({ ...battleMek, conversionMode: 'fighter' });
+        expect(storedUnitState(stored)['cm']).toBe('fighter');
+        expect(load(stored).conversionMode).toBe('fighter');
+        storedUnitState(stored)['cm'] = 'submarine';
+        expect(() => load(stored)).toThrowError(/converted Mek mode/u);
+    });
+
     it('stores whether a check is immediate, and loads a row saved without it as an end-of-phase check', () => {
         const fixture = createDirectMekRuntimeFixture('total-warfare');
         const gyro = [...fixture.index.slots.values()].find(candidate => candidate.componentIds.some(componentId => {

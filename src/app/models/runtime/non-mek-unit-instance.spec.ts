@@ -1221,6 +1221,7 @@ describe('NonMekUnitInstance', () => {
             jump: 0,
             UMU: 0,
             VTOL: 0,
+            tracked: 0,
         });
     });
 

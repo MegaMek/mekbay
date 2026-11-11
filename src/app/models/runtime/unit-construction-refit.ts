@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekConversionModes } from '../mek-conversion-mode';
 import type { BaseEntity } from '../entity/base-entity';
 import { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId } from '../entity/entity-identifiers';
@@ -94,7 +95,10 @@ export async function prepareConstructionRefit(
         if (!movement.accepted) {
             throw new Error('Resolve the unit’s pending movement or pilot checks before removing equipment they reference');
         }
-        const state: MekUnitRuntimeState = { ...old, ...shared, heat: old.heat,
+        const { conversionMode, ...oldState } = old;
+        const state: MekUnitRuntimeState = { ...oldState, ...shared, heat: old.heat,
+            ...(conversionMode !== undefined && mekConversionModes(next.getUnit()).includes(conversionMode)
+                ? { conversionMode } : {}),
             turn: rebaseConstructionMekTurn(old.turn, current.getIndex(), index, componentIds, slotIds), slots, movementPsr: movement.state,
             locations: new Map([...shared.locations].map(([id, value]) => [id, {
                 ...value, conditions: old.locations.get(id)?.conditions ?? new Map(),

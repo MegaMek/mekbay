@@ -277,7 +277,25 @@ export function projectNonMekRecordSheet(
             entity.computeJumpMP(movementCalculation), movementCalculation.ignoreMyomerBooster)
         : null;
     const airborne = state.turn.airborne === true;
-    const movementModes = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
+    const facts = motiveModeFactsForEntity(entity);
+    // A Glider ProtoMek chooses between walking on the ground and cruising or flanking in the air, so its sheet
+    // offers both states at once; every other unit offers the movement of the state it is in.
+    const glider = isProtoMekEntity(entity) && entity.isGlider();
+    const movementOptions = (glider ? [false, true] : [airborne]).flatMap(isAirborne => {
+        const stateCapabilities = isAirborne === airborne
+            ? capabilities
+            : projectNonMekMovementCapabilities(entity, index,
+                { ...state, turn: { ...state.turn, airborne: isAirborne } }, ruleset, crewAssignment);
+        return getMotiveModesByUnit(facts, isAirborne)
+            .filter(mode => !glider || (mode === 'stationary' ? !isAirborne : stateCapabilities.maximum[mode] > 0))
+            .map(mode => ({
+                mode, modifier: nonMekAttackMovementModifier(entity, mode),
+                legal: stateCapabilities.canTakeActiveActions
+                    && (mode === 'stationary' || stateCapabilities.maximum[mode] > 0),
+                minimumMp: stateCapabilities.minimum[mode],
+                ...(glider && mode !== 'stationary' ? { airborne: isAirborne } : {}),
+            }));
+    });
     return Object.freeze({
         entityUuid: entity.uuid(),
         ...(isInfantryEntity(entity) ? { infantry: projectConventionalInfantryCombat(entity) } : {}),
@@ -294,12 +312,7 @@ export function projectNonMekRecordSheet(
         movementSelection: Object.freeze({
             selectedMode: state.turn.movement?.mode ?? null,
             airborne,
-            options: Object.freeze(movementModes.map(mode => ({
-                mode, modifier: nonMekAttackMovementModifier(entity, mode),
-                legal: capabilities.canTakeActiveActions
-                    && (mode === 'stationary' || capabilities.maximum[mode] > 0),
-                minimumMp: capabilities.minimum[mode],
-            }))),
+            options: Object.freeze(movementOptions),
         }),
         movement: Object.freeze({
             walk: movementBlocked ? 0 : vehicleRules?.movement.walk ?? protoMovement?.walk

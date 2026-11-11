@@ -61,6 +61,9 @@ export const UNIT_CONDITION_DEFINITIONS: readonly UnitConditionDefinition[] = Ob
     Object.freeze({ key: 'stealth', label: 'STEALTH', color: '#226' }),
     Object.freeze({ key: 'airborne', label: 'AIRBORNE', color: '#1976d2' }),
     Object.freeze({ key: 'grounded', label: 'GROUNDED', color: '#975300' }),
+    Object.freeze({ key: 'airmek-mode', label: 'AIRMECH', color: '#00796b' }),
+    Object.freeze({ key: 'fighter-mode', label: 'FIGHTER', color: '#1565c0' }),
+    Object.freeze({ key: 'vehicle-mode', label: 'VEHICLE', color: '#6d4c41' }),
 ]);
 
 const UNIT_CONDITION_BY_KEY = new Map<UnitConditionKey, UnitConditionDefinition>(

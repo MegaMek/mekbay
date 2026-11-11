@@ -203,5 +203,6 @@ function standingSnapshot(
         heat: createPristineMekHeatStateV2(),
         heatProjection: { kind: 'unsupported', blockers: ['fixture'] },
         conditions: ['prone'],
+        conversion: { mode: 'mek', modes: [] },
     } as unknown as MekTurnPanelSnapshot;
 }

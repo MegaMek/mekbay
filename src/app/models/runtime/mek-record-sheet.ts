@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { mekMovesOnTracks } from '../chassis-equipment.model';
+import { mekAirborne, mekConversionModes, mekConvertedMotiveModes } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -504,8 +506,22 @@ export function projectMekRecordSheet(
         entity, index, ruleset, query, query.attackerTargetingState(), attackModifiers,
     );
     const movement = query.mekMovementPsr();
-    const airborne = query.turnState().airborne === true;
-    const movementOptions = getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne);
+    const conversionModes = mekConversionModes(entity);
+    const conversionMode = query.conversionMode();
+    const declaredAirborne = query.turnState().airborne;
+    const airborne = mekAirborne(conversionMode, declaredAirborne);
+    // An AirMech offers its ground and its airborne movement side by side; every other mode has one set.
+    const movementOptions = conversionMode === 'mek'
+        ? [...getMotiveModesByUnit(motiveModeFactsForEntity(entity), airborne),
+            ...(mekMovesOnTracks(entity) ? ['tracked' as const] : [])]
+            .map(mode => ({ mode, airborne, ownState: false }))
+        : (conversionMode === 'airmek' ? [false, true] : [airborne]).flatMap(state =>
+            mekConvertedMotiveModes(conversionMode, state).map(mode => ({
+                // Choosing an AirMech's movement, or a fighter's before it declared itself landed or flying, also
+                // declares the air/ground state it belongs to.
+                mode, airborne: state, ownState: mode !== 'stationary' && (conversionMode === 'airmek'
+                    || (conversionMode === 'fighter' && declaredAirborne === null)),
+            })));
     const construction = constructionLabels(index);
     const battleValue = suppliedBattleValue ?? Object.freeze({
         pristine: safePristineMekBattleValue(entity, ruleset),
@@ -555,12 +571,17 @@ export function projectMekRecordSheet(
         movementSelection: Object.freeze({
             selectedMode: query.mekMovementPsrState().movement?.mode ?? null,
             airborne,
-            options: Object.freeze(movementOptions.flatMap(mode => {
+            ...(conversionModes.length === 0 ? {} : {
+                conversion: Object.freeze({ mode: conversionMode, modes: Object.freeze(conversionModes) }),
+            }),
+            options: Object.freeze(movementOptions.flatMap(option => {
+                const mode = option.mode;
                 if (mode === 'VTOL') return [];
                 const action = movement.kind === 'supported'
                     ? movement.actions.find(action => action.kind === mode) : undefined;
-                return [{ mode, modifier: mekAttackMovementModifier(entity, mode, airborne),
-                    legal: action?.legal === true, minimumMp: action?.minimumMp ?? 0 }];
+                return [{ mode, modifier: mekAttackMovementModifier(entity, mode, option.airborne, conversionMode),
+                    legal: action?.legal === true, minimumMp: action?.minimumMp ?? 0,
+                    ...(option.ownState ? { airborne: option.airborne } : {}) }];
             })),
         }),
         heatSinks: Object.freeze({

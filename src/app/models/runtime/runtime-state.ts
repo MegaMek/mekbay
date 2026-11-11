@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import type { MekConvertedMode } from '../mek-conversion-mode';
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { uuidv4 } from '../../utils/uuid.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
@@ -175,6 +176,8 @@ export interface MekUnitRuntimeState extends CBTUnitRuntimeState {
     readonly ruleChecks: MekRuleChecksV2;
     /** Sole typed owner of Mek movement declarations, phase damage, and pilot checks. */
     readonly movementPsr: MekMovementPsrStateV2;
+    /** The mode a LAM or QuadVee has converted to; absent in BattleMech mode and for every other Mek. */
+    readonly conversionMode?: MekConvertedMode;
     readonly turn: MekTurnStateV2;
     readonly pendingCombat: PendingCombatOverlay;
 }

@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { isMekConvertedMode, type MekConvertedMode } from '../mek-conversion-mode';
 import { packUuid, unpackUuid, packOpaqueId, unpackOpaqueId, UUID_PATTERN, COMPACT_UUID_PATTERN } from './compact-uuid';
 import type { StoredForceRecord, StoredForceUnit, StoredForceGroup, StoredForceCrew } from './force-storage.model';
 import { packForcePersonnel, unpackForcePersonnel, savedCrewHealthTarget, type AssignedForcePerson, type DecodedForcePersonnel } from './force-personnel-storage';
@@ -210,6 +211,7 @@ const CBT_MEK_UNIT_FIELDS = [
     CBT_UNIT_FIELD.heat,
     CBT_UNIT_FIELD.ruleChecks,
     CBT_UNIT_FIELD.movementPsr,
+    CBT_UNIT_FIELD.conversionMode,
     CBT_UNIT_FIELD.equipmentRowOrder,
     CBT_UNIT_FIELD.conditions,
     CBT_UNIT_FIELD.c3Position,
@@ -945,6 +947,7 @@ function packMekUnit(unit: SerializedCBTUnitV2, c3Position: C3UnitPosition | und
                 row.key, row.token, row.trigger, row.openedRevision, row.status,
             ]),
         [CBT_UNIT_FIELD.movementPsr]: packMovement(unit.movementPsr),
+        [CBT_UNIT_FIELD.conversionMode]: unit.conversionMode,
         [CBT_UNIT_FIELD.equipmentRowOrder]: packEquipmentRowOrder(unit.equipmentRowOrder),
         [CBT_UNIT_FIELD.conditions]: unit.conditions?.values.length
             ? [...unit.conditions.values]
@@ -1056,6 +1059,12 @@ function unpackMekUnit(value: Record<string, unknown>, path: string, header: Dec
             value[CBT_UNIT_FIELD.movementPsr],
             `${path}.${CBT_UNIT_FIELD.movementPsr}`,
         ),
+        ...(value[CBT_UNIT_FIELD.conversionMode] === undefined ? {} : {
+            conversionMode: unpackMekConvertedMode(
+                value[CBT_UNIT_FIELD.conversionMode],
+                `${path}.${CBT_UNIT_FIELD.conversionMode}`,
+            ),
+        }),
         ...(value[CBT_UNIT_FIELD.equipmentRowOrder] === undefined ? {} : {
             equipmentRowOrder: unpackEquipmentRowOrder(
                 value[CBT_UNIT_FIELD.equipmentRowOrder],
@@ -2500,6 +2509,11 @@ function unpackMekLocationCondition(value: unknown, path: string): MekLocationCo
 
 function unpackMekRuleCheckKey(value: unknown, path: string): MekRuleCheckKeyV2 {
     if (!isMekRuleCheckKeyV2(value)) throw new Error(`${path} is not a Mek rule-check key`);
+    return value;
+}
+
+function unpackMekConvertedMode(value: unknown, path: string): MekConvertedMode {
+    if (!isMekConvertedMode(value)) throw new Error(`${path} is not a converted Mek mode`);
     return value;
 }
 

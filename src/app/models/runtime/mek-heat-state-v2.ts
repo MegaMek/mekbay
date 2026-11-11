@@ -550,7 +550,7 @@ function canonicalizeHeatMovement(
     if (value === undefined || value === null || typeof value !== 'object'
         || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype
         || Object.keys(value).some(key => key !== 'mode' && key !== 'distance')
-        || !['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'VTOL'].includes(value.mode)
+        || !['stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'VTOL', 'tracked'].includes(value.mode)
         || !Number.isSafeInteger(value.distance)
         || value.distance < 0
         || value.distance > MAX_MEK_MOVEMENT_MP_V2
@@ -706,7 +706,8 @@ export function projectMekMovementHeatV2(
     profile: MekHeatProfile,
     input: MekMovementHeatFactsV2,
 ): number {
-    const moveMode = input.movement?.mode;
+    // TW p. 143: tracked movement generates heat as walking does, none on an ICE-equipped Mek.
+    const moveMode = input.movement?.mode === 'tracked' ? 'walk' : input.movement?.mode;
     const standHeat = profile.heatPerStandAttempt * input.standAttempts;
     const scmActive = profile.superCooledMyomer.componentIds.length > 0
         && profile.superCooledMyomer.componentIds.some(

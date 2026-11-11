@@ -272,6 +272,7 @@ const ZERO_NON_MEK_MOVEMENT: Readonly<Record<MotiveModes, number>> = Object.free
     jump: 0,
     UMU: 0,
     VTOL: 0,
+    tracked: 0,
 });
 
 /** One direct non-Mek BaseEntity + rules + sparse-state projection shared by validation and UI. */
@@ -328,6 +329,7 @@ export function projectNonMekMovementCapabilities(
             VTOL: hpgMovementBlocked || !canTakeActiveActions
                 ? 0
                 : entityMovementMaximum('VTOL', false, state, entity, vehicle, protoMek, immobile),
+            tracked: 0,
         }),
         ordinaryRun,
         boosterComponentIds,
@@ -2449,14 +2451,17 @@ function entityMovementMaximum(
         ? protoMekMovement(entity, protoMek.criticalHits, entity.computeWalkMP(movement),
             entity.computeJumpMP(STANDARD_MOVEMENT_CALCULATION), !boosted)
         : null;
+    // IO:AE p. 93: a Glider ProtoMek that has landed may only move 1 MP, Walking; its Cruise and Flank MP fly it.
+    const landedGlider = isProtoMekEntity(entity) && entity.isGlider() && state.turn.airborne !== true;
     if (mode === 'walk') {
         if (entity.unitType() === 'VTOL' && state.turn.airborne !== true) return 0;
+        if (landedGlider) return (protoMek?.criticalHits.legs ?? 0) >= 3 ? 0 : 1;
         return vehicle?.movement.walk
             ?? proto?.walk
             ?? Math.max(0, entity.computeWalkMP(movement));
     }
     if (mode === 'run') {
-        if (entity.unitType() === 'Infantry'
+        if (entity.unitType() === 'Infantry' || landedGlider
             || (entity.unitType() === 'VTOL' && state.turn.airborne !== true)) return 0;
         if (vehicle) return boosted ? vehicle.movement.maxRun : vehicle.movement.run;
         return proto?.run ?? Math.max(0, entity.computeRunMP(movement));

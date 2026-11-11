@@ -22,6 +22,7 @@ const TURN_MOVEMENT_INDICATORS: Readonly<Record<MotiveModes, TurnMovementIndicat
     jump: { color: 'jump', letter: 'J' },
     UMU: { color: 'jump', letter: 'U' },
     VTOL: { color: 'jump', letter: 'V' },
+    tracked: { color: 'walk', letter: 'T' },
 };
 
 /** Compact movement declaration plus the unit's complete defender modifier. */
