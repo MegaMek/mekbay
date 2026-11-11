@@ -16,6 +16,7 @@ import { MtfSourceLimitError, parseMtf } from './mtf-parser';
 import { writeMtf } from '../writers/mtf-writer';
 import { encodeNativeEntity } from '../write-entity';
 import { parseEntity, UnsupportedNativeFormatError } from '../parse-entity';
+import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
 
 const STANDARD_ARMOR = new ArmorEquipment({
   id: 'Standard Armor',
@@ -616,6 +617,83 @@ describe('MTF parser identity', () => {
         .filter((mount) => mount.equipment === clanCase)
         .map((mount) => mount.location),
     ).toEqual(['LT']);
+  });
+});
+
+describe('MTF material slots with the opposite tech base', () => {
+  let catalog: EquipmentRegistry;
+  beforeAll(async () => {
+    catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
+
+  const slots = (location: string, name: string, count: number) =>
+    `${location}:\n${Array.from({ length: count }, () => name).join('\n')}\n`;
+  const placements = (entity: ReturnType<typeof parseMtf>, id: string) =>
+    entity.equipment().filter((mount) => mount.equipmentId === id).map((mount) => mount.placements?.map((p) => p.location));
+
+  it('converts uniform armor slots to the installed material and saves them corrected', () => {
+    const context = new ParseContext('inverse-ff.mtf', catalog);
+    const entity = parseMtf(
+      minimalMtf().replace(
+        'armor:Standard(Inner Sphere)',
+        'armor:Ferro-Fibrous(Inner Sphere)\n' +
+          slots('Left Arm', 'Clan Ferro-Fibrous', 7) +
+          slots('Right Arm', 'Clan Ferro-Fibrous', 7),
+      ),
+      context,
+    );
+
+    expect(placements(entity, 'IS Ferro-Fibrous')).toEqual([[...Array(7).fill('LA'), ...Array(7).fill('RA')]]);
+    expect(placements(entity, 'Clan Ferro-Fibrous')).toEqual([]);
+    expect(context.warnings.filter((warning) => warning.code === 'MATERIAL_SLOT_TECH_BASE').length).toBe(1);
+    expect(writeMtf(entity)).not.toContain('Clan Ferro-Fibrous');
+  });
+
+  it('keeps correct slots when an undesignated armor line takes the unit tech base', () => {
+    const context = new ParseContext('undesignated-ff.mtf', catalog);
+    const entity = parseMtf(
+      minimalMtf()
+        .replace('Config:Biped', 'Config:Biped\ntechbase:Clan')
+        .replace('armor:Standard(Inner Sphere)', 'armor:Ferro-Fibrous\n' + slots('Left Arm', 'Clan Ferro-Fibrous', 7)),
+      context,
+    );
+
+    expect(entity.uniformArmor()?.armor.id).toBe('Clan Ferro-Fibrous');
+    expect(placements(entity, 'Clan Ferro-Fibrous')).toEqual([Array(7).fill('LA')]);
+    expect(context.warnings.some((warning) => warning.code === 'MATERIAL_SLOT_TECH_BASE')).toBeFalse();
+  });
+
+  it('checks patchwork armor per location', () => {
+    const entity = parseMtf(
+      minimalMtf().replace(
+        'armor:Standard(Inner Sphere)',
+        'armor:Patchwork\nLA armor:Ferro-Fibrous(Clan):4\nRA armor:Ferro-Fibrous(Inner Sphere):4\n' +
+          slots('Left Arm', 'IS Ferro-Fibrous', 1) +
+          slots('Right Arm', 'IS Ferro-Fibrous', 2),
+      ),
+      new ParseContext('patchwork-ff.mtf', catalog),
+    );
+
+    expect(placements(entity, 'Clan Ferro-Fibrous')).toEqual([['LA']]);
+    expect(placements(entity, 'IS Ferro-Fibrous')).toEqual([['RA', 'RA']]);
+  });
+
+  it('checks hybrid structure per location', () => {
+    const entity = parseMtf(
+      frankenMtf(
+        'structure:Hybrid\n' +
+          'LA structure:Clan Endo Steel:20\nRA structure:IS Endo Steel:20\n' +
+          'LT structure:Standard:20\nRT structure:Standard:20\nCT structure:Standard:20\n' +
+          'HD structure:Standard:20\nLL structure:Standard:20\nRL structure:Standard:20\n',
+      ).replace(
+        'armor:Standard(Inner Sphere)',
+        'armor:Standard(Inner Sphere)\n' + slots('Left Arm', 'IS Endo Steel', 1) + slots('Right Arm', 'IS Endo Steel', 2),
+      ),
+      new ParseContext('hybrid-endo.mtf', catalog),
+    );
+
+    expect(placements(entity, 'Clan Endo Steel')).toEqual([['LA']]);
+    expect(placements(entity, 'IS Endo Steel')).toEqual([['RA', 'RA']]);
   });
 });
 

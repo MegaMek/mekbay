@@ -16,6 +16,8 @@ import { createTestEquipmentRegistry } from '../testing/test-equipment-registry'
 import { parseBaseBlk, parseBlkArmor, parseBlkSupportArmor, parseLegacyDockingCollars } from './blk-base-parser';
 import { BuildingBlock } from './building-block';
 import { ParseContext } from './parse-context';
+import { parseEntity } from '../parse-entity';
+import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
 
 describe('BLK base parser', () => {
   const standardArmor = armorEquipment('Standard Armor', 'STANDARD');
@@ -202,3 +204,40 @@ function armorEquipment(
     tech: { base: 'All' },
   });
 }
+
+describe('BLK material equipment with the opposite tech base', () => {
+  let catalog: EquipmentRegistry;
+  beforeAll(async () => {
+    catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
+
+  const blk = (blocks: readonly (readonly [string, string])[]) =>
+    blocks.map(([tag, value]) => `<${tag}>\n${value}\n</${tag}>`).join('\n');
+  const materialMounts = (entity: BaseEntity) => entity.equipment()
+    .filter((mount) => mount.equipment?.type === 'armor')
+    .map((mount) => [mount.equipmentId, mount.location]);
+
+  it('converts fighter armor equipment to the installed material', () => {
+    const entity = parseEntity(blk([
+      ['UnitType', 'AeroSpaceFighter'], ['Name', 'Test'], ['Model', 'C'], ['year', '3140'],
+      ['type', 'Mixed (IS Chassis) Advanced'], ['motion_type', 'Aerodyne'], ['SafeThrust', '5'],
+      ['tonnage', '50'], ['heatsinks', '10'], ['sink_type', '0'], ['fuel', '240'], ['engine_type', '0'],
+      ['armor_type', '3'], ['armor_tech_level', '6'], ['armor', '10\n10\n10\n10'], ['Aft Equipment', 'IS Reflective'],
+    ]), 'reflective.blk', catalog).entity;
+
+    expect(entity.uniformArmor()?.armor.id).toBe('Clan Reflective');
+    expect(materialMounts(entity)).toEqual([['Clan Reflective', 'Aft']]);
+  });
+
+  it('converts battle armor equipment to the installed material', () => {
+    const entity = parseEntity(blk([
+      ['UnitType', 'BattleArmor'], ['Name', 'Test'], ['Model', 'Sqd4'], ['year', '3134'],
+      ['type', 'Mixed (IS Chassis) Advanced'], ['motion_type', 'Leg'], ['cruiseMP', '2'],
+      ['armor_type', '33'], ['armor_tech', '2'], ['Trooper Count', '4'], ['weightclass', '4'], ['armor', '10'],
+      ['Squad Equipment', 'IS BA Stealth (Improved):Body\nIS BA Stealth (Improved):Body'],
+    ]), 'stealth.blk', catalog).entity;
+
+    expect(entity.uniformArmor()?.armor.id).toBe('Clan BA Stealth (Improved)');
+    expect(materialMounts(entity)).toEqual([['Clan BA Stealth (Improved)', 'Squad'], ['Clan BA Stealth (Improved)', 'Squad']]);
+  });
+});

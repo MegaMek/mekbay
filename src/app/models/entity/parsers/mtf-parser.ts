@@ -52,6 +52,7 @@ import {
   resolveMtfArmorEquipment,
 } from './mtf-codec';
 import { decodeMotiveType } from './motive-type-codec';
+import { installedMaterialSlotName } from './material-slot-name';
 import { asUnitUuid } from '../../../services/unit-catalog/unit-catalog.types';
 
 // ============================================================================
@@ -341,11 +342,12 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
 
     if (header.armorType) {
       const armorInfo = decodeMtfArmor(header.armorType);
-      if (armorInfo.clanTech) armorTechBase = 'Clan';
+      // MegaMek's MtfFile gives an undesignated armor line the unit's tech base.
+      armorTechBase = armorInfo.techBase ?? entity.techBase();
       if (armorInfo.patchwork) {
         armorType = 'PATCHWORK';
       } else {
-        const eq = resolveMtfArmorEquipment(armorInfo.type, armorInfo.clanTech, ctx.equipmentRegistry);
+        const eq = resolveMtfArmorEquipment(armorInfo.type, armorTechBase === 'Clan', ctx.equipmentRegistry);
         if (eq) {
           armorType = eq.armorType as ArmorType;
           armorEquipment = eq;
@@ -430,13 +432,14 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       if (raw === '-Empty-') continue;
 
       const parsedSlots = decodeMtfCriticalSlotLine(raw);
-      for (const [memberIndex, parsed] of parsedSlots.entries()) {
+      for (const [memberIndex, listed] of parsedSlots.entries()) {
         // System slots are skipped - they're derived from configuration,
         // but we still capture the ARMORED flag for round-trip fidelity.
-        if (decodeMtfSystemSlot(parsed.name)) {
-          if (parsed.armored) armoredSystemSlots.add(`${locCode}:${slotIdx}`);
+        if (decodeMtfSystemSlot(listed.name)) {
+          if (listed.armored) armoredSystemSlots.add(`${locCode}:${slotIdx}`);
           continue;
         }
+        const parsed = { ...listed, name: installedMaterialSlotName(entity, locCode, listed.name, ctx) };
 
         // The pair position distinguishes two same-named mounts sharing a
         // superheavy slot while still merging their later critical entries.

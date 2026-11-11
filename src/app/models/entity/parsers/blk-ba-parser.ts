@@ -26,6 +26,7 @@ import {
 import { BuildingBlock } from './building-block';
 import { parseBaseBlk } from './blk-base-parser';
 import { parseEquipmentLine } from './equipment-resolver';
+import { installedMaterialSlotName } from './material-slot-name';
 import { ParseContext } from './parse-context';
 
 // ============================================================================
@@ -185,10 +186,11 @@ function parseLocationEquipment(
     // parseEquipmentLine handles all colon-separated suffixes in any order:
     // :DWP, :SSWM, :APM, :OMNI, :Body, :LA, :RA, :TU, :ShotsN#, :SIZE:N
     const parsed = parseEquipmentLine(line);
-    const resolved = ctx.resolveEquipment(parsed.name, blkTag);
+    const equipmentId = installedMaterialSlotName(entity, location, parsed.name, ctx);
+    const resolved = ctx.resolveEquipment(equipmentId, blkTag);
 
     entity.addEquipment({
-      equipmentId: parsed.name,
+      equipmentId,
       equipment: resolved ?? undefined,
       allocation: { kind: 'location', location },
       rearMounted: parsed.rearMounted,

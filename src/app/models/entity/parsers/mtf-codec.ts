@@ -61,7 +61,8 @@ export interface MtfEngineInfo {
 
 export interface MtfArmorInfo {
   readonly type: string;
-  readonly clanTech: boolean;
+  /** Null when the line has no tech designation; MegaMek then uses the unit's tech base. */
+  readonly techBase: EntityTechBase | null;
   readonly patchwork: boolean;
 }
 
@@ -136,8 +137,9 @@ export function encodeMtfStructure(
 
 export function decodeMtfArmor(value: string): MtfArmorInfo {
   const trimmed = value.trim();
+  const techBase = /\(Clan\)/i.test(trimmed) ? 'Clan' : /\((?:Inner Sphere|IS)\)/i.test(trimmed) ? 'IS' : null;
   if (trimmed.toLowerCase().includes('patchwork')) {
-    return { type: 'Patchwork', clanTech: trimmed.includes('(Clan)'), patchwork: true };
+    return { type: 'Patchwork', techBase, patchwork: true };
   }
   const type = trimmed
     .replace(/\s*\(Clan\)/i, '')
@@ -145,7 +147,7 @@ export function decodeMtfArmor(value: string): MtfArmorInfo {
     .replace(/\s*\(IS\)/i, '')
     .replace(/\s*Armor$/i, '')
     .trim() || 'Standard';
-  return { type, clanTech: trimmed.includes('(Clan)'), patchwork: false };
+  return { type, techBase, patchwork: false };
 }
 
 /**

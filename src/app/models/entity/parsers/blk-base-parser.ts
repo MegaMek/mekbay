@@ -46,6 +46,7 @@ import {
 import { createCompoundTechLevel } from '../types/tech';
 import { BuildingBlock } from './building-block';
 import { parseEquipmentLine, type EquipmentLineProfile } from './equipment-resolver';
+import { installedMaterialSlotName } from './material-slot-name';
 import { parseTransporterLines } from './transporter-codec';
 import { ParseContext } from './parse-context';
 import { parseBlkEntityFluff } from './entity-fluff-parser';
@@ -260,7 +261,8 @@ export function parseBlkEquipment(
 
       const parsed = parseEquipmentLine(line, { profile: opts?.equipmentLineProfile });
       if (parsed.omniPod) entity.omni.set(true);
-      const resolved = ctx.resolveEquipment(parsed.name, blkTag, entity.techBase());
+      const equipmentId = installedMaterialSlotName(entity, locCode, parsed.name, ctx);
+      const resolved = ctx.resolveEquipment(equipmentId, blkTag, entity.techBase());
       const shotsCount =
         opts?.equipmentLineProfile === 'large-craft' || opts?.equipmentLineProfile === 'dropship'
           ? resolved?.type === 'ammo'
@@ -270,7 +272,7 @@ export function parseBlkEquipment(
 
       if (parsed.isNewBay) newBayStarts.add(inputs.length);
       inputs.push({
-        equipmentId: parsed.name,
+        equipmentId,
         equipment: resolved ?? undefined,
         allocation: { kind: 'location', location: locCode },
         rearMounted: parsed.rearMounted,
