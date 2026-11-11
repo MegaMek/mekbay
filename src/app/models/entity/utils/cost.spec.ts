@@ -678,13 +678,17 @@ describe('EntityMountedEquipment.getCost', () => {
             .toBe(15000);
     });
 
-    it('uses enhanced run MP for Battle Armor myomer-booster cost', () => {
+    it('charges each Battle Armor myomer-booster mount a third of 75,000 C-bills per MP the system provides', () => {
         const battleArmor = new BattleArmorEntity();
-        battleArmor.originalWalkMP.set(5);
         const booster = mount(variableEquipment('CLBAMyomerBooster', ['F_MASC', 'F_BA_EQUIPMENT']));
         battleArmor.setEquipment([booster]);
 
-        expect(booster.getCost(battleArmor)).toBe(525000);
+        // TO:AUE p. 192: +2 MP on PA(L) (Ultra Light), Light and Medium suits, +1 MP on Heavy and Assault suits.
+        for (const [weightClass, cost] of [['Ultra Light', 50000], ['Light', 50000], ['Medium', 50000],
+            ['Heavy', 25000], ['Assault', 25000]] as const) {
+            battleArmor.declaredWeightClass.set(weightClass);
+            expect(booster.getCost(battleArmor)).withContext(weightClass).toBe(cost);
+        }
     });
 
     it('resolves standard supercharger cost from engine rating', () => {

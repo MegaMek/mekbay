@@ -503,8 +503,8 @@ interface CoreLegPilotCheckGroup {
 const MOVEMENT_MODES = Object.freeze([
     'stationary', 'walk', 'run', 'sprint', 'jump', 'UMU', 'tracked',
 ] as const satisfies readonly MekMovementModeV2[]);
-/** The damage rolls a Mek moving on its tracks does not make: leg actuator (hips included) and gyro critical hits. */
-const TRACKED_EXEMPT_CHECKS: ReadonlySet<string> = new Set(['leg-actuator-hit', 'hip-hit', 'gyro-hit']);
+/** The leg actuator rolls (hips included) a Mek moving on its tracks does not make; its gyro rolls are skipped whole. */
+const TRACKED_EXEMPT_CHECKS: ReadonlySet<string> = new Set(['leg-actuator-hit', 'hip-hit']);
 const ACTION_KINDS = Object.freeze([
     'shutdown', 'startup',
 ] as const satisfies readonly MekActionIntentKindV2[]);
@@ -1622,8 +1622,8 @@ function movementNumbers(
     const vehicleMode = conversion?.mode === 'vehicle';
     const cruiseBonus = vehicleMode && conversion.wheeled ? 1 : 0;
     if (vehicleMode) {
-        // IO:AE p. 127: leg actuator hits do not slow Vehicle mode. Each lost leg takes a quarter of the Cruise MP,
-        // as MegaMek's QuadVee.getCruiseMP does.
+        // IO:AE p. 127: leg actuator hits do not slow Vehicle mode. Each lost leg takes a quarter of the Cruise MP.
+        // A critical hit on a track or wheel should too (MegaMek's QuadVee.getCruiseMP); it is not counted yet.
         const cruise = walk + cruiseBonus;
         walk = destroyedLegs >= legs.length ? 0 : cruise - Math.floor(cruise * destroyedLegs / legs.length);
         runDisabled = walk <= 0;

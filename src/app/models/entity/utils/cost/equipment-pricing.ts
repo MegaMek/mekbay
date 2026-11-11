@@ -12,6 +12,7 @@ import {
   targetingComputerVariableCost,
 } from '../targeting-computer';
 import {
+  battleArmorMyomerBoosterMp,
   isBattleArmorMyomerBoosterEquipment,
   isJetBoosterEquipment,
   isMascEquipment,
@@ -71,7 +72,9 @@ export function getEquipmentCost(
   if (supportCost !== null) {
     cost = supportCost;
   } else if (isBattleArmorMyomerBoosterEquipment(equipment)) {
-    cost = entity.runMP() * 75000;
+    // TO:AUE p. 192: the system costs 75,000 C-bills per MP it provides. It is mounted once per spreadable slot,
+    // three in all, so each mount carries a third, like its weight.
+    cost = 75000 * battleArmorMyomerBoosterMp(entity.weightClass()) / 3;
   } else if (chassisCost !== null) {
     cost = chassisCost;
   } else if (isJetBoosterEquipment(equipment) || isSuperchargerEquipment(equipment)) {

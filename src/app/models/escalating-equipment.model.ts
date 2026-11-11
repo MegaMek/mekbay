@@ -44,6 +44,14 @@ export function isBattleArmorMyomerBoosterEquipment(
     return isMascEquipment(equipment) && isEquipmentForPlatform(equipment, 'battle-armor');
 }
 
+/**
+ * The Ground MP a Battle Armor Myomer Booster provides: 2 to PA(L), Light and Medium suits, 1 to Heavy and Assault
+ * suits (TO:AUE p. 99).
+ */
+export function battleArmorMyomerBoosterMp(weightClass: string): number {
+    return weightClass === 'Heavy' || weightClass === 'Assault' ? 1 : 2;
+}
+
 export function isRadicalHeatSinkEquipment(
     equipment: EscalatingEquipmentView | null | undefined,
 ): boolean {

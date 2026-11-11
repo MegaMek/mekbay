@@ -3,7 +3,7 @@
 // Author: Drake
 
 import { Signal, computed, signal } from '@angular/core';
-import { isMascEquipment } from '../../../escalating-equipment.model';
+import { battleArmorMyomerBoosterMp, isMascEquipment } from '../../../escalating-equipment.model';
 import {
   isJumpBoosterEquipment,
   isMechanicalJumpBoosterEquipment,
@@ -173,7 +173,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
     const hasMyomerBooster = equipment.some(mount => isMascEquipment(mount.equipment));
 
     if (hasMyomerBooster && !options.ignoreMyomerBooster) {
-      walkMP += weightClass === 'Heavy' || weightClass === 'Assault' ? 1 : 2;
+      walkMP += battleArmorMyomerBoosterMp(weightClass);
     } else if (!hasMyomerBooster
       && equipment.some(mount => isMechanicalJumpBoosterEquipment(mount.equipment))) {
       walkMP++;

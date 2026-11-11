@@ -1816,13 +1816,16 @@ function reduce(
             if (!mekConversionModes(entity).includes(mode) || mode === (state.conversionMode ?? 'mek')) {
                 return unchanged(state);
             }
-            // The declared movement and air/ground state belong to the mode they were declared in.
+            // The declared movement and air/ground state belong to the mode they were declared in. A movement
+            // that cannot be withdrawn, because its roll is still pending, holds the unit in its mode.
+            const movementPsr = clearMekMovementV2(state.movementPsr);
+            if (movementPsr.movement !== null) return unchanged(state);
             const { conversionMode: _previous, ...rest } = state;
             changed = {
                 ...rest,
                 ...(mode === 'mek' ? {} : { conversionMode: mode }),
                 turn: canonicalizeMekTurnStateV2({ ...state.turn, airborne: null, phaseStateChanged: true }),
-                movementPsr: clearMekMovementV2(state.movementPsr),
+                movementPsr,
             };
             break;
         }
@@ -2171,6 +2174,11 @@ function reduce(
                 return unchanged(state);
             }
             if (state.movementPsr.movement?.mode === 'sprint' && turn.spotting) {
+                return unchanged(state);
+            }
+            // A LAM is on the ground or in the air only as an AirMech or a fighter; a QuadVee never flies.
+            if (turn.airborne !== null && mekConversionModes(entity).length > 0
+                && !mekChoosesAirborne(state.conversionMode ?? 'mek')) {
                 return unchanged(state);
             }
             const movementPsr = state.turn.airborne === turn.airborne
