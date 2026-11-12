@@ -454,7 +454,8 @@
         <ul class="unit-load-issues-list allow-select">
           @for (issue of unit().loadIssues; track $index) {
             <li>
-              <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong> {{ issue.message }}
+              <strong>{{ issue.severity === 'error' ? 'Error' : 'Warning' }}:</strong>
+              @if (issue.count > 1) { {{ issue.count }}× }{{ issue.message }}
             </li>
           }
         </ul>

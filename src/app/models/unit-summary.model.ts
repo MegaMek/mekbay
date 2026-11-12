@@ -3,7 +3,7 @@
 // Author: Drake
 
 import type { ComponentTechLevel, EntityType, MoveType, UnitSubtype, UnitType } from './entity/types';
-import type { EntityLoadIssue } from './entity/parsers/parse-context';
+import type { ParseSeverity } from './entity/parsers/parse-context';
 import type { Equipment } from './equipment.model';
 import type { Era } from './eras.model';
 import type { TechBase, UnitTechBaseDisplay } from './tech.model';
@@ -12,7 +12,15 @@ import type { SourceHashCanary } from './source-hash-canary';
 import type { CatalogEntryOrigin, UnitProviderId, UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 
 /** Bump when generated UnitSummary fields or their meaning change. */
-export const UNIT_SUMMARY_VERSION = 27 as const;
+export const UNIT_SUMMARY_VERSION = 28 as const;
+
+/** One distinct parse or validation issue, with how many times the unit has it. */
+export interface UnitIssue {
+  readonly code: string;
+  readonly severity: ParseSeverity;
+  readonly message: string;
+  readonly count: number;
+}
 
 export type { MoveType, UnitSubtype, UnitType } from './entity/types';
 
@@ -169,8 +177,8 @@ export interface UnitSummary {
   sourceHashCanary?: SourceHashCanary;
   /** Projection revision used to decide whether this row must be regenerated. */
   summaryVersion: number;
-  /** Source parsing diagnostics and construction validation errors, exposed by the semantic issues filter. */
-  loadIssues: readonly EntityLoadIssue[];
+  /** Distinct source parsing diagnostics and construction validation errors, exposed by the semantic issues filter. */
+  loadIssues: readonly UnitIssue[];
 
   /** Legacy key for V1 decoding, old URL fallback and unit tags. Use UnitNameService/formatUnitName for display. */
   name: string;

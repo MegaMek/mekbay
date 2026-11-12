@@ -121,7 +121,12 @@ describe('custom construction saves across the complete native family catalog', 
                 const entity = createConstructionEntity(kind.id, registry);
                 const field = getConstructionFields(entity).find(value => value.id === descriptor.id)!;
                 const previous = field.get();
-                const value: ConstructionFieldValue | undefined = field.kind === 'boolean' ? !previous
+                // MegaMek writes prototype double heat sinks under a Single header; only placed
+                // critical slots identify them, and a type change leaves the extra sinks unplaced.
+                const value: ConstructionFieldValue | undefined = field.id === 'heatSinkType'
+                    ? field.options?.find(option => !option.disabled && String(option.value) !== String(previous)
+                        && option.value !== 'ISDoubleHeatSinkPrototype')?.value
+                    : field.kind === 'boolean' ? !previous
                     : field.kind === 'number' ? Math.max(field.min ?? -Infinity,
                         Math.min(field.max ?? Infinity, Math.max(Number(previous) + (field.step ?? 1), 0.01)))
                     : field.kind === 'select' ? field.options?.find(option => !option.disabled && String(option.value) !== String(previous))?.value
@@ -157,7 +162,7 @@ describe('custom construction saves across the complete native family catalog', 
             // Standard native weapons exercise real registry definitions and aliases.
             const equipmentId = entity instanceof InfantryEntity ? 'InfantryAssaultRifle'
                 : entity instanceof BattleArmorEntity ? 'ISBASmallLaser'
-                : kind.id === 'ProtoMek' ? 'CLERSmallLaser' : 'Medium Laser';
+                : entity.techBase() === 'Clan' ? 'CLERSmallLaser' : 'Medium Laser';
             const equipment = registry.findEquipment(equipmentId) as Equipment;
             expect(equipment).withContext(equipmentId).toBeTruthy();
             const location = getConstructionLocations(entity).find(loc =>

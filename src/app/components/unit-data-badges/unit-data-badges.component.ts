@@ -25,6 +25,6 @@ export class UnitDataBadgesComponent {
     readonly loadIssues = input<UnitSummary['loadIssues']>([]);
     readonly updateAvailable = input(false);
     readonly loadIssuesTooltip = computed<TooltipLine[]>(() => this.loadIssues().map(issue => ({
-        value: `${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.message}`,
+        value: `${issue.severity === 'error' ? 'Error' : 'Warning'}: ${issue.count > 1 ? `${issue.count}× ` : ''}${issue.message}`,
     })));
 }

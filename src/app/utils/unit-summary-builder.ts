@@ -10,6 +10,7 @@ import { UNIT_SUMMARY_VERSION } from '../models/unit-summary.model';
 import type {
   AlphaStrikeUnitStats,
   UnitMaterialLayout,
+  UnitIssue,
   UnitSummary,
   UnitComponent,
   UnitSummaryComponent,
@@ -212,19 +213,20 @@ export class UnitSummaryBuilder {
   }
 }
 
-/** The catalog issue list includes source diagnostics and the same construction errors shown in MekLab. */
+/**
+ * The catalog issue list includes source diagnostics and the same construction errors shown in MekLab.
+ * Identical issues (one per affected mount or location) collapse into one entry with a count.
+ */
 export function buildUnitIssues(entity: BaseEntity): UnitSummary['loadIssues'] {
-  return [
-    ...entity.loadIssues().map(issue => ({ ...issue })),
-    ...validateConstruction(entity).messages
-      .filter(issue => issue.severity === 'error')
-      .map(issue => ({
-        code: issue.code,
-        severity: 'error' as const,
-        field: issue.location ?? issue.category,
-        message: issue.message,
-      })),
-  ];
+  const issues = new Map<string, UnitIssue>();
+  for (const { code, severity, message } of [
+    ...entity.loadIssues(),
+    ...validateConstruction(entity).messages.filter(issue => issue.severity === 'error'),
+  ]) {
+    const key = `${severity}\n${code}\n${message}`;
+    issues.set(key, { code, severity: severity === 'error' ? 'error' : 'warning', message, count: (issues.get(key)?.count ?? 0) + 1 });
+  }
+  return [...issues.values()];
 }
 
 function validateIdentityAndSource(

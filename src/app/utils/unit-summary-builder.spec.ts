@@ -122,12 +122,8 @@ describe('UnitSummaryBuilder', () => {
 
   it('combines parsing diagnostics and validation errors without changing the entity diagnostics', () => {
     const entity = mek();
-    entity.setLoadIssues([{
-      code: 'EQUIPMENT_NOT_FOUND',
-      severity: 'error',
-      field: 'RA',
-      message: 'Equipment not found: "Missing Test Equipment"',
-    }, {
+    const missing = { code: 'EQUIPMENT_NOT_FOUND', severity: 'error', message: 'Equipment not found: "Missing Test Equipment"' } as const;
+    entity.setLoadIssues([{ ...missing, field: 'RA' }, { ...missing, field: 'LA' }, {
       code: 'SOURCE_WARNING',
       severity: 'warning',
       field: 'source',
@@ -140,12 +136,13 @@ describe('UnitSummaryBuilder', () => {
     const builder = new UnitSummaryBuilder();
     const summary = builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'mtf' });
 
+    // Identical issues from different locations collapse into one counted entry.
     expect(summary.loadIssues).toEqual(jasmine.arrayContaining([
-      ...originalDiagnostics,
-      jasmine.objectContaining({ code: 'ARMOR_EXCEEDS_MAX', severity: 'error', field: 'RA' }),
-      jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', field: 'tech' }),
+      { ...missing, count: 2 },
+      { code: 'SOURCE_WARNING', severity: 'warning', message: 'Source parsing warning', count: 1 },
+      jasmine.objectContaining({ code: 'ARMOR_EXCEEDS_MAX', severity: 'error', count: 1 }),
+      jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', count: 1 }),
     ]));
-    expect(summary.loadIssues[0]).not.toBe(entity.loadIssues()[0]);
     expect(entity.loadIssues()).toEqual(originalDiagnostics);
     expect(builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'mtf' }).loadIssues).toEqual(summary.loadIssues);
     expect(JSON.parse(JSON.stringify(summary)).loadIssues).toEqual(summary.loadIssues);

@@ -3,7 +3,7 @@
 
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
-import { MiscEquipment } from '../../models/equipment.model';
+import { MiscEquipment, WeaponEquipment } from '../../models/equipment.model';
 import { MountedArmor, MountedEngine, MountedStructure, getStructureByName } from '../../models/entity/components';
 import { resolveArmorEquipment, type EntityType } from '../../models/entity/types';
 import { battleArmorSuitMassCapacity } from './construction-family-rules';
@@ -155,6 +155,12 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
       entity = new StaticEmplacementEntity(registry, 'MobileStructure');
       break;
   }
+  // MegaMekLab BMMainUI: Tripods and QuadVees start in their own cockpit, and QuadVees are Clan designs.
+  if (entity instanceof TripodMekEntity) entity.cockpitType.set('Tripod');
+  if (entity instanceof QuadVeeEntity) {
+    entity.techBase.set('Clan');
+    entity.cockpitType.set('QuadVee');
+  }
   entity.chassis.set('New Design');
   entity.model.set('Custom');
   entity.year.set(3151);
@@ -175,7 +181,7 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
   if (entity instanceof MekEntity || entity instanceof VehicleEntity || entity instanceof AeroEntity) {
     entity.originalWalkMP.set(4);
     const rating = entity instanceof MekEntity ? 200 : entity.entityType === 'Aero' ? 100 : 200;
-    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating, techBase: 'IS' }));
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating, techBase: entity.techBase() }));
   }
   if (entity instanceof MekEntity) {
     const structure = getStructureByName('Standard', entity.techBase(), registry);
@@ -183,23 +189,27 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
       entity.setUniformStructure(
         new MountedStructure({ structure, tonnage: entity.tonnage(), techBase: entity.techBase() }),
       );
-    const sink = registry.findForTechBase('Heat Sink', 'IS');
-    if (sink instanceof MiscEquipment) {
-      entity.configureHeatSinks(sink, 10);
-      const locations = [...entity.locationOrder].sort(
-        (a, b) => Number(entity.locationIsLeg(b)) - Number(entity.locationIsLeg(a)),
-      );
-      for (const mount of entity.equipment().filter((mount) => mount.allocation.kind === 'unallocated')) {
-        for (const [locationIndex, location] of locations.entries()) {
-          const slots = entity.criticalSlotGrid().get(location) ?? [];
-          const maxSlots = entity.criticalSlotCapacity(location);
-          const index = slots.slice(0, maxSlots).findIndex((slot) => slot.type === 'empty');
-          if (index < 0) continue;
-          entity.moveEquipment(mount, location, [{ location, slotIndex: index }]);
-          // Give the next leg priority for the next heat sink.
-          locations.push(...locations.splice(locationIndex, 1));
-          break;
-        }
+    const sink = registry.findForTechBase('Heat Sink', entity.techBase());
+    if (sink instanceof MiscEquipment) entity.configureHeatSinks(sink, 10);
+    // MegaMek TestMek: a LAM needs at least three jump MP.
+    const jumpJet = entity instanceof LamEntity ? registry.equipment['Jump Jet'] : undefined;
+    if (jumpJet) for (let count = 0; count < 3; count++) entity.addEquipment({ equipmentId: jumpJet.id, equipment: jumpJet,
+      allocation: { kind: 'unallocated' }, rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
+    const legsFirst = [...entity.locationOrder].sort(
+      (a, b) => Number(entity.locationIsLeg(b)) - Number(entity.locationIsLeg(a)),
+    );
+    const jumpJetLocations = legsFirst.filter((location) => entity.locationIsLeg(location) || ['LT', 'RT', 'CT'].includes(location));
+    for (const mount of entity.equipment().filter((mount) => mount.allocation.kind === 'unallocated')) {
+      const locations = mount.equipment === jumpJet ? jumpJetLocations : legsFirst;
+      for (const [locationIndex, location] of locations.entries()) {
+        const slots = entity.criticalSlotGrid().get(location) ?? [];
+        const maxSlots = entity.criticalSlotCapacity(location);
+        const index = slots.slice(0, maxSlots).findIndex((slot) => slot.type === 'empty');
+        if (index < 0) continue;
+        entity.moveEquipment(mount, location, [{ location, slotIndex: index }]);
+        // Give the next location priority for the next single-slot item.
+        locations.push(...locations.splice(locationIndex, 1));
+        break;
       }
     }
   }
@@ -248,12 +258,6 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
     entity.motiveType.set('Station Keeping');
     entity.originalWalkMP.set(0);
   }
-  // MegaMekLab SVMainUI starts support vehicles on BAR 2 armor at armor tech rating D.
-  const barArmor = entity.isSupportVehicle() ? resolveArmorEquipment('SV_BAR_2', false, registry) : null;
-  if (barArmor && entity.isSupportVehicle()) {
-    entity.setUniformArmor(new MountedArmor({ armor: barArmor, techRating: 'D' }));
-    entity.barRating.set(2);
-  }
   if (entity instanceof NavalEntity || entity instanceof SupportNavalEntity) entity.motiveType.set('Naval');
   if (entity instanceof VtolEntity || entity instanceof SupportVtolEntity) entity.motiveType.set('VTOL');
   if (entity instanceof ProtoMekEntity) {
@@ -261,9 +265,20 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
     entity.originalWalkMP.set(4);
     entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 30, techBase: 'Clan' }));
   }
+  // MegaMekLab createNewUnit armor: BAR 2 at rating D (SVMainUI), ProtoMek standard (PMMainUI),
+  // aerospace for small craft and capital ships (DSMainUI, WSMainUI).
+  const defaultArmor = entity.isSupportVehicle() ? 'SV_BAR_2'
+    : entity instanceof ProtoMekEntity ? 'STANDARD_PROTOMEK'
+      : entity instanceof SmallCraftEntity || entity instanceof JumpShipEntity ? 'AEROSPACE' : null;
+  const armor = defaultArmor && resolveArmorEquipment(defaultArmor, entity.techBase() === 'Clan', registry);
+  if (armor) entity.setUniformArmor(new MountedArmor({ armor, techRating: entity.isSupportVehicle() ? 'D' : null }));
+  if (armor && entity.isSupportVehicle()) entity.barRating.set(2);
   if (entity instanceof InfantryEntity) {
     entity.squadSize.set(7);
     entity.squadCount.set(4);
+    // MegaMekLab CIMainUI arms a new platoon with assault rifles.
+    const rifle = registry.equipment['InfantryAssaultRifle'];
+    if (rifle instanceof WeaponEquipment && rifle.isInfantryWeapon()) entity.setPlatoonWeapon('primary', rifle);
   }
   if (entity instanceof BattleArmorEntity) {
     entity.squadSize.set(4);
@@ -293,6 +308,7 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
       ]),
     ),
   );
+  entity.raiseRulesLevelToRequirement();
   return entity;
 }
 

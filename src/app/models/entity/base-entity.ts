@@ -58,6 +58,7 @@ import {
   calculateCompositeTechRating,
   compareTechLevels,
   type ComponentTechLevel,
+  rulesLevelOfTechLevel,
   C3SystemType,
   EngineFlag,
   FactionCode,
@@ -678,6 +679,14 @@ export abstract class BaseEntity implements EntityTechnology {
       level,
     );
   });
+
+  /**
+   * MegaMekLab (BasicInfoView.setFromEntity) opens a unit at the higher of its saved
+   * rules level and the level its unit type and components require.
+   */
+  raiseRulesLevelToRequirement(): void {
+    this.rulesLevel.set(Math.max(this.rulesLevel(), rulesLevelOfTechLevel(this.staticTechLevel())));
+  }
 
   /**
    * Lowest rules level at which this unit may mount the armor, for rules that depend on the

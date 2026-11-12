@@ -12,7 +12,7 @@ import { calculateBattleValueDetails } from '../../models/entity/utils/battle-va
 import { alphaStrikeArmor } from '../../models/entity/utils/alpha-strike/foundation/integrity';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
 import { MountedArmor } from '../../models/entity/components';
-import { createConstructionEntity } from './construction-factory';
+import { CONSTRUCTION_UNIT_TYPES, createConstructionEntity } from './construction-factory';
 import { constructionSupportsPatchwork, getConstructionArmorOptions, setConstructionArmorMaterial, setConstructionHybridStructure, setConstructionPatchwork, setConstructionStructure, validateConstruction } from './construction-rules';
 import { applyConstructionSpreadPlacements, constructionSpreadAllocation, constructionSpreadAutoPlacements, constructionSpreadMovePlacements, setConstructionSpreadSlots, uninstallConstructionEquipment } from './construction-rules';
 
@@ -220,11 +220,11 @@ describe('native construction material modes', () => {
     expect(reload(entity).uniformArmor()?.type).toBe('HEAVY_INDUSTRIAL');
   });
 
-  for (const kind of ['SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank', 'FixedWingSupport'] as const) {
-    it(`starts a new ${kind} on valid BAR armor, as MegaMekLab does`, () => {
-      const entity = createConstructionEntity(kind, registry);
-      expect(entity.uniformArmor()?.type).toBe('SV_BAR_2');
-      expect(validateConstruction(entity).messages.filter(message => message.severity === 'error')).toEqual([]);
+  for (const kind of CONSTRUCTION_UNIT_TYPES) {
+    it(`starts a new ${kind.label} as a valid design`, () => {
+      const errors = validateConstruction(createConstructionEntity(kind.id, registry)).messages
+        .filter(message => message.severity === 'error').map(message => message.code);
+      expect(errors).toEqual([]);
     });
   }
 

@@ -7,10 +7,14 @@ describe('unit issue badges', () => {
     it('shows reported issues and clears the badge when they are resolved', () => {
         const fixture = TestBed.createComponent(UnitDataBadgesComponent);
         fixture.componentRef.setInput('loadIssues', [
-            { code: 'ENGINE_RATING_MISMATCH', severity: 'error', field: 'engine', message: 'Wrong engine rating.' },
+            { code: 'ENGINE_RATING_MISMATCH', severity: 'error', message: 'Wrong engine rating.', count: 1 },
+            { code: 'TECH_UNAVAILABLE', severity: 'error', message: 'ER PPC is unavailable in 2721.', count: 6 },
         ]);
         fixture.detectChanges();
-        expect(fixture.componentInstance.loadIssuesTooltip()).toEqual([{ value: 'Error: Wrong engine rating.' }]);
+        expect(fixture.componentInstance.loadIssuesTooltip()).toEqual([
+            { value: 'Error: Wrong engine rating.' },
+            { value: 'Error: 6× ER PPC is unavailable in 2721.' },
+        ]);
         expect(fixture.nativeElement.querySelector('.load-issue-badge')).not.toBeNull();
         fixture.componentRef.setInput('loadIssues', []);
         fixture.detectChanges();

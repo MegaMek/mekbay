@@ -227,8 +227,8 @@ describe('unit-search-executor', () => {
         loadIssues: Array.from({ length: count }, (_, index) => ({
           code: 'test-issue',
           severity: index % 2 ? 'warning' : 'error',
-          field: 'equipment',
           message: `Issue ${index + 1}`,
+          count: 1,
         })),
       }),
     );
