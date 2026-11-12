@@ -385,6 +385,8 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
         }
       }
     }
+    // Native files often name an IndustrialMek's Heavy Industrial armor "Standard".
+    if (entity.isIndustrial()) entity.useChassisStandardArmor();
   }
 
   const armorMap = new Map<string, LocationArmor>();

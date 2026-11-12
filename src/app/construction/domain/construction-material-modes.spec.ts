@@ -196,4 +196,26 @@ describe('native construction material modes', () => {
     }
     expect(reload(entity).hasPatchworkArmor()).toBeTrue();
   });
+
+  it('swaps Standard and Heavy Industrial armor with the IndustrialMek chassis and on load', () => {
+    const entity = createConstructionEntity('Biped', registry) as MekEntity;
+    expect(entity.uniformArmor()?.type).toBe('STANDARD');
+    setConstructionStructure(entity, registry.equipment['Industrial'] as StructureEquipment);
+    expect(entity.uniformArmor()?.type).toBe('HEAVY_INDUSTRIAL');
+    expect(getConstructionArmorOptions(entity).some(armor => armor.armorType === 'STANDARD')).toBeFalse();
+
+    const native = encodeNativeEntity(entity);
+    expect(native).toMatch(/\narmor:Heavy Industrial\([^)]+\)\n/);
+    const legacy = native.replace(/armor:Heavy Industrial\(/, 'armor:Standard(');
+    expect(parseEntity(legacy, 'industrial.mtf', registry).entity.uniformArmor()?.type).toBe('HEAVY_INDUSTRIAL');
+
+    setConstructionStructure(entity, registry.equipment['Standard'] as StructureEquipment);
+    expect(entity.uniformArmor()?.type).toBe('STANDARD');
+  });
+
+  it('keeps Heavy Industrial armor on a BattleMek when it loads', () => {
+    const entity = createConstructionEntity('Biped', registry);
+    setConstructionArmorMaterial(entity, registry.equipment['IS Heavy Industrial'] as ArmorEquipment);
+    expect(reload(entity).uniformArmor()?.type).toBe('HEAVY_INDUSTRIAL');
+  });
 });

@@ -50,6 +50,7 @@ import {
   getFullHeadEjectionTech,
   getRiscHeatSinkOverrideKitTech,
   EXPERIMENTAL_MEK_SYSTEM_TECH,
+  MountedArmor,
   MountedStructure,
   MountedEngine,
   STANDARD_STRUCTURE_EQUIPMENT,
@@ -81,6 +82,7 @@ import {
   MekConfig,
   MekLocation,
   MekSystemType,
+  resolveArmorEquipment,
   TechRatingSource,
 } from '../../types';
 import {
@@ -272,6 +274,30 @@ export abstract class MekEntity extends BaseEntity {
   isIndustrial = computed(
     () => isIndustrialStructureEquipment(this.structureAt('CT').structure)
   );
+
+  /**
+   * TM p.205: Heavy Industrial is an IndustrialMek's standard armor, identical to a
+   * BattleMek's Standard armor. Installs the one that matches this chassis, per location.
+   */
+  useChassisStandardArmor(): void {
+    const [from, to] = this.isIndustrial()
+      ? (['STANDARD', 'HEAVY_INDUSTRIAL'] as const)
+      : (['HEAVY_INDUSTRIAL', 'STANDARD'] as const);
+    const converted = (mounted: MountedArmor) => {
+      const armor = resolveArmorEquipment(to, mounted.techBase === 'Clan', this.equipmentRegistry);
+      return armor && new MountedArmor({ armor, techBase: mounted.techBase, techRating: mounted.techRating });
+    };
+    const uniform = this.uniformArmor();
+    if (uniform) {
+      const armor = uniform.type === from ? converted(uniform) : null;
+      if (armor) this.setUniformArmor(armor);
+      return;
+    }
+    for (const [location, mounted] of this.armorByLocation()) {
+      const armor = mounted.type === from ? converted(mounted) : null;
+      if (armor) this.setArmorAt(location, armor);
+    }
+  }
 
   override setUniformStructure(structure: MountedStructure): void {
     this.explicitHybridStructure.set(false);

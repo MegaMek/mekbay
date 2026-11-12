@@ -41,7 +41,8 @@ export function constructionMaterialMessages(entity: BaseEntity, material: Armor
     if (flag && ((!material.hasFlag(flag) && !reactiveFighter) || material.armorType === 'PATCHWORK')) add('ARMOR_PLATFORM', `${material.name} is not applicable to this unit family.`);
     if (entity instanceof MekEntity) {
       if (material.armorType === 'COMMERCIAL' && !entity.isIndustrial()) add('MEK_COMMERCIAL_ARMOR', 'Commercial armor requires an IndustrialMek.');
-      if (entity.isIndustrial() && entity.rulesLevel() < 4 && !material.hasAnyFlag([
+      if (entity.isIndustrial() && material.armorType === 'STANDARD') add('MEK_INDUSTRIAL_STANDARD_ARMOR', 'IndustrialMeks use Heavy Industrial armor in place of Standard armor.');
+      else if (entity.isIndustrial() && entity.rulesLevel() < 4 && !material.hasAnyFlag([
         'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR', 'F_HEAVY_INDUSTRIAL_ARMOR', 'F_PRIMITIVE_ARMOR',
       ])) add('MEK_INDUSTRIAL_ARMOR', 'BattleMek armor on an IndustrialMek requires experimental construction rules.');
       if (entity.chassisConfig === 'LAM' && (material.armorType === 'HARDENED' || (getNumCriticalSlots(entity, material) ?? 0) > 0)) {

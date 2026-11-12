@@ -411,8 +411,10 @@ export function setConstructionStructure(
     tonnage: donorTonnage ?? (location ? entity.structureAt(location).tonnage : entity.tonnage()),
     techBase: sameMaterial ? existing.techBase : equipment.techBase === 'All' ? entity.techBase() : equipment.techBase,
   });
+  const wasIndustrial = entity.isIndustrial();
   if (location) entity.setStructureAt(location, structure);
   else entity.setUniformStructure(structure);
+  if (entity.isIndustrial() !== wasIndustrial) entity.useChassisStandardArmor();
   if (entity.hasHybridStructure() || !constructionOmniApplies(entity)) setConstructionOmni(entity, false);
   reconcileConstructionMaterialSlots(entity, 'structure');
 }
