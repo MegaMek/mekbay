@@ -281,8 +281,11 @@ function physicalCapabilities(
             ? kickLegs.every(locationId => !fired.has(locationId))
             : kickLegs.some(locationId => !fired.has(locationId));
         if (!weaponsAllow || (kind === 'mule-kick' && !quad)) return false;
-        // Total Warfare needs every hip; Core lets a quad kick with only the two hips of the kick's arc (p. 238).
-        if (!quad || ruleset === 'total-warfare') return lostLegs.size === 0 && lostHips.size === 0;
+        // Total Warfare needs every leg and the hips of the legs used: both of a biped, a quad's front or rear pair
+        // (TW p. 147; MegaMek needs all four).
+        if (!quad || ruleset === 'total-warfare') {
+            return lostLegs.size === 0 && kickLegs.every(locationId => !lostHips.has(locationId));
+        }
         // Core p. 238: a second hip hit or a second lost leg acts as a biped hip hit, which forbids kicks; a quad
         // that lost one leg cannot mule kick.
         return lostHips.size < 2

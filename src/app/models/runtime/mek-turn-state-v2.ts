@@ -17,6 +17,7 @@ import {
 } from '../unit-cover.model';
 import { serializeSharedTurnFacts } from './cbt-unit-runtime';
 import { HEAT_TURN_STEP } from '../rules/turn-sequence';
+import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
 
 export const MAX_MEK_TURN_COLLECTION_ENTRIES = 256;
@@ -196,7 +197,7 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
         weaponsHeat: turnNumber(record['weaponsHeat'], '$.weaponsHeat'),
         ...(record['outsideHeat'] === undefined || record['outsideHeat'] === 0
             ? {}
-            : { outsideHeat: turnNumber(record['outsideHeat'], '$.outsideHeat') }),
+            : { outsideHeat: outsideHeat(record['outsideHeat'], '$.outsideHeat') }),
         acknowledgedHeatSources: canonicalStringMap(
             record['acknowledgedHeatSources'],
             '$.acknowledgedHeatSources',
@@ -662,6 +663,14 @@ function checkpoint(value: unknown, path: string): EndTurnCheckpoint {
 function requireExactBoolean<T extends boolean>(value: unknown, expected: T, path: string): T {
     if (value !== expected) fail(`canonical sparse value must be ${expected}`, path);
     return expected;
+}
+
+/** Outside heat is capped at 15 a turn (TW p. 159; Core p. 102). */
+function outsideHeat(value: unknown, path: string): number {
+    if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > MAX_OUTSIDE_HEAT_PER_TURN) {
+        fail(`must be a whole number from 0 to ${MAX_OUTSIDE_HEAT_PER_TURN}`, path);
+    }
+    return value as number;
 }
 
 function turnNumber(value: unknown, path: string): number {

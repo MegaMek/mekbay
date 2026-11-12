@@ -89,12 +89,13 @@ function getMekStructureCostPerTon(entity: MekEntity): number {
 }
 
 function getMekMyomerCost(entity: MekEntity): number {
-  const type = entity.myomerType().toLowerCase();
-  if (type.includes('super-cooled')) return 10000;
-  if (type.includes('industrial triple')) return 12000;
-  if (type.includes('triple') && type.includes('prototype')) return 32000;
-  if (type.includes('triple')) return 16000;
-  return entity.isSuperHeavy() ? 12000 : 2000;
+  switch (entity.myomerType()) {
+    case 'Super-Cooled': return 10000;
+    case 'Industrial Triple-Strength': return 12000;
+    case 'Prototype Triple-Strength': return 32000;
+    case 'Triple-Strength': return 16000;
+    case 'Standard': return entity.isSuperHeavy() ? 12000 : 2000;
+  }
 }
 
 function calculateMekActuatorCost(entity: MekEntity): number {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { asComponentId } from '../entity/entity-identifiers';
+import type { EquipmentFlag } from '../equipment-flags.type';
 import { WeaponEquipment } from '../equipment.model';
 import { TW_GAME_RULES } from './game-rules';
 import {
@@ -35,6 +36,9 @@ describe('heat-causing weapons', () => {
         const plasmaRifle: HeatWeapon = { kind: 'heat-or-damage' };
         expect(heatWeaponMode(plasmaRifle, 'total-warfare', true, true)).toBe('heat');
         expect(heatWeaponMode(plasmaRifle, 'core-2026', false, false)).toBe('damage');
+        // Its declared heat is standard damage to a unit that does not track heat, never damage and heat both.
+        expect(hit(plasmaRifle, 2, 'heat', true, tank)).toEqual([2, 0]);
+        expect(hit(plasmaRifle, 2, 'heat', true, mek)).toEqual([0, 2]);
 
         expect(hit(flamer, 2, 'damage', false, mek)).toEqual([2, 0]);
         expect(hit(flamer, 2, 'heat', false, mek)).toEqual([0, 2]);
@@ -54,6 +58,17 @@ describe('heat-causing weapons', () => {
         expect(hit(cannon, 0, 'both', false, mek)).toEqual([0, 9]);
         expect(hit(cannon, 0, 'both', false, tank)).toEqual([15, 0]);
         expect(hit(cannon, 0, 'both', true, tank)).toEqual([18, 0]);
+    });
+
+    it('lets battle armor declare heat only with the plasma rifle, and infantry with any flame-based weapon', () => {
+        const weapon = (id: string, flags: EquipmentFlag[]) => heatWeaponOf(new WeaponEquipment({
+            id, name: id, type: 'weapon', flags, weapon: { damage: 1 },
+        }));
+        expect(weapon('ISBAPlasmaRifle', ['F_BA_WEAPON', 'F_PLASMA'])).toEqual({ kind: 'heat-or-damage' });
+        expect(weapon('ISBAFireDrakeNeedler', ['F_BA_WEAPON', 'F_INCENDIARY_NEEDLES'])).toBeNull();
+        expect(weapon('Needler, Support (Firedrake)', ['F_INFANTRY', 'F_INCENDIARY_NEEDLES']))
+            .toEqual({ kind: 'heat-or-damage' });
+        expect(weapon('InfantryGrenadeInferno', ['F_INFANTRY', 'F_INFERNO'])).toEqual({ kind: 'heat-or-damage' });
     });
 
     it('halves standard damage and ignores heat against fire-resistant armor', () => {

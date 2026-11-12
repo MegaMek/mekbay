@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { bombType, isKeyedBomb, type KeyedBombType } from '../../../models/aerospace-bomb.model';
-import { measureSvgTextCanvas } from '../../svg-text.util';
+import { measureSvgTextCanvas, wrapWords } from '../../svg-text.util';
 import { VELOCITY_RECORD_FIELDS, VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
@@ -475,7 +475,7 @@ export function drawAeroBombKey(key: SVGGElement, entries: readonly KeyedBombTyp
     const dash = left + Math.max(...entries.map(entry => measure(entry.label)), 0) + measure(' ');
     const meaning = dash + measure('- ');
     const room = left + Number(key.dataset['width']) - meaning;
-    const lines = entries.map(entry => ({ entry, parts: wrapToWidth(entry.key, room, measure) }));
+    const lines = entries.map(entry => ({ entry, parts: wrapWords(entry.key, room, measure) }));
     probe.remove();
     for (const { entry, parts } of lines) {
         row++;
@@ -486,17 +486,6 @@ export function drawAeroBombKey(key: SVGGElement, entries: readonly KeyedBombTyp
             write(part, meaning);
         });
     }
-}
-
-/** Word-wraps a value to a measured width; a single word wider than it keeps its own line. */
-function wrapToWidth(value: string, width: number, measure: (value: string) => number): readonly string[] {
-    const lines: string[] = [];
-    for (const word of value.split(' ')) {
-        const current = lines.at(-1);
-        if (current !== undefined && measure(`${current} ${word}`) <= width) lines[lines.length - 1] = `${current} ${word}`;
-        else lines.push(word);
-    }
-    return lines;
 }
 
 export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {

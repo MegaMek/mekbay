@@ -238,6 +238,22 @@ describe('construction editor document lifecycle', () => {
     expect(TestBed.inject(DialogRef).close).toHaveBeenCalled();
   });
 
+  it('counts only text fields that commit on blur as unsaved typing', async () => {
+    await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
+    const typeInto = (type: string) => {
+      const input = document.createElement('input');
+      input.type = type;
+      editor.markTyping({ target: input } as unknown as Event);
+    };
+    // Search boxes, checkboxes and file pickers act at once and never leave the design unsaved.
+    ['search', 'checkbox', 'file'].forEach(typeInto);
+    expect(editor.dirty()).toBeFalse();
+    typeInto('text');
+    expect(editor.dirty()).toBeTrue();
+    editor.endTyping();
+    expect(editor.dirty()).toBeFalse();
+  });
+
   it('keeps sprite selection, automatic mode and dismissal in the normal undo and save flow', async () => {
     await editor.openUnit({ uuid: coreUuid, origin: 'megamek', name: 'Hunchback HBK-4G' } as UnitSummary);
     const createDialog = jasmine.createSpy('createDialog').and.returnValue({ closed: of('meks/Atlas.png') });

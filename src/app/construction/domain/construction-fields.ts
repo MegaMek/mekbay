@@ -1009,15 +1009,15 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       );
     }
     // A pre-battle declaration for the platoon's SRM launchers (TW p. 141), kept in the file as MegaMek does.
-    select(
-      'srmMunition',
-      'SRM munition',
-      () => (entity.firesInfernoSrms() ? 'Inferno' : 'Standard'),
-      (value) => entity.infernoSrmsDeclared.set(value === 'Inferno'),
-      ['Standard', 'Inferno'],
-      'Systems',
-      (value) => value === 'Standard' || entity.firesInfernoSrms() || entity.hasSrmLauncher(),
-    );
+    if (entity.hasSrmLauncher())
+      select(
+        'srmMunition',
+        'SRM munition',
+        () => (entity.firesInfernoSrms() ? 'Inferno' : 'Standard'),
+        (value) => entity.infernoSrmsDeclared.set(value === 'Inferno'),
+        ['Standard', 'Inferno'],
+        'Systems',
+      );
     if (entity.secondaryWeapon())
       number('secondaryCount', 'Secondary weapons per squad', entity.secondaryCount, entity.secondaryCount.set);
     number(

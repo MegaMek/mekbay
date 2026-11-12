@@ -49,12 +49,12 @@
             @if (weapon.hit && weapon.heat; as heat) {
                 <!-- Plasma dice add heat to a unit that tracks it, and damage to any other. -->
                 <div class="cluster-line">
-                    <span class="step-label">{{ heat.value > 0 ? 'Heat' : 'Damage' }}</span>
+                    <span class="step-label">{{ heat.value > 0 || heat.cover ? 'Heat' : 'Damage' }}</span>
                     @if (heat.dice.length > 0) {
                         <ng-container *ngTemplateOutlet="rollChip; context: {
                             dice: heat.dice, weapon: w, roll: 'heat', label: 'Set ' + weapon.name + ' heat roll' }" />
                     }
-                    @if (heat.value > 0) {
+                    @if (heat.value > 0 || heat.cover) {
                         <span class="cluster-hits"><strong>+{{ heat.value }}</strong></span>
                     }
                 </div>

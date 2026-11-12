@@ -21,7 +21,12 @@ import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
 import { isAeroEntity, isProtoMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
 import { resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
-import { infernoEffect, infernoMissilesStruck, type InfernoMissile } from '../models/rules/inferno-rules';
+import {
+    infernoEffect,
+    infernoEffectCountsTurn,
+    infernoMissilesStruck,
+    type InfernoMissile,
+} from '../models/rules/inferno-rules';
 import { infernoMissilesThisTurn } from '../models/runtime/attack-hit-location';
 import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
 import type { AeroCriticalType } from '../models/rules/aero-critical-rules';
@@ -214,7 +219,8 @@ export class DirectNonMekAutomationService {
         const perspective = target === 'pending' ? 'preview' : 'committed';
         const effect = infernoEffect(snapshot.entity, inferno, infernoMissilesThisTurn(force.getUnitSnapshot(instanceId)));
         const struck = infernoMissilesStruck(snapshot.entity, inferno);
-        if (struck > 0 && !(await dispatch({ type: 'add-inferno-missiles', count: struck }, false)).accepted) return false;
+        if (infernoEffectCountsTurn(effect) && struck > 0
+            && !(await dispatch({ type: 'add-inferno-missiles', count: struck }, false)).accepted) return false;
         const locations = [...snapshot.index.locations.values()];
         const destroy = async (locationIds: readonly LocationId[]): Promise<boolean> => {
             for (const locationId of new Set(locationIds)) {

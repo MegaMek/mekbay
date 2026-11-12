@@ -45,7 +45,7 @@ import {
     readInfernoMissiles,
     type AttackHitLocation,
 } from '../models/runtime/attack-hit-location';
-import { infernoMeetsCover, type InfernoMissile } from '../models/rules/inferno-rules';
+import type { InfernoMissile } from '../models/rules/inferno-rules';
 import { heatWeaponTarget } from '../models/rules/heat-weapon-rules';
 import { roll2D6, rollD6 } from '../models/runtime/mek-automation-rules';
 import type { WeaponHits } from '../models/runtime/cbt-force-unit-command-dispatcher';
@@ -245,10 +245,10 @@ export class AttackResolutionService {
                 name: row.label,
                 targetNumber,
                 types: resolveEffectiveWeaponTypes(row, ammo),
-                partialCover: partialCover && (!weapon.platoon.inferno || infernoMeetsCover(fired.ruleset)),
+                partialCover,
                 attack: weapon.platoon,
                 ...(heatWeapon === undefined ? {} : { heatWeapon }),
-            }) : weaponAttackProfile({
+            }, gameRulesFor(fired.ruleset)) : weaponAttackProfile({
                 componentId: row.componentId,
                 equipment: row.equipment,
                 mode: row.mode,

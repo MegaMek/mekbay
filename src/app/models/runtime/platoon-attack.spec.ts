@@ -10,6 +10,7 @@ import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-re
 import { WeaponEquipment, type InfantryWeaponEquipment } from '../equipment.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import { platoonAttack } from '../rules/conventional-infantry-combat-rules';
+import { gameRulesFor, TW_GAME_RULES, type CBTGameRules } from '../rules/game-rules';
 import { platoonAttackProfile, resolveWeaponAttack } from '../rules/weapon-attack-resolution';
 import { FLAMER_HEAT_MODE } from '../flamer-mode.model';
 import { historyTargetLabel } from './cbt-force-runtime-history';
@@ -125,17 +126,20 @@ describe('conventional platoon attacks', () => {
         const profile = platoonAttackProfile({
             componentId: asComponentId('platoon'), name: 'Platoon', targetNumber: 7, types: [], partialCover: false,
             attack: platoonAttack(entity, 28),
-        });
+        }, TW_GAME_RULES);
         // Roll 7 on the 28 column: 17 troopers hit, 17 x 0.6 = 10 damage.
         expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({
             hit: true, jammed: false, hits: 17, groups: [2, 2, 2, 2, 2], heat: 0
         });
         entity.infernoSrmsDeclared.set(true);
-        const inferno = platoonAttackProfile({
-            componentId: asComponentId('platoon'), name: 'Platoon', targetNumber: 7, types: [], partialCover: false,
+        const inferno = (partialCover: boolean, rules: CBTGameRules) => platoonAttackProfile({
+            componentId: asComponentId('platoon'), name: 'Platoon', targetNumber: 7, types: [], partialCover,
             attack: platoonAttack(entity, 28),
-        });
-        expect(resolveWeaponAttack(inferno, [4, 4], [3, 4]).groups).toEqual([1, 1, 1, 1, 1]);
+        }, rules);
+        expect(resolveWeaponAttack(inferno(false, TW_GAME_RULES), [4, 4], [3, 4]).groups).toEqual([1, 1, 1, 1, 1]);
+        // Core infernos roll no hit location, so partial cover cannot stop them (Core p. 192).
+        expect(inferno(true, TW_GAME_RULES).partialCover).toBeTrue();
+        expect(inferno(true, gameRulesFor(CORE_2026_RULESET)).partialCover).toBeFalse();
     });
 
     it('declares heat for the whole attack on its row when the secondary weapon is a flamer', () => {
@@ -162,6 +166,9 @@ describe('conventional platoon attacks', () => {
             .find(row => row.componentId === primary)!.choices;
         expect(choices.map(choice => [choice.groupLabel, choice.label, choice.active]))
             .toEqual([['Mode', 'Damage', true], ['Mode', 'Heat', false]]);
+        // Enhanced Flamers deal both, so the platoon's flamer declares nothing.
+        expect(projectNonMekEquipmentInteractions(unit, { enhancedFlamers: true }, false)
+            .find(row => row.componentId === primary)).toBeUndefined();
         expect(selectNonMekEquipmentChoice(unit, choices[1]!.command, {}, {} as never)).toBeTrue();
         expect(unit.query().componentMode(primary)).toBe(FLAMER_HEAT_MODE);
         // The log names the attack, not only its primary weapon.

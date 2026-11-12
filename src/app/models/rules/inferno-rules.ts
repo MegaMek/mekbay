@@ -99,14 +99,23 @@ export function infernoEffect(entity: BaseEntity, missiles: readonly InfernoMiss
             missile.location?.kind === 'non-mek' ? [missile.location.locationId] : [])) });
     }
     if (isProtoMekEntity(entity)) {
-        // The roll of the missile that completes each set of three names the destroyed location; a near miss none.
+        // The roll of the missile that completes each set of three names the destroyed location. A near miss, or a
+        // location already destroyed or absent, destroys none: transfer moves damage, not destruction (MegaMek
+        // deliverInfernoMissiles destroys the rolled location).
         return Object.freeze({ kind: 'protomek-locations', locationIds: Object.freeze(striking.flatMap((missile, index) =>
-            (earlier + index) % 3 === 2 && missile.location?.kind === 'non-mek' ? [missile.location.locationId] : [])) });
+            (earlier + index) % 3 === 2 && missile.location?.kind === 'non-mek' && !missile.location.transferred
+                ? [missile.location.locationId] : [])) });
     }
     if (CONVENTIONAL_FIGHTERS.has(entity.entityType)) {
         return Object.freeze({ kind: 'structural-integrity', damage: everyThird });
     }
     return NO_EFFECT;
+}
+
+/** Whether the effect counts sets of three over the turn, so the unit keeps a total of the missiles that struck it. */
+export function infernoEffectCountsTurn(effect: InfernoEffect): boolean {
+    return effect.kind === 'battle-armor-troopers' || effect.kind === 'protomek-locations'
+        || effect.kind === 'structural-integrity';
 }
 
 /** The effect as the struck unit's player reads it. */

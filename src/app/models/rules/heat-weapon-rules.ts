@@ -113,7 +113,9 @@ export function resolveHeatWeaponHit(
             const base = applyDamage ? (target.fireResistant ? halved(damage) : damage) : 0;
             if (target.fireResistant || !applyHeat) return hit(base, 0);
             if (target.tracksHeat) return hit(base, heat);
-            return hit(base + (core ? 2 * heat : 0), 0);
+            // A Core flamer's heat becomes damage. A heat-or-damage weapon's declared heat deals standard damage only
+            // to a unit that does not track heat (TechManual feature F).
+            return hit(base + (core && weapon.kind === 'flamer' ? 2 * heat : 0), 0);
         }
         case 'plasma-rifle': {
             if (target.fireResistant) return hit(halved(damage), 0, 5);

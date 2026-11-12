@@ -16,6 +16,7 @@ import {
     type TwoDice,
     type WeaponAttackProfile,
 } from '../../models/rules/weapon-attack-resolution';
+import { readAttackHeat } from '../../models/runtime/attack-hit-location';
 import { roll2D6, rollD6 } from '../../models/runtime/mek-automation-rules';
 import type { AttackWeaponReport } from '../../services/game-events.service';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
@@ -205,6 +206,10 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
     const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
     const heat = profile.heatWeapon;
     const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
+    // The heat the defender takes: none when the weapon's first roll strikes partial cover.
+    const heatValue = target.defender && outcome.heat > 0
+        ? readAttackHeat(target.defender, target.arc, [deliveredWeapon(profile, rolls)])
+        : outcome.heat;
     return Object.freeze({
         name: profile.name,
         targetNumber: profile.targetNumber,
@@ -216,7 +221,9 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
             : null,
         ...(profile.inferno ? { inferno: true } : {}),
         ...(heat && (outcome.heat > 0 || heatDice.length > 0)
-            ? { heat: Object.freeze({ dice: Object.freeze(heatDice), value: outcome.heat }) }
+            ? { heat: Object.freeze({
+                dice: Object.freeze(heatDice), value: heatValue, ...(heatValue < outcome.heat ? { cover: true as const } : {}),
+            }) }
             : {}),
         groups: Object.freeze(outcome.groups.map((damage, index) => attackReportGroup(target.defender,
             profile.arc ?? target.arc, damage, rolls.locations[index].dice, rolls.locations[index].aux,

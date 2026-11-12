@@ -251,6 +251,11 @@ function equipmentWeaponTypes(eq: Equipment): readonly WeaponType[] {
 }
 type EquipmentSortColumn = 'name' | 'slots' | 'tons' | 'damage' | 'range' | 'bv';
 
+/** Text fields commit on blur (`updateOn: 'blur'`); search boxes, checkboxes and file inputs act at once. */
+function isBlurCommittedField(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
+  return target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type === 'text');
+}
+
 @Component({
   selector: 'unit-construction',
   imports: [
@@ -2973,6 +2978,7 @@ export class UnitConstructionComponent {
     this.redoStack = [];
     this.historyVersion.update((value) => value + 1);
     this.markClean();
+    this.typing.set(false);
     this.newDesign.set(false);
     this.picker.set(null);
     this.status.set('');
@@ -3099,8 +3105,12 @@ export class UnitConstructionComponent {
   }
 
   async save(copy = false): Promise<void> {
-    // Commit the text field being typed in first.
-    (document.activeElement as HTMLElement | null)?.blur();
+    // Commit the text field being typed in first, leaving the caret in it.
+    const field = document.activeElement;
+    if (isBlurCommittedField(field) && this.constructionShell()?.nativeElement.contains(field)) {
+      field.blur();
+      field.focus();
+    }
     if (!this.canSave() || (copy && !this.designChanged())) return;
     if (!this.entity().chassis().trim()) {
       this.reportError(new Error('Give the design a chassis name before saving.'));
@@ -3309,7 +3319,7 @@ export class UnitConstructionComponent {
     this.toast.showToast(error instanceof Error ? error.message : String(error), 'error');
   }
   @HostListener('input', ['$event']) markTyping(event: Event): void {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) this.typing.set(true);
+    if (isBlurCommittedField(event.target)) this.typing.set(true);
   }
 
   /** A text field commits on its blur, which comes just before this. */

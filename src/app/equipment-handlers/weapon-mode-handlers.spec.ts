@@ -47,6 +47,12 @@ describe('direct weapon mode handlers', () => {
         expect(setup.row().label).toBe('Test Flamer (Heat)');
     });
 
+    it('does not offer the Total Warfare Flamer selector under Enhanced Flamers, where it deals both', () => {
+        const setup = handlerSetup(createDirectFlamerRuntimeFixture(TOTAL_WARFARE_RULESET), 'Test Flamer');
+        expect(new FlamerHandler().getComponentModeChoices(setup.runtime, setup.definition,
+            { ...setup.queryContext, enhancedFlamers: true })).toEqual([]);
+    });
+
     it('does not offer Flamer modes under Core rules', () => {
         const setup = handlerSetup(createDirectFlamerRuntimeFixture(CORE_2026_RULESET), 'Test Flamer');
         expect(new FlamerHandler().applicableToComponent(setup.definition)).toBeFalse();

@@ -101,15 +101,18 @@ export function platoonAttack(entity: InfantryEntity, troopers: number): Platoon
  */
 export function platoonHeatOrDamageWeapon(entity: InfantryEntity): InfantryWeaponEquipment | null {
     if (entity.firesInfernoSrms()) return null;
-    const secondary = entity.secondaryCount() > 0 ? entity.secondaryWeapon() : null;
-    return [entity.primaryWeapon(), secondary].find(weapon => isHeatOrDamageWeapon(weapon)) ?? null;
+    return platoonWeapons(entity).find(weapon => isHeatOrDamageWeapon(weapon)) ?? null;
 }
 
 /** The platoon attack's name: its primary weapon, and its secondary weapon when it has one. */
 export function platoonAttackLabel(entity: InfantryEntity): string {
-    const names = [entity.primaryWeapon(), entity.secondaryCount() > 0 ? entity.secondaryWeapon() : null]
-        .flatMap(weapon => weapon === null ? [] : [weapon.name]);
-    return names.join(' + ');
+    return platoonWeapons(entity).map(weapon => weapon.name).join(' + ');
+}
+
+/** The weapons a platoon attacks with: its primary, and its secondary when troopers carry one. */
+function platoonWeapons(entity: InfantryEntity): readonly InfantryWeaponEquipment[] {
+    const secondary = entity.secondaryCount() > 0 ? entity.secondaryWeapon() : null;
+    return [entity.primaryWeapon(), secondary].filter((weapon): weapon is InfantryWeaponEquipment => weapon !== null);
 }
 
 /**

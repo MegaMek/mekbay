@@ -17,8 +17,10 @@ EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import { canPerformMekAction } from './mek-action-availability';
 import { nonMekComponentModes, projectNonMekEscalatingFailureInteractions } from './non-mek-unit-instance';
-import { hasFlamerModes } from '../flamer-mode.model';
-import { FLAMER_HANDLER_ID, flamerModeChoice } from './component-flamer';
+import { hasFlamerModes, isFlamerEquipment } from '../flamer-mode.model';
+import { FLAMER_HANDLER_ID, flamerModeChoice, offersHeatOrDamageDeclaration } from './component-flamer';
+import { isInfantryEntity } from '../entity/utils/entity-type-guards';
+import { platoonHeatOrDamageWeapon } from '../rules/conventional-infantry-combat-rules';
 
 type ExpandedEquipmentInteractionChoiceBinding = EquipmentInteractionChoiceBinding & Readonly<{
     groupLabel?: string;
@@ -152,9 +154,13 @@ function nonMekEquipmentChoiceBindings(
                     selectComponentJam(unit, definition, choice, commandContext),
             }));
     });
+    const entity = unit.getUnit();
     const flamerModes = [...index.components.values()].flatMap(component => {
-        const { modes } = nonMekComponentModes(unit.getUnit(), component.mount.equipment, unit.ruleset());
+        const { modes } = nonMekComponentModes(entity, component.mount.equipment, unit.ruleset());
         if (!hasFlamerModes(modes) || unit.query().componentStatus(component.id) !== 'available') return [];
+        // A platoon declares for the flame-based weapon of its one attack.
+        const weapon = isInfantryEntity(entity) ? platoonHeatOrDamageWeapon(entity) : component.mount.equipment;
+        if (!offersHeatOrDamageDeclaration(isFlamerEquipment(weapon), unit.ruleset(), context)) return [];
         const current = unit.query().componentMode(component.id);
         return expandEquipmentDropdownBinding({
             componentId: component.id,

@@ -46,7 +46,6 @@ import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-
 import type { AttackResolutionService } from '../../services/attack-resolution.service';
 import type { DialogsService } from '../../services/dialogs.service';
 import { heatAutomationPolicy, type OptionsService } from '../../services/options.service';
-import { declaresFlamerHeat } from '../../models/rules/heat-weapon-rules';
 import { projectNonMekEndTurnHeat } from '../../models/runtime/non-mek-unit-instance';
 import type { ToastService } from '../../services/toast.service';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
@@ -207,11 +206,6 @@ export class EquipmentDialogRuntimeController {
         return selection
             ? `${selection.preferredSourceId ?? ''}\u0000${selection.munitionKey}`
             : '';
-    }
-
-    /** Whether a flamer's attacker declares heat or damage under the rules in play. */
-    public declaresFlamerHeat(): boolean {
-        return declaresFlamerHeat(this.snapshot().ruleset, this.options.options().CBTOptionalRules.enhancedFlamers);
     }
 
     public interaction(row: EquipmentPanelComponent): CBTEquipmentInteraction | undefined {

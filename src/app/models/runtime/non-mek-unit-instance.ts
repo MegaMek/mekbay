@@ -2630,6 +2630,7 @@ function validateState(
     if (state.heat.pendingOverride !== undefined) boundedHeat(state.heat.pendingOverride);
     boundedHeatsinksOff(state.heat.heatsinksOff, entity.engineHeatSinks());
     if (!entity.tracksHeat() && (state.heat.current !== 0
+        || (state.turn.outsideHeat ?? 0) !== 0
         || state.heat.previous !== 0
         || state.heat.pendingOverride !== undefined
         || state.heat.heatsinksOff !== 0)) {

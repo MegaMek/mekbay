@@ -816,7 +816,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(effect(flooded).displayFormula).toBe('13.5×(TMM+1)+2');
     });
 
-    it('halves Claw damage for each destroyed arm actuator before applying TSM', () => {
+    it('halves Claw damage for each destroyed arm actuator, after TSM doubles it', () => {
         const fixture = createDirectClawRuntimeFixture('core-2026');
         const claw = fixture.equipmentComponent('Test Claw');
         const effect = () => {

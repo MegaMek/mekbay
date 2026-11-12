@@ -16,14 +16,15 @@ export function isFlamerEquipment(equipment: Equipment | null | undefined): bool
 }
 
 /**
- * Weapons whose attacker may declare heat in place of damage: flamers, and the flame-based battle armor and infantry
- * weapons, plasma and incendiary ones (TW pp. 304-305, note §§; TechManual's flame-based feature; MegaMek
- * InfantryWeapon.isFlameBased).
+ * Weapons whose attacker may declare heat in place of damage: flamers; the battle armor man-portable plasma rifle
+ * (TW pp. 304-305, note §§); and the flame-based infantry weapons, plasma, inferno and incendiary ones (TechManual's
+ * feature F; MegaMek InfantryWeapon.isFlameBased).
  */
 export function isHeatOrDamageWeapon(equipment: Equipment | null | undefined): boolean {
-    return isFlamerEquipment(equipment) || (equipment instanceof WeaponEquipment
-        && (equipment.hasFlag('F_BA_WEAPON') || equipment.hasFlag('F_INFANTRY'))
-        && equipment.hasAnyFlag(['F_PLASMA', 'F_INFERNO', 'F_INCENDIARY_NEEDLES']));
+    if (isFlamerEquipment(equipment)) return true;
+    if (!(equipment instanceof WeaponEquipment)) return false;
+    if (equipment.hasFlag('F_BA_WEAPON')) return equipment.hasFlag('F_PLASMA');
+    return equipment.hasFlag('F_INFANTRY') && equipment.hasAnyFlag(['F_PLASMA', 'F_INFERNO', 'F_INCENDIARY_NEEDLES']);
 }
 
 /** A component whose modes are the heat-or-damage declaration. */

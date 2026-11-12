@@ -65,18 +65,15 @@ export function buildMekIntrinsicActions(
         && isHandClawFlags(item.flags));
       if (claw) continue;
 
-      let baseDamage = Math.ceil(facts.tonnage / 10);
-      if (isLam) baseDamage /= 2;
-      const damage = Math.ceil(facts.lowerArmActuators[side]
-        ? baseDamage
-        : Math.floor(baseDamage / 2));
+      const reduce = (value: number) => mekPunchDamage(value, facts.lowerArmActuators[side]);
+      const baseDamage = mekPunchBaseDamage(facts.tonnage, isLam);
       const armAes = hasActuatorEnhancementSystemAt(facts.equipment, location);
       const hitModifier = (facts.handActuators[side] ? 0 : 1)
         + (facts.lowerArmActuators[side] ? 0 : 2)
         - (armAes ? 1 : 0);
       attacks.push(action(
         `punch:${location}`, 'punch', 'Punch', [location],
-        fixedDamage(damage, tsm), hitModifier,
+        fixedDamage(reduce(baseDamage), tsm, undefined, reduce(baseDamage * 2)), hitModifier,
       ));
     }
 
@@ -160,10 +157,24 @@ function hasActuatorEnhancementSystemAt(
 }
 
 
+/** A punch does 1 point per 10 tons (or fraction); a LAM's half that (TW p. 145). */
+export function mekPunchBaseDamage(tonnage: number, lam: boolean): number {
+  return Math.ceil(tonnage / 10) / (lam ? 2 : 1);
+}
+
+/**
+ * Punch damage from its base, after anything that adds to the base such as TSM: a missing lower arm actuator halves
+ * it like a destroyed one, rounding down to at least 1 (TW p. 145; Core pp. 81, 88).
+ */
+export function mekPunchDamage(base: number, lowerArmActuator: boolean): number {
+  return lowerArmActuator ? Math.ceil(base) : Math.max(1, Math.floor(base / 2));
+}
+
 function fixedDamage(
   damage: number,
   tsm: boolean,
   alternateDamage?: number,
+  boostedDamage = damage * 2,
 ): IntrinsicWeaponDamage {
   const alternative = alternateDamage === undefined
     ? undefined
@@ -175,7 +186,7 @@ function fixedDamage(
   return Object.freeze({
     kind: 'fixed',
     value: damage,
-    ...(tsm ? { boostedValue: damage * 2 } : {}),
+    ...(tsm ? { boostedValue: boostedDamage } : {}),
     ...(alternative ? { alternatives: Object.freeze({ airmek: alternative }) } : {}),
   });
 }

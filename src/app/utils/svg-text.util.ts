@@ -71,6 +71,17 @@ export function writeSvgTextLines(
     });
 }
 
+/** Word-wraps `value` to `width` as `measure` reads it; a word wider than the width keeps a line of its own. */
+export function wrapWords(value: string, width: number, measure: (text: string) => number): string[] {
+    const lines: string[] = [];
+    for (const word of value.split(/\s+/u)) {
+        const current = lines.at(-1);
+        if (current !== undefined && measure(`${current} ${word}`) <= width) lines[lines.length - 1] = `${current} ${word}`;
+        else lines.push(word);
+    }
+    return lines;
+}
+
 export function measureSvgTextCanvas(line: SVGTextContentElement, text: string): number {
     const canvasDocument = line.ownerDocument.defaultView?.document ?? document;
     const cache = getSvgTextMetricsCache(canvasDocument);

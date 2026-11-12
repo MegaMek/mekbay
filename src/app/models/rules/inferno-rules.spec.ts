@@ -45,6 +45,10 @@ describe('inferno rules', () => {
         const near = { location: { kind: 'miss', label: 'Miss' } } as const;
         expect(infernoEffect(new TestProtoMekEntity(), [at('Torso'), at('Torso'), at('Legs'), at('Torso'), at('Torso'), near]))
             .toEqual({ kind: 'protomek-locations', locationIds: [asLocationId('location:Legs')] });
+        // A set whose roll names a destroyed arm transfers its damage to the torso, but destroys nothing.
+        const transferred: InfernoMissile = { location: { ...at('Torso').location!, transferred: true } as AttackHitLocation };
+        expect(infernoEffect(new TestProtoMekEntity(), [at('Torso'), at('Torso'), transferred]))
+            .toEqual({ kind: 'protomek-locations', locationIds: [] });
     });
 
     it('heats fighters and small craft, damages conventional fighters, and spares large craft', () => {

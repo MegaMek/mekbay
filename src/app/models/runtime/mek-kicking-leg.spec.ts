@@ -8,7 +8,7 @@ import type { ComponentId, LocationId } from '../entity/entity-identifiers';
 import { parseEntity } from '../entity/parse-entity';
 import type { EquipmentRegistry } from '../equipment-lookup';
 import { projectMekCombatModifiers, type MekCombatModifierRuntimeFacts } from './mek-combat-modifiers';
-import { selectMekKickingLeg } from './mek-kicking-leg';
+import { kickTalonsIntact, selectMekKickingLeg } from './mek-kicking-leg';
 import { canPerformMekAction } from './mek-action-availability';
 import {
   createDirectQuadRuntimeFixture,
@@ -51,6 +51,10 @@ ${legs('CLERMediumLaser')}
 Right Leg:
 ${legs('-Empty-')}
 `;
+// Inner Sphere TSM on the same Mek, three slots in each side torso.
+const tsmSlots = 'Triple Strength Myomer\n'.repeat(3);
+const TSM_MTF = MTF.replace('techbase:Clan', 'techbase:Mixed (Clan Chassis)')
+  .replace('Left Leg:', `Left Torso:\n${tsmSlots}Right Torso:\n${tsmSlots}Left Leg:`);
 const TRIPOD_MTF = `${header('Tripod')}${arms}Left Leg:
 ${legs('CLERMediumLaser', false)}
 Right Leg:
@@ -134,7 +138,12 @@ describe('Mek kicking leg', () => {
     if (projection.kind !== 'supported') throw new Error('Unsupported projection');
     const row = projection.attacks.find(attack => attack.target.kind === 'intrinsic' && attack.target.actionId === actionId)!;
     const modifiers = projectMekCombatModifiers(test.profile, test.index, facts(state)).intrinsic.get(actionId) ?? [];
-    return { label: row.label, damage: row.effect.kind === 'damage' ? row.effect.damage : null, modifiers };
+    return {
+      label: row.label,
+      damage: row.effect.kind === 'damage' ? row.effect.damage : null,
+      maximum: row.effect.kind === 'damage' ? row.effect.maximumDamage : null,
+      modifiers,
+    };
   }
 
   it('kicks with a leg whose weapons did not fire, and with no leg once both have fired', () => {
@@ -155,9 +164,17 @@ describe('Mek kicking leg', () => {
 
     const core = kickTest(CORE_2026_RULESET);
     const coreKick = kickRow(core, { destroyed: [core.actuator('LL', 'lower-leg')] });
-    // Halved first, then the talons: 10 / 2 = 5, x1.5 = 7.5, rounded to 8.
-    expect(coreKick.damage).toBe(8);
+    // Talons first, then the destroyed leg actuator halves it, rounding down: 10 x 1.5 = 15, / 2 = 7.
+    expect(coreKick.damage).toBe(7);
     expect(coreKick.modifiers).toContain(jasmine.objectContaining({ label: 'Leg Actuator Destroyed', modifier: 2 }));
+  });
+
+  it('applies talons, then TSM, then destroyed leg actuators', () => {
+    // What adds to the base comes first (Core p. 88): 10 x 1.5 = 15 with talons, x2 = 30 with TSM, then the destroyed
+    // lower leg actuator halves it to 15; without TSM it halves 15 to 7.
+    const tsm = kickTest(CORE_2026_RULESET, TSM_MTF);
+    const row = kickRow(tsm, { destroyed: [tsm.actuator('LL', 'lower-leg')] });
+    expect([row.damage, row.maximum]).toEqual([7, 15]);
   });
 
   it('keeps the talon bonus by kicking with the leg whose talons are intact', () => {
@@ -200,13 +217,13 @@ describe('Mek kicking leg', () => {
     expect(kickRow(core, coreDamage).damage).toBe(15);
     expect(kickRow(core, coreDamage).modifiers.some(entry => entry.label.includes('Leg Actuator'))).toBeFalse();
     const coreMule = kickRow(core, coreDamage, 'intrinsic:mule-kick');
-    expect(coreMule.damage).toBe(8);
+    expect(coreMule.damage).toBe(7);
     expect(coreMule.modifiers).toContain(jasmine.objectContaining({ label: 'Leg Actuator Destroyed', modifier: 2 }));
 
     const tw = kickTest(TOTAL_WARFARE_RULESET, QUAD_MTF);
     const twMule = kickRow(tw, { destroyed: [tw.actuator('RLL', 'lower-leg')] }, 'intrinsic:mule-kick');
     expect(twMule.label).toBe('Mule Kick [Talons]');
-    expect(twMule.damage).toBe(8);
+    expect(twMule.damage).toBe(7);
   });
 
   it('needs talons on both rear legs for a mule kick talon bonus', () => {
@@ -214,6 +231,23 @@ describe('Mek kicking leg', () => {
     const lost = { lostAt: [[core.talons, core.location('RLL')]] as const };
     expect(kickRow(core, lost, 'intrinsic:mule-kick').damage).toBe(10);
     expect(kickRow(core, lost).damage).toBe(15);
+  });
+
+  it('adds talons to a death from above with either leg under Total Warfare, and two legs under Core', () => {
+    const dfa = (test: Kick, state: Parameters<typeof facts>[0]) =>
+      kickTalonsIntact(test.profile, test.index, facts(state), null);
+    const tw = kickTest(TOTAL_WARFARE_RULESET);
+    expect(dfa(tw, { lostAt: [[tw.talons, tw.location('LL')]] })).toBeTrue();
+    // A destroyed foot destroys that leg's talons too (Core p. 196).
+    expect(dfa(tw, { lostAt: [[tw.talons, tw.location('LL')]], destroyed: [tw.actuator('RL', 'foot')] })).toBeFalse();
+
+    const core = kickTest(CORE_2026_RULESET);
+    expect(dfa(core, {})).toBeTrue();
+    expect(dfa(core, { destroyed: [core.actuator('RL', 'foot')] })).toBeFalse();
+    const quad = kickTest(CORE_2026_RULESET, QUAD_MTF);
+    const lost = (...codes: string[]) => ({ lostAt: codes.map(code => [quad.talons, quad.location(code)] as const) });
+    expect(dfa(quad, lost('FLL', 'RRL'))).toBeTrue();
+    expect(dfa(quad, lost('FLL', 'FRL', 'RRL'))).toBeFalse();
   });
 
   describe('availability', () => {
@@ -245,9 +279,11 @@ describe('Mek kicking leg', () => {
       expect([can(core, 'intrinsic:kick'), can(core, 'intrinsic:mule-kick')]).toEqual([false, false]);
     });
 
-    it('needs every quad hip under Total Warfare', () => {
+    it('needs the hips of the kick arc under Total Warfare', () => {
       const tw = createDirectQuadRuntimeFixture(TOTAL_WARFARE_RULESET, 'unit:kick-tw-quad-hips');
       hitHip(tw, 'RRL');
+      expect([can(tw, 'intrinsic:kick'), can(tw, 'intrinsic:mule-kick')]).toEqual([true, false]);
+      hitHip(tw, 'FLL');
       expect([can(tw, 'intrinsic:kick'), can(tw, 'intrinsic:mule-kick')]).toEqual([false, false]);
     });
 

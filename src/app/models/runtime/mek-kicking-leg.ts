@@ -16,6 +16,10 @@ import { QUAD_FRONT_LEG_LOCATIONS, QUAD_REAR_LEG_LOCATIONS, TRIPOD_LEG_LOCATIONS
 /** A front kick, or a quad's kick into its rear arc (TW p. 147; Core p. 238). */
 export type MekKickKind = 'kick' | 'mule-kick';
 
+export function isMekKick(kind: string): kind is MekKickKind {
+    return kind === 'kick' || kind === 'mule-kick';
+}
+
 export interface MekKickingLegFacts extends MekGroupAvailabilityFacts {
     /** Whether the part of a component in one location still works (talons span every leg). */
     componentAvailableAt(componentId: ComponentId, locationId: LocationId): boolean;
@@ -57,7 +61,7 @@ function kickLegLimbs(profile: MekMechanicsProfile, index: MekRuntimeIndex, kind
 }
 
 /**
- * Legs whose destroyed actuators weaken a kick: a Total Warfare front kick counts only the kicking leg (p. 147); a
+ * Legs whose destroyed leg actuators weaken a kick: a Total Warfare front kick counts only the kicking leg (p. 147); a
  * Core kick every leg it may use (p. 81: "either leg apply to all kicks"), which for a quad means the legs of the
  * kick's arc (p. 238). A mule kick is one kick with both rear legs in either ruleset (TW p. 147: "both legs used in
  * the kick").
@@ -89,7 +93,9 @@ export function kickTalonLegs(
 
 /**
  * Whether the talons add to the attack: each of `legs` needs working talons, and a destroyed foot actuator in a leg
- * destroys its talons (TO:AUE). With no legs given every talon must work. Null without talons.
+ * destroys its talons (TO:AUE; Core p. 196). With no legs given (a death from above) Total Warfare needs either leg's
+ * talons, as MegaMek does, and Core both of a biped's legs or two of a tripod's or quad's (Core p. 80). Null without
+ * talons.
  */
 export function kickTalonsIntact(
     profile: MekMechanicsProfile,
@@ -100,13 +106,25 @@ export function kickTalonsIntact(
     const talons = profile.physicalWeapons.filter(group =>
         isTalonFlags(equipmentForComponent(index, group.componentId)?.flags ?? new Set()));
     if (talons.length === 0) return null;
-    if (legs === null) return talons.every(group => groupAvailable(group, facts));
-    return legs.length > 0 && legs.every(leg => {
+    const intact = (leg: MekLimbProfile) => {
         const legTalons = talons.filter(group => group.locationIds.includes(leg.locationId));
         return legTalons.length > 0
+            && !facts.locationDestroyed(leg.locationId)
             && legTalons.every(group => facts.componentAvailableAt(group.componentId, leg.locationId))
             && leg.actuators.every(actuator => actuator.kind !== 'foot' || groupAvailable(actuator, facts));
-    });
+    };
+    if (legs !== null) return legs.length > 0 && legs.every(intact);
+    const intactLegs = profile.limbs.filter(limb => limb.kind === 'leg' && intact(limb)).length;
+    return intactLegs >= (profile.rulesFlavor === 'total-warfare' ? 1 : 2);
+}
+
+/** The leg each kind of kick uses with these facts; null where that kick has no leg to use. */
+export function selectMekKickingLegs(
+    profile: MekMechanicsProfile,
+    index: MekRuntimeIndex,
+    facts: MekKickingLegFacts,
+): ReadonlyMap<MekKickKind, MekLimbProfile | null> {
+    return new Map((['kick', 'mule-kick'] as const).map(kind => [kind, selectMekKickingLeg(profile, index, facts, kind)]));
 }
 
 /**

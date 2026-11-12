@@ -35,11 +35,14 @@ export type AttackHitLocation =
         arc: NonMekHitArc;
         effects: readonly NonMekHitEffect[];
         aeroCritical?: AeroCriticalType;
+        /** The roll named a destroyed or absent location, and the hit transfers here. */
+        transferred?: true;
     }>;
 
 /**
  * The outside heat an attack's heat-causing weapons apply: a weapon whose first hit-location roll strikes partial
- * cover delivers none (TW p. 102).
+ * cover delivers none (TW p. 102). The rules are silent on a hit split over several rolls, such as a flamer
+ * platoon's; its heat follows the first roll.
  */
 export function readAttackHeat(
     member: CBTForceMember,
@@ -151,5 +154,6 @@ export function readAttackHitLocation(
         arc: nonMekArc,
         effects,
         ...(result.aeroCritical === undefined ? {} : { aeroCritical: result.aeroCritical }),
+        ...(result.transferredFrom ? { transferred: true as const } : {}),
     });
 }

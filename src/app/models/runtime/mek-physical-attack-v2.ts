@@ -7,9 +7,10 @@ import {
     kickActuatorLegs,
     kickTalonLegs,
     kickTalonsIntact,
-    selectMekKickingLeg,
-    type MekKickKind,
+    isMekKick,
+    selectMekKickingLegs,
 } from './mek-kicking-leg';
+import { mekPunchBaseDamage, mekPunchDamage } from '../entity/utils/mek-intrinsic-actions';
 import {
     isFlailFlags,
     isHandClawFlags,
@@ -144,7 +145,7 @@ export function projectMekPhysicalAttacksV2(
                 ? shields.find(candidate => candidate.componentId === group.componentId)
                 : undefined;
             const coreShield = shield !== undefined && profile.rulesFlavor === 'core-2026';
-            let baseDamage = shield !== undefined
+            const baseDamage = shield !== undefined
                 ? shield.absorption
                 : vibroblade === null
                     ? resolvePhysicalWeaponDamageFromFlags(equipment.flags, profile.declaredMassTons)
@@ -152,13 +153,13 @@ export function projectMekPhysicalAttacksV2(
                     ? vibroblade.activeDamage
                     : Math.min(Math.ceil(profile.declaredMassTons / 10) + 1, vibroblade.activeDamage);
             const constructionBase = shield?.maximumAbsorption ?? baseDamage;
-            if (isHandClawFlags(equipment.flags)) {
-                baseDamage = halveForUnavailableActuators(
-                    baseDamage,
+            const actuatorEffects = isHandClawFlags(equipment.flags)
+                ? (value: number) => halveForUnavailableActuators(
+                    value,
                     profile.limbs.filter(limb => group.locationIds.includes(limb.locationId)),
                     facts,
-                );
-            }
+                )
+                : undefined;
             const ignoreMyomer = shield !== undefined || isFlailFlags(equipment.flags) || vibrobladeActive;
             const effect: MekPhysicalAttackEffectV2 = coreShield
                 ? shield.operational
@@ -175,6 +176,7 @@ export function projectMekPhysicalAttacksV2(
                     functionalTsm && !ignoreMyomer,
                     tsmActive && !ignoreMyomer,
                     vibroblade !== null && !vibrobladeActive ? vibroblade.activeDamage : undefined,
+                    actuatorEffects,
                 );
             const locationCodes = group.locationIds.map(locationId =>
                 requireLocation(index, locationId).code);
@@ -191,11 +193,10 @@ export function projectMekPhysicalAttacksV2(
             }));
         }
 
-        const kickingLegs = new Map((['kick', 'mule-kick'] as const).map(kind =>
-            [kind, selectMekKickingLeg(profile, index, facts, kind)]));
+        const kickingLegs = selectMekKickingLegs(profile, index, facts);
         for (const action of index.intrinsicActions) {
             const locationIds = action.locations.map(code => requireLocationId(index, code));
-            const kickingLeg = isKick(action.kind) ? kickingLegs.get(action.kind) ?? null : null;
+            const kickingLeg = isMekKick(action.kind) ? kickingLegs.get(action.kind) ?? null : null;
             // A mule kick uses both rear legs; only a front kick names its leg.
             const kickingLegCode = action.kind !== 'kick' || kickingLeg === null
                 ? undefined : index.locations.get(kickingLeg.locationId)?.code;
@@ -258,26 +259,21 @@ function intrinsicEffect(
     }
 
     const constructionBase = action.damage.value;
-    let baseDamage = currentFixedDamage(action, profile, index, facts);
-    let talons = false;
+    let baseDamage = currentFixedDamage(action, profile, index, facts, kickingLeg);
+    let limbs: readonly MekLimbProfile[] = [];
+    let lowerArmActuator = true;
     if (action.kind === 'punch') {
         const location = action.locations[0];
+        limbs = profile.limbs.filter(limb => locationCode(index, limb.locationId) === location);
+        lowerArmActuator = limbs.some(limb => limb.actuators.some(actuator => actuator.kind === 'lower-arm'));
+        // The sheet prints the punch with a missing actuator already halved; play halves it after TSM instead.
+        baseDamage = mekPunchBaseDamage(profile.declaredMassTons, profile.form === 'lam');
         if (profile.rulesFlavor === 'core-2026') {
             baseDamage += shields.find(shield =>
                 shield.locationCode === location && shield.operational)?.bashBonus ?? 0;
         }
-        baseDamage = halveForUnavailableActuators(
-            baseDamage,
-            profile.limbs.filter(limb => locationCode(index, limb.locationId) === location),
-            facts,
-        );
-    } else if (isKick(action.kind)) {
-        baseDamage = halveForUnavailableActuators(
-            baseDamage,
-            kickActuatorLegs(profile, index, action.kind, kickingLeg),
-            facts,
-        );
-        talons = kickTalonsIntact(profile, index, facts, kickTalonLegs(profile, index, action.kind, kickingLeg)) === true;
+    } else if (isMekKick(action.kind)) {
+        limbs = kickActuatorLegs(profile, index, action.kind, kickingLeg);
     }
     const supportsTsm = action.damage.boostedValue !== undefined;
     return damageEffect(
@@ -287,30 +283,31 @@ function intrinsicEffect(
         supportsTsm && functionalTsm,
         supportsTsm && tsmActive,
         undefined,
-        talons,
+        value => halveForUnavailableActuators(
+            action.kind === 'punch' ? mekPunchDamage(value, lowerArmActuator) : value, limbs, facts),
     );
 }
 
 /**
- * The damage before actuator and myomer effects. A kick starts from 1 point per 5 tons, its talons applied last
- * (Core p. 81; MegaMek KickAttackAction); a death from above lands on every leg's talons.
+ * The base damage with intact talons, before TSM and destroyed actuators act on it: what adds to the base comes
+ * first, talons then TSM, and actuator damage last (Core p. 88; ruling from the BattleTech game design team, whereas
+ * MegaMek KickAttackAction applies the talons after actuators and TSM). A kick counts the talons of the legs it uses;
+ * a death from above lands on every leg's.
  */
 function currentFixedDamage(
     action: IntrinsicWeapon,
     profile: MekMechanicsProfile,
     index: MekRuntimeIndex,
     facts: MekPhysicalAttackRuntimeFactsV2,
+    kickingLeg: MekLimbProfile | null,
 ): number {
     if (action.damage.kind !== 'fixed') throw new Error('Expected fixed physical damage');
-    if (isKick(action.kind)) return Math.ceil(profile.declaredMassTons / 5);
-    if (action.kind !== 'death-from-above' || kickTalonsIntact(profile, index, facts, null) !== false) {
-        return action.damage.value;
-    }
-    return Math.ceil(profile.declaredMassTons / 10 * 3);
-}
-
-function isKick(kind: IntrinsicWeapon['kind']): kind is MekKickKind {
-    return kind === 'kick' || kind === 'mule-kick';
+    if (!isMekKick(action.kind) && action.kind !== 'death-from-above') return action.damage.value;
+    const talonLegs = isMekKick(action.kind) ? kickTalonLegs(profile, index, action.kind, kickingLeg) : null;
+    if (kickTalonsIntact(profile, index, facts, talonLegs) !== false) return action.damage.value;
+    return isMekKick(action.kind)
+        ? Math.ceil(profile.declaredMassTons / 5)
+        : Math.ceil(profile.declaredMassTons / 10 * 3);
 }
 
 function chargeEffect(
@@ -379,19 +376,18 @@ function damageEffect(
     tsmFunctional: boolean,
     tsmActive: boolean,
     alternateDamage?: number,
-    talons = false,
+    actuatorEffects: (value: number) => number = value => value,
 ): MekPhysicalAttackEffectV2 {
-    // Talons multiply a kick after its actuators and myomer, rounding normally (Core p. 81; BMM p. 109).
-    const talon = (value: number) => talons ? Math.round(value * 1.5) : value;
-    const maximumDamage = talon(tsmFunctional ? baseDamage * 2 : baseDamage);
-    const damage = tsmActive ? maximumDamage : talon(baseDamage);
-    const base = talon(baseDamage);
+    // TSM adds to the base damage, so it doubles before destroyed actuators halve it (Core p. 88).
+    const normalDamage = actuatorEffects(baseDamage);
+    const maximumDamage = tsmFunctional ? actuatorEffects(baseDamage * 2) : normalDamage;
+    const damage = tsmActive ? maximumDamage : normalDamage;
     return Object.freeze({
         kind: 'damage',
         damage,
         maximumDamage,
-        baseDamage: base,
-        weakened: base < constructionBase || (tsmInstalled && !tsmFunctional),
+        baseDamage: normalDamage,
+        weakened: normalDamage < constructionBase || (tsmInstalled && !tsmFunctional),
         boosted: tsmActive,
         ...(alternateDamage === undefined ? {} : { alternateDamage }),
     });

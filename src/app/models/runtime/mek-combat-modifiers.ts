@@ -18,7 +18,7 @@ import {
     type MekLimbProfile,
     type MekMechanicsProfile,
 } from './mek-mechanics-profile';
-import { kickActuatorLegs, selectMekKickingLeg } from './mek-kicking-leg';
+import { isMekKick, kickActuatorLegs, selectMekKickingLegs } from './mek-kicking-leg';
 import {
     componentLocationIds,
     equipmentForComponent,
@@ -68,12 +68,9 @@ export function projectMekCombatModifiers(
     const ranged = commonRangedModifiers(profile, index, facts, legs);
     const physical = commonPhysicalModifiers(profile, facts);
     const intrinsic = new Map<string, readonly ToHitModifierBreakdownEntry[]>();
-    const kickingLegs = new Map((['kick', 'mule-kick'] as const).map(kind =>
-        [kind, selectMekKickingLeg(profile, index, facts, kind)]));
+    const kickingLegs = selectMekKickingLegs(profile, index, facts);
     for (const action of index.intrinsicActions) {
-        const kickingLeg = action.kind === 'kick' || action.kind === 'mule-kick'
-            ? kickingLegs.get(action.kind) ?? null
-            : null;
+        const kickingLeg = isMekKick(action.kind) ? kickingLegs.get(action.kind) ?? null : null;
         intrinsic.set(action.id, intrinsicModifiers(action, arms, legs, profile, index, facts, kickingLeg));
     }
     const components = new Map<ComponentId, readonly ToHitModifierBreakdownEntry[]>();

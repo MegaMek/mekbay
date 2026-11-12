@@ -29,8 +29,11 @@ export interface AttackReportWeapon {
     readonly cluster: Readonly<{ dice: TwoDice; modifier: number; projectiles: number; hits: number }> | null;
     /** Each group is one inferno missile rather than damage. */
     readonly inferno?: boolean;
-    /** Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer). */
-    readonly heat?: Readonly<{ dice: readonly number[]; value: number }>;
+    /**
+     * Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer); `cover` when
+     * its first roll strikes partial cover, which drops the heat.
+     */
+    readonly heat?: Readonly<{ dice: readonly number[]; value: number; cover?: true }>;
     readonly groups: readonly AttackReportGroup[];
 }
 

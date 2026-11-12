@@ -16,6 +16,8 @@ export type EquipmentChoiceSurface = 'critical' | 'inventory' | 'turn-summary';
 
 export interface EquipmentInteractionQueryContext {
     readonly choiceSurface?: EquipmentChoiceSurface;
+    /** The BattleMech Manual's optional Enhanced Flamers rule is on: flamers deal heat and damage, declaring neither. */
+    readonly enhancedFlamers?: boolean;
 }
 
 export interface EquipmentInteractionCommandContext {

@@ -1871,10 +1871,21 @@ export class CBTForce extends Force<never> {
         return this.unitStore.equipmentInteractions(
             instanceId,
             registry,
-            choiceSurface === undefined ? {} : { choiceSurface },
+            this.equipmentQueryContext(choiceSurface),
             () => this.encounterSnapshot(),
             this.readOnly(),
         );
+    }
+
+    /** What equipment choices are offered under: the view asking, and the optional rules in play. */
+    private equipmentQueryContext(
+        choiceSurface?: EquipmentInteractionQueryContext['choiceSurface'],
+    ): EquipmentInteractionQueryContext {
+        const options = this.injector.get(OptionsService, null, { optional: true });
+        return Object.freeze({
+            ...(choiceSurface === undefined ? {} : { choiceSurface }),
+            ...(options?.options().CBTOptionalRules.enhancedFlamers ? { enhancedFlamers: true } : {}),
+        });
     }
 
     public async dispatchEquipmentChoice(
@@ -1896,11 +1907,10 @@ export class CBTForce extends Force<never> {
             const beforeModes = captureMekComponentModes(this.unitStore, mutationScope);
             const executionGeneration = this.captureForceOwnerGeneration();
             const registry = this.injector.get(EquipmentInteractionRegistry);
-            const queryContext: EquipmentInteractionQueryContext = {};
             return this.unitStore.dispatchEquipmentChoice(
                 capturedCommand,
                 registry,
-                queryContext,
+                this.equipmentQueryContext(),
                 {
                     toastService: this.injector.get(ToastService),
                     dialogsService: this.injector.get(DialogsService),

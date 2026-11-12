@@ -196,7 +196,7 @@ export interface PlatoonAttackProfileFacts {
  * A platoon rolls the Cluster Hits Table on its troopers and deals the damage those troopers hitting deal, in
  * 2-point groups (TW p. 217; MegaMek InfantryWeaponHandler).
  */
-export function platoonAttackProfile(facts: PlatoonAttackProfileFacts): WeaponAttackProfile {
+export function platoonAttackProfile(facts: PlatoonAttackProfileFacts, rules: CBTGameRules): WeaponAttackProfile {
     return Object.freeze({
         componentId: facts.componentId,
         name: facts.name,
@@ -206,7 +206,7 @@ export function platoonAttackProfile(facts: PlatoonAttackProfileFacts): WeaponAt
         allHit: false,
         groupSize: 2,
         types: Object.freeze([...facts.types]),
-        partialCover: facts.partialCover,
+        partialCover: facts.partialCover && (!facts.attack.inferno || infernoMeetsCover(rules.id)),
         jamRoll: null,
         table: 'standard',
         damageByHits: facts.attack.damageByTroopers,

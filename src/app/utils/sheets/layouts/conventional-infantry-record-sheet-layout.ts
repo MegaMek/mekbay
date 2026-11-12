@@ -15,7 +15,7 @@ import {
   conventionalInfantryRangeWeapon,
   projectConventionalInfantryCombat,
 } from '../../../models/rules/conventional-infantry-combat-rules';
-import { measureSvgTextCanvas } from '../../svg-text.util';
+import { measureSvgTextCanvas, wrapWords } from '../../svg-text.util';
 import { createInfantryStrengthDisplay, INFANTRY_STRENGTH_DISPLAY_ID } from '../infantry-strength-display';
 import { INFANTRY_STRENGTH_CELL_COUNT } from '../infantry-strength-projection';
 import type { RecordSheetPageProfile } from '../record-sheet-layout';
@@ -323,20 +323,11 @@ function drawInfantryNotes(
   group.setAttribute('class', 'infantry-notes');
   parent.appendChild(group);
   const probe = svgElement('text');
-  const words = value.split(/\s+/u);
   let size = 7.2;
   let lines: string[];
   do {
     probe.setAttribute('font-size', formatNumber(size * fontScale));
-    lines = [];
-    for (const word of words) {
-      const previous = lines.at(-1);
-      if (previous === undefined || measureSvgTextCanvas(probe, `${previous} ${word}`) > box.width) {
-        lines.push(word);
-      } else {
-        lines[lines.length - 1] = `${previous} ${word}`;
-      }
-    }
+    lines = wrapWords(value, box.width, (text) => measureSvgTextCanvas(probe, text));
     if (lines.length * (size + 1) * verticalScale <= box.height || size <= 5) break;
     size = Math.max(5, size - 1);
   } while (true);
