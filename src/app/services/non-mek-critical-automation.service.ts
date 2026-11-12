@@ -98,6 +98,59 @@ export class NonMekCriticalAutomationService {
         return true;
     }
 
+    /**
+     * Rolls on the Vehicle Critical Hits Table once for each inferno missile, at the location it struck: -2 for a
+     * combat vehicle or an armored-chassis support vehicle with BAR 10, and -2 more while hardened armor remains
+     * there (TW p. 142; MegaMek deliverInfernoMissiles).
+     */
+    async resolveInfernoCriticals(
+        force: CBTForce,
+        instanceId: string,
+        locationIds: readonly LocationId[],
+        target: Target,
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        if (this.options.cbtAutomationMode('criticalHitChanceCheck') === 'no') return true;
+        const perspective = perspectiveOf(target);
+        for (const locationId of locationIds) {
+            const current = this.snapshot(force, instanceId);
+            const location = current?.index.locations.get(locationId);
+            if (!current || !location || current.query.destroyed()) return true;
+            const entity = current.entity;
+            const armoredChassis = [...current.index.components.values()]
+                .some(component => component.mount.equipment?.hasFlag('F_ARMORED_CHASSIS') === true);
+            const combatVehicle = !entity.isSupportVehicle()
+                || (armoredChassis && supportVehicleBarRating(entity, location.code) >= 10);
+            const hardened = entity.armorAt(location.code)?.type === 'HARDENED'
+                && location.armorFaceIds.some(faceId => current.query.remainingArmor(faceId, perspective) > 0);
+            const modifier = (combatVehicle ? -2 : 0) + (hardened ? -2 : 0);
+            const plan = this.planVehicleCritical(current, locationId, modifier, 'inferno', target);
+            if (plan && !await this.review(force, instanceId, 'Critical Hit', plan, dispatch)) return false;
+        }
+        return true;
+    }
+
+    /**
+     * A ProtoMek location inferno missiles destroyed crosses off its critical boxes and wounds the pilot as any
+     * destroyed location does (TW p. 142).
+     */
+    async resolveDestroyedProtoMekLocations(
+        force: CBTForce,
+        instanceId: string,
+        locationIds: readonly LocationId[],
+        target: Target,
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        if (this.options.cbtAutomationMode('criticalHitChanceCheck') === 'no') return true;
+        for (const locationId of new Set(locationIds)) {
+            const current = this.snapshot(force, instanceId);
+            if (!current || current.query.destroyed()) return true;
+            const plan = this.planProtoMekCritical(force, current, locationId, target);
+            if (plan && !await this.review(force, instanceId, 'Critical Hit', plan, dispatch)) return false;
+        }
+        return true;
+    }
+
     /** The rolls one group owes on the struck unit's own tables, in rules order. */
     private criticalChecks(
         force: CBTForce,

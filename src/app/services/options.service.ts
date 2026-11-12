@@ -82,6 +82,7 @@ const DEFAULT_OPTIONS: Options = {
     sprinting: false,
     hotLoadedAmmo: false,
     allowMixedTechBaseAmmo: false,
+    enhancedFlamers: false,
   },
   allowMultipleActiveSheets: false,
   CBTRules: 'core-2026',
@@ -259,6 +260,7 @@ function resolveCBTOptionalRules(saved: Partial<Options> | null | undefined): CB
     sprinting: saved?.CBTOptionalRules?.sprinting ?? defaults.sprinting,
     hotLoadedAmmo: saved?.CBTOptionalRules?.hotLoadedAmmo ?? defaults.hotLoadedAmmo,
     allowMixedTechBaseAmmo: saved?.CBTOptionalRules?.allowMixedTechBaseAmmo ?? defaults.allowMixedTechBaseAmmo,
+    enhancedFlamers: saved?.CBTOptionalRules?.enhancedFlamers ?? defaults.enhancedFlamers,
   };
 }
 

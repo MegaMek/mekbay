@@ -15,6 +15,8 @@ import type { HitTable } from '../rules/physical-attack-rules';
 import type { HitLocationDice } from '../rules/weapon-attack-resolution';
 import { getMekLocationLabel } from '../entity/types/mek';
 import { resolveMekHitLocation } from './mek-fall-rules';
+import type { InfernoMissile } from '../rules/inferno-rules';
+import { hasNonMekRuntime, type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import {
     nonMekHitArcs,
     resolveNonMekHitLocation,
@@ -34,6 +36,53 @@ export type AttackHitLocation =
         effects: readonly NonMekHitEffect[];
         aeroCritical?: AeroCriticalType;
     }>;
+
+/**
+ * The outside heat an attack's heat-causing weapons apply: a weapon whose first hit-location roll strikes partial
+ * cover delivers none (TW p. 102).
+ */
+export function readAttackHeat(
+    member: CBTForceMember,
+    arc: MekHitArc,
+    weapons: readonly Readonly<{
+        heat?: number;
+        arc?: MekHitArc;
+        partialCover?: true;
+        table?: HitTable;
+        groups: readonly Readonly<{ location: HitLocationDice; aux: number }>[];
+    }>[],
+): number {
+    return weapons.reduce((sum, weapon) => {
+        const first = weapon.groups[0];
+        const location = first === undefined ? null : readAttackHitLocation(member, weapon.arc ?? arc, first.location,
+            first.aux, weapon.partialCover === true, weapon.table);
+        return location?.kind === 'miss' ? sum : sum + (weapon.heat ?? 0);
+    }, 0);
+}
+
+/** Inferno missiles that already struck the unit this turn, for the every-three effects (TW pp. 141-142). */
+export function infernoMissilesThisTurn(snapshot: CBTUnitSnapshot | null): number {
+    return snapshot !== null && hasNonMekRuntime(snapshot) ? snapshot.state.turn.infernoMissiles ?? 0 : 0;
+}
+
+/** The inferno missiles of an attack's weapons, each read on the struck unit's own table. */
+export function readInfernoMissiles(
+    member: CBTForceMember,
+    arc: MekHitArc,
+    weapons: readonly Readonly<{
+        inferno?: true;
+        arc?: MekHitArc;
+        partialCover?: true;
+        table?: HitTable;
+        groups: readonly Readonly<{ location: HitLocationDice; aux: number }>[];
+    }>[],
+): readonly InfernoMissile[] {
+    return Object.freeze(weapons.filter(weapon => weapon.inferno).flatMap(weapon => weapon.groups.map(group =>
+        Object.freeze({
+            location: readAttackHitLocation(member, weapon.arc ?? arc, group.location, group.aux,
+                weapon.partialCover === true, weapon.table),
+        }))));
+}
 
 /**
  * Reads one hit-location roll on the struck unit's own table, as the unit stands now. Null when this unit has

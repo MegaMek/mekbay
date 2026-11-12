@@ -19,6 +19,7 @@ import {
 } from '../entity/utils/physical-weapon';
 import { STANDARD_MOVEMENT_CALCULATION } from '../entity/types';
 import type { ComponentId, CriticalSlotId } from '../entity/entity-identifiers';
+import type { EngineMovementHeat } from '../entity/components/engine-data';
 import { isPpcCapacitorEquipment, isPpcCapacitorPair } from './component-ppc-capacitor';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import {
@@ -74,7 +75,7 @@ export interface MekHeatSystemGroup {
 
 export interface MekEngineHeatProfile {
     readonly type: string;
-    readonly xxl: boolean;
+    readonly jumpHeat: Pick<EngineMovementHeat, 'jumpMin' | 'jumpPerMP'>;
     readonly fusion: boolean;
     /** Industrial ICE/Fuel Cell Meks alone waive ordinary ground-movement heat. */
     readonly heatlessIndustrialGroundMovement: boolean;
@@ -475,7 +476,7 @@ function compileEngine(
     const criticalSlotIds = freezeSortedUnique(systems.flatMap(system => system.criticalSlotIds));
     return Object.freeze({
         type: mountedEngine.type(),
-        xxl,
+        jumpHeat: Object.freeze({ jumpMin: movementHeat.jumpMin, jumpPerMP: movementHeat.jumpPerMP }),
         fusion: mountedEngine.isFusion,
         heatlessIndustrialGroundMovement: entity.isIndustrial()
             && (mountedEngine.powerSource === 'combustion'

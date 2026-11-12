@@ -22,6 +22,7 @@
             [attr.aria-label]="entry.quirk.name + ' value'"
             [placeholder]="entry.quirk.key === 'obsolete' ? 'Years, e.g. 2850, 3050' : 'Locations, e.g. LT RT'"
             [ngModel]="entry.value ?? ''"
+            [ngModelOptions]="{ updateOn: 'blur' }"
             (ngModelChange)="setQuirkValue(entry, $event)"
           />
         }

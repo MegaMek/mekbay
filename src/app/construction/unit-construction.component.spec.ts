@@ -949,6 +949,41 @@ describe('construction editor document lifecycle', () => {
     expect(save.calls.mostRecent().args[1].originalUnitUuid).toBe(customUuid);
   });
 
+  it('gives a save-as copy of a saved Clone to Own draft its own uuid', async () => {
+    owned = false;
+    await editor.openUnit({ uuid: customUuid, origin: 'user' } as UnitSummary);
+    editor.cloneToOwn();
+    const draftId = editor.entity().uuid();
+    save.and.callFake(async (_entity, options) => ({
+      uuid: options.uuid ?? options.newUuid ?? copyUuid,
+      originalUnitUuid: options.originalUnitUuid,
+    }));
+    await editor.save();
+    expect(save.calls.mostRecent().args[1].newUuid).toBe(draftId);
+    editor.setField(
+      editor.fields().find((field) => field.id === 'model')!,
+      'Second copy',
+    );
+    await editor.save(true);
+    expect(save.calls.mostRecent().args[1].uuid).toBeUndefined();
+    expect(save.calls.mostRecent().args[1].newUuid).not.toBe(draftId);
+    expect(save.calls.mostRecent().args[1].originalUnitUuid).toBe(customUuid);
+  });
+
+  it('keeps the saved lineage when undo returns past the first save', async () => {
+    await editor.openUnit({ uuid: coreUuid, origin: 'canon' } as unknown as UnitSummary);
+    const model = () => editor.fields().find((field) => field.id === 'model')!;
+    editor.setField(model(), 'Edited');
+    await editor.save();
+    expect(editor.refitReference()?.uuid).toBe(coreUuid);
+    editor.undo();
+    expect(editor.entity().model()).toBe('HBK-4G');
+    expect(editor.refitReference()?.uuid).toBe(coreUuid);
+    editor.setField(model(), 'Edited again');
+    await editor.save();
+    expect(save.calls.mostRecent().args[1]).toEqual({ uuid: customUuid, originalUnitUuid: coreUuid });
+  });
+
   it('saves a custom force refit as new and switches to the new UUID without overwriting the original', async () => {
     core.uuid.set(customUuid);
     core.refitFromUUID.set(coreUuid);

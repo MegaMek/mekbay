@@ -12,6 +12,12 @@ import {
     type MekMovementHeatFactsV2,
 } from './mek-heat-state-v2';
 import {
+    canonicalizeMekTurnStateV2,
+    createPristineMekTurnStateV2,
+    deserializeMekTurnStateV2,
+    serializeMekTurnStateV2,
+} from './mek-turn-state-v2';
+import {
     createDirectEngineHeatRuntimeFixture,
     createDirectMekRuntimeFixture,
     type DirectMekRuntimeFixture,
@@ -175,6 +181,48 @@ describe('origin/next Mek movement and engine heat parity', () => {
         expect(movementHeat(dual, 'jump', 5, {
             committedUnavailableComponents: new Set([jetId]),
         })).toBe(0);
+    });
+
+    it('derives jump heat from the engine and jet kind as MegaMek does', () => {
+        const fusion = heatProfile(createDirectMekRuntimeFixture(
+            'core-2026', 'unit:heat:jump-kind-fusion',
+        ));
+        const xxl = heatProfile(createDirectEngineHeatRuntimeFixture(
+            'XXL', false, 'core-2026', 'unit:heat:jump-kind-xxl',
+        ));
+        const jetId = asComponentId('component:test-jump-jet');
+        const withJets = (profile: MekHeatProfile, kind: 'standard' | 'improved' | 'prototype-improved') =>
+            Object.freeze({ ...profile, jump: Object.freeze({ ...profile.jump, kind, componentIds: [jetId] }) });
+        const jumpHeat = (profile: MekHeatProfile) =>
+            [1, 5].map(distance => movementHeat(profile, 'jump', distance));
+
+        expect(jumpHeat(withJets(fusion, 'standard'))).toEqual([3, 5]);
+        expect(jumpHeat(withJets(fusion, 'improved'))).toEqual([3, 3]);
+        expect(jumpHeat(withJets(fusion, 'prototype-improved'))).toEqual([6, 10]);
+        expect(jumpHeat(withJets(xxl, 'standard'))).toEqual([6, 10]);
+        expect(jumpHeat(withJets(xxl, 'improved'))).toEqual([6, 6]);
+        expect(jumpHeat(withJets(xxl, 'prototype-improved'))).toEqual([6, 20]);
+    });
+
+    it('adds outside heat such as infernos to the turn, capped at 15, and settles it at the end of the turn', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:outside');
+        const outside = () => {
+            const result = fixture.instance.query().heatProjection('automatic');
+            return result.kind === 'supported'
+                ? result.projection.committedSources.find(source => source.id === 'outside-heat')?.value
+                : undefined;
+        };
+
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10 }).accepted).toBeTrue();
+        expect(outside()).toBe(15);
+        const turn = canonicalizeMekTurnStateV2({ ...createPristineMekTurnStateV2(), outsideHeat: 15 });
+        expect(deserializeMekTurnStateV2(serializeMekTurnStateV2(turn)).outsideHeat).toBe(15);
+
+        const before = fixture.instance.query().heatProjection('automatic');
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(outside()).toBeUndefined();
+        expect(fixture.instance.query().heatState().current).toBe(before.kind === 'supported' ? before.projection.projected : -1);
     });
 
     it('generates damaged-engine heat only for fusion-family Entity engines', () => {

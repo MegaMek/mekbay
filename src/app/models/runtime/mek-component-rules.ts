@@ -9,7 +9,7 @@ import type { ComponentId } from '../entity/entity-identifiers';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { equipmentForComponent, type MekRuntimeIndex } from './mek-runtime-index';
 import { mekRiscLaserPulseComponentModes } from './component-risc-laser-pulse';
-import { flamerComponentModes } from '../flamer-mode.model';
+import { heatOrDamageComponentModes } from '../flamer-mode.model';
 import { vibrobladeComponentModes } from '../vibroblade-mode.model';
 import { componentApolloModes } from './component-apollo';
 import { inventoryEquipmentModes } from './component-inventory-mode';
@@ -53,7 +53,7 @@ export function mekComponentModes(
     if (inventoryModes !== null) return inventoryModes;
     const bombastModes = bombastLaserEquipmentModes(equipment, ruleset);
     if (bombastModes !== null) return bombastModes;
-    const flamerModes = flamerComponentModes(equipment, ruleset);
+    const flamerModes = heatOrDamageComponentModes(equipment, ruleset);
     if (flamerModes !== null) return flamerModes;
     const hagModes = hagEquipmentModes(equipment);
     if (hagModes !== null) return hagModes;

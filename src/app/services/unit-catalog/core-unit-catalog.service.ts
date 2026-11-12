@@ -1,7 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, Injector, computed, inject, signal } from '@angular/core';
+import { AppUpdateService } from '../app-update.service';
 import type { UnitSummary } from '../../models/unit-summary.model';
 import { CORE_CATALOG_ARCHIVE_WORKER_FACTORY } from '../../utils/core-catalog-archive-worker-factory.util';
 import { UNIT_SUMMARY_PROJECTION_WORKERS } from '../../utils/unit-summary-projection-worker-factory.util';
@@ -65,9 +66,12 @@ export class CoreUnitCatalogBackend {
     private readonly createArchiveWorker = inject(CORE_CATALOG_ARCHIVE_WORKER_FACTORY);
     private readonly summaryWorkers = inject(UNIT_SUMMARY_PROJECTION_WORKERS);
     private readonly repositoryAssets = inject(RepositoryAssetManifestService);
+    private readonly injector = inject(Injector);
 
     public openDatabase(): Promise<UnitCatalogDatabase> {
-        return UnitCatalogDatabase.open();
+        return UnitCatalogDatabase.open({
+            onVersionChange: () => this.injector.get(AppUpdateService).updatePending.set(true),
+        });
     }
 
     public createSynchronizer(database: UnitCatalogDatabase): CoreCatalogSynchronizer {

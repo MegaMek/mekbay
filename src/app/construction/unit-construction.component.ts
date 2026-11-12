@@ -388,12 +388,13 @@ export class UnitConstructionComponent {
   readonly foreignDesign = signal(false);
   private draftUuid?: UnitUuid;
   private readonly customPolicy = inject(ForceCustomDesignsService);
-  // An unmodified core design has no native refit parent yet; retain its source identity for the first save.
+  // The session's lineage when the draft carries no native refit parent: the core design it was opened from,
+  // then the parent its last save recorded, so undo past a save keeps the lineage.
   private readonly coreSourceUuid = signal<UnitUuid | undefined>(undefined);
   readonly originalUuid = computed(() => this.entity().refitFromUUID() ?? this.coreSourceUuid());
   readonly refitReference = computed(() => {
     this.data.searchCorpusVersion();
-    const uuid = this.entity().refitFromUUID();
+    const uuid = this.originalUuid();
     if (!uuid || uuid === this.entity().uuid()) return null;
     const source = this.data.getUnitByUuid(uuid);
     return { uuid, name: source ? this.unitNames.name(source) : uuid };
@@ -421,8 +422,11 @@ export class UnitConstructionComponent {
   private readonly runtimePreview = signal<ConstructionRuntimePreview | null>(null);
   readonly designChanged = computed(() => encodeNativeEntity(this.entity()) !== this.baselineSource());
   readonly runtimeChanged = computed(() => this.runtimePreview()?.changed ?? false);
+  /** A text field holds text typed since it last committed; text fields commit on blur, never mid-word. */
+  private readonly typing = signal(false);
   readonly dirty = computed(
     () =>
+      this.typing() ||
       this.designChanged() ||
       this.runtimeChanged() ||
       this.artworkChanged() ||
@@ -2119,7 +2123,7 @@ export class UnitConstructionComponent {
       this.busy() ||
       !this.designEditing() ||
       this.entity() !== entity ||
-      entity.refitFromUUID() !== reference.uuid
+      this.originalUuid() !== reference.uuid
     )
       return;
     this.change(() => entity.refitFromUUID.set(undefined));
@@ -3095,6 +3099,8 @@ export class UnitConstructionComponent {
   }
 
   async save(copy = false): Promise<void> {
+    // Commit the text field being typed in first.
+    (document.activeElement as HTMLElement | null)?.blur();
     if (!this.canSave() || (copy && !this.designChanged())) return;
     if (!this.entity().chassis().trim()) {
       this.reportError(new Error('Give the design a chassis name before saving.'));
@@ -3138,11 +3144,13 @@ export class UnitConstructionComponent {
           originalUnitUuid: this.originalUuid() ?? (copy ? this.savedUuid() : undefined),
         });
         persisted = true;
+        // The draft uuid is now the saved record's; a later save-as needs a fresh one.
+        this.draftUuid = undefined;
         this.savePending.set(true);
         this.savedUuid.set(record.uuid);
         this.entity().uuid.set(record.uuid);
         this.entity().refitFromUUID.set(record.originalUnitUuid);
-        this.coreSourceUuid.set(undefined);
+        this.coreSourceUuid.set(record.originalUnitUuid);
         await this.data.refreshCustomUnits();
         if (member)
           updated = await this.forceConstruction.applySavedConstruction(
@@ -3300,6 +3308,15 @@ export class UnitConstructionComponent {
     this.status.set('');
     this.toast.showToast(error instanceof Error ? error.message : String(error), 'error');
   }
+  @HostListener('input', ['$event']) markTyping(event: Event): void {
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) this.typing.set(true);
+  }
+
+  /** A text field commits on its blur, which comes just before this. */
+  @HostListener('focusout') endTyping(): void {
+    this.typing.set(false);
+  }
+
   @HostListener('window:beforeunload', ['$event']) beforeUnload(event: BeforeUnloadEvent): void {
     if (this.dirty()) {
       event.preventDefault();

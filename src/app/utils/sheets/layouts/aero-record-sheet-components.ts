@@ -1,6 +1,8 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { bombType, isKeyedBomb, type KeyedBombType } from '../../../models/aerospace-bomb.model';
+import { measureSvgTextCanvas } from '../../svg-text.util';
 import { VELOCITY_RECORD_FIELDS, VELOCITY_RECORD_LABELS } from '../../../models/aerospace-velocity-record.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { formatRecordSheetWeaponDamageText } from '../../record-sheet-weapon-info.util';
@@ -446,7 +448,56 @@ function setAeroLabeledValue(layer: SVGGElement, label: string, value: number | 
 export const AERO_LOWER_PANEL_TAB_NOTCH = 0.46;
 
 /** MegaMekLab's external stores key, shown until bombs are loaded. */
-export const AERO_DEFAULT_BOMB_KEY: readonly string[] = ['HE - High Explosive', 'LG - Laser Guided', 'C - Cluster', 'RL - Rocket Launcher'];
+export const AERO_DEFAULT_BOMB_KEY: readonly KeyedBombType[] = Object.freeze(
+    ['HEBomb', 'LGBomb', 'ClusterBomb', 'RL 10 Ammo (Bomb)'].map(id => bombType(id)!).filter(isKeyedBomb));
+/** MegaMekLab's template keys the stores in their right half, out to the stores' right edge. */
+const BOMB_KEY_X = 59.484;
+const BOMB_KEY_WIDTH = 124.375 - BOMB_KEY_X;
+
+/**
+ * Writes the key under its title in aligned columns: abbreviation, dash and meaning. A meaning too wide for its
+ * column wraps under itself; the key grows downward as it needs. Without entries the title hides.
+ */
+export function drawAeroBombKey(key: SVGGElement, entries: readonly KeyedBombType[]): void {
+    const title = key.querySelector<SVGTextElement>('.bombKeyTitle');
+    if (!title) return;
+    title.style.display = entries.length > 0 ? '' : 'none';
+    key.querySelectorAll('.bombKeyLine').forEach(line => line.remove());
+    const left = Number(key.dataset['x']);
+    const step = Number(key.dataset['step']);
+    const top = Number(title.getAttribute('y'));
+    const size = Number(title.getAttribute('font-size'));
+    let row = 0;
+    const write = (value: string, at: number) =>
+        addText(key, value, at, top + row * step, { size, class: 'bombKeyLine' });
+    const probe = write('', left);
+    const measure = (value: string) => measureSvgTextCanvas(probe, value);
+    const dash = left + Math.max(...entries.map(entry => measure(entry.label)), 0) + measure(' ');
+    const meaning = dash + measure('- ');
+    const room = left + Number(key.dataset['width']) - meaning;
+    const lines = entries.map(entry => ({ entry, parts: wrapToWidth(entry.key, room, measure) }));
+    probe.remove();
+    for (const { entry, parts } of lines) {
+        row++;
+        write(entry.label, left);
+        write('-', dash);
+        parts.forEach((part, index) => {
+            if (index > 0) row++;
+            write(part, meaning);
+        });
+    }
+}
+
+/** Word-wraps a value to a measured width; a single word wider than it keeps its own line. */
+function wrapToWidth(value: string, width: number, measure: (value: string) => number): readonly string[] {
+    const lines: string[] = [];
+    for (const word of value.split(' ')) {
+        const current = lines.at(-1);
+        if (current !== undefined && measure(`${current} ${word}`) <= width) lines[lines.length - 1] = `${current} ${word}`;
+        else lines.push(word);
+    }
+    return lines;
+}
 
 export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, box: Box): void {
     // MegaMekLab PrintAero draws one store per bomb hardpoint, external and internal.
@@ -498,11 +549,16 @@ export function drawAeroExternalStores(svg: SVGSVGElement, entity: AeroEntity, b
     const rows = Math.ceil(count / columns);
     if (rows < 4) {
         const top = 15.25 + rows * 23.794 + 7;
-        addText(group, 'Key:', x(6.408), y(top), { size: font(5.7), weight: 700, class: 'bombKeyTitle' });
-        AERO_DEFAULT_BOMB_KEY.forEach((line, index) => {
-            const text = addText(group, line, x(6.408), y(top + (index + 1) * 7), { size: font(5.7), class: 'bombKeyLine' });
-            text.setAttribute('data-max-width', formatNumber(x(112)));
+        const key = svgElement('g');
+        setAttributes(key, {
+            class: 'bombKey',
+            'data-x': formatNumber(x(BOMB_KEY_X)),
+            'data-width': formatNumber(x(BOMB_KEY_WIDTH)),
+            'data-step': formatNumber(y(7)),
         });
+        addText(key, 'Key:', x(BOMB_KEY_X), y(top), { size: font(5.7), weight: 700, class: 'bombKeyTitle' });
+        group.appendChild(key);
+        drawAeroBombKey(key, AERO_DEFAULT_BOMB_KEY);
     }
     svg.appendChild(group);
 }

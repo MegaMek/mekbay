@@ -337,6 +337,13 @@ export interface MekMovementRuntimeContextInputV2 {
         slotId: import('../entity/entity-identifiers').CriticalSlotId,
     ): number | undefined;
     locationDestroyed(locationId: import('../entity/entity-identifiers').LocationId): boolean;
+    /** Whether the part of a component in one location still works. */
+    componentAvailableAt(
+        componentId: ComponentId,
+        locationId: import('../entity/entity-identifiers').LocationId,
+    ): boolean;
+    /** Whether a weapon mounted in the location fired this turn. */
+    weaponFiredAt(locationId: import('../entity/entity-identifiers').LocationId): boolean;
     shieldDamage(componentId: ComponentId, track: MekShieldTrack): number;
 }
 
@@ -550,6 +557,8 @@ export function projectMekPhysicalAttacksContextV2(
         criticalSlotDestroyedTurn: input.criticalSlotDestroyedTurn,
         criticalSlotUnavailable: input.criticalSlotUnavailable,
         locationDestroyed: input.locationDestroyed,
+        componentAvailableAt: input.componentAvailableAt,
+        weaponFiredAt: input.weaponFiredAt,
         shieldDamage: input.shieldDamage,
     });
     return projectMekPhysicalAttacksV2(binding.profile, binding.index, facts);
@@ -594,6 +603,8 @@ export function projectMekCombatModifiersContextV2(
         componentAvailable: input.componentAvailable,
         criticalSlotUnavailable: input.criticalSlotUnavailable,
         locationDestroyed: input.locationDestroyed,
+        componentAvailableAt: input.componentAvailableAt,
+        weaponFiredAt: input.weaponFiredAt,
     }));
 }
 

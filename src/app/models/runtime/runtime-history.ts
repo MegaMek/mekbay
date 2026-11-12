@@ -363,6 +363,7 @@ function formatHeatChange(data: readonly JsonValue[]): string {
         case 0: return `Heat ${before} → ${after}`;
         case 1: return `Heat target ${before} → ${after}`;
         case 2: return `Heat sinks off ${before} → ${after}`;
+        case 3: return `Outside heat ${before} → ${after}`;
         default: return 'Updated heat';
     }
 }

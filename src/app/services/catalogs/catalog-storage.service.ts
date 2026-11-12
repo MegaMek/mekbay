@@ -37,7 +37,8 @@ export const MAX_PRESENTATION_CATALOG_WIRE_LENGTH = 16 * 1024 * 1024;
 
 @Injectable({ providedIn: 'root' })
 export class CatalogStorage {
-  private readonly database = openDatabase();
+  // A newer MekBay tab owns the schema after a version change; the catalog cache then stays empty.
+  private database = openDatabase(() => { this.database = Promise.resolve(undefined); });
 
   async get<T>(key: string): Promise<T | undefined> {
     return (await this.getEntry<T>(key))?.payload;
@@ -159,7 +160,7 @@ export function fluffImageCatalogKey(provider: UnitProviderId): string {
   return `${provider}:fluff-images`;
 }
 
-function openDatabase(): Promise<IDBDatabase | undefined> {
+function openDatabase(onVersionChange: () => void): Promise<IDBDatabase | undefined> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(undefined);
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(ASSET_CATALOG_DATABASE_NAME, ASSET_CATALOG_DATABASE_VERSION);
@@ -170,7 +171,10 @@ function openDatabase(): Promise<IDBDatabase | undefined> {
       }
     };
     request.onsuccess = () => {
-      request.result.onversionchange = () => request.result.close();
+      request.result.onversionchange = () => {
+        request.result.close();
+        onVersionChange();
+      };
       resolve(request.result);
     };
     request.onerror = () => reject(request.error ?? new Error('Failed to open asset catalog cache'));

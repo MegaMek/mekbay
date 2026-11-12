@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { getMekLegLocations, type MekConfig } from '../types/mek';
+import { getMekLegLocations, isQuadMekConfig, QUAD_REAR_LEG_LOCATIONS, type MekConfig } from '../types/mek';
 import type { EquipmentFlag } from '../../equipment-flags.type';
 import type {
   IntrinsicWeapon,
@@ -20,7 +20,7 @@ import {
 } from './physical-weapon-kernel';
 
 export interface MekIntrinsicEquipmentFact {
-  /** Primary installation location. This intentionally matches MekEntity's location index. */
+  /** An installation location; a mount occupying several locations contributes one fact per location. */
   readonly location: string | null;
   readonly flags: ReadonlySet<EquipmentFlag>;
 }
@@ -50,8 +50,13 @@ export function buildMekIntrinsicActions(
   const tsm = facts.equipment.some(item =>
     tripleStrengthMyomerKindFromFlags(item.flags) === 'standard');
   const legLocations = getMekLegLocations(facts.config);
-  const talons = legLocations.length > 0 && legLocations.every(location =>
+  const talonsIn = (locations: readonly string[]) => locations.length > 0 && locations.every(location =>
     facts.equipment.some(item => item.location === location && isTalonFlags(item.flags)));
+  const talons = talonsIn(legLocations);
+  const kickDamageWith = (withTalons: boolean) => withTalons
+    ? Math.ceil(Math.ceil(facts.tonnage / 5) * 1.5)
+    : Math.ceil(facts.tonnage / 5);
+  const legAes = legLocations.every(location => hasActuatorEnhancementSystemAt(facts.equipment, location));
 
   if (hasArms) {
     for (const side of ['left', 'right'] as const) {
@@ -77,16 +82,21 @@ export function buildMekIntrinsicActions(
 
   }
 
-  const kickDamage = talons
-    ? Math.ceil(Math.ceil(facts.tonnage / 5) * 1.5)
-    : Math.ceil(facts.tonnage / 5);
+  const kickDamage = kickDamageWith(talons);
   attacks.push(action(
     'kick', 'kick', talons ? 'Kick [Talons]' : 'Kick', [],
     fixedDamage(kickDamage, tsm, isLam ? Math.ceil(kickDamage / 2) : undefined),
-    legLocations.every(location => hasActuatorEnhancementSystemAt(
-      facts.equipment, location,
-    )) ? -1 : 0,
+    legAes ? -1 : 0,
   ));
+  // A quad can kick into its rear arc instead; its talon bonus needs talons on both rear legs (TW p. 147; Core p. 81).
+  if (isQuadMekConfig(facts.config)) {
+    const rearTalons = talonsIn(QUAD_REAR_LEG_LOCATIONS);
+    attacks.push(action(
+      'mule-kick', 'mule-kick', rearTalons ? 'Mule Kick [Talons]' : 'Mule Kick', [],
+      fixedDamage(kickDamageWith(rearTalons), tsm),
+      legAes ? -1 : 0,
+    ));
+  }
 
   if (hasArms && facts.handActuators.left && facts.handActuators.right) {
     const armAes = hasActuatorEnhancementSystemAt(facts.equipment, 'LA')

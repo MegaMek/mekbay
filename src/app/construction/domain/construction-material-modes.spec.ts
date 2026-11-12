@@ -8,7 +8,7 @@ import { encodeNativeEntity } from '../../models/entity/write-entity';
 import { parseEntity } from '../../models/entity/parse-entity';
 import { FixedWingSupportEntity, MekEntity } from '../../models/entity/entities';
 import { calculateMekStructureWeight } from '../../models/entity/utils/weight/mek-weight';
-import { calculateBattleValueDetails } from '../../models/entity/utils/battle-value';
+import { calculateBattleValueDetails } from '../../models/entity/utils/battle-value/factory';
 import { alphaStrikeArmor } from '../../models/entity/utils/alpha-strike/foundation/integrity';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
 import { MountedArmor } from '../../models/entity/components';

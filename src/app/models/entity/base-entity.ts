@@ -104,7 +104,9 @@ import { EquipmentRegistry } from '../equipment-lookup';
 import { getBayTransporterType, isQuartersBay } from './bays/bay-definitions';
 import { CLAN_EXCEPTIONAL_BAY_IDS, weaponBayEquipmentId } from './utils/implicit-equipment';
 import { calculateEntityCostDetails } from './utils/cost/entity-cost';
-import { calculateBattleValueDetails, getOffensiveSpeedFactor, type BattleValueBreakdown } from './utils/battle-value';
+import { getOffensiveSpeedFactor } from './utils/battle-value';
+import { calculateBattleValueDetails } from './utils/battle-value/factory';
+import type { BattleValueBreakdown } from './utils/battle-value/bv-calculator';
 import { reconcileEquipmentRelationships } from './utils/equipment-relationship-rules';
 import { canLinkEquipment as isCompatibleEquipmentLink } from './utils/equipment-link-rules';
 import { calculateEntityEffectiveTonnage } from './utils/weight/entity-weight';
@@ -370,6 +372,8 @@ export abstract class BaseEntity implements EntityTechnology {
   readonly source = signal<SourcebookReference[]>([]);
   readonly published = signal<SourcebookReference[]>([]);
   readonly forceGeneratorAvailability = signal<readonly ForceGeneratorAvailability[]>([]);
+  /** Force Generator mission roles as the file declares them, e.g. "fire_support,urban"; blank when none. */
+  readonly missionRoles = signal<string>('');
   readonly canon = computed(() => [...this.source(), ...this.published()].some((source) => source.canon));
   generator?: string; // software who created the file
   /** Native text formatting needed only for exact parse/write round trips. */

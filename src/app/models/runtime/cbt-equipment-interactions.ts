@@ -16,7 +16,9 @@ EquipmentInteractionKind,
 EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 import { canPerformMekAction } from './mek-action-availability';
-import { projectNonMekEscalatingFailureInteractions } from './non-mek-unit-instance';
+import { nonMekComponentModes, projectNonMekEscalatingFailureInteractions } from './non-mek-unit-instance';
+import { hasFlamerModes } from '../flamer-mode.model';
+import { FLAMER_HANDLER_ID, flamerModeChoice } from './component-flamer';
 
 type ExpandedEquipmentInteractionChoiceBinding = EquipmentInteractionChoiceBinding & Readonly<{
     groupLabel?: string;
@@ -94,6 +96,8 @@ interface NonMekEquipmentChoiceBinding {
     readonly handlerId: EquipmentInteractionHandlerId;
     readonly kind: EquipmentInteractionKind;
     readonly choice: EquipmentInteractionChoice;
+    /** The dropdown an expanded option belongs to. */
+    readonly groupLabel?: string;
     readonly select: (context: EquipmentInteractionCommandContext) => boolean;
 }
 
@@ -148,7 +152,24 @@ function nonMekEquipmentChoiceBindings(
                     selectComponentJam(unit, definition, choice, commandContext),
             }));
     });
-    return Object.freeze([...escalatingFailures, ...jams]);
+    const flamerModes = [...index.components.values()].flatMap(component => {
+        const { modes } = nonMekComponentModes(unit.getUnit(), component.mount.equipment, unit.ruleset());
+        if (!hasFlamerModes(modes) || unit.query().componentStatus(component.id) !== 'available') return [];
+        const current = unit.query().componentMode(component.id);
+        return expandEquipmentDropdownBinding({
+            componentId: component.id,
+            componentLabel: component.mount.displayName(),
+            handlerId: FLAMER_HANDLER_ID,
+            kind: 'component-mode' as const,
+            choice: flamerModeChoice(current, modes),
+        }).map((option): NonMekEquipmentChoiceBinding => Object.freeze({
+            ...option,
+            select: () => option.choice.value === current || unit.dispatch({
+                type: 'set-component-mode', componentId: component.id, mode: String(option.choice.value),
+            }).accepted,
+        }));
+    });
+    return Object.freeze([...escalatingFailures, ...jams, ...flamerModes]);
 }
 
 export function projectNonMekEquipmentInteractions(
@@ -171,6 +192,7 @@ export function projectNonMekEquipmentInteractions(
             binding.kind,
             binding.choice,
             readOnly || binding.choice.disabled === true,
+            binding.groupLabel,
         ));
         rows.set(binding.componentId, row);
     }
@@ -198,9 +220,9 @@ export function selectNonMekEquipmentChoice(
     return binding === undefined ? null : binding.select(commandContext);
 }
 
-export function expandEquipmentDropdownBinding(
-    binding: EquipmentInteractionChoiceBinding,
-): readonly ExpandedEquipmentInteractionChoiceBinding[] {
+export function expandEquipmentDropdownBinding<T extends Readonly<{ choice: EquipmentInteractionChoice }>>(
+    binding: T,
+): readonly (T & Readonly<{ groupLabel?: string }>)[] {
     const options = binding.choice.choices;
     if (!options?.length) return Object.freeze([binding]);
     const { choices: _options, ...baseChoice } = binding.choice;

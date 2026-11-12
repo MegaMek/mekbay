@@ -194,6 +194,7 @@ export function isMekTurnPanelDirty(snapshot: MekTurnPanelSnapshot): boolean {
         || snapshot.turn.airborne !== null
         || snapshot.turn.cover !== null
         || snapshot.turn.weaponsHeat > 0
+        || (snapshot.turn.outsideHeat ?? 0) > 0
         || snapshot.turn.acknowledgedHeatSources.size > 0
         || snapshot.turn.heatDissipationConsumed > 0
         || snapshot.turn.spotting

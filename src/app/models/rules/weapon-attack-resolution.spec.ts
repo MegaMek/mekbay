@@ -20,9 +20,9 @@ describe('weapon attack resolution', () => {
     it('rolls missiles on the Cluster Hits Table and groups them in five-point clusters', () => {
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: lrm15, mode: undefined, damage: { values: [1], maximum: 15, unit: 'missile' }, ammo: lrmAmmo, types: [], name: 'LRM 15', targetNumber: 8, partialCover: false }, TW_GAME_RULES)!;
 
-        expect(resolveWeaponAttack(profile, [3, 4], [6, 6])).toEqual({ hit: false, jammed: false, hits: 0, groups: [] });
+        expect(resolveWeaponAttack(profile, [3, 4], [6, 6])).toEqual({ hit: false, jammed: false, hits: 0, groups: [], heat: 0 });
         // Roll 8 on the 15 column: 9 missiles → 5 + 4.
-        expect(resolveWeaponAttack(profile, [4, 4], [4, 4])).toEqual({ hit: true, jammed: false, hits: 9, groups: [5, 4] });
+        expect(resolveWeaponAttack(profile, [4, 4], [4, 4])).toEqual({ hit: true, jammed: false, hits: 9, groups: [5, 4], heat: 0 });
         // Artemis-style modifiers are clamped to the table.
         expect(resolveWeaponAttack(profile, [6, 6], [6, 6], 2).hits).toBe(15);
     });
@@ -34,7 +34,7 @@ describe('weapon attack resolution', () => {
         });
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: streak, mode: undefined, damage: { values: [2], maximum: 8, unit: 'missile' }, ammo: null, types: [], name: 'Streak SRM 4', targetNumber: 7, partialCover: false }, TW_GAME_RULES)!;
 
-        expect(resolveWeaponAttack(profile, [5, 2], null)).toEqual({ hit: true, jammed: false, hits: 4, groups: [2, 2, 2, 2] });
+        expect(resolveWeaponAttack(profile, [5, 2], null)).toEqual({ hit: true, jammed: false, hits: 4, groups: [2, 2, 2, 2], heat: 0 });
     });
 
     it('treats direct-fire weapons as one hit and rapid-fire shots as separate locations', () => {
@@ -48,10 +48,10 @@ describe('weapon attack resolution', () => {
         });
 
         expect(resolveWeaponAttack(weaponAttackProfile({ componentId: weaponId, equipment: laser, mode: undefined, damage: { values: [8], maximum: 8 }, ammo: null, types: [], name: 'LL', targetNumber: 6, partialCover: false }, TW_GAME_RULES)!,
-            [3, 3], null)).toEqual({ hit: true, jammed: false, hits: 1, groups: [8] });
+            [3, 3], null)).toEqual({ hit: true, jammed: false, hits: 1, groups: [8], heat: 0 });
         const ultra = weaponAttackProfile({ componentId: weaponId, equipment: uac, mode: 'Ultra', damage: { values: [5], maximum: 10, unit: 'shot' }, ammo: null, types: [], name: 'UAC', targetNumber: 6, partialCover: false }, TW_GAME_RULES)!;
         // Roll 8 on the 2 column: both shots hit, each rolling its own location.
-        expect(resolveWeaponAttack(ultra, [4, 4], [4, 4])).toEqual({ hit: true, jammed: false, hits: 2, groups: [5, 5] });
+        expect(resolveWeaponAttack(ultra, [4, 4], [4, 4])).toEqual({ hit: true, jammed: false, hits: 2, groups: [5, 5], heat: 0 });
         expect(weaponAttackProfile({ componentId: weaponId, equipment: uac, mode: 'Single', damage: { values: [5], maximum: 10, unit: 'shot' }, ammo: null, types: [], name: 'UAC', targetNumber: 6, partialCover: false }, TW_GAME_RULES)!
             .projectiles).toBe(1);
     });
@@ -85,7 +85,7 @@ describe('weapon attack resolution', () => {
         });
         const profile = weaponAttackProfile({ componentId: weaponId, equipment: array, mode: undefined, damage: { values: [2], maximum: 8, unit: 'shot' }, ammo: null, types: [], name: 'MGA', targetNumber: 6, partialCover: false }, TW_GAME_RULES)!;
         // Roll 7 on the 4 column: 3 guns hit.
-        expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({ hit: true, jammed: false, hits: 3, groups: [2, 2, 2] });
+        expect(resolveWeaponAttack(profile, [4, 4], [3, 4])).toEqual({ hit: true, jammed: false, hits: 3, groups: [2, 2, 2], heat: 0 });
     });
 
     it('jams rapid-firing autocannons on low to-hit rolls, by ruleset', () => {

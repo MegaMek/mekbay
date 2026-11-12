@@ -86,6 +86,8 @@ export interface MekTurnStateV2 {
     readonly airborne: boolean | null;
     readonly cover: UnitCover | null;
     readonly weaponsHeat: number;
+    /** Heat from outside sources such as inferno missiles, capped per turn; absent at 0. */
+    readonly outsideHeat?: number;
     readonly acknowledgedHeatSources: ReadonlyMap<string, string>;
     readonly heatDissipationConsumed: number;
     readonly spotting: boolean;
@@ -113,6 +115,7 @@ export interface SerializedMekTurnStateV2 {
     readonly airborne?: boolean;
     readonly cover?: ReturnType<typeof serializeUnitCover>;
     readonly weaponsHeat?: number;
+    readonly outsideHeat?: number;
     readonly acknowledgedHeatSources?: readonly {
         readonly sourceId: string;
         readonly signature: string;
@@ -140,6 +143,7 @@ const TURN_KEYS = Object.freeze([
     'airborne',
     'cover',
     'weaponsHeat',
+    'outsideHeat',
     'acknowledgedHeatSources',
     'heatDissipationConsumed',
     'spotting',
@@ -154,6 +158,7 @@ const TURN_KEYS = Object.freeze([
 
 const REQUIRED_TURN_KEYS = TURN_KEYS.filter(key =>
     key !== 'endTurnCheckpoint'
+    && key !== 'outsideHeat'
     && key !== 'joinedStep'
     && key !== 'pendingFallConsequences'
     && key !== 'pendingCriticalEvents'
@@ -189,6 +194,9 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
         airborne: nullableBoolean(record['airborne'], '$.airborne'),
         cover: nullableUnitCover(record['cover'], '$.cover'),
         weaponsHeat: turnNumber(record['weaponsHeat'], '$.weaponsHeat'),
+        ...(record['outsideHeat'] === undefined || record['outsideHeat'] === 0
+            ? {}
+            : { outsideHeat: turnNumber(record['outsideHeat'], '$.outsideHeat') }),
         acknowledgedHeatSources: canonicalStringMap(
             record['acknowledgedHeatSources'],
             '$.acknowledgedHeatSources',
@@ -265,6 +273,9 @@ export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
             : requiredBoolean(record['airborne'], '$.airborne'),
         cover: deserializeSparseCover(record['cover'], '$.cover'),
         weaponsHeat: sparsePositiveNumber(record['weaponsHeat'], '$.weaponsHeat'),
+        ...(record['outsideHeat'] === undefined
+            ? {}
+            : { outsideHeat: sparsePositiveNumber(record['outsideHeat'], '$.outsideHeat') }),
         acknowledgedHeatSources: deserializeStringEntries(
             record['acknowledgedHeatSources'],
             '$.acknowledgedHeatSources',

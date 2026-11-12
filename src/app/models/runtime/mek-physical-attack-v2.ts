@@ -2,11 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ComponentId, LocationId } from '../entity/entity-identifiers';
-import type { MekMechanicsProfile } from './mek-mechanics-profile';
+import { groupAvailable, type MekLimbProfile, type MekMechanicsProfile } from './mek-mechanics-profile';
+import {
+    kickActuatorLegs,
+    kickTalonLegs,
+    kickTalonsIntact,
+    selectMekKickingLeg,
+    type MekKickKind,
+} from './mek-kicking-leg';
 import {
     isFlailFlags,
     isHandClawFlags,
-    isTalonFlags,
     physicalEquipmentOperatingHeatFromFlags,
     resolvePhysicalWeaponDamageFromFlags,
 } from '../entity/utils/physical-weapon-kernel';
@@ -22,7 +28,6 @@ import type { AttackerActionSelection, AttackerActionTarget } from './attacker-t
 import type { MekMovementModeV2 } from './mek-movement-psr-v2';
 import { calculateChargeDamage } from '../rules/charge-damage';
 import {
-    equipmentForComponent,
     mountedEquipmentForComponent,
     type MekRuntimeIndex,
     type MekIndexedLocation,
@@ -43,6 +48,9 @@ export interface MekPhysicalAttackRuntimeFactsV2 extends MekShieldRuntimeFactsV2
     ): number | undefined;
     criticalSlotUnavailable(slotId: import('../entity/entity-identifiers').CriticalSlotId): boolean;
     locationDestroyed(locationId: LocationId): boolean;
+    componentAvailableAt(componentId: ComponentId, locationId: LocationId): boolean;
+    /** Whether a weapon mounted in the location fired this turn. */
+    weaponFiredAt(locationId: LocationId): boolean;
 }
 
 export type MekPhysicalAttackEffectV2 =
@@ -183,8 +191,14 @@ export function projectMekPhysicalAttacksV2(
             }));
         }
 
+        const kickingLegs = new Map((['kick', 'mule-kick'] as const).map(kind =>
+            [kind, selectMekKickingLeg(profile, index, facts, kind)]));
         for (const action of index.intrinsicActions) {
             const locationIds = action.locations.map(code => requireLocationId(index, code));
+            const kickingLeg = isKick(action.kind) ? kickingLegs.get(action.kind) ?? null : null;
+            // A mule kick uses both rear legs; only a front kick names its leg.
+            const kickingLegCode = action.kind !== 'kick' || kickingLeg === null
+                ? undefined : index.locations.get(kickingLeg.locationId)?.code;
             const effect = intrinsicEffect(
                 action,
                 profile,
@@ -194,10 +208,13 @@ export function projectMekPhysicalAttacksV2(
                 functionalTsm,
                 tsmActive,
                 shields,
+                kickingLeg,
             );
             attacks.push(Object.freeze({
                 target: Object.freeze({ kind: 'intrinsic' as const, actionId: action.id }),
-                label: action.name,
+                label: kickingLegCode !== undefined
+                    ? `${action.name} (${kickingLegCode})`
+                    : action.name,
                 locationIds: Object.freeze(locationIds),
                 locationCodes: Object.freeze([...action.locations]),
                 effect,
@@ -221,6 +238,7 @@ function intrinsicEffect(
     functionalTsm: boolean,
     tsmActive: boolean,
     shields: readonly import('./mek-shield-rules').MekShieldProjectionV2[],
+    kickingLeg: MekLimbProfile | null,
 ): MekPhysicalAttackEffectV2 {
     if (action.damage.kind === 'none') return Object.freeze({ kind: 'none' });
     if (action.damage.kind === 'per-hex') {
@@ -241,6 +259,7 @@ function intrinsicEffect(
 
     const constructionBase = action.damage.value;
     let baseDamage = currentFixedDamage(action, profile, index, facts);
+    let talons = false;
     if (action.kind === 'punch') {
         const location = action.locations[0];
         if (profile.rulesFlavor === 'core-2026') {
@@ -252,12 +271,13 @@ function intrinsicEffect(
             profile.limbs.filter(limb => locationCode(index, limb.locationId) === location),
             facts,
         );
-    } else if (action.kind === 'kick') {
+    } else if (isKick(action.kind)) {
         baseDamage = halveForUnavailableActuators(
             baseDamage,
-            profile.limbs.filter(limb => limb.kind === 'leg'),
+            kickActuatorLegs(profile, index, action.kind, kickingLeg),
             facts,
         );
+        talons = kickTalonsIntact(profile, index, facts, kickTalonLegs(profile, index, action.kind, kickingLeg)) === true;
     }
     const supportsTsm = action.damage.boostedValue !== undefined;
     return damageEffect(
@@ -266,9 +286,15 @@ function intrinsicEffect(
         supportsTsm && standardTsmInstalled,
         supportsTsm && functionalTsm,
         supportsTsm && tsmActive,
+        undefined,
+        talons,
     );
 }
 
+/**
+ * The damage before actuator and myomer effects. A kick starts from 1 point per 5 tons, its talons applied last
+ * (Core p. 81; MegaMek KickAttackAction); a death from above lands on every leg's talons.
+ */
 function currentFixedDamage(
     action: IntrinsicWeapon,
     profile: MekMechanicsProfile,
@@ -276,16 +302,15 @@ function currentFixedDamage(
     facts: MekPhysicalAttackRuntimeFactsV2,
 ): number {
     if (action.damage.kind !== 'fixed') throw new Error('Expected fixed physical damage');
-    if (action.kind !== 'kick' && action.kind !== 'death-from-above') return action.damage.value;
-    const talonGroups = profile.physicalWeapons.filter(group =>
-        isTalonFlags(equipmentForComponent(index, group.componentId)?.flags ?? new Set()));
-    if (talonGroups.length === 0 || talonGroups.every(group => groupAvailable(group, facts))) {
+    if (isKick(action.kind)) return Math.ceil(profile.declaredMassTons / 5);
+    if (action.kind !== 'death-from-above' || kickTalonsIntact(profile, index, facts, null) !== false) {
         return action.damage.value;
     }
-    const ordinary = action.kind === 'kick'
-        ? Math.ceil(profile.declaredMassTons / 5)
-        : Math.ceil(profile.declaredMassTons / 10 * 3);
-    return ordinary;
+    return Math.ceil(profile.declaredMassTons / 10 * 3);
+}
+
+function isKick(kind: IntrinsicWeapon['kind']): kind is MekKickKind {
+    return kind === 'kick' || kind === 'mule-kick';
 }
 
 function chargeEffect(
@@ -354,31 +379,22 @@ function damageEffect(
     tsmFunctional: boolean,
     tsmActive: boolean,
     alternateDamage?: number,
+    talons = false,
 ): MekPhysicalAttackEffectV2 {
-    const maximumDamage = tsmFunctional ? baseDamage * 2 : baseDamage;
-    const damage = tsmActive ? maximumDamage : baseDamage;
+    // Talons multiply a kick after its actuators and myomer, rounding normally (Core p. 81; BMM p. 109).
+    const talon = (value: number) => talons ? Math.round(value * 1.5) : value;
+    const maximumDamage = talon(tsmFunctional ? baseDamage * 2 : baseDamage);
+    const damage = tsmActive ? maximumDamage : talon(baseDamage);
+    const base = talon(baseDamage);
     return Object.freeze({
         kind: 'damage',
         damage,
         maximumDamage,
-        baseDamage,
-        weakened: baseDamage < constructionBase || (tsmInstalled && !tsmFunctional),
+        baseDamage: base,
+        weakened: base < constructionBase || (tsmInstalled && !tsmFunctional),
         boosted: tsmActive,
         ...(alternateDamage === undefined ? {} : { alternateDamage }),
     });
-}
-
-function groupAvailable(
-    group: {
-        readonly componentId: ComponentId;
-        readonly criticalSlotIds: readonly import('../entity/entity-identifiers').CriticalSlotId[];
-        readonly locationIds: readonly LocationId[];
-    },
-    facts: MekPhysicalAttackRuntimeFactsV2,
-): boolean {
-    return facts.componentAvailable(group.componentId)
-        && group.criticalSlotIds.every(slotId => !facts.criticalSlotUnavailable(slotId))
-        && group.locationIds.every(locationId => !facts.locationDestroyed(locationId));
 }
 
 function requireLocationId(index: MekRuntimeIndex, code: string): LocationId {

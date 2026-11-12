@@ -158,7 +158,7 @@ describe('construction panel DOM events', () => {
     expect(editor.entity().weaponQuirks()[0]?.location).toBe('RT');
   });
 
-  it('commits fluff text once when input is followed by the native change event', async () => {
+  it('commits fluff text once when the field loses focus', async () => {
     editor.panel.set('fluff');
     await render();
     const entity = editor.entity(),
@@ -166,7 +166,10 @@ describe('construction panel DOM events', () => {
     const textarea = root().querySelector<HTMLTextAreaElement>('construction-fluff textarea')!;
     textarea.value = 'Updated overview';
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await render();
+    expect(change).not.toHaveBeenCalled();
     textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    textarea.dispatchEvent(new Event('blur'));
     await render();
     expect(change).toHaveBeenCalledTimes(1);
     expect(editor.entity()).toBe(entity);

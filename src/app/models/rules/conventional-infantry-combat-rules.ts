@@ -3,6 +3,7 @@
 
 import type { InfantryEntity } from '../entity/entities/infantry/infantry-entity';
 import type { InfantryWeaponEquipment } from '../equipment.model';
+import { isHeatOrDamageWeapon } from '../flamer-mode.model';
 
 /** The conventional-infantry weapon reference used by the existing CBT sheet.
  * This is not the Core Rulebook's separate Infantry Asset conversion. */
@@ -59,6 +60,74 @@ export function projectConventionalInfantryCombat(
         rangeModifiers: infantryRangeModifiers(rangeWeapon, otherWeapon, false, primaryDamageCapped),
         underwaterRangeModifiers: underwater
             ? infantryRangeModifiers(rangeWeapon, otherWeapon, true, primaryDamageCapped) : null,
+    });
+}
+
+/**
+ * A conventional platoon's attack as play resolves it: the Cluster Hits Table is rolled on the troopers able to fire,
+ * and the damage those troopers deal is read from the same per-trooper damage the sheet prints (MegaMek
+ * InfantryWeaponHandler).
+ */
+export interface PlatoonAttackFacts {
+    /** Troopers firing: the Cluster Hits Table column. */
+    readonly troopers: number;
+    /** Damage dealt when that many troopers hit, indexed by troopers hitting. */
+    readonly damageByTroopers: readonly number[];
+    /** The range modifier at each hex distance; null out of range. */
+    readonly rangeModifiers: readonly (number | null)[];
+    /** An SRM platoon declared with Inferno munitions fires inferno missiles instead of damage (TW p. 142). */
+    readonly inferno: boolean;
+    /** The weapon whose heat the attack may deal in place of damage, if it carries one. */
+    readonly heatOrDamageWeapon: InfantryWeaponEquipment | null;
+}
+
+/** The platoon's standard weapon attack with its current troopers. */
+export function platoonAttack(entity: InfantryEntity, troopers: number): PlatoonAttackFacts {
+    const profile = projectConventionalInfantryCombat(entity);
+    const firing = Math.max(0, Math.min(troopers, profile.maximumStrength));
+    return Object.freeze({
+        troopers: firing,
+        damageByTroopers: Object.freeze(profile.damageByStrength.slice(0, firing + 1)),
+        rangeModifiers: profile.rangeModifiers,
+        inferno: entity.firesInfernoSrms(),
+        heatOrDamageWeapon: platoonHeatOrDamageWeapon(entity),
+    });
+}
+
+/**
+ * The platoon weapon whose heat the platoon may deal in place of damage: either weapon gives the attack that choice
+ * (TW p. 214; TechManual's flame-based feature applies with one or more such weapons). A platoon firing inferno SRMs
+ * fires missiles instead, as MegaMek resolves those first.
+ */
+export function platoonHeatOrDamageWeapon(entity: InfantryEntity): InfantryWeaponEquipment | null {
+    if (entity.firesInfernoSrms()) return null;
+    const secondary = entity.secondaryCount() > 0 ? entity.secondaryWeapon() : null;
+    return [entity.primaryWeapon(), secondary].find(weapon => isHeatOrDamageWeapon(weapon)) ?? null;
+}
+
+/** The platoon attack's name: its primary weapon, and its secondary weapon when it has one. */
+export function platoonAttackLabel(entity: InfantryEntity): string {
+    const names = [entity.primaryWeapon(), entity.secondaryCount() > 0 ? entity.secondaryWeapon() : null]
+        .flatMap(weapon => weapon === null ? [] : [weapon.name]);
+    return names.join(' + ');
+}
+
+/**
+ * The once-per-scenario disposable weapon attack, made instead of the platoon's standard attack: three times the
+ * weapon's damage per trooper hitting, at the weapon's own ranges (TO:AuE p. 116; MegaMek
+ * InfantryDisposableWeaponHandler).
+ */
+export function disposableWeaponAttack(entity: InfantryEntity, troopers: number): PlatoonAttackFacts | null {
+    const weapon = entity.disposableWeapon();
+    if (weapon === null) return null;
+    const damagePerTrooper = entity.platoonWeaponDamagePerTrooper('disposable');
+    const firing = Math.max(0, troopers);
+    return Object.freeze({
+        troopers: firing,
+        damageByTroopers: Object.freeze(Array.from({ length: firing + 1 }, (_, hit) => Math.round(damagePerTrooper * hit))),
+        rangeModifiers: infantryRangeModifiers(weapon, null, false, false),
+        inferno: false,
+        heatOrDamageWeapon: null,
     });
 }
 

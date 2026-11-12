@@ -159,7 +159,7 @@ describe('advanced Mek construction combinations', () => {
         entity.removeEquipment(charger);
         equipment(entity, ['F_MASC']);
         expect(codes(entity)).toContain('MEK_AES_MASC');
-        entity.myomerType.set('Triple Strength');
+        equipment(entity, ['F_TSM']);
         expect(codes(entity)).toContain('MEK_MASC_MYOMER');
         expect(codes(entity)).toContain('MEK_AES_MYOMER');
     });

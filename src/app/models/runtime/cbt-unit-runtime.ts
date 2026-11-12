@@ -140,6 +140,8 @@ export interface CBTTurnRuntimeState {
     readonly airborne: boolean | null;
     readonly cover: UnitCover | null;
     readonly weaponsHeat: number;
+    /** Heat from outside sources such as inferno missiles, settled with this turn's heat; absent at 0. */
+    readonly outsideHeat?: number;
     readonly spotting: boolean;
     /** A committed phase-scoped edit exists and has not crossed End Phase yet. */
     readonly phaseStateChanged: boolean;
@@ -160,6 +162,7 @@ export function serializeSharedTurnFacts(turn: CBTTurnRuntimeState) {
         ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
         ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...(turn.outsideHeat ? { outsideHeat: turn.outsideHeat } : {}),
         ...(turn.spotting ? { spotting: true as const } : {}),
         ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
         ...(turn.endTurnCheckpoint === undefined ? {} : { endTurnCheckpoint: turn.endTurnCheckpoint }),

@@ -16,6 +16,7 @@ import {
   ammoMatchesWeapon,
 } from '../../models/equipment.model';
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
+import { mekMyomerTypeOf } from '../../models/myomer-equipment.model';
 import { getStructureByTypeId, MountedArmor, MountedStructure } from '../../models/entity/components';
 import {
   AeroEntity,
@@ -909,24 +910,15 @@ function removeConstructionOmniArmActuators(entity: BaseEntity, equipment: Equip
 
 /** Resolve the same legal donor for both the myomer selector and its installation. */
 export function constructionMyomerEquipment(entity: MekEntity, type: string): Equipment | undefined {
-  const flags: Record<string, EquipmentFlag> = {
-    'Triple Strength': 'F_TSM',
-    'Industrial Triple Strength': 'F_INDUSTRIAL_TSM',
-    'Super-Cooled': 'F_SCM',
-  };
-  const flag = flags[type];
-  return flag
-    ? Object.values(entity.getEquipmentRegistry().equipment).find(
-        (candidate) =>
-          candidate instanceof MiscEquipment &&
-          candidate.hasFlag(flag) &&
-          !candidate.hasFlag('F_PROTOTYPE') &&
-          constructionEquipmentEligibilityIssues(entity, candidate).length === 0,
-      )
-    : undefined;
+  return Object.values(entity.getEquipmentRegistry().equipment).find(
+    (candidate) =>
+      candidate instanceof MiscEquipment &&
+      mekMyomerTypeOf(candidate) === type &&
+      constructionEquipmentEligibilityIssues(entity, candidate).length === 0,
+  );
 }
 
-/** The MTF myomer header accompanies the mounted system that supplies its actual rules and slots. */
+/** The myomer is its mounted system; the MTF header is derived from it. */
 export function setConstructionMyomer(entity: MekEntity, type: string): void {
   const equipment = constructionMyomerEquipment(entity, type);
   if (type !== 'Standard' && !equipment)
@@ -946,7 +938,6 @@ export function setConstructionMyomer(entity: MekEntity, type: string): void {
         armored: false,
       });
     }
-    entity.myomerType.set(type);
   } catch (error) {
     entity.setEquipment(previous);
     throw error;

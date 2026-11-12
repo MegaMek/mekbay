@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, Injector } from '@angular/core';
 import { Subject } from 'rxjs';
 import type { Options } from '../models/options.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { decodeRemoteLoadForceEntry, type RemoteLoadForceEntry } from '../models/remote-load-force-entry.model';
 import { DialogsService } from './dialogs.service';
+import { AppUpdateService } from './app-update.service';
 import type { SerializedSearchFilter } from './unit-search-filters.model';
 import { LoggerService } from './logger.service';
 import type { SerializedOperation } from '../models/operation.model';
@@ -222,6 +223,7 @@ export class DbService {
     private dbPromise: Promise<IDBDatabase | null>;
     private logger = inject(LoggerService);
     private dialogsService = inject(DialogsService);
+    private injector = inject(Injector);
     
     /** Whether blob storage is unavailable (iOS Safari Private Mode) */
     private blobStorageUnavailable = false;
@@ -402,6 +404,10 @@ export class DbService {
                 db.onversionchange = () => {
                     this.logger.warn('IndexedDB schema changed in another tab; closing this stale connection.');
                     db.close();
+                    // Only a newer MekBay (or a database reset) changes the schema, and this tab's code cannot
+                    // reopen it. Run without local storage, as after "continue without storage", until reload.
+                    this.dbPromise = Promise.resolve(null);
+                    void this.requestReloadForNewerVersion();
                 };
                 resolve(db);
             };
@@ -410,6 +416,21 @@ export class DbService {
             // recovery path owns exactly one actionable dialog.
             request.onblocked = () => rejectOnce(new IndexedDbUpgradeBlockedError());
         });
+    }
+
+    private async requestReloadForNewerVersion(): Promise<void> {
+        const appUpdate = this.injector.get(AppUpdateService);
+        appUpdate.updatePending.set(true);
+        const choice = await this.dialogsService.choose<'reload' | 'later'>(
+            'Reload required',
+            'Another MekBay tab updated or reset this device\'s storage. This tab cannot save until it reloads.',
+            [
+                { label: 'RELOAD', value: 'reload' },
+                { label: 'LATER', value: 'later' },
+            ],
+            'later',
+        );
+        if (choice === 'reload') await appUpdate.restartForUpdate();
     }
 
     private createStoreIfMissing(db: IDBDatabase, transaction: IDBTransaction | null, storeName: string, indexName?: string) {
@@ -1134,6 +1155,8 @@ export class DbService {
         if (!force.instanceId) {
             throw new Error('Force instance ID is required for saving.');
         }
+        // Without storage (a stale tab, or chosen) the save is skipped before any artwork is prepared.
+        if (!await this.dbPromise) return;
         // Live owners save V2. Background downloads may cache an intact V1
         // source until an explicit load can warn about best-effort conversion.
         if (force.version === 2 && force.cbt) {

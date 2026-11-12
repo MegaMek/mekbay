@@ -29,7 +29,7 @@ import type {
     RecordSheetPipLayout,
 } from '../../models/options.model';
 import { INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
-import { CBT_RULESET_LABELS } from '../../models/cbt-ruleset.model';
+import { CBT_RULESET_LABELS, type CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { InitiativeOrderMode } from '../../models/rules/initiative-rules';
 import { LobbyService } from '../../services/lobby.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -219,13 +219,16 @@ export class OptionsDialogComponent {
     /** A lobby sets the rules (and Initiative settings) its players use. */
     readonly inLobby = inject(LobbyService).hasLobby;
     private readonly forceBuilder = inject(ForceBuilderService);
-    readonly cbtOptionalRules: ReadonlyArray<{ key: keyof CBTOptionalRules; label: string }> = [
+    /** A rule with a ruleset is offered only under it. */
+    readonly cbtOptionalRules: ReadonlyArray<{ key: keyof CBTOptionalRules; label: string; ruleset?: CBTRuleset }> = [
         { key: 'quirks', label: 'Quirks' },
         { key: 'floatingCriticals', label: 'Floating criticals' },
         { key: 'sprinting', label: 'Sprinting (Meks only)' },
         { key: 'extremeRange', label: '"Extreme" range' },
         { key: 'hotLoadedAmmo', label: 'Hot-Loaded Ammo' },
         { key: 'allowMixedTechBaseAmmo', label: 'Allow mixed IS/Clan ammunition' },
+        // Core flamers always deal heat and damage (Core p. 183).
+        { key: 'enhancedFlamers', label: 'Enhanced flamers', ruleset: 'total-warfare' },
         { key: 'forcedWithdrawal', label: 'Forced withdrawal (Cripple)' },
     ];
     forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));

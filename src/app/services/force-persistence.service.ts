@@ -45,6 +45,7 @@ import { DataService } from './data.service';
 import { DbService } from './db.service';
 import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
+import { ToastService } from './toast.service';
 import { UserStateService } from './userState.service';
 import { UnitRuntimeService } from './unit-runtime.service';
 import { CBTUnitService } from './cbt-unit.service';
@@ -145,6 +146,7 @@ export class ForcePersistenceService {
     private readonly userStateService = inject(UserStateService);
     private readonly unitRuntimeService = inject(UnitRuntimeService);
     private readonly logger = inject(LoggerService);
+    private readonly toast = inject(ToastService);
     private readonly injector = inject(Injector);
     private readonly destroyRef = inject(DestroyRef);
 
@@ -830,6 +832,12 @@ export class ForcePersistenceService {
                     await this.saveForce(force);
                 } catch (error) {
                     this.logger.error(`Could not auto-save force ${force.instanceId() ?? force.name}: ${error}`);
+                    // One toast slot: repeated failures update it instead of stacking.
+                    this.toast.showToast(
+                        `Could not save ${force.displayName()}: ${error instanceof Error ? error.message : error}`,
+                        'error',
+                        'force-autosave-failed',
+                    );
                 }
                 if (state.dirty) await new Promise<void>(resolve => setTimeout(resolve, 0));
             }

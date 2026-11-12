@@ -121,7 +121,7 @@ export function constructionEquipmentConflictMessages(
     add('ARTEMIS_GENERATION', 'All Artemis systems must be of the same generation.');
 
   if (entity instanceof MekEntity) {
-    const advanced = entity.myomerType() !== 'Standard' || has(myomer);
+    const advanced = has(myomer);
     pair('MEK_MASC_MYOMER', 'MASC cannot be combined with advanced myomers.', myomer, masc, advanced);
     pair(
       'MEK_AES_MASC',

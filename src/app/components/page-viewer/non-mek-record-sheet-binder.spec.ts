@@ -326,8 +326,7 @@ describe('bindNonMekRecordSheet', () => {
         // The Arrow IV's four further hardpoints are taken from the end of the ten stores.
         expect(marked('bombTaken')).toEqual([6, 7, 8, 9]);
         expect(svg.querySelectorAll('.bombTakenMark').length).toBe(4);
-        expect([...svg.querySelectorAll('.bombKeyLine')].map(line => line.textContent))
-            .toEqual(['HE - HE Bomb', 'AIVH - Arrow IV Homing Missile', '', '']);
+        expect(bombKey(svg)).toEqual(['HE - High Explosive', 'AIVH - Arrow IV Homing']);
 
         boxes[9]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         expect(interactions).toEqual([{ kind: 'open-equipment', tab: 'ammo', context: snapshot.editContext }]);
@@ -335,8 +334,37 @@ describe('bindNonMekRecordSheet', () => {
         binding.render({ ...snapshot, bombs: [] });
         expect(marked('bombLoaded').length + marked('bombTaken').length).toBe(0);
         expect(svg.querySelectorAll('.bombLabel, .bombTakenMark').length).toBe(0);
-        expect([...svg.querySelectorAll('.bombKeyLine')].map(line => line.textContent)).toEqual([...AERO_DEFAULT_BOMB_KEY]);
+        expect(bombKey(svg)).toEqual(AERO_DEFAULT_BOMB_KEY.map(bomb => `${bomb.label} - ${bomb.key}`));
         binding.destroy();
+    });
+
+    it('keys only the store labels that need explaining, aligned, wrapping a long meaning under itself', () => {
+        const svg = sheet();
+        document.body.appendChild(svg);
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.setTonnage(50);
+        drawAeroExternalStores(svg, fighter, { x: 0, y: 0, width: 124.466, height: 127 });
+        const bomb = (bombId: string) => ({ section: 'external', bombId, count: 1, spent: 0 } as const);
+        const binding = bindNonMekRecordSheet(svg, { ...ammoSnapshot([]), bombs: [
+            bomb('TAGBomb'), bomb('ASEWMissile Ammo'), bomb('LAAMissile Ammo'),
+        ] }, () => undefined);
+        const title = () => svg.querySelector<SVGTextElement>('.bombKeyTitle')!.style.display;
+        const columns = (pick: (text: string) => boolean) => new Set([...svg.querySelectorAll('.bombKeyLine')]
+            .filter(line => pick(line.textContent ?? '')).map(line => line.getAttribute('x')));
+        const lines = bombKey(svg);
+
+        // TAG needs no key; ASEW's meaning is too wide for its column and wraps under itself.
+        expect(lines.length).toBeGreaterThan(2);
+        expect(lines.slice(0, -1).join(' ')).toBe('ASEW - Anti-Ship Electronic Warfare');
+        expect(lines.at(-1)).toBe('LAA - Light Air-to-Air');
+        expect(columns(text => text === '-').size).toBe(1);
+        expect(columns(text => !['ASEW', 'LAA', '-'].includes(text)).size).toBe(1);
+        expect(title()).toBe('');
+        binding.render({ ...ammoSnapshot([]), bombs: [bomb('TAGBomb')] });
+        expect(bombKey(svg)).toEqual([]);
+        expect(title()).toBe('none');
+        binding.destroy();
+        svg.remove();
     });
 
     it('reflows current ammo names and totals without an equipment panel, retaining CASE and empty bins', () => {
@@ -1313,6 +1341,16 @@ const CREW_ID = asCrewPositionId('crew:vehicle:0');
 const ENGINE_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:engine');
 const MOTIVE_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:motive');
 const ROTOR_DAMAGE_TRACK_ID = asSystemDamageTrackId('damage-track:rotor');
+
+/** The bomb key as read: its texts joined line by line. */
+function bombKey(svg: SVGSVGElement): readonly string[] {
+    const lines = new Map<string, string[]>();
+    for (const text of svg.querySelectorAll('.bombKeyLine')) {
+        const y = text.getAttribute('y')!;
+        lines.set(y, [...lines.get(y) ?? [], text.textContent ?? '']);
+    }
+    return [...lines.values()].map(parts => parts.join(' '));
+}
 
 function ammoSnapshot(ammunition: readonly (readonly [string, number])[]): NonMekRecordSheetSnapshot {
     return {

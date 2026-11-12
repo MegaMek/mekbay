@@ -77,7 +77,7 @@ export function calculateBattleArmorStructureWeight(entity: BattleArmorEntity): 
   const index = WEIGHT_CLASS_INDEX[weightClass as keyof typeof WEIGHT_CLASS_INDEX];
   const chassisTable = entity.techBase() === 'Clan' && !entity.clanExoWithoutHarJel()
     ? CLAN_CHASSIS : IS_CHASSIS;
-  const freeGroundMp = entity.chassisType().toLowerCase() === 'quad' ? 2 : 1;
+  const freeGroundMp = entity.chassisType() === 'Quad' ? 2 : 1;
   const ground = Math.max(0, entity.originalWalkMP() - freeGroundMp) * GROUND_MP[index];
   const motiveTable = entity.motiveType() === 'VTOL' ? VTOL_MP
     : entity.motiveType() === 'UMU' ? UMU_MP : JUMP_MP;

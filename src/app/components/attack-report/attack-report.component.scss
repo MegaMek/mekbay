@@ -132,6 +132,7 @@ select.modifier {
     white-space: nowrap;
 
     &::after { content: ' dmg'; font-size: 0.7em; font-weight: 600; color: var(--text-color-secondary); }
+    &.label::after { content: none; }
 }
 
 .location {

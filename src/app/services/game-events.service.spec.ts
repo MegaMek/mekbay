@@ -23,7 +23,8 @@ describe('parseGameEvent', () => {
         const badDie = attack();
         badDie.weapons[0].toHit = [7, 1];
         const badDamage = attack();
-        badDamage.weapons[0].groups[0].damage = 0;
+        // A heat-only hit rolls its location with 0 damage; negative damage is impossible.
+        badDamage.weapons[0].groups[0].damage = -1;
         const badArc = { ...attack(), arc: 'top' };
         const badType = attack();
         (badType.weapons[1] as { types: string[] }).types = ['LASER'];

@@ -4,6 +4,7 @@
 import type { Equipment } from './equipment.model';
 import { hasEquipmentVariant } from './equipment-variant.model';
 import type { WeightClass } from './entity/types';
+import type { EngineMovementHeat } from './entity/components/engine-data';
 
 export type JumpJetKind = 'standard' | 'improved' | 'prototype-improved';
 
@@ -46,6 +47,22 @@ export function isImprovedJumpJetEquipment(equipment: Equipment | undefined): bo
 export function isPrototypeImprovedJumpJetEquipment(equipment: Equipment | undefined): boolean {
     return isImprovedJumpJetEquipment(equipment)
         && hasEquipmentVariant(equipment, 'prototype-subtype');
+}
+
+/**
+ * Mek jump heat for `movedMP` jumping MP (MegaMek Mek.getJumpHeat with Engine.getJumpHeat): improved jets
+ * count half the MP rounded up; prototype improved jets count double the MP, at least 6 heat.
+ */
+export function mekJumpHeat(
+    engineHeat: Pick<EngineMovementHeat, 'jumpMin' | 'jumpPerMP'>,
+    kind: JumpJetKind,
+    movedMP: number,
+): number {
+    const heatMP = kind === 'improved' ? Math.ceil(movedMP / 2)
+        : kind === 'prototype-improved' ? movedMP * 2
+        : movedMP;
+    const heat = Math.max(engineHeat.jumpMin, heatMP * engineHeat.jumpPerMP);
+    return kind === 'prototype-improved' ? Math.max(6, heat) : heat;
 }
 
 export function isUmuEquipment(equipment: Equipment | undefined): boolean {

@@ -18,7 +18,14 @@ import type { BaseEntity } from '../entity/base-entity';
 import { asComponentId,asLocationId,type ComponentId } from '../entity/entity-identifiers';
 import type { EntityMountedEquipment,EntityWeaponHitModifier } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
-import { isVehicleEntity } from '../entity/utils/entity-type-guards';
+import { isInfantryEntity, isVehicleEntity } from '../entity/utils/entity-type-guards';
+import {
+    disposableWeaponAttack,
+    platoonAttack,
+    platoonAttackLabel,
+    type PlatoonAttackFacts,
+} from '../rules/conventional-infantry-combat-rules';
+import { INFERNO_LABEL, platoonInfernoMissiles } from '../rules/inferno-rules';
 import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
 import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from '../equipment.model';
@@ -101,22 +108,30 @@ export function projectNonMekEquipmentPanel(
     const ammoSourceCandidates = projectAmmoSourceCandidates(index, ammoSourceLoads, query);
     const targetingComputer = installedTargetingComputer(index, query);
     const hpgBlocksWeaponFire = mobileHpgBlocksWeaponAttacks(nonMekMobileHpgFacts(index, state, projection));
-    // Platoon weapons attack through the infantry damage table, not as weapon rows.
+    // A platoon fires its weapons as one attack: the primary weapon's row carries it, and the disposable weapon
+    // has its own row. The secondary weapon has no attack of its own.
+    const platoon = platoonAttackRows(entity, index, query);
     const projectedComponents = Object.freeze([...index.components.values()]
-        .filter(component => !component.mount.platoonWeapon)
-        .map(component => projectComponent(
-            entity,
-            index,
-            ruleset,
-            state,
-            query,
-            component.id,
-            targets,
-            targetingComputer,
-            hpgBlocksWeaponFire,
-            ammoSourceLoads,
-            ammoSourceCandidates,
-        )));
+        .filter(component => component.mount.platoonWeapon !== 'secondary')
+        .map(component => {
+            const row = projectComponent(
+                entity,
+                index,
+                ruleset,
+                state,
+                query,
+                component.id,
+                targets,
+                targetingComputer,
+                hpgBlocksWeaponFire,
+                ammoSourceLoads,
+                ammoSourceCandidates,
+            );
+            const attack = component.mount.platoonWeapon === undefined
+                ? undefined
+                : platoon.get(component.mount.platoonWeapon);
+            return attack ? withPlatoonAttack(row, attack.facts, attack.label) : row;
+        }));
     const components = projectWeaponAttackComponents(
         entity,
         index,
@@ -157,6 +172,57 @@ export function projectNonMekEquipmentPanel(
         ...(bombCapacity.external + bombCapacity.internal > 0
             ? { bombs: Object.freeze({ capacity: bombCapacity, loads: state.bombs ?? [] }) }
             : {}),
+    });
+}
+
+/** The platoon's attack and disposable weapon attack with the troopers it has now, by platoon weapon role. */
+function platoonAttackRows(
+    entity: BaseEntity,
+    index: NonMekRuntimeIndex,
+    query: NonMekUnitQueryPort,
+): ReadonlyMap<string, Readonly<{ facts: PlatoonAttackFacts; label: string }>> {
+    const rows = new Map<string, Readonly<{ facts: PlatoonAttackFacts; label: string }>>();
+    if (!isInfantryEntity(entity)) return rows;
+    const troopLocation = [...index.locations.values()].find(location => location.code === 'Infantry');
+    const troopers = troopLocation === undefined ? 0 : query.remainingInternal(troopLocation.id, 'committed');
+    if (entity.primaryWeapon() !== null) {
+        rows.set('primary', Object.freeze({ facts: platoonAttack(entity, troopers), label: platoonAttackLabel(entity) }));
+    }
+    const disposable = disposableWeaponAttack(entity, troopers);
+    if (disposable !== null) {
+        rows.set('disposable', Object.freeze({ facts: disposable, label: entity.disposableWeapon()!.name }));
+    }
+    return rows;
+}
+
+/** A platoon weapon row resolved by troopers: one damage value at every range, ranges read hex by hex. */
+function withPlatoonAttack(
+    row: EquipmentPanelComponent,
+    attack: PlatoonAttackFacts,
+    label: string,
+): EquipmentPanelComponent {
+    const weapon = row.weapon;
+    if (!weapon) return row;
+    const damage = attack.damageByTroopers[attack.troopers] ?? 0;
+    const text = attack.inferno ? `${platoonInfernoMissiles(damage)} ${INFERNO_LABEL}` : `${damage}`;
+    const value = Object.freeze({ values: Object.freeze([damage]), maximum: damage });
+    // Each infantry range band spans a third of the farthest hex the weapon reaches.
+    const farthest = attack.rangeModifiers.reduce<number>((last, modifier, hex) => modifier === null ? last : hex, 0);
+    const band = farthest / 3;
+    return Object.freeze({
+        ...row,
+        label,
+        weapon: Object.freeze({
+            ...weapon,
+            selectable: weapon.selectable && attack.troopers > 0,
+            damageText: text,
+            damageTextByRange: Object.freeze({ short: text, medium: text, long: text, extreme: text }),
+            damageByRange: Object.freeze({ short: value, medium: value, long: value, extreme: null }),
+            ranges: Object.freeze([band, 2 * band, 3 * band]),
+            minimumRange: 0,
+            ammoSources: Object.freeze([]),
+            platoon: attack,
+        }),
     });
 }
 

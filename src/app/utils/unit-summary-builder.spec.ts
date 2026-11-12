@@ -167,7 +167,7 @@ describe('UnitSummaryBuilder', () => {
 
     entity.originalBuildYear.set(entity.year() + 1);
     expect(builder.build(entity, { entryKey, ruleset: CORE_2026_RULESET, format: 'blk' }).loadIssues).toEqual([
-      jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', field: 'tech' }),
+      jasmine.objectContaining({ code: 'OEM_YEAR_AFTER_INTRODUCTION', severity: 'error', count: 1 }),
     ]);
   });
 

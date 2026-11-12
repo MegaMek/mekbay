@@ -6,11 +6,11 @@ import { AmmoEquipment, MiscEquipment, WeaponEquipment } from '../../../equipmen
 import type { Equipment } from '../../../equipment.model';
 import type { BaseEntity } from '../../base-entity';
 import type { EntityMountedEquipment } from '../../types';
-import { AeroEntity } from '../../entities/aero/aero-entity';
-import { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
-import { InfantryEntity } from '../../entities/infantry/infantry-entity';
-import { MekEntity } from '../../entities/mek/mek-entity';
-import { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
+import type { AeroEntity } from '../../entities/aero/aero-entity';
+import type { BattleArmorEntity } from '../../entities/infantry/battle-armor-entity';
+import type { InfantryEntity } from '../../entities/infantry/infantry-entity';
+import type { MekEntity } from '../../entities/mek/mek-entity';
+import type { ProtoMekEntity } from '../../entities/protomek/protomek-entity';
 import { isVehicleEntity } from '../entity-type-guards';
 import { getMekLegLocations, isQuadMekConfig } from '../../types/mek';
 import { BV_MOVEMENT_CALCULATION } from '../../types';
@@ -68,11 +68,11 @@ import {
   signatureHeatEfficiencyPenalty,
 } from '../../../stealth-equipment.model';
 import {
-  isImprovedJumpJetEquipment,
   isJumpJetEquipment,
   isPartialWingEquipment,
-  isPrototypeImprovedJumpJetEquipment,
   isSuperCooledMyomerEquipment,
+  jumpJetKind,
+  mekJumpHeat,
   partialWingJumpBonus,
 } from '../../../jump-equipment.model';
 import {
@@ -430,14 +430,11 @@ export class MekBVCalculator extends HeatTrackingBVCalculator {
     const movedMP = Math.max(0, jumpMP - partialWingBonus);
     const firstJumpJet = this.entity.equipment()
       .find(mount => this.isWorking(mount) && isJumpJetEquipment(mount.equipment))?.equipment;
-    const improved = isImprovedJumpJetEquipment(firstJumpJet);
-    const prototype = isPrototypeImprovedJumpJetEquipment(firstJumpJet);
-    const adjustedMP = improved
-      ? prototype ? movedMP * 2 : Math.ceil(movedMP / 2)
-      : movedMP;
-    const engineHeat = this.entity.mountedEngine().descriptor().movementHeat;
-    let jumpHeat = Math.max(engineHeat.jumpMin, adjustedMP * engineHeat.jumpPerMP);
-    if (improved && prototype) jumpHeat = Math.max(6, jumpHeat);
+    const jumpHeat = mekJumpHeat(
+      this.entity.mountedEngine().movementHeat,
+      jumpJetKind(firstJumpJet) ?? 'standard',
+      movedMP,
+    );
     return jumpHeat > runHeat
       ? { heat: jumpHeat, type: 'Jump' }
       : { heat: runHeat, type: 'Run' };
@@ -827,6 +824,9 @@ export class InfantryBVCalculator extends BVCalculator {
     const secondaryBV = this.entity.secondaryWeapon()?.bv;
     if (typeof primaryBV === 'number') this.offensiveValue += primaryBV * primary;
     if (typeof secondaryBV === 'number') this.offensiveValue += secondaryBV * secondary;
+    // MegaMek InfantryBVCalculator.processDisposableWeapon: weapon BV x original troopers x 0.2.
+    const disposableBV = this.entity.disposableWeapon()?.bv;
+    if (typeof disposableBV === 'number') this.offensiveValue += disposableBV * originalTroopers * 0.2;
     if (this.entity.canMakeAntiMekAttacks()) {
       const beforeAntiMek = this.offensiveValue;
       if (typeof primaryBV === 'number' && !this.entity.primaryWeapon()?.hasFlag('F_INF_ARCHAIC')) this.offensiveValue += primaryBV * primary;

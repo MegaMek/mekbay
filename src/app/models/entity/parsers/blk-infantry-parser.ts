@@ -246,13 +246,41 @@ export function parseBlkInfantry(bb: BuildingBlock, ctx: ParseContext): Infantry
 
   entity.setPlatoonWeapon('primary', primaryWeapon);
   entity.setPlatoonWeapon('secondary', secondaryWeapon);
+  if (bb.exists('disposableWeapon')) {
+    const disposable = resolveInfantryWeapon(bb.getFirstString('disposableWeapon'), 'disposableWeapon', entity, ctx);
+    if (disposable && !disposable.hasFlag('F_INF_DISPOSABLE')) {
+      ctx.error('disposableWeapon', `Not a disposable weapon: "${disposable.id}"`);
+    } else if (disposable) {
+      entity.setPlatoonWeapon('disposable', disposable);
+    }
+  }
+  // MegaMek reads any other value as Standard, the default. Without the block, a withdrawn Inferno launcher name
+  // declares Inferno, which is what the platoon was built to carry.
+  if (bb.exists('srmMunition')) {
+    entity.infernoSrmsDeclared.set(bb.getFirstString('srmMunition').trim().toLowerCase() === 'inferno');
+  } else if ((['Primary', 'Secondary'] as const).some((field) => bb.exists(field)
+    && WITHDRAWN_INFERNO_SRM_LAUNCHERS.has(bb.getFirstString(field).trim().toLowerCase()))) {
+    entity.infernoSrmsDeclared.set(true);
+  }
 
   return entity;
 }
 
+/**
+ * Inferno SRM launchers withdrawn by the TechManual errata (pp. 350-352). The equipment data loads each as the plain
+ * launcher; MegaMek WithdrawnInfernoSrmLaunchers lists the same names.
+ */
+const WITHDRAWN_INFERNO_SRM_LAUNCHERS: ReadonlySet<string> = new Set([
+  'InfantrySRMLightInferno', 'SRM Launcher (Light) - Inferno', 'Light SRM (Inferno)',
+  'InfantryStandardSRMInferno', 'SRM Launcher (Std, Two-Shot) - Inferno', 'Infantry2ShotSRMInferno',
+  'Infantry Two-Shot SRM Launcher (Inferno)',
+  'InfantryHeavySRMInferno', 'SRM Launcher (Heavy) w/ Inferno', 'Infantry Heavy SRM Launcher (Inferno)',
+  'SRM Launcher (Hvy, One-Shot) w/ Inferno',
+].map((name) => name.toLowerCase()));
+
 function resolveInfantryWeapon(
   equipmentId: string,
-  field: 'Primary' | 'Secondary',
+  field: 'Primary' | 'Secondary' | 'disposableWeapon',
   entity: InfantryEntity,
   ctx: ParseContext,
 ): InfantryWeaponEquipment | null {

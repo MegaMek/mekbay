@@ -67,6 +67,7 @@ function infantryMessages(entity: InfantryEntity): EntityValidationMessage[] {
     const add = (code: string, message: string) => messages.push({ code, message, category: 'general', severity: 'error' });
     const primary = entity.primaryWeapon();
     if (primary && !constructionInfantryPrimaryApplies(primary)) add('INFANTRY_PRIMARY_SUPPORT', 'Infantry support weapons must be selected as secondary weapons.');
+    if (entity.disposableWeapon() && entity.rulesLevel() < 3) add('INFANTRY_DISPOSABLE_RULES_LEVEL', 'Disposable weapons require advanced construction rules.');
     const mode = entity.motiveType();
     const specs = entity.specializations();
     const augments = new Set(entity.augmentations());
@@ -114,7 +115,7 @@ function battleArmorMessages(entity: BattleArmorEntity): EntityValidationMessage
         messages.push({ code, message, location, category, severity: 'error' });
     const all = entity.equipment();
     const has = (flag: EquipmentFlag) => all.some(m => m.equipment?.hasFlag(flag));
-    const quad = entity.chassisType().toLowerCase() === 'quad';
+    const quad = entity.chassisType() === 'Quad';
     const jump = entity.motiveType() === 'Jump' && entity.propulsionMP() > 0;
     if (has('F_DETACHABLE_WEAPON_PACK') && entity.originalWalkMP() < 2) add('BA_DWP_MOVEMENT', 'Detachable weapon packs require at least two base walk MP.', undefined, 'movement');
     if (has('F_JUMP_BOOSTER') && !jump) add('BA_BOOSTER_PROPULSION', 'Jump boosters require jump propulsion with at least one MP.', undefined, 'movement');

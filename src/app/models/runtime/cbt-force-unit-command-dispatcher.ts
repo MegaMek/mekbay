@@ -24,6 +24,7 @@ import type { CBTForceEndTurnAllResult,CBTForceEndTurnUnitResult,CBTForceUnitCom
 import { hasMekRuntime,hasNonMekRuntime,type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import { captureUnitCommand,type CBTUnitCommand } from './unit-command';
 import { isUnitEditContextCurrent,type UnitEditContext } from './unit-edit-context';
+import type { InfernoMissile } from '../rules/inferno-rules';
 
 type PreparedForcePhaseBoundary =
     | Readonly<{
@@ -67,10 +68,13 @@ function stateRevision(snapshot: CBTUnitSnapshot | null): number | null {
     return snapshot?.query.stateRevision ?? null;
 }
 
-/** Accepted weapon hits, read on the struck unit's own hit-location table. */
+/**
+ * Accepted weapon hits, read on the struck unit's own hit-location table: damage groups, the inferno missiles of the
+ * same attack, whose effect the struck unit decides, and the outside heat its heat-causing weapons apply.
+ */
 export type WeaponHits =
-    | Readonly<{ family: 'mek'; groups: readonly MekDamageGroup[] }>
-    | Readonly<{ family: 'non-mek'; groups: readonly NonMekDamageGroup[] }>;
+    | Readonly<{ family: 'mek'; groups: readonly MekDamageGroup[]; inferno?: readonly InfernoMissile[]; heat?: number }>
+    | Readonly<{ family: 'non-mek'; groups: readonly NonMekDamageGroup[]; inferno?: readonly InfernoMissile[]; heat?: number }>;
 
 export interface CBTForceUnitCommandBoundary {
     readonly readOnly: () => boolean;
@@ -166,11 +170,11 @@ export class CBTForceUnitCommandDispatcher {
             const apply = hits.family === 'mek'
                 ? hasMekRuntime(snapshot) && mekAutomation
                     ? (dispatch: CBTForceUnitCommandDispatch) =>
-                        mekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch)
+                        mekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch, hits.inferno, hits.heat)
                     : null
                 : hasNonMekRuntime(snapshot) && nonMekAutomation
                     ? (dispatch: CBTForceUnitCommandDispatch) =>
-                        nonMekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch)
+                        nonMekAutomation.applyWeaponHits(this.force, instanceId, hits.groups, target, dispatch, hits.inferno, hits.heat)
                     : null;
             if (!apply) return false;
             const completion = await this.completeAutomatedCommand(

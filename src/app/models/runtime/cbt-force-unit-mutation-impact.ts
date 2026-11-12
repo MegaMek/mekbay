@@ -97,6 +97,8 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-pending-heat':
         case 'set-heatsinks-off':
         case 'apply-heat':
+        case 'add-outside-heat':
+        case 'add-inferno-missiles':
         case 'set-condition':
         case 'set-mek-shutdown-state':
         case 'resolve-mek-rule-check':

@@ -16,6 +16,7 @@ shieldBlocksComponentAttack,
 shieldBlocksIntrinsicAttack,
 } from './component-shield-mode';
 import { isGaussPoweredDown } from './mek-gauss-power';
+import { kickLegIds, weaponFiredLocationIds, type MekKickKind } from './mek-kicking-leg';
 import { mekLocationDestructionParentId } from './mek-location-state-kernel';
 import { type MekIndexedCriticalSlot,type MekRuntimeIndex } from './mek-runtime-index';
 import type { MekUnitQueryPort } from './unit-instance';
@@ -46,6 +47,7 @@ export type MekActionRuntimePort = Pick<
     | 'hasCondition'
     | 'mekMovementMode'
     | 'mekShields'
+    | 'attackerTargetingState'
 > & {
     mekDestruction(): MekActionDestructionCapability;
 };
@@ -102,7 +104,7 @@ export function canPerformMekAction(
             case 'physical-attack':
                 if (!isPhysicalTarget(resolved)) return true;
                 if (physicalMovementUnavailable(runtime, resolved)) return false;
-                return physicalTargetAvailable(index, runtime, resolved);
+                return physicalTargetAvailable(index, runtime, resolved, ruleset);
             case 'activate':
             case 'change-mode':
             case 'provide-passive-effect':
@@ -195,8 +197,9 @@ function physicalTargetAvailable(
     index: MekRuntimeIndex,
     runtime: MekActionRuntimePort,
     target: ResolvedTarget,
+    ruleset: CBTRuleset,
 ): boolean {
-    const physical = physicalCapabilities(index, runtime);
+    const physical = physicalCapabilities(index, runtime, ruleset);
     if (target.kind === 'intrinsic') {
         switch (target.definition.kind) {
             case 'punch': {
@@ -207,6 +210,7 @@ function physicalTargetAvailable(
             case 'club': return physical.canClub;
             case 'push': return physical.canPush;
             case 'kick': return physical.canKick;
+            case 'mule-kick': return physical.canMuleKick;
             default: return true;
         }
     }
@@ -219,13 +223,18 @@ type ArmCode = 'LA' | 'RA';
 
 interface PhysicalCapabilities {
     readonly canKick: boolean;
+    readonly canMuleKick: boolean;
     readonly canPunch: Readonly<Record<ArmCode, boolean>>;
     readonly canPhysicalWeapon: Readonly<Record<ArmCode, boolean>>;
     readonly canPush: boolean;
     readonly canClub: boolean;
 }
 
-function physicalCapabilities(index: MekRuntimeIndex, runtime: MekActionRuntimePort): PhysicalCapabilities {
+function physicalCapabilities(
+    index: MekRuntimeIndex,
+    runtime: MekActionRuntimePort,
+    ruleset: CBTRuleset,
+): PhysicalCapabilities {
     const locationCodes = new Set([...index.locations.values()].map(location => location.code));
     const bipedLegCodes: readonly MekLocation[] = locationCodes.has('CL')
         ? ['LL', 'RL', 'CL']
@@ -236,12 +245,12 @@ function physicalCapabilities(index: MekRuntimeIndex, runtime: MekActionRuntimeP
         : quadLegCodes.every(code => locationCodes.has(code))
             ? quadLegCodes
             : [];
-    let destroyedLegs = 0;
-    let destroyedHips = 0;
+    const lostLegs = new Set<LocationId>();
+    const lostHips = new Set<LocationId>();
     for (const code of legCodes) {
         const locationId = locationIdForCode(index, code)!;
-        if (locationUnavailable(index, runtime, locationId)) destroyedLegs += 1;
-        else destroyedHips += unavailableSystemSlotsAt(index, runtime, code, 'Hip');
+        if (locationUnavailable(index, runtime, locationId)) lostLegs.add(locationId);
+        else if (unavailableSystemSlotsAt(index, runtime, code, 'Hip') > 0) lostHips.add(locationId);
     }
 
     const arms = Object.fromEntries((['LA', 'RA'] as const).map(code => {
@@ -263,8 +272,26 @@ function physicalCapabilities(index: MekRuntimeIndex, runtime: MekActionRuntimeP
         readonly canPhysicalWeapon: boolean;
         readonly locationLost: boolean;
     }>;
+    const fired = weaponFiredLocationIds(index, runtime.attackerTargetingState());
+    const quad = legCodes === quadLegCodes;
+    const canKick = (kind: MekKickKind): boolean => {
+        const kickLegs = kickLegIds(index, kind);
+        // A leg whose weapons fired cannot kick; a mule kick uses both rear legs (TW p. 147, Core p. 81).
+        const weaponsAllow = kind === 'mule-kick'
+            ? kickLegs.every(locationId => !fired.has(locationId))
+            : kickLegs.some(locationId => !fired.has(locationId));
+        if (!weaponsAllow || (kind === 'mule-kick' && !quad)) return false;
+        // Total Warfare needs every hip; Core lets a quad kick with only the two hips of the kick's arc (p. 238).
+        if (!quad || ruleset === 'total-warfare') return lostLegs.size === 0 && lostHips.size === 0;
+        // Core p. 238: a second hip hit or a second lost leg acts as a biped hip hit, which forbids kicks; a quad
+        // that lost one leg cannot mule kick.
+        return lostHips.size < 2
+            && lostLegs.size < (kind === 'mule-kick' ? 1 : 2)
+            && kickLegs.every(locationId => !lostLegs.has(locationId) && !lostHips.has(locationId));
+    };
     return Object.freeze({
-        canKick: destroyedLegs === 0 && destroyedHips === 0,
+        canKick: canKick('kick'),
+        canMuleKick: canKick('mule-kick'),
         canPunch: Object.freeze({ LA: arms.LA.canPunch, RA: arms.RA.canPunch }),
         canPhysicalWeapon: Object.freeze({ LA: arms.LA.canPhysicalWeapon, RA: arms.RA.canPhysicalWeapon }),
         canPush: !arms.LA.locationLost && !arms.RA.locationLost,

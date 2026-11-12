@@ -35,6 +35,7 @@ export type IntrinsicWeaponDamage =
 export type IntrinsicWeaponKind =
   | 'punch'
   | 'kick'
+  | 'mule-kick'
   | 'club'
   | 'death-from-above'
   | 'charge'

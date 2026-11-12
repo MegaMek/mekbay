@@ -200,6 +200,7 @@ export const CBT_TURN_FIELD = {
     airborne: 'a',
     cover: 'c',
     weaponsHeat: 'w',
+    outsideHeat: 'o',
     acknowledgedHeatSources: 'h',
     heatDissipationConsumed: 'd',
     spotting: 's',

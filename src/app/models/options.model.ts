@@ -106,6 +106,8 @@ export interface CBTOptionalRules {
     sprinting: boolean;
     hotLoadedAmmo: boolean;
     allowMixedTechBaseAmmo: boolean;
+    /** BattleMech Manual p. 99: flamers deal heat and damage instead of either (Core always does). */
+    enhancedFlamers: boolean;
 }
 
 export interface Options {

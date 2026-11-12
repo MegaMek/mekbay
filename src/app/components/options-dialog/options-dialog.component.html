@@ -1000,16 +1000,18 @@
             <fieldset class="optional-rules">
               <legend class="option-section-title">Optional rules</legend>
               @for (rule of cbtOptionalRules; track rule.key) {
-                <label class="optional-rule">
-                  <span class="optional-rule-label">{{ rule.label }}</span>
-                  <span class="optional-rule-leader" aria-hidden="true"></span>
-                  <input
-                    class="bt-checkbox"
-                    type="checkbox"
-                    [checked]="optionsService.options().CBTOptionalRules[rule.key]"
-                    (change)="onCBTOptionalRuleChange(rule.key, $event)"
-                  />
-                </label>
+                @if (!rule.ruleset || rule.ruleset === optionsService.options().CBTRules) {
+                  <label class="optional-rule">
+                    <span class="optional-rule-label">{{ rule.label }}</span>
+                    <span class="optional-rule-leader" aria-hidden="true"></span>
+                    <input
+                      class="bt-checkbox"
+                      type="checkbox"
+                      [checked]="optionsService.options().CBTOptionalRules[rule.key]"
+                      (change)="onCBTOptionalRuleChange(rule.key, $event)"
+                    />
+                  </label>
+                }
               }
             </fieldset>
           </div>

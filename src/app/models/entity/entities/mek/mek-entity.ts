@@ -22,7 +22,11 @@ import {
   jumpJetKind,
   partialWingJumpBonus,
 } from '../../../jump-equipment.model';
-import { isStandardTripleStrengthMyomerEquipment } from '../../../myomer-equipment.model';
+import {
+  isStandardTripleStrengthMyomerEquipment,
+  mekMyomerTypeOf,
+  type MekMyomerType,
+} from '../../../myomer-equipment.model';
 import {
   heatSinkDissipationRate,
   isCompactHeatSinkEquipment,
@@ -209,7 +213,9 @@ export abstract class MekEntity extends BaseEntity {
   mountedGyro = computed<GyroTypeDescriptor>(() => GYRO_DATA[this.gyroType()] ?? GYRO_DATA['Standard']);
   cockpitType = signal<CockpitType>('Standard');
   mountedCockpit = computed<CockpitTypeDescriptor>(() =>  COCKPIT_DATA[this.cockpitType()] ?? COCKPIT_DATA['Standard']);
-  myomerType = signal<string>('Standard');
+  /** Derived from the installed myomer system, as MegaMek writes the MTF header (Mek.getMtf). */
+  readonly myomerType = computed<MekMyomerType>(() =>
+    this.equipment().map(mount => mekMyomerTypeOf(mount.equipment)).find(type => type !== null) ?? 'Standard');
   hasFullHeadEjectionSystem = signal(false);
   hasRiscHeatSinkOverrideKit = signal(false);
   private readonly structureDonors = signal<ReadonlyMap<MekLocation, MekStructureDonor>>(new Map());
@@ -431,7 +437,8 @@ export abstract class MekEntity extends BaseEntity {
 
     this.mountedEngine.set(engine);
     if (equipment) {
-      this.rebalanceHeatSinkMounts(equipment, totalCount);
+      // An engine change only moves sinks in or out of the engine; other-type sinks stay as installed.
+      this.rebalanceHeatSinkMounts(equipment, totalCount, 'other-types');
     }
   }
 
@@ -446,8 +453,10 @@ export abstract class MekEntity extends BaseEntity {
       this.mountedEngine().setBaseChassisHeatSinks(totalCount);
     }
 
+    // Changing the count keeps other-type sinks; changing the type replaces every sink.
+    const keep = this.heatSinkEquipment()?.id === equipment.id ? 'other-types' : 'none';
     this.heatSinkEquipment.set(equipment);
-    this.rebalanceHeatSinkMounts(equipment, totalCount);
+    this.rebalanceHeatSinkMounts(equipment, totalCount, keep);
   }
 
   initializeParsedHeatSinkMounts(totalCount: number, baseChassisCount?: number): void {
@@ -457,7 +466,7 @@ export abstract class MekEntity extends BaseEntity {
     if (this.omni() && baseChassisCount !== undefined) {
       this.mountedEngine().setBaseChassisHeatSinks(baseChassisCount >= 10 ? baseChassisCount : totalCount);
     }
-    this.rebalanceHeatSinkMounts(equipment, totalCount, true);
+    this.rebalanceHeatSinkMounts(equipment, totalCount, 'all');
   }
 
   private validateHeatSinkConfiguration(equipment: MiscEquipment, totalCount: number): void {
@@ -470,33 +479,38 @@ export abstract class MekEntity extends BaseEntity {
     }
   }
 
+  /**
+   * Rebuild engine-integral and external heat sinks for `totalCount` units of `equipment`.
+   * `keepExternal` names the external sinks kept as installed: every one ('all', a parsed design),
+   * those of another type ('other-types'), or none (a heat-sink type change replaces them all).
+   */
   private rebalanceHeatSinkMounts(
     equipment: MiscEquipment,
     totalCount: number,
-    preserveExternal = false,
+    keepExternal: 'all' | 'other-types' | 'none',
   ): void {
     const current = this.equipment();
     const nonHeatSinks = current.filter(mount =>
       !(mount.equipment instanceof MiscEquipment) || !mount.equipment.isHeatSink);
-    const externalCandidates = current.filter(mount =>
+    const external = current.filter(mount =>
       mount.allocation.kind !== 'engine'
       && mount.equipment instanceof MiscEquipment
-      && mount.equipment.isHeatSink
-      && (preserveExternal
-        || (equipment.isCompactHeatSink
-        ? mount.equipment.isCompactHeatSink
-        : mount.equipment.id === equipment.id)));
+      && mount.equipment.isHeatSink);
+    const sameType = (mount: EntityMountedEquipment) => equipment.isCompactHeatSink
+      ? (mount.equipment as MiscEquipment).isCompactHeatSink
+      : mount.equipment?.id === equipment.id;
+    const kept = keepExternal === 'all' ? external
+      : keepExternal === 'other-types' ? external.filter(mount => !sameType(mount)) : [];
+    const externalCandidates = keepExternal === 'all' ? external : [...kept, ...external.filter(sameType)];
     const capacity = this.integralHeatSinkCapacity(equipment);
     const configuredBaseCount = this.mountedEngine().getBaseChassisHeatSinks(equipment.isCompactHeatSink);
     const maximumIntegralCount = this.omni() && configuredBaseCount >= 0
       ? configuredBaseCount
       : capacity;
     let preservedExternalUnits = 0;
-    if (preserveExternal) {
-      for (const mount of externalCandidates) {
-        const units = (mount.equipment as MiscEquipment).heatSinkUnitsPerMount;
-        if (preservedExternalUnits + units <= totalCount) preservedExternalUnits += units;
-      }
+    for (const mount of kept) {
+      const units = (mount.equipment as MiscEquipment).heatSinkUnitsPerMount;
+      if (preservedExternalUnits + units <= totalCount) preservedExternalUnits += units;
     }
     const integralCount = Math.min(totalCount - preservedExternalUnits, maximumIntegralCount);
     let externalUnitsRemaining = totalCount - integralCount;
@@ -570,10 +584,13 @@ export abstract class MekEntity extends BaseEntity {
       installedJumpMp: this.installedJumpJetMP(),
       lowerArmActuators,
       handActuators,
-      equipment: this.equipment().flatMap(mount => mount.equipment ? [{
-        location: mount.location,
-        flags: mount.equipment.flags,
-      }] : []),
+      // A mount spread over several locations (talons span every leg) is present in each of them.
+      equipment: this.equipment().flatMap(mount => {
+        if (!mount.equipment) return [];
+        const flags = mount.equipment.flags;
+        const locations = mount.getOccupiedLocations();
+        return (locations.length > 0 ? locations : [mount.location]).map(location => ({ location, flags }));
+      }),
     });
   }
 

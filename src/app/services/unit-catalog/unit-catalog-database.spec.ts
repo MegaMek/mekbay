@@ -3,6 +3,7 @@
 
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../../models/unit-summary.model';
 import {
+    UNIT_CATALOG_DATABASE_VERSION,
     UNIT_CATALOG_ROWS,
     UNIT_CATALOG_STORE,
     UnitCatalogDatabase,
@@ -88,6 +89,53 @@ describe('UnitCatalogDatabase', () => {
     it('rejects an incomplete archive before writing', async () => {
         await expectAsync(database.writeActiveCatalog(publishedGeneration(), new Blob(['short'])))
             .toBeRejectedWithError(/empty or incomplete/u);
+        expect(await database.readActiveCatalog()).toBeUndefined();
+    });
+
+    it('steps aside when a newer tab upgrades the database, without failing later reads', async () => {
+        const staleName = `mekbay-units-stale-${crypto.randomUUID()}`;
+        let notified = false;
+        const stale = await UnitCatalogDatabase.open({
+            databaseName: staleName, onVersionChange: () => { notified = true; },
+        });
+        const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(staleName, UNIT_CATALOG_DATABASE_VERSION + 1);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+            request.onblocked = () => reject(new Error('The stale connection blocked the upgrade'));
+        });
+        try {
+            expect(notified).toBeTrue();
+            expect(await stale.readActiveCatalog()).toBeUndefined();
+            expect(await stale.readSourceArchive(hash)).toBeUndefined();
+        } finally {
+            upgraded.close();
+            await new Promise<void>(resolve => {
+                const request = indexedDB.deleteDatabase(staleName);
+                request.onsuccess = request.onerror = () => resolve();
+            });
+        }
+    });
+
+    it('finishes a write already under way before a newer tab upgrades the database', async () => {
+        const writing = database.writeActiveCatalog(
+            publishedGeneration(),
+            new Blob(['complete archive bytes for the fixture']),
+        );
+        // The stale connection closes at once, but IndexedDB lets its running transaction complete first.
+        const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(databaseName, UNIT_CATALOG_DATABASE_VERSION + 1);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        upgraded.close();
+
+        await expectAsync(writing).toBeResolved();
+        expect((await rawRows(databaseName)).map(row => String(row['key'])).sort()).toEqual([
+            UNIT_CATALOG_ROWS.archive,
+            UNIT_CATALOG_ROWS.catalog,
+            UNIT_CATALOG_ROWS.unitsManifest,
+        ]);
         expect(await database.readActiveCatalog()).toBeUndefined();
     });
 

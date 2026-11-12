@@ -21,12 +21,14 @@ import type { AeroEntity } from '../models/entity/entities/aero/aero-entity';
 import type { CrewPositionId, LocationId } from '../models/entity/entity-identifiers';
 import { isAeroEntity, isProtoMekEntity, isVehicleEntity } from '../models/entity/utils/entity-type-guards';
 import { resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
+import { infernoEffect, infernoMissilesStruck, type InfernoMissile } from '../models/rules/inferno-rules';
+import { infernoMissilesThisTurn } from '../models/runtime/attack-hit-location';
 import type { NonMekHitArc, NonMekHitEffect } from '../models/runtime/non-mek-hit-location';
 import type { AeroCriticalType } from '../models/rules/aero-critical-rules';
 import type { WeaponEquipment } from '../models/equipment.model';
 import { projectAeroRuntimeRules } from '../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../models/runtime/aero-heat-automation-rules';
-import { heatAmmoExplosionCandidates, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
+import { heatAmmoExplosionCandidates, rollD6, twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
 import { ammoExplosionDamagePerShot } from '../models/runtime/mek-critical-hit-v2';
 import { hotLoadedAmmoForWeapon } from '../models/runtime/mek-ammo';
 import type { CBTRuntimeLocation } from '../models/runtime/cbt-unit-runtime';
@@ -185,6 +187,8 @@ export class DirectNonMekAutomationService {
         groups: readonly NonMekDamageGroup[],
         target: 'committed' | 'pending',
         dispatch: CBTForceUnitCommandDispatch,
+        inferno: readonly InfernoMissile[] = [],
+        weaponHeat = 0,
     ): Promise<boolean> {
         for (const group of groups) {
             const outcome = await this.applyDamageGroup(force, instanceId, group, target, dispatch);
@@ -192,7 +196,69 @@ export class DirectNonMekAutomationService {
                 return false;
             }
         }
-        return true;
+        if (weaponHeat > 0 && this.nonMekSnapshot(force, instanceId)?.entity.tracksHeat()
+            && !(await dispatch({ type: 'add-outside-heat', amount: weaponHeat }, false)).accepted) return false;
+        return inferno.length === 0 || this.applyInferno(force, instanceId, inferno, target, dispatch);
+    }
+
+    /** Applies what an attack's inferno missiles do to this unit (TW pp. 141-142). */
+    private async applyInferno(
+        force: CBTForce,
+        instanceId: string,
+        inferno: readonly InfernoMissile[],
+        target: 'committed' | 'pending',
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        const snapshot = this.nonMekSnapshot(force, instanceId);
+        if (!snapshot) return false;
+        const perspective = target === 'pending' ? 'preview' : 'committed';
+        const effect = infernoEffect(snapshot.entity, inferno, infernoMissilesThisTurn(force.getUnitSnapshot(instanceId)));
+        const struck = infernoMissilesStruck(snapshot.entity, inferno);
+        if (struck > 0 && !(await dispatch({ type: 'add-inferno-missiles', count: struck }, false)).accepted) return false;
+        const locations = [...snapshot.index.locations.values()];
+        const destroy = async (locationIds: readonly LocationId[]): Promise<boolean> => {
+            for (const locationId of new Set(locationIds)) {
+                const amount = this.nonMekSnapshot(force, instanceId)?.query.remainingInternal(locationId, perspective) ?? 0;
+                if (amount > 0 && !(await dispatch({ type: 'damage-internal', locationId, amount, target }, false)).accepted) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const damage = async (code: string, amount: number): Promise<boolean> => {
+            const location = locations.find(candidate => candidate.code === code);
+            const applied = location ? Math.min(amount, snapshot.query.remainingInternal(location.id, perspective)) : 0;
+            return applied === 0
+                || (await dispatch({ type: 'damage-internal', locationId: location!.id, amount: applied, target }, false)).accepted;
+        };
+        switch (effect.kind) {
+            case 'heat':
+                return effect.heat === 0
+                    || (await dispatch({ type: 'add-outside-heat', amount: effect.heat }, false)).accepted;
+            case 'troopers':
+                return damage('Infantry', effect.troopers);
+            case 'structural-integrity':
+                return damage('SI', effect.damage);
+            case 'battle-armor-troopers': {
+                // Each is a randomly determined surviving trooper: a 1D6 roll on the troopers, rerolled until it names
+                // a living one (MegaMek rolls a battle armor hit location).
+                const living = locations.filter(location => location.code.startsWith('Trooper ')
+                    && snapshot.query.remainingInternal(location.id, perspective) > 0).map(location => location.id);
+                const eliminated: LocationId[] = [];
+                while (eliminated.length < Math.min(effect.troopers, living.length)) {
+                    const trooper = living[rollD6() - 1];
+                    if (trooper !== undefined && !eliminated.includes(trooper)) eliminated.push(trooper);
+                }
+                return destroy(eliminated);
+            }
+            case 'protomek-locations':
+                return await destroy(effect.locationIds)
+                    && this.criticals.resolveDestroyedProtoMekLocations(force, instanceId, effect.locationIds, target, dispatch);
+            case 'vehicle-criticals':
+                return this.criticals.resolveInfernoCriticals(force, instanceId, effect.locationIds, target, dispatch);
+            case 'none':
+                return true;
+        }
     }
 
     private async applyDamageGroup(

@@ -24,12 +24,15 @@ import type { EntityStateView } from '../entity/entity-state-view';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import type { EntityType } from '../entity/types';
 import { BV_MOVEMENT_CALCULATION,STANDARD_MOVEMENT_CALCULATION,type MovementCalculationOptions } from '../entity/types';
-import { isAeroEntity,isInfantryFamilyEntity,isProtoMekEntity,isVehicleEntity } from '../entity/utils/entity-type-guards';
+import { isAeroEntity,isInfantryEntity,isInfantryFamilyEntity,isProtoMekEntity,isVehicleEntity } from '../entity/utils/entity-type-guards';
+import { heatOrDamageComponentModes } from '../flamer-mode.model';
+import { platoonHeatOrDamageWeapon } from '../rules/conventional-infantry-combat-rules';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { AmmoEquipment,WeaponEquipment,type Equipment } from '../equipment.model';
 import type { MotiveModes } from '../motiveModes.model';
 import { projectAeroRuntimeRules,type AeroRuntimeRulesProjection } from '../rules/aero-runtime-rules';
 import { gameRulesFor } from '../rules/game-rules';
+import { addOutsideHeat, MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import { compareTurnPositions, HEAT_TURN_STEP, isMarkableTurnStep, isStoredTurnStep } from '../rules/turn-sequence';
 import { projectInfantryRuntimeRules,type InfantryRuntimeRulesProjection } from '../rules/infantry-runtime-rules';
 import { projectProtoMekRuntimeRules,protoMekMovement,type ProtoMekRuntimeRulesProjection } from '../rules/protomek-runtime-rules';
@@ -96,6 +99,11 @@ export function nonMekComponentModes(
     if (rapidFire !== null) return rapidFire;
     const bombast = bombastLaserEquipmentModes(equipment, ruleset);
     if (bombast !== null) return bombast;
+    // A platoon declares heat for its one attack, which its primary weapon carries.
+    const heatOrDamage = isInfantryEntity(entity)
+        ? equipment === entity.primaryWeapon() ? heatOrDamageComponentModes(platoonHeatOrDamageWeapon(entity), ruleset) : null
+        : heatOrDamageComponentModes(equipment, ruleset);
+    if (heatOrDamage !== null) return heatOrDamage;
     return Object.freeze({ modes: Object.freeze([]) });
 }
 
@@ -194,6 +202,10 @@ export interface NonMekTurnRuntimeState {
     readonly airborne: boolean | null;
     readonly movement: NonMekMovementDeclaration | null;
     readonly weaponsHeat: number;
+    /** Heat from outside sources such as inferno missiles, capped per turn; absent at 0. */
+    readonly outsideHeat?: number;
+    /** Inferno missiles that struck the unit this turn, for the every-three effects (TW pp. 141-142); absent at 0. */
+    readonly infernoMissiles?: number;
     /**
      * The arrow was committed as this turn's final heat (APPLY HEAT or an end-of-phase commit), so End Turn adds only
      * weapon heat fired afterwards instead of settling generation and dissipation again.
@@ -553,6 +565,8 @@ export function freezeNonMekUnitState(raw: NonMekUnitRuntimeState): NonMekUnitRu
             turnCounter: state.turn.turnCounter,
             airborne: state.turn.airborne,
             weaponsHeat: state.turn.weaponsHeat,
+            ...(state.turn.outsideHeat ? { outsideHeat: state.turn.outsideHeat } : {}),
+            ...(state.turn.infernoMissiles ? { infernoMissiles: state.turn.infernoMissiles } : {}),
             heatSettled: state.turn.heatSettled,
             cover: state.turn.cover,
             spotting: state.turn.spotting,
@@ -766,6 +780,12 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
     if (selected.length === 0 || selected.length > MAX_ATTACKER_TARGETING_COMPONENTS) {
         return unchanged();
     }
+    // The disposable weapon attack is made instead of the platoon's standard attack (TO:AuE p. 116); the secondary
+    // weapon fires only as part of the platoon attack.
+    const platoonRoles = new Set(selected.map(([weaponId]) => binding.index.components.get(weaponId)?.mount.platoonWeapon));
+    if (platoonRoles.has('secondary') || (platoonRoles.has('primary') && platoonRoles.has('disposable'))) {
+        return unchanged();
+    }
     if (!c3Available && selected.some(([, component]) => component.selection?.kind === 'target'
         && state.attackerTargeting.targets.get(component.selection.targetId)?.useC3 === true)) {
         return unchanged();
@@ -827,7 +847,8 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         if (!isHeatValue(heat)) {
             return unchanged();
         }
-        if (weapon.ammoType === 'NA') {
+        // A platoon's weapons carry their own ammunition; no bin feeds them.
+        if (weapon.ammoType === 'NA' || component.mount.platoonWeapon !== undefined) {
             if (targeting.ammo !== undefined) return unchanged();
             continue;
         }
@@ -867,8 +888,12 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
     if (!isHeatValue(weaponsHeat)) {
         return unchanged();
     }
+    // A disposable weapon is used once per scenario (TO:AuE p. 116): once fired it is gone.
+    const disposableIds = selected.flatMap(([weaponId]) =>
+        binding.index.components.get(weaponId)?.mount.platoonWeapon === 'disposable' ? [weaponId] : []);
+    const fired = withAmmoShotsSpent(state, ammoSpends);
     const next = freezeNonMekUnitState({
-        ...withAmmoShotsSpent(state, ammoSpends),
+        ...(disposableIds.length === 0 ? fired : withComponentStatuses(fired, disposableIds, 'destroyed') ?? fired),
         stateRevision: nextRevision(state.stateRevision),
         turn: Object.freeze({ ...state.turn, weaponsHeat }),
     });
@@ -1668,6 +1693,24 @@ function reduceNonMekUnitState(
             candidate = { ...state, heat };
             break;
         }
+        case 'add-outside-heat': {
+            if (!entity.tracksHeat()) throw new Error('Non-Mek unit does not track heat');
+            if (!Number.isSafeInteger(command.amount) || command.amount <= 0) {
+                throw new Error('Outside heat must be a positive integer');
+            }
+            const outsideHeat = addOutsideHeat(state.turn.outsideHeat ?? 0, command.amount);
+            if (outsideHeat === state.turn.outsideHeat) return null;
+            candidate = { ...state, turn: Object.freeze({ ...state.turn, outsideHeat }) };
+            break;
+        }
+        case 'add-inferno-missiles': {
+            if (!Number.isSafeInteger(command.count) || command.count <= 0) {
+                throw new Error('Inferno missiles must be a positive integer');
+            }
+            const infernoMissiles = (state.turn.infernoMissiles ?? 0) + command.count;
+            candidate = { ...state, turn: Object.freeze({ ...state.turn, infernoMissiles }) };
+            break;
+        }
         case 'set-heatsinks-off': {
             if (!entity.tracksHeat()) throw new Error('Non-Mek unit does not track heat');
             const heatsinksOff = boundedHeatsinksOff(command.heatsinksOff, entity.engineHeatSinks());
@@ -1891,9 +1934,10 @@ export function projectNonMekEndTurnHeat(
     // A settled turn already holds its generation and dissipation; only weapons fired since then add heat.
     const settled = state.turn.heatSettled;
     const weapons = Math.max(0, state.turn.weaponsHeat);
+    const outside = state.turn.outsideHeat ?? 0;
     const nova = settled ? 0 : Math.max(0, nonMekNovaHeat(entity, index, state, ruleset));
     const mobileHpg = settled ? 0 : Math.max(0, nonMekMobileHpgHeat(entity, index, state, ruleset));
-    const generated = weapons + nova + mobileHpg;
+    const generated = weapons + outside + nova + mobileHpg;
     const dissipated = settled ? 0 : Math.max(0, projectAeroRuntimeRules(
         entity,
         index,
@@ -1909,6 +1953,7 @@ export function projectNonMekEndTurnHeat(
         dissipated,
         sources: Object.freeze([
             ...(weapons > 0 ? [Object.freeze({ id: 'weapons', label: 'Weapons', value: weapons })] : []),
+            ...(outside > 0 ? [Object.freeze({ id: 'outside-heat', label: 'Outside Heat', value: outside })] : []),
             ...(nova > 0 ? [Object.freeze({ id: 'nova-cews', label: 'Nova CEWS', value: nova })] : []),
             ...(mobileHpg > 0 ? [Object.freeze({ id: 'mobile-hpg', label: 'Mobile HPG', value: mobileHpg })] : []),
             ...(dissipated > 0 ? [Object.freeze({ id: 'dissipation', label: 'Dissipation', value: -dissipated })] : []),
@@ -2006,7 +2051,7 @@ function commitPendingHeat(state: NonMekUnitRuntimeState): NonMekUnitRuntimeStat
     return {
         ...state,
         heat: settleHeat(state.heat, pending),
-        turn: Object.freeze({ ...state.turn, weaponsHeat: 0, heatSettled: true }),
+        turn: Object.freeze({ ...state.turn, weaponsHeat: 0, outsideHeat: undefined, heatSettled: true }),
     };
 }
 
@@ -2593,6 +2638,10 @@ function validateState(
     if (!Number.isSafeInteger(state.turn.turnCounter) || state.turn.turnCounter < 0
         || !Number.isSafeInteger(state.turn.weaponsHeat) || state.turn.weaponsHeat < 0
         || state.turn.weaponsHeat > MAX_HEAT_VALUE
+        || (state.turn.outsideHeat !== undefined && (!Number.isSafeInteger(state.turn.outsideHeat)
+            || state.turn.outsideHeat < 0 || state.turn.outsideHeat > MAX_OUTSIDE_HEAT_PER_TURN))
+        || (state.turn.infernoMissiles !== undefined
+            && (!Number.isSafeInteger(state.turn.infernoMissiles) || state.turn.infernoMissiles < 0))
         || (state.turn.airborne !== null && typeof state.turn.airborne !== 'boolean')
         || (state.turn.cover !== null && !isUnitCover(state.turn.cover))
         || typeof state.turn.spotting !== 'boolean'

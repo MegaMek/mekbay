@@ -151,7 +151,7 @@ describe('force storage codec', () => {
 
     for (const family of ['mek', 'non-mek'] as const) {
         it(`stores shared ${family} turn facts byte-identically whatever order the turn wire lists them in`, () => {
-            const shared = { turnCounter: 2, cover: serializeUnitCover('light'), weaponsHeat: 4,
+            const shared = { turnCounter: 2, cover: serializeUnitCover('light'), weaponsHeat: 4, outsideHeat: 6,
                 spotting: true as const, phaseStateChanged: true as const, endTurnCheckpoint: 'heat-staged' as const };
             const tank = new TestTankEntity();
             tank.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
@@ -164,12 +164,13 @@ describe('force storage codec', () => {
                 ? [serializeMekTurnStateV2(deserializeMekTurnStateV2({ schemaVersion: 1, ...shared,
                     acknowledgedHeatSources: [{ sourceId: 'weapons', signature: '[4,null,null]' }],
                     heatDissipationConsumed: 2 })),
-                { schemaVersion: 1, turnCounter: 2, cover: shared.cover, weaponsHeat: 4,
+                { schemaVersion: 1, turnCounter: 2, cover: shared.cover, weaponsHeat: 4, outsideHeat: 6,
                     acknowledgedHeatSources: [{ sourceId: 'weapons', signature: '[4,null,null]' }],
                     heatDissipationConsumed: 2, spotting: true, phaseStateChanged: true, endTurnCheckpoint: 'heat-staged' }]
-                : [{ ...shared, heatSettled: true as const },
-                    { turnCounter: 2, weaponsHeat: 4, heatSettled: true as const, cover: shared.cover, spotting: true,
-                        phaseStateChanged: true, endTurnCheckpoint: 'heat-staged' }];
+                : [{ ...shared, infernoMissiles: 4, heatSettled: true as const },
+                    { turnCounter: 2, weaponsHeat: 4, outsideHeat: 6, infernoMissiles: 4, heatSettled: true as const,
+                        cover: shared.cover,
+                        spotting: true, phaseStateChanged: true, endTurnCheckpoint: 'heat-staged' }];
             expect(Object.keys(current)).not.toEqual(Object.keys(earlier));
             const withTurn = (turn: unknown): SerializedCBTForce => ({ ...base, cbt: { ...base.cbt!, units: base.cbt!.units
                 .map(entry => ({ ...entry, unit: { ...entry.unit, turn } as typeof entry.unit })) } });

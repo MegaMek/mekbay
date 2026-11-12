@@ -9,6 +9,8 @@ import { Overlay } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { outputToObservable, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
+import { FLAMER_HANDLER_ID } from '../../models/runtime/component-flamer';
+import { isFlamerEquipment } from '../../models/flamer-mode.model';
 import {
     INVENTORY_MODE_CHOICE_LABEL,
     INVENTORY_MODE_HANDLER_ID,
@@ -1177,7 +1179,14 @@ export class WeaponsEquipmentPanelComponent {
 
     modeChoice(row: EquipmentPanelRow): EquipmentDialogChoice | undefined {
         return this.getHandlerChoices(row)
-            .find(choice => this.isModeChoice(choice));
+            .find(choice => this.isModeChoice(choice) && this.declarationMatters(row, choice));
+    }
+
+    /** A flamer's heat-or-damage declaration is offered only where the rules read it; other flame-based weapons always declare. */
+    private declarationMatters(row: EquipmentPanelRow, choice: EquipmentDialogChoice): boolean {
+        if (choice.command?.handlerId !== FLAMER_HANDLER_ID) return true;
+        const weapon = row.component?.weapon?.platoon?.heatOrDamageWeapon ?? row.component?.equipment;
+        return !isFlamerEquipment(weapon) || this.runtime().declaresFlamerHeat();
     }
 
     modeText(row: EquipmentPanelRow, choice: EquipmentDialogChoice): string {

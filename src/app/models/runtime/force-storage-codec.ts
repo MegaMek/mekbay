@@ -1360,12 +1360,14 @@ function packNonMekTurn(value: SerializedNonMekUnit['turn']): unknown {
         value.heatSettled ? 1 : undefined,
         value.turnStep,
         value.joinedStep,
+        value.outsideHeat,
+        value.infernoMissiles,
     );
 }
 
 function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedNonMekUnit['turn']> {
     const turn = array(value, path);
-    if (turn.length < 1 || turn.length > 12) throw new Error(`${path} is not a compact non-Mek turn`);
+    if (turn.length < 1 || turn.length > 14) throw new Error(`${path} is not a compact non-Mek turn`);
     const turnCounter = rowInteger(turn, 0, path);
     const airborneCode = optionalInteger(turn[1], `${path}[1]`) ?? 0;
     if (airborneCode !== -1 && airborneCode !== 0 && airborneCode !== 1) {
@@ -1403,6 +1405,12 @@ function unpackNonMekTurn(value: unknown, path: string): NonNullable<SerializedN
         }),
         ...(turn[11] === undefined || turn[11] === null ? {} : {
             joinedStep: rowInteger(turn, 11, path),
+        }),
+        ...(turn[12] === undefined || turn[12] === null ? {} : {
+            outsideHeat: rowInteger(turn, 12, path),
+        }),
+        ...(turn[13] === undefined || turn[13] === null ? {} : {
+            infernoMissiles: rowInteger(turn, 13, path),
         }),
     };
 }
@@ -1959,6 +1967,7 @@ function packTurn(value: SerializedMekTurnStateV2): unknown {
         [CBT_TURN_FIELD.airborne]: value.airborne,
         [CBT_TURN_FIELD.cover]: value.cover,
         [CBT_TURN_FIELD.weaponsHeat]: value.weaponsHeat,
+        [CBT_TURN_FIELD.outsideHeat]: value.outsideHeat,
         [CBT_TURN_FIELD.acknowledgedHeatSources]: value.acknowledgedHeatSources
             ?.map(row => [row.sourceId, row.signature]),
         [CBT_TURN_FIELD.heatDissipationConsumed]: value.heatDissipationConsumed,
@@ -2006,6 +2015,10 @@ function unpackTurn(value: unknown, path: string): SerializedMekTurnStateV2 {
         weaponsHeat: optionalInteger(
             turn[CBT_TURN_FIELD.weaponsHeat],
             `${path}.${CBT_TURN_FIELD.weaponsHeat}`,
+        ),
+        outsideHeat: optionalInteger(
+            turn[CBT_TURN_FIELD.outsideHeat],
+            `${path}.${CBT_TURN_FIELD.outsideHeat}`,
         ),
         acknowledgedHeatSources: turn[CBT_TURN_FIELD.acknowledgedHeatSources] === undefined
             ? undefined

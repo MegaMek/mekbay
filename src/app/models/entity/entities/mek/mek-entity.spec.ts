@@ -725,6 +725,47 @@ describe('MekEntity integral heat sinks', () => {
     expect(entity.totalHeatSinks()).toBe(10);
   });
 
+  it('keeps other-type external sinks through engine and count changes', () => {
+    const entity = new BipedMekEntity();
+    entity.mountedEngine.set(new MountedEngine({ type: 'Fusion', rating: 300, techBase: 'IS' }));
+    const singleHeatSink = new MiscEquipment({
+      id: 'Heat Sink', name: 'Heat Sink', type: 'misc', flags: ['F_HEAT_SINK'],
+    });
+    const prototype = new MiscEquipment({
+      id: 'ISDoubleHeatSinkPrototype', name: 'Double Heat Sink Prototype', type: 'misc',
+      flags: ['F_IS_DOUBLE_HEAT_SINK_PROTOTYPE'],
+    });
+    const prototypeMounts = ['LT', 'RT'].map(location => new EntityMountedEquipment({
+      mountId: `prototype-${location}`,
+      equipmentId: prototype.id,
+      equipment: prototype,
+      allocation: { kind: 'location', location },
+      rearMounted: false,
+      turretMounted: false,
+      omniPodMounted: false,
+      armored: false,
+    }));
+    entity.heatSinkEquipment.set(singleHeatSink);
+    entity.setEquipment(prototypeMounts);
+    entity.initializeParsedHeatSinkMounts(18);
+    const prototypesInstalled = () => entity.equipment().filter(mount => mount.equipment === prototype);
+
+    entity.configureEngine(new MountedEngine({ type: 'Fusion', rating: 250, techBase: 'IS' }));
+
+    expect(prototypesInstalled()).toEqual(prototypeMounts);
+    expect(entity.integralHeatSinks()?.count).toBe(10);
+    expect(entity.totalHeatSinks()).toBe(18);
+
+    entity.configureHeatSinks(singleHeatSink, 14);
+
+    expect(prototypesInstalled()).toEqual(prototypeMounts);
+    expect(entity.totalHeatSinks()).toBe(14);
+
+    entity.configureHeatSinks(prototype, 14);
+
+    expect(prototypesInstalled().length).toBe(14);
+  });
+
   it('represents Omni base-chassis sinks as engine-integrated mounts', () => {
     const entity = new BipedMekEntity();
     entity.omni.set(true);

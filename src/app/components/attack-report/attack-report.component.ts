@@ -5,6 +5,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import type { CBTForceMember } from '../../models/force-member.model';
+import { INFERNO_LABEL } from '../../models/rules/inferno-rules';
 import type { HitTable } from '../../models/rules/physical-attack-rules';
 import type { HitLocationDice, TwoDice } from '../../models/rules/weapon-attack-resolution';
 import { readAttackHitLocation } from '../../models/runtime/attack-hit-location';
@@ -26,11 +27,15 @@ export interface AttackReportWeapon {
     readonly hit: boolean;
     readonly jammed?: boolean;
     readonly cluster: Readonly<{ dice: TwoDice; modifier: number; projectiles: number; hits: number }> | null;
+    /** Each group is one inferno missile rather than damage. */
+    readonly inferno?: boolean;
+    /** Outside heat a heat-causing weapon's hit applies, with the heat dice it read (none for a flamer). */
+    readonly heat?: Readonly<{ dice: readonly number[]; value: number }>;
     readonly groups: readonly AttackReportGroup[];
 }
 
-/** Which roll of a weapon an edit sets: to-hit, cluster, or a hit-location group by index. */
-export type AttackReportRoll = 'to-hit' | 'cluster' | number;
+/** Which roll of a weapon an edit sets: to-hit, cluster, heat dice, or a hit-location group by index. */
+export type AttackReportRoll = 'to-hit' | 'cluster' | 'heat' | number;
 
 export interface AttackReportRollEdit {
     readonly weapon: number;
@@ -61,8 +66,9 @@ export function attackReportGroup(
     });
 }
 
-const TWO_D6_TOTALS = Object.freeze([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 const ONE_D6_TOTALS = Object.freeze([1, 2, 3, 4, 5, 6]);
+const TWO_D6_TOTALS = Object.freeze([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+const THREE_D6_TOTALS = Object.freeze([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
 const CLUSTER_MODIFIERS = Object.freeze([-4, -3, -2, -1, 0, 1, 2, 3, 4]);
 
 /** The dice, totals and outcome of each weapon in one attack; editable while the attacker resolves it. */
@@ -82,10 +88,11 @@ export class AttackReportComponent {
     readonly rerolled = output<number>();
 
     protected readonly clusterModifiers = CLUSTER_MODIFIERS;
+    protected readonly infernoLabel = INFERNO_LABEL;
 
-    /** The totals a roll of these dice can show: 2D6, or 1D6 on the punch and kick tables. */
+    /** The totals a roll of these dice can show: 1D6 (punch and kick tables), 2D6, or 3D6 (plasma). */
     protected totals(dice: readonly number[]): readonly number[] {
-        return dice.length === 1 ? ONE_D6_TOTALS : TWO_D6_TOTALS;
+        return dice.length === 1 ? ONE_D6_TOTALS : dice.length === 3 ? THREE_D6_TOTALS : TWO_D6_TOTALS;
     }
 
     protected sum(dice: readonly number[]): number {

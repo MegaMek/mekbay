@@ -15,23 +15,44 @@ export function isFlamerEquipment(equipment: Equipment | null | undefined): bool
     return equipment instanceof WeaponEquipment && equipment.hasFlag(FLAMER_FLAG);
 }
 
+/**
+ * Weapons whose attacker may declare heat in place of damage: flamers, and the flame-based battle armor and infantry
+ * weapons, plasma and incendiary ones (TW pp. 304-305, note §§; TechManual's flame-based feature; MegaMek
+ * InfantryWeapon.isFlameBased).
+ */
+export function isHeatOrDamageWeapon(equipment: Equipment | null | undefined): boolean {
+    return isFlamerEquipment(equipment) || (equipment instanceof WeaponEquipment
+        && (equipment.hasFlag('F_BA_WEAPON') || equipment.hasFlag('F_INFANTRY'))
+        && equipment.hasAnyFlag(['F_PLASMA', 'F_INFERNO', 'F_INCENDIARY_NEEDLES']));
+}
+
+/** A component whose modes are the heat-or-damage declaration. */
+export function hasFlamerModes(modes: readonly string[]): boolean {
+    return modes.includes(FLAMER_DAMAGE_MODE) && modes.includes(FLAMER_HEAT_MODE);
+}
+
 export function flamerRequiresPower(equipment: Equipment | null | undefined): boolean {
     return isFlamerEquipment(equipment)
         && equipment instanceof WeaponEquipment
         && equipment.ammoType === 'NA';
 }
 
-export function flamerComponentModes(
+/**
+ * The heat-or-damage declaration as component modes: a flamer has them only where its rules ask for the declaration,
+ * while Core flamers always deal both (Core p. 183); other flame-based weapons always declare.
+ */
+export function heatOrDamageComponentModes(
     equipment: Equipment | null | undefined,
     ruleset: CBTRuleset,
 ): { readonly modes: readonly string[]; readonly defaultMode: string } | null {
-    return isFlamerEquipment(equipment) && gameRulesFor(ruleset).supportsFlamerModes
-        ? Object.freeze({ modes: FLAMER_MODES, defaultMode: FLAMER_DAMAGE_MODE })
-        : null;
+    const declares = isFlamerEquipment(equipment)
+        ? gameRulesFor(ruleset).supportsFlamerModes
+        : isHeatOrDamageWeapon(equipment);
+    return declares ? Object.freeze({ modes: FLAMER_MODES, defaultMode: FLAMER_DAMAGE_MODE }) : null;
 }
 
 export function flamerDisplayLabel(baseLabel: string, equipment: Equipment, mode: string | undefined): string {
-    return isFlamerEquipment(equipment) && mode === FLAMER_HEAT_MODE
+    return isHeatOrDamageWeapon(equipment) && mode === FLAMER_HEAT_MODE
         ? `${baseLabel} (${FLAMER_HEAT_MODE})`
         : baseLabel;
 }
@@ -41,7 +62,7 @@ export function applyFlamerWeaponTypes(
     mode: string | undefined,
     types: ReadonlySet<WeaponType>,
 ): ReadonlySet<WeaponType> {
-    if (!isFlamerEquipment(equipment) || mode !== FLAMER_DAMAGE_MODE || !types.has('H')) return types;
+    if (!isHeatOrDamageWeapon(equipment) || mode !== FLAMER_DAMAGE_MODE || !types.has('H')) return types;
     const effective = new Set(types);
     effective.delete('H');
     return effective;

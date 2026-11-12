@@ -242,6 +242,7 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
   entity.forceGeneratorAvailability.set(
     parseForceGeneratorAvailability(header.availability, (message) => ctx.warn('availability', message)),
   );
+  entity.missionRoles.set(header.missionRoles);
   entity.omni.set(header.isOmni);
   entity.techBase.set(header.techBase);
   entity.mixedTech.set(header.mixedTech);
@@ -325,7 +326,6 @@ export function parseMtf(content: string, ctx: ParseContext): MekEntity {
       }
     }
   }
-  entity.myomerType.set(header.myomer || 'Standard');
 
   if (header.gyro) entity.gyroType.set(decodeMtfGyroType(header.gyro));
   if (header.cockpit) entity.cockpitType.set(decodeMtfCockpitType(header.cockpit));
@@ -641,12 +641,12 @@ interface DecodedMtfSource {
   rulesLevel: number;
   role: string;
   availability: string[];
+  missionRoles: string;
   isOmni: boolean;
   isFrankenMek: boolean;
   mass: number;
   engine: string;
   structure: string;
-  myomer: string;
   gyro: string;
   cockpit: string;
   ejection: string;
@@ -696,12 +696,12 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
     rulesLevel: 2,
     role: '',
     availability: [],
+    missionRoles: '',
     isOmni: false,
     isFrankenMek: false,
     mass: 0,
     engine: '',
     structure: 'Standard',
-    myomer: 'Standard',
     gyro: '',
     cockpit: '',
     ejection: '',
@@ -802,6 +802,9 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
       case 'generator':
         h.generator = value;
         break;
+      case 'version':
+        // MegaMek reads and ignores the version line (MtfFile.MTF_VERSION).
+        break;
       case 'chassis':
         h.chassis = value;
         break;
@@ -847,6 +850,9 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
       case 'availability':
         h.availability.push(value);
         break;
+      case 'missionroles':
+        h.missionRoles = value;
+        break;
       case 'mass':
         h.mass = parseMtfInteger(value, 'mass', ctx, 0);
         break;
@@ -857,7 +863,7 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
         h.structure = value;
         break;
       case 'myomer':
-        h.myomer = value;
+        // Derived from the installed myomer system, as MegaMek writes it (Mek.getMtf).
         break;
       case 'gyro':
         h.gyro = value;
@@ -1009,7 +1015,10 @@ function parseHeader(lines: string[], ctx: ParseContext): DecodedMtfSource {
           }
           if (hasStructureName) update.structureName = value.substring(0, lastColon).trim();
           updateFrankenMekLocation(h.frankenMekLocations, structureLocation, update);
+          break;
         }
+        // Re-saving drops a field the parser does not know; say so instead of losing it silently.
+        ctx.warn(key, `Unknown field "${key}" is not kept`);
         break;
       }
     }

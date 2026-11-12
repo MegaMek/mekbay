@@ -6,7 +6,7 @@ import { formatProtectionCounter, renderProtectionCounter } from '../../utils/sh
 import type {
 ComponentId,
 } from '../../models/entity/entity-identifiers';
-import { layoutBombStores,type BombSection } from '../../models/aerospace-bomb.model';
+import { isKeyedBomb,layoutBombStores,type BombSection } from '../../models/aerospace-bomb.model';
 import { velocityRecordValue,type VelocityRecordField } from '../../models/aerospace-velocity-record.model';
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { EquipmentPanelComponent,EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
@@ -30,9 +30,9 @@ createInfantryStrengthDisplay,
 INFANTRY_STRENGTH_DISPLAY_ID,
 type InfantryStrengthDisplay,
 } from '../../utils/sheets/infantry-strength-display';
-import { AERO_DEFAULT_BOMB_KEY } from '../../utils/sheets/layouts/aero-record-sheet-components';
+import { AERO_DEFAULT_BOMB_KEY, drawAeroBombKey } from '../../utils/sheets/layouts/aero-record-sheet-components';
 import { renderHandheldWeaponAmmoPips } from '../../utils/sheets/layouts/handheld-weapon-record-sheet-layout';
-import { formatMovementWithMaximum, formatRecordSheetTonnage, formatTechBase, formatWholeNumber, recordSheetAmmoProfiles, setAttributes, svgElement, textFitsWidth } from '../../utils/sheets/record-sheet-svg-rendering';
+import { formatMovementWithMaximum, formatRecordSheetTonnage, formatTechBase, formatWholeNumber, recordSheetAmmoProfiles, setAttributes, svgElement } from '../../utils/sheets/record-sheet-svg-rendering';
 import { writeSvgTextLines } from '../../utils/svg-text.util';
 import {
 attributeValue,
@@ -713,24 +713,9 @@ function renderBombStores(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
         }
     }
     const carried = [...new Map(slots.map(slot => [slot.bomb.id, slot.bomb] as const)).values()];
-    renderBombKey(svg, carried.length > 0
-        ? carried.map(bomb => `${bomb.label} - ${bomb.name}`)
-        : AERO_DEFAULT_BOMB_KEY);
+    const key = svg.querySelector<SVGGElement>('.bombKey');
+    if (key) drawAeroBombKey(key, carried.length > 0 ? carried.filter(isKeyedBomb) : AERO_DEFAULT_BOMB_KEY);
     return boxes;
-}
-
-/** Explains the abbreviated bombs carried, or shows the sheet's default key for an empty loadout. */
-function renderBombKey(svg: SVGSVGElement, entries: readonly string[]): void {
-    const title = svg.querySelector<SVGTextElement>('.bombKeyTitle');
-    if (!title) return;
-    title.style.display = entries.length > 0 ? '' : 'none';
-    svg.querySelectorAll<SVGTextElement>('.bombKeyLine').forEach((line, index) => {
-        line.textContent = entries[index] ?? '';
-        const maxWidth = Number(line.dataset['maxWidth']);
-        const fits = textFitsWidth(line.textContent, Number(line.getAttribute('font-size')), maxWidth);
-        if (fits) line.removeAttribute('textLength');
-        else setAttributes(line, { textLength: maxWidth, lengthAdjust: 'spacingAndGlyphs' });
-    });
 }
 
 /** Writes the velocity record values into their cells; returns the cells for interaction. */

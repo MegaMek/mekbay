@@ -61,6 +61,8 @@ export interface StoredCoreSourceArchive {
 export interface UnitCatalogDatabaseOptions {
     readonly databaseName?: string;
     readonly indexedDb?: IDBFactory;
+    /** A newer MekBay in another tab changed the schema; this tab must reload to use the database again. */
+    readonly onVersionChange?: () => void;
 }
 
 export class UnitCatalogDatabaseOpenBlockedError extends Error {
@@ -109,7 +111,6 @@ function openDatabase(options: UnitCatalogDatabaseOptions): Promise<IDBDatabase>
                 return;
             }
             settled = true;
-            request.result.onversionchange = () => request.result.close();
             resolve(request.result);
         };
         request.onerror = () => rejectOnce(request.error ?? new Error('Failed to open unit catalog database'));
@@ -118,10 +119,19 @@ function openDatabase(options: UnitCatalogDatabaseOptions): Promise<IDBDatabase>
 }
 
 export class UnitCatalogDatabase {
+    /** Closed for a newer schema: the tab keeps its in-memory catalog, reads find nothing and writes are skipped. */
+    private stale = false;
+
     private constructor(private readonly database: IDBDatabase) {}
 
     public static async open(options: UnitCatalogDatabaseOptions = {}): Promise<UnitCatalogDatabase> {
-        return new UnitCatalogDatabase(await openDatabase(options));
+        const database = new UnitCatalogDatabase(await openDatabase(options));
+        database.database.onversionchange = () => {
+            database.stale = true;
+            database.database.close();
+            options.onVersionChange?.();
+        };
+        return database;
     }
 
     public get objectStoreNames(): readonly string[] {
@@ -138,6 +148,7 @@ export class UnitCatalogDatabase {
         archiveBlob: Blob,
     ): Promise<void> {
         assertGeneration(generation);
+        if (this.stale) return;
         if (archiveBlob.size < 22) throw new Error('Core unit ZIP is empty or incomplete');
 
         const catalog: StoredUnitCatalog = {
@@ -182,6 +193,7 @@ export class UnitCatalogDatabase {
     public async readActiveCatalog<TSummary = readonly UnitSummary[]>(): Promise<
         PublishedCatalogGeneration<TSummary> | undefined
     > {
+        if (this.stale) return undefined;
         const transaction = this.database.transaction(UNIT_CATALOG_STORE, 'readonly');
         const completion = transactionCompletion(transaction);
         const store = transaction.objectStore(UNIT_CATALOG_STORE);
@@ -211,6 +223,7 @@ export class UnitCatalogDatabase {
     }
 
     public async readSourceArchive(unitsManifestHash: SourceHash): Promise<Blob | undefined> {
+        if (this.stale) return undefined;
         const transaction = this.database.transaction(UNIT_CATALOG_STORE, 'readonly');
         const completion = transactionCompletion(transaction);
         const row = await requestResult(

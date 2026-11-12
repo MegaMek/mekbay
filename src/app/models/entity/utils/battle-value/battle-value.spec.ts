@@ -429,6 +429,20 @@ describe('battle value family dispatch', () => {
     expect(qmsMount.getBV(entity)).toBe(5);
   });
 
+  it('adds a platoon disposable weapon to infantry BV', () => {
+    const entity = new TestInfantryEntity();
+    entity.squadSize.set(7);
+    entity.squadCount.set(4);
+    const without = calculateBattleValue(entity);
+    const law = new WeaponEquipment({
+      id: 'law', name: 'Rocket Launcher (LAW)', type: 'weapon',
+      flags: ['F_INFANTRY', 'F_INF_DISPOSABLE'], infantry: { damage: 0.53 }, stats: { bv: 2.71 },
+    });
+    if (!law.isInfantryWeapon()) throw new Error('Test LAW is not an infantry weapon');
+    entity.setPlatoonWeapon('disposable', law);
+    expect(calculateBattleValue(entity)).toBeGreaterThan(without);
+  });
+
   it('composes infantry armor, augmentation, and beast damage divisors', () => {
     const entity = new TestInfantryEntity();
     entity.augmentations.set(['tsm_implant', 'dermal_armor']);

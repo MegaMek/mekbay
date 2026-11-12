@@ -331,6 +331,7 @@ describe('OptionsService theme migration', () => {
             sprinting: false,
             allowMixedTechBaseAmmo: false,
             hotLoadedAmmo: false,
+            enhancedFlamers: false,
         });
     });
 
@@ -351,6 +352,7 @@ describe('OptionsService theme migration', () => {
                 sprinting: true,
                 allowMixedTechBaseAmmo: true,
                 hotLoadedAmmo: true,
+                enhancedFlamers: true,
             },
         };
 
@@ -364,6 +366,7 @@ describe('OptionsService theme migration', () => {
             sprinting: true,
             allowMixedTechBaseAmmo: true,
             hotLoadedAmmo: true,
+            enhancedFlamers: true,
         });
     });
 

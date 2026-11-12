@@ -171,6 +171,8 @@ export function getMekSplitPrimaryLocation(locationA: string, locationB: string)
 export const BIPED_LEG_LOCATIONS = ['LL', 'RL'] as const satisfies readonly MekLocation[];
 export const TRIPOD_LEG_LOCATIONS = ['LL', 'RL', 'CL'] as const satisfies readonly MekLocation[];
 export const QUAD_LEG_LOCATIONS = ['FLL', 'FRL', 'RLL', 'RRL'] as const satisfies readonly MekLocation[];
+export const QUAD_FRONT_LEG_LOCATIONS = ['FLL', 'FRL'] as const satisfies readonly MekLocation[];
+export const QUAD_REAR_LEG_LOCATIONS = ['RLL', 'RRL'] as const satisfies readonly MekLocation[];
 
 export const LEG_LOCATIONS: ReadonlySet<string> = new Set([
   ...TRIPOD_LEG_LOCATIONS,

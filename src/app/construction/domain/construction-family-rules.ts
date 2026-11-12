@@ -181,7 +181,7 @@ export function battleArmorSuitMassCapacity(entity: BattleArmorEntity): number {
 }
 
 export function battleArmorMountCapacity(entity: BattleArmorEntity, location: string): number {
-  const quad = entity.chassisType().toLowerCase() === 'quad';
+  const quad = entity.chassisType() === 'Quad';
   const index = ['Ultra Light', 'Light', 'Medium', 'Heavy', 'Assault'].indexOf(entity.weightClass());
   const turret = /^(Standard|Modular|Configurable):(\d+)$/i.exec(entity.turretConfig());
   if (location === 'Turret') return turret ? Number(turret[2]) : 0;
@@ -280,7 +280,7 @@ export function constructionFamilyMessages(entity: BaseEntity): EntityValidation
     if (!constructionBattleArmorChassisApplies(entity.chassisType(), entity.weightClass())) add('BA_QUAD_ULTRALIGHT', 'Quad battle armor requires a light or heavier chassis.', 'structure');
     const classes = ['Ultra Light', 'Light', 'Medium', 'Heavy', 'Assault'];
     const index = classes.indexOf(entity.weightClass());
-    const quad = entity.chassisType().toLowerCase() === 'quad';
+    const quad = entity.chassisType() === 'Quad';
     const turret = /^(Standard|Modular|Configurable):(\d+)$/i.exec(entity.turretConfig());
     if (entity.turretConfig() && (!turret || !quad || Number(turret[2]) < 1 || Number(turret[2]) > (/^Standard$/i.test(turret[1]) ? 10 : 9))) add('BA_TURRET_CONFIGURATION', 'Battle armor turrets require a quad chassis and 1–10 standard or 1–9 modular slots.', 'structure');
     if (!['Leg', 'Jump', 'UMU', 'VTOL'].includes(entity.motiveType()) || quad && entity.motiveType() !== 'Leg'

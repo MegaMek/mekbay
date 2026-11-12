@@ -39,6 +39,22 @@ describe('construction fluff editor', () => {
       fixture.destroy();
     }
   });
+  it('requests one edit per committed text change, not per keystroke', async () => {
+    const fixture = TestBed.createComponent(ConstructionFluffComponent);
+    fixture.componentRef.setInput('entity', createConstructionEntity('Biped', registry));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    let edits = 0;
+    fixture.componentInstance.editRequested.subscribe(() => edits++);
+    const textarea: HTMLTextAreaElement = fixture.nativeElement.querySelector('textarea');
+    for (const text of ['A', 'At', 'Atlas']) {
+      textarea.value = text;
+      textarea.dispatchEvent(new Event('input'));
+    }
+    expect(edits).toBe(0);
+    textarea.dispatchEvent(new Event('blur'));
+    expect(edits).toBe(1);
+  });
   it('shows MML text fields by unit family', () => {
     const fixture = TestBed.createComponent(ConstructionFluffComponent);
     const component = fixture.componentInstance;

@@ -9,7 +9,7 @@ import type { MekPhysicalAttackCheckTriggerKindV2 } from '../runtime/mek-movemen
 export type PhysicalAttackKind = Exclude<IntrinsicWeaponKind, 'airmek-ram' | 'frenzy'> | 'weapon';
 
 export const PHYSICAL_ATTACK_KINDS: readonly PhysicalAttackKind[] = Object.freeze([
-    'punch', 'kick', 'club', 'push', 'charge', 'death-from-above', 'weapon',
+    'punch', 'kick', 'mule-kick', 'club', 'push', 'charge', 'death-from-above', 'weapon',
 ]);
 
 /** Which location table a hit is read on: the standard 2D6 table, or the 1D6 punch or kick table. */
@@ -25,6 +25,7 @@ export function physicalHitTable(kind: PhysicalAttackKind, claws: boolean): HitT
         case 'death-from-above':
             return 'punch';
         case 'kick':
+        case 'mule-kick':
             return 'kick';
         case 'weapon':
             return claws ? 'punch' : 'standard';
@@ -99,6 +100,7 @@ export function physicalAttackPilotChecks(
         Object.freeze({ attacker, target, attackerFalls });
     switch (kind) {
         case 'kick':
+        case 'mule-kick':
             return hit ? result(checks(), checks('kicked')) : result(checks('missed-kick'));
         case 'push':
             return hit ? result(checks(), checks('pushed')) : result();

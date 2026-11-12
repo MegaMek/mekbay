@@ -234,7 +234,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(panelLaser.status).toBe('destroyed');
         expect(panel.physicalAttackBlockers).toEqual([]);
         expect(panel.physicalAttacks.map(attack => attack.label)).toEqual([
-            'Punch', 'Punch', 'Kick', 'Club/Improvised', 'Charge', 'Push',
+            'Punch', 'Punch', 'Kick (LL)', 'Club/Improvised', 'Charge', 'Push',
         ]);
         expect(panel.physicalAttacks.map(attack => attack.hitModifiers)).toEqual([
             [-1], [-1], [-1], [-1], ['versus'], [-1],
@@ -911,7 +911,7 @@ describe('direct Mek entity/runtime projections', () => {
         }));
 
         const legs = createDirectCompleteLegAesRuntimeFixture('core-2026');
-        const kick = () => panel(legs).physicalAttacks.find(candidate => candidate.label === 'Kick')!;
+        const kick = () => panel(legs).physicalAttacks.find(candidate => candidate.label === 'Kick (LL)')!;
         expect(kick().hitModifierBreakdown).toContain(jasmine.objectContaining({
             label: 'Leg AES', modifier: -1,
         }));
@@ -925,7 +925,7 @@ describe('direct Mek entity/runtime projections', () => {
         }));
 
         const partial = createDirectLegAesRuntimeFixture('core-2026', 'unit:partial-leg-aes');
-        const partialKick = panel(partial).physicalAttacks.find(candidate => candidate.label === 'Kick')!;
+        const partialKick = panel(partial).physicalAttacks.find(candidate => candidate.label === 'Kick (LL)')!;
         expect(partialKick.hitModifierBreakdown.some(entry => entry.label.includes('Leg AES'))).toBeFalse();
     });
 
@@ -946,7 +946,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(initialRows.filter(row => row.target.kind === 'intrinsic').map(row => row.label)).toEqual([
             'Punch',
             'Punch',
-            'Kick',
+            'Kick (LL)',
             'Club/Improvised',
             'Charge',
             'Push',

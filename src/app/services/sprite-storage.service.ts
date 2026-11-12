@@ -171,7 +171,11 @@ export class SpriteStorageService {
                     return;
                 }
                 settled = true;
-                database.onversionchange = () => database.close();
+                // A newer MekBay tab owns the schema now; keep the sprite cache in memory.
+                database.onversionchange = () => {
+                    database.close();
+                    this.dbPromise = Promise.resolve(null);
+                };
                 resolve(database);
             };
             request.onerror = (event) => {

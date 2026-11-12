@@ -128,6 +128,7 @@ export function writeYearTechMeta(w: BuildingBlockWriter, entity: BaseEntity): v
   );
   if (entity.role()) w.addBlock('role', entity.role());
   w.addBlockIfPresent('availability', entity.forceGeneratorAvailability().map(formatForceGeneratorAvailability));
+  if (entity.missionRoles()) w.addBlock('missionroles', entity.missionRoles());
   const caseOptOut = entity.clanCaseOptOutLocations();
   if (caseOptOut.size) w.addBlock('clancaseoptedoutlocs', ...caseOptOut);
 

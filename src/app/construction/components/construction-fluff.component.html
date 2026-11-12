@@ -14,6 +14,7 @@
             class="bt-input"
             rows="5"
             [ngModel]="textValue(field.key)"
+            [ngModelOptions]="{ updateOn: 'blur' }"
             (ngModelChange)="setText(field.key, $event)"
           ></textarea>
         </label>
@@ -66,12 +67,14 @@
           >Manufacturer<input
             class="bt-input"
             [ngModel]="entity().fluff().manufacturer ?? ''"
+            [ngModelOptions]="{ updateOn: 'blur' }"
             (ngModelChange)="setText('manufacturer', $event)"
         /></label>
         <label
           >Primary factory<input
             class="bt-input"
             [ngModel]="entity().fluff().primaryFactory ?? ''"
+            [ngModelOptions]="{ updateOn: 'blur' }"
             (ngModelChange)="setText('primaryFactory', $event)"
         /></label>
         @if (spacecraft()) {
@@ -82,6 +85,7 @@
                 }}<input
                   class="bt-input"
                   [ngModel]="entity().fluff()[field.key] ?? ''"
+                  [ngModelOptions]="{ updateOn: 'blur' }"
                   (ngModelChange)="setText(field.key, $event)"
               /></label>
             }
@@ -96,6 +100,7 @@
                   class="bt-input"
                   [attr.aria-label]="system.label + ' manufacturer'"
                   [ngModel]="entity().fluff().systemManufacturers?.[system.key] ?? ''"
+                  [ngModelOptions]="{ updateOn: 'blur' }"
                   (ngModelChange)="setSystem('systemManufacturers', system.key, $event)"
               /></label>
               <label
@@ -103,6 +108,7 @@
                   class="bt-input"
                   [attr.aria-label]="system.label + ' model'"
                   [ngModel]="entity().fluff().systemModels?.[system.key] ?? ''"
+                  [ngModelOptions]="{ updateOn: 'blur' }"
                   (ngModelChange)="setSystem('systemModels', system.key, $event)"
               /></label>
             </fieldset>

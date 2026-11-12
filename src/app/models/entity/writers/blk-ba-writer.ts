@@ -77,7 +77,7 @@ export function writeBlkBA(entity: BattleArmorEntity): string {
   writeManualBV(w, entity);
 
   // ── Section 8: BA tail fields ──
-  if (entity.chassisType()) w.addBlock('chassis', entity.chassisType());
+  w.addBlock('chassis', entity.chassisType().toLowerCase());
   const turretCfg = entity.turretConfig();
   if (turretCfg) w.addBlock('turret', turretCfg);
   if (entity.isExoskeleton()) w.addBlock('exoskeleton', 'true');

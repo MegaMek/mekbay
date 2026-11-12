@@ -108,7 +108,7 @@ export interface EntityMountedEquipmentInit {
   /** Anti-Personnel Mount weapon */
   isAPM?: boolean;
 
-  /** Conventional infantry platoon weapon (BLK Primary/Secondary) */
+  /** Conventional infantry platoon weapon (BLK Primary/Secondary/disposableWeapon) */
   platoonWeapon?: PlatoonWeaponRole;
 
   /** Ammo: shot count */
@@ -116,7 +116,8 @@ export interface EntityMountedEquipmentInit {
 
 }
 
-export type PlatoonWeaponRole = 'primary' | 'secondary';
+/** `disposable`: the one-shot weapon every trooper carries (TO:AuE p. 116), a separate mount as in MegaMek. */
+export type PlatoonWeaponRole = 'primary' | 'secondary' | 'disposable';
 
 /** Input accepted when installing equipment; entity ownership supplies identity. */
 export type EntityMountedEquipmentInput = Omit<EntityMountedEquipmentInit, 'mountId'>;

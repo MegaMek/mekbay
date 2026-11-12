@@ -21,16 +21,26 @@
                 }
             </ul>
         }
+        @if (heat() > 0) {
+            <ul class="location-summary" aria-label="Outside heat">
+                <li><span>Heat</span><strong>+{{ heat() }}</strong></li>
+            </ul>
+        }
+        @if (inferno(); as inferno) {
+            <ul class="location-summary" aria-label="Inferno effect">
+                <li><span>Inferno</span><strong>{{ inferno }}</strong></li>
+            </ul>
+        }
         <attack-report [weapons]="weapons()" />
         @if (!applicable()) {
             <p class="incoming-note">This unit takes damage by trooper: apply it on the sheet.</p>
-        } @else if (totalDamage() > 0) {
+        } @else if (totalDamage() > 0 || inferno() !== null || heat() > 0) {
             @if (data.pending) { <p class="incoming-note">Accepted damage is marked pending until the phase ends.</p> }
             @if (manualCriticals) { <p class="incoming-note">Roll critical and motive effects on the sheet.</p> }
         }
     </div>
     <div class="actions">
-        @if (applicable() && totalDamage() > 0) {
+        @if (applicable() && (totalDamage() > 0 || inferno() !== null || heat() > 0)) {
             <button type="button" class="bt-button primary" (click)="accept()">ACCEPT DAMAGE</button>
             <button type="button" class="bt-button" (click)="ignore()">IGNORE</button>
         } @else {

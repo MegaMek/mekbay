@@ -121,11 +121,11 @@ describe('custom construction saves across the complete native family catalog', 
                 const entity = createConstructionEntity(kind.id, registry);
                 const field = getConstructionFields(entity).find(value => value.id === descriptor.id)!;
                 const previous = field.get();
-                // MegaMek writes prototype double heat sinks under a Single header; only placed
-                // critical slots identify them, and a type change leaves the extra sinks unplaced.
+                // MegaMek writes prototype and freezer double heat sinks under a Single header; only
+                // placed critical slots identify them, and a type change leaves the extra sinks unplaced.
                 const value: ConstructionFieldValue | undefined = field.id === 'heatSinkType'
                     ? field.options?.find(option => !option.disabled && String(option.value) !== String(previous)
-                        && option.value !== 'ISDoubleHeatSinkPrototype')?.value
+                        && !['ISDoubleHeatSinkPrototype', 'ISDoubleHeatSinkFreezer'].includes(String(option.value)))?.value
                     : field.kind === 'boolean' ? !previous
                     : field.kind === 'number' ? Math.max(field.min ?? -Infinity,
                         Math.min(field.max ?? Infinity, Math.max(Number(previous) + (field.step ?? 1), 0.01)))

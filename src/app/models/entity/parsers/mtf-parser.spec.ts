@@ -52,6 +52,21 @@ describe('MTF parser identity', () => {
     ).toEqual(entity.forceGeneratorAvailability());
   });
 
+  it('warns about a field it does not keep', () => {
+    const context = new ParseContext('unknown.mtf', STANDARD_ARMOR_REGISTRY);
+    parseMtf(minimalMtf().replace('Config:Biped', 'Config:Biped\nfuturefield:42'), context);
+    expect(context.warnings).toContain(jasmine.objectContaining({ field: 'futurefield' }));
+  });
+
+  it('preserves Force Generator mission roles', () => {
+    const source = minimalMtf().replace('Config:Biped', 'Config:Biped\nmissionroles: fire_support,urban ');
+    const entity = parseMtf(source, new ParseContext('roles.mtf', STANDARD_ARMOR_REGISTRY));
+    expect(entity.missionRoles()).toBe('fire_support,urban');
+    expect(writeMtf(entity)).toContain('\nmissionroles:fire_support,urban\n');
+    entity.missionRoles.set('');
+    expect(writeMtf(entity)).not.toContain('missionroles');
+  });
+
   it('preserves an earlier original era and treats an era equal to introduction as unset', () => {
     const source = minimalMtf().replace('Config:Biped', 'Config:Biped\nera:3050\noriginal era:2750');
     const entity = parseMtf(source, new ParseContext('oem.mtf', STANDARD_ARMOR_REGISTRY));
@@ -809,5 +824,67 @@ describe('MTF rules level on load', () => {
     expect(industrial.rulesLevel()).toBe(4);
     expect(iceBattleMek.staticTechLevel()).toBe('Experimental');
     expect(iceBattleMek.rulesLevel()).toBe(4);
+  });
+});
+
+describe('MTF jump mp line', () => {
+  let catalog: EquipmentRegistry;
+  beforeAll(async () => {
+    catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
+
+  const mek = (torso: string, leftLeg: string, rightLeg: string) => `chassis:Jump Test
+model:JT-1
+Config:Biped
+techbase:Clan
+era:3080
+rules level:3
+mass:75
+engine:300 Fusion Engine
+heat sinks:10 Single
+walk mp:4
+jump mp:9
+armor:Standard(Clan)
+Left Arm:
+Shoulder
+Upper Arm Actuator
+Lower Arm Actuator
+Hand Actuator
+Right Arm:
+Shoulder
+Upper Arm Actuator
+Lower Arm Actuator
+Hand Actuator
+Left Torso:
+${torso}
+Right Torso:
+${torso}
+Left Leg:
+Hip
+Upper Leg Actuator
+Lower Leg Actuator
+Foot Actuator
+${leftLeg}
+Right Leg:
+Hip
+Upper Leg Actuator
+Lower Leg Actuator
+Foot Actuator
+${rightLeg}
+`;
+
+  // MegaMek and MegaMekLab store the number of jump jets, which TechManual prices; the wing bonus is not a jet.
+  it('writes the number of jump jets, not jump MP raised by a partial wing', () => {
+    const entity = parseEntity(mek('CLPartialWing\nCLPartialWing\nCLPartialWing', 'Jump Jet\nJump Jet', 'Jump Jet'),
+      'wing.mtf', catalog).entity;
+
+    expect(entity.maxJumpMP()).toBeGreaterThan(3);
+    expect(encodeNativeEntity(entity)).toContain('\njump mp:3\n');
+  });
+
+  it('writes no jump MP for UMUs, as MegaMekLab does', () => {
+    const entity = parseEntity(mek('-Empty-', 'UMU\nUMU', 'UMU\nUMU'), 'umu.mtf', catalog).entity;
+
+    expect(encodeNativeEntity(entity)).toContain('\njump mp:0\n');
   });
 });

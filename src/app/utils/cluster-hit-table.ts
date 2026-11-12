@@ -29,5 +29,9 @@ export function clusterHits(roll: number, rackSize: number): number {
     }
     if (!Number.isInteger(rackSize) || rackSize <= 0) return 0;
     const row = CLUSTER_HIT_TABLE.find(candidate => candidate[0] === rackSize);
-    return row?.[roll - 1] ?? 0;
+    if (row) return row[roll - 1]!;
+    // A size the table lacks splits at its largest smaller row, as MegaMek Compute.missilesHit does; the rules give no
+    // column for it. Unlike MegaMek, which rolls the remainder again, one roll serves both parts.
+    const largest = [...CLUSTER_HIT_TABLE].reverse().find(candidate => candidate[0]! < rackSize)!;
+    return largest[roll - 1]! + clusterHits(roll, rackSize - largest[0]!);
 }

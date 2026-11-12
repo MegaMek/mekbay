@@ -40,6 +40,7 @@ import {
 } from './construction-rules';
 import { constructionTechnologyEligibility } from './construction-technology-rules';
 import { calculateHeatNeutralRequirement } from '../../models/entity/utils/cost/common';
+import { MEK_MYOMER_TYPES } from '../../models/myomer-equipment.model';
 import { getEquipmentEngineWeight } from '../../models/entity/utils/equipment-engine-weight';
 import {
   calculateMekConversionWeight,
@@ -534,7 +535,7 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
       'Myomer',
       entity.myomerType,
       (value) => setConstructionMyomer(entity, value),
-      ['Standard', 'Triple Strength', 'Industrial Triple Strength', 'Super-Cooled'],
+      MEK_MYOMER_TYPES,
       'Systems',
       (value) => value === 'Standard' || constructionMyomerEquipment(entity, value) !== undefined,
     );
@@ -979,7 +980,9 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
     for (const [id, label, role, signal] of [
       ['primaryWeapon', 'Primary weapon', 'primary', entity.primaryWeapon],
       ['secondaryWeapon', 'Secondary weapon', 'secondary', entity.secondaryWeapon],
+      ['disposableWeapon', 'Disposable weapon', 'disposable', entity.disposableWeapon],
     ] as const) {
+      const choices = role === 'disposable' ? weapons.filter((eq) => eq.hasFlag('F_INF_DISPOSABLE')) : weapons;
       select(
         id,
         label,
@@ -988,21 +991,33 @@ export function getConstructionFields(entity: BaseEntity, showIncompatible = fal
           const weapon = weapons.find((eq) => eq.id === value);
           entity.setPlatoonWeapon(role, weapon?.isInfantryWeapon() ? weapon : null);
         },
-        ['', ...weapons.map((eq) => eq.id)],
+        ['', ...choices.map((eq) => eq.id)],
         'Systems',
         (value) => {
           if (value === '') return true;
           const weapon = weapons.find((eq) => eq.id === value)!;
           return (
-            (id === 'primaryWeapon'
+            (role === 'primary'
               ? constructionInfantryPrimaryApplies(weapon)
-              : constructionInfantrySecondaryLimit(entity) > 0) &&
+              : role === 'secondary'
+                ? constructionInfantrySecondaryLimit(entity) > 0
+                : entity.rulesLevel() >= 3) &&
             constructionEquipmentEligibilityIssues(entity, weapon).length === 0
           );
         },
         (value) => (value ? (weapons.find((eq) => eq.id === value)?.name ?? signal()?.name ?? value) : 'None'),
       );
     }
+    // A pre-battle declaration for the platoon's SRM launchers (TW p. 141), kept in the file as MegaMek does.
+    select(
+      'srmMunition',
+      'SRM munition',
+      () => (entity.firesInfernoSrms() ? 'Inferno' : 'Standard'),
+      (value) => entity.infernoSrmsDeclared.set(value === 'Inferno'),
+      ['Standard', 'Inferno'],
+      'Systems',
+      (value) => value === 'Standard' || entity.firesInfernoSrms() || entity.hasSrmLauncher(),
+    );
     if (entity.secondaryWeapon())
       number('secondaryCount', 'Secondary weapons per squad', entity.secondaryCount, entity.secondaryCount.set);
     number(

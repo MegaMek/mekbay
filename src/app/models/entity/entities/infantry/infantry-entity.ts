@@ -78,7 +78,7 @@ export class InfantryEntity extends InfantryBaseEntity {
    * InfantryWeaponMounted and composes tech from its range weapon.
    */
   protected override mountContributesTech(mount: EntityMountedEquipment): boolean {
-    return !mount.platoonWeapon || mount.equipment === this.rangeWeapon();
+    return !mount.platoonWeapon || mount.platoonWeapon === 'disposable' || mount.equipment === this.rangeWeapon();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -88,6 +88,15 @@ export class InfantryEntity extends InfantryBaseEntity {
   /** Platoon weapons are canonical mounts, so generic equipment scans see them as MegaMek's do. */
   readonly primaryWeapon = computed(() => this.findPlatoonWeapon('primary'));
   readonly secondaryWeapon = computed(() => this.findPlatoonWeapon('secondary'));
+  readonly disposableWeapon = computed(() => this.findPlatoonWeapon('disposable'));
+  /** The platoon's SRM launchers carry Inferno munitions (TW p. 141); a pre-battle declaration kept in the file. */
+  readonly infernoSrmsDeclared = signal<boolean>(false);
+  /** The declaration only matters while a platoon weapon is an SRM launcher (MegaMek ConvInfantry.firesInfernoSrms). */
+  readonly firesInfernoSrms = computed(() => this.infernoSrmsDeclared() && this.hasSrmLauncher());
+
+  hasSrmLauncher(): boolean {
+    return [this.primaryWeapon(), this.secondaryWeapon()].some((weapon) => weapon?.hasFlag('F_SRM') === true);
+  }
   readonly secondaryCount = signal<number>(0);
   readonly rangeWeapon = computed<InfantryWeaponEquipment | null>(() => {
     const secondaryWeapon = this.secondaryWeapon();
@@ -222,13 +231,13 @@ export class InfantryEntity extends InfantryBaseEntity {
     );
   }
 
-  /** Replace the platoon's primary or secondary weapon mount. */
+  /** Replace the platoon's primary, secondary or disposable weapon mount. */
   setPlatoonWeapon(role: PlatoonWeaponRole, weapon: InfantryWeaponEquipment | null): void {
     const current = this.equipment().find((mount) => mount.platoonWeapon === role);
     if (current?.equipment === (weapon ?? undefined)) return;
+    const hadSrm = this.hasSrmLauncher();
     if (current) this.removeEquipment(current);
-    if (!weapon) return;
-    this.addEquipment({
+    if (weapon) this.addEquipment({
       equipmentId: weapon.id,
       equipment: weapon,
       allocation: { kind: 'location', location: 'Infantry' },
@@ -238,6 +247,8 @@ export class InfantryEntity extends InfantryBaseEntity {
       armored: false,
       platoonWeapon: role,
     });
+    // Removing the last SRM launcher ends its Inferno declaration; a later launcher starts standard.
+    if (hadSrm && !this.hasSrmLauncher()) this.infernoSrmsDeclared.set(false);
   }
 
   private findPlatoonWeapon(role: PlatoonWeaponRole): InfantryWeaponEquipment | null {
@@ -245,15 +256,20 @@ export class InfantryEntity extends InfantryBaseEntity {
     return equipment instanceof WeaponEquipment && equipment.isInfantryWeapon() ? equipment : null;
   }
 
-  /** Troopers carrying a platoon weapon at full strength. */
+  /** Troopers carrying a platoon weapon at full strength; every trooper carries the disposable weapon. */
   platoonWeaponTroopers(role: PlatoonWeaponRole): number {
+    const troopers = this.squadSize() * this.squadCount();
     const secondary = this.secondaryCount() * this.squadCount();
-    return role === 'secondary' ? secondary : this.squadSize() * this.squadCount() - secondary;
+    return role === 'secondary' ? secondary : role === 'disposable' ? troopers : troopers - secondary;
   }
 
-  /** ConvInfantry.getDamagePerTrooper: primary damage is capped; secondary damage is not. */
+  /**
+   * ConvInfantry.getDamagePerTrooper: primary damage is capped; secondary damage is not. A disposable attack
+   * deals three times its weapon's damage per trooper (TO:AuE p. 116, MegaMek InfantryDisposableWeaponHandler).
+   */
   platoonWeaponDamagePerTrooper(role: PlatoonWeaponRole): number {
     if (role === 'secondary') return this.secondaryWeapon()?.infantry.damage ?? 0;
+    if (role === 'disposable') return 3 * (this.disposableWeapon()?.infantry.damage ?? 0);
     return Math.min(MAX_PRIMARY_DAMAGE_PER_TROOPER, this.primaryWeapon()?.infantry.damage ?? 0);
   }
 

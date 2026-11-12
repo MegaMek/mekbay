@@ -39,6 +39,8 @@ import {
 // BattleArmorEntity - powered-armor squads (Elemental, etc.)
 // ============================================================================
 
+export type BattleArmorChassisType = 'Biped' | 'Quad';
+
 export class BattleArmorEntity extends InfantryBaseEntity {
   override componentLocationOrder(): readonly string[] {
     return ['Squad'];
@@ -69,7 +71,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
 
   readonly trooperCount = this.squadSize;
   declaredWeightClass = signal<WeightClass>('Medium');
-  chassisType = signal<string>('Biped');
+  chassisType = signal<BattleArmorChassisType>('Biped');
   propulsionMP = signal<number>(0);
 
   /** Quad BA turret config, e.g. "Modular:3" or "Standard:2" */
@@ -130,7 +132,7 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   });
 
   private hasAntiMekManipulators(): boolean {
-    if (this.chassisType().toLowerCase().includes('quad')) return false;
+    if (this.chassisType() === 'Quad') return false;
 
     const count = (predicate: typeof isArmoredGloveEquipment) =>
       this.equipment().filter(mount => predicate(mount.equipment)).length;

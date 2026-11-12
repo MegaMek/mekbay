@@ -61,6 +61,7 @@ import type { MekUnitRuntimeState } from '../models/runtime/runtime-state';
 import type { MekHitArcV2,MekUnitQueryPort } from '../models/runtime/unit-instance';
 import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
 import { FALL_DAMAGE, resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
+import { infernoEffect, type InfernoMissile } from '../models/rules/inferno-rules';
 import { uuidv4 } from '../utils/uuid.util';
 import {
 automationCheckBatchIsFullyAutomatic,
@@ -1844,11 +1845,18 @@ export class DirectMekAutomationService {
         hits: readonly MekDamageGroup[],
         target: 'committed' | 'pending',
         dispatch: CBTForceUnitCommandDispatch,
+        inferno: readonly InfernoMissile[] = [],
+        weaponHeat = 0,
     ): Promise<boolean> {
         let headHits = 0;
         for (const hit of hits) headHits += await this.applyDamageGroup(force, instanceId, hit, target, dispatch, true);
         const snapshot = this.snapshot(force, instanceId);
         if (!snapshot) return false;
+        // Inferno missiles and heat-causing weapons heat the Mek in this turn's Heat Phase (TW pp. 142, 159).
+        const infernoHeat = infernoEffect(snapshot.entity, inferno);
+        const outsideHeat = weaponHeat + (infernoHeat.kind === 'heat' ? infernoHeat.heat : 0);
+        if (outsideHeat > 0
+            && !(await dispatch({ type: 'add-outside-heat', amount: outsideHeat }, false)).accepted) return false;
         const pilotHits = await this.reviewPilotHits(snapshot, headHits,
             `weapon-hits:${instanceId}:${snapshot.query.stateRevision}:head`, false, true);
         // A declined review leaves the pilot unhurt; the damage itself is already applied.

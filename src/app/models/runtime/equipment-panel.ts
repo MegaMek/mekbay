@@ -90,6 +90,7 @@ import {
     resolveTargetGuidance,
     type InventoryTargetRangeSelection,
 } from '../../utils/inventory-target-number.util';
+import type { PlatoonAttackFacts } from '../rules/conventional-infantry-combat-rules';
 import { projectMekSpottingModifier } from './mek-turn-panel';
 import { applyHagEquipmentWeaponTypes, hagEquipmentToHitAdjustments } from './component-hag-mode';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
@@ -184,6 +185,8 @@ export interface EquipmentPanelWeapon {
     /** Effective weapon types after selected ammunition and current mode effects. */
     readonly effectiveWeaponTypes?: readonly WeaponType[];
     readonly attackerIsConventionalInfantry?: boolean;
+    /** A conventional platoon's own attack or disposable weapon, resolved by troopers (TW p. 217; TO:AuE p. 116). */
+    readonly platoon?: PlatoonAttackFacts;
 }
 
 export interface EquipmentPanelHitResolution {
@@ -356,6 +359,7 @@ export function projectWeaponTargetPresentation(
             capital: weapon.aerospace.capital,
             maxRangeBracket: weapon.aerospace.maximumBracket,
         }),
+        infantryRangeModifiers: weapon.platoon?.rangeModifiers ?? null,
     });
     const display = weaponTargetDisplay(weapon);
     const rangeInput = {
@@ -369,7 +373,7 @@ export function projectWeaponTargetPresentation(
         ...rangeInput,
         target: calculationTarget,
     });
-    const rangeSelection = calculatedRangeSelection ?? (manualRange === null
+    const rangeSelection: InventoryTargetRangeSelection | null = calculatedRangeSelection ?? (manualRange === null
         ? null
         : Object.freeze({
             range: manualRange,
@@ -419,7 +423,8 @@ export function projectWeaponTargetPresentation(
         ? 0
         : selectedAmmo?.category === 'Artillery' && rules.artilleryFlatRangeModifier !== null
             ? rules.artilleryFlatRangeModifier
-            : ({ short: 0, medium: 2, long: 4, extreme: 6 } as const)[rangeSelection.range];
+            : rangeSelection.rangeModifier
+                ?? ({ short: 0, medium: 2, long: 4, extreme: 6 } as const)[rangeSelection.range];
     const weaponToHitModifier = typeof hitResolution.value === 'number' ? hitResolution.value : 0;
     return Object.freeze({
         rangeSelection,

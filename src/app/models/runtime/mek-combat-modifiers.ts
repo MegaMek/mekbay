@@ -13,11 +13,12 @@ import { WeaponEquipment } from '../equipment.model';
 import { TN_PRONE_ATTACKER } from '../target-number-calculator.model';
 import type { ToHitModifierBreakdownEntry } from '../rules/game-rules';
 import { mekHeatEffects } from '../rules/mek-heat-rules';
-import type {
-    MekExactComponentGroup,
-    MekLimbProfile,
-    MekMechanicsProfile,
+import {
+    groupAvailable,
+    type MekLimbProfile,
+    type MekMechanicsProfile,
 } from './mek-mechanics-profile';
+import { kickActuatorLegs, selectMekKickingLeg } from './mek-kicking-leg';
 import {
     componentLocationIds,
     equipmentForComponent,
@@ -34,6 +35,9 @@ export interface MekCombatModifierRuntimeFacts {
     componentAvailable(componentId: ComponentId): boolean;
     criticalSlotUnavailable(slotId: CriticalSlotId): boolean;
     locationDestroyed(locationId: LocationId): boolean;
+    componentAvailableAt(componentId: ComponentId, locationId: LocationId): boolean;
+    /** Whether a weapon mounted in the location fired this turn. */
+    weaponFiredAt(locationId: LocationId): boolean;
 }
 
 export interface MekCombatModifierProjection {
@@ -64,8 +68,13 @@ export function projectMekCombatModifiers(
     const ranged = commonRangedModifiers(profile, index, facts, legs);
     const physical = commonPhysicalModifiers(profile, facts);
     const intrinsic = new Map<string, readonly ToHitModifierBreakdownEntry[]>();
+    const kickingLegs = new Map((['kick', 'mule-kick'] as const).map(kind =>
+        [kind, selectMekKickingLeg(profile, index, facts, kind)]));
     for (const action of index.intrinsicActions) {
-        intrinsic.set(action.id, intrinsicModifiers(action, arms, legs, profile, facts));
+        const kickingLeg = action.kind === 'kick' || action.kind === 'mule-kick'
+            ? kickingLegs.get(action.kind) ?? null
+            : null;
+        intrinsic.set(action.id, intrinsicModifiers(action, arms, legs, profile, index, facts, kickingLeg));
     }
     const components = new Map<ComponentId, readonly ToHitModifierBreakdownEntry[]>();
     for (const [componentId, component] of index.components) {
@@ -179,7 +188,9 @@ function intrinsicModifiers(
     arms: ReadonlyMap<string, ArmStatus>,
     legs: readonly MekLimbProfile[],
     profile: MekMechanicsProfile,
+    index: MekRuntimeIndex,
     facts: MekCombatModifierRuntimeFacts,
+    kickingLeg: MekLimbProfile | null,
 ): readonly ToHitModifierBreakdownEntry[] {
     if (typeof action.hitModifierAdjustment !== 'number') return Object.freeze([]);
     const modifiers: ToHitModifierBreakdownEntry[] = [];
@@ -202,8 +213,10 @@ function intrinsicModifiers(
         case 'push':
             addTwoArmModifiers(modifiers, arms, 'push');
             break;
-        case 'kick': {
-            const availableLegs = legs.filter(leg => !facts.locationDestroyed(leg.locationId));
+        case 'kick':
+        case 'mule-kick': {
+            const availableLegs = kickActuatorLegs(profile, index, action.kind, kickingLeg)
+                .filter(leg => !facts.locationDestroyed(leg.locationId));
             const destroyedLegActuators = availableLegs.reduce((total, leg) => total
                 + leg.actuators.filter(actuator =>
                     (actuator.kind === 'upper-leg' || actuator.kind === 'lower-leg')
@@ -253,6 +266,7 @@ function intrinsicPristineSystemModifier(
         case 'push':
             return pairedArmAesInstalled(arms) ? -1 : 0;
         case 'kick':
+        case 'mule-kick':
             return legAesInstalled(legs, profile) ? -1 : 0;
         default:
             return 0;
@@ -424,16 +438,6 @@ function legAesStatus(
             .filter(group => group.locationIds.includes(leg.locationId))
             .every(group => groupAvailable(group, facts))),
     });
-}
-
-function groupAvailable(
-    group: MekExactComponentGroup,
-    facts: Pick<MekCombatModifierRuntimeFacts,
-        'componentAvailable' | 'criticalSlotUnavailable' | 'locationDestroyed'>,
-): boolean {
-    return facts.componentAvailable(group.componentId)
-        && group.criticalSlotIds.every(slotId => !facts.criticalSlotUnavailable(slotId))
-        && group.locationIds.every(locationId => !facts.locationDestroyed(locationId));
 }
 
 function countedDestroyedLabel(name: string, count: number): string {

@@ -108,6 +108,9 @@ export function parseBaseBlk(bb: BuildingBlock, entity: BaseEntity, ctx: ParseCo
   if (bb.exists('role')) {
     entity.role.set(bb.getFirstString('role'));
   }
+  if (bb.exists('missionroles')) {
+    entity.missionRoles.set(bb.getFirstString('missionroles').trim());
+  }
   if (bb.exists('source')) {
     entity.source.set(parseMetadataList(bb.getDataAsString('source')).map((source) => ctx.resolveSourcebook(source)));
   }

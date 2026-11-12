@@ -25,7 +25,7 @@ import { encodeEquipmentLine } from './equipment-encoder';
  *   identity → yearTechMeta → motion_type → Troopers Equipment →
  *   Field Guns Equipment → slotless_equipment → fluff → source →
  *   squad_size → squadn → secondn → Primary → Secondary →
- *   armordivisor → encumberingarmor → spacesuit → dest →
+ *   disposableWeapon → srmMunition → armordivisor → encumberingarmor → spacesuit → dest →
  *   sneakcamo → sneakir → sneakecm → specialization
  *
  * NOTE: No tonnage, no cruiseMP, no armor blocks for conventional infantry.
@@ -41,7 +41,7 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
   // producing "Troopers Equipment" and "Field Guns Equipment", always, even if empty.
   const mountsByLoc = new Map<string, string[]>();
   for (const m of entity.equipment()) {
-    if (m.platoonWeapon) continue; // written as Primary/Secondary
+    if (m.platoonWeapon) continue; // written as Primary/Secondary/disposableWeapon
     let lines = mountsByLoc.get(m.location);
     if (!lines) { lines = []; mountsByLoc.set(m.location, lines); }
     lines.push(encodeEquipmentLine(m, { blkMode: true }));
@@ -79,6 +79,10 @@ export function writeBlkInfantry(entity: InfantryEntity): string {
 
   if (primaryWeapon)   w.addBlock('Primary', primaryWeapon.id);
   if (secondaryWeapon) w.addBlock('Secondary', secondaryWeapon.id);
+  const disposableWeapon = entity.disposableWeapon();
+  if (disposableWeapon) w.addBlock('disposableWeapon', disposableWeapon.id);
+  // Standard is the default, so only an Inferno declaration with an SRM launcher is written (MegaMek BLKFile).
+  if (entity.firesInfernoSrms()) w.addBlock('srmMunition', 'Inferno');
 
   // Armor divisor - Java uses Double.toString() which always writes ".0" for integers
   if (entity.armorDivisor() !== 1) {

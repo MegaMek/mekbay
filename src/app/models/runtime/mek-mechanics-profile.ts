@@ -82,6 +82,19 @@ export interface MekExactComponentGroup {
     readonly locationIds: readonly LocationId[];
 }
 
+export interface MekGroupAvailabilityFacts {
+    componentAvailable(componentId: ComponentId): boolean;
+    criticalSlotUnavailable(slotId: CriticalSlotId): boolean;
+    locationDestroyed(locationId: LocationId): boolean;
+}
+
+/** A group works while its component, every critical slot and every location it occupies are intact. */
+export function groupAvailable(group: MekExactComponentGroup, facts: MekGroupAvailabilityFacts): boolean {
+    return facts.componentAvailable(group.componentId)
+        && group.criticalSlotIds.every(slotId => !facts.criticalSlotUnavailable(slotId))
+        && group.locationIds.every(locationId => !facts.locationDestroyed(locationId));
+}
+
 export interface MekSystemGroup extends MekExactComponentGroup {
     readonly system: string;
 }

@@ -53,7 +53,12 @@ export function parseBlkBA(bb: BuildingBlock, ctx: ParseContext): BattleArmorEnt
   else if (bb.exists('troopercount'))   entity.trooperCount.set(bb.getFirstInt('troopercount'));
 
   if (bb.exists('weightclass'))    entity.declaredWeightClass.set(BA_WEIGHT_CLASS_BY_CODE[bb.getFirstInt('weightclass')] ?? 'Medium');
-  if (bb.exists('chassis'))        entity.chassisType.set(bb.getFirstString('chassis'));
+  // Native files write `biped` / `quad`; MegaMek reads the block case-insensitively and refuses anything else.
+  if (bb.exists('chassis')) {
+    const chassis = bb.getFirstString('chassis').trim().toLowerCase();
+    if (chassis !== 'biped' && chassis !== 'quad') ctx.warn('chassis', `Unsupported chassis "${chassis}" is read as biped`);
+    entity.chassisType.set(chassis === 'quad' ? 'Quad' : 'Biped');
+  }
   if (bb.exists('turret'))         entity.turretConfig.set(bb.getFirstString('turret'));
   if (bb.exists('exoskeleton'))    entity.isExoskeleton.set(bb.getFirstString('exoskeleton') === 'true');
   if (bb.exists('clan_exo_without_harjel')) {

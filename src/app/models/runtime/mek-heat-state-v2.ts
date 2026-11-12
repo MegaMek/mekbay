@@ -11,6 +11,7 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId,CriticalSlotId } from '../entity/entity-identifiers';
 import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import type { UnitWaterState } from '../unit-cover.model';
+import { mekJumpHeat } from '../jump-equipment.model';
 import { isHeatValue,settleHeat,type CBTUnitHeatState } from './cbt-unit-runtime';
 import { compileMekHeatProfile,evaluateMekHeatScenarioSupport,type MekHeatProfile,type MekHeatScenarioInput } from './mek-heat-profile';
 import { MAX_MEK_MOVEMENT_MP_V2,type MekMovementHeatInputV2 } from './mek-movement-psr-v2';
@@ -494,6 +495,7 @@ export function resolveEndTurnMekHeatV2(
     const turnWithoutWeaponHeat = canonicalizeMekTurnStateV2({
         ...input.turn,
         weaponsHeat: 0,
+        outsideHeat: 0,
         acknowledgedHeatSources: acknowledged,
         heatDissipationConsumed: Math.min(
             input.turn.heatDissipationConsumed,
@@ -602,6 +604,11 @@ function buildCommittedHeatSources(
         id: 'weapons',
         label: 'Weapons',
         value: input.turn.weaponsHeat,
+    }));
+    if ((input.turn.outsideHeat ?? 0) > 0) sources.push(Object.freeze({
+        id: 'outside-heat',
+        label: 'Outside Heat',
+        value: input.turn.outsideHeat!,
     }));
     for (const provider of profile.providers) {
         if (provider.kind === 'ppc-capacitor') {
@@ -751,14 +758,8 @@ function jumpMovementHeat(profile: MekHeatProfile, input: MekMovementHeatFactsV2
         ? 0
         : Math.max(0, profile.partialWing.jumpHeatDistanceReduction - destroyedWingCriticals);
     const heatDistance = Math.max(0, (input.movement?.distance ?? 0) - wingReduction);
-    const engineMultiplier = profile.engine.xxl ? 2 : 1;
-    const workingJumpKind = workingJumpJets ? profile.jump.kind : 'standard';
-    if (workingJumpKind === 'improved') {
-        return Math.max(3, Math.ceil((heatDistance * engineMultiplier) / 2));
-    }
-    const prototypeMultiplier = workingJumpKind === 'prototype-improved' ? 2 : 1;
-    const multiplier = engineMultiplier * prototypeMultiplier;
-    return Math.max(3 * multiplier, heatDistance * multiplier);
+    const workingJumpKind = workingJumpJets && profile.jump.kind !== 'none' ? profile.jump.kind : 'standard';
+    return mekJumpHeat(profile.engine.jumpHeat, workingJumpKind, heatDistance);
 }
 
 function committedCoolingCapacity(

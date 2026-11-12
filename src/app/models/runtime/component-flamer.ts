@@ -6,7 +6,7 @@ import type { EquipmentFlag } from '../equipment-flags.type';
 import {
 FLAMER_DAMAGE_MODE,
 FLAMER_FLAG,
-FLAMER_HEAT_MODE,
+hasFlamerModes,
 } from '../flamer-mode.model';
 import { type CBTMekUnit } from './cbt-unit';
 import {
@@ -14,18 +14,32 @@ ComponentModeHandler,
 type ComponentModeDefinition,
 } from './component-mode';
 import type {
+EquipmentInteractionChoice,
 EquipmentInteractionCommandContext,
+EquipmentInteractionHandlerId,
 EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
+export const FLAMER_HANDLER_ID: EquipmentInteractionHandlerId = 'flamer-handler';
+
+/** The heat-or-damage declaration of a flamer, Mek or not. */
+export function flamerModeChoice(mode: string | undefined, modes: readonly string[]): EquipmentInteractionChoice {
+    return {
+        label: 'Mode',
+        value: mode ?? FLAMER_DAMAGE_MODE,
+        displayType: 'dropdown',
+        choices: modes.map(value => ({ label: value, value })),
+        keepOpen: true,
+    };
+}
+
 export class FlamerHandler extends ComponentModeHandler {
-    readonly id = 'flamer-handler';
+    readonly id = FLAMER_HANDLER_ID;
     override readonly flags: EquipmentFlag[] = [FLAMER_FLAG];
     override readonly priority = 105;
 
     applicableToComponent(definition: ComponentModeDefinition): boolean {
-        return definition.modes.includes(FLAMER_DAMAGE_MODE)
-            && definition.modes.includes(FLAMER_HEAT_MODE);
+        return hasFlamerModes(definition.modes);
     }
 
     getComponentModeChoices(
@@ -33,14 +47,7 @@ export class FlamerHandler extends ComponentModeHandler {
         definition: ComponentModeDefinition,
         _context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
-        const mode = runtime.query().componentMode(definition.componentId) ?? FLAMER_DAMAGE_MODE;
-        return [{
-            label: 'Mode',
-            value: mode,
-            displayType: 'dropdown',
-            choices: definition.modes.map(value => ({ label: value, value })),
-            keepOpen: true,
-        }];
+        return [flamerModeChoice(runtime.query().componentMode(definition.componentId), definition.modes)];
     }
 
     handleComponentModeSelection(

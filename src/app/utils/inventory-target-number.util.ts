@@ -72,6 +72,8 @@ export interface InventoryTargetNumberComponentFacts {
     readonly componentId: ComponentId;
     readonly physical: boolean;
     readonly aerospaceWeapon: InventoryTargetNumberAerospaceWeaponFacts | null;
+    /** A conventional platoon's range modifier at each hex distance, null out of range (TW p. 217). */
+    readonly infantryRangeModifiers?: readonly (number | null)[] | null;
 }
 
 export interface InventoryTargetDisplay {
@@ -90,6 +92,8 @@ export interface InventoryTargetRangeSelection {
     minimumRangeModifier: number;
     distance: number;
     c3Distance: number | null;
+    /** The range modifier at this distance, for attacks ranged hex by hex instead of by bracket. */
+    rangeModifier?: number;
 }
 
 export interface InventoryTargetNumberBreakdown {
@@ -174,6 +178,23 @@ export function inventoryTargetRangeSelection(input: Pick<InventoryTargetNumberI
     const range = c3Distance !== null && !outOfRange && outOfLongRange
         ? nextInventoryRangeBracket(closestUnitRange)
         : closestUnitRange;
+
+    const infantryRangeModifiers = input.targetNumberFacts.infantryRangeModifiers;
+    if (infantryRangeModifiers) {
+        // A platoon's range modifier is read hex by hex; the bracket only names the band.
+        const rangeModifier = infantryRangeModifiers[target.distance] ?? null;
+        return {
+            range: rangeModifier === null ? maximumRange : range,
+            maximumRange,
+            outOfRange: rangeModifier === null,
+            outOfLongRange: rangeModifier === null,
+            outOfExtremeRange: rangeModifier === null,
+            minimumRangeModifier: 0,
+            distance: target.distance,
+            c3Distance: null,
+            rangeModifier: rangeModifier ?? 0,
+        };
+    }
 
     return {
         range,
@@ -269,7 +290,9 @@ export function inventoryTargetNumberBreakdown(
     const gameRules = input.gameRules ?? CORE_2026_GAME_RULES;
     const artilleryRangeModifier = input.selectedAmmo?.category === 'Artillery'
         ? gameRules.artilleryFlatRangeModifier : null;
-    const rangeModifier = artilleryRangeModifier ?? inventoryTargetRangeModifier(rangeSelection.range);
+    const rangeModifier = artilleryRangeModifier
+        ?? rangeSelection.rangeModifier
+        ?? inventoryTargetRangeModifier(rangeSelection.range);
     const c3Modifier = gameRules.resolveC3TargetingModifier(
         input.c3DegradationSource ?? 'none',
         c3RangeBracketImprovement(input, rangeSelection)
@@ -306,7 +329,10 @@ export function inventoryTargetNumberBreakdown(
 
     if (!physical) {
         terms.push({
-            label: artilleryRangeModifier === null ? `Range (${inventoryTargetRangeDisplayName(rangeSelection.range)})` : 'Artillery',
+            label: artilleryRangeModifier !== null ? 'Artillery'
+                : rangeSelection.rangeModifier !== undefined
+                    ? `Range (${rangeSelection.distance} hex${rangeSelection.distance === 1 ? '' : 'es'})`
+                    : `Range (${inventoryTargetRangeDisplayName(rangeSelection.range)})`,
             value: formatInventoryTargetSignedModifier(rangeModifier)
         });
         if (rangeSelection.c3Distance !== null) {

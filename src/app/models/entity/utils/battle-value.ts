@@ -83,19 +83,3 @@ export function offensiveSpeedFactorMP(entity: BaseEntity, movement: EntityMovem
 export function getOffensiveSpeedFactor(entity: BaseEntity, ruleset?: CBTRuleset): number {
   return offensiveSpeedFactor(offensiveSpeedFactorMP(entity, entityBattleValueMovement(entity, ruleset)));
 }
-
-export { calculateBattleValue, calculateBattleValueDetails, getBVCalculator } from './battle-value/factory';
-export type { BattleValueBreakdown, BattleValueDetail } from './battle-value/bv-calculator';
-export {
-  BVCalculator,
-} from './battle-value/bv-calculator';
-export {
-  AeroBVCalculator,
-  BattleArmorBVCalculator,
-  CombatVehicleBVCalculator,
-  HandheldWeaponBVCalculator,
-  HeatTrackingBVCalculator,
-  InfantryBVCalculator,
-  LargeAeroBVCalculator,
-  ProtoMekBVCalculator,
-} from './battle-value/family-calculators';

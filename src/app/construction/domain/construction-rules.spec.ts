@@ -291,14 +291,19 @@ describe('construction with the production equipment catalog', () => {
     const entity = createConstructionEntity('Biped', equipment) as MekEntity;
     const control = getConstructionFields(entity).find(field => field.id === 'myomer')!;
     const existing = entity.equipment().map(mount => mount.mountId);
-    control.set('Triple Strength');
+    control.set('Triple-Strength');
     const myomer = entity.equipment().find(mount => mount.equipment?.hasFlag('F_TSM'))!;
     expect(myomer).toBeDefined();
     expect(myomer.equipment?.hasFlag('F_PROTOTYPE')).toBeFalse();
     expect(myomer.placements?.length).toBe(6);
     const loaded = parseEntity(encodeNativeEntity(entity), 'myomer.mtf', equipment).entity as MekEntity;
-    expect(loaded.myomerType()).toBe('Triple Strength');
+    expect(loaded.myomerType()).toBe('Triple-Strength');
+    expect(getConstructionFields(loaded).find(field => field.id === 'myomer')!.invalid).toBeFalse();
     expect(loaded.equipment().find(mount => mount.equipment?.hasFlag('F_TSM'))?.placements?.length).toBe(6);
+    // The myomer is its installed system: removing the system leaves no stale myomer behind.
+    removeConstructionEquipment(loaded, loaded.equipment().find(mount => mount.equipment?.hasFlag('F_TSM'))!);
+    expect(loaded.myomerType()).toBe('Standard');
+    expect(encodeNativeEntity(loaded)).toContain('\nmyomer:Standard\n');
     control.set('Standard');
     expect(entity.equipment().some(mount => mount.equipment?.hasFlag('F_TSM'))).toBeFalse();
     expect(entity.equipment().map(mount => mount.mountId)).toEqual(existing);

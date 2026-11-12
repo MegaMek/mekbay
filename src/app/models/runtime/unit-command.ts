@@ -243,6 +243,16 @@ export type CBTUnitCommand =
         readonly policy: HeatAutomationPolicy;
     }
     | {
+        /** Heat from outside sources such as inferno missiles (TW p. 159), capped per turn. */
+        readonly type: 'add-outside-heat';
+        readonly amount: number;
+    }
+    | {
+        /** Inferno missiles that struck a non-Mek, toward the turn's every-three effects (TW pp. 141-142). */
+        readonly type: 'add-inferno-missiles';
+        readonly count: number;
+    }
+    | {
         readonly type: 'set-condition';
         readonly condition: UnitConditionKey;
         readonly active: boolean;

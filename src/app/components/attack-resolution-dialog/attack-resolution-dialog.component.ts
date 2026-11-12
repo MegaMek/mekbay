@@ -7,8 +7,9 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import type { CBTForceMember } from '../../models/force-member.model';
 import type { PhysicalAttackKind } from '../../models/rules/physical-attack-rules';
+import { heatWeaponDice, resolveHeatWeaponHit } from '../../models/rules/heat-weapon-rules';
 import {
-    damageGroups,
+    attackGroups,
     needsClusterRoll,
     resolveWeaponAttack,
     type HitLocationDice,
@@ -72,6 +73,8 @@ interface WeaponRolls {
     readonly clusterModifier: number;
     /** One roll per possible location group; a smaller cluster result uses the first ones. */
     readonly locations: readonly Readonly<{ dice: HitLocationDice; aux: number }>[];
+    /** A heat weapon's dice; each hit reads the first ones it needs. */
+    readonly heat: readonly number[];
 }
 
 @Component({
@@ -94,8 +97,8 @@ export class AttackResolutionDialogComponent {
             target,
             weapons,
             hits: weapons.reduce((sum, weapon) => sum + weapon.groups.length, 0),
-            damage: weapons.reduce((sum, weapon) =>
-                sum + weapon.groups.reduce((total, group) => total + group.damage, 0), 0),
+            damage: weapons.reduce((sum, weapon) => weapon.inferno ? sum
+                : sum + weapon.groups.reduce((total, group) => total + group.damage, 0), 0),
         };
     }));
     protected readonly deliverable = computed(() => this.data.targets.filter(target => target.delivery !== null));
@@ -112,6 +115,7 @@ export class AttackResolutionDialogComponent {
         const dice = diceForTotal(edit.total);
         this.updateWeapon(target, edit.weapon, rolls => edit.roll === 'to-hit' ? { ...rolls, toHit: dice }
             : edit.roll === 'cluster' ? { ...rolls, cluster: dice }
+            : edit.roll === 'heat' ? { ...rolls, heat: heatDiceForTotal(rolls.heat, this.heatDiceUsed(target, edit.weapon), edit.total) }
                 : { ...rolls, locations: rolls.locations.map((location, index) => index !== edit.roll ? location
                     : { ...location, dice: location.dice.length === 1 ? Object.freeze([edit.total] as const) : dice }) });
     }
@@ -154,6 +158,10 @@ export class AttackResolutionDialogComponent {
                 ? [profile.componentId] : [])));
     }
 
+    private heatDiceUsed(target: number, weapon: number): number {
+        return heatDiceRead(this.data.targets[target].profiles[weapon], this.rolls()[target][weapon].heat);
+    }
+
     private updateWeapon(target: number, weapon: number, update: (rolls: WeaponRolls) => WeaponRolls): void {
         this.rolls.update(all => all.map((weapons, t) => t !== target ? weapons
             : weapons.map((rolls, w) => w === weapon ? update(rolls) : rolls)));
@@ -161,7 +169,7 @@ export class AttackResolutionDialogComponent {
 }
 
 function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
-    const groups = damageGroups(profile.projectiles * profile.damagePerHit, profile.groupSize).length;
+    const groups = attackGroups(profile, profile.projectiles).length;
     return Object.freeze({
         toHit: roll2D6(),
         cluster: roll2D6(),
@@ -170,7 +178,21 @@ function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
             dice: profile.table === 'standard' ? roll2D6() : Object.freeze([rollD6()] as const),
             aux: rollD6(),
         }))),
+        heat: Object.freeze(Array.from({ length: profile.heatWeapon ? heatWeaponDice(profile.heatWeapon.weapon) : 0 },
+            () => rollD6())),
     });
+}
+
+/** How many of the heat weapon's dice its hit reads: heat against a unit that tracks it, damage against others. */
+function heatDiceRead(profile: WeaponAttackProfile, dice: readonly number[]): number {
+    const heat = profile.heatWeapon;
+    return heat ? resolveHeatWeaponHit(heat.weapon, 0, heat.mode, heat.ruleset, heat.target, dice).dice : 0;
+}
+
+/** Sets the first `used` heat dice to `total`, as evenly as six-sided dice allow. */
+function heatDiceForTotal(dice: readonly number[], used: number, total: number): readonly number[] {
+    const set = Array.from({ length: used }, (_, index) => Math.floor(total / used) + (index < total % used ? 1 : 0));
+    return Object.freeze([...set, ...dice.slice(used)]);
 }
 
 /** A set total shown as the closest pair of faces. */
@@ -180,7 +202,9 @@ function diceForTotal(total: number): TwoDice {
 
 function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfile, rolls: WeaponRolls): AttackReportWeapon {
     const cluster = needsClusterRoll(profile);
-    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier);
+    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
+    const heat = profile.heatWeapon;
+    const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
     return Object.freeze({
         name: profile.name,
         targetNumber: profile.targetNumber,
@@ -190,6 +214,10 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
         cluster: cluster
             ? Object.freeze({ dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits })
             : null,
+        ...(profile.inferno ? { inferno: true } : {}),
+        ...(heat && (outcome.heat > 0 || heatDice.length > 0)
+            ? { heat: Object.freeze({ dice: Object.freeze(heatDice), value: outcome.heat }) }
+            : {}),
         groups: Object.freeze(outcome.groups.map((damage, index) => attackReportGroup(target.defender,
             profile.arc ?? target.arc, damage, rolls.locations[index].dice, rolls.locations[index].aux,
             profile.partialCover, profile.table))),
@@ -197,7 +225,7 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
 }
 
 function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): AttackWeaponReport {
-    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier);
+    const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
     return Object.freeze({
         name: profile.name,
         types: profile.types,
@@ -207,6 +235,8 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): Atta
         ...(profile.table === 'standard' ? {} : { table: profile.table }),
         ...(profile.physical === undefined ? {} : { physical: profile.physical }),
         ...(profile.arc === undefined ? {} : { arc: profile.arc }),
+        ...(profile.inferno ? { inferno: true as const } : {}),
+        ...(outcome.heat > 0 ? { heat: outcome.heat } : {}),
         ...(outcome.hit && needsClusterRoll(profile) ? {
             cluster: Object.freeze({
                 dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits,

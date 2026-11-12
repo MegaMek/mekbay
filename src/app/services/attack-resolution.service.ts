@@ -30,14 +30,23 @@ import {
 import type { MekPhysicalAttackCheckTriggerKindV2 } from '../models/runtime/mek-movement-psr-v2';
 import {
     damageGroups,
+    attackHeatWeapon,
     physicalAttackProfile,
+    platoonAttackProfile,
     toHitSucceeds,
     weaponAttackProfile,
     type WeaponAttackProfile,
 } from '../models/rules/weapon-attack-resolution';
 import { isHandClawFlags } from '../models/entity/utils/physical-weapon-kernel';
 import { isMekEntity } from '../models/entity/utils/entity-type-guards';
-import { readAttackHitLocation, type AttackHitLocation } from '../models/runtime/attack-hit-location';
+import {
+    readAttackHeat,
+    readAttackHitLocation,
+    readInfernoMissiles,
+    type AttackHitLocation,
+} from '../models/runtime/attack-hit-location';
+import { infernoMeetsCover, type InfernoMissile } from '../models/rules/inferno-rules';
+import { heatWeaponTarget } from '../models/rules/heat-weapon-rules';
 import { roll2D6, rollD6 } from '../models/runtime/mek-automation-rules';
 import type { WeaponHits } from '../models/runtime/cbt-force-unit-command-dispatcher';
 import { activeTargetCalculator } from '../models/runtime/targeting-target';
@@ -170,6 +179,7 @@ export class AttackResolutionService {
         // With real phases, FIRE resolves the attacks of the unit's current phase.
         const physicalPhase = this.inPhysicalPhase(member);
         const realPhases = this.options.options().realPhases;
+        const enhancedFlamers = this.options.options().CBTOptionalRules.enhancedFlamers;
         for (const row of !realPhases || physicalPhase ? fired.physicalAttacks : []) {
             const selection = row.selection;
             const target = selection?.kind === 'target'
@@ -214,25 +224,41 @@ export class AttackResolutionService {
                 ? fired.targets.find(candidate => candidate.targetId === selection.targetId)
                 : undefined;
             if (!weapon || !target || !(row.equipment instanceof WeaponEquipment)) continue;
-            const presentation = projectWeaponTargetPresentation(
-                row, projectTargetingTarget(target, fired.ruleset), attack, fired.ruleset);
+            const targeting = projectTargetingTarget(target, fired.ruleset);
+            const presentation = projectWeaponTargetPresentation(row, targeting, attack, fired.ruleset);
             const range = presentation.damageRange;
             const damage = range ? weapon.damageByRange?.[range] : null;
             const targetNumber = presentation.targetNumberBreakdown?.total;
-            if (presentation.outOfRange || !damage || targetNumber === undefined) continue;
+            // A heat weapon's effect depends on what it strikes: the linked unit, or the target's declared type. A
+            // platoon's attack, declared on its primary weapon's row, takes its heat from whichever weapon is a flamer.
+            const heatEquipment = weapon.platoon ? weapon.platoon.heatOrDamageWeapon : row.equipment;
+            const heatWeapon = heatEquipment === null ? undefined : attackHeatWeapon(heatEquipment, row.mode,
+                fired.ruleset, enhancedFlamers,
+                heatWeaponTarget(this.opfor.resolveOpforTarget(target.targetId)?.member.entity, targeting.unitType));
+            if (presentation.outOfRange || (!damage && !heatWeapon) || targetNumber === undefined) continue;
             const ammo = selectedAmmoEquipment(weapon.ammoSources, weapon.ammoSelection);
-            const profile = weaponAttackProfile({
+            // The calculator's partial-cover modifier is the one source for whether this weapon meets cover.
+            const partialCover = presentation.targetModifierBreakdown?.some(modifier =>
+                modifier.id === 'partial-cover' && modifier.modifier > 0) === true;
+            const profile = weapon.platoon ? platoonAttackProfile({
+                componentId: row.componentId,
+                name: row.label,
+                targetNumber,
+                types: resolveEffectiveWeaponTypes(row, ammo),
+                partialCover: partialCover && (!weapon.platoon.inferno || infernoMeetsCover(fired.ruleset)),
+                attack: weapon.platoon,
+                ...(heatWeapon === undefined ? {} : { heatWeapon }),
+            }) : weaponAttackProfile({
                 componentId: row.componentId,
                 equipment: row.equipment,
                 mode: row.mode,
-                damage,
+                damage: damage ?? Object.freeze({ values: Object.freeze([0]), maximum: 0 }),
+                ...(heatWeapon === undefined ? {} : { heatWeapon }),
                 ammo,
                 types: resolveEffectiveWeaponTypes(row, ammo),
                 name: row.label,
                 targetNumber,
-                // The calculator's partial-cover modifier is the one source for whether this weapon meets cover.
-                partialCover: presentation.targetModifierBreakdown?.some(modifier =>
-                    modifier.id === 'partial-cover' && modifier.modifier > 0) === true,
+                partialCover,
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);
@@ -284,7 +310,9 @@ export class AttackResolutionService {
         event: AttackEvent,
         target: 'committed' | 'pending',
     ): Promise<boolean> {
-        const hits = event.weapons.flatMap(weapon => {
+        const inferno = readInfernoMissiles(member, event.arc, event.weapons);
+        const heat = readAttackHeat(member, event.arc, event.weapons);
+        const hits = event.weapons.filter(weapon => !weapon.inferno).flatMap(weapon => {
             const source: DamageSource = weapon.physical
                 ? PHYSICAL_DAMAGE
                 : Object.freeze({ kind: 'weapon' as const, types: weapon.types });
@@ -293,14 +321,14 @@ export class AttackResolutionService {
             return weapon.groups.flatMap(group => {
                 const location = readAttackHitLocation(
                     member, weapon.arc ?? event.arc, group.location, group.aux, weapon.partialCover === true, weapon.table);
-                if (!location) return [];
+                if (!location || group.damage === 0) return [];
                 const key = location.kind === 'non-mek' ? location.locationId : location.label;
                 const luckyHit = natural12 && !struck.has(key);
                 struck.add(key);
                 return [{ location, damage: group.damage, source, luckyHit }];
             });
         });
-        const applied = await member.force.applyWeaponHits(member.id, weaponHits(member, event.arc, hits), target);
+        const applied = await member.force.applyWeaponHits(member.id, weaponHits(member, event.arc, hits, inferno, heat), target);
         const ruleset = member.force.getUnitSnapshot(member.id)?.ruleset;
         const checks = ruleset ? event.weapons.flatMap(weapon => weapon.physical === undefined ? []
             : physicalAttackPilotChecks(ruleset, weapon.physical, toHitSucceeds(weapon.toHit, weapon.targetNumber)).target) : [];
@@ -382,10 +410,14 @@ function weaponHits(
     member: CBTForceMember,
     arc: MekHitArc,
     hits: readonly Readonly<{ location: AttackHitLocation; damage: number; source: DamageSource; luckyHit?: boolean }>[],
+    inferno: readonly InfernoMissile[] = [],
+    heat = 0,
 ): WeaponHits {
     return isCBTMekForceMember(member)
         ? {
             family: 'mek',
+            inferno,
+            heat,
             groups: hits.flatMap(({ location, damage, source }) => location.kind === 'mek' ? [Object.freeze({
                 location: location.location,
                 rear: location.rear,
@@ -397,6 +429,8 @@ function weaponHits(
         }
         : {
             family: 'non-mek',
+            inferno,
+            heat,
             groups: hits.flatMap(({ location, damage, source, luckyHit }) => location.kind === 'non-mek' ? [Object.freeze({
                 locationId: location.locationId,
                 damage,

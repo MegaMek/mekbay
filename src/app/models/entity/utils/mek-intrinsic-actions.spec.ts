@@ -15,8 +15,8 @@ describe('Mek intrinsic actions', () => {
     ['Biped', ['punch', 'punch', 'kick', 'club', 'charge', 'push']],
     ['Tripod', ['punch', 'punch', 'kick', 'club', 'charge', 'push']],
     ['LAM', ['punch', 'punch', 'kick', 'club', 'charge', 'airmek-ram', 'push']],
-    ['Quad', ['kick', 'charge']],
-    ['QuadVee', ['kick', 'charge']],
+    ['Quad', ['kick', 'mule-kick', 'charge']],
+    ['QuadVee', ['kick', 'mule-kick', 'charge']],
   ] as const satisfies readonly (readonly [MekConfig, readonly string[]])[]) {
     it(`derives only the actions supported by a ${config}`, () => {
       expect(buildMekIntrinsicActions(facts({ config })).map(action => action.kind))

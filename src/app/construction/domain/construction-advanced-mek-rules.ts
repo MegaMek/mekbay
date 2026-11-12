@@ -24,10 +24,6 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     }
     const has = (...flags: EquipmentFlag[]) => mounts.some(mount => mount.equipment?.hasAnyFlag(flags));
     const misc = mounts.filter(mount => mount.equipment instanceof MiscEquipment);
-    const advancedMyomer = entity.myomerType() !== 'Standard' || has('F_TSM', 'F_INDUSTRIAL_TSM', 'F_SCM');
-    if (entity.isSuperHeavy() && advancedMyomer) add('MEK_SUPERHEAVY_MYOMER', 'Superheavy Meks cannot use advanced myomers.');
-    if (entity.isIndustrial() && ['Triple Strength', 'Super-Cooled'].includes(entity.myomerType())) add('MEK_INDUSTRIAL_MYOMER_TYPE', 'IndustrialMeks may use standard or industrial triple-strength myomers.');
-    if (!entity.isIndustrial() && entity.myomerType() === 'Industrial Triple Strength') add('MEK_BATTLE_MYOMER_TYPE', 'Industrial triple-strength myomers require an IndustrialMek.');
     const aes = misc.filter(mount => mount.equipment!.hasFlag('F_ACTUATOR_ENHANCEMENT_SYSTEM'));
     if (aes.length) {
         const locations = new Set(aes.map(mount => mount.location));
@@ -163,7 +159,6 @@ export function constructionAdvancedMekMessages(entity: BaseEntity): EntityValid
     if (cockpit.isPrimitive) {
         if (entity.omni()) add('PRIMITIVE_OMNI', 'Primitive Meks cannot be OmniMeks.', undefined, 'structure');
         if (!constructionEngineApplies(entity, entity.mountedEngine().type(), entity.mountedEngine().techBase)) add('PRIMITIVE_ENGINE', 'Primitive Meks cannot use XL, XXL, light, compact or large engines.', undefined, 'engine');
-        if (advancedMyomer) add('PRIMITIVE_MYOMER', 'Primitive Meks cannot use advanced myomers.');
     }
 
     if (entity.chassisConfig !== 'LAM' && !constructionCockpitApplies(entity, entity.cockpitType())) add('MEK_COCKPIT_CONFIGURATION', 'This cockpit is incompatible with the Mek chassis.', undefined, 'structure');

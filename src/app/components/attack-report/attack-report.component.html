@@ -46,11 +46,30 @@
                     <span class="cluster-hits"><strong>{{ cluster.hits }}</strong> / {{ cluster.projectiles }} hit</span>
                 </div>
             }
+            @if (weapon.hit && weapon.heat; as heat) {
+                <!-- Plasma dice add heat to a unit that tracks it, and damage to any other. -->
+                <div class="cluster-line">
+                    <span class="step-label">{{ heat.value > 0 ? 'Heat' : 'Damage' }}</span>
+                    @if (heat.dice.length > 0) {
+                        <ng-container *ngTemplateOutlet="rollChip; context: {
+                            dice: heat.dice, weapon: w, roll: 'heat', label: 'Set ' + weapon.name + ' heat roll' }" />
+                    }
+                    @if (heat.value > 0) {
+                        <span class="cluster-hits"><strong>+{{ heat.value }}</strong></span>
+                    }
+                </div>
+            }
             @if (weapon.groups.length > 0) {
                 <ol class="hit-groups">
                     @for (group of weapon.groups; track $index; let g = $index) {
                         <li class="hit-group">
-                            <span class="damage" title="Damage">{{ group.damage }}</span>
+                            @if (weapon.inferno) {
+                                <span class="damage label">{{ infernoLabel }}</span>
+                            } @else if (group.damage === 0) {
+                                <span class="damage label">Heat</span>
+                            } @else {
+                                <span class="damage" title="Damage">{{ group.damage }}</span>
+                            }
                             <ng-container *ngTemplateOutlet="rollChip; context: {
                                 dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
                             @if (group.label !== null) {

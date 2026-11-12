@@ -1442,6 +1442,7 @@
                               type="text"
                               [attr.aria-label]="field.label"
                               [ngModel]="field.get()"
+                              [ngModelOptions]="{ updateOn: 'blur' }"
                               (ngModelChange)="setField(field, $event)"
                               [disabled]="!canEditField(field)"
                             />
@@ -1820,6 +1821,7 @@
                                       placeholder="Unspecified"
                                       [attr.aria-label]="location.label + ' donor chassis'"
                                       [ngModel]="donorAt(location.id)?.name ?? ''"
+                                      [ngModelOptions]="{ updateOn: 'blur' }"
                                       (ngModelChange)="setDonor(location.id, 'name', $event)"
                                       [disabled]="!designEditing()"
                                   /></label>

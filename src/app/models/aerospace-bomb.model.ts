@@ -21,7 +21,9 @@ export interface BombTypeDefinition {
     readonly points: number;
     /** Record-sheet store abbreviation. */
     readonly label: string;
-    /** MegaMek's short bomb name (BombTypeEnum display name), for record-sheet stores and keys. */
+    /** What the abbreviation stands for in the sheet's key, worded as MegaMekLab's key; none when it needs none. */
+    readonly key?: string;
+    /** MegaMek's short bomb name (BombTypeEnum display name), for the store's tooltip. */
     readonly name: string;
     /** A TAG pod counts as TAG equipment (MegaMek BombTAG). */
     readonly tag?: true;
@@ -32,23 +34,23 @@ export interface BombTypeDefinition {
  * Alamo missiles are omitted: MegaMek only allows them with its nuclear-weapons option.
  */
 const BOMB_TYPE_DEFINITIONS: readonly BombTypeDefinition[] = [
-    { id: 'HEBomb', points: 1, label: 'HE', name: 'HE Bomb' },
-    { id: 'ClusterBomb', points: 1, label: 'C', name: 'Cluster Bomb' },
-    { id: 'LGBomb', points: 1, label: 'LG', name: 'Laser-guided Bomb' },
-    { id: 'RL 10 Ammo (Bomb)', points: 1, label: 'RL', name: 'Rocket' },
+    { id: 'HEBomb', points: 1, label: 'HE', key: 'High Explosive', name: 'HE Bomb' },
+    { id: 'ClusterBomb', points: 1, label: 'C', key: 'Cluster', name: 'Cluster Bomb' },
+    { id: 'LGBomb', points: 1, label: 'LG', key: 'Laser Guided', name: 'Laser-guided Bomb' },
+    { id: 'RL 10 Ammo (Bomb)', points: 1, label: 'RL', key: 'Rocket Launcher', name: 'Rocket' },
     { id: 'TAGBomb', points: 1, label: 'TAG', name: 'TAG', tag: true },
-    { id: 'AAAMissile Ammo', points: 5, label: 'AAA', name: 'AAA Missile' },
-    { id: 'ASMissile Ammo', points: 6, label: 'AS', name: 'AS Missile' },
-    { id: 'ASEWMissile Ammo', points: 6, label: 'ASEW', name: 'ASEW Missile' },
-    { id: 'ArrowIVMissile Ammo', points: 5, label: 'AIV', name: 'Arrow IV Missile' },
-    { id: 'ArrowIVHomingMissile Ammo', points: 5, label: 'AIVH', name: 'Arrow IV Homing Missile' },
-    { id: 'InfernoBomb', points: 1, label: 'INF', name: 'Inferno Bomb' },
-    { id: 'LAAMissile Ammo', points: 2, label: 'LAA', name: 'LAA Missile' },
-    { id: 'ThunderBomb', points: 1, label: 'THU', name: 'Thunder Bomb' },
-    { id: 'TorpedoBomb', points: 1, label: 'TOR', name: 'Torpedo Bomb' },
-    { id: 'FABombSmall Ammo', points: 1, label: 'FAE', name: 'Fuel-Air Bomb (small)' },
-    { id: 'FABombLarge Ammo', points: 2, label: 'FAEL', name: 'Fuel-Air Bomb (large)' },
-    { id: 'RL-P 10 Ammo (Bomb)', points: 1, label: 'RLP', name: 'Prototype Rocket' },
+    { id: 'AAAMissile Ammo', points: 5, label: 'AAA', key: 'Air-to-Air Arrow', name: 'AAA Missile' },
+    { id: 'ASMissile Ammo', points: 6, label: 'AS', key: 'Anti-Ship', name: 'AS Missile' },
+    { id: 'ASEWMissile Ammo', points: 6, label: 'ASEW', key: 'Anti-Ship Electronic Warfare', name: 'ASEW Missile' },
+    { id: 'ArrowIVMissile Ammo', points: 5, label: 'AIV', key: 'Arrow IV', name: 'Arrow IV Missile' },
+    { id: 'ArrowIVHomingMissile Ammo', points: 5, label: 'AIVH', key: 'Arrow IV Homing', name: 'Arrow IV Homing Missile' },
+    { id: 'InfernoBomb', points: 1, label: 'INF', key: 'Inferno', name: 'Inferno Bomb' },
+    { id: 'LAAMissile Ammo', points: 2, label: 'LAA', key: 'Light Air-to-Air', name: 'LAA Missile' },
+    { id: 'ThunderBomb', points: 1, label: 'THU', key: 'Thunder', name: 'Thunder Bomb' },
+    { id: 'TorpedoBomb', points: 1, label: 'TOR', key: 'Torpedo', name: 'Torpedo Bomb' },
+    { id: 'FABombSmall Ammo', points: 1, label: 'FAE', key: 'Fuel-Air (small)', name: 'Fuel-Air Bomb (small)' },
+    { id: 'FABombLarge Ammo', points: 2, label: 'FAEL', key: 'Fuel-Air (large)', name: 'Fuel-Air Bomb (large)' },
+    { id: 'RL-P 10 Ammo (Bomb)', points: 1, label: 'RLP', key: 'Prototype Rocket Launcher', name: 'Prototype Rocket' },
 ];
 export const BOMB_TYPES: readonly BombTypeDefinition[] = Object.freeze(
     BOMB_TYPE_DEFINITIONS.map(definition => Object.freeze(definition)));
@@ -57,6 +59,13 @@ const BOMB_TYPES_BY_ID = new Map(BOMB_TYPES.map(definition => [definition.id, de
 
 export function bombType(id: string): BombTypeDefinition | undefined {
     return BOMB_TYPES_BY_ID.get(id);
+}
+
+/** A bomb whose store abbreviation the sheet's key explains. */
+export type KeyedBombType = BombTypeDefinition & Readonly<{ key: string }>;
+
+export function isKeyedBomb(bomb: BombTypeDefinition): bomb is KeyedBombType {
+    return bomb.key !== undefined;
 }
 
 export function isTagPodBomb(id: string): boolean {

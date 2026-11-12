@@ -380,6 +380,8 @@ export abstract class CBTGameRules {
         if (!(equipment instanceof WeaponEquipment)
             && !isShieldFlags(equipment.flags)
             && !isClubOrHandWeaponFlags(equipment.flags)) return false;
+        // A platoon weapon's range comes from its infantry range class, which a short-ranged weapon may lack.
+        if (equipment instanceof WeaponEquipment && equipment.isInfantryWeapon()) return true;
         if (equipment instanceof WeaponEquipment
             && equipment.hasNoRange()
             && !isShieldFlags(equipment.flags)
@@ -465,6 +467,8 @@ export class GameRules extends CBTGameRules {
     readonly physicalBaseHitModifiers = {
         punch: -1,
         kick: -1,
+        // Core p. 238 gives the mule kick no modifier of its own.
+        'mule-kick': -1,
         club: -1,
         push: -1,
         frenzy: 0,
@@ -594,6 +598,8 @@ export class TWGameRules extends CBTGameRules {
     readonly physicalBaseHitModifiers = {
         punch: 0,
         kick: -2,
+        // TW p. 147: a kick into the rear arc takes an additional +1.
+        'mule-kick': -1,
         club: -1,
         push: -1,
         frenzy: 0,

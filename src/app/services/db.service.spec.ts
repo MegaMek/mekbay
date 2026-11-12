@@ -1,12 +1,13 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { provideZonelessChangeDetection } from '@angular/core';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../models/common.model';
 import type { SerializedForce } from '../models/force-serialization';
 import { DbService } from './db.service';
 import { DialogsService } from './dialogs.service';
+import { AppUpdateService } from './app-update.service';
 import { LoggerService } from './logger.service';
 import { createEmptyCBTForceForTest } from '../testing/unit-test-helpers';
 import type { SavedCustomUnit } from '../models/custom-unit.model';
@@ -388,6 +389,41 @@ describe('DbService blocked database upgrade', () => {
 
         resolveChoice('continue');
         await ready;
+    });
+});
+
+describe('DbService schema change in another tab', () => {
+    it('drops the stale connection, runs without local storage and offers a reload', async () => {
+        TestBed.resetTestingModule();
+        const request = {} as IDBOpenDBRequest;
+        spyOn(indexedDB, 'open').and.returnValue(request);
+        const choose = jasmine.createSpy('choose').and.resolveTo('later');
+        const appUpdate = { updatePending: signal(false), restartForUpdate: jasmine.createSpy('restartForUpdate') };
+        TestBed.configureTestingModule({
+            providers: [
+                provideZonelessChangeDetection(),
+                DbService,
+                { provide: LoggerService, useValue: { info() {}, warn() {}, error() {} } },
+                { provide: DialogsService, useValue: { choose, showError: () => Promise.resolve() } },
+                { provide: AppUpdateService, useValue: appUpdate },
+            ],
+        });
+        const service = TestBed.inject(DbService);
+        const close = jasmine.createSpy('close');
+        const database = { close, onversionchange: null } as unknown as IDBDatabase;
+        request.onsuccess?.call(request, { target: { result: database } } as unknown as Event);
+        await service.waitForDbReady();
+
+        database.onversionchange!.call(database, new Event('versionchange') as IDBVersionChangeEvent);
+        await Promise.resolve();
+
+        expect(close).toHaveBeenCalledTimes(1);
+        expect(appUpdate.updatePending()).toBeTrue();
+        expect(choose).toHaveBeenCalledOnceWith('Reload required', jasmine.any(String), jasmine.any(Array), 'later');
+        expect((await service.listProvidedImages()).size).toBe(0);
+        await expectAsync(service.saveProvidedImage('https://art.example/a.png', new Blob(['a'])))
+            .toBeRejectedWithError(/Local storage is unavailable/);
+        expect(appUpdate.restartForUpdate).not.toHaveBeenCalled();
     });
 });
 

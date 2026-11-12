@@ -30,6 +30,7 @@ import { AmmoEquipment,WeaponEquipment } from '../equipment.model';
 import { isGaussEquipment } from '../gauss-equipment.model';
 import { canChangeAirborneGround,motiveModeFactsForEntity } from '../motiveModes.model';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
+import { addOutsideHeat } from '../rules/inferno-rules';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import { compareTurnPositions, isMarkableTurnStep, isStoredTurnStep, TURN_STEPS } from '../rules/turn-sequence';
 import { activeStealthHeatComponents,getActiveStealthTnModifiers,hasFunctionalEcmForStealth,isStealthEquipment,isStealthSystemEquipment,isSwitchableStealthEquipment,isVoidSignatureEquipment,nextStealthState,STEALTH_DISABLING_MODE,STEALTH_ENABLING_MODE,stealthStateForMode,unitHasActiveC3DisruptingStealth,unitHasActiveVoidSignature,type StealthEquipmentFacts,type StealthState } from '../stealth-equipment.model';
@@ -72,6 +73,7 @@ import { projectMekBlowOffV2,projectMekCriticalChanceV2,projectMekCriticalRollPr
 import { mekCriticalSlotDirectHitThreshold,mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import { createMekTorsoCripplingRuleCheckTokenV2,MEK_TORSO_CRIPPLING_RULE_CHECK_KEY,type MekDamageStateViewV2,type MekRuleCheckKeyV2,type MekRuleCheckStateV2 } from './mek-destruction-state-v2';
 import { applyPendingMekHeatContextV2,assertMekHeatContextEntityV2,buildMekHeatKernelInputV2,canonicalizeMekHeatStateV2,createUnboundMekHeatContextV2,disableMekHeatContextV2,MAX_MEK_HEATSINKS_OFF_V2,mekHeatCapabilityV2,mekHeatSourceSignatureV2,projectMekHeatContextV2,resolveEndTurnMekHeatContextV2,validateMekHeatContextStateV2,type MekHeatCapabilityV2,type MekHeatKernelInputV2,type MekHeatProjectionResultV2,type MekHeatRuntimeContextV2,type MekHeatStateV2 } from './mek-heat-state-v2';
+import { weaponFiredLocationIds } from './mek-kicking-leg';
 import { adjustMekStandAttemptsContextV2,appendMekPhysicalAttackChecksContextV2,assertMekMechanicsContextEntityV2,createUnboundMekMechanicsContextV2,declareMekActionContextV2,declareMekMovementContextV2,prepareMekStandUpContextV2,projectMekBattleValueMovementContextV2,projectMekC3EndpointCapabilitiesV2,projectMekCombatModifiersContextV2,projectMekDestructionContextV2,projectMekMovementPsrContextV2,projectMekPhysicalAttacksContextV2,projectMekPilotChecksContextV2,projectMekShieldsContextV2,reconcileMekPilotChecksContextV2,reconcileMekRuleChecksContextV2,dismissMekPilotChecksContextV2,dropMekPilotChecksUnraisedByRulesContextV2,resolveMekPilotCheckContextV2,resolveMekRuleCheckContextV2,resolveMekStandAttemptContextV2,synthesizeCommittedMekDamagePilotChecksContextV2,type MekC3EndpointCapabilitiesResultV2,type MekDestructionProjectionResultV2,type MekMechanicsContextV2,type MekMovementRuntimeContextInputV2,type MekShieldProjectionResultV2 } from './mek-mechanics-context-v2';
 import { canonicalizeMekMovementPsrStateV2,clearMekActionV2,clearMekMovementV2,createPristineMekMovementPsrStateV2,dismissMekAutomaticFallsV2,mekMovementPsrStatesEqualV2,resetMekMovementPsrPhaseV2,resetMekMovementPsrTurnV2,type MekCommittedDamageMutationV2,type MekMovementModeV2,type MekMovementPsrProjectionResultV2,type MekMovementPsrStateV2,type MekPilotCheckV2 } from './mek-movement-psr-v2';
 import type { MekPhysicalAttackProjectionResultV2 } from './mek-physical-attack-v2';
@@ -1734,6 +1736,17 @@ function reduce(
                 : { ...state, heat: withPendingHeat(state.heat, pendingOverride) };
             break;
         }
+        case 'add-outside-heat': {
+            if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
+                return unchanged(state);
+            }
+            if (!Number.isSafeInteger(command.amount) || command.amount <= 0) return unchanged(state);
+            const outsideHeat = addOutsideHeat(state.turn.outsideHeat ?? 0, command.amount);
+            changed = outsideHeat === state.turn.outsideHeat
+                ? null
+                : { ...state, turn: canonicalizeMekTurnStateV2({ ...state.turn, outsideHeat }) };
+            break;
+        }
         case 'set-heatsinks-off': {
             const capability = mekHeatCapabilityV2(heatContext, entity);
             if (capability.kind === 'unsupported') return unchanged(state);
@@ -2833,6 +2846,7 @@ function createMovementRuntimeInput(
     for (const condition of ['shutdown', 'prone', 'disconnected'] as const) {
         if (state.conditions.has(condition)) conditions.add(condition);
     }
+    const weaponFired = weaponFiredLocationIds(unit.index, state.attackerTargeting);
     return Object.freeze({
         currentHeat: state.heat.current,
         airborne: state.turn.airborne === true,
@@ -2869,6 +2883,9 @@ function createMovementRuntimeInput(
             state.locations,
             locationId,
         ),
+        componentAvailableAt: (componentId: ComponentId, locationId: LocationId) =>
+            status.componentAtLocation(componentId, locationId).status === 'available',
+        weaponFiredAt: (locationId: LocationId) => weaponFired.has(locationId),
         shieldDamage: (componentId: ComponentId, track: MekShieldTrack) =>
             shieldDamage(state, componentId, track, 'committed'),
     });

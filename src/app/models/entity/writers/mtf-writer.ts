@@ -18,6 +18,7 @@ import {
 } from '../types';
 import { WeaponEquipment } from '../../equipment.model';
 import { isStandardCaseEquipment } from '../../case-equipment.model';
+import { isJumpJetEquipment } from '../../jump-equipment.model';
 import {
   encodeMtfArmor,
   encodeMtfEngine,
@@ -179,6 +180,7 @@ function writeConfig(entity: MekEntity, lines: string[]): void {
   for (const availability of entity.forceGeneratorAvailability()) {
     lines.push(`availability:${formatForceGeneratorAvailability(availability)}`);
   }
+  if (entity.missionRoles()) lines.push(`missionroles:${entity.missionRoles()}`);
   if (entity.faction() !== 'None') lines.push(`faction:${entity.faction()}`);
   lines.push('');
 }
@@ -268,7 +270,9 @@ function writeMovement(entity: MekEntity, lines: string[]): void {
     lines.push(`nocrit:${m.equipmentId}:${m.location}`);
   }
   lines.push(`walk mp:${entity.originalWalkMP()}`);
-  lines.push(`jump mp:${entity.maxJumpMP()}`);
+  // MegaMek reads this as the number of jump jets, which TechManual prices (200 × jets² × tons);
+  // UMUs, partial wings, boosters, shields and modular armor are counted from their own equipment.
+  lines.push(`jump mp:${entity.equipment().filter((mount) => isJumpJetEquipment(mount.equipment)).length}`);
   lines.push('');
 }
 

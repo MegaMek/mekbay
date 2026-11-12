@@ -25,6 +25,8 @@ LocationId,
 SystemDamageTrackId,
 } from '../entity/entity-identifiers';
 import { getMekLocationLabel } from '../entity/types/mek';
+import { isInfantryEntity } from '../entity/utils/entity-type-guards';
+import { platoonAttackLabel } from '../rules/conventional-infantry-combat-rules';
 
 import { CrewMember,type CrewMemberRuntimeState } from '../crew-member.model';
 import { serializeUnitCover } from '../unit-cover.model';
@@ -231,7 +233,11 @@ function historyComponentLabel(unit: CBTUnit, componentId: ComponentId): string 
         return component?.mount.displayName() ?? componentId;
     }
     if (isCBTNonMekUnit(unit)) {
-        return unit.getIndex().components.get(componentId)?.mount.displayName() ?? componentId;
+        const mount = unit.getIndex().components.get(componentId)?.mount;
+        const entity = unit.getUnit();
+        // A platoon's one attack is recorded on its primary weapon.
+        if (mount?.platoonWeapon === 'primary' && isInfantryEntity(entity)) return platoonAttackLabel(entity);
+        return mount?.displayName() ?? componentId;
     }
     return componentId;
 }
@@ -502,6 +508,11 @@ export function unitCommandHistory(
         case 'replace-turn-state':
             return hasMekRuntime(beforeSnapshot) && hasMekRuntime(afterSnapshot)
                 ? mekTurnStateHistory(instanceId, beforeSnapshot.state, afterSnapshot.state) : undefined;
+        case 'add-inferno-missiles':
+            return undefined;
+        case 'add-outside-heat':
+            return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 3,
+                beforeSnapshot.state.turn.outsideHeat ?? 0, afterSnapshot.state.turn.outsideHeat ?? 0);
         default:
             return unitHistory(RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, instanceId, command.type);
     }

@@ -10,7 +10,7 @@
     @if (entity().mount(); as mount) {
         <p>Changing a specification creates a custom species for this design.</p>
         <div class="fields">
-            <label>Species name<input class="bt-input" type="text" [ngModel]="mount.name" (ngModelChange)="setMountText('name', $event)"></label>
+            <label>Species name<input class="bt-input" type="text" [ngModel]="mount.name" [ngModelOptions]="{ updateOn: 'blur' }" (ngModelChange)="setMountText('name', $event)"></label>
             <label>Beast size<select class="bt-select" [ngModel]="mount.size" (ngModelChange)="setMountText('size', $event)"><option>Large</option><option>Very Large</option><option>Monstrous</option></select></label>
             <label>Primary movement<select class="bt-select" [ngModel]="mount.movementMode" (ngModelChange)="setMountText('movementMode', $event)"><option value="Leg">Ground</option><option value="VTOL">Flight</option><option value="Submarine">Submarine</option></select></label>
             @for (field of mountNumberFields; track field.key) {

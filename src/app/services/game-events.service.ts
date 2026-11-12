@@ -49,6 +49,10 @@ export interface AttackWeaponReport {
     readonly physical?: PhysicalAttackKind;
     /** The column this attack strikes instead of the attack's direction (a DFA on a prone Mek or a vehicle). */
     readonly arc?: MekHitArc;
+    /** Inferno missiles: each group is one missile whose effect the struck unit decides. */
+    readonly inferno?: true;
+    /** Outside heat the weapon's hit applies to the struck unit. */
+    readonly heat?: number;
     readonly groups: readonly AttackHitGroup[];
 }
 
@@ -156,11 +160,13 @@ export function parseGameEvent(value: unknown): GameEvent | null {
 
 function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-    const { name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, groups } = value as Record<string, unknown>;
+    const { name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, groups } = value as Record<string, unknown>;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
         || !Array.isArray(types) || types.length > WEAPON_TYPES.length
         || !types.every(type => WEAPON_TYPES.includes(type as WeaponType))
         || (partialCover !== undefined && partialCover !== true)
+        || (inferno !== undefined && inferno !== true)
+        || (heat !== undefined && !isInteger(heat, 1, MAX_DAMAGE))
         || (table !== undefined && table !== 'punch' && table !== 'kick')
         || (physical !== undefined && !PHYSICAL_ATTACK_KINDS.includes(physical as PhysicalAttackKind))
         || (arc !== undefined && !HIT_ARCS.includes(arc as MekHitArc))
@@ -178,7 +184,8 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     }
     const parsedGroups = groups.map(group => {
         const { damage, location, aux } = (group ?? {}) as Record<string, unknown>;
-        return isInteger(damage, 1, MAX_DAMAGE) && isDice(location, diceCount) && isInteger(aux, 1, 6)
+        // A heat-causing weapon's hit that only heats rolls its location with no damage.
+        return isInteger(damage, 0, MAX_DAMAGE) && isDice(location, diceCount) && isInteger(aux, 1, 6)
             ? Object.freeze({ damage, location: location as HitLocationDice, aux })
             : null;
     });
@@ -190,6 +197,8 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         ...(table === undefined ? {} : { table: table as 'punch' | 'kick' }),
         ...(physical === undefined ? {} : { physical: physical as PhysicalAttackKind }),
         ...(arc === undefined ? {} : { arc: arc as MekHitArc }),
+        ...(inferno ? { inferno: true as const } : {}),
+        ...(heat === undefined ? {} : { heat: heat as number }),
         groups: Object.freeze(parsedGroups as AttackHitGroup[]),
     });
 }

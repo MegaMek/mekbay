@@ -8,7 +8,7 @@ import { RECORD_SHEET_FONT } from '../record-sheet-typography';
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import type { BattleArmorEntity } from '../../../models/entity/entities/infantry/battle-armor-entity';
 import { isBattleArmorEntity } from '../../../models/entity/utils/entity-type-guards';
-import { BattleArmorBVCalculator } from '../../../models/entity/utils/battle-value';
+import { BattleArmorBVCalculator } from '../../../models/entity/utils/battle-value/family-calculators';
 import { adjustEntityBattleValueForSkills, effectiveEntityPilotingSkill } from '../../../models/entity/utils/battle-value/skill-facts';
 import { isAntiPersonnelMountEquipment } from '../../../models/battle-armor-equipment.model';
 import { hasStealthFlag } from '../../../models/stealth-equipment.model';

@@ -17,6 +17,8 @@ import { parseBaseBlk, parseBlkArmor, parseBlkSupportArmor, parseLegacyDockingCo
 import { BuildingBlock } from './building-block';
 import { ParseContext } from './parse-context';
 import { parseEntity } from '../parse-entity';
+import { encodeNativeEntity } from '../write-entity';
+import type { BattleArmorEntity } from '../entities/infantry/battle-armor-entity';
 import { buildEquipmentRegistry } from '../../../services/catalogs/equipment-catalog-builder';
 
 describe('BLK base parser', () => {
@@ -239,5 +241,16 @@ describe('BLK material equipment with the opposite tech base', () => {
 
     expect(entity.uniformArmor()?.armor.id).toBe('Clan BA Stealth (Improved)');
     expect(materialMounts(entity)).toEqual([['Clan BA Stealth (Improved)', 'Squad'], ['Clan BA Stealth (Improved)', 'Squad']]);
+  });
+
+  it('reads the native lowercase battle armor chassis and writes it back lowercase', () => {
+    const entity = parseEntity(blk([
+      ['UnitType', 'BattleArmor'], ['Name', 'Test'], ['Model', 'Quad'], ['year', '3134'], ['type', 'IS Level 2'],
+      ['chassis', 'quad'], ['motion_type', 'Leg'], ['cruiseMP', '2'], ['armor_type', '28'],
+      ['Trooper Count', '4'], ['weightclass', '2'], ['armor', '5'],
+    ]), 'quad.blk', catalog).entity as BattleArmorEntity;
+
+    expect(entity.chassisType()).toBe('Quad');
+    expect(encodeNativeEntity(entity)).toMatch(/<chassis>\r?\nquad\r?\n<\/chassis>/);
   });
 });

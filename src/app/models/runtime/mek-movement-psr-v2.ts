@@ -12,10 +12,11 @@ import {
     type CriticalSlotId,
     type LocationId,
 } from '../entity/entity-identifiers';
-import type {
-    MekActuatorKind,
-    MekExactComponentGroup,
-    MekMechanicsProfile,
+import {
+    groupAvailable,
+    type MekActuatorKind,
+    type MekExactComponentGroup,
+    type MekMechanicsProfile,
 } from './mek-mechanics-profile';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { shieldWalkMpReduction } from '../entity/utils/physical-weapon-kernel';
@@ -4049,15 +4050,6 @@ function tracksOrFeetDeclaredAction(
 function trackAvailable(track: MekExactComponentGroup, facts: MekMovementPsrRuntimeFactsV2): boolean {
     return track.criticalSlotIds.every(slotId => !facts.criticalSlotUnavailable(slotId))
         && track.locationIds.every(locationId => !facts.locationDestroyed(locationId));
-}
-
-function groupAvailable(
-    group: MekExactComponentGroup,
-    facts: MekMovementPsrRuntimeFactsV2,
-): boolean {
-    return facts.componentAvailable(group.componentId)
-        && group.criticalSlotIds.every(slotId => !facts.criticalSlotUnavailable(slotId))
-        && group.locationIds.every(locationId => !facts.locationDestroyed(locationId));
 }
 
 function createCheckId(revision: number, ordinal: number): string {
