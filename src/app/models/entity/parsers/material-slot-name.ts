@@ -8,11 +8,12 @@ import type { ParseContext } from './parse-context';
 
 /**
  * Older files can name a slot-bearing armor or structure with the opposite tech
- * base (an `IS Ferro-Fibrous` slot on Clan ferro-fibrous armor). The material
- * installed at the slot's location is authoritative, so patchwork armor and
- * hybrid structure are resolved per location. Must run after armor and
- * structure are installed on the entity. Only the name changes: a slot count
- * that does not fit the installed material stays a construction error.
+ * base (an `IS Ferro-Fibrous` slot on Clan ferro-fibrous armor) or with no tech
+ * prefix at all (`Ferro-Fibrous`). The material installed at the slot's location
+ * is authoritative, so patchwork armor and hybrid structure are resolved per
+ * location. Must run after armor and structure are installed on the entity.
+ * Only the name changes: a slot count that does not fit the installed material
+ * stays a construction error.
  */
 export function installedMaterialSlotName(
   entity: BaseEntity,
@@ -21,19 +22,21 @@ export function installedMaterialSlotName(
   ctx: ParseContext,
 ): string {
   const listed = ctx.equipmentRegistry.findForTechBase(name, entity.techBase());
-  let installed: ArmorEquipment | StructureEquipment | undefined;
-  if (listed instanceof ArmorEquipment) {
-    const armor = entity.armorByLocation().get(location)?.armor;
-    if (armor?.armorType === listed.armorType) installed = armor;
-  } else if (listed instanceof StructureEquipment) {
-    const structure = entity.structureByLocation().get(location)?.structure;
-    if (structure?.structureTypeId === listed.structureTypeId) installed = structure;
-  }
-  if (!listed || !installed || installed.id === listed.id) return name;
+  const armor = entity.armorByLocation().get(location)?.armor;
+  const structure = entity.structureByLocation().get(location)?.structure;
+  const installed = listed
+    ? listed instanceof ArmorEquipment && armor?.armorType === listed.armorType
+      ? armor
+      : listed instanceof StructureEquipment && structure?.structureTypeId === listed.structureTypeId
+        ? structure
+        : undefined
+    : [armor, structure].find((material) => material?.name.toLowerCase() === name.trim().toLowerCase());
+  if (!installed || installed.id === listed?.id) return name;
 
-  const message = `Slot "${name}" converted to "${installed.id}" to match the installed ${listed.type}.`;
+  const kind = installed instanceof ArmorEquipment ? 'Armor' : 'Structure';
+  const message = `Slot "${name}" converted to "${installed.id}" to match the installed ${kind.toLowerCase()}.`;
   if (!ctx.warnings.some((warning) => warning.message === message)) {
-    ctx.warn(installed instanceof ArmorEquipment ? 'Armor' : 'Structure', message, 'MATERIAL_SLOT_TECH_BASE');
+    ctx.warn(kind, message, 'MATERIAL_SLOT_TECH_BASE');
   }
   return installed.id;
 }

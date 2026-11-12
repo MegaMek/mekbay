@@ -678,6 +678,23 @@ describe('MTF material slots with the opposite tech base', () => {
     expect(placements(entity, 'IS Ferro-Fibrous')).toEqual([['RA', 'RA']]);
   });
 
+  it('resolves unprefixed material slots to the material installed at their location', () => {
+    const context = new ParseContext('unprefixed-ff.mtf', catalog);
+    const entity = parseMtf(
+      minimalMtf().replace(
+        'armor:Standard(Inner Sphere)',
+        'armor:Patchwork\nLA armor:Ferro-Fibrous(Clan):4\nRA armor:Ferro-Fibrous(Inner Sphere):4\n' +
+          slots('Left Arm', 'Ferro-Fibrous', 1) +
+          slots('Right Arm', 'Ferro-Fibrous', 2),
+      ),
+      context,
+    );
+
+    expect(placements(entity, 'Clan Ferro-Fibrous')).toEqual([['LA']]);
+    expect(placements(entity, 'IS Ferro-Fibrous')).toEqual([['RA', 'RA']]);
+    expect(context.errors.filter((error) => error.code === 'EQUIPMENT_NOT_FOUND')).toEqual([]);
+  });
+
   it('checks hybrid structure per location', () => {
     const entity = parseMtf(
       frankenMtf(
@@ -752,3 +769,31 @@ function equipmentRegistry(equipment: EquipmentMap): EquipmentRegistry {
     ...equipment,
   });
 }
+
+describe('MTF rules level on load', () => {
+  let catalog: EquipmentRegistry;
+  beforeAll(async () => {
+    catalog = buildEquipmentRegistry(await (await fetch('/online-assets/static/equipment.json')).json());
+  });
+
+  const load = (rulesLevel: number, armor: string) =>
+    parseEntity(
+      minimalMtf()
+        .replace('Config:Biped', `Config:Biped\nrules level:${rulesLevel}`)
+        .replace('armor:Standard(Inner Sphere)', `armor:${armor}`),
+      'rules.mtf',
+      catalog,
+    ).entity;
+
+  it('raises a saved level below what the components require, as MegaMekLab does', () => {
+    const entity = load(2, 'Reflective(Inner Sphere)');
+
+    expect(entity.staticTechLevel()).toBe('Advanced');
+    expect(entity.rulesLevel()).toBe(3);
+    expect(encodeNativeEntity(entity)).toContain('\nrules level:3\n');
+  });
+
+  it('keeps a saved level above what the components require', () => {
+    expect(load(4, 'Standard(Inner Sphere)').rulesLevel()).toBe(4);
+  });
+});

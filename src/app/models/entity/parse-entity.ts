@@ -19,6 +19,7 @@ import { parseBlkHandheld } from './parsers/blk-handheld-parser';
 import { parseBlkStaticEmplacement } from './parsers/blk-static-emplacement-parser';
 import { nativeCapabilityForUnitTypeAlias } from './codec-capabilities';
 import { weaponQuirkTarget } from './utils/weapon-quirks';
+import { rulesLevelOfTechLevel } from './types/tech';
 
 /** Result of parsing a unit file. */
 export interface ParseResult {
@@ -94,6 +95,9 @@ export function parseEntity(
   // A weaponquirk whose weapon (or weapon bay) is missing from the file is file corruption;
   // MegaMek warns and skips it.
   entity.weaponQuirks.set(entity.weaponQuirks().filter((entry) => weaponQuirkTarget(entity, entry)));
+  // MegaMekLab (BasicInfoView.setFromEntity) opens a unit at the higher of its saved
+  // rules level and the level its components require.
+  entity.rulesLevel.set(Math.max(entity.rulesLevel(), rulesLevelOfTechLevel(entity.staticTechLevel())));
   entity.setLoadIssues(ctx.diagnostics);
   return { entity, diagnostics: entity.loadIssues() };
 }

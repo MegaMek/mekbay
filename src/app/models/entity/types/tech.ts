@@ -633,6 +633,11 @@ export function compareTechLevels(left: ComponentTechLevel, right: ComponentTech
     return TECH_LEVEL_RANK[left] - TECH_LEVEL_RANK[right];
 }
 
+/** MegaMek's native `rules level` number: 1 = Introductory … 5 = Unofficial. */
+export function rulesLevelOfTechLevel(level: ComponentTechLevel): number {
+    return TECH_LEVEL_RANK[level] + 1;
+}
+
 /** Highest static construction-rules level among the supplied technologies. */
 export function calculateCompositeStaticTechLevel(
     sources: readonly TechRatingSource[],

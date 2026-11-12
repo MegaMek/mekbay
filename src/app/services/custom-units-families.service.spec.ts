@@ -13,6 +13,7 @@ import type { EquipmentRegistry } from '../models/equipment-lookup';
 import { AmmoEquipment, WeaponEquipment, type Equipment } from '../models/equipment.model';
 import { encodeNativeEntity } from '../models/entity/write-entity';
 import { MekEntity } from '../models/entity/entities';
+import { rulesLevelOfTechLevel } from '../models/entity/types/tech';
 import { buildEquipmentRegistry } from './catalogs/equipment-catalog-builder';
 import { CustomUnitsService } from './custom-units.service';
 import { DbService } from './db.service';
@@ -129,7 +130,10 @@ describe('custom construction saves across the complete native family catalog', 
                 // Disabled controls preserve their imported value. Legal edits must respect
                 // chassis, motive-type and technology restrictions (TM; IO:AE for LAMs).
                 if (!field.disabled && value !== undefined) field.set(value);
-                const expected = field.get();
+                // As in MegaMekLab, loading raises a rules level below what the design requires.
+                const expected = field.id === 'rulesLevel'
+                    ? Math.max(Number(field.get()), rulesLevelOfTechLevel(entity.staticTechLevel()))
+                    : field.get();
                 const loaded = service.parseDraft(encodeNativeEntity(entity), entity instanceof MekEntity ? 'mtf' : 'blk');
                 const actual = getConstructionFields(loaded).find(item => item.id === field.id)?.get();
                 expect(actual).withContext(`${kind.id}.${field.id}`).toEqual(expected);
