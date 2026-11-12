@@ -123,6 +123,7 @@ const COMMAND_PROFILE_COVERAGE = Object.freeze({
     'rewind-turn-step': 'unprofiled',
     'record-mek-physical-attack-checks': 'unprofiled',
     'set-consciousness-rolls-due': 'unprofiled',
+    'set-mek-conversion-mode': 'unprofiled',
 } satisfies Readonly<Record<CBTUnitCommand['type'], 'profiled' | 'non-mek-only' | 'unprofiled'>>);
 
 type ProfiledCommandType = {
