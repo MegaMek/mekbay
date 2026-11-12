@@ -6,7 +6,7 @@ import { Signal, computed, signal } from '@angular/core';
 import { firstCriticalSlots } from '../../utils/critical-slot-allocation';
 import type { MountPlacement } from '../../types/equipment';
 import { EquipmentRegistry } from '../../../equipment-lookup';
-import { AmmoEquipment, MiscEquipment } from '../../../equipment.model';
+import { AmmoEquipment, type ArmorEquipment, MiscEquipment } from '../../../equipment.model';
 import { modularArmorMovementPenalty } from '../../../modular-armor.model';
 import {
   isMascEquipment,
@@ -29,7 +29,7 @@ import {
   isPrototypeDoubleHeatSinkEquipment,
   isSingleHeatSinkEquipment,
 } from '../../../heat-equipment.model';
-import { isIndustrialStructureEquipment } from '../../../construction-equipment.model';
+import { INDUSTRIAL_MEK_ARMOR_FLAGS, isIndustrialStructureEquipment } from '../../../construction-equipment.model';
 import { isChainDrapeEquipment } from '../../../chassis-equipment.model';
 
 import {
@@ -61,6 +61,7 @@ import {
   type MovementCalculationOptions,
   BV_MOVEMENT_CALCULATION,
   CockpitType,
+  type ComponentTechLevel,
   CriticalSlotView,
   EngineFlag,
   EntityFeature,
@@ -274,6 +275,13 @@ export abstract class MekEntity extends BaseEntity {
   isIndustrial = computed(
     () => isIndustrialStructureEquipment(this.structureAt('CT').structure)
   );
+
+  /** An IndustrialMek mounts BattleMek armor only under experimental rules (MegaMekLab TestMek.legalArmorsFor). */
+  override armorRulesLevel(armor: ArmorEquipment): ComponentTechLevel {
+    return this.isIndustrial() && !armor.hasAnyFlag(INDUSTRIAL_MEK_ARMOR_FLAGS)
+      ? 'Experimental'
+      : super.armorRulesLevel(armor);
+  }
 
   /**
    * TM p.205: Heavy Industrial is an IndustrialMek's standard armor, identical to a

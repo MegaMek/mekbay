@@ -11,6 +11,7 @@ import { calculateMekStructureWeight } from '../../models/entity/utils/weight/me
 import { calculateBattleValueDetails } from '../../models/entity/utils/battle-value';
 import { alphaStrikeArmor } from '../../models/entity/utils/alpha-strike/foundation/integrity';
 import { addTestEquipment } from '../../models/entity/testing/test-mounted-equipment';
+import { MountedArmor } from '../../models/entity/components';
 import { createConstructionEntity } from './construction-factory';
 import { constructionSupportsPatchwork, getConstructionArmorOptions, setConstructionArmorMaterial, setConstructionHybridStructure, setConstructionPatchwork, setConstructionStructure, validateConstruction } from './construction-rules';
 import { applyConstructionSpreadPlacements, constructionSpreadAllocation, constructionSpreadAutoPlacements, constructionSpreadMovePlacements, setConstructionSpreadSlots, uninstallConstructionEquipment } from './construction-rules';
@@ -217,5 +218,20 @@ describe('native construction material modes', () => {
     const entity = createConstructionEntity('Biped', registry);
     setConstructionArmorMaterial(entity, registry.equipment['IS Heavy Industrial'] as ArmorEquipment);
     expect(reload(entity).uniformArmor()?.type).toBe('HEAVY_INDUSTRIAL');
+  });
+
+  for (const kind of ['SupportTank', 'SupportNaval', 'SupportVTOL', 'LargeSupportTank', 'FixedWingSupport'] as const) {
+    it(`starts a new ${kind} on valid BAR armor, as MegaMekLab does`, () => {
+      const entity = createConstructionEntity(kind, registry);
+      expect(entity.uniformArmor()?.type).toBe('SV_BAR_2');
+      expect(validateConstruction(entity).messages.filter(message => message.severity === 'error')).toEqual([]);
+    });
+  }
+
+  it('requires advanced rules for non-BAR armor on a support vehicle', () => {
+    const entity = createConstructionEntity('SupportTank', registry);
+    expect(entity.staticTechLevel()).toBe('Standard');
+    entity.setUniformArmor(new MountedArmor({ armor: registry.equipment['IS Ferro-Fibrous'] as ArmorEquipment }));
+    expect(entity.staticTechLevel()).toBe('Advanced');
   });
 });

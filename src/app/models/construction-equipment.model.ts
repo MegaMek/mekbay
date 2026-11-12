@@ -35,6 +35,14 @@ const ARMOR_FLAGS = Object.freeze([
     'F_SUPPORT_VEE_BAR_ARMOR',
 ] as const satisfies readonly EquipmentFlag[]);
 
+/** Armors MegaMek marks as industrial; an IndustrialMek needs experimental rules for any other. */
+export const INDUSTRIAL_MEK_ARMOR_FLAGS = Object.freeze([
+    'F_COMMERCIAL_ARMOR',
+    'F_INDUSTRIAL_ARMOR',
+    'F_HEAVY_INDUSTRIAL_ARMOR',
+    'F_PRIMITIVE_ARMOR',
+] as const satisfies readonly EquipmentFlag[]);
+
 const FIGHTER_ARMOR_FLAGS = Object.freeze([
     'F_LIGHT_FERRO',
     'F_HEAVY_FERRO',

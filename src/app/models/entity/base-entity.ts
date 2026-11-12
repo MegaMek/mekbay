@@ -38,6 +38,7 @@ import { PPC_CAPACITOR_HEAT_BONUS, isPpcCapacitorEquipment, isPpcEquipment } fro
 import { NO_BOMB_CAPACITY, type BombCapacity } from '../aerospace-bomb.model';
 import { isCaseIIEquipment, isStandardCaseEquipment } from '../case-equipment.model';
 import { isChassisSystemEquipment } from '../chassis-equipment.model';
+import { isSupportVehicleBarArmor } from '../construction-equipment.model';
 import {
   isBlueShieldEquipment,
   isEmergencyCoolantSystemEquipment,
@@ -55,6 +56,8 @@ import {
   ArmorFace,
   calculateCompositeStaticTechLevel,
   calculateCompositeTechRating,
+  compareTechLevels,
+  type ComponentTechLevel,
   C3SystemType,
   EngineFlag,
   FactionCode,
@@ -667,10 +670,27 @@ export abstract class BaseEntity implements EntityTechnology {
   );
   readonly staticTechLevel = computed(() => {
     const componentLevel = calculateCompositeStaticTechLevel(this.staticTechLevelSources());
-    return this.equipment().some((mount) => mount.armored)
+    const level = this.equipment().some((mount) => mount.armored)
       ? armoredComponentStaticTechLevel(componentLevel)
       : componentLevel;
+    return this.combinationRulesLevels().reduce(
+      (highest, required) => (compareTechLevels(required, highest) > 0 ? required : highest),
+      level,
+    );
   });
+
+  /**
+   * Lowest rules level at which this unit may mount the armor, for rules that depend on the
+   * unit and not only on the armor. TM: support vehicles use non-BAR armor under advanced rules.
+   */
+  armorRulesLevel(armor: ArmorEquipment): ComponentTechLevel {
+    return this.isSupportVehicle() && !isSupportVehicleBarArmor(armor) ? 'Advanced' : 'Introductory';
+  }
+
+  /** Levels demanded by how installed components combine, beyond each component's own level. */
+  protected combinationRulesLevels(): ComponentTechLevel[] {
+    return [...this.armorByLocation().values()].map((mounted) => this.armorRulesLevel(mounted.armor));
+  }
   /** All Weapons installed on the entity. */
   readonly mountedWeapons = computed<readonly EntityMountedWeapon[]>(() =>
     this.equipment().filter(isEntityMountedWeapon),

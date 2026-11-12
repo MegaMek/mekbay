@@ -796,4 +796,18 @@ describe('MTF rules level on load', () => {
   it('keeps a saved level above what the components require', () => {
     expect(load(4, 'Standard(Inner Sphere)').rulesLevel()).toBe(4);
   });
+
+  it('raises combinations that need experimental rules, not only single components', () => {
+    const loadMtf = (source: string) => parseEntity(source, 'combination.mtf', catalog).entity;
+    const industrial = loadMtf(minimalMtf()
+      .replace('Config:Biped', 'Config:Biped\nrules level:3')
+      .replace('engine:100 Fusion Engine', 'engine:100 Fusion Engine\nstructure:IS Industrial')
+      .replace('armor:Standard(Inner Sphere)', 'armor:Ferro-Fibrous(Inner Sphere)'));
+    const iceBattleMek = loadMtf(minimalMtf().replace('engine:100 Fusion Engine', 'engine:100 ICE Engine'));
+
+    expect(industrial.staticTechLevel()).toBe('Experimental');
+    expect(industrial.rulesLevel()).toBe(4);
+    expect(iceBattleMek.staticTechLevel()).toBe('Experimental');
+    expect(iceBattleMek.rulesLevel()).toBe(4);
+  });
 });

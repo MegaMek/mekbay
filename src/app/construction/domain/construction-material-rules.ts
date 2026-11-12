@@ -5,7 +5,7 @@ import type { BaseEntity } from '../../models/entity/base-entity';
 import { JumpShipEntity, MekEntity, VehicleEntity } from '../../models/entity/entities';
 import { ArmorEquipment, StructureEquipment } from '../../models/equipment.model';
 import { isSupportVehicleBarArmor, structureConstructionKind } from '../../models/construction-equipment.model';
-import { STRUCTURE_TYPE, type EntityValidationMessage, type TechRating } from '../../models/entity/types';
+import { rulesLevelOfTechLevel, STRUCTURE_TYPE, type EntityValidationMessage, type TechRating } from '../../models/entity/types';
 import { getNumCriticalSlots } from '../../models/entity/utils/equipment-helpers';
 import { getStructureTechAdvancement, STANDARD_STRUCTURE_EQUIPMENT } from '../../models/entity/components/structure';
 import { getSupportComponentTech } from '../../models/entity/components/construction-tech-data';
@@ -42,9 +42,7 @@ export function constructionMaterialMessages(entity: BaseEntity, material: Armor
     if (entity instanceof MekEntity) {
       if (material.armorType === 'COMMERCIAL' && !entity.isIndustrial()) add('MEK_COMMERCIAL_ARMOR', 'Commercial armor requires an IndustrialMek.');
       if (entity.isIndustrial() && material.armorType === 'STANDARD') add('MEK_INDUSTRIAL_STANDARD_ARMOR', 'IndustrialMeks use Heavy Industrial armor in place of Standard armor.');
-      else if (entity.isIndustrial() && entity.rulesLevel() < 4 && !material.hasAnyFlag([
-        'F_COMMERCIAL_ARMOR', 'F_INDUSTRIAL_ARMOR', 'F_HEAVY_INDUSTRIAL_ARMOR', 'F_PRIMITIVE_ARMOR',
-      ])) add('MEK_INDUSTRIAL_ARMOR', 'BattleMek armor on an IndustrialMek requires experimental construction rules.');
+      else if (entity.rulesLevel() < rulesLevelOfTechLevel(entity.armorRulesLevel(material))) add('MEK_INDUSTRIAL_ARMOR', 'BattleMek armor on an IndustrialMek requires experimental construction rules.');
       if (entity.chassisConfig === 'LAM' && (material.armorType === 'HARDENED' || (getNumCriticalSlots(entity, material) ?? 0) > 0)) {
         add('LAM_ARMOR', 'LAMs cannot use hardened armor or armor that requires critical slots.');
       }
@@ -62,7 +60,7 @@ export function constructionMaterialMessages(entity: BaseEntity, material: Armor
       if (!ratingTech.available || !ratingTech.rulesLevel) add('SUPPORT_ARMOR_RATING_TECH', `Armor tech rating ${armorRating} is unavailable at the selected dates and rules level.`);
       const bar = isSupportVehicleBarArmor(material);
       const perPoint = material.weightPerPointSV[armorRating] ?? material.weightPerPoint;
-      if (!bar && entity.rulesLevel() < 3) add('SUPPORT_ADVANCED_ARMOR', 'Non-BAR support vehicle armor requires advanced construction rules.');
+      if (entity.rulesLevel() < rulesLevelOfTechLevel(entity.armorRulesLevel(material))) add('SUPPORT_ADVANCED_ARMOR', 'Non-BAR support vehicle armor requires advanced construction rules.');
       if (!entity.equipment().some(mount => mount.equipment?.hasFlag('F_ARMORED_CHASSIS')) && (!bar || perPoint > 0.05)) {
         add('SUPPORT_ARMORED_CHASSIS_REQUIRED', 'Advanced armor or armor heavier than 50 kg per point requires the armored chassis modification.');
       }

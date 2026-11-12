@@ -4,8 +4,8 @@
 import type { BaseEntity } from '../../models/entity/base-entity';
 import type { EquipmentRegistry } from '../../models/equipment-lookup';
 import { MiscEquipment } from '../../models/equipment.model';
-import { MountedEngine, MountedStructure, getStructureByName } from '../../models/entity/components';
-import type { EntityType } from '../../models/entity/types';
+import { MountedArmor, MountedEngine, MountedStructure, getStructureByName } from '../../models/entity/components';
+import { resolveArmorEquipment, type EntityType } from '../../models/entity/types';
 import { battleArmorSuitMassCapacity } from './construction-family-rules';
 import { BipedMekEntity } from '../../models/entity/entities/mek/biped-mek-entity';
 import { QuadMekEntity } from '../../models/entity/entities/mek/quad-mek-entity';
@@ -247,6 +247,12 @@ export function createConstructionEntity(kind: ConstructionUnitKind, registry: E
   if (entity instanceof SpaceStationEntity) {
     entity.motiveType.set('Station Keeping');
     entity.originalWalkMP.set(0);
+  }
+  // MegaMekLab SVMainUI starts support vehicles on BAR 2 armor at armor tech rating D.
+  const barArmor = entity.isSupportVehicle() ? resolveArmorEquipment('SV_BAR_2', false, registry) : null;
+  if (barArmor && entity.isSupportVehicle()) {
+    entity.setUniformArmor(new MountedArmor({ armor: barArmor, techRating: 'D' }));
+    entity.barRating.set(2);
   }
   if (entity instanceof NavalEntity || entity instanceof SupportNavalEntity) entity.motiveType.set('Naval');
   if (entity instanceof VtolEntity || entity instanceof SupportVtolEntity) entity.motiveType.set('VTOL');
