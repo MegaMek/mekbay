@@ -904,6 +904,28 @@ describe('force storage codec', () => {
         expect(compactUnit['c']).toEqual([[boosterId, { e: [1, 1] }]]);
     });
 
+    it('keeps the outside heat and inferno missiles of a pending attack through compact storage', () => {
+        const mek = createDirectMekRuntimeFixture().instance;
+        expect(mek.dispatch({ type: 'add-outside-heat', amount: 4, target: 'pending' }).accepted).toBeTrue();
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e4'));
+        const aero = createNonMekUnit(fighter, {
+            instanceId: 'unit:pending-aero-heat', uuid: fighter.uuid(), deployment: { id: 'default' },
+            scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine-non-mek-v1',
+        });
+        expect(aero.dispatch({ type: 'add-outside-heat', amount: 6, target: 'pending' }).accepted).toBeTrue();
+        expect(aero.dispatch({ type: 'add-inferno-missiles', count: 3, target: 'pending' }).accepted).toBeTrue();
+        const aeroUnit = aero.serialize();
+        if (!isSerializedNonMekUnit(aeroUnit)) throw new Error('Expected a non-Mek unit');
+        expect(aeroUnit.pendingCombat).toEqual({ outsideHeat: 6, infernoMissiles: 3 });
+        expect((mek.serialize() as SerializedCBTUnitV2).pendingCombat).toEqual({ outsideHeat: 4 });
+        for (const unit of [mek.serialize(), aeroUnit]) {
+            const stored = encodeForceForStorage(forceWithUnit(unit, 'force:pending-heat', 'Pending heat'));
+            expect(decodeForceFromStorage(JSON.parse(JSON.stringify(stored))).cbt!.units[0]!.unit.pendingCombat)
+                .toEqual(unit.pendingCombat);
+        }
+    });
+
     it('omits pristine non-Mek heat and stores only changed aerospace heat fields', () => {
         const entity = new TestAeroSpaceFighterEntity();
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e3');

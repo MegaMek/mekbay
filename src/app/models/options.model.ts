@@ -110,6 +110,9 @@ export interface CBTOptionalRules {
     enhancedFlamers: boolean;
 }
 
+/** The optional rules in play, passed whole to the rules that read them; a rule left out is off. */
+export type OptionalRules = Readonly<Partial<CBTOptionalRules>>;
+
 export interface Options {
     colorScheme: ColorScheme;
     pickerStyle: OptionValue<'pickerStyle'>;

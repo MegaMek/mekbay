@@ -373,6 +373,9 @@ function infantryNotes(entity: InfantryEntity): string {
   const secondary = entity.secondaryWeapon();
   const rangeWeapon = conventionalInfantryRangeWeapon(entity);
   const mount = entity.mount();
+  // TO:AuE's infantry record sheet names the one-shot weapon every trooper carries (TO:AuE p. 116).
+  const disposable = entity.disposableWeapon();
+  if (disposable) notes.push(`Disposable Weapon: ${disposable.name}.`);
   if (entity.effectiveSpaceSuit()) notes.push('Can operate in vacuum.');
   if (mount && mount.uwEndurance > 0) notes.push(`Must surface every ${mount.uwEndurance} turns.`);
   const burst =

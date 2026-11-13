@@ -50,7 +50,6 @@ describe('direct V2 Gauss power handler', () => {
             type: 'fire-weapons',
 
             selections: [{ weaponId: setup.component.id }],
-            heatPolicy: 'automatic',
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
     });
 

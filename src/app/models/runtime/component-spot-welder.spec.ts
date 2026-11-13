@@ -141,6 +141,5 @@ function fire(fixture: DirectMekRuntimeFixture, commandId: string): boolean {
         
         
         
-        heatPolicy: 'automatic',
     }, registry, false, false).changed;
 }

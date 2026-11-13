@@ -10,10 +10,11 @@ import type { WeaponType } from '../weapon-types.model';
 import type { CBTGameRules } from './game-rules';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import { physicalDamageGroupSize, type HitTable, type PhysicalAttackKind } from './physical-attack-rules';
-import { infernoMeetsCover, isInfernoAmmo, platoonInfernoMissiles } from './inferno-rules';
+import { infernoMeetsCover, infernoRollsHitLocation, isInfernoAmmo, platoonInfernoMissiles } from './inferno-rules';
 import type { PlatoonAttackFacts } from './conventional-infantry-combat-rules';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import { FLAMER_HEAT_MODE } from '../flamer-mode.model';
+import type { OptionalRules } from '../options.model';
 import {
     heatWeaponMode,
     heatWeaponOf,
@@ -58,6 +59,8 @@ export interface WeaponAttackProfile {
     readonly arc?: MekHitArc;
     /** Inferno missiles: each group is one missile whose effect the struck unit decides (TW pp. 141-142). */
     readonly inferno?: true;
+    /** The missiles roll no hit location: Core infernos striking a unit that tracks heat (Core p. 192). */
+    readonly noHitLocation?: true;
     /** A platoon's damage when that many troopers hit, indexed by troopers hitting; replaces damage per hit. */
     readonly damageByHits?: readonly number[];
     /** A heat-causing weapon: its hit may deliver heat as well as, or instead of, damage. */
@@ -83,13 +86,13 @@ export function attackHeatWeapon(
     equipment: WeaponEquipment,
     mode: string | undefined,
     ruleset: CBTRuleset,
-    enhancedFlamers: boolean,
+    optionalRules: OptionalRules,
     target: HeatWeaponTarget | null,
 ): AttackHeatWeapon | undefined {
     const weapon = heatWeaponOf(equipment);
     return weapon === null ? undefined : Object.freeze({
         weapon,
-        mode: heatWeaponMode(weapon, ruleset, enhancedFlamers, mode === FLAMER_HEAT_MODE),
+        mode: heatWeaponMode(weapon, ruleset, optionalRules, mode === FLAMER_HEAT_MODE),
         ruleset,
         target: target ?? UNKNOWN_HEAT_TARGET,
     });
@@ -118,6 +121,8 @@ export interface WeaponAttackFacts {
     readonly targetNumber: number;
     readonly partialCover: boolean;
     readonly heatWeapon?: AttackHeatWeapon;
+    /** Whether the struck unit tracks heat; absent while it is unknown. */
+    readonly targetTracksHeat?: boolean;
 }
 
 export interface WeaponAttackOutcome {
@@ -159,6 +164,7 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
             ...profile(1, equipment.rackSize, 1),
             partialCover: facts.partialCover && infernoMeetsCover(rules.id),
             inferno: true as const,
+            ...(infernoRollsHitLocation(rules.id, facts.targetTracksHeat) ? {} : { noHitLocation: true as const }),
         });
     }
     const standard = (): WeaponAttackProfile | null => {
@@ -190,6 +196,8 @@ export interface PlatoonAttackProfileFacts {
     readonly attack: PlatoonAttackFacts;
     /** Flamer platoons may declare heat in place of damage (TW p. 215, infantry table). */
     readonly heatWeapon?: AttackHeatWeapon;
+    /** Whether the struck unit tracks heat; absent while it is unknown. */
+    readonly targetTracksHeat?: boolean;
 }
 
 /**
@@ -211,6 +219,8 @@ export function platoonAttackProfile(facts: PlatoonAttackProfileFacts, rules: CB
         table: 'standard',
         damageByHits: facts.attack.damageByTroopers,
         ...(facts.attack.inferno ? { inferno: true as const } : {}),
+        ...(facts.attack.inferno && !infernoRollsHitLocation(rules.id, facts.targetTracksHeat)
+            ? { noHitLocation: true as const } : {}),
         ...(facts.heatWeapon === undefined ? {} : { heatWeapon: facts.heatWeapon }),
     });
 }

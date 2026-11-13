@@ -220,6 +220,7 @@ export const CBT_PENDING_COMBAT_FIELD = {
     componentStatus: 'c',
     shieldDamage: 'h',
     modularArmorDamage: 'm',
+    outsideHeat: 'o',
 } as const;
 
 export const CBT_NON_MEK_PENDING_COMBAT_FIELD = {
@@ -227,4 +228,6 @@ export const CBT_NON_MEK_PENDING_COMBAT_FIELD = {
     armorDamage: 'a',
     componentStatus: 'c',
     damageTrackHits: 'q',
+    outsideHeat: 'o',
+    infernoMissiles: 'i',
 } as const;

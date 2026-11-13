@@ -83,7 +83,6 @@ describe('PpcCapacitorHandler direct V2 runtime', () => {
             type: 'fire-weapons',
 
             selections: [{ weaponId: setup.weapon.id }],
-            heatPolicy: 'automatic',
         });
 
         expect(fired.accepted).toBeTrue();

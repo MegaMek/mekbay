@@ -1074,6 +1074,9 @@ export async function restoreSerializedCBTUnitV2(
         locationConditions: new ImmutableIndex([...pendingLocationConditions].map(
             ([locationId, conditionValues]) => [locationId, new ImmutableIndex(conditionValues)] as const,
         )),
+        ...(saved.pendingCombat?.outsideHeat === undefined ? {} : {
+            outsideHeat: requirePositiveSerializedInteger(saved.pendingCombat.outsideHeat, '$.pendingCombat.outsideHeat'),
+        }),
     });
     const conditions = saved.conditions === undefined
         ? initialized.state.conditions
@@ -1983,7 +1986,8 @@ function serializePending(
     modularArmorDamage.sort(compareTargetEntry);
     if (locationDamage.length === 0 && locationConditions.length === 0
         && slotHits.length === 0 && componentStatus.length === 0
-        && shieldDamage.length === 0 && modularArmorDamage.length === 0) return undefined;
+        && shieldDamage.length === 0 && modularArmorDamage.length === 0
+        && pending.outsideHeat === undefined) return undefined;
     return {
         ...(locationDamage.length === 0 ? {} : { locationDamage }),
         ...(locationConditions.length === 0 ? {} : { locationConditions }),
@@ -1991,6 +1995,7 @@ function serializePending(
         ...(componentStatus.length === 0 ? {} : { componentStatus }),
         ...(shieldDamage.length === 0 ? {} : { shieldDamage }),
         ...(modularArmorDamage.length === 0 ? {} : { modularArmorDamage }),
+        ...(pending.outsideHeat === undefined ? {} : { outsideHeat: pending.outsideHeat }),
     };
 }
 

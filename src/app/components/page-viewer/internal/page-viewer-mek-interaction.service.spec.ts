@@ -822,7 +822,7 @@ describe('PageViewerMekInteractionService', () => {
         const weaponId = runtime.equipmentComponent('Test Artemis Launcher').id;
         runtime.instance.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
             munitionKey: 'Test Artemis Ammo', remaining: 1, hotLoaded: true });
-        expect(runtime.instance.dispatch({ type: 'fire-weapons', heatPolicy: 'manual', selections: [{
+        expect(runtime.instance.dispatch({ type: 'fire-weapons', selections: [{
             weaponId, ammoSourceId: ammoId, expectedMunitionKey: 'Test Artemis Ammo',
         }] }).changed).toBeTrue();
         expect(runtime.instance.query().remainingAmmo(ammoId)).toBe(0);

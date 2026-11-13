@@ -8,10 +8,8 @@ import type {
     CriticalSlotId,
     LocationId,
 } from '../entity/entity-identifiers';
-import type {
-    MekMechanicsProfile,
-    MekMechanicsScenarioRules,
-} from './mek-mechanics-profile';
+import type { MekMechanicsProfile } from './mek-mechanics-profile';
+import type { BoundOptionalRules } from './bound-optional-rules';
 import { ImmutableIndex } from '../entity/immutable-collections';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import type { CrewMember } from '../crew-member.model';
@@ -126,7 +124,7 @@ export function createMekTorsoCripplingRuleCheckTokenV2(
 
 export function projectMekDestructionStateV2(
     profile: MekMechanicsProfile,
-    rules: MekMechanicsScenarioRules,
+    rules: BoundOptionalRules,
     index: MekRuntimeIndex,
     state: MekDamageStateViewV2,
     ruleChecks: MekRuleChecksV2,
@@ -211,7 +209,7 @@ function destroyedFromUnavailableSystems(profile: MekMechanicsProfile, unavailab
 /** Reconcile the persistent check after a damage mutation, without consuming randomness. */
 export function reconcileMekRuleChecksV2(
     profile: MekMechanicsProfile,
-    rules: MekMechanicsScenarioRules,
+    rules: BoundOptionalRules,
     _index: MekRuntimeIndex,
     state: MekDamageStateViewV2,
     current: MekRuleChecksV2,
@@ -262,7 +260,7 @@ export function reconcileMekRuleChecksV2(
 /** One persisted key cannot safely represent a different preview trigger while its committed trigger survives. */
 export function mekRuleCheckTriggerConflictV2(
     profile: MekMechanicsProfile,
-    rules: MekMechanicsScenarioRules,
+    rules: BoundOptionalRules,
     state: MekDamageStateViewV2,
     current: MekRuleChecksV2,
 ): boolean {
@@ -285,7 +283,7 @@ export function mekRuleCheckTriggerConflictV2(
 /** Resolve only the currently applicable pending check. Revision CAS remains reducer-owned. */
 export function resolveMekRuleCheckV2(
     profile: MekMechanicsProfile,
-    rules: MekMechanicsScenarioRules,
+    rules: BoundOptionalRules,
     state: MekDamageStateViewV2,
     current: MekRuleChecksV2,
     key: MekRuleCheckKeyV2,
@@ -334,7 +332,7 @@ function withoutTorsoCheck(current: MekRuleChecksV2): MekRuleChecksV2 {
 
 function requiresDurableTorsoCheck(
     profile: MekMechanicsProfile,
-    rules: MekMechanicsScenarioRules,
+    rules: BoundOptionalRules,
 ): boolean {
     if (!rules.forcedWithdrawal || profile.rulesFlavor !== 'core-2026') return false;
     const engineType = profile.engine.type.trim().toLocaleLowerCase('en-US');

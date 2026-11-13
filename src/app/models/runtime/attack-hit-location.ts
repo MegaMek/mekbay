@@ -15,7 +15,7 @@ import type { HitTable } from '../rules/physical-attack-rules';
 import type { HitLocationDice } from '../rules/weapon-attack-resolution';
 import { getMekLocationLabel } from '../entity/types/mek';
 import { resolveMekHitLocation } from './mek-fall-rules';
-import type { InfernoMissile } from '../rules/inferno-rules';
+import { infernoRollsHitLocation, type InfernoMissile } from '../rules/inferno-rules';
 import { hasNonMekRuntime, type CBTUnitSnapshot } from '../cbt-unit-snapshot';
 import {
     nonMekHitArcs,
@@ -65,7 +65,9 @@ export function readAttackHeat(
 
 /** Inferno missiles that already struck the unit this turn, for the every-three effects (TW pp. 141-142). */
 export function infernoMissilesThisTurn(snapshot: CBTUnitSnapshot | null): number {
-    return snapshot !== null && hasNonMekRuntime(snapshot) ? snapshot.state.turn.infernoMissiles ?? 0 : 0;
+    return snapshot !== null && hasNonMekRuntime(snapshot)
+        ? (snapshot.state.turn.infernoMissiles ?? 0) + (snapshot.state.pendingCombat.infernoMissiles ?? 0)
+        : 0;
 }
 
 /** The inferno missiles of an attack's weapons, each read on the struck unit's own table. */
@@ -80,11 +82,18 @@ export function readInfernoMissiles(
         groups: readonly Readonly<{ location: HitLocationDice; aux: number }>[];
     }>[],
 ): readonly InfernoMissile[] {
+    const reads = infernoReadsHitLocation(member);
     return Object.freeze(weapons.filter(weapon => weapon.inferno).flatMap(weapon => weapon.groups.map(group =>
         Object.freeze({
-            location: readAttackHitLocation(member, weapon.arc ?? arc, group.location, group.aux,
-                weapon.partialCover === true, weapon.table),
+            location: reads ? readAttackHitLocation(member, weapon.arc ?? arc, group.location, group.aux,
+                weapon.partialCover === true, weapon.table) : null,
         }))));
+}
+
+/** Whether inferno missiles striking this unit read their hit-location rolls (Core p. 192). */
+export function infernoReadsHitLocation(member: CBTForceMember): boolean {
+    const ruleset = member.ruleset();
+    return ruleset === null || infernoRollsHitLocation(ruleset, member.entity.tracksHeat());
 }
 
 /**

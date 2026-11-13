@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { BOUND_OPTIONAL_RULE_DEFAULTS, type BoundOptionalRules } from './bound-optional-rules';
 import { asUnitUuid,type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
 import { BOMB_SECTIONS,bombLoadoutIssue,type BombLoad,type BombSection } from '../aerospace-bomb.model';
@@ -170,6 +171,8 @@ export interface SerializedNonMekUnit {
             readonly hitDelta: number;
             readonly hitTimestamps: readonly number[];
         }>[];
+        readonly outsideHeat?: number;
+        readonly infernoMissiles?: number;
     }>;
 }
 
@@ -319,8 +322,7 @@ export function restoreNonMekRuntime(
     saved: SerializedNonMekUnit,
     entity: BaseEntity,
     ruleset: CBTRuleset,
-    forcedWithdrawal = true,
-    hotLoadedAmmo = false,
+    rules: BoundOptionalRules = BOUND_OPTIONAL_RULE_DEFAULTS,
 ): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState; baselineRef: InstanceBaselineRef }> {
     if (saved.schemaVersion !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
         throw new Error(`Unsupported non-Mek unit schema ${String(saved.schemaVersion)}`);
@@ -456,8 +458,7 @@ export function restoreNonMekRuntime(
             ruleset,
             initialStateProfile: Object.freeze({ ...saved.baselineRefAtSave.initialStateProfile }),
         }),
-        ...createNonMekRuntimeBinding(entity, ruleset, state, forcedWithdrawal,
-            saved.deployment.values.crewAssignment, hotLoadedAmmo),
+        ...createNonMekRuntimeBinding(entity, ruleset, state, rules, saved.deployment.values.crewAssignment),
     });
 }
 
@@ -633,7 +634,9 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
     if (pending.locationInternalDamage.size === 0
         && pending.armorDamage.size === 0
         && pending.componentStatus.size === 0
-        && pending.damageTrackHits.size === 0) return undefined;
+        && pending.damageTrackHits.size === 0
+        && pending.outsideHeat === undefined
+        && pending.infernoMissiles === undefined) return undefined;
     const internalDamage = [...pending.locationInternalDamage]
         .sort(([left], [right]) => compareText(left, right))
         .map(([locationId, damage]) => Object.freeze({ locationId, damage }));
@@ -655,6 +658,8 @@ function serializePendingCombat(state: NonMekUnitRuntimeState): SerializedNonMek
         ...(armorDamage.length === 0 ? {} : { armorDamage: Object.freeze(armorDamage) }),
         ...(componentStatus.length === 0 ? {} : { componentStatus: Object.freeze(componentStatus) }),
         ...(damageTrackHits.length === 0 ? {} : { damageTrackHits: Object.freeze(damageTrackHits) }),
+        ...(pending.outsideHeat === undefined ? {} : { outsideHeat: pending.outsideHeat }),
+        ...(pending.infernoMissiles === undefined ? {} : { infernoMissiles: pending.infernoMissiles }),
     });
 }
 
@@ -675,6 +680,10 @@ function restorePendingCombat(saved: SerializedNonMekUnit): NonMekUnitRuntimeSta
                 hitTimestamps: Object.freeze([...entry.hitTimestamps]),
             }),
         ])),
+        ...(saved.pendingCombat?.outsideHeat === undefined ? {} : { outsideHeat: saved.pendingCombat.outsideHeat }),
+        ...(saved.pendingCombat?.infernoMissiles === undefined ? {} : {
+            infernoMissiles: saved.pendingCombat.infernoMissiles,
+        }),
     });
 }
 

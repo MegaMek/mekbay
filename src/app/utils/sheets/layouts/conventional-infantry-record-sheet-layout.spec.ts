@@ -58,6 +58,15 @@ describe('conventional infantry sheet presentation', () => {
         expect(walk.nextElementSibling?.nextElementSibling?.textContent).toBe('Ground');
     });
 
+    it('names the disposable weapon in the notes', async () => {
+        const entity = infantry();
+        entity.setPlatoonWeapon('disposable', new WeaponEquipment({ id: 'InfantryLAW', name: 'Rocket Launcher (LAW)',
+            type: 'weapon', flags: ['F_INFANTRY'], infantry: { damage: 0.53, range: 2 } }) as InfantryWeaponEquipment);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
+        const notes = [...svg.querySelectorAll('.infantry-notes text')].map(line => line.textContent).join(' ');
+        expect(notes).toContain('Disposable Weapon: Rocket Launcher (LAW).');
+    });
+
     it('prints augmentation display names in the notes', async () => {
         const entity = infantry();
         entity.spaceSuit.set(true);

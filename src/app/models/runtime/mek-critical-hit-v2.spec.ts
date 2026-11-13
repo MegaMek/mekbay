@@ -571,7 +571,7 @@ describe('direct Mek critical-hit rules', () => {
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
 
-            selections: [{ weaponId: bombast.id }], heatPolicy: 'automatic',
+            selections: [{ weaponId: bombast.id }], 
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'end-phase',

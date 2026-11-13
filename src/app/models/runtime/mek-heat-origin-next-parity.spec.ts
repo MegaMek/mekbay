@@ -213,8 +213,16 @@ describe('origin/next Mek movement and engine heat parity', () => {
                 : undefined;
         };
 
-        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10 }).accepted).toBeTrue();
-        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10 }).accepted).toBeTrue();
+        // A pending attack's heat counts now, and cancelling the attack takes it back.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'pending' }).accepted).toBeTrue();
+        expect(outside()).toBe(10);
+        expect(fixture.instance.dispatch({ type: 'cancel-pending' }).accepted).toBeTrue();
+        expect(outside()).toBeUndefined();
+        // Pending and committed heat share the cap; committing keeps the pending part.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'pending' }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'committed' }).accepted).toBeTrue();
+        expect(outside()).toBe(15);
+        expect(fixture.instance.dispatch({ type: 'commit-pending' }).accepted).toBeTrue();
         expect(outside()).toBe(15);
         const turn = canonicalizeMekTurnStateV2({ ...createPristineMekTurnStateV2(), outsideHeat: 15 });
         expect(deserializeMekTurnStateV2(serializeMekTurnStateV2(turn)).outsideHeat).toBe(15);

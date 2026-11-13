@@ -112,6 +112,16 @@ export interface CBTUnitPendingCombatState {
     readonly locationInternalDamage: ReadonlyMap<LocationId, number>;
     readonly armorDamage: ReadonlyMap<ArmorFaceId, number>;
     readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
+    /** Outside heat the phase's attacks add once their damage commits; absent when none. */
+    readonly outsideHeat?: number;
+}
+
+/** Outside heat this turn as play reads it: what is committed plus what pending attacks add. */
+export function outsideHeatThisTurn(state: Readonly<{
+    turn: Readonly<{ outsideHeat?: number }>;
+    pendingCombat: CBTUnitPendingCombatState;
+}>): number {
+    return (state.turn.outsideHeat ?? 0) + (state.pendingCombat.outsideHeat ?? 0);
 }
 
 type PendingCounterField<P> = { [K in keyof P]-?: P[K] extends ReadonlyMap<unknown, number> ? K : never }[keyof P];

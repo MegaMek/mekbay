@@ -86,7 +86,6 @@ describe('TwBombastLaserHandler direct V2 runtime', () => {
                 
                 
                 selections: [{ weaponId: setup.component.id }],
-                heatPolicy: 'automatic',
             });
             expect(fired.accepted).toBeTrue();
             expect(setup.runtime.query().turnState().weaponsHeat).toBe(profile.heat);

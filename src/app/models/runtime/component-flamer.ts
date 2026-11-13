@@ -5,11 +5,11 @@ import type { PickerChoice } from '../../components/picker/picker.interface';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import {
+declaresFlamerHeat,
 FLAMER_DAMAGE_MODE,
 FLAMER_FLAG,
 hasFlamerModes,
 } from '../flamer-mode.model';
-import { declaresFlamerHeat } from '../rules/heat-weapon-rules';
 import { type CBTMekUnit } from './cbt-unit';
 import {
 ComponentModeHandler,
@@ -33,7 +33,7 @@ export function offersHeatOrDamageDeclaration(
     ruleset: CBTRuleset,
     context: EquipmentInteractionQueryContext,
 ): boolean {
-    return !flamer || declaresFlamerHeat(ruleset, context.enhancedFlamers === true);
+    return !flamer || declaresFlamerHeat(ruleset, context.optionalRules ?? {});
 }
 
 /** The heat-or-damage declaration of a flamer, Mek or not. */

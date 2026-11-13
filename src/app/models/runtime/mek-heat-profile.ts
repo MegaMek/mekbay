@@ -54,6 +54,7 @@ import {
     isGroundMobileHpgEquipment,
 } from './component-mobile-hpg';
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
+import { readBoundOptionalRules } from './bound-optional-rules';
 
 export const MEK_HEAT_PROFILE_SCHEMA_VERSION = 3 as const;
 
@@ -350,34 +351,10 @@ export function evaluateMekHeatScenarioSupport(
             'Heat settlement requires one nonempty detached scenario identifier',
         ));
     }
-    const options = input['options'];
-    if (options !== undefined) {
-        if (!isRecord(options)) {
-            blockers.push(scenarioBlocker(
-                'SCENARIO_OPTIONS_UNSUPPORTED',
-                '<invalid-options>',
-                'Scenario heat options must be a plain record',
-            ));
-        } else {
-            for (const key of Object.keys(options)
-                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting' && key !== 'hotLoadedAmmo')
-                .sort(compareText)) {
-                blockers.push(scenarioBlocker(
-                    'SCENARIO_OPTIONS_UNSUPPORTED',
-                    key,
-                    `Scenario option ${key} has no explicit bounded heat semantics`,
-                ));
-            }
-            for (const key of ['forcedWithdrawal', 'sprinting', 'hotLoadedAmmo'] as const) {
-                if (Object.prototype.hasOwnProperty.call(options, key)
-                    && typeof options[key] !== 'boolean') {
-                    blockers.push(scenarioBlocker(
-                        'SCENARIO_OPTIONS_UNSUPPORTED',
-                        key,
-                        `Scenario option ${key} must be an exact boolean`,
-                    ));
-                }
-            }
+    const options = readBoundOptionalRules(input['options']);
+    if (options.kind === 'unsupported') {
+        for (const problem of options.problems) {
+            blockers.push(scenarioBlocker('SCENARIO_OPTIONS_UNSUPPORTED', problem.key, problem.message));
         }
     }
     if (blockers.length === 0) return Object.freeze({ kind: 'supported' });

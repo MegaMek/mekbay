@@ -3,6 +3,7 @@
 
 import type { CBTRuleset } from './cbt-ruleset.model';
 import { Equipment, WeaponEquipment } from './equipment.model';
+import type { OptionalRules } from './options.model';
 import { gameRulesFor } from './rules/game-rules';
 import type { WeaponType } from './weapon-types.model';
 
@@ -39,6 +40,14 @@ export function flamerRequiresPower(equipment: Equipment | null | undefined): bo
 }
 
 /**
+ * Whether a flamer's attacker declares heat or damage before rolling. Core always deals both (p. 183), as does Total
+ * Warfare with the BattleMech Manual's optional Enhanced Flamers (p. 99).
+ */
+export function declaresFlamerHeat(ruleset: CBTRuleset, optionalRules: OptionalRules): boolean {
+    return gameRulesFor(ruleset).supportsFlamerModes && optionalRules.enhancedFlamers !== true;
+}
+
+/**
  * The heat-or-damage declaration as component modes: a flamer has them only where its rules ask for the declaration,
  * while Core flamers always deal both (Core p. 183); other flame-based weapons always declare.
  */
@@ -52,8 +61,27 @@ export function heatOrDamageComponentModes(
     return declares ? Object.freeze({ modes: FLAMER_MODES, defaultMode: FLAMER_DAMAGE_MODE }) : null;
 }
 
-export function flamerDisplayLabel(baseLabel: string, equipment: Equipment, mode: string | undefined): string {
-    return isHeatOrDamageWeapon(equipment) && mode === FLAMER_HEAT_MODE
+/**
+ * The heat-or-damage mode a weapon declared. A flamer that deals heat and damage both declares nothing, so a mode
+ * stored before Enhanced Flamers was turned on is no declaration.
+ */
+function declaredMode(
+    equipment: Equipment,
+    mode: string | undefined,
+    ruleset: CBTRuleset,
+    optionalRules: OptionalRules,
+): string | undefined {
+    return !isFlamerEquipment(equipment) || declaresFlamerHeat(ruleset, optionalRules) ? mode : undefined;
+}
+
+export function flamerDisplayLabel(
+    baseLabel: string,
+    equipment: Equipment,
+    mode: string | undefined,
+    ruleset: CBTRuleset,
+    optionalRules: OptionalRules,
+): string {
+    return isHeatOrDamageWeapon(equipment) && declaredMode(equipment, mode, ruleset, optionalRules) === FLAMER_HEAT_MODE
         ? `${baseLabel} (${FLAMER_HEAT_MODE})`
         : baseLabel;
 }
@@ -62,8 +90,11 @@ export function applyFlamerWeaponTypes(
     equipment: Equipment,
     mode: string | undefined,
     types: ReadonlySet<WeaponType>,
+    ruleset: CBTRuleset,
+    optionalRules: OptionalRules,
 ): ReadonlySet<WeaponType> {
-    if (!isHeatOrDamageWeapon(equipment) || mode !== FLAMER_DAMAGE_MODE || !types.has('H')) return types;
+    if (!isHeatOrDamageWeapon(equipment) || declaredMode(equipment, mode, ruleset, optionalRules) !== FLAMER_DAMAGE_MODE
+        || !types.has('H')) return types;
     const effective = new Set(types);
     effective.delete('H');
     return effective;

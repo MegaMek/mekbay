@@ -59,6 +59,15 @@ export function isFireResistant(entity: BaseEntity): boolean {
 }
 
 /**
+ * Whether inferno missiles roll a hit location on the unit they strike. Under Core, missiles striking a unit that tracks
+ * heat roll none and only add heat (Core p. 192); a unit that does not track heat takes the Total Warfare effects of
+ * the location each missile strikes in either ruleset. `tracksHeat` is undefined while the struck unit is unknown.
+ */
+export function infernoRollsHitLocation(ruleset: CBTRuleset, tracksHeat: boolean | undefined): boolean {
+    return ruleset !== 'core-2026' || tracksHeat !== true;
+}
+
+/**
  * Core inferno missiles roll no hit location (Core p. 192), so partial cover cannot stop them; Total Warfare reads each
  * missile's roll, and one striking cover misses (TW p. 102).
  */

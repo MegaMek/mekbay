@@ -4,6 +4,7 @@
 import { mekMovesOnTracks } from '../chassis-equipment.model';
 import { mekConversionModes, mekConvertedMotiveModes } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+import type { OptionalRules } from '../options.model';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
@@ -283,6 +284,7 @@ export function projectMekRecordSheet(
     targetRegistry: TargetRegistrySnapshot,
     suppliedBattleValue: MekRecordSheetBattleValueSnapshot | null,
     heatPolicy: HeatAutomationPolicy = 'manual',
+    optionalRules: OptionalRules = {},
 ): Omit<MekRecordSheetSnapshot, 'editContext'> {
     if (state.stateRevision !== query.stateRevision) {
         throw new Error('Record-sheet state and query revisions do not match');
@@ -500,7 +502,7 @@ export function projectMekRecordSheet(
     // The sheet reads the panel's rows and targets; physical attacks keep their supported/unsupported shape.
     const attackModifiers = mekAttackModifierSets(entity, index, ruleset, query);
     const { components: equipment, targets } = projectMekEquipmentPanel(
-        entity, index, ruleset, query, targetRegistry, attackModifiers,
+        entity, index, ruleset, query, targetRegistry, optionalRules, attackModifiers,
     );
     const physicalAttacks = projectMekPhysicalAttackPresentation(
         entity, index, ruleset, query, query.attackerTargetingState(), attackModifiers,

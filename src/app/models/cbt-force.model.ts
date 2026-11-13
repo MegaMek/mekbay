@@ -84,6 +84,7 @@ type ScenarioRules,
 import { DialogsService } from '../services/dialogs.service';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import { heatAutomationPolicy, OptionsService, realPhasesEnabled } from '../services/options.service';
+import type { OptionalRules } from './options.model';
 import { ToastService } from '../services/toast.service';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
 import { uuidv7 } from '../utils/uuid.util';
@@ -1251,6 +1252,7 @@ export class CBTForce extends Force<never> {
             registry,
             battleValue,
             heatPolicy,
+            this.optionalRules(),
         ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
 
@@ -1306,6 +1308,7 @@ export class CBTForce extends Force<never> {
                 unit.ruleset,
                 unit.query,
                 registry,
+                this.optionalRules(),
             );
         }
         if (!hasNonMekRuntime(unit)) return null;
@@ -1742,8 +1745,7 @@ export class CBTForce extends Force<never> {
             attackModifierBreakdown,
             missingMovementModifier: movementMode === null && airborneStates.some(isAirborne =>
                 getMotiveModesByUnit(facts, isAirborne).some(mode => modifier(mode, isAirborne) !== 0)),
-            allowExtremeRange: this.injector.get(OptionsService, null, { optional: true })
-                ?.options().CBTOptionalRules?.extremeRange ?? false,
+            allowExtremeRange: this.optionalRules().extremeRange === true,
             c3Available: c3 !== 'none',
             c3DegradationSource: c3 === 'degraded' ? 'unit' : 'none',
         });
@@ -1881,11 +1883,15 @@ export class CBTForce extends Force<never> {
     private equipmentQueryContext(
         choiceSurface?: EquipmentInteractionQueryContext['choiceSurface'],
     ): EquipmentInteractionQueryContext {
-        const options = this.injector.get(OptionsService, null, { optional: true });
         return Object.freeze({
             ...(choiceSurface === undefined ? {} : { choiceSurface }),
-            ...(options?.options().CBTOptionalRules.enhancedFlamers ? { enhancedFlamers: true } : {}),
+            optionalRules: this.optionalRules(),
         });
+    }
+
+    /** The optional rules in play; none without the options service. */
+    private optionalRules(): OptionalRules {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().CBTOptionalRules ?? {};
     }
 
     public async dispatchEquipmentChoice(

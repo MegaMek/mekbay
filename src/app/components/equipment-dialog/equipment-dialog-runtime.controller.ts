@@ -91,6 +91,8 @@ export class EquipmentDialogRuntimeController {
     }> | null {
         if (!this.snapshot().tracksHeat) return null;
         const selection = selectedWeaponHeat(this.snapshot()).value;
+        // From the committed heat, like PROJECTED: the turn's heat already counts here, so starting from the player's
+        // arrow would count it twice.
         let current: number;
         let sources: number;
         let dissipation: number;
@@ -101,14 +103,14 @@ export class EquipmentDialogRuntimeController {
             );
             if (!turn || turn.heatProjection.kind !== 'supported') return null;
             const projection = turn.heatProjection.projection;
-            current = turn.heat.pendingOverride ?? turn.heat.current;
+            current = turn.heat.current;
             sources = projection.sources.reduce((sum, source) => sum + Math.max(0, source.value), 0);
             dissipation = projection.dissipated;
         } else {
             const unit = this.entityRuntime();
             const projection = unit && projectNonMekEndTurnHeat(unit.entity, unit.index, unit.state, unit.ruleset);
             if (!unit || !projection) return null;
-            current = unit.state.heat.pendingOverride ?? unit.state.heat.current;
+            current = unit.state.heat.current;
             sources = projection.generated;
             dissipation = projection.dissipated;
         }
@@ -414,7 +416,6 @@ export class EquipmentDialogRuntimeController {
             const prototypeHeatRolls = this.prototypeHeatRolls(current);
             const result = await this.member.force.fireSelectedWeapons(this.member.id, {
                 type: 'fire-selected-weapons',
-                heatPolicy: heatAutomationPolicy(this.options),
                 ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
             });
             fired = result.accepted;

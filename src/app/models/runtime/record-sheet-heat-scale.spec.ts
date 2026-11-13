@@ -26,10 +26,10 @@ describe('recordSheetHeatScale', () => {
         });
     });
 
-    it('gives a pending override priority and hides a coincident previous marker', () => {
+    it('gives a pending override priority, keeps the calculated projection beside it, and hides a coincident previous', () => {
         const source = snapshot();
         expect(recordSheetHeatScale({ ...source, heat: { ...source.heat, pendingOverride: 4 } })).toEqual({
-            current: 10, pending: 4, previous: undefined, projection: undefined,
+            current: 10, pending: 4, previous: undefined, projection: 0,
             selectedWeapons: undefined, automaticProjection: false,
         });
     });

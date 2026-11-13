@@ -72,7 +72,7 @@ describe('conventional platoon attacks', () => {
             },
         }, registry, false).accepted;
         const fire = () => runtime.dispatchSelectedWeaponFire(
-            { type: 'fire-selected-weapons', heatPolicy: 'automatic' }, registry, false, false);
+            { type: 'fire-selected-weapons' }, registry, false, false);
         return { entity, runtime, mountId, panel, select, fire };
     }
 
@@ -167,7 +167,7 @@ describe('conventional platoon attacks', () => {
         expect(choices.map(choice => [choice.groupLabel, choice.label, choice.active]))
             .toEqual([['Mode', 'Damage', true], ['Mode', 'Heat', false]]);
         // Enhanced Flamers deal both, so the platoon's flamer declares nothing.
-        expect(projectNonMekEquipmentInteractions(unit, { enhancedFlamers: true }, false)
+        expect(projectNonMekEquipmentInteractions(unit, { optionalRules: { enhancedFlamers: true } }, false)
             .find(row => row.componentId === primary)).toBeUndefined();
         expect(selectNonMekEquipmentChoice(unit, choices[1]!.command, {}, {} as never)).toBeTrue();
         expect(unit.query().componentMode(primary)).toBe(FLAMER_HEAT_MODE);

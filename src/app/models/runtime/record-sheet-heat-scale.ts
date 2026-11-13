@@ -30,7 +30,7 @@ function heatScaleMarkers(
     const hasPendingResolution = projection !== null && (projection.generatesHeat || projection.projected !== current);
     const automaticProjection = automatic && pending === undefined && hasPendingResolution;
     const target = pending ?? (automaticProjection ? projection?.projected : undefined);
-    const shown = projection !== null && (automaticProjection || (!automatic && hasPendingResolution));
+    const shown = projection !== null && hasPendingResolution;
     return {
         current, pending,
         previous: previous !== current && previous !== target ? previous : undefined,

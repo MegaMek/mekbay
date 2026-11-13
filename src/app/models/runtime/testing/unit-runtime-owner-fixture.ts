@@ -16,6 +16,7 @@ import { restoreNonMekRuntime,type SerializedNonMekUnit } from '../non-mek-unit-
 import type { InstanceBaselineRef,MekUnitRuntimeState } from '../runtime-state';
 import { createMekRuntimeBinding } from '../unit-instance';
 import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from '../unit-state-initializer';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../bound-optional-rules';
 
 /** Low-level owner construction for tests of bound mechanics and explicit sparse snapshots. */
 export function createMekRuntimeForTest(
@@ -31,7 +32,7 @@ export function createMekRuntimeForTest(
 
 export function restoreNonMekRuntimeForTest(saved: SerializedNonMekUnit, entity: BaseEntity,
     ruleset: CBTRuleset, forcedWithdrawal = true): CBTNonMekUnit {
-    const prepared = restoreNonMekRuntime(saved, entity, ruleset, forcedWithdrawal);
+    const prepared = restoreNonMekRuntime(saved, entity, ruleset, { ...BOUND_OPTIONAL_RULE_DEFAULTS, forcedWithdrawal });
     return new CBTUnit<'non-mek'>({ uuid: entity.uuid(), instanceId: saved.instanceId,
         baselineRef: prepared.baselineRef, runtime: { kind: 'non-mek', ...prepared, deployment: saved.deployment } });
 }
@@ -46,7 +47,8 @@ export function createNonMekRuntimeForTest(
     instanceId: string, baselineRef: InstanceBaselineRef, entity: BaseEntity, ruleset: CBTRuleset,
     state?: NonMekUnitRuntimeState, forcedWithdrawal = true, crewAssignment?: CrewAssignment,
 ): CBTNonMekUnit {
-    const prepared = createNonMekRuntimeBinding(entity, ruleset, state, forcedWithdrawal, crewAssignment);
+    const prepared = createNonMekRuntimeBinding(entity, ruleset, state,
+        { ...BOUND_OPTIONAL_RULE_DEFAULTS, forcedWithdrawal }, crewAssignment);
     return new CBTUnit<'non-mek'>({ instanceId, uuid: entity.uuid(), baselineRef,
         runtime: { kind: 'non-mek', ...prepared, deployment: { schemaVersion: 1,
             values: { id: 'runtime-test', crewAssignment: prepared.binding.crewAssignment } } } });

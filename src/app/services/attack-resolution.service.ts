@@ -179,7 +179,7 @@ export class AttackResolutionService {
         // With real phases, FIRE resolves the attacks of the unit's current phase.
         const physicalPhase = this.inPhysicalPhase(member);
         const realPhases = this.options.options().realPhases;
-        const enhancedFlamers = this.options.options().CBTOptionalRules.enhancedFlamers;
+        const optionalRules = this.options.options().CBTOptionalRules;
         for (const row of !realPhases || physicalPhase ? fired.physicalAttacks : []) {
             const selection = row.selection;
             const target = selection?.kind === 'target'
@@ -232,9 +232,10 @@ export class AttackResolutionService {
             // A heat weapon's effect depends on what it strikes: the linked unit, or the target's declared type. A
             // platoon's attack, declared on its primary weapon's row, takes its heat from whichever weapon is a flamer.
             const heatEquipment = weapon.platoon ? weapon.platoon.heatOrDamageWeapon : row.equipment;
+            const struck = heatWeaponTarget(this.opfor.resolveOpforTarget(target.targetId)?.member.entity, targeting.unitType);
             const heatWeapon = heatEquipment === null ? undefined : attackHeatWeapon(heatEquipment, row.mode,
-                fired.ruleset, enhancedFlamers,
-                heatWeaponTarget(this.opfor.resolveOpforTarget(target.targetId)?.member.entity, targeting.unitType));
+                fired.ruleset, optionalRules, struck);
+            const targetFacts = struck === null ? {} : { targetTracksHeat: struck.tracksHeat };
             if (presentation.outOfRange || (!damage && !heatWeapon) || targetNumber === undefined) continue;
             const ammo = selectedAmmoEquipment(weapon.ammoSources, weapon.ammoSelection);
             // The calculator's partial-cover modifier is the one source for whether this weapon meets cover.
@@ -248,6 +249,7 @@ export class AttackResolutionService {
                 partialCover,
                 attack: weapon.platoon,
                 ...(heatWeapon === undefined ? {} : { heatWeapon }),
+                ...targetFacts,
             }, gameRulesFor(fired.ruleset)) : weaponAttackProfile({
                 componentId: row.componentId,
                 equipment: row.equipment,
@@ -259,6 +261,7 @@ export class AttackResolutionService {
                 name: row.label,
                 targetNumber,
                 partialCover,
+                ...targetFacts,
             }, gameRulesFor(fired.ruleset));
             if (!profile) continue;
             profiles.set(target.targetId, [...profiles.get(target.targetId) ?? [], profile]);

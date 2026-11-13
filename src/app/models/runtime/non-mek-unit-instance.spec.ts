@@ -1599,7 +1599,6 @@ describe('NonMekUnitInstance', () => {
         const result = fixture.runtime.dispatchSelectedWeaponFire({
             type: 'fire-selected-weapons',
 
-            heatPolicy: 'automatic',
         }, fixture.registry, false, false);
 
         expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
@@ -1660,7 +1659,7 @@ describe('NonMekUnitInstance', () => {
                     expect(row.weapon?.hit.default.value).toBe(ruleset === CORE_2026_RULESET ? 0 : 1);
                 }
                 expect(runtime.dispatchSelectedWeaponFire({
-                    type: 'fire-selected-weapons', heatPolicy: 'automatic',
+                    type: 'fire-selected-weapons', 
                 }, registry, false, false).changed).toBeTrue();
                 expect(runtime.snapshot().turn.weaponsHeat).toBe(expectedHeat);
             });
@@ -1712,7 +1711,6 @@ describe('NonMekUnitInstance', () => {
         const result = runtime.dispatchSelectedWeaponFire({
             type: 'fire-selected-weapons',
 
-            heatPolicy: 'automatic',
         }, registry, false, false);
 
         expect(result).toEqual(jasmine.objectContaining({
@@ -1950,7 +1948,7 @@ describe('NonMekUnitInstance', () => {
 
         expect(aim(tagId, mekId).changed).toBeTrue();
         const retyped = registry(1, 'infantry');
-        expect(runtime.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons', heatPolicy: 'automatic' },
+        expect(runtime.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' },
             retyped, false, false).changed).toBeFalse();
         runtime.planTargetingReconciliation(retyped)!();
         expect(selection(tagId)).toBeUndefined();

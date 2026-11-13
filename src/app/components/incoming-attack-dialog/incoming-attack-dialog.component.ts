@@ -7,7 +7,12 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import type { CBTForceMember } from '../../models/force-member.model';
 import { toHitSucceeds } from '../../models/rules/weapon-attack-resolution';
 import { infernoEffect, infernoEffectText } from '../../models/rules/inferno-rules';
-import { infernoMissilesThisTurn, readAttackHeat, readInfernoMissiles } from '../../models/runtime/attack-hit-location';
+import {
+    infernoMissilesThisTurn,
+    infernoReadsHitLocation,
+    readAttackHeat,
+    readInfernoMissiles,
+} from '../../models/runtime/attack-hit-location';
 import type { AttackEvent } from '../../services/game-events.service';
 import { OptionsService } from '../../services/options.service';
 import {
@@ -49,6 +54,7 @@ export class IncomingAttackDialogComponent {
         hit: toHitSucceeds(weapon.toHit, weapon.targetNumber),
         cluster: weapon.cluster ?? null,
         inferno: weapon.inferno === true,
+        ...(weapon.inferno && !infernoReadsHitLocation(this.data.member) ? { noHitLocation: true } : {}),
         groups: weapon.groups.map(group => attackReportGroup(this.data.member, weapon.arc ?? this.data.event.arc,
             group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table)),
     })));

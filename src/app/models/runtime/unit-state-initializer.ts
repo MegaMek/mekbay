@@ -22,6 +22,11 @@ import {
 } from './crew-assignment';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import type { Options } from '../options.model';
+import {
+    boundOptionalRulesFromOptions,
+    readBoundOptionalRules,
+    type BoundOptionalRules,
+} from './bound-optional-rules';
 
 export const UNIT_STATE_INITIALIZER_SCHEMA_VERSION = 7 as const;
 export const UNIT_STATE_INITIALIZER_REVISION = 1 as const;
@@ -55,11 +60,7 @@ export function scenarioRulesFromOptions(options: CBTApplicationOptions): Scenar
     return Object.freeze({
         id: 'megamek',
         ruleset: options.CBTRules,
-        options: Object.freeze({
-            forcedWithdrawal: options.CBTOptionalRules.forcedWithdrawal,
-            sprinting: options.CBTOptionalRules.sprinting,
-            hotLoadedAmmo: options.CBTOptionalRules.hotLoadedAmmo,
-        }),
+        options: boundOptionalRulesFromOptions(options.CBTOptionalRules),
     });
 }
 
@@ -69,14 +70,11 @@ export function scenarioRuleset(scenario: ScenarioRules): CBTRuleset {
     return scenario.ruleset;
 }
 
-/** Global gate for the forced-withdrawal/crippled rules system. */
-export function scenarioUsesForcedWithdrawal(scenario: ScenarioRules): boolean {
-    const value = scenario.options?.['forcedWithdrawal'];
-    if (value === undefined) return true;
-    if (typeof value !== 'boolean') {
-        throw new Error('Scenario option forcedWithdrawal must be a boolean');
-    }
-    return value;
+/** The optional rules a scenario binds into its units; a malformed or unknown option throws. */
+export function scenarioBoundRules(scenario: ScenarioRules): BoundOptionalRules {
+    const result = readBoundOptionalRules(scenario.options);
+    if (result.kind === 'unsupported') throw new Error(result.problems[0]!.message);
+    return result.rules;
 }
 
 export interface InitializeUnitStateOptions {

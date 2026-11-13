@@ -7,8 +7,8 @@ import type {
     MekMechanicsProfile,
     MekMechanicsProfileBlocker,
     MekMechanicsScenarioBlocker,
-    MekMechanicsScenarioRules,
 } from './mek-mechanics-profile';
+import type { BoundOptionalRules } from './bound-optional-rules';
 import {
     compileMekMechanicsProfile,
     evaluateMekMechanicsScenarioSupport,
@@ -135,7 +135,7 @@ type MekMechanicsContextBindingV2 =
     | {
         readonly kind: 'supported';
         readonly profile: MekMechanicsProfile;
-        readonly rules: MekMechanicsScenarioRules;
+        readonly rules: BoundOptionalRules;
         readonly boundEntity: MekEntity;
         readonly index: MekRuntimeIndex;
         readonly capability: Extract<MekMechanicsContextCapabilityV2, { readonly kind: 'supported' }>;

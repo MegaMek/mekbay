@@ -48,6 +48,7 @@ import {
     type CanonicalMekDeploymentConfigurationV2,
 } from './unit-state-initializer';
 import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import { MAX_MEK_HEATSINKS_OFF_V2 } from './mek-heat-state-v2';
 import {
     CBT_FORCE_ROSTER_SCHEMA_VERSION,
@@ -406,6 +407,7 @@ export interface SerializedPendingCombatStateV2 {
         readonly target: SavedTargetRef;
         readonly damage: number;
     }[];
+    readonly outsideHeat?: number;
 }
 
 export interface SerializedMekRuleCheckEntryV1 {
@@ -1403,7 +1405,11 @@ function validateCrew(value: unknown, path: string, targets: Record<string, Save
 
 function validatePending(value: unknown, path: string, targets: Record<string, SavedStateTargetV2>): void {
     const pending = requireRecord(value, path);
-    exactKeys(pending, ['locationDamage', 'locationConditions', 'slotHits', 'componentStatus', 'shieldDamage', 'modularArmorDamage'], path);
+    exactKeys(pending, ['locationDamage', 'locationConditions', 'slotHits', 'componentStatus', 'shieldDamage', 'modularArmorDamage', 'outsideHeat'], path);
+    if (pending['outsideHeat'] !== undefined && (!Number.isSafeInteger(pending['outsideHeat'])
+        || (pending['outsideHeat'] as number) <= 0 || (pending['outsideHeat'] as number) > MAX_OUTSIDE_HEAT_PER_TURN)) {
+        fail('INVALID_SHAPE', `${path}.outsideHeat`, `must be a whole number from 1 to ${MAX_OUTSIDE_HEAT_PER_TURN}`);
+    }
     validateTargetStateArray(pending['locationDamage'], `${path}.locationDamage`, targets, ['location-section'], (entry, entryPath) => {
         exactKeys(entry, ['target', 'damage'], entryPath);
         requireSignedSparseDelta(entry['damage'], `${entryPath}.damage`);

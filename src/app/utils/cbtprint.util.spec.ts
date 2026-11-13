@@ -93,6 +93,7 @@ describe('bulk record sheet pagination and printing', () => {
                         editContext: { owner: runtime, state: runtime.snapshot() },
                     }),
                     currentHeatPolicy: () => 'manual',
+                    optionalRules: () => ({}),
                     queryInventoryControlTargetRegistry: () => ({ revision: 0, targets: [] }),
                     getUnitCurrentBaseBattleValue: () => 300,
                     getUnitAdjustedBattleValue: () => 350,

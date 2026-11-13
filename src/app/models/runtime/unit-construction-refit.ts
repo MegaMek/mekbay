@@ -142,8 +142,7 @@ export async function prepareConstructionRefit(
                 })),
             },
         };
-        const prepared = createNonMekRuntimeBinding(entity, next.ruleset(), state,
-            next.mechanics().forcedWithdrawal, crewAssignment, next.mechanics().hotLoadedAmmo);
+        const prepared = createNonMekRuntimeBinding(entity, next.ruleset(), state, next.mechanics().rules, crewAssignment);
         unit = new CBTUnit<'non-mek'>({ uuid: next.uuid, instanceId: next.instanceId, baselineRef: next.baselineRef,
             nativeSource, runtime: { kind: 'non-mek', ...prepared, deployment: next.getDeployment() } });
     } else throw new Error('A force refit cannot change its runtime family');

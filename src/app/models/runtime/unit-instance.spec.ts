@@ -530,7 +530,6 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
             type: 'fire-weapons',
 
 
-            heatPolicy: 'manual',
             selections: [{
                 weaponId: ac.id,
                 ammoSourceId: ammo.id,
@@ -549,7 +548,6 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
             type: 'fire-weapons',
 
 
-            heatPolicy: 'manual',
             selections: [{ weaponId: laser.id }],
             prototypeHeatRolls: [{ weaponId: laser.id, roll: 6 }],
         });
@@ -573,10 +571,28 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
             type: 'fire-weapons',
 
 
-            heatPolicy: 'manual',
             selections: [{ weaponId: missingLaser.id }],
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
         expect(missing.instance.query().turnState().weaponsHeat).toBe(0);
+    });
+
+    it('leaves the heat arrow to the player while weapon fire and outside heat raise the projection', () => {
+        const fixture = createDirectMekRuntimeFixture();
+        const laser = fixture.equipmentComponent('ISMediumLaser');
+        const generated = () => {
+            const result = fixture.instance.query().heatProjection('manual');
+            return result.kind === 'supported' ? result.projection.generated : -1;
+        };
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 6 }).accepted).toBeTrue();
+        const before = generated();
+
+        expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] }).accepted)
+            .toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 4, target: 'pending' }).accepted)
+            .toBeTrue();
+
+        expect(fixture.instance.query().heatState().pendingOverride).toBe(6);
+        expect(generated()).toBe(before + fixture.instance.query().turnState().weaponsHeat + 4);
     });
 
     it('applies an explicit heat correction without consuming automatic turn heat', () => {
@@ -589,7 +605,6 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            heatPolicy: 'automatic',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
@@ -620,7 +635,6 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            heatPolicy: 'automatic',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
         const projected = fixture.instance.query().heatProjection('automatic');
@@ -649,7 +663,6 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
-            heatPolicy: 'manual',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
 

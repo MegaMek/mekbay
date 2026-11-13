@@ -818,7 +818,7 @@ describe('EquipmentDialogRuntimeController', () => {
         await controller.fire();
 
         expect(fire).toHaveBeenCalledOnceWith('mek-1', jasmine.objectContaining({
-            heatPolicy: 'manual',
+            type: 'fire-selected-weapons',
             prototypeHeatRolls: [{ weaponId, roll: 6 }],
         }));
         expect(toast.showToast).toHaveBeenCalledOnceWith(

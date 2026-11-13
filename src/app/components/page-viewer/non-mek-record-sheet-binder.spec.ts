@@ -1103,7 +1103,7 @@ describe('bindNonMekRecordSheet', () => {
                 scenario: { id: 'megamek', options: { hotLoadedAmmo: true } }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
             const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
                 0, 0), editContext: { owner: unit, state: unit.snapshot() } });
-            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), queryNonMekRuntime({ ...unit.mechanics(), hotLoadedAmmo: enabled }, unit.snapshot()), emptyCBTEncounterSnapshot());
+            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), queryNonMekRuntime({ ...unit.mechanics(), rules: { ...unit.mechanics().rules, hotLoadedAmmo: enabled } }, unit.snapshot()), emptyCBTEncounterSnapshot());
             const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${weaponId}"]`)!;
             const values = ammoType === 'LRM' ? row : row.querySelector('.alternativeMode')!;

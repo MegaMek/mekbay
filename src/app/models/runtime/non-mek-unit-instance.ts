@@ -8,7 +8,7 @@ import { ammoExplosionDamagePerShot } from './mek-critical-hit-v2';
 import type { CBTUnitAttackerTargetingReconciliationPlan } from './attacker-targeting-state';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './unit-command';
 
-import { freezeCommonUnitRuntimeState,isHeatValue,MAX_HEAT_VALUE,settleHeat,withEditedHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitHeatState,type CBTUnitPendingCombatState } from './cbt-unit-runtime';
+import { freezeCommonUnitRuntimeState,isHeatValue,MAX_HEAT_VALUE,outsideHeatThisTurn,settleHeat,withEditedHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitHeatState,type CBTUnitPendingCombatState } from './cbt-unit-runtime';
 import { assignedCrewRuntimeState,canonicalizeCrewAssignment,commitCrewDeaths,createDefaultCrewAssignment,type CrewAssignment } from './crew-assignment';
 import type { CBTUnitCommand } from './unit-command';
 
@@ -74,6 +74,7 @@ import type { EquipmentChoiceSurface,EquipmentInteractionChoice } from './equipm
 import { canonicalNonMekAirborneState,canSwitchNonMekAirGroundState,projectedNonMekAirGroundCondition } from './non-mek-airborne-state';
 import { applyWeaponTargetPolicies,reconcileWeaponTargetPolicies,type WeaponTargetSubject,type WeaponTargetSubjectResolver } from './weapon-target-policy';
 import { componentIdForMount } from './unit-runtime-index';
+import { BOUND_OPTIONAL_RULE_DEFAULTS, readBoundOptionalRules, type BoundOptionalRules } from './bound-optional-rules';
 
 export type NonMekEntityType = Exclude<EntityType, 'Mek'>;
 export interface NonMekComponentModeDefinition {
@@ -166,6 +167,8 @@ export interface NonMekPendingDamageTrackState {
 
 export interface NonMekPendingCombatState extends CBTUnitPendingCombatState {
     readonly damageTrackHits: ReadonlyMap<SystemDamageTrackId, NonMekPendingDamageTrackState>;
+    /** Inferno missiles the phase's attacks add to the turn's total once their damage commits; absent when none. */
+    readonly infernoMissiles?: number;
 }
 
 export interface NonMekMovementDeclaration {
@@ -604,8 +607,7 @@ export interface NonMekRuntimeBinding {
     readonly entity: BaseEntity;
     readonly index: NonMekRuntimeIndex;
     readonly ruleset: CBTRuleset;
-    readonly forcedWithdrawal: boolean;
-    readonly hotLoadedAmmo: boolean;
+    readonly rules: BoundOptionalRules;
     readonly crewAssignment: CrewAssignment;
 }
 
@@ -613,15 +615,15 @@ export interface NonMekRuntimeBinding {
 export function createNonMekRuntimeBinding(
     entity: BaseEntity, ruleset: CBTRuleset,
     initialState: NonMekUnitRuntimeState = createPristineNonMekUnitState(entity),
-    forcedWithdrawal = true, crewAssignment?: CrewAssignment,
-    hotLoadedAmmo = false,
+    rules: BoundOptionalRules = BOUND_OPTIONAL_RULE_DEFAULTS, crewAssignment?: CrewAssignment,
 ): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState }> {
     if (entity.entityType === 'Mek') throw new Error('Meks require slot mechanics');
-    if (typeof forcedWithdrawal !== 'boolean') throw new Error('Forced withdrawal gate must be boolean');
+    const bound = readBoundOptionalRules(rules);
+    if (bound.kind === 'unsupported') throw new Error(bound.problems[0]!.message);
     const index = buildNonMekRuntimeIndex(entity);
     const assignment = canonicalizeCrewAssignment(index.crewPositions,
         crewAssignment ?? createDefaultCrewAssignment(index.crewPositions));
-    const binding = Object.freeze({ entity, index, ruleset, forcedWithdrawal, hotLoadedAmmo, crewAssignment: assignment });
+    const binding = Object.freeze({ entity, index, ruleset, rules: bound.rules, crewAssignment: assignment });
     const state = validateState({ ...initialState, crew: assignedCrewRuntimeState(initialState.crew, assignment) },
         index, entity, ruleset);
     return Object.freeze({ binding, state });
@@ -634,18 +636,18 @@ export interface NonMekUnitQueryPort extends CBTUnitQueryPort {
 
 export function queryNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState): NonMekUnitQueryPort {
     return createNonMekUnitQuery(binding.entity, binding.index, state,
-        binding.ruleset, binding.forcedWithdrawal, binding.crewAssignment, binding.hotLoadedAmmo);
+        binding.ruleset, binding.rules, binding.crewAssignment);
 }
 
 export function reduceNonMekRuntime(binding: NonMekRuntimeBinding, state: NonMekUnitRuntimeState,
     command: CBTUnitCommand): NonMekUnitCommandResult {
-    if (command.type === 'configure-ammo-source' && command.hotLoaded && !binding.hotLoadedAmmo) {
+    if (command.type === 'configure-ammo-source' && command.hotLoaded && !binding.rules.hotLoadedAmmo) {
         return Object.freeze({ accepted: true, changed: false, state });
     }
     try {
         let next = reduceNonMekUnitState(state, binding.index, binding.entity, binding.ruleset,
             command, binding.crewAssignment);
-        if (next && binding.hotLoadedAmmo && isVehicleEntity(binding.entity)
+        if (next && binding.rules.hotLoadedAmmo && isVehicleEntity(binding.entity)
             && (command.type === 'set-component-status' || command.type === 'set-component-statuses')
             && command.status === 'destroyed' && command.applyExplosion !== false) {
             const query = queryNonMekRuntime(binding, state);
@@ -750,9 +752,6 @@ export function reduceNonMekSelectedWeaponFire(binding: NonMekRuntimeBinding, st
         prototypeHeat: Object.freeze([]),
     });
     if (mobileHpgBlocksWeaponAttacks(nonMekMobileHpgFacts(binding.index, state, query.projection()))) return unchanged();
-    if (command.heatPolicy !== 'automatic' && command.heatPolicy !== 'manual') {
-        return unchanged();
-    }
     const heatRollEvidence = prototypeLaserHeatRollMap(command.prototypeHeatRolls);
     if (!heatRollEvidence.accepted) return unchanged();
 
@@ -1047,9 +1046,8 @@ function createNonMekUnitQuery(
     index: NonMekRuntimeIndex,
     state: NonMekUnitRuntimeState,
     ruleset: CBTRuleset,
-    forcedWithdrawal: boolean,
+    rules: BoundOptionalRules,
     crewAssignment: CrewAssignment,
-    hotLoadedAmmo: boolean,
 ): NonMekUnitQueryPort {
     let runtimeProjection: NonMekRuntimeProjection | undefined;
     const projection = (): NonMekRuntimeProjection =>
@@ -1058,7 +1056,7 @@ function createNonMekUnitQuery(
             index,
             state,
             ruleset,
-            forcedWithdrawal,
+            rules.forcedWithdrawal,
             crewAssignment,
         );
     let projectedStateView: EntityStateView | undefined;
@@ -1128,7 +1126,7 @@ function createNonMekUnitQuery(
                 state.ammo.get(componentId)?.munitionOverride,
             )?.equipment ?? null;
         },
-        ammoHotLoaded: (componentId: ComponentId) => hotLoadedAmmo && state.ammo.get(componentId)?.hotLoaded === true,
+        ammoHotLoaded: (componentId: ComponentId) => rules.hotLoadedAmmo && state.ammo.get(componentId)?.hotLoaded === true,
         attackerTargetingState: () => state.attackerTargeting,
         equipmentRowOrder: () => state.equipmentRowOrder,
         hasCondition: (condition: UnitConditionKey) => effectiveConditions().includes(condition),
@@ -1698,17 +1696,28 @@ function reduceNonMekUnitState(
             if (!Number.isSafeInteger(command.amount) || command.amount <= 0) {
                 throw new Error('Outside heat must be a positive integer');
             }
-            const outsideHeat = addOutsideHeat(state.turn.outsideHeat ?? 0, command.amount);
-            if (outsideHeat === state.turn.outsideHeat) return null;
-            candidate = { ...state, turn: Object.freeze({ ...state.turn, outsideHeat }) };
+            // Heat from a pending attack waits with its damage: committed with it, cancelled with it.
+            const total = outsideHeatThisTurn(state);
+            const added = addOutsideHeat(total, command.amount) - total;
+            if (added === 0) return null;
+            candidate = command.target === 'pending'
+                ? { ...state, pendingCombat: Object.freeze({
+                    ...state.pendingCombat, outsideHeat: (state.pendingCombat.outsideHeat ?? 0) + added,
+                }) }
+                : { ...state, turn: Object.freeze({ ...state.turn, outsideHeat: (state.turn.outsideHeat ?? 0) + added }) };
             break;
         }
         case 'add-inferno-missiles': {
             if (!Number.isSafeInteger(command.count) || command.count <= 0) {
                 throw new Error('Inferno missiles must be a positive integer');
             }
-            const infernoMissiles = (state.turn.infernoMissiles ?? 0) + command.count;
-            candidate = { ...state, turn: Object.freeze({ ...state.turn, infernoMissiles }) };
+            candidate = command.target === 'pending'
+                ? { ...state, pendingCombat: Object.freeze({
+                    ...state.pendingCombat, infernoMissiles: (state.pendingCombat.infernoMissiles ?? 0) + command.count,
+                }) }
+                : { ...state, turn: Object.freeze({
+                    ...state.turn, infernoMissiles: (state.turn.infernoMissiles ?? 0) + command.count,
+                }) };
             break;
         }
         case 'set-heatsinks-off': {
@@ -1934,7 +1943,7 @@ export function projectNonMekEndTurnHeat(
     // A settled turn already holds its generation and dissipation; only weapons fired since then add heat.
     const settled = state.turn.heatSettled;
     const weapons = Math.max(0, state.turn.weaponsHeat);
-    const outside = state.turn.outsideHeat ?? 0;
+    const outside = outsideHeatThisTurn(state);
     const nova = settled ? 0 : Math.max(0, nonMekNovaHeat(entity, index, state, ruleset));
     const mobileHpg = settled ? 0 : Math.max(0, nonMekMobileHpgHeat(entity, index, state, ruleset));
     const generated = weapons + outside + nova + mobileHpg;
@@ -2090,7 +2099,13 @@ function commitPendingCombat(
         if (hits === 0) damageTracks.delete(damageTrackId);
         else damageTracks.set(damageTrackId, { hits, hitTimestamps });
     }
-    return { ...next, damageTracks, pendingCombat: emptyPendingCombat() };
+    const { outsideHeat, infernoMissiles } = state.pendingCombat;
+    const turn = outsideHeat === undefined && infernoMissiles === undefined ? next.turn : Object.freeze({
+        ...next.turn,
+        ...(outsideHeat === undefined ? {} : { outsideHeat: (next.turn.outsideHeat ?? 0) + outsideHeat }),
+        ...(infernoMissiles === undefined ? {} : { infernoMissiles: (next.turn.infernoMissiles ?? 0) + infernoMissiles }),
+    });
+    return { ...next, damageTracks, turn, pendingCombat: emptyPendingCombat() };
 }
 
 function buildNonMekElectronicFacts(
@@ -2630,7 +2645,7 @@ function validateState(
     if (state.heat.pendingOverride !== undefined) boundedHeat(state.heat.pendingOverride);
     boundedHeatsinksOff(state.heat.heatsinksOff, entity.engineHeatSinks());
     if (!entity.tracksHeat() && (state.heat.current !== 0
-        || (state.turn.outsideHeat ?? 0) !== 0
+        || outsideHeatThisTurn(state) !== 0
         || state.heat.previous !== 0
         || state.heat.pendingOverride !== undefined
         || state.heat.heatsinksOff !== 0)) {
@@ -2640,9 +2655,14 @@ function validateState(
         || !Number.isSafeInteger(state.turn.weaponsHeat) || state.turn.weaponsHeat < 0
         || state.turn.weaponsHeat > MAX_HEAT_VALUE
         || (state.turn.outsideHeat !== undefined && (!Number.isSafeInteger(state.turn.outsideHeat)
-            || state.turn.outsideHeat < 0 || state.turn.outsideHeat > MAX_OUTSIDE_HEAT_PER_TURN))
+            || state.turn.outsideHeat < 0))
+        || (state.pendingCombat.outsideHeat !== undefined && (!Number.isSafeInteger(state.pendingCombat.outsideHeat)
+            || state.pendingCombat.outsideHeat <= 0))
+        || outsideHeatThisTurn(state) > MAX_OUTSIDE_HEAT_PER_TURN
         || (state.turn.infernoMissiles !== undefined
             && (!Number.isSafeInteger(state.turn.infernoMissiles) || state.turn.infernoMissiles < 0))
+        || (state.pendingCombat.infernoMissiles !== undefined
+            && (!Number.isSafeInteger(state.pendingCombat.infernoMissiles) || state.pendingCombat.infernoMissiles <= 0))
         || (state.turn.airborne !== null && typeof state.turn.airborne !== 'boolean')
         || (state.turn.cover !== null && !isUnitCover(state.turn.cover))
         || typeof state.turn.spotting !== 'boolean'
@@ -2818,5 +2838,7 @@ function pendingCombatEmpty(value: NonMekPendingCombatState): boolean {
     return value.locationInternalDamage.size === 0
         && value.armorDamage.size === 0
         && value.componentStatus.size === 0
-        && value.damageTrackHits.size === 0;
+        && value.damageTrackHits.size === 0
+        && value.outsideHeat === undefined
+        && value.infernoMissiles === undefined;
 }

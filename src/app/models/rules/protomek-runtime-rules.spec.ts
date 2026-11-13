@@ -218,7 +218,7 @@ function project(runtime: CBTNonMekUnit) {
         runtime.getIndex(),
         runtime.snapshot(),
         runtime.ruleset(),
-        runtime.mechanics().forcedWithdrawal,
+        runtime.mechanics().rules.forcedWithdrawal,
     );
 }
 

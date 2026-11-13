@@ -220,6 +220,7 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
             ? Object.freeze({ dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits })
             : null,
         ...(profile.inferno ? { inferno: true } : {}),
+        ...(profile.noHitLocation ? { noHitLocation: true } : {}),
         ...(heat && (outcome.heat > 0 || heatDice.length > 0)
             ? { heat: Object.freeze({
                 dice: Object.freeze(heatDice), value: heatValue, ...(heatValue < outcome.heat ? { cover: true as const } : {}),

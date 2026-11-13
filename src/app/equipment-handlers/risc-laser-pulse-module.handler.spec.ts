@@ -76,7 +76,6 @@ describe('RiscLaserPulseModuleHandler', () => {
             type: 'fire-weapons',
             
             
-            heatPolicy: 'manual',
             selections: [{ weaponId: laser.id }],
         }).accepted).toBeTrue();
         expect(fixture.instance.query().turnState().weaponsHeat).toBe(5);

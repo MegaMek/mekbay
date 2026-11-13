@@ -14,7 +14,7 @@ import {
 } from '../entity/testing/test-entities';
 import { AmmoEquipment, WeaponEquipment } from '../equipment.model';
 import type { AttackHitLocation } from '../runtime/attack-hit-location';
-import { TW_GAME_RULES } from './game-rules';
+import { gameRulesFor, TW_GAME_RULES, type CBTGameRules } from './game-rules';
 import { infernoEffect, infernoMissilesStruck, type InfernoMissile } from './inferno-rules';
 import { resolveWeaponAttack, weaponAttackProfile } from './weapon-attack-resolution';
 
@@ -81,14 +81,19 @@ describe('inferno rules', () => {
             id: 'ISSRM6 Inferno Ammo', name: 'SRM 6 Inferno Ammo', type: 'ammo',
             ammo: { type: 'SRM', rackSize: 6, damagePerShot: 2, munitionType: ['M_INFERNO'] },
         });
-        const profile = weaponAttackProfile({
+        const fire = (rules: CBTGameRules, targetTracksHeat?: boolean) => weaponAttackProfile({
             componentId: asComponentId('srm'), equipment: srm6, mode: undefined,
             damage: { values: [2], maximum: 12, unit: 'missile' }, ammo: inferno, types: [], name: 'SRM 6',
-            targetNumber: 7, partialCover: false,
-        }, TW_GAME_RULES)!;
+            targetNumber: 7, partialCover: false, ...(targetTracksHeat === undefined ? {} : { targetTracksHeat }),
+        }, rules)!;
+        const profile = fire(TW_GAME_RULES);
 
         expect(profile.inferno).toBeTrue();
         // Roll 8 on the 6 column: 4 missiles, each its own group.
         expect(resolveWeaponAttack(profile, [4, 4], [4, 4])).toEqual({ hit: true, jammed: false, hits: 4, groups: [1, 1, 1, 1], heat: 0 });
+        // Core missiles striking a unit that tracks heat roll no location; a tank takes the TW effects of each one's.
+        const core = gameRulesFor('core-2026');
+        expect([fire(core, true), fire(core, false), fire(core), fire(TW_GAME_RULES, true)]
+            .map(attack => attack.noHitLocation === true)).toEqual([true, false, false, false]);
     });
 });

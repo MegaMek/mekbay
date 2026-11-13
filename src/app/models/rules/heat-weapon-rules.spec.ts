@@ -28,14 +28,15 @@ describe('heat-causing weapons', () => {
     };
 
     it('lets a Total Warfare flamer deliver heat or damage, and Core or Enhanced Flamers both', () => {
-        expect(heatWeaponMode(flamer, 'total-warfare', false, false)).toBe('damage');
-        expect(heatWeaponMode(flamer, 'total-warfare', false, true)).toBe('heat');
-        expect(heatWeaponMode(flamer, 'total-warfare', true, false)).toBe('both');
-        expect(heatWeaponMode(flamer, 'core-2026', false, false)).toBe('both');
+        const enhancedFlamers = { enhancedFlamers: true };
+        expect(heatWeaponMode(flamer, 'total-warfare', {}, false)).toBe('damage');
+        expect(heatWeaponMode(flamer, 'total-warfare', {}, true)).toBe('heat');
+        expect(heatWeaponMode(flamer, 'total-warfare', enhancedFlamers, false)).toBe('both');
+        expect(heatWeaponMode(flamer, 'core-2026', {}, false)).toBe('both');
         // A flame-based weapon that is no flamer, such as a man-portable plasma rifle, always declares.
         const plasmaRifle: HeatWeapon = { kind: 'heat-or-damage' };
-        expect(heatWeaponMode(plasmaRifle, 'total-warfare', true, true)).toBe('heat');
-        expect(heatWeaponMode(plasmaRifle, 'core-2026', false, false)).toBe('damage');
+        expect(heatWeaponMode(plasmaRifle, 'total-warfare', enhancedFlamers, true)).toBe('heat');
+        expect(heatWeaponMode(plasmaRifle, 'core-2026', {}, false)).toBe('damage');
         // Its declared heat is standard damage to a unit that does not track heat, never damage and heat both.
         expect(hit(plasmaRifle, 2, 'heat', true, tank)).toEqual([2, 0]);
         expect(hit(plasmaRifle, 2, 'heat', true, mek)).toEqual([0, 2]);
@@ -97,7 +98,7 @@ describe('heat-causing weapons', () => {
         const profile = (target: HeatWeaponTarget) => weaponAttackProfile({
             componentId: asComponentId('plasma'), equipment: plasma, mode: undefined,
             damage: { values: [10], maximum: 10 }, ammo: null, types: [], name: 'Plasma Rifle', targetNumber: 7,
-            partialCover: false, heatWeapon: attackHeatWeapon(plasma, undefined, 'total-warfare', false, target),
+            partialCover: false, heatWeapon: attackHeatWeapon(plasma, undefined, 'total-warfare', {}, target),
         }, TW_GAME_RULES)!;
 
         expect(resolveWeaponAttack(profile(mek), [4, 4], null, 0, dice)).toEqual(

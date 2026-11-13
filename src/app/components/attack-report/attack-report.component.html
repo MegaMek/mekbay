@@ -70,9 +70,11 @@
                             } @else {
                                 <span class="damage" title="Damage">{{ group.damage }}</span>
                             }
-                            <ng-container *ngTemplateOutlet="rollChip; context: {
-                                dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
-                            @if (group.label !== null) {
+                            @if (!weapon.noHitLocation) {
+                                <ng-container *ngTemplateOutlet="rollChip; context: {
+                                    dice: group.location, weapon: w, roll: g, label: 'Set hit location roll ' + (g + 1) }" />
+                            }
+                            @if (group.label !== null && !weapon.noHitLocation) {
                                 <span class="location">
                                     {{ group.label }}
                                     @if (group.throughArmorCritical) { <em>TAC check</em> }

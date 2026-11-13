@@ -4,6 +4,7 @@
 import { compareText } from '../../utils/string.util';
 import type { AmmoSelectionCompatibilityFacts } from '../../utils/ammo-validity.util';
 import { comparativePilotingModifier } from '../rules/physical-attack-rules';
+import type { OptionalRules } from '../options.model';
 import { recordSheetInventoryMountName } from '../../utils/sheets/record-sheet-inventory-equipment';
 import type { EquipmentStatus } from '../equipment-status.model';
 import { asComponentId, type ComponentId, type LocationId } from '../entity/entity-identifiers';
@@ -1079,6 +1080,7 @@ export function projectMekEquipmentPanel(
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
     registry: TargetRegistrySnapshot,
+    optionalRules: OptionalRules = {},
     modifiers: MekAttackModifierSets = mekAttackModifierSets(entity, index, ruleset, query),
 ): EquipmentPanelSnapshot {
     const targeting = query.attackerTargetingState();
@@ -1091,6 +1093,7 @@ export function projectMekEquipmentPanel(
         targeting,
         targets,
         modifiers,
+        optionalRules,
     );
     const physicalProjection = projectMekPhysicalAttackPresentation(
         entity, index, ruleset, query, targeting, modifiers,
@@ -1158,6 +1161,7 @@ function projectMekEquipmentComponents(
     targeting: AttackerTargetingState,
     targets: readonly EquipmentPanelTarget[],
     attackModifiers: MekAttackModifierSets,
+    optionalRules: OptionalRules,
 ): readonly EquipmentPanelComponent[] {
     const attackerSubmerged = mekUnitWaterState(entity, query).submerged;
     const targetingComputer = installedTargetingComputer(index, query);
@@ -1198,7 +1202,7 @@ function projectMekEquipmentComponents(
                 ? rapidFireAutocannonShotCount(equipment, mode)
                 : 1;
             const flamerLabel = equipment instanceof WeaponEquipment
-                ? flamerDisplayLabel(baseLabel, equipment, mode)
+                ? flamerDisplayLabel(baseLabel, equipment, mode, ruleset, optionalRules)
                 : baseLabel;
             const label = flamerLabel !== baseLabel
                 ? flamerLabel
@@ -1303,6 +1307,7 @@ function projectMekEquipmentComponents(
                     equipment,
                     locations.map(location => location.code),
                     targetingComputer,
+                    optionalRules,
                 )
                 : null;
             const hitRequest: ToHitRequest | null = equipment instanceof WeaponEquipment
@@ -1444,6 +1449,7 @@ function installedWeaponToHitSubject(
     equipment: WeaponEquipment,
     locations: readonly string[],
     targetingComputer: ComponentToHitTargetingComputerFacts | null,
+    optionalRules: OptionalRules,
 ): ComponentToHitSubject {
     const linkedTargetId = index.relationships.linkedTargetBySource.get(componentId);
     const linkedTarget = linkedTargetId === undefined
@@ -1473,6 +1479,7 @@ function installedWeaponToHitSubject(
             targeting,
             targetingComputerWeaponId,
             targetingComputerWeapon,
+            optionalRules,
         ),
         targetingComputer,
     });
@@ -1486,6 +1493,7 @@ function installedWeaponFacts(
     targeting: AttackerTargetingState | undefined,
     componentId: ComponentId,
     equipment: WeaponEquipment,
+    optionalRules: OptionalRules,
 ): ComponentToHitWeaponFacts {
     const ammo = resolveMekTargetingAmmo(
         entity,
@@ -1504,7 +1512,7 @@ function installedWeaponFacts(
     }
     const mode = query.componentMode(componentId);
     types = applyHagEquipmentWeaponTypes(equipment, mode, types);
-    types = applyFlamerWeaponTypes(equipment, mode, types);
+    types = applyFlamerWeaponTypes(equipment, mode, types, ruleset, optionalRules);
     types = applyGaussPowerWeaponTypes(equipment, query.componentGaussPower(componentId), types);
     types = applyComponentApolloWeaponTypes(index, query, componentId, ruleset, types);
     types = ppcCapacitorWeaponTypes(

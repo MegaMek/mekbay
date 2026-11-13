@@ -202,7 +202,7 @@ export class DirectNonMekAutomationService {
             }
         }
         if (weaponHeat > 0 && this.nonMekSnapshot(force, instanceId)?.entity.tracksHeat()
-            && !(await dispatch({ type: 'add-outside-heat', amount: weaponHeat }, false)).accepted) return false;
+            && !(await dispatch({ type: 'add-outside-heat', amount: weaponHeat, target }, false)).accepted) return false;
         return inferno.length === 0 || this.applyInferno(force, instanceId, inferno, target, dispatch);
     }
 
@@ -220,7 +220,7 @@ export class DirectNonMekAutomationService {
         const effect = infernoEffect(snapshot.entity, inferno, infernoMissilesThisTurn(force.getUnitSnapshot(instanceId)));
         const struck = infernoMissilesStruck(snapshot.entity, inferno);
         if (infernoEffectCountsTurn(effect) && struck > 0
-            && !(await dispatch({ type: 'add-inferno-missiles', count: struck }, false)).accepted) return false;
+            && !(await dispatch({ type: 'add-inferno-missiles', count: struck, target }, false)).accepted) return false;
         const locations = [...snapshot.index.locations.values()];
         const destroy = async (locationIds: readonly LocationId[]): Promise<boolean> => {
             for (const locationId of new Set(locationIds)) {
@@ -240,7 +240,7 @@ export class DirectNonMekAutomationService {
         switch (effect.kind) {
             case 'heat':
                 return effect.heat === 0
-                    || (await dispatch({ type: 'add-outside-heat', amount: effect.heat }, false)).accepted;
+                    || (await dispatch({ type: 'add-outside-heat', amount: effect.heat, target }, false)).accepted;
             case 'troopers':
                 return damage('Infantry', effect.troopers);
             case 'structural-integrity':

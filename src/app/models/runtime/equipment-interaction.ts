@@ -8,6 +8,7 @@ import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId } from '../entity/entity-identifiers';
 import type { EquipmentFlag } from '../equipment-flags.type';
+import type { OptionalRules } from '../options.model';
 import { type CBTMekUnit } from './cbt-unit';
 import type { CBTEncounterSnapshot } from './encounter-runtime';
 import type { MekRuntimeIndex } from './mek-runtime-index';
@@ -16,8 +17,8 @@ export type EquipmentChoiceSurface = 'critical' | 'inventory' | 'turn-summary';
 
 export interface EquipmentInteractionQueryContext {
     readonly choiceSurface?: EquipmentChoiceSurface;
-    /** The BattleMech Manual's optional Enhanced Flamers rule is on: flamers deal heat and damage, declaring neither. */
-    readonly enhancedFlamers?: boolean;
+    /** The optional rules in play, which decide some of the choices offered. */
+    readonly optionalRules?: OptionalRules;
 }
 
 export interface EquipmentInteractionCommandContext {

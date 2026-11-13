@@ -30,7 +30,7 @@ import { AmmoEquipment,WeaponEquipment } from '../equipment.model';
 import { isGaussEquipment } from '../gauss-equipment.model';
 import { canChangeAirborneGround,motiveModeFactsForEntity } from '../motiveModes.model';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
-import { addOutsideHeat } from '../rules/inferno-rules';
+import { addOutsideHeat, MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import { getVibrobladeProfileFromFlags } from '../rules/vibroblade-rules';
 import { compareTurnPositions, isMarkableTurnStep, isStoredTurnStep, TURN_STEPS } from '../rules/turn-sequence';
 import { activeStealthHeatComponents,getActiveStealthTnModifiers,hasFunctionalEcmForStealth,isStealthEquipment,isStealthSystemEquipment,isSwitchableStealthEquipment,isVoidSignatureEquipment,nextStealthState,STEALTH_DISABLING_MODE,STEALTH_ENABLING_MODE,stealthStateForMode,unitHasActiveC3DisruptingStealth,unitHasActiveVoidSignature,type StealthEquipmentFacts,type StealthState } from '../stealth-equipment.model';
@@ -67,7 +67,7 @@ import type { CBTUnitCommand } from './unit-command';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { MekSystemType } from '../entity/types';
 import { isModularArmorEquipment,MODULAR_ARMOR_POINTS_PER_MOUNT } from '../modular-armor.model';
-import { isHeatValue,MAX_HEAT_VALUE,withEditedHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
+import { isHeatValue,MAX_HEAT_VALUE,outsideHeatThisTurn,withEditedHeat,withPendingCombatDelta,withPendingHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type RuntimeStatePerspective } from './cbt-unit-runtime';
 import type { MekCombatModifierProjectionResult } from './mek-combat-modifiers';
 import { projectMekBlowOffV2,projectMekCriticalChanceV2,projectMekCriticalRollProfileV2,projectMekCriticalRollV2,projectPendingMekCriticalExplosionV2,type MekBlowOffPlanV2,type MekCriticalChanceProfileV2,type MekCriticalRollPlanV2,type MekCriticalRollProfileV2,type MekCriticalRuntimeViewV2,type MekEquipmentExplosionPlanV2 } from './mek-critical-hit-v2';
 import { mekCriticalSlotDirectHitThreshold,mekCriticalSlotHittable,mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
@@ -851,7 +851,6 @@ function reduceSelectedWeaponFire(
     if (mobileHpgBlocksWeaponAttacks(
         buildMekMobileHpgFacts(unit, state, statusTopology, 'committed'),
     )) return unchanged(state);
-    if (!isHeatPolicy(command.heatPolicy)) return unchanged(state);
 
     let context: AttackerTargetingValidationContext;
     try {
@@ -909,7 +908,6 @@ function reduceSelectedWeaponFire(
             {
                 type: 'fire-weapons',
                 selections,
-                heatPolicy: command.heatPolicy,
                 ...(command.prototypeHeatRolls === undefined
                     ? {}
                     : { prototypeHeatRolls: command.prototypeHeatRolls }),
@@ -941,19 +939,6 @@ function reduceSelectedWeaponFire(
                 acknowledgedHeatSources,
             }),
         };
-        if (state.heat.pendingOverride !== undefined) {
-            const projected = projectPendingHeatAfterWeaponFire(
-                unit,
-                unit.entity,
-                state,
-                nextState,
-                statusTopology,
-                heatContext,
-                command.heatPolicy,
-            );
-            if (projected > MAX_HEAT_VALUE) return unchanged(state);
-            nextState = { ...nextState, heat: withPendingHeat(state.heat, projected) };
-        }
     }
 
     if (fired === undefined) {
@@ -1685,7 +1670,6 @@ function reduce(
             if (mekHeatCapabilityV2(heatContext, entity).kind === 'unsupported') {
                 return unchanged(state);
             }
-            if (!isHeatPolicy(command.heatPolicy)) return unchanged(state);
             const planned = planMekWeaponFireV2(
                 entity,
                 index,
@@ -1699,19 +1683,6 @@ function reduce(
             }
             changed = applyMekWeaponFirePlanV2(state, planned.plan);
             prototypeHeat = planned.plan.prototypeHeat;
-            if (state.heat.pendingOverride !== undefined) {
-                const projected = projectPendingHeatAfterWeaponFire(
-                    unit,
-                    entity,
-                    state,
-                    changed,
-                    statusTopology,
-                    heatContext,
-                    command.heatPolicy,
-                );
-                if (projected > MAX_HEAT_VALUE) return unchanged(state);
-                changed = { ...changed, heat: withPendingHeat(state.heat, projected) };
-            }
             break;
         }
         case 'set-heat': {
@@ -1741,10 +1712,19 @@ function reduce(
                 return unchanged(state);
             }
             if (!Number.isSafeInteger(command.amount) || command.amount <= 0) return unchanged(state);
-            const outsideHeat = addOutsideHeat(state.turn.outsideHeat ?? 0, command.amount);
-            changed = outsideHeat === state.turn.outsideHeat
-                ? null
-                : { ...state, turn: canonicalizeMekTurnStateV2({ ...state.turn, outsideHeat }) };
+            // Heat from a pending attack waits with its damage: committed with it, cancelled with it.
+            const total = outsideHeatThisTurn(state);
+            const added = addOutsideHeat(total, command.amount) - total;
+            if (added === 0) changed = null;
+            else if (command.target === 'pending') {
+                changed = { ...state, pendingCombat: Object.freeze({
+                    ...state.pendingCombat, outsideHeat: (state.pendingCombat.outsideHeat ?? 0) + added,
+                }) };
+            } else {
+                changed = { ...state, turn: canonicalizeMekTurnStateV2({
+                    ...state.turn, outsideHeat: (state.turn.outsideHeat ?? 0) + added,
+                }) };
+            }
             break;
         }
         case 'set-heatsinks-off': {
@@ -3055,32 +3035,6 @@ function settleStealthSystems(
     return settled;
 }
 
-function projectPendingHeatAfterWeaponFire(
-    unit: MekRuntimeSource,
-    entity: MekEntity,
-    before: MekUnitRuntimeState,
-    fired: MekUnitRuntimeState,
-    statusTopology: RuntimeEquipmentStatusTopology,
-    heatContext: MekHeatRuntimeContextV2,
-    policy: HeatAutomationPolicy,
-): number {
-    const pending = before.heat.pendingOverride;
-    if (pending === undefined) throw new Error('Pending weapon-fire projection requires a pending heat target');
-    const baseHeat = canonicalizeMekHeatStateV2({
-        current: pending,
-        previous: before.heat.previous,
-        heatsinksOff: before.heat.heatsinksOff,
-    });
-    const result = projectMekHeatContextV2(
-        heatContext,
-        entity,
-        buildHeatKernelInput(unit, { ...fired, heat: baseHeat }, statusTopology),
-        policy,
-    );
-    if (result.kind === 'unsupported') throw new Error('Mek heat context became unsupported during weapon fire');
-    return result.projection.projected;
-}
-
 function endTurn(
     unit: MekRuntimeSource,
     entity: MekEntity,
@@ -4145,6 +4099,12 @@ function commitPending(
         }
     }
     result = clearNarcFromCommittedPhysicallyDestroyedLocations(unit, result);
+    const outsideHeat = expanded.pendingCombat.outsideHeat ?? 0;
+    if (outsideHeat > 0) {
+        result = { ...result, turn: canonicalizeMekTurnStateV2({
+            ...result.turn, outsideHeat: (result.turn.outsideHeat ?? 0) + outsideHeat,
+        }) };
+    }
     return { ...result, pendingCombat: emptyPending() };
 }
 
@@ -4550,7 +4510,7 @@ function hasPending(pending: PendingCombatOverlay): boolean {
     return pending.locationInternalDamage.size > 0 || pending.armorDamage.size > 0
         || pending.criticalHits.size > 0 || pending.componentStatus.size > 0
         || pending.shieldDamage.size > 0 || pending.modularArmorDamage.size > 0
-        || pending.locationConditions.size > 0;
+        || pending.locationConditions.size > 0 || (pending.outsideHeat ?? 0) > 0;
 }
 
 /** All runtime facts that require the current phase to be closed. */
@@ -4582,6 +4542,11 @@ function validateState(
         canonicalizeMekMovementPsrStateV2(state.movementPsr);
     } catch {
         throw new Error('Invalid runtime movement/PSR state');
+    }
+    const pendingOutsideHeat = state.pendingCombat.outsideHeat;
+    if (pendingOutsideHeat !== undefined && (!Number.isSafeInteger(pendingOutsideHeat) || pendingOutsideHeat <= 0
+        || outsideHeatThisTurn(state) > MAX_OUTSIDE_HEAT_PER_TURN)) {
+        throw new Error('Invalid pending outside heat');
     }
     try {
         canonicalizeMekTurnStateV2(state.turn);
@@ -5102,7 +5067,10 @@ function buildHeatKernelInput(
     const movement = state.movementPsr.movement;
     return buildMekHeatKernelInputV2({
         heat: state.heat,
-        turn: state.turn,
+        // Pending attacks' outside heat counts now, as their pending engine hits do.
+        turn: state.pendingCombat.outsideHeat === undefined
+            ? state.turn
+            : { ...state.turn, outsideHeat: outsideHeatThisTurn(state) },
         movement: movement === undefined || movement === null
             ? null
             : Object.freeze({ mode: movement.mode, distance: movement.distance }),

@@ -1856,7 +1856,7 @@ export class DirectMekAutomationService {
         const infernoHeat = infernoEffect(snapshot.entity, inferno);
         const outsideHeat = weaponHeat + (infernoHeat.kind === 'heat' ? infernoHeat.heat : 0);
         if (outsideHeat > 0
-            && !(await dispatch({ type: 'add-outside-heat', amount: outsideHeat }, false)).accepted) return false;
+            && !(await dispatch({ type: 'add-outside-heat', amount: outsideHeat, target }, false)).accepted) return false;
         const pilotHits = await this.reviewPilotHits(snapshot, headHits,
             `weapon-hits:${instanceId}:${snapshot.query.stateRevision}:head`, false, true);
         // A declined review leaves the pilot unhurt; the damage itself is already applied.

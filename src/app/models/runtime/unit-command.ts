@@ -33,7 +33,6 @@ export interface CBTUnitAttackerTargetingCommand {
 /** Fires the current targeting selection; no second weapon-selection payload exists. */
 export interface CBTUnitSelectedWeaponFireCommand {
     readonly type: 'fire-selected-weapons';
-    readonly heatPolicy: HeatAutomationPolicy;
     readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
 }
 
@@ -223,7 +222,6 @@ export type CBTUnitCommand =
     | {
         readonly type: 'fire-weapons';
         readonly selections: readonly MekWeaponFireSelectionV2[];
-        readonly heatPolicy: HeatAutomationPolicy;
         readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
     }
     | {
@@ -246,11 +244,13 @@ export type CBTUnitCommand =
         /** Heat from outside sources such as inferno missiles (TW p. 159), capped per turn. */
         readonly type: 'add-outside-heat';
         readonly amount: number;
+        readonly target: 'committed' | 'pending';
     }
     | {
         /** Inferno missiles that struck a non-Mek, toward the turn's every-three effects (TW pp. 141-142). */
         readonly type: 'add-inferno-missiles';
         readonly count: number;
+        readonly target: 'committed' | 'pending';
     }
     | {
         readonly type: 'set-condition';

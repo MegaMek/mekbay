@@ -48,6 +48,7 @@ isMascEquipment,
 isSuperchargerEquipment,
 } from './component-escalating-failure';
 import type { MekIndexedComponent,MekRuntimeIndex } from './mek-runtime-index';
+import { readBoundOptionalRules, type BoundOptionalRules } from './bound-optional-rules';
 
 export const PUBLISHED_MEK_MECHANICS_PROFILE_SCHEMA_VERSION = 2 as const;
 
@@ -298,17 +299,7 @@ export type MekMechanicsProfileResult =
 
 export interface MekMechanicsScenarioInput {
     readonly id: string;
-    readonly options?: Readonly<{
-        readonly forcedWithdrawal?: boolean;
-        readonly sprinting?: boolean;
-        readonly hotLoadedAmmo?: boolean;
-    }>;
-}
-
-export interface MekMechanicsScenarioRules {
-    readonly forcedWithdrawal: boolean;
-    readonly sprinting: boolean;
-    readonly hotLoadedAmmo: boolean;
+    readonly options?: Partial<BoundOptionalRules>;
 }
 
 export type MekMechanicsScenarioBlockerCode =
@@ -323,7 +314,7 @@ export interface MekMechanicsScenarioBlocker {
 }
 
 export type MekMechanicsScenarioSupportResult =
-    | { readonly kind: 'supported'; readonly rules: MekMechanicsScenarioRules }
+    | { readonly kind: 'supported'; readonly rules: BoundOptionalRules }
     | { readonly kind: 'unsupported'; readonly blockers: readonly MekMechanicsScenarioBlocker[] };
 
 interface CompileIndexes {
@@ -582,53 +573,14 @@ export function evaluateMekMechanicsScenarioSupport(
             'SCENARIO_ID_INVALID', 'id', 'Mek mechanics require one nonempty detached scenario identifier',
         ));
     }
-    let forcedWithdrawal = true;
-    let sprinting = false;
-    let hotLoadedAmmo = false;
-    const options = input['options'];
-    if (options !== undefined) {
-        if (!isPlainRecord(options)) {
-            blockers.push(scenarioBlocker(
-                'SCENARIO_OPTIONS_UNSUPPORTED', '<invalid-options>',
-                'Scenario mechanics options must be a plain record',
-            ));
-        } else {
-            for (const key of Object.keys(options)
-                .filter(key => key !== 'forcedWithdrawal' && key !== 'sprinting' && key !== 'hotLoadedAmmo')
-                .sort(compareText)) {
-                blockers.push(scenarioBlocker(
-                    'SCENARIO_OPTIONS_UNSUPPORTED', key,
-                    `Scenario option ${key} has no explicit bounded Mek mechanics semantics`,
-                ));
-            }
-            if (Object.prototype.hasOwnProperty.call(options, 'forcedWithdrawal')) {
-                if (typeof options['forcedWithdrawal'] !== 'boolean') blockers.push(scenarioBlocker(
-                    'SCENARIO_OPTIONS_UNSUPPORTED', 'forcedWithdrawal',
-                    'Scenario option forcedWithdrawal must be an exact boolean',
-                ));
-                else forcedWithdrawal = options['forcedWithdrawal'];
-            }
-            if (Object.prototype.hasOwnProperty.call(options, 'sprinting')) {
-                if (typeof options['sprinting'] !== 'boolean') blockers.push(scenarioBlocker(
-                    'SCENARIO_OPTIONS_UNSUPPORTED', 'sprinting',
-                    'Scenario option sprinting must be an exact boolean',
-                ));
-                else sprinting = options['sprinting'];
-            }
-            if (Object.prototype.hasOwnProperty.call(options, 'hotLoadedAmmo')) {
-                if (typeof options['hotLoadedAmmo'] !== 'boolean') blockers.push(scenarioBlocker(
-                    'SCENARIO_OPTIONS_UNSUPPORTED', 'hotLoadedAmmo',
-                    'Scenario option hotLoadedAmmo must be an exact boolean',
-                ));
-                else hotLoadedAmmo = options['hotLoadedAmmo'];
-            }
+    const options = readBoundOptionalRules(input['options']);
+    if (options.kind === 'unsupported') {
+        for (const problem of options.problems) {
+            blockers.push(scenarioBlocker('SCENARIO_OPTIONS_UNSUPPORTED', problem.key, problem.message));
         }
     }
-    if (blockers.length > 0) return unsupportedScenario(blockers);
-    return Object.freeze({
-        kind: 'supported',
-        rules: Object.freeze({ forcedWithdrawal, sprinting, hotLoadedAmmo }),
-    });
+    if (blockers.length > 0 || options.kind === 'unsupported') return unsupportedScenario(blockers);
+    return Object.freeze({ kind: 'supported', rules: options.rules });
 }
 
 function compileLocations(

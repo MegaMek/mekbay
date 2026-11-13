@@ -175,7 +175,6 @@ describe('direct machine-gun-array runtime', () => {
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
 
-            heatPolicy: 'manual',
             selections: [{
                 weaponId: controllerId,
                 ammoSourceId: ammo.id,
@@ -195,7 +194,6 @@ describe('direct machine-gun-array runtime', () => {
         expect(fixture.instance.dispatch({
             type: 'fire-weapons',
 
-            heatPolicy: 'manual',
             selections: [{
                 weaponId: controllerId,
                 ammoSourceId: ammo.id,

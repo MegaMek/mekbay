@@ -2143,6 +2143,7 @@ function packPending(value: SerializedCBTUnitV2['pendingCombat']): unknown {
             value.modularArmorDamage,
             row => [row.target, row.damage],
         ),
+        [CBT_PENDING_COMBAT_FIELD.outsideHeat]: value.outsideHeat,
     });
 }
 
@@ -2212,6 +2213,9 @@ function unpackPending(value: unknown, path: string): NonNullable<SerializedCBTU
                 }),
             ),
         }),
+        ...(pending[CBT_PENDING_COMBAT_FIELD.outsideHeat] === undefined ? {} : {
+            outsideHeat: integer(pending[CBT_PENDING_COMBAT_FIELD.outsideHeat], `${path}.${CBT_PENDING_COMBAT_FIELD.outsideHeat}`),
+        }),
     };
 }
 
@@ -2234,6 +2238,8 @@ function packNonMekPending(value: SerializedNonMekUnit['pendingCombat']): unknow
             value.damageTrackHits,
             row => [row.damageTrackId, row.hitDelta, row.hitTimestamps?.slice()],
         ),
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat]: value.outsideHeat,
+        [CBT_NON_MEK_PENDING_COMBAT_FIELD.infernoMissiles]: value.infernoMissiles,
     });
 }
 
@@ -2280,6 +2286,18 @@ function unpackNonMekPending(value: unknown, path: string): NonNullable<Serializ
                 hitDelta: rowInteger(row, 1, rowPath),
                 hitTimestamps: unpackIntegerArray(row[2], `${rowPath}[2]`),
                 }),
+            ),
+        }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat] === undefined ? {} : {
+            outsideHeat: integer(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.outsideHeat}`,
+            ),
+        }),
+        ...(pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.infernoMissiles] === undefined ? {} : {
+            infernoMissiles: integer(
+                pending[CBT_NON_MEK_PENDING_COMBAT_FIELD.infernoMissiles],
+                `${path}.${CBT_NON_MEK_PENDING_COMBAT_FIELD.infernoMissiles}`,
             ),
         }),
     };

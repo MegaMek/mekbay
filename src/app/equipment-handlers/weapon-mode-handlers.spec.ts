@@ -50,7 +50,19 @@ describe('direct weapon mode handlers', () => {
     it('does not offer the Total Warfare Flamer selector under Enhanced Flamers, where it deals both', () => {
         const setup = handlerSetup(createDirectFlamerRuntimeFixture(TOTAL_WARFARE_RULESET), 'Test Flamer');
         expect(new FlamerHandler().getComponentModeChoices(setup.runtime, setup.definition,
-            { ...setup.queryContext, enhancedFlamers: true })).toEqual([]);
+            { ...setup.queryContext, optionalRules: { enhancedFlamers: true } })).toEqual([]);
+        // A Heat or Damage set before the rule was turned on is no declaration: the row reads as a flamer dealing both.
+        const row = () => projectMekEquipmentPanel(setup.fixture.entity, setup.fixture.index, TOTAL_WARFARE_RULESET,
+            setup.runtime.query(), emptyCBTEncounterSnapshot(), { enhancedFlamers: true })
+            .components.find(candidate => candidate.componentId === setup.component.id)!;
+        for (const mode of [FLAMER_HEAT_MODE, FLAMER_DAMAGE_MODE]) {
+            expect(setup.runtime.dispatch({ type: 'set-component-mode', componentId: setup.component.id, mode }).accepted)
+                .toBeTrue();
+            expect(row().label).toBe('Test Flamer');
+            expect(row().weapon?.effectiveWeaponTypes).toContain('H');
+        }
+        // Without the rule, a flamer declared for damage deals no heat.
+        expect(setup.row().weapon?.effectiveWeaponTypes).not.toContain('H');
     });
 
     it('does not offer Flamer modes under Core rules', () => {

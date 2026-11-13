@@ -27,6 +27,7 @@ SystemDamageTrackId,
 import { getMekLocationLabel } from '../entity/types/mek';
 import { isInfantryEntity } from '../entity/utils/entity-type-guards';
 import { platoonAttackLabel } from '../rules/conventional-infantry-combat-rules';
+import { outsideHeatThisTurn } from './cbt-unit-runtime';
 
 import { CrewMember,type CrewMemberRuntimeState } from '../crew-member.model';
 import { serializeUnitCover } from '../unit-cover.model';
@@ -512,7 +513,7 @@ export function unitCommandHistory(
             return undefined;
         case 'add-outside-heat':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 3,
-                beforeSnapshot.state.turn.outsideHeat ?? 0, afterSnapshot.state.turn.outsideHeat ?? 0);
+                outsideHeatThisTurn(beforeSnapshot.state), outsideHeatThisTurn(afterSnapshot.state));
         default:
             return unitHistory(RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, instanceId, command.type);
     }

@@ -13,7 +13,7 @@ import { canonicalizeCrewAssignment,createDefaultCrewAssignment } from './crew-a
 import { buildNonMekRuntimeIndex } from './non-mek-runtime-index';
 import { createNonMekRuntimeBinding,createPristineNonMekUnitState } from './non-mek-unit-instance';
 import { NON_MEK_DEPLOYMENT_SCHEMA_VERSION,restoreNonMekRuntime,type NonMekDeploymentConfiguration,type SerializedNonMekDeployment,type SerializedNonMekUnit } from './non-mek-unit-persistence';
-import { scenarioRuleset,scenarioUsesForcedWithdrawal,type ScenarioRules } from './unit-state-initializer';
+import { scenarioBoundRules,scenarioRuleset,type ScenarioRules } from './unit-state-initializer';
 
 export interface NonMekUnitDeploymentInput {
     readonly id: string;
@@ -52,7 +52,7 @@ export function createNonMekUnit(
             profileId: boundedText(request.initialStateProfileId, 'initial-state profile') }),
     });
     const prepared = createNonMekRuntimeBinding(entity, ruleset, createPristineNonMekUnitState(entity),
-        scenarioUsesForcedWithdrawal(request.scenario), crewAssignment, request.scenario.options?.['hotLoadedAmmo'] === true);
+        scenarioBoundRules(request.scenario), crewAssignment);
     const deployment = freezeDeployment({ schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
         values: { id: boundedText(request.deployment.id, 'deployment ID'), crewAssignment } });
     return new CBTUnit<'non-mek'>({ uuid: request.uuid, instanceId: request.instanceId, baselineRef,
@@ -65,8 +65,7 @@ export function restoreNonMekUnit(
 ): CBTNonMekUnit {
     verifySource(entity, uuid, nativeSource);
     if (saved.entity !== uuid) throw new Error('Persisted entity source does not match the loaded source');
-    const prepared = restoreNonMekRuntime(saved, entity, scenarioRuleset(scenario),
-        scenarioUsesForcedWithdrawal(scenario), scenario.options?.['hotLoadedAmmo'] === true);
+    const prepared = restoreNonMekRuntime(saved, entity, scenarioRuleset(scenario), scenarioBoundRules(scenario));
     return new CBTUnit<'non-mek'>({ uuid, instanceId: saved.instanceId, baselineRef: prepared.baselineRef,
         runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment: freezeDeployment(saved.deployment) }, nativeSource });
 }
@@ -88,7 +87,7 @@ export function repairNonMekUnit(current: CBTNonMekUnit): CBTNonMekUnit {
         // Repair rearms the chosen bombs rather than discarding the loadout.
         ...(before.bombs === undefined ? {} : { bombs: before.bombs.map(load => ({ ...load, spent: 0 })) }) });
     const prepared = createNonMekRuntimeBinding(current.getUnit(), current.ruleset(), state,
-        current.mechanics().forcedWithdrawal, current.getCrewAssignment(), current.mechanics().hotLoadedAmmo);
+        current.mechanics().rules, current.getCrewAssignment());
     return new CBTUnit<'non-mek'>({ uuid: current.uuid, instanceId: current.instanceId, baselineRef: current.baselineRef,
         runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment: current.getDeployment() },
         nativeSource: current.getNativeSource() });
@@ -102,7 +101,7 @@ export function redeployNonMekCrew(
     const before = current.snapshot();
     const prepared = createNonMekRuntimeBinding(current.getUnit(), current.ruleset(),
         crewState === undefined ? before : { ...before, crew: crewState },
-        current.mechanics().forcedWithdrawal, assignment, current.mechanics().hotLoadedAmmo);
+        current.mechanics().rules, assignment);
     const deployment = freezeDeployment({ ...current.getDeployment(),
         values: { ...current.getDeployment().values, crewAssignment: assignment } });
     return new CBTUnit<'non-mek'>({ uuid: current.uuid, instanceId: current.instanceId, baselineRef: current.baselineRef,

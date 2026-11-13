@@ -4,10 +4,10 @@
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
-import { gameRulesFor } from './game-rules';
 import { isFireResistant } from './inferno-rules';
 import type { WeaponEquipment } from '../equipment.model';
-import { isFlamerEquipment, isHeatOrDamageWeapon } from '../flamer-mode.model';
+import { declaresFlamerHeat, isFlamerEquipment, isHeatOrDamageWeapon } from '../flamer-mode.model';
+import type { OptionalRules } from '../options.model';
 
 /**
  * A heat-causing (H) weapon (TW p. 113; Core p. 182): flamers and the other flame-based weapons, which may deliver
@@ -58,22 +58,14 @@ export function heatWeaponOf(equipment: WeaponEquipment): HeatWeapon | null {
     return PLASMA_RIFLES[equipment.id] ?? null;
 }
 
-/**
- * Whether a flamer's attacker declares heat or damage before rolling. Core always deals both (p. 183), as does Total
- * Warfare with the BattleMech Manual's optional Enhanced Flamers (p. 99).
- */
-export function declaresFlamerHeat(ruleset: CBTRuleset, enhancedFlamers: boolean): boolean {
-    return gameRulesFor(ruleset).supportsFlamerModes && !enhancedFlamers;
-}
-
 /** How a heat-or-damage hit applies: only a flamer can deal both, and only where it declares nothing. */
 export function heatWeaponMode(
     weapon: HeatWeapon,
     ruleset: CBTRuleset,
-    enhancedFlamers: boolean,
+    optionalRules: OptionalRules,
     declaredHeat: boolean,
 ): HeatWeaponMode {
-    if (weapon.kind === 'flamer' && !declaresFlamerHeat(ruleset, enhancedFlamers)) return 'both';
+    if (weapon.kind === 'flamer' && !declaresFlamerHeat(ruleset, optionalRules)) return 'both';
     return declaredHeat ? 'heat' : 'damage';
 }
 
