@@ -124,16 +124,16 @@ describe('TaggingService', () => {
                 clan: {
                     label: 'CLAN',
                     units: {
-                        'Dasher Prime': {},
-                        'Dasher A': {},
-                        'Dasher B': {},
-                        'Adder Prime': {},
+                        [prime.uuid]: {},
+                        [variantA.uuid]: {},
+                        [variantB.uuid]: {},
+                        [otherChassis.uuid]: {},
                     },
                     chassis: {},
                 },
             },
             timestamp: 1,
-            formatVersion: 3,
+            formatVersion: 5,
         };
 
         dataServiceMock.getUnits.and.returnValue(allUnits);

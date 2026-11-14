@@ -34,18 +34,18 @@ export function parseSubKey(key: string): { publicId: string; tagName: string } 
 }
 
 /**
- * Extract unit names and chassis keys from V3 tag data for a specific tag.
+ * Extract unit keys and chassis keys from tag data for a specific tag.
  */
-function extractFromV3Tags(
+function extractFromTags(
     tags: Record<string, TagEntry> | undefined,
     tagName: string
-): { unitNames: string[]; chassisKeys: string[] } {
-    if (!tags) return { unitNames: [], chassisKeys: [] };
+): { unitKeys: string[]; chassisKeys: string[] } {
+    if (!tags) return { unitKeys: [], chassisKeys: [] };
     const tagId = tagName.toLowerCase();
     const entry = tags[tagId];
-    if (!entry) return { unitNames: [], chassisKeys: [] };
+    if (!entry) return { unitKeys: [], chassisKeys: [] };
     return {
-        unitNames: Object.keys(entry.units),
+        unitKeys: Object.keys(entry.units),
         chassisKeys: Object.keys(entry.chassis)
     };
 }
@@ -71,7 +71,7 @@ function applyOpsToPublicTag(data: PublicTagData, ops: TagOp[], tagName: string)
             if (opTagId === tagId && newId !== tagId) {
                 // Tag is being renamed AWAY from this key - clear data
                 // Subscriber is subscribed to the key, not the tag's lifecycle
-                data.unitNames = [];
+                data.unitKeys = [];
                 data.chassisKeys = [];
                 // Keep tagName as-is (the subscription key label)
                 continue;
@@ -101,8 +101,8 @@ function applyOpsToPublicTag(data: PublicTagData, ops: TagOp[], tagName: string)
                 }
             } else {
                 // Unit
-                if (!data.unitNames.includes(op.k)) {
-                    data.unitNames.push(op.k);
+                if (!data.unitKeys.includes(op.k)) {
+                    data.unitKeys.push(op.k);
                 }
             }
         } else if (op.a === 0) {
@@ -113,8 +113,8 @@ function applyOpsToPublicTag(data: PublicTagData, ops: TagOp[], tagName: string)
                 if (idx !== -1) data.chassisKeys.splice(idx, 1);
             } else {
                 // Unit
-                const idx = data.unitNames.indexOf(op.k);
-                if (idx !== -1) data.unitNames.splice(idx, 1);
+                const idx = data.unitKeys.indexOf(op.k);
+                if (idx !== -1) data.unitKeys.splice(idx, 1);
             }
         }
     }
@@ -192,7 +192,7 @@ export class PublicTagsService {
     }
 
     /**
-     * Handle real-time updates for subscribed tags (V3 format).
+     * Handle real-time updates for subscribed tags.
      * Uses incremental ops when available, otherwise replaces with full state.
      */
     private async handlePublicTagUpdate(msg: any): Promise<void> {
@@ -238,8 +238,8 @@ export class PublicTagsService {
             applyOpsToPublicTag(existing, msg.ops, msg.tagName);
         } else if (msg.tags !== undefined) {
             // Full state replacement (tags may be empty object for "deleted" state)
-            const { unitNames, chassisKeys } = extractFromV3Tags(msg.tags, msg.tagName);
-            existing.unitNames = unitNames;
+            const { unitKeys, chassisKeys } = extractFromTags(msg.tags, msg.tagName);
+            existing.unitKeys = unitKeys;
             existing.chassisKeys = chassisKeys;
         }
 
@@ -353,11 +353,11 @@ export class PublicTagsService {
                             this.subscribedTags.set(subKey, existing);
                         } else if (tagResponse.tags) {
                             // Full state replacement
-                            const { unitNames, chassisKeys } = extractFromV3Tags(tagResponse.tags, actualTagName);
+                            const { unitKeys, chassisKeys } = extractFromTags(tagResponse.tags, actualTagName);
                             this.subscribedTags.set(subKey, {
                                 publicId,
                                 tagName: actualTagName,
-                                unitNames,
+                                unitKeys,
                                 chassisKeys,
                                 subscribed: true,
                                 timestamp: serverTimestamp
@@ -406,13 +406,12 @@ export class PublicTagsService {
 
             for (const actualTagName of actualTagNames) {
                 const subKey = makeSubKey(publicId, actualTagName);
-                // Extract from V3 format
-                const { unitNames, chassisKeys } = extractFromV3Tags(response.tags, actualTagName);
+                const { unitKeys, chassisKeys } = extractFromTags(response.tags, actualTagName);
                 
                 this.temporaryTags.set(subKey, {
                     publicId,
                     tagName: actualTagName,
-                    unitNames,
+                    unitKeys,
                     chassisKeys,
                     subscribed: false,
                     timestamp: serverTimestamp
@@ -456,14 +455,13 @@ export class PublicTagsService {
             this.temporaryTags.delete(subKey);
             this.temporaryTags.delete(makeSubKey(publicId, tagName));
             
-            // Extract from V3 format
-            const { unitNames, chassisKeys } = extractFromV3Tags(response.tags, actualTagName);
+            const { unitKeys, chassisKeys } = extractFromTags(response.tags, actualTagName);
             
             // Add to subscribed with timestamp for incremental sync
             this.subscribedTags.set(subKey, {
                 publicId,
                 tagName: actualTagName,
-                unitNames,
+                unitKeys,
                 chassisKeys,
                 subscribed: true,
                 timestamp: response.timestamp || 0
@@ -586,13 +584,16 @@ export class PublicTagsService {
      */
     public getPublicTagsForUnit(unit: UnitSummary): PublicTagInfo[] {
         const result: PublicTagInfo[] = [];
+        const unitKey = TagsService.getUnitTagKey(unit);
         const chassisKey = TagsService.getChassisTagKey(unit);
+        // Owners whose tags are not migrated to V4 yet still publish unit names;
+        // a name counts only for the one unit the migration gives it.
+        const isV3NameUnit = this.tagsService.getUnitKeyForV3Name(unit.name) === unitKey;
 
         for (const tagData of this.getAllPublicTags()) {
             const lowerTag = tagData.tagName.toLowerCase();
             
-            // Check if unit name matches
-            if (tagData.unitNames.includes(unit.name)) {
+            if (tagData.unitKeys.includes(unitKey) || (isV3NameUnit && tagData.unitKeys.includes(unit.name))) {
                 result.push({
                     tag: tagData.tagName,
                     publicId: tagData.publicId,

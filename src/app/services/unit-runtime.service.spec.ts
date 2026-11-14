@@ -27,7 +27,7 @@ describe('UnitRuntimeService', () => {
     };
     const tagsServiceMock = {
         getTagData: jasmine.createSpy('getTagData'),
-        migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups'),
+        migrateTagKeys: jasmine.createSpy('migrateTagKeys'),
         fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis'),
     };
 
@@ -36,8 +36,8 @@ describe('UnitRuntimeService', () => {
         unitSearchIndexServiceMock.prepareUnits.calls.reset();
         unitSearchIndexServiceMock.rebuildTagSearchIndex.calls.reset();
         tagsServiceMock.getTagData.calls.reset();
-        tagsServiceMock.migrateChassisTagsToVariantGroups.calls.reset();
-        tagsServiceMock.migrateChassisTagsToVariantGroups.and.callFake((_units: UnitSummary[], data?: TagData) => Promise.resolve(data));
+        tagsServiceMock.migrateTagKeys.calls.reset();
+        tagsServiceMock.migrateTagKeys.and.callFake((_units: UnitSummary[], data?: TagData) => Promise.resolve(data));
         tagsServiceMock.fixNameTagsCoveredByChassis.calls.reset();
         tagsServiceMock.fixNameTagsCoveredByChassis.and.resolveTo(undefined);
 
@@ -159,9 +159,9 @@ describe('UnitRuntimeService', () => {
                 clan: {
                     label: 'CLAN',
                     units: {
-                        'Dasher Prime': { q: 2 },
-                        'Dasher A': {},
-                        'Adder Prime': {},
+                        [prime.uuid]: { q: 2 },
+                        [variantA.uuid]: {},
+                        [adder.uuid]: {},
                     },
                     chassis: {
                         'Dasher|BM': {},
@@ -170,21 +170,21 @@ describe('UnitRuntimeService', () => {
                 cjf: {
                     label: 'CJF',
                     units: {
-                        'Dasher Prime': {},
-                        'Dasher A': {},
+                        [prime.uuid]: {},
+                        [variantA.uuid]: {},
                     },
                     chassis: {},
                 },
             },
             timestamp: 1,
-            formatVersion: 4,
+            formatVersion: 5,
         };
         tagsServiceMock.fixNameTagsCoveredByChassis.and.callFake((units: UnitSummary[], data: TagData | null) => {
             for (const unit of units) {
                 const chassisKey = TagsService.getChassisTagKey(unit);
                 for (const entry of Object.values(data?.tags ?? {})) {
-                    if (entry.units[unit.name] !== undefined && entry.chassis[chassisKey] !== undefined) {
-                        delete entry.units[unit.name];
+                    if (entry.units[unit.uuid] !== undefined && entry.chassis[chassisKey] !== undefined) {
+                        delete entry.units[unit.uuid];
                     }
                 }
             }
@@ -199,8 +199,8 @@ describe('UnitRuntimeService', () => {
         expect(variantA._chassisTags).toEqual([{ tag: 'CLAN', quantity: 1 }]);
         expect(adder._nameTags).toEqual([{ tag: 'CLAN', quantity: 1 }]);
         expect(adder._chassisTags).toEqual([]);
-        expect(tagData.tags['clan'].units).toEqual({ 'Adder Prime': {} });
-        expect(tagsServiceMock.migrateChassisTagsToVariantGroups).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
+        expect(tagData.tags['clan'].units).toEqual({ [adder.uuid]: {} });
+        expect(tagsServiceMock.migrateTagKeys).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
         expect(tagsServiceMock.fixNameTagsCoveredByChassis).toHaveBeenCalledOnceWith([prime, variantA, adder], tagData);
     });
 });

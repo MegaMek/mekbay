@@ -690,9 +690,9 @@ describe('UnitSearchFiltersService search telemetry', () => {
             syncFromCloud: jasmine.createSpy('syncFromCloud'),
             getNameTags: () => ({}),
             getChassisTags: () => ({}),
-            getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 3 as const }),
-            migrateChassisTagsToVariantGroups: jasmine.createSpy('migrateChassisTagsToVariantGroups')
-                .and.callFake(async (_units: UnitSummary[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 4 as const })),
+            getTagData: async () => ({ tags: {}, timestamp: 0, formatVersion: 5 as const }),
+            migrateTagKeys: jasmine.createSpy('migrateTagKeys')
+                .and.callFake(async (_units: UnitSummary[], tagData?: TagData) => tagData ?? ({ tags: {}, timestamp: 0, formatVersion: 5 as const })),
             fixNameTagsCoveredByChassis: jasmine.createSpy('fixNameTagsCoveredByChassis').and.resolveTo(undefined),
             setRefreshUnitsCallback: jasmine.createSpy('setRefreshUnitsCallback'),
             setNotifyStoreUpdatedCallback: jasmine.createSpy('setNotifyStoreUpdatedCallback'),
@@ -6068,6 +6068,8 @@ describe('UnitSearchFiltersService search telemetry', () => {
         }
 
         const bundle = buildSmallBundle(benchmarkBundle);
+        const testMek = bundle.units.units.find(unit => unit.name === 'Test Mek')!;
+        const testTank = bundle.units.units.find(unit => unit.name === 'Test Tank')!;
         const { dataService, service } = createService(bundle);
         const initialTagIds = dataService.getIndexedUnitIds('_tags', 'tag-a');
 
@@ -6077,17 +6079,17 @@ describe('UnitSearchFiltersService search telemetry', () => {
             tags: {
                 alpha: {
                     label: 'alpha-tag',
-                    units: { 'Test Mek': {} },
+                    units: { [testMek.uuid]: {} },
                     chassis: {},
                 },
                 beta: {
                     label: 'beta-tag',
-                    units: { 'Test Tank': {} },
+                    units: { [testTank.uuid]: {} },
                     chassis: {},
                 },
             },
             timestamp: 1,
-            formatVersion: 3,
+            formatVersion: 5,
         });
 
         const indexedAlphaIds = dataService.getIndexedUnitIds('_tags', 'alpha-tag');
@@ -6115,6 +6117,7 @@ describe('UnitSearchFiltersService search telemetry', () => {
             unit._chassisTags = [];
             unit._publicTags = [];
         }
+        const testMek = bundle.units.units.find(unit => unit.name === 'Test Mek')!;
 
         const { dataService, service } = createService(bundle);
         const initialTagOptions = service.advOptions()['_tags']?.options ?? [];
@@ -6125,12 +6128,12 @@ describe('UnitSearchFiltersService search telemetry', () => {
             tags: {
                 alpha: {
                     label: 'alpha-tag',
-                    units: { 'Test Mek': {} },
+                    units: { [testMek.uuid]: {} },
                     chassis: {},
                 },
             },
             timestamp: 1,
-            formatVersion: 3,
+            formatVersion: 5,
         });
 
         const tagOptions = service.advOptions()['_tags']?.options ?? [];

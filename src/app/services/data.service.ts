@@ -250,7 +250,7 @@ export class DataService {
      * Apply tag data to all loaded units.
      * Called by TagsService when tags change.
      * 
-     * V3 format: tags = { tagId: { label, units: {unitName: {}}, chassis: {chassisKey: {}} } }
+     * Format: tags = { tagId: { label, units: {unitUuid: {}}, chassis: {chassisKey: {}} } }
      */
     private applyTagDataToUnits(tagData: TagData | null, options?: { searchIndexChanged?: boolean }): void {
         const searchIndexChanged = options?.searchIndexChanged ?? true;

@@ -66,7 +66,7 @@ export class UnitRuntimeService {
     }
 
     public async loadUnitTags(units: UnitSummary[]): Promise<void> {
-        const tagData = await this.tagsService.migrateChassisTagsToVariantGroups(units);
+        const tagData = await this.tagsService.migrateTagKeys(units);
         this.applyTagDataToUnits(units, tagData);
     }
 
@@ -76,19 +76,20 @@ export class UnitRuntimeService {
         options?: { rebuildTagSearchIndex?: boolean }
     ): void {
         if (tagData) {
-            void this.tagsService.migrateChassisTagsToVariantGroups(units, tagData);
+            void this.tagsService.migrateTagKeys(units, tagData);
         }
 
         void this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
         const tags = tagData?.tags || {};
 
         for (const unit of units) {
+            const unitKey = TagsService.getUnitTagKey(unit);
             const chassisKey = TagsService.getChassisTagKey(unit);
             unit._nameTags = Object.values(tags)
-                .filter(entry => entry.units[unit.name] !== undefined)
+                .filter(entry => entry.units[unitKey] !== undefined)
                 .map(entry => ({
                     tag: entry.label,
-                    quantity: this.getTagQuantity(entry.units[unit.name])
+                    quantity: this.getTagQuantity(entry.units[unitKey])
                 } as UnitTagEntry));
             unit._chassisTags = Object.values(tags)
                 .filter(entry => entry.chassis[chassisKey] !== undefined)
