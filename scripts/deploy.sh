@@ -4,7 +4,7 @@ set -euo pipefail
 mode=${1:-deploy}
 [[ $# -le 1 && "$mode" =~ ^(deploy|cleanup|rollback)$ ]] || { echo 'Usage: deploy.sh [deploy|cleanup|rollback]' >&2; exit 1; }
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PASSWORD DEPLOY_PATH DEPLOY_KNOWN_HOSTS DEPLOY_RETENTION_DAYS; do
+for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_PATH DEPLOY_KNOWN_HOSTS DEPLOY_RETENTION_DAYS; do
   [[ -n "${!name:-}" ]] || { echo "Missing required setting: $name" >&2; exit 1; }
 done
 port=${DEPLOY_PORT:-22}
@@ -16,6 +16,9 @@ work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$work/known_hosts"
 chmod 600 "$work/known_hosts"
+# The private key exists only in this run's private temp directory.
+(umask 077 && printf '%s\n' "$DEPLOY_SSH_KEY" > "$work/key")
+unset DEPLOY_SSH_KEY
 if [[ "$mode" == deploy ]]; then
   [[ -z "${GITHUB_OUTPUT:-}" ]] || printf 'deployed=false\n' >> "$GITHUB_OUTPUT"
   for name in GITHUB_SHA GITHUB_RUN_ID GITHUB_RUN_NUMBER; do
@@ -43,12 +46,11 @@ if [[ "$mode" == deploy ]]; then
 fi
 
 target="$DEPLOY_USER@$DEPLOY_HOST"
-options=(-o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$work/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o NumberOfPasswordPrompts=1)
-export SSHPASS="$DEPLOY_PASSWORD"
-unset DEPLOY_PASSWORD
+# Key authentication only: BatchMode never falls back to a password prompt.
+options=(-i "$work/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$work/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 # Require the server setup and a timeout implementation whose process-group
 # termination has been tested. Newer Ubuntu also packages it as gnutimeout.
-remote_timeout=$(sshpass -e ssh "${options[@]}" -p "$port" "$target" "
+remote_timeout=$(ssh "${options[@]}" -p "$port" "$target" "
   test -d '$DEPLOY_PATH/incoming' && test -L '$DEPLOY_PATH/current' || exit 1
   for candidate in timeout gnutimeout; do
     if \"\$candidate\" --version 2>/dev/null | grep -q 'GNU coreutils'; then
@@ -63,13 +65,13 @@ remote_timeout=$(sshpass -e ssh "${options[@]}" -p "$port" "$target" "
 # Bound remote work too, including descendants holding the deployment lock.
 remote_command="$remote_timeout --signal=TERM --kill-after=10s 10m bash -s --"
 if [[ "$mode" != deploy ]]; then
-  sshpass -e ssh "${options[@]}" -p "$port" "$target" "$remote_command $mode '$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS'" < "$script_dir/activate-release.sh"
+  ssh "${options[@]}" -p "$port" "$target" "$remote_command $mode '$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS'" < "$script_dir/activate-release.sh"
   exit 0
 fi
 remote_arguments="'$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS' '$release' '$GITHUB_RUN_NUMBER' '$checksum' '$archive_bytes' '$build_bytes' '$build_entries'"
 for operation in prepare activate; do
   status=0
-  sshpass -e ssh "${options[@]}" -p "$port" "$target" "$remote_command $operation $remote_arguments" < "$script_dir/activate-release.sh" || status=$?
+  ssh "${options[@]}" -p "$port" "$target" "$remote_command $operation $remote_arguments" < "$script_dir/activate-release.sh" || status=$?
   if [[ "$status" == 42 ]]; then
     echo "::notice::Deployment superseded during $operation; no further deployment or public checks."
     exit 0
@@ -78,9 +80,8 @@ for operation in prepare activate; do
   if [[ "$operation" == prepare ]]; then
     # OpenSSH on the GitHub runner uses SFTP. Preparation has pruned expired
     # files and checked space for this archive plus its extraction.
-    sshpass -e scp "${options[@]}" -P "$port" "$work/site.tgz" "$target:$DEPLOY_PATH/incoming/$release.tgz"
+    scp "${options[@]}" -P "$port" "$work/site.tgz" "$target:$DEPLOY_PATH/incoming/$release.tgz"
   fi
 done
-unset SSHPASS
 [[ -z "${GITHUB_OUTPUT:-}" ]] || printf 'deployed=true\n' >> "$GITHUB_OUTPUT"
 echo "Activated $release"

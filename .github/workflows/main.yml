@@ -46,16 +46,13 @@ jobs:
           npm ci
           npm run build
 
-      - name: Install SSH password helper
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass
-
       - name: Upload and activate release
         id: deploy
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           DEPLOY_PATH: /var/www/mekbay-deploy
           DEPLOY_RETENTION_DAYS: '30'

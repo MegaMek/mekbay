@@ -10,11 +10,13 @@ for file in index.html search.html forcegenerator.html ngsw.json ngsw-worker.js;
   printf 'fixture %s\n' "$file" > "$work/dist/browser/$file"
 done
 printf 'licenses\n' > "$work/dist/3rdpartylicenses.txt"
-cat > "$work/bin/sshpass" <<'MOCK'
+cat > "$work/bin/ssh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ "$1" == -e && "$SSHPASS" == 'fixture password' ]]
-case "$2" in
+# Stands in for ssh and scp: only this run's private key file may authenticate.
+[[ "$1" == -i && "$(cat "$2")" == 'fixture private key' && "$(stat -c %a "$2")" == 600 ]]
+[[ " $* " == *' -o BatchMode=yes '* && " $* " == *' -o StrictHostKeyChecking=yes '* ]]
+case "${0##*/}" in
   ssh)
     command=${!#}
     if [[ "$command" == *'for candidate in timeout gnutimeout'* ]]; then
@@ -42,10 +44,11 @@ case "$2" in
   *) exit 1 ;;
 esac
 MOCK
-chmod +x "$work/bin/sshpass"
+cp "$work/bin/ssh" "$work/bin/scp"
+chmod +x "$work/bin/ssh" "$work/bin/scp"
 export PATH="$work/bin:$PATH"
 export DEPLOY_HOST=example.test DEPLOY_USER=fixture DEPLOY_PORT=2222
-export DEPLOY_PASSWORD='fixture password' DEPLOY_KNOWN_HOSTS='fixture host key'
+export DEPLOY_SSH_KEY='fixture private key' DEPLOY_KNOWN_HOSTS='fixture host key'
 export DEPLOY_RETENTION_DAYS=1
 export GITHUB_SHA=1111111111111111111111111111111111111111 GITHUB_RUN_ID=123 GITHUB_RUN_NUMBER=456 GITHUB_RUN_ATTEMPT=2
 export GITHUB_OUTPUT="$work/github-output"
