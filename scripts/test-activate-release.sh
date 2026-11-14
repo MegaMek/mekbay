@@ -46,6 +46,7 @@ prepare() { run_server prepare; }
 activate_prepared() { run_server activate; }
 activate() { prepare && activate_prepared; }
 cleanup() { bash "$script_dir/activate-release.sh" cleanup "$base" "$retention_days"; }
+rollback() { bash "$script_dir/activate-release.sh" rollback "$base" "$retention_days"; }
 expect_failure() {
   local before previous_before
   before=$(readlink "$base/current")
@@ -99,8 +100,21 @@ pack 6
 expect_failure
 printf '%s\n' "$sha" > "$work/build/release.txt"
 
-# Server-side locking prevents activation while another operator holds the lock.
+# The script reaches the server on stdin. Cut off at any point, including
+# between the previous and current switches, it must run nothing at all.
 pack 7
+prepare
+script_bytes=$(stat -c %s "$script_dir/activate-release.sh")
+for cut in 30 400 2000 6000 "$((script_bytes - 400))" "$((script_bytes - 2))"; do
+  if head -c "$cut" "$script_dir/activate-release.sh" | bash -s -- activate "$base" "$retention_days" "$release" "$run_number" "$checksum" "$archive_bytes" "$build_bytes" "$build_entries" > "$work/truncated.log" 2>&1; then
+    echo "Truncated script ($cut bytes) succeeded" >&2
+    exit 1
+  fi
+  [[ "$(readlink "$base/current")" == "$second" && "$(readlink "$base/previous")" == "$first" ]]
+  [[ ! -e "$base/releases/$release" && -s "$base/incoming/$release.tgz" ]]
+done
+
+# Server-side locking prevents activation while another operator holds the lock.
 exec 8> "$base/.deploy.lock"
 flock -x 8
 activate 8>&- > "$work/locked.log" 2>&1 &
@@ -113,17 +127,18 @@ exec 8>&-
 wait "$activation_pid"
 [[ "$(readlink "$base/current")" == "releases/$release" ]]
 
-# The operator's rollback subshell must not leave the terminal holding a lock.
-(
-exec 9> "$base/.deploy.lock"
-flock -x -w 1 9
-ln -s -- "$(readlink "$base/previous")" "$base/.rollback-current"
-touch -- "$base/$(readlink "$base/current")"
-mv -Tf -- "$base/.rollback-current" "$base/current"
-)
+# Rollback selects previous and releases the lock. previous stays, so a
+# repeated rollback is refused instead of toggling back to the bad release.
+rollback
 flock -n "$base/.deploy.lock" true
-[[ "$(readlink "$base/current")" == "$second" ]]
+[[ "$(readlink "$base/current")" == "$second" && "$(readlink "$base/previous")" == "$second" ]]
 [[ "$(cat "$base/current/index.html")" == 'new index' ]]
+if rollback > "$work/rollback.log" 2>&1; then
+  echo 'Repeated rollback was accepted' >&2
+  exit 1
+fi
+grep -Fq 'No release to roll back to' "$work/rollback.log"
+[[ "$(readlink "$base/current")" == "$second" ]]
 
 # A live holder causes a bounded failure, without bypassing its lock or switching.
 pack 8
@@ -322,13 +337,7 @@ activate_prepared
 
 # Rollback and pruning must never lower the ordering high-water mark.
 state_before=$(cat "$base/.latest-deployment")
-(
-  exec 9> "$base/.deploy.lock"
-  flock -x -w 1 9
-  touch -- "$base/$(readlink "$base/current")"
-  ln -s -- "$(readlink "$base/previous")" "$base/.rollback-current"
-  mv -Tf -- "$base/.rollback-current" "$base/current"
-)
+rollback
 cleanup
 [[ "$(cat "$base/.latest-deployment")" == "$state_before" ]]
 pack 401

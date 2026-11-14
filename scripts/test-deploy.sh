@@ -21,7 +21,7 @@ case "$2" in
       printf 'timeout\n'
       exit 0
     fi
-    for operation in prepare activate cleanup; do
+    for operation in prepare activate cleanup rollback; do
       [[ "$command" == *"bash -s -- $operation "* ]] || continue
       printf '%s\n' "$operation" >> "$MOCK_TRANSPORT_ROOT/steps"
       printf '%s\n' "$command" > "$MOCK_TRANSPORT_ROOT/$operation-command"
@@ -99,7 +99,11 @@ reset_result
 mkdir "$work/no-build"
 cd "$work/no-build"
 unset GITHUB_SHA GITHUB_RUN_ID GITHUB_RUN_NUMBER GITHUB_RUN_ATTEMPT GITHUB_OUTPUT
-bash "$script_dir/deploy.sh" cleanup
-[[ "$(cat "$work/steps")" == cleanup ]]
-grep -Fq "cleanup '$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS'" "$work/cleanup-command"
-echo 'Transport tests passed (prepare/upload/activate, ordering skips, failures, destinations and standalone cleanup).'
+for operation in cleanup rollback; do
+  reset_result() { : > "$work/steps"; }
+  reset_result
+  bash "$script_dir/deploy.sh" "$operation"
+  [[ "$(cat "$work/steps")" == "$operation" ]]
+  grep -Fq "$operation '$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS'" "$work/$operation-command"
+done
+echo 'Transport tests passed (prepare/upload/activate, ordering skips, failures, destinations, standalone cleanup and rollback).'

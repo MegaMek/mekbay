@@ -21,6 +21,12 @@ jobs:
           fetch-depth: 0    # fetch full history so commit count is accurate. 
           # TODO: reimplement it with an API call to GitHub so we don't have to use depth: 0 in checkout
 
+      - name: Check deployment scripts
+        run: |
+          for script in scripts/{deploy,activate-release,test-activate-release,test-deploy}.sh; do bash -n "$script"; done
+          bash scripts/test-activate-release.sh
+          bash scripts/test-deploy.sh
+
       - name: Checkout mm-data
         uses: actions/checkout@v5
         with:
@@ -42,12 +48,6 @@ jobs:
 
       - name: Verify script typechecks
         run: npm run typecheck:scripts
-
-      - name: Check deployment scripts
-        run: |
-          for script in scripts/{deploy,activate-release,test-activate-release,test-deploy}.sh; do bash -n "$script"; done
-          bash scripts/test-activate-release.sh
-          bash scripts/test-deploy.sh
 
       - name: Install SSH password helper
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends sshpass

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Upload a complete build, or run cleanup without a build/GitHub run context.
+# Upload a complete build, or run cleanup/rollback without a build/GitHub run context.
 set -euo pipefail
 mode=${1:-deploy}
-[[ $# -le 1 && ( "$mode" == deploy || "$mode" == cleanup ) ]] || { echo 'Usage: deploy.sh [deploy|cleanup]' >&2; exit 1; }
+[[ $# -le 1 && "$mode" =~ ^(deploy|cleanup|rollback)$ ]] || { echo 'Usage: deploy.sh [deploy|cleanup|rollback]' >&2; exit 1; }
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 for name in DEPLOY_HOST DEPLOY_USER DEPLOY_PASSWORD DEPLOY_PATH DEPLOY_KNOWN_HOSTS DEPLOY_RETENTION_DAYS; do
   [[ -n "${!name:-}" ]] || { echo "Missing required setting: $name" >&2; exit 1; }
@@ -62,8 +62,8 @@ remote_timeout=$(sshpass -e ssh "${options[@]}" -p "$port" "$target" "
 [[ "$remote_timeout" == timeout || "$remote_timeout" == gnutimeout ]] || { echo 'Unexpected remote timeout command' >&2; exit 1; }
 # Bound remote work too, including descendants holding the deployment lock.
 remote_command="$remote_timeout --signal=TERM --kill-after=10s 10m bash -s --"
-if [[ "$mode" == cleanup ]]; then
-  sshpass -e ssh "${options[@]}" -p "$port" "$target" "$remote_command cleanup '$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS'" < "$script_dir/activate-release.sh"
+if [[ "$mode" != deploy ]]; then
+  sshpass -e ssh "${options[@]}" -p "$port" "$target" "$remote_command $mode '$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS'" < "$script_dir/activate-release.sh"
   exit 0
 fi
 remote_arguments="'$DEPLOY_PATH' '$DEPLOY_RETENTION_DAYS' '$release' '$GITHUB_RUN_NUMBER' '$checksum' '$archive_bytes' '$build_bytes' '$build_entries'"

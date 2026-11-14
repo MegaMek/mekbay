@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
+{
+# This script arrives on stdin over SSH. Bash parses this brace group completely
+# before running it, so a transfer cut short (dropped connection, canceled
+# workflow) is a syntax error instead of half a deployment.
+#
 # Server entry point: prepare/activate BASE DAYS RELEASE RUN_NUMBER SHA256
-# ARCHIVE_BYTES BUILD_BYTES BUILD_ENTRIES, or cleanup BASE DAYS.
+# ARCHIVE_BYTES BUILD_BYTES BUILD_ENTRIES, or cleanup/rollback BASE DAYS.
 set -euo pipefail
 umask 022
-operation=${1:?Operation required: prepare, activate or cleanup}
+operation=${1:?Operation required: prepare, activate, cleanup or rollback}
 base=${2:?Deployment directory required}
 retention_days=${3:?Retention days required}
 [[ "$base" =~ ^/[a-zA-Z0-9_/-]+$ && "$base" != / && "$base" != */ ]] || { echo 'Invalid deployment directory' >&2; exit 1; }
@@ -18,8 +23,8 @@ case "$operation" in
     done
     attempt=${release##*-}
     ;;
-  cleanup) [[ $# == 3 ]] || { echo 'Usage: cleanup BASE DAYS' >&2; exit 1; } ;;
-  *) echo 'Expected prepare, activate or cleanup' >&2; exit 1 ;;
+  cleanup|rollback) [[ $# == 3 ]] || { echo "Usage: $operation BASE DAYS" >&2; exit 1; } ;;
+  *) echo 'Expected prepare, activate, cleanup or rollback' >&2; exit 1 ;;
 esac
 [[ "$(readlink -f -- "$base")" == "$base" ]] || { echo 'Deployment directory must be canonical' >&2; exit 1; }
 for directory in incoming releases retained-assets; do
@@ -106,6 +111,20 @@ cleanup() {
 
 if [[ "$operation" == cleanup ]]; then
   cleanup
+  exit 0
+fi
+
+if [[ "$operation" == rollback ]]; then
+  [[ -n "$previous" && "$previous" != "$current" ]] || { echo "No release to roll back to; current is $current" >&2; exit 1; }
+  rollback_link="$base/.rollback-current"
+  trap 'rm -f -- "$rollback_link"' EXIT
+  ln -s -- "$previous" "$rollback_link"
+  # Preserve the grace period for tabs that loaded the outgoing version.
+  touch -- "$base/$current"
+  mv -Tf -- "$rollback_link" "$base/current"
+  # previous and the ordering record stay: repeating rollback cannot toggle
+  # versions, and an older workflow run still cannot redeploy.
+  echo "Rolled back to $previous; $current remains in releases."
   exit 0
 fi
 
@@ -211,3 +230,4 @@ echo "Activated $release; previous is $current"
 
 load_selected_releases
 cleanup
+}
