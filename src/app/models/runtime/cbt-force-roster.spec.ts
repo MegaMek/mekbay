@@ -6,7 +6,7 @@ import {
     appendCBTForceRosterMember,
     appendUnassignedCBTForceRosterMember,
     queryCBTForceRoster,
-    type SerializedCBTForceRosterV1,
+    type SerializedCBTForceRoster,
 } from './cbt-force-roster';
 
 const A = 'unit:a';
@@ -121,13 +121,12 @@ describe('CBT force roster', () => {
     });
 });
 
-function emptyRoster(): SerializedCBTForceRosterV1 {
-    return Object.freeze({ schemaVersion: 1, groups: Object.freeze([]) });
+function emptyRoster(): SerializedCBTForceRoster {
+    return Object.freeze({ groups: Object.freeze([]) });
 }
 
-function roster(): SerializedCBTForceRosterV1 {
+function roster(): SerializedCBTForceRoster {
     return Object.freeze({
-        schemaVersion: 1,
         groups: Object.freeze([Object.freeze({
             groupId: 'group:alpha',
             order: 0,

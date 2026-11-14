@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { UNPRINTED_PHYSICAL_ATTACKS } from '../../models/rules/physical-attack-rules';
 import type { MekConvertedMode } from '../../models/mek-conversion-mode';
 import { renderProtectionCounter } from '../../utils/sheets/record-sheet-protection-counter';
 
@@ -54,7 +55,9 @@ bindRecordSheetRandomHit,
 createRecordSheetBind,
 recordSheetDamageTargets,
 renderRecordSheetAmmoProfile,
+bindSwarmedBy,
 renderRecordSheetConditions,
+swarmedByDetails,
 renderRecordSheetCrewControls,
 renderRecordSheetCrewName,
 renderRecordSheetCrewState,
@@ -67,10 +70,11 @@ type RecordSheetBind,
 import {
 bindRecordSheetHeatCell,
 bindRecordSheetHeatControls,
-displayedHeat,
 renderRecordSheetHeatScale,
 } from './record-sheet-heat-scale-rendering';
+import { displayedHeat } from '../../models/runtime/record-sheet-heat-scale';
 import {
+bindRecordSheetInventoryAim,
 bindRecordSheetInventoryButtons,
 NO_INVENTORY_SELECTION,
 projectRecordSheetWeaponSelection,
@@ -170,7 +174,7 @@ export function bindMekRecordSheet(
         }
         if (firstRender) resetUnitDataLayout(svg, manifest);
         renderIdentity(svg, snapshot);
-        renderConditions(svg, snapshot, bind, context);
+        renderConditions(svg, snapshot, bind, context, inventory?.swarmedBy);
         renderHeatSinks(svg, manifest, snapshot, inventory);
 
         for (const location of snapshot.locations) {
@@ -449,11 +453,13 @@ function renderConditions(
     snapshot: MekRecordSheetSnapshot,
     bind: RecordSheetBind,
     context: () => UnitEditContext,
+    swarmedBy: string | undefined,
 ): void {
     const active = snapshot.crippled
         ? Object.freeze([...snapshot.conditions, 'crippled'])
         : snapshot.conditions;
-    renderRecordSheetConditions(svg, active, CONDITION_PRESENTATION);
+    renderRecordSheetConditions(svg, active, CONDITION_PRESENTATION, swarmedByDetails(swarmedBy));
+    bindSwarmedBy(svg, bind, context);
     for (const condition of CONDITION_PRESENTATION) {
         if (condition.key === 'crippled') continue;
         // Shutdown has its own command; the others toggle the stored condition.
@@ -825,6 +831,7 @@ function renderInventory(
         renderRecordSheetInventorySelection(element, selection);
         if (row.kind === 'weapon') {
             bindRecordSheetInventoryButtons(element, row.componentIds, undefined, bind, context);
+            bindRecordSheetInventoryAim(element, row.componentIds, bind, context);
         } else if (row.kind === 'physical' && row.actionTarget !== undefined) {
             const actionTarget = row.actionTarget;
             bind(element.querySelector<SVGElement>('.inventoryEntryButton.mainButton') ?? element, () => Object.freeze({
@@ -1026,7 +1033,8 @@ function recordSheetEquipmentRows(snapshot: MekRecordSheetSnapshot): readonly Re
         }));
     const physical = snapshot.physicalAttacks?.kind !== 'supported'
         ? []
-        : snapshot.physicalAttacks.attacks.map(attack => {
+        // The sheet prints no thrash or brush off (see the record sheet layout); the inventory panel offers them.
+        : snapshot.physicalAttacks.attacks.filter(attack => !UNPRINTED_PHYSICAL_ATTACKS.has(attack.kind ?? '')).map(attack => {
             const selection = attack.selection;
             const hitModifierText = attack.hitModifiers.map(formatPhysicalHitModifier).join('/');
             const damage = attack.effect.kind === 'none'
@@ -1279,9 +1287,8 @@ function renderHeatSourcesSummary(
     if (!target) return;
     const rows = projection === null ? [] : buildHeatSummaryRows(
         projection.sources,
-        projection.remainingDissipation,
+        projection.dissipationBalance,
         projection.dissipated,
-        projection.projected,
         { groupSources: true },
     );
     if (rows.length === 0) {
@@ -1437,7 +1444,7 @@ function resetUnitDataLayout(
     });
     svg.querySelectorAll<SVGElement>('[id^="engine_hit_"], [id^="gyro_hit_"], [id^="sensor_hit_"], [id^="life_support_hit_"], [id^="avionics_hit_"], [id^="landing_gear_hit_"], [id^="cockpit_hit_"]')
         .forEach(element => element.classList.remove('damaged'));
-    svg.querySelectorAll('#heat-projection-path, #heat-projection-target-marker, #heat-selected-weapons-target-marker, #heat-projection-overflow-text, #now-arrow, #next-arrow, #projection-arrow, #faded-arrow, #now-arrow-label')
+    svg.querySelectorAll('#heat-projection-path, #heat-projection-target-marker, #heat-selected-weapons-target-marker, #heat-projection-overflow-text, #now-arrow, #next-arrow, #projection-arrow, #faded-arrow, #now-arrow-label, #next-arrow-label')
         .forEach(element => element.remove());
 }
 

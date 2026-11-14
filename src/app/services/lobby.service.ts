@@ -9,6 +9,7 @@ import type { ForceAlignment } from '../models/force-slot.model';
 import type { Force } from '../models/force.model';
 import type { LobbyGameSettings, LobbyParticipant, LobbyState } from '../models/lobby.model';
 import type { InitiativeRecord } from '../models/rules/initiative-rules';
+import { CBT_OPTIONAL_RULE_CHOICES, changedOptionalRules, type CBTOptionalRules } from '../models/options.model';
 import { ForcePersistenceService } from './force-persistence.service';
 import { DialogsService } from './dialogs.service';
 import { DisplayNameService } from './display-name.service';
@@ -135,8 +136,8 @@ export class LobbyService {
             const held = this.heldState();
             if (!held || !this.optionsService.initialized() || this.adoptingRuleset()) return;
             untracked(() => {
-                const ruleset = this.rulesetToAdopt(held);
-                if (ruleset) void this.adoptRuleset(ruleset);
+                const rules = this.rulesToAdopt(held);
+                if (rules) void this.adoptRules(rules);
                 else this.applyState(held);
             });
         });
@@ -208,9 +209,11 @@ export class LobbyService {
         this.invalidateRestore();
         this.lobbyStateKnown.set(false);
         this.declinedCode = null;
-        // The lobby starts with the host's own rules and Initiative settings.
-        const { CBTRules, initiativeOrder, initiativeDie } = this.optionsService.options();
-        const settings: LobbyGameSettings = { ruleset: CBTRules, initiativeOrder, initiativeDie };
+        // The lobby starts with the host's own rules, optional rules and Initiative settings.
+        const { CBTRules, CBTOptionalRules, initiativeOrder, initiativeDie } = this.optionsService.options();
+        const settings: LobbyGameSettings = {
+            ruleset: CBTRules, initiativeOrder, initiativeDie, optionalRules: { ...CBTOptionalRules },
+        };
         try {
             const response = await this.request<LobbyCreatedResponse>({ action: 'createLobby', settings });
             this.applyState(response.state);
@@ -323,9 +326,24 @@ export class LobbyService {
                 this.hostSwitchingRuleset.set(false);
             }
         }
+        // Optional rules reach the lobby the same way: once the host's own forces play them.
+        const optionalRules = changedOptionalRules(this.optionsService.options().CBTOptionalRules, settings.optionalRules);
+        if (optionalRules !== null) {
+            this.hostSwitchingRuleset.set(true);
+            try {
+                await this.forceBuilderService.setOptionalRules(optionalRules);
+            } finally {
+                this.hostSwitchingRuleset.set(false);
+            }
+        }
+        // The lobby carries what the host plays now: a rule its forces could not switch to stays as it was.
+        const played = this.optionsService.options().CBTOptionalRules;
+        settings = { ...settings, optionalRules: { ...played } };
         if (settings.ruleset !== current.ruleset
             || settings.initiativeOrder !== current.initiativeOrder
-            || settings.initiativeDie !== current.initiativeDie) {
+            || settings.initiativeDie !== current.initiativeDie
+            || optionalRules !== null
+            || changedOptionalRules(played, current.optionalRules) !== null) {
             this.wsService.send({ action: 'setLobbySettings', settings });
         }
     }
@@ -395,7 +413,7 @@ export class LobbyService {
     /** Applies a lobby state, or holds it while its rules are not this player's. */
     private applyState(state: LobbyState): void {
         if (state.code === this.declinedCode) return;
-        if (this.rulesetToAdopt(state)) {
+        if (this.rulesToAdopt(state)) {
             this.heldState.set(state);
             return;
         }
@@ -418,36 +436,48 @@ export class LobbyService {
         for (const resolve of waiters) resolve(applied);
     }
 
-    /** The lobby's rules when they are not this player's, which is unknown until the local options load. */
-    private rulesetToAdopt(state: LobbyState): CBTRuleset | null {
-        const ruleset = state.settings?.ruleset;
-        return ruleset && (!this.optionsService.initialized() || ruleset !== this.optionsService.options().CBTRules)
-            ? ruleset
-            : null;
+    /**
+     * The lobby's rules and optional rules that are not this player's; null when they play them all. Unknown until the
+     * local options load, so until then the lobby's rules wait to be compared.
+     */
+    private rulesToAdopt(state: LobbyState): LobbyRulesChange | null {
+        const settings = state.settings;
+        if (!settings?.ruleset) return null;
+        if (!this.optionsService.initialized()) return { ruleset: settings.ruleset };
+        const options = this.optionsService.options();
+        const optionalRules = changedOptionalRules(options.CBTOptionalRules, settings.optionalRules);
+        return settings.ruleset === options.CBTRules && optionalRules === null ? null : {
+            ...(settings.ruleset === options.CBTRules ? {} : { ruleset: settings.ruleset }),
+            ...(optionalRules === null ? {} : { optionalRules }),
+        };
     }
 
     /**
      * Switches to the lobby's rules. Joining asks first, and declining does not join; in the lobby
      * the player follows the host's change at once and is told.
      */
-    private async adoptRuleset(ruleset: CBTRuleset): Promise<void> {
+    private async adoptRules(rules: LobbyRulesChange): Promise<void> {
         this.adoptingRuleset.set(true);
         try {
-            const lobbyRules = CBT_RULESET_LABELS[ruleset];
             const inLobby = this.state() !== null;
             const switchRules = inLobby || await this.dialogsService.requestConfirmation(
-                `This lobby plays ${lobbyRules} rules; you're on ${CBT_RULESET_LABELS[this.optionsService.options().CBTRules]}. Switch to ${lobbyRules} and join?`,
+                lobbyRulesQuestion(rules, this.optionsService.options().CBTRules),
                 'Switch Rules?',
                 'warning',
             );
             // The lobby may have closed, or changed its rules again, while the player decided.
             const held = this.heldState();
-            if (held?.settings.ruleset !== ruleset) return;
+            if (!held || JSON.stringify(this.rulesToAdopt(held)) !== JSON.stringify(rules)) return;
             // A switch that fails keeps every force on the player's rules, which this lobby does not play.
-            if (!switchRules || !await this.forceBuilderService.switchCBTRules(ruleset)) {
+            const switched = switchRules
+                && (rules.ruleset === undefined || await this.forceBuilderService.switchCBTRules(rules.ruleset))
+                && (rules.optionalRules === undefined || await this.forceBuilderService.setOptionalRules(rules.optionalRules));
+            if (!switched) {
                 this.declineLobby();
             } else if (inLobby && !held.isHost) {
-                this.toastService.showToast(`The host switched the lobby to ${lobbyRules} rules.`, 'info');
+                this.toastService.showToast(rules.ruleset === undefined
+                    ? 'The host changed the lobby\'s optional rules.'
+                    : `The host switched the lobby to ${CBT_RULESET_LABELS[rules.ruleset]} rules.`, 'info');
             }
         } finally {
             this.adoptingRuleset.set(false);
@@ -592,4 +622,19 @@ export class LobbyService {
         this.managedRemoteIds.clear();
         if (message) this.toastService.showToast(message, 'info');
     }
+}
+
+/** The rules of a lobby a player does not play yet: its rules system, its optional rules, or both. */
+type LobbyRulesChange = Readonly<{ ruleset?: CBTRuleset; optionalRules?: Partial<CBTOptionalRules> }>;
+
+/** The question asked before joining a lobby that plays rules the player does not. */
+function lobbyRulesQuestion(rules: LobbyRulesChange, current: CBTRuleset): string {
+    const ruleset = rules.ruleset === undefined ? null : CBT_RULESET_LABELS[rules.ruleset];
+    const optional = CBT_OPTIONAL_RULE_CHOICES.flatMap(({ key, label }) =>
+        rules.optionalRules?.[key] === undefined ? [] : [`${label} ${rules.optionalRules[key] ? 'on' : 'off'}`]);
+    return [
+        ...(ruleset === null ? [] : [`This lobby plays ${ruleset} rules; you're on ${CBT_RULESET_LABELS[current]}.`]),
+        ...(optional.length === 0 ? [] : [`This lobby plays other optional rules: ${optional.join(', ')}.`]),
+        optional.length === 0 ? `Switch to ${ruleset} and join?` : 'Switch and join?',
+    ].join(' ');
 }

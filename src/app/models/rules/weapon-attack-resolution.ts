@@ -9,6 +9,7 @@ import type { ComponentId } from '../entity/entity-identifiers';
 import type { WeaponType } from '../weapon-types.model';
 import type { CBTGameRules } from './game-rules';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
+import type { TnTargetUnitType } from '../target-number-calculator.model';
 import { physicalDamageGroupSize, type HitTable, type PhysicalAttackKind } from './physical-attack-rules';
 import { infernoMeetsCover, infernoRollsHitLocation, isInfernoAmmo, platoonInfernoMissiles } from './inferno-rules';
 import type { PlatoonAttackFacts } from './conventional-infantry-combat-rules';
@@ -57,6 +58,8 @@ export interface WeaponAttackProfile {
     readonly physical?: PhysicalAttackKind;
     /** The table column this attack strikes regardless of its direction (a DFA on a prone Mek or a vehicle). */
     readonly arc?: MekHitArc;
+    /** The attack strikes a side rolled at random, one of the four alike (`physicalStrikesRandomSide`). */
+    readonly randomSide?: true;
     /** Inferno missiles: each group is one missile whose effect the struck unit decides (TW pp. 141-142). */
     readonly inferno?: true;
     /** The missiles roll no hit location: Core infernos striking a unit that tracks heat (Core p. 192). */
@@ -65,6 +68,14 @@ export interface WeaponAttackProfile {
     readonly damageByHits?: readonly number[];
     /** A heat-causing weapon: its hit may deliver heat as well as, or instead of, damage. */
     readonly heatWeapon?: AttackHeatWeapon;
+    /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
+    readonly critical?: true;
+    /**
+     * An aimed shot: after a hit, a roll of `dice` dice decides whether the named location is struck
+     * (`aimedShotStrikes`). `rerollLegs` when the target stands in partial cover: the shot takes no cover itself, and
+     * a leg result of its hit-location roll is rerolled.
+     */
+    readonly aim?: Readonly<{ location: string; dice: 1 | 2; rerollLegs: boolean }>;
 }
 
 /** A heat-causing weapon as one attack resolves it, against the target it fires at. */
@@ -107,6 +118,12 @@ export interface PhysicalAttackFacts {
     readonly table: HitTable;
     readonly partialCover: boolean;
     readonly arc?: MekHitArc;
+    readonly randomSide?: boolean;
+    readonly targetUnitType?: TnTargetUnitType;
+    /** Damage points sharing one hit-location roll, where the attack's kind does not say. */
+    readonly groupSize?: number;
+    /** A hit also rolls on the Determining Critical Hits Table. */
+    readonly critical?: boolean;
 }
 
 /** What the attacker knows about one fired weapon and its target. */
@@ -123,6 +140,8 @@ export interface WeaponAttackFacts {
     readonly heatWeapon?: AttackHeatWeapon;
     /** Whether the struck unit tracks heat; absent while it is unknown. */
     readonly targetTracksHeat?: boolean;
+    /** The location an aimed shot names, and the dice of its roll (`aimedShotDice`). */
+    readonly aim?: Readonly<{ location: string; dice: 1 | 2 }>;
 }
 
 export interface WeaponAttackOutcome {
@@ -181,9 +200,18 @@ export function weaponAttackProfile(facts: WeaponAttackFacts, rules: CBTGameRule
         const shots = rapidFireAutocannonShotCount(equipment, mode);
         return profile(perHit, shots, perHit, rapidFireAutocannonJamRoll(equipment, rules.id, shots));
     };
+    // An aimed shot meets no cover: its leg results are rerolled instead.
+    const aimed = (attack: WeaponAttackProfile | null): WeaponAttackProfile | null =>
+        attack === null || facts.aim === undefined ? attack : Object.freeze({
+            ...attack,
+            partialCover: false,
+            aim: Object.freeze({ ...facts.aim, rerollLegs: facts.partialCover }),
+        });
     // A heat weapon's hits are resolved by its heat rules; a plasma cannon has no Damage Value of its own.
-    if (facts.heatWeapon) return Object.freeze({ ...(standard() ?? profile(0, 1, 1)), heatWeapon: facts.heatWeapon });
-    return standard();
+    if (facts.heatWeapon) {
+        return aimed(Object.freeze({ ...(standard() ?? profile(0, 1, 1)), heatWeapon: facts.heatWeapon }));
+    }
+    return aimed(standard());
 }
 
 /** What the attacker knows about a conventional platoon's attack or disposable weapon and its target. */
@@ -266,13 +294,15 @@ export function physicalAttackProfile(facts: PhysicalAttackFacts): WeaponAttackP
         damagePerHit: damage,
         projectiles: 1,
         allHit: false,
-        groupSize: Math.max(1, physicalDamageGroupSize(facts.kind, damage)),
+        groupSize: Math.max(1, facts.groupSize ?? physicalDamageGroupSize(facts.kind, damage, facts.targetUnitType)),
         types: Object.freeze([]),
         partialCover: facts.partialCover,
         jamRoll: null,
         table: facts.table,
         physical: facts.kind,
         ...(facts.arc === undefined ? {} : { arc: facts.arc }),
+        ...(facts.randomSide ? { randomSide: true as const } : {}),
+        ...(facts.critical ? { critical: true as const } : {}),
     });
 }
 

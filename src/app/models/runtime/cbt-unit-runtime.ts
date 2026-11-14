@@ -9,10 +9,13 @@ import type { EntityMountedEquipment } from '../entity/types';
 import type { EquipmentStatus } from '../equipment-status.model';
 import type { AmmoEquipment } from '../equipment.model';
 import type { UnitConditionKey } from '../unit-condition.model';
+import { compareText } from '../../utils/string.util';
 import { serializeUnitCover,type UnitCover } from '../unit-cover.model';
 import { freezeAttackerTargetingState,type AttackerTargetingState } from './attacker-targeting-state';
+import type { BoundOptionalRules } from './bound-optional-rules';
 import type { CrewAssignment } from './crew-assignment';
 import type { EndTurnCheckpoint } from './end-turn-checkpoint';
+import { MAX_HEAT_VALUE, serializeTurnHeatLedger, type TurnHeatLedger } from './turn-heat-ledger';
 import { freezeEquipmentRowOrder,type EquipmentRowOrderState } from './equipment-row-order';
 import type { AmmoRuntimeState,ComponentRuntimeState } from './runtime-state';
 
@@ -71,11 +74,14 @@ export interface CBTLocationRuntimeState {
 
 export type HeatAutomationPolicy = 'automatic' | 'manual';
 
-/** Heat is a whole number of points; one bound serves every family, command and save format. */
-export const MAX_HEAT_VALUE = 1_000_000;
-
 export function isHeatValue(value: unknown): value is number {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_HEAT_VALUE
+        && !Object.is(value, -0);
+}
+
+/** How far the player set NEXT from the calculated heat: a whole number within the heat bound either way. */
+export function isHeatOffset(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && Math.abs(value) <= MAX_HEAT_VALUE
         && !Object.is(value, -0);
 }
 
@@ -83,7 +89,13 @@ export function isHeatValue(value: unknown): value is number {
 export interface CBTUnitHeatState {
     readonly current: number;
     readonly previous: number;
+    /** NEXT, the player's arrow, where it stands: the value saved, sent and shown everywhere. */
     readonly pendingOverride?: number;
+    /**
+     * How far from the calculated heat the player set NEXT while heat resolution calculated the turn's heat; NEXT keeps
+     * this offset as heat arrives (`followCalculatedHeat`). Absent when they set NEXT as their own number.
+     */
+    readonly pendingOffset?: number;
     readonly heatsinksOff: number;
 }
 
@@ -92,14 +104,60 @@ export function settleHeat(heat: CBTUnitHeatState, current: number): CBTUnitHeat
     return Object.freeze({ current, previous: heat.current, heatsinksOff: heat.heatsinksOff });
 }
 
-/** Sets or clears the pending arrow; the committed track is unchanged. */
-export function withPendingHeat(heat: CBTUnitHeatState, pendingOverride: number | undefined): CBTUnitHeatState {
+/** The heat a unit is headed for: the player's arrow (NEXT) when one is set, otherwise its current heat. */
+export function nextHeat(heat: Readonly<{ current: number; pendingOverride?: number }>): number {
+    return heat.pendingOverride ?? heat.current;
+}
+
+/** Sets or clears the pending arrow, and its offset from the calculated heat; the committed track is unchanged. */
+export function withPendingHeat(
+    heat: CBTUnitHeatState,
+    pendingOverride: number | undefined,
+    pendingOffset?: number,
+): CBTUnitHeatState {
     return Object.freeze({
         current: heat.current,
         previous: heat.previous,
         ...(pendingOverride === undefined ? {} : { pendingOverride }),
+        ...(pendingOverride === undefined || pendingOffset === undefined ? {} : { pendingOffset }),
         heatsinksOff: heat.heatsinksOff,
     });
+}
+
+/**
+ * The player sets NEXT. Given the `calculated` heat (heat resolution on), NEXT keeps its offset from it; without, NEXT
+ * is the player's own number.
+ */
+export function withNextHeat(heat: CBTUnitHeatState, next: number | undefined, calculated?: number): CBTUnitHeatState {
+    return withPendingHeat(heat, next, next === undefined || calculated === undefined ? undefined : next - calculated);
+}
+
+/**
+ * NEXT moved to keep the player's offset from the `calculated` heat, within the heat bound: heat that arrives after they
+ * set it moves it too. A NEXT set as the player's own number (no offset) stays where it is.
+ */
+export function followCalculatedHeat(heat: CBTUnitHeatState, calculated: number): CBTUnitHeatState {
+    if (heat.pendingOverride === undefined || heat.pendingOffset === undefined) return heat;
+    const next = Math.min(MAX_HEAT_VALUE, Math.max(0, calculated + heat.pendingOffset));
+    return next === heat.pendingOverride ? heat : withPendingHeat(heat, next, heat.pendingOffset);
+}
+
+/**
+ * How far a NEXT that follows the `calculated` heat stands from it: the offset the player keeps, unless the heat
+ * bounds hold NEXT; then the distance it still makes. Undefined when NEXT is not set or is the player's own number.
+ */
+export function nextHeatAdjustment(
+    heat: Readonly<{ pendingOverride?: number; pendingOffset?: number }>,
+    calculated: number,
+): number | undefined {
+    const next = heat.pendingOverride;
+    if (next === undefined || heat.pendingOffset === undefined) return undefined;
+    return next > 0 && next < MAX_HEAT_VALUE ? heat.pendingOffset : next - calculated;
+}
+
+/** NEXT stands where it stood and follows the calculation as it did. */
+export function sameNextHeat(a: CBTUnitHeatState, b: CBTUnitHeatState): boolean {
+    return a.pendingOverride === b.pendingOverride && a.pendingOffset === b.pendingOffset;
 }
 
 /** A manual edit settles a new value; re-entering the current value only drops a pending arrow. */
@@ -114,14 +172,6 @@ export interface CBTUnitPendingCombatState {
     readonly componentStatus: ReadonlyMap<ComponentId, EquipmentStatus>;
     /** Outside heat the phase's attacks add once their damage commits; absent when none. */
     readonly outsideHeat?: number;
-}
-
-/** Outside heat this turn as play reads it: what is committed plus what pending attacks add. */
-export function outsideHeatThisTurn(state: Readonly<{
-    turn: Readonly<{ outsideHeat?: number }>;
-    pendingCombat: CBTUnitPendingCombatState;
-}>): number {
-    return (state.turn.outsideHeat ?? 0) + (state.pendingCombat.outsideHeat ?? 0);
 }
 
 type PendingCounterField<P> = { [K in keyof P]-?: P[K] extends ReadonlyMap<unknown, number> ? K : never }[keyof P];
@@ -144,12 +194,45 @@ export function withPendingCombatDelta<
     };
 }
 
-/** Boundary facts shared by every CBT family runtime. */
-export interface CBTTurnRuntimeState {
+const MAX_FIRED_WEAPONS = 1_024;
+
+/**
+ * The turn's fired weapons with `weaponIds` added: a weapon fires once a turn, so firing in steps (select some, fire,
+ * select others, fire) never fires one twice. Unique ids in ascending order; undefined when none fired.
+ */
+export function withFiredWeapons(
+    fired: readonly ComponentId[] | undefined,
+    weaponIds: Iterable<ComponentId>,
+): readonly ComponentId[] | undefined {
+    const all = [...new Set([...fired ?? [], ...weaponIds])].sort(compareText);
+    return all.length === 0 ? undefined : Object.freeze(all);
+}
+
+/** Reads a turn's fired weapons, live or saved: a non-empty list of unique canonical ids in ascending order. */
+export function readFiredWeapons(
+    value: unknown,
+    path: string,
+    fail: (message: string, path: string) => never,
+): readonly ComponentId[] {
+    if (!Array.isArray(value) || value.length === 0 || value.length > MAX_FIRED_WEAPONS) {
+        return fail(`must list 1 to ${MAX_FIRED_WEAPONS} fired weapons`, path);
+    }
+    const ids = value.map((id: unknown, index) => typeof id === 'string' && id.length > 0 && id.length <= 512
+        && id.trim() === id ? id as ComponentId : fail('must be a canonical component id', `${path}[${index}]`));
+    if (ids.some((id, index) => index > 0 && compareText(ids[index - 1], id) >= 0)) {
+        return fail('must contain unique sorted component ids', path);
+    }
+    return Object.freeze(ids);
+}
+
+/** The turn facts every family shares, the heat ledger APPLY HEAT keeps (`TurnHeatLedger`) among them. */
+export interface CBTTurnRuntimeState extends TurnHeatLedger {
     readonly turnCounter: number;
     readonly airborne: boolean | null;
     readonly cover: UnitCover | null;
     readonly weaponsHeat: number;
+    /** The weapons that fired this turn, each once (`withFiredWeapons`); absent when none. */
+    readonly firedWeapons?: readonly ComponentId[];
     /** Heat from outside sources such as inferno missiles, settled with this turn's heat; absent at 0. */
     readonly outsideHeat?: number;
     readonly spotting: boolean;
@@ -172,12 +255,14 @@ export function serializeSharedTurnFacts(turn: CBTTurnRuntimeState) {
         ...(turn.airborne === null ? {} : { airborne: turn.airborne }),
         ...(turn.cover === null ? {} : { cover: serializeUnitCover(turn.cover) }),
         ...(turn.weaponsHeat === 0 ? {} : { weaponsHeat: turn.weaponsHeat }),
+        ...(turn.firedWeapons === undefined ? {} : { firedWeapons: turn.firedWeapons }),
         ...(turn.outsideHeat ? { outsideHeat: turn.outsideHeat } : {}),
         ...(turn.spotting ? { spotting: true as const } : {}),
         ...(turn.phaseStateChanged ? { phaseStateChanged: true as const } : {}),
         ...(turn.endTurnCheckpoint === undefined ? {} : { endTurnCheckpoint: turn.endTurnCheckpoint }),
         ...(turn.turnStep === 0 ? {} : { turnStep: turn.turnStep }),
         ...(turn.joinedStep === undefined ? {} : { joinedStep: turn.joinedStep }),
+        ...serializeTurnHeatLedger(turn),
     };
 }
 
@@ -249,6 +334,8 @@ export interface CBTUnitCommandResult<State extends CBTUnitRuntimeState | null> 
  */
 export interface CBTUnitQueryPort {
     readonly stateRevision: number;
+    /** The optional rules bound into this unit when it was created or last rebound. */
+    boundRules(): BoundOptionalRules;
     /** One authoritative dirty check for the current phase. */
     hasPendingPhaseChanges(): boolean;
     hasPendingCombat(): boolean;

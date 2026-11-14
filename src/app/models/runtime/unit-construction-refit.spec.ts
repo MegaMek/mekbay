@@ -20,7 +20,7 @@ import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixt
 const CUSTOM = asUnitUuid('019f6767-0dcb-7bb8-992f-000000000045');
 const CORE = asUnitUuid('019f6767-0dcb-7bb8-992f-000000000044');
 const SCENARIO = { id: 'construction-test', ruleset: 'core-2026' as const };
-const OPTIONS = { initializerRevision: 1, profileId: 'pristine', deployment: { id: 'test' }, scenario: SCENARIO };
+const OPTIONS = { profileId: 'pristine', deployment: { id: 'test' }, scenario: SCENARIO };
 
 function detach(entity: BaseEntity): BaseEntity {
     const format = entity instanceof MekEntity ? 'mtf' : 'blk';

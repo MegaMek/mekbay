@@ -24,7 +24,6 @@ mekUnitConditionControls,
 import type { EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
 import { resolveMekHitLocation } from '../../../models/runtime/mek-fall-rules';
 import type { MekRecordSheetSnapshot } from '../../../models/runtime/mek-record-sheet';
-import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from '../../../models/runtime/mek-movement-psr-v2';
 
 import { hasMekRuntime } from '../../../models/cbt-unit-snapshot';
 import {
@@ -39,7 +38,7 @@ MekCriticalChanceResult,
 MekCriticalMutationTarget,
 } from '../../../models/runtime/mek-critical-hit-v2';
 import { DialogsService } from '../../../services/dialogs.service';
-import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
+import { OptionsService } from '../../../services/options.service';
 import { ToastService } from '../../../services/toast.service';
 import { recordSheetAmmoName } from '../../../utils/record-sheet-ammo.util';
 import { clusterTableForMekEntity,type MekHitArc } from '../../../utils/record-sheet-reference-table';
@@ -60,6 +59,7 @@ recordSheetDamagePickerRange,
 type MekRecordSheetCommandSource,
 } from '../mek-record-sheet-interaction.util';
 import { type UnitStateDropdownChoice } from '../unit-state-dropdown.component';
+import { nextHeat } from '../../../models/runtime/cbt-unit-runtime';
 import { PageViewerOverlayService, type RecordSheetRandomHit } from './page-viewer-overlay.service';
 
 const CRITICAL_CHANCE_ACTION = 'critical-chance';
@@ -138,6 +138,12 @@ export class PageViewerMekInteractionService {
                 void this.overlays.selectInventory(member, interaction, event, context =>
                     this.openEquipmentChoices(member, interaction.componentIds, event, context));
                 return;
+            case 'inventory-aim':
+                void this.overlays.aimInventory(member, interaction);
+                return;
+            case 'show-swarmer':
+                this.overlays.showSwarmer(member);
+                return;
             case 'action-selection':
                 void this.selectAction(member, interaction, event);
                 return;
@@ -165,7 +171,7 @@ export class PageViewerMekInteractionService {
         const snapshot = this.currentSnapshot(member, interaction.context);
         const mode = interaction.mode;
         if (!snapshot || mode === 'VTOL') return;
-        const turn = member.force.getMekTurnPanelSnapshot(member.id, snapshot.heatPolicy);
+        const turn = member.force.getMekTurnPanelSnapshot(member.id);
         if (!turn) return;
         // An AirMech's movement also declares whether it stays on the ground or takes to the air.
         const airborne = interaction.airborne;
@@ -187,7 +193,6 @@ export class PageViewerMekInteractionService {
         await this.dispatchCommand(member, {
             type: 'declare-mek-movement',
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode, distance: option.minimumMp,
                 boosterComponentIds: mode === 'run' || mode === 'sprint' ? turn.activeBoosterComponentIds : [],
             },
@@ -536,11 +541,11 @@ export class PageViewerMekInteractionService {
         member: CBTMekForceMember,
         interaction: Extract<RecordSheetInteraction, { readonly kind: 'heat-overflow' }>,
     ): Promise<void> {
-        const unit = this.currentMekUnit(member, interaction.context);
-        if (!unit) return;
-        const heat = unit.query.heatState();
-        const heatValue = await this.overlays.promptHeat(this.options.options().trackPhaseAndTurn
-            ? heat.pendingOverride ?? heat.current
+        // The sheet's heat, with NEXT where it stands.
+        const heat = this.currentSnapshot(member, interaction.context)?.heat;
+        if (!heat) return;
+        const heatValue = await this.overlays.promptWholeNumber('Heat', this.options.options().trackPhaseAndTurn
+            ? nextHeat(heat)
             : heat.current);
         if (heatValue === null || !this.currentMekUnit(member, interaction.context)) return;
         await this.dispatchDirect(member, { kind: 'heat', heat: heatValue, context: interaction.context });
@@ -1009,7 +1014,6 @@ export class PageViewerMekInteractionService {
         return Object.freeze({
             query: unit.query,
             heatSinkCount: unit.entity.totalHeatSinks(),
-            heatPolicy: heatAutomationPolicy(this.options),
         });
     }
 

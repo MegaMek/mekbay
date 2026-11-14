@@ -52,9 +52,14 @@ export class InfantryEntity extends InfantryBaseEntity {
   }
   override readonly entityType: EntityType = 'Infantry';
 
+  /** Troopers riding vehicles, who lose double to attacks by non-infantry weapons (TW p. 217). */
+  isMechanized(): boolean {
+    return this.motiveType() !== 'Beast' && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType());
+  }
+
   override unitSubtype(): UnitSubtype {
     const qualifier =
-      this.motiveType() !== 'Beast' && MECHANIZED_INFANTRY_MOTIVE_TYPES.has(this.motiveType())
+      this.isMechanized()
         ? 'Mechanized '
         : this.motiveType() === 'Motorized'
           ? 'Motorized '

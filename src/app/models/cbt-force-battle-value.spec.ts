@@ -21,7 +21,7 @@ describe('CBT force battle value authority', () => {
       const fixtures = [createDirectElectronicSuiteRuntimeFixture(ruleset), createDirectElectronicSuiteRuntimeFixture(ruleset)];
       const units = await Promise.all(fixtures.map((fixture, index) => createMekUnit({
         uuid: fixture.identity, instanceId: `manual-network-${index}`, crewSkills: { gunnery: 2, piloting: 3 },
-      }, fixture.entity, fixture.identity, { initializerRevision: 1, profileId: 'pristine',
+      }, fixture.entity, fixture.identity, { profileId: 'pristine',
         deployment: { id: 'default' }, scenario: { id: 'test', ruleset } })));
       const input = { units: units.map((unit, index) => ({ unit, baseBattleValue: index === 0 ? 1234 : 500 })),
         scenario: { id: 'test', ruleset }, networks: [], isC3EndpointIntact: () => true };
@@ -42,7 +42,7 @@ describe('CBT force battle value authority', () => {
       fixture.entity.manualBV.set(432);
       const unit = { instanceId: 'manual-vacant', getUnit: () => fixture.entity,
         query: () => fixture.instance.query(),
-        getCrewAssignment: () => ({ schemaVersion: 1, positions: [] }),
+        getCrewAssignment: () => ({ positions: [] }),
       } as unknown as CBTUnit;
       expect(calculateCBTForceBattleValues({ units: [{ unit, baseBattleValue: null }],
         scenario: { id: 'test', ruleset }, networks: [], isC3EndpointIntact: () => false,
@@ -78,7 +78,7 @@ describe('CBT force battle value authority', () => {
         const uuid = asUnitUuid(`019f6767-0dcb-7bb8-992f-aef08202f5e${index}`);
         entity.uuid.set(uuid);
         return createNonMekUnit(entity, { instanceId: `unit:tag-${index}`, uuid, deployment: { id: 'default' },
-          scenario, initialStateProfileId: 'pristine-non-mek-v1' });
+          scenario, initialStateProfileId: 'pristine-non-mek' });
       });
       return calculateCBTForceBattleValues({
         units: units.map(unit => ({ unit, baseBattleValue: 100 })),
@@ -124,7 +124,7 @@ describe('CBT force battle value authority', () => {
     fighter.uuid.set(uuid);
     const scenario = { id: 'test', ruleset: 'core-2026' } as const;
     const unit = createNonMekUnit(fighter, { instanceId: 'unit:bomber', uuid, deployment: { id: 'default' },
-      scenario, initialStateProfileId: 'pristine-non-mek-v1' });
+      scenario, initialStateProfileId: 'pristine-non-mek' });
     unit.dispatch({ type: 'configure-bombs', loads: [
       { section: 'external', bombId: tagPod.id, count: 1 },
       { section: 'external', bombId: homing.id, count: 1 },
@@ -149,7 +149,6 @@ describe('CBT force battle value authority', () => {
       query: () => fixture.instance.query(),
       captureRuntime: () => fixture.instance.captureRuntime(),
       getCrewAssignment: () => ({
-        schemaVersion: 1,
         positions: [{ positionId, name: '', gunnery: 4, piloting: 2 }],
       }),
     } as unknown as CBTUnit;
@@ -180,7 +179,6 @@ describe('CBT force battle value authority', () => {
       query: () => fixture.instance.query(),
       captureRuntime: () => fixture.instance.captureRuntime(),
       getCrewAssignment: () => ({
-        schemaVersion: 1,
         positions: [{ positionId, name: '', gunnery: 4, piloting: 4 }],
       }),
     } as unknown as CBTUnit;
@@ -208,7 +206,6 @@ describe('CBT force battle value authority', () => {
         instanceId,
         crewSkills: { gunnery: 4, piloting: 4 },
       }, fixture.entity, fixture.identity, {
-        initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'default' },
         scenario: { id: 'test', ruleset: 'core-2026' },

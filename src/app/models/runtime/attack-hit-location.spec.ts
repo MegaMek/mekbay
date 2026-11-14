@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
-import { TestQuadMekEntity, TestTripodMekEntity } from '../entity/testing/test-entities';
+import { TestQuadMekEntity, TestTankEntity, TestTripodMekEntity } from '../entity/testing/test-entities';
+import type { NonMekRecordSheetSnapshot } from './non-mek-record-sheet';
 import type { CBTForceMember } from '../force-member.model';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
-import { readAttackHitLocation } from './attack-hit-location';
+import { aimedShotLocations, readAttackHitLocation, readInfernoMissiles } from './attack-hit-location';
 import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('readAttackHitLocation', () => {
@@ -18,11 +19,76 @@ describe('readAttackHitLocation', () => {
         expect(readAttackHitLocation(mek, 'rear', [3, 4], 1)?.label).toBe('Center Torso (rear)');
     });
 
+    it('reads inferno missile rolls unless the attack resolved them with no hit location', () => {
+        const groups = [{ location: [3, 3] as const, aux: 1 }];
+        expect(readInfernoMissiles(mek, 'front', [{ inferno: true, groups }])).toEqual([
+            jasmine.objectContaining({ location: jasmine.objectContaining({ location: 'RT' }) }),
+        ]);
+        expect(readInfernoMissiles(mek, 'front', [{ inferno: true, noHitLocation: true, groups }])).toEqual([{ location: null }]);
+    });
+
     it('sends leg hits on a Mek in partial cover into the cover', () => {
         // Front table, 5: right leg.
         expect(readAttackHitLocation(mek, 'front', [2, 3], 1)).toEqual(jasmine.objectContaining({ kind: 'mek', location: 'RL' }));
         expect(readAttackHitLocation(mek, 'front', [2, 3], 1, true)).toEqual({ kind: 'miss', label: 'Cover' });
         expect(readAttackHitLocation(mek, 'front', [3, 3], 1, true)).toEqual(jasmine.objectContaining({ location: 'RT' }));
+    });
+
+    it('strikes the location an aimed shot names when its roll says so, and reads the table otherwise', () => {
+        // The table roll alone is the right torso.
+        const read = (roll: readonly number[], arc: MekHitArc = 'front', location = 'LA') =>
+            readAttackHitLocation(mek, arc, [3, 3], 1, false, 'standard', { location, roll });
+        // Total Warfare: 6, 7 or 8 on 2D6. Core: 4+ on 1D6.
+        expect(read([3, 4])).toEqual(jasmine.objectContaining({ location: 'LA', label: 'Left Arm', throughArmorCritical: false }));
+        expect(read([4, 5])).toEqual(jasmine.objectContaining({ location: 'RT' }));
+        expect(read([4])).toEqual(jasmine.objectContaining({ location: 'LA' }));
+        expect(read([3])).toEqual(jasmine.objectContaining({ location: 'RT' }));
+        // From behind, an aimed torso takes the hit on its rear armor.
+        expect(read([6], 'rear', 'CT')).toEqual(jasmine.objectContaining({ location: 'CT', rear: true, label: 'Center Torso (rear)' }));
+        // A location the unit does not have is read on the table.
+        expect(read([6], 'front', 'FLL')).toEqual(jasmine.objectContaining({ location: 'RT' }));
+    });
+
+    it('rerolls a leg result of an aimed shot at a Mek in partial cover', () => {
+        const read = (rerolls: readonly (readonly [number, number])[]) =>
+            readAttackHitLocation(mek, 'front', [2, 3], 1, false, 'standard', { location: 'LA', roll: [1], rerolls });
+        // 5 and 9 are the legs; 6 is the right torso.
+        expect(read([[4, 5], [3, 3], [1, 1]])).toEqual(jasmine.objectContaining({ location: 'RT', label: 'Right Torso (leg rerolled)' }));
+        // Every roll made ahead a leg: the shot strikes the location it named.
+        expect(read([[4, 5], [2, 3]])).toEqual(jasmine.objectContaining({ location: 'LA' }));
+    });
+
+    it('lets an aimed shot name the vehicle locations its direction can strike, without their table effects', () => {
+        const entity = new TestTankEntity();
+        entity.hasTurret.set(true);
+        const snapshot = { locations: entity.damageLocations().map((location, index) => ({
+            ...location, locationId: `location:${index}`, sheetCode: location.sheetCode, previewRemainingInternal: 3,
+            armor: [{ face: 'front', previewRemaining: 10 + index }],
+        })) } as unknown as NonMekRecordSheetSnapshot;
+        const tank = { entity, nonMekRecordSheetSnapshot: () => snapshot } as unknown as CBTForceMember;
+
+        expect(aimedShotLocations(tank, 'front').map(location => location.code).sort()).toEqual(['FR', 'LS', 'RS', 'TU']);
+        expect(aimedShotLocations(tank, 'left').map(location => location.code).sort()).toEqual(['FR', 'LS', 'RR', 'TU']);
+        expect(aimedShotLocations(tank, 'rear').map(location => location.code).sort()).toEqual(['LS', 'RR', 'RS', 'TU']);
+        // Roll 3 on the front table is a front hit with motive damage; the aimed turret hit carries none.
+        expect(readAttackHitLocation(tank, 'front', [1, 2], 1, false, 'standard', { location: 'TU', roll: [3, 4] }))
+            .toEqual(jasmine.objectContaining({ kind: 'non-mek', label: 'TU', effects: [] }));
+        // The far side cannot be named: the shot is read on the table.
+        expect(readAttackHitLocation(tank, 'front', [1, 2], 1, false, 'standard', { location: 'RR', roll: [3, 4] }))
+            .toEqual(jasmine.objectContaining({ kind: 'non-mek', label: 'FR · motive' }));
+    });
+
+    it('reads swarm damage on the Swarm Attacks Hit Location Table, whatever side the attack is recorded from', () => {
+        // 4: rear right torso on a biped; rear center torso on a four-legged Mek.
+        for (const arc of ['front', 'left'] as const) {
+            expect(readAttackHitLocation(mek, arc, [2, 2], 1, false, 'swarm')).toEqual(jasmine.objectContaining({
+                location: 'RT', rear: true, label: 'Right Torso (rear)',
+            }));
+        }
+        const quad = { entity: new TestQuadMekEntity() } as unknown as CBTForceMember;
+        expect(readAttackHitLocation(quad, 'front', [2, 2], 1, false, 'swarm')).toEqual(jasmine.objectContaining({
+            location: 'CT', rear: true,
+        }));
     });
 
     it('reads punch and kick rolls on the 1D6 tables of the ruleset', () => {

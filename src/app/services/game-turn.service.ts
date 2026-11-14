@@ -165,16 +165,12 @@ export class GameTurnService {
         this.busyUnits.update(units => new Set([...units, member]));
         try {
             if (unit.step.kind === 'heat') {
-                const result = await member.force.dispatchUnitCommand(member.id, {
+                // End Turn always settles heat; it stays on this step only when the player cancels its review.
+                await member.force.dispatchUnitCommand(member.id, {
                     type: 'end-turn',
                     policy: heatAutomationPolicy(this.options),
                 });
-                const ended = this.positionOf(member).turn > unit.position.turn;
-                // An accepted End Turn that does not advance is blocked by the unit's heat, not cancelled.
-                if (result.accepted && !ended) {
-                    this.toast.showToast(`The turn did not end: resolve the unit's heat on its sheet`, 'error');
-                }
-                return ended;
+                return this.positionOf(member).turn > unit.position.turn;
             }
             if (unit.step.endsPhase) {
                 const result = await member.force.dispatchUnitCommand(member.id, { type: 'end-phase' });
@@ -211,16 +207,7 @@ export class GameTurnService {
             try {
                 const instanceIds = members.map(member => member.id);
                 if (step.kind === 'heat') {
-                    const turns = new Map(members.map(member => [member.id, this.positionOf(member).turn]));
-                    const result = await force.endTurnForAllUnits(instanceIds);
-                    // As for one unit: an accepted End Turn that does not advance is blocked by heat, not cancelled.
-                    const blocked = result.results.filter(row => row.accepted && turns.has(row.instanceId)
-                        && this.positionOf(members.find(member => member.id === row.instanceId)!).turn
-                            === turns.get(row.instanceId)).length;
-                    if (blocked > 0) {
-                        this.toast.showToast(`${blocked} unit${blocked === 1 ? '' : 's'} did not end the turn: `
-                            + 'resolve their heat on their sheets', 'error');
-                    }
+                    await force.endTurnForAllUnits(instanceIds);
                     continue;
                 }
                 await force.endPhaseForAllUnits(instanceIds);

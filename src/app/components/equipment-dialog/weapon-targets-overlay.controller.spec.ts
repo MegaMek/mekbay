@@ -12,9 +12,6 @@ import {
     type EncounterTarget,
     type TargetRegistryCommand,
 } from '../../models/runtime/encounter-runtime';
-import {
-    ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
-} from '../../models/runtime/attacker-targeting-state';
 import { InventoryControlOpforService } from '../../services/inventory-control-opfor.service';
 import { LoggerService } from '../../services/logger.service';
 import { ToastService } from '../../services/toast.service';
@@ -51,7 +48,6 @@ function createHarness(readOnly = false) {
         stateRevision: 2,
         registryRevision: 4,
         state: {
-            schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
             components: new Map(),
             actions: new Map(),
             targets: new Map(),
@@ -357,7 +353,6 @@ describe('WeaponTargetsOverlayController target-registry routing', () => {
             stateRevision: 12,
             registryRevision: 4,
             state: {
-                schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
                 components: new Map(),
                 targets: new Map([[asEncounterTargetId('A'), {
                     distance: 8,

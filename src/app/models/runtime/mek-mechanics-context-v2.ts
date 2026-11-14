@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { MekConversionMode } from '../mek-conversion-mode';
+import type { UnitWaterState } from '../unit-cover.model';
 import { compareText } from '../../utils/string.util';
 import type {
     MekMechanicsProfile,
     MekMechanicsProfileBlocker,
     MekMechanicsScenarioBlocker,
 } from './mek-mechanics-profile';
-import type { BoundOptionalRules } from './bound-optional-rules';
+import { BOUND_OPTIONAL_RULE_DEFAULTS, type BoundOptionalRules } from './bound-optional-rules';
 import {
     compileMekMechanicsProfile,
     evaluateMekMechanicsScenarioSupport,
@@ -30,6 +31,7 @@ import {
     projectMekMovementPsrV2,
     projectMekPilotChecksV2,
     reconcileMekPilotChecksV2,
+    raiseMekJumpChecksV2,
     dismissPendingMekPilotChecksV2,
     dropMekPilotChecksUnraisedByRulesV2,
     resolveMekPilotCheckV2,
@@ -149,9 +151,10 @@ type MekMechanicsContextBindingV2 =
 
 const CONTEXT_BINDINGS = new WeakMap<object, MekMechanicsContextBindingV2>();
 
-export function mekHotLoadedAmmoEnabled(context: MekMechanicsContextV2): boolean {
+/** The optional rules this Mek's mechanics are bound to; the defaults when its mechanics are unsupported. */
+export function mekBoundRules(context: MekMechanicsContextV2): BoundOptionalRules {
     const binding = CONTEXT_BINDINGS.get(context);
-    return binding?.kind === 'supported' && binding.rules.hotLoadedAmmo;
+    return binding?.kind === 'supported' ? binding.rules : BOUND_OPTIONAL_RULE_DEFAULTS;
 }
 
 /** Bind profile and scenario compilation outcomes without exposing either authority. */
@@ -325,7 +328,9 @@ export interface MekMovementRuntimeContextInputV2 {
     readonly conversionMode?: MekConversionMode;
     readonly crewAssignment: CrewAssignment;
     crewState(positionId: CrewPositionId): CrewMemberRuntimeState;
-    readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
+    readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected' | 'swarmed'>;
+    /** The depth of the water the 'Mech stands in; 0 or absent out of water. */
+    readonly waterDepth?: number;
     readonly destruction: MekDestructionFactsV2;
     componentAvailable(componentId: ComponentId): boolean;
     componentDisabled(componentId: ComponentId): boolean;
@@ -350,6 +355,7 @@ export interface MekMovementRuntimeContextInputV2 {
 export interface MekPhysicalAttackRuntimeContextInputV2 extends MekMovementRuntimeContextInputV2 {
     readonly movementMode: import('./mek-movement-psr-v2').MekMovementModeV2 | null;
     readonly movementDistance: number;
+    readonly water: UnitWaterState;
     componentMode(componentId: ComponentId): string | undefined;
 }
 
@@ -551,6 +557,7 @@ export function projectMekPhysicalAttacksContextV2(
         currentHeat: input.currentHeat,
         movementMode: input.movementMode,
         movementDistance: input.movementDistance,
+        water: input.water,
         componentAvailable: input.componentAvailable,
         componentDestroyed: input.componentDestroyed,
         componentMode: input.componentMode,
@@ -719,6 +726,21 @@ export function reconcileMekPilotChecksContextV2(
         : reconcileMekPilotChecksV2(resolved.profile, resolved.facts, state);
 }
 
+export function raiseMekJumpChecksContextV2(
+    context: MekMechanicsContextV2,
+    entity: MekEntity,
+    input: MekMovementRuntimeContextInputV2,
+    state: MekMovementPsrStateV2,
+    producingRevision: number,
+    immediate: boolean,
+    swarmerMagneticClaws = false,
+): MekMovementPsrStateV2 | Extract<MekMovementPsrProjectionResultV2, { readonly kind: 'unsupported' }> {
+    const resolved = movementRuntimeFacts(context, entity, input);
+    return resolved.kind === 'unsupported'
+        ? resolved
+        : raiseMekJumpChecksV2(resolved.facts, state, producingRevision, immediate, swarmerMagneticClaws);
+}
+
 export function appendMekPhysicalAttackChecksContextV2(
     context: MekMechanicsContextV2,
     entity: MekEntity,
@@ -787,6 +809,7 @@ function movementRuntimeFacts(
                 && occurrenceZero.healthy
                 && occurrenceZero.seatAvailable,
             conditions: input.conditions,
+            ...(input.waterDepth === undefined ? {} : { waterDepth: input.waterDepth }),
             destruction: input.destruction,
             componentAvailable: input.componentAvailable,
             componentDisabled: input.componentDisabled,

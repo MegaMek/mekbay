@@ -24,6 +24,8 @@ export interface FallingDamageDialogData {
     /** Every damage group strikes the rear (a missed death from above); facing is still rolled. */
     readonly alwaysRear?: boolean;
     readonly waterDepth: number;
+    /** The 'Mech falls into the water from above its surface (`resolveMekFallDamage`). */
+    readonly aboveSurface?: boolean;
     readonly hitLocationTable: MekHitLocationTable;
     readonly armorNote?: string;
 }
@@ -72,6 +74,7 @@ export class FallingDamageDialogComponent {
         this.data.tons,
         this.data.levelsFallen,
         this.data.waterDepth,
+        this.data.aboveSurface,
     );
     readonly totalDamage = this.damage.totalDamage;
     readonly damageGroups = resolvedMekFallDamageGroups(this.damage);
@@ -175,6 +178,7 @@ export function resolveAutomaticFallingDamage(
         data.tons,
         data.levelsFallen,
         data.waterDepth,
+        data.aboveSurface,
     );
     const orientation = resolveMekFallOrientation(data.ruleset, randomD6(random), data.alwaysRear);
     const groups = resolvedMekFallDamageGroups(damage).map(group => {

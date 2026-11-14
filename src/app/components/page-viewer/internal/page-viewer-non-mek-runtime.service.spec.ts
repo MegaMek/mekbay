@@ -98,7 +98,7 @@ describe('PageViewerNonMekRuntimeService sheet interactivity', () => {
             entity.uuid.set(uuid);
             const unit = createNonMekUnit(entity, { instanceId: 'unit', uuid,
                 scenario: { id: 'test' }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
-            const profile = { schemaVersion: 1 as const, positions: unit.getCrewAssignment().positions.map(row => ({
+            const profile = { positions: unit.getCrewAssignment().positions.map(row => ({
                 ...row, gunnery: 2, piloting: 6, aeroGunnery: 5, aeroPiloting: 3,
             })) };
             const snapshot = { ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), queryNonMekRuntime({ ...unit.mechanics(), crewAssignment: profile }, unit.snapshot()), 0, 0),
@@ -338,6 +338,43 @@ describe('PageViewerNonMekRuntimeService async heat edits', () => {
         closed.next(40);
         await new Promise(resolve => setTimeout(resolve));
         expect(dispatch).not.toHaveBeenCalled();
+    });
+});
+
+describe('PageViewerNonMekRuntimeService Elevation picker', () => {
+    it('lists Elevations 0 to 20, and its last choice asks for a higher one', async () => {
+        const closed = new Subject<number>();
+        const dialogs = { createDialog: jasmine.createSpy('createDialog').and.returnValue({ closed }) };
+        const picker = jasmine.createSpy('createChoicePicker').and.returnValue({ destroy: () => {} });
+        const dispatch = jasmine.createSpy('dispatchUnitCommand').and.resolveTo({ accepted: true, changed: true });
+        const context = { owner: {}, state: createPristineNonMekUnitState(new TestVtolEntity()) };
+        TestBed.configureTestingModule({ providers: [
+            PageViewerNonMekRuntimeService,
+            { provide: DialogsService, useValue: dialogs },
+            { provide: PickerFactoryService, useValue: { createChoicePicker: picker } },
+            { provide: OptionsService, useValue: { options: () => ({}) } },
+            { provide: PageViewerZoomPanService, useValue: { cancelGesture: () => {} } },
+            PageViewerOverlayService,
+            ...[ForcePilotEditorService, LoggerService, OverlayManagerService, ToastService, UnitNameService]
+                .map(provide => ({ provide, useValue: {} })),
+        ] });
+        const member = {
+            id: 'vtol-1',
+            force: { dispatchUnitCommand: dispatch },
+            nonMekRecordSheetSnapshot: () => ({
+                editContext: context, elevation: 3, elevationRecord: [{ turn: 1, value: 3 }], currentTurn: 1,
+            }),
+        } as unknown as CBTForceMember;
+        TestBed.inject(PageViewerNonMekRuntimeService).handle(member, { kind: 'elevation', context }, new MouseEvent('click'));
+
+        const config = picker.calls.mostRecent().args[0] as ChoicePickerConfig;
+        expect(config.values.map(choice => choice.label))
+            .toEqual([...Array.from({ length: 21 }, (_, value) => String(value)), '...']);
+        config.onPick(config.values.at(-1)!);
+        expect(dialogs.createDialog).toHaveBeenCalledTimes(1);
+        closed.next(35);
+        await new Promise(resolve => setTimeout(resolve));
+        expect(dispatch).toHaveBeenCalledOnceWith('vtol-1', { type: 'set-elevation', elevation: 35 }, context);
     });
 });
 

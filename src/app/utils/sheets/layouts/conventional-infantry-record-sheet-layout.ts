@@ -31,10 +31,12 @@ import {
   appendBattleValue,
   appendLegacyIdentityAnchors,
   drawClusterHitsReference,
+  drawElevationTracker,
   drawGeneratedFooter,
   formatNumber,
   scaleCompactBox,
   scalePageBox,
+  setInventoryComponentIds,
   svgElement,
 } from '../record-sheet-svg-rendering';
 import { appendEmbeddedSvgDefinition, appendMastheadArt } from '../record-sheet-embedded-art';
@@ -154,8 +156,14 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
     const commander = addText(group, '', x(46.03), y(29.777), { size: font(7.2), maxWidth: x(68.047) });
     commander.id = 'pilotName0';
     addLine(group, x(46.03), y(30.777), x(114.077), y(30.777), '#111', 0.735 * fontScale);
+    // TO:AuE's infantry record sheet names the one-shot weapon every trooper carries (TO:AuE p. 116).
+    const disposable = entity.disposableWeapon();
+    const disposableMount = disposable && entity.equipment().find((mount) => mount.platoonWeapon === 'disposable');
     drawInfantryNotes(
       group,
+      disposable && disposableMount
+        ? { text: `Disposable Weapon: ${disposable.name}.`, componentIds: [disposableMount.mountId] }
+        : null,
       infantryNotes(entity),
       { x: x(3.46), y: y(100.441), width: x(108), height: y(64) },
       fontScale,
@@ -182,6 +190,8 @@ export class ConventionalInfantryRecordSheetLayout extends CompactRecordSheetLay
       addText(group, 'Type:', x(429), y(baseline), { size: font(7.2), weight: 700 });
       addText(group, movement.label, x(448.523), y(baseline), { size: font(7.2), maxWidth: x(120) });
     });
+    // VTOL infantry's Elevation tracker, beside its movement type under the trooper box, clear of the frame's corner.
+    drawElevationTracker(group, entity, x(538), y(143), { width: 36, height: 20 });
     appendLegacyIdentityAnchors(group, entity, frameBox, request.ruleset);
   }
 }
@@ -312,9 +322,14 @@ function addInfantryReferenceText(
   addText(parent, value, x, y, { size: 5.7, weight: weight ? 700 : undefined, anchor });
 }
 
+/**
+ * The notes, led by the disposable weapon on lines of its own: the live sheet strikes those through once the weapon
+ * is fired.
+ */
 function drawInfantryNotes(
   parent: SVGGElement,
-  value: string,
+  disposable: Readonly<{ text: string; componentIds: readonly string[] }> | null,
+  notes: string,
   box: Box,
   fontScale: number,
   verticalScale: number,
@@ -323,17 +338,28 @@ function drawInfantryNotes(
   group.setAttribute('class', 'infantry-notes');
   parent.appendChild(group);
   const probe = svgElement('text');
+  const wrap = (value: string): string[] =>
+    value === '' ? [] : wrapWords(value, box.width, (text) => measureSvgTextCanvas(probe, text));
+  const rest = notes || (disposable === null ? 'None' : '');
   let size = 7.2;
+  let lead: string[];
   let lines: string[];
   do {
     probe.setAttribute('font-size', formatNumber(size * fontScale));
-    lines = wrapWords(value, box.width, (text) => measureSvgTextCanvas(probe, text));
-    if (lines.length * (size + 1) * verticalScale <= box.height || size <= 5) break;
+    lead = wrap(disposable?.text ?? '');
+    lines = wrap(rest);
+    if ((lead.length + lines.length) * (size + 1) * verticalScale <= box.height || size <= 5) break;
     size = Math.max(5, size - 1);
   } while (true);
-  lines.forEach((line, index) =>
-    addText(group, line, box.x, box.y + index * (size + 1) * verticalScale, { size: size * fontScale }),
-  );
+  const lineY = (index: number): number => box.y + index * (size + 1) * verticalScale;
+  if (disposable !== null) {
+    const weapon = svgElement('g');
+    weapon.setAttribute('class', 'disposableWeapon');
+    setInventoryComponentIds(weapon, disposable.componentIds);
+    group.appendChild(weapon);
+    lead.forEach((line, index) => addText(weapon, line, box.x, lineY(index), { size: size * fontScale }));
+  }
+  lines.forEach((line, index) => addText(group, line, box.x, lineY(lead.length + index), { size: size * fontScale }));
 }
 
 // MegaMek PilotOptions display names for infantry augmentations missing from PILOT_ABILITIES.
@@ -373,9 +399,6 @@ function infantryNotes(entity: InfantryEntity): string {
   const secondary = entity.secondaryWeapon();
   const rangeWeapon = conventionalInfantryRangeWeapon(entity);
   const mount = entity.mount();
-  // TO:AuE's infantry record sheet names the one-shot weapon every trooper carries (TO:AuE p. 116).
-  const disposable = entity.disposableWeapon();
-  if (disposable) notes.push(`Disposable Weapon: ${disposable.name}.`);
   if (entity.effectiveSpaceSuit()) notes.push('Can operate in vacuum.');
   if (mount && mount.uwEndurance > 0) notes.push(`Must surface every ${mount.uwEndurance} turns.`);
   const burst =
@@ -419,7 +442,7 @@ function infantryNotes(entity: InfantryEntity): string {
     .augmentations()
     .map((id) => PILOT_ABILITIES.find((ability) => ability.id === id)?.name ?? INFANTRY_AUGMENTATION_NAMES[id] ?? id);
   if (augmentations.length > 0) notes.push(`Cybernetically enhanced: ${augmentations.join(', ')}`);
-  return notes.join(' ') || 'None';
+  return notes.join(' ');
 }
 
 function infantryMovementRows(entity: InfantryEntity): readonly { id: string; value: number; label: string }[] {

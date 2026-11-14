@@ -39,7 +39,7 @@ describe('conventional platoon attacks', () => {
         entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const, initializerRevision: 1, profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
     const registry: TargetRegistrySnapshot = Object.freeze({
@@ -62,7 +62,7 @@ describe('conventional platoon attacks', () => {
         const mountId = (role: string) =>
             asComponentId(entity.equipment().find(mount => mount.platoonWeapon === role)!.mountId);
         const panel = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET,
-            runtime.snapshot(), runtime.query(), registry);
+            runtime.snapshot(), runtime.query(), registry, {});
         const select = (role: string) => runtime.dispatchAttackerTargeting({
             type: 'edit-attacker-targeting',
             edit: {
@@ -169,8 +169,14 @@ describe('conventional platoon attacks', () => {
         // Enhanced Flamers deal both, so the platoon's flamer declares nothing.
         expect(projectNonMekEquipmentInteractions(unit, { optionalRules: { enhancedFlamers: true } }, false)
             .find(row => row.componentId === primary)).toBeUndefined();
+        const rowLabel = (optionalRules = {}) => projectNonMekEquipmentPanel(entity, unit.getIndex(),
+            TOTAL_WARFARE_RULESET, unit.snapshot(), unit.query(), registry, optionalRules)
+            .components.find(row => row.componentId === primary)!.label;
+        expect(rowLabel()).toBe('Rifle + Flamer');
         expect(selectNonMekEquipmentChoice(unit, choices[1]!.command, {}, {} as never)).toBeTrue();
         expect(unit.query().componentMode(primary)).toBe(FLAMER_HEAT_MODE);
+        expect(rowLabel()).toBe('Rifle + Flamer (Heat)');
+        expect(rowLabel({ enhancedFlamers: true })).toBe('Rifle + Flamer');
         // The log names the attack, not only its primary weapon.
         expect(historyTargetLabel(unit, 'component', primary)).toBe('Rifle + Flamer');
     });

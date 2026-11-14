@@ -70,7 +70,6 @@ describe('MekTurnSummaryRuntimeController', () => {
         const movementState = {
             ...createPristineMekMovementPsrStateV2(),
             movement: {
-                schemaVersion: 1,
                 mode: 'run',
                 distance: 2,
                 boosterComponentIds: [],
@@ -146,7 +145,6 @@ describe('MekTurnSummaryRuntimeController', () => {
             movementState: {
                 ...createPristineMekMovementPsrStateV2(),
                 movement: {
-                    schemaVersion: 1,
                     mode: 'run',
                     distance: 0,
                     boosterComponentIds: [],
@@ -231,7 +229,6 @@ describe('MekTurnSummaryRuntimeController', () => {
             movementState: {
                 ...createPristineMekMovementPsrStateV2(),
                 movement: {
-                    schemaVersion: 1,
                     mode: 'jump',
                     distance: 1,
                     boosterComponentIds: [],

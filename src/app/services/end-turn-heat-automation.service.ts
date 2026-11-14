@@ -15,7 +15,8 @@ import {
 import type { CBTUnitSnapshot } from '../models/cbt-unit-snapshot';
 import { getMekLocationLabel, type EntityMountedEquipment } from '../models/entity/types';
 import type { AeroHeatAutomationCheck } from '../models/runtime/aero-heat-automation-rules';
-import { selectedManualEndTurnHeat } from '../models/runtime/end-turn-heat-selection';
+import { nextHeatAdjustment } from '../models/runtime/cbt-unit-runtime';
+import { endTurnHeat, endTurnHeatStep } from '../models/runtime/end-turn-heat-selection';
 import { twoD6Total, type HeatAmmoExplosionCandidate } from '../models/runtime/mek-automation-rules';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
 import { buildHeatSummaryRows, type HeatSummarySource } from '../utils/heat-summary.util';
@@ -73,6 +74,7 @@ export interface EndTurnHeatRequest {
 /** A family's end-turn heat projection, in the terms of the heat summary. */
 export interface EndTurnHeatProjection {
     readonly current: number;
+    /** The calculated end-turn heat, ignoring the arrow: `endTurnHeat` weighs that. */
     readonly projected: number;
     readonly sources: readonly HeatSummarySource[];
     readonly dissipationBalance: number;
@@ -128,12 +130,17 @@ export class EndTurnHeatAutomationService {
         requests: readonly EndTurnHeatRequest[],
         interactive?: boolean,
     ): Promise<readonly Readonly<{ instanceId: string; prepared: PreparedEndTurnHeat<Staged> }>[] | null> {
+        const heatMode = this.options.cbtAutomationMode('heatAndDissipationResolution');
+        // The heat a unit ends the turn on, by the one rule: before review, the automation proposes its result.
+        // A unit with no heat projection resolves no heat: its effects stay at the current heat.
+        const heatFor = (snapshot: CBTUnitSnapshot, projection: EndTurnHeatProjection | null, accepted: boolean) =>
+            projection === null
+                ? snapshot.state.heat.current
+                : endTurnHeat(endTurnHeatStep(heatMode, accepted), snapshot.state.heat, projection.projected);
         const rows = requests.map(request => {
             const snapshot = adapter.snapshot(force, request.instanceId);
             const projection = snapshot ? adapter.projectHeat(snapshot) : null;
-            const staged = snapshot
-                ? adapter.stage(snapshot, projection?.projected ?? snapshot.state.heat.current)
-                : null;
+            const staged = snapshot ? adapter.stage(snapshot, heatFor(snapshot, projection, true)) : null;
             const event = snapshot && projection && staged
                 ? this.heatEvent(adapter, request, snapshot, projection, staged)
                 : null;
@@ -142,7 +149,7 @@ export class EndTurnHeatAutomationService {
         const effectsMode = this.options.cbtAutomationMode('heatEffectsCheck');
         const pilotHitsMode = this.options.cbtAutomationMode('pilotHitsAndConsciousnessCheck');
 
-        if (this.options.cbtAutomationMode('heatAndDissipationResolution') === 'ask' && effectsMode === 'ask') {
+        if (heatMode === 'ask' && effectsMode === 'ask') {
             const events = rows.flatMap(row => {
                 if (!row.snapshot || !row.staged) return [];
                 const effects = this.effectDescriptions(adapter, row.staged);
@@ -197,9 +204,7 @@ export class EndTurnHeatAutomationService {
         const finalRows = rows.map(row => {
             const heatAccepted = row.event !== null && acceptedHeat.has(row.event.id);
             if (!row.snapshot) return Object.freeze({ ...row, heatAccepted });
-            const heat = heatAccepted && row.projection
-                ? row.projection.projected
-                : row.snapshot.state.heat.pendingOverride ?? row.snapshot.state.heat.current;
+            const heat = heatFor(row.snapshot, row.projection, heatAccepted);
             return Object.freeze({ ...row, heatAccepted, staged: adapter.stage(row.snapshot, heat) });
         });
 
@@ -294,20 +299,23 @@ export class EndTurnHeatAutomationService {
         if (!initial) return force.getUnitSnapshot(instanceId) ? prepared : null;
         const heatMode = this.options.cbtAutomationMode('heatAndDissipationResolution');
         const automaticHeat = command.policy === 'automatic';
+        // The reviewed heat was staged by the same rule; without a review the rule applies here.
         const finalHeat = automaticHeat
             ? prepared.heatEffects?.staged.heat ?? initial.state.heat.current
-            : selectedManualEndTurnHeat(
-                heatMode,
-                initial.state.heat.current,
-                initial.state.heat.pendingOverride,
-            );
-        const heat = await dispatch({ type: 'set-heat', heat: finalHeat }, false);
+            : endTurnHeat(endTurnHeatStep(heatMode, false), initial.state.heat, initial.state.heat.current);
+        // End Turn applies a NEXT the player set exactly as APPLY HEAT does.
+        const heat = await dispatch(initial.state.heat.pendingOverride === undefined
+            ? { type: 'set-heat', heat: finalHeat }
+            : { type: 'apply-heat' }, false);
         if (!heat.accepted) return null;
-        if (automaticHeat && heatMode === 'yes') {
+        if (heatMode === 'yes' && (automaticHeat || initial.state.heat.pendingOverride !== undefined)) {
+            const calculated = adapter.projectHeat(initial)?.projected ?? finalHeat;
+            const adjustment = nextHeatAdjustment(initial.state.heat, calculated) ?? 0;
             this.automationToasts.show(
                 String(initial.instanceId),
                 this.subject(initial),
-                `Heat and dissipation: Heat ${initial.state.heat.current} → ${finalHeat}`,
+                `Heat and dissipation: Heat ${initial.state.heat.current} → ${finalHeat}`
+                    + (adjustment === 0 ? '' : ` (adjustment ${adjustment > 0 ? '+' : ''}${adjustment})`),
                 'info',
             );
         }
@@ -401,22 +409,22 @@ export class EndTurnHeatAutomationService {
         projection: EndTurnHeatProjection,
         staged: Staged,
     ): HeatEvent | null {
+        // End Turn applies a NEXT the player set, as APPLY HEAT does: only the calculated heat is up for review.
+        if (snapshot.state.heat.pendingOverride !== undefined) return null;
         const hasHeatWork = projection.projected !== projection.current
-            || projection.sources.some(source => source.value !== 0)
-            || snapshot.state.heat.pendingOverride !== undefined;
+            || projection.sources.some(source => source.value !== 0);
         if (!hasHeatWork) return null;
         const effects = this.effectDescriptions(adapter, staged);
         return Object.freeze({
             id: `heat:${request.instanceId}`,
             subject: this.subject(snapshot),
             event: 'Heat and dissipation',
-            description: `Heat ${projection.current} → ${projection.projected}`,
-            delta: projection.projected - projection.current,
+            description: `Heat ${projection.current} → ${staged.heat}`,
+            delta: staged.heat - projection.current,
             breakdown: Object.freeze(buildHeatSummaryRows(
                 projection.sources,
                 projection.dissipationBalance,
                 projection.consumedDissipation,
-                projection.projected,
             ).map(row => Object.freeze({ id: row.id, label: row.label, value: row.value }))),
             ...(effects.length === 0 ? {} : { effects }),
         });

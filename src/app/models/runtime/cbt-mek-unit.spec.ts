@@ -24,7 +24,7 @@ describe('CBTMekUnit direct entity boundary', () => {
         const fixture = createDirectMekRuntimeFixture();
         const ready = await createMekUnit({ uuid: fixture.identity, instanceId: 'vacant' },
             fixture.entity, fixture.identity, { ...initializeOptions,
-                deployment: { id: 'vacant', crewAssignment: { schemaVersion: 1, positions: [] } },
+                deployment: { id: 'vacant', crewAssignment: { positions: [] } },
             });
         const restored = await restoreMekUnit(ready.serialize(), fixture.entity,
             fixture.identity, initializeOptions);
@@ -46,7 +46,7 @@ describe('CBTMekUnit direct entity boundary', () => {
         const assigned = fixture.initialized.deployment.crewAssignment.positions[1]!;
         const ready = await createMekUnit({ uuid: fixture.identity, instanceId: 'partial' },
             fixture.entity, fixture.identity, { ...options,
-                deployment: { id: 'partial', crewAssignment: { schemaVersion: 1, positions: [assigned] } },
+                deployment: { id: 'partial', crewAssignment: { positions: [assigned] } },
             });
         const restored = await restoreMekUnit(ready.serialize(), fixture.entity,
             fixture.identity, options);
@@ -92,7 +92,6 @@ describe('CBTMekUnit direct entity boundary', () => {
 });
 
 const initializeOptions = {
-    initializerRevision: 1,
     profileId: 'pristine',
     deployment: { id: 'default' },
     scenario: { id: 'megamek', ruleset: 'core-2026' as const },

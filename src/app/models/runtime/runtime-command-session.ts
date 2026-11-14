@@ -291,6 +291,7 @@ function runtimeHistoryTransitionKey(message: SerializedRuntimeHistoryMessage): 
         case RUNTIME_HISTORY_MESSAGE.MEK_ACTION_CHANGED: return [message[0], message[1]];
         case RUNTIME_HISTORY_MESSAGE.MOVEMENT_CHANGED: return [message[0], message[1]];
         case RUNTIME_HISTORY_MESSAGE.AIRBORNE_CHANGED: return [message[0], message[1]];
+        case RUNTIME_HISTORY_MESSAGE.ELEVATION_CHANGED: return [message[0], message[1]];
         case RUNTIME_HISTORY_MESSAGE.COMPONENT_MODE_CHANGED: return [message[0], message[1], message[2]];
         case RUNTIME_HISTORY_MESSAGE.SPOTTING_CHANGED: return [message[0], message[1]];
         case RUNTIME_HISTORY_MESSAGE.COVER_CHANGED: return [message[0], message[1]];
@@ -334,6 +335,7 @@ function mergeRuntimeHistoryTransition(
             ]);
             return merged[2] === merged[4] && merged[3] === merged[5] ? null : merged;
         case RUNTIME_HISTORY_MESSAGE.AIRBORNE_CHANGED:
+        case RUNTIME_HISTORY_MESSAGE.ELEVATION_CHANGED:
             merged = Object.freeze([first[0], first[1], first[2], last[3]]);
             return merged[2] === merged[3] ? null : merged;
         case RUNTIME_HISTORY_MESSAGE.COMPONENT_MODE_CHANGED:

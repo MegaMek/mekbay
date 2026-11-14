@@ -111,10 +111,9 @@ export function unpackForcePersonnel(
 }
 
 function unpackPerson(raw: unknown, path: string) {
-    const row = exactRecord(raw, ['id', 'name', 'notes', 'portrait', 'g', 'p', 'ag', 'ap', 'commander', 'abilities', 'health'], path);
+    const row = objectRecord(raw, path);
     if (typeof row['id'] !== 'string') throw new Error(`${path}.id must be a string`);
-    const health = row['health'] === undefined ? undefined : exactRecord(row['health'],
-        ['wounds', 'unconscious', 'ejected', 'dead', 'recoveryReadyTurn'], `${path}.health`);
+    const health = row['health'] === undefined ? undefined : objectRecord(row['health'], `${path}.health`);
     return {
         id: unpackOpaqueId(row['id'], `${path}.id`),
         ...(row['name'] === undefined ? {} : { name: row['name'] }),
@@ -162,9 +161,8 @@ function packHealth(health: CrewMemberRuntimeState | undefined): StoredForcePers
     };
 }
 
-function exactRecord(value: unknown, keys: readonly string[], path: string): Record<string, unknown> {
+/** A saved object; fields this version does not read are dropped with it. */
+function objectRecord(value: unknown, path: string): Record<string, unknown> {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} must be an object`);
-    const row = value as Record<string, unknown>;
-    if (Object.keys(row).some(key => !keys.includes(key))) throw new Error(`${path} contains an unknown field`);
-    return row;
+    return value as Record<string, unknown>;
 }

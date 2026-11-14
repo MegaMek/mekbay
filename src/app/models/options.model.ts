@@ -5,6 +5,7 @@
 import { GameSystem } from "./common.model";
 import type { CBTRuleset } from './cbt-ruleset.model';
 import type { PrintAllOptions } from './print-options.model';
+import type { BoundOptionalRules } from './runtime/bound-optional-rules';
 import { INITIATIVE_ORDER_MODES, type InitiativeOrderMode } from './rules/initiative-rules';
 
 export const OPTION_VALUES = {
@@ -110,8 +111,38 @@ export interface CBTOptionalRules {
     enhancedFlamers: boolean;
 }
 
-/** The optional rules in play, passed whole to the rules that read them; a rule left out is off. */
-export type OptionalRules = Readonly<Partial<CBTOptionalRules>>;
+/** The optional rules as the options and a lobby's host offer them; a rule with a ruleset is offered only under it. */
+export const CBT_OPTIONAL_RULE_CHOICES: ReadonlyArray<Readonly<{
+    key: keyof CBTOptionalRules;
+    label: string;
+    ruleset?: CBTRuleset;
+}>> = Object.freeze([
+    { key: 'quirks', label: 'Quirks' },
+    { key: 'floatingCriticals', label: 'Floating criticals' },
+    { key: 'sprinting', label: 'Sprinting (Meks only)' },
+    { key: 'extremeRange', label: '"Extreme" range' },
+    { key: 'hotLoadedAmmo', label: 'Hot-Loaded Ammo' },
+    { key: 'allowMixedTechBaseAmmo', label: 'Allow mixed IS/Clan ammunition' },
+    // Core flamers always deal heat and damage (Core p. 183).
+    { key: 'enhancedFlamers', label: 'Enhanced flamers', ruleset: 'total-warfare' },
+    { key: 'forcedWithdrawal', label: 'Forced withdrawal (Cripple)' },
+]);
+
+/** The rules of `rules` that differ from `current`; null when none does. Rules `rules` leaves out are not compared. */
+export function changedOptionalRules(
+    current: CBTOptionalRules,
+    rules: Partial<CBTOptionalRules> | undefined,
+): Partial<CBTOptionalRules> | null {
+    const changed = CBT_OPTIONAL_RULE_CHOICES.flatMap(({ key }) =>
+        typeof rules?.[key] === 'boolean' && rules[key] !== current[key] ? [[key, rules[key]] as const] : []);
+    return changed.length === 0 ? null : Object.fromEntries(changed);
+}
+
+/**
+ * The optional rules read where they are used, passed whole; a rule left out is off. The rules bound into units are
+ * left out: read those from the unit (`boundRules()`).
+ */
+export type OptionalRules = Readonly<Partial<Omit<CBTOptionalRules, keyof BoundOptionalRules>>>;
 
 export interface Options {
     colorScheme: ColorScheme;

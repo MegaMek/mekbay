@@ -23,7 +23,13 @@ function createForce(instanceId: string, owned: boolean, units: any[] = []) {
     } as any;
 }
 
-const LOBBY_SETTINGS = { ruleset: 'core-2026', initiativeOrder: 'rules', initiativeDie: false } as const;
+const OPTIONAL_RULES = {
+    quirks: true, floatingCriticals: false, forcedWithdrawal: true, extremeRange: false, sprinting: false,
+    hotLoadedAmmo: false, allowMixedTechBaseAmmo: false, enhancedFlamers: false,
+} as const;
+const LOBBY_SETTINGS = {
+    ruleset: 'core-2026', initiativeOrder: 'rules', initiativeDie: false, optionalRules: OPTIONAL_RULES,
+} as const;
 
 function lobbyState(isHost: boolean, settings: object = LOBBY_SETTINGS) {
     return {
@@ -85,6 +91,12 @@ describe('LobbyService', () => {
                 optionsService.options.update((options: any) => ({ ...options, CBTRules: ruleset }));
                 return true;
             }),
+            setOptionalRules: jasmine.createSpy('setOptionalRules').and.callFake(async (rules: object) => {
+                optionsService.options.update((options: any) => ({
+                    ...options, CBTOptionalRules: { ...options.CBTOptionalRules, ...rules },
+                }));
+                return true;
+            }),
         };
         forcePersistence = {
             getForce: jasmine.createSpy('getForce'),
@@ -104,7 +116,9 @@ describe('LobbyService', () => {
 
         optionsService = {
             initialized: signal(true),
-            options: signal({ CBTRules: 'core-2026', initiativeOrder: 'rules', initiativeDie: false }),
+            options: signal({
+                CBTRules: 'core-2026', initiativeOrder: 'rules', initiativeDie: false, CBTOptionalRules: OPTIONAL_RULES,
+            }),
         };
 
         TestBed.configureTestingModule({
@@ -614,16 +628,79 @@ describe('LobbyService', () => {
     });
 
     it('creates a lobby with the local rules and Initiative settings', async () => {
-        optionsService.options.set({ CBTRules: 'total-warfare', initiativeOrder: 'spread', initiativeDie: true });
+        const optionalRules = { ...OPTIONAL_RULES, sprinting: true };
+        optionsService.options.set({
+            CBTRules: 'total-warfare', initiativeOrder: 'spread', initiativeDie: true, CBTOptionalRules: optionalRules,
+        });
         wsService.sendAndWaitForResponse.and.resolveTo({ action: 'lobbyCreated', state: lobbyState(true) });
         const service = TestBed.inject(LobbyService);
 
         await service.createLobby();
 
         expect(wsService.sendAndWaitForResponse).toHaveBeenCalledWith(
-            { action: 'createLobby', settings: { ruleset: 'total-warfare', initiativeOrder: 'spread', initiativeDie: true } },
+            { action: 'createLobby', settings: {
+                ruleset: 'total-warfare', initiativeOrder: 'spread', initiativeDie: true, optionalRules,
+            } },
             { suppressGlobalError: true },
         );
+    });
+
+    describe('with other optional rules than the player', () => {
+        const SPRINTING = { ...LOBBY_SETTINGS, optionalRules: { ...OPTIONAL_RULES, sprinting: true, quirks: false } } as const;
+
+        it('asks before joining, names the rules that differ, and adopts them as one change', async () => {
+            dialogsService.requestConfirmation.and.resolveTo(true);
+            wsService.sendAndWaitForResponse.and.callFake(async (payload: { action: string }) => payload.action === 'joinLobby'
+                ? { action: 'lobbyJoined', state: lobbyState(false, SPRINTING) }
+                : { action: 'lobbyStateResult', state: null });
+            const service = TestBed.inject(LobbyService);
+            await settleEffects();
+
+            const joining = service.joinLobby('room');
+            for (let index = 0; index < 4; index += 1) await settleEffects();
+            await joining;
+
+            expect(dialogsService.requestConfirmation).toHaveBeenCalledOnceWith(
+                'This lobby plays other optional rules: Quirks off, Sprinting (Meks only) on. Switch and join?',
+                'Switch Rules?',
+                'warning',
+            );
+            expect(forceBuilderService.setOptionalRules).toHaveBeenCalledOnceWith({ quirks: false, sprinting: true });
+            expect(forceBuilderService.switchCBTRules).not.toHaveBeenCalled();
+            expect(service.state()?.settings).toEqual(SPRINTING);
+        });
+
+        it('follows the host to new optional rules in the lobby without asking, and leaves when it cannot', async () => {
+            const service = TestBed.inject(LobbyService);
+            handlers.get('lobbyState')?.(lobbyState(false));
+            handlers.get('lobbyState')?.(lobbyState(false, SPRINTING));
+            for (let index = 0; index < 4; index += 1) await settleEffects();
+            expect(dialogsService.requestConfirmation).not.toHaveBeenCalled();
+            expect(service.state()?.settings).toEqual(SPRINTING);
+            expect(toastService.showToast).toHaveBeenCalledWith("The host changed the lobby's optional rules.", 'info');
+
+            // A rule this player's forces cannot switch to: they leave rather than play other rules than the lobby.
+            forceBuilderService.setOptionalRules.and.resolveTo(false);
+            handlers.get('lobbyState')?.(lobbyState(false, LOBBY_SETTINGS));
+            for (let index = 0; index < 4; index += 1) await settleEffects();
+            expect(wsService.send).toHaveBeenCalledWith({ action: 'leaveLobby' });
+            expect(service.state()).toBeNull();
+        });
+
+        it('sends a rule the host changes only once the host plays it', async () => {
+            const service = TestBed.inject(LobbyService);
+            handlers.get('lobbyState')?.(lobbyState(true));
+
+            await service.setSettings(SPRINTING);
+            expect(forceBuilderService.setOptionalRules).toHaveBeenCalledOnceWith({ quirks: false, sprinting: true });
+            expect(wsService.send.calls.allArgs()).toEqual([[{ action: 'setLobbySettings', settings: SPRINTING }]]);
+
+            // The host's forces could not switch: the lobby keeps the rules the host still plays.
+            wsService.send.calls.reset();
+            forceBuilderService.setOptionalRules.and.resolveTo(false);
+            await service.setSettings({ ...SPRINTING, optionalRules: { ...SPRINTING.optionalRules, hotLoadedAmmo: true } });
+            expect(wsService.send.calls.allArgs()).toEqual([[{ action: 'setLobbySettings', settings: SPRINTING }]]);
+        });
     });
 
     describe('with other rules than the player', () => {
@@ -739,7 +816,9 @@ describe('LobbyService', () => {
 
     it('sends lobby settings and Initiative only as the host', async () => {
         const service = TestBed.inject(LobbyService);
-        const settings = { ruleset: 'total-warfare', initiativeOrder: 'front-loaded', initiativeDie: true } as const;
+        const settings = {
+            ruleset: 'total-warfare', initiativeOrder: 'front-loaded', initiativeDie: true, optionalRules: OPTIONAL_RULES,
+        } as const;
         const initiative = { turn: 1, rolls: [{ side: 'self', dice: [[6, 5] as const], modifier: 1 }], order: ['enemy', 'self'] };
 
         handlers.get('lobbyState')?.(lobbyState(false));
@@ -766,7 +845,7 @@ describe('LobbyService', () => {
         handlers.get('lobbyState')?.(lobbyState(true));
         forceBuilderService.switchCBTRules.and.resolveTo(false);
 
-        await service.setSettings({ ruleset: 'total-warfare', initiativeOrder: 'rules', initiativeDie: true });
+        await service.setSettings({ ...LOBBY_SETTINGS, ruleset: 'total-warfare', initiativeDie: true });
 
         expect(wsService.send.calls.allArgs()).toEqual([
             [{ action: 'setLobbySettings', settings: { ...LOBBY_SETTINGS, initiativeDie: true } }],

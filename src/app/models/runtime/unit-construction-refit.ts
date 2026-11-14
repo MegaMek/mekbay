@@ -67,13 +67,12 @@ export async function prepareConstructionRefit(
     if (current.revision() >= Number.MAX_SAFE_INTEGER) throw new Error('Unit revision is exhausted');
     const nextIndex = entity instanceof MekEntity ? buildMekRuntimeIndex(entity) : buildNonMekRuntimeIndex(entity);
     const originalAssignment = current.getCrewAssignment();
-    const crewAssignment = { schemaVersion: 1 as const,
-        positions: originalAssignment.positions.filter(position => nextIndex.crewPositions.has(position.positionId)) };
+    const crewAssignment = { positions: originalAssignment.positions.filter(position => nextIndex.crewPositions.has(position.positionId)) };
     const deployment = { ...current.getDeployment().values, crewAssignment };
     const profile = current.baselineRef.initialStateProfile;
     const next = entity instanceof MekEntity
         ? await createMekUnit({ uuid: entity.uuid(), instanceId: current.instanceId }, entity, entity.uuid(), {
-            initializerRevision: profile.initializerRevision, profileId: profile.profileId, deployment, scenario,
+            profileId: profile.profileId, deployment, scenario,
         }, nativeSource)
         : createNonMekUnit(entity, { uuid: entity.uuid(), instanceId: current.instanceId, deployment,
             scenario, initialStateProfileId: profile.profileId }, nativeSource);
@@ -84,7 +83,6 @@ export async function prepareConstructionRefit(
         const old = current.snapshot();
         const index = next.getIndex();
         const targets = refitCriticalSlotTargets(current.getIndex(), index, componentIds);
-        const slotIds = new Map([...targets].flatMap(([id, targets]) => targets.length === 1 ? [[id, targets[0]] as const] : []));
         const { slots, pendingHits } = refitCriticalDamage(current.getIndex(), index, next.ruleset(), old.slots,
             old.pendingCombat.criticalHits, targets);
         const movement = remapMekMovementPsrStateIdsV2(old.movementPsr, {
@@ -99,7 +97,7 @@ export async function prepareConstructionRefit(
         const state: MekUnitRuntimeState = { ...oldState, ...shared, heat: old.heat,
             ...(conversionMode !== undefined && mekConversionModes(next.getUnit()).includes(conversionMode)
                 ? { conversionMode } : {}),
-            turn: rebaseConstructionMekTurn(old.turn, current.getIndex(), index, componentIds, slotIds), slots, movementPsr: movement.state,
+            turn: rebaseConstructionMekTurn(old.turn, current.getIndex(), index, componentIds), slots, movementPsr: movement.state,
             locations: new Map([...shared.locations].map(([id, value]) => [id, {
                 ...value, conditions: old.locations.get(id)?.conditions ?? new Map(),
             }])),

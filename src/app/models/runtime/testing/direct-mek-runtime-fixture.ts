@@ -23,7 +23,7 @@ mekMechanicsContextCapabilityV2,
 } from '../mek-mechanics-context-v2';
 import { buildMekRuntimeIndex,type MekRuntimeIndex } from '../mek-runtime-index';
 import { createMekRuntimeBinding } from '../unit-instance';
-import { initializeUnitState,MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,type InitializedUnitState } from '../unit-state-initializer';
+import { initializeUnitState,type InitializedUnitState } from '../unit-state-initializer';
 
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
@@ -539,7 +539,6 @@ function createFixture(
     const index = buildMekRuntimeIndex(entity);
     const identity: UnitUuid = UUID;
     const initialized = initializeUnitState(entity, index, identity, {
-        initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'default' },
         scenario: { ...directFixtureScenario(options), ruleset },
@@ -563,7 +562,6 @@ function createFixture(
             initialized.deployment.crewAssignment, heat, mechanics);
         return new CBTUnit<'mek'>({ uuid: identity, instanceId: id, baselineRef: initialized.baselineRef,
             runtime: { kind: 'mek', ...prepared, deployment: {
-                schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
                 values: initialized.deployment,
             } } });
     };

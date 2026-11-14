@@ -91,12 +91,18 @@ export function mekFallDamage(tons: number, levelsFallen = 0): number {
     return mekFallWeightDamage(tons) * (normalizedInteger(levelsFallen) + 1);
 }
 
-/** Surface/bottom damage for a fall into the current water depth. */
+/**
+ * Falling damage. In water a fall of `levelsFallen` deals its normal damage halved (TW p. 57; Core p. 115): 0 levels
+ * for a 'Mech standing in the water, the depth for one tumbling to the bottom from a jump (TW p. 53; Core p. 50). A
+ * 'Mech falling from `aboveSurface` falls those levels to the water and then its depth: Core counts them as one fall,
+ * Total Warfare resolves the surface and the bottom as two.
+ */
 export function resolveMekFallDamage(
     ruleset: CBTRuleset,
     tons: number,
     levelsFallen = 0,
     waterDepth = 0,
+    aboveSurface = false,
 ): MekFallDamageBreakdown {
     const levels = normalizedInteger(levelsFallen);
     const depth = normalizedInteger(waterDepth);
@@ -104,17 +110,13 @@ export function resolveMekFallDamage(
         const surfaceDamage = mekFallDamage(tons, levels);
         return Object.freeze({ surfaceDamage, waterDamage: 0, totalDamage: surfaceDamage });
     }
-    const weightDamage = mekFallWeightDamage(tons);
-    if (ruleset === 'core-2026') {
-        const waterDamage = Math.floor(weightDamage * (levels + depth + 1) / 2);
+    const halved = (fallen: number): number => Math.floor(mekFallDamage(tons, fallen) / 2);
+    if (!aboveSurface || ruleset === 'core-2026') {
+        const waterDamage = halved(aboveSurface ? levels + depth : levels);
         return Object.freeze({ surfaceDamage: 0, waterDamage, totalDamage: waterDamage });
     }
-    let surfaceDamage = Math.floor(mekFallDamage(tons, levels) / 2);
-    let waterDamage = Math.floor(weightDamage * (depth + 1) / 2);
-    if (depth >= levels) {
-        surfaceDamage = 0;
-        waterDamage = Math.floor(weightDamage * (levels + 1) / 2);
-    }
+    const surfaceDamage = halved(levels);
+    const waterDamage = halved(depth);
     return Object.freeze({ surfaceDamage, waterDamage, totalDamage: surfaceDamage + waterDamage });
 }
 

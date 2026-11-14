@@ -625,7 +625,6 @@ export function drawCompactVehicleCriticalPanel(
     addText(group, 'Stabilizers', 75.8, stabilizerTitleY, { size: RECORD_SHEET_FONT.inventory, weight: 700, anchor: 'middle' });
     if (isVtol) addText(group, '*Move at Cruising speed only', 6, 84.294, { size: 4.83, maxWidth: 58.681 });
 
-    appendVehicleDamageTrackBindings(svg, entity);
 }
 
 /** Front armor by sheet location code; the first code a hull uses wins, absent locations read 0. */

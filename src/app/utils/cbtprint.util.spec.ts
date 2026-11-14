@@ -79,7 +79,7 @@ describe('bulk record sheet pagination and printing', () => {
                     tank.originalWalkMP.set(4);
                     runtime = createNonMekRuntimeForTest('clean-print-unit', {
                         entity: tank.uuid(), ruleset,
-                        initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+                        initialStateProfile: { profileId: 'pristine-non-mek' },
                     }, tank, ruleset);
                 }
                 const entity = runtime.getUnit();
@@ -93,6 +93,8 @@ describe('bulk record sheet pagination and printing', () => {
                         editContext: { owner: runtime, state: runtime.snapshot() },
                     }),
                     currentHeatPolicy: () => 'manual',
+                    currentEndTurnCalculatesHeat: () => false,
+                    currentTurnTracked: () => false,
                     optionalRules: () => ({}),
                     queryInventoryControlTargetRegistry: () => ({ revision: 0, targets: [] }),
                     getUnitCurrentBaseBattleValue: () => 300,
@@ -156,7 +158,7 @@ describe('bulk record sheet pagination and printing', () => {
         const ids = [0, 1, 2].map(() => componentIdForMount(addTestEquipment(entity, laser, { location: entity.locationOrder[0] })));
         const runtime = createNonMekRuntimeForTest('grouped-print-unit', {
             entity: entity.uuid(), ruleset: CORE_2026_RULESET,
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+            initialStateProfile: { profileId: 'pristine-non-mek' },
         }, entity, CORE_2026_RULESET);
         expect(runtime.dispatch({ type: 'set-component-status', componentId: ids[2], status: 'destroyed', target: 'committed' })
             .accepted).toBeTrue();
@@ -190,7 +192,7 @@ describe('bulk record sheet pagination and printing', () => {
                 entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1'));
                 const runtime = createNonMekRuntimeForTest('print-unit', {
                     entity: entity.uuid(), ruleset: CORE_2026_RULESET,
-                    initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+                    initialStateProfile: { profileId: 'pristine-non-mek' },
                 }, entity, CORE_2026_RULESET);
                 const force = {
                     getUnitSnapshot: () => ({ entity, ruleset: CORE_2026_RULESET }),

@@ -47,6 +47,7 @@ export const RUNTIME_HISTORY_MESSAGE = Object.freeze({
     TURN_JOINED: 33,
     PHYSICAL_ATTACK_CHECKS: 34,
     TURN_STEP_REWOUND: 35,
+    ELEVATION_CHANGED: 36,
 } as const);
 
 export type RuntimeHistoryMessageId = typeof RUNTIME_HISTORY_MESSAGE[keyof typeof RUNTIME_HISTORY_MESSAGE];
@@ -234,6 +235,8 @@ export function formatRuntimeHistoryMessage(
             return scoped(`Joined the game at turn ${number(data[1]) + 1}`);
         case RUNTIME_HISTORY_MESSAGE.TURN_STEP_REWOUND:
             return scoped(`Moved back to ${TURN_STEPS[number(data[1])]?.label ?? 'an earlier step'}`);
+        case RUNTIME_HISTORY_MESSAGE.ELEVATION_CHANGED:
+            return scoped(`Elevation ${number(data[1])} → ${number(data[2])}`);
         case RUNTIME_HISTORY_MESSAGE.PHYSICAL_ATTACK_CHECKS:
             return scoped(formatPhysicalAttackChecks(data));
         case RUNTIME_HISTORY_MESSAGE.AMMO_LOADOUT_RESET:
@@ -359,11 +362,13 @@ function formatHeatChange(data: readonly JsonValue[]): string {
     const kind = data[1];
     const before = number(data[2]);
     const after = number(data[3]);
+    const delta = Number(data[3]) - Number(data[2]);
+    const change = Number.isFinite(delta) && delta !== 0 ? ` (${delta > 0 ? '+' : ''}${delta})` : '';
     switch (kind) {
-        case 0: return `Heat ${before} → ${after}`;
-        case 1: return `Heat target ${before} → ${after}`;
+        case 0: return `Heat ${before} → ${after}${change}`;
+        case 1: return `Pending heat ${before} → ${after}${change}`;
         case 2: return `Heat sinks off ${before} → ${after}`;
-        case 3: return `Outside heat ${before} → ${after}`;
+        case 3: return `Outside heat ${before} → ${after}${change}`;
         default: return 'Updated heat';
     }
 }

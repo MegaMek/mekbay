@@ -12,10 +12,11 @@ import { isProtoMekEntity } from '../../../models/entity/utils/entity-type-guard
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { isJumpJetEquipment } from '../../../models/jump-equipment.model';
 import { PROTOMEK_GLIDER_WING_CRITICAL_REFERENCE,protoMekCriticalReferences,protoMekTorsoCriticalResults } from '../../../models/rules/protomek-critical-rules';
+import { nonMekFliesAtElevation } from '../../../models/runtime/non-mek-airborne-state';
 import { systemDamageControls } from '../../../models/runtime/system-damage-presentation';
 import { clusterTableForEntity } from '../../record-sheet-reference-table';
 import { PaperdollGenerator, type PaperdollPipLayout } from '../paperdoll-generator';
-import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory } from '../record-sheet-ammo-rendering';
+import { appendRecordSheetAmmoProfile, markAmmoBefore, markAmmoInventory, measureRecordSheetAmmoProfile } from '../record-sheet-ammo-rendering';
 import { recordSheetQuirksText } from '../record-sheet-quirks';
 import {
 PROTOMEK_DEFAULT_ART,
@@ -34,6 +35,8 @@ type Box,
 addCrewSkillButton,
 addCrewSkillValue,
 drawCrewHitGrid,
+drawElevationTracker,
+estimatedTextWidth,
 addFrame,
 addLine,
 addText,
@@ -127,6 +130,10 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
     outer.setAttribute('class', `${outer.getAttribute('class') ?? ''} compact-protomek-frame`.trim());
 
     const identity = at({ x: 3, y: 18, width: 91, height: 68 });
+    // A glider's Elevation box takes the era icon's place beside its movement points; the icon moves up beside
+    // Type, Tons and Role. Both stay clear of the hit-modifier badges on the inventory's border.
+    const flies = nonMekFliesAtElevation(entity);
+    const eraBlock = { x: 69.5, y: flies ? 21 : 66.191, width: 20, height: 20 };
     const identityGroup = svgElement('g');
     identityGroup.setAttribute('transform', `translate(${formatNumber(identity.x)} ${formatNumber(identity.y)})`);
     identityGroup.setAttribute('data-mekbay-movement-frame-x', formatNumber(-identity.x));
@@ -153,6 +160,8 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         ...movementLines,
     ];
     const baselines = [8.774, 17.548, 26.322, 35.095, 43.869, 51.869, 59.869] as const;
+    // Movement points follow their longest caption rather than MegaMekLab's fixed column.
+    const movementValueX = 5 + Math.max(...movementLines.map(([label]) => estimatedTextWidth(label, 7.2))) + 3;
     identityLines.forEach(([label, value, field, id], index) => {
         const baseline = baselines[index] * identityScale;
         const labelNode = addText(identityGroup, label, (index < 4 ? 3 : 5) * identityScale, baseline, {
@@ -160,22 +169,23 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         });
         if (index === 3) labelNode.id = 'movementPointsLabel';
         if (value) {
-            const valueX = index === 0 ? 22.523 : index === 1 ? 23.004 : index === 2 ? 21.702 : 55;
+            const valueX = index === 0 ? 22.523 : index === 1 ? 23.004 : index === 2 ? 21.702 : movementValueX;
+            // The unit's name stops short of an era icon moved beside it.
+            const rightEdge = index === 0 && flies ? eraBlock.x - 3 - 2 : 91;
             const valueNode = addText(identityGroup, value, valueX * identityScale, baseline, {
                 size: 7.2 * identityScale,
                 weight: index === 0 ? 700 : 400,
-                maxWidth: identity.width - valueX * identityScale,
+                maxWidth: (rightEdge - valueX) * identityScale,
             });
             if (field) valueNode.setAttribute('data-mekbay-field', field);
             if (id) valueNode.id = id;
         }
     });
-    // Inside its frame, whose origin is the block's. Inner panels cover the frame's top
-    // border, so unit controls sit in the identity column's free right side instead.
+    // Inside its frame, whose origin is the block's.
     outer.appendChild(identityGroup);
-    // Ends clear of the hit-modifier badges that straddle the inventory's left border.
-    outer.setAttribute('data-mekbay-controls-end', formatNumber(identity.x + identity.width - 8 * identityScale));
-    outer.setAttribute('data-mekbay-controls-y', formatNumber(identity.y + (baselines[3] - 2.5) * identityScale));
+    // Inner panels cover most of the frame's top border, so the unit controls sit on its free stretch between the
+    // title tab and the inventory.
+    outer.setAttribute('data-mekbay-controls-end', formatNumber(at({ x: 99, y: 0, width: 1, height: 1 }).x));
 
     // Inner panels keep a 3-point gutter from the block border and from each other. The
     // pilot tab tucks under the inventory, whose cut corner runs parallel to the tab's slope.
@@ -210,9 +220,10 @@ export class ProtoMekRecordSheetLayout extends CompactRecordSheetLayout {
         }).setAttribute('font-style', 'italic');
         svg.appendChild(group);
     }
-        // Clear of the hit-modifier badges that straddle the inventory's left border.
-        const eraBox = at({ x: 69.5, y: 66.191, width: 20, height: 20 });
-        await appendRecordSheetEraIcon(svg, outer, entity.year(), eraBox);
+        await appendRecordSheetEraIcon(svg, outer, entity.year(), at(eraBlock));
+        const elevation = at({ x: 64.5, y: 59, width: 26, height: 18 });
+        drawElevationTracker(svg, entity, elevation.x + elevation.width / 2, elevation.y,
+            { width: elevation.width, height: elevation.height });
         appendLegacyIdentityAnchors(outer, entity, at({ x: 0, y: 0, width: 576, height: 139.2 }), request.ruleset);
     }
 }
@@ -308,19 +319,28 @@ function drawCompactProtoMekInventoryRows(
         inventoryRowLineCount([[row.name, x(nameWidth)], [row.location, x(16)], [row.damage, x(damageWidth)],
             [row.minimumRange, x(INVENTORY_RANGE_VALUE_WIDTH)],
             ...row.ranges.map(value => [value, x(INVENTORY_RANGE_VALUE_WIDTH)] as const)], font(size));
-    // Weapon rows fill from just under the headings down to the intrinsic attacks and
-    // ammunition, which sit along the panel bottom.
-    const firstRowBaseline = PROTOMEK_HEADINGS_BASELINE + 9.9;
-    const physicalBaseline = PROTOMEK_INVENTORY_HEIGHT - 10.126;
-    const metrics = fitInventoryText(physicalBaseline - firstRowBaseline - entity.intrinsicWeapons().length * 9.126, fontSize => {
+    // Weapon rows fill from one line under the headings down to the intrinsic attacks and the ammunition, which sit
+    // along the panel bottom; all print at the fitted row size, so the ammunition's lines count in the fit. The
+    // intrinsic attacks are authored as if there were no ammunition and rise above its lines as it prints.
+    const physical = entity.intrinsicWeapons();
+    const ammo = recordSheetAmmoProfile(entity);
+    const ammoWidth = box.width - x(13.45);
+    const ammoBaseline = PROTOMEK_INVENTORY_HEIGHT - 5.428;
+    const metrics = fitInventoryText(ammoBaseline - PROTOMEK_HEADINGS_BASELINE - 1, fontSize => {
         const lines = regularRows.map(row => rowLines(row, fontSize));
-        return { lineCount: lines.reduce((sum, count) => sum + count, 0), badgeRows: lines, content: undefined };
+        const ammoLines = measureRecordSheetAmmoProfile(ammo, { width: ammoWidth, fontSize: font(fontSize) }).lines.length;
+        return {
+            lineCount: lines.reduce((sum, count) => sum + count, 0) + physical.length + ammoLines,
+            badgeRows: lines,
+            content: undefined,
+        };
     });
     const lineStep = metrics.lineStep;
+    const firstRowBaseline = PROTOMEK_HEADINGS_BASELINE + 1 + lineStep;
+    const physicalBaseline = ammoBaseline;
     const inventoryFont = font(metrics.fontSize);
     const addCell = (parent: SVGElement, value: string, x: number, yPos: number, options: Parameters<typeof addText>[4] = {}) =>
         addInventoryText(parent, value, x, yPos, { ...options, size: inventoryFont, lineHeight: y(lineStep) });
-    const physical = entity.intrinsicWeapons();
     const inventory = svgElement('g');
     group.appendChild(inventory);
     const physicalRows = svgElement('g');
@@ -384,7 +404,6 @@ function drawCompactProtoMekInventoryRows(
         contentBottom: y(firstRowBaseline + Math.max(0, displayLine - 1) * lineStep),
     });
 
-    const ammo = recordSheetAmmoProfile(entity);
     physical.forEach((attack, index) => appendRow({
         name: attack.name,
         location: '—',
@@ -394,8 +413,7 @@ function drawCompactProtoMekInventoryRows(
         componentIds: Object.freeze([]),
     }, physicalBaseline - (physical.length - index - 1) * lineStep, `physical-${index}`, physicalRows));
     appendRecordSheetAmmoProfile(group, ammo, {
-        x: x(6.725), y: y(PROTOMEK_INVENTORY_HEIGHT - 5.428), width: box.width - x(13.45),
-        fontSize: font(RECORD_SHEET_FONT.inventory), lineHeight: y(lineStep),
+        x: x(6.725), y: y(ammoBaseline), width: ammoWidth, fontSize: inventoryFont, lineHeight: y(lineStep),
     });
 }
 

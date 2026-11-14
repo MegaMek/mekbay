@@ -9,7 +9,7 @@ describe('TacticalHeatScaleComponent', () => {
     function setup(readOnly = false) {
         TestBed.configureTestingModule({ imports: [TacticalHeatScaleComponent] });
         const fixture = TestBed.createComponent(TacticalHeatScaleComponent);
-        fixture.componentRef.setInput('entity', { entityUuid: 'heat-test', heatPolicy: 'manual', heat: {
+        fixture.componentRef.setInput('entity', { entityUuid: 'heat-test', heat: {
             current: 4, pending: null, previous: 4, projection: null, dissipation: 10, tracked: true,
         } } as unknown as NonMekRecordSheetSnapshot);
         fixture.componentRef.setInput('readOnly', readOnly);

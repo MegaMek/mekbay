@@ -35,7 +35,7 @@ const novaFixtures: Readonly<Record<string, (instanceId: string) => NovaFixture>
         const unit = createNonMekRuntimeForTest(instanceId, {
             entity: uuid,
             ruleset: CORE_2026_RULESET,
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+            initialStateProfile: { profileId: 'pristine-non-mek' },
         }, entity, CORE_2026_RULESET);
         return { unit, componentId: componentIdForMount(mount) };
     },

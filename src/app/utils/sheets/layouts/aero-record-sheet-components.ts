@@ -732,9 +732,18 @@ export function drawAeroVelocityPanel(svg: SVGSVGElement, box: Box): void {
                 y(centred(rowTop(fieldIndex) + rowHeight / 2, RECORD_SHEET_FONT.inventory)), caption);
         });
         for (let column = 0; column < 10; column++) {
+            // Turns 1-20 as printed; on screen the binder moves each table on with the game (`velocityRecordShownTurn`).
             const turn = tableIndex * 10 + column + 1;
             const middle = labelBoundary + (column + 0.5) * turnWidth;
-            addText(group, String(turn), x(middle), turnBaseline, { ...turnCaption, anchor: 'middle' });
+            const turnCell = svgElement('rect');
+            setAttributes(turnCell, {
+                x: x(labelBoundary + column * turnWidth), y: y(top), width: x(turnWidth), height: y(turnRowHeight),
+                fill: 'transparent', class: 'velocityTurnCell', 'data-column': turn,
+            });
+            group.appendChild(turnCell);
+            setAttributes(addText(group, String(turn), x(middle), turnBaseline, { ...turnCaption, anchor: 'middle' }), {
+                class: 'velocityTurn', 'data-column': turn,
+            });
             // The runtime binder writes the player's values here, as large as the crew skills allow.
             VELOCITY_RECORD_FIELDS.forEach((field, fieldIndex) => {
                 const cell = svgElement('rect');
@@ -746,13 +755,14 @@ export function drawAeroVelocityPanel(svg: SVGSVGElement, box: Box): void {
                     fill: 'transparent',
                     class: 'velocityCell',
                     'data-turn': turn,
+                    'data-column': turn,
                     'data-field': field,
                 });
                 group.appendChild(cell);
                 const value = addText(group, '', x(middle), y(centred(rowTop(fieldIndex) + rowHeight / 2, valueSize)), {
                     size: font(valueSize), weight: 700, anchor: 'middle', class: 'velocityValue',
                 });
-                setAttributes(value, { 'data-turn': turn, 'data-field': field });
+                setAttributes(value, { 'data-turn': turn, 'data-column': turn, 'data-field': field });
             });
         }
     });

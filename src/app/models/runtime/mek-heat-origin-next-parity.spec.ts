@@ -8,9 +8,15 @@ import {
     type MekHeatProfile,
 } from './mek-heat-profile';
 import {
+    createMekHeatContextV2,
     projectMekMovementHeatV2,
     type MekMovementHeatFactsV2,
 } from './mek-heat-state-v2';
+import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
+import { PPC_CAPACITOR_CHARGING_STATE, ppcCapacitorFiringHeat } from './component-ppc-capacitor';
+import { projectMekRecordSheet } from './mek-record-sheet';
+import { emptyCBTEncounterSnapshot } from './testing/direct-mek-runtime-fixture';
+import { createMekRuntimeBinding, queryMekRuntime } from './unit-instance';
 import {
     canonicalizeMekTurnStateV2,
     createPristineMekTurnStateV2,
@@ -25,6 +31,15 @@ import {
 
 const NO_COMPONENTS = new Set<ReturnType<typeof asComponentId>>();
 const NO_CRITICALS = new Set<never>();
+
+/** The fixture's live heat projection. */
+function mekProjection(fixture: DirectMekRuntimeFixture) {
+    return () => {
+        const result = fixture.instance.query().heatProjection();
+        if (result.kind !== 'supported') throw new Error('Fixture heat must be supported');
+        return result.projection;
+    };
+}
 
 function heatProfile(fixture: DirectMekRuntimeFixture): MekHeatProfile {
     const result = compileMekHeatProfile(fixture.entity, fixture.index, 'core-2026');
@@ -69,7 +84,7 @@ function damageOneEngineCritical(fixture: DirectMekRuntimeFixture): void {
 }
 
 function damagedEngineHeat(fixture: DirectMekRuntimeFixture): number | undefined {
-    const result = fixture.instance.query().heatProjection('manual');
+    const result = fixture.instance.query().heatProjection();
     expect(result.kind).toBe('supported');
     if (result.kind !== 'supported') return undefined;
     return result.projection.committedSources.find(source => source.id === 'damaged-engine')?.value;
@@ -206,31 +221,231 @@ describe('origin/next Mek movement and engine heat parity', () => {
 
     it('adds outside heat such as infernos to the turn, capped at 15, and settles it at the end of the turn', () => {
         const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:outside');
+        const projection = mekProjection(fixture);
         const outside = () => {
-            const result = fixture.instance.query().heatProjection('automatic');
+            const result = fixture.instance.query().heatProjection();
             return result.kind === 'supported'
                 ? result.projection.committedSources.find(source => source.id === 'outside-heat')?.value
                 : undefined;
         };
 
-        // A pending attack's heat counts now, and cancelling the attack takes it back.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 1, target: 'elsewhere' as never }).changed)
+            .toBeFalse();
+        // A pending attack's heat counts now, and cancelling the attack before APPLY HEAT takes it back.
         expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'pending' }).accepted).toBeTrue();
         expect(outside()).toBe(10);
         expect(fixture.instance.dispatch({ type: 'cancel-pending' }).accepted).toBeTrue();
         expect(outside()).toBeUndefined();
-        // Pending and committed heat share the cap; committing keeps the pending part.
+        // Pending and committed heat share the cap where it is read, so cancelling leaves the committed heat whole.
         expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'pending' }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'committed' }).accepted).toBeTrue();
         expect(outside()).toBe(15);
+        expect(fixture.instance.dispatch({ type: 'cancel-pending' }).accepted).toBeTrue();
+        expect(outside()).toBe(10);
+        // Committing keeps the pending part, within the cap.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 10, target: 'pending' }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({ type: 'commit-pending' }).accepted).toBeTrue();
         expect(outside()).toBe(15);
+        // APPLY HEAT keeps the turn's outside heat at the cap: another volley adds nothing.
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 20 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).changed).toBeFalse();
+        expect(projection().generated).toBe(0);
         const turn = canonicalizeMekTurnStateV2({ ...createPristineMekTurnStateV2(), outsideHeat: 15 });
         expect(deserializeMekTurnStateV2(serializeMekTurnStateV2(turn)).outsideHeat).toBe(15);
 
-        const before = fixture.instance.query().heatProjection('automatic');
         expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
         expect(outside()).toBeUndefined();
-        expect(fixture.instance.query().heatState().current).toBe(before.kind === 'supported' ? before.projection.projected : -1);
+        expect(fixture.instance.query().heatState().current).toBe(20);
+    });
+
+    it('keeps an applied arrow at End Turn; the heat sinks left over cool only heat generated afterwards', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:arrow-ledger');
+        const laser = fixture.equipmentComponent('ISMediumLaser');
+        const projection = mekProjection(fixture);
+        const fire = () => fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] });
+
+        // A 3-heat laser against 10 sinks calculates to 0; the player's arrow says 5, and 7 sinks are left.
+        expect(projection().capacity).toBe(10);
+        expect(fire().accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 5 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+        expect(projection().projected).toBe(5);
+        expect(projection().hasPendingSettlement).toBeFalse();
+        // 3 more heat arriving afterwards meets the 7 sinks left.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 3, target: 'committed' }).accepted)
+            .toBeTrue();
+        expect([projection().generated, projection().projected]).toEqual([3, 5]);
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(fixture.instance.query().heatState().current).toBe(5);
+    });
+
+    it('gives back the dissipation APPLY HEAT booked on a heat sink destroyed afterwards', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:lost-sink');
+        const laser = fixture.equipmentComponent('ISMediumLaser');
+        const sink = fixture.equipmentComponent('Heat Sink');
+        const slot = [...fixture.index.slots.values()].find(candidate => candidate.componentIds.includes(sink.id))!;
+        const projection = mekProjection(fixture);
+
+        // 15 outside heat and a 3-heat laser use all 10 sinks: 8 heat.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] }).accepted).toBeTrue();
+        expect(projection().projected).toBe(8);
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 8 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+        // The destroyed sink cools nothing this turn, so the 1 heat it was booked for comes back.
+        expect(fixture.instance.dispatch({ type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed' }).accepted)
+            .toBeTrue();
+        expect([projection().capacity, projection().projected]).toEqual([9, 9]);
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(fixture.instance.query().heatState().current).toBe(9);
+    });
+
+    for (const follow of [true, false]) {
+        it(`${follow ? 'moves NEXT by heat that arrives after it was set' : 'keeps NEXT the player’s own number'} ${
+            follow ? 'while heat resolution calculates' : 'with heat resolution off'}`, () => {
+            const fixture = createDirectMekRuntimeFixture('core-2026', `unit:heat:next-${follow}`);
+            const projection = mekProjection(fixture);
+            const next = () => fixture.instance.query().heatState().pendingOverride;
+
+            // Nothing generated yet, so the calculation is 0 and NEXT at 8 is the player's +8.
+            expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 8, follow }).accepted).toBeTrue();
+            // 15 outside heat against 10 sinks calculates to 5.
+            expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).accepted)
+                .toBeTrue();
+            expect(projection().projected).toBe(5);
+            expect(next()).toBe(follow ? 13 : 8);
+            // Heat sinks switched off push the calculation up by the cooling they lose, and NEXT with it.
+            expect(fixture.instance.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 2 }).accepted).toBeTrue();
+            expect(next()).toBe(follow ? 15 : 8);
+            // A NEXT tapped onto the calculation drops the adjustment.
+            expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: projection().projected, follow }).accepted)
+                .toBeTrue();
+            expect(fixture.instance.query().heatState().pendingOffset).toBe(follow ? 0 : undefined);
+        });
+    }
+
+    it('stores a following NEXT where it stands, so the sheet, a reload and APPLY HEAT all see the same value', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:next-apply-moved');
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 8, follow: true }).accepted).toBeTrue();
+        // 15 outside heat against 10 sinks calculates to 5, so NEXT stands at 13: +8.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).accepted)
+            .toBeTrue();
+        expect(fixture.instance.snapshot().heat).toEqual(jasmine.objectContaining({ pendingOverride: 13, pendingOffset: 8 }));
+        const sheet = projectMekRecordSheet(fixture.entity, fixture.index, fixture.instance.ruleset(),
+            fixture.instance.snapshot(), fixture.instance.query(), emptyCBTEncounterSnapshot(), null, true, {});
+        expect(sheet.heat.pendingOverride).toBe(13);
+        // Setting NEXT where it already stands changes nothing.
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 13, follow: true }).changed).toBeFalse();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+        expect(fixture.instance.query().heatState().current).toBe(13);
+    });
+
+    it('keeps a NEXT held at 0 where the player set it when they set it there again', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:next-clamped');
+        // 15 outside heat against 10 sinks calculates to 5; NEXT at 0 is the player's -5.
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).accepted)
+            .toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 0, follow: true }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 0, follow: true }).changed).toBeFalse();
+        expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({ pendingOverride: 0, pendingOffset: -5 }));
+    });
+
+    it('treats clearing a NEXT that is not set as no change', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:next-clear-absent');
+        const revision = fixture.instance.snapshot().stateRevision;
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: null }).changed).toBeFalse();
+        expect(fixture.instance.snapshot().stateRevision).toBe(revision);
+    });
+
+    it('ends the turn on a following NEXT exactly where APPLY HEAT at the time would have', () => {
+        const ending = (applyFirst: boolean) => {
+            const fixture = createDirectMekRuntimeFixture('core-2026', `unit:heat:next-apply-${applyFirst}`);
+            expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 8, follow: true }).accepted).toBeTrue();
+            if (applyFirst) expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+            expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).accepted)
+                .toBeTrue();
+            expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+            return fixture.instance.query().heatState().current;
+        };
+        expect([ending(false), ending(true)]).toEqual([13, 13]);
+    });
+
+    it('counts only the heat a settled source adds afterwards', () => {
+        const fixture = createDirectEngineHeatRuntimeFixture('Fusion', false, 'core-2026', 'unit:heat:engine-ledger');
+        const projection = mekProjection(fixture);
+        const engine = [...fixture.index.components.values()]
+            .find(component => component.kind === 'system' && component.systemType === 'Engine')!;
+        const [first, second] = [...fixture.index.slots.values()].filter(slot => slot.componentIds.includes(engine.id));
+        const hit = (slotId: typeof first.id) =>
+            fixture.instance.dispatch({ type: 'hit-critical', slotId, hits: 1, target: 'committed' });
+
+        expect(hit(first!.id).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: projection().projected }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+        // A second engine hit makes the engine 10 heat, 5 of it settled already.
+        expect(hit(second!.id).accepted).toBeTrue();
+        const engineHeat = (sources: readonly { id: string; value: number }[]) =>
+            sources.find(source => source.id === 'damaged-engine')?.value;
+        expect(engineHeat(projection().committedSources)).toBe(10);
+        expect(engineHeat(projection().sources)).toBe(5);
+    });
+
+    it('gives back booked dissipation the unit can no longer cool, keeping heat tracking', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:over-booked');
+        const state = fixture.instance.snapshot();
+        // APPLY HEAT booked 30 before a refit left the unit 10 sinks.
+        const turn = canonicalizeMekTurnStateV2({ ...state.turn, heatDissipationConsumed: 30 });
+        const scenario = { id: 'megamek' };
+        const prepared = createMekRuntimeBinding(fixture.entity, fixture.index, 'core-2026', { ...state, turn }, undefined,
+            createMekHeatContextV2(fixture.entity, fixture.index, 'core-2026', scenario),
+            createMekMechanicsContextV2(fixture.entity, fixture.index, 'core-2026', scenario));
+        const result = queryMekRuntime(prepared.binding, prepared.state).heatProjection();
+        expect(result.kind === 'supported' && [result.projection.capacity, result.projection.projected]).toEqual([10, 20]);
+    });
+
+    it('keeps the heat of a pending attack once APPLY HEAT applied it, even when the attack is cancelled', () => {
+        const fixture = createDirectMekRuntimeFixture('core-2026', 'unit:heat:applied-pending');
+        const projection = mekProjection(fixture);
+        const attack = () => fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'pending' });
+
+        // 15 outside heat against 10 sinks: 5.
+        expect(attack().accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 5 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'cancel-pending' }).accepted).toBeTrue();
+        expect([fixture.instance.query().heatState().current, projection().projected]).toEqual([5, 5]);
+        // The attack entered again adds nothing the player already applied.
+        expect(attack().accepted).toBeTrue();
+        expect(projection().projected).toBe(5);
+    });
+
+    it('adds the heat of a charged capacitor once when its PPC fires after APPLY HEAT settled the charge', () => {
+        const fire = (applyFirst: boolean) => {
+            const fixture = createDirectMekRuntimeFixture('core-2026', `unit:heat:ppc-${applyFirst}`);
+            const weapon = fixture.equipmentComponent('Test PPC');
+            const capacitor = fixture.equipmentComponent('Test PPC Capacitor');
+            const turn = () => fixture.instance.query().turnState();
+            expect(fixture.instance.dispatch({ type: 'set-ppc-capacitor-charge', capacitorId: capacitor.id,
+                weaponId: weapon.id, state: PPC_CAPACITOR_CHARGING_STATE }).accepted).toBeTrue();
+            expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+            if (applyFirst) {
+                expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: mekProjection(fixture)().projected })
+                    .accepted).toBeTrue();
+                expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
+            }
+            // The panel and the fire plan add what `ppcCapacitorFiringHeat` says.
+            const capacitorHeat = ppcCapacitorFiringHeat(turn(), weapon.id);
+            const before = turn().weaponsHeat;
+            expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: weapon.id }] }).accepted)
+                .toBeTrue();
+            return { capacitorHeat, weaponsHeat: turn().weaponsHeat - before };
+        };
+        const unsettled = fire(false);
+        const settled = fire(true);
+
+        expect([unsettled.capacitorHeat, settled.capacitorHeat]).toEqual([5, 0]);
+        expect(unsettled.weaponsHeat - settled.weaponsHeat).toBe(5);
     });
 
     it('generates damaged-engine heat only for fusion-family Entity engines', () => {

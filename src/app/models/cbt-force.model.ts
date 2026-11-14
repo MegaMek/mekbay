@@ -83,7 +83,7 @@ type ScenarioRules,
 
 import { DialogsService } from '../services/dialogs.service';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
-import { heatAutomationPolicy, OptionsService, realPhasesEnabled } from '../services/options.service';
+import { endTurnCalculatesHeat, heatAutomationPolicy, OptionsService, realPhasesEnabled } from '../services/options.service';
 import type { OptionalRules } from './options.model';
 import { ToastService } from '../services/toast.service';
 import type { UnitUuid } from '../services/unit-catalog/unit-catalog.types';
@@ -117,6 +117,7 @@ import {
 captureMekComponentModes,
 changedComponentModeHistory,
 crewProfileHistory,
+endTurnHeatHistory,
 forceHistory,
 historyCrewLabel,
 historyTargetLabel,
@@ -1224,7 +1225,6 @@ export class CBTForce extends Force<never> {
         const owned = this.unitStore.mekUnit(instanceId);
         if (!owned) return null;
         const registry = this.queryInventoryControlTargetRegistry();
-        const heatPolicy = this.currentHeatPolicy();
         const adjustedBattleValue = pristine
             ? this.getUnitPristineAdjustedBattleValue(instanceId)
             : this.getUnitAdjustedBattleValue(instanceId);
@@ -1251,7 +1251,7 @@ export class CBTForce extends Force<never> {
             query,
             registry,
             battleValue,
-            heatPolicy,
+            this.currentEndTurnCalculatesHeat(),
             this.optionalRules(),
         ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
@@ -1290,7 +1290,8 @@ export class CBTForce extends Force<never> {
             pristine ? queryNonMekRuntime(owned.mechanics(), state) : owned.query(),
             adjustedBattleValue,
             pristineBattleValue,
-            this.currentHeatPolicy(),
+            this.currentEndTurnCalculatesHeat(),
+            this.currentTurnTracked(),
         ), editContext: pristine ? Object.freeze({ ...unit.editContext, state }) : unit.editContext });
     }
 
@@ -1321,21 +1322,18 @@ export class CBTForce extends Force<never> {
             unit.state,
             owned.query(),
             registry,
+            this.optionalRules(),
         );
     }
 
     /** Entity + runtime turn projection; the legacy TurnState and sheet DOM are not inputs. */
-    public getMekTurnPanelSnapshot(
-        instanceId: string,
-        heatPolicy: HeatAutomationPolicy,
-    ): MekTurnPanelSnapshot | null {
+    public getMekTurnPanelSnapshot(instanceId: string): MekTurnPanelSnapshot | null {
         const unit = this.getUnitSnapshot(instanceId);
         return unit && hasMekRuntime(unit) ? projectMekTurnPanel(
             unit.entity,
             unit.index,
             unit.ruleset,
             unit.query,
-            heatPolicy,
         ) : null;
     }
 
@@ -1514,14 +1512,25 @@ export class CBTForce extends Force<never> {
         command: CBTUnitCommand,
         context?: UnitEditContext,
     ): Promise<CBTForceUnitCommandResult> {
-        return this.unitCommandDispatcher.dispatch(instanceId, this.withPhaseSystem(command), context);
+        return this.unitCommandDispatcher.dispatch(instanceId, this.withHeatMode(this.withPhaseSystem(command)), context);
     }
 
-    /** A declaration tells the rules whether the full phase system is on (see `MekPilotCheckRecordV2.immediate`). */
+    /**
+     * A declaration, or a turn-state edit such as entering water, tells the rules whether the full phase system is on
+     * (see `MekPilotCheckRecordV2.immediate`).
+     */
     private withPhaseSystem(command: CBTUnitCommand): CBTUnitCommand {
-        if (command.type !== 'declare-mek-movement' && command.type !== 'declare-mek-action') return command;
+        if (command.type !== 'declare-mek-movement' && command.type !== 'declare-mek-action'
+            && command.type !== 'replace-turn-state') return command;
         const options = this.injector.get(OptionsService, null, { optional: true });
         return options && realPhasesEnabled(options) ? { ...command, realPhases: true } : command;
+    }
+
+    /** Setting NEXT tells the rules whether it follows the calculated heat (`followCalculatedHeat`). */
+    private withHeatMode(command: CBTUnitCommand): CBTUnitCommand {
+        if (command.type !== 'set-pending-heat') return command;
+        const options = this.injector.get(OptionsService, null, { optional: true });
+        return options && endTurnCalculatesHeat(options) ? { ...command, follow: true } : command;
     }
 
     private dispatchUnitCommandCore(
@@ -1615,7 +1624,7 @@ export class CBTForce extends Force<never> {
             const current = this.getUnitSnapshot(instanceId)?.editContext;
             if (!unit || !context || !current || !isUnitEditContextCurrent(context, current)) return null;
             const policy = this.getUnitCrewPolicy(instanceId);
-            const profile = canonicalizeCrewAssignment(unit.getIndex().crewPositions, { schemaVersion: 1, positions: captured });
+            const profile = canonicalizeCrewAssignment(unit.getIndex().crewPositions, { positions: captured });
             const previous = unit.getCrewAssignment();
             if (jsonValuesEqual(previous, profile)) return before;
             if (policy.kind === 'none' || (policy.kind === 'integrated'
@@ -1988,15 +1997,25 @@ export class CBTForce extends Force<never> {
             const capture = this.captureRuntimeCommandMutation(
                 this.unitStore.instanceIds(),
             );
+            const heatBefore = this.unitStore.instanceIds().flatMap(instanceId => {
+                const heat = this.getUnitSnapshot(instanceId)?.state.heat;
+                return heat ? [[instanceId, heat] as const] : [];
+            });
             return this.unitStore.endTurnForAll(
                 () => this.readOnly(),
                 () => this.currentHeatPolicy(),
                 this.c3Encounter.networks,
                 this.injector.get(ToastService),
                 () => {
+                    // Each unit's settled heat, as one unit's End Turn logs it, then the turn ending for all.
+                    const heat = heatBefore.flatMap(([instanceId, before]) => {
+                        const after = this.getUnitSnapshot(instanceId)?.state.heat;
+                        const event = after && endTurnHeatHistory(instanceId, before, after);
+                        return event ? [event] : [];
+                    });
                     const changedUnitIds = this.recordRuntimeCommandMutation(
                         capture,
-                        forceHistory(RUNTIME_HISTORY_MESSAGE.TURN_ENDED),
+                        [...heat, forceHistory(RUNTIME_HISTORY_MESSAGE.TURN_ENDED)],
                     );
                     this.reserveForceOwnerMutationIntent();
                     this.emitChangedFromReservedIntent(changedUnitIds);
@@ -2009,6 +2028,16 @@ export class CBTForce extends Force<never> {
     private currentHeatPolicy(): HeatAutomationPolicy {
         const options = this.injector.get(OptionsService, null, { optional: true });
         return options ? heatAutomationPolicy(options) : 'automatic';
+    }
+
+    private currentEndTurnCalculatesHeat(): boolean {
+        const options = this.injector.get(OptionsService, null, { optional: true });
+        return options ? endTurnCalculatesHeat(options) : true;
+    }
+
+    /** Whether phase/turn tracking is on; without an options service (headless use), turns are not tracked. */
+    private currentTurnTracked(): boolean {
+        return this.injector.get(OptionsService, null, { optional: true })?.options().trackPhaseAndTurn ?? false;
     }
 
     protected override reconcileCBTForceV2Projection(): void {

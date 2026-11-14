@@ -41,7 +41,14 @@ export type IntrinsicWeaponKind =
   | 'charge'
   | 'airmek-ram'
   | 'push'
-  | 'frenzy';
+  | 'thrash'
+  // A swarmed 'Mech pulls the infantry off with one arm (TW p. 221).
+  | 'brush-off'
+  | 'frenzy'
+  // Infantry anti-'Mech attacks (TW pp. 220-223).
+  | 'leg-attack'
+  | 'swarm'
+  | 'end-swarm';
 
 export interface IntrinsicWeapon extends IntrinsicWeaponBase {
   readonly source: 'intrinsic';

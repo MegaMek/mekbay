@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { ComponentId, LocationId } from '../entity/entity-identifiers';
+import type { UnitWaterState } from '../unit-cover.model';
 import { groupAvailable, type MekLimbProfile, type MekMechanicsProfile } from './mek-mechanics-profile';
 import {
     kickActuatorLegs,
@@ -42,6 +43,8 @@ export interface MekPhysicalAttackRuntimeFactsV2 extends MekShieldRuntimeFactsV2
     readonly currentHeat: number;
     readonly movementMode: MekMovementModeV2 | null;
     readonly movementDistance: number;
+    /** Where the water stands on the 'Mek: its legs in Depth 1 standing, all of it when submerged. */
+    readonly water: UnitWaterState;
     componentAvailable(componentId: ComponentId): boolean;
     componentMode(componentId: ComponentId): string | undefined;
     criticalSlotDestroyedTurn(
@@ -169,7 +172,7 @@ export function projectMekPhysicalAttacksV2(
                         weakened: false,
                     })
                     : Object.freeze({ kind: 'none' })
-                : damageEffect(
+                : halvedUnderwater(damageEffect(
                     baseDamage,
                     constructionBase,
                     standardTsmInstalled && !ignoreMyomer,
@@ -177,7 +180,7 @@ export function projectMekPhysicalAttacksV2(
                     tsmActive && !ignoreMyomer,
                     vibroblade !== null && !vibrobladeActive ? vibroblade.activeDamage : undefined,
                     actuatorEffects,
-                );
+                ), attacksUnderwater(facts, legsOnly(profile, group.locationIds)));
             const locationCodes = group.locationIds.map(locationId =>
                 requireLocation(index, locationId).code);
             attacks.push(Object.freeze({
@@ -200,7 +203,8 @@ export function projectMekPhysicalAttacksV2(
             // A mule kick uses both rear legs; only a front kick names its leg.
             const kickingLegCode = action.kind !== 'kick' || kickingLeg === null
                 ? undefined : index.locations.get(kickingLeg.locationId)?.code;
-            const effect = intrinsicEffect(
+            // A death from above starts above the water, so only a submerged 'Mech could make one and it cannot.
+            const effect = halvedUnderwater(intrinsicEffect(
                 action,
                 profile,
                 index,
@@ -210,7 +214,8 @@ export function projectMekPhysicalAttacksV2(
                 tsmActive,
                 shields,
                 kickingLeg,
-            );
+            ), action.kind !== 'death-from-above'
+                && attacksUnderwater(facts, isMekKick(action.kind) || legsOnly(profile, locationIds)));
             attacks.push(Object.freeze({
                 target: Object.freeze({ kind: 'intrinsic' as const, actionId: action.id }),
                 label: kickingLegCode !== undefined
@@ -262,7 +267,9 @@ function intrinsicEffect(
     let baseDamage = currentFixedDamage(action, profile, index, facts, kickingLeg);
     let limbs: readonly MekLimbProfile[] = [];
     let lowerArmActuator = true;
-    if (action.kind === 'punch') {
+    // A failed brush off deals the punch from that arm to the 'Mech itself; a successful one deals it to the infantry.
+    const punch = action.kind === 'punch' || action.kind === 'brush-off';
+    if (punch) {
         const location = action.locations[0];
         limbs = profile.limbs.filter(limb => locationCode(index, limb.locationId) === location);
         lowerArmActuator = limbs.some(limb => limb.actuators.some(actuator => actuator.kind === 'lower-arm'));
@@ -284,7 +291,7 @@ function intrinsicEffect(
         supportsTsm && tsmActive,
         undefined,
         value => halveForUnavailableActuators(
-            action.kind === 'punch' ? mekPunchDamage(value, lowerArmActuator) : value, limbs, facts),
+            punch ? mekPunchDamage(value, lowerArmActuator) : value, limbs, facts),
     );
 }
 
@@ -334,6 +341,32 @@ function chargeEffect(
         ...projection,
         boosted: false,
         movementDistance: facts.movementDistance,
+    });
+}
+
+/** Whether an attack happens underwater: legs stand in Depth 1 water, and everything is when the 'Mech is submerged. */
+function attacksUnderwater(facts: MekPhysicalAttackRuntimeFactsV2, withLegs: boolean): boolean {
+    return facts.water.submerged || (withLegs && facts.water.partiallyUnderwater);
+}
+
+function legsOnly(profile: MekMechanicsProfile, locationIds: readonly LocationId[]): boolean {
+    return locationIds.length > 0 && locationIds.every(locationId =>
+        profile.limbs.some(limb => limb.kind === 'leg' && limb.locationId === locationId));
+}
+
+/**
+ * A physical attack made underwater deals half its damage, rounding down (TW p. 144; Core pp. 77, 127), and still at
+ * least 1 point (Core p. 88).
+ */
+function halvedUnderwater(effect: MekPhysicalAttackEffectV2, underwater: boolean): MekPhysicalAttackEffectV2 {
+    if (!underwater || effect.kind !== 'damage' || effect.displayFormula !== undefined) return effect;
+    const half = (value: number) => Math.max(1, Math.floor(value / 2));
+    return Object.freeze({
+        ...effect,
+        damage: half(effect.damage),
+        maximumDamage: half(effect.maximumDamage),
+        baseDamage: half(effect.baseDamage),
+        weakened: true,
     });
 }
 

@@ -53,7 +53,7 @@ export class PageViewerMekRuntimeService {
             snapshot,
             readOnly ? undefined : handleInteraction,
             handleInteraction,
-            recordSheetInventorySource(member),
+            recordSheetInventorySource(member, this.overlays.livePlay(member)),
         );
         this.reportLayoutIssues(snapshot, binding.initialIssues);
         svg.classList.add('interactive-sheet');
@@ -86,7 +86,8 @@ export class PageViewerMekRuntimeService {
         const current = this.bound.get(member.id);
         const snapshot = member.mekRecordSheetSnapshot();
         if (!current || current.member !== member || !snapshot) return;
-        const issues = current.binding.render(snapshot, recordSheetInventorySource(member));
+        const issues = current.binding.render(snapshot,
+            recordSheetInventorySource(member, this.overlays.livePlay(member)));
         this.unitNames.applyToRecordSheet(current.svg, member.entity);
         this.reportLayoutIssues(snapshot, issues);
     }

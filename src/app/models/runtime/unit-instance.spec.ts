@@ -419,7 +419,6 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
 
 
             declaration: {
-                schemaVersion: 1,
                 mode: 'walk',
                 distance: 1,
                 boosterComponentIds: [],
@@ -580,7 +579,7 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         const fixture = createDirectMekRuntimeFixture();
         const laser = fixture.equipmentComponent('ISMediumLaser');
         const generated = () => {
-            const result = fixture.instance.query().heatProjection('manual');
+            const result = fixture.instance.query().heatProjection();
             return result.kind === 'supported' ? result.projection.generated : -1;
         };
         expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 6 }).accepted).toBeTrue();
@@ -595,61 +594,55 @@ describe('CBTUnitInstance with a direct MekEntity', () => {
         expect(generated()).toBe(before + fixture.instance.query().turnState().weaponsHeat + 4);
     });
 
-    it('applies an explicit heat correction without consuming automatic turn heat', () => {
+    it('applies the arrow as the heat of the turn so far, pending outside heat included, and adds later heat at End Turn', () => {
         const fixture = createDirectMekRuntimeFixture();
         const laser = fixture.equipmentComponent('ISMediumLaser');
+        const projected = () => {
+            const result = fixture.instance.query().heatProjection();
+            if (result.kind !== 'supported') throw new Error('Fixture heat must be supported');
+            return result.projection;
+        };
 
-        expect(fixture.instance.dispatch({
-            type: 'set-heat',
-            heat: 10,
-        }).accepted).toBeTrue();
-        expect(fixture.instance.dispatch({
-            type: 'fire-weapons',
-            selections: [{ weaponId: laser.id }],
-        }).accepted).toBeTrue();
-        expect(fixture.instance.dispatch({
-            type: 'set-pending-heat',
-            heat: 23,
-        }).accepted).toBeTrue();
-        expect(fixture.instance.dispatch({
-            type: 'apply-heat',
-            policy: 'automatic',
-        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-heat', heat: 10 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] }).accepted)
+            .toBeTrue();
+        const laserHeat = fixture.instance.query().turnState().weaponsHeat;
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 8, target: 'pending' }).accepted)
+            .toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 23 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
 
-        expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({
-            current: 23,
-            previous: 10,
-        }));
+        // The arrow holds everything so far: the laser, the pending outside heat and the dissipation.
+        expect(fixture.instance.query().heatState()).toEqual(jasmine.objectContaining({ current: 23, previous: 10 }));
         expect(fixture.instance.query().heatState().pendingOverride).toBeUndefined();
-        expect(fixture.instance.query().turnState().weaponsHeat).toBeGreaterThan(0);
-        expect(fixture.instance.query().turnState().acknowledgedHeatSources.size).toBe(0);
+        expect(projected().generated).toBe(0);
+        // Committing the attack adds no heat the arrow already holds.
+        expect(fixture.instance.dispatch({ type: 'commit-pending' }).accepted).toBeTrue();
+        expect(projected().projected).toBe(23);
+
+        // 10 + 3 + 8 used all 10 heat sinks, so 3 more heat arriving afterwards adds in full at End Turn. The laser
+        // itself fires once a turn.
+        expect([laserHeat, projected().capacity]).toEqual([3, 10]);
+        expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] }).changed)
+            .toBeFalse();
+        expect(fixture.instance.dispatch({ type: 'add-outside-heat', amount: 3, target: 'committed' }).accepted)
+            .toBeTrue();
+        expect(projected().projected).toBe(26);
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(fixture.instance.query().heatState().current).toBe(26);
     });
 
-    it('uses the calculated projection instead of an unapplied target at automatic end-turn', () => {
+    it('settles an unapplied arrow as the heat of the turn at End Turn', () => {
         const fixture = createDirectMekRuntimeFixture();
         const laser = fixture.equipmentComponent('ISMediumLaser');
 
-        expect(fixture.instance.dispatch({
-            type: 'set-heat',
-            heat: 10,
-        }).accepted).toBeTrue();
-        expect(fixture.instance.dispatch({
-            type: 'fire-weapons',
-            selections: [{ weaponId: laser.id }],
-        }).accepted).toBeTrue();
-        const projected = fixture.instance.query().heatProjection('automatic');
-        if (projected.kind !== 'supported') throw new Error('Fixture heat must be supported');
-        expect(fixture.instance.dispatch({
-            type: 'set-pending-heat',
-            heat: 25,
-        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-heat', heat: 10 }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'fire-weapons', selections: [{ weaponId: laser.id }] }).accepted)
+            .toBeTrue();
+        expect(fixture.instance.dispatch({ type: 'set-pending-heat', heat: 25 }).accepted).toBeTrue();
 
-        expect(fixture.instance.dispatch({
-            type: 'end-turn',
-            policy: 'automatic',
-        }).accepted).toBeTrue();
-        expect(fixture.instance.query().heatState().current).toBe(projected.projection.projected);
-        expect(fixture.instance.query().heatState().current).not.toBe(25);
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(fixture.instance.query().heatState().current).toBe(25);
         expect(fixture.instance.query().heatState().pendingOverride).toBeUndefined();
     });
 

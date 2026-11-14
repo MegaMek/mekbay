@@ -6,6 +6,7 @@ import { TestBed } from '@angular/core/testing';
 import { CBTForce } from '../models/cbt-force.model';
 import type { CBTRuleset } from '../models/cbt-ruleset.model';
 import type { CBTUnit } from '../models/runtime/cbt-unit';
+import type { ScenarioRules } from '../models/runtime/unit-state-initializer';
 import { loadCBTForceFixture } from '../models/runtime/testing/cbt-force-fixture';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { DataService } from './data.service';
@@ -60,12 +61,15 @@ describe('ForceBuilderService live rules switch with real forces', () => {
         for (let index = 0; index < 20; index += 1) await new Promise(resolve => setTimeout(resolve));
     }
 
-    /** A force that can play only Total Warfare. */
-    function failingForce(name: string): CBTForce {
+    /** A force that can play only the rules `binds` accepts: Total Warfare by default. */
+    function failingForce(
+        name: string,
+        binds: (scenario: ScenarioRules) => boolean = scenario => scenario.ruleset === 'total-warfare',
+    ): CBTForce {
         return Object.assign(Object.create(CBTForce.prototype) as CBTForce, {
             displayName: () => name,
             prepareScenarioRebind: jasmine.createSpy('prepareScenarioRebind').and.callFake(
-                async (scenario: { readonly ruleset?: CBTRuleset }) => scenario.ruleset === 'total-warfare'
+                async (scenario: ScenarioRules) => binds(scenario)
                     ? { bound: true, dropped: [], install: async () => true }
                     : { bound: false }),
         });
@@ -117,6 +121,70 @@ describe('ForceBuilderService live rules switch with real forces', () => {
         expect(alpha.force.getUnitSnapshot(alpha.instanceId)!.query.componentJammed(alpha.ac)).toBeTrue();
         expect((await alpha.force.serializeForPersistence()).cbt!.units).toEqual(before);
         expect(alpha.force.getRuntimeUndoState()).toEqual(undo);
+    });
+
+    it('binds a changed optional rule into every loaded unit before saving it', async () => {
+        const alpha = await damagedTwForce('unit:alpha');
+        const { service, optionsService } = createService([alpha.force], 'total-warfare');
+        await settled();
+        const bound = () => alpha.force.getUnitSnapshot(alpha.instanceId)!.query.boundRules().hotLoadedAmmo;
+        expect(bound()).toBeFalse();
+        const boundWhenSaved: boolean[] = [];
+        optionsService.setOption.and.callFake(async (key: string, value: unknown) => {
+            boundWhenSaved.push(bound());
+            optionsService.options.update(current => ({ ...current, [key]: value }));
+        });
+
+        expect(await service.setOptionalRule('hotLoadedAmmo', true)).toBeTrue();
+
+        // The other rules stay as they were.
+        expect(optionsService.setOption).toHaveBeenCalledOnceWith('CBTOptionalRules',
+            { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: true });
+        expect(boundWhenSaved).toEqual([true]);
+    });
+
+    it('keeps the options and every unit on the old rule when a force cannot bind the new one', async () => {
+        const alpha = await damagedTwForce('unit:alpha');
+        const bravo = failingForce('Bravo', scenario => scenario.options?.hotLoadedAmmo !== true);
+        const { service, optionsService } = createService([alpha.force, bravo], 'total-warfare');
+        await settled();
+
+        expect(await service.setOptionalRule('hotLoadedAmmo', true)).toBeFalse();
+
+        expect(optionsService.setOption).not.toHaveBeenCalled();
+        expect(alpha.force.getUnitSnapshot(alpha.instanceId)!.query.boundRules().hotLoadedAmmo).toBeFalse();
+        // A rule read where it is used binds nothing, so it saves at once.
+        (bravo.prepareScenarioRebind as jasmine.Spy).calls.reset();
+        expect(await service.setOptionalRule('enhancedFlamers', true)).toBeTrue();
+        expect(bravo.prepareScenarioRebind).not.toHaveBeenCalled();
+        expect(optionsService.setOption).toHaveBeenCalledOnceWith('CBTOptionalRules',
+            jasmine.objectContaining({ enhancedFlamers: true }));
+    });
+
+    it('keeps every rule changed while an earlier rule switch is still rebinding the forces', async () => {
+        const alpha = await damagedTwForce('unit:alpha');
+        const { service, optionsService } = createService([alpha.force], 'total-warfare');
+        await settled();
+        // A rule read where it is used saves at once, here while the first switch rebinds the force.
+        const prepare = alpha.force.prepareScenarioRebind.bind(alpha.force);
+        let live: Promise<boolean> | undefined;
+        spyOn(alpha.force, 'prepareScenarioRebind').and.callFake(scenario => {
+            live ??= service.setOptionalRule('enhancedFlamers', true);
+            return prepare(scenario);
+        });
+
+        const changes = [
+            service.setOptionalRule('hotLoadedAmmo', true),
+            service.setOptionalRule('sprinting', true),
+        ];
+        expect(await Promise.all(changes)).toEqual([true, true]);
+        expect(await live).toBeTrue();
+
+        expect(optionsService.options().CBTOptionalRules).toEqual(jasmine.objectContaining({
+            hotLoadedAmmo: true, enhancedFlamers: true, sprinting: true,
+        }));
+        expect(alpha.force.getUnitSnapshot(alpha.instanceId)!.query.boundRules())
+            .toEqual(jasmine.objectContaining({ hotLoadedAmmo: true, sprinting: true }));
     });
 
     it('binds a force loaded after the switch to the new rules', async () => {

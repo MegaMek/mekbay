@@ -24,7 +24,7 @@ describe('manual BV sheet authority', () => {
                 entity.manualBV.set(321);
                 const runtime = createNonMekRuntimeForTest('manual-bv-print', {
                     entity: entity.uuid(), ruleset,
-                    initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+                    initialStateProfile: { profileId: 'pristine-non-mek' },
                 }, entity, ruleset);
                 const force = {
                     getUnitSnapshot: () => ({ entity, ruleset }),

@@ -23,15 +23,12 @@ import { shieldWalkMpReduction } from '../entity/utils/physical-weapon-kernel';
 import type { MekDestructionFactsV2 } from './mek-destruction-state-v2';
 import { mekHeatEffects } from '../rules/mek-heat-rules';
 import { physicalAttackCheckModifier } from '../rules/physical-attack-rules';
+import { MAGNETIC_CLAW_SHAKE_OFF_MODIFIER, SHAKE_OFF_JUMP_MODIFIER } from '../rules/anti-mek-attack-rules';
 import {
     projectMekShieldsV2,
     type MekShieldRuntimeFactsV2,
 } from './mek-shield-rules';
 
-/** 3: checks no longer record targets (schema 2 saves are migrated on read). */
-export const MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION = 3 as const;
-export const MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION = 1 as const;
-export const MEK_ACTION_DECLARATION_SCHEMA_VERSION = 1 as const;
 export const MAX_MEK_PILOT_CHECKS_V2 = 256;
 export const MAX_MEK_PILOT_CHECK_WITNESS_LENGTH_V2 = 16_384;
 export const MAX_MEK_MOVEMENT_MP_V2 = 1_000;
@@ -48,7 +45,6 @@ export type MekPilotCheckOutcomeV2 = 'success' | 'failed';
 export type MekPilotCheckStatusV2 = 'pending' | MekPilotCheckOutcomeV2;
 
 export interface MekMovementDeclarationV2 {
-    readonly schemaVersion: typeof MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION;
     readonly mode: MekMovementModeV2;
     readonly distance: number;
     /** Exact active MASC/supercharger components selected for this Run or Sprint. */
@@ -56,7 +52,6 @@ export interface MekMovementDeclarationV2 {
 }
 
 export interface MekActionDeclarationV2 {
-    readonly schemaVersion: typeof MEK_ACTION_DECLARATION_SCHEMA_VERSION;
     readonly kind: MekActionIntentKindV2;
 }
 
@@ -70,6 +65,8 @@ export type MekPilotCheckTriggerKindV2 =
     | 'move-damaged-leg'
     | 'move-damaged-actuator'
     | 'sprint-booster'
+    | 'jump-into-water'
+    | 'shake-off-jump'
     | 'get-up'
     | 'shutdown'
     | MekPhysicalAttackCheckTriggerKindV2;
@@ -86,7 +83,8 @@ export type MekPhysicalAttackCheckTriggerKindV2 =
     | 'struck-by-death-from-above'
     | 'missed-kick'
     | 'made-charge'
-    | 'made-death-from-above';
+    | 'made-death-from-above'
+    | 'made-thrash';
 
 export type MekPilotCheckSourceKindV2 = 'damage' | 'movement' | 'action' | 'physical';
 
@@ -176,7 +174,9 @@ export interface MekMovementPsrRuntimeFactsV2 extends MekShieldRuntimeFactsV2 {
      * pure kernel consumes only the resulting narrow rules fact.
      */
     readonly dedicatedPilotFunctional: boolean;
-    readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
+    readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected' | 'swarmed'>;
+    /** The depth of the water the 'Mech stands in, as the player sets its cover; 0 out of water. */
+    readonly waterDepth?: number;
     readonly destruction: MekDestructionFactsV2;
     componentAvailable(componentId: ComponentId): boolean;
     componentDisabled(componentId: ComponentId): boolean;
@@ -403,7 +403,6 @@ export type MekStandAttemptResolutionV2 =
     };
 
 export interface SerializedMekMovementPsrStateV2 {
-    readonly schemaVersion: typeof MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION;
     readonly movement?: MekMovementDeclarationV2;
     readonly action?: MekActionDeclarationV2;
     readonly standAttempts?: number;
@@ -535,12 +534,13 @@ const PHYSICAL_ATTACK_CHECK_REASONS: Readonly<Record<MekPhysicalAttackCheckTrigg
     'missed-kick': 'Missed a kick',
     'made-charge': 'Made a charge',
     'made-death-from-above': 'Made a death from above attack',
+    'made-thrash': 'Thrashed',
 });
 const PHYSICAL_ATTACK_TRIGGER_KIND_SET: ReadonlySet<string> = new Set(Object.keys(PHYSICAL_ATTACK_CHECK_REASONS));
 const TRIGGER_KINDS = Object.freeze([
     'damage-total-20', 'leg-actuator-hit', 'hip-hit', 'gyro-hit', 'leg-destroyed',
-    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster',
-    'get-up', 'shutdown',
+    'move-damaged-gyro', 'move-damaged-leg', 'move-damaged-actuator', 'sprint-booster', 'jump-into-water',
+    'shake-off-jump', 'get-up', 'shutdown',
 ] as const satisfies readonly MekPilotCheckTriggerKindV2[]);
 const TRIGGER_KIND_SET: ReadonlySet<string> = new Set([...TRIGGER_KINDS, ...PHYSICAL_ATTACK_TRIGGER_KIND_SET]);
 const AUTOMATIC_FALL_TRIGGER_KINDS = Object.freeze([
@@ -600,8 +600,7 @@ export function canonicalizeMekMovementDeclarationV2(
     value: MekMovementDeclarationV2,
 ): MekMovementDeclarationV2 {
     if (!isObjectLiteralRecord(value)
-        || !exactKeys(value, ['schemaVersion', 'mode', 'distance', 'boosterComponentIds'])
-        || value.schemaVersion !== MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION
+        || !exactKeys(value, ['mode', 'distance', 'boosterComponentIds'])
         || !isMovementMode(value.mode)
         || !canonicalNonnegativeInteger(value.distance, MAX_MEK_MOVEMENT_MP_V2)
         || !Array.isArray(value.boosterComponentIds)) {
@@ -615,7 +614,6 @@ export function canonicalizeMekMovementDeclarationV2(
         throw new Error('Movement mode and distance are inconsistent');
     }
     return Object.freeze({
-        schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
         mode: value.mode,
         distance: value.distance,
         boosterComponentIds: Object.freeze(boosters as ComponentId[]),
@@ -626,12 +624,11 @@ export function canonicalizeMekActionDeclarationV2(
     value: MekActionDeclarationV2,
 ): MekActionDeclarationV2 {
     if (!isObjectLiteralRecord(value)
-        || !exactKeys(value, ['schemaVersion', 'kind'])
-        || value.schemaVersion !== MEK_ACTION_DECLARATION_SCHEMA_VERSION
+        || !exactKeys(value, ['kind'])
         || !isActionKind(value.kind)) {
         throw new Error('Invalid Mek action declaration');
     }
-    return Object.freeze({ schemaVersion: MEK_ACTION_DECLARATION_SCHEMA_VERSION, kind: value.kind });
+    return Object.freeze({ kind: value.kind });
 }
 
 export function canonicalizeMekMovementPsrStateV2(
@@ -735,7 +732,6 @@ export function projectMekMovementPsrV2(
     ): readonly MekPilotCheckSeedV2[] => {
         const selected = canonicalState.movement?.mode === mode;
         const declaration = Object.freeze({
-            schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
             mode,
             distance,
             boosterComponentIds: selected
@@ -1018,7 +1014,6 @@ export function prepareMekStandUpV2(
     const sameMode = canonical.movement?.mode === mode;
     const maximum = sameMode ? projected.declaration?.maximumMp ?? 0 : 0;
     const movement = Object.freeze({
-        schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
         mode,
         distance: sameMode ? Math.min(canonical.movement!.distance, maximum) : 0,
         boosterComponentIds: sameMode
@@ -1241,6 +1236,53 @@ export function appendMekPhysicalAttackChecksV2(
     }));
 }
 
+/** The one jump-into-water roll of a phase, as the movement's other rolls: the turn records its jump and water. */
+const JUMP_INTO_WATER_WITNESS = canonicalWitness({ landing: 'water' });
+/** The one roll of a phase to shake swarming infantry off with the jump; the infantry's magnetic claws make it 1 harder. */
+const SHAKE_OFF_JUMP_WITNESS = canonicalWitness({ shakeOff: 'jump' });
+const SHAKE_OFF_JUMP_CLAWS_WITNESS = canonicalWitness({ shakeOff: 'jump', magneticClaws: true });
+
+/**
+ * The rolls a jump raises on landing, once in the phase each:
+ * - a 'Mech that ends its jump over Depth 1 or deeper water makes a Piloting Skill Roll (TW p. 53; Core p. 50) with
+ *   no modifier for the depth, under either ruleset (Core p. 50; BattleMech Manual for Total Warfare), raised as the
+ *   jump is declared or the 'Mech enters the water, whichever is second;
+ * - a swarmed 'Mech that jumps rolls at +4 to shake the infantry off, +1 more against `swarmerMagneticClaws`;
+ *   failing it the infantry stays on and the 'Mech does not fall (TW p. 222).
+ * Reconciling drops either while unrolled if the jump, the water or the swarm is taken back.
+ */
+export function raiseMekJumpChecksV2(
+    facts: MekMovementPsrRuntimeFactsV2,
+    state: MekMovementPsrStateV2,
+    producingRevision: number,
+    immediate: boolean,
+    swarmerMagneticClaws = false,
+): MekMovementPsrStateV2 {
+    const canonical = canonicalizeMekMovementPsrStateV2(state);
+    if (canonical.movement?.mode !== 'jump' || facts.conditions.has('prone')) return canonical;
+    const raised = (witness: string) => canonical.checks.some(check => check.source.witness === witness);
+    const seeds = [
+        ...((facts.waterDepth ?? 0) >= 1 && !cannotFall(facts) && !raised(JUMP_INTO_WATER_WITNESS) ? [seed({
+            sourceKind: 'movement',
+            triggerKind: 'jump-into-water',
+            witness: JUMP_INTO_WATER_WITNESS,
+            criticalSlotIds: [],
+            locationIds: [],
+        }, 'Jumped into water')] : []),
+        ...(facts.conditions.has('swarmed')
+            && !canonical.checks.some(check => check.source.triggerKind === 'shake-off-jump') ? [seed({
+            sourceKind: 'movement',
+            triggerKind: 'shake-off-jump',
+            witness: swarmerMagneticClaws ? SHAKE_OFF_JUMP_CLAWS_WITNESS : SHAKE_OFF_JUMP_WITNESS,
+            criticalSlotIds: [],
+            locationIds: [],
+        }, 'Shaking off swarming infantry')] : []),
+    ];
+    if (seeds.length === 0) return canonical;
+    requireRevision(producingRevision);
+    return freezeState({ ...canonical, checks: appendSeeds(canonical.checks, seeds, producingRevision, immediate) });
+}
+
 /** Remove only unsettled triggers that committed state/action no longer supports. */
 export function reconcileMekPilotChecksV2(
     profile: MekMechanicsProfile,
@@ -1423,7 +1465,6 @@ export function serializeMekMovementPsrStateV2(
 ): SerializedMekMovementPsrStateV2 {
     const state = canonicalizeMekMovementPsrStateV2(value);
     return Object.freeze({
-        schemaVersion: MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION,
         ...(state.movement === null ? {} : { movement: state.movement }),
         ...(state.action === null ? {} : { action: state.action }),
         ...(state.standAttempts === 0 ? {} : { standAttempts: state.standAttempts }),
@@ -1447,22 +1488,15 @@ export function serializeMekMovementPsrStateV2(
     });
 }
 
-/**
- * Strict wire decoder; unknown fields and explicit sparse defaults reject. Schema 2 checks recorded
- * a frozen target (`targetNumber`, `source.baseTarget`, `source.triggerModifier`); they are read as
- * their trigger alone, a rolled check keeping the target its dice were rolled against.
- */
+/** Strict wire decoder; unknown fields and explicit sparse defaults reject. */
 export function deserializeMekMovementPsrStateV2(value: unknown): MekMovementPsrStateV2 {
     if (!isObjectLiteralRecord(value)
         || !exactKeys(value, [
-            'schemaVersion', 'movement', 'action', 'standAttempts', 'carefulStand',
+            'movement', 'action', 'standAttempts', 'carefulStand',
             'damageThisPhase', 'checks', 'automaticFalls',
-        ])
-        || (value['schemaVersion'] !== MEK_MOVEMENT_PSR_STATE_SCHEMA_VERSION
-            && value['schemaVersion'] !== LEGACY_TARGETED_CHECKS_SCHEMA_VERSION)) {
+        ])) {
         throw new Error('Invalid serialized Mek movement/PSR state');
     }
-    const legacyTargets = value['schemaVersion'] === LEGACY_TARGETED_CHECKS_SCHEMA_VERSION;
     const standAttempts = value['standAttempts'] === undefined ? 0 : value['standAttempts'];
     const carefulStand = value['carefulStand'] === undefined ? false : value['carefulStand'];
     if (!canonicalNonnegativeInteger(standAttempts, MAX_MEK_MOVEMENT_MP_V2)
@@ -1481,7 +1515,7 @@ export function deserializeMekMovementPsrStateV2(value: unknown): MekMovementPsr
     if (!Array.isArray(rawChecks) || rawChecks.length === 0 && value['checks'] !== undefined) {
         throw new Error('Serialized Mek pilot checks are not sparse canonical state');
     }
-    const checks = rawChecks.map(check => deserializeCheck(legacyTargets ? untargetedLegacyCheck(check) : check));
+    const checks = rawChecks.map(deserializeCheck);
     const rawAutomaticFalls = value['automaticFalls'] === undefined ? [] : value['automaticFalls'];
     if (!Array.isArray(rawAutomaticFalls)
         || rawAutomaticFalls.length === 0 && value['automaticFalls'] !== undefined) {
@@ -2295,7 +2329,8 @@ function immediateCheckHold(
     }
     const ended = checks.find(check => check.immediate && check.source.sourceKind === 'movement');
     if (!ended || kind === 'shutdown' || kind === 'startup') return null;
-    const mode = exactWitnessMovementDeclaration(
+    const mode = ended.source.triggerKind === 'jump-into-water' || ended.source.triggerKind === 'shake-off-jump'
+        ? 'jump' : exactWitnessMovementDeclaration(
         (JSON.parse(ended.source.witness) as Record<string, unknown>)['declaration'],
     ).mode;
     return kind === mode ? null : blocker('MOVEMENT_ENDED', 'The movement ended with its Piloting Skill Roll');
@@ -2632,6 +2667,9 @@ function ownPilotCheckModifier(
             const hits = profile.gyro.criticalSlotIds.filter(slotId => facts.criticalSlotUnavailable(slotId)).length;
             return 2 - gyroPsrModifier(profile, hits);
         }
+        case 'shake-off-jump':
+            return SHAKE_OFF_JUMP_MODIFIER
+                + (source.witness === SHAKE_OFF_JUMP_CLAWS_WITNESS ? MAGNETIC_CLAW_SHAKE_OFF_MODIFIER : 0);
         case 'move-damaged-leg': {
             // A Total Warfare quad keeps no modifier for one destroyed leg, but jumping on it applies the
             // destroyed leg's preexisting +5 (TW p.60).
@@ -2934,10 +2972,11 @@ function pilotCheckTriggerStillActive(
     state: MekMovementPsrStateV2,
     check: MekPilotCheckRecordV2,
 ): boolean {
-    // As in origin/next, an already-prone Mek cannot fall again. Reconcile the
-    // pending fall-check ledger while retaining damage-derived PSR modifiers.
-    if (facts.conditions.has('prone')) return false;
     const source = check.source;
+    // As in origin/next, an already-prone Mek cannot fall again. Reconcile the
+    // pending fall-check ledger while retaining damage-derived PSR modifiers. A thrash is made prone: its roll stays,
+    // and failing it deals falling damage as a failed attempt to stand would (TW p. 151).
+    if (facts.conditions.has('prone')) return source.triggerKind === 'made-thrash';
     switch (source.triggerKind) {
         case 'damage-total-20':
             return state.damageThisPhase >= 20;
@@ -2966,6 +3005,10 @@ function pilotCheckTriggerStillActive(
             return groups.some(group => selected.has(group.componentId)
                 && boosterActive(facts, group.componentId));
         }
+        case 'jump-into-water':
+            return state.movement?.mode === 'jump' && (facts.waterDepth ?? 0) >= 1;
+        case 'shake-off-jump':
+            return state.movement?.mode === 'jump' && facts.conditions.has('swarmed');
         case 'get-up':
             return false;
         case 'shutdown':
@@ -2978,6 +3021,7 @@ function pilotCheckTriggerStillActive(
         case 'missed-kick':
         case 'made-charge':
         case 'made-death-from-above':
+        case 'made-thrash':
             return true;
     }
 }
@@ -3243,6 +3287,20 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
             }
             return;
         }
+        case 'jump-into-water': {
+            requireSource('movement', 0, 0);
+            if (source.witness !== JUMP_INTO_WATER_WITNESS) {
+                throw new Error('Jump-into-water witness does not match its source');
+            }
+            return;
+        }
+        case 'shake-off-jump': {
+            requireSource('movement', 0, 0);
+            if (source.witness !== SHAKE_OFF_JUMP_WITNESS && source.witness !== SHAKE_OFF_JUMP_CLAWS_WITNESS) {
+                throw new Error('Shake-off witness does not match its source');
+            }
+            return;
+        }
         case 'get-up': {
             if (source.sourceKind !== 'action'
                 || source.criticalSlotIds.length !== 0
@@ -3271,7 +3329,8 @@ function validateSourceSemantics(source: MekPilotCheckSourceV2, decodedWitness: 
         case 'struck-by-death-from-above':
         case 'missed-kick':
         case 'made-charge':
-        case 'made-death-from-above': {
+        case 'made-death-from-above':
+        case 'made-thrash': {
             if (source.sourceKind !== 'physical'
                 || source.criticalSlotIds.length !== 0
                 || source.locationIds.length !== 0) {
@@ -3477,22 +3536,6 @@ function deserializeActionDeclaration(value: unknown): MekActionDeclarationV2 {
     return canonicalizeMekActionDeclarationV2(value as MekActionDeclarationV2);
 }
 
-/** Schema 2 recorded each check's target; the trigger and a rolled check's evidence carry over. */
-const LEGACY_TARGETED_CHECKS_SCHEMA_VERSION = 2;
-
-function untargetedLegacyCheck(value: unknown): unknown {
-    if (!isObjectLiteralRecord(value) || !isObjectLiteralRecord(value['source'])) return value;
-    const { targetNumber, resolution, ...check } = value;
-    const { baseTarget: _baseTarget, triggerModifier: _triggerModifier, ...source } = value['source'];
-    return {
-        ...check,
-        source,
-        ...(resolution === undefined
-            ? {}
-            : { resolution: isObjectLiteralRecord(resolution) ? { ...resolution, targetNumber } : resolution }),
-    };
-}
-
 function deserializeCheck(value: unknown): MekPilotCheckRecordV2 {
     if (!isObjectLiteralRecord(value)) throw new Error('Invalid serialized Mek pilot check');
     const result = canonicalizeCheck(value);
@@ -3656,6 +3699,8 @@ function collectPilotCheckWitnessReferences(
                 references,
             );
             return;
+        case 'jump-into-water':
+        case 'shake-off-jump':
         case 'get-up':
         case 'shutdown':
         case 'kicked':
@@ -3666,6 +3711,7 @@ function collectPilotCheckWitnessReferences(
         case 'missed-kick':
         case 'made-charge':
         case 'made-death-from-above':
+        case 'made-thrash':
             return;
     }
 }
@@ -3916,6 +3962,9 @@ function remapPilotCheckWitness(
                 ),
                 boosterKind: witness['boosterKind'],
             });
+
+        case 'jump-into-water':
+        case 'shake-off-jump':
         case 'get-up':
         case 'shutdown':
         case 'kicked':
@@ -3926,6 +3975,7 @@ function remapPilotCheckWitness(
         case 'missed-kick':
         case 'made-charge':
         case 'made-death-from-above':
+        case 'made-thrash':
             return check.source.witness;
     }
 }

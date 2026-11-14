@@ -30,6 +30,9 @@ import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { CBTAutomationService } from './cbt-automation.service';
 import { DirectNonMekAutomationService } from './direct-non-mek-automation.service';
 import { OptionsService } from './options.service';
+import { DialogsService } from './dialogs.service';
+import { SwarmService } from './swarm.service';
+import type { CBTForceMember } from '../models/force-member.model';
 import {
 asUnitUuid,
 } from './unit-catalog/unit-catalog.types';
@@ -40,10 +43,14 @@ describe('DirectNonMekAutomationService', () => {
     let resolveAutomation: jasmine.Spy;
     let resolveChecksAutomation: jasmine.Spy;
     let showAutomationToast: jasmine.Spy;
+    let shakeOff: jasmine.Spy;
+    let choose: jasmine.Spy;
     let service: DirectNonMekAutomationService;
     let automationModes: Record<string, 'yes' | 'no' | 'ask'>;
 
     beforeEach(() => {
+        shakeOff = jasmine.createSpy('shakeOff').and.returnValue(true);
+        choose = jasmine.createSpy('choose');
         automationModes = {
             heatAndDissipationResolution: 'yes',
             heatEffectsCheck: 'ask',
@@ -64,6 +71,8 @@ describe('DirectNonMekAutomationService', () => {
                 { provide: CBTAutomationService, useValue: { resolve: resolveAutomation } },
                 { provide: CBTAutomationCheckService, useValue: { resolve: resolveChecksAutomation } },
                 { provide: CBTAutomationToastService, useValue: { show: showAutomationToast } },
+                { provide: SwarmService, useValue: { shakeOff, removalModifier: () => 1 } },
+                { provide: DialogsService, useValue: { choose } },
                 {
                     provide: OptionsService,
                     useValue: {
@@ -116,6 +125,51 @@ describe('DirectNonMekAutomationService', () => {
         expect(runtime.query().remainingAmmo(ammoId)).toBe(12);
     });
 
+    it('shakes swarming infantry off a vehicle making erratic manoeuvres at flank speed (TW p. 222)', async () => {
+        const entity = new TestTankEntity(createTestEquipmentRegistry({}));
+        entity.uuid.set(UUID);
+        entity.setTonnage(40);
+        entity.originalWalkMP.set(4);
+        const runtime = createNonMekUnit(entity, { instanceId: 'erratic-vehicle', uuid: UUID,
+            scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
+        setCondition(runtime, 'swarmed', true);
+        const member = { id: runtime.instanceId } as CBTForceMember;
+        const force = { getCBTMembers: () => [member], getUnitSnapshot: () => ({ instanceId: runtime.instanceId, entity,
+            index: runtime.getIndex(), uuid: UUID, ruleset: runtime.ruleset(), crewAssignment: runtime.getCrewAssignment(),
+            editContext: { owner: runtime, state: runtime.snapshot() }, state: runtime.snapshot(), query: runtime.query(),
+        }) } as unknown as CBTForce;
+        const flank = { type: 'set-movement', movement: { mode: 'run', distance: 1, boosterComponentIds: [] } } as const;
+        spyOn(Math, 'random').and.returnValue(0.99);
+
+        choose.and.resolveTo('flank');
+        expect((await service.prepareCommand(force, runtime.instanceId, flank)).shookOffSwarm).toBeUndefined();
+        expect(resolveChecksAutomation).not.toHaveBeenCalled();
+
+        choose.and.resolveTo('erratic');
+        const prepared = await service.prepareCommand(force, runtime.instanceId, flank);
+        // Driving 5, +4 for the manoeuvres, +1 for magnetic claws.
+        expect(resolveChecksAutomation.calls.mostRecent().args[1]).toEqual([jasmine.objectContaining({
+            label: 'Driving Skill Check', targetNumber: 10, failureOutcome: 'Infantry holds on',
+        })]);
+        expect(prepared.shookOffSwarm).toBeTrue();
+        // The vehicle is at flank speed on its Cruising MP, every Driving Skill Roll 1 harder.
+        expect(prepared.command).toEqual({ type: 'set-movement', movement: { ...flank.movement, erratic: true } });
+        const result = runtime.dispatch(prepared.command);
+        expect(runtime.snapshot().turn.movement).toEqual(jasmine.objectContaining({ erratic: true }));
+        expect(await service.afterCommand(force, runtime.instanceId, null, prepared, result,
+            async command => runtime.dispatch(command))).toBeTrue();
+        expect(shakeOff).toHaveBeenCalledOnceWith(member, { kind: 'erratic', waterDepth: 0 });
+        expect(runtime.query().hasCondition('swarmed')).toBeFalse();
+        // Already at flank speed, a new distance asks nothing again.
+        choose.calls.reset();
+        setCondition(runtime, 'swarmed', true);
+        // Past the Cruising MP the manoeuvres keep the vehicle at its Cruising MP.
+        expect((await service.prepareCommand(force, runtime.instanceId,
+            { ...flank, movement: { ...flank.movement, distance: 6 } })).command)
+            .toEqual({ type: 'set-movement', movement: { ...flank.movement, distance: 4, erratic: true } });
+        expect(choose).not.toHaveBeenCalled();
+    });
+
     it('ends the turn of a unit with no heat to review instead of stalling at the phase boundary', async () => {
         const entity = new TestTankEntity();
         entity.uuid.set(UUID);
@@ -138,7 +192,8 @@ describe('DirectNonMekAutomationService', () => {
 
     it('reports automatically resolved aerospace heat through the shared notifier', async () => {
         const harness = createHarness();
-        setHeat(harness.runtime, 10, 'pending');
+        // Under heat resolution Yes the force sets NEXT to follow the calculation.
+        expect(harness.runtime.dispatch({ type: 'set-pending-heat', heat: 10, follow: true }).accepted).toBeTrue();
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
 
@@ -154,14 +209,14 @@ describe('DirectNonMekAutomationService', () => {
         expect(showAutomationToast).toHaveBeenCalledOnceWith(
             String(harness.instanceId),
             jasmine.any(String),
-            'Heat and dissipation: Heat 0 → 10',
+            'Heat and dissipation: Heat 0 → 10 (adjustment +10)',
             'info',
         );
     });
 
     it('selects automatic or manual aerospace heat settlement from review', async () => {
         const harness = createHarness();
-        setHeat(harness.runtime, 10, 'pending');
+        harness.runtime.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' });
         const automatic = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
 
@@ -184,7 +239,7 @@ describe('DirectNonMekAutomationService', () => {
         }));
     });
 
-    it('discards a skipped heat arrow but commits it when heat automation is disabled', async () => {
+    it('applies NEXT at End Turn whether the heat review is skipped or heat automation is off', async () => {
         automationModes['heatAndDissipationResolution'] = 'ask';
         resolveAutomation.and.resolveTo(new Set<string>());
         const skippedHarness = createHarness();
@@ -201,7 +256,7 @@ describe('DirectNonMekAutomationService', () => {
             skipped,
             skippedHarness.dispatch,
         )).not.toBeNull();
-        expect(skippedHarness.runtime.snapshot().heat.current).toBe(0);
+        expect(skippedHarness.runtime.snapshot().heat.current).toBe(10);
         expect(skippedHarness.runtime.snapshot().heat.pendingOverride).toBeUndefined();
 
         automationModes['heatAndDissipationResolution'] = 'no';
@@ -1122,9 +1177,7 @@ function baseline(): InstanceBaselineRef {
         entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

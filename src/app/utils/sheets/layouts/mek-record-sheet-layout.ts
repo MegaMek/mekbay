@@ -1,6 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { UNPRINTED_PHYSICAL_ATTACKS } from '../../../models/rules/physical-attack-rules';
 import { mekMovesOnTracks } from '../../../models/chassis-equipment.model';
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
 import { addInventoryText, appendInventoryBadges, appendInventoryRowButtons, INVENTORY_RANGE_VALUE_WIDTH, inventoryRangeButtons, inventoryRangeHeadings, STANDARD_INVENTORY_COLUMNS, fitInventoryText, inventoryCellLines, inventoryRowSpan, inventoryRowLineCount } from '../inventory-text-layout';
@@ -18,7 +19,7 @@ import { isMekEntity } from '../../../models/entity/utils/entity-type-guards';
 import { intrinsicActionBaseDamageText } from '../../../models/entity/utils/mek-intrinsic-actions';
 import { resolveShieldProfile } from '../../../models/entity/utils/physical-weapon';
 import type { CBTRuleset } from '../../../models/cbt-ruleset.model';
-import { mekCriticalDamageThreshold } from '../../../models/runtime/equipment-status-kernel';
+import { mekCriticalDamageThreshold } from '../../../models/rules/mek-system-damage-rules';
 import { mekSystemDamageDisplayCapacities } from '../../../models/rules/mek-system-damage-rules';
 import { recordSheetHeatEffects } from '../../../models/runtime/heat-effect-presentation';
 import { formatEquipmentLocationCodes } from '../../equipment-location-display.util';
@@ -793,7 +794,9 @@ function mekPhysicalInventoryRows(entity: MekEntity): readonly {
     readonly ranges: readonly string[];
     readonly componentIds: readonly string[];
 }[] {
-    return Object.freeze(entity.intrinsicWeapons().map(attack => Object.freeze({
+    // Thrashing and brushing infantry off are play options of a prone or swarmed 'Mech, not printed attacks.
+    return Object.freeze(entity.intrinsicWeapons().filter(attack => !UNPRINTED_PHYSICAL_ATTACKS.has(attack.kind))
+        .map(attack => Object.freeze({
         name: attack.name,
         location: formatEquipmentLocationCodes(attack.locations),
         heat: '—',

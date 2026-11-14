@@ -6,6 +6,8 @@ import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { CrewMemberRuntimeState,CrewMemberState } from '../crew-member.model';
 import type { BaseEntity } from '../entity/base-entity';
+import { nonMekFliesAtElevation } from './non-mek-airborne-state';
+import { elevationAt, type ElevationRecordEntry } from '../elevation-record.model';
 import type {
 ArmorFaceId,
 ComponentId,
@@ -36,7 +38,6 @@ import { systemDamagePresentation } from './system-damage-presentation';
 import type { UnitEditContext } from './unit-edit-context';
 import { getMotiveModesByUnit, motiveModeFactsForEntity } from '../motiveModes.model';
 import { nonMekAttackMovementModifier, nonMekControlRoll, nonMekMovementCalculation, projectNonMekEndTurnHeat, projectNonMekMovementCapabilities,type NonMekControlRollProjection,type NonMekEndTurnHeatProjection } from './non-mek-unit-instance';
-import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 import type { RecordSheetMovementSelection } from './record-sheet-movement';
 
 export interface NonMekRecordSheetArmorFace {
@@ -138,9 +139,23 @@ export interface NonMekRecordSheetSnapshot {
     readonly bombs: readonly BombLoad[];
     /** Aerospace velocity record values. */
     readonly velocityRecord: readonly VelocityRecordEntry[];
+    /** The game turn the unit is in, from 1: the turn tracks keep it and the turns before it shown. */
+    readonly currentTurn: number;
+    /**
+     * Whether phase/turn tracking is on. Only then do the turn tracks highlight this turn: without it nothing starts a
+     * new game's count at turn 1 again.
+     */
+    readonly turnTracked: boolean;
+    /** The Elevation a flying unit is at this turn, for its tracker; null for a unit that does not fly at one. */
+    readonly elevation: number | null;
+    /** The Elevations recorded turn by turn, for the VTOL Elevation Track. */
+    readonly elevationRecord: readonly ElevationRecordEntry[];
     readonly destroyed: boolean;
-    readonly heatPolicy: HeatAutomationPolicy;
+    /** End Turn calculates the turn's heat (heat resolution Yes or Ask). */
+    readonly endTurnCalculatesHeat: boolean;
     readonly heat: AeroRuntimeRulesProjection['heat'] & Readonly<{
+        /** NEXT's offset from the calculated heat, while it follows the calculation (`followCalculatedHeat`). */
+        readonly pendingOffset?: number;
         /** End-turn heat for aerospace units that track heat. */
         readonly projection: NonMekEndTurnHeatProjection | null;
     }>;
@@ -160,7 +175,8 @@ export function projectNonMekRecordSheet(
     query: NonMekUnitQueryPort,
     currentBattleValue: number,
     pristineBattleValue: number,
-    heatPolicy: HeatAutomationPolicy = 'manual',
+    endTurnCalculatesHeat = false,
+    turnTracked = false,
 ): Omit<NonMekRecordSheetSnapshot, 'editContext'> {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek record-sheet projection');
     if (state.stateRevision !== query.stateRevision) {
@@ -309,6 +325,8 @@ export function projectNonMekRecordSheet(
         mixedTech: entity.mixedTech(),
         role: entity.role(),
         movementType: entity.getMotiveTypeAsString() ?? '',
+        elevation: nonMekFliesAtElevation(entity) ? elevationAt(state.elevationRecord, state.turn.turnCounter + 1) : null,
+        elevationRecord: state.elevationRecord ?? Object.freeze([]),
         movementSelection: Object.freeze({
             selectedMode: state.turn.movement?.mode ?? null,
             airborne,
@@ -344,10 +362,14 @@ export function projectNonMekRecordSheet(
             ?? Object.freeze([]),
         bombs: state.bombs ?? Object.freeze([]),
         velocityRecord: state.velocityRecord ?? Object.freeze([]),
+        currentTurn: state.turn.turnCounter + 1,
+        turnTracked,
         destroyed,
-        heatPolicy,
+        endTurnCalculatesHeat,
         heat: aeroRules ? Object.freeze({
             ...aeroRules.heat,
+            ...(aeroRules.heat.tracked && state.heat.pendingOffset !== undefined
+                ? { pendingOffset: state.heat.pendingOffset } : {}),
             projection: aeroRules.heat.tracked ? projectNonMekEndTurnHeat(entity, index, state, ruleset) : null,
         }) : Object.freeze({
             tracked: false,

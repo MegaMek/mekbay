@@ -216,6 +216,12 @@ export interface TnTargetNumberCalculatorState {
     narcUnderwater?: boolean;
     tagged?: boolean;
     ecmShielded?: boolean;
+    /** Infantry is swarming the target; it cannot be swarmed again (TW p. 220). No to-hit modifier of its own. */
+    swarmed?: boolean;
+    /** The target is infantry swarming a unit. No to-hit modifier of its own. */
+    swarming?: boolean;
+    /** Battle armor with magnetic claws, which make every roll to remove it 1 harder (TW p. 222). */
+    magneticClaws?: boolean;
     /** Range-dependent protection supplied by an active stealth system. */
     stealth?: TnStealthState;
     /** Identifies the selected system when its profile changes with movement. */

@@ -32,12 +32,23 @@ describe('direct Mek falling rules', () => {
     });
 
     it('uses ruleset-specific water damage and independent five-point groups', () => {
+        // Core p. 115: a 'Mech standing in Depth 1 water falls 0 levels for half damage; one tumbling to the bottom
+        // from a jump falls the depth (p. 50).
         expect(resolveMekFallDamage('core-2026', 50, 0, 1)).toEqual({
-            surfaceDamage: 0, waterDamage: 5, totalDamage: 5,
+            surfaceDamage: 0, waterDamage: 2, totalDamage: 2,
         });
-        expect(resolveMekFallDamage('total-warfare', 50, 2, 1)).toEqual({
+        expect(resolveMekFallDamage('core-2026', 50, 1, 1).totalDamage).toBe(5);
+        expect(resolveMekFallDamage('total-warfare', 50, 1, 1).totalDamage).toBe(5);
+        expect(resolveMekFallDamage('total-warfare', 50, 0, 2).totalDamage).toBe(2);
+        // From above the surface (a missed DFA's 2 levels): Total Warfare resolves the surface and the bottom apart
+        // (p. 57), Core as one fall of the levels and the depth (p. 115).
+        expect(resolveMekFallDamage('total-warfare', 50, 2, 1, true)).toEqual({
             surfaceDamage: 7, waterDamage: 5, totalDamage: 12,
         });
+        expect(resolveMekFallDamage('total-warfare', 50, 2, 2, true)).toEqual({
+            surfaceDamage: 7, waterDamage: 7, totalDamage: 14,
+        });
+        expect(resolveMekFallDamage('core-2026', 50, 2, 1, true).totalDamage).toBe(10);
         expect(mekFallDamageGroups(12)).toEqual([5, 5, 2]);
     });
 

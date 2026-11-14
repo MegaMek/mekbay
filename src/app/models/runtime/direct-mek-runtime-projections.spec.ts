@@ -17,7 +17,6 @@ import type { EngineType } from '../entity/types/engine';
 import { evaluateMekRuntimeCapability } from './mek-runtime-capability';
 import {
     deserializeMekMovementPsrStateV2,
-    MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
     serializeMekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
 import {
@@ -68,7 +67,7 @@ describe('direct Mek entity/runtime projections', () => {
 
                 projectMekRecordSheet(
                     fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.snapshot(),
-                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null,
+                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null, false, {},
                 );
                 expect(fixture.instance.query().mekMovementPsr()).toEqual(initial);
 
@@ -124,7 +123,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.instance.snapshot(),
             query,
             emptyCBTEncounterSnapshot(),
-            null,
+            null, false, {},
         );
         const torso = sheet.locations.find(location => location.locationId === leftTorso.id)!;
         const arm = sheet.locations.find(location => location.locationId === leftArm.id)!;
@@ -152,7 +151,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         );
         expect(panel.hasPendingCombat).toBeTrue();
         expect(isMekTurnPanelDirtyPhase(panel)).toBeTrue();
@@ -165,7 +163,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         );
 
         expect(isMekTurnPanelDirtyPhase(panel())).toBeFalse();
@@ -174,7 +171,6 @@ describe('direct Mek entity/runtime projections', () => {
 
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'walk',
                 distance: 1,
                 boosterComponentIds: [],
@@ -220,10 +216,10 @@ describe('direct Mek entity/runtime projections', () => {
         const query = fixture.instance.query();
         const sheet = projectMekRecordSheet(
             fixture.entity, fixture.index, fixture.instance.ruleset(),
-            fixture.instance.snapshot(), query, registry, null,
+            fixture.instance.snapshot(), query, registry, null, false, {},
         );
         const panel = projectMekEquipmentPanel(
-            fixture.entity, fixture.index, fixture.instance.ruleset(), query, registry,
+            fixture.entity, fixture.index, fixture.instance.ruleset(), query, registry, {},
         );
         const sheetFace = sheet.locations.flatMap(location => location.armor)
             .find(candidate => candidate.faceId === face.id)!;
@@ -239,6 +235,26 @@ describe('direct Mek entity/runtime projections', () => {
         expect(panel.physicalAttacks.map(attack => attack.hitModifiers)).toEqual([
             [-1], [-1], [-1], [-1], ['versus'], [-1],
         ]);
+        // Thrashing is listed only once the Mek is prone, and the sheet never prints it.
+        expect(fixture.instance.dispatch({ type: 'set-condition', condition: 'prone', active: true }).accepted).toBeTrue();
+        const prone = projectMekEquipmentPanel(
+            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry, {},
+        );
+        expect(prone.physicalAttacks.find(attack => attack.label === 'Thrash')?.reach).toBe('infantry-in-hex');
+        // Brushing infantry off is listed only while the Mek is swarmed, against the infantry swarming it.
+        expect(panel.physicalAttacks.some(attack => attack.label === 'Brush Off')).toBeFalse();
+        expect(fixture.instance.dispatch({ type: 'set-condition', condition: 'swarmed', active: true }).accepted).toBeTrue();
+        const swarmed = projectMekEquipmentPanel(
+            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry, {},
+        );
+        const brushOffs = (projection: typeof swarmed) => projection.physicalAttacks
+            .filter(attack => attack.label === 'Brush Off').map(attack => [attack.reach, attack.available]);
+        // A prone 'Mech cannot brush infantry off; standing, it can with either arm.
+        expect(brushOffs(swarmed)).toEqual([['swarming-infantry', false], ['swarming-infantry', false]]);
+        expect(fixture.instance.dispatch({ type: 'set-condition', condition: 'prone', active: false }).accepted).toBeTrue();
+        expect(brushOffs(projectMekEquipmentPanel(
+            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry, {},
+        ))).toEqual([['swarming-infantry', true], ['swarming-infantry', true]]);
         expect(fixture.entity.getArmorValue(
             fixture.index.locations.get(face.locationId)!.code,
             face.face,
@@ -254,7 +270,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(component => component.componentId === launcher.id)!
             .weapon!.ammoSources.find(candidate => candidate.componentId === ammo.id)!;
 
@@ -306,7 +322,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.instance.snapshot(),
             query,
             emptyCBTEncounterSnapshot(),
-            null,
+            null, false, {},
         );
         expect(query.hasCondition('immobile')).toBeTrue();
         expect(query.hasCondition('abandoned')).toBeFalse();
@@ -317,7 +333,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             query,
-            'manual',
         )).toEqual(jasmine.objectContaining({
             canTakeActiveActions: false,
             conditions: jasmine.arrayContaining(['immobile']),
@@ -340,7 +355,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.instance.snapshot(),
             query,
             emptyCBTEncounterSnapshot(),
-            null,
+            null, false, {},
         );
         expect(query.hasCondition('abandoned')).toBeTrue();
         expect(sheet.conditions).toContain('abandoned');
@@ -350,7 +365,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             query,
-            'manual',
         ).canTakeActiveActions).toBeFalse();
     });
 
@@ -389,7 +403,7 @@ describe('direct Mek entity/runtime projections', () => {
             state,
             query,
             emptyCBTEncounterSnapshot(),
-            null,
+            null, false, {},
         );
 
         expect(status.stateRevision).toBe(sheet.stateRevision);
@@ -453,7 +467,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.instance.snapshot(),
             query,
             emptyCBTEncounterSnapshot(),
-            null,
+            null, false, {},
         );
         expect(sheet.crew[0]?.effectiveState).toBe('dead');
         expect(query.hasCondition('abandoned')).toBeTrue();
@@ -479,7 +493,7 @@ describe('direct Mek entity/runtime projections', () => {
         let query = fixture.instance.query();
         let sheet = projectMekRecordSheet(
             fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.snapshot(),
-            query, emptyCBTEncounterSnapshot(), null,
+            query, emptyCBTEncounterSnapshot(), null, false, {},
         );
         expect(sheet.crew.map(position => position.effectiveState)).toEqual(['dead', 'healthy']);
         expect(query.destroyed()).toBeFalse();
@@ -493,7 +507,7 @@ describe('direct Mek entity/runtime projections', () => {
         query = fixture.instance.query();
         sheet = projectMekRecordSheet(
             fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.snapshot(),
-            query, emptyCBTEncounterSnapshot(), null,
+            query, emptyCBTEncounterSnapshot(), null, false, {},
         );
         expect(sheet.crew.map(position => position.effectiveState)).toEqual(['dead', 'dead']);
         expect(query.destroyed()).toBeTrue();
@@ -558,7 +572,6 @@ describe('direct Mek entity/runtime projections', () => {
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [masc.id],
             },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -572,7 +585,6 @@ describe('direct Mek entity/runtime projections', () => {
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [masc.id],
             },
         }).accepted).toBeTrue();
@@ -612,7 +624,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             query,
-            'manual',
         ).activeBoosterComponentIds).toEqual([]);
     });
 
@@ -636,7 +647,6 @@ describe('direct Mek entity/runtime projections', () => {
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [supercharger.id],
             },
         }).accepted).toBeTrue();
@@ -651,7 +661,6 @@ describe('direct Mek entity/runtime projections', () => {
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 13, boosterComponentIds: [masc.id, supercharger.id],
             },
         }).accepted).toBeTrue();
@@ -675,7 +684,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         );
         expect(panel.activeBoosterComponentIds).toEqual([masc.id]);
     });
@@ -703,13 +711,11 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         ).activeBoosterComponentIds).toEqual([jetBooster.id]);
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [jetBooster.id],
             },
         }).accepted).toBeTrue();
@@ -726,13 +732,11 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             query,
-            'manual',
         ).activeBoosterComponentIds).toEqual([]);
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run', distance: 10, boosterComponentIds: [jetBooster.id],
             },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
@@ -745,7 +749,7 @@ describe('direct Mek entity/runtime projections', () => {
                 fixture.index,
                 fixture.instance.ruleset(),
                 fixture.instance.query(),
-                emptyCBTEncounterSnapshot(),
+                emptyCBTEncounterSnapshot(), {},
             );
             const charge = panel.physicalAttacks.find(attack => attack.label === 'Charge');
             if (charge?.effect.kind !== 'damage') throw new Error('Charge damage is missing');
@@ -763,7 +767,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(core.instance.dispatch({
             type: 'declare-mek-movement',
 
-            declaration: { schemaVersion: 1, mode: 'walk', distance: 5, boosterComponentIds: [] },
+            declaration: { mode: 'walk', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(effect(core)).toEqual(jasmine.objectContaining({
             damage: 43,
@@ -797,7 +801,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(tw.instance.dispatch({
             type: 'declare-mek-movement',
 
-            declaration: { schemaVersion: 1, mode: 'walk', distance: 5, boosterComponentIds: [] },
+            declaration: { mode: 'walk', distance: 5, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(effect(tw)).toEqual(jasmine.objectContaining({
             damage: 29,
@@ -825,7 +829,7 @@ describe('direct Mek entity/runtime projections', () => {
                 fixture.index,
                 fixture.instance.ruleset(),
                 fixture.instance.query(),
-                emptyCBTEncounterSnapshot(),
+                emptyCBTEncounterSnapshot(), {},
             );
             const row = panel.physicalAttacks.find(attack =>
                 attack.target.kind === 'component' && attack.target.componentId === claw.id);
@@ -874,7 +878,7 @@ describe('direct Mek entity/runtime projections', () => {
                 fixture.index,
                 fixture.instance.ruleset(),
                 fixture.instance.query(),
-                emptyCBTEncounterSnapshot(),
+                emptyCBTEncounterSnapshot(), {},
             );
         const aesAt = (fixture: ReturnType<typeof createDirectMekRuntimeFixture>, location: string) => {
             const component = [...fixture.index.components.values()].find(candidate =>
@@ -937,7 +941,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).physicalAttacks;
         expect(initialRows[0].target).toEqual({
             kind: 'component',
@@ -957,7 +961,7 @@ describe('direct Mek entity/runtime projections', () => {
                 fixture.index,
                 fixture.instance.ruleset(),
                 fixture.instance.query(),
-                emptyCBTEncounterSnapshot(),
+                emptyCBTEncounterSnapshot(), {},
             );
             const row = panel.physicalAttacks.find(attack =>
                 attack.target.kind === 'component' && attack.target.componentId === vibroblade.id);
@@ -968,7 +972,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(effect()).toEqual(jasmine.objectContaining({
             damage: 7, maximumDamage: 14, alternateDamage: 7, boosted: false,
         }));
-        let heat = fixture.instance.query().heatProjection('manual');
+        let heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.some(source =>
@@ -988,7 +992,7 @@ describe('direct Mek entity/runtime projections', () => {
             damage: 7, maximumDamage: 7, boosted: false,
         }));
         expect(effect().alternateDamage).toBeUndefined();
-        heat = fixture.instance.query().heatProjection('manual');
+        heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.find(source =>
@@ -999,7 +1003,7 @@ describe('direct Mek entity/runtime projections', () => {
             componentId: vibroblade.id,
             status: 'destroyed', target: 'committed',
         }).accepted).toBeTrue();
-        heat = fixture.instance.query().heatProjection('manual');
+        heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.find(source =>
@@ -1013,7 +1017,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         );
 
         expect(evaluateMekRuntimeCapability(fixture.entity)).toEqual({
@@ -1032,7 +1035,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
 
-            declaration: { schemaVersion: 1, mode: 'walk', distance: 3, boosterComponentIds: [] },
+            declaration: { mode: 'walk', distance: 3, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(fixture.instance.dispatch({
             type: 'set-condition',
@@ -1053,7 +1056,6 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         );
         expect(panel.attackMovementModifiers).toEqual({
             stationary: 0, walk: 1, run: 2, sprint: 0, jump: 3, UMU: 3, tracked: 1,
@@ -1094,7 +1096,7 @@ describe('direct Mek entity/runtime projections', () => {
             turn: { ...tw.instance.query().turnState(), spotting: true },
         }).accepted).toBeTrue();
         const twPanel = projectMekEquipmentPanel(
-            tw.entity, tw.index, tw.instance.ruleset(), tw.instance.query(), emptyCBTEncounterSnapshot(),
+            tw.entity, tw.index, tw.instance.ruleset(), tw.instance.query(), emptyCBTEncounterSnapshot(), {},
         );
         const twLaser = twPanel.components.find(component => component.label === 'Medium Laser')!;
         expect(twLaser.weapon?.toHitModifier).toBe(2);
@@ -1117,7 +1119,7 @@ describe('direct Mek entity/runtime projections', () => {
             turn: { ...core.instance.query().turnState(), spotting: true },
         }).accepted).toBeTrue();
         const corePanel = projectMekEquipmentPanel(
-            core.entity, core.index, core.instance.ruleset(), core.instance.query(), emptyCBTEncounterSnapshot(),
+            core.entity, core.index, core.instance.ruleset(), core.instance.query(), emptyCBTEncounterSnapshot(), {},
         );
         const coreLaser = corePanel.components.find(component => component.label === 'Medium Laser')!;
         expect(coreLaser.weapon?.toHitModifier).toBe(1);
@@ -1162,7 +1164,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         const laser = panel.components.find(component => component.label === 'Medium Laser')!;
         expect(laser.weapon?.toHitModifier).toBe(7);
@@ -1200,7 +1202,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         const laser = panel.components.find(component => component.label === 'Medium Laser')!;
         expect(laser.weapon?.toHitModifier).toBe(1);
@@ -1223,7 +1225,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         const rightPunch = () => panel().physicalAttacks.find(attack =>
             attack.target.kind === 'intrinsic' && attack.locationCodes.includes('RA'))!;
@@ -1268,7 +1270,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
 
         expect(panel().components.find(row => row.label === 'Medium Laser')?.weapon?.toHitModifier).toBe(0);
@@ -1348,7 +1350,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         const punch = panel.physicalAttacks.find(attack => attack.label === 'Punch')!;
         expect(punch.hitModifiers).toEqual([0]);
@@ -1399,7 +1401,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         const row = panel.components.find(component => component.componentId === ac.id)!;
         expect(row.label).toBe('Test AC (Rapid)');
@@ -1415,7 +1417,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(component => component.componentId === laser.id)!;
 
         expect(row.weapon).toEqual(jasmine.objectContaining({
@@ -1435,13 +1437,13 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
 
         expect(panel().components.find(row => row.componentId === laser.id)?.weapon).toEqual(
             jasmine.objectContaining({
                 toHitModifier: -1,
-                hitModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1 }],
+                hitModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1, kind: 'targeting-computer' }],
             }),
         );
         expect(panel().components.find(row => row.componentId === hag.id)?.weapon?.toHitModifier).toBe(-1);
@@ -1486,7 +1488,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(component => component.componentId === laser.id)!;
 
         expect(row().weapon?.toHitModifier).toEqual([-4, -3, -2]);
@@ -1500,7 +1502,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         expect(projected.components.find(component => component.componentId === targetingComputer.id)?.status)
             .toBe('destroyed');
@@ -1541,7 +1543,7 @@ describe('direct Mek entity/runtime projections', () => {
         }, registry, false).accepted).toBeTrue();
 
         const panel = projectMekEquipmentPanel(
-            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry,
+            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry, {},
         );
         const row = panel.components.find(component => component.componentId === laser.id)!;
         expect(row.weapon?.disabledTargetReasons[targetId]).toBe(TARGET_INDIRECT_WEAPON_REASON);
@@ -1556,7 +1558,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(component => component.componentId === launcher.id)!;
 
         expect(row().weapon?.hitModifierBreakdown).toContain(jasmine.objectContaining({
@@ -1600,7 +1602,7 @@ describe('direct Mek entity/runtime projections', () => {
 
         const stealthPanel = projectMekEquipmentPanel(
             fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         expect(stealthPanel.components.find(component => component.componentId === launcher.id)
             ?.weapon?.hitModifierBreakdown).toContain(jasmine.objectContaining({
@@ -1631,7 +1633,7 @@ describe('direct Mek entity/runtime projections', () => {
             },
         }, registry, false).accepted).toBeTrue();
         const panel = projectMekEquipmentPanel(
-            ordinary.entity, ordinary.index, ordinary.instance.ruleset(), ordinary.instance.query(), registry,
+            ordinary.entity, ordinary.index, ordinary.instance.ruleset(), ordinary.instance.query(), registry, {},
         );
         const row = panel.components.find(component => component.componentId === ordinaryLauncher.id)!;
         const target = projectTargetingTarget(panel.targets[0]!, panel.ruleset);
@@ -1649,7 +1651,7 @@ describe('direct Mek entity/runtime projections', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(component => component.componentId === laser.id)!;
 
         expect(row().weapon?.heat).toBe(2);
@@ -1703,7 +1705,7 @@ describe('direct Mek entity/runtime projections', () => {
         }, registry, false).accepted).toBeTrue();
 
         const panel = projectMekEquipmentPanel(
-            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry,
+            fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.query(), registry, {},
         );
         const row = panel.components.find(component => component.componentId === launcher.id)!;
         const target = projectTargetingTarget(panel.targets[0], panel.ruleset);
@@ -1753,7 +1755,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(movement.standing.movementPointsSpent).toBe(2);
         expect(movement.actions.find(action => action.kind === 'walk')?.maximumMp).toBe(5);
         expect(movement.declaration?.maximumMp).toBe(3);
-        const heat = query.heatProjection('manual');
+        const heat = query.heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.find(source => source.id === 'movement')?.value).toBe(1);
@@ -1799,7 +1801,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(movement.actions.filter(action =>
             action.kind === 'walk' || action.kind === 'run' || action.kind === 'jump')
             .every(action => !action.legal)).toBeTrue();
-        const heat = query.heatProjection('manual');
+        const heat = query.heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.find(source => source.id === 'movement')?.value).toBe(2);
@@ -1887,7 +1889,6 @@ describe('direct Mek entity/runtime projections', () => {
 
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run',
                 distance: 1,
                 boosterComponentIds: [],
@@ -2045,7 +2046,6 @@ describe('direct Mek entity/runtime projections', () => {
 
 
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'run',
                 distance: 1,
                 boosterComponentIds: [],
@@ -2085,7 +2085,7 @@ describe('direct Mek entity/runtime projections', () => {
 
             turn: { ...initialTurn, cover: 'underwater-depth-2' },
         }).accepted).toBeTrue();
-        let heat = fixture.instance.query().heatProjection('manual');
+        let heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.capacity).toBe(16);
@@ -2096,7 +2096,7 @@ describe('direct Mek entity/runtime projections', () => {
 
             turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-1' },
         }).accepted).toBeTrue();
-        heat = fixture.instance.query().heatProjection('manual');
+        heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.capacity).toBe(10);
@@ -2106,7 +2106,7 @@ describe('direct Mek entity/runtime projections', () => {
             type: 'set-condition',
             condition: 'prone', active: true,
         }).accepted).toBeTrue();
-        heat = fixture.instance.query().heatProjection('manual');
+        heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.capacity).toBe(16);
@@ -2117,7 +2117,7 @@ describe('direct Mek entity/runtime projections', () => {
         const currentMovementHeat = (
             fixture: ReturnType<typeof createDirectPartialWingRuntimeFixture>,
         ): number | undefined => {
-            const heat = fixture.instance.query().heatProjection('manual');
+            const heat = fixture.instance.query().heatProjection();
             expect(heat.kind).toBe('supported');
             if (heat.kind !== 'supported') return undefined;
             return heat.projection.committedSources.find(source => source.id === 'movement')?.value;
@@ -2131,7 +2131,6 @@ describe('direct Mek entity/runtime projections', () => {
 
 
                 declaration: {
-                    schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                     mode: 'jump',
                     distance,
                     boosterComponentIds: [],
@@ -2394,7 +2393,6 @@ describe('direct Mek entity/runtime projections', () => {
             sameLeg.index,
             sameLeg.instance.ruleset(),
             sameLeg.instance.query(),
-            'manual',
         ).movementState.checks).toEqual(displayed);
 
         expect(sameLeg.instance.dispatch({
@@ -2424,7 +2422,7 @@ describe('direct Mek entity/runtime projections', () => {
             type: 'declare-mek-movement',
 
 
-            declaration: { schemaVersion: 1, mode: 'jump', distance: 1, boosterComponentIds: [] },
+            declaration: { mode: 'jump', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(jumping.instance.query().mekPilotChecks()).toEqual([jasmine.objectContaining({
             reason: 'Hip hit, Leg Actuator hit, Foot hit',
@@ -2613,7 +2611,7 @@ describe('direct Mek entity/runtime projections', () => {
         expect(fixture.instance.dispatch({
             type: 'declare-mek-movement',
 
-            declaration: { schemaVersion: 1, mode: 'run', distance: 1, boosterComponentIds: [] },
+            declaration: { mode: 'run', distance: 1, boosterComponentIds: [] },
         }).accepted).toBeTrue();
         expect(fixture.instance.query().mekPilotChecks()).toContain(jasmine.objectContaining({
             reason: 'Running with damaged gyro',
@@ -2760,7 +2758,7 @@ describe('direct Mek entity/runtime projections', () => {
                 fixture.instance.snapshot(),
                 fixture.instance.query(),
                 emptyCBTEncounterSnapshot(),
-                null,
+                null, false, {},
             );
             expect(sheet.locations.filter(location => location.modularArmor.maximum > 0))
                 .toEqual(jasmine.arrayWithExactContents([

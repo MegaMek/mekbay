@@ -52,8 +52,9 @@ export function resolveNonMekHitLocation(
         if (entity.entityType === 'VTOL' || entity.entityType === 'SupportVTOL') {
             if ([3, 10, 11, 12].includes(roll)) code = 'Rotor';
             if (roll === 4) code = entity.hasTurret() ? 'Turret' : 'Rotor';
-            if (roll === 5) code = side ? 'Front' : 'Right';
-            if (roll === 9) code = side ? 'Rear' : 'Left';
+            // TW p. 196: from behind, the sides swap (MegaMek's VTOL table does not mirror them).
+            if (roll === 5) code = side ? 'Front' : arc === 'rear' ? 'Left' : 'Right';
+            if (roll === 9) code = side ? 'Rear' : arc === 'rear' ? 'Right' : 'Left';
             if (roll === 2 || roll === 12 || (roll === 8 && side)) effects.push('critical');
             if (code === 'Rotor') effects.push('motive');
         } else {
@@ -64,7 +65,8 @@ export function resolveNonMekHitLocation(
                     else if (arc === 'front') code = 'Front Right';
                 }
             } else {
-                if (roll === 5) code = side ? 'Front' : 'Left';
+                // TW p. 193: a 5 strikes the right side from the front and the left from behind; a 9 the other.
+                if (roll === 5) code = side ? 'Front' : arc === 'rear' ? 'Left' : 'Right';
                 if (roll === 9) code = side ? 'Rear' : arc === 'rear' ? 'Right' : 'Left';
             }
             const sixArcs = nonMekHitArcs(entity).length === 6;

@@ -38,6 +38,7 @@ import { OverlayManagerService } from '../../../services/overlay-manager.service
 import { ToastService } from '../../../services/toast.service';
 import { STANDING_UP_REVIEW_ONLY } from './page-standing-up-panel.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
+import { PRISTINE_TURN_HEAT_LEDGER } from '../../../models/runtime/turn-heat-ledger';
 
 describe('PageTurnSummaryPanelComponent', () => {
     it('distinguishes Core Immobile from an otherwise stationary-only unit', () => {
@@ -443,7 +444,7 @@ describe('PageTurnSummaryPanelComponent', () => {
                     committedSources: sources,
                     capacity: 10,
                     underwaterBonus: 0,
-                    previouslyConsumedDissipation: 0,
+                    ledger: PRISTINE_TURN_HEAT_LEDGER, dissipationBalance: 10,
                     remainingDissipation: 10,
                     generated: sources.reduce((total, source) => total + source.value, 0),
                     dissipated: 0,
@@ -752,7 +753,6 @@ function turnSnapshot(options: {
     const rulesFlavor = options.rulesFlavor ?? 'core-2026';
     const attempts = options.attempts ?? 0;
     const movement = options.selectedMode === undefined ? null : {
-        schemaVersion: 1 as const,
         mode: options.selectedMode,
         distance: options.distance ?? 0,
         boosterComponentIds: [],

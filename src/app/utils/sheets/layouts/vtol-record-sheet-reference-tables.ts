@@ -85,7 +85,7 @@ function drawVtolElevationTrack(svg: SVGSVGElement, box: Box): void {
     for (const [top, firstTurn] of [[28.216, 1], [74.188, 16]] as const) {
         drawTurnTrack(content, identity, {
             top, height: 30.648, right: 235.18, firstColumnX: 50.636, columnWidth: 12.003, firstTurn, turns: 15,
-            valueLabel: 'Elevation', textInset: 5,
+            valueLabel: 'Elevation', textInset: 5, livePrefix: 'elevationTrack',
         });
     }
 }

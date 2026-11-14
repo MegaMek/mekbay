@@ -20,9 +20,9 @@ describe('Mek V2 turn state', () => {
             turnCounter: 3,
             airborne: false,
             weaponsHeat: 8,
-            acknowledgedHeatSources: new Map([
-                ['weapons', '[8,null,null]'],
-                ['movement', '[3,null,null]'],
+            settledHeat: new Map([
+                ['weapons', 8],
+                ['movement', 3],
             ]),
             heatDissipationConsumed: 7,
             spotting: true,
@@ -43,8 +43,8 @@ describe('Mek V2 turn state', () => {
 
         const serialized = serializeMekTurnStateV2(state);
         expect(serialized.turnCounter).toBe(3);
-        expect(serialized.acknowledgedHeatSources?.map(item => item.sourceId))
-            .toEqual(['movement', 'weapons']);
+        expect(serialized.settledHeat).toEqual([{ sourceId: 'movement', heat: 3 }, { sourceId: 'weapons', heat: 8 }]);
+        expect(serialized.heatDissipationConsumed).toBe(7);
         expect(serialized.endTurnCheckpoint).toBe('phase-ended');
         expect(serialized.pendingFallConsequences).toEqual({
             eventId: 'fall:unit:3',
@@ -63,17 +63,15 @@ describe('Mek V2 turn state', () => {
         expect(Object.isFrozen(restored)).toBeTrue();
         expect(Object.isFrozen(restored.pendingFallConsequences)).toBeTrue();
         expect(Object.isFrozen(restored.pendingFallConsequences?.seatbeltFailures)).toBeTrue();
-        expect(() => (restored.acknowledgedHeatSources as Map<string, string>).set('other', '[]'))
-            .toThrowError(TypeError);
+        expect(() => (restored.settledHeat as Map<string, number>).set('other', 1)).toThrowError(TypeError);
     });
 
     it('uses one canonical sparse pristine representation', () => {
         const pristine = createPristineMekTurnStateV2();
-        expect(serializeMekTurnStateV2(pristine)).toEqual({ schemaVersion: 1 });
+        expect(serializeMekTurnStateV2(pristine)).toEqual({});
         expect(pristine.turnCounter).toBe(0);
-        expect(mekTurnStatesEqualV2(deserializeMekTurnStateV2({ schemaVersion: 1 }), pristine)).toBeTrue();
+        expect(mekTurnStatesEqualV2(deserializeMekTurnStateV2({}), pristine)).toBeTrue();
         expect(deserializeMekTurnStateV2({
-            schemaVersion: 1,
             endTurnCheckpoint: 'heat-staged',
         }).endTurnCheckpoint).toBe('heat-staged');
     });
@@ -86,7 +84,7 @@ describe('Mek V2 turn state', () => {
         expect(serialized.consciousnessRollsDue).toEqual(due);
         expect(mekTurnStatesEqualV2(deserializeMekTurnStateV2(JSON.parse(JSON.stringify(serialized))), state))
             .toBeTrue();
-        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, consciousnessRollsDue: [] }))
+        expect(() => deserializeMekTurnStateV2({ consciousnessRollsDue: [] }))
             .toThrowError(MekTurnStateValidationError);
     });
 
@@ -134,24 +132,27 @@ describe('Mek V2 turn state', () => {
             cover: 'underwater-depth-2',
         });
 
-        expect(serializeMekTurnStateV2(state)).toEqual({ schemaVersion: 1, cover: 4 });
-        expect(deserializeMekTurnStateV2({ schemaVersion: 1, cover: 7 }).cover)
+        expect(serializeMekTurnStateV2(state)).toEqual({ cover: 4 });
+        expect(deserializeMekTurnStateV2({ cover: 7 }).cover)
             .toBe('building-2');
-        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, cover: 9 }))
+        expect(() => deserializeMekTurnStateV2({ cover: 9 }))
             .toThrowError(MekTurnStateValidationError, /serialized unit cover/);
     });
 
     it('fails closed on unknown fields, non-canonical order/defaults, and oversized collections', () => {
-        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, future: true }))
+        expect(() => deserializeMekTurnStateV2({ future: true }))
             .toThrowError(MekTurnStateValidationError, /unknown field/);
-        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, moveMode: 'walk' }))
+        expect(() => deserializeMekTurnStateV2({ moveMode: 'walk' }))
             .toThrowError(MekTurnStateValidationError, /unknown field/);
-        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, weaponsHeat: 0 }))
+        expect(() => deserializeMekTurnStateV2({ weaponsHeat: 0 }))
             .toThrowError(MekTurnStateValidationError, /sparse number must be positive/);
-        expect(() => deserializeMekTurnStateV2({ schemaVersion: 1, endTurnCheckpoint: 'complete' }))
+        for (const outsideHeat of [2.5, 500]) {
+            expect(() => deserializeMekTurnStateV2({ outsideHeat }))
+                .toThrowError(MekTurnStateValidationError, /whole number from 0 to 15/);
+        }
+        expect(() => deserializeMekTurnStateV2({ endTurnCheckpoint: 'complete' }))
             .toThrowError(MekTurnStateValidationError, /valid End Turn checkpoint/);
         expect(() => deserializeMekTurnStateV2({
-            schemaVersion: 1,
             pendingFallConsequences: {
                 eventId: 'fall:invalid',
                 totalDamage: 5,
@@ -165,7 +166,6 @@ describe('Mek V2 turn state', () => {
             },
         })).toThrowError(MekTurnStateValidationError, /only valid at the crew-hits stage/);
         expect(() => deserializeMekTurnStateV2({
-            schemaVersion: 1,
             pendingCriticalEvents: [{
                 type: 'critical-hit',
                 eventId: 'critical:invalid',
@@ -176,17 +176,15 @@ describe('Mek V2 turn state', () => {
             }],
         })).toThrowError(MekTurnStateValidationError, /one CASE II result per remaining hit/);
         expect(() => deserializeMekTurnStateV2({
-            schemaVersion: 1,
-            acknowledgedHeatSources: [
-                { sourceId: 'z', signature: '[]' },
-                { sourceId: 'a', signature: '[]' },
+            settledHeat: [
+                { sourceId: 'z', heat: 1 },
+                { sourceId: 'a', heat: 1 },
             ],
         })).toThrowError(MekTurnStateValidationError, /unique and sorted/);
         expect(() => deserializeMekTurnStateV2({
-            schemaVersion: 1,
-            acknowledgedHeatSources: Array.from(
+            settledHeat: Array.from(
                 { length: MAX_MEK_TURN_COLLECTION_ENTRIES + 1 },
-                (_, index) => ({ sourceId: `source:${index}`, signature: '[]' }),
+                (_, index) => ({ sourceId: `source:${index}`, heat: 1 }),
             ),
         })).toThrowError(MekTurnStateValidationError, /at most 256/);
     });

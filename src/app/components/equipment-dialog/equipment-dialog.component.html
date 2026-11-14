@@ -106,7 +106,7 @@
                             </div>
                         }
                         @if (runtime().canFireSelectedWeapons()) {
-                            <button class="bt-button danger fire-button" type="button" [disabled]="readOnly() || weaponsPanel.fireInFlight()" (click)="weaponsPanel.consumeSelectedHeatAndAmmo()">FIRED</button>
+                            <button class="bt-button danger fire-button" type="button" [disabled]="readOnly() || weaponsPanel.fireInFlight()" (click)="weaponsPanel.consumeSelectedHeatAndAmmo()">{{ runtime().fireLabel() }}</button>
                         }
                     </div>
                 }

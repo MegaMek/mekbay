@@ -13,6 +13,7 @@ import {
     type TargetRegistryCommand,
 } from '../models/runtime/encounter-runtime';
 import { InventoryControlOpforService } from './inventory-control-opfor.service';
+import type { CBTForceMember } from '../models/force-member.model';
 
 describe('InventoryControlOpforService', () => {
     it('formats linked opponent names without changing manual target names or stored names', () => {
@@ -197,6 +198,24 @@ describe('InventoryControlOpforService', () => {
     ): void {
         (service as any).loadedForces = signal(slots.map(slot => ({ ...slot, changeSub: null })));
     }
+
+    it("finds the infantry swarming a unit by the infantry's own swarm, in whichever loaded force holds it", () => {
+        const { service } = createOpforHarness();
+        const mek = { id: 'mek-1', force: { instanceId: () => 'force-a' } } as unknown as CBTForceMember;
+        const elementals = { id: 'ba-1' } as CBTForceMember;
+        const infantryForce = (swarming: string | undefined) => Object.assign(createAlignedCBTForce(), {
+            instanceId: () => 'force-b',
+            getCBTMembers: () => [elementals],
+            getUnitSnapshot: () => ({ entity: { entityType: 'BattleArmor' }, state: { swarming } }),
+        }) as CBTForce;
+        configureLoadedForces(service, [{ force: infantryForce(forceOpforTargetId('force-a', 'mek-1')), alignment: 'enemy' }]);
+        expect(service.swarmerOf(mek)).toEqual({ forceId: 'force-b', member: elementals });
+        // Infantry swarming another unit, or none, is not this unit's swarmer.
+        configureLoadedForces(service, [{ force: infantryForce(forceOpforTargetId('force-a', 'mek-2')), alignment: 'enemy' }]);
+        expect(service.swarmerOf(mek)).toBeNull();
+        configureLoadedForces(service, [{ force: infantryForce(undefined), alignment: 'enemy' }]);
+        expect(service.swarmerOf(mek)).toBeNull();
+    });
 
     it('resolves enemy CBT target rosters as OPFOR for a friendly force', () => {
         const service = Object.create(InventoryControlOpforService.prototype) as InventoryControlOpforService;

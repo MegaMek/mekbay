@@ -9,6 +9,7 @@ import {
 PPC_CAPACITOR_COMPATIBLE_FLAG,
 PPC_CAPACITOR_DAMAGE_BONUS,
 PPC_CAPACITOR_FLAG,
+PPC_CAPACITOR_HEAT_BONUS,
 PPC_FLAG,
 isPpcCapacitorCompatibleWeapon,
 isPpcCapacitorEquipment,
@@ -16,6 +17,7 @@ isPpcCapacitorEquipment,
 import { isWeaponEnhancementEquipment } from '../weapon-enhancement.model';
 import type { WeaponType } from '../weapon-types.model';
 import { type CBTMekUnit } from './cbt-unit';
+import { componentHeatSourceId, type TurnHeatLedger } from './turn-heat-ledger';
 import {
 componentStateChangeFromReduction,
 type ComponentStateChangeResult,
@@ -214,6 +216,11 @@ export function setComponentPpcCapacitorCharge(
         weaponId: definition.weapon.componentId,
         state,
     }));
+}
+
+/** The heat a charged capacitor adds when its PPC fires: none once APPLY HEAT settled the charge this turn. */
+export function ppcCapacitorFiringHeat(turn: TurnHeatLedger, weaponId: ComponentId): number {
+    return (turn.settledHeat.get(componentHeatSourceId('ppc-capacitor', weaponId)) ?? 0) >= PPC_CAPACITOR_HEAT_BONUS ? 0 : PPC_CAPACITOR_HEAT_BONUS;
 }
 
 export function ppcCapacitorChargedForWeapon(

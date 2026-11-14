@@ -12,7 +12,7 @@ export const VELOCITY_RECORD_LABELS: Readonly<Record<VelocityRecordField, string
     altitude: 'Altitude',
 });
 
-/** Turn columns the record sheet provides. */
+/** Turn columns the record sheet provides: two tables of ten. */
 export const VELOCITY_RECORD_TURNS = 20;
 const MAX_VALUE = 99;
 
@@ -25,9 +25,7 @@ export interface VelocityRecordEntry {
 
 /** Why an entry cannot be recorded, or null when it fits the sheet. */
 export function velocityRecordEntryIssue(entry: VelocityRecordEntry): string | null {
-    if (!Number.isSafeInteger(entry.turn) || entry.turn < 1 || entry.turn > VELOCITY_RECORD_TURNS) {
-        return `Velocity record turns run from 1 to ${VELOCITY_RECORD_TURNS}.`;
-    }
+    if (!Number.isSafeInteger(entry.turn) || entry.turn < 1) return 'Velocity record turns start at 1.';
     if (!VELOCITY_RECORD_FIELDS.includes(entry.field)) return `Unknown velocity record field ${entry.field}.`;
     if (!Number.isSafeInteger(entry.value) || entry.value < 0 || entry.value > MAX_VALUE) {
         return `Velocity record values run from 0 to ${MAX_VALUE}.`;

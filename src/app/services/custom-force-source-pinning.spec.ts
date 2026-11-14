@@ -14,7 +14,7 @@ import { decodePinnedCustomUnitSource } from '../models/pinned-custom-unit-sourc
 import { pinnedCustomSourceForHandle } from '../models/native-unit-source-handle';
 import { createForcePreviewUnitFromForceMember } from '../models/force-preview.model';
 import { CBTUnitStore } from '../models/cbt-unit-store';
-import { CBT_FORCE_PERSISTENCE_SCHEMA_VERSION, asForceId, emptyRuntimeHistory, type SerializedCBTForceV2, type SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
+import { asForceId, emptyRuntimeHistory, type SerializedCBTForceV2, type SerializedCBTUnitV2 } from '../models/runtime/persistence-v2';
 import type { SerializedNonMekUnit } from '../models/runtime/non-mek-unit-persistence';
 import { sha1Base64Url } from '../utils/sha1.util';
 import { CBTUnitService } from './cbt-unit.service';
@@ -254,8 +254,8 @@ describe('portable custom force source pinning', () => {
 });
 
 function forceEnvelope(unit: SerializedCBTUnitV2 | SerializedNonMekUnit): SerializedCBTForceV2 {
-    return { schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION, forceId: asForceId('force:source-pin'), forceRevision: unit.stateRevision,
+    return { forceId: asForceId('force:source-pin'), forceRevision: unit.stateRevision,
         history: emptyRuntimeHistory(), units: [{ instanceId: unit.instanceId, stateRevision: unit.stateRevision, unit }],
-        roster: { schemaVersion: 1, groups: [{ groupId: 'group:source-pin', order: 0,
+        roster: { groups: [{ groupId: 'group:source-pin', order: 0,
             members: [{ instanceId: unit.instanceId, order: 0 }] }] }, encounter: { networks: [] } };
 }

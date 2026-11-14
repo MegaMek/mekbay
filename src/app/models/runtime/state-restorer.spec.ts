@@ -134,7 +134,7 @@ describe('V1 unit-state ingress', () => {
             ]);
             const index = buildMekRuntimeIndex(fixture.entity);
             const initialized = initializeUnitState(fixture.entity, index, fixture.identity, {
-                initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' },
+                profileId: 'pristine', deployment: { id: 'default' },
                 scenario: { id: 'megamek', ruleset: 'total-warfare' },
             });
             const slot = [...index.slots.values()].find(candidate => candidate.componentIds.length === 2)!;

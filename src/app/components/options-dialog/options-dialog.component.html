@@ -1008,10 +1008,14 @@
                       class="bt-checkbox"
                       type="checkbox"
                       [checked]="optionsService.options().CBTOptionalRules[rule.key]"
+                      [disabled]="inLobby()"
                       (change)="onCBTOptionalRuleChange(rule.key, $event)"
                     />
                   </label>
                 }
+              }
+              @if (inLobby()) {
+                <p class="description">While you are in a lobby, its host sets the optional rules.</p>
               }
             </fieldset>
           </div>

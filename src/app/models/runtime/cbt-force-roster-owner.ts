@@ -4,12 +4,11 @@
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import type {
     CBTForceRosterSnapshot,
-    SerializedCBTForceRosterGroupV1,
-    SerializedCBTForceRosterMemberV1,
-    SerializedCBTForceRosterV1,
+    SerializedCBTForceRosterGroup,
+    SerializedCBTForceRosterMember,
+    SerializedCBTForceRoster,
 } from './cbt-force-roster';
 import {
-    CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
 } from './cbt-force-roster';
@@ -92,7 +91,7 @@ export type CBTForceRosterPlanRejectionReason =
     | 'NO_CHANGE';
 
 export interface CBTForceRosterMutationPlan {
-    readonly nextRoster: SerializedCBTForceRosterV1;
+    readonly nextRoster: SerializedCBTForceRoster;
     readonly changed: true;
     /** The whole-owner transaction removes these unit entries and their cross-unit evidence too. */
     readonly removedInstanceIds?: readonly string[];
@@ -125,7 +124,7 @@ export type CBTForceRosterCommandResult = CBTForceRosterCommandRejection | {
 };
 
 export interface PrepareCBTForceRosterMutationPlanInput {
-    readonly roster: SerializedCBTForceRosterV1;
+    readonly roster: SerializedCBTForceRoster;
     readonly command: CBTForceRosterCommand;
     readonly maxGroups?: number;
 }
@@ -149,7 +148,7 @@ export function prepareCBTForceRosterMutationPlan(
     if (!Number.isSafeInteger(maxGroups) || maxGroups < 0) {
         return rejectedPlan('INVALID_COMMAND');
     }
-    let result: { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds?: readonly string[] }
+    let result: { readonly roster: SerializedCBTForceRoster; readonly removedInstanceIds?: readonly string[] }
         | CBTForceRosterPlanRejectionReason;
     try {
         switch (command.kind) {
@@ -197,10 +196,10 @@ export function prepareCBTForceRosterMutationPlan(
 }
 
 function createGroup(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'create-group' }>,
     maxGroups: number,
-): { readonly roster: SerializedCBTForceRosterV1 } | CBTForceRosterPlanRejectionReason {
+): { readonly roster: SerializedCBTForceRoster } | CBTForceRosterPlanRejectionReason {
     if (command.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID) return 'INVALID_UNASSIGNED_GROUP_OPERATION';
     if (roster.groups.some(group => group.groupId === command.groupId)) return 'GROUP_ID_COLLISION';
     const regularGroups = roster.groups.filter(group => group.groupId !== CBT_FORCE_UNASSIGNED_GROUP_ID);
@@ -210,7 +209,7 @@ function createGroup(
     if (!validFormationTarget(roster, command.groupId, metadata.formationTargetGroupId)) {
         return 'UNKNOWN_GROUP';
     }
-    const created: SerializedCBTForceRosterGroupV1 = Object.freeze({
+    const created: SerializedCBTForceRosterGroup = Object.freeze({
         groupId: command.groupId,
         order: command.atIndex,
         ...metadata,
@@ -222,9 +221,9 @@ function createGroup(
 }
 
 function updateGroup(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'update-group' }>,
-): { readonly roster: SerializedCBTForceRosterV1 } | CBTForceRosterPlanRejectionReason {
+): { readonly roster: SerializedCBTForceRoster } | CBTForceRosterPlanRejectionReason {
     const index = roster.groups.findIndex(group => group.groupId === command.groupId);
     if (index < 0) return 'UNKNOWN_GROUP';
     if (command.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID) return 'INVALID_UNASSIGNED_GROUP_OPERATION';
@@ -233,7 +232,7 @@ function updateGroup(
     if (!validFormationTarget(roster, source.groupId, patch.formationTargetGroupId)) {
         return 'UNKNOWN_GROUP';
     }
-    const updated: SerializedCBTForceRosterGroupV1 = Object.freeze({
+    const updated: SerializedCBTForceRosterGroup = Object.freeze({
         groupId: source.groupId,
         order: source.order,
         ...metadataWithPatch(source, command.patch, patch),
@@ -245,9 +244,9 @@ function updateGroup(
 }
 
 function deleteGroup(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'delete-group' }>,
-): { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds?: readonly string[] }
+): { readonly roster: SerializedCBTForceRoster; readonly removedInstanceIds?: readonly string[] }
     | CBTForceRosterPlanRejectionReason {
     const sourceIndex = roster.groups.findIndex(group => group.groupId === command.groupId);
     if (sourceIndex < 0) return 'UNKNOWN_GROUP';
@@ -289,9 +288,9 @@ function deleteGroup(
 }
 
 function moveMember(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'move-member' }>,
-): { readonly roster: SerializedCBTForceRosterV1 } | CBTForceRosterPlanRejectionReason {
+): { readonly roster: SerializedCBTForceRoster } | CBTForceRosterPlanRejectionReason {
     const sourceLocation = findMember(roster, command.instanceId);
     if (!sourceLocation) return 'UNKNOWN_MEMBER';
     const targetIndex = roster.groups.findIndex(group => group.groupId === command.targetGroupId);
@@ -324,9 +323,9 @@ function moveMember(
 }
 
 function reorderGroup(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'reorder-group' }>,
-): { readonly roster: SerializedCBTForceRosterV1 } | CBTForceRosterPlanRejectionReason {
+): { readonly roster: SerializedCBTForceRoster } | CBTForceRosterPlanRejectionReason {
     const sourceIndex = roster.groups.findIndex(group => group.groupId === command.groupId);
     if (sourceIndex < 0) return 'UNKNOWN_GROUP';
     if (command.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID) return 'INVALID_UNASSIGNED_GROUP_OPERATION';
@@ -341,9 +340,9 @@ function reorderGroup(
 }
 
 function setCommander(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'set-commander' }>,
-): { readonly roster: SerializedCBTForceRosterV1 } | CBTForceRosterPlanRejectionReason {
+): { readonly roster: SerializedCBTForceRoster } | CBTForceRosterPlanRejectionReason {
     const location = findMember(roster, command.instanceId);
     if (!location) return 'UNKNOWN_MEMBER';
     const groups = [...roster.groups];
@@ -365,9 +364,9 @@ function setCommander(
 }
 
 function removeMember(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     command: Extract<CBTForceRosterCommand, { readonly kind: 'remove-member' }>,
-): { readonly roster: SerializedCBTForceRosterV1; readonly removedInstanceIds: readonly string[] }
+): { readonly roster: SerializedCBTForceRoster; readonly removedInstanceIds: readonly string[] }
     | CBTForceRosterPlanRejectionReason {
     const location = findMember(roster, command.instanceId);
     if (!location) return 'UNKNOWN_MEMBER';
@@ -456,7 +455,7 @@ function validateMetadataPatch(value: unknown): void {
     }
 }
 
-function canonicalMetadataPatch(patch: CBTForceRosterGroupMetadataPatch): Partial<SerializedCBTForceRosterGroupV1> {
+function canonicalMetadataPatch(patch: CBTForceRosterGroupMetadataPatch): Partial<SerializedCBTForceRosterGroup> {
     const output: {
         name?: string;
         color?: string;
@@ -477,10 +476,10 @@ function canonicalMetadataPatch(patch: CBTForceRosterGroupMetadataPatch): Partia
 }
 
 function metadataWithPatch(
-    source: SerializedCBTForceRosterGroupV1,
+    source: SerializedCBTForceRosterGroup,
     requested: CBTForceRosterGroupMetadataPatch,
-    patch: Partial<SerializedCBTForceRosterGroupV1>,
-): Partial<SerializedCBTForceRosterGroupV1> {
+    patch: Partial<SerializedCBTForceRosterGroup>,
+): Partial<SerializedCBTForceRosterGroup> {
     const output: {
         name?: string;
         color?: string;
@@ -505,13 +504,12 @@ function metadataWithPatch(
     return output;
 }
 
-function freezeRoster(groups: readonly SerializedCBTForceRosterGroupV1[]): SerializedCBTForceRosterV1 {
+function freezeRoster(groups: readonly SerializedCBTForceRosterGroup[]): SerializedCBTForceRoster {
     const regular = groups.filter(group => group.groupId !== CBT_FORCE_UNASSIGNED_GROUP_ID);
     const unassigned = groups.find(group => group.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID);
     const ordered = unassigned ? [...regular, unassigned] : regular;
     const groupIds = new Set(regular.map(group => group.groupId));
     return Object.freeze({
-        schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
         groups: Object.freeze(ordered.map((group, order) => Object.freeze({
             groupId: group.groupId,
             order,
@@ -530,7 +528,7 @@ function freezeRoster(groups: readonly SerializedCBTForceRosterGroupV1[]): Seria
 }
 
 function validFormationTarget(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     ownerGroupId: string,
     targetGroupId: string | undefined,
 ): boolean {
@@ -540,7 +538,7 @@ function validFormationTarget(
             && roster.groups.some(group => group.groupId === targetGroupId));
 }
 
-function freezeMembers(members: readonly SerializedCBTForceRosterMemberV1[]): readonly SerializedCBTForceRosterMemberV1[] {
+function freezeMembers(members: readonly SerializedCBTForceRosterMember[]): readonly SerializedCBTForceRosterMember[] {
     return Object.freeze(members.map((member, order) => Object.freeze({
         instanceId: member.instanceId,
         order,
@@ -548,7 +546,7 @@ function freezeMembers(members: readonly SerializedCBTForceRosterMemberV1[]): re
     })));
 }
 
-function findMember(roster: SerializedCBTForceRosterV1, instanceId: string): {
+function findMember(roster: SerializedCBTForceRoster, instanceId: string): {
     readonly groupIndex: number;
     readonly memberIndex: number;
 } | null {
@@ -559,7 +557,7 @@ function findMember(roster: SerializedCBTForceRosterV1, instanceId: string): {
     return null;
 }
 
-function removeEmptyUnassigned(groups: SerializedCBTForceRosterGroupV1[]): void {
+function removeEmptyUnassigned(groups: SerializedCBTForceRosterGroup[]): void {
     const index = groups.findIndex(group => group.groupId === CBT_FORCE_UNASSIGNED_GROUP_ID);
     if (index >= 0 && groups[index].members.length === 0) groups.splice(index, 1);
 }

@@ -9,15 +9,17 @@ import { toHitSucceeds } from '../../models/rules/weapon-attack-resolution';
 import { infernoEffect, infernoEffectText } from '../../models/rules/inferno-rules';
 import {
     infernoMissilesThisTurn,
-    infernoReadsHitLocation,
     readAttackHeat,
     readInfernoMissiles,
 } from '../../models/runtime/attack-hit-location';
 import type { AttackEvent } from '../../services/game-events.service';
 import { OptionsService } from '../../services/options.service';
+import { attackReleasesSwarm, attackSwarms } from '../../services/attack-resolution.service';
+import { physicalAttackAlwaysHits } from '../../models/rules/physical-attack-rules';
 import {
     ATTACK_ARC_LABELS,
     AttackReportComponent,
+    attackReportAim,
     attackReportGroup,
     type AttackReportWeapon,
 } from '../attack-report/attack-report.component';
@@ -50,13 +52,19 @@ export class IncomingAttackDialogComponent {
     protected readonly weapons = computed<readonly AttackReportWeapon[]>(() => this.data.event.weapons.map(weapon => ({
         name: weapon.name,
         targetNumber: weapon.targetNumber,
+        // Infantry shaken off, or struck by a hit on the unit it swarms, takes its damage without a to-hit roll.
+        ...(physicalAttackAlwaysHits(weapon.physical)
+            || ((weapon.swarmRelease || weapon.swarmStrike) && weapon.physical === undefined)
+            ? { automaticHit: true as const } : {}),
         toHit: weapon.toHit,
         hit: toHitSucceeds(weapon.toHit, weapon.targetNumber),
         cluster: weapon.cluster ?? null,
         inferno: weapon.inferno === true,
-        ...(weapon.inferno && !infernoReadsHitLocation(this.data.member) ? { noHitLocation: true } : {}),
+        ...(weapon.noHitLocation ? { noHitLocation: true } : {}),
+        ...(weapon.aim ? { aim: attackReportAim(weapon.aim) } : {}),
         groups: weapon.groups.map(group => attackReportGroup(this.data.member, weapon.arc ?? this.data.event.arc,
-            group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table)),
+            group.damage, group.location, group.aux, weapon.partialCover === true, weapon.table, weapon.physical,
+            weapon.aim, weapon.critical === true)),
     })));
     /** Damage per struck location, in the order first struck. */
     protected readonly summary = computed(() => {
@@ -69,6 +77,12 @@ export class IncomingAttackDialogComponent {
         return [...totals].map(([label, damage]) => ({ label, damage }));
     });
     protected readonly totalDamage = computed(() => this.summary().reduce((sum, row) => sum + row.damage, 0));
+    /** Infantry took hold of this unit with the attack, or let go of it; this infantry came off the unit it swarmed. */
+    protected readonly swarm = computed(() => {
+        if (attackReleasesSwarm(this.data.event.weapons)) return 'Shaken off';
+        const swarmed = attackSwarms(this.data.event.weapons);
+        return swarmed === null ? null : swarmed ? 'Swarmed' : 'Swarm ended';
+    });
     /** Outside heat the attack's heat-causing weapons apply. */
     protected readonly heat = computed(() => readAttackHeat(this.data.member, this.data.event.arc, this.data.event.weapons));
     /** What the attack's inferno missiles do to this unit; null without inferno hits. */

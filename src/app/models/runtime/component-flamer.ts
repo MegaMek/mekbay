@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { PickerChoice } from '../../components/picker/picker.interface';
-import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { EquipmentFlag } from '../equipment-flags.type';
 import {
-declaresFlamerHeat,
+declaresHeatOrDamage,
 FLAMER_DAMAGE_MODE,
 FLAMER_FLAG,
 hasFlamerModes,
@@ -23,18 +22,6 @@ EquipmentInteractionQueryContext,
 } from './equipment-interaction';
 
 export const FLAMER_HANDLER_ID: EquipmentInteractionHandlerId = 'flamer-handler';
-
-/**
- * Whether the heat-or-damage declaration is offered: a flamer's only where its rules read it; other flame-based
- * weapons always declare.
- */
-export function offersHeatOrDamageDeclaration(
-    flamer: boolean,
-    ruleset: CBTRuleset,
-    context: EquipmentInteractionQueryContext,
-): boolean {
-    return !flamer || declaresFlamerHeat(ruleset, context.optionalRules ?? {});
-}
 
 /** The heat-or-damage declaration of a flamer, Mek or not. */
 export function flamerModeChoice(mode: string | undefined, modes: readonly string[]): EquipmentInteractionChoice {
@@ -61,7 +48,9 @@ export class FlamerHandler extends ComponentModeHandler {
         definition: ComponentModeDefinition,
         context: EquipmentInteractionQueryContext,
     ): PickerChoice[] {
-        if (!offersHeatOrDamageDeclaration(definition.flags.has(FLAMER_FLAG), runtime.ruleset(), context)) return [];
+        if (!declaresHeatOrDamage(definition.flags.has(FLAMER_FLAG), runtime.ruleset(), context.optionalRules ?? {})) {
+            return [];
+        }
         return [flamerModeChoice(runtime.query().componentMode(definition.componentId), definition.modes)];
     }
 

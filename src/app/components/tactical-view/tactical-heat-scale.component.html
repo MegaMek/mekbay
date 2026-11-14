@@ -4,7 +4,7 @@
         <div class="heat-legend" aria-label="Heat markers">
             @for (marker of markers(); track marker.id) {
                 <span class="legend-item" [attr.data-tone]="marker.tone" [attr.data-marker]="marker.id">
-                    <span class="legend-symbol" aria-hidden="true"></span>{{ marker.label }} <strong>{{ marker.value }}</strong>
+                    <span class="legend-symbol" aria-hidden="true"></span>{{ marker.label }} <strong>{{ marker.value }}</strong>@if (marker.detail) { <span class="legend-detail">({{ marker.detail }})</span> }
                 </span>
             }
         </div>
@@ -16,12 +16,12 @@
             (click)="applyHeat.emit()">Apply @if (state().pending !== undefined) { {{ state().pending }} }</button>
     </div>
     <div class="heat-track" role="slider" tabindex="0" aria-label="Heat scale" aria-valuemin="0" aria-valuemax="1000000" [attr.aria-valuenow]="displayedHeat()" [attr.aria-disabled]="readOnly()"
-        [style.--projection-color]="state().projection! > state().current ? '#e35845' : '#5bb7e5'"
+        [style.--projection-color]="state().outcome! > state().current ? '#e35845' : '#5bb7e5'"
         [attr.aria-valuetext]="'Heat ' + displayedHeat()" (pointerdown)="startDrag($event)" (pointermove)="moveDrag($event)" (pointerup)="finishDrag($event)" (pointercancel)="cancelDrag()" (lostpointercapture)="cancelDrag()" (keydown)="keyDown($event)">
         @for (cell of cells(); track cell.heat) {
             <button type="button" class="heat-slot" tabindex="-1" [attr.data-heat]="cell.heat" [class.hot]="cell.heat <= displayedHeat()" [class.threshold]="cell.marks.length > 0" [class.preview]="preview() === cell.heat"
                 [attr.heat]="cell.heat" [disabled]="readOnly()"
-                [class.projection-range]="state().automaticProjection && cell.heat >= Math.min(state().current, state().projection!) && cell.heat <= Math.max(state().current, state().projection!)"
+                [class.projection-range]="state().outcome !== undefined && cell.heat >= Math.min(state().current, state().outcome!) && cell.heat <= Math.max(state().current, state().outcome!)"
                 [attr.aria-label]="'Heat ' + cell.heat + (cell.effects ? ': ' + cell.effects : '')" [title]="cell.effects || 'Heat ' + cell.heat" (click)="selectCell($event, cell.heat)">
                 <span class="heat-number">{{ cell.heat }}</span>
                 @for (effect of cell.marks; track effect.kind) {

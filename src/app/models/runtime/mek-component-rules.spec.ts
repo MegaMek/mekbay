@@ -63,7 +63,7 @@ describe('direct Mek component rules', () => {
             tw.index,
             'total-warfare',
             tw.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(candidate => candidate.componentId === tw.componentId);
         expect(row?.label).toBe('Medium Laser (Heat)');
     });

@@ -111,7 +111,7 @@ export class UnitRuntimeService {
         units: UnitSummary[],
         options: { readonly rebuildTagSearchIndex?: boolean } = {},
     ): Promise<TagData | null> {
-        const tagData = await this.tagsService.migrateChassisTagsToVariantGroups(units);
+        const tagData = await this.tagsService.migrateTagKeys(units);
         // This cleanup can change the in-memory tag document before persisting
         // it. Await it so callers using tag hydration as a catalog-settlement
         // boundary never publish or acknowledge an index built from the
@@ -136,7 +136,7 @@ export class UnitRuntimeService {
         options?: { rebuildTagSearchIndex?: boolean }
     ): void {
         if (tagData) {
-            void this.tagsService.migrateChassisTagsToVariantGroups(units, tagData);
+            void this.tagsService.migrateTagKeys(units, tagData);
         }
 
         void this.tagsService.fixNameTagsCoveredByChassis(units, tagData);
@@ -154,10 +154,10 @@ export class UnitRuntimeService {
         // Build reverse lookups once. The previous units × tags scan dominated
         // activation for large personal tag collections.
         for (const entry of tags) {
-            for (const [unitName, value] of Object.entries(entry.units)) {
-                const values = nameTags.get(unitName) ?? [];
+            for (const [unitKey, value] of Object.entries(entry.units)) {
+                const values = nameTags.get(unitKey) ?? [];
                 values.push({ tag: entry.label, quantity: this.getTagQuantity(value) });
-                nameTags.set(unitName, values);
+                nameTags.set(unitKey, values);
             }
             for (const [chassisKey, value] of Object.entries(entry.chassis)) {
                 const values = chassisTags.get(chassisKey) ?? [];
@@ -168,7 +168,7 @@ export class UnitRuntimeService {
 
         for (const unit of units) {
             const chassisKey = TagsService.getChassisTagKey(unit);
-            unit._nameTags = nameTags.get(unit.name) ?? [];
+            unit._nameTags = nameTags.get(TagsService.getUnitTagKey(unit)) ?? [];
             unit._chassisTags = chassisTags.get(chassisKey) ?? [];
         }
 

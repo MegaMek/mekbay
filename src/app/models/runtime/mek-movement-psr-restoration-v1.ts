@@ -4,6 +4,8 @@
 import { compareText } from '../../utils/string.util';
 import {
     canonicalizeLegacyMekTurnStateV1,
+    legacyHeatPointsV1,
+    legacyTurnHeatLedgerV1,
     type LegacyMekTurnStateParseResultV1,
     type LegacyMekTurnStateV1,
 } from './legacy-mek-turn-state-v1';
@@ -11,7 +13,6 @@ import { canonicalizeMekTurnStateV2, type MekTurnStateV2 } from './mek-turn-stat
 import {
     canonicalizeMekMovementPsrStateV2,
     MAX_MEK_MOVEMENT_MP_V2,
-    MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
     type MekMovementModeV2,
     type MekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
@@ -51,7 +52,6 @@ export function restoreLegacyMekMovementPsrV1(
     const movement = turn.moveMode === null
         ? null
         : Object.freeze({
-            schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
             mode: turn.moveMode as MekMovementModeV2,
             distance: turn.moveDistance as number,
             boosterComponentIds: Object.freeze([]),
@@ -71,21 +71,20 @@ export function restoreLegacyMekMovementPsrV1(
 }
 
 /**
- * Current unit schema keeps heat/equipment turn facts only. Movement,
- * phase-damage, PSR checks/outcomes, and the historical apply flag are owned
- * exclusively by `movementPsr`.
+ * The v2 turn keeps heat and equipment facts only, with V1 heat acknowledgements as settled heat. Movement,
+ * phase damage, PSR checks and outcomes, and the historical apply flag belong to `movementPsr`.
  */
 export function projectLegacyMekTurnStateV1(
     value: LegacyMekTurnStateV1,
+    issues: string[],
 ): MekTurnStateV2 {
     const turn = canonicalizeLegacyMekTurnStateV1(value);
     return canonicalizeMekTurnStateV2({
         turnCounter: turn.turnCounter,
         airborne: turn.airborne,
         cover: turn.cover,
-        weaponsHeat: turn.weaponsHeat,
-        acknowledgedHeatSources: turn.acknowledgedHeatSources,
-        heatDissipationConsumed: turn.heatDissipationConsumed,
+        weaponsHeat: legacyHeatPointsV1(turn.weaponsHeat) ?? 0,
+        ...legacyTurnHeatLedgerV1(turn, issues),
         spotting: turn.spotting,
         phaseStateChanged: turn.equipmentStateChanged,
         turnStep: 0,

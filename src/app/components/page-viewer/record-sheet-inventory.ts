@@ -3,6 +3,7 @@
 
 import type { WeaponAttackContext } from '../../models/runtime/equipment-panel';
 import type { ComponentId } from '../../models/entity/entity-identifiers';
+import { getMekLocationAbbreviation } from '../../models/entity/types/mek';
 import type { CBTForceMember } from '../../models/force-member.model';
 import { sameAttackerSelection } from '../../models/runtime/attacker-targeting-state';
 import {
@@ -33,16 +34,39 @@ const INVENTORY_RANGE_BUTTONS = Object.freeze([
     Object.freeze({ selector: '.extButton', range: 'extreme' as const }),
 ]);
 
-/** What a sheet's inventory needs to show weapon selections: the equipment panel and the unit's attack context. */
+/**
+ * What a live sheet shows beyond the unit's own snapshot: its inventory's weapon selections (the equipment panel and
+ * the unit's attack context), and the other units it plays with.
+ */
 export interface RecordSheetInventorySource {
     readonly panel: EquipmentPanelSnapshot;
     readonly attack: WeaponAttackContext | null;
+    /** The unit may declare aimed shots now (`AttackResolutionService.declaresAimedShots`). */
+    readonly aiming?: boolean;
+    /** The name of the infantry swarming the unit, when its force is open here (`SwarmService.swarmerName`). */
+    readonly swarmedBy?: string;
+}
+
+/** What the sheet asks of the unit's play with others; asked only of a unit with an equipment panel. */
+export interface RecordSheetLivePlay {
+    aiming(): boolean;
+    swarmedBy(): string | null;
 }
 
 /** The live inventory source for a member's sheets. */
-export function recordSheetInventorySource(member: CBTForceMember): RecordSheetInventorySource | null {
+export function recordSheetInventorySource(
+    member: CBTForceMember,
+    live?: RecordSheetLivePlay,
+): RecordSheetInventorySource | null {
     const panel = member.force.getEquipmentPanelSnapshot(member.id);
-    return panel ? Object.freeze({ panel, attack: member.force.getWeaponAttackContext(member.id, panel) }) : null;
+    if (!panel) return null;
+    const swarmedBy = live?.swarmedBy() ?? null;
+    return Object.freeze({
+        panel,
+        attack: member.force.getWeaponAttackContext(member.id, panel),
+        aiming: live?.aiming() ?? false,
+        ...(swarmedBy === null ? {} : { swarmedBy }),
+    });
 }
 
 export type RecordSheetPanelWeapon = EquipmentPanelComponent & {
@@ -89,6 +113,20 @@ export function bindRecordSheetInventoryButtons(
     }
 }
 
+/** Binds a rendered row's aim stamp to the paperdoll of the target its one weapon may aim at. */
+export function bindRecordSheetInventoryAim(
+    row: SVGElement,
+    componentIds: readonly ComponentId[],
+    bind: RecordSheetBind,
+    context: () => UnitEditContext,
+): void {
+    const stamp = row.querySelector<SVGElement>(':scope > .aimStamp');
+    if (!stamp || componentIds.length !== 1) return;
+    bind(stamp, () => row.classList.contains('aimable')
+        ? Object.freeze({ kind: 'inventory-aim' as const, componentId: componentIds[0], context: context() })
+        : null, 'control');
+}
+
 /** How an inventory row shows its selection. */
 export interface RecordSheetInventorySelection {
     readonly selected: boolean;
@@ -99,6 +137,13 @@ export interface RecordSheetInventorySelection {
     readonly hitModifierText?: string;
     /** Damage or another impairment worsened the hit modifier; its badge turns red as in the equipment dialog. */
     readonly hitModifierWeakened?: boolean;
+    /** Every weapon of the row fired this turn (`EquipmentPanelWeapon.firedThisTurn`). */
+    readonly fired?: true;
+    /**
+     * The row's one weapon aims at a location of its target (`text` names it), or may now declare an aimed shot
+     * (`aimable`: its stamp opens the target's paperdoll).
+     */
+    readonly aim?: Readonly<{ text: string; aimed: boolean; aimable: boolean }>;
 }
 
 export const NO_INVENTORY_SELECTION: RecordSheetInventorySelection = Object.freeze({ selected: false });
@@ -137,7 +182,25 @@ export function projectRecordSheetWeaponSelection(
             hitModifierText: `${hit.modifier > 0 ? '+' : ''}${hit.modifier}`,
             ...(hit.weakened ? { hitModifierWeakened: true } : {}),
         }),
+        ...(source !== null && weapons.every(weapon => weapon.weapon.firedThisTurn) ? { fired: true as const } : {}),
+        ...inventoryAim(weapons, presentation, source),
     });
+}
+
+function inventoryAim(
+    weapons: readonly RecordSheetPanelWeapon[],
+    presentation: ReturnType<typeof projectWeaponTargetPresentation> | null,
+    source: RecordSheetInventorySource | null,
+): Pick<RecordSheetInventorySelection, 'aim'> {
+    if (presentation === null || weapons.length !== 1 || presentation.outOfRange) return {};
+    const aimable = presentation.aimedShotKind !== null && source?.aiming === true
+        && weapons[0].weapon.selectable;
+    if (presentation.aim === null && !aimable) return {};
+    return { aim: Object.freeze({
+        text: presentation.aim === null ? 'AIM' : getMekLocationAbbreviation(presentation.aim.location),
+        aimed: presentation.aim !== null,
+        aimable,
+    }) };
 }
 
 /**
@@ -177,6 +240,45 @@ export function renderRecordSheetInventorySelection(row: SVGElement, selection: 
     renderInventoryBadge(row, 'targetTn', selection.targetNumberText);
     renderInventoryBadge(row, 'hitMod', selection.targetNumberText ? undefined : selection.hitModifierText);
     row.classList.toggle('weakenedHitMod', selection.hitModifierWeakened === true);
+    row.classList.toggle('fired', selection.fired === true);
+    renderStamp(row, 'firedStamp', selection.fired ? 'FIRED' : null, 0);
+    row.classList.toggle('aiming', selection.aim !== undefined);
+    row.classList.toggle('aimed', selection.aim?.aimed === true);
+    row.classList.toggle('aimable', selection.aim?.aimable === true);
+    renderStamp(row, 'aimStamp', selection.aim?.text ?? null, 1);
+}
+
+/**
+ * A stamp laid over the right end of a row's name: an overlay, so nothing on the sheet moves, and screen only (the
+ * styles show it while the row carries the stamp's class; print never does). FIRED marks a row whose weapons fired
+ * this turn; the aim stamp, one place before it, names the location an aimed shot is declared at.
+ */
+function renderStamp(row: SVGElement, className: 'firedStamp' | 'aimStamp', label: string | null, place: number): void {
+    if (label === null) return;
+    let stamp = row.querySelector(`:scope > .${className}`);
+    if (!stamp) {
+        const button = row.querySelector(':scope > .mainButton');
+        if (!button) return;
+        const [x, y, width, rowHeight] = ['x', 'y', 'width', 'height'].map(name => Number(button.getAttribute(name)));
+        const height = Math.min(rowHeight, 9);
+        const fontSize = height * 0.62;
+        const stampWidth = fontSize * 3.9;
+        const left = x + width - (place + 1) * stampWidth - place * fontSize * 0.3;
+        stamp = svgElement('g');
+        stamp.setAttribute('class', className);
+        const rect = svgElement('rect');
+        for (const [name, value] of Object.entries({ x: left, y, width: stampWidth, height, rx: height / 5 })) {
+            rect.setAttribute(name, String(value));
+        }
+        const text = svgElement('text');
+        for (const [name, value] of Object.entries({
+            x: left + stampWidth / 2, y: y + height / 2 + fontSize * 0.36, 'font-size': fontSize, 'font-weight': 700,
+            'text-anchor': 'middle',
+        })) text.setAttribute(name, String(value));
+        stamp.append(rect, text);
+        row.appendChild(stamp);
+    }
+    stamp.querySelector('text')!.textContent = label;
 }
 
 /**

@@ -17,9 +17,13 @@
             <div class="weapon-line">
                 <strong class="weapon-name">{{ weapon.name }}</strong>
                 <span class="weapon-roll">
-                    <span class="tn" title="Target number">TN {{ weapon.targetNumber }}</span>
-                    <ng-container *ngTemplateOutlet="rollChip; context: {
-                        dice: weapon.toHit, weapon: w, roll: 'to-hit', label: 'Set ' + weapon.name + ' to-hit roll' }" />
+                    @if (weapon.automaticHit) {
+                        <span class="tn">Auto</span>
+                    } @else {
+                        <span class="tn" title="Target number">TN {{ weapon.targetNumber }}</span>
+                        <ng-container *ngTemplateOutlet="rollChip; context: {
+                            dice: weapon.toHit, weapon: w, roll: 'to-hit', label: 'Set ' + weapon.name + ' to-hit roll' }" />
+                    }
                     <span class="verdict">{{ weapon.hit ? 'HIT' : 'MISS' }}</span>
                     @if (weapon.jammed) { <span class="jammed" title="The weapon jammed; its shots still fire">JAMMED</span> }
                     @if (editable()) {
@@ -59,6 +63,14 @@
                     }
                 </div>
             }
+            @if (weapon.hit && weapon.aim; as aim) {
+                <div class="cluster-line">
+                    <span class="step-label">Aim</span>
+                    <ng-container *ngTemplateOutlet="rollChip; context: {
+                        dice: aim.dice, weapon: w, roll: 'aim', label: 'Set ' + weapon.name + ' aim roll' }" />
+                    <span class="cluster-hits"><strong>{{ aim.label }}</strong> {{ aim.strikes ? 'struck' : 'missed' }}</span>
+                </div>
+            }
             @if (weapon.groups.length > 0) {
                 <ol class="hit-groups">
                     @for (group of weapon.groups; track $index; let g = $index) {
@@ -68,7 +80,7 @@
                             } @else if (group.damage === 0) {
                                 <span class="damage label">Heat</span>
                             } @else {
-                                <span class="damage" title="Damage">{{ group.damage }}</span>
+                                <span class="damage" [title]="group.troopers ? 'Troopers' : 'Damage'">{{ group.damage }}</span>
                             }
                             @if (!weapon.noHitLocation) {
                                 <ng-container *ngTemplateOutlet="rollChip; context: {

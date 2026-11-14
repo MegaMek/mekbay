@@ -37,7 +37,8 @@ export interface ToHitModifierBreakdownEntry {
     readonly modifier: number;
     readonly priority?: number;
     readonly weakened?: boolean;
-    readonly kind?: 'heat';
+    /** `targeting-computer` marks the computer's -1, which some aimed shots go without. */
+    readonly kind?: 'heat' | 'targeting-computer';
 }
 
 export type ToHitAdjustment =
@@ -397,7 +398,7 @@ export abstract class CBTGameRules {
         const targetingComputer = subject.targetingComputer;
         if (!weapon || !targetingComputer || !this.targetingComputerEligible(weapon)) return [];
         if (targetingComputer.status === 'available') {
-            return [{ label: targetingComputer.label, modifier: -1 }];
+            return [{ label: targetingComputer.label, modifier: -1, kind: 'targeting-computer' }];
         }
         return [{
             label: `${targetingComputer.label} ${targetingComputer.status === 'destroyed' ? 'Destroyed' : 'Disabled'}`,
@@ -471,7 +472,15 @@ export class GameRules extends CBTGameRules {
         'mule-kick': -1,
         club: -1,
         push: -1,
+        // Thrashing always hits (TW p. 151).
+        thrash: 0,
         frenzy: 0,
+        // A Piloting Skill Roll at +4, with the punch's arm modifiers (TW p. 221).
+        'brush-off': 4,
+        // Core has no infantry: anti-'Mech attacks read Total Warfare.
+        'leg-attack': 0,
+        swarm: 0,
+        'end-swarm': 0,
         charge: 'Vs',
         'death-from-above': 'Vs',
         'airmek-ram': 'Vs',
@@ -602,7 +611,15 @@ export class TWGameRules extends CBTGameRules {
         'mule-kick': -1,
         club: -1,
         push: -1,
+        // Thrashing always hits (TW p. 151).
+        thrash: 0,
         frenzy: 0,
+        // A Piloting Skill Roll at +4, with the punch's arm modifiers (TW p. 221).
+        'brush-off': 4,
+        // The Anti-'Mech Skill is the base; the troopers left set the modifier (TW p. 221).
+        'leg-attack': 0,
+        swarm: 0,
+        'end-swarm': 0,
         charge: 'Vs',
         'death-from-above': 'Vs',
         'airmek-ram': 'Vs',

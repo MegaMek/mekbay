@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION, type MekMovementModeV2 } from './mek-movement-psr-v2';
+import { type MekMovementModeV2 } from './mek-movement-psr-v2';
 import { projectMekTurnPanel } from './mek-turn-panel';
 import {
     createDirectMekRuntimeFixture,
@@ -127,7 +127,7 @@ describe('Mek tracked movement', () => {
             const heat = (mode: MekMovementModeV2) => {
                 const fixture = createDirectTracksRuntimeFixture(ruleset);
                 expect(declare(fixture, mode, 2)).toBeTrue();
-                const projection = fixture.instance.query().heatProjection('manual');
+                const projection = fixture.instance.query().heatProjection();
                 if (projection.kind !== 'supported') throw new Error('Tracks fixture heat is unsupported');
                 return projection.projection.committedSources.find(source => source.id === 'movement')?.value;
             };
@@ -136,7 +136,7 @@ describe('Mek tracked movement', () => {
 
             const fixture = createDirectTracksRuntimeFixture(ruleset);
             const panel = projectMekTurnPanel(fixture.entity, fixture.index, fixture.instance.ruleset(),
-                fixture.instance.query(), 'manual');
+                fixture.instance.query());
             expect(panel.attackMovementModifiers.tracked).toBe(panel.attackMovementModifiers.walk);
         });
     }
@@ -155,7 +155,7 @@ function action(fixture: DirectMekRuntimeFixture, kind: MekMovementModeV2) {
 function declare(fixture: DirectMekRuntimeFixture, mode: MekMovementModeV2, distance: number): boolean {
     return fixture.instance.dispatch({
         type: 'declare-mek-movement',
-        declaration: { schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION, mode, distance, boosterComponentIds: [] },
+        declaration: { mode, distance, boosterComponentIds: [] },
     }).changed;
 }
 

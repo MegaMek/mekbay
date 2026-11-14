@@ -44,7 +44,7 @@ export class UnitTagsComponent {
     /** Emitted when the add/edit tag button is clicked. Passes both the unit and MouseEvent for overlay positioning. */
     tagClick = output<TagClickEvent>();
 
-    /** Quantity-aware name tags for full-mode rendering */
+    /** Quantity-aware unit tags for full-mode rendering */
     nameTagEntries = computed((): UnitTagEntry[] => {
         this.tagsService.version();
         const tags = [...(this.unit()._nameTags ?? [])];

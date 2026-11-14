@@ -13,7 +13,7 @@ import {
     type MekUnitRuntimeState,
     type InstanceBaselineRef,
 } from './runtime-state';
-import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { MAX_HEAT_VALUE } from './turn-heat-ledger';
 import { createPristineMekHeatStateV2 } from './mek-heat-state-v2';
 import {
     canonicalizeCrewAssignment,
@@ -28,11 +28,8 @@ import {
     type BoundOptionalRules,
 } from './bound-optional-rules';
 
-export const UNIT_STATE_INITIALIZER_SCHEMA_VERSION = 7 as const;
-export const UNIT_STATE_INITIALIZER_REVISION = 1 as const;
-export const MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION = 2 as const;
-export const DEFAULT_MEK_INITIAL_STATE_PROFILE_ID = `pristine-mek-v${UNIT_STATE_INITIALIZER_SCHEMA_VERSION}`;
-export const DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID = 'pristine-non-mek-v1';
+export const DEFAULT_MEK_INITIAL_STATE_PROFILE_ID = 'pristine-mek';
+export const DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID = 'pristine-non-mek';
 export const DEFAULT_FORCE_DEPLOYMENT_ID = 'force-builder-default';
 
 export interface DeploymentConfiguration {
@@ -50,7 +47,7 @@ export interface CanonicalMekDeploymentConfigurationV2 {
 export interface ScenarioRules {
     readonly id: string;
     readonly ruleset?: CBTRuleset;
-    readonly options?: Readonly<Record<string, string | number | boolean>>;
+    readonly options?: Partial<BoundOptionalRules>;
 }
 
 export type CBTApplicationOptions = Pick<Options, 'CBTRules' | 'CBTOptionalRules'>;
@@ -78,7 +75,6 @@ export function scenarioBoundRules(scenario: ScenarioRules): BoundOptionalRules 
 }
 
 export interface InitializeUnitStateOptions {
-    readonly initializerRevision: number;
     readonly profileId: string;
     readonly deployment: DeploymentConfiguration;
     readonly scenario: ScenarioRules;
@@ -90,7 +86,7 @@ export interface InitializedUnitState {
     readonly deployment: CanonicalMekDeploymentConfigurationV2;
 }
 
-/** Deterministic pristine baseline. Sparse absence means exactly this versioned projection. */
+/** Deterministic pristine baseline. Sparse absence means exactly this projection. */
 export function initializeUnitState(
     entity: MekEntity,
     index: MekRuntimeIndex,
@@ -100,9 +96,6 @@ export function initializeUnitState(
     options = structuredClone(options);
     if (identity !== entity.uuid()) {
         throw new Error('Entity UUID does not match the baseline identity');
-    }
-    if (!Number.isSafeInteger(options.initializerRevision) || options.initializerRevision < 1) {
-        throw new Error('Initializer revision must be a positive integer');
     }
     if (!options.profileId.trim()) throw new Error('Initial-state profile ID cannot be empty');
     const deployment = canonicalizeDeploymentConfiguration(index, options.deployment);
@@ -119,8 +112,6 @@ export function initializeUnitState(
             entity: identity,
             ruleset,
             initialStateProfile: Object.freeze({
-                schemaVersion: 1,
-                initializerRevision: options.initializerRevision,
                 profileId: options.profileId,
             }),
         }),

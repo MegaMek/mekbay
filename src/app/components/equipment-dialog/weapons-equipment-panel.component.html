@@ -118,9 +118,15 @@
                                         }
                                     </div>
                                     @if (hasTargets()) {
-                                        <span class="tn-cell" [class.out-of-range]="rowTarget.invalidTarget" [tooltip]="rowTarget.invalidTargetReason === 'type' ? invalidTargetTypeTooltip : rowTarget.invalidTargetReason === 'out-of-range' ? outOfRangeTooltip : rowTarget.targetNumberTooltip">
+                                        <span class="tn-cell" [class.out-of-range]="rowTarget.invalidTarget" [tooltip]="rowTarget.invalidTargetReason === 'invalid' ? invalidTargetTypeTooltip : rowTarget.invalidTargetReason === 'out-of-range' ? outOfRangeTooltip : rowTarget.targetNumberTooltip">
                                             @if (rowTarget.targetNumberText; as tnText) {
                                                 <span class="tn-value">{{ tnText }}</span>
+                                            }
+                                            @if (rowTarget.target && (rowTarget.aimable || rowTarget.aim)) {
+                                                <button type="button" class="aim-toggle" [class.aimed]="!!rowTarget.aim"
+                                                    [disabled]="readOnly() || !rowTarget.aimable"
+                                                    [attr.aria-label]="'Aimed shot with ' + row.display.name"
+                                                    (click)="aimRow($event, row, rowTarget.target)">{{ rowTarget.aim ?? 'AIM' }}</button>
                                             }
                                         </span>
                                     }
@@ -150,6 +156,7 @@
                                         @for (modifier of row.modifiers; track modifier.name) {
                                             <span class="modifier"
                                                 [class.destroyed]="modifier.status === 'destroyed'"
+                                                [class.fired]="modifier.status === 'fired'"
                                                 [class.disabled]="modifier.status === 'disabled'">{{ modifier.name }}{{ modifier.status === 'destroyed' ? ' Destroyed' : modifier.status === 'disabled' ? ' Disabled' : '' }}</span>
                                         }
                                         @if (modeChoice(row); as choice) {

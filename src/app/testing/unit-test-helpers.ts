@@ -4,7 +4,6 @@
 
 import { UNIT_SUMMARY_VERSION, type UnitSummary } from '../models/unit-summary.model';
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     emptyRuntimeHistory,
     type SerializedCBTForceV2,
@@ -33,12 +32,11 @@ export function createEmptyCBTForceForTest(
     revision: number = 0,
 ): SerializedCBTForceV2 {
     return {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId: asForceId(forceId),
         forceRevision: revision,
         history: emptyRuntimeHistory(),
         units: [],
-        roster: { schemaVersion: 1, groups: [] },
+        roster: { groups: [] },
         encounter: { networks: [] },
     };
 }

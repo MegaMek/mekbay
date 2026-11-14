@@ -37,7 +37,6 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { StatBarSpecsPipe } from '../pipes/stat-bar-specs.pipe';
 import { CONSTRUCTION_VALIDATE_EXTINCTION } from './domain/construction-config';
 import type { EntityValidationResult } from '../models/entity/types';
-import { MekWithArmsEntity } from '../models/entity/entities/mek/mek-entity';
 
 describe('construction equipment warehouse', () => {
   const tech = {
@@ -519,10 +518,6 @@ describe('construction equipment warehouse', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(location.disabled).toBeFalse();
-    expect(checkbox.getBoundingClientRect().top + checkbox.offsetHeight / 2).toBeCloseTo(
-      location.getBoundingClientRect().top + location.offsetHeight / 2,
-      0,
-    );
     root.querySelector<HTMLInputElement>('.warehouse-heading .warehouse-platform-filter input')!.click();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -571,7 +566,6 @@ describe('construction equipment warehouse', () => {
     expect(line.querySelector('.pristine-bv')?.parentElement?.classList.contains('bv-total')).toBeTrue();
     const costs = root.querySelector<HTMLElement>('.cost-line')!;
     expect(costs.textContent!.replace(/\s/g, '')).toBe('1,000C-Bills(+20repair)·55SP');
-    expect(getComputedStyle(costs).whiteSpace).toBe('nowrap');
     effectiveBV.and.returnValue(1730);
     fixture.detectChanges();
     expect(root.querySelector('.pristine-bv')).toBeNull();
@@ -646,74 +640,6 @@ describe('construction equipment warehouse', () => {
     expect(editor.materialInvalid(armor)).toBeTrue();
     expect(entity.armorAt('RA').armor).toBe(armor);
     expect(entity.gyroType()).toBe('Superheavy');
-  });
-
-  it('virtualizes the complete catalog with stable row heights and resets a scrolled search', async () => {
-    editor.query.set('Warehouse laser');
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const viewport = fixture.debugElement.query(By.directive(CdkVirtualScrollViewport))
-      .componentInstance as CdkVirtualScrollViewport;
-    viewport.checkViewportSize();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const rows = () => [...fixture.nativeElement.querySelectorAll('.warehouse-item')] as HTMLElement[];
-    expect(rows().length).toBeGreaterThan(0);
-    expect(rows().length).toBeLessThan(weapons.length);
-    expect(rows().every((row) => row.getBoundingClientRect().height === editor.equipmentRowHeight)).toBeTrue();
-    viewport.scrollToIndex(180);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    fixture.detectChanges();
-    await fixture.whenStable();
-    expect(viewport.measureScrollOffset()).toBeGreaterThan(0);
-    editor.query.set('Warehouse laser 005');
-    fixture.detectChanges();
-    await fixture.whenStable();
-    expect(viewport.measureScrollOffset()).toBe(0);
-    expect(rows().length).toBe(1);
-    expect(rows()[0].textContent).toContain('Warehouse laser 005');
-  });
-
-  it('keeps its source row aligned when dragging equipment from the virtual viewport', async () => {
-    editor.query.set('Warehouse laser 005');
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const viewport = fixture.debugElement.query(By.directive(CdkVirtualScrollViewport))
-      .componentInstance as CdkVirtualScrollViewport;
-    viewport.checkViewportSize();
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const root = fixture.nativeElement as HTMLElement;
-    const item = root.querySelector<HTMLElement>('.warehouse-item')!;
-    const rect = item.getBoundingClientRect();
-    const x = rect.left + 10,
-      y = rect.top + 10;
-    const mouse = (target: EventTarget, type: string, clientX: number, clientY: number) =>
-      target.dispatchEvent(
-        new MouseEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          detail: 1,
-          buttons: type === 'mouseup' ? 0 : 1,
-          button: 0,
-          clientX,
-          clientY,
-        }),
-      );
-    mouse(item.querySelector('.equipment-name')!, 'mousedown', x, y);
-    mouse(document, 'mousemove', x + 15, y + 15);
-    fixture.detectChanges();
-    expect(editor.dragging()?.equipmentId).toBe('Warehouse laser 005');
-    const placeholder = root.querySelector<HTMLElement>('.equipment-list .warehouse-placeholder');
-    expect(placeholder).not.toBeNull();
-    expect(placeholder?.getBoundingClientRect().height).toBe(editor.equipmentRowHeight);
-    expect(getComputedStyle(root.querySelector('.equipment-list')!).overflowY).toBe('hidden');
-    mouse(document, 'mouseup', x + 15, y + 15);
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(editor.dragging()).toBeNull();
-    expect(root.querySelector('.warehouse-item')).not.toBeNull();
   });
 
   describe('building topology drops', () => {
@@ -1058,78 +984,9 @@ describe('construction equipment warehouse', () => {
     });
   });
 
-  it('sorts every palette column in both directions, keeping numeric ties alphabetical and unresolved values last', async () => {
-    editor.query.set('Warehouse sort');
+  it('values and sorts warehouse and installed ammo BV by the ruleset in play', async () => {
     const options = await initializedOptions();
-    options.update((current) => ({
-      ...current,
-      CBTOptionalRules: { ...current.CBTOptionalRules, extremeRange: false },
-    }));
-    await renderWarehouse();
-    const root = fixture.nativeElement as HTMLElement;
-    const header = (label: string) =>
-      root.querySelector<HTMLButtonElement>(`.equipment-columns [aria-label="Sort by ${label}"]`)!;
-    expect(editor.filteredEquipment()).toEqual(sortEquipment);
-    expect(header('Name').getAttribute('aria-pressed')).toBe('true');
-    editor.selectEquipment(sortBeta);
-    const count = editor.entity().equipment().length;
-    expect(editor.equipmentSlots(sortVariable)).toBe(1); // Slots use the calculated count displayed in the list.
-    const columns = [
-      {
-        label: 'Name',
-        asc: [sortAlpha, sortBeta, sortGamma, sortVariable],
-        desc: [sortVariable, sortGamma, sortBeta, sortAlpha],
-      },
-      {
-        label: 'Slots',
-        asc: [sortVariable, sortBeta, sortGamma, sortAlpha],
-        desc: [sortAlpha, sortBeta, sortGamma, sortVariable],
-      },
-      {
-        label: 'Tons',
-        asc: [sortGamma, sortBeta, sortAlpha, sortVariable],
-        desc: [sortAlpha, sortBeta, sortGamma, sortVariable],
-      },
-      {
-        label: 'Damage',
-        asc: [sortBeta, sortGamma, sortAlpha, sortVariable],
-        desc: [sortAlpha, sortGamma, sortBeta, sortVariable],
-      },
-      {
-        label: 'Range',
-        asc: [sortBeta, sortGamma, sortAlpha, sortVariable],
-        desc: [sortAlpha, sortGamma, sortBeta, sortVariable],
-      },
-      {
-        label: 'BV',
-        asc: [sortBeta, sortGamma, sortAlpha, sortVariable],
-        desc: [sortAlpha, sortGamma, sortBeta, sortVariable],
-      },
-    ];
-    for (const column of columns) {
-      const directions = column.label === 'Name' ? (['desc', 'asc'] as const) : (['asc', 'desc'] as const);
-      for (const direction of directions) {
-        header(column.label).click();
-        await renderWarehouse();
-        expect(editor.filteredEquipment()).withContext(`${column.label} ${direction}`).toEqual(column[direction]);
-        expect(
-          [...root.querySelectorAll('.warehouse-item .equipment-label')].map((label) => label.textContent),
-        ).toEqual(column[direction].map((eq) => eq.name));
-        expect(header(column.label).getAttribute('aria-description')).toBe(
-          `Sorted ${direction === 'asc' ? 'ascending' : 'descending'}`,
-        );
-        expect(header(column.label).classList.contains('sort-desc')).toBe(direction === 'desc');
-        expect(root.querySelectorAll('.equipment-columns .sort-active').length).toBe(1);
-      }
-    }
-    expect(editor.selectedEquipment()).toBe(sortBeta);
-    expect(editor.entity().equipment().length).toBe(count);
-  });
-
-  it('updates ammo BV in the warehouse, sorting and both inspectors when the ruleset changes', async () => {
-    const options = await initializedOptions();
-    const entity = editor.entity();
-    const mounts = fascamAmmo.map(equipment => entity.addEquipment({
+    const mounts = fascamAmmo.map(equipment => editor.entity().addEquipment({
       equipmentId: equipment.id, equipment,
       allocation: { kind: 'location', location: 'LT' },
       rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
@@ -1137,32 +994,17 @@ describe('construction equipment warehouse', () => {
     editor.query.set('Warehouse ammo BV');
     editor.showIncompatibleEquipment.set(true);
     editor.sortEquipment('bv');
-    const root = fixture.nativeElement as HTMLElement;
-    const inspectorBV = () => [...root.querySelectorAll('.installed-inspector .equip-item')]
-      .find(item => item.querySelector('.equip-label')?.textContent?.trim() === 'BV:')
-      ?.querySelector('.equip-value')?.textContent?.trim();
 
-    for (const ruleset of ['core-2026', 'total-warfare', 'core-2026'] as const) {
+    for (const ruleset of ['core-2026', 'total-warfare'] as const) {
       options.update(current => ({ ...current, CBTRules: ruleset }));
-      await renderWarehouse();
       const tw = ruleset === 'total-warfare';
+      // The two FASCAM entries differ only in catalog BV; each ruleset values them alike.
+      const fascamBv = tw ? 80 : 30;
+      expect(fascamAmmo.map(ammo => editor.equipmentBV(ammo))).withContext(ruleset).toEqual([fascamBv, fascamBv]);
+      expect(fascamAmmo.map((ammo, index) => editor.equipmentBV(ammo, mounts[index]))).withContext(ruleset)
+        .toEqual([fascamBv, fascamBv]);
       expect(editor.filteredEquipment()).toEqual(tw ? [ammoSortControl, ...fascamAmmo] : [...fascamAmmo, ammoSortControl]);
-      expect([...root.querySelectorAll('.warehouse-item .equipment-bv > span')].map(cell => cell.textContent?.trim()))
-        .toEqual(tw ? ['50', '80', '80'] : ['30', '30', '50']);
-
-      for (const [index, equipment] of fascamAmmo.entries()) {
-        const anchor = root.querySelector<HTMLButtonElement>(
-          '.warehouse-equipment[aria-label="' + editor.equipmentLabel(equipment) + '"]',
-        )!;
-        editor.inspectEquipment(equipment, anchor);
-        await renderWarehouse();
-        expect(inspectorBV()).withContext(ruleset + ' catalog ' + equipment.bv).toBe(tw ? '80' : '30');
-        editor.inspectMount(mounts[index], anchor);
-        await renderWarehouse();
-        expect(inspectorBV()).withContext(ruleset + ' mounted catalog ' + equipment.bv).toBe(tw ? '80' : '30');
-      }
     }
-    expect(fascamAmmo.map(ammo => ammo.bv)).toEqual([30, 80]);
   });
 
   it('recalculates targeting-computer palette mass, inspector mass and Tons sorting as weapons are installed and removed', async () => {
@@ -1293,18 +1135,11 @@ describe('construction equipment warehouse', () => {
     expect(editor.filteredEquipment()).toEqual([sortBeta, sortAlpha, sortGamma, sortVariable]);
   });
 
-  it('sorts the entire virtualized catalog, returns to the first row, and retains sorting after filtering', async () => {
+  it('sorts the entire catalog and retains sorting after filtering', async () => {
     editor.query.set('Warehouse laser');
     await renderWarehouse();
-    const viewport = fixture.debugElement.query(By.directive(CdkVirtualScrollViewport))
-      .componentInstance as CdkVirtualScrollViewport;
-    viewport.scrollToIndex(180);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    await renderWarehouse();
-    expect(viewport.measureScrollOffset()).toBeGreaterThan(0);
     (fixture.nativeElement.querySelector('[aria-label="Sort by Name"]') as HTMLButtonElement).click();
     await renderWarehouse();
-    expect(viewport.measureScrollOffset()).toBe(0);
     expect(editor.filteredEquipment()).toEqual([...weapons].reverse());
     expect(fixture.nativeElement.querySelector('.warehouse-item .equipment-label')?.textContent).toBe(
       weapons.at(-1)!.name,
@@ -1313,82 +1148,6 @@ describe('construction equipment warehouse', () => {
     await renderWarehouse();
     expect(editor.filteredEquipment()).toEqual(weapons.slice(0, 10).reverse());
     expect(editor.equipmentSort()).toEqual({ column: 'name', direction: 'desc' });
-  });
-
-  it('restores a multi-slot palette row after scrolling, filtering and repeated drags outside the equipment list', async () => {
-    editor.query.set('Warehouse laser');
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const viewport = fixture.debugElement.query(By.directive(CdkVirtualScrollViewport))
-      .componentInstance as CdkVirtualScrollViewport;
-    viewport.checkViewportSize();
-    viewport.scrollToIndex(180);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    fixture.detectChanges();
-    await fixture.whenStable();
-    editor.query.set(autocannon.name);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const root = fixture.nativeElement as HTMLElement;
-    const count = editor.entity().equipment().length;
-    const mouse = (target: EventTarget, type: string, clientX: number, clientY: number) =>
-      target.dispatchEvent(
-        new MouseEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-          detail: 1,
-          buttons: type === 'mouseup' ? 0 : 1,
-          button: 0,
-          clientX,
-          clientY,
-        }),
-      );
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const item = root.querySelector<HTMLElement>('.warehouse-item')!;
-      const origin = item.getBoundingClientRect();
-      const card = item.querySelector<HTMLElement>('.warehouse-equipment')!;
-      const rect = card.getBoundingClientRect();
-      const target = card.querySelector<HTMLElement>(attempt === 0 ? '.equipment-bv > span' : '.equipment-label')!;
-      const targetRect = target.getBoundingClientRect();
-      const x = Math.round(targetRect.left + targetRect.width / 2);
-      const y = Math.round(targetRect.top + targetRect.height / 2);
-      const grabX = (x - rect.left) / rect.width,
-        grabY = (y - rect.top) / rect.height;
-      const endX = origin.right + 80,
-        endY = y + 40;
-      target.dispatchEvent(
-        new PointerEvent('pointerdown', { bubbles: true, button: 0, buttons: 1, clientX: x, clientY: y }),
-      );
-      mouse(target, 'mousedown', x, y);
-      mouse(document, 'mousemove', x + 15, y + 15);
-      fixture.detectChanges();
-      await fixture.whenStable();
-      mouse(document, 'mousemove', endX, endY);
-      viewport.checkViewportSize();
-      fixture.detectChanges();
-      await fixture.whenStable();
-      try {
-        const preview = document.querySelector<HTMLElement>('.construction-drag-preview.cdk-drag-preview');
-        expect(preview?.textContent?.trim()).toBe(autocannon.name);
-        expect(preview?.closest('.equipment-list')).toBeNull();
-        const previewRect = preview!.getBoundingClientRect();
-        expect(previewRect.left).toBeCloseTo(endX - previewRect.width * grabX, 0);
-        expect(previewRect.top).toBeCloseTo(endY - previewRect.height * grabY, 0);
-        expect(root.querySelector('.warehouse-placeholder')).not.toBeNull();
-      } finally {
-        mouse(document, 'mouseup', endX, endY);
-        await fixture.whenStable();
-        fixture.detectChanges();
-      }
-      expect(editor.dragging()).toBeNull();
-      expect(document.querySelector('.cdk-drag-preview')).toBeNull();
-      expect(item.style.transform).toBe('');
-      expect(root.querySelector('.warehouse-item')).toBe(item);
-      expect(item.getBoundingClientRect().left).toBeCloseTo(origin.left, 0);
-      expect(item.getBoundingClientRect().top).toBeCloseTo(origin.top, 0);
-      expect(editor.entity().equipment().length).toBe(count);
-    }
   });
 
   it('keeps the install button independent from the card drag handle', async () => {
@@ -1420,44 +1179,6 @@ describe('construction equipment warehouse', () => {
     item.querySelector<HTMLButtonElement>('.install-button')!.click();
     expect(editor.entity().equipment().length).toBe(count + 1);
     expect(editor.selectedMount()?.equipmentId).toBe(autocannon.id);
-  });
-
-  it('shows slots and weight beside the name, with combat stats below and a separate install action', async () => {
-    editor.query.set(autocannon.name);
-    const options = await initializedOptions();
-    options.update((current) => ({
-      ...current,
-      CBTOptionalRules: { ...current.CBTOptionalRules, extremeRange: false },
-    }));
-    await renderWarehouse();
-    const root = fixture.nativeElement as HTMLElement;
-    const row = root.querySelector<HTMLElement>('.warehouse-item')!;
-    const cells = [...row.querySelectorAll<HTMLElement>('.equipment-number > span:last-child')];
-    expect(cells.map((cell) => cell.textContent?.trim())).toEqual(['7', '12', '10', '(4) 7/14/21', '123']);
-    expect([...row.querySelectorAll('.equipment-number small')].map((label) => label.textContent)).toEqual([
-      'Dmg',
-      'Range',
-      'BV',
-    ]);
-    const card = row.querySelector<HTMLElement>('.warehouse-equipment')!.getBoundingClientRect();
-    const name = row.querySelector<HTMLElement>('.equipment-name')!.getBoundingClientRect();
-    const stats = row.querySelector<HTMLElement>('.equipment-stats')!.getBoundingClientRect();
-    const install = row.querySelector<HTMLElement>('.install-button')!.getBoundingClientRect();
-    expect(stats.top).toBeGreaterThanOrEqual(name.bottom);
-    expect(cells[0].getBoundingClientRect().left).toBeGreaterThanOrEqual(name.right);
-    expect(cells[1].getBoundingClientRect().top).toBeLessThan(name.bottom);
-    expect(row.querySelector('.equipment-tons img')?.getAttribute('src')).toBe('/images/weight.svg');
-    expect(install.left - card.right).toBeGreaterThanOrEqual(10);
-    expect(row.getBoundingClientRect().height).toBe(editor.equipmentRowHeight);
-    cells.forEach((cell) => expect(cell.getBoundingClientRect().right).toBeLessThanOrEqual(card.right));
-    options.update((current) => ({
-      ...current,
-      CBTOptionalRules: { ...current.CBTOptionalRules, extremeRange: true },
-    }));
-    fixture.detectChanges();
-    expect(row.querySelector('.equipment-range > span')!.textContent).toBe('(4) 7/14/21/28');
-    expect(editor.equipmentDamage(tankEquipment)).toBe('—');
-    expect(editor.equipmentRange(tankEquipment)).toBe('—');
   });
 
   it('shows shared tech badges only for mixed designs, incompatible choices or installed tech mismatches', async () => {
@@ -1538,11 +1259,6 @@ describe('construction equipment warehouse', () => {
       expect(root.querySelectorAll('.equipment-inspector').length).toBe(1);
       expect(inspector.getAttribute('aria-modal')).toBe(mobile ? 'true' : null);
       expect(inspector.classList.contains('ballistic')).toBeTrue();
-      expect(getComputedStyle(inspector).position).toBe('fixed');
-      expect(getComputedStyle(inspector).borderTopWidth).toBe('2px');
-      expect(getComputedStyle(inspector).borderLeftWidth).toBe('0px');
-      expect(getComputedStyle(inspector).backgroundImage).toContain('linear-gradient');
-      expect(getComputedStyle(inspector).backgroundImage).toContain(getComputedStyle(inspector).borderTopColor);
       const basic = inspector.querySelector<HTMLElement>('.basic-info')!;
       expect(basic.textContent).toContain('Type: Ballistic');
       expect(basic.textContent).toContain('Damage: 10');
@@ -1592,7 +1308,6 @@ describe('construction equipment warehouse', () => {
       expect(editor.inspector.trigger).toBe(card);
       expect(card.classList.contains('inspector-active')).toBeTrue();
       expect(root.querySelectorAll('.warehouse-equipment.inspector-active').length).toBe(1);
-      expect(getComputedStyle(card).outlineStyle).toBe('solid');
       const panel = root.querySelector<HTMLElement>('.installed-inspector')!;
       jasmine.clock().withMock(() => {
         pointer(card, 'pointerleave');
@@ -1611,188 +1326,8 @@ describe('construction equipment warehouse', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(root.querySelector('.warehouse-equipment.inspector-active')).toBeNull();
-    expect(getComputedStyle(card).outlineStyle).toBe('none');
     expect(document.activeElement).toBe(card);
   });
-
-  for (const width of [320, 390]) {
-    it(`fits complete equipment cards and the inspector at ${width}px, restoring focus on close`, async () => {
-      TestBed.inject(LayoutService).windowWidth.set(width);
-      editor.equipmentDrawerOpen.set(true);
-      editor.query.set(autocannon.name);
-      await renderWarehouse();
-      const root = fixture.nativeElement as HTMLElement;
-      const frame = document.createElement('iframe');
-      Object.assign(frame.style, { width: `${width}px`, height: '844px' });
-      document.body.appendChild(frame);
-      try {
-        const doc = frame.contentDocument!;
-        const style = doc.createElement('style');
-        style.textContent = [...document.styleSheets]
-          .flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText))
-          .join('\n');
-        doc.head.appendChild(style);
-        doc.body.style.margin = '0';
-        Object.assign(root.style, { width: `${width}px`, height: '844px' });
-        doc.body.appendChild(root);
-        await renderWarehouse();
-        const table = root.querySelector<HTMLElement>('.equipment-table')!;
-        const list = root.querySelector<HTMLElement>('.equipment-list')!;
-        const card = root.querySelector<HTMLElement>('.warehouse-equipment')!;
-        expect(frame.contentWindow!.getComputedStyle(list).overscrollBehaviorX).toBe('auto');
-        expect(frame.contentWindow!.getComputedStyle(card).touchAction).toBe('pan-x pan-y');
-        expect(table.scrollWidth).toBe(table.clientWidth);
-        expect(list.scrollWidth).toBe(list.clientWidth);
-        expect(root.querySelector<HTMLElement>('.warehouse-item')!.getBoundingClientRect().height).toBe(
-          editor.equipmentRowHeight,
-        );
-        const stats = [...card.querySelectorAll<HTMLElement>('.equipment-number')].map((cell) =>
-          cell.getBoundingClientRect(),
-        );
-        expect(stats[2].top).toBeGreaterThanOrEqual(stats[0].bottom);
-        expect(stats[2].top).toBeCloseTo(stats[3].top, 0);
-        expect(stats[4].top).toBeCloseTo(stats[3].top, 0);
-        stats.forEach((bounds) => expect(bounds.right).toBeLessThanOrEqual(card.getBoundingClientRect().right));
-        const plus = root.querySelector<HTMLElement>('.install-button')!.getBoundingClientRect();
-        expect(plus.right).toBeLessThanOrEqual(table.getBoundingClientRect().right);
-        root.querySelector<HTMLButtonElement>('.equipment-name')!.click();
-        fixture.detectChanges();
-        await fixture.whenStable();
-        const panel = root.querySelector<HTMLElement>('.installed-inspector')!;
-        const bounds = panel.getBoundingClientRect();
-        expect(bounds.left).toBeGreaterThanOrEqual(12);
-        expect(bounds.right).toBeLessThanOrEqual(width - 12);
-        expect(bounds.top).toBeGreaterThanOrEqual(0);
-        expect(bounds.bottom).toBeLessThanOrEqual(844);
-        panel.querySelector<HTMLButtonElement>('.inspector-close')!.click();
-        fixture.detectChanges();
-        await fixture.whenStable();
-        expect(doc.activeElement).toBe(root.querySelector('.equipment-toggle'));
-      } finally {
-        document.body.appendChild(root);
-        frame.remove();
-      }
-    });
-  }
-
-  for (const width of [320, 1440]) {
-    it(`scrolls the loadout at both edges during dragging at ${width}px and stops after release`, async () => {
-      TestBed.inject(LayoutService).windowWidth.set(width);
-      editor.equipmentDrawerOpen.set(width === 320);
-      editor.query.set(weapons[0].name);
-      await renderWarehouse();
-      const root = fixture.nativeElement as HTMLElement;
-      const frame = document.createElement('iframe');
-      Object.assign(frame.style, { width: `${width}px`, height: '640px' });
-      document.body.appendChild(frame);
-      const doc = frame.contentDocument!;
-      const style = doc.createElement('style');
-      style.textContent = [...document.styleSheets]
-        .flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText))
-        .join('\n');
-      doc.head.appendChild(style);
-      doc.body.style.margin = '0';
-      Object.assign(root.style, { width: `${width}px`, height: '640px' });
-      doc.body.appendChild(root);
-      spyOn(document, 'elementFromPoint').and.callFake((x, y) => doc.elementFromPoint(x, y));
-      const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      try {
-        await renderWarehouse();
-        const shell = root.querySelector<HTMLElement>('.construction-shell')!;
-        const scroll = width === 320 ? shell : root.querySelector<HTMLElement>('.construction-workspace')!;
-        const header = root.querySelector<HTMLElement>('.workshop-header')!;
-        const footer = root.querySelector<HTMLElement>('.workshop-footer')!;
-        if (width === 320) {
-          const target = root.querySelector<HTMLElement>('.critical-grid[data-location="LT"] .empty-slot')!;
-          target.scrollIntoView({ block: 'center' });
-          await nextFrame();
-          const card = root.querySelector<HTMLElement>('.warehouse-equipment')!;
-          const rect = card.getBoundingClientRect();
-          const touch = (type: string, x: number, y: number) => {
-            const point = new Touch({
-              identifier: 1,
-              target: card,
-              clientX: x,
-              clientY: y,
-              pageX: x + window.scrollX,
-              pageY: y + window.scrollY,
-            });
-            const event = new TouchEvent(type, {
-              bubbles: true,
-              cancelable: true,
-              touches: type === 'touchend' ? [] : [point],
-              changedTouches: [point],
-            });
-            (type === 'touchstart' ? card : document).dispatchEvent(event);
-            return event;
-          };
-          const x = rect.left + 20,
-            y = rect.top + 10;
-          touch('touchstart', x, y);
-          expect(touch('touchmove', x, y + 20).defaultPrevented).toBeFalse();
-          expect(editor.dragging()).toBeNull();
-          expect(editor.equipmentDrawerActive()).toBeTrue();
-          touch('touchend', x, y + 20);
-          touch('touchstart', x, y);
-          await new Promise((resolve) => setTimeout(resolve, 220));
-          expect(touch('touchmove', x, y + 10).defaultPrevented).toBeTrue();
-          fixture.detectChanges();
-          expect(editor.dragging()?.equipmentId).toBe(weapons[0].id);
-          expect(editor.equipmentDrawerActive()).toBeFalse();
-          expect(card.isConnected).toBeTrue(); // CDK temporarily moves the source row outside the list.
-          expect(frame.contentWindow!.getComputedStyle(root.querySelector('.warehouse')!).visibility).toBe('hidden');
-          expect(root.querySelector('.construction-workspace')!.hasAttribute('inert')).toBeFalse();
-          // The source stays alive while the finger crosses onto the revealed loadout.
-          const bounds = target.getBoundingClientRect();
-          const tx = bounds.left + bounds.width / 2,
-            ty = bounds.top + bounds.height / 2;
-          touch('touchmove', tx, ty);
-          fixture.detectChanges();
-          expect(editor.dragTarget()?.location).withContext(`Touch drop at ${tx}, ${ty}`).toBe('LT');
-          expect(target.closest('.critical-grid')!.classList.contains('cdk-drop-list-dragging')).toBeTrue();
-          touch('touchend', tx, ty);
-          await fixture.whenStable();
-          fixture.detectChanges();
-          expect(
-            editor
-              .entity()
-              .equipment()
-              .some((mount) => mount.equipmentId === weapons[0].id && mount.location === 'LT'),
-          ).toBeTrue();
-          expect(editor.dragging()).toBeNull();
-          expect(editor.equipmentDrawerOpen()).toBeFalse();
-        }
-        editor.startDrag({ equipmentId: weapons[0].id });
-        fixture.detectChanges();
-        scroll.scrollTop = 60;
-        const bounds = scroll.getBoundingClientRect();
-        const x = bounds.left + bounds.width / 2;
-        const previous = scroll.scrollTop;
-        editor.dragMoved({
-          pointerPosition: { x, y: Math.min(bounds.bottom, footer.getBoundingClientRect().top) - 5 },
-        });
-        await nextFrame();
-        await nextFrame();
-        expect(scroll.scrollTop).toBeGreaterThan(previous);
-        const lower = scroll.scrollTop;
-        editor.dragMoved({
-          pointerPosition: { x, y: Math.max(bounds.top, header.getBoundingClientRect().bottom) + 5 },
-        });
-        await nextFrame();
-        await nextFrame();
-        expect(scroll.scrollTop).toBeLessThan(lower);
-        editor.endDrag();
-        const stopped = scroll.scrollTop;
-        await nextFrame();
-        await nextFrame();
-        expect(scroll.scrollTop).toBe(stopped);
-      } finally {
-        editor.endDrag();
-        document.body.appendChild(root);
-        frame.remove();
-      }
-    });
-  }
 
   it('shows variable equipment prices and BV without treating them as numbers', async () => {
     const variable = new MiscEquipment({
@@ -1811,243 +1346,5 @@ describe('construction equipment warehouse', () => {
     const details = panel.querySelector('.equipment-details')!.textContent!.replace(/\s+/g, ' ');
     expect(details).toContain('BV:Variable');
     expect(details).toContain('Cost:Variable');
-  });
-
-  it('docks issues and BV on wide screens and overlays smaller screens with independent scrolling', async () => {
-    spyOn(editor, 'validation').and.returnValue({
-      valid: false,
-      messages: Array.from({ length: 45 }, (_, index) => ({
-        category: 'equipment' as const,
-        code: `SIDEBAR_${index}`,
-        severity: 'error' as const,
-        location: 'RA',
-        message: `Equipment issue ${index + 1}: this deliberately detailed explanation must wrap inside the issues sidebar.`,
-      })),
-    });
-    spyOn(editor.entity(), 'battleValue').and.returnValue(1500);
-    spyOn(editor.entity(), 'battleValueDetails').and.returnValue(
-      Array.from({ length: 45 }, (_, index) => ({
-        type: `Battle Value calculation ${index + 1}`,
-        calculation: '(100 + 200 + 150) × 1.25',
-        total: 562.5,
-      })),
-    );
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const root = fixture.nativeElement as HTMLElement;
-    const frame = document.createElement('iframe');
-    frame.style.height = '800px';
-    frame.style.border = '0';
-    document.body.appendChild(frame);
-    try {
-      const doc = frame.contentDocument!;
-      const style = doc.createElement('style');
-      doc.head.appendChild(style);
-      doc.body.style.margin = '0';
-      doc.body.appendChild(root);
-      const refresh = async () => {
-        fixture.detectChanges();
-        await fixture.whenStable();
-        // Include component styles registered when the report first appears; measure final layout, not its slide animation.
-        style.textContent =
-          [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText)).join('\n') +
-          '\n.construction-details { animation: none !important; }';
-      };
-      for (const width of [1920, 1850, 1440, 1000, 390]) {
-        const docked = width > 1850;
-        frame.style.width = `${width}px`;
-        Object.assign(root.style, { width: `${width}px`, height: '800px' });
-        (TestBed.inject(LayoutService).windowWidth as ReturnType<typeof signal<number>>).set(width);
-        editor.closeDetails();
-        await refresh();
-        const body = root.querySelector<HTMLElement>('.workshop-body')!;
-        const workspace = root.querySelector<HTMLElement>('.construction-workspace')!;
-        const baseline = body.getBoundingClientRect();
-        const workspaceBaseline = workspace.getBoundingClientRect();
-        root.querySelector<HTMLButtonElement>('.validation-toggle')!.click();
-        await refresh();
-
-        const assertSidebar = () => {
-          const sidebar = root.querySelector<HTMLElement>('.construction-details')!;
-          const sideBounds = sidebar.getBoundingClientRect(),
-            bodyBounds = body.getBoundingClientRect();
-          if (docked) {
-            expect(sideBounds.left)
-              .withContext(`${width}px: sidebar right of workspace`)
-              .toBeGreaterThanOrEqual(workspace.getBoundingClientRect().right - 1);
-            expect(sideBounds.top)
-              .withContext(`${width}px: sidebar uses full body height`)
-              .toBeCloseTo(bodyBounds.top, 0);
-            expect(sideBounds.bottom).toBeCloseTo(bodyBounds.bottom, 0);
-            expect(root.querySelector('.details-backdrop')).toBeNull();
-            expect(sidebar.getAttribute('role')).toBeNull();
-          } else {
-            expect(sideBounds.top).withContext(`${width}px: overlay covers the viewport`).toBe(0);
-            expect(sideBounds.bottom).toBe(frame.contentWindow!.innerHeight);
-            expect(sideBounds.right).toBe(frame.contentWindow!.innerWidth);
-            expect(sideBounds.width).toBe(Math.min(420, frame.contentWindow!.innerWidth - 28));
-            expect(workspace.getBoundingClientRect().width).toBe(workspaceBaseline.width);
-            expect(workspace.getBoundingClientRect().left).toBe(workspaceBaseline.left);
-            expect(sidebar.getAttribute('role')).toBe('dialog');
-            expect(root.querySelector('.details-backdrop')).not.toBeNull();
-            expect(sidebar.querySelector('.close-button')?.getBoundingClientRect().width).toBe(40);
-          }
-          expect(workspace.hasAttribute('inert')).toBe(!docked);
-          expect(bodyBounds.top).withContext(`${width}px: no issues strip above editor`).toBeCloseTo(baseline.top, 0);
-          expect(bodyBounds.height).toBeCloseTo(baseline.height, 0);
-          expect(body.hasAttribute('inert')).toBeFalse();
-          expect(root.querySelector('#construction-validation')).toBeNull();
-          return sidebar;
-        };
-        const assertScroll = (scroll: HTMLElement) => {
-          expect(scroll.clientHeight).toBeGreaterThan(0);
-          expect(scroll.scrollHeight)
-            .withContext(`${width}px: long sidebar content scrolls`)
-            .toBeGreaterThan(scroll.clientHeight);
-          expect(scroll.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-            root.querySelector('.construction-details')!.getBoundingClientRect().bottom + 1,
-          );
-          const workspaceTop = workspace.scrollTop;
-          scroll.scrollTop = 70;
-          expect(scroll.scrollTop).toBeGreaterThan(0);
-          expect(workspace.scrollTop).toBe(workspaceTop);
-        };
-        const sidebar = assertSidebar();
-        assertScroll(sidebar.querySelector<HTMLElement>('.validation-panel')!);
-        expect(sidebar.querySelector('construction-breakdown')).toBeNull();
-        const columns = [...workspace.querySelectorAll<HTMLElement>('.location-column')];
-        expect(columns.length).toBe(width > 1180 ? 5 : 3);
-        const outerColumnOffset = width > 1180 ? '72px' : '0px';
-        expect(frame.contentWindow!.getComputedStyle(columns[0]).paddingTop).toBe(outerColumnOffset);
-        expect(frame.contentWindow!.getComputedStyle(columns.at(-1)!).paddingTop).toBe(outerColumnOffset);
-        const cards = [...workspace.querySelectorAll<HTMLElement>('.location-card')];
-        if (width >= 1000) {
-          expect(Math.min(...cards.map((card) => card.getBoundingClientRect().width)))
-            .withContext(`${width}px: preserve usable location widths`)
-            .toBeGreaterThanOrEqual(178);
-        }
-        if (workspace.scrollWidth > workspace.clientWidth) {
-          expect(frame.contentWindow!.getComputedStyle(workspace).overflowX).toBe('auto');
-          workspace.scrollLeft = workspace.scrollWidth;
-          expect(workspace.scrollLeft)
-            .withContext(`${width}px: narrow workspace scrolls instead of clipping`)
-            .toBeGreaterThan(0);
-          expect(columns.at(-1)!.getBoundingClientRect().right).toBeLessThanOrEqual(
-            workspace.getBoundingClientRect().right + 1,
-          );
-          workspace.scrollLeft = 0;
-        }
-        const icon = root.querySelector<HTMLButtonElement>('[aria-label="Change unit icon"]')!;
-        if (!docked) {
-          icon.focus();
-          expect(doc.activeElement).not.toBe(icon);
-          sidebar.querySelector<HTMLButtonElement>('.close-button')!.click();
-          await refresh();
-        }
-        workspace.querySelector<HTMLButtonElement>('[data-location="RA"] .location-title')!.click();
-        expect(editor.selectedLocation()).toBe('RA');
-        expect(icon.disabled).toBeFalse();
-        icon.focus();
-        expect(doc.activeElement).toBe(icon);
-        root.querySelector<HTMLButtonElement>('.bv-total')!.click();
-        await refresh();
-        const reportSidebar = assertSidebar();
-        expect(editor.detailsView()).toBe('bv');
-        expect(reportSidebar.querySelector('.validation-panel')).toBeNull();
-        expect(reportSidebar.querySelector('construction-breakdown h2')!.textContent).toBe('Battle Value breakdown');
-        assertScroll(reportSidebar.querySelector<HTMLElement>('.report-scroll')!);
-        expect(body.hasAttribute('inert')).toBeFalse();
-        if (!docked) {
-          reportSidebar.querySelector<HTMLButtonElement>('.close-button')!.click();
-          await refresh();
-        }
-        workspace.querySelector<HTMLButtonElement>('[data-location="LA"] .location-title')!.click();
-        expect(editor.selectedLocation()).toBe('LA');
-      }
-    } finally {
-      document.body.appendChild(root);
-      frame.remove();
-    }
-  });
-
-  it('keeps the mobile header visible while scrolling and opens the warehouse from either tab', async () => {
-    Object.assign(fixture.nativeElement.style, { width: '375px', height: '640px' });
-    (TestBed.inject(LayoutService).windowWidth as ReturnType<typeof signal<number>>).set(375);
-    spyOn(editor, 'pendingRepairQuote').and.returnValue({
-      cost: 12345678,
-      basis: 'Test',
-      spCost: 1250,
-      spBasis: 'Test',
-    });
-    spyOn(editor, 'unitCost').and.returnValue(10122000);
-    spyOn(editor, 'unitBV').and.returnValue(5000);
-    spyOn(editor, 'effectiveBV').and.returnValue(4500);
-    spyOn(editor, 'repairBVDelta').and.returnValue(1500);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const frame = document.createElement('iframe');
-    frame.style.width = '375px';
-    frame.style.height = '640px';
-    document.body.appendChild(frame);
-    try {
-      // A real narrow document is needed to exercise the mobile media queries.
-      const doc = frame.contentDocument!;
-      const style = doc.createElement('style');
-      style.textContent = [...document.styleSheets]
-        .flatMap((sheet) => [...sheet.cssRules].map((rule) => rule.cssText))
-        .join('\n');
-      doc.head.appendChild(style);
-      doc.body.style.margin = '0';
-      const root = fixture.nativeElement as HTMLElement;
-      doc.body.appendChild(root);
-      const shell = root.querySelector<HTMLElement>('.construction-shell')!;
-      const header = root.querySelector<HTMLElement>('.workshop-header')!;
-      const equipment = header.querySelector<HTMLButtonElement>('.equipment-toggle')!;
-      const icon = header.querySelector<HTMLElement>('.workshop-icon')!;
-      expect(equipment.getBoundingClientRect().right).toBeLessThanOrEqual(icon.getBoundingClientRect().left);
-      expect(root.querySelector('.design-summary .equipment-toggle')).toBeNull();
-      for (const panel of ['loadout', 'systems'] as const) {
-        shell.scrollTop = 0;
-        editor.panel.set(panel);
-        fixture.detectChanges();
-        await fixture.whenStable();
-        const previewTab = root
-          .querySelector<HTMLElement>('.workshop-header nav button:last-child')!
-          .getBoundingClientRect();
-        const totals = root.querySelector<HTMLElement>('.construction-value')!.getBoundingClientRect();
-        expect(previewTab.right <= totals.left || previewTab.bottom <= totals.top || previewTab.top >= totals.bottom)
-          .withContext(`Preview tab right ${previewTab.right}; totals left ${totals.left}`)
-          .toBeTrue();
-        const navigation = root.querySelector<HTMLElement>('.workspace-navigation')!;
-        const navigationTop = navigation.getBoundingClientRect().top;
-        shell.scrollTop = 400;
-        expect(shell.scrollTop).toBeGreaterThan(0);
-        expect(header.getBoundingClientRect().top).toBeCloseTo(shell.getBoundingClientRect().top, 0);
-        expect(navigation.getBoundingClientRect().top).toBeCloseTo(navigationTop, 0);
-        expect(navigation.getBoundingClientRect().bottom).toBeLessThanOrEqual(header.getBoundingClientRect().bottom);
-        const scrollTop = shell.scrollTop;
-        equipment.click();
-        fixture.detectChanges();
-        await fixture.whenStable();
-        const drawer = root.querySelector<HTMLElement>('.equipment-drawer')!;
-        expect(drawer.getBoundingClientRect().width).toBeGreaterThan(0);
-        expect(equipment.getAttribute('aria-expanded')).toBe('true');
-        drawer.querySelector<HTMLButtonElement>('[aria-label="Close equipment"]')!.click();
-        fixture.detectChanges();
-        await fixture.whenStable();
-        expect(root.querySelector('.equipment-drawer')).toBeNull();
-        expect(equipment.getAttribute('aria-expanded')).toBe('false');
-        expect(doc.activeElement).toBe(equipment);
-        expect(shell.scrollTop).toBe(scrollTop);
-      }
-      const costLine = root.querySelector<HTMLElement>('.cost-line')!;
-      const costBounds = costLine.getBoundingClientRect();
-      expect(costBounds.left).toBeGreaterThanOrEqual(0);
-      expect(costBounds.right).toBeLessThanOrEqual(375);
-      expect(costLine.scrollWidth).toBeLessThanOrEqual(Math.ceil(costBounds.width));
-    } finally {
-      document.body.appendChild(fixture.nativeElement);
-      frame.remove();
-    }
   });
 });

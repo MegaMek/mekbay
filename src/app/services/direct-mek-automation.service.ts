@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { inject,Injectable } from '@angular/core';
+import { inject,Injectable,Injector } from '@angular/core';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
 import type { AutomationCheck,AutomationCheckResolution } from '../models/automation-check.model';
@@ -63,6 +63,9 @@ import { mekHitLocationTable } from '../utils/record-sheet-reference-table';
 import { FALL_DAMAGE, resolveArmorDamage, type DamageSource } from '../models/rules/armor-damage-rules';
 import { infernoEffect, type InfernoMissile } from '../models/rules/inferno-rules';
 import { uuidv4 } from '../utils/uuid.util';
+import type { SwarmShakeOffCause } from '../models/rules/anti-mek-attack-rules';
+import { loadSwarmService } from './swarm-service-loader';
+import { DialogsService } from './dialogs.service';
 import {
 automationCheckBatchIsFullyAutomatic,
 automationCheckEvidenceDice,
@@ -104,6 +107,8 @@ export interface PreparedDirectMekAutomationCommand {
     readonly heatEffects?: PreparedEndTurnHeatEffects<StagedMekHeatEffects>;
     readonly phaseBoundary?: PreparedMekPhaseBoundary;
     readonly pilotCheckFall?: PreparedMekFall;
+    /** The roll shook the swarming infantry off with the 'Mech's jump. */
+    readonly shookOffSwarm?: true;
 }
 
 /** One damage group read on the Mek's hit-location table: where it lands, how much, and what dealt it. */
@@ -244,19 +249,21 @@ export class DirectMekAutomationService {
     private readonly crewHitAutomation = inject(CBTCrewHitAutomationService);
     private readonly fallingAutomation = inject(MekFallingAutomationService);
     private readonly options = inject(OptionsService);
+    private readonly injector = inject(Injector);
+    private readonly dialogs = inject(DialogsService);
     private readonly resolvingCriticalEvents = new WeakMap<CBTForce, Map<string, boolean>>();
     private readonly endTurnHeat = inject(EndTurnHeatAutomationService);
     private readonly endTurnHeatAdapter: EndTurnHeatAdapter<MekSnapshot, StagedMekHeatEffects> = {
         snapshot: (force, instanceId) => this.snapshot(force, instanceId),
         projectHeat: snapshot => {
-            const result = snapshot.query.heatProjection('automatic');
+            const result = snapshot.query.heatProjection();
             if (result.kind !== 'supported') return null;
             const projection = result.projection;
             return {
                 current: projection.current,
                 projected: projection.projected,
                 sources: projection.sources,
-                dissipationBalance: projection.capacity - projection.previouslyConsumedDissipation,
+                dissipationBalance: projection.dissipationBalance,
                 consumedDissipation: projection.dissipated,
             };
         },
@@ -289,18 +296,51 @@ export class DirectMekAutomationService {
             return batch?.[0]?.prepared
                 ?? Object.freeze({ command, deferredPilotHits: 0, cancelled: true });
         }
+        // A failed attempt to stand falls again and takes falling damage (TW p. 50; Core p. 51).
+        if (command.type === 'resolve-mek-stand-attempt' && command.evidence !== undefined) {
+            const movement = snapshot.query.mekMovementPsr();
+            const dice = command.evidence.dice;
+            const failed = movement.kind === 'supported' && movement.standing.requiresPilotCheck
+                && dice.length === 2 && dice.every(die => Number.isSafeInteger(die) && die >= 1 && die <= 6)
+                && twoD6Total(dice) < movement.standing.targetNumber - (command.carefulStand ? 2 : 0);
+            if (!failed) return Object.freeze({ command, deferredPilotHits: 0 });
+            const fall = await this.prepareFall(snapshot, 'Getting up', true);
+            return fall === null
+                ? Object.freeze({ command, deferredPilotHits: 0, cancelled: true })
+                : Object.freeze({ command, deferredPilotHits: 0, pilotCheckFall: fall });
+        }
+        // A swarmed 'Mech's jump is harder to shake magnetic claws off with (TW p. 222).
+        if (command.type === 'declare-mek-movement' && command.declaration.mode === 'jump'
+            && snapshot.query.hasCondition('swarmed')) {
+            const member = force.getCBTMembers().find(candidate => candidate.id === instanceId);
+            const claws = member !== undefined && (await loadSwarmService(this.injector)).removalModifier(member) > 0;
+            return Object.freeze({
+                command: claws ? { ...command, swarmerMagneticClaws: true as const } : command, deferredPilotHits: 0,
+            });
+        }
+        if (command.type === 'set-condition' && command.condition === 'prone' && command.active
+            && snapshot.query.hasCondition('swarmed') && !snapshot.query.hasCondition('prone')
+            && this.options.cbtAutomationMode('pilotSkillCheck') !== 'no') {
+            return this.prepareDropProne(force, snapshot, command);
+        }
         if (command.type === 'resolve-mek-pilot-check') {
             const check = snapshot.query.mekPilotChecks()
                 .find(candidate => candidate.checkId === command.checkId);
-            const failed = check?.status === 'pending'
+            const rolled = check?.status === 'pending'
                 && command.evidence.dice.length === 2
-                && command.evidence.dice.every(die => Number.isSafeInteger(die) && die >= 1 && die <= 6)
-                && twoD6Total(command.evidence.dice) < check.targetNumber;
-            if (!failed || check.source.triggerKind === 'get-up'
-                || snapshot.query.hasCondition('prone')) {
+                && command.evidence.dice.every(die => Number.isSafeInteger(die) && die >= 1 && die <= 6);
+            const failed = rolled && twoD6Total(command.evidence.dice) < check.targetNumber;
+            // Shaking swarming infantry off with a jump: failing leaves it on and the 'Mech standing (TW p. 222).
+            if (check?.source.triggerKind === SHAKE_OFF_JUMP) {
+                return Object.freeze({
+                    command, deferredPilotHits: 0, ...(rolled && !failed ? { shookOffSwarm: true as const } : {}),
+                });
+            }
+            if (!failed || (snapshot.query.hasCondition('prone') && !thrashFailureFalls(check.source.triggerKind))) {
                 return Object.freeze({ command, deferredPilotHits: 0 });
             }
-            const fall = await this.prepareFall(snapshot, check.reason, true);
+            const fall = await this.prepareFall(snapshot, check.reason, true, false, false, false,
+                check.source.triggerKind === 'jump-into-water');
             return fall === null
                 ? Object.freeze({ command, deferredPilotHits: 0, cancelled: true })
                 : Object.freeze({ command, deferredPilotHits: 0, pilotCheckFall: fall });
@@ -473,6 +513,14 @@ export class DirectMekAutomationService {
                 prepared.pilotCheckFall,
                 dispatch,
             )) return false;
+        // The swarming infantry comes off with a roll that shook it off, or with the 'Mech's fall (TW p. 222).
+        const shakeOff = prepared.shookOffSwarm ? jumpShakeOff : prepared.pilotCheckFall ? fallShakeOff : null;
+        if (shakeOff && !await this.releaseSwarm(force, instanceId, shakeOff, dispatch)) return false;
+        // A swarmed 'Mech wading into Depth 2 or deeper water drowns the infantry (TW p. 222).
+        const after = this.snapshot(force, instanceId);
+        if (after && coverWaterDepth(after.query.turnState().cover) >= 2
+            && coverWaterDepth(before?.state.turn.cover ?? null) < 2
+            && !await this.releaseSwarm(force, instanceId, deepWaterShakeOff, dispatch)) return false;
         if (command.type === 'damage-internal') {
             const after = this.snapshot(force, instanceId);
             const perspective = command.target === 'pending' ? 'preview' as const : 'committed' as const;
@@ -581,9 +629,11 @@ export class DirectMekAutomationService {
                 subject: this.subject(staged.snapshot),
                 label: 'Piloting Skill Check',
                 description: check.reason,
-                failureOutcome: check.triggerKind === 'get-up' ? 'Remain prone' : 'Fall',
+                failureOutcome: check.triggerKind === SHAKE_OFF_JUMP ? 'Infantry holds on'
+                    : thrashFailureFalls(check.triggerKind) ? 'Falling damage' : 'Fall',
                 targetNumber: check.targetNumber,
-                ...(check.triggerKind === 'shutdown' || check.triggerKind === 'get-up'
+                ...(check.triggerKind === 'shutdown' || thrashFailureFalls(check.triggerKind)
+                    || check.triggerKind === SHAKE_OFF_JUMP
                     ? {}
                     : {
                         failureGroup: fallGroup,
@@ -633,8 +683,7 @@ export class DirectMekAutomationService {
         for (const row of includePilotChecks && pilotChecksEnabled ? rows : []) {
             const staged = row.staged;
             if (!staged) continue;
-            const failedCheck = staged.checks.find(check =>
-                check.triggerKind !== 'get-up'
+            const failedCheck = staged.checks.find(check => check.triggerKind !== SHAKE_OFF_JUMP
                 && checkById.get(check.checkId)?.outcome === 'failed');
             if (!failedCheck && !staged.hadAutomaticFall) continue;
             const fall = await this.prepareFall(
@@ -644,6 +693,9 @@ export class DirectMekAutomationService {
                 false,
                 review.interactive === true,
                 staged.missedDeathFromAbove,
+                // Another failed roll of the phase does not keep the 'Mech from tumbling to the bottom.
+                staged.checks.some(check => check.triggerKind === 'jump-into-water'
+                    && checkById.get(check.checkId)?.outcome === 'failed'),
             );
             if (fall === null) return null;
             falls.set(row.request.instanceId, fall);
@@ -845,6 +897,9 @@ export class DirectMekAutomationService {
                 );
             }
         }
+        if (prepared.checks.some(check => check.triggerKind === SHAKE_OFF_JUMP && !check.failed
+                && prepared.acceptedCheckIds.has(check.checkId))
+            && !await this.releaseSwarm(force, instanceId, jumpShakeOff, dispatch)) return false;
         if (prepared.fall) {
             // A manual failed roll makes the reducer prone itself. Automatic
             // failures and rules-level automatic falls have no dice command,
@@ -853,6 +908,7 @@ export class DirectMekAutomationService {
                 type: 'set-condition', condition: 'prone', active: true,
             }, false);
             if (!prone.accepted) return false;
+            if (!await this.releaseSwarm(force, instanceId, fallShakeOff, dispatch)) return false;
             if (prepared.fall.accepted && prepared.fall.eventId !== resumedFallEventId
                 && !await this.applyPreparedFall(
                     force,
@@ -1558,8 +1614,81 @@ export class DirectMekAutomationService {
             type: 'set-condition', condition: 'prone', active: true,
         }, false);
         if (!prone.accepted) return false;
+        if (!await this.releaseSwarm(force, instanceId, fallShakeOff, dispatch)) return false;
         if (!fall.accepted) return true;
         return this.applyPreparedFall(force, instanceId, fall, dispatch);
+    }
+
+    /**
+     * A swarmed 'Mech going prone may drop hard to shake the infantry off: a Piloting Skill Roll, magnetic claws +1.
+     * On a success the 'Mech takes an accidental fall and the infantry falls off with it; on a failure it is only
+     * prone (TW p. 222).
+     */
+    private async prepareDropProne(
+        force: CBTForce,
+        snapshot: MekSnapshot,
+        command: CBTUnitCommand,
+    ): Promise<PreparedDirectMekAutomationCommand> {
+        const prone = Object.freeze({ command, deferredPilotHits: 0 });
+        const cancelled = Object.freeze({ command, deferredPilotHits: 0, cancelled: true as const });
+        const movement = snapshot.query.mekMovementPsr();
+        const member = force.getCBTMembers().find(candidate => candidate.id === snapshot.instanceId);
+        if (movement.kind !== 'supported' || !member) return prone;
+        const choice = await this.dialogs.choose<'hard' | 'prone' | 'cancel'>(
+            'Drop Prone',
+            `${this.subject(snapshot)} is swarmed. Drop prone hard to shake the infantry off?`,
+            [
+                { label: 'DROP HARD', value: 'hard' },
+                { label: 'GO PRONE', value: 'prone' },
+                { label: 'CANCEL', value: 'cancel' },
+            ],
+            'cancel',
+        );
+        if (choice === 'cancel') return cancelled;
+        if (choice === 'prone') return prone;
+        const swarm = await loadSwarmService(this.injector);
+        const targetNumber = movement.pilotingTargetNumber + swarm.removalModifier(member);
+        const resolutions = await this.automationChecks.resolve('pilotSkillCheck', [Object.freeze({
+            id: `drop-prone:${snapshot.instanceId}:${snapshot.query.stateRevision}`,
+            subject: this.subject(snapshot),
+            label: 'Piloting Skill Check',
+            description: 'Dropping prone to shake off swarming infantry.',
+            failureOutcome: 'Infantry holds on',
+            targetNumber,
+        })], { title: 'Piloting Skill Rolls' });
+        if (resolutions === null) return cancelled;
+        const resolution = resolutions[0];
+        if (!resolution) return prone;
+        if (this.options.cbtAutomationMode('pilotSkillCheck') === 'yes') {
+            const total = resolution.dice ? twoD6Total(resolution.dice) : null;
+            this.toast(
+                snapshot,
+                `Piloting Skill Check: ${resolution.outcome === 'success' ? 'PASSED' : 'FAILED'}`
+                    + `${total === null ? ' (automatic)' : ` (${total} vs ${targetNumber}+)`}`
+                    + ' — Dropping prone to shake off swarming infantry',
+                resolution.outcome === 'success' ? 'success' : 'error',
+            );
+        }
+        if (resolution.outcome === 'failed') return prone;
+        const fall = await this.prepareFall(snapshot, 'Dropped prone hard', true);
+        return fall === null ? cancelled : Object.freeze({ command, deferredPilotHits: 0, pilotCheckFall: fall });
+    }
+
+    /**
+     * Swarming infantry comes off the 'Mech: it is sent what it takes (`SwarmService.shakeOff`) and the 'Mech is no
+     * longer swarmed, unless the infantry holds on.
+     */
+    private async releaseSwarm(
+        force: CBTForce,
+        instanceId: string,
+        cause: (snapshot: MekSnapshot) => SwarmShakeOffCause,
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        const snapshot = this.snapshot(force, instanceId);
+        const member = force.getCBTMembers().find(candidate => candidate.id === instanceId);
+        if (!snapshot?.query.hasCondition('swarmed') || !member
+            || !(await loadSwarmService(this.injector)).shakeOff(member, cause(snapshot))) return true;
+        return (await dispatch({ type: 'set-condition', condition: 'swarmed', active: false }, false)).accepted;
     }
 
     private async prepareFall(
@@ -1569,26 +1698,24 @@ export class DirectMekAutomationService {
         forceSeatbeltFailure = false,
         interactive = false,
         missedDeathFromAbove = false,
+        jumpIntoWater = false,
     ): Promise<PreparedMekFall | null> {
         const waterDepth = coverWaterDepth(snapshot.query.turnState().cover);
         const table = mekHitLocationTable(snapshot.entity);
         const eventId = `fall:${snapshot.instanceId}:${snapshot.query.stateRevision}`;
-        // Core and TW: a missed death from above falls 2 levels and its damage always strikes the rear.
-        const levelsFallen = missedDeathFromAbove ? 2 : 0;
+        // Core and TW: a missed death from above falls 2 levels and its damage always strikes the rear. A failed jump
+        // into water tumbles to the bottom, falling levels equal to the depth (TW p. 53; Core p. 50).
+        const levelsFallen = missedDeathFromAbove ? 2 : jumpIntoWater ? waterDepth : 0;
         const result = await this.fallingAutomation.resolve(Object.freeze({
             unitName: this.subject(snapshot),
-            sourceMessage: missedDeathFromAbove
-                ? 'The missed death from above drops the Mek 2 levels; all damage strikes the rear.'
-                : /stand|get.?up/i.test(reason)
-                    ? 'The stand-up attempt failed, so the Mek falls again.'
-                    : reason === 'Automatic fall'
-                        ? 'The Mek falls automatically.'
-                        : 'A failed Piloting Skill Roll caused the Mek to fall.',
+            sourceMessage: fallSourceMessage(reason, missedDeathFromAbove, jumpIntoWater, waterDepth),
             ruleset: snapshot.ruleset,
             tons: snapshot.entity.tonnage(),
             levelsFallen,
             alwaysRear: missedDeathFromAbove,
             waterDepth,
+            // A missed death from above comes down on the water from above its surface.
+            ...(missedDeathFromAbove && waterDepth > 0 ? { aboveSurface: true } : {}),
             hitLocationTable: table,
             ...(snapshot.entity.armorLocations.some(location =>
                 snapshot.entity.armorAt(location).type === 'IMPACT_RESISTANT')
@@ -1599,7 +1726,8 @@ export class DirectMekAutomationService {
         const applyFall = result.action === 'accept';
         const damage = applyFall
             ? result.damage
-            : resolveMekFallDamage(snapshot.ruleset, snapshot.entity.tonnage(), levelsFallen, waterDepth);
+            : resolveMekFallDamage(snapshot.ruleset, snapshot.entity.tonnage(), levelsFallen, waterDepth,
+                missedDeathFromAbove);
         const orientation = applyFall
             ? result.orientation
             : resolveMekFallOrientation(snapshot.ruleset, 1, missedDeathFromAbove);
@@ -2350,6 +2478,42 @@ function lifeSupportReviewDescriptions(staged: StagedMekHeatEffects): readonly s
             })]
             : []),
     ]);
+}
+
+/** Why the Mek falls, as the falling-damage review says it. */
+function fallSourceMessage(reason: string, missedDeathFromAbove: boolean, jumpIntoWater: boolean, depth: number): string {
+    if (missedDeathFromAbove) return 'The missed death from above drops the Mek 2 levels; all damage strikes the rear.';
+    if (jumpIntoWater) return `The Mek tumbles to the bottom of the water, falling ${depth} level${depth === 1 ? '' : 's'}.`;
+    if (/stand|get.?up/i.test(reason)) return 'The stand-up attempt failed, so the Mek falls again.';
+    if (/thrash/i.test(reason)) return 'The thrash\'s Piloting Skill Roll failed: falling damage as for a failed attempt to stand.';
+    return reason === 'Automatic fall'
+        ? 'The Mek falls automatically.'
+        : 'A failed Piloting Skill Roll caused the Mek to fall.';
+}
+
+/** A thrash is made prone, and failing its roll deals falling damage as a failed attempt to stand (TW p. 151). */
+/** The roll a swarmed 'Mech makes on landing a jump to shake the infantry off (TW p. 222). */
+const SHAKE_OFF_JUMP = 'shake-off-jump';
+
+/** A jump shakes the infantry off into the landing hex; each trooper takes 1 point per Jump MP used. */
+function jumpShakeOff(snapshot: MekSnapshot): SwarmShakeOffCause {
+    return Object.freeze({
+        kind: 'jump',
+        jumpMp: snapshot.state.movementPsr.movement?.distance ?? 0,
+        waterDepth: coverWaterDepth(snapshot.query.turnState().cover),
+    });
+}
+
+function fallShakeOff(snapshot: MekSnapshot): SwarmShakeOffCause {
+    return Object.freeze({ kind: 'fall', waterDepth: coverWaterDepth(snapshot.query.turnState().cover) });
+}
+
+function deepWaterShakeOff(snapshot: MekSnapshot): SwarmShakeOffCause {
+    return Object.freeze({ kind: 'deep-water', waterDepth: coverWaterDepth(snapshot.query.turnState().cover) });
+}
+
+function thrashFailureFalls(triggerKind: string): boolean {
+    return triggerKind === 'made-thrash';
 }
 
 function coverWaterDepth(cover: string | null): number {

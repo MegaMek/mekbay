@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-const HEAT_DISSIPATION_DEFICIT_SOURCE_ID = 'heat-dissipation-deficit';
+import { HEAT_DISSIPATION_DEFICIT_ID } from '../models/runtime/turn-heat-ledger';
 
 export interface HeatSummarySource {
     readonly id: string;
@@ -29,13 +29,12 @@ export function buildHeatSummaryRows(
     sources: readonly HeatSummarySource[],
     dissipationBalance: number,
     consumedDissipation: number,
-    projectedHeat: number,
     options: HeatSummaryOptions = {},
 ): HeatSummaryRow[] {
     const rows: HeatSummaryRow[] = [];
     const groupedRowIndexes = new Map<string, number>();
     for (const source of sources) {
-        if (source.value <= 0 || source.id === HEAT_DISSIPATION_DEFICIT_SOURCE_ID) continue;
+        if (source.value <= 0 || source.id === HEAT_DISSIPATION_DEFICIT_ID) continue;
         const group = options.groupSources ? source.group?.trim() : undefined;
         const groupKey = group
             ?.toLowerCase()
@@ -73,12 +72,13 @@ export function buildHeatSummaryRows(
 
     const balance = Number.isFinite(dissipationBalance) ? dissipationBalance : 0;
     const consumed = Number.isFinite(consumedDissipation) ? Math.max(0, consumedDissipation) : 0;
-    const clippedAtZero = balance > 0 && consumed < balance && projectedHeat === 0;
+    // Sinks left unused, at zero heat or at heat already settled this turn, show how many there were.
+    const unused = consumed < balance;
     if (balance < 0 || (balance > 0 && consumed > 0)) {
         rows.push({
             id: 'heat-sink',
-            label: clippedAtZero ? `Sink (${balance})` : 'Sink',
-            value: balance > 0 ? -(clippedAtZero ? consumed : balance) : Math.abs(balance),
+            label: unused ? `Sink (${balance})` : 'Sink',
+            value: balance > 0 ? -consumed : Math.abs(balance),
             kind: 'sink',
         });
     }

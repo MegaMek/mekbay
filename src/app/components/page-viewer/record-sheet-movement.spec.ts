@@ -46,7 +46,7 @@ describe('record-sheet movement controls', () => {
         const svg = await mount(fixture.entity);
         const snapshot = () => {
             const sheet = projectMekRecordSheet(fixture.entity, fixture.index, fixture.instance.ruleset(),
-                fixture.instance.snapshot(), fixture.instance.query(), emptyCBTEncounterSnapshot(), null);
+                fixture.instance.snapshot(), fixture.instance.query(), emptyCBTEncounterSnapshot(), null, false, {});
             return { ...sheet, editContext: editContext(sheet.stateRevision) };
         };
         const interactions = jasmine.createSpy('movement');
@@ -64,7 +64,7 @@ describe('record-sheet movement controls', () => {
         }
         expect(getComputedStyle(sheet.svg.getElementById('movementPointsLabel')!).display).toBe('none');
         expect(sheet.fixture.instance.dispatch({ type: 'declare-mek-movement', declaration: {
-            schemaVersion: 1, mode: 'stationary', distance: 0, boosterComponentIds: [],
+            mode: 'stationary', distance: 0, boosterComponentIds: [],
         } }).accepted).toBeTrue();
         sheet.render();
         expect(sheet.svg.getElementById('mpStationary')!.classList).toContain('currentMoveMode');
@@ -139,7 +139,7 @@ describe('record-sheet movement controls', () => {
         const slot = [...sheet.fixture.index.slots.values()].find(slot => slot.componentIds.includes(weapon.componentId))!;
         expect(sheet.fixture.instance.dispatch({ type: 'hit-critical', slotId: slot.id, hits: 1, target: 'committed' }).accepted).toBeTrue();
         expect(sheet.fixture.instance.dispatch({ type: 'declare-mek-movement', declaration: {
-            schemaVersion: 1, mode: 'stationary', distance: 0, boosterComponentIds: [],
+            mode: 'stationary', distance: 0, boosterComponentIds: [],
         } }).accepted).toBeTrue();
         sheet.render();
         const row = [...sheet.svg.querySelectorAll<SVGElement>('.inventoryEntry')].find(row =>
@@ -249,7 +249,7 @@ describe('record-sheet movement controls', () => {
             entity.uuid.set(uuid);
             entity.originalWalkMP.set(5);
             const unit = createNonMekRuntimeForTest('sheet-move', { entity: uuid, ruleset: 'core-2026',
-                initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' } },
+                initialStateProfile: { profileId: 'pristine-non-mek' } },
                 entity, 'core-2026');
             const svg = await mount(entity);
             const snapshot = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(),
@@ -275,7 +275,7 @@ describe('record-sheet movement controls', () => {
         entity.motiveType.set('WiGE');
         entity.originalWalkMP.set(5);
         const unit = createNonMekRuntimeForTest('sheet-glider', { entity: uuid, ruleset: 'total-warfare',
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' } },
+            initialStateProfile: { profileId: 'pristine-non-mek' } },
             entity, 'total-warfare');
         const svg = await mount(entity);
         const snapshot = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(),

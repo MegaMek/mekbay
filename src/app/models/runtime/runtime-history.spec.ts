@@ -29,7 +29,8 @@ describe('runtime history messages (Logs)', () => {
   });
 
   it('shows heat, crew-state, and crew-skill changes with before and after values', () => {
-    expect(format([RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, 'unit:king-crab', 0, 5, 19])).toBe('Heat 5 → 19');
+    expect(format([RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, 'unit:king-crab', 0, 5, 19])).toBe('Heat 5 → 19 (+14)');
+    expect(format([RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, 'unit:king-crab', 1, 13, 10])).toBe('Pending heat 13 → 10 (-3)');
     expect(format([RUNTIME_HISTORY_MESSAGE.CREW_CHANGED, 'unit:king-crab', 0, 0, 1, 0, 1])).toBe(
       'Pilot: hits 0 → 1; state conscious → unconscious',
     );

@@ -3,7 +3,7 @@
 
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekConversionMode } from '../mek-conversion-mode';
-import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION, type MekMovementModeV2 } from './mek-movement-psr-v2';
+import { type MekMovementModeV2 } from './mek-movement-psr-v2';
 import { projectMekRecordSheet } from './mek-record-sheet';
 import { restoreSerializedCBTUnitV2, serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
 import {
@@ -126,7 +126,7 @@ describe('Mek conversion modes at runtime', () => {
         const lam = createDirectLamRuntimeFixture('total-warfare');
         expect(convert(lam, 'airmek')).toBeTrue();
         const options = () => projectMekRecordSheet(lam.entity, lam.index, lam.instance.ruleset(), lam.instance.snapshot(),
-            lam.instance.query(), emptyCBTEncounterSnapshot(), null).movementSelection.options
+            lam.instance.query(), emptyCBTEncounterSnapshot(), null, false, {}).movementSelection.options
             .map(option => [option.mode, option.airborne, option.legal, option.modifier]);
         expect(options()).toEqual([
             ['stationary', undefined, true, 0],
@@ -147,7 +147,7 @@ describe('Mek conversion modes at runtime', () => {
         const saved = structuredClone(serializeCBTUnitStateV2({
             entity: lam.entity, index: lam.index, instanceId: lam.instance.instanceId,
             baselineRef: lam.instance.baselineRef, state: lam.instance.snapshot(),
-            deployment: { schemaVersion: 2, values: lam.initialized.deployment },
+            deployment: { values: lam.initialized.deployment },
         }));
         expect(saved.conversionMode).toBe('fighter');
         const restored = await restoreSerializedCBTUnitV2(saved, lam.entity, lam.index, lam.initialized);
@@ -184,7 +184,7 @@ function action(fixture: DirectMekRuntimeFixture, kind: MekMovementModeV2) {
 function declare(fixture: DirectMekRuntimeFixture, mode: MekMovementModeV2, distance: number): boolean {
     return fixture.instance.dispatch({
         type: 'declare-mek-movement',
-        declaration: { schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION, mode, distance, boosterComponentIds: [] },
+        declaration: { mode, distance, boosterComponentIds: [] },
     }).changed;
 }
 

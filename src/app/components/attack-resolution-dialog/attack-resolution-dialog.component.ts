@@ -6,8 +6,9 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 
 import type { ComponentId } from '../../models/entity/entity-identifiers';
 import type { CBTForceMember } from '../../models/force-member.model';
-import type { PhysicalAttackKind } from '../../models/rules/physical-attack-rules';
+import { hitTableDice, physicalAttackAlwaysHits, type PhysicalAttackKind } from '../../models/rules/physical-attack-rules';
 import { heatWeaponDice, resolveHeatWeaponHit } from '../../models/rules/heat-weapon-rules';
+import { AIMED_SHOT_LEG_REROLLS, type AimedShotRoll } from '../../models/rules/aimed-shot-rules';
 import {
     attackGroups,
     needsClusterRoll,
@@ -23,12 +24,15 @@ import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import {
     ATTACK_ARC_LABELS,
     AttackReportComponent,
+    attackReportAim,
     attackReportGroup,
     type AttackReportRollEdit,
     type AttackReportWeapon,
 } from '../attack-report/attack-report.component';
 
 export interface AttackResolutionTarget {
+    /** The target's encounter target id. */
+    readonly targetId: string;
     readonly name: string;
     readonly letter: string;
     readonly color: string;
@@ -51,6 +55,10 @@ export interface PhysicalAttackOutcome {
     readonly hit: boolean;
     /** The struck unit's tonnage when it is open here: a charge costs the attacker 1 point per 10 tons. */
     readonly targetTons: number | null;
+    /** The target's encounter target id: a successful swarm takes hold of it. */
+    readonly targetId: string;
+    /** The attack's damage: a brush off that misses deals it to the attacker. */
+    readonly damage: number;
 }
 
 /** What the attacker settles when the dialog closes: hits to send, weapons that jammed, physical outcomes. */
@@ -76,6 +84,10 @@ interface WeaponRolls {
     readonly locations: readonly Readonly<{ dice: HitLocationDice; aux: number }>[];
     /** A heat weapon's dice; each hit reads the first ones it needs. */
     readonly heat: readonly number[];
+    /** The side an attack that strikes a random side hits. */
+    readonly side?: MekHitArc;
+    /** An aimed shot's roll, and the leg rerolls of one at a target in partial cover. */
+    readonly aim?: Readonly<{ roll: HitLocationDice; rerolls: readonly TwoDice[] }>;
 }
 
 @Component({
@@ -117,6 +129,8 @@ export class AttackResolutionDialogComponent {
         this.updateWeapon(target, edit.weapon, rolls => edit.roll === 'to-hit' ? { ...rolls, toHit: dice }
             : edit.roll === 'cluster' ? { ...rolls, cluster: dice }
             : edit.roll === 'heat' ? { ...rolls, heat: heatDiceForTotal(rolls.heat, this.heatDiceUsed(target, edit.weapon), edit.total) }
+            : edit.roll === 'aim' ? { ...rolls, aim: rolls.aim && { ...rolls.aim,
+                roll: rolls.aim.roll.length === 1 ? Object.freeze([edit.total] as const) : dice } }
                 : { ...rolls, locations: rolls.locations.map((location, index) => index !== edit.roll ? location
                     : { ...location, dice: location.dice.length === 1 ? Object.freeze([edit.total] as const) : dice }) });
     }
@@ -147,8 +161,11 @@ export class AttackResolutionDialogComponent {
         return Object.freeze(this.data.targets.flatMap((target, t) => target.profiles.flatMap((profile, w) =>
             profile.physical === undefined ? [] : [Object.freeze({
                 kind: profile.physical,
-                hit: resolveWeaponAttack(profile, this.rolls()[t][w].toHit, null).hit,
+                hit: physicalAttackAlwaysHits(profile.physical)
+                    || resolveWeaponAttack(profile, this.rolls()[t][w].toHit, null).hit,
                 targetTons: target.defender?.entity.tonnage() ?? null,
+                targetId: target.targetId,
+                damage: profile.damagePerHit,
             })])));
     }
 
@@ -176,12 +193,34 @@ function rollWeapon(profile: WeaponAttackProfile): WeaponRolls {
         cluster: roll2D6(),
         clusterModifier: 0,
         locations: Object.freeze(Array.from({ length: groups }, () => Object.freeze({
-            dice: profile.table === 'standard' ? roll2D6() : Object.freeze([rollD6()] as const),
+            dice: hitTableDice(profile.table) === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
             aux: rollD6(),
         }))),
         heat: Object.freeze(Array.from({ length: profile.heatWeapon ? heatWeaponDice(profile.heatWeapon.weapon) : 0 },
             () => rollD6())),
+        ...(profile.randomSide ? { side: rollSide() } : {}),
+        ...(profile.aim ? { aim: Object.freeze({
+            roll: profile.aim.dice === 2 ? roll2D6() : Object.freeze([rollD6()] as const),
+            rerolls: Object.freeze(Array.from({ length: profile.aim.rerollLegs ? AIMED_SHOT_LEG_REROLLS : 0 }, roll2D6)),
+        }) } : {}),
     });
+}
+
+/** The aimed shot of a weapon as rolled; undefined for a normal attack. */
+function aimedShotRoll(profile: WeaponAttackProfile, rolls: WeaponRolls): AimedShotRoll | undefined {
+    return profile.aim && rolls.aim ? Object.freeze({
+        location: profile.aim.location,
+        roll: rolls.aim.roll,
+        ...(profile.aim.rerollLegs ? { rerolls: rolls.aim.rerolls } : {}),
+    }) : undefined;
+}
+
+/** One of the four sides alike: a D6 read 1 front, 2 rear, 3 left, 4 right, rerolling 5 and 6. */
+function rollSide(): MekHitArc {
+    for (;;) {
+        const side = (['front', 'rear', 'left', 'right'] as const)[rollD6() - 1];
+        if (side) return side;
+    }
 }
 
 /** How many of the heat weapon's dice its hit reads: heat against a unit that tracks it, damage against others. */
@@ -206,6 +245,7 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
     const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
     const heat = profile.heatWeapon;
     const heatDice = rolls.heat.slice(0, heatDiceRead(profile, rolls.heat));
+    const aim = aimedShotRoll(profile, rolls);
     // The heat the defender takes: none when the weapon's first roll strikes partial cover.
     const heatValue = target.defender && outcome.heat > 0
         ? readAttackHeat(target.defender, target.arc, [deliveredWeapon(profile, rolls)])
@@ -213,6 +253,7 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
     return Object.freeze({
         name: profile.name,
         targetNumber: profile.targetNumber,
+        ...(physicalAttackAlwaysHits(profile.physical) ? { automaticHit: true as const } : {}),
         toHit: rolls.toHit,
         hit: outcome.hit,
         jammed: outcome.jammed,
@@ -226,14 +267,16 @@ function reportWeapon(target: AttackResolutionTarget, profile: WeaponAttackProfi
                 dice: Object.freeze(heatDice), value: heatValue, ...(heatValue < outcome.heat ? { cover: true as const } : {}),
             }) }
             : {}),
+        ...(aim ? { aim: attackReportAim(aim) } : {}),
         groups: Object.freeze(outcome.groups.map((damage, index) => attackReportGroup(target.defender,
-            profile.arc ?? target.arc, damage, rolls.locations[index].dice, rolls.locations[index].aux,
-            profile.partialCover, profile.table))),
+            rolls.side ?? profile.arc ?? target.arc, damage, rolls.locations[index].dice, rolls.locations[index].aux,
+            profile.partialCover, profile.table, profile.physical, aim, profile.critical === true))),
     });
 }
 
 function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): AttackWeaponReport {
     const outcome = resolveWeaponAttack(profile, rolls.toHit, rolls.cluster, rolls.clusterModifier, rolls.heat);
+    const aim = outcome.hit ? aimedShotRoll(profile, rolls) : undefined;
     return Object.freeze({
         name: profile.name,
         types: profile.types,
@@ -242,9 +285,14 @@ function deliveredWeapon(profile: WeaponAttackProfile, rolls: WeaponRolls): Atta
         toHit: rolls.toHit,
         ...(profile.table === 'standard' ? {} : { table: profile.table }),
         ...(profile.physical === undefined ? {} : { physical: profile.physical }),
-        ...(profile.arc === undefined ? {} : { arc: profile.arc }),
+        ...(profile.critical ? { critical: true as const } : {}),
+        // A brush off that hits knocks the swarming infantry off (TW p. 222).
+        ...(profile.physical === 'brush-off' && outcome.hit ? { swarmRelease: true as const } : {}),
+        ...((rolls.side ?? profile.arc) === undefined ? {} : { arc: rolls.side ?? profile.arc }),
         ...(profile.inferno ? { inferno: true as const } : {}),
+        ...(profile.noHitLocation ? { noHitLocation: true as const } : {}),
         ...(outcome.heat > 0 ? { heat: outcome.heat } : {}),
+        ...(aim ? { aim } : {}),
         ...(outcome.hit && needsClusterRoll(profile) ? {
             cluster: Object.freeze({
                 dice: rolls.cluster, modifier: rolls.clusterModifier, projectiles: profile.projectiles, hits: outcome.hits,

@@ -40,7 +40,7 @@ import {
     mekCriticalSlotDirectHitThreshold,
     mekCriticalSlotMaximumHits,
 } from './mek-critical-slot-rules';
-import { mekCriticalDamageThreshold } from './equipment-status-kernel';
+import { mekCriticalDamageThreshold } from '../rules/mek-system-damage-rules';
 import {
     componentLocationIds,
     equipmentForComponent,

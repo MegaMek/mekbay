@@ -94,7 +94,7 @@ describe('ApolloHandler', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(component => component.componentId === parent.id)!;
 
         expect(handler.getComponentApolloChoices(runtime, definition, {} as never)).toEqual([]);

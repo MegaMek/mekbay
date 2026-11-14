@@ -10,9 +10,11 @@ import type { CBTUnitViewMode } from '../../../models/options.model';
 import type { MekTurnPanelSnapshot } from '../../../models/runtime/mek-turn-panel';
 import {
     createNonMekRuntimeBinding,
+    createPristineNonMekUnitState,
     queryNonMekRuntime,
     reduceNonMekRuntime,
 } from '../../../models/runtime/non-mek-unit-instance';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../../../models/runtime/bound-optional-rules';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
 import { UnitBlockComponent } from '../../unit-block/unit-block.component';
 import { PageTurnSummaryPanelComponent } from './page-turn-summary-panel.component';
@@ -73,7 +75,8 @@ describe('PageInteractionOverlay phase controls', () => {
 
     it('keeps the card, overlay and turn summary aligned for non-Mek movement edits and End Phase', () => {
         const entity = new TestTankEntity();
-        const prepared = createNonMekRuntimeBinding(entity, 'core-2026');
+        const prepared = createNonMekRuntimeBinding(entity, 'core-2026', createPristineNonMekUnitState(entity),
+            BOUND_OPTIONAL_RULE_DEFAULTS);
         const state = signal(prepared.state);
         const member = {
             kind: 'cbt', id: 'tank-phase', entity,

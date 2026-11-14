@@ -27,7 +27,7 @@ describe('generated Mek critical pips with live damage', () => {
                     createMekMechanicsContextV2(entity, index, ruleset, { id: 'megamek' }));
                 const snapshot = () => ({
                     ...projectMekRecordSheet(entity, index, ruleset, unit.snapshot(), unit.query(),
-                        { revision: 0, targets: [] }, null),
+                        { revision: 0, targets: [] }, null, false, {}),
                     editContext: { owner: unit, state: unit.snapshot() },
                 });
                 const slot = snapshot().criticalSlots.find(slot =>

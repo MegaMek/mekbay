@@ -18,6 +18,7 @@ TestJumpShipEntity,
 TestLargeSupportTankEntity,
 TestProtoMekEntity,
 TestTankEntity,
+TestVtolEntity,
 TestWarShipEntity,
 } from '../entity/testing/test-entities';
 import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-registry';
@@ -27,6 +28,7 @@ addTestEquipmentWithFlags,
 } from '../entity/testing/test-mounted-equipment';
 import { AmmoEquipment,MiscEquipment,WeaponEquipment } from '../equipment.model';
 import { systemDamageId } from '../rules/system-damage-rules';
+import { elevationAt } from '../elevation-record.model';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import { asEncounterTargetId,type EncounterTargetId,type TargetRegistrySnapshot } from './encounter-runtime';
 import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
@@ -41,7 +43,6 @@ projectNonMekEscalatingFailureInteractions,
 projectNonMekMovementCapabilities,
 } from './non-mek-unit-instance';
 import {
-NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
 inspectSerializedNonMekUnit,
 serializeNonMekUnit,
 } from './non-mek-unit-persistence';
@@ -59,6 +60,49 @@ BOOBY_TRAP_DETONATED_MODE,
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 describe('NonMekUnitInstance', () => {
+    it('records a flying unit\'s Elevation turn by turn, the unit staying airborne at the last one (TW p. 55)', () => {
+        const vtol = new TestVtolEntity();
+        vtol.uuid.set(UUID);
+        const runtime = createNonMekRuntimeForTest('unit:elevation', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, vtol,
+            TOTAL_WARFARE_RULESET);
+        const facts = () => [
+            elevationAt(runtime.snapshot().elevationRecord, runtime.snapshot().turn.turnCounter + 1),
+            runtime.snapshot().turn.airborne,
+        ];
+        const record = () => runtime.snapshot().elevationRecord?.map(entry => [entry.turn, entry.value]);
+        expect(runtime.dispatch({ type: 'set-elevation', elevation: 3 }).changed).toBeTrue();
+        expect(facts()).toEqual([3, true]);
+        // Turn 2: still at 3 and airborne, though nothing is recorded for it yet.
+        expect(runtime.dispatch({ type: 'end-turn', policy: 'manual' }).accepted).toBeTrue();
+        expect(facts()).toEqual([3, true]);
+        expect(record()).toEqual([[1, 3]]);
+        // Landing sets it down this turn; taking off lifts it at least one level; Elevation 0 is on the ground.
+        expect(runtime.dispatch({ type: 'set-airborne', airborne: false }).changed).toBeTrue();
+        expect(facts()).toEqual([0, false]);
+        expect(runtime.dispatch({ type: 'set-airborne', airborne: true }).changed).toBeTrue();
+        expect(facts()).toEqual([1, true]);
+        expect(record()).toEqual([[1, 3], [2, 1]]);
+        // An earlier turn is corrected without moving the unit; clearing this turn falls back to the last one before.
+        expect(runtime.dispatch({ type: 'set-elevation', elevation: 2, turn: 1 }).changed).toBeTrue();
+        expect(facts()).toEqual([1, true]);
+        expect(runtime.dispatch({ type: 'set-elevation', elevation: null }).changed).toBeTrue();
+        expect(facts()).toEqual([2, true]);
+        expect(runtime.dispatch({ type: 'set-elevation', elevation: 0 }).changed).toBeTrue();
+        expect(facts()).toEqual([0, false]);
+        // No later turn, no Elevation past 500.
+        expect(runtime.dispatch({ type: 'set-elevation', elevation: 4, turn: 3 }).changed).toBeFalse();
+        expect(runtime.dispatch({ type: 'set-elevation', elevation: 501 }).changed).toBeFalse();
+        expect(record()).toEqual([[1, 2], [2, 0]]);
+        // A ground vehicle and an aerospace fighter, whose Altitude its velocity record keeps, have no Elevation.
+        for (const entity of [new TestTankEntity(), new TestAeroSpaceFighterEntity()]) {
+            entity.uuid.set(UUID);
+            const other = createNonMekRuntimeForTest('unit:no-elevation', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET },
+                entity, TOTAL_WARFARE_RULESET);
+            expect(other.dispatch({ type: 'set-elevation', elevation: 1 }).changed).withContext(entity.entityType).toBeFalse();
+            expect(other.snapshot().elevationRecord).toBeUndefined();
+        }
+    });
+
     it('clears tagged and skidding at End Turn, like Meks, and keeps lasting conditions', () => {
         const tank = new TestTankEntity();
         tank.uuid.set(UUID);
@@ -188,7 +232,6 @@ describe('NonMekUnitInstance', () => {
         );
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
         const deployment = {
-            schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
             values: {
                 id: 'deployment:deferred-crew-death',
                 crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -504,7 +547,6 @@ describe('NonMekUnitInstance', () => {
             entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:tank-crew-state',
                     crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -789,7 +831,6 @@ describe('NonMekUnitInstance', () => {
             entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:tank-turn',
                     crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -814,7 +855,7 @@ describe('NonMekUnitInstance', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
-            heatSettled: false,
+            settledHeat: jasmine.objectContaining({ size: 0 }),
             cover: null,
             spotting: false,
             phaseStateChanged: false,
@@ -868,7 +909,6 @@ describe('NonMekUnitInstance', () => {
             entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:tank-turn-summary',
                     crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -918,7 +958,6 @@ describe('NonMekUnitInstance', () => {
             entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:tank-end-turn-checkpoint',
                     crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -972,7 +1011,6 @@ describe('NonMekUnitInstance', () => {
             entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:aero-durable-recovery',
                     crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -1355,7 +1393,6 @@ describe('NonMekUnitInstance', () => {
             entity: runtime.getUnit(), index: runtime.getIndex(), state: runtime.snapshot(), baselineRef: runtime.baselineRef, instanceId: runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:tank-unowned-mode',
                     crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -1604,6 +1641,11 @@ describe('NonMekUnitInstance', () => {
         expect(result).toEqual(jasmine.objectContaining({ accepted: true, changed: true }));
         expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(9);
         expect(fixture.runtime.snapshot().turn.weaponsHeat).toBe(0);
+        // A weapon fires once a turn: firing again while it stays selected spends nothing.
+        expect(fixture.runtime.snapshot().turn.firedWeapons).toEqual([fixture.weaponId]);
+        expect(fixture.runtime.dispatchSelectedWeaponFire({ type: 'fire-selected-weapons' },
+            fixture.registry, false, false).changed).toBeFalse();
+        expect(fixture.runtime.query().remainingAmmo(fixture.ammoId)).toBe(9);
     });
 
     for (const ruleset of [CORE_2026_RULESET, TOTAL_WARFARE_RULESET]) {
@@ -1649,7 +1691,7 @@ describe('NonMekUnitInstance', () => {
                 }, registry, false).accepted).toBeTrue();
 
                 const panel = projectNonMekEquipmentPanel(
-                    entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry,
+                    entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry, {},
                 );
                 const row = panel.components.find(component => component.componentId === weaponId)!;
                 expect(row.weapon?.heat).toBe(expectedHeat);
@@ -1841,7 +1883,6 @@ describe('NonMekUnitInstance', () => {
             entity: fixture.runtime.getUnit(), index: fixture.runtime.getIndex(), state: fixture.runtime.snapshot(), baselineRef: fixture.runtime.baselineRef, instanceId: fixture.runtime.instanceId,
             uuid: baseline().entity,
             deployment: {
-                schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
                 values: {
                     id: 'deployment:tank-targeting',
                     crewAssignment: createDefaultCrewAssignment(fixture.runtime.getIndex().crewPositions),
@@ -1942,7 +1983,7 @@ describe('NonMekUnitInstance', () => {
         expect(selection(tagId)).toBeUndefined();
         const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), TOTAL_WARFARE_RULESET,
             runtime.snapshot(),
-            runtime.query(), initial);
+            runtime.query(), initial, {});
         expect(panel.components.find(row => row.componentId === tagId)?.weapon?.disabledTargetReasons[infantryId])
             .toBe(TARGET_TAG_INFANTRY_REASON);
 
@@ -2027,7 +2068,6 @@ describe('NonMekUnitInstance', () => {
             CORE_2026_RULESET,
         );
         const deployment = {
-            schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
             values: {
                 id: 'deployment:fighter-heat',
                 crewAssignment: createDefaultCrewAssignment(runtime.getIndex().crewPositions),
@@ -2085,6 +2125,143 @@ describe('NonMekUnitInstance', () => {
         expect(restored.snapshot().heat.current).toBe(2);
     });
 
+    it('holds outside heat and inferno missiles with their pending attack, capping the heat where it is read', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const runtime = createNonMekRuntimeForTest('unit:pending-outside-heat', baseline(), fighter, CORE_2026_RULESET);
+        const held = () => {
+            const { turn, pendingCombat } = runtime.snapshot();
+            return [turn.outsideHeat ?? 0, pendingCombat.outsideHeat ?? 0, turn.infernoMissiles ?? 0,
+                pendingCombat.infernoMissiles ?? 0];
+        };
+        const attack = () => {
+            runtime.dispatch({ type: 'add-outside-heat', amount: 10, target: 'pending' });
+            runtime.dispatch({ type: 'add-inferno-missiles', count: 2, target: 'pending' });
+        };
+        const outsideHeatSource = () => projectNonMekEndTurnHeat(fighter, runtime.getIndex(), runtime.snapshot(),
+            CORE_2026_RULESET)!.sources.find(source => source.id === 'outside-heat')?.value;
+
+        runtime.dispatch({ type: 'add-outside-heat', amount: 10, target: 'committed' });
+        attack();
+        expect(held()).toEqual([10, 10, 0, 2]);
+        expect(outsideHeatSource()).toBe(15);
+        // Cancelling the attack takes back its heat and missiles and leaves the committed heat whole.
+        expect(runtime.dispatch({ type: 'cancel-pending' }).changed).toBeTrue();
+        expect(held()).toEqual([10, 0, 0, 0]);
+        // Ending the phase commits them, the heat within the cap of 15.
+        attack();
+        expect(runtime.dispatch({ type: 'end-phase' }).changed).toBeTrue();
+        expect(held()).toEqual([15, 0, 2, 0]);
+        expect(runtime.dispatch({ type: 'add-inferno-missiles', count: 1, target: 'elsewhere' as never }).changed)
+            .toBeFalse();
+        expect(held()).toEqual([15, 0, 2, 0]);
+    });
+
+    it('settles pending outside heat with the aerospace arrow on APPLY HEAT, and not again at End Turn', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const fresh = createNonMekRuntimeForTest('unit:applied-outside-heat', baseline(), fighter, CORE_2026_RULESET);
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { weaponsHeat: 14 } }, fighter, CORE_2026_RULESET);
+        const projection = () => projectNonMekEndTurnHeat(fighter, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET)!;
+
+        runtime.dispatch({ type: 'add-outside-heat', amount: 6, target: 'pending' });
+        // 14 fired and 6 outside, less 10 dissipated.
+        expect(projection().calculated).toBe(10);
+        runtime.dispatch({ type: 'set-pending-heat', heat: 10 });
+        expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBe(true);
+        expect(runtime.snapshot().heat.current).toBe(10);
+        expect(projection().generated).toBe(0);
+        // Committing the attack adds nothing the arrow already holds, and End Turn settles nothing again.
+        runtime.dispatch({ type: 'end-phase' });
+        expect(projection().calculated).toBe(10);
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(runtime.snapshot().heat.current).toBe(10);
+    });
+
+    it('keeps an applied aerospace arrow at End Turn rather than cooling it with the sinks left over', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const fresh = createNonMekRuntimeForTest('unit:arrow-above-calculation', baseline(), fighter, CORE_2026_RULESET);
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { weaponsHeat: 2 } }, fighter, CORE_2026_RULESET);
+
+        // 2 fired against 10 sinks calculates to 0; the player's arrow says 5.
+        runtime.dispatch({ type: 'set-pending-heat', heat: 5 });
+        expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBeTrue();
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(runtime.snapshot().heat.current).toBe(5);
+    });
+
+    it('keeps the aerospace heat of a pending attack once APPLY HEAT applied it, even when the attack is cancelled', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const runtime = createNonMekRuntimeForTest('unit:applied-pending', baseline(), fighter, CORE_2026_RULESET);
+        const calculated = () => projectNonMekEndTurnHeat(fighter, runtime.getIndex(), runtime.snapshot(),
+            CORE_2026_RULESET)!.calculated;
+
+        // 15 outside heat against 10 sinks: 5.
+        runtime.dispatch({ type: 'add-outside-heat', amount: 15, target: 'pending' });
+        runtime.dispatch({ type: 'set-pending-heat', heat: 5 });
+        expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBeTrue();
+        expect(runtime.dispatch({ type: 'cancel-pending' }).changed).toBeTrue();
+        expect([runtime.snapshot().heat.current, calculated()]).toEqual([5, 5]);
+    });
+
+    it('ends an aerospace turn on the arrow once, keeping the heat it started from as PREV, as a Mek does', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const fresh = createNonMekRuntimeForTest('unit:arrow-prev', baseline(), fighter, CORE_2026_RULESET);
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), heat: { current: 3, previous: 0, heatsinksOff: 0 },
+            turn: { weaponsHeat: 2 } }, fighter, CORE_2026_RULESET);
+
+        runtime.dispatch({ type: 'set-pending-heat', heat: 5 });
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect([runtime.snapshot().heat.current, runtime.snapshot().heat.previous]).toEqual([5, 3]);
+    });
+
+    it('moves an aerospace NEXT by heat that arrives after it was set, as a Mek does', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const runtime = createNonMekRuntimeForTest('unit:aero-next-follows', baseline(), fighter, CORE_2026_RULESET);
+
+        // Nothing generated yet, so NEXT at 8 is the player's +8; 15 outside heat against 10 sinks calculates to 5.
+        runtime.dispatch({ type: 'set-pending-heat', heat: 8, follow: true });
+        runtime.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' });
+        expect(runtime.snapshot().heat).toEqual(jasmine.objectContaining({ pendingOverride: 13, pendingOffset: 8 }));
+        const saved = restoreNonMekRuntimeForTest(runtime.serialize(), fighter, CORE_2026_RULESET);
+        expect(saved.snapshot().heat).toEqual(runtime.snapshot().heat);
+        // A unit rebuilt from a NEXT stored before the calculation moved (other rules, a refit) puts it where it stands.
+        const stale = restoreNonMekRuntimeForTest({ ...runtime.serialize(),
+            heat: { ...runtime.serialize().heat!, pendingOverride: 8 } }, fighter, CORE_2026_RULESET);
+        expect(stale.snapshot().heat.pendingOverride).toBe(13);
+        // APPLY HEAT settles NEXT where it stands, as End Turn does.
+        saved.dispatch({ type: 'apply-heat' });
+        expect(saved.snapshot().heat.current).toBe(13);
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(runtime.snapshot().heat.current).toBe(13);
+    });
+
+    it('gives back the dissipation APPLY HEAT booked on aerospace heat sinks shut down afterwards', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const fresh = createNonMekRuntimeForTest('unit:lost-aero-sinks', baseline(), fighter, CORE_2026_RULESET);
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { weaponsHeat: 14 } }, fighter, CORE_2026_RULESET);
+
+        // 14 fired against 10 sinks: 4 heat, every sink used.
+        runtime.dispatch({ type: 'set-pending-heat', heat: 4 });
+        expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBeTrue();
+        // 3 sinks shut down afterwards cool nothing this turn, so the 3 heat they were booked for comes back.
+        expect(runtime.dispatch({ type: 'set-heatsinks-off', heatsinksOff: 3 }).changed).toBeTrue();
+        runtime.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(runtime.snapshot().heat.current).toBe(7);
+    });
+
     it('settles applied aerospace heat once, adding only weapons fired afterwards at End Turn', () => {
         const fighter = new TestAeroSpaceFighterEntity();
         fighter.uuid.set(UUID);
@@ -2094,18 +2271,37 @@ describe('NonMekUnitInstance', () => {
 
         // The arrow is the turn's final heat: 14 fired less 10 dissipated.
         expect(runtime.dispatch({ type: 'set-pending-heat', heat: 4 }).changed).toBeTrue();
-        expect(runtime.dispatch({ type: 'apply-heat', policy: 'automatic' }).changed).toBeTrue();
+        expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBeTrue();
         expect(runtime.snapshot().heat.current).toBe(4);
-        expect(runtime.snapshot().turn.heatSettled).toBeTrue();
+        expect(runtime.snapshot().turn.heatDissipationConsumed).toBe(10);
 
-        // Weapons fired after the arrow add heat without a second dissipation, even across a save.
+        // The 14 fired used every sink, so 3 more fired afterwards add in full, even across a save.
         const later = restoreNonMekRuntimeForTest({
             ...runtime.serialize(),
-            turn: { ...runtime.serialize().turn, weaponsHeat: 3 },
+            turn: { ...runtime.serialize().turn, weaponsHeat: 17 },
         }, fighter, CORE_2026_RULESET);
         later.dispatch({ type: 'end-turn', policy: 'automatic' });
         expect(later.snapshot().heat.current).toBe(7);
-        expect(later.snapshot().turn.heatSettled).toBeFalse();
+        expect(later.snapshot().turn.heatDissipationConsumed).toBeUndefined();
+    });
+
+    it('dissipates aerospace heat generated after APPLY HEAT with the sinks left over, as a Mek does', () => {
+        const fighter = new TestAeroSpaceFighterEntity();
+        fighter.uuid.set(UUID);
+        fighter.heatSinkCount.set(10);
+        const fresh = createNonMekRuntimeForTest('unit:leftover-dissipation', baseline(), fighter, CORE_2026_RULESET);
+        const runtime = restoreNonMekRuntimeForTest({ ...fresh.serialize(), turn: { weaponsHeat: 6 } }, fighter, CORE_2026_RULESET);
+
+        // 6 fired against 10 sinks: no heat, and 4 sinks left for the rest of the turn; 7 more fired meet those 4.
+        runtime.dispatch({ type: 'set-pending-heat', heat: 0 });
+        expect(runtime.dispatch({ type: 'apply-heat' }).changed).toBeTrue();
+        expect(runtime.snapshot().turn.heatDissipationConsumed).toBe(6);
+        const later = restoreNonMekRuntimeForTest({
+            ...runtime.serialize(),
+            turn: { ...runtime.serialize().turn, weaponsHeat: 13 },
+        }, fighter, CORE_2026_RULESET);
+        later.dispatch({ type: 'end-turn', policy: 'automatic' });
+        expect(later.snapshot().heat.current).toBe(3);
     });
 
     it('applies Nova CEWS heat to aerospace units using the committed power state', () => {
@@ -2185,7 +2381,7 @@ describe('NonMekUnitInstance', () => {
             current: 10,
             generated: 2,
             dissipated: 5,
-            projected: 7,
+            calculated: 7,
         }));
         expect(projection?.sources).toEqual([
             { id: 'nova-cews', label: 'Nova CEWS', value: 2 },
@@ -2223,7 +2419,7 @@ describe('NonMekUnitInstance', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
-            heatSettled: false,
+            settledHeat: jasmine.objectContaining({ size: 0 }),
             cover: null,
             spotting: false,
             phaseStateChanged: false,
@@ -2564,9 +2760,7 @@ function baseline(_sourceFormat: 'mtf' | 'blk' = 'blk'): InstanceBaselineRef {
         entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

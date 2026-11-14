@@ -63,8 +63,12 @@ describe('conventional infantry sheet presentation', () => {
         entity.setPlatoonWeapon('disposable', new WeaponEquipment({ id: 'InfantryLAW', name: 'Rocket Launcher (LAW)',
             type: 'weapon', flags: ['F_INFANTRY'], infantry: { damage: 0.53, range: 2 } }) as InfantryWeaponEquipment);
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', format: 'compact' });
-        const notes = [...svg.querySelectorAll('.infantry-notes text')].map(line => line.textContent).join(' ');
-        expect(notes).toContain('Disposable Weapon: Rocket Launcher (LAW).');
+        const weapon = svg.querySelector('.infantry-notes .disposableWeapon')!;
+        expect([...weapon.querySelectorAll('text')].map(line => line.textContent).join(' '))
+            .toBe('Disposable Weapon: Rocket Launcher (LAW).');
+        // The live sheet strikes the note through once this mount is fired.
+        expect(weapon.getAttribute('data-mekbay-component-ids'))
+            .toBe(entity.equipment().find(mount => mount.platoonWeapon === 'disposable')!.mountId);
     });
 
     it('prints augmentation display names in the notes', async () => {

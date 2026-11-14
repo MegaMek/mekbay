@@ -43,6 +43,7 @@ import { naturalCompare } from '../utils/sort.util';
 import { ForceListSession } from '../models/force-list-session';
 import { DataService } from './data.service';
 import { DbService } from './db.service';
+import { unreadableUnitStateWarning } from '../models/cbt-unit-store';
 import { DialogsService } from './dialogs.service';
 import { LoggerService } from './logger.service';
 import { ToastService } from './toast.service';
@@ -301,11 +302,7 @@ export class ForcePersistenceService {
                     ? '1 unit was not found in the catalog and was skipped.'
                     : `${skippedUnitCount} units were not found in the catalog and were skipped.`);
             }
-            if (resetUnitStateCount > 0) {
-                notices.push(resetUnitStateCount === 1
-                    ? '1 unit had unreadable saved state and was reset to pristine.'
-                    : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
-            }
+            if (resetUnitStateCount > 0) notices.push(unreadableUnitStateWarning(resetUnitStateCount));
             const details = [...warnings.values()];
             notices.push(...details.slice(0, 3).map(({ warning, count }) =>
                 `${warning.message}${count === 1 ? '' : ` (${count} occurrences)`}`));
@@ -653,10 +650,12 @@ export class ForcePersistenceService {
         if (!ownerlessLease) return null;
         await ownerlessLease.ready;
         if (!detachedAuthorityIsCurrent()) return null;
+        // Each copy loads best effort; the notice reports the units reset in the copy that loads.
+        const resetUnits = { local: 0, cloud: 0 };
         let localRaw: SerializedForce | null = null;
         if (!skipLocal) {
             try {
-                localRaw = await this.dbService.getForce(instanceId);
+                localRaw = await this.dbService.getForce(instanceId, () => resetUnits.local++);
             } catch (error) {
                 this.logger.warn(`Could not read local force ${instanceId}: ${error}`);
             }
@@ -669,7 +668,7 @@ export class ForcePersistenceService {
             const ws = await this.canUseCloud();
             if (ws) {
                 try {
-                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly, !skipLocal);
+                    cloudRaw = await this.getForceCloud(instanceId, ownedOnly, !skipLocal, () => resetUnits.cloud++);
                     triedCloud = true;
                 } catch {
                     cloudRaw = null;
@@ -709,6 +708,10 @@ export class ForcePersistenceService {
             } catch (error) {
                 this.logger.error(error instanceof Error ? error.message : String(error));
             }
+        }
+        if (resultSource !== null && resetUnits[resultSource] > 0) {
+            void this.injector.get(DialogsService).showNotice(
+                `• ${unreadableUnitStateWarning(resetUnits[resultSource])}`, 'Save Loaded with Warnings');
         }
         let resultHasDurableLocalIdentity = resultSource === 'local';
 
@@ -2089,6 +2092,7 @@ export class ForcePersistenceService {
         instanceId: string,
         ownedOnly: boolean,
         includeOwnership: boolean = true,
+        onUnreadableUnitState?: (unitId: string) => void,
     ): Promise<SerializedForce | null> {
         const ws = await this.canUseCloud();
         if (!ws) return null;
@@ -2102,7 +2106,7 @@ export class ForcePersistenceService {
         const response = await this.wsService.sendAndWaitForResponse<WsDataResponse<StoredForceRecord>>(payload);
         const data = response?.data;
         if (data === undefined || data === null) return null;
-        const decoded = decodeForceFromStorage(data);
+        const decoded = decodeForceFromStorage(data, onUnreadableUnitState);
         if (response?.owned !== undefined) decoded.owned = response.owned;
         return decoded;
     }

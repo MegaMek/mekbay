@@ -220,7 +220,7 @@ export function projectVehicleRuntimeRules(
         battleValueMovement,
         attackMovementModifier: getDefaultAttackerMovementModifier(movementMode),
         chargeDamage,
-        modifiers: vehicleModifiers(entity, systems),
+        modifiers: vehicleModifiers(entity, systems, state.turn.movement?.erratic === true),
         componentStatuses: new ImmutableIndex(baseStatuses),
         previewComponentStatuses: new ImmutableIndex(previewStatuses),
         fireBlockedComponentIds: new ImmutableSet(fireBlockedComponentIds),
@@ -270,10 +270,13 @@ function applyMotiveDamage(base: number, hits: readonly VehicleMotiveHit[]): num
 function vehicleModifiers(
     entity: VehicleEntity,
     systems: VehicleRuntimeSystems,
+    erratic: boolean,
 ): VehicleRuntimeRuleModifiers {
     const ranged: ToHitModifierBreakdownEntry[] = [];
     const physical: ToHitModifierBreakdownEntry[] = [];
     const psr: ToHitModifierBreakdownEntry[] = [];
+    // Erratic manoeuvres make every Driving Skill Roll of the turn 1 harder (TW p. 222).
+    if (erratic) psr.push(Object.freeze({ label: 'Erratic manoeuvres', modifier: 1 }));
     if (entity.uniformArmor()?.armor.name === 'Hardened') psr.push(weakened('Mounts Hardened Armor', 1));
     if (systems.commanderHit) {
         ranged.push(weakened('Commander hit', 1));

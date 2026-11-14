@@ -123,7 +123,7 @@ function handlerSetup(fixture: DirectMekRuntimeFixture, equipmentId: string) {
             fixture.index,
             fixture.instance.ruleset(),
             runtime.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(candidate => candidate.componentId === component.id)!,
     };
 }

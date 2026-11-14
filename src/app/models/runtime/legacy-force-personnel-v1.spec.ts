@@ -73,7 +73,7 @@ describe('V1 personnel admission through current force storage', () => {
 
     it('imports CBT crew once and preserves person identity, skills and wounds after reopening', async () => {
         const fixture = createDirectMekRuntimeFixture(CORE_2026_RULESET, 'unit:v1-people');
-        const initialize = { initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' }, scenario };
+        const initialize = { profileId: 'pristine', deployment: { id: 'default' }, scenario };
         const summary = createEmptyUnit({ name: 'Test Mek', uuid: fixture.identity });
         const data = { getUnitByUuid: () => summary, getFactionById: () => null, getEraById: () => null } as unknown as DataService;
         const cbtUnits = {

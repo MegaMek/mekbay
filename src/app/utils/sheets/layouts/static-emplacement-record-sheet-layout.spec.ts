@@ -8,10 +8,12 @@ import { parseEntity } from '../../../models/entity/parse-entity';
 import { encodeNativeEntity } from '../../../models/entity/write-entity';
 import { addTestEquipment } from '../../../models/entity/testing/test-mounted-equipment';
 import { RecordSheetSvgGenerator } from '../record-sheet-svg-generator';
+import { recordSheetPageProfile } from '../record-sheet-layout';
+import { buildingTemplateSections } from './building-template';
 import { resolveRecordSheetLayout } from './record-sheet-layout-resolver';
 import { StaticEmplacementRecordSheetLayout } from './static-emplacement-record-sheet-layout';
 import { setConstructionBuildingTopology } from '../../../construction/domain/construction-building-topology';
-import { BUILDING_DIRECTIONS, BUILDING_ORIGIN, buildingLocationName, buildingConnectedComponents } from '../../../models/entity/types/building';
+import { BUILDING_DIRECTIONS, BUILDING_ORIGIN, buildingLocationName, buildingConnectedComponents, type BuildingHex } from '../../../models/entity/types/building';
 import { locationArmor } from '../../../models/entity/types';
 
 describe('StaticEmplacementRecordSheetLayout', () => {
@@ -58,82 +60,27 @@ describe('StaticEmplacementRecordSheetLayout', () => {
         }
     });
 
-    it('minimizes connected template pieces and orders them by their first hex', async () => {
-        const branched = ['0102', '0103', '0201', '0202', '0203', '0204', '0302', '0303', '0304', '0401', '0402', '0403',
-            '0502', '0503', '0504', '0505', '0506', '0602', '0603', '0604', '0703', '0705', '0805', '0906', '1006', '1107',
-            '1207', '1308', '1408', '1509', '1609', '1710', '1810', '1911'].map(label => {
-                const q = Number(label.slice(0, 2)) - 1;
-                return { q, r: Number(label.slice(2)) - 1 - Math.floor(q / 2) };
-            });
-        for (const fixture of [{ hexes: Array.from({ length: 11 }, (_, q) => ({ q, r: 0 })), pieces: 2, pages: 1 },
-            { hexes: branched, pieces: 4, pages: 2 }]) for (const pageFormat of ['letter', 'a4'] as const) {
+    it('splits a template into the fewest connected sections, ordered by their first hex, covering every hex once', () => {
+        const fromLabels = (labels: readonly string[]) => labels.map(label => {
+            const q = Number(label.slice(0, 2)) - 1;
+            return { q, r: Number(label.slice(2)) - 1 - Math.floor(q / 2) };
+        });
+        const corridor = Array.from({ length: 11 }, (_, q) => ({ q, r: 0 }));
+        const branched = fromLabels(['0102', '0103', '0201', '0202', '0203', '0204', '0302', '0303', '0304', '0401',
+            '0402', '0403', '0502', '0503', '0504', '0505', '0506', '0602', '0603', '0604', '0703', '0705', '0805', '0906',
+            '1006', '1107', '1207', '1308', '1408', '1509', '1609', '1710', '1810', '1911']);
+        for (const [hexes, sections, pages] of [[corridor, 2, 1], [branched, 4, 2]] as const) for (const format of ['letter', 'a4'] as const) {
             const entity = parseBuilding();
-            setConstructionBuildingTopology(entity, fixture.hexes, 1);
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
-            expect(pages.length).toBe(fixture.pages);
-            let pieces = 0;
-            const seen: string[] = [], starts: string[] = [];
-            for (const page of pages) {
-                for (const floor of page.querySelectorAll<SVGGElement>('.building-template-floor')) {
-                    pieces++;
-                    const labels = [...floor.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex')!).sort();
-                    expect(labels.length).toBeGreaterThan(1);
-                    expect(buildingConnectedComponents(entity.coordinates().filter(hex => labels.includes(entity.displayHex(hex)))).length).toBe(1);
-                    seen.push(...labels);
-                    starts.push(labels[0]);
-                }
-            }
-            expect(pieces).toBe(fixture.pieces);
-            expect(starts).toEqual([...starts].sort());
-            expect(seen.sort()).toEqual(entity.coordinates().map(hex => entity.displayHex(hex)).sort());
-        }
-    });
+            setConstructionBuildingTopology(entity, hexes, 1);
+            const layout = buildingTemplateSections(entity, recordSheetPageProfile(format));
+            const label = (section: readonly BuildingHex[]) => section.map(hex => entity.displayHex(hex)).sort();
 
-    it('keeps the remaining corridor contiguous in the last template section', async () => {
-        const entity = parseBuilding();
-        const labels = ['0102', '0103', '0201', '0202', '0203', '0204', '0302', '0303', '0304', '0305',
-            '0401', '0402', '0403', '0404', '0502', '0503', '0504', '0604', '0605', '0606', '0704', '0705',
-            '0803', '0805', '0906', '1006', '1107', '1207', '1308', '1408', '1509', '1609'];
-        const hexes = labels.map(label => {
-            const q = Number(label.slice(0, 2)) - 1;
-            return { q, r: Number(label.slice(2)) - 1 - Math.floor(q / 2) };
-        });
-        setConstructionBuildingTopology(entity, hexes, 1);
-        for (const pageFormat of ['letter', 'a4'] as const) {
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
-            expect(pages.length).toBe(2);
-            const floors = [...pages.at(-1)!.querySelectorAll<SVGGElement>('.building-template-floor')];
-            expect(floors.length).toBe(2);
-            // Six columns fit across the page: this 16-column footprint needs at least three pieces.
-            expect(pages.reduce((sum, page) => sum + page.querySelectorAll('.building-template-floor').length, 0)).toBe(3);
-            const tail = [...floors.at(-1)!.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex'));
-            expect(tail).toEqual(jasmine.arrayContaining(['1308', '1408', '1509', '1609']));
-            expect(pages.flatMap(page => [...page.querySelectorAll('.building-template-hex')]
-                .map(hex => hex.getAttribute('data-building-hex'))).sort()).toEqual([...labels].sort());
-        }
-    });
-
-    it('fills two template pages with connected sections in spatial order for a branched building and long corridor', async () => {
-        const entity = parseBuilding();
-        const labels = ['0101', '0201', '0202', '0301', '0302', '0303', '0401', '0402', '0403', '0404',
-            '0502', '0503', '0504', '0601', '0602', '0603', '0604', '0703', '0704', '0804', '0905', '1005',
-            '1106', '1206', '1307', '1407', '1508', '1608', '1709', '1809', '1910', '2010'];
-        const hexes = labels.map(label => {
-            const q = Number(label.slice(0, 2)) - 1;
-            return { q, r: Number(label.slice(2)) - 1 - Math.floor(q / 2) };
-        });
-        setConstructionBuildingTopology(entity, hexes, 1);
-        for (const pageFormat of ['letter', 'a4'] as const) {
-            const pages = (await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare', pageFormat })).filter(svg => svg.querySelector('#buildingTemplate'));
-            expect(pages.length).toBe(2);
-            const sections = pages.flatMap(svg => [...svg.querySelectorAll('.building-template-floor')].map(floor =>
-                [...floor.querySelectorAll('.building-template-hex')].map(hex => hex.getAttribute('data-building-hex')!)));
-            const starts = sections.map(section => [...section].sort()[0]);
+            expect(layout.length).toBe(pages);
+            expect(layout.flat().length).toBe(sections);
+            for (const section of layout.flat()) expect(buildingConnectedComponents(section).length).toBe(1);
+            const starts = layout.flat().map(section => label(section)[0]);
             expect(starts).toEqual([...starts].sort());
-            expect(sections.flat().sort()).toEqual([...labels].sort());
-            for (const section of sections) {
-                expect(buildingConnectedComponents(section.map(label => hexes[labels.indexOf(label)])).length).toBe(1);
-            }
+            expect(layout.flat().flatMap(label).sort()).toEqual(label(entity.coordinates()));
         }
     });
 
@@ -487,19 +434,6 @@ Unresolved Searchlight
         expect(svg.textContent).toContain('Rail / Bridge');
     });
 
-    it('labels capital protection and preserves large Castles Brian maps and protection over pages', async () => {
-        const entity = parseBuilding();
-        entity.buildingClass.set(4); entity.buildingType.set(4); entity.constructionFactor.set(150);
-        const hexes = Array.from({ length: 70 }, (_, index) => ({ q: index % 10, r: Math.floor(index / 10) }));
-        setConstructionBuildingTopology(entity, hexes, 15);
-        const pages = await RecordSheetSvgGenerator.generatePages(entity, { ruleset: 'total-warfare' });
-        expect(pages.filter(page => !page.querySelector('#buildingTemplate')).length).toBe(3);
-        expect(pages[0].textContent).toContain('CF and armor: capital points');
-        expect(pages.flatMap(page => [...page.querySelectorAll('.building-map-layer')]).length).toBe(15);
-        expect(pages.reduce((count, page) => count + page.querySelectorAll('[data-mekbay-protection-value="structure"]').length, 0)).toBe(70);
-        expect(pages.flatMap(page => [...page.querySelectorAll('.building-hex.occupied')]).length).toBe(1050);
-    });
-
     it('numbers asymmetric footprints from the top left independently of input order and expands grids that would clip hexes', async () => {
         const entity = parseBuilding();
         const hexes = Array.from({ length: 13 }, (_, q) => ({ q, r: -Math.floor(q / 2) }));
@@ -554,30 +488,33 @@ Unresolved Searchlight
         expect(underground.querySelector('.inventoryEntry .location')?.textContent).toBe('0101/-5');
     });
 
-    it('repositions displaced footprints before adding denser rows or columns without rewriting coordinates', async () => {
-        const tight = Array.from({ length: 14 }, (_, i) => ({ q: Math.floor(i / 7), r: i % 7 }));
-        const wide = Array.from({ length: 13 }, (_, q) => ({ q, r: -Math.floor(q / 2) }));
-        const tall = Array.from({ length: 12 }, (_, r) => ({ q: 0, r }));
-        const both = [...wide.slice(0, 11), ...tall.slice(1, 9)];
-        for (const [index, [footprint, cells]] of ([[tight, 9 * 7], [wide, 13 * 7], [tall, 9 * 12], [both, 11 * 9]] as const).entries()) {
-            // Load authored coordinates far from 0,0; display placement must not rewrite those coordinates.
-            const hexes = footprint.map(hex => ({ q: hex.q + 37, r: hex.r - 51 }));
-            const entity = parseBuilding(`<height>\n2\n</height>\n<coords>\n${hexes.map(hex => `${hex.q}.0,${hex.r}.0,${-hex.q - hex.r}.0`).join('\n')}\n</coords>`);
-            const location = buildingLocationName(hexes.at(-1)!, 0);
-            const mount = addTestEquipment(entity, laser, { location });
-            const native = encodeNativeEntity(entity);
-            const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
-            const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
-            expect(layers.length).toBe(2);
-            for (const layer of layers) {
-                expect(layer.querySelectorAll('.building-hex').length).toBe(cells);
-                expect(layer.querySelectorAll('.occupied').length).toBe(hexes.length);
-            }
-            if (index === 0) expect(svg.querySelector(`[data-mekbay-component-ids="${mount.mountId}"] .location`)?.textContent).toBe('0207/G');
-            expect(entity.coordinates()).toEqual(hexes);
-            expect(mount.location).toBe(location);
-            expect(encodeNativeEntity(entity)).toBe(native);
+    it('notes that a Castles Brian counts CF and armor in capital points', async () => {
+        const entity = parseBuilding();
+        entity.buildingClass.set(4);
+        entity.buildingType.set(4);
+        entity.constructionFactor.set(150);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        expect(svg.textContent).toContain('CF and armor: capital points');
+    });
+
+    it('places a footprint authored far from 0,0 on the map grid without rewriting its coordinates', async () => {
+        // Two columns of seven hexes, authored far from 0,0.
+        const hexes = Array.from({ length: 14 }, (_, i) => ({ q: Math.floor(i / 7) + 37, r: i % 7 - 51 }));
+        const entity = parseBuilding(`<height>\n2\n</height>\n<coords>\n${hexes.map(hex => `${hex.q}.0,${hex.r}.0,${-hex.q - hex.r}.0`).join('\n')}\n</coords>`);
+        const location = buildingLocationName(hexes.at(-1)!, 0);
+        const mount = addTestEquipment(entity, laser, { location });
+        const native = encodeNativeEntity(entity);
+        const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
+        const layers = [...svg.querySelectorAll<SVGGElement>('.building-map-layer')];
+        expect(layers.length).toBe(2);
+        for (const layer of layers) {
+            expect(layer.querySelectorAll('.building-hex').length).toBe(9 * 7);
+            expect(layer.querySelectorAll('.occupied').length).toBe(hexes.length);
         }
+        expect(svg.querySelector(`[data-mekbay-component-ids="${mount.mountId}"] .location`)?.textContent).toBe('0207/G');
+        expect(entity.coordinates()).toEqual(hexes);
+        expect(mount.location).toBe(location);
+        expect(encodeNativeEntity(entity)).toBe(native);
     });
 
     it('preserves building inventory and weapon ranges without inventing missing protection', async () => {

@@ -5,6 +5,7 @@
 import type { Injector } from '@angular/core';
 import { CBTUnitService,type CBTUnitRestoreWarning } from '../services/cbt-unit.service';
 import type { DataService } from '../services/data.service';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from './runtime/bound-optional-rules';
 import { DialogsService } from '../services/dialogs.service';
 import { EquipmentInteractionRegistry } from '../services/equipment-interaction-registry.service';
 import { ForceDialogsService } from '../services/force-dialogs.service';
@@ -20,14 +21,13 @@ import { C3Handler } from './runtime/component-c3-configuration';
 import { C3EmergencyMasterHandler } from './runtime/component-c3-emergency-master';
 import { asEncounterNetworkId,asEncounterTargetId,type EncounterNetwork } from './runtime/encounter-runtime';
 import {
-CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
 asForceId,
 emptyRuntimeHistory,
 type SerializedCBTEncounterStateV2,
 type SerializedCBTForceV2,
 type SerializedCBTUnitV2,
 } from './runtime/persistence-v2';
-import { RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
+import { formatRuntimeHistoryMessage, RUNTIME_HISTORY_MESSAGE } from './runtime/runtime-history';
 import type { VelocityRecordField } from './aerospace-velocity-record.model';
 
 import { decodeRemoteLoadForceEntry } from './remote-load-force-entry.model';
@@ -98,7 +98,7 @@ function scenarioRules(
     ruleset: CBTRuleset = CORE_2026_RULESET,
     optional: Readonly<{ sprinting?: boolean }> = {},
 ): ScenarioRules {
-    return { id: 'megamek', ruleset, options: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false, ...optional } };
+    return { id: 'megamek', ruleset, options: { ...BOUND_OPTIONAL_RULE_DEFAULTS, ...optional } };
 }
 
 function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
@@ -108,12 +108,11 @@ function emptySerializedEncounterV2(): SerializedCBTEncounterStateV2 {
 function directForceRecord(): SerializedCBTForce {
     const forceId = asForceId('force:encounter');
     const cbt: SerializedCBTForceV2 = {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
         units: [],
-        roster: { schemaVersion: 1, groups: [] },
+        roster: { groups: [] },
         encounter: emptySerializedEncounterV2(),
     };
     return {
@@ -150,7 +149,6 @@ async function readyCloneForce(): Promise<{
 }> {
     const fixture = createDirectC3MasterRuntimeFixture();
     const initializeOptions = {
-        initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: 'core-2026' as const },
@@ -179,7 +177,6 @@ async function readyCloneForce(): Promise<{
     const componentId = fixture.equipmentComponent('Test C3 Master').id;
     const forceId = asForceId('force:ready-clone');
     const cbt: SerializedCBTForceV2 = {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: 7,
         history: emptyRuntimeHistory(),
@@ -188,7 +185,6 @@ async function readyCloneForce(): Promise<{
             { instanceId: secondId, stateRevision: secondUnit.stateRevision, unit: secondUnit },
         ],
         roster: {
-            schemaVersion: 1,
             groups: [{
                 groupId: 'group:clone-source',
                 order: 0,
@@ -271,6 +267,29 @@ async function readyCloneForce(): Promise<{
     };
     return { force, armorFaceId, createTargetForce, reload };
 }
+
+describe('CBTForce NEXT heat', () => {
+    for (const mode of ['yes', 'ask', 'no'] as const) {
+        it(`sets NEXT ${mode === 'no' ? 'as the player’s own number' : 'to follow the calculated heat'} with heat resolution ${
+            mode}`, async () => {
+            spyOn(optionsService, 'cbtAutomationMode').and.returnValue(mode);
+            const { force } = await readyCloneForce();
+            const [first] = force.getCBTMembers();
+            const projection = mekRuntimeSnapshot(force, first.id).query.heatProjection();
+            const calculated = projection.kind === 'supported' ? projection.projection.projected : NaN;
+
+            expect((await force.dispatchUnitCommand(first.id, { type: 'set-pending-heat', heat: 6 })).changed).toBeTrue();
+
+            expect(mekRuntimeSnapshot(force, first.id).state.heat.pendingOffset).toBe(mode === 'no' ? undefined : 6 - calculated);
+            // APPLY HEAT after outside heat moved the calculation settles NEXT where the mode puts it.
+            await force.dispatchUnitCommand(first.id, { type: 'add-outside-heat', amount: 15, target: 'committed' });
+            const moved = mekRuntimeSnapshot(force, first.id).query.heatProjection();
+            const after = moved.kind === 'supported' ? moved.projection.projected : NaN;
+            expect((await force.dispatchUnitCommand(first.id, { type: 'apply-heat' })).changed).toBeTrue();
+            expect(mekRuntimeSnapshot(force, first.id).state.heat.current).toBe(mode === 'no' ? 6 : 6 + after - calculated);
+        });
+    }
+});
 
 describe('CBTForce game restart', () => {
     it('returns Meks to turn 1 Movement, discards uncommitted damage and starts an empty log without undo', async () => {
@@ -588,18 +607,16 @@ async function readyEntityForce(options: Readonly<{
         uuid: identity,
         deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
-        initialStateProfileId: 'pristine-non-mek-v1',
+        initialStateProfileId: 'pristine-non-mek',
     });
     const serialized = ready.serialize();
     const forceId = asForceId('force:ready-entity');
     const cbt: SerializedCBTForceV2 = {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
         units: [{ instanceId, stateRevision: serialized.stateRevision, unit: serialized }],
         roster: {
-            schemaVersion: 1,
             groups: [{
                 groupId: 'group:entity-source',
                 order: 0,
@@ -648,7 +665,7 @@ async function readyEntityForce(options: Readonly<{
             uuid: identity,
             deployment: request.deployment,
             scenario: request.scenario,
-            initialStateProfileId: request.initialStateProfileId ?? 'pristine-non-mek-v1',
+            initialStateProfileId: request.initialStateProfileId ?? 'pristine-non-mek',
         })));
     const dialogs = jasmine.createSpyObj<DialogsService>('DialogsService', ['showNotice']);
     dialogs.showNotice.and.resolveTo();
@@ -721,13 +738,12 @@ async function readyEntityC3Force(
         uuid: identity,
         deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
-        initialStateProfileId: 'pristine-non-mek-v1',
+        initialStateProfileId: 'pristine-non-mek',
     });
     const first = create(firstId).serialize();
     const second = create(secondId).serialize();
     const forceId = asForceId('force:ready-entity-c3');
     const cbt: SerializedCBTForceV2 = {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
@@ -736,7 +752,6 @@ async function readyEntityC3Force(
             { instanceId: secondId, stateRevision: second.stateRevision, unit: second },
         ],
         roster: {
-            schemaVersion: 1,
             groups: [{
                 groupId: 'group:entity-c3',
                 order: 0,
@@ -809,7 +824,6 @@ async function readyC3Force(owned = true): Promise<{
     const emergencyId = 'unit:c3-force-emergency';
     const memberId = 'unit:c3-force-member';
     const initializeOptions = {
-        initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: 'core-2026' as const },
@@ -856,13 +870,11 @@ async function readyC3Force(owned = true): Promise<{
         return { instanceId, stateRevision: unit.stateRevision, unit };
     });
     const cbt: SerializedCBTForceV2 = {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
         units,
         roster: {
-            schemaVersion: 1,
             groups: [{
                 groupId: 'group:c3-runtime',
                 order: 0,
@@ -1708,7 +1720,7 @@ describe('CBTForce V2 encounter persistence', () => {
         const shutdown = await force.dispatchUnitCommand(first.instanceId, {
             type: 'declare-mek-action',
 
-            action: { schemaVersion: 1, kind: 'shutdown' },
+            action: { kind: 'shutdown' },
         });
         expect(shutdown.accepted).toBeTrue();
         serialize.calls.reset();
@@ -1718,7 +1730,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(serializationCount(second)).toBe(0);
         expect(Number(changed.cbt!.forceRevision)).toBe(Number(unchanged.cbt!.forceRevision) + 1);
         expect(mekRuntimeSnapshot(await reload(changed), first.instanceId).state.movementPsr.action)
-            .toEqual({ schemaVersion: 1, kind: 'shutdown' });
+            .toEqual({ kind: 'shutdown' });
     });
 
     it('does not copy the session-only target registry when cloning a force', async () => {
@@ -2533,7 +2545,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(enabledMovement.actions.find(action => action.kind === 'sprint')).toEqual(
             jasmine.objectContaining({ legal: true, ordinaryMaximumMp: 10 }),
         );
-        expect(enabled.query.heatProjection('manual').kind).toBe('supported');
+        expect(enabled.query.heatProjection().kind).toBe('supported');
         expect('scenarioRules' in (await force.serializeForPersistence()).cbt!).toBeFalse();
         const revision = force.serialize().cbt!.forceRevision;
         expect(await force.rebindScenarioRules(scenarioRules(CORE_2026_RULESET, { sprinting: true })))
@@ -2544,7 +2556,6 @@ describe('CBTForce V2 encounter persistence', () => {
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: 1,
                 mode: 'sprint',
                 distance: 10,
                 boosterComponentIds: [],
@@ -2553,7 +2564,7 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(declared.accepted).toBeTrue();
         const sprinting = mekRuntimeSnapshot(force, instanceId);
         expect(sprinting.state.movementPsr.movement?.mode).toBe('sprint');
-        const sprintHeat = sprinting.query.heatProjection('manual');
+        const sprintHeat = sprinting.query.heatProjection();
         expect(sprintHeat.kind).toBe('supported');
         if (sprintHeat.kind === 'supported') {
             expect(sprintHeat.projection.sources.find(source => source.id === 'movement')?.value).toBe(3);
@@ -2814,17 +2825,21 @@ describe('CBTForce V2 encounter persistence', () => {
 
         expect((await record(2, 'velocity', 4)).changed).toBeTrue();
         expect((await record(1, 'altitude', 6)).changed).toBeTrue();
-        // The record sheet has twenty turn columns; values outside them are left unapplied.
-        expect((await record(21, 'velocity', 1)).changed).toBeFalse();
+        // Past turn 20 the sheet's tables move on, so later turns are recorded too; there is no turn 0.
+        expect((await record(21, 'velocity', 1)).changed).toBeTrue();
+        expect((await record(0, 'velocity', 1)).changed).toBeFalse();
         expect(force.getRuntimeHistory().some(row =>
             row.event.message[0] === RUNTIME_HISTORY_MESSAGE.VELOCITY_RECORD_CHANGED)).toBeTrue();
         expect((await record(2, 'velocity', null)).changed).toBeTrue();
-        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord)
-            .toEqual([{ turn: 1, field: 'altitude', value: 6 }]);
+        expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([
+            { turn: 1, field: 'altitude', value: 6 },
+            { turn: 21, field: 'velocity', value: 1 },
+        ]);
         expect((await force.undoRuntimeCommand()).accepted).toBeTrue();
         expect(force.getNonMekRecordSheetSnapshot(instanceId)!.velocityRecord).toEqual([
             { turn: 1, field: 'altitude', value: 6 },
             { turn: 2, field: 'velocity', value: 4 },
+            { turn: 21, field: 'velocity', value: 1 },
         ]);
 
         const saved = await force.serializeForPersistence() as SerializedCBTForce;
@@ -3074,7 +3089,7 @@ describe('CBTForce V2 encounter persistence', () => {
             return force.dispatchUnitCommand(instanceId, {
                 type: 'declare-mek-action',
 
-                action: { schemaVersion: 1, kind },
+                action: { kind },
             });
         };
 
@@ -3100,7 +3115,7 @@ describe('CBTForce V2 encounter persistence', () => {
             return force.dispatchUnitCommand(instanceId, {
                 type: 'declare-mek-action',
 
-                action: { schemaVersion: 1, kind },
+                action: { kind },
             });
         };
 
@@ -3174,7 +3189,7 @@ describe('CBTForce V2 encounter persistence', () => {
             airborne: null,
             movement: null,
             weaponsHeat: 0,
-            heatSettled: false,
+            settledHeat: jasmine.objectContaining({ size: 0 }),
             cover: null,
             spotting: false,
             phaseStateChanged: false,
@@ -3185,6 +3200,24 @@ describe('CBTForce V2 encounter persistence', () => {
         expect(isSerializedNonMekUnit(entity.unit)
             ? entity.unit.turn?.turnCounter
             : null).toBe(1);
+    });
+
+    it('logs each unit\'s settled heat when End Turn ends the turn for all units', async () => {
+        const { force } = await readyCloneForce();
+        const first = force.members()[0];
+        expect((await force.dispatchUnitCommand(first.id, { type: 'set-pending-heat', heat: 6 })).changed).toBeTrue();
+
+        expect((await force.endTurnForAllUnits()).accepted).toBeTrue();
+        expect(force.getUnitSnapshot(first.id)!.state.heat.current).toBe(6);
+        const ended = force.getRuntimeHistory().filter(row => row.event.message[0] === RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED
+            || row.event.message[0] === RUNTIME_HISTORY_MESSAGE.TURN_ENDED);
+        // NEXT set, then the heat End Turn settled; the turn ending is logged on each unit it changed.
+        expect(JSON.stringify(ended.map(row => [...row.event.message]))).toBe(JSON.stringify([
+            [RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, first.id, 1, 0, 6],
+            [RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, first.id, 0, 0, 6],
+            [RUNTIME_HISTORY_MESSAGE.TURN_ENDED, first.id],
+            [RUNTIME_HISTORY_MESSAGE.TURN_ENDED, force.members()[1].id],
+        ]));
     });
 
     it('persists real-phase step progress and restarts it when the unit ends its turn', async () => {
@@ -3271,6 +3304,24 @@ describe('CBTForce V2 encounter persistence', () => {
         const restored = await reload(decodeForceFromStorage(encodeForceForStorage(saved)) as SerializedCBTForce);
         expect(restored.getUnitSnapshot(instanceId)!.state.turn).toEqual(
             jasmine.objectContaining({ consciousnessRollsDue: [pilotId] }));
+    });
+
+    it("keeps a flying vehicle's Elevation and erratic manoeuvres through the compact codec", async () => {
+        const entity = new TestTankEntity();
+        entity.originalWalkMP.set(4);
+        const { force, instanceId, reload } = await readyEntityForce({ supportsAirborne: true, entity });
+        const roundTrip = async () => entityRuntimeSnapshot(await reload(decodeForceFromStorage(
+            encodeForceForStorage(await force.serializeForPersistence() as SerializedCBTForce)) as SerializedCBTForce),
+        instanceId).state;
+        expect((await force.dispatchUnitCommand(instanceId, {
+            type: 'set-movement', movement: { mode: 'run', distance: 3, boosterComponentIds: [], erratic: true },
+        })).accepted).toBeTrue();
+        expect((await roundTrip()).turn.movement).toEqual(jasmine.objectContaining({ mode: 'run', distance: 3, erratic: true }));
+        expect((await force.dispatchUnitCommand(instanceId, { type: 'set-elevation', elevation: 2 })).accepted).toBeTrue();
+        const restored = await roundTrip();
+        expect([restored.elevationRecord, restored.turn.airborne]).toEqual([[{ turn: 1, value: 2 }], true]);
+        expect(force.getRuntimeHistory().map(row => formatRuntimeHistoryMessage(row.event.message, { unitLabel: () => 'WiGE',
+            omitUnitLabel: true }))).toContain('Elevation 0 → 2');
     });
 
     it('folds movement implicitly cleared by an Entity airborne change', async () => {

@@ -1,5 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { elevationAt } from '../elevation-record.model';
 import { type CBTMekUnit } from './cbt-unit';
 import { systemDamagePresentation } from './system-damage-presentation';
 import type { CBTUnitCommand } from './unit-command';
@@ -27,7 +28,8 @@ SystemDamageTrackId,
 import { getMekLocationLabel } from '../entity/types/mek';
 import { isInfantryEntity } from '../entity/utils/entity-type-guards';
 import { platoonAttackLabel } from '../rules/conventional-infantry-combat-rules';
-import { outsideHeatThisTurn } from './cbt-unit-runtime';
+import { nextHeat } from './cbt-unit-runtime';
+import { outsideHeatThisTurn } from '../rules/inferno-rules';
 
 import { CrewMember,type CrewMemberRuntimeState } from '../crew-member.model';
 import { serializeUnitCover } from '../unit-cover.model';
@@ -142,11 +144,7 @@ export function heatHistory(
     if (before.current !== after.current) {
         return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 0, before.current, after.current);
     }
-    const beforeTarget = before.pendingOverride ?? before.current;
-    const afterTarget = after.pendingOverride ?? after.current;
-    if (beforeTarget !== afterTarget) {
-        return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 1, beforeTarget, afterTarget);
-    }
+    // Switching heat sinks moves a NEXT that follows the calculated heat; the switch is what the player did.
     if (before.heatsinksOff !== after.heatsinksOff) {
         return unitHistory(
             RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED,
@@ -156,7 +154,21 @@ export function heatHistory(
             after.heatsinksOff,
         );
     }
+    const beforeTarget = nextHeat(before);
+    const afterTarget = nextHeat(after);
+    if (beforeTarget !== afterTarget) {
+        return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 1, beforeTarget, afterTarget);
+    }
     return undefined;
+}
+
+/** The heat End Turn settled, logged beside the turn ending; none when it left the heat where it was. */
+export function endTurnHeatHistory(
+    instanceId: string,
+    before: Parameters<typeof heatHistory>[1],
+    after: Parameters<typeof heatHistory>[2],
+): RuntimeHistoryEventInput | undefined {
+    return before.current === after.current ? undefined : heatHistory(instanceId, before, after);
 }
 
 function mekLocationConditionHistoryValue(
@@ -362,8 +374,13 @@ export function unitCommandHistory(
     const before = beforeSnapshot.state;
     const after = afterSnapshot.state;
     if (hasNonMekRuntime(beforeSnapshot) && hasNonMekRuntime(afterSnapshot)
-        && (command.type === 'set-movement' || command.type === 'set-airborne')) {
+        && (command.type === 'set-movement' || command.type === 'set-airborne' || command.type === 'set-elevation')) {
         const events: RuntimeHistoryEventInput[] = [];
+        const beforeElevation = elevationAt(beforeSnapshot.state.elevationRecord, beforeSnapshot.state.turn.turnCounter + 1);
+        const afterElevation = elevationAt(afterSnapshot.state.elevationRecord, afterSnapshot.state.turn.turnCounter + 1);
+        if (beforeElevation !== afterElevation) {
+            events.push(unitHistory(RUNTIME_HISTORY_MESSAGE.ELEVATION_CHANGED, instanceId, beforeElevation, afterElevation));
+        }
         const beforeMovement = beforeSnapshot.state.turn.movement;
         const afterMovement = afterSnapshot.state.turn.movement;
         if (beforeMovement?.mode !== afterMovement?.mode
@@ -423,11 +440,16 @@ export function unitCommandHistory(
         case 'set-pending-fall-consequences':
         case 'set-consciousness-rolls-due':
         case 'set-control-recovery':
+        // The attack that began or ended the swarm is what the log records.
+        case 'set-swarming':
             return undefined;
         case 'cancel-pending':
             return unitHistory(RUNTIME_HISTORY_MESSAGE.PHASE_DISCARDED, instanceId);
-        case 'end-turn':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.TURN_ENDED, instanceId);
+        case 'end-turn': {
+            const ended = unitHistory(RUNTIME_HISTORY_MESSAGE.TURN_ENDED, instanceId);
+            const heat = endTurnHeatHistory(instanceId, before.heat, after.heat);
+            return heat === undefined ? ended : [heat, ended];
+        }
         case 'set-condition':
             return unitHistory(
                 RUNTIME_HISTORY_MESSAGE.CONDITION_CHANGED,
@@ -511,9 +533,14 @@ export function unitCommandHistory(
                 ? mekTurnStateHistory(instanceId, beforeSnapshot.state, afterSnapshot.state) : undefined;
         case 'add-inferno-missiles':
             return undefined;
-        case 'add-outside-heat':
-            return unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 3,
-                outsideHeatThisTurn(beforeSnapshot.state), outsideHeatThisTurn(afterSnapshot.state));
+        case 'add-outside-heat': {
+            // Pending heat past the turn's cap changes nothing the player reads.
+            const before = outsideHeatThisTurn(beforeSnapshot.state);
+            const after = outsideHeatThisTurn(afterSnapshot.state);
+            return before === after
+                ? undefined
+                : unitHistory(RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, instanceId, 3, before, after);
+        }
         default:
             return unitHistory(RUNTIME_HISTORY_MESSAGE.UNIT_ACTION, instanceId, command.type);
     }

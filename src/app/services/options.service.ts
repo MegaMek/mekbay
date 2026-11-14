@@ -20,6 +20,7 @@ import { PRINT_OPTION_VALUES, type PrintAllOptions } from '../models/print-optio
 import { GameSystem } from '../models/common.model';
 import { isCBTRuleset } from '../models/cbt-ruleset.model';
 import type { HeatAutomationPolicy } from '../models/runtime/cbt-unit-runtime';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../models/runtime/bound-optional-rules';
 
 const DEFAULT_OPTIONS: Options = {
   canvasInput: 'all',
@@ -77,12 +78,10 @@ const DEFAULT_OPTIONS: Options = {
   CBTOptionalRules: {
     quirks: true,
     floatingCriticals: false,
-    forcedWithdrawal: true,
     extremeRange: false,
-    sprinting: false,
-    hotLoadedAmmo: false,
     allowMixedTechBaseAmmo: false,
     enhancedFlamers: false,
+    ...BOUND_OPTIONAL_RULE_DEFAULTS,
   },
   allowMultipleActiveSheets: false,
   CBTRules: 'core-2026',
@@ -460,6 +459,14 @@ export class OptionsService {
 /** End-of-turn heat is resolved automatically only when the heat automation is enabled. */
 export function heatAutomationPolicy(options: Pick<OptionsService, 'cbtAutomationMode'>): HeatAutomationPolicy {
   return options.cbtAutomationMode('heatAndDissipationResolution') === 'yes' ? 'automatic' : 'manual';
+}
+
+/**
+ * End Turn calculates the turn's heat (Yes or Ask): the heat scale shows where it lands, and a NEXT set meanwhile follows
+ * the calculation. With heat resolution off, the heat changes only where the player sets NEXT.
+ */
+export function endTurnCalculatesHeat(options: Pick<OptionsService, 'cbtAutomationMode'>): boolean {
+  return options.cbtAutomationMode('heatAndDissipationResolution') !== 'no';
 }
 
 /** The full phase system: units advance through the shared real turn/phase clock (`GameTurnService`). */

@@ -10,7 +10,7 @@ import { encodeUnitImage } from '../utils/unit-artwork.util';
 import type { SavedCustomUnit } from '../models/custom-unit.model';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import { encodeNativeEntity } from '../models/entity/write-entity';
-import { asForceId, emptyRuntimeHistory, CBT_FORCE_PERSISTENCE_SCHEMA_VERSION } from '../models/runtime/persistence-v2';
+import { asForceId, emptyRuntimeHistory } from '../models/runtime/persistence-v2';
 import { GameSystem } from '../models/common.model';
 import type { SerializedCBTForce } from '../models/force-serialization';
 import { nativeSourceHashCanary } from '../models/source-hash-canary';
@@ -91,9 +91,9 @@ describe('device-local unit artwork storage', () => {
                 people: positions.map((position, i) => ({ id: `person:${i}`, name: position.name, gunnery: position.gunnery, piloting: position.piloting })),
                 assignments: positions.map((position, i) => ({ unitId: unit.instanceId, positionId: position.positionId, personId: `person:${i}` })),
             },
-            cbt: { schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION, forceId, forceRevision: unit.stateRevision, history: emptyRuntimeHistory(),
+            cbt: { forceId, forceRevision: unit.stateRevision, history: emptyRuntimeHistory(),
                 units: [{ instanceId: unit.instanceId, stateRevision: unit.stateRevision, unit }],
-                roster: { schemaVersion: 1, groups: [{ groupId: 'group:artwork', order: 0, members: [{ instanceId: unit.instanceId, order: 0 }] }] },
+                roster: { groups: [{ groupId: 'group:artwork', order: 0, members: [{ instanceId: unit.instanceId, order: 0 }] }] },
                 encounter: { networks: [] },
             },
         };

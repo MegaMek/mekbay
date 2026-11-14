@@ -11,6 +11,7 @@ import type { UnitSummary } from '../models/unit-summary.model';
 import { GameSystem } from '../models/common.model';
 import type { ASSerializedState, SerializedForce } from '../models/force-serialization';
 import { ASForce } from '../models/as-force.model';
+import { DialogsService } from './dialogs.service';
 import { DataService } from './data.service';
 import { ForcePersistenceService } from './force-persistence.service';
 import { DbService } from './db.service';
@@ -41,7 +42,6 @@ import { EquipmentRegistry } from '../models/equipment-lookup';
 import { MiscEquipment } from '../models/equipment.model';
 import { PresentationCatalogSyncService } from './catalogs/presentation-catalog-sync.service';
 import { OptionsService } from './options.service';
-import { CBT_FORCE_PERSISTENCE_SCHEMA_VERSION } from '../models/runtime/persistence-v2';
 import { encodeForceForStorage } from '../models/runtime/force-storage-codec';
 
 function createUnit(name: string): UnitSummary {
@@ -1230,6 +1230,42 @@ describe('DataService', () => {
         expect(asForce?.units()[0].getSummary().name).toBe('Atlas');
     });
 
+    it('opens a save best effort: unknown fields dropped, an unreadable unit reset with a notice', async () => {
+        const atlas = createEmptyUnit({
+            name: 'Atlas',
+            uuid: '019f6767-0dcb-7bb8-992f-aef08202f5e2',
+        });
+        unitRuntimeServiceMock.getUnitByUuid.and.returnValue(atlas);
+        const saved = createSerializedForceForTest({
+            instanceId: 'force-best-effort-as',
+            name: 'Best Effort AS',
+            groups: [{
+                id: 'group-best-effort-as',
+                name: 'Lance',
+                units: [{
+                    id: 'unit-best-effort-as',
+                    uuid: atlas.uuid,
+                    state: createASStateForTest({ heat: [2, 0] }),
+                }],
+            }],
+        });
+        const stored = structuredClone(encodeForceForStorage(saved)) as Record<string, unknown>;
+        stored['retired'] = true;
+        const unitState = (stored['units'] as Record<string, Record<string, unknown>>[])[0]!['state']!;
+        unitState['h'] = 'hot';
+        dbServiceMock.getForce.and.resolveTo(null);
+        wsServiceMock.sendAndWaitForResponse.and.resolveTo({ data: stored });
+        spyOn<any>(forcePersistence, 'canUseCloud').and.resolveTo({} as WebSocket);
+        const showNotice = spyOn(TestBed.inject(DialogsService), 'showNotice').and.resolveTo();
+
+        const loaded = await forcePersistence.getForce(saved.instanceId);
+
+        const asForce = loaded instanceof ASForce ? loaded : null;
+        expect(asForce?.units().map(unit => unit.getSummary().name)).toEqual(['Atlas']);
+        expect(showNotice).toHaveBeenCalledOnceWith(
+            '• 1 unit had unreadable saved state and was reset to pristine.', 'Save Loaded with Warnings');
+    });
+
     it('prefers current storage over V1 when equal-time local and cloud copies compete', async () => {
         const timestamp = '2026-04-05T00:00:00Z';
         const legacy: SerializedForce = {
@@ -2209,9 +2245,7 @@ describe('DataService', () => {
 
         await expectAsync(forcePersistence.saveSerializedForceToLocalStorage({
             ...base,
-            cbt: {
-                schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1,
-            } as any,
+            cbt: {} as any,
         })).toBeRejected();
         expect(dbServiceMock.saveForce).toHaveBeenCalledTimes(1);
     });

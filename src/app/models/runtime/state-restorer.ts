@@ -46,6 +46,7 @@ import {
 import { isMekLocationPhysicallyDestroyed } from './mek-location-state-kernel';
 import {
     canonicalizeLegacyMekTurnStateV1,
+    legacyHeatPointsV1,
     parseLegacyMekTurnStateV1,
     type LegacyMekTurnStateV1,
 } from './legacy-mek-turn-state-v1';
@@ -83,10 +84,10 @@ import {
     mekIntrinsicMagazine,
 } from './mek-ammo';
 import type { CBTRuleset } from '../cbt-ruleset.model';
-import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
 import {
     canonicalizeMekHeatStateV2,
     MAX_MEK_HEATSINKS_OFF_V2,
+    rekeyMekHeatSourceMap,
 } from './mek-heat-state-v2';
 import {
     C3EM_MODE_STATE_KEY,
@@ -428,9 +429,9 @@ export async function restoreLegacyUnitState(
         new Set(['current', 'previous', 'next', 'heatsinksOff']),
     );
     if (rawHeat) {
-        const current = legacyHeatValue(rawHeat['current']);
-        const previous = legacyHeatValue(rawHeat['previous']);
-        const pendingOverride = legacyHeatValue(rawHeat['next']);
+        const current = legacyHeatPointsV1(rawHeat['current']);
+        const previous = legacyHeatPointsV1(rawHeat['previous']);
+        const pendingOverride = legacyHeatPointsV1(rawHeat['next']);
         const parsedHeatsinksOff = nonnegativeInteger(rawHeat['heatsinksOff']);
         const heatsinksOff = parsedHeatsinksOff !== null
             && parsedHeatsinksOff <= MAX_MEK_HEATSINKS_OFF_V2
@@ -475,6 +476,7 @@ export async function restoreLegacyUnitState(
         locationConditions: new ImmutableIndex([...pendingLocationConditions]
             .map(([locationId, values]) => [locationId, new ImmutableIndex(values)] as const)),
     });
+    const turn = projectLegacyMekTurnStateV1(translatedTurn, warnings);
     const state = freezeRuntimeState({
         ...initialized.state,
         explicitlyDestroyed,
@@ -489,84 +491,27 @@ export async function restoreLegacyUnitState(
         movementPsr: movementPsr.kind === 'supported'
             ? movementPsr.state
             : createPristineMekMovementPsrStateV2(),
-        turn: projectLegacyMekTurnStateV1(translatedTurn),
+        turn,
         pendingCombat,
     });
     return { state, warnings: Object.freeze([...new Set(warnings)]) };
 }
 
 /**
- * Legacy source acknowledgements embed source-owned runtime IDs. Restoration already maps the
- * corresponding critical/inventory facts through idTranslation, so the acknowledgement must
- * follow the same exact mapping or a settled source would reopen after source revision drift.
- * Unknown IDs are deliberately retained verbatim; this helper never guesses by heat value.
+ * V1 acknowledgements are keyed by heat source, and a source named for a component embeds its runtime ID
+ * (`rekeyMekHeatSourceId`). Restoration maps those through idTranslation, as it maps the component's own facts;
+ * unknown IDs stay as saved, and only the heat each signature leads with is kept (`legacyTurnHeatLedgerV1`).
  */
 function translateLegacyHeatAcknowledgementIds(
     turn: LegacyMekTurnStateV1,
     unit: MekRestoreUnit,
     idTranslation: Readonly<Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>>,
 ): LegacyMekTurnStateV1 {
-    if (turn.acknowledgedHeatSources.size === 0) return turn;
-    const original = turn.acknowledgedHeatSources;
-    const translated = new Map<string, string>();
-    let changed = false;
-    for (const [sourceId, signature] of original) {
-        const translatedSourceId = translatePpcHeatSourceId(sourceId, unit, idTranslation);
-        const translatedSignature = translateLegacyHeatSourceSignature(
-            sourceId,
-            signature,
-            unit,
-            idTranslation,
-        );
-        // Preserve both witnesses if malformed legacy input aliases two old IDs to one current ID.
-        const targetId = translatedSourceId !== sourceId
-            && (original.has(translatedSourceId) || translated.has(translatedSourceId))
-            ? sourceId
-            : translatedSourceId;
-        translated.set(targetId, translatedSignature);
-        changed ||= targetId !== sourceId || translatedSignature !== signature;
-    }
-    return changed
-        ? canonicalizeLegacyMekTurnStateV1({ ...turn, acknowledgedHeatSources: translated })
-        : turn;
-}
-
-function translatePpcHeatSourceId(
-    sourceId: string,
-    unit: MekRestoreUnit,
-    idTranslation: Readonly<Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>>,
-): string {
-    const prefix = 'ppc-capacitor:';
-    if (!sourceId.startsWith(prefix)) return sourceId;
-    const savedWeaponId = sourceId.slice(prefix.length);
-    const currentWeaponId = translatedComponentId(savedWeaponId, unit, idTranslation);
-    return currentWeaponId === savedWeaponId ? sourceId : `${prefix}${currentWeaponId}`;
-}
-
-function translateLegacyHeatSourceSignature(
-    sourceId: string,
-    signature: string,
-    unit: MekRestoreUnit,
-    idTranslation: Readonly<Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>>,
-): string {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(signature);
-    } catch {
-        return signature;
-    }
-    if (!Array.isArray(parsed) || parsed.length !== 3) return signature;
-    const translated = [...parsed];
-    if (sourceId.startsWith('ppc-capacitor:') && typeof translated[1] === 'string') {
-        translated[1] = translatedComponentId(translated[1], unit, idTranslation);
-    }
-    if (sourceId === 'damaged-engine' && typeof translated[2] === 'string') {
-        translated[2] = translated[2].split('|')
-            .map(savedSlotId => translatedCriticalSlotId(savedSlotId, unit, idTranslation))
-            .join('|');
-    }
-    const result = JSON.stringify(translated);
-    return result === signature ? signature : result;
+    const acknowledgedHeatSources = rekeyMekHeatSourceMap(turn.acknowledgedHeatSources,
+        componentId => translatedComponentId(componentId, unit, idTranslation));
+    return acknowledgedHeatSources === null
+        ? turn
+        : canonicalizeLegacyMekTurnStateV1({ ...turn, acknowledgedHeatSources });
 }
 
 function translatedComponentId(
@@ -577,18 +522,6 @@ function translatedComponentId(
     if (unit.index.components.has(savedId as ComponentId)) return savedId;
     const translated = idTranslation[savedId];
     return translated !== undefined && unit.index.components.has(translated as ComponentId)
-        ? translated
-        : savedId;
-}
-
-function translatedCriticalSlotId(
-    savedId: string,
-    unit: MekRestoreUnit,
-    idTranslation: Readonly<Record<string, ComponentId | CriticalSlotId | LocationId | ArmorFaceId>>,
-): string {
-    if (unit.index.slots.has(savedId as CriticalSlotId)) return savedId;
-    const translated = idTranslation[savedId];
-    return translated !== undefined && unit.index.slots.has(translated as CriticalSlotId)
         ? translated
         : savedId;
 }
@@ -1399,12 +1332,4 @@ function integer(value: JsonValue | undefined): number | null {
 function nonnegativeInteger(value: JsonValue | undefined): number | null {
     const result = integer(value);
     return result !== null && result >= 0 ? result : null;
-}
-
-/** V1 accepted any finite heat; runtime heat is a whole number, so a fraction rounds to the nearest point. */
-function legacyHeatValue(value: JsonValue | undefined): number | null {
-    return typeof value === 'number' && Number.isFinite(value)
-        && value >= 0 && Math.round(value) <= MAX_HEAT_VALUE
-        ? Math.round(value) || 0
-        : null;
 }

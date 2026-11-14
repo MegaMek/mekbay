@@ -165,7 +165,7 @@ function novaHeat(fixture: Fixture, componentId: ComponentId): number | undefine
 }
 
 function novaHeatSource(fixture: Fixture, componentId: ComponentId) {
-    const result = fixture.instance.query().heatProjection('manual');
+    const result = fixture.instance.query().heatProjection();
     expect(result.kind).toBe('supported');
     if (result.kind !== 'supported') return undefined;
     return result.projection.committedSources.find(source =>

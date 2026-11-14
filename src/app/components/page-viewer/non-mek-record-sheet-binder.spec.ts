@@ -200,7 +200,7 @@ describe('bindNonMekRecordSheet', () => {
             }));
             const unit = createNonMekRuntimeForTest('boosted-vehicle-sheet', {
                 entity: uuid, ruleset,
-                initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+                initialStateProfile: { profileId: 'pristine-non-mek' },
             }, entity, ruleset);
             const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), ruleset, unit.query(),
                 0, 0), editContext: { owner: unit, state: unit.snapshot() } });
@@ -296,6 +296,11 @@ describe('bindNonMekRecordSheet', () => {
         // A secondary click reaches the runtime too, which clears the cell.
         svg.querySelector('.velocityCell[data-turn="12"][data-field="effectiveVelocity"]')!
             .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+        // Turn 1: the first column is highlighted.
+        const highlighted = () => [...svg.querySelectorAll<SVGElement>('.velocityCell.currentTurn, .velocityTurnCell.currentTurn')]
+            .map(cell => cell.dataset['turn']);
+        expect(new Set(highlighted())).toEqual(new Set(['1']));
+        expect(highlighted().length).toBe(5);
         expect(interactions).toEqual([
             { kind: 'velocity-record', turn: 12, field: 'effectiveVelocity', context: snapshot.editContext },
             { kind: 'velocity-record', turn: 12, field: 'effectiveVelocity', context: snapshot.editContext },
@@ -303,6 +308,32 @@ describe('bindNonMekRecordSheet', () => {
 
         binding.render({ ...snapshot, velocityRecord: [] });
         expect(value(3, 'velocity')).toBe('');
+
+        // Turn 25: the first table has moved on to turns 21-30, the second still shows 11-20.
+        binding.render({ ...snapshot, currentTurn: 25, velocityRecord: [
+            { turn: 5, field: 'altitude', value: 2 },
+            { turn: 25, field: 'altitude', value: 3 },
+            { turn: 12, field: 'altitude', value: 4 },
+        ] });
+        expect([...svg.querySelectorAll('.velocityTurn')].map(turn => turn.textContent))
+            .toEqual(['21', '22', '23', '24', '25', '26', '27', '28', '29', '30',
+                '11', '12', '13', '14', '15', '16', '17', '18', '19', '20']);
+        expect(value(25, 'altitude')).toBe('3');
+        expect(value(12, 'altitude')).toBe('4');
+        expect(value(5, 'altitude')).toBeUndefined();
+        expect(new Set(highlighted())).toEqual(new Set(['25']));
+        // Without phase/turn tracking nothing restarts the count at 1: the tables keep turns 1-20, none highlighted.
+        binding.render({ ...snapshot, currentTurn: 25, turnTracked: false });
+        expect(highlighted()).toEqual([]);
+        expect([...svg.querySelectorAll('.velocityTurn')].map(turn => turn.textContent))
+            .toEqual(Array.from({ length: 20 }, (_, index) => String(index + 1)));
+        binding.render({ ...snapshot, currentTurn: 25 });
+        interactions.length = 0;
+        svg.querySelector('.velocityCell[data-turn="25"][data-field="altitude"]')!
+            .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(interactions).toEqual([
+            { kind: 'velocity-record', turn: 25, field: 'altitude', context: snapshot.editContext },
+        ]);
         binding.destroy();
     });
 
@@ -847,6 +878,29 @@ describe('bindNonMekRecordSheet', () => {
         binding.destroy();
     });
 
+    it('strikes the disposable weapon note through once the weapon is fired', () => {
+        const host = document.createElement('div');
+        host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg">
+            <g id="infantryStrengthDisplay"></g>
+            <g class="disposableWeapon" data-mekbay-component-ids="law"><text>Disposable Weapon: LAW.</text></g>
+        </svg>`;
+        const svg = host.querySelector('svg') as SVGSVGElement;
+        const withLaw = (status: 'available' | 'destroyed'): NonMekRecordSheetSnapshot => Object.freeze({
+            ...soldierSnapshot(3),
+            components: Object.freeze([Object.freeze({
+                componentId: asComponentId('law'), equipmentId: 'InfantryLAW', label: 'LAW', sheetLocations: [],
+                status, previewStatus: status,
+            })]),
+        });
+        const binding = bindNonMekRecordSheet(svg, withLaw('available'));
+        const note = svg.querySelector('.disposableWeapon')!;
+
+        expect(note.classList.contains('used')).toBeFalse();
+        binding.render(withLaw('destroyed'));
+        expect(note.classList.contains('used')).toBeTrue();
+        binding.destroy();
+    });
+
     it('shows the permanent DSR modifier beside the driving skill', () => {
         const svg = stateSheet();
         const crewed = stateSnapshot(0);
@@ -1006,19 +1060,28 @@ describe('bindNonMekRecordSheet', () => {
         second.destroy();
     });
 
-    it('shows aerospace end-turn heat as the automatic projection bar or the manual target marker', () => {
+    it('draws a bar to where End Turn puts aerospace heat, and marks the calculation apart when that is NEXT', () => {
         const svg = heatSheet();
-        const projection = Object.freeze({ current: 5, calculated: 9, projected: 9, generated: 12, dissipated: 8, sources: [] });
-        const projected = (heatPolicy: NonMekRecordSheetSnapshot['heatPolicy']): NonMekRecordSheetSnapshot => Object.freeze({
-            ...heatSnapshot(),
-            heatPolicy,
-            heat: Object.freeze({ ...heatSnapshot().heat, pending: null, projection }),
-        });
-        const binding = bindNonMekRecordSheet(svg, projected('automatic'), () => undefined);
+        const projection = Object.freeze({ current: 5, calculated: 9, projected: 9, generated: 12, dissipated: 8,
+            dissipationBalance: 0, sources: [] });
+        const projected = (endTurnCalculatesHeat: boolean, pending: number | null = null): NonMekRecordSheetSnapshot =>
+            Object.freeze({
+                ...heatSnapshot(),
+                endTurnCalculatesHeat,
+                heat: Object.freeze({ ...heatSnapshot().heat, pending, projection }),
+            });
+        // Heat resolution Yes or Ask: the bar runs to the calculation, which needs no marker of its own.
+        const binding = bindNonMekRecordSheet(svg, projected(true), () => undefined);
         expect(svg.querySelector('#heat-projection-path')).not.toBeNull();
         expect(svg.querySelector('#heat-projection-target-marker')).toBeNull();
 
-        binding.render(projected('manual'));
+        // With NEXT set, the bar runs to NEXT and the calculation keeps its marker.
+        binding.render(projected(true, 12));
+        expect(svg.querySelector('#heat-projection-path')).not.toBeNull();
+        expect(svg.querySelector('#heat-projection-target-marker')).not.toBeNull();
+
+        // Heat resolution off: no bar, the calculation as a suggestion.
+        binding.render(projected(false));
         expect(svg.querySelector('#heat-projection-path')).toBeNull();
         expect(svg.querySelector('#heat-projection-target-marker')?.getAttribute('fill')).toBe('#d12020');
         binding.destroy();
@@ -1103,7 +1166,7 @@ describe('bindNonMekRecordSheet', () => {
                 scenario: { id: 'megamek', options: { hotLoadedAmmo: true } }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
             const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
                 0, 0), editContext: { owner: unit, state: unit.snapshot() } });
-            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), queryNonMekRuntime({ ...unit.mechanics(), rules: { ...unit.mechanics().rules, hotLoadedAmmo: enabled } }, unit.snapshot()), emptyCBTEncounterSnapshot());
+            const panel = (enabled = true) => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), queryNonMekRuntime({ ...unit.mechanics(), rules: { ...unit.mechanics().rules, hotLoadedAmmo: enabled } }, unit.snapshot()), emptyCBTEncounterSnapshot(), {});
             const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare' });
             const row = svg.querySelector(`.inventoryEntry[data-mekbay-component-ids="${weaponId}"]`)!;
             const values = ammoType === 'LRM' ? row : row.querySelector('.alternativeMode')!;
@@ -1163,7 +1226,7 @@ describe('bindNonMekRecordSheet', () => {
             scenario: { id: 'megamek', options: {} }, deployment: { id: 'default' }, initialStateProfileId: 'pristine' });
         const recordSheet = () => ({ ...projectNonMekRecordSheet(entity, unit.getIndex(), unit.snapshot(), unit.ruleset(), unit.query(),
             0, 0), editContext: { owner: unit, state: unit.snapshot() } });
-        const panel = () => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), unit.query(), emptyCBTEncounterSnapshot());
+        const panel = () => projectNonMekEquipmentPanel(entity, unit.getIndex(), unit.ruleset(), unit.snapshot(), unit.query(), emptyCBTEncounterSnapshot(), {});
         const svg = await RecordSheetSvgGenerator.generate(entity, { ruleset: 'total-warfare', groupWeapons: true });
         const interactions: RecordSheetInteraction[] = [];
         const binding = bindNonMekRecordSheet(svg, recordSheet(), interaction => interactions.push(interaction), undefined, inventory(panel()));
@@ -1396,8 +1459,12 @@ function snapshot(remaining: number, destroyed = false): NonMekRecordSheetSnapsh
         crewStateDisplayKeys: Object.freeze([]),
         bombs: Object.freeze([]),
         velocityRecord: Object.freeze([]),
+        elevation: null,
+        elevationRecord: Object.freeze([]),
+        currentTurn: 1,
+        turnTracked: true,
         destroyed,
-        heatPolicy: 'automatic',
+        endTurnCalculatesHeat: true,
         heat: Object.freeze({
             tracked: false,
             current: 0,

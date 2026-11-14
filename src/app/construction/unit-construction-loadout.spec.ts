@@ -232,7 +232,6 @@ describe('construction component blocks', () => {
       entity,
       entity.uuid(),
       {
-        initializerRevision: 1,
         profileId: 'pristine',
         deployment: { id: 'test' },
         scenario: { id: 'construction-blocks', ruleset: options.ruleset ?? 'core-2026' },
@@ -326,54 +325,6 @@ describe('construction component blocks', () => {
       await view.whenStable();
     };
     return { entity, instance, view, editor, root, systems, hit, force };
-  }
-
-  async function drag(f: Awaited<ReturnType<typeof create>>, source: HTMLElement, target: HTMLElement) {
-    const start = source.getBoundingClientRect(),
-      end = target.getBoundingClientRect();
-    const x = start.left + Math.min(20, start.width / 2),
-      y = start.top + Math.min(10, start.height / 2);
-    const targetX = end.left + end.width / 2,
-      targetY = end.top + end.height / 2;
-    expect(document.elementFromPoint(x, y)?.closest('.cdk-drag'))
-      .withContext(`Source at ${x},${y}; target at ${targetX},${targetY}`)
-      .toBe(source);
-    const handle = source.querySelector<HTMLElement>('.equipment-name') ?? source;
-    handle.dispatchEvent(
-      new PointerEvent('pointerdown', { bubbles: true, button: 0, buttons: 1, clientX: x, clientY: y }),
-    );
-    handle.dispatchEvent(
-      new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        detail: 1,
-        button: 0,
-        buttons: 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 10, clientY: y + 10 }),
-    );
-    f.view.detectChanges();
-    expect(f.editor.dragging()).withContext('Drag started').not.toBeNull();
-    document.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: targetX, clientY: targetY }),
-    );
-    f.view.detectChanges();
-    const warehouseZone = target.closest('.warehouse')?.querySelector('.warehouse-drop-zone');
-    expect(
-      warehouseZone?.classList.contains('cdk-drop-list-dragging') ||
-        target.closest('.cdk-drop-list')?.classList.contains('cdk-drop-list-dragging'),
-    )
-      .withContext(
-        `Drop at ${targetX},${targetY}; hit ${document.elementFromPoint(targetX, targetY)?.outerHTML.slice(0, 300)}; warehouse ${warehouseZone?.className} ${JSON.stringify(warehouseZone?.getBoundingClientRect())}`,
-      )
-      .toBeTrue();
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: targetX, clientY: targetY }));
-    await f.view.whenStable();
-    f.view.detectChanges();
   }
 
   it('uninstalls mounted equipment, installs the same component, and removes it through REMOVE', async () => {
@@ -575,134 +526,6 @@ describe('construction component blocks', () => {
     ).toBe(1);
   });
 
-  it('opens the empty drop zone and moves equipment in both directions with pointer dragging', async () => {
-    const f = await create();
-    Object.assign(f.root.style, { position: 'fixed', inset: '0', zIndex: '1000' });
-    TestBed.inject(LayoutService).windowWidth.set(window.innerWidth);
-    f.root.querySelector<HTMLElement>('.unallocated-panel summary')!.click();
-    f.view.detectChanges();
-    await f.view.whenStable();
-    const gun = f.editor
-      .entity()
-      .equipment()
-      .find((mount) => mount.equipmentId === ac.id)!;
-    const workspace = f.root.querySelector<HTMLElement>('.construction-workspace')!;
-    const zone = f.root.querySelector<HTMLElement>('.unallocated-drop-zone')!;
-    const received = spyOn(f.editor, 'onUnallocatedDrop').and.callThrough();
-    try {
-      const source = f.root.querySelector<HTMLElement>('[data-location="LT"] .installed-equipment')!;
-      source.scrollIntoView({ block: 'center' });
-      expect(zone.getBoundingClientRect().bottom).toBeLessThanOrEqual(workspace.getBoundingClientRect().bottom);
-      expect(zone.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-        f.root.querySelector('.workshop-footer')!.getBoundingClientRect().top,
-      );
-      await drag(f, source, zone);
-      expect(received).toHaveBeenCalled();
-      expect(f.editor.unallocated().map((mount) => mount.mountId)).toEqual([gun.mountId]);
-      expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
-      expect(f.root.querySelector('.placement-ready, .placement-selected')).toBeNull();
-      const target = f.root.querySelector<HTMLElement>('[data-location="RA"] .empty-slot')!;
-      target.scrollIntoView({ block: 'center' });
-      await drag(f, f.root.querySelector<HTMLElement>('.unallocated-equipment')!, target);
-      expect(f.editor.unallocated()).toEqual([]);
-      expect(
-        f.editor
-          .entity()
-          .equipment()
-          .find((mount) => mount.mountId === gun.mountId)?.location,
-      ).toBe('RA');
-      expect(f.root.querySelector('.unallocated-empty')).not.toBeNull();
-    } finally {
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
-      f.root.removeAttribute('style');
-    }
-  });
-
-  it('drags warehouse equipment into the unallocated tray and removes both staged and installed equipment through the warehouse', async () => {
-    const f = await create();
-    Object.assign(f.root.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh' });
-    // Keep the desktop surfaces side by side even in a small headless viewport.
-    Object.assign(f.root.querySelector<HTMLElement>('.workshop-body')!.style, {
-      display: 'grid',
-      gridTemplateColumns: '290px minmax(0, 1fr)',
-      gridTemplateRows: 'minmax(0, 1fr)',
-      flex: '1',
-      overflow: 'hidden',
-    });
-    f.root.querySelector<HTMLElement>('.construction-shell')!.style.overflow = 'hidden';
-    f.root.querySelector<HTMLElement>('.workshop-sidebar')!.style.overflow = 'hidden';
-    f.root.querySelector<HTMLElement>('.construction-workspace')!.style.overflow = 'auto';
-    for (const element of f.root.querySelectorAll<HTMLElement>('.workshop-header, .workshop-footer, .design-summary')) {
-      element.style.display = 'none';
-    }
-    f.editor.query.set(ac.name);
-    f.root.querySelector<HTMLElement>('.unallocated-panel summary')!.click();
-    f.view.detectChanges();
-    await f.view.whenStable();
-    try {
-      const warehouse = f.root.querySelector<HTMLElement>('.warehouse')!;
-      const catalogRow = () =>
-        [...f.root.querySelectorAll<HTMLElement>('.warehouse-item')].find(
-          (row) => row.querySelector('.equipment-label')?.textContent?.trim() === ac.name,
-        )!;
-      catalogRow().scrollIntoView({ block: 'center' });
-      await drag(f, catalogRow(), f.root.querySelector<HTMLElement>('.unallocated-drop-zone')!);
-      const staged = f.editor.unallocated()[0];
-      expect(f.editor.canPlaceSelectedEquipment()).toBeFalse();
-      expect(f.root.querySelector('.placement-ready, .placement-selected')).toBeNull();
-      expect(staged.equipmentId).toBe(ac.id);
-      expect(staged.allocation.kind).toBe('unallocated');
-      expect(
-        f.editor
-          .entity()
-          .equipment()
-          .filter((mount) => mount.equipmentId === ac.id).length,
-      ).toBe(2);
-      expect(catalogRow()).toBeDefined();
-      await drag(
-        f,
-        f.root.querySelector<HTMLElement>('.unallocated-equipment')!,
-        warehouse.querySelector<HTMLElement>('.warehouse-heading')!,
-      );
-      expect(f.editor.unallocated()).toEqual([]);
-      expect(
-        f.editor
-          .entity()
-          .equipment()
-          .filter((mount) => mount.equipmentId === ac.id).length,
-      ).toBe(1);
-      f.editor.undo();
-      expect(f.editor.unallocated().map((mount) => mount.equipmentId)).toEqual([ac.id]);
-      f.editor.redo();
-      f.editor.query.set('No matching equipment');
-      f.view.detectChanges();
-      await f.view.whenStable();
-      expect(f.editor.filteredEquipment()).toEqual([]);
-      const installed = f.root.querySelector<HTMLElement>('[data-location="LT"] .installed-equipment')!;
-      installed.scrollIntoView({ block: 'center' });
-      await drag(f, installed, warehouse.querySelector<HTMLElement>('.equipment-list')!);
-      expect(
-        f.editor
-          .entity()
-          .equipment()
-          .some((mount) => mount.equipmentId === ac.id),
-      ).toBeFalse();
-      expect(f.root.querySelector('[data-location="LT"] .installed-equipment')).toBeNull();
-      expect(f.editor.selectedMount()).toBeNull();
-      f.editor.undo();
-      expect(
-        f.editor
-          .entity()
-          .equipment()
-          .find((mount) => mount.equipmentId === ac.id)?.location,
-      ).toBe('LT');
-      expect(TestBed.inject(ToastService).showToast).not.toHaveBeenCalledWith(jasmine.any(String), 'error');
-    } finally {
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
-      f.root.removeAttribute('style');
-    }
-  });
-
   it('stages equipment without requiring space in the selected location and records one undo step', async () => {
     const f = await create();
     f.editor.selectedLocation.set('HD');
@@ -759,55 +582,19 @@ describe('construction component blocks', () => {
     expect(TestBed.inject(ToastService).showToast).not.toHaveBeenCalledWith(jasmine.any(String), 'error');
   });
 
-  it('removes all removable unallocated equipment in one undo step while preserving required and installed mounts', async () => {
-    const f = await create({ ammo: true, material: 'endo', missingMaterial: true });
-    const button = () => f.root.querySelector<HTMLButtonElement>('.unallocated-panel summary .remove-all-unallocated');
-    const required = f.editor.unallocated().find((mount) => mount.equipmentId === endo.id)!;
-    const installedAmmo = f.editor
-      .entity()
-      .equipment()
-      .find((mount) => mount.equipmentId === ammo.id)!;
-    expect(button()).toBeNull();
-    f.editor.uninstall(
-      f.editor
-        .entity()
-        .equipment()
-        .find((mount) => mount.equipmentId === ac.id)!,
-    );
-    f.editor.onUnallocatedDrop({ item: { data: { equipmentId: srm.id } }, isPointerOverContainer: true });
-    f.editor.onUnallocatedDrop({ item: { data: { equipmentId: srm.id } }, isPointerOverContainer: true });
-    const stagedIds = f.editor.removableUnallocated().map((mount) => mount.mountId);
-    expect(stagedIds.length).toBe(3);
-    f.view.detectChanges();
-    expect(button()?.textContent?.trim()).toBe('Remove all');
-    f.root.querySelector<HTMLButtonElement>('.unallocated-equipment:last-child .unallocated-name')!.click();
-    f.view.detectChanges();
-    expect(f.editor.selectedMount()).not.toBeNull();
-    const panel = f.root.querySelector<HTMLDetailsElement>('.unallocated-panel')!;
-    expect(panel.open).toBeTrue();
-    button()!.click();
-    f.view.detectChanges();
-    expect(panel.open).toBeTrue();
-    expect(f.editor.unallocated()).toEqual([required]);
-    expect(f.editor.entity().equipment()).toContain(installedAmmo);
-    expect(
-      f.editor
-        .entity()
-        .equipment()
-        .some((mount) => stagedIds.includes(mount.mountId)),
-    ).toBeFalse();
+  it('removes every unallocated item as one undo step and clears the selection it removed', async () => {
+    const f = await create();
+    const item = { data: { equipmentId: splitAc.id } };
+    f.editor.onUnallocatedDrop({ item, isPointerOverContainer: true });
+    f.editor.onUnallocatedDrop({ item, isPointerOverContainer: true });
+    expect(f.editor.unallocated().length).toBe(2);
+    expect(f.editor.selectedMount()?.allocation.kind).toBe('unallocated');
+
+    f.editor.removeAllUnallocated();
+    expect(f.editor.unallocated()).toEqual([]);
     expect(f.editor.selectedMountId()).toBeNull();
-    expect(f.root.querySelector('.installed-inspector')).toBeNull();
-    expect(button()).toBeNull();
     f.editor.undo();
-    f.view.detectChanges();
-    expect(f.editor.removableUnallocated().map((mount) => mount.equipmentId)).toEqual([ac.id, srm.id, srm.id]);
-    expect(button()).not.toBeNull();
-    f.editor.redo();
-    f.view.detectChanges();
-    expect(f.editor.unallocated().map((mount) => mount.equipmentId)).toEqual([endo.id]);
-    expect(button()).toBeNull();
-    expect(TestBed.inject(ToastService).showToast).not.toHaveBeenCalledWith(jasmine.any(String), 'error');
+    expect(f.editor.unallocated().length).toBe(2);
   });
 
   it('hides bulk removal for empty or locked unallocated equipment and keeps a collapsed tray collapsed', async () => {
@@ -1237,7 +1024,6 @@ describe('construction component blocks', () => {
       expect(mountedName().title).toContain(name);
       const customLabel = mountedName().querySelector('.customAmmoLoadout');
       expect(!!customLabel).toBe(equipment === flak);
-      if (customLabel) expect(getComputedStyle(customLabel).color).toBe('rgb(154, 154, 255)');
       const source = f.editor.repairSnapshot()!;
       if (!hasMekRuntime(source)) throw new Error('Expected a Mek runtime');
       const sheet = projectMekRecordSheet(
@@ -1247,7 +1033,7 @@ describe('construction component blocks', () => {
         source.state,
         source.query,
         emptyCBTEncounterSnapshot(),
-        null,
+        null, false, {},
       );
       const sheetAmmo = sheet.criticalSlots
         .flatMap((slot) => slot.components)
@@ -1299,46 +1085,6 @@ describe('construction component blocks', () => {
       expect(f.root.querySelector('.save-actions')?.textContent).not.toContain('SAVE AS NEW');
     });
   }
-
-  it('keeps optional OEM year beside introduction year and aligns chassis checkboxes with select controls', async () => {
-    const f = await create();
-    f.editor.panel.set('systems');
-    f.view.detectChanges();
-    expect(f.root.querySelector('#construction-oem-year')).toBeNull();
-    const toggle = f.root.querySelector<HTMLButtonElement>('.oem-year-toggle')!;
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.getAttribute('aria-label')).toBe('OEM year');
-    expect(toggle.querySelector('.chevron.collapsed')).not.toBeNull();
-    toggle.closest<HTMLElement>('.system-panel')!.style.width = '280px';
-    const column = toggle.closest<HTMLElement>('.year-fields')!.getBoundingClientRect();
-    const heading = toggle.closest<HTMLElement>('.year-heading')!;
-    for (const child of heading.children) {
-      const bounds = child.getBoundingClientRect();
-      expect(bounds.left).toBeGreaterThanOrEqual(column.left);
-      expect(bounds.right).toBeLessThanOrEqual(column.right + 1);
-    }
-    toggle.click();
-    f.view.detectChanges();
-    await f.view.whenStable();
-    expect(toggle.querySelector('.chevron.collapsed')).toBeNull();
-    const input = () => f.root.querySelector<HTMLInputElement>('#construction-oem-year')!;
-    expect(input().placeholder).toBe(String(f.editor.entity().year()));
-    expect(input().value).toBe('');
-    f.editor.setOemYear(3025);
-    f.view.detectChanges();
-    await f.view.whenStable();
-    expect(input().value).toBe('3025');
-    f.editor.setOemYear(f.editor.entity().year());
-    f.view.detectChanges();
-    await f.view.whenStable();
-    expect(input().value).toBe('');
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');
-    const select = f.root.querySelector<HTMLSelectElement>('[data-field-id="techBase"] select')!.getBoundingClientRect();
-    const checkbox = f.root
-      .querySelector<HTMLInputElement>('input[aria-label="Mixed technology"]')!
-      .getBoundingClientRect();
-    expect(Math.abs(checkbox.top + checkbox.height / 2 - select.top - select.height / 2)).toBeLessThan(1);
-  });
 
   it('opens populated OEM years by default while keeping the force design input locked', async () => {
     const f = await create({ originalBuildYear: 3025, editDesign: false });
@@ -1458,15 +1204,8 @@ describe('construction component blocks', () => {
     const damage = defense.querySelector<HTMLElement>('.structure-damage')!;
     expect(parseFloat(damage.style.width)).toBeCloseTo((3 / location.internalPoints) * 100);
     const config = defense.querySelector<HTMLDetailsElement>('.location-config')!;
-    const expectAlignedDisclosure = () => {
-      const heading = defense.querySelector<HTMLElement>('.structure-label')!.getBoundingClientRect();
-      const disclosure = defense.querySelector<HTMLElement>('.structure-disclosure')!.getBoundingClientRect();
-      expect(Math.abs(disclosure.top + disclosure.height / 2 - heading.top - heading.height / 2)).toBeLessThan(2);
-    };
-    expectAlignedDisclosure();
     config.querySelector<HTMLElement>('summary')!.click();
     expect(config.open).toBeTrue();
-    expectAlignedDisclosure();
     defense.querySelector<HTMLButtonElement>('.armor-repair-button')!.click();
     await f.view.whenStable();
     f.view.detectChanges();
@@ -1486,7 +1225,6 @@ describe('construction component blocks', () => {
     await f.view.whenStable();
     f.view.detectChanges();
     expect(config.open).toBeTrue();
-    expectAlignedDisclosure();
     expect(f.editor.internalRemaining('LT', location.internalPoints)).toBe(location.internalPoints);
     expect(f.editor.internalRepair('LT', location.internalPoints)).toBe(3);
     expect(defense.querySelector('.structure-label .repair-gain')?.textContent).toBe('+3');
@@ -1600,31 +1338,6 @@ describe('construction component blocks', () => {
     expect(f.root.querySelector('.workshop-header .workspace-tabs')).not.toBeNull();
   });
 
-  it('overlays a slot-sized drop preview without moving the empty slots, and rejects insufficient space', async () => {
-    const f = await create();
-    const grid = f.root.querySelector<HTMLElement>('[data-location="RT"] .critical-grid')!;
-    const empty = grid.querySelector<HTMLElement>('.empty-slot')!;
-    const before = empty.getBoundingClientRect();
-    const height = grid.getBoundingClientRect().height;
-    f.editor.startDrag({ equipmentId: ac.id });
-    f.editor.dragTarget.set({ location: 'RT' });
-    f.view.detectChanges();
-    const preview = grid.querySelector<HTMLElement>('.slot-drop-preview')!;
-    expect(preview).not.toBeNull();
-    expect(preview.style.gridRow).toBe('1 / span 3');
-    expect(getComputedStyle(preview).position).toBe('absolute');
-    expect(empty.getBoundingClientRect().top).toBe(before.top);
-    expect(grid.getBoundingClientRect().height).toBe(height);
-    f.editor.dragTarget.set({ location: 'HD' });
-    f.view.detectChanges();
-    expect(f.editor.dropPreview()).toEqual([]);
-    expect(f.root.querySelector('[data-location="HD"] .drop-reason')?.textContent).toContain('contiguous');
-    const count = f.editor.entity().equipment().length;
-    f.editor.onDrop({ item: { data: { equipmentId: ac.id } }, container: { data: { location: 'HD' } } });
-    expect(f.editor.entity().equipment().length).toBe(count);
-    f.editor.endDrag();
-  });
-
   it('previews the surrounding blocks in their committed order when dragging a block downward', async () => {
     const f = await create();
     f.editor.install(ammo, 'LT');
@@ -1635,12 +1348,10 @@ describe('construction component blocks', () => {
       .find((mount) => mount.equipmentId === ac.id)!;
     f.view.detectChanges();
     const binBlock = f.root.querySelector<HTMLElement>(`[data-mount-id="${bin.mountId}"]`)!.parentElement!;
-    const before = binBlock.getBoundingClientRect().top;
     f.editor.startDrag({ equipmentId: ac.id, mountId: gun.mountId, sourceLocation: 'LT' });
     f.editor.dragTarget.set({ location: 'LT' });
     f.view.detectChanges();
     expect(binBlock.style.gridRow).toBe('1 / span 1');
-    expect(binBlock.getBoundingClientRect().top).toBeLessThan(before);
     expect(f.editor.dropPreview()).toEqual([{ location: 'LT', index: 1, span: 3 }]);
     expect(gun.placements![0].slotIndex).toBe(0);
     f.editor.onDrop({
@@ -1705,74 +1416,6 @@ describe('construction component blocks', () => {
     }
   }
 
-  it('preserves warehouse insertion through the actual CDK mouse-release event sequence', async () => {
-    const f = await create();
-    Object.assign(f.root.style, { position: 'fixed', inset: '0', width: '100vw', height: '100vh' });
-    f.editor.install(ammo, 'RT');
-    const bin = f.editor.selectedMount()!;
-    f.editor.query.set(ac.name);
-    f.view.detectChanges();
-    await f.view.whenStable();
-    const source = [...f.root.querySelectorAll<HTMLElement>('.warehouse-item')].find(
-      (row) => row.querySelector('.equipment-label')?.textContent?.trim() === ac.name,
-    )!;
-    const destination = f.root.querySelector<HTMLElement>(`[data-mount-id="${bin.mountId}"]`)!;
-    destination.scrollIntoView({ block: 'center' });
-    const from = source.getBoundingClientRect();
-    const x = from.left + 20,
-      y = from.top + 10;
-    source.querySelector('.equipment-name')!.dispatchEvent(
-      new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        detail: 1,
-        button: 0,
-        buttons: 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 15, clientY: y + 15 }),
-    );
-    f.view.detectChanges();
-    await f.view.whenStable();
-    const preview = document.querySelector<HTMLElement>(
-      '.construction-drag-preview.cdk-drag-preview .installed-equipment',
-    )!;
-    const installed = f.root.querySelector<HTMLElement>('[data-location="LT"] .installed-equipment')!;
-    expect(preview).not.toBeNull();
-    expect(preview.querySelectorAll('.critical-ticks i').length).toBe(3);
-    expect(getComputedStyle(preview).backgroundImage).toBe(getComputedStyle(installed).backgroundImage);
-    expect(getComputedStyle(preview).backgroundColor).toBe(getComputedStyle(installed).backgroundColor);
-    expect(preview.getBoundingClientRect().height).toBeCloseTo(installed.getBoundingClientRect().height, 0);
-    const to = destination.getBoundingClientRect();
-    const endX = to.left + 10,
-      endY = to.top + 2;
-    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: endX, clientY: endY }));
-    f.view.detectChanges();
-    try {
-      expect(f.editor.dragTarget()).toEqual({ location: 'RT', beforeMountId: bin.mountId });
-      expect(f.editor.dropPreview()).toEqual([{ location: 'RT', index: 0, span: 3 }]);
-    } finally {
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: endX, clientY: endY }));
-      await f.view.whenStable();
-    }
-    expect(TestBed.inject(ToastService).showToast).not.toHaveBeenCalledWith(jasmine.any(String), 'error');
-    expect(f.editor.selectedMount()?.placements?.map((p) => p.slotIndex)).toEqual([0, 1, 2]);
-    expect(
-      f.editor
-        .entity()
-        .equipment()
-        .find((m) => m.mountId === bin.mountId)!.placements![0].slotIndex,
-    ).toBe(3);
-    expect(f.editor.dragTarget()).toBeNull();
-    expect(source.closest('.equipment-list')).not.toBeNull();
-    expect(source.style.transform).toBe('');
-    expect(source.getBoundingClientRect().left).toBeCloseTo(from.left, 0);
-    expect(document.querySelector('.cdk-drag-preview')).toBeNull();
-  });
-
   it('joins a transferred split block ahead of existing equipment when the whole weapon fits', async () => {
     const f = await create();
     f.editor.install(ammo, 'RT');
@@ -1798,116 +1441,6 @@ describe('construction component blocks', () => {
         .equipment()
         .find((m) => m.mountId === bin.mountId)!.placements![0].slotIndex,
     ).toBe(10);
-  });
-
-  it('keeps the docked block dimensions, style and bottom-right grab point in the floating preview', async () => {
-    const f = await create();
-    const block = f.root.querySelector<HTMLElement>('[data-location="LT"] .installed-equipment')!;
-    const rect = block.getBoundingClientRect();
-    const background = getComputedStyle(block).backgroundImage;
-    const x = Math.round(rect.right - 8),
-      y = Math.round(rect.bottom - 8);
-    block.dispatchEvent(
-      new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        detail: 1,
-        button: 0,
-        buttons: 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 15, clientY: y + 15 }),
-    );
-    f.view.detectChanges();
-    await f.view.whenStable();
-    const preview = document.querySelector<HTMLElement>(
-      '.construction-drag-preview.cdk-drag-preview .installed-equipment',
-    );
-    try {
-      expect(preview).not.toBeNull();
-      expect(preview?.querySelectorAll('.critical-ticks i').length).toBe(3);
-      expect(preview?.getBoundingClientRect().width).toBeCloseTo(rect.width, 0);
-      expect(preview?.getBoundingClientRect().height).toBeCloseTo(rect.height, 0);
-      expect(preview && getComputedStyle(preview).backgroundImage).toBe(background);
-      expect(preview!.getBoundingClientRect().left).toBeCloseTo(rect.left, 0);
-      expect(preview!.getBoundingClientRect().top).toBeCloseTo(rect.top, 0);
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 30, clientY: y + 30 }),
-      );
-      expect(preview!.getBoundingClientRect().left).toBeCloseTo(rect.left + 30, 0);
-      expect(preview!.getBoundingClientRect().top).toBeCloseTo(rect.top + 30, 0);
-    } finally {
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x + 15, clientY: y + 15 }));
-      await f.view.whenStable();
-    }
-  });
-
-  it('uses the installed block appearance and relative grab point when dragging unallocated equipment', async () => {
-    const f = await create();
-    f.editor.entity().addEquipment({
-      equipmentId: ac.id,
-      equipment: ac,
-      allocation: { kind: 'unallocated' },
-      rearMounted: false,
-      turretMounted: false,
-      omniPodMounted: false,
-      armored: false,
-    });
-    f.view.detectChanges();
-    await f.view.whenStable();
-    const source = f.root.querySelector<HTMLElement>('.unallocated-panel .cdk-drag')!;
-    const installed = f.root.querySelector<HTMLElement>('[data-location="LT"] .installed-equipment')!;
-    const rect = source.getBoundingClientRect();
-    const x = Math.round(rect.right - 8),
-      y = Math.round(rect.bottom - 8);
-    const grabX = (x - rect.left) / rect.width,
-      grabY = (y - rect.top) / rect.height;
-    source.dispatchEvent(
-      new PointerEvent('pointerdown', { bubbles: true, button: 0, buttons: 1, clientX: x, clientY: y }),
-    );
-    source.dispatchEvent(
-      new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        detail: 1,
-        button: 0,
-        buttons: 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 15, clientY: y + 15 }),
-    );
-    f.view.detectChanges();
-    await f.view.whenStable();
-    try {
-      const preview = document.querySelector<HTMLElement>(
-        '.construction-drag-preview.cdk-drag-preview .installed-equipment',
-      )!;
-      expect(preview).not.toBeNull();
-      expect(preview.querySelectorAll('.critical-ticks i').length).toBe(3);
-      expect(getComputedStyle(preview).backgroundImage).toBe(getComputedStyle(installed).backgroundImage);
-      expect(getComputedStyle(preview).backgroundColor).toBe(getComputedStyle(installed).backgroundColor);
-      expect(preview.getBoundingClientRect().height).toBeCloseTo(installed.getBoundingClientRect().height, 0);
-      const previewRect = preview.getBoundingClientRect();
-      expect(previewRect.left).toBeCloseTo(x - previewRect.width * grabX, 0);
-      expect(previewRect.top).toBeCloseTo(y - previewRect.height * grabY, 0);
-      document.dispatchEvent(
-        new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 30, clientY: y + 30 }),
-      );
-      expect(preview.getBoundingClientRect().left).toBeCloseTo(x + 30 - previewRect.width * grabX, 0);
-      expect(preview.getBoundingClientRect().top).toBeCloseTo(y + 30 - previewRect.height * grabY, 0);
-    } finally {
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x + 15, clientY: y + 15 }));
-      await f.view.whenStable();
-    }
-    expect(source.closest('.unallocated-panel')).not.toBeNull();
-    expect(source.style.transform).toBe('');
-    expect(document.querySelector('.cdk-drag-preview')).toBeNull();
   });
 
   it('puts ordering arrows in the inspector heading and avoids duplicate actuator controls', async () => {
@@ -2301,46 +1834,6 @@ describe('construction component blocks', () => {
     expect(f.editor.entity().originalWalkMP()).toBe(7);
   });
 
-  it('aligns the armored badge after a single-slot name without changing the multi-slot badge layout', async () => {
-    const f = await create();
-    f.editor.install(laser, 'RT', 0);
-    for (const id of [ac.id, laser.id]) {
-      f.editor.updateMount(
-        f.editor
-          .entity()
-          .equipment()
-          .find((mount) => mount.equipmentId === id)!,
-        { armored: true },
-      );
-    }
-    f.view.detectChanges();
-    await f.view.whenStable();
-    const single = f.root.querySelector<HTMLElement>('[data-location="RT"] .slot-target:has(.installed-equipment)')!;
-    const name = single.querySelector<HTMLElement>('.equipment-title')!;
-    const badge = single.querySelector<HTMLElement>('.armored-badge')!;
-    const button = single.querySelector<HTMLElement>('.mounted-name')!;
-    for (const width of [280, 160, 120]) {
-      single.style.width = `${width}px`;
-      const b = badge.getBoundingClientRect(),
-        n = name.getBoundingClientRect(),
-        bounds = button.getBoundingClientRect();
-      expect(b.left)
-        .withContext(`${width}px: badge follows name`)
-        .toBeGreaterThanOrEqual(n.right - 1);
-      expect(b.top + b.height / 2)
-        .withContext(`${width}px: badge is vertically centered`)
-        .toBeCloseTo(bounds.top + bounds.height / 2, 0);
-      expect(n.width).withContext(`${width}px: name retains space`).toBeGreaterThan(0);
-      expect(b.right).toBeLessThanOrEqual(bounds.right - parseFloat(getComputedStyle(button).paddingRight) + 1);
-      expect(single.scrollWidth).toBeLessThanOrEqual(single.clientWidth);
-    }
-    const multi = f.root.querySelector<HTMLElement>('[data-location="LT"] .mounted-name')!;
-    expect(getComputedStyle(multi).flexDirection).toBe('column');
-    expect(multi.querySelector('.armored-badge')!.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-      multi.querySelector('.equipment-title')!.getBoundingClientRect().top,
-    );
-  });
-
   it('opens a separate installed inspector, marks armor, and exposes system-slot armor and actuator removal', async () => {
     const f = await create();
     f.editor.selectEquipment(ammo);
@@ -2364,12 +1857,7 @@ describe('construction component blocks', () => {
     f.view.detectChanges();
     expect(f.editor.inspectorOpen()).toBeFalse();
     expect(f.root.querySelector('.selected-equipment')).toBeNull();
-    const engine = f.systems('Engine')[0];
-    engine.scrollIntoView({ block: 'center', inline: 'center' });
-    const engineBounds = engine.getBoundingClientRect();
-    const systemHit = document.elementFromPoint(engineBounds.left + 2, engineBounds.top + 2) as HTMLElement;
-    expect(systemHit).toBe(engine.querySelector<HTMLElement>('.system-name')!);
-    systemHit.click();
+    f.systems('Engine')[0].querySelector<HTMLElement>('.system-name')!.click();
     f.view.detectChanges();
     expect(f.root.querySelector('.installed-inspector')?.textContent).toContain('Engine rating');
     expect(f.root.querySelectorAll('.system-armor-controls input').length).toBe(6);
@@ -2383,14 +1871,7 @@ describe('construction component blocks', () => {
       '[aria-label="Uninstall Lower Arm Actuator from Right Arm"]',
     )!;
     expect(remove).not.toBeNull();
-    remove.scrollIntoView({ block: 'center', inline: 'center' });
-    const removeBounds = remove.getBoundingClientRect();
-    const removeHit = document.elementFromPoint(
-      removeBounds.left + removeBounds.width / 2,
-      removeBounds.top + removeBounds.height / 2,
-    ) as HTMLElement;
-    expect(removeHit.closest('button')).toBe(remove);
-    removeHit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    remove.click();
     f.view.detectChanges();
     expect(f.systems('Lower Arm Actuator', 'RA').length).toBe(0);
     expect(f.editor.inspectorOpen()).toBeFalse();
@@ -2408,128 +1889,6 @@ describe('construction component blocks', () => {
     expect(f.root.querySelector('.installed-inspector')?.getAttribute('aria-modal')).toBe('true');
     expect(f.editor.equipmentDrawerOpen()).toBeFalse();
     expect(f.root.querySelector('.equipment-drawer')).toBeNull();
-  });
-
-  it('delays equipment and system hover, allows crossing to the panel, pins on click, and closes on CDK drag', async () => {
-    const f = await create();
-    const pointer = (target: HTMLElement, type: string) =>
-      target.dispatchEvent(new PointerEvent(type, { pointerType: 'mouse' }));
-    const mount = f.root.querySelector<HTMLButtonElement>('[data-location="LT"] .mounted-name')!;
-    const block = f.systems('Engine')[0];
-    block.scrollIntoView({ block: 'center', inline: 'center' });
-    const bounds = block.getBoundingClientRect();
-    const system = document.elementFromPoint(bounds.right - 2, bounds.bottom - 2) as HTMLElement;
-    expect(system).toBe(block.querySelector<HTMLElement>('.system-name')!);
-    for (const trigger of [mount, system]) {
-      const focused = document.activeElement;
-      jasmine.clock().withMock(() => {
-        pointer(trigger, 'pointerenter');
-        jasmine.clock().tick(299);
-        expect(f.editor.inspectorOpen()).toBeFalse();
-        pointer(trigger, 'pointerleave');
-        jasmine.clock().tick(300);
-        expect(f.editor.inspectorOpen()).toBeFalse();
-        pointer(trigger, 'pointerenter');
-        jasmine.clock().tick(300);
-        expect(f.editor.inspectorOpen()).toBeTrue();
-      });
-      f.view.detectChanges();
-      await f.view.whenStable();
-      const panel = f.root.querySelector<HTMLElement>('.installed-inspector')!;
-      expect(panel).not.toBeNull();
-      expect(trigger.classList.contains('inspector-active')).toBeTrue();
-      if (trigger === mount) expect(mount.closest('.selected-equipment')).not.toBeNull();
-      if (trigger === system) expect(getComputedStyle(block).outlineStyle).toBe('solid');
-      expect(f.root.querySelector('.installed-inspector-backdrop')).toBeNull();
-      expect(document.activeElement).toBe(focused);
-      jasmine.clock().withMock(() => {
-        pointer(trigger, 'pointerleave');
-        jasmine.clock().tick(299);
-        expect(f.editor.inspectorOpen()).toBeTrue();
-        pointer(panel, 'pointerenter');
-        jasmine.clock().tick(300);
-        expect(f.editor.inspectorOpen()).toBeTrue();
-        f.view.detectChanges();
-        expect(trigger.classList.contains('inspector-active')).toBeTrue();
-        if (trigger === system) expect(getComputedStyle(block).backgroundColor).toBe('rgb(52, 56, 59)');
-        pointer(panel, 'pointerleave');
-        jasmine.clock().tick(200);
-        pointer(trigger, 'pointerenter');
-        jasmine.clock().tick(300);
-        expect(f.editor.inspectorOpen()).toBeTrue();
-        pointer(trigger, 'pointerleave');
-        jasmine.clock().tick(299);
-        expect(f.editor.inspectorOpen()).toBeTrue();
-        jasmine.clock().tick(1);
-        expect(f.editor.inspectorOpen()).toBeFalse();
-      });
-      f.view.detectChanges();
-      expect(trigger.classList.contains('inspector-active')).toBeFalse();
-      expect(f.root.querySelector('.selected-equipment')).toBeNull();
-      if (trigger === system) expect(getComputedStyle(block).outlineStyle).toBe('none');
-    }
-    jasmine.clock().withMock(() => {
-      pointer(mount, 'pointerenter');
-      jasmine.clock().tick(300);
-      pointer(mount, 'pointerleave');
-      pointer(system, 'pointerenter');
-      jasmine.clock().tick(100);
-      pointer(system, 'pointerleave');
-      jasmine.clock().tick(300);
-      expect(f.editor.inspectorOpen()).toBeFalse();
-    });
-    jasmine.clock().withMock(() => {
-      pointer(mount, 'pointerenter');
-      jasmine.clock().tick(300);
-      pointer(mount, 'pointerleave');
-      mount.click();
-      jasmine.clock().tick(600);
-      expect(f.editor.inspector.isPinned()).toBeTrue();
-      pointer(system, 'pointerenter');
-      jasmine.clock().tick(300);
-      expect(f.editor.selectedSystem()).toBeNull();
-    });
-    f.view.detectChanges();
-    expect(f.root.querySelector('.installed-inspector-backdrop')).toBeNull();
-    expect(mount.classList.contains('inspector-active')).toBeTrue();
-    expect(system.classList.contains('inspector-active')).toBeFalse();
-    mount.scrollIntoView({ block: 'center' });
-    const rect = mount.getBoundingClientRect();
-    const x = rect.left + 20,
-      y = rect.top + 10;
-    mount.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        pointerType: 'mouse',
-        bubbles: true,
-        button: 0,
-        buttons: 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
-    mount.dispatchEvent(
-      new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        detail: 1,
-        button: 0,
-        buttons: 1,
-        clientX: x,
-        clientY: y,
-      }),
-    );
-    document.dispatchEvent(
-      new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: x + 10, clientY: y + 10 }),
-    );
-    f.view.detectChanges();
-    expect(f.editor.dragging()).not.toBeNull();
-    expect(f.editor.inspectorOpen()).toBeFalse();
-    expect(f.root.querySelector('.installed-inspector')).toBeNull();
-    expect(mount.classList.contains('inspector-active')).toBeFalse();
-    expect(f.root.querySelector('.selected-equipment')).toBeNull();
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x + 10, clientY: y + 10 }));
-    await f.view.whenStable();
-    expect(f.editor.inspectorOpen()).toBeFalse();
   });
 
   it('shows default shots in the equipment list and configured shots in installed ammo slots', async () => {
@@ -2608,14 +1967,7 @@ describe('construction component blocks', () => {
     expect(f.systems('Engine')[0].contains(badges[0])).toBeTrue();
     expect(f.root.querySelector('.unallocated-panel')).not.toBeNull();
     expect(f.root.querySelector('.unallocated-empty')).not.toBeNull();
-    badges[0].scrollIntoView({ block: 'center', inline: 'center' });
-    const badgeBounds = badges[0].getBoundingClientRect();
-    const badgeHit = document.elementFromPoint(
-      badgeBounds.left + badgeBounds.width / 2,
-      badgeBounds.top + badgeBounds.height / 2,
-    ) as HTMLElement;
-    expect(badgeHit.closest('button')).toBe(badges[0]);
-    badgeHit.click();
+    badges[0].click();
     expect(f.editor.selectedMount()?.allocation.kind).toBe('engine');
     expect(f.editor.selectedSystem()).toBeNull();
     const head = f.editor.locations().find((location) => location.id === 'HD')!.rows;

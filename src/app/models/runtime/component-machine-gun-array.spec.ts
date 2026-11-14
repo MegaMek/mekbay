@@ -61,7 +61,7 @@ describe('direct machine-gun-array runtime', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
 
         expect(bay.memberIds.length).toBe(3);
@@ -218,7 +218,7 @@ describe('direct machine-gun-array runtime', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         expect(panel.components.find(row => row.componentId === controllerId)?.weapon?.selectable).toBeFalse();
         expect(bay.memberIds.map(id => panel.components.find(row => row.componentId === id)?.weapon?.selectable))

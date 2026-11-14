@@ -16,7 +16,6 @@ import type { V2StateRestoreWarningCode } from '../models/runtime/runtime-state-
 import {
 DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
 DEFAULT_NON_MEK_INITIAL_STATE_PROFILE_ID,
-UNIT_STATE_INITIALIZER_REVISION,
 type DeploymentConfiguration,
 type ScenarioRules,
 } from '../models/runtime/unit-state-initializer';
@@ -76,7 +75,6 @@ export class CBTUnitService {
                 instanceId: request.instanceId,
                 ...(request.crewSkills ? { crewSkills: request.crewSkills } : {}),
             }, loaded.entity, uuid, {
-                    initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
                     profileId: request.initialStateProfileId ?? DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
                     deployment: request.deployment,
                     scenario: request.scenario,
@@ -128,7 +126,6 @@ export class CBTUnitService {
                 throw new Error('A persisted Mek runtime resolved to a non-Mek entity');
             }
             unit = await restoreMekUnit(saved, loaded.entity, uuid, {
-                initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                 profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
                 deployment: saved.deployment.values,
                 scenario,

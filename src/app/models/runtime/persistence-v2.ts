@@ -44,17 +44,15 @@ import {
 } from './mek-movement-psr-v2';
 import { assertCanonicalCrewAssignment, type CrewAssignment, type CrewPositionDefinition } from './crew-assignment';
 import {
-    MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
     type CanonicalMekDeploymentConfigurationV2,
 } from './unit-state-initializer';
-import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { isHeatOffset, isHeatValue } from './cbt-unit-runtime';
 import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import { MAX_MEK_HEATSINKS_OFF_V2 } from './mek-heat-state-v2';
 import {
-    CBT_FORCE_ROSTER_SCHEMA_VERSION,
     CBT_FORCE_UNASSIGNED_GROUP_ID,
     MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
-    type SerializedCBTForceRosterV1,
+    type SerializedCBTForceRoster,
 } from './cbt-force-roster';
 import type { MekRuleCheckKeyV2, MekRuleCheckStatusV2, MekRuleCheckTokenV2 } from './mek-destruction-state-v2';
 import { inspectSerializedNonMekUnit, type SerializedNonMekUnit } from './non-mek-unit-persistence';
@@ -69,8 +67,6 @@ import { freezeEquipmentRowOrder, type EquipmentRowOrderState } from './equipmen
 
 export type { SerializedMekTurnStateV2 } from './mek-turn-state-v2';
 
-export const CBT_FORCE_PERSISTENCE_SCHEMA_VERSION = 16 as const;
-export const CBT_UNIT_PERSISTENCE_SCHEMA_VERSION = 10 as const;
 export const MAX_SERIALIZED_ENCOUNTER_NETWORKS = 100;
 export const MAX_SERIALIZED_ENCOUNTER_NETWORK_ENDPOINTS = 1024;
 
@@ -280,7 +276,6 @@ export type SavedStateTargetV2 =
 
 /** Unit-owned witness table. It is rebuilt for the exact baseline saved with this unit. */
 export interface SavedBlueprintReferenceTableV2 {
-    readonly schemaVersion: 1;
     readonly targets: Readonly<Record<SavedTargetRef, SavedStateTargetV2>>;
 }
 
@@ -314,7 +309,6 @@ function compareSavedTargetRefs(left: SavedTargetRef, right: SavedTargetRef): nu
 }
 
 export interface SerializedDeploymentConfigurationV2 {
-    readonly schemaVersion: typeof MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION;
     readonly values: CanonicalMekDeploymentConfigurationV2;
 }
 
@@ -364,7 +358,6 @@ export interface SerializedAmmoStateEntryV2 {
 }
 
 export interface SerializedCrewStateV2 {
-    readonly schemaVersion: 1;
     readonly positions: readonly {
         readonly target: SavedTargetRef;
         readonly wounds: number;
@@ -383,6 +376,7 @@ export interface SerializedHeatStateV2 {
     readonly heat: number;
     readonly previous?: number;
     readonly pendingOverride?: number;
+    readonly pendingOffset?: number;
     readonly heatsinksOff?: number;
 }
 
@@ -410,7 +404,7 @@ export interface SerializedPendingCombatStateV2 {
     readonly outsideHeat?: number;
 }
 
-export interface SerializedMekRuleCheckEntryV1 {
+export interface SerializedMekRuleCheckEntry {
     readonly key: MekRuleCheckKeyV2;
     readonly token: MekRuleCheckTokenV2;
     readonly trigger: SavedTargetRef;
@@ -418,14 +412,12 @@ export interface SerializedMekRuleCheckEntryV1 {
     readonly status: MekRuleCheckStatusV2;
 }
 
-export interface SerializedMekRuleChecksV1 {
-    readonly schemaVersion: 1;
-    /** Canonically sorted by key; required even when empty in unit schema V3. */
-    readonly entries: readonly SerializedMekRuleCheckEntryV1[];
+export interface SerializedMekRuleChecks {
+    /** Canonically sorted by key; required even when empty. */
+    readonly entries: readonly SerializedMekRuleCheckEntry[];
 }
 
 export interface SerializedCBTUnitV2 {
-    readonly schemaVersion: typeof CBT_UNIT_PERSISTENCE_SCHEMA_VERSION;
     readonly instanceId: string;
     readonly entity: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
@@ -444,7 +436,7 @@ export interface SerializedCBTUnitV2 {
     readonly crew: SerializedCrewStateV2;
     readonly heat?: SerializedHeatStateV2;
     readonly family: { readonly kind: 'mek' };
-    readonly ruleChecks: SerializedMekRuleChecksV1;
+    readonly ruleChecks: SerializedMekRuleChecks;
     /** Required sole durable movement/PSR owner. */
     readonly movementPsr: SerializedMekMovementPsrStateV2;
     /** The mode a LAM or QuadVee has converted to; absent in BattleMech mode. */
@@ -481,12 +473,11 @@ export interface SerializedCBTEncounterStateV2 {
 }
 
 export interface SerializedCBTForceV2 {
-    readonly schemaVersion: typeof CBT_FORCE_PERSISTENCE_SCHEMA_VERSION;
     readonly forceId: ForceId;
     readonly forceRevision: number;
     readonly history: SerializedRuntimeHistory;
     readonly units: readonly SerializedForceUnitEntryV2[];
-    readonly roster: SerializedCBTForceRosterV1;
+    readonly roster: SerializedCBTForceRoster;
     readonly encounter: SerializedCBTEncounterStateV2;
 }
 
@@ -535,7 +526,6 @@ export async function validateSerializedCBTForceV2(value: unknown): Promise<Seri
         throw validationError('INVALID_SHAPE', error, '$');
     }
     const root: Record<string, unknown> = {
-        schemaVersion: source['schemaVersion'],
         forceId: source['forceId'],
         forceRevision: source['forceRevision'],
         history: source['history'],
@@ -550,9 +540,6 @@ export async function validateSerializedCBTForceV2(value: unknown): Promise<Seri
 function validateForceEnvelope(
     root: Record<string, unknown>,
 ): asserts root is Record<string, unknown> & SerializedCBTForceV2 {
-    if (root['schemaVersion'] !== CBT_FORCE_PERSISTENCE_SCHEMA_VERSION) {
-        fail('INVALID_SHAPE', '$.schemaVersion', 'unsupported persistence version');
-    }
     validateId(root['forceId'], '$.forceId', asForceId);
     validateRevision(root['forceRevision'], '$.forceRevision');
     const units = requireArray(root['units'], '$.units');
@@ -631,10 +618,7 @@ function validateRoster(
     instances: ReadonlySet<string>,
 ): void {
     const roster = requireRecord(value, '$.roster');
-    exactKeys(roster, ['schemaVersion', 'groups'], '$.roster');
-    if (roster['schemaVersion'] !== CBT_FORCE_ROSTER_SCHEMA_VERSION) {
-        fail('INVALID_SHAPE', '$.roster.schemaVersion', `must be ${CBT_FORCE_ROSTER_SCHEMA_VERSION}`);
-    }
+    exactKeys(roster, ['groups'], '$.roster');
     const groups = requireArray(roster['groups'], '$.roster.groups');
     const groupIds = new Set<string>();
     const memberIds = new Set<string>();
@@ -811,14 +795,11 @@ function validateV2Unit(
 } {
     const record = requireRecord(value, path);
     exactKeys(record, [
-        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
+        'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState', 'ammoState', 'crew', 'heat',
         'family', 'ruleChecks', 'movementPsr', 'conversionMode',
         'equipmentRowOrder', 'conditions', 'turn', 'pendingCombat',
     ], path);
-    if (record['schemaVersion'] !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
-        fail('INVALID_SHAPE', `${path}.schemaVersion`, `must be ${CBT_UNIT_PERSISTENCE_SCHEMA_VERSION}`);
-    }
     const instanceId = validateId(record['instanceId'], `${path}.instanceId`);
     const entity = validateSavedIdentity(record['entity'], `${path}.entity`);
     if (record['customSource'] !== undefined) {
@@ -861,22 +842,18 @@ function validateV2Unit(
     validateCrew(record['crew'], `${path}.crew`, targets);
     if (record['heat'] !== undefined) {
         const heat = requireRecord(record['heat'], `${path}.heat`);
-        exactKeys(heat, ['heat', 'previous', 'pendingOverride', 'heatsinksOff'], `${path}.heat`);
-        const value = requireFiniteNumber(heat['heat'], `${path}.heat.heat`);
-        if (value < 0 || value > MAX_HEAT_VALUE || Object.is(value, -0)) {
+        exactKeys(heat, ['heat', 'previous', 'pendingOverride', 'pendingOffset', 'heatsinksOff'], `${path}.heat`);
+        if (!isHeatValue(heat['heat'])) {
             fail('INVALID_SHAPE', `${path}.heat.heat`, 'must be a canonical bounded heat value');
         }
-        if (heat['previous'] !== undefined) {
-            const previous = requireFiniteNumber(heat['previous'], `${path}.heat.previous`);
-            if (previous <= 0 || previous > MAX_HEAT_VALUE || Object.is(previous, -0)) {
-                fail('INVALID_SHAPE', `${path}.heat.previous`, 'sparse previous heat must be positive and bounded');
-            }
+        if (heat['previous'] !== undefined && (!isHeatValue(heat['previous']) || heat['previous'] === 0)) {
+            fail('INVALID_SHAPE', `${path}.heat.previous`, 'sparse previous heat must be positive and bounded');
         }
-        if (heat['pendingOverride'] !== undefined) {
-            const pending = requireFiniteNumber(heat['pendingOverride'], `${path}.heat.pendingOverride`);
-            if (pending < 0 || pending > MAX_HEAT_VALUE || Object.is(pending, -0)) {
-                fail('INVALID_SHAPE', `${path}.heat.pendingOverride`, 'must be a canonical bounded heat value');
-            }
+        if (heat['pendingOverride'] !== undefined && !isHeatValue(heat['pendingOverride'])) {
+            fail('INVALID_SHAPE', `${path}.heat.pendingOverride`, 'must be a canonical bounded heat value');
+        }
+        if (heat['pendingOffset'] !== undefined && (heat['pendingOverride'] === undefined || !isHeatOffset(heat['pendingOffset']))) {
+            fail('INVALID_SHAPE', `${path}.heat.pendingOffset`, 'must be a bounded whole number beside NEXT');
         }
         if (heat['heatsinksOff'] !== undefined) {
             const off = requireFiniteNumber(heat['heatsinksOff'], `${path}.heat.heatsinksOff`);
@@ -957,14 +934,7 @@ function validateDeployment(
     _targets: Record<string, SavedStateTargetV2>,
 ): void {
     const deployment = requireRecord(value, path);
-    exactKeys(deployment, ['schemaVersion', 'values'], path);
-    if (deployment['schemaVersion'] !== MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION) {
-        fail(
-            'INVALID_SHAPE',
-            `${path}.schemaVersion`,
-            `must be ${MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION}; older crew-less V2 deployments are not guessed`,
-        );
-    }
+    exactKeys(deployment, ['values'], path);
     const values = requireRecord(deployment['values'], `${path}.values`);
     exactKeys(values, ['id', 'initialHeat', 'crewAssignment'], `${path}.values`);
     validateId(values['id'], `${path}.values.id`);
@@ -1016,9 +986,7 @@ function validateBaseline(value: unknown, path: string): ValidatedBaseline {
     exactKeys(record, ['entity', 'initialStateProfile'], path);
     const entity = validateSavedIdentity(record['entity'], `${path}.entity`);
     const profile = requireRecord(record['initialStateProfile'], `${path}.initialStateProfile`);
-    exactKeys(profile, ['schemaVersion', 'initializerRevision', 'profileId'], `${path}.initialStateProfile`);
-    if (profile['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.initialStateProfile.schemaVersion`, 'must be 1');
-    requirePositiveInteger(profile['initializerRevision'], `${path}.initialStateProfile.initializerRevision`);
+    exactKeys(profile, ['profileId'], `${path}.initialStateProfile`);
     validateId(profile['profileId'], `${path}.initialStateProfile.profileId`);
     return {
         uuid: entity,
@@ -1040,8 +1008,7 @@ export function validateSavedBlueprintReferenceTableV2(
     path: string,
 ): Record<string, SavedStateTargetV2> {
     const record = requireRecord(value, path);
-    exactKeys(record, ['schemaVersion', 'targets'], path);
-    if (record['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 1');
+    exactKeys(record, ['targets'], path);
     const targets = requireRecord(record['targets'], `${path}.targets`);
     for (const [ref, target] of Object.entries(targets)) {
         validateId(ref, `${path}.targets key`, asSavedTargetRef);
@@ -1144,8 +1111,7 @@ function validateMekRuleChecks(
     unitRevision: number,
 ): void {
     const checks = requireRecord(value, path);
-    exactKeys(checks, ['schemaVersion', 'entries'], path);
-    if (checks['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 1');
+    exactKeys(checks, ['entries'], path);
     const entries = requireArray(checks['entries'], `${path}.entries`);
     if (entries.length > 1) fail('INVALID_SHAPE', `${path}.entries`, 'only the typed torso check is supported');
     let previous: string | undefined;
@@ -1373,8 +1339,8 @@ function validateAmmoState(entry: Record<string, unknown>, path: string): void {
 
 function validateCrew(value: unknown, path: string, targets: Record<string, SavedStateTargetV2>): void {
     const crew = requireRecord(value, path);
-    exactKeys(crew, ['schemaVersion', 'positions'], path);
-    if (crew['schemaVersion'] !== 1) fail('INVALID_SHAPE', `${path}.schemaVersion`, 'must be 1');
+    exactKeys(crew, ['positions'], path);
+    requireArray(crew['positions'], `${path}.positions`);
     validateTargetStateArray(crew['positions'], `${path}.positions`, targets, ['crew-position'], (entry, entryPath) => {
         exactKeys(entry, [
             'target', 'wounds', 'unconscious', 'dead', 'ejected', 'recoveryReadyTurn',

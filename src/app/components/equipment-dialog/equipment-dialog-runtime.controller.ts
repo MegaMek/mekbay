@@ -28,7 +28,8 @@ EquipmentPanelSnapshot,
 MekPhysicalAttackRow,
 } from '../../models/runtime/equipment-panel';
 import type { BombLoad, BombLoadChoice } from '../../models/aerospace-bomb.model';
-import { selectedWeaponHeat } from '../../models/runtime/equipment-panel';
+import { selectedWeaponHeat, selectedWeaponRows } from '../../models/runtime/equipment-panel';
+import { projectTurnHeatIfFired, type TurnHeatBasis } from '../../models/runtime/turn-heat-ledger';
 
 import { isBoobyTrapEquipment } from '../../models/aerospace-support-equipment.model';
 import { hasNonMekRuntime } from '../../models/cbt-unit-snapshot';
@@ -44,9 +45,15 @@ isBoobyTrapDetonated,
 import type { WeaponAttackContext } from '../../models/runtime/equipment-panel';
 import type { EquipmentRowOrderGroup } from '../../models/runtime/equipment-row-order';
 import type { AttackResolutionService } from '../../services/attack-resolution.service';
+import type { TargetingTarget } from '../../models/runtime/targeting-target';
+
+/** What the panel needs of attack resolution; aimed shots exist only where the app can show their picker. */
+export type AttackResolutionPort =
+    Pick<AttackResolutionService, 'resolveFired' | 'resolvesAttacks' | 'inPhysicalPhase'>
+    & Partial<Pick<AttackResolutionService, 'declaresAimedShots' | 'pickAim'>>;
 import type { DialogsService } from '../../services/dialogs.service';
-import { heatAutomationPolicy, type OptionsService } from '../../services/options.service';
-import { projectNonMekEndTurnHeat } from '../../models/runtime/non-mek-unit-instance';
+import type { OptionsService } from '../../services/options.service';
+import { nonMekTurnHeatBasis } from '../../models/runtime/non-mek-unit-instance';
 import type { ToastService } from '../../services/toast.service';
 import { formatEquipmentLocationCodes } from '../../utils/equipment-location-display.util';
 
@@ -70,7 +77,7 @@ export class EquipmentDialogRuntimeController {
     private readonly options: OptionsService;
     private readonly toast: ToastService;
     private readonly dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>;
-    private readonly attacks?: Pick<AttackResolutionService, 'resolveFired' | 'resolvesAttacks' | 'inPhysicalPhase'>;
+    private readonly attacks?: AttackResolutionPort;
     private readonly forceChanges: Subscription;
 
     public hasSelections(): boolean {
@@ -90,31 +97,17 @@ export class EquipmentDialogRuntimeController {
         retainedWidth: number;
     }> | null {
         if (!this.snapshot().tracksHeat) return null;
-        const selection = selectedWeaponHeat(this.snapshot()).value;
         // From the committed heat, like PROJECTED: the turn's heat already counts here, so starting from the player's
         // arrow would count it twice.
-        let current: number;
-        let sources: number;
-        let dissipation: number;
-        if (isCBTMekForceMember(this.member)) {
-            const turn = this.member.force.getMekTurnPanelSnapshot(
-                this.member.id,
-                heatAutomationPolicy(this.options),
-            );
-            if (!turn || turn.heatProjection.kind !== 'supported') return null;
-            const projection = turn.heatProjection.projection;
-            current = turn.heat.current;
-            sources = projection.sources.reduce((sum, source) => sum + Math.max(0, source.value), 0);
-            dissipation = projection.dissipated;
-        } else {
-            const unit = this.entityRuntime();
-            const projection = unit && projectNonMekEndTurnHeat(unit.entity, unit.index, unit.state, unit.ruleset);
-            if (!unit || !projection) return null;
-            current = unit.state.heat.current;
-            sources = projection.generated;
-            dissipation = projection.dissipated;
-        }
-        const final = Math.max(0, current + sources + selection - dissipation);
+        const basis = this.turnHeatBasis();
+        if (!basis) return null;
+        const selection = selectedWeaponHeat(this.snapshot()).value;
+        const fired = projectTurnHeatIfFired(basis, selection,
+            new Set(selectedWeaponRows(this.snapshot().components).map(row => row.componentId)));
+        const current = basis.current;
+        const sources = fired.generated - selection;
+        const dissipation = fired.dissipated;
+        const final = fired.projected;
         const percent = (value: number): number => Math.max(0, Math.min(100, value / 30 * 100));
         return Object.freeze({
             current,
@@ -134,7 +127,7 @@ export class EquipmentDialogRuntimeController {
         options: OptionsService,
         toast: ToastService,
         dialogs?: Pick<DialogsService, 'requestConfirmation' | 'showNoticeHtml'>,
-        attacks?: Pick<AttackResolutionService, 'resolveFired' | 'resolvesAttacks' | 'inPhysicalPhase'>,
+        attacks?: AttackResolutionPort,
     ) {
         this.member = member;
         this.options = options;
@@ -231,6 +224,25 @@ export class EquipmentDialogRuntimeController {
             this.busy.set(false);
             this.refresh();
         }
+    }
+
+    /** Whether the unit may declare aimed shots now (`AttackResolutionService.declaresAimedShots`). */
+    public declaresAimedShots(): boolean {
+        return this.attacks?.declaresAimedShots?.(this.member) === true;
+    }
+
+    /** Lets the player pick, on the target's paperdoll, the location a weapon aims at, or take the aim back. */
+    public async aimWeapon(row: EquipmentPanelComponent, target: TargetingTarget): Promise<void> {
+        const attack = this.attackContext();
+        const selection = row.weapon?.selection;
+        if (!this.attacks?.pickAim || attack === null || selection?.kind !== 'target' || this.busy()) return;
+        const aim = await this.attacks.pickAim(row, target, attack, this.snapshot().ruleset);
+        if (aim === undefined) return;
+        await this.dispatchComponentSelections([row.componentId], {
+            kind: 'target',
+            targetId: selection.targetId,
+            ...(aim === null ? {} : { aim }),
+        });
     }
 
     /** Applies one selection to every attack member of the rows as a single targeting batch. */
@@ -404,18 +416,22 @@ export class EquipmentDialogRuntimeController {
         if (this.busy()) return;
         const current = this.snapshot();
         const attack = this.attacks ? this.attackContext() : null;
-        // Physical attacks fire nothing: they are only resolved. In the Physical Attack Phase the weapons
-        // still selected from the Weapon Attack Phase must not fire again.
-        if (!selectedWeaponHeat(current).hasSelection || this.attacks?.inPhysicalPhase(this.member) === true) {
+        // Physical attacks are only resolved, except a Spot Welder, which makes heat. Under the full phase system
+        // each phase fires its own attacks, so the weapons still selected from the Weapon Attack Phase do not fire
+        // again in the Physical Attack Phase.
+        if (!selectedWeaponHeat(current).hasSelection) {
             await this.attacks?.resolveFired(this.member, current, attack);
             return;
         }
+        const phaseAttacks = !this.options.options().realPhases ? undefined
+            : this.attacks?.inPhysicalPhase(this.member) === true ? 'physical' as const : 'weapons' as const;
         this.busy.set(true);
         let fired = false;
         try {
             const prototypeHeatRolls = this.prototypeHeatRolls(current);
             const result = await this.member.force.fireSelectedWeapons(this.member.id, {
                 type: 'fire-selected-weapons',
+                ...(phaseAttacks === undefined ? {} : { attacks: phaseAttacks }),
                 ...(prototypeHeatRolls.length === 0 ? {} : { prototypeHeatRolls }),
             });
             fired = result.accepted;
@@ -557,6 +573,15 @@ export class EquipmentDialogRuntimeController {
         });
     }
 
+    private turnHeatBasis(): TurnHeatBasis | null {
+        if (isCBTMekForceMember(this.member)) {
+            const turn = this.member.force.getMekTurnPanelSnapshot(this.member.id);
+            return turn?.heatProjection.kind === 'supported' ? turn.heatProjection.projection : null;
+        }
+        const unit = this.entityRuntime();
+        return unit && nonMekTurnHeatBasis(unit.entity, unit.index, unit.state, unit.ruleset);
+    }
+
     private entityRuntime() {
         const snapshot = this.member.force.getUnitSnapshot(this.member.id);
         return snapshot && hasNonMekRuntime(snapshot) ? snapshot : null;
@@ -570,11 +595,18 @@ export class EquipmentDialogRuntimeController {
         return this.member.force.getAttackerTargeting(this.member.id) !== null;
     }
 
+    /** What the button does: FIRE rolls and resolves the attacks; FIRED only books the heat and ammunition spent. */
+    public fireLabel(): 'FIRE' | 'FIRED' {
+        return this.attacks?.resolvesAttacks() === true ? 'FIRE' : 'FIRED';
+    }
+
     public canFireSelectedWeapons(): boolean {
         const snapshot = this.snapshot();
         return selectedWeaponHeat(snapshot).hasSelection
             || (this.attacks?.resolvesAttacks() === true
-                && snapshot.physicalAttacks.some(row => row.available && row.selectable && row.selection?.kind === 'target'));
+                // A swarming unit's attacks are at the unit it clings to, whatever its row is selected with.
+                && snapshot.physicalAttacks.some(row => row.available && row.selectable
+                    && (row.selection?.kind === 'target' || (row.selection !== undefined && row.onlyTarget !== undefined))));
     }
 
     private async dispatchTargeting(

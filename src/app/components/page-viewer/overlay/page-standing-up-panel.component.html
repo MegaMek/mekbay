@@ -30,7 +30,7 @@
                                     <span class="stand-attempt-limit">({{ limit }} attempt per turn)</span>
                                 }
                             </div>
-                            <div class="psr-subtitle">Failure: <span class="psr-failure-value">Remain prone</span></div>
+                            <div class="psr-subtitle">Failure: <span class="psr-failure-value">Fall again</span></div>
                         </div>
                         @if (lastOutcome(); as result) {
                             <div class="psr-result" [class.failed]="result === 'failed'">{{ result }}</div>

@@ -95,7 +95,7 @@ describe('direct V2 component-mode handlers', () => {
         expect(setup.runtime.query().componentStealthState(setup.component.id)).toBe('enabled');
         expect(setup.runtime.query().componentMode(setup.component.id)).toBe('On');
         expect(setup.runtime.query().c3DisruptedByStealth()).toBeTrue();
-        const heat = setup.runtime.query().heatProjection('automatic');
+        const heat = setup.runtime.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind === 'supported') {
             expect(heat.projection.committedSources).toContain(jasmine.objectContaining({
@@ -204,7 +204,7 @@ describe('direct V2 component-mode handlers', () => {
         }).accepted).toBeTrue();
         expect(setup.runtime.query().functionalEcmForStealth()).toBeFalse();
         expect(setup.runtime.query().c3DisruptedByStealth()).toBeFalse();
-        const heat = setup.runtime.query().heatProjection('automatic');
+        const heat = setup.runtime.query().heatProjection();
         if (heat.kind === 'supported') {
             expect(heat.projection.committedSources.some(source => (
                 source.id === `equipment:${setup.component.id}`

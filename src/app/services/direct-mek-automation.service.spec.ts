@@ -16,6 +16,7 @@ createDirectCommandConsoleRuntimeFixture,
 createDirectExplosionRuntimeFixture,
 createDirectHotLoadedAmmoRuntimeFixture,
 createDirectMekRuntimeFixture,
+createDirectShieldRuntimeFixture,
 createDirectTorsoCockpitRuntimeFixture,
 createDirectTripodRuntimeFixture,
 type DirectMekRuntimeFixture,
@@ -29,16 +30,25 @@ type PreparedDirectMekAutomationCommand,
 } from './direct-mek-automation.service';
 import { MekFallingAutomationService } from './mek-falling-automation.service';
 import { OptionsService } from './options.service';
+import { DialogsService } from './dialogs.service';
+import { SwarmService } from './swarm.service';
+import type { CBTForceMember } from '../models/force-member.model';
 
 describe('DirectMekAutomationService', () => {
     let resolveAutomation: jasmine.Spy;
     let resolveChecksAutomation: jasmine.Spy;
     let resolveFalling: jasmine.Spy;
     let showAutomationToast: jasmine.Spy;
+    let shakeOff: jasmine.Spy;
+    let removalModifier: jasmine.Spy;
+    let choose: jasmine.Spy;
     let service: DirectMekAutomationService;
     let automationModes: Record<string, 'yes' | 'no' | 'ask'>;
 
     beforeEach(() => {
+        shakeOff = jasmine.createSpy('shakeOff').and.returnValue(true);
+        removalModifier = jasmine.createSpy('removalModifier').and.returnValue(0);
+        choose = jasmine.createSpy('choose');
         automationModes = {
             heatAndDissipationResolution: 'yes',
             heatEffectsCheck: 'ask',
@@ -64,6 +74,8 @@ describe('DirectMekAutomationService', () => {
                 { provide: CBTAutomationCheckService, useValue: { resolve: resolveChecksAutomation } },
                 { provide: MekFallingAutomationService, useValue: { resolve: resolveFalling } },
                 { provide: CBTAutomationToastService, useValue: { show: showAutomationToast } },
+                { provide: SwarmService, useValue: { shakeOff, removalModifier } },
+                { provide: DialogsService, useValue: { choose } },
                 {
                     provide: OptionsService,
                     useValue: {
@@ -193,15 +205,12 @@ describe('DirectMekAutomationService', () => {
 
     it('reports automatically resolved heat through the shared automation notifier', async () => {
         const harness = createHarness();
-        setPendingHeat(harness, 10);
-        const projection = harness.fixture.instance.query().heatProjection('automatic');
-        expect(projection.kind).toBe('supported');
-        const projectedHeat = projection.kind === 'supported'
-            ? projection.projection.projected
-            : 0;
+        // The player's arrow is the turn's heat, so the automation settles it and names the player's adjustment. Under
+        // heat resolution Yes the force sets NEXT to follow the calculation.
+        expect(harness.fixture.instance.dispatch({ type: 'set-pending-heat', heat: 10, follow: true }).accepted)
+            .toBeTrue();
         const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
-
             policy: 'manual',
         });
 
@@ -214,14 +223,14 @@ describe('DirectMekAutomationService', () => {
         expect(showAutomationToast).toHaveBeenCalledOnceWith(
             String(harness.instanceId),
             jasmine.any(String),
-            `Heat and dissipation: Heat 0 → ${projectedHeat}`,
+            'Heat and dissipation: Heat 0 → 10 (adjustment +10)',
             'info',
         );
     });
 
     it('selects automatic or manual heat settlement from the configured review result', async () => {
         const harness = createHarness();
-        setPendingHeat(harness, 10);
+        generateHeat(harness);
         const automatic = await service.prepareCommand(harness.force, harness.instanceId, {
             type: 'end-turn',
 
@@ -250,7 +259,7 @@ describe('DirectMekAutomationService', () => {
         }));
     });
 
-    it('discards a skipped heat arrow but commits it when heat automation is disabled', async () => {
+    it('applies NEXT at End Turn whether the heat review is skipped or heat automation is off', async () => {
         automationModes['heatAndDissipationResolution'] = 'ask';
         resolveAutomation.and.resolveTo(new Set<string>());
         const skippedHarness = createHarness();
@@ -267,7 +276,7 @@ describe('DirectMekAutomationService', () => {
             skipped,
             skippedHarness.dispatch,
         )).not.toBeNull();
-        expect(skippedHarness.fixture.instance.query().heatState().current).toBe(0);
+        expect(skippedHarness.fixture.instance.query().heatState().current).toBe(10);
         expect(skippedHarness.fixture.instance.query().heatState().pendingOverride).toBeUndefined();
 
         automationModes['heatAndDissipationResolution'] = 'no';
@@ -536,6 +545,37 @@ describe('DirectMekAutomationService', () => {
         expect(durability()).toBeLessThan(beforeDamage);
     });
 
+    it('deals falling damage to a prone Mek whose thrash roll fails, as for a failed attempt to stand', async () => {
+        const harness = createHarness('total-warfare');
+        expect(harness.fixture.instance.dispatch({ type: 'set-condition', condition: 'prone', active: true }).accepted)
+            .toBeTrue();
+        expect(harness.fixture.instance.dispatch({
+            type: 'record-mek-physical-attack-checks', attackId: 'attack:thrash', checks: ['made-thrash'],
+        }).accepted).toBeTrue();
+        const check = harness.fixture.instance.query().mekPilotChecks()[0]!;
+        const durability = () => [...harness.fixture.index.locations.values()]
+            .reduce((total, location) => total
+                + harness.fixture.instance.query().remainingInternal(location.id)
+                + location.armorFaceIds.reduce((armor, faceId) =>
+                    armor + harness.fixture.instance.query().remainingArmor(faceId), 0), 0);
+        const beforeDamage = durability();
+        spyOn(Math, 'random').and.returnValue(0);
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'resolve-mek-pilot-check',
+            checkId: check.checkId,
+            evidence: { dice: [1, 1], claimedOutcome: 'failed' },
+        });
+        const result = harness.fixture.instance.dispatch(prepared.command);
+        expect(await service.afterCommand(
+            harness.force, harness.instanceId, harness.snapshot(), prepared, result, harness.dispatch,
+        )).toBeTrue();
+
+        expect(prepared.pilotCheckFall).toBeDefined();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeTrue();
+        expect(durability()).toBeLessThan(beforeDamage);
+    });
+
     it('does run the Total Warfare shutdown PSR for an automatic heat shutdown', async () => {
         const harness = createHarness('total-warfare');
         expect(harness.fixture.instance.dispatch({
@@ -745,6 +785,22 @@ describe('DirectMekAutomationService', () => {
         expect(event.breakdown.map(row => row.label)).not.toContain('Dissipation');
     });
 
+    it('ends the turn on a NEXT the player set without putting it up for review', async () => {
+        automationModes['heatAndDissipationResolution'] = 'ask';
+        const harness = createHarness();
+        expect(harness.fixture.instance.dispatch({ type: 'set-pending-heat', heat: 8, follow: true }).accepted).toBeTrue();
+        expect(harness.fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).accepted)
+            .toBeTrue();
+        const next = harness.fixture.instance.query().heatState().pendingOverride!;
+
+        const prepared = await service.prepareCommand(harness.force, harness.instanceId, { type: 'end-turn', policy: 'manual' });
+        // No heat calculation is offered for review: End Turn applies NEXT as APPLY HEAT does.
+        const reviewed = resolveAutomation.calls.allArgs().flatMap(args => args[1] as readonly { readonly breakdown?: unknown }[]);
+        expect(reviewed.every(event => event.breakdown === undefined)).toBeTrue();
+        expect(await service.settleBeforeCommand(harness.force, harness.instanceId, prepared, harness.dispatch)).not.toBeNull();
+        expect(harness.fixture.instance.query().heatState().current).toBe(next);
+    });
+
     it('reviews every Mek in one end-turn heat batch before committing any turn', async () => {
         const leftId = 'unit:automation:batch:left';
         const rightId = 'unit:automation:batch:right';
@@ -758,8 +814,8 @@ describe('DirectMekAutomationService', () => {
             'core-2026',
             rightId,
         );
-        setPendingHeat(left, 10);
-        setPendingHeat(right, 10);
+        generateHeat(left);
+        generateHeat(right);
         const force = {
             getUnitSnapshot: (instanceId: typeof leftId) => instanceId === leftId
                 ? left.snapshot()
@@ -1062,9 +1118,8 @@ describe('DirectMekAutomationService', () => {
         const occupied = fixture.initialized.deployment.crewAssignment.positions[1]!;
         const instance = await createMekUnit({ uuid: fixture.identity, instanceId },
             fixture.entity, fixture.identity, {
-                initializerRevision: 1,
                 profileId: 'pristine',
-                deployment: { id: 'vacant-primary', crewAssignment: { schemaVersion: 1, positions: [occupied] } },
+                deployment: { id: 'vacant-primary', crewAssignment: { positions: [occupied] } },
                 scenario: { id: 'megamek', ruleset: 'core-2026' },
             });
         const harness = createHarnessForFixture(
@@ -1491,7 +1546,7 @@ describe('DirectMekAutomationService', () => {
             expect(instance.dispatch({ type: 'resolve-mek-pilot-check', checkId: instance.query().mekPilotChecks()[0]!.checkId,
                 evidence: { dice: [6, 6] } }).accepted).toBeTrue();
             expect(instance.dispatch({ type: 'declare-mek-movement', realPhases: true,
-                declaration: { schemaVersion: 1, mode: 'run', distance: 2, boosterComponentIds: [] } }).changed).toBeTrue();
+                declaration: { mode: 'run', distance: 2, boosterComponentIds: [] } }).changed).toBeTrue();
             return harness;
         }
 
@@ -1687,6 +1742,216 @@ describe('DirectMekAutomationService', () => {
         expect(query().hasCondition('prone')).toBeTrue();
         expect(query().mekMovementPsrState().automaticFalls).toEqual([]);
         expect(harness.fixture.instance.dispatch(settled!.command).accepted).toBeTrue();
+    });
+
+    it('deals falling damage when an attempt to stand fails', async () => {
+        const harness = createHarness('core-2026');
+        expect(harness.fixture.instance.dispatch({ type: 'set-condition', condition: 'prone', active: true }).accepted)
+            .toBeTrue();
+        expect(harness.fixture.instance.dispatch({ type: 'prepare-mek-stand' }).accepted).toBeTrue();
+        const failed = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'resolve-mek-stand-attempt', carefulStand: false, evidence: { dice: [1, 1], claimedOutcome: 'failed' },
+        });
+        expect(failed.pilotCheckFall).toBeDefined();
+        expect(resolveFalling).toHaveBeenCalledOnceWith(jasmine.objectContaining({ levelsFallen: 0 }), jasmine.anything());
+
+        const stood = await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'resolve-mek-stand-attempt', carefulStand: false, evidence: { dice: [6, 6], claimedOutcome: 'success' },
+        });
+        expect(stood.pilotCheckFall).toBeUndefined();
+
+        const durability = () => [...harness.fixture.index.locations.values()]
+            .reduce((total, location) => total
+                + harness.fixture.instance.query().remainingInternal(location.id)
+                + location.armorFaceIds.reduce((armor, faceId) =>
+                    armor + harness.fixture.instance.query().remainingArmor(faceId), 0), 0);
+        const before = durability();
+        const result = harness.fixture.instance.dispatch(failed.command);
+        expect(await service.afterCommand(
+            harness.force, harness.instanceId, harness.snapshot(), failed, result, harness.dispatch,
+        )).toBeTrue();
+        expect(harness.fixture.instance.query().hasCondition('prone')).toBeTrue();
+        // 20 tons falling 0 levels deal 2 points, once.
+        expect(before - durability()).toBe(2);
+    });
+
+    it('drops a Mek whose jump-into-water roll fails to the bottom, falling the water\'s depth', async () => {
+        const fixture = createDirectShieldRuntimeFixture('total-warfare', 'small', 'unit:automation:jump-water');
+        const harness = createHarnessForFixture(fixture, 'total-warfare', 'unit:automation:jump-water');
+        expect(fixture.instance.dispatch({
+            type: 'declare-mek-movement', declaration: { mode: 'jump', distance: 1, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(fixture.instance.dispatch({
+            type: 'replace-turn-state', turn: { ...fixture.instance.query().turnState(), cover: 'underwater-depth-1' },
+        }).accepted).toBeTrue();
+        const check = fixture.instance.query().mekPilotChecks()[0]!;
+        expect(check.source.triggerKind).toBe('jump-into-water');
+
+        await service.prepareCommand(harness.force, harness.instanceId, {
+            type: 'resolve-mek-pilot-check',
+            checkId: check.checkId,
+            evidence: { dice: [1, 1], claimedOutcome: 'failed' },
+        });
+        expect(resolveFalling).toHaveBeenCalledOnceWith(
+            jasmine.objectContaining({ levelsFallen: 1, waterDepth: 1 }),
+            jasmine.anything(),
+        );
+    });
+
+    describe('swarming infantry', () => {
+        const jump = Object.freeze({
+            type: 'declare-mek-movement', declaration: { mode: 'jump', distance: 1, boosterComponentIds: [] },
+        } as const satisfies CBTUnitCommand);
+        const swarmedHarness = (instanceId: string) => {
+            const harness = createHarnessForFixture(
+                createDirectShieldRuntimeFixture('total-warfare', 'small', instanceId), 'total-warfare', instanceId);
+            expect(harness.fixture.instance.dispatch({ type: 'set-condition', condition: 'swarmed', active: true })
+                .changed).toBeTrue();
+            return harness;
+        };
+        const settle = async (harness: ReturnType<typeof swarmedHarness>, prepared: PreparedDirectMekAutomationCommand) => {
+            const before = harness.snapshot();
+            const result = harness.fixture.instance.dispatch(prepared.command);
+            return service.afterCommand(harness.force, harness.instanceId, before, prepared, result, harness.dispatch);
+        };
+        const conditions = (harness: ReturnType<typeof swarmedHarness>) =>
+            (['prone', 'swarmed'] as const).filter(condition => harness.fixture.instance.query().hasCondition(condition));
+        const resolve = (checkId: string, passed: boolean) => Object.freeze({
+            type: 'resolve-mek-pilot-check', checkId,
+            evidence: passed ? { dice: [6, 6], claimedOutcome: 'success' } : { dice: [1, 1], claimedOutcome: 'failed' },
+        } as const satisfies CBTUnitCommand);
+        const pilotingTarget = (harness: ReturnType<typeof swarmedHarness>) => {
+            const movement = harness.fixture.instance.query().mekMovementPsr();
+            if (movement.kind !== 'supported') throw new Error('The fixture Mek has no PSR projection');
+            return movement.pilotingTargetNumber;
+        };
+
+        it("throws the infantry off a 'Mech whose jump shakes it off; a failed roll leaves both standing", async () => {
+            const harness = swarmedHarness('unit:automation:shake-off-jump');
+            expect(harness.fixture.instance.dispatch(jump).accepted).toBeTrue();
+            const check = harness.fixture.instance.query().mekPilotChecks()[0]!;
+
+            const failed = await service.prepareCommand(harness.force, harness.instanceId, resolve(check.checkId, false));
+            expect(failed.pilotCheckFall).toBeUndefined();
+            expect(failed.shookOffSwarm).toBeUndefined();
+            expect(resolveFalling).not.toHaveBeenCalled();
+
+            const passed = await service.prepareCommand(harness.force, harness.instanceId, resolve(check.checkId, true));
+            expect(await settle(harness, passed)).toBeTrue();
+            expect(shakeOff).toHaveBeenCalledOnceWith(harness.member, { kind: 'jump', jumpMp: 1, waterDepth: 0 });
+            expect(conditions(harness)).toEqual([]);
+        });
+
+        for (const passed of [true, false]) {
+        it(`${passed ? 'throws the infantry off' : 'keeps the infantry on'} with the jump roll rolled at the end of the phase`,
+            async () => {
+            const harness = swarmedHarness(`unit:automation:shake-off-phase-${passed}`);
+            expect(harness.fixture.instance.dispatch(jump).accepted).toBeTrue();
+            spyOn(Math, 'random').and.returnValue(passed ? 0.99 : 0);
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, { type: 'end-phase' });
+            // Failing it is no fall, so it takes no other fall roll down with it.
+            const [row] = resolveChecksAutomation.calls.mostRecent().args[1];
+            expect(row).toEqual(jasmine.objectContaining({ failureOutcome: 'Infantry holds on' }));
+            expect(row.failureGroup).toBeUndefined();
+            expect(prepared.phaseBoundary?.fall).toBeNull();
+
+            expect(await service.settleBeforeCommand(harness.force, harness.instanceId, prepared, harness.dispatch))
+                .not.toBeNull();
+            expect(shakeOff.calls.allArgs()).toEqual(passed
+                ? [[harness.member, { kind: 'jump', jumpMp: 1, waterDepth: 0 }]] : []);
+            expect(conditions(harness)).toEqual(passed ? [] : ['swarmed']);
+        });
+        }
+
+        it("tells the 'Mech's jump of the swarming infantry's magnetic claws", async () => {
+            const harness = swarmedHarness('unit:automation:shake-off-claws');
+            removalModifier.and.returnValue(1);
+            expect((await service.prepareCommand(harness.force, harness.instanceId, jump)).command)
+                .toEqual({ ...jump, swarmerMagneticClaws: true });
+            removalModifier.and.returnValue(0);
+            expect((await service.prepareCommand(harness.force, harness.instanceId, jump)).command).toEqual(jump);
+        });
+
+        it("throws the infantry off a swarmed 'Mech that falls, into the water it fell in", async () => {
+            const harness = swarmedHarness('unit:automation:swarm-fall');
+            expect(harness.fixture.instance.dispatch(jump).accepted).toBeTrue();
+            expect(harness.fixture.instance.dispatch({
+                type: 'replace-turn-state',
+                turn: { ...harness.fixture.instance.query().turnState(), cover: 'underwater-depth-1' },
+            }).accepted).toBeTrue();
+            const check = harness.fixture.instance.query().mekPilotChecks()
+                .find(candidate => candidate.source.triggerKind === 'jump-into-water')!;
+
+            const fell = await service.prepareCommand(harness.force, harness.instanceId, resolve(check.checkId, false));
+            expect(fell.pilotCheckFall).toBeDefined();
+            expect(await settle(harness, fell)).toBeTrue();
+            expect(shakeOff).toHaveBeenCalledOnceWith(harness.member, { kind: 'fall', waterDepth: 1 });
+            expect(conditions(harness)).toEqual(['prone']);
+        });
+
+        it("drops a swarmed 'Mech prone hard: a passed roll, magnetic claws +1, falls and throws the infantry off",
+            async () => {
+            const harness = swarmedHarness('unit:automation:drop-prone');
+            const target = pilotingTarget(harness) + 1;
+            choose.and.resolveTo('hard');
+            removalModifier.and.returnValue(1);
+            spyOn(Math, 'random').and.returnValue(0.99);
+
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+                type: 'set-condition', condition: 'prone', active: true,
+            });
+            expect(removalModifier).toHaveBeenCalledOnceWith(harness.member);
+            expect(resolveChecksAutomation.calls.mostRecent().args[1])
+                .toEqual([jasmine.objectContaining({ targetNumber: target, failureOutcome: 'Infantry holds on' })]);
+            expect(prepared.pilotCheckFall).toBeDefined();
+            expect(await settle(harness, prepared)).toBeTrue();
+            expect(shakeOff).toHaveBeenCalledOnceWith(harness.member, { kind: 'fall', waterDepth: 0 });
+            expect(conditions(harness)).toEqual(['prone']);
+        });
+
+        for (const choice of ['prone', 'failed'] as const) {
+        it(`goes prone with the infantry still on when the ${choice === 'prone' ? 'player just goes prone' : 'roll fails'}`,
+            async () => {
+            const harness = swarmedHarness(`unit:automation:drop-prone-${choice}`);
+            choose.and.resolveTo(choice === 'prone' ? 'prone' : 'hard');
+            spyOn(Math, 'random').and.returnValue(0);
+
+            const prepared = await service.prepareCommand(harness.force, harness.instanceId, {
+                type: 'set-condition', condition: 'prone', active: true,
+            });
+            expect(resolveChecksAutomation).toHaveBeenCalledTimes(choice === 'prone' ? 0 : 1);
+            expect(prepared.pilotCheckFall).toBeUndefined();
+            expect(await settle(harness, prepared)).toBeTrue();
+            expect(shakeOff).not.toHaveBeenCalled();
+            expect(conditions(harness)).toEqual(['prone', 'swarmed']);
+        });
+        }
+
+        it("drowns the infantry when a swarmed 'Mech wades into Depth 2 water, unless it holds on with UMU MP",
+            async () => {
+            const harness = swarmedHarness('unit:automation:swarm-deep-water');
+            const wade = (depth: 1 | 2 | 3): PreparedDirectMekAutomationCommand => Object.freeze({
+                command: {
+                    type: 'replace-turn-state' as const,
+                    turn: { ...harness.fixture.instance.query().turnState(), cover: `underwater-depth-${depth}` as const },
+                },
+                deferredPilotHits: 0,
+            });
+            expect(await settle(harness, wade(1))).toBeTrue();
+            expect(shakeOff).not.toHaveBeenCalled();
+            shakeOff.and.returnValue(false);
+            expect(await settle(harness, wade(2))).toBeTrue();
+            expect(shakeOff).toHaveBeenCalledOnceWith(harness.member, { kind: 'deep-water', waterDepth: 2 });
+            expect(conditions(harness)).toEqual(['swarmed']);
+            // Going deeper is not entering deep water again.
+            expect(await settle(harness, wade(3))).toBeTrue();
+            expect(shakeOff).toHaveBeenCalledTimes(1);
+            shakeOff.and.returnValue(true);
+            expect(await settle(harness, wade(1))).toBeTrue();
+            expect(await settle(harness, wade(3))).toBeTrue();
+            expect(shakeOff.calls.mostRecent().args).toEqual([harness.member, { kind: 'deep-water', waterDepth: 3 }]);
+            expect(conditions(harness)).toEqual([]);
+        });
     });
 
     it('keeps pending combat uncommitted when the phase PSR review is cancelled', async () => {
@@ -2290,9 +2555,16 @@ function createHarnessForFixture(
         state: fixture.instance.snapshot(),
         query: fixture.instance.query(),
     });
-    const force = { getUnitSnapshot: () => snapshot() } as unknown as CBTForce;
+    const member = { id: instanceId } as CBTForceMember;
+    const force = { getUnitSnapshot: () => snapshot(), getCBTMembers: () => [member] } as unknown as CBTForce;
     const dispatch = async (command: CBTUnitCommand) => fixture.instance.dispatch(command);
-    return { fixture, force, instanceId, snapshot, dispatch };
+    return { fixture, force, instanceId, snapshot, dispatch, member };
+}
+
+/** 15 outside heat against the fixture's 10 heat sinks: heat for End Turn to calculate. */
+function generateHeat(harness: ReturnType<typeof createHarnessForFixture>): void {
+    const result = harness.fixture.instance.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' });
+    if (!result.accepted || !result.changed) throw new Error('Outside heat setup was rejected');
 }
 
 function setPendingHeat(

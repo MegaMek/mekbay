@@ -584,7 +584,8 @@ describe('MekEntity weapons', () => {
     expect(entity.physicalWeapons().some(weapon =>
       'mountId' in weapon && weapon.mountId === hatchetMount.mountId)).toBeTrue();
     expect(entity.physicalWeapons()[0] as EntityMountedEquipment).toBe(hatchetMount);
-    expect(entity.physicalWeapons().filter(weapon => 'source' in weapon).length).toBe(6);
+    // A brush off joins the left arm's punch; the hatchet arm brushes nothing off (TW p. 221).
+    expect(entity.physicalWeapons().filter(weapon => 'source' in weapon).length).toBe(8);
 
     entity.setEquipment([]);
     addTestEquipment(entity, heatSink, { location: 'CT' });
@@ -599,7 +600,7 @@ describe('MekEntity weapons', () => {
 
     const attacks = entity.intrinsicWeapons();
     expect(attacks.map(attack => attack.name)).toEqual([
-      'Punch', 'Punch', 'Kick', 'Club/Improvised', 'Charge', 'Push',
+      'Punch', 'Brush Off', 'Punch', 'Brush Off', 'Kick', 'Club/Improvised', 'Charge', 'Push', 'Thrash',
     ]);
     expect(attacks.find(attack => attack.id === 'intrinsic:punch:LA')?.damage).toEqual({
       kind: 'fixed', value: 6,

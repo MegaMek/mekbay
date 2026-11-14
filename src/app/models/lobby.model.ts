@@ -5,12 +5,15 @@
 import type { CBTRuleset } from './cbt-ruleset.model';
 import type { ForceAlignment } from './force-slot.model';
 import type { InitiativeOrderMode, InitiativeRecord } from './rules/initiative-rules';
+import type { CBTOptionalRules } from './options.model';
 
 /** The rules everyone in a lobby plays by; the host sets them, and they take precedence over local options. */
 export interface LobbyGameSettings {
     ruleset: CBTRuleset;
     initiativeOrder: InitiativeOrderMode;
     initiativeDie: boolean;
+    /** The optional rules the lobby plays; a lobby that carries none leaves each player's own. */
+    optionalRules?: Partial<CBTOptionalRules>;
 }
 
 export interface LobbyParticipant {

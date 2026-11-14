@@ -34,7 +34,7 @@ describe('Mek record-sheet movement PSR pre-warnings', () => {
         const snapshot = () => {
             const sheet = projectMekRecordSheet(
                 fixture.entity, fixture.index, fixture.instance.ruleset(), fixture.instance.snapshot(),
-                fixture.instance.query(), emptyCBTEncounterSnapshot(), null,
+                fixture.instance.query(), emptyCBTEncounterSnapshot(), null, false, {},
             );
             return {
                 ...sheet,
@@ -155,7 +155,7 @@ describe('Mek record-sheet movement PSR pre-warnings', () => {
 
             expect(fixture.instance.dispatch({
                 type: 'declare-mek-movement',
-                declaration: { schemaVersion: 1, mode: 'jump', distance: 1, boosterComponentIds: [] },
+                declaration: { mode: 'jump', distance: 1, boosterComponentIds: [] },
             }).accepted).toBeTrue();
             expect(fixture.instance.query().mekMovementPsrState().checks.filter(check =>
                 check.source.sourceKind === 'movement').map(check => check.reason))
@@ -220,7 +220,7 @@ describe('Mek record-sheet movement PSR pre-warnings', () => {
         for (const mode of ['run', 'jump', 'walk'] as const) {
             expect(fixture.instance.dispatch({
                 type: 'declare-mek-movement',
-                declaration: { schemaVersion: 1, mode, distance: 1, boosterComponentIds: [] },
+                declaration: { mode, distance: 1, boosterComponentIds: [] },
             }).accepted).toBeTrue();
             sheet.render();
             for (const warningMode of ['run', 'jump'] as const) {

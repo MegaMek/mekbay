@@ -14,7 +14,7 @@ export function modifierTooltipLines<T extends ToHitModifierBreakdownEntry>(
         value: formatValue(entry),
         ...(entry.priority !== undefined && { priority: entry.priority }),
         ...(entry.weakened && { weakened: true }),
-        ...(entry.kind && { kind: entry.kind }),
+        ...(entry.kind === 'heat' && { kind: entry.kind }),
     }));
 }
 

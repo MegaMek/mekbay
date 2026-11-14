@@ -7,7 +7,9 @@ import type {
 ComponentId,
 } from '../../models/entity/entity-identifiers';
 import { isKeyedBomb,layoutBombStores,type BombSection } from '../../models/aerospace-bomb.model';
-import { velocityRecordValue,type VelocityRecordField } from '../../models/aerospace-velocity-record.model';
+import { VELOCITY_RECORD_TURNS,velocityRecordValue,type VelocityRecordField } from '../../models/aerospace-velocity-record.model';
+import { ELEVATION_TRACK_TURNS } from '../../models/elevation-record.model';
+import { turnTrackShownTurn } from '../../models/turn-track.model';
 import { WeaponEquipment } from '../../models/equipment.model';
 import type { EquipmentPanelComponent,EquipmentPanelSnapshot } from '../../models/runtime/equipment-panel';
 import { nonMekRecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
@@ -41,7 +43,9 @@ bindRecordSheetRandomHit,
 createRecordSheetBind,
 recordSheetDamageTargets,
 renderRecordSheetAmmoProfile,
+bindSwarmedBy,
 renderRecordSheetConditions,
+swarmedByDetails,
 renderRecordSheetCrewControls,
 renderRecordSheetCrewName,
 renderRecordSheetCrewState,
@@ -54,10 +58,11 @@ type RecordSheetBind,
 import {
 bindRecordSheetHeatCell,
 bindRecordSheetHeatControls,
-displayedHeat,
 renderRecordSheetHeatScale,
 } from './record-sheet-heat-scale-rendering';
+import { displayedHeat } from '../../models/runtime/record-sheet-heat-scale';
 import {
+bindRecordSheetInventoryAim,
 bindRecordSheetInventoryButtons,
 NO_INVENTORY_SELECTION,
 projectRecordSheetWeaponSelection,
@@ -130,7 +135,7 @@ export function bindNonMekRecordSheet(
         renderIdentity(svg, snapshot);
         renderMovementSelection(snapshot.movementSelection);
         bindRecordSheetRandomHit(svg, bindPresentation, context);
-        renderConditions(svg, snapshot, bind, () => current);
+        renderConditions(svg, snapshot, bind, () => current, inventory?.swarmedBy);
         renderCrew(svg, snapshot, bind, () => current);
         for (const location of snapshot.locations) {
             if (location.soldierPips === true) {
@@ -202,6 +207,15 @@ export function bindNonMekRecordSheet(
             }
         }
         renderDamageTracks(svg, snapshot.damageTracks, issues, bind, () => current.editContext);
+        renderElevation(svg, snapshot, bind, () => current.editContext);
+        if (snapshot.elevation !== null) {
+            for (const cell of renderTurnTrack(svg, 'elevationTrack', ELEVATION_TRACK_TURNS / 2, snapshot,
+                turn => String(snapshot.elevationRecord.find(entry => entry.turn === turn)?.value ?? ''))) {
+                bind(cell, () => Object.freeze({
+                    kind: 'elevation', turn: Number(cell.dataset['turn']), context: current.editContext,
+                }), 'value');
+            }
+        }
         renderComponents(svg, snapshot, issues);
         if (!renderHandheldWeaponAmmoPips(svg, snapshot.components)) {
             renderRecordSheetAmmoProfile(svg, snapshot.components, onInteraction !== undefined);
@@ -242,8 +256,10 @@ function renderConditions(
     snapshot: NonMekRecordSheetSnapshot,
     bind: RecordSheetBind,
     current: () => NonMekRecordSheetSnapshot,
+    swarmedBy: string | undefined,
 ): void {
-    renderRecordSheetConditions(svg, snapshot.conditions, UNIT_CONDITION_DEFINITIONS);
+    renderRecordSheetConditions(svg, snapshot.conditions, UNIT_CONDITION_DEFINITIONS, swarmedByDetails(swarmedBy));
+    bindSwarmedBy(svg, bind, () => current().editContext);
     const controls = unitConditionControls(snapshot.conditionControlKeys);
     for (const control of controls.filter(candidate => candidate.placement === 'button')) {
         svg.querySelectorAll<SVGElement>(`.unitConditionButton[condition="${attributeValue(control.key)}"]`)
@@ -363,6 +379,27 @@ function renderCountedDamageTrackPips(
         pip.classList.toggle('hidden', !committed && !pendingAdd);
     });
     group?.classList.toggle('hasVisiblePips', pips.some(pip => !pip.classList.contains('hidden')));
+}
+
+/** The Elevation tracker of a flying unit: its Elevation, and the control that picks a new one. */
+/**
+ * The Elevation tracker shows where the unit is this turn (`elevationAt`), muted until this turn's Elevation is
+ * recorded: the last one before it, or 0 before any.
+ */
+function renderElevation(
+    svg: SVGSVGElement,
+    { elevation, elevationRecord, currentTurn }: Pick<NonMekRecordSheetSnapshot, 'elevation' | 'elevationRecord' | 'currentTurn'>,
+    bind: RecordSheetBind,
+    context: () => UnitEditContext,
+): void {
+    const tracker = svg.querySelector<SVGElement>('.elevationTracker');
+    if (!tracker || elevation === null) return;
+    const value = tracker.querySelector('.elevationTrackerValue');
+    if (value) {
+        value.textContent = String(elevation);
+        value.classList.toggle('carriedOver', !elevationRecord.some(entry => entry.turn === currentTurn));
+    }
+    bind(tracker, () => Object.freeze({ kind: 'elevation', context: context() }), 'control');
 }
 
 function renderRotorHits(svg: SVGSVGElement, committedHits: number, pendingHits: number): void {
@@ -653,6 +690,12 @@ function renderComponents(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
             issues.push(`Unknown inventory component binding for ${row.id}`);
         }
     }
+    // A disposable weapon is fired once per scenario (TO:AuE p. 116): its note is struck through once it is gone.
+    for (const note of svg.querySelectorAll<SVGElement>('.disposableWeapon')) {
+        const ids = readRecordSheetComponentIds(note);
+        note.classList.toggle('used', ids.length > 0
+            && ids.every(componentId => componentsById.get(componentId)?.status === 'destroyed'));
+    }
 }
 
 /**
@@ -718,14 +761,39 @@ function renderBombStores(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapsho
     return boxes;
 }
 
-/** Writes the velocity record values into their cells; returns the cells for interaction. */
+/** Writes the velocity record into its cells (`renderTurnTrack`); returns the cells for interaction. */
 function renderVelocityRecord(svg: SVGSVGElement, snapshot: NonMekRecordSheetSnapshot): readonly SVGElement[] {
-    svg.querySelectorAll<SVGTextElement>('.velocityValue[data-turn]').forEach(text => {
-        const value = velocityRecordValue(snapshot.velocityRecord, Number(text.dataset['turn']),
-            text.dataset['field'] as VelocityRecordField);
-        text.textContent = value === undefined ? '' : String(value);
+    return renderTurnTrack(svg, 'velocity', VELOCITY_RECORD_TURNS / 2, snapshot, (turn, text) => {
+        const value = velocityRecordValue(snapshot.velocityRecord, turn, text.dataset['field'] as VelocityRecordField);
+        return value === undefined ? '' : String(value);
     });
-    return [...svg.querySelectorAll<SVGElement>('.velocityCell[data-turn]')];
+}
+
+/**
+ * Shows a sheet's turn track at the turns it covers now: its `prefix`Turn labels, `prefix`TurnCell and `prefix`Cell
+ * boxes and `prefix`Value texts, each printed with its `data-column`. While turns are tracked the tables move on with
+ * the game (`turnTrackShownTurn`, `perTable` turns a table) and this turn's column is highlighted; otherwise nothing
+ * restarts the count at turn 1, so each column keeps its printed turn. Each value is written; returns the value boxes,
+ * each carrying the turn it shows.
+ */
+function renderTurnTrack(
+    svg: SVGSVGElement,
+    prefix: string,
+    perTable: number,
+    { currentTurn, turnTracked }: Pick<NonMekRecordSheetSnapshot, 'currentTurn' | 'turnTracked'>,
+    value: (turn: number, text: SVGElement) => string,
+): readonly SVGElement[] {
+    const elements = svg.querySelectorAll<SVGElement>(
+        `.${prefix}Turn[data-column], .${prefix}TurnCell[data-column], .${prefix}Cell[data-column], .${prefix}Value[data-column]`);
+    elements.forEach(element => {
+        const column = Number(element.dataset['column']);
+        const turn = turnTracked ? turnTrackShownTurn(column, currentTurn, perTable) : column;
+        element.dataset['turn'] = String(turn);
+        element.classList.toggle('currentTurn', turnTracked && turn === currentTurn);
+        if (element.classList.contains(`${prefix}Turn`)) element.textContent = String(turn);
+        else if (element.classList.contains(`${prefix}Value`)) element.textContent = value(turn, element);
+    });
+    return [...svg.querySelectorAll<SVGElement>(`.${prefix}Cell[data-turn]`)];
 }
 
 function renderInventoryComponentStatus(
@@ -788,6 +856,7 @@ function renderInventorySelections(
             bindRecordSheetInventoryButtons(modeElement, componentIds, mode, bind, context);
         });
         renderRecordSheetInventorySelection(row, selection);
+        bindRecordSheetInventoryAim(row, componentIds, bind, context);
     }
 }
 

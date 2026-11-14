@@ -41,6 +41,11 @@ export function drawTurnTrack(
         /** Gap between each text baseline and the rule beneath it. */
         readonly textInset: number;
         readonly turnClass?: string;
+        /**
+         * Makes the track live on screen: its turn labels, turn and value boxes and value texts take the
+         * `prefix`Turn/TurnCell/Cell/Value classes and a `data-column`, for the binder to move on with the game.
+         */
+        readonly livePrefix?: string;
     },
 ): void {
     const middle = track.top + track.height / 2;
@@ -63,10 +68,29 @@ export function drawTurnTrack(
     const bold = { size: font(6.76), weight: 700 } as const;
     addText(parent, 'Turn', x(7.5), y(middle - track.textInset), bold);
     addText(parent, track.valueLabel, x(7.5), y(track.top + track.height - track.textInset), bold);
+    const prefix = track.livePrefix;
     for (let turn = 0; turn < track.turns; turn++) {
-        addText(parent, String(track.firstTurn + turn), x(track.firstColumnX + (turn + 0.5) * track.columnWidth),
-            y(middle - track.textInset), {
-                ...bold, anchor: 'middle', class: track.turnClass, maxWidth: x(track.columnWidth - 1.2),
-            });
+        const column = track.firstTurn + turn;
+        const left = track.firstColumnX + turn * track.columnWidth;
+        const centre = left + track.columnWidth / 2;
+        if (prefix !== undefined) {
+            for (const [kind, top] of [['TurnCell', track.top], ['Cell', middle]] as const) {
+                const box = svgElement('rect');
+                setAttributes(box, {
+                    x: x(left), y: y(top), width: x(track.columnWidth), height: y(track.height / 2),
+                    fill: 'transparent', class: `${prefix}${kind}`, 'data-column': column,
+                });
+                parent.appendChild(box);
+            }
+        }
+        const label = addText(parent, String(column), x(centre), y(middle - track.textInset), {
+            ...bold, anchor: 'middle', class: prefix === undefined ? track.turnClass : `${prefix}Turn`,
+            maxWidth: x(track.columnWidth - 1.2),
+        });
+        if (prefix === undefined) continue;
+        label.setAttribute('data-column', String(column));
+        setAttributes(addText(parent, '', x(centre), y(track.top + track.height - track.textInset), {
+            ...bold, anchor: 'middle', class: `${prefix}Value`,
+        }), { 'data-column': column });
     }
 }

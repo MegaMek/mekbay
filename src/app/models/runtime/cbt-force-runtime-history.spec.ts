@@ -24,6 +24,34 @@ describe('unit command history', () => {
         }
     });
 
+    it('logs switching heat sinks as such, though it moves a NEXT that follows the calculation', () => {
+        const unit = createDirectMekRuntimeFixture('core-2026', 'history-mek-sinks').instance;
+        // 15 outside heat against 10 sinks calculates to 5; NEXT at 6 is +1, and moves when sinks switch off.
+        expect(unit.dispatch({ type: 'add-outside-heat', amount: 15, target: 'committed' }).changed).toBeTrue();
+        expect(unit.dispatch({ type: 'set-pending-heat', heat: 6, follow: true }).changed).toBeTrue();
+        const before = snapshot(unit);
+        const command: CBTUnitCommand = { type: 'set-heatsinks-off', heatsinksOff: 2 };
+        expect(unit.dispatch(command).changed).toBeTrue();
+        expect(unit.query().heatState().pendingOverride).toBe(8);
+        expect<unknown>(unitCommandHistory(unit.instanceId, unit, command, before, snapshot(unit))).toEqual({
+            messageId: RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED,
+            data: [unit.instanceId, 2, 0, 2],
+        });
+    });
+
+    it('logs the heat End Turn settled beside the turn ending, for Meks and aerospace units', () => {
+        for (const unit of [createDirectMekRuntimeFixture('core-2026', 'history-mek-end').instance, fighter()]) {
+            expect(unit.dispatch({ type: 'set-pending-heat', heat: 7 }).changed).toBeTrue();
+            const before = snapshot(unit);
+            const command: CBTUnitCommand = { type: 'end-turn', policy: 'automatic' };
+            expect(unit.dispatch(command).changed).toBeTrue();
+            expect<unknown>(unitCommandHistory(unit.instanceId, unit, command, before, snapshot(unit))).toEqual([
+                { messageId: RUNTIME_HISTORY_MESSAGE.HEAT_CHANGED, data: [unit.instanceId, 0, 0, 7] },
+                { messageId: RUNTIME_HISTORY_MESSAGE.TURN_ENDED, data: [unit.instanceId] },
+            ]);
+        }
+    });
+
     it('preserves non-Mek airborne changes as a dedicated event', () => {
         const unit = fighter();
         const before = snapshot(unit);
@@ -59,5 +87,5 @@ function fighter() {
     entity.uuid.set(asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e2'));
     entity.structuralIntegrity.set(8);
     return createNonMekRuntimeForTest('history-aero', { entity: entity.uuid(), ruleset: 'core-2026',
-        initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' } }, entity, 'core-2026');
+        initialStateProfile: { profileId: 'pristine-non-mek' } }, entity, 'core-2026');
 }

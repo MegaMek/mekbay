@@ -230,7 +230,9 @@ export class PagePsrWarningPanelComponent {
 
     failureLabel(check: MekPilotCheckV2): string {
         if (check.source.triggerKind === 'shutdown') return 'Shutdown';
-        if (check.source.triggerKind === 'get-up') return 'Remain prone';
+        if (check.source.triggerKind === 'get-up') return 'Fall again';
+        if (check.source.triggerKind === 'made-thrash') return 'Falling damage';
+        if (check.source.triggerKind === 'shake-off-jump') return 'Infantry holds on';
         return 'Fall';
     }
 
@@ -272,7 +274,8 @@ export class PagePsrWarningPanelComponent {
 
 function isCascadeFallPilotCheck(check: MekPilotCheckV2): boolean {
     return check.source.triggerKind !== 'shutdown'
-        && check.source.triggerKind !== 'get-up';
+        && check.source.triggerKind !== 'get-up'
+        && check.source.triggerKind !== 'shake-off-jump';
 }
 
 function validPsrDice(results: readonly number[]): readonly [number, number] | null {

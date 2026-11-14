@@ -780,7 +780,6 @@ describe('ForceBuilderService remote force updates', () => {
             return {
                 ...base,
                 roster: {
-                    schemaVersion: 1 as const,
                     groups: [{ groupId: `group:${marker}`, order: 0, members: [] }],
                 },
             };
@@ -1539,7 +1538,7 @@ describe('ForceBuilderService rules switch', () => {
         await settled();
 
         expect(toast.showToast).toHaveBeenCalledOnceWith(
-            'Alpha could not switch to Core 2026 and keeps its previous rules.',
+            'Alpha could not switch to the current rules and keeps its previous rules.',
             'error',
         );
     });

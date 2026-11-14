@@ -6,6 +6,7 @@ import { ImmutableIndex } from '../entity/immutable-collections';
 import {
     asCrewPositionId,
     asLocationId,
+    type ComponentId,
     type CrewPositionId,
     type LocationId,
 } from '../entity/entity-identifiers';
@@ -15,14 +16,15 @@ import {
     serializeUnitCover,
     type UnitCover,
 } from '../unit-cover.model';
-import { serializeSharedTurnFacts } from './cbt-unit-runtime';
+import { isHeatValue,readFiredWeapons,serializeSharedTurnFacts } from './cbt-unit-runtime';
 import { HEAT_TURN_STEP } from '../rules/turn-sequence';
 import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import { isEndTurnCheckpoint, type EndTurnCheckpoint } from './end-turn-checkpoint';
+import { MAX_HEAT_VALUE, canonicalTurnHeatLedger, readTurnHeatLedger, type TurnHeatLedger } from './turn-heat-ledger';
 
 export const MAX_MEK_TURN_COLLECTION_ENTRIES = 256;
 export const MAX_MEK_TURN_TEXT_LENGTH = 512;
-export const MAX_MEK_TURN_SIGNATURE_LENGTH = 2_048;
+export const MAX_MEK_TURN_EVENT_TEXT_LENGTH = 2_048;
 export const MAX_MEK_TURN_NUMBER = 1_000_000;
 
 export type MekPendingFallConsequenceStage = 'head-hits' | 'seatbelts' | 'crew-hits';
@@ -81,16 +83,16 @@ export type MekPendingCriticalEventV2 = MekPendingCriticalChanceV2 | MekPendingC
  * Unit-owned facts whose lifetime is one CBT turn. Movement, phase damage, and
  * pilot checks are deliberately absent: `MekMovementPsrStateV2` owns them.
  */
-export interface MekTurnStateV2 {
+export interface MekTurnStateV2 extends TurnHeatLedger {
     /** Monotonic per-unit counter retained when the transient turn facts reset. */
     readonly turnCounter: number;
     readonly airborne: boolean | null;
     readonly cover: UnitCover | null;
     readonly weaponsHeat: number;
+    /** The weapons that fired this turn, each once (`withFiredWeapons`); absent when none. */
+    readonly firedWeapons?: readonly ComponentId[];
     /** Heat from outside sources such as inferno missiles, capped per turn; absent at 0. */
     readonly outsideHeat?: number;
-    readonly acknowledgedHeatSources: ReadonlyMap<string, string>;
-    readonly heatDissipationConsumed: number;
     readonly spotting: boolean;
     readonly phaseStateChanged: boolean;
     readonly endTurnCheckpoint?: EndTurnCheckpoint;
@@ -111,15 +113,15 @@ export interface MekTurnStateV2 {
 
 /** Canonical sparse wire form. Map entries are unique and ascending by key. */
 export interface SerializedMekTurnStateV2 {
-    readonly schemaVersion: 1;
     readonly turnCounter?: number;
     readonly airborne?: boolean;
     readonly cover?: ReturnType<typeof serializeUnitCover>;
     readonly weaponsHeat?: number;
+    readonly firedWeapons?: readonly ComponentId[];
     readonly outsideHeat?: number;
-    readonly acknowledgedHeatSources?: readonly {
+    readonly settledHeat?: readonly {
         readonly sourceId: string;
-        readonly signature: string;
+        readonly heat: number;
     }[];
     readonly heatDissipationConsumed?: number;
     readonly spotting?: true;
@@ -144,8 +146,9 @@ const TURN_KEYS = Object.freeze([
     'airborne',
     'cover',
     'weaponsHeat',
+    'firedWeapons',
     'outsideHeat',
-    'acknowledgedHeatSources',
+    'settledHeat',
     'heatDissipationConsumed',
     'spotting',
     'phaseStateChanged',
@@ -159,7 +162,9 @@ const TURN_KEYS = Object.freeze([
 
 const REQUIRED_TURN_KEYS = TURN_KEYS.filter(key =>
     key !== 'endTurnCheckpoint'
+    && key !== 'firedWeapons'
     && key !== 'outsideHeat'
+    && key !== 'heatDissipationConsumed'
     && key !== 'joinedStep'
     && key !== 'pendingFallConsequences'
     && key !== 'pendingCriticalEvents'
@@ -170,8 +175,7 @@ const PRISTINE_MEK_TURN_STATE = freezeMekTurnState({
     airborne: null,
     cover: null,
     weaponsHeat: 0,
-    acknowledgedHeatSources: new Map(),
-    heatDissipationConsumed: 0,
+    settledHeat: new Map(),
     spotting: false,
     phaseStateChanged: false,
     turnStep: 0,
@@ -194,17 +198,18 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
         turnCounter: turnNumber(record['turnCounter'], '$.turnCounter'),
         airborne: nullableBoolean(record['airborne'], '$.airborne'),
         cover: nullableUnitCover(record['cover'], '$.cover'),
-        weaponsHeat: turnNumber(record['weaponsHeat'], '$.weaponsHeat'),
+        weaponsHeat: heatPoints(record['weaponsHeat'], '$.weaponsHeat'),
+        ...(record['firedWeapons'] === undefined
+            ? {}
+            : { firedWeapons: readFiredWeapons(record['firedWeapons'], '$.firedWeapons', fail) }),
         ...(record['outsideHeat'] === undefined || record['outsideHeat'] === 0
             ? {}
             : { outsideHeat: outsideHeat(record['outsideHeat'], '$.outsideHeat') }),
-        acknowledgedHeatSources: canonicalStringMap(
-            record['acknowledgedHeatSources'],
-            '$.acknowledgedHeatSources',
-        ),
-        heatDissipationConsumed: turnNumber(
+        ...canonicalTurnHeatLedger(
+            iterableEntries(record['settledHeat'], '$.settledHeat'),
             record['heatDissipationConsumed'],
-            '$.heatDissipationConsumed',
+            '$',
+            fail,
         ),
         spotting: requiredBoolean(record['spotting'], '$.spotting'),
         phaseStateChanged: requiredBoolean(
@@ -241,15 +246,7 @@ export function canonicalizeMekTurnStateV2(value: MekTurnStateV2): MekTurnStateV
 export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTurnStateV2 {
     const turn = canonicalizeMekTurnStateV2(value);
     return Object.freeze({
-        schemaVersion: 1 as const,
         ...serializeSharedTurnFacts(turn),
-        ...(turn.acknowledgedHeatSources.size === 0 ? {} : {
-            acknowledgedHeatSources: Object.freeze([...turn.acknowledgedHeatSources]
-                .map(([sourceId, signature]) => Object.freeze({ sourceId, signature }))),
-        }),
-        ...(turn.heatDissipationConsumed === 0
-            ? {}
-            : { heatDissipationConsumed: turn.heatDissipationConsumed }),
         ...(turn.pendingFallConsequences === undefined
             ? {}
             : { pendingFallConsequences: turn.pendingFallConsequences }),
@@ -262,29 +259,24 @@ export function serializeMekTurnStateV2(value: MekTurnStateV2): SerializedMekTur
     });
 }
 
-/** Strict current-wire decoder; historical movement fields are rejected. */
+/** Strict wire decoder. */
 export function deserializeMekTurnStateV2(value: unknown): MekTurnStateV2 {
     const record = requireRecord(value, '$');
-    exactKeys(record, ['schemaVersion', ...TURN_KEYS], '$');
-    if (record['schemaVersion'] !== 1) fail('must be schema version 1', '$.schemaVersion');
+    exactKeys(record, [...TURN_KEYS], '$');
     return freezeMekTurnState({
         turnCounter: sparsePositiveNumber(record['turnCounter'], '$.turnCounter'),
         airborne: record['airborne'] === undefined
             ? null
             : requiredBoolean(record['airborne'], '$.airborne'),
         cover: deserializeSparseCover(record['cover'], '$.cover'),
-        weaponsHeat: sparsePositiveNumber(record['weaponsHeat'], '$.weaponsHeat'),
+        weaponsHeat: record['weaponsHeat'] === undefined ? 0 : positiveHeatPoints(record['weaponsHeat'], '$.weaponsHeat'),
+        ...(record['firedWeapons'] === undefined
+            ? {}
+            : { firedWeapons: readFiredWeapons(record['firedWeapons'], '$.firedWeapons', fail) }),
         ...(record['outsideHeat'] === undefined
             ? {}
-            : { outsideHeat: sparsePositiveNumber(record['outsideHeat'], '$.outsideHeat') }),
-        acknowledgedHeatSources: deserializeStringEntries(
-            record['acknowledgedHeatSources'],
-            '$.acknowledgedHeatSources',
-        ),
-        heatDissipationConsumed: sparsePositiveNumber(
-            record['heatDissipationConsumed'],
-            '$.heatDissipationConsumed',
-        ),
+            : { outsideHeat: positiveOutsideHeat(record['outsideHeat'], '$.outsideHeat') }),
+        ...readTurnHeatLedger(record['settledHeat'], record['heatDissipationConsumed'], '$', fail),
         spotting: record['spotting'] === undefined
             ? false
             : requireExactBoolean(record['spotting'], true, '$.spotting'),
@@ -325,7 +317,7 @@ export function mekTurnStatesEqualV2(left: MekTurnStateV2, right: MekTurnStateV2
 function freezeMekTurnState(value: MekTurnStateV2): MekTurnStateV2 {
     return Object.freeze({
         ...value,
-        acknowledgedHeatSources: new ImmutableIndex(sortEntries(value.acknowledgedHeatSources)),
+        settledHeat: new ImmutableIndex(sortEntries(value.settledHeat)),
         ...(value.pendingFallConsequences === undefined
             ? {}
             : {
@@ -378,7 +370,7 @@ function canonicalPendingFallConsequences(
         fail('is only valid at the crew-hits stage', `${path}.seatbeltFailures`);
     }
     return Object.freeze({
-        eventId: canonicalText(record['eventId'], `${path}.eventId`, MAX_MEK_TURN_SIGNATURE_LENGTH),
+        eventId: canonicalText(record['eventId'], `${path}.eventId`, MAX_MEK_TURN_EVENT_TEXT_LENGTH),
         totalDamage: turnNumber(record['totalDamage'], `${path}.totalDamage`),
         hitArcLabel: canonicalText(record['hitArcLabel'], `${path}.hitArcLabel`, MAX_MEK_TURN_TEXT_LENGTH),
         applyPilotHits: requiredBoolean(record['applyPilotHits'], `${path}.applyPilotHits`),
@@ -427,7 +419,7 @@ function canonicalPendingCriticalEvent(
         fail('canonical sparse value must be true', `${path}.locationDestroyed`);
     }
     const base = {
-        eventId: canonicalText(record['eventId'], `${path}.eventId`, MAX_MEK_TURN_SIGNATURE_LENGTH),
+        eventId: canonicalText(record['eventId'], `${path}.eventId`, MAX_MEK_TURN_EVENT_TEXT_LENGTH),
         locationId: asLocationId(canonicalText(
             record['locationId'],
             `${path}.locationId`,
@@ -480,7 +472,7 @@ function canonicalPendingCriticalEvent(
         });
     });
     const effects = requireArray(record['effects'], `${path}.effects`).map((row, index) =>
-        canonicalText(row, `${path}.effects[${index}]`, MAX_MEK_TURN_SIGNATURE_LENGTH));
+        canonicalText(row, `${path}.effects[${index}]`, MAX_MEK_TURN_EVENT_TEXT_LENGTH));
     return Object.freeze({
         type,
         ...base,
@@ -562,32 +554,6 @@ function canonicalCrewPositionIds(value: unknown, path: string): readonly CrewPo
     return Object.freeze(unique);
 }
 
-function canonicalStringMap(value: unknown, path: string): ReadonlyMap<string, string> {
-    const entries = iterableEntries(value, path).map(([key, item], index) => [
-        canonicalText(key, `${path}[${index}].key`, MAX_MEK_TURN_TEXT_LENGTH),
-        canonicalText(item, `${path}[${index}].value`, MAX_MEK_TURN_SIGNATURE_LENGTH),
-    ] as const);
-    return new ImmutableIndex(uniqueSortedEntries(entries, path));
-}
-
-function deserializeStringEntries(value: unknown, path: string): ReadonlyMap<string, string> {
-    if (value === undefined) return new ImmutableIndex([]);
-    const rows = requireArray(value, path);
-    if (rows.length === 0) fail('sparse collection must not be empty', path);
-    const entries = rows.map((item, index) => {
-        const itemPath = `${path}[${index}]`;
-        const record = requireRecord(item, itemPath);
-        exactKeys(record, ['sourceId', 'signature'], itemPath);
-        requireKeys(record, ['sourceId', 'signature'], itemPath);
-        return [
-            canonicalText(record['sourceId'], `${itemPath}.sourceId`, MAX_MEK_TURN_TEXT_LENGTH),
-            canonicalText(record['signature'], `${itemPath}.signature`, MAX_MEK_TURN_SIGNATURE_LENGTH),
-        ] as const;
-    });
-    requireSortedUnique(entries, path);
-    return new ImmutableIndex(entries);
-}
-
 function iterableEntries(value: unknown, path: string): readonly (readonly [unknown, unknown])[] {
     if (value === null || typeof value !== 'object'
         || typeof (value as ReadonlyMap<unknown, unknown>)[Symbol.iterator] !== 'function') {
@@ -608,25 +574,6 @@ function iterableEntries(value: unknown, path: string): readonly (readonly [unkn
         }
         return [row[0], row[1]] as const;
     });
-}
-
-function uniqueSortedEntries<K extends string, V>(
-    entries: readonly (readonly [K, V])[],
-    path: string,
-): readonly (readonly [K, V])[] {
-    const sorted = [...entries].sort(([left], [right]) => compareText(left, right));
-    for (let index = 1; index < sorted.length; index += 1) {
-        if (sorted[index - 1][0] === sorted[index][0]) fail('must contain unique keys', path);
-    }
-    return sorted;
-}
-
-function requireSortedUnique<V>(entries: readonly (readonly [string, V])[], path: string): void {
-    for (let index = 1; index < entries.length; index += 1) {
-        if (entries[index - 1][0] >= entries[index][0]) {
-            fail('must be unique and sorted', `${path}[${index}]`);
-        }
-    }
 }
 
 function sortEntries<K extends string, V>(values: ReadonlyMap<K, V>): readonly (readonly [K, V])[] {
@@ -671,6 +618,23 @@ function outsideHeat(value: unknown, path: string): number {
         fail(`must be a whole number from 0 to ${MAX_OUTSIDE_HEAT_PER_TURN}`, path);
     }
     return value as number;
+}
+
+function positiveOutsideHeat(value: unknown, path: string): number {
+    const heat = outsideHeat(value, path);
+    if (heat === 0) fail('sparse number must be positive', path);
+    return heat;
+}
+
+function heatPoints(value: unknown, path: string): number {
+    if (!isHeatValue(value)) fail(`must be a whole number from 0 to ${MAX_HEAT_VALUE}`, path);
+    return value;
+}
+
+function positiveHeatPoints(value: unknown, path: string): number {
+    const heat = heatPoints(value, path);
+    if (heat === 0) fail('sparse number must be positive', path);
+    return heat;
 }
 
 function turnNumber(value: unknown, path: string): number {

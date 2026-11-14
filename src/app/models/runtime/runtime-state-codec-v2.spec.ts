@@ -3,6 +3,8 @@
 
 import { ImmutableIndex } from '../entity/immutable-collections';
 import { freezeRuntimeState } from './runtime-state';
+import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
+import { rekeyMekHeatSourceMap } from './mek-heat-state-v2';
 import {
 restoreSerializedCBTUnitV2,
 serializeCBTUnitStateV2,
@@ -14,6 +16,24 @@ createDirectMekRuntimeFixture,
 createDirectModularArmorRuntimeFixture,
 createDirectShieldRuntimeFixture,
 } from './testing/direct-mek-runtime-fixture';
+
+describe('heat source re-keying', () => {
+    const rekey = (sources: [string, number][], ids: Record<string, string>) => {
+        const rekeyed = rekeyMekHeatSourceMap(new Map(sources), id => ids[id] ?? id);
+        return rekeyed && [...rekeyed].sort(([left], [right]) => left.localeCompare(right));
+    };
+
+    it('follows swapped and shifted component ids, never displacing a source that keeps its id', () => {
+        expect(rekey([['equipment:A', 1], ['equipment:B', 2]], { A: 'B', B: 'A' }))
+            .toEqual([['equipment:A', 2], ['equipment:B', 1]]);
+        expect(rekey([['equipment:A', 1], ['equipment:B', 2]], { A: 'B', B: 'C' }))
+            .toEqual([['equipment:B', 1], ['equipment:C', 2]]);
+        // Two sources on one id: the one keeping its id stays, the moved one keeps its saved id.
+        expect(rekey([['equipment:A', 1], ['equipment:X', 5]], { A: 'X' }))
+            .toEqual([['equipment:A', 1], ['equipment:X', 5]]);
+        expect(rekey([['weapons', 3], ['equipment:A', 1]], {})).toBeNull();
+    });
+});
 
 describe('direct Mek V2 state codec', () => {
     it('persists only an explicit destruction override, not derived destruction', () => {
@@ -33,6 +53,22 @@ describe('direct Mek V2 state codec', () => {
             destroyed: true,
         });
         expect(serialize(fixture, explicit).destroyed).toBeTrue();
+    });
+
+    it('keeps the witness of the component a settled heat source names', async () => {
+        const fixture = createDirectBoobyTrapRuntimeFixture();
+        const trap = fixture.equipmentComponent('Test Booby Trap');
+        for (const sourceId of [`equipment:${trap.id}`, `radical-heat-sink:${trap.id}:weapons`]) {
+            const pristine = fixture.instance.snapshot();
+            const state = freezeRuntimeState({ ...pristine, turn: canonicalizeMekTurnStateV2({
+                ...pristine.turn, settledHeat: new ImmutableIndex([[sourceId, 3]]), heatDissipationConsumed: 0,
+            }) });
+            const saved = serialize(fixture, state);
+            expect(Object.values(saved.blueprintReferences.targets))
+                .toContain(jasmine.objectContaining({ kind: 'component', savedComponentId: trap.id }));
+            const restored = await restoreSerializedCBTUnitV2(saved, fixture.entity, fixture.index, fixture.initialized);
+            expect([...restored.state.turn.settledHeat]).toEqual([[sourceId, 3]]);
+        }
     });
 
     it('round-trips only sparse runtime deviations over the entity baseline', async () => {
@@ -68,7 +104,7 @@ describe('direct Mek V2 state codec', () => {
 
         // Force storage omits the derived witness table. Restore those same deviations
         // directly against the current native blueprint, without a caller-built index.
-        const compact = { ...wire, blueprintReferences: { schemaVersion: 1 as const, targets: {} } };
+        const compact = { ...wire, blueprintReferences: { targets: {} } };
         const fromNative = await restoreSerializedCBTUnitV2(
             compact, fixture.entity, fixture.index, fixture.initialized, 'current',
         );
@@ -144,7 +180,6 @@ describe('direct Mek V2 state codec', () => {
 
         const saved = serialize(fixture);
         expect(saved.movementPsr).toEqual(jasmine.objectContaining({
-            schemaVersion: 3,
             automaticFalls: [{
                 triggerKind: 'leg-destroyed-auto-fall',
                 locationIds: [leg.id],
@@ -417,7 +452,6 @@ function serialize(
         baselineRef: fixture.instance.baselineRef,
         state,
         deployment: {
-            schemaVersion: 2,
             values: fixture.initialized.deployment,
         },
     }));

@@ -16,7 +16,7 @@ describe('CBTNonMekUnit', () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e8');
         entity.uuid.set(uuid);
         const ready = createNonMekUnit(entity, {
-            instanceId: 'health', uuid, deployment: { id: 'vacant', crewAssignment: { schemaVersion: 1, positions: [] } },
+            instanceId: 'health', uuid, deployment: { id: 'vacant', crewAssignment: { positions: [] } },
             scenario: { id: 'megamek', ruleset: 'core-2026' }, initialStateProfileId: 'pristine',
         });
         const assignment = createDefaultCrewAssignment(ready.getIndex().crewPositions);
@@ -36,7 +36,7 @@ describe('CBTNonMekUnit', () => {
             entity.uuid.set(uuid);
             const scenario = { id: 'megamek', ruleset: 'core-2026' as const };
             const unit = createNonMekUnit(entity, {
-                instanceId: 'vacant', uuid, deployment: { id: 'vacant', crewAssignment: { schemaVersion: 1, positions: [] } },
+                instanceId: 'vacant', uuid, deployment: { id: 'vacant', crewAssignment: { positions: [] } },
                 scenario, initialStateProfileId: 'pristine', crewSkills: { gunnery: 3, piloting: 4 },
             });
             const restored = restoreNonMekUnit(unit.serialize(), entity, uuid, scenario);
@@ -74,7 +74,7 @@ describe('CBTNonMekUnit', () => {
             uuid,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
             crewSkills: { gunnery: 4, piloting: 5 },
         });
 

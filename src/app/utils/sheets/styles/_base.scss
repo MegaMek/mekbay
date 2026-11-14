@@ -32,6 +32,16 @@
     fill: transparent;
   }
 
+  // The live sheet's FIRED and aim stamps: shown on screen only (see _screen.scss).
+  .firedStamp,
+  .aimStamp {
+    display: none;
+  }
+
+  .firedStamp {
+    pointer-events: none;
+  }
+
   .inventoryEntry:not(.interactive) {
     pointer-events: none;
   }

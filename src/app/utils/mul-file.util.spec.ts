@@ -144,7 +144,6 @@ describe('MUL file utilities', () => {
             getMekRecordSheetSnapshot: () => null,
             getUnitSnapshot: (id: unknown) => id === instanceId ? entitySnapshot : null,
             getUnitCrewAssignment: () => ({
-                schemaVersion: 1,
                 positions: [{
                     positionId,
                     name: 'Alex',

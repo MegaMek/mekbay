@@ -11,6 +11,12 @@ const PRESENTATION_PROPERTIES = [
     'stop-color', 'stop-opacity', 'flood-color', 'flood-opacity', 'color-interpolation-filters',
 ];
 
+/** The file name a unit's exported cards take: its name, kept to characters every file system accepts. */
+export function alphaStrikeCardFileName(unitName: string): string {
+    const name = unitName.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '');
+    return `${name || 'unit'}-alpha-strike`;
+}
+
 /** Freeze the displayed card's theme before detaching it from Angular and its host CSS. */
 export function snapshotAlphaStrikeCard(svg: SVGSVGElement): SVGSVGElement {
     const clone = svg.cloneNode(true) as SVGSVGElement;

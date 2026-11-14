@@ -19,7 +19,7 @@ describe('CBT force target roster', () => {
             uuid,
             deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset: 'core-2026' },
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
         });
         const runtime = ready;
         expect(runtime.dispatch({

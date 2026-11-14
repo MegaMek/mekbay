@@ -35,8 +35,6 @@ export function isMekLocationConditionKey(value: unknown): value is MekLocationC
 export const MAX_MEK_LOCATION_CONDITION_VALUE = 1_000_000;
 
 export interface InitialStateProfileRef {
-    readonly schemaVersion: 1;
-    readonly initializerRevision: number;
     readonly profileId: string;
 }
 
@@ -172,7 +170,7 @@ export interface MekUnitRuntimeState extends CBTUnitRuntimeState {
     readonly locations: ReadonlyMap<LocationId, LocationRuntimeState>;
     readonly slots: ReadonlyMap<CriticalSlotId, CriticalSlotRuntimeState>;
     readonly heat: MekHeatStateV2;
-    /** Persistent typed outcomes; required even when empty in runtime schema V4. */
+    /** Persistent typed outcomes; required even when empty. */
     readonly ruleChecks: MekRuleChecksV2;
     /** Sole typed owner of Mek movement declarations, phase damage, and pilot checks. */
     readonly movementPsr: MekMovementPsrStateV2;

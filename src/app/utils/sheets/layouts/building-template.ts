@@ -199,9 +199,23 @@ function packFloors(entity: StaticEmplacementEntity, width: number, height: numb
     });
 }
 
+/** The page area under a template's title. */
+function templateArea(page: RecordSheetPageProfile): Box {
+    return { x: page.margin, y: page.margin + 26, width: page.contentWidth, height: page.contentHeight - 26 };
+}
+
+/** The hexes of each template section, page by page, as `buildingTemplatePages` lays them out. */
+export function buildingTemplateSections(
+    entity: StaticEmplacementEntity,
+    page: RecordSheetPageProfile,
+): readonly (readonly (readonly BuildingHex[])[])[] {
+    const area = templateArea(page);
+    return packFloors(entity, area.width, area.height).map(placements => placements.map(placement => placement.floor.hexes));
+}
+
 /** Clean, full-page tabletop templates, following the normal structure record sheets. */
 export function buildingTemplatePages(entity: StaticEmplacementEntity, page: RecordSheetPageProfile): SVGSVGElement[] {
-    const area = { x: page.margin, y: page.margin + 26, width: page.contentWidth, height: page.contentHeight - 26 };
+    const area = templateArea(page);
     return packFloors(entity, area.width, area.height).map(placements => {
         const svg = createRoot(page.width, page.height, 'building-template');
         svg.setAttribute('data-mekbay-design-source', 'native');

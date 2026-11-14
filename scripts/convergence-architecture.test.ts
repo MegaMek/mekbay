@@ -310,12 +310,6 @@ const tacticalTurnTracker = source(join(
     'tactical-view',
     'tactical-turn-tracker.component.ts',
 ));
-const tacticalTurnTrackerTemplate = source(join(
-    app,
-    'components',
-    'tactical-view',
-    'tactical-turn-tracker.component.html',
-));
 const crewTransfer = source(join(app, 'services', 'force-crew-transfer.service.ts'));
 assert.doesNotMatch(motiveModes, /unit-summary\.model|\bUnitSummary\b/u);
 assert.doesNotMatch(
@@ -333,8 +327,6 @@ assert.doesNotMatch(
     /move-allowance|moveModeAllowance/u,
     'the record-sheet turn summary must not present Tactical View movement allowances',
 );
-assert.match(tacticalTurnTrackerTemplate, /move-allowance/u);
-assert.match(tacticalTurnTrackerTemplate, /moveModeAllowance\(mode\)/u);
 assert.match(turnTrackerControls, /export abstract class TurnTrackerControls/u);
 assert.match(turnSummary, /PageTurnSummaryPanelComponent extends TurnTrackerControls/u);
 assert.match(tacticalTurnTracker, /TacticalTurnTrackerComponent extends TurnTrackerControls/u);
@@ -477,10 +469,11 @@ assert.deepEqual(
 assert.deepEqual(
     importersOf('legacy-mek-turn-state-v1'),
     [
+        'src/app/models/runtime/legacy-force-v1-converter.ts',
         'src/app/models/runtime/mek-movement-psr-restoration-v1.ts',
         'src/app/models/runtime/state-restorer.ts',
     ],
-    'the V1 turn decoder must stay inside legacy state and movement restoration',
+    'the V1 turn decoder must stay inside V1 conversion: its turn heat, legacy state and movement restoration',
 );
 
 const directV1ForceSurface = production

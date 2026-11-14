@@ -5,6 +5,7 @@ import { UnitNameService } from './unit-name.service';
 import { forceOpforTargetId } from '../models/runtime/cbt-force-target-roster';
 import { DestroyRef, effect, inject, Injectable, Injector, type EffectRef, type Signal, untracked } from '@angular/core';
 import { CBTForce } from '../models/cbt-force.model';
+import { hasNonMekRuntime } from '../models/cbt-unit-snapshot';
 import type { InventoryControlTargetRosterRow } from '../models/cbt-force.types';
 import type { ForceSlot } from '../models/force-slot.model';
 import {
@@ -63,6 +64,28 @@ export class InventoryControlOpforService {
             if (!forceId) continue;
             for (const member of slot.force.getCBTMembers()) {
                 if (forceOpforTargetId(forceId, member.id) === targetId) return { forceId, member };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The infantry swarming a unit, when its force is open here: the one whose swarm names this unit (the infantry's
+     * own record, so it holds however the swarm reached either player).
+     */
+    swarmerOf(member: CBTForceMember): { readonly forceId: string; readonly member: CBTForceMember } | null {
+        const ownForce = member.force.instanceId();
+        if (!ownForce) return null;
+        const targetId = forceOpforTargetId(ownForce, member.id);
+        for (const slot of this.loadedForces()) {
+            if (!(slot.force instanceof CBTForce)) continue;
+            const forceId = slot.force.instanceId();
+            if (!forceId) continue;
+            for (const candidate of slot.force.getCBTMembers()) {
+                const snapshot = slot.force.getUnitSnapshot(candidate.id);
+                if (snapshot && hasNonMekRuntime(snapshot) && snapshot.state.swarming === targetId) {
+                    return { forceId, member: candidate };
+                }
             }
         }
         return null;

@@ -28,6 +28,7 @@ import {
     compactClusterRacks,
     drawCheckbox,
     drawClusterHitsReference,
+    drawElevationTracker,
     drawGeneratedFooter,
     formatNumber,
     formatWholeNumber,
@@ -156,6 +157,9 @@ export class BattleArmorRecordSheetLayout extends CompactRecordSheetLayout {
         });
         jump.id = 'mpJump';
     }
+    // VTOL battle armor moves as a VTOL (TechManual, Install Motive Systems). Its Elevation box sits on the
+    // movement row between the skill columns, clear of the secondary movement's modifier badge.
+    drawElevationTracker(group, entity, x(75.5), y(30), { width: x(24), height: y(18) });
 
     drawRecordSheetInventory(group, request.groupWeapons, (parent, stateKey) =>
         drawCompactBattleArmorInventory(parent, entity, { x, y, font }, stateKey));

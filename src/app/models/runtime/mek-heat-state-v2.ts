@@ -3,26 +3,35 @@
 
 import type { MekConvertedMode } from '../mek-conversion-mode';
 import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+import { endTurnHeat, endTurnHeatStepForPolicy } from './end-turn-heat-selection';
 
 import { isObjectLiteralRecord } from '../../utils/json-value.util';
-import { compareText } from '../../utils/string.util';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import type { ComponentId,CriticalSlotId } from '../entity/entity-identifiers';
-import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
+import { ImmutableSet } from '../entity/immutable-collections';
+import { MAX_OUTSIDE_HEAT_PER_TURN } from '../rules/inferno-rules';
 import type { UnitWaterState } from '../unit-cover.model';
 import { mekJumpHeat } from '../jump-equipment.model';
-import { isHeatValue,settleHeat,type CBTUnitHeatState } from './cbt-unit-runtime';
+import { isHeatOffset,isHeatValue,settleHeat,type CBTUnitHeatState } from './cbt-unit-runtime';
 import { compileMekHeatProfile,evaluateMekHeatScenarioSupport,type MekHeatProfile,type MekHeatScenarioInput } from './mek-heat-profile';
 import { MAX_MEK_MOVEMENT_MP_V2,type MekMovementHeatInputV2 } from './mek-movement-psr-v2';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { canonicalizeMekTurnStateV2,type MekTurnStateV2 } from './mek-turn-state-v2';
+import {
+    COMPONENT_HEAT_SOURCE_KINDS,
+    componentHeatSourceId,
+    HEAT_DISSIPATION_DEFICIT_ID,
+    projectTurnHeat,
+    settleTurnHeatLedger,
+    type TurnHeatLedger,
+} from './turn-heat-ledger';
 
 export const MAX_MEK_HEATSINKS_OFF_V2 = 1_000;
 export const MAX_MEK_HEAT_CONTEXT_BLOCKERS_V2 = 64;
 export const EQUIPMENT_HEAT_SOURCE_GROUP = 'Equipment';
 
-/** Durable heat track. Turn-scoped source acknowledgements remain in MekTurnStateV2. */
+/** Durable heat track. The turn's settled heat (`TurnHeatLedger`) stays in MekTurnStateV2. */
 export type MekHeatStateV2 = CBTUnitHeatState;
 
 export interface MekHeatSourceV2 {
@@ -32,18 +41,20 @@ export interface MekHeatSourceV2 {
     /** Optional label used to combine sources only in compact presentations. */
     readonly group?: string;
     readonly replacedByFiringEntryId?: ComponentId;
-    readonly signature?: string;
 }
 
 export interface MekHeatProjectionV2 {
     readonly current: number;
     /** Sources that still require settlement, including a synthetic cooling deficit. */
     readonly sources: readonly MekHeatSourceV2[];
-    /** All current rule sources before acknowledgement filtering. */
+    /** All current rule sources, before the heat settled this turn is taken off. */
     readonly committedSources: readonly MekHeatSourceV2[];
     readonly capacity: number;
     readonly underwaterBonus: number;
-    readonly previouslyConsumedDissipation: number;
+    /** The turn's settled heat and booked dissipation this projection counts from. */
+    readonly ledger: TurnHeatLedger;
+    /** Cooling left this turn; negative by the heat sinks lost after APPLY HEAT booked them. */
+    readonly dissipationBalance: number;
     readonly remainingDissipation: number;
     readonly generated: number;
     /** Cooling used by this projection. */
@@ -87,6 +98,8 @@ const HEAT_CONTEXT_BINDINGS = new WeakMap<object, MekHeatContextBindingV2>();
 export interface MekHeatKernelInputV2 {
     readonly heat: MekHeatStateV2;
     readonly turn: MekTurnStateV2;
+    /** Outside heat this turn as play reads it, committed and pending together (`outsideHeatThisTurn`). */
+    readonly outsideHeat: number;
     readonly movement: MekMovementHeatInputV2 | null;
     readonly standAttempts: number;
     /** The mode a LAM or QuadVee has converted to; absent in BattleMech mode. */
@@ -113,8 +126,6 @@ export interface MekHeatKernelInputV2 {
     readonly activeMobileHpgComponents: ReadonlySet<ComponentId>;
     /** A consumed Coolant Pod doubles the current ordinary sink bank for this turn. */
     readonly activeCoolantPodComponents: ReadonlySet<ComponentId>;
-    /** A selected-but-not-yet-fired weapon still triggers a failed coolant leak. */
-    readonly hasSelectedWeapon: boolean;
     readonly ppcCapacitors: readonly {
         readonly capacitorId: ComponentId;
         readonly weaponId: ComponentId;
@@ -147,7 +158,7 @@ export function createPristineMekHeatStateV2(initialHeat = 0): MekHeatStateV2 {
 export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV2 {
     if (!isObjectLiteralRecord(value)) throw new Error('Heat state must be a plain object');
     const keys = Object.keys(value);
-    const allowed = new Set(['current', 'previous', 'pendingOverride', 'heatsinksOff']);
+    const allowed = new Set(['current', 'previous', 'pendingOverride', 'pendingOffset', 'heatsinksOff']);
     if (keys.some(key => !allowed.has(key))) throw new Error('Heat state contains an unknown field');
     if (!keys.includes('current') || !keys.includes('previous') || !keys.includes('heatsinksOff')) {
         throw new Error('Heat state is missing a required field');
@@ -155,6 +166,9 @@ export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV
     assertHeatValue(value.current, '$.current');
     assertHeatValue(value.previous, '$.previous');
     if (value.pendingOverride !== undefined) assertHeatValue(value.pendingOverride, '$.pendingOverride');
+    if (value.pendingOffset !== undefined && (value.pendingOverride === undefined || !isHeatOffset(value.pendingOffset))) {
+        throw new Error('$.pendingOffset must be a bounded whole number beside NEXT');
+    }
     if (!Number.isSafeInteger(value.heatsinksOff)
         || value.heatsinksOff < 0
         || value.heatsinksOff > MAX_MEK_HEATSINKS_OFF_V2) {
@@ -164,6 +178,7 @@ export function canonicalizeMekHeatStateV2(value: MekHeatStateV2): MekHeatStateV
         current: value.current,
         previous: value.previous,
         ...(value.pendingOverride === undefined ? {} : { pendingOverride: value.pendingOverride }),
+        ...(value.pendingOffset === undefined ? {} : { pendingOffset: value.pendingOffset }),
         heatsinksOff: value.heatsinksOff,
     });
 }
@@ -258,7 +273,6 @@ export function projectMekHeatContextV2(
     context: MekHeatRuntimeContextV2,
     entity: MekEntity,
     input: MekHeatKernelInputV2,
-    policy: HeatAutomationPolicy,
 ): MekHeatProjectionResultV2 {
     const binding = requireHeatContextBinding(context);
     const mismatch = heatContextMismatchBlockers(binding, entity);
@@ -266,7 +280,7 @@ export function projectMekHeatContextV2(
     if (binding.kind === 'unsupported') return binding.capability;
     return Object.freeze({
         kind: 'supported',
-        projection: projectMekHeatV2(binding.profile, input, policy),
+        projection: projectMekHeatV2(binding.profile, input),
     });
 }
 
@@ -278,7 +292,6 @@ export function applyPendingMekHeatContextV2(
     context: MekHeatRuntimeContextV2,
     entity: MekEntity,
     input: MekHeatKernelInputV2,
-    policy: HeatAutomationPolicy,
 ): MekHeatApplicationResultV2 {
     const binding = requireHeatContextBinding(context);
     const mismatch = heatContextMismatchBlockers(binding, entity);
@@ -286,7 +299,7 @@ export function applyPendingMekHeatContextV2(
     if (binding.kind === 'unsupported') return binding.capability;
     return Object.freeze({
         kind: 'supported',
-        application: applyPendingMekHeatV2(binding.profile, input, policy),
+        application: applyPendingMekHeatV2(binding.profile, input),
     });
 }
 
@@ -331,24 +344,10 @@ export function validateMekHeatContextStateV2(
     if (mismatch !== null) return mismatch;
     if (binding.kind === 'unsupported') return binding.blockers;
     const blockers: string[] = [];
+    // Booked dissipation above what the unit can cool now (sinks lost, a refit) comes back as heat (`projectTurnHeat`).
     const heat = canonicalizeMekHeatStateV2(input.heat);
-    const turn = canonicalizeMekTurnStateV2(input.turn);
     if (heat.heatsinksOff > binding.profile.declaredHeatSinkUnits) {
         blockers.push(`HEATSINKS_OFF_EXCEEDS_PROFILE:${heat.heatsinksOff}/${binding.profile.declaredHeatSinkUnits}`);
-    }
-    const maximumDissipation = binding.profile.baseDissipation
-        + (binding.profile.partialWing?.dissipationBonus ?? 0)
-        + binding.profile.providers.filter(provider => provider.kind === 'radical-heat-sink').length
-            * binding.profile.declaredHeatSinkUnits;
-    if (turn.heatDissipationConsumed > maximumDissipation) {
-        blockers.push(`HEAT_DISSIPATION_LEDGER_EXCEEDS_PROFILE:${turn.heatDissipationConsumed}/${maximumDissipation}`);
-    }
-    const currentSources = new Map(buildCommittedHeatSources(binding.profile, { ...input, heat, turn })
-        .map(source => [source.id, mekHeatSourceSignatureV2(source)]));
-    for (const [sourceId, signature] of turn.acknowledgedHeatSources) {
-        if (currentSources.get(sourceId) !== signature) {
-            blockers.push(`HEAT_SOURCE_ACKNOWLEDGEMENT_MISMATCH:${sourceId}`);
-        }
     }
     return canonicalHeatContextBlockers(blockers);
 }
@@ -407,30 +406,71 @@ function heatContextMismatchBlockers(
         : null;
 }
 
+/** Heat sources named for one of the unit's components: `<prefix><componentId>`. */
+type CoolantHeatSourceKind = Extract<MekHeatProfile['providers'][number], { kind: 'coolant-system' }>['sourceId'];
+/** Coolant sources also name the heat they cool: `<kind>:<componentId>:movement` or `:weapons`. */
+const COOLANT_HEAT_SOURCE_KINDS = Object.keys({
+    'radical-heat-sink': true,
+    'risc-emergency-coolant': true,
+} satisfies Record<CoolantHeatSourceKind, true>);
+
+/**
+ * A heat source id with the component it names mapped through `component`: ids naming no component come back as they
+ * are, and null when a coolant id names no cooled heat.
+ */
+export function rekeyMekHeatSourceId(sourceId: string, component: (componentId: string) => string): string | null {
+    const prefix = COMPONENT_HEAT_SOURCE_KINDS.map(kind => `${kind}:`).find(candidate => sourceId.startsWith(candidate));
+    if (prefix) return prefix + component(sourceId.slice(prefix.length));
+    const coolant = COOLANT_HEAT_SOURCE_KINDS.map(kind => `${kind}:`).find(candidate => sourceId.startsWith(candidate));
+    if (!coolant) return sourceId;
+    const suffix = [':movement', ':weapons'].find(candidate => sourceId.endsWith(candidate));
+    return suffix === undefined
+        ? null
+        : coolant + component(sourceId.slice(coolant.length, -suffix.length)) + suffix;
+}
+
+/**
+ * A map keyed by heat source with each key re-keyed through `component` (`rekeyMekHeatSourceId`); null when no key
+ * moves. Ids may shift or swap. A source that keeps its id is placed first, so none is displaced by another moved
+ * onto it; a source landing on a taken id keeps its saved id, and is dropped only when that is taken too.
+ */
+export function rekeyMekHeatSourceMap<V>(
+    sources: ReadonlyMap<string, V>,
+    component: (componentId: string) => string,
+): Map<string, V> | null {
+    const entries = [...sources].map(([sourceId, value]) =>
+        [sourceId, rekeyMekHeatSourceId(sourceId, component) ?? sourceId, value] as const);
+    if (entries.every(([sourceId, target]) => sourceId === target)) return null;
+    const rekeyed = new Map<string, V>();
+    for (const [sourceId, target, value] of [
+        ...entries.filter(([sourceId, target]) => sourceId === target),
+        ...entries.filter(([sourceId, target]) => sourceId !== target),
+    ]) {
+        const key = rekeyed.has(target) ? sourceId : target;
+        if (!rekeyed.has(key)) rekeyed.set(key, value);
+    }
+    return rekeyed;
+}
+
 export function projectMekHeatV2(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
-    policy: HeatAutomationPolicy,
 ): MekHeatProjectionV2 {
     const heat = canonicalizeMekHeatStateV2(input.heat);
     const turn = canonicalizeMekTurnStateV2(input.turn);
     const committedSources = buildCommittedHeatSources(profile, { ...input, heat, turn });
-    const sources = policy === 'automatic'
-        ? committedSources.filter(source => turn.acknowledgedHeatSources.get(source.id) !== mekHeatSourceSignatureV2(source))
-        : [...committedSources];
     const cooling = committedCoolingCapacity(profile, input, heat.heatsinksOff);
     const capacity = cooling.capacity;
-    const previouslyConsumedDissipation = turn.heatDissipationConsumed;
-    const remainingDissipation = Math.max(0, capacity - previouslyConsumedDissipation);
-    const deficit = Math.max(0, previouslyConsumedDissipation - capacity);
-    if (deficit > 0) sources.push(Object.freeze({
-        id: 'heat-dissipation-deficit',
+    // Heat settled earlier this turn (APPLY HEAT) never counts again; sources count only what they add since.
+    const ledger = projectTurnHeat(heat.current, committedSources, capacity, turn);
+    const sources = [...ledger.sources];
+    if (ledger.deficit > 0) sources.push(Object.freeze({
+        id: HEAT_DISSIPATION_DEFICIT_ID,
         label: 'Dissipation',
-        value: deficit,
+        value: ledger.deficit,
     }));
-    const generated = sources.reduce((total, source) => total + source.value, 0);
-    const dissipated = Math.min(remainingDissipation, heat.current + generated);
-    const projected = heat.current + generated - dissipated;
+    const remainingDissipation = ledger.remaining;
+    const { generated, dissipated, projected } = ledger;
     const frozenSources = Object.freeze(sources.map(source => Object.freeze({ ...source })));
     const frozenCommitted = Object.freeze(committedSources.map(source => Object.freeze({ ...source })));
     const hasPendingResolution = frozenSources.some(source => source.value > 0) || projected !== heat.current;
@@ -440,7 +480,11 @@ export function projectMekHeatV2(
         committedSources: frozenCommitted,
         capacity,
         underwaterBonus: cooling.underwaterBonus,
-        previouslyConsumedDissipation,
+        ledger: Object.freeze({
+            settledHeat: turn.settledHeat,
+            ...(turn.heatDissipationConsumed === undefined ? {} : { heatDissipationConsumed: turn.heatDissipationConsumed }),
+        }),
+        dissipationBalance: ledger.remaining - ledger.deficit,
         remainingDissipation,
         generated,
         dissipated,
@@ -451,68 +495,52 @@ export function projectMekHeatV2(
     });
 }
 
-/** Applies only the heat value explicitly selected by the user. */
+/**
+ * APPLY HEAT: the player's arrow (NEXT) is their heat for the turn, so it becomes the unit's heat and settles the turn
+ * so far; heat generated afterwards adds at End Turn. Aerospace units apply it the same way.
+ */
 export function applyPendingMekHeatV2(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
-    policy: HeatAutomationPolicy,
 ): MekHeatApplicationV2 {
-    const projection = projectMekHeatV2(profile, input, policy);
+    const projection = projectMekHeatV2(profile, input);
     const heat = canonicalizeMekHeatStateV2(input.heat);
     if (heat.pendingOverride === undefined) {
         return Object.freeze({ changed: false, heat, turn: input.turn, projection });
     }
-    const nextHeat = settleHeat(heat, heat.pendingOverride);
-    if (policy === 'automatic') {
-        return Object.freeze({ changed: true, heat: nextHeat, turn: input.turn, projection });
-    }
-    const consumed = Math.min(input.turn.heatDissipationConsumed, projection.capacity);
-    const turn = consumed === input.turn.heatDissipationConsumed
-        ? input.turn
-        : canonicalizeMekTurnStateV2({ ...input.turn, heatDissipationConsumed: consumed });
-    return Object.freeze({ changed: true, heat: nextHeat, turn, projection });
+    return settleMekTurnHeat(input, projection, heat.pendingOverride);
 }
 
-/** Resolves calculated heat only for automatic end-turn; manual mode owns only its selected value. */
+/**
+ * End Turn's heat step (`endTurnHeat`, the same for every unit): the player's arrow whenever one is set; without one,
+ * automatic resolution settles the calculated heat and manual resolution leaves it alone.
+ */
 export function resolveEndTurnMekHeatV2(
     profile: MekHeatProfile,
     input: MekHeatKernelInputV2,
     policy: HeatAutomationPolicy,
 ): MekHeatApplicationV2 {
-    if (policy === 'manual') return applyPendingMekHeatV2(profile, input, policy);
-
-    const projection = projectMekHeatV2(profile, input, policy);
+    const projection = projectMekHeatV2(profile, input);
     const heat = canonicalizeMekHeatStateV2(input.heat);
-    if (!projection.hasPendingSettlement) {
+    if (heat.pendingOverride === undefined && (policy === 'manual' || !projection.hasPendingSettlement)) {
         return Object.freeze({ changed: false, heat, turn: input.turn, projection });
     }
-    const nextHeat = canonicalizeMekHeatStateV2(settleHeat(heat, projection.projected));
+    return settleMekTurnHeat(input, projection, endTurnHeat(endTurnHeatStepForPolicy(policy), heat, projection.projected));
+}
 
-    const acknowledged = new Map(input.turn.acknowledgedHeatSources);
-    for (const source of projection.sources) {
-        if (source.id !== 'heat-dissipation-deficit') acknowledged.set(source.id, mekHeatSourceSignatureV2(source));
-    }
-    const turnWithoutWeaponHeat = canonicalizeMekTurnStateV2({
-        ...input.turn,
-        weaponsHeat: 0,
-        outsideHeat: 0,
-        acknowledgedHeatSources: acknowledged,
-        heatDissipationConsumed: Math.min(
-            input.turn.heatDissipationConsumed,
-            projection.capacity,
-        ) + projection.dissipated,
-    });
-    const postSources = buildCommittedHeatSources(profile, {
-        ...input,
-        heat: nextHeat,
-        turn: turnWithoutWeaponHeat,
-    });
-    const postById = new Map(postSources.map(source => [source.id, mekHeatSourceSignatureV2(source)]));
-    const reconciledAcknowledgements = new ImmutableIndex([...turnWithoutWeaponHeat.acknowledgedHeatSources]
-        .filter(([id, signature]) => postById.get(id) === signature));
+/**
+ * Settles the turn's heat at `value`: every source's heat so far is settled and the dissipation the projection used is
+ * booked (`settleTurnHeatLedger`), so heat generated afterwards counts on its own against the heat sinks left over.
+ */
+function settleMekTurnHeat(
+    input: MekHeatKernelInputV2,
+    projection: MekHeatProjectionV2,
+    value: number,
+): MekHeatApplicationV2 {
+    const nextHeat = canonicalizeMekHeatStateV2(settleHeat(canonicalizeMekHeatStateV2(input.heat), value));
     const turn = canonicalizeMekTurnStateV2({
-        ...turnWithoutWeaponHeat,
-        acknowledgedHeatSources: reconciledAcknowledgements,
+        ...input.turn,
+        ...settleTurnHeatLedger(input.turn, projection.capacity, projection.committedSources, projection.dissipated),
     });
     return Object.freeze({ changed: true, heat: nextHeat, turn, projection });
 }
@@ -526,6 +554,9 @@ export function buildMekHeatKernelInputV2(input: MekHeatKernelInputV2): MekHeatK
     if (typeof input.water?.partiallyUnderwater !== 'boolean'
         || typeof input.water?.submerged !== 'boolean') {
         throw new Error('Invalid Mek water heat input');
+    }
+    if (!Number.isSafeInteger(input.outsideHeat) || input.outsideHeat < 0 || input.outsideHeat > MAX_OUTSIDE_HEAT_PER_TURN) {
+        throw new Error('Invalid Mek outside heat input');
     }
     return Object.freeze({
         ...input,
@@ -544,7 +575,6 @@ export function buildMekHeatKernelInputV2(input: MekHeatKernelInputV2): MekHeatK
         activeElectronicComponents: new ImmutableSet(input.activeElectronicComponents),
         activeMobileHpgComponents: new ImmutableSet(input.activeMobileHpgComponents),
         activeCoolantPodComponents: new ImmutableSet(input.activeCoolantPodComponents),
-        hasSelectedWeapon: input.hasSelectedWeapon === true,
         ppcCapacitors: Object.freeze(input.ppcCapacitors.map(entry => Object.freeze({ ...entry }))),
     });
 }
@@ -582,9 +612,6 @@ function buildCommittedHeatSources(
         id: 'movement',
         label: 'Movement',
         value: movement,
-        // Movement setters in V1 explicitly invalidate this source even when two choices produce
-        // equal heat. Carry the complete choice/support witness into the signature in V2.
-        signature: movementSignature(profile, input),
     })];
     const damagedEngineSlots = profile.engine.criticalSlotIds
         .filter(slotId => input.previewUnavailableCriticalSlots.has(slotId));
@@ -597,7 +624,6 @@ function buildCommittedHeatSources(
                 profile.engine.maximumCriticalHeat,
                 damagedEngineSlots.length * profile.engine.heatPerCriticalHit,
             ),
-            signature: [...damagedEngineSlots].sort(compareText).join('|'),
         }));
     }
     if (input.turn.weaponsHeat > 0) sources.push(Object.freeze({
@@ -605,10 +631,10 @@ function buildCommittedHeatSources(
         label: 'Weapons',
         value: input.turn.weaponsHeat,
     }));
-    if ((input.turn.outsideHeat ?? 0) > 0) sources.push(Object.freeze({
+    if (input.outsideHeat > 0) sources.push(Object.freeze({
         id: 'outside-heat',
         label: 'Outside Heat',
-        value: input.turn.outsideHeat!,
+        value: input.outsideHeat,
     }));
     for (const provider of profile.providers) {
         if (provider.kind === 'ppc-capacitor') {
@@ -619,7 +645,7 @@ function buildCommittedHeatSources(
                 || input.committedUnavailableComponents.has(provider.componentId)
                 || input.committedUnavailableComponents.has(provider.weaponId)) continue;
             sources.push(Object.freeze({
-                id: `ppc-capacitor:${provider.weaponId}`,
+                id: componentHeatSourceId('ppc-capacitor', provider.weaponId),
                 label: 'PPC Capacitor',
                 value: provider.heatWhileChargingOrCharged,
                 group: EQUIPMENT_HEAT_SOURCE_GROUP,
@@ -632,7 +658,7 @@ function buildCommittedHeatSources(
                 || input.committedUnavailableComponents.has(provider.componentId)
                 || !input.activeEscalatingFailureComponents.has(provider.componentId)) continue;
             sources.push(Object.freeze({
-                id: `risc-viral-jammer:${provider.componentId}`,
+                id: componentHeatSourceId('risc-viral-jammer', provider.componentId),
                 label: 'RISC Viral Jammer',
                 value: provider.heat,
                 group: EQUIPMENT_HEAT_SOURCE_GROUP,
@@ -641,7 +667,7 @@ function buildCommittedHeatSources(
             if (input.destroyed || input.shutdown
                 || !input.activeVibrobladeComponents.has(provider.componentId)) continue;
             sources.push(Object.freeze({
-                id: `vibroblade:${provider.componentId}`,
+                id: componentHeatSourceId('vibroblade', provider.componentId),
                 label: provider.label,
                 value: provider.heat,
             }));
@@ -649,7 +675,7 @@ function buildCommittedHeatSources(
             if (input.destroyed || input.shutdown
                 || !input.activeStealthComponents.has(provider.componentId)) continue;
             sources.push(Object.freeze({
-                id: `equipment:${provider.componentId}`,
+                id: componentHeatSourceId('equipment', provider.componentId),
                 label: provider.label,
                 value: provider.heat,
                 group: EQUIPMENT_HEAT_SOURCE_GROUP,
@@ -659,7 +685,7 @@ function buildCommittedHeatSources(
                 || input.committedUnavailableComponents.has(provider.componentId)
                 || !input.activeElectronicComponents.has(provider.componentId)) continue;
             sources.push(Object.freeze({
-                id: `nova-cews:${provider.componentId}`,
+                id: componentHeatSourceId('nova-cews', provider.componentId),
                 label: 'Nova CEWS',
                 value: provider.heat,
                 group: EQUIPMENT_HEAT_SOURCE_GROUP,
@@ -669,7 +695,7 @@ function buildCommittedHeatSources(
                 || input.committedUnavailableComponents.has(provider.componentId)
                 || !input.activeMobileHpgComponents.has(provider.componentId)) continue;
             sources.push(Object.freeze({
-                id: `mobile-hpg:${provider.componentId}`,
+                id: componentHeatSourceId('mobile-hpg', provider.componentId),
                 label: 'Mobile HPG',
                 value: provider.heat,
                 group: EQUIPMENT_HEAT_SOURCE_GROUP,
@@ -682,7 +708,7 @@ function buildCommittedHeatSources(
                 value: 1,
                 group: EQUIPMENT_HEAT_SOURCE_GROUP,
             }));
-            if (input.turn.weaponsHeat > 0 || input.hasSelectedWeapon) sources.push(Object.freeze({
+            if (input.turn.weaponsHeat > 0) sources.push(Object.freeze({
                 id: `${provider.sourceId}:${provider.componentId}:weapons`,
                 label: provider.label,
                 value: 1,
@@ -691,28 +717,6 @@ function buildCommittedHeatSources(
         }
     }
     return sources;
-}
-
-function movementSignature(profile: MekHeatProfile, input: MekHeatKernelInputV2): string {
-    const unavailableJump = profile.jump.componentIds
-        .filter(componentId => input.committedUnavailableComponents.has(componentId));
-    const unavailableJumpBoosters = profile.jump.boosterComponentIds
-        .filter(componentId => input.committedUnavailableComponents.has(componentId));
-    const unavailableScm = profile.superCooledMyomer.componentIds
-        .filter(componentId => input.committedUnavailableComponents.has(componentId));
-    const unavailableWingSlots = profile.partialWing?.criticalSlotIds
-        .filter(slotId => input.committedUnavailableCriticalSlots.has(slotId)) ?? [];
-    return JSON.stringify([
-        input.movement?.mode ?? null,
-        input.movement?.distance ?? null,
-        input.standAttempts,
-        input.turn.airborne,
-        unavailableJump,
-        unavailableJumpBoosters,
-        unavailableScm,
-        unavailableWingSlots,
-        ...(input.conversionMode === undefined ? [] : [input.conversionMode]),
-    ]);
 }
 
 export function projectMekMovementHeatV2(
@@ -827,14 +831,6 @@ function committedCoolingCapacity(
         );
     }
     return Object.freeze({ capacity, underwaterBonus });
-}
-
-export function mekHeatSourceSignatureV2(source: MekHeatSourceV2): string {
-    return JSON.stringify([
-        source.value,
-        source.replacedByFiringEntryId ?? null,
-        source.signature ?? null,
-    ]);
 }
 
 function assertHeatValue(value: number, path: string): void {

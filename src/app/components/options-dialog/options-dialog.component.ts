@@ -28,8 +28,9 @@ import type {
     RecordSheetDoubleTapZoomResetMode,
     RecordSheetPipLayout,
 } from '../../models/options.model';
-import { INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
+import { CBT_OPTIONAL_RULE_CHOICES, INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
 import { CBT_RULESET_LABELS, type CBTRuleset } from '../../models/cbt-ruleset.model';
+import { isBoundOptionalRule } from '../../models/runtime/bound-optional-rules';
 import type { InitiativeOrderMode } from '../../models/rules/initiative-rules';
 import { LobbyService } from '../../services/lobby.service';
 import { ForceBuilderService } from '../../services/force-builder.service';
@@ -219,18 +220,7 @@ export class OptionsDialogComponent {
     /** A lobby sets the rules (and Initiative settings) its players use. */
     readonly inLobby = inject(LobbyService).hasLobby;
     private readonly forceBuilder = inject(ForceBuilderService);
-    /** A rule with a ruleset is offered only under it. */
-    readonly cbtOptionalRules: ReadonlyArray<{ key: keyof CBTOptionalRules; label: string; ruleset?: CBTRuleset }> = [
-        { key: 'quirks', label: 'Quirks' },
-        { key: 'floatingCriticals', label: 'Floating criticals' },
-        { key: 'sprinting', label: 'Sprinting (Meks only)' },
-        { key: 'extremeRange', label: '"Extreme" range' },
-        { key: 'hotLoadedAmmo', label: 'Hot-Loaded Ammo' },
-        { key: 'allowMixedTechBaseAmmo', label: 'Allow mixed IS/Clan ammunition' },
-        // Core flamers always deal heat and damage (Core p. 183).
-        { key: 'enhancedFlamers', label: 'Enhanced flamers', ruleset: 'total-warfare' },
-        { key: 'forcedWithdrawal', label: 'Forced withdrawal (Cripple)' },
-    ];
+    readonly cbtOptionalRules = CBT_OPTIONAL_RULE_CHOICES;
     forceGenFailureSearchWindowMs = computed(() => this.normalizeForceGenFailureSearchWindowMs(this.optionsService.options().forceGenerator.failureSearchWindowMs));
 
     uuidInput = viewChild<ElementRef<HTMLInputElement>>('uuidInput');
@@ -429,14 +419,7 @@ export class OptionsDialogComponent {
 
     async onCBTRulesChange(useCore2026: boolean) {
         const value = useCore2026 ? 'core-2026' : 'total-warfare';
-        const confirmed = await this.dialogsService.requestConfirmation(
-            `Every loaded force switches to ${CBT_RULESET_LABELS[value]} now. Undo starts over, and state the new rules don't support is dropped.`,
-            'Change Rules System?',
-            'warning'
-        );
-        if (!confirmed) {
-            return;
-        }
+        if (!await this.confirmRulesSwitch(`switches to ${CBT_RULESET_LABELS[value]}`, 'Change Rules System?')) return;
         await this.forceBuilder.switchCBTRules(value);
     }
 
@@ -565,12 +548,26 @@ export class OptionsDialogComponent {
         this.optionsService.setCbtAutomationMode(key, value);
     }
 
-    onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
-        const value = (event.target as HTMLInputElement).checked;
-        this.optionsService.setOption('CBTOptionalRules', {
-            ...this.optionsService.options().CBTOptionalRules,
-            [key]: value,
-        });
+    async onCBTOptionalRuleChange(key: keyof CBTOptionalRules, event: Event) {
+        const input = event.target as HTMLInputElement;
+        // Read before confirming: another switch finishing meanwhile re-renders the checkbox from the options.
+        const value = input.checked;
+        // A rule bound into units switches every loaded force, as the rules system does; one they cannot all switch
+        // to, or the player declines, stays as it was.
+        const confirmed = !isBoundOptionalRule(key)
+            || await this.confirmRulesSwitch(value ? 'plays this rule' : 'stops playing this rule', 'Change Optional Rule?');
+        if (!confirmed || !await this.forceBuilder.setOptionalRule(key, value)) {
+            input.checked = this.optionsService.options().CBTOptionalRules[key];
+        }
+    }
+
+    /** Switching the rules every loaded force plays restarts undo, so the player confirms it first. */
+    private confirmRulesSwitch(change: string, title: string): Promise<boolean> {
+        return this.dialogsService.requestConfirmation(
+            `Every loaded force ${change} now. Undo starts over, and state the new rules don't support is dropped.`,
+            title,
+            'warning',
+        );
     }
 
     onASUseHexChange(event: Event) {

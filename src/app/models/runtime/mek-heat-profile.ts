@@ -54,7 +54,7 @@ import {
     isGroundMobileHpgEquipment,
 } from './component-mobile-hpg';
 import { isMobileHpgEquipment } from '../aerospace-support-equipment.model';
-import { readBoundOptionalRules } from './bound-optional-rules';
+import { readBoundOptionalRules, type BoundOptionalRules } from './bound-optional-rules';
 
 export const MEK_HEAT_PROFILE_SCHEMA_VERSION = 3 as const;
 
@@ -235,7 +235,7 @@ export type MekHeatProfileResult =
 
 export interface MekHeatScenarioInput {
     readonly id: string;
-    readonly options?: Readonly<Record<string, string | number | boolean>>;
+    readonly options?: Partial<BoundOptionalRules>;
 }
 
 export type MekHeatScenarioBlockerCode =

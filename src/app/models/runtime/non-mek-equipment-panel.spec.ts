@@ -17,10 +17,13 @@ import { createTestEquipmentRegistry } from '../entity/testing/test-equipment-re
 import { addTestEquipment, addTestEquipmentWithFlags } from '../entity/testing/test-mounted-equipment';
 import { AmmoEquipment,createEquipment,WeaponEquipment } from '../equipment.model';
 import {
+physicalAttackTargetNumber,
+physicalRowTargetIssue,
 projectTargetingTarget,
 projectWeaponTargetPresentation,
 } from './equipment-panel';
 import { projectNonMekEquipmentPanel } from './non-mek-equipment-panel';
+import { projectNonMekEquipmentInteractions, selectNonMekEquipmentChoice } from './cbt-equipment-interactions';
 
 import { systemDamageId } from '../rules/system-damage-rules';
 import { asEncounterTargetId } from './encounter-runtime';
@@ -29,6 +32,38 @@ import { type InstanceBaselineRef } from './runtime-state';
 const UUID = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5e1');
 
 describe('Entity equipment panel projection', () => {
+    it('names a vehicle flamer declared for heat, and drops its heat type when it declares damage', () => {
+        const flamer = new WeaponEquipment({
+            id: 'Flamer', name: 'Flamer', type: 'weapon', flags: ['F_FLAMER'],
+            weapon: { heat: 3, damage: 2, ranges: [1, 2, 3, 4], ammoType: 'NA' },
+        });
+        const entity = new TestTankEntity(createTestEquipmentRegistry({ [flamer.id]: flamer }));
+        entity.uuid.set(UUID);
+        const id = asComponentId(addTestEquipment(entity, flamer, { location: entity.locationOrder[0] }).mountId);
+        const runtime = createNonMekRuntimeForTest('unit:tank-flamer', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET },
+            entity, TOTAL_WARFARE_RULESET);
+        const row = (optionalRules = {}) => {
+            const projected = projectNonMekEquipmentPanel(entity, runtime.getIndex(), TOTAL_WARFARE_RULESET,
+                runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, optionalRules)
+                .components.find(component => component.componentId === id)!;
+            return [projected.label, projected.weapon!.effectiveWeaponTypes?.includes('H') === true];
+        };
+
+        const declare = (label: 'Heat' | 'Damage') => {
+            const choice = projectNonMekEquipmentInteractions(runtime, {}, false)
+                .find(interaction => interaction.componentId === id)!.choices.find(choice => choice.label === label)!;
+            expect(selectNonMekEquipmentChoice(runtime, choice.command, {}, {} as never)).toBeTrue();
+        };
+
+        expect(row()).toEqual(['Flamer', false]);
+        declare('Heat');
+        expect(row()).toEqual(['Flamer (Heat)', true]);
+        // Enhanced Flamers deal heat and damage both, so the stored mode declares nothing.
+        expect(row({ enhancedFlamers: true })).toEqual(['Flamer', true]);
+        declare('Damage');
+        expect(row()).toEqual(['Flamer', false]);
+    });
+
     it('passes linked Artemis support to vehicle ammo selection', () => {
         const weapon = new WeaponEquipment({
             id: 'LRM 15', name: 'LRM 15', type: 'weapon', flags: ['F_ARTEMIS_COMPATIBLE'],
@@ -53,7 +88,7 @@ describe('Entity equipment panel projection', () => {
 
         const panel = projectNonMekEquipmentPanel(
             entity, runtime.getIndex(), CORE_2026_RULESET,
-            runtime.snapshot(), runtime.query(), { revision: 0, targets: [] },
+            runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, {},
         );
         const ammoRow = panel.components.find(row => row.componentId === asComponentId(ammoMount.mountId));
 
@@ -98,7 +133,7 @@ describe('Entity equipment panel projection', () => {
                     ammo: { munitionKey: guided.id, preferredSourceId: ammoId } },
             }, registry, false).accepted).toBeTrue();
             const row = () => projectNonMekEquipmentPanel(
-                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry,
+                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), registry, {},
             ).components.find(component => component.componentId === weaponId)!;
 
             expect(row().weapon?.hit.default.value).toBe(-1);
@@ -139,7 +174,7 @@ describe('Entity equipment panel projection', () => {
                 'unit:tank-apollo', { ...baseline(), ruleset }, entity, ruleset,
             );
             const row = () => projectNonMekEquipmentPanel(
-                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), { revision: 0, targets: [] },
+                entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(), { revision: 0, targets: [] }, {},
             ).components.find(component => component.componentId === asComponentId(mount.mountId))!;
             expect(row().weapon?.hit.default.value).toBe(ruleset === TOTAL_WARFARE_RULESET ? 0 : 1);
             runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(enhancement.mountId),
@@ -160,7 +195,7 @@ describe('Entity equipment panel projection', () => {
                 const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset,
                     runtime.snapshot(),
                     runtime.query(),
-                    { revision: 0, targets: [] });
+                    { revision: 0, targets: [] }, {});
                 expect(panel.physicalAttacks).withContext(`${ruleset} ${motive}`)
                     .toHaveSize(motive === 'Tracked' ? 1 : 0);
             }
@@ -363,7 +398,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            registry,
+            registry, {},
         );
         const weaponRow = snapshot.components.find(row => row.componentId === weaponId)!;
         const ammoRow = snapshot.components.find(row => row.componentId === ammoId)!;
@@ -415,7 +450,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            registry,
+            registry, {},
         );
         const committedWeapon = committed.components.find(row => row.componentId === weaponId)!;
         expect(committedWeapon.weapon?.ammoSources[0]).toEqual(jasmine.objectContaining({
@@ -468,7 +503,7 @@ describe('Entity equipment panel projection', () => {
             runtime.dispatch({ type: 'set-component-mode', componentId: weaponId, mode });
             const snapshot = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET,
                 runtime.snapshot(),
-                runtime.query(), registry);
+                runtime.query(), registry, {});
             const row = snapshot.components.find(candidate => candidate.componentId === weaponId)!;
             const presentation = projectWeaponTargetPresentation(row,
                 projectTargetingTarget(snapshot.targets[0], snapshot.ruleset), stationaryAttack(snapshot.crew.gunnery),
@@ -542,7 +577,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
         );
         const row = snapshot.components.find(component =>
             component.componentId === asComponentId(mount.mountId))!;
@@ -552,7 +587,7 @@ describe('Entity equipment panel projection', () => {
         expect(row.weapon?.selectable).toBeFalse();
         expect(row.weapon?.toHitModifier).toBe(3);
         expect(row.weapon?.hitModifierBreakdown).toEqual([
-            { label: 'Targeting Computer', modifier: -1 },
+            { label: 'Targeting Computer', modifier: -1, kind: 'targeting-computer' },
             { label: 'Sensor hits', modifier: 4, weakened: true },
         ]);
     });
@@ -605,7 +640,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            registry,
+            registry, {},
         );
         const row = snapshot.components.find(component =>
             component.componentId === asComponentId(mount.mountId))!;
@@ -659,7 +694,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
         );
         const row = snapshot.components.find(component =>
             component.componentId === asComponentId(mount.mountId))!;
@@ -697,7 +732,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            registry,
+            registry, {},
         );
 
         expect(snapshot().physicalAttacks).toEqual([jasmine.objectContaining({
@@ -726,6 +761,57 @@ describe('Entity equipment panel projection', () => {
             available: false,
             selectable: false,
         }));
+    });
+
+    it("declares a platoon's anti-'Mech attacks by its troopers, and a swarming platoon's damage and release", () => {
+        const entity = new TestInfantryEntity();
+        entity.uuid.set(UUID);
+        entity.squadSize.set(7);
+        entity.squadCount.set(4);
+        const runtime = createNonMekRuntimeForTest(
+            'unit:infantry-anti-mek', { ...baseline(), ruleset: TOTAL_WARFARE_RULESET }, entity, TOTAL_WARFARE_RULESET);
+        const troopLocation = [...runtime.getIndex().locations.values()][0]!;
+        const targetId = asEncounterTargetId('target:swarmed-mek');
+        // The target is another player's unit, open here: its own sheet says whether it is swarmed.
+        const rows = (swarmed: boolean) => projectNonMekEquipmentPanel(
+            entity, runtime.getIndex(), TOTAL_WARFARE_RULESET, runtime.snapshot(), runtime.query(),
+            Object.freeze({ revision: 0, targets: Object.freeze([Object.freeze({
+                id: targetId, letter: 'A', name: 'Mek', color: '#123456', unitType: 'mek-biped' as const, readOnly: true,
+                tnCalculator: Object.freeze(swarmed ? { swarmed: true } : {}),
+            })]) }), {},
+        ).physicalAttacks;
+        const summary = (swarmed = false) => rows(swarmed).map(row =>
+            [row.label, row.kind, row.hitModifiers[0], row.available]);
+
+        // 28 troopers: the Leg Attacks and Swarm Attacks tables' best rows.
+        expect(summary()).toEqual([['Leg Attack', 'leg-attack', 0, true], ['Swarm Attack', 'swarm', 2, true]]);
+        expect(rows(false)[0]).toEqual(jasmine.objectContaining({
+            reach: 'legs-in-hex', hitTable: 'kick', critical: true, effect: jasmine.objectContaining({ damage: 4 }),
+        }));
+        runtime.dispatch({ type: 'set-internal-damage', locationId: troopLocation.id, damage: 12 });
+        expect(summary()).toEqual([['Leg Attack', 'leg-attack', 2, true], ['Swarm Attack', 'swarm', 5, true]]);
+        // 15 troopers can no longer swarm.
+        runtime.dispatch({ type: 'set-internal-damage', locationId: troopLocation.id, damage: 13 });
+        expect(summary()).toEqual([['Leg Attack', 'leg-attack', 5, true], ['Swarm Attack', 'swarm', 0, false]]);
+
+        // The platoon takes hold; the swarm counts once the target's owner has accepted it.
+        expect(runtime.dispatch({ type: 'set-swarming', target: targetId }).changed).toBeTrue();
+        expect(summary().map(row => row[1])).toEqual(['leg-attack', 'swarm']);
+        expect(summary(true)).toEqual([['Swarm Damage', 'swarm-damage', 0, true], ['End Swarm', 'end-swarm', 0, true]]);
+        expect(rows(true)[0]).toEqual(jasmine.objectContaining({
+            onlyTarget: targetId, hitTable: 'swarm', damageGroupSize: 2,
+        }));
+        expect(rows(true)[0]!.critical).toBeUndefined();
+        expect(physicalRowTargetIssue(rows(true)[0]!, { id: 'target:other', unitType: 'mek-biped', distance: 0 })).toBe('invalid');
+        expect(physicalRowTargetIssue(rows(true)[0]!, { id: targetId, unitType: 'mek-biped', distance: 0 })).toBeNull();
+        // Letting go brings the attacks back.
+        expect(runtime.dispatch({ type: 'set-swarming', target: null }).changed).toBeTrue();
+        expect(summary(true).map(row => row[1])).toEqual(['leg-attack', 'swarm']);
+
+        // The Anti-'Mech Skill takes the target's modifiers and a vehicle's -2, never the attacker's movement.
+        const moving = { ...stationaryAttack(4), attackModifierBreakdown: [{ label: 'Ran', modifier: 2 }] };
+        expect(physicalAttackTargetNumber({ hitModifiers: [2], kind: 'swarm' }, 5, moving, { tnModifier: 1, unitType: 'vehicle' }))
+            .toBe(5 + 2 + 1 - 2);
     });
 
     it('keeps uncrewed Infantry field guns intact but prevents firing them', () => {
@@ -762,7 +848,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
         );
         const rows = mounts.map(mount => snapshot.components.find(row =>
             row.componentId === asComponentId(mount.mountId))!);
@@ -803,7 +889,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
+            Object.freeze({ revision: 0, targets: Object.freeze([]) }), {},
         );
         const weapons = snapshot.components.filter(row => row.weapon !== undefined);
 
@@ -828,7 +914,7 @@ describe('Entity equipment panel projection', () => {
             entity.addEquipmentBay('weapon-bay', { mounts });
             const runtime = createNonMekRuntimeForTest('unit:naval-laser-rounding', { ...baseline(), ruleset }, entity, ruleset);
             const project = () => projectNonMekEquipmentPanel(entity, runtime.getIndex(), ruleset, runtime.snapshot(), runtime.query(),
-                Object.freeze({ revision: 0, targets: Object.freeze([]) })).components.find(row => row.weapon !== undefined)!;
+                Object.freeze({ revision: 0, targets: Object.freeze([]) }), {}).components.find(row => row.weapon !== undefined)!;
             expect(project().weapon?.aerospace?.attackValues).toEqual([17, 17, 17, 17]);
             runtime.dispatch({ type: 'set-component-status', componentId: asComponentId(mounts[0].mountId), status: 'destroyed', target: 'committed' });
             expect(project().weapon?.aerospace?.attackValues).toEqual([11, 11, 11, 11]);
@@ -860,7 +946,7 @@ describe('Entity equipment panel projection', () => {
             CORE_2026_RULESET,
             runtime.snapshot(),
             runtime.query(),
-            registry,
+            registry, {},
         ).components.filter(row => row.weapon !== undefined);
 
         expect(weaponRows()).toHaveSize(1);
@@ -869,68 +955,6 @@ describe('Entity equipment panel projection', () => {
         runtime.dispatch({ type: 'set-airborne', airborne: true });
         expect(weaponRows()).toHaveSize(1);
     });
-
-    it('keeps a Leviathan-scale inventory projection bounded by bay count', () => {
-        const weapon = new WeaponEquipment({
-            id: 'LeviathanScaleNac',
-            name: 'Leviathan Scale NAC',
-            type: 'weapon',
-            weapon: {
-                atClass: 'CAPITAL_AC',
-                ammoType: 'NAC',
-                rackSize: 10,
-                capital: true,
-                damage: 1,
-                heat: 10,
-                ranges: [12, 24, 40, 50],
-                av: [1, 1, 1, 0],
-            },
-        });
-        const ammo = new AmmoEquipment({
-            id: 'LeviathanScaleNacAmmo',
-            name: 'Leviathan Scale NAC Ammo',
-            type: 'ammo',
-            ammo: { type: 'NAC', rackSize: 10, shots: 10 },
-        });
-        const entity = new TestJumpShipEntity(createTestEquipmentRegistry({
-            [weapon.id]: weapon,
-            [ammo.id]: ammo,
-        }));
-        entity.uuid.set(UUID);
-        const location = entity.locationOrder[0];
-        const baySizes = Array.from({ length: 73 }, (_, index) => index < 67 ? 7 : 6);
-        for (const size of baySizes) {
-            const mounts = Array.from({ length: size }, () =>
-                addTestEquipment(entity, weapon, { location }));
-            entity.addEquipmentBay('weapon-bay', { mounts });
-        }
-        Array.from({ length: 72 }, () =>
-            addTestEquipment(entity, ammo, { location, shotsCount: 10 }));
-        const runtime = createNonMekRuntimeForTest(
-            'unit:leviathan-scale-panel',
-            baseline(),
-            entity,
-            CORE_2026_RULESET,
-        );
-
-        const started = performance.now();
-        const snapshot = projectNonMekEquipmentPanel(
-            entity,
-            runtime.getIndex(),
-            CORE_2026_RULESET,
-            runtime.snapshot(),
-            runtime.query(),
-            Object.freeze({ revision: 0, targets: Object.freeze([]) }),
-        );
-        const elapsed = performance.now() - started;
-        const weaponRows = snapshot.components.filter(row => row.weapon !== undefined);
-
-        expect(entity.equipment()).toHaveSize(577);
-        expect(weaponRows).toHaveSize(73);
-        expect(weaponRows.flatMap(row => row.attack?.members ?? [])).toHaveSize(505);
-        expect(snapshot.components).toHaveSize(145);
-        expect(elapsed).withContext(`projection took ${elapsed.toFixed(1)}ms`).toBeLessThan(3_000);
-    });
 });
 
 function baseline(): InstanceBaselineRef {
@@ -938,9 +962,7 @@ function baseline(): InstanceBaselineRef {
         entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

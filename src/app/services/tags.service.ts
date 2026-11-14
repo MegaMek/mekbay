@@ -14,7 +14,7 @@ import { getUnitVariantGroupKey } from '../utils/unit-variant.util';
 /*
  * 
  * Service for managing unit tags with local storage and cloud sync.
- * Supports both unit-specific (name) tags and chassis-wide tags.
+ * Supports unit tags (keyed by unit UUID) and chassis-wide tags (keyed by variant group).
  * Uses incremental sync with operations log for efficient cloud synchronization.
  */
 
@@ -32,7 +32,13 @@ const TAG_ACTION = {
     rename: 2,
 } as const;
 
-const TAG_FORMAT_VERSION = 4;
+/**
+ * Tag document format.
+ * 3: V3, unit tags keyed by UnitSummary.name and chassis tags by `chassis|type`.
+ * 4: V3 with variant-group chassis keys.
+ * 5: V4, unit tags keyed by UnitSummary.uuid.
+ */
+const TAG_FORMAT_VERSION = 5;
 
 interface TagCommitOptions {
     timestamp?: number;
@@ -41,11 +47,21 @@ interface TagCommitOptions {
     syncToCloud?: boolean;
 }
 
+/** Current and V3 tag keys of one catalog unit list, for migrating documents older than format 5. */
+interface TagKeyMigration {
+    readonly units: readonly UnitSummary[];
+    readonly unitKeys: ReadonlySet<string>;
+    /** V3 unit name -> UUID of the first catalog unit with that name (core units precede custom ones). */
+    readonly unitKeyByName: ReadonlyMap<string, string>;
+    readonly chassisKeys: ReadonlySet<string>;
+    readonly chassisKeysByLegacyKey: ReadonlyMap<string, readonly string[]>;
+}
+
 type RemoteTagState = WsMessage & {
     readonly serverTs: number;
     readonly ops?: TagOp[];
     readonly fullState?: TagData;
-    readonly formatVersion?: 3 | 4;
+    readonly formatVersion?: TagData['formatVersion'];
 };
 type TagOpsUpdate = WsMessage & { readonly ops: TagOp[] };
 @Injectable({
@@ -69,6 +85,21 @@ export class TagsService {
 
     /** Callback to notify other tabs - set by DataService */
     private notifyStoreUpdatedCallback: ((options?: { searchIndexChanged?: boolean }) => void) | null = null;
+
+    /** The latest catalog passed to migrateTagKeys, and its key lookups once a migration needed them. */
+    private catalogUnits: readonly UnitSummary[] = [];
+    private keyMigration: TagKeyMigration | null = null;
+    private resolveKeyMigrationReady!: () => void;
+    /** Cloud sync waits for local migration: remote V3 keys can only be migrated against a catalog. */
+    private readonly keyMigrationReady = new Promise<void>(resolve => { this.resolveKeyMigrationReady = resolve; });
+    /** Serializes cloud reconciliation and op uploads; login, reconnect, resets and edits can request them together. */
+    private cloudSync: Promise<void> = Promise.resolve();
+    /**
+     * The connection the cloud was last reconciled on. Ops are uploaded only
+     * on it: an upload before reconciling would move lastSyncTs past changes
+     * other devices made meanwhile. Until then they wait in the pending queue.
+     */
+    private reconciledSocket: WebSocket | null = null;
 
     /**
      * Set the callback to refresh unit tags on units.
@@ -94,6 +125,11 @@ export class TagsService {
         return getUnitVariantGroupKey(unit);
     }
 
+    /** Unit tag key: the unit's stable UUID (V4; V3 used the non-unique UnitSummary.name). */
+    public static getUnitTagKey(unit: UnitSummary): string {
+        return unit.uuid;
+    }
+
     // ================== Initialization ==================
 
     /** Initialize and load tags from storage */
@@ -114,54 +150,114 @@ export class TagsService {
         return { tags: {}, timestamp: 0, formatVersion: TAG_FORMAT_VERSION };
     }
 
-    public async migrateChassisTagsToVariantGroups(units: UnitSummary[], tagData?: TagData): Promise<TagData> {
+    /**
+     * One-time migration of a document older than format 5 and of the ops
+     * queued with it. A V3 unit name becomes the UUID of the one unit carrying
+     * that name (core units before custom ones); a name no unit carries, and
+     * its tag assignment, is dropped. Format 3 `chassis|type` keys become the
+     * variant-group keys of every matching unit. The rewrite happens
+     * synchronously before the first await, so callers may assign the passed
+     * document right after starting it.
+     */
+    public async migrateTagKeys(units: readonly UnitSummary[], tagData?: TagData): Promise<TagData> {
         const data = tagData ?? await this.getTagData();
-        const migration = this.migrateChassisTagDataToVariantGroups(data, units);
-        if (!migration.changed) {
+        if (units.length === 0) {
             return data;
         }
 
-        try {
-            await this.commitFullState(data, { timestamp: Date.now(), notifyLocal: false, syncToCloud: migration.migratedKeys });
-        } catch (err) {
-            this.logger.error('Failed to migrate chassis tags to variant groups: ' + err);
+        this.catalogUnits = units;
+        if (data.formatVersion < TAG_FORMAT_VERSION) {
+            const migration = this.getKeyMigration();
+            this.migrateTagDataKeys(data, migration);
+            try {
+                // The cloud copy is upgraded by syncFromCloud after reconciling
+                // with it; pushing here could overwrite other devices' changes.
+                await this.dbService.saveMigratedTagData(data, ops => this.migrateTagOps(ops, migration));
+                this.applyLocalTagState(data, { notifyLocal: false });
+            } catch (err) {
+                this.logger.error('Failed to migrate tag keys: ' + err);
+            }
         }
+        this.resolveKeyMigrationReady();
         return data;
     }
 
-    private migrateChassisTagDataToVariantGroups(tagData: TagData, units: UnitSummary[]): { changed: boolean; migratedKeys: boolean } {
-        if (tagData.formatVersion >= TAG_FORMAT_VERSION) {
-            return { changed: false, migratedKeys: false };
+    /** The unit a V3 unit name stands for: the one its tags migrate to. */
+    public getUnitKeyForV3Name(name: string): string | undefined {
+        return this.getKeyMigration().unitKeyByName.get(name);
+    }
+
+    private getKeyMigration(): TagKeyMigration {
+        const units = this.catalogUnits;
+        if (this.keyMigration?.units === units) {
+            return this.keyMigration;
         }
 
-        if (Object.keys(tagData.tags).length === 0) {
-            tagData.formatVersion = TAG_FORMAT_VERSION;
-            return { changed: true, migratedKeys: false };
-        }
-
-        const oldKeyToVariantKeys = this.buildLegacyChassisKeyMap(units);
-        let migratedKeys = false;
-
-        for (const entry of Object.values(tagData.tags)) {
-            const migratedChassis: Record<string, UnitTagData> = {};
-            for (const [chassisKey, tagValue] of Object.entries(entry.chassis)) {
-                const variantKeys = oldKeyToVariantKeys.get(chassisKey);
-                if (!variantKeys) {
-                    migratedChassis[chassisKey] = this.mergeTagData(migratedChassis[chassisKey], tagValue);
-                    continue;
-                }
-
-                migratedKeys = true;
-                for (const variantKey of variantKeys) {
-                    migratedChassis[variantKey] = this.mergeTagData(migratedChassis[variantKey], tagValue);
-                }
+        const unitKeys = new Set<string>();
+        const unitKeyByName = new Map<string, string>();
+        const chassisKeys = new Set<string>();
+        const chassisKeysByLegacyKey = new Map<string, string[]>();
+        for (const unit of units) {
+            const unitKey = TagsService.getUnitTagKey(unit);
+            const chassisKey = TagsService.getChassisTagKey(unit);
+            unitKeys.add(unitKey);
+            chassisKeys.add(chassisKey);
+            if (!unitKeyByName.has(unit.name)) {
+                unitKeyByName.set(unit.name, unitKey);
             }
-
-            entry.chassis = migratedChassis;
+            const legacyChassisKey = `${unit.chassis}|${unit.type}`;
+            const keys = chassisKeysByLegacyKey.get(legacyChassisKey) ?? [];
+            if (!keys.includes(chassisKey)) keys.push(chassisKey);
+            chassisKeysByLegacyKey.set(legacyChassisKey, keys);
         }
 
+        this.keyMigration = { units, unitKeys, unitKeyByName, chassisKeys, chassisKeysByLegacyKey };
+        return this.keyMigration;
+    }
+
+    /** The V4 keys a stored key stands for; none drops it. */
+    private getMigratedKeys(migration: TagKeyMigration, category: TagOp['c'], key: string): readonly string[] {
+        if (category === TAG_CATEGORY.chassis) {
+            // Chassis keys this catalog does not know are not unit names; they stay.
+            return migration.chassisKeys.has(key) ? [key] : migration.chassisKeysByLegacyKey.get(key) ?? [key];
+        }
+        if (migration.unitKeys.has(key)) {
+            return [key];
+        }
+        const unitKey = migration.unitKeyByName.get(key);
+        return unitKey ? [unitKey] : [];
+    }
+
+    private migrateTagDataKeys(tagData: TagData, migration: TagKeyMigration): void {
+        for (const [tagId, entry] of Object.entries(tagData.tags)) {
+            entry.units = this.migrateKeyedTagData(entry.units, TAG_CATEGORY.name, migration);
+            entry.chassis = this.migrateKeyedTagData(entry.chassis, TAG_CATEGORY.chassis, migration);
+            if (Object.keys(entry.units).length === 0 && Object.keys(entry.chassis).length === 0) {
+                delete tagData.tags[tagId];
+            }
+        }
         tagData.formatVersion = TAG_FORMAT_VERSION;
-        return { changed: true, migratedKeys };
+    }
+
+    private migrateKeyedTagData(
+        values: Record<string, UnitTagData>,
+        category: TagOp['c'],
+        migration: TagKeyMigration,
+    ): Record<string, UnitTagData> {
+        const migrated: Record<string, UnitTagData> = {};
+        for (const [key, value] of Object.entries(values)) {
+            for (const migratedKey of this.getMigratedKeys(migration, category, key)) {
+                migrated[migratedKey] = this.mergeTagData(migrated[migratedKey], value);
+            }
+        }
+        return migrated;
+    }
+
+    /** Rewrites the keys of ops queued before the migration. */
+    private migrateTagOps(ops: readonly TagOp[], migration: TagKeyMigration): TagOp[] {
+        return ops.flatMap(op => op.a === TAG_ACTION.rename
+            ? [op]
+            : this.getMigratedKeys(migration, op.c, op.k).map(k => ({ ...op, k })));
     }
 
     /** Get cached tag data (or load from storage if not cached) */
@@ -172,14 +268,14 @@ export class TagsService {
         return this.cachedTagData!;
     }
 
-    /** Get all name tags keyed by display tag label for UI callers. */
+    /** Get all unit tags (label -> unit UUIDs) for UI callers. */
     public getNameTags(): StoredTags {
         if (!this.cachedTagData) return {};
         const result: StoredTags = {};
         for (const entry of Object.values(this.cachedTagData.tags)) {
-            const unitNames = Object.keys(entry.units);
-            if (unitNames.length > 0) {
-                result[entry.label] = unitNames;
+            const unitKeys = Object.keys(entry.units);
+            if (unitKeys.length > 0) {
+                result[entry.label] = unitKeys;
             }
         }
         return result;
@@ -216,7 +312,7 @@ export class TagsService {
         this.applyLocalTagState(tagData, options);
 
         if (options.syncToCloud ?? true) {
-            void this.syncToCloud(ops);
+            this.uploadPendingOps();
         }
     }
 
@@ -229,7 +325,7 @@ export class TagsService {
         this.applyLocalTagState(tagData, options);
 
         if (options.syncToCloud ?? false) {
-            void this.pushFullStateToCloud();
+            void this.enqueueCloudSync(() => this.pushFullStateToCloud());
         }
     }
 
@@ -295,16 +391,17 @@ export class TagsService {
         const processedChassisKeys = new Set<string>();
 
         for (const unit of units) {
+            const unitKey = TagsService.getUnitTagKey(unit);
             if (tagType === 'chassis') {
                 const chassisKey = TagsService.getChassisTagKey(unit);
 
                 if (action === 'add') {
                     // When adding a chassis tag, remove any existing name tag with the same value
                     // This "expands" the tag from unit-specific to chassis-wide
-                    if (!processedNameKeys.has(unit.name) && this.hasUnitTag(tagData, tagId, unit.name)) {
-                        processedNameKeys.add(unit.name);
-                        this.removeUnitTag(tagData, tagId, unit.name);
-                        ops.push({ k: unit.name, t: tagLabel, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
+                    if (!processedNameKeys.has(unitKey) && this.hasUnitTag(tagData, tagId, unitKey)) {
+                        processedNameKeys.add(unitKey);
+                        this.removeUnitTag(tagData, tagId, unitKey);
+                        ops.push({ k: unitKey, t: tagLabel, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
                     }
 
                     if (processedChassisKeys.has(chassisKey)) continue;
@@ -343,25 +440,25 @@ export class TagsService {
                     }
                 }
             } else {
-                // Name-based tagging - skip if already processed
-                if (processedNameKeys.has(unit.name)) continue;
-                processedNameKeys.add(unit.name);
+                // Unit tagging - skip if already processed
+                if (processedNameKeys.has(unitKey)) continue;
+                processedNameKeys.add(unitKey);
 
                 if (action === 'add') {
-                    if (!this.hasUnitTag(tagData, tagId, unit.name)) {
-                        this.addUnitTag(tagData, tagLabel, unit.name, normalizedQuantity);
+                    if (!this.hasUnitTag(tagData, tagId, unitKey)) {
+                        this.addUnitTag(tagData, tagLabel, unitKey, normalizedQuantity);
                         ops.push({
-                            k: unit.name,
+                            k: unitKey,
                             t: tagLabel,
                             c: TAG_CATEGORY.name,
                             a: TAG_ACTION.add,
                             ts: now,
                             q: normalizedQuantity > 1 ? normalizedQuantity : undefined
                         });
-                    } else if (!this.isUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity)) {
-                        this.setUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity);
+                    } else if (!this.isUnitTagQuantity(tagData, tagId, unitKey, normalizedQuantity)) {
+                        this.setUnitTagQuantity(tagData, tagId, unitKey, normalizedQuantity);
                         ops.push({
-                            k: unit.name,
+                            k: unitKey,
                             t: tagLabel,
                             c: TAG_CATEGORY.name,
                             a: TAG_ACTION.add,
@@ -370,9 +467,9 @@ export class TagsService {
                         });
                     }
                 } else {
-                    if (this.hasUnitTag(tagData, tagId, unit.name)) {
-                        this.removeUnitTag(tagData, tagId, unit.name);
-                        ops.push({ k: unit.name, t: tagLabel, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
+                    if (this.hasUnitTag(tagData, tagId, unitKey)) {
+                        this.removeUnitTag(tagData, tagId, unitKey);
+                        ops.push({ k: unitKey, t: tagLabel, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
                     }
                 }
             }
@@ -400,21 +497,22 @@ export class TagsService {
         if (tagType === 'name') {
             const processedKeys = new Set<string>();
             for (const unit of units) {
-                if (processedKeys.has(unit.name)) {
+                const unitKey = TagsService.getUnitTagKey(unit);
+                if (processedKeys.has(unitKey)) {
                     continue;
                 }
-                processedKeys.add(unit.name);
+                processedKeys.add(unitKey);
 
-                if (!this.hasUnitTag(tagData, tagId, unit.name)) {
+                if (!this.hasUnitTag(tagData, tagId, unitKey)) {
                     continue;
                 }
-                if (this.isUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity)) {
+                if (this.isUnitTagQuantity(tagData, tagId, unitKey, normalizedQuantity)) {
                     continue;
                 }
 
-                this.setUnitTagQuantity(tagData, tagId, unit.name, normalizedQuantity);
+                this.setUnitTagQuantity(tagData, tagId, unitKey, normalizedQuantity);
                 ops.push({
-                    k: unit.name,
+                    k: unitKey,
                     t: tagLabel,
                     c: TAG_CATEGORY.name,
                     a: TAG_ACTION.add,
@@ -467,13 +565,14 @@ export class TagsService {
         const processedChassisKeys = new Set<string>();
 
         for (const unit of units) {
+            const unitKey = TagsService.getUnitTagKey(unit);
             const chassisKey = TagsService.getChassisTagKey(unit);
 
             // Remove from unit tags
-            if (!processedNameKeys.has(unit.name) && this.hasUnitTag(tagData, tagId, unit.name)) {
-                processedNameKeys.add(unit.name);
-                this.removeUnitTag(tagData, tagId, unit.name);
-                ops.push({ k: unit.name, t: tagLabel, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
+            if (!processedNameKeys.has(unitKey) && this.hasUnitTag(tagData, tagId, unitKey)) {
+                processedNameKeys.add(unitKey);
+                this.removeUnitTag(tagData, tagId, unitKey);
+                ops.push({ k: unitKey, t: tagLabel, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
             }
 
             // Remove from chassis tags
@@ -657,8 +756,8 @@ export class TagsService {
         if (!entry) return;
 
         // Generate remove ops for each unit
-        for (const unitName of Object.keys(entry.units)) {
-            ops.push({ k: unitName, t: entry.label, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
+        for (const unitKey of Object.keys(entry.units)) {
+            ops.push({ k: unitKey, t: entry.label, c: TAG_CATEGORY.name, a: TAG_ACTION.remove, ts: now });
         }
 
         // Generate remove ops for each chassis
@@ -708,20 +807,20 @@ export class TagsService {
         }
 
         // Check unit tags
-        if (this.hasUnitTag(tagData, tagId, unit.name)) {
+        if (this.hasUnitTag(tagData, tagId, TagsService.getUnitTagKey(unit))) {
             return 'name';
         }
 
         return null;
     }
 
-    // ================== V3 Format Helpers ==================
-    // V3 format: tags = { tagId: { label, units: {}, chassis: {} } }
+    // ================== Tag Document Helpers ==================
+    // tags = { tagId: { label, units: { unitKey: {} }, chassis: { chassisKey: {} } } }
     // Tag IDs are always lowercase for O(1) lookup
     
     /** Check if a unit has a specific tag */
-    private hasUnitTag(tagData: TagData, tagId: string, unitName: string): boolean {
-        return tagData.tags[tagId]?.units[unitName] !== undefined;
+    private hasUnitTag(tagData: TagData, tagId: string, unitKey: string): boolean {
+        return tagData.tags[tagId]?.units[unitKey] !== undefined;
     }
     
     /** Check if a chassis has a specific tag */
@@ -743,20 +842,6 @@ export class TagsService {
         return quantity > 1 ? { q: quantity } : {};
     }
 
-    private buildLegacyChassisKeyMap(units: UnitSummary[]): Map<string, Set<string>> {
-        const result = new Map<string, Set<string>>();
-        for (const unit of units) {
-            const oldKey = `${unit.chassis}|${unit.type}`;
-            let variantKeys = result.get(oldKey);
-            if (!variantKeys) {
-                variantKeys = new Set<string>();
-                result.set(oldKey, variantKeys);
-            }
-            variantKeys.add(TagsService.getChassisTagKey(unit));
-        }
-        return result;
-    }
-
     private mergeTagData(current: UnitTagData | undefined, next: UnitTagData): UnitTagData {
         if (!current) {
             return { ...next };
@@ -765,8 +850,8 @@ export class TagsService {
         return this.toUnitTagData(Math.max(this.getStoredQuantity(current), this.getStoredQuantity(next)));
     }
 
-    private isUnitTagQuantity(tagData: TagData, tagId: string, unitName: string, quantity: number): boolean {
-        const current = tagData.tags[tagId]?.units[unitName];
+    private isUnitTagQuantity(tagData: TagData, tagId: string, unitKey: string, quantity: number): boolean {
+        const current = tagData.tags[tagId]?.units[unitKey];
         return this.getStoredQuantity(current) === quantity;
     }
 
@@ -775,12 +860,12 @@ export class TagsService {
         return this.getStoredQuantity(current) === quantity;
     }
 
-    private setUnitTagQuantity(tagData: TagData, tagId: string, unitName: string, quantity: number): void {
+    private setUnitTagQuantity(tagData: TagData, tagId: string, unitKey: string, quantity: number): void {
         const entry = tagData.tags[tagId];
-        if (!entry || entry.units[unitName] === undefined) {
+        if (!entry || entry.units[unitKey] === undefined) {
             return;
         }
-        entry.units[unitName] = this.toUnitTagData(quantity);
+        entry.units[unitKey] = this.toUnitTagData(quantity);
     }
 
     private setChassisTagQuantity(tagData: TagData, tagId: string, chassisKey: string, quantity: number): void {
@@ -792,19 +877,19 @@ export class TagsService {
     }
     
     /** Add a tag to a unit */
-    private addUnitTag(tagData: TagData, tag: string, unitName: string, quantity: number = 1): void {
+    private addUnitTag(tagData: TagData, tag: string, unitKey: string, quantity: number = 1): void {
         const { id: tagId } = this.normalizeTag(tag);
         if (!tagData.tags[tagId]) {
             tagData.tags[tagId] = { label: tag, units: {}, chassis: {} };
         }
-        tagData.tags[tagId].units[unitName] = this.toUnitTagData(quantity);
+        tagData.tags[tagId].units[unitKey] = this.toUnitTagData(quantity);
     }
     
     /** Remove a tag from a unit */
-    private removeUnitTag(tagData: TagData, tagId: string, unitName: string): void {
+    private removeUnitTag(tagData: TagData, tagId: string, unitKey: string): void {
         const entry = tagData.tags[tagId];
         if (!entry) return;
-        delete entry.units[unitName];
+        delete entry.units[unitKey];
         // Clean up empty tag
         if (Object.keys(entry.units).length === 0 && Object.keys(entry.chassis).length === 0) {
             delete tagData.tags[tagId];
@@ -833,33 +918,34 @@ export class TagsService {
 
     private removeNameTagsCoveredByChassis(tagData: TagData, units: UnitSummary[], timestamp: number): TagOp[] {
         const ops: TagOp[] = [];
-        const chassisKeysByUnitName = new Map<string, Set<string>>();
-        const orderedUnitNames: string[] = [];
+        const chassisKeysByUnitKey = new Map<string, Set<string>>();
+        const orderedUnitKeys: string[] = [];
         for (const unit of units) {
-            let chassisKeys = chassisKeysByUnitName.get(unit.name);
+            const unitKey = TagsService.getUnitTagKey(unit);
+            let chassisKeys = chassisKeysByUnitKey.get(unitKey);
             if (!chassisKeys) {
                 chassisKeys = new Set<string>();
-                chassisKeysByUnitName.set(unit.name, chassisKeys);
-                orderedUnitNames.push(unit.name);
+                chassisKeysByUnitKey.set(unitKey, chassisKeys);
+                orderedUnitKeys.push(unitKey);
             }
             chassisKeys.add(TagsService.getChassisTagKey(unit));
         }
 
-        const tagEntriesByUnitName = new Map<string, Array<{
+        const tagEntriesByUnitKey = new Map<string, Array<{
             readonly tagId: string;
             readonly entry: TagEntry;
         }>>();
         for (const [tagId, entry] of Object.entries(tagData.tags)) {
-            for (const unitName of Object.keys(entry.units)) {
-                const entries = tagEntriesByUnitName.get(unitName) ?? [];
+            for (const unitKey of Object.keys(entry.units)) {
+                const entries = tagEntriesByUnitKey.get(unitKey) ?? [];
                 entries.push({ tagId, entry });
-                tagEntriesByUnitName.set(unitName, entries);
+                tagEntriesByUnitKey.set(unitKey, entries);
             }
         }
 
-        for (const unitName of orderedUnitNames) {
-            const chassisKeys = chassisKeysByUnitName.get(unitName)!;
-            for (const { tagId, entry } of tagEntriesByUnitName.get(unitName) ?? []) {
+        for (const unitKey of orderedUnitKeys) {
+            const chassisKeys = chassisKeysByUnitKey.get(unitKey)!;
+            for (const { tagId, entry } of tagEntriesByUnitKey.get(unitKey) ?? []) {
                 let coveredByChassis = false;
                 for (const chassisKey of chassisKeys) {
                     if (entry.chassis[chassisKey] === undefined) continue;
@@ -867,9 +953,9 @@ export class TagsService {
                     break;
                 }
                 if (!coveredByChassis) continue;
-                this.removeUnitTag(tagData, tagId, unitName);
+                this.removeUnitTag(tagData, tagId, unitKey);
                 ops.push({
-                    k: unitName,
+                    k: unitKey,
                     t: entry.label,
                     c: TAG_CATEGORY.name,
                     a: TAG_ACTION.remove,
@@ -894,42 +980,50 @@ export class TagsService {
         }
     }
 
+    /** Runs cloud work one task at a time; a failure is logged and leaves pending ops queued. */
+    private enqueueCloudSync(task: () => Promise<void>): Promise<void> {
+        this.cloudSync = this.cloudSync
+            .then(task)
+            .catch(err => this.logger.error('Failed to sync tags with cloud: ' + err));
+        return this.cloudSync;
+    }
+
+    /** Uploads the pending ops once the cloud is reconciled on the current connection. */
+    private uploadPendingOps(): void {
+        void this.enqueueCloudSync(async () => {
+            const socket = this.wsService.getWebSocket();
+            if (socket !== null && socket === this.reconciledSocket) {
+                await this.syncToCloud();
+            }
+        });
+    }
+
     /**
      * Sync tag operations to cloud (incremental).
-     * Sends only the operations, not the full state.
+     * Sends the pending ops in order; each acknowledged chunk leaves the queue.
      */
-    private async syncToCloud(ops?: TagOp[]): Promise<void> {
+    private async syncToCloud(): Promise<void> {
         if (!await this.canUseCloud()) return;
 
         const uuid = this.userStateService.uuid();
         if (!uuid) return;
 
-        // If no ops provided, get pending ops from storage
-        let opsToSync = ops;
-        if (!opsToSync) {
-            const syncState = await this.dbService.getTagSyncState();
-            opsToSync = syncState.pendingOps;
-        }
-        if (opsToSync.length === 0) return;
-
+        const { pendingOps } = await this.dbService.getTagSyncState();
         // Chunk large batches to stay within server limits
-        for (let i = 0; i < opsToSync.length; i += TAG_OPS_CHUNK_SIZE) {
-            const chunk = opsToSync.slice(i, i + TAG_OPS_CHUNK_SIZE);
-            try {
-                const response = await this.wsService.sendAndWaitForResponse({
-                    action: 'tagOps',
-                    uuid,
-                    ops: chunk
-                });
-                // Clear pending ops after successful sync
-                const serverTs = response?.['serverTs'];
-                if (typeof serverTs === 'number' && Number.isFinite(serverTs)) {
-                    await this.dbService.clearPendingTagOps(serverTs);
-                }
-            } catch (err) {
-                this.logger.error('Failed to sync tag ops to cloud: ' + err);
-                // Keep pending ops for retry on next sync
+        for (let i = 0; i < pendingOps.length; i += TAG_OPS_CHUNK_SIZE) {
+            const chunk = pendingOps.slice(i, i + TAG_OPS_CHUNK_SIZE);
+            const response = await this.wsService.sendAndWaitForResponse({
+                action: 'tagOps',
+                uuid,
+                ops: chunk
+            });
+            const serverTs = response?.['serverTs'];
+            if (typeof serverTs !== 'number' || !Number.isFinite(serverTs)) {
+                // Keep this chunk and the ones after it for the next sync, in order.
+                this.logger.warn('Tag ops were not acknowledged by the cloud; they stay queued');
+                return;
             }
+            await this.dbService.clearPendingTagOps(serverTs, chunk.length);
         }
     }
 
@@ -942,6 +1036,8 @@ export class TagsService {
         const uuid = this.userStateService.uuid();
         if (!uuid) return;
 
+        // Ops queued so far are part of the pushed state; ops queued later stay queued.
+        const { pendingOps } = await this.dbService.getTagSyncState();
         const localData = await this.getTagData();
 
         const response = await this.wsService.sendAndWaitForResponse({
@@ -952,7 +1048,7 @@ export class TagsService {
 
         const serverTs = response?.['serverTs'];
         if (typeof serverTs === 'number' && Number.isFinite(serverTs)) {
-            await this.dbService.clearPendingTagOps(serverTs);
+            await this.dbService.clearPendingTagOps(serverTs, pendingOps.length);
         }
     }
 
@@ -960,167 +1056,153 @@ export class TagsService {
      * Fetch tags from cloud and merge with local if needed.
      * Called on login/register and when coming back online.
      * Uses incremental sync with conflict detection.
+     * Waits until the local tags were migrated against a catalog, migrates
+     * a V3 cloud copy the same way, and replaces it with its migrated full
+     * state plus the pending ops (or the user's conflict choice).
      */
-    public async syncFromCloud(): Promise<void> {
+    public syncFromCloud(): Promise<void> {
+        return this.enqueueCloudSync(() => this.reconcileWithCloud());
+    }
+
+    private async reconcileWithCloud(): Promise<void> {
+        await this.keyMigrationReady;
+        this.reconciledSocket = null;
         if (!await this.canUseCloud()) return;
 
         const uuid = this.userStateService.uuid();
         if (!uuid) return;
 
+        const socket = this.wsService.getWebSocket();
         try {
-            const syncState = await this.dbService.getTagSyncState();
-            const localData = await this.getTagData();
-            const hasPendingOps = syncState.pendingOps.length > 0;
-            const hasLocalTags = Object.keys(localData.tags).length > 0;
-
-            // Request server state info (timestamp) and any ops since our last sync
-            const response = await this.wsService.sendAndWaitForResponse<RemoteTagState>({
-                action: 'getTagOps',
-                uuid,
-                since: syncState.lastSyncTs
-            });
-
-            if (!response || response['action'] === 'error') return;
-            const remoteState = response;
-            const { serverTs } = remoteState;
-
-            // Migration case: local has tags but server has no data
-            // Push local state to cloud to preserve existing tags
-            if (hasLocalTags && serverTs === 0
-                && !remoteState.fullState
-                && (!remoteState.ops || remoteState.ops.length === 0)) {
-                this.logger.info('Migrating local tags to cloud (first sync)');
-                await this.pushFullStateToCloud();
-                return;
-            }
-
-            // Conflict detection: we have pending ops AND server has changed since our last sync
-            // (but not if serverTs is 0, meaning server has no data yet)
-            if (hasPendingOps && serverTs > 0 && syncState.lastSyncTs !== serverTs) {
-                // Potential conflict - ask user how to resolve
-                const resolution = await this.showConflictDialog();
-                
-                switch (resolution) {
-                    case 'cloud':
-                        // Drop local pending, use cloud state
-                        await this.applyCloudState(remoteState, serverTs);
-                        break;
-                    case 'merge':
-                        // Apply cloud changes first, then re-apply our pending ops on top
-                        await this.mergeCloudAndLocal(remoteState, syncState.pendingOps, serverTs);
-                        break;
-                    case 'local':
-                        // Push our full local state to cloud
-                        await this.pushFullStateToCloud();
-                        break;
-                }
-                return;
-            }
-
-            // No conflict: either no pending ops, or timestamps match (safe to sync)
-            if (hasPendingOps) {
-                // Timestamps match - safe to just upload our pending ops
-                await this.syncToCloud(syncState.pendingOps);
-            } else {
-                // No pending ops - apply any cloud changes
-                await this.applyCloudState(remoteState, serverTs);
-                const upgradedLocalData = await this.getTagData();
-                if (this.shouldUpgradeRemoteTagState(remoteState, upgradedLocalData)) {
-                    await this.pushFullStateToCloud();
-                }
+            if (await this.reconcile(uuid)) {
+                this.reconciledSocket = socket;
             }
         } catch (err) {
             this.logger.error('Failed to sync tags from cloud: ' + err);
         }
     }
 
-    private shouldUpgradeRemoteTagState(response: RemoteTagState, localData: TagData): boolean {
-        const remoteFormatVersion = response.formatVersion
-            ?? response.fullState?.formatVersion
-            ?? TAG_FORMAT_VERSION;
-        return response.serverTs > 0
-            && remoteFormatVersion < TAG_FORMAT_VERSION
-            && localData.formatVersion >= TAG_FORMAT_VERSION;
+    /** Reconciles local tags with the cloud; false when the cloud state could not be read. */
+    private async reconcile(uuid: string): Promise<boolean> {
+        const syncState = await this.dbService.getTagSyncState();
+        const { pendingOps } = syncState;
+        const hasPendingOps = pendingOps.length > 0;
+        const hasLocalTags = Object.keys((await this.getTagData()).tags).length > 0;
+
+        // Request server state info (timestamp) and any ops since our last sync
+        let response = await this.requestCloudTagState(uuid, syncState.lastSyncTs);
+        if (response && response.serverTs > 0 && !response.fullState
+            && (response.formatVersion ?? TAG_FORMAT_VERSION) < TAG_FORMAT_VERSION) {
+            // An older-format cloud copy is replaced below, so build the
+            // replacement from all of it rather than from ops since lastSyncTs.
+            response = await this.requestCloudTagState(uuid, 0);
+        }
+        if (!response) return false;
+
+        const { serverTs } = response;
+        const upgradeRemote = (response.fullState?.formatVersion ?? TAG_FORMAT_VERSION) < TAG_FORMAT_VERSION;
+        if (upgradeRemote) {
+            // An older cloud copy always arrives as full state; its ops are never applied.
+            this.migrateTagDataKeys(response.fullState!, this.getKeyMigration());
+        }
+
+        // Migration case: local has tags but server has no data
+        // Push local state to cloud to preserve existing tags
+        if (hasLocalTags && serverTs === 0
+            && !response.fullState
+            && (!response.ops || response.ops.length === 0)) {
+            this.logger.info('Migrating local tags to cloud (first sync)');
+            await this.pushFullStateToCloud();
+            return true;
+        }
+
+        // Conflict detection: we have pending ops AND server has changed since our last sync
+        // (but not if serverTs is 0, meaning server has no data yet)
+        if (hasPendingOps && serverTs > 0 && syncState.lastSyncTs !== serverTs) {
+            // Potential conflict - ask user how to resolve
+            const resolution = await this.showConflictDialog();
+
+            switch (resolution) {
+                case 'cloud':
+                    // Drop local pending, use cloud state
+                    await this.applyCloudState(response, serverTs, pendingOps.length);
+                    if (upgradeRemote) {
+                        await this.pushFullStateToCloud();
+                    }
+                    break;
+                case 'merge':
+                    // Apply cloud changes first, then re-apply our pending ops on top
+                    await this.replayPendingOpsOnCloudState(response);
+                    break;
+                case 'local':
+                    // Push our full local state to cloud
+                    await this.pushFullStateToCloud();
+                    break;
+            }
+            return true;
+        }
+
+        // No conflict: either no pending ops, or timestamps match (safe to sync)
+        if (upgradeRemote) {
+            // Replace the older-format cloud copy with itself plus the pending ops.
+            await this.replayPendingOpsOnCloudState(response);
+        } else if (hasPendingOps) {
+            await this.syncToCloud();
+        } else {
+            // No pending ops - apply any cloud changes
+            await this.applyCloudState(response, serverTs, 0);
+        }
+        return true;
+    }
+
+    /** getTagOps: the ops since `since`, or the full state; null when the server reports an error. */
+    private async requestCloudTagState(uuid: string, since: number): Promise<RemoteTagState | null> {
+        const response = await this.wsService.sendAndWaitForResponse<RemoteTagState>({
+            action: 'getTagOps',
+            uuid,
+            since
+        });
+        return !response || response['action'] === 'error' ? null : response;
     }
 
     /**
      * Apply cloud state (either full state or incremental ops).
+     * The first `settledCount` pending ops are dropped; ops queued after
+     * them, e.g. edits made while syncing, are re-applied on top.
      */
-    private async applyCloudState(response: RemoteTagState, serverTs: number): Promise<void> {
-        if (response.fullState) {
-            await this.dbService.saveAllTagData(response.fullState);
-            await this.dbService.clearPendingTagOps(serverTs);
-            this.applyLocalTagState(response.fullState, { searchIndexChanged: true });
-        } else if (response.ops && response.ops.length > 0) {
-            // Apply incremental operations
-            const localData = await this.getTagData();
-            this.applyTagOps(localData, response.ops);
-            localData.timestamp = serverTs;
-            await this.dbService.saveAllTagData(localData);
-            await this.dbService.clearPendingTagOps(serverTs);
-            this.applyLocalTagState(localData, { searchIndexChanged: true });
-        } else {
-            // No new ops, just update sync timestamp
-            await this.dbService.clearPendingTagOps(serverTs);
-        }
-    }
-
-    /**
-     * Merge cloud state with local pending operations (V3 format).
-     */
-    private async mergeCloudAndLocal(
-        response: RemoteTagState,
-        pendingOps: TagOp[],
-        serverTs: number,
-    ): Promise<void> {
-        // Start with current local state
-        const tagData = await this.getTagData();
-
-        // Apply cloud changes first (server ops or full state)
-        if (response.fullState) {
-            // Merge cloud V3 state into local: cloud additions get added, but don't remove local tags
-            for (const [tagId, cloudEntry] of Object.entries(response.fullState.tags)) {
-                if (!tagData.tags[tagId]) {
-                    // New tag from cloud - add it
-                    tagData.tags[tagId] = { ...cloudEntry };
-                } else {
-                    // Tag exists locally - merge units and chassis
-                    const localEntry = tagData.tags[tagId];
-                    for (const [unitKey, unitData] of Object.entries(cloudEntry.units)) {
-                        if (!localEntry.units[unitKey]) {
-                            localEntry.units[unitKey] = unitData;
-                        }
-                    }
-                    for (const [chassisKey, chassisData] of Object.entries(cloudEntry.chassis)) {
-                        if (!localEntry.chassis[chassisKey]) {
-                            localEntry.chassis[chassisKey] = chassisData;
-                        }
-                    }
-                }
-            }
-        } else if (response.ops && response.ops.length > 0) {
-            // Apply server's incremental ops first
-            this.applyTagOps(tagData, response.ops);
+    private async applyCloudState(response: RemoteTagState, serverTs: number, settledCount: number): Promise<void> {
+        const queuedOps = await this.dbService.clearPendingTagOps(serverTs, settledCount);
+        if (!response.fullState && !response.ops?.length && queuedOps.length === 0) {
+            return;
         }
 
-        // Now apply our pending ops on top (they win in merge)
-        this.applyTagOps(tagData, pendingOps);
-        tagData.timestamp = Date.now();
-
-        // Save merged state locally
+        const tagData = response.fullState ?? await this.getTagData();
+        if (!response.fullState) {
+            this.applyTagOps(tagData, response.ops ?? []);
+            tagData.timestamp = serverTs;
+        }
+        this.applyTagOps(tagData, queuedOps);
         await this.dbService.saveAllTagData(tagData);
-        this.cachedTagData = tagData;
-        this.refreshUnitsCallback?.(tagData, { searchIndexChanged: true });
-
-        // Push merged state to cloud
-        await this.pushFullStateToCloud();
-        
-        this.notifyStoreUpdatedCallback?.({ searchIndexChanged: true });
-        this.version.update(v => v + 1);
+        this.applyLocalTagState(tagData, { searchIndexChanged: true });
     }
 
     /**
-     * Apply tag operations to tag data (V3 format).
+     * Replays the pending ops on top of the cloud state (its full state, or
+     * local state plus its ops) and makes the result both local and cloud state.
+     */
+    private async replayPendingOpsOnCloudState(response: RemoteTagState): Promise<void> {
+        const tagData = response.fullState ?? await this.getTagData();
+        if (!response.fullState) {
+            this.applyTagOps(tagData, response.ops ?? []);
+        }
+        const { pendingOps } = await this.dbService.getTagSyncState();
+        this.applyTagOps(tagData, pendingOps);
+        await this.commitFullState(tagData, { timestamp: Date.now(), searchIndexChanged: true });
+        await this.pushFullStateToCloud();
+    }
+
+    /**
+     * Apply tag operations to tag data.
      * Actions: 0 = remove, 1 = add, 2 = rename
      */
     private applyTagOps(tagData: TagData, ops: TagOp[]): void {
@@ -1197,9 +1279,12 @@ export class TagsService {
 
         // Handle state reset notification - another session did a full state replacement
         this.wsService.registerMessageHandler('tagStateReset', async () => {
-            // Clear our pending ops and re-sync from server
-            await this.dbService.clearPendingTagOps(0); // Reset lastSyncTs to force full sync
-            await this.syncFromCloud();
+            // Another session replaced the cloud state: fetch it whole. Pending ops
+            // stay queued for the reconciliation instead of being dropped.
+            await this.enqueueCloudSync(async () => {
+                await this.dbService.resetTagSyncTimestamp();
+                await this.reconcileWithCloud();
+            });
         });
 
         // Sync tags after user login/registration

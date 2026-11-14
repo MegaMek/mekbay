@@ -18,6 +18,10 @@ import { gameRulesFor } from '../../../models/rules/game-rules';
 import { sameAttackerSelection, type AttackerSelection } from '../../../models/runtime/attacker-targeting-state';
 import type { EncounterTargetId } from '../../../models/runtime/encounter-runtime';
 import type { EquipmentPanelComponent, EquipmentPanelSnapshot } from '../../../models/runtime/equipment-panel';
+import { AttackResolutionService } from '../../../services/attack-resolution.service';
+import { SwarmService } from '../../../services/swarm.service';
+import { ForceWorkspaceCommandsService } from '../../../services/force-workspace-commands.service';
+import type { RecordSheetLivePlay } from '../record-sheet-inventory';
 import { projectTargetingTarget, projectWeaponTargetPresentation } from '../../../models/runtime/equipment-panel';
 import type { CBTUnitCommand } from '../../../models/runtime/unit-command';
 import { isUnitEditContextCurrent, type UnitEditContext } from '../../../models/runtime/unit-edit-context';
@@ -66,6 +70,7 @@ export interface RecordSheetRandomHit {
 export type CrewSkillField = 'gunnery' | 'piloting' | 'aeroGunnery' | 'aeroPiloting';
 
 type InventorySelection = Extract<RecordSheetInteraction, { readonly kind: 'inventory-selection' }>;
+type InventoryAim = Extract<RecordSheetInteraction, { readonly kind: 'inventory-aim' }>;
 
 const REJECTED_EDIT = 'This edit is no longer current, or the force is read-only.';
 const CREW_SKILL_TITLES: Readonly<Record<CrewSkillField, string>> = Object.freeze({
@@ -537,22 +542,24 @@ export class PageViewerOverlayService {
         });
     }
 
-    /** Asks for a heat value; resolves to a whole, non-negative heat, or null when cancelled. */
-    async promptHeat(current: number): Promise<number | null> {
+    /** Asks for a whole number from 0 up to `maximum`; resolves to it, or null when cancelled. */
+    async promptWholeNumber(title: string, current: number, maximum?: number): Promise<number | null> {
         const ref = this.dialogs.createDialog<number | null>(InputDialogComponent, {
             data: {
-                title: 'Heat',
-                message: 'Heat',
+                title,
+                message: title,
                 inputType: 'number',
                 minimumValue: 0,
+                ...(maximum === undefined ? {} : { maximumValue: maximum }),
                 defaultValue: current,
-                placeholder: 'Heat value',
+                placeholder: `${title} value`,
                 centerInput: true,
             },
         });
         const value = await firstValueFrom(ref.closed);
         if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
-        return Math.max(0, Math.trunc(Number(value)));
+        const whole = Math.max(0, Math.trunc(Number(value)));
+        return maximum === undefined ? whole : Math.min(maximum, whole);
     }
 
     /** Dispatches one sheet edit, reporting a rejection; resolves to the next edit context, or null. */
@@ -659,6 +666,55 @@ export class PageViewerOverlayService {
         } else {
             await this.selectWeapons(member, interaction, interaction.componentIds, registryRevision, openEquipment);
         }
+    }
+
+    /**
+     * What the unit's sheet shows of its play with others: whether it may declare aimed shots, and who swarms it.
+     * Resolved on use: attack resolution and the OPFOR depend on the force builder.
+     */
+    livePlay(member: CBTForceMember): RecordSheetLivePlay {
+        return Object.freeze({
+            aiming: () => this.injector.get(AttackResolutionService).declaresAimedShots(member),
+            swarmedBy: () => member.force.getUnitSnapshot(member.id)?.query.hasCondition('swarmed') === true
+                ? this.injector.get(SwarmService).swarmerName(member) : null,
+        });
+    }
+
+    /** Selects the infantry swarming the unit, which shows its sheet. */
+    showSwarmer(member: CBTForceMember): void {
+        const swarmer = this.injector.get(SwarmService).swarmer(member);
+        if (swarmer) this.injector.get(ForceWorkspaceCommandsService).selectUnit(swarmer);
+        else this.toast.showToast('The swarming infantry\'s force is not open here', 'info');
+    }
+
+    /** Shows the paperdoll of the target a sheet's weapon fires at, and aims the weapon where the player picks. */
+    async aimInventory(member: CBTForceMember, interaction: InventoryAim): Promise<void> {
+        const targeted = (): Readonly<{
+            panel: EquipmentPanelSnapshot;
+            row: EquipmentPanelComponent;
+            targetId: EncounterTargetId;
+        }> | null => {
+            const panel = member.force.getEquipmentPanelSnapshot(member.id);
+            const row = panel ? equipmentPanelComponentById(panel, interaction.componentId) : undefined;
+            const selection = row?.weapon?.selection;
+            return panel && row && selection?.kind === 'target' ? { panel, row, targetId: selection.targetId } : null;
+        };
+        const before = targeted();
+        const target = before?.panel.targets.find(candidate => candidate.targetId === before.targetId);
+        const attack = member.force.getWeaponAttackContext(member.id);
+        if (!before || !target || attack === null || !this.isCurrent(member, interaction.context)) return;
+        const aim = await this.injector.get(AttackResolutionService).pickAim(
+            before.row, projectTargetingTarget(target, before.panel.ruleset), attack, before.panel.ruleset);
+        // The unit may have changed while the paperdoll was open: aim only the weapon still firing at that target.
+        const context = member.force.getUnitSnapshot(member.id)?.editContext;
+        const registryRevision = member.force.getAttackerTargeting(member.id)?.registryRevision;
+        if (aim === undefined || context === undefined || registryRevision === undefined
+            || targeted()?.targetId !== before.targetId) return;
+        await this.setComponentSelections(member, [interaction.componentId], {
+            kind: 'target',
+            targetId: before.targetId,
+            ...(aim === null ? {} : { aim }),
+        }, context, registryRevision);
     }
 
     /** Applies an inventory selection to these weapons when there is no target to choose: their mode, then the selection. */

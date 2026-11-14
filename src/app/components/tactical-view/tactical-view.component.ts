@@ -771,7 +771,7 @@ export class TacticalViewComponent {
     protected async applyHeat(): Promise<void> {
         const mek = this.mekSnapshot();
         if (mek) await this.dispatchMekInteraction({ kind: 'apply-heat', context: mek.editContext });
-        else await this.sendNonMekCommand({ type: 'apply-heat', policy: 'automatic' });
+        else await this.sendNonMekCommand({ type: 'apply-heat' });
     }
 
     protected setCrewWounds(position: TacticalCrewPosition, wounds: number): void {
@@ -947,7 +947,6 @@ export class TacticalViewComponent {
         const command = recordSheetCommand(interaction, {
             query: unit.query,
             heatSinkCount: snapshot.heatSinks.count,
-            heatPolicy: snapshot.heatPolicy,
         }, this.pendingDamage(), delta);
         await this.sendMekCommand(command, interaction.context);
     }

@@ -46,7 +46,7 @@ describe('nonMekTurnMovementIndicator', () => {
         const runtime = createNonMekRuntimeForTest('unit:tank-movement-badge', {
             entity: entity.uuid(),
             ruleset: CORE_2026_RULESET,
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+            initialStateProfile: { profileId: 'pristine-non-mek' },
         }, entity, CORE_2026_RULESET);
         const unit = () => ({
             entity, index: runtime.getIndex(), state: runtime.snapshot(), ruleset: CORE_2026_RULESET,

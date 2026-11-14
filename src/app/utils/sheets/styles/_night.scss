@@ -225,8 +225,16 @@
 
     .skillValue,
     .velocityValue,
+    .elevationTrackValue,
     .customAmmoLoadout {
       fill: #bbf;
+    }
+
+    .velocityCell.currentTurn,
+    .velocityTurnCell.currentTurn,
+    .elevationTrackCell.currentTurn,
+    .elevationTrackTurnCell.currentTurn {
+      fill: rgba(255, 200, 0, 0.22) !important;
     }
 
     .inventoryEntry {

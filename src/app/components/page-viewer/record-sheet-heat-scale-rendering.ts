@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
-import type { RecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
+import { displayedHeat, type RecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
 import type { UnitEditContext } from '../../models/runtime/unit-edit-context';
 import type { RecordSheetBind } from './record-sheet-dom';
 import { renderRecordSheetHeatEffects } from './record-sheet-heat-effects';
@@ -12,11 +12,6 @@ import type { RecordSheetInteraction } from './record-sheet-interaction';
 export type HeatScaleFamily = 'mek' | 'lam' | 'aero';
 
 const HEAT_PROJECTION_ORIGINAL_STROKE = 'data-mekbay-original-projection-stroke';
-
-/** The heat a scale shows: the pending arrow, otherwise the current heat. */
-export function displayedHeat(scale: Pick<RecordSheetHeatScale, 'current' | 'pending'>): number {
-    return Math.max(0, scale.pending ?? scale.current);
-}
 
 /**
  * Heat scale presentation shared by every heat-tracking record sheet: hot cells, effect highlights, the overflow
@@ -184,13 +179,19 @@ function renderHeatArrows(
     scale: RecordSheetHeatScale,
     highestHeat: number,
 ): void {
-    const showProjection = scale.automaticProjection;
-    updateHeatArrow(svg, highestHeat, 'now-arrow', scale.current, 'current');
+    updateHeatArrow(svg, highestHeat, 'now-arrow', scale.current, 'current', 'NOW');
+    // NEXT shows the player's adjustment from the calculated heat it follows.
     updateHeatArrow(svg, highestHeat, 'next-arrow', scale.pending,
-        scale.pending !== undefined && scale.pending >= scale.current ? 'hot' : 'cold');
+        scale.pending !== undefined && scale.pending >= scale.current ? 'hot' : 'cold',
+        scale.adjustment === undefined ? undefined : `${scale.adjustment > 0 ? '+' : ''}${scale.adjustment}`);
     updateHeatArrow(svg, highestHeat, 'faded-arrow', scale.previous, 'previous');
-    updateHeatArrow(svg, highestHeat, 'projection-arrow', showProjection ? scale.projection : undefined,
+    updateHeatArrow(svg, highestHeat, 'projection-arrow', barEndsOnProjection(scale) ? scale.projection : undefined,
         (scale.projection ?? scale.current) > scale.current ? 'projection-hot' : 'projection-cold');
+}
+
+/** The bar ends on the calculated heat: no NEXT is set and End Turn applies the calculation. */
+function barEndsOnProjection(scale: RecordSheetHeatScale): boolean {
+    return scale.pending === undefined && scale.outcome !== undefined;
 }
 
 type HeatArrowStyle = 'current' | 'hot' | 'cold' | 'previous' | 'projection-hot' | 'projection-cold';
@@ -201,18 +202,14 @@ function updateHeatArrow(
     id: string,
     value: number | undefined,
     style: HeatArrowStyle,
+    label?: string,
 ): void {
     let arrow = svg.querySelector<SVGPolygonElement>(`#${id}`);
-    if (value === undefined) {
-        arrow?.remove();
-        if (id === 'now-arrow') svg.querySelector('#now-arrow-label')?.remove();
-        return;
-    }
-    const cell = heatElement(svg, value, highestHeat);
+    const cell = value === undefined ? null : heatElement(svg, value, highestHeat);
     const box = cell ? heatMarkerBox(cell) : null;
     if (!cell || !box) {
         arrow?.remove();
-        if (id === 'now-arrow') svg.querySelector('#now-arrow-label')?.remove();
+        svg.querySelector(`#${id}-label`)?.remove();
         return;
     }
     if (!arrow) {
@@ -234,25 +231,26 @@ function updateHeatArrow(
     arrow.setAttribute('stroke', style === 'current' ? '#000' : color);
     arrow.setAttribute('stroke-width', '1');
     cell.parentElement?.appendChild(arrow);
-    if (id === 'now-arrow') updateNowArrowLabel(cell.parentElement, x + 11, y);
+    if (label === undefined) svg.querySelector(`#${id}-label`)?.remove();
+    else updateArrowLabel(cell.parentElement, `${id}-label`, label, style === 'current' ? '#000' : color, x + 11, y);
 }
 
-function updateNowArrowLabel(parent: Element | null, x: number, y: number): void {
+function updateArrowLabel(parent: Element | null, id: string, text: string, fill: string, x: number, y: number): void {
     if (!parent) return;
-    let label = parent.querySelector<SVGTextElement>('#now-arrow-label');
+    let label = parent.querySelector<SVGTextElement>(`#${id}`);
     if (!label) {
         label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('id', 'now-arrow-label');
+        label.setAttribute('id', id);
         label.setAttribute('class', 'screen-only');
         label.setAttribute('text-anchor', 'middle');
         label.setAttribute('dominant-baseline', 'middle');
         label.setAttribute('font-size', '5');
         label.setAttribute('font-weight', 'bold');
-        label.setAttribute('fill', '#000');
         label.setAttribute('pointer-events', 'none');
-        label.textContent = 'NOW';
         parent.appendChild(label);
     }
+    label.textContent = text;
+    label.setAttribute('fill', fill);
     label.setAttribute('x', String(x));
     label.setAttribute('y', String(y));
     label.setAttribute('transform', `rotate(90 ${x} ${y})`);
@@ -265,15 +263,10 @@ function renderHeatProjectionGraphics(
 ): void {
     const heatScale = svg.querySelector<SVGGElement>('#heatScale');
     if (!heatScale) return;
-    const showProjection = scale.automaticProjection;
-    if (showProjection && scale.projection !== undefined) {
-        renderHeatProjectionBar(svg, heatScale, scale.current, scale.projection, highestHeat);
-        heatScale.querySelector('#heat-projection-target-marker')?.remove();
-        heatScale.querySelector('#heat-selected-weapons-target-marker')?.remove();
-        return;
-    }
-    clearHeatProjectionPreview(heatScale);
-    updateHeatTargetMarker(svg, heatScale, scale.projection, highestHeat,
+    // The bar runs from NOW to where End Turn puts the heat; the calculation keeps its own marker when that is NEXT.
+    if (scale.outcome !== undefined) renderHeatProjectionBar(svg, heatScale, scale.current, scale.outcome, highestHeat);
+    else clearHeatProjectionPreview(heatScale);
+    updateHeatTargetMarker(svg, heatScale, barEndsOnProjection(scale) ? undefined : scale.projection, highestHeat,
         'heat-projection-target-marker', (scale.projection ?? scale.current) > scale.current ? '#d12020' : '#2070d1');
     updateHeatTargetMarker(svg, heatScale, scale.selectedWeapons, highestHeat,
         'heat-selected-weapons-target-marker', 'orange');

@@ -11,6 +11,12 @@ import { projectMekCombatModifiers, type MekCombatModifierRuntimeFacts } from '.
 import { kickTalonsIntact, selectMekKickingLeg } from './mek-kicking-leg';
 import { canPerformMekAction } from './mek-action-availability';
 import {
+    attackerActionTargetKey,
+    createPristineAttackerTargetingState,
+    type AttackerTargetingState,
+} from './attacker-targeting-state';
+import {
+  createDirectMekRuntimeFixture,
   createDirectQuadRuntimeFixture,
   createDirectTripodRuntimeFixture,
   type DirectMekRuntimeFixture,
@@ -18,6 +24,7 @@ import {
 import { compileMekMechanicsProfile, type MekActuatorKind, type MekMechanicsProfile } from './mek-mechanics-profile';
 import { projectMekPhysicalAttacksV2, type MekPhysicalAttackRuntimeFactsV2 } from './mek-physical-attack-v2';
 import { buildMekRuntimeIndex, type MekRuntimeIndex } from './mek-runtime-index';
+import type { UnitWaterState } from '../unit-cover.model';
 
 // 50-ton Clan Meks with an ER medium laser in the first leg of each kick. A kick does 10, ×1.5 with talons.
 const legs = (extra: string, talons = true) =>
@@ -108,6 +115,7 @@ describe('Mek kicking leg', () => {
     readonly destroyed?: readonly ComponentId[];
     readonly lostAt?: readonly (readonly [ComponentId, LocationId])[];
     readonly fired?: readonly LocationId[];
+    readonly water?: UnitWaterState;
   } = {}): MekPhysicalAttackRuntimeFactsV2 & MekCombatModifierRuntimeFacts {
     const destroyed = new Set(state.destroyed ?? []);
     const lostAt = new Set((state.lostAt ?? []).map(([id, location]) => `${id}@${location}`));
@@ -116,6 +124,7 @@ describe('Mek kicking leg', () => {
       currentHeat: 0,
       movementMode: null,
       movementDistance: 0,
+      water: state.water ?? { partiallyUnderwater: false, submerged: false },
       conditions: new Set(),
       dedicatedPilotPresent: false,
       dedicatedPilotFunctional: false,
@@ -167,6 +176,18 @@ describe('Mek kicking leg', () => {
     // Talons first, then the destroyed leg actuator halves it, rounding down: 10 x 1.5 = 15, / 2 = 7.
     expect(coreKick.damage).toBe(7);
     expect(coreKick.modifiers).toContain(jasmine.objectContaining({ label: 'Leg Actuator Destroyed', modifier: 2 }));
+  });
+
+  it('halves a kick made in Depth 1 water, and a punch only once the Mek is submerged, rounding down', () => {
+    const test = kickTest(CORE_2026_RULESET);
+    const standing = { partiallyUnderwater: true, submerged: false };
+    const submerged = { partiallyUnderwater: false, submerged: true };
+    const punch = (water?: UnitWaterState) => kickRow(test, water === undefined ? {} : { water }, 'intrinsic:punch:LA').damage;
+
+    // 10 x 1.5 = 15 with talons, halved to 7; a 50-ton punch does 5, or 2 underwater.
+    expect([kickRow(test, {}).damage, kickRow(test, { water: standing }).damage]).toEqual([15, 7]);
+    expect([punch(), punch(standing), punch(submerged)]).toEqual([5, 5, 2]);
+    expect(kickRow(test, { water: submerged }).damage).toBe(7);
   });
 
   it('applies talons, then TSM, then destroyed leg actuators', () => {
@@ -269,6 +290,32 @@ describe('Mek kicking leg', () => {
       'physical-attack',
       fixture.instance.ruleset(),
     );
+
+    it('lets a prone Mek only thrash, or punch with both arms intact, and never thrash standing', () => {
+      const fixture = createDirectMekRuntimeFixture(TOTAL_WARFARE_RULESET, 'unit:prone-attacks');
+      const actions = () => ['intrinsic:thrash', 'intrinsic:kick', 'intrinsic:punch:LA'].map(id => can(fixture, id));
+      expect(actions()).toEqual([false, true, true]);
+      expect(fixture.instance.dispatch({ type: 'set-condition', condition: 'prone', active: true }).accepted).toBeTrue();
+      expect(actions()).toEqual([true, false, true]);
+    });
+
+    it('lets a prone Mek punch with one arm only, propped up on the other', () => {
+      const fixture = createDirectMekRuntimeFixture(TOTAL_WARFARE_RULESET, 'unit:prone-one-punch');
+      expect(fixture.instance.dispatch({ type: 'set-condition', condition: 'prone', active: true }).accepted).toBeTrue();
+      const right = { kind: 'intrinsic', actionId: 'intrinsic:punch:RA' } as const;
+      const punching = {
+        ...createPristineAttackerTargetingState(),
+        actions: new Map([[attackerActionTargetKey(right), { target: right, selection: { kind: 'target', targetId: 'target:1' } }]]),
+      } as unknown as AttackerTargetingState;
+      const query = { ...fixture.instance.query(), attackerTargetingState: () => punching };
+      const canPunch = (arm: string) => canPerformMekAction(fixture.entity, fixture.index, query,
+        { kind: 'intrinsic', actionId: `intrinsic:punch:${arm}` }, 'physical-attack', fixture.instance.ruleset());
+      expect([canPunch('LA'), canPunch('RA')]).toEqual([false, true]);
+      // A thrash is the 'Mech's only attack that turn.
+      const thrash = canPerformMekAction(fixture.entity, fixture.index, query,
+        { kind: 'intrinsic', actionId: 'intrinsic:thrash' }, 'physical-attack', fixture.instance.ruleset());
+      expect(thrash).toBeFalse();
+    });
 
     it('blocks only the arc of one quad hip hit under Core, and every kick after a second', () => {
       const core = createDirectQuadRuntimeFixture(CORE_2026_RULESET, 'unit:kick-core-quad-hips');

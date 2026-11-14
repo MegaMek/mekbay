@@ -170,14 +170,14 @@ function projectedWeapon(setup: DirectPpcSetup) {
         setup.fixture.index,
         setup.fixture.instance.ruleset(),
         setup.runtime.query(),
-        emptyCBTEncounterSnapshot(),
+        emptyCBTEncounterSnapshot(), {},
     ).components.find(candidate => candidate.componentId === setup.weapon.id);
     if (row?.weapon === undefined) throw new Error('Missing projected PPC weapon');
     return row.weapon;
 }
 
 function heatSources(setup: DirectPpcSetup) {
-    const projection = setup.runtime.query().heatProjection('automatic');
+    const projection = setup.runtime.query().heatProjection();
     if (projection.kind !== 'supported') throw new Error('Missing PPC heat projection');
     return projection.projection.committedSources;
 }

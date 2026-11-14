@@ -32,6 +32,56 @@
       stroke: #ccc;
     }
 
+    // A weapon that fired this turn carries a stamp over the end of its name until End Turn.
+    .inventoryEntry.fired > .firedStamp {
+      display: inline;
+
+      rect {
+        fill: var(--bt-yellow, #f5c400);
+        stroke: #000;
+        stroke-width: 0.4;
+      }
+
+      text {
+        fill: #000;
+      }
+    }
+
+    // A weapon that may declare an aimed shot offers its target's paperdoll; aimed, the stamp names the location.
+    .inventoryEntry.aiming > .aimStamp {
+      display: inline;
+
+      rect {
+        fill: #fff;
+        stroke: #000;
+        stroke-width: 0.4;
+      }
+
+      text {
+        fill: #000;
+        pointer-events: none;
+      }
+    }
+
+    // The stamp sits over the row's button and takes the click itself.
+    .inventoryEntry.aiming.aimable > .aimStamp {
+      cursor: pointer;
+
+      rect {
+        pointer-events: all;
+      }
+    }
+
+    .inventoryEntry.aiming.aimed > .aimStamp {
+      rect {
+        fill: #000;
+      }
+
+      text {
+        fill: #fff;
+      }
+    }
+
     // A hit modifier worsened by damage, red as in the equipment dialog.
     .inventoryEntry.weakenedHitMod > .hitMod-rect {
       fill: var(--damage-color) !important;
@@ -43,8 +93,22 @@
 
     .skillValue,
     .velocityValue,
+    .elevationTrackValue,
     .customAmmoLoadout {
       fill: #00f;
+    }
+
+    // An Elevation not yet recorded this turn: carried over from an earlier turn, or 0 before any.
+    .elevationTrackerValue.carriedOver {
+      opacity: 0.5;
+    }
+
+    // The column of the turn the game is in, on the velocity record and the Elevation Track.
+    .velocityCell.currentTurn,
+    .velocityTurnCell.currentTurn,
+    .elevationTrackCell.currentTurn,
+    .elevationTrackTurnCell.currentTurn {
+      fill: rgba(255, 200, 0, 0.3) !important;
     }
 
     .critLoc.willChange:not(.damaged) {
@@ -160,6 +224,19 @@
           transform: scaleX(1);
         }
       }
+    }
+
+    // The line under a banner naming who swarms the unit, a link to that unit: clickable inside the banner.
+    .unitConditionDetail {
+      pointer-events: auto;
+    }
+
+    .unitConditionDetail text {
+      paint-order: stroke;
+      stroke: #fff;
+      stroke-width: 3px;
+      stroke-linejoin: round;
+      text-decoration: underline;
     }
 
     .crewStateBanner .unitConditionBannerRect {

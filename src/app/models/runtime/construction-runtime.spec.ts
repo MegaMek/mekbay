@@ -47,7 +47,7 @@ for (const family of ['mek', 'vehicle'] as const) {
             const mount = entity.addEquipment({ equipment: standard, equipmentId: standard.id,
                 allocation: { kind: 'location', location: family === 'mek' ? 'LT' : 'Front' },
                 shotsCount: 10, rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false });
-            const options = { initializerRevision: 1, profileId: 'pristine', deployment: { id: 'test' }, scenario };
+            const options = { profileId: 'pristine', deployment: { id: 'test' }, scenario };
             const unit = entity instanceof TestBipedMekEntity
                 ? await createMekUnit({ uuid: entity.uuid(), instanceId: `unit:construction:${family}` }, entity, entity.uuid(), options)
                 : createNonMekUnit(entity, { uuid: entity.uuid(), instanceId: `unit:construction:${family}`,

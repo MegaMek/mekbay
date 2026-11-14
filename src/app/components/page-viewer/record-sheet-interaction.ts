@@ -106,6 +106,22 @@ export type RecordSheetInteractionPayload =
         divisible?: boolean;
     }>
     | Readonly<{
+        /** The line under SWARMED: show the infantry swarming the unit. */
+        kind: 'show-swarmer';
+    }>
+    | Readonly<{
+        /** The Elevation tracker of a flying unit, or a turn of its Elevation Track: pick how high it flies. */
+        kind: 'elevation';
+        /** The Elevation Track's turn; this turn for the tracker. */
+        turn?: number;
+    }>
+
+    | Readonly<{
+        /** The aim stamp of a weapon row: pick the location of its target the weapon aims at. */
+        kind: 'inventory-aim';
+        componentId: ComponentId;
+    }>
+    | Readonly<{
         kind: 'action-selection';
         target: AttackerActionTarget;
     }>

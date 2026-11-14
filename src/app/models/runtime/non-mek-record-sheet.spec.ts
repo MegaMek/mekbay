@@ -87,15 +87,15 @@ describe('projectNonMekRecordSheet', () => {
         entity.uuid.set(UUID);
         const runtime = createNonMekRuntimeForTest('unit:proto-crew-sheet', baseline(), entity, CORE_2026_RULESET);
         const positionId = [...runtime.getIndex().crewPositions.keys()][0]!;
-        const assignment = Object.freeze({ schemaVersion: 1 as const, positions: Object.freeze([
+        const assignment = Object.freeze({ positions: Object.freeze([
             Object.freeze({ positionId, name: 'Pilot', gunnery: 2, piloting: 2 }),
         ]) });
-        const project = (crew: typeof assignment | { schemaVersion: 1; positions: [] }) => projectNonMekRecordSheet(
+        const project = (crew: typeof assignment | { positions: [] }) => projectNonMekRecordSheet(
             entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET, queryNonMekRuntime({ ...runtime.mechanics(), crewAssignment: crew }, runtime.snapshot()), 100, 100,
         );
         expect(project(assignment).crew[0].piloting).toBe(5);
         expect(assignment.positions[0].piloting).toBe(2);
-        const vacant = project({ schemaVersion: 1, positions: [] });
+        const vacant = project({ positions: [] });
         expect(vacant.crew.length).toBe(1);
         expect(vacant.crew[0].effectiveState).toBe('vacant');
         expect(vacant.conditions).toContain('immobile');
@@ -119,7 +119,7 @@ describe('projectNonMekRecordSheet', () => {
         const sheet = projectNonMekRecordSheet(entity, runtime.getIndex(), runtime.snapshot(), CORE_2026_RULESET,
             runtime.query(), 0, 0);
         const panel = projectNonMekEquipmentPanel(entity, runtime.getIndex(), CORE_2026_RULESET, runtime.snapshot(),
-            runtime.query(), Object.freeze({ revision: 0, targets: Object.freeze([]) }));
+            runtime.query(), Object.freeze({ revision: 0, targets: Object.freeze([]) }), {});
 
         expect(sheet.destroyed).toBeTrue();
         expect(sheet.movement.walk).toBe(0);
@@ -198,7 +198,6 @@ describe('projectNonMekRecordSheet', () => {
         });
         const crewPositionId = [...runtime.getIndex().crewPositions.keys()][0]!;
         const crewAssignment = Object.freeze({
-            schemaVersion: 1 as const,
             positions: Object.freeze([Object.freeze({
                 positionId: crewPositionId,
                 name: 'Morgan Kell',
@@ -478,9 +477,7 @@ function baseline(): InstanceBaselineRef {
         entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

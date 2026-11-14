@@ -6,7 +6,7 @@ import type { BaseEntity } from '../entity/base-entity';
 import type { TnTargetUnitType } from '../target-number-calculator.model';
 import { isFireResistant } from './inferno-rules';
 import type { WeaponEquipment } from '../equipment.model';
-import { declaresFlamerHeat, isFlamerEquipment, isHeatOrDamageWeapon } from '../flamer-mode.model';
+import { declaresHeatOrDamage, isFlamerEquipment, isHeatOrDamageWeapon } from '../flamer-mode.model';
 import type { OptionalRules } from '../options.model';
 
 /**
@@ -65,7 +65,7 @@ export function heatWeaponMode(
     optionalRules: OptionalRules,
     declaredHeat: boolean,
 ): HeatWeaponMode {
-    if (weapon.kind === 'flamer' && !declaresFlamerHeat(ruleset, optionalRules)) return 'both';
+    if (!declaresHeatOrDamage(weapon.kind === 'flamer', ruleset, optionalRules)) return 'both';
     return declaredHeat ? 'heat' : 'damage';
 }
 

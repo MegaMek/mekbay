@@ -12,11 +12,11 @@ import {
 
 describe('Mek intrinsic actions', () => {
   for (const [config, expectedKinds] of [
-    ['Biped', ['punch', 'punch', 'kick', 'club', 'charge', 'push']],
-    ['Tripod', ['punch', 'punch', 'kick', 'club', 'charge', 'push']],
-    ['LAM', ['punch', 'punch', 'kick', 'club', 'charge', 'airmek-ram', 'push']],
-    ['Quad', ['kick', 'mule-kick', 'charge']],
-    ['QuadVee', ['kick', 'mule-kick', 'charge']],
+    ['Biped', ['punch', 'brush-off', 'punch', 'brush-off', 'kick', 'club', 'charge', 'push', 'thrash']],
+    ['Tripod', ['punch', 'brush-off', 'punch', 'brush-off', 'kick', 'club', 'charge', 'push', 'thrash']],
+    ['LAM', ['punch', 'brush-off', 'punch', 'brush-off', 'kick', 'club', 'charge', 'airmek-ram', 'push', 'thrash']],
+    ['Quad', ['kick', 'mule-kick', 'charge', 'thrash']],
+    ['QuadVee', ['kick', 'mule-kick', 'charge', 'thrash']],
   ] as const satisfies readonly (readonly [MekConfig, readonly string[]])[]) {
     it(`derives only the actions supported by a ${config}`, () => {
       expect(buildMekIntrinsicActions(facts({ config })).map(action => action.kind))

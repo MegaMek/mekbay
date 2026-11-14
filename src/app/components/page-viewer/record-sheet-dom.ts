@@ -241,11 +241,15 @@ export function renderRecordSheetDestroyed(svg: SVGSVGElement, destroyed: boolea
     svg.appendChild(label);
 }
 
-/** Shared condition presentation for authored and polyfilled record sheets. */
+/**
+ * Shared condition presentation for authored and polyfilled record sheets. A condition with `details` shows them in a
+ * line under its banner (who swarms the unit).
+ */
 export function renderRecordSheetConditions(
     svg: SVGSVGElement,
     activeConditions: readonly string[],
     definitions: readonly UnitConditionDefinition[],
+    details: Readonly<Partial<Record<string, string>>> = {},
 ): void {
     const active = new Set(activeConditions);
     let offset = 0;
@@ -270,14 +274,55 @@ export function renderRecordSheetConditions(
                 const text = banner.querySelector<SVGElement>('.unitConditionBannerText');
                 rect?.setAttribute('fill', condition.color);
                 if (text) text.textContent = condition.bannerLabel ?? condition.label;
+                const detail = isActive ? details[condition.key] : undefined;
+                if (rect) renderConditionDetail(banner, rect, condition.color, detail);
                 if (isActive) {
                     banner.setAttribute('transform', `translate(0 ${offset})`);
-                    offset += Number(rect?.getAttribute('height') ?? 15);
+                    offset += Number(rect?.getAttribute('height') ?? 15) + (detail === undefined ? 0 : CONDITION_DETAIL_HEIGHT);
                 }
             });
     }
     svg.querySelectorAll<SVGElement>('.unitConditionButton[condition="menu"]')
         .forEach(button => { button.style.display = ''; });
+}
+
+const CONDITION_DETAIL_HEIGHT = 14;
+
+/** The line under SWARMED naming the infantry swarming the unit, which takes the player to it. */
+export function swarmedByDetails(swarmedBy: string | undefined): Readonly<Partial<Record<string, string>>> {
+    return swarmedBy === undefined ? {} : { swarmed: `by ${swarmedBy} \u203a` };
+}
+
+/** Binds the line under SWARMED to show the infantry swarming the unit. */
+export function bindSwarmedBy(svg: SVGSVGElement, bind: RecordSheetBind, context: () => UnitEditContext): void {
+    svg.querySelectorAll<SVGElement>('.unitConditionBanner[condition="swarmed"] > .unitConditionDetail')
+        .forEach(line => bind(line, () => Object.freeze({ kind: 'show-swarmer', context: context() }), 'control'));
+}
+
+/**
+ * The line under a condition's banner: hidden without details, kept in place so whatever the sheet bound to it
+ * stays bound.
+ */
+function renderConditionDetail(banner: SVGElement, rect: SVGElement, color: string, detail: string | undefined): void {
+    let line = banner.querySelector<SVGElement>(':scope > .unitConditionDetail');
+    if (!line && detail === undefined) return;
+    if (!line) {
+        const x = Number(rect.getAttribute('x') ?? 0);
+        const y = Number(rect.getAttribute('y') ?? 0) + Number(rect.getAttribute('height') ?? 15);
+        line = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        line.setAttribute('class', 'unitConditionDetail');
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        for (const [name, value] of Object.entries({
+            x: x + 6, y: y + CONDITION_DETAIL_HEIGHT / 2 + 1, 'font-size': 11, 'font-weight': 700,
+            'dominant-baseline': 'middle', 'font-family': 'Roboto, sans-serif',
+        })) text.setAttribute(name, String(value));
+        line.appendChild(text);
+        banner.appendChild(line);
+    }
+    line.setAttribute('display', detail === undefined ? 'none' : '');
+    const text = line.querySelector('text')!;
+    text.setAttribute('fill', color);
+    text.textContent = detail ?? '';
 }
 
 /** Vacancy hides the authored station contents without destroying controls or print geometry. */

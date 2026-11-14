@@ -29,7 +29,9 @@ import { ForceSlotLifecycleService } from './force-slot-lifecycle.service';
 import { OptionsService } from './options.service';
 import { ToastService } from './toast.service';
 import { CBT_RULESET_LABELS, type CBTRuleset } from '../models/cbt-ruleset.model';
-import { scenarioRuleset, scenarioRulesFromOptions, type ScenarioRules } from '../models/runtime/unit-state-initializer';
+import { scenarioRulesFromOptions, type ScenarioRules } from '../models/runtime/unit-state-initializer';
+import { isBoundOptionalRule } from '../models/runtime/bound-optional-rules';
+import type { CBTOptionalRules, Options } from '../models/options.model';
 import { jsonValuesEqual } from '../utils/json-value.util';
 
 /** A loaded force's rebind, prepared and not yet installed. */
@@ -104,18 +106,55 @@ export class ForceBuilderService {
      * still cannot switch. Choosing the rules every force already plays changes nothing.
      */
     switchCBTRules(ruleset: CBTRuleset): Promise<boolean> {
+        return this.switchRules(
+            () => ({ CBTRules: ruleset }),
+            failed => `${failed} could not switch to ${CBT_RULESET_LABELS[ruleset]}, so every force keeps ${CBT_RULESET_LABELS[this.options.options().CBTRules]}.`,
+        );
+    }
+
+    /**
+     * Sets one optional rule. A rule bound into units (`BOUND_OPTIONAL_RULE_DEFAULTS`) changes like the rules system,
+     * all or nothing, so the options and every loaded unit always play the same rules; the others are read where used.
+     */
+    setOptionalRule(key: keyof CBTOptionalRules, value: boolean): Promise<boolean> {
+        return this.setOptionalRules({ [key]: value });
+    }
+
+    /** Sets several optional rules as one change (a lobby's): all of them, or none when a bound rule cannot switch. */
+    setOptionalRules(rules: Partial<CBTOptionalRules>): Promise<boolean> {
+        // The change applies to the options as they stand when it is saved, so changes made meanwhile are kept.
+        const withRules = (options: Options) => ({ ...options.CBTOptionalRules, ...rules });
+        if (!(Object.keys(rules) as (keyof CBTOptionalRules)[]).some(isBoundOptionalRule)) {
+            return this.options.setOption('CBTOptionalRules', withRules(this.options.options())).then(() => true);
+        }
+        return this.switchRules(
+            options => ({ CBTOptionalRules: withRules(options) }),
+            failed => `${failed} could not change rules, so the optional rules are unchanged.`,
+        );
+    }
+
+    /**
+     * Switches the rules every loaded force plays, all or nothing: each prepares its rebind first, and only when every
+     * one can switch are they installed and the options saved. Otherwise nothing changes and the player is told why.
+     */
+    private switchRules(
+        changeOf: (options: Options) => Partial<Pick<Options, 'CBTRules' | 'CBTOptionalRules'>>,
+        failure: (failed: string) => string,
+    ): Promise<boolean> {
         return this.queueRebind(async () => {
-            const scenario = scenarioRulesFromOptions({ ...this.options.options(), CBTRules: ruleset });
+            const scenario = scenarioRulesFromOptions({ ...this.options.options(), ...changeOf(this.options.options()) });
             const prepared = await this.prepareLoadedForces(scenario);
             if (prepared.failed.length > 0) {
-                this.toast.showToast(
-                    `${prepared.failed.join(', ')} could not switch to ${CBT_RULESET_LABELS[ruleset]}, so every force keeps ${CBT_RULESET_LABELS[this.options.options().CBTRules]}.`,
-                    'error',
-                );
+                this.toast.showToast(failure(prepared.failed.join(', ')), 'error');
                 return false;
             }
             const stale = await this.installPrepared(prepared.rebinds);
-            if (this.options.options().CBTRules !== ruleset) await this.options.setOption('CBTRules', ruleset);
+            // A rule read where it is used may have changed while the forces rebound: save onto the options as they are.
+            const change = changeOf(this.options.options());
+            if (change.CBTRules !== undefined && this.options.options().CBTRules !== change.CBTRules) {
+                await this.options.setOption('CBTRules', change.CBTRules);
+            }
+            if (change.CBTOptionalRules !== undefined) await this.options.setOption('CBTOptionalRules', change.CBTOptionalRules);
             if (stale.length > 0) await this.bindLoadedForces(scenario);
             return true;
         });
@@ -140,7 +179,7 @@ export class ForceBuilderService {
         this.reportDropped(dropped);
         if (failed.length > 0) {
             this.toast.showToast(
-                `${failed.join(', ')} could not switch to ${CBT_RULESET_LABELS[scenarioRuleset(scenario)]} and keep${failed.length === 1 ? 's' : ''} ${failed.length === 1 ? 'its' : 'their'} previous rules.`,
+                `${failed.join(', ')} could not switch to the current rules and keep${failed.length === 1 ? 's' : ''} ${failed.length === 1 ? 'its' : 'their'} previous rules.`,
                 'error',
             );
         }

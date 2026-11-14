@@ -27,6 +27,17 @@ export function addOutsideHeat(current: number, added: number): number {
     return Math.min(MAX_OUTSIDE_HEAT_PER_TURN, current + added);
 }
 
+/**
+ * Outside heat this turn as play reads it: the committed heat plus what pending attacks add, within the cap. Each part
+ * is capped on its own and the two together where read, so cancelling pending heat leaves the committed heat whole.
+ */
+export function outsideHeatThisTurn(state: Readonly<{
+    turn: Readonly<{ outsideHeat?: number }>;
+    pendingCombat: Readonly<{ outsideHeat?: number }>;
+}>): number {
+    return addOutsideHeat(state.turn.outsideHeat ?? 0, state.pendingCombat.outsideHeat ?? 0);
+}
+
 /** Inferno missiles deliver no damage; their effect depends on the unit they strike (TW pp. 141-142). */
 export function isInfernoAmmo(ammo: AmmoEquipment | null | undefined): boolean {
     return ammo?.hasMunitionType('M_INFERNO') === true;

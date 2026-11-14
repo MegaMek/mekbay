@@ -17,7 +17,6 @@ import { createMekUnit } from '../models/runtime/cbt-mek-unit';
 import { createDirectMekRuntimeFixture } from '../models/runtime/testing/direct-mek-runtime-fixture';
 import {
     DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
-    UNIT_STATE_INITIALIZER_REVISION,
 } from '../models/runtime/unit-state-initializer';
 
 describe('ForceUnitAdmissionService', () => {
@@ -121,7 +120,6 @@ describe('ForceUnitAdmissionService', () => {
                 fixture.entity,
                 fixture.identity,
                 {
-                    initializerRevision: UNIT_STATE_INITIALIZER_REVISION,
                     profileId: DEFAULT_MEK_INITIAL_STATE_PROFILE_ID,
                     deployment: request.deployment,
                     scenario: request.scenario,

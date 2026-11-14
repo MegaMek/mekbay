@@ -391,7 +391,6 @@ describe('attacker-local targeting state', () => {
 
     it('sorts every index canonically', () => {
         const left = freezeAttackerTargetingState({
-            schemaVersion: 1,
             components: new Map([
                 [WEAPON_BETA, { selection: { kind: 'selected' as const } }],
                 [WEAPON_ALPHA, { ammo: { munitionKey: 'Standard' } }],
@@ -403,7 +402,6 @@ describe('attacker-local targeting state', () => {
             ]),
         });
         const right = freezeAttackerTargetingState({
-            schemaVersion: 1,
             components: new Map([...left.components].reverse()),
             actions: new Map([...left.actions].reverse()),
             targets: new Map([...left.targets].reverse()),

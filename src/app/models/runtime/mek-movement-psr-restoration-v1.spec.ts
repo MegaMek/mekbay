@@ -38,6 +38,27 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         expect(JSON.stringify(parsed)).not.toContain('discarded');
     });
 
+    it('converts V1 heat acknowledgements to settled heat in whole points, skipping ids a ledger cannot hold', () => {
+        const parsed = parseLegacyMekTurnStateV1({
+            weaponsHeat: 2.5,
+            // V1 signatures lead with the heat they settled; one that is not JSON settles nothing.
+            acknowledgedHeatSources: { 'damaged-engine': '[5,null,"slot-a|slot-b"]', 'equipment:x': '[1.4,null,null]',
+                broken: 'not json', ['equipment:' + 'x'.repeat(300)]: '[4,null,null]' },
+            heatDissipationConsumed: 1500.4,
+        });
+        const issues: string[] = [];
+        const turn = projectLegacyMekTurnStateV1(parsed.state, issues);
+
+        expect(turn.weaponsHeat).toBe(3);
+        expect([...turn.settledHeat]).toEqual([['damaged-engine', 5], ['equipment:x', 1]]);
+        expect(turn.heatDissipationConsumed).toBe(1500);
+        expect(issues).toEqual(['Unreadable V1 heat acknowledgements were skipped.']);
+        const unsettled: string[] = [];
+        expect(projectLegacyMekTurnStateV1(parseLegacyMekTurnStateV1({ turnCounter: 1 }).state, unsettled)
+            .heatDissipationConsumed).toBeUndefined();
+        expect(unsettled).toEqual([]);
+    });
+
     it('resets an unreadable turn with one warning and no raw diagnostic payload', () => {
         const parsed = parseLegacyMekTurnStateV1(['unreadable']);
         expect(parsed.state).toBe(createPristineLegacyMekTurnStateV1());
@@ -50,7 +71,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
 
         expect(result.kind).toBe('supported');
         if (result.kind !== 'supported') return;
-        expect(serializeMekMovementPsrStateV2(result.state)).toEqual({ schemaVersion: 3 });
+        expect(serializeMekMovementPsrStateV2(result.state)).toEqual({});
         expect(Object.isFrozen(result)).toBeTrue();
         expect(Object.isFrozen(result.state)).toBeTrue();
     });
@@ -65,9 +86,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         expect(result.kind).toBe('supported');
         if (result.kind !== 'supported') return;
         expect(serializeMekMovementPsrStateV2(result.state)).toEqual({
-            schemaVersion: 3,
             movement: {
-                schemaVersion: 1,
                 mode: 'walk',
                 distance: 5,
                 boosterComponentIds: [],
@@ -87,9 +106,7 @@ describe('legacy Mek movement/PSR restoration V1', () => {
         expect(result.kind).toBe('supported');
         if (result.kind !== 'supported') return;
         expect(serializeMekMovementPsrStateV2(result.state)).toEqual({
-            schemaVersion: 3,
             movement: {
-                schemaVersion: 1,
                 mode: 'walk',
                 distance: 0,
                 boosterComponentIds: [],
@@ -116,8 +133,8 @@ describe('legacy Mek movement/PSR restoration V1', () => {
 
         expect(legacy.warnings).toEqual([]);
         expect(legacy.state.cover).toBe('building-3');
-        expect(projectLegacyMekTurnStateV1(legacy.state).cover).toBe('building-3');
-        expect(projectLegacyMekTurnStateV1(legacy.state).turnCounter).toBe(4);
+        expect(projectLegacyMekTurnStateV1(legacy.state, []).cover).toBe('building-3');
+        expect(projectLegacyMekTurnStateV1(legacy.state, []).turnCounter).toBe(4);
     });
 
     it('uses the strict old-wire applyMovePSR default only after legacy decoding', () => {

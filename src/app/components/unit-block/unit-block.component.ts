@@ -222,7 +222,7 @@ export class UnitBlockComponent {
         this.runtimeRevision();
         const member = this.forceUnit();
         return isCBTMekForceMember(member)
-            ? member.force.getMekTurnPanelSnapshot(member.id, 'manual')
+            ? member.force.getMekTurnPanelSnapshot(member.id)
             : null;
     });
 

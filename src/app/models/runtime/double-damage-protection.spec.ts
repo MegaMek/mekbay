@@ -29,7 +29,7 @@ function fixture(ruleset: CBTRuleset) {
     const index = buildMekRuntimeIndex(entity);
     const scenario = { id: 'megamek' };
     const initialized = initializeUnitState(entity, index, identity, {
-        initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' }, scenario: { ...scenario, ruleset },
+        profileId: 'pristine', deployment: { id: 'default' }, scenario: { ...scenario, ruleset },
     });
     const heat = createMekHeatContextV2(entity, index, ruleset, scenario);
     const mechanics = createMekMechanicsContextV2(entity, index, ruleset, scenario);
@@ -92,7 +92,7 @@ describe('double-damage protection', () => {
             expect(instance.query().remainingInternal(location.id, 'committed')).toBe(1);
             const saved = serializeCBTUnitStateV2({ entity, index, instanceId: instance.instanceId,
                 baselineRef: instance.baselineRef, state: instance.snapshot(),
-                deployment: { schemaVersion: 2, values: initialized.deployment } });
+                deployment: { values: initialized.deployment } });
             const restored = await restoreSerializedCBTUnitV2(JSON.parse(JSON.stringify(saved)), entity, index, initialized);
             expect(restored.state.locations.get(location.id)!.internalDamage).toBe(damage);
             expect(restored.state.pendingCombat.locationInternalDamage.get(location.id)).toBe(-1);

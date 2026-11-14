@@ -3,7 +3,7 @@
 
 import { mekMovesOnTracks } from '../chassis-equipment.model';
 import { mekConversionModes, mekConvertedMotiveModes } from '../mek-conversion-mode';
-import type { HeatAutomationPolicy } from './cbt-unit-runtime';
+import { nextHeat } from './cbt-unit-runtime';
 import type { OptionalRules } from '../options.model';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
@@ -226,7 +226,8 @@ export interface MekRecordSheetSnapshot {
         unavailableUnits: number;
     }>;
     readonly heat: MekHeatStateV2;
-    readonly heatPolicy: HeatAutomationPolicy;
+    /** End Turn calculates the turn's heat (heat resolution Yes or Ask). */
+    readonly endTurnCalculatesHeat: boolean;
     readonly heatProjection: MekHeatProjectionResultV2;
     readonly lifeSupport: MekLifeSupportPilotDamage;
     readonly destroyed: boolean;
@@ -283,8 +284,8 @@ export function projectMekRecordSheet(
     query: MekUnitQueryPort,
     targetRegistry: TargetRegistrySnapshot,
     suppliedBattleValue: MekRecordSheetBattleValueSnapshot | null,
-    heatPolicy: HeatAutomationPolicy = 'manual',
-    optionalRules: OptionalRules = {},
+    endTurnCalculatesHeat: boolean,
+    optionalRules: OptionalRules,
 ): Omit<MekRecordSheetSnapshot, 'editContext'> {
     if (state.stateRevision !== query.stateRevision) {
         throw new Error('Record-sheet state and query revisions do not match');
@@ -531,13 +532,14 @@ export function projectMekRecordSheet(
         current: safeCurrentMekBattleValue(query),
         adjusted: null,
     });
+    const heatProjection = query.heatProjection();
     const heat = query.heatState();
     const lifeSupport = projectMekLifeSupportPilotDamage(
         entity,
         index,
         ruleset,
         query,
-        Math.max(0, heat.pendingOverride ?? heat.current),
+        Math.max(0, nextHeat(heat)),
     );
 
     return Object.freeze({
@@ -606,8 +608,8 @@ export function projectMekRecordSheet(
             }, 0),
         }),
         heat,
-        heatPolicy,
-        heatProjection: query.heatProjection(heatPolicy),
+        endTurnCalculatesHeat,
+        heatProjection,
         lifeSupport,
         destroyed: destruction.facts.committed.destroyed,
         crippled: destruction.facts.preview.crippled,

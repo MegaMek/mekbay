@@ -116,6 +116,14 @@ export class BattleArmorEntity extends InfantryBaseEntity {
   readonly swarmAttackCapable = computed(() =>
     this.motiveType() !== 'UMU' && this.hasAntiMekManipulators());
 
+  override canMakeLegAttacks(): boolean {
+    return this.legAttackCapable();
+  }
+
+  override canMakeSwarmAttacks(): boolean {
+    return this.swarmAttackCapable();
+  }
+
   /** MML's general anti-Mek/BV rule; individual Leg and Swarm attacks have their own restrictions. */
   override readonly canMakeAntiMekAttacks = computed(() => this.mechanizedCapable()
     && this.weightClass() !== 'Heavy' && this.weightClass() !== 'Assault'

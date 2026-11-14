@@ -53,7 +53,7 @@ describe('direct Void Signature runtime', () => {
         expect(fixture.instance.query().componentStealthState(voidSignature.id)).toBe('enabled');
         expect(fixture.instance.query().voidSignatureActive()).toBeTrue();
         expect(fixture.instance.query().c3DisruptedByStealth()).toBeTrue();
-        const heat = fixture.instance.query().heatProjection('automatic');
+        const heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind === 'supported') {
             expect(heat.projection.committedSources).toContain(jasmine.objectContaining({
@@ -67,7 +67,7 @@ describe('direct Void Signature runtime', () => {
         disableEcm(fixture);
         expect(fixture.instance.query().voidSignatureActive()).toBeFalse();
         expect(fixture.instance.query().c3DisruptedByStealth()).toBeFalse();
-        const unsupportedHeat = fixture.instance.query().heatProjection('automatic');
+        const unsupportedHeat = fixture.instance.query().heatProjection();
         if (unsupportedHeat.kind === 'supported') {
             expect(unsupportedHeat.projection.committedSources.some(source => (
                 source.id === `equipment:${voidSignature.id}`
@@ -106,13 +106,12 @@ describe('direct Void Signature runtime', () => {
             type: 'declare-mek-movement',
 
             declaration: {
-                schemaVersion: 1,
                 mode: 'walk',
                 distance: 0,
                 boosterComponentIds: [],
             },
         }).accepted).toBeTrue();
-        const ready = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
+        const ready = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { values: fixture.initialized.deployment } }, nativeSource: undefined });
         expect(mekTargetRosterRow('force:void-signature', ready).tnCalculator.stealth).toEqual({
             short: 2, medium: 2, long: 2,
             conventionalInfantry: { short: 1, medium: 1, long: 1 },
@@ -127,7 +126,7 @@ describe('direct Void Signature runtime', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         );
         const laser = panel.components.find(row => row.equipment?.id === 'ISMediumLaser');
 

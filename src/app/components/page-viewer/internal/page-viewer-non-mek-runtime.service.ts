@@ -42,6 +42,8 @@ type NonMekRecordSheetBinding,
 } from '../non-mek-record-sheet-binder';
 import { nonMekHitArcs,resolveNonMekHitLocation,type NonMekHitArc } from '../../../models/runtime/non-mek-hit-location';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
+import type { PickerChoice } from '../../picker/picker.interface';
+import { elevationAt, MAX_NON_MEK_ELEVATION } from '../../../models/elevation-record.model';
 
 interface BoundEntitySheetPage {
     readonly svg: SVGSVGElement;
@@ -81,7 +83,7 @@ export class PageViewerNonMekRuntimeService {
             snapshot,
             member.force.readOnly() ? undefined : handle,
             handle,
-            recordSheetInventorySource(member),
+            recordSheetInventorySource(member, this.overlays.livePlay(member)),
         );
         // Read-only viewers still own presentation controls such as page flips.
         svg.classList.add('interactive-sheet');
@@ -121,7 +123,7 @@ export class PageViewerNonMekRuntimeService {
         const current = this.bound.get(member.id);
         const snapshot = this.snapshot(member);
         if (!current || current.member !== member || !snapshot) return;
-        const inventory = recordSheetInventorySource(member);
+        const inventory = recordSheetInventorySource(member, this.overlays.livePlay(member));
         for (const page of current.pages.values()) this.renderPage(page, snapshot, inventory, member);
     }
 
@@ -195,6 +197,18 @@ export class PageViewerNonMekRuntimeService {
         }
         if (interaction.kind === 'inventory-selection') {
             void this.overlays.selectInventory(member, interaction, event);
+            return;
+        }
+        if (interaction.kind === 'inventory-aim') {
+            void this.overlays.aimInventory(member, interaction);
+            return;
+        }
+        if (interaction.kind === 'show-swarmer') {
+            this.overlays.showSwarmer(member);
+            return;
+        }
+        if (interaction.kind === 'elevation') {
+            this.openElevationPicker(member, snapshot, event, interaction.context, interaction.turn);
             return;
         }
         if (interaction.kind === 'infantry-strength') {
@@ -308,11 +322,11 @@ export class PageViewerNonMekRuntimeService {
 
     private async applyHeat(member: CBTForceMember, snapshot: NonMekRecordSheetSnapshot): Promise<void> {
         if (!snapshot.heat.tracked || snapshot.heat.pending === null) return;
-        await this.overlays.dispatch(member, { type: 'apply-heat', policy: snapshot.heatPolicy }, snapshot.editContext);
+        await this.overlays.dispatch(member, { type: 'apply-heat' }, snapshot.editContext);
     }
 
     private async promptHeat(member: CBTForceMember, snapshot: NonMekRecordSheetSnapshot): Promise<void> {
-        const heat = await this.overlays.promptHeat(snapshot.heat.pending ?? snapshot.heat.current);
+        const heat = await this.overlays.promptWholeNumber('Heat', snapshot.heat.pending ?? snapshot.heat.current);
         if (heat !== null) await this.setHeat(member, heat, snapshot.editContext);
     }
 
@@ -411,6 +425,49 @@ export class PageViewerNonMekRuntimeService {
             return;
         }
         this.openDamageTrackPicker(member, track, event, interaction.context);
+    }
+
+    /**
+     * The Elevation tracker, or one turn of the Elevation Track: pick the Elevation from a vertical list, 0 setting the
+     * unit down, or type a higher one after its last choice; a secondary click on a track turn clears it.
+     */
+    private openElevationPicker(
+        member: CBTForceMember,
+        snapshot: NonMekRecordSheetSnapshot,
+        event: Event,
+        context: UnitEditContext,
+        turn?: number,
+    ): void {
+        if (snapshot.elevation === null) return;
+        const write = (elevation: number | null): void => {
+            void this.overlays.dispatch(member, { type: 'set-elevation', elevation, ...(turn === undefined ? {} : { turn }) },
+                context);
+        };
+        if (turn !== undefined && event.type === 'contextmenu') {
+            this.overlays.closePicker();
+            write(null);
+            return;
+        }
+        const current = turn === undefined ? snapshot.elevation : elevationAt(snapshot.elevationRecord, turn);
+        const title = turn === undefined ? 'Elevation' : `Turn ${turn} Elevation`;
+        const recorded = snapshot.elevationRecord.find(entry => entry.turn === (turn ?? snapshot.currentTurn));
+        const pick = (elevation: number | null): void => {
+            if (elevation !== null && elevation !== recorded?.value) write(elevation);
+        };
+        this.overlays.openChoicePicker(member.id, event, {
+            values: elevationChoices(current),
+            selected: current,
+            title,
+            style: 'linear',
+            onPick: choice => {
+                this.overlays.closePicker();
+                if (choice.value === TYPED_ELEVATION) {
+                    void this.overlays.promptWholeNumber(title, current, MAX_NON_MEK_ELEVATION).then(pick);
+                } else {
+                    pick(Number(choice.value));
+                }
+            },
+        });
     }
 
     private openDamageTrackPicker(
@@ -700,4 +757,15 @@ export function nonMekDamageParts(
         // Damage beyond the remaining structure has nowhere left to go in this location.
         { interaction: second, delta: delta > 0 ? Math.min(delta - firstAmount, internalRemaining) : delta - firstAmount },
     ].filter(part => part.delta !== 0);
+}
+
+/** Every Elevation up to 20, then coarser steps to the ceiling, and the current Elevation. */
+/** The Elevation picker lists 0 to 20, and the unit's own when higher; its last choice asks for a higher one. */
+const LISTED_ELEVATIONS = 20;
+const TYPED_ELEVATION = 'typed';
+
+function elevationChoices(current: number): PickerChoice[] {
+    const listed = [...new Set([...Array.from({ length: LISTED_ELEVATIONS + 1 }, (_, value) => value), current])]
+        .sort((left, right) => left - right);
+    return [...listed.map(value => ({ label: String(value), value })), { label: '...', value: TYPED_ELEVATION }];
 }

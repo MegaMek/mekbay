@@ -16,7 +16,6 @@ import { addTestEquipment } from '../../models/entity/testing/test-mounted-equip
 import { createEquipment, WeaponEquipment } from '../../models/equipment.model';
 import type { ForceUnit } from '../../models/force-unit.model';
 import { buildMekRuntimeIndex } from '../../models/runtime/mek-runtime-index';
-import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from '../../models/runtime/mek-movement-psr-v2';
 import { projectMekTurnPanel } from '../../models/runtime/mek-turn-panel';
 import { createDirectMekRuntimeFixture } from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { createNonMekRuntimeForTest } from '../../models/runtime/testing/unit-runtime-owner-fixture';
@@ -238,7 +237,7 @@ describe('UnitBlockComponent capability badges', () => {
         const runtime = createNonMekRuntimeForTest('unit:vehicle-movement-card', {
             entity: entity.uuid(),
             ruleset: CORE_2026_RULESET,
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+            initialStateProfile: { profileId: 'pristine-non-mek' },
         }, entity, CORE_2026_RULESET);
         const force = {
             changed,
@@ -287,7 +286,7 @@ describe('UnitBlockComponent capability badges', () => {
     it('clears the dirty marker after End Phase while retaining the declared movement', () => {
         const runtime = createDirectMekRuntimeFixture();
         const projectPanel = () => projectMekTurnPanel(
-            runtime.entity, runtime.index, runtime.instance.ruleset(), runtime.instance.query(), 'manual',
+            runtime.entity, runtime.index, runtime.instance.ruleset(), runtime.instance.query(),
         );
         const panel = signal(projectPanel());
         const force = {
@@ -304,7 +303,6 @@ describe('UnitBlockComponent capability badges', () => {
         expect(runtime.instance.dispatch({
             type: 'declare-mek-movement',
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'walk', distance: 0, boosterComponentIds: [],
             },
         }).accepted).toBeTrue();

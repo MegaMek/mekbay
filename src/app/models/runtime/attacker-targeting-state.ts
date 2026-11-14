@@ -8,13 +8,13 @@ import { ImmutableIndex,ImmutableSet } from '../entity/immutable-collections';
 import { TN_CUSTOM_MODIFIER_MAX,TN_CUSTOM_MODIFIER_MIN,type TnRangeBracket } from '../target-number-calculator.model';
 import { asEncounterTargetId,MAX_ENCOUNTER_TARGETS,type EncounterTargetId } from './encounter-runtime';
 
-export const ATTACKER_TARGETING_STATE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_ATTACKER_TARGET_DISTANCE = 1;
 export const MAX_ATTACKER_TARGETING_COMPONENTS = 1024;
 export const MAX_ATTACKER_TARGETING_ACTIONS = 256;
 export const MAX_ATTACKER_AMMO_SOURCES_PER_WEAPON = 512;
 export const MAX_ATTACKER_MUNITIONS_PER_WEAPON = 512;
 export const MAX_ATTACKER_TARGETING_TEXT_LENGTH = 512;
+export const MAX_ATTACKER_AIM_LENGTH = 16;
 
 /**
  * Production accepts every finite non-negative distance and every finite manual
@@ -59,13 +59,21 @@ export interface AttackerManualTnOverride {
 
 export type AttackerSelection =
     | { readonly kind: 'selected' }
-    | { readonly kind: 'target'; readonly targetId: EncounterTargetId }
+    | {
+        readonly kind: 'target';
+        readonly targetId: EncounterTargetId;
+        /**
+         * The location of the target an aimed shot names, as the target's sheet codes it. The rules decide whether
+         * the weapon may aim there (`aimedShot`); a location it may not aim at is fired at normally.
+         */
+        readonly aim?: string;
+    }
     | { readonly kind: 'manual-range'; readonly range: TnRangeBracket };
 
 /** Physical actions have no range-band-only selection state. */
 export type AttackerActionSelection = Exclude<AttackerSelection, { readonly kind: 'manual-range' }>;
 
-/** Whether two selections pick the same thing; absence (unselected) only equals absence. */
+/** Whether two selections pick the same thing, aimed or not; absence (unselected) only equals absence. */
 export function sameAttackerSelection(
     left: AttackerSelection | null | undefined,
     right: AttackerSelection | null | undefined,
@@ -108,7 +116,6 @@ export interface AttackerLocalTargetState {
 }
 
 export interface AttackerTargetingState {
-    readonly schemaVersion: typeof ATTACKER_TARGETING_STATE_SCHEMA_VERSION;
     readonly components: ReadonlyMap<ComponentId, AttackerComponentState>;
     readonly actions: ReadonlyMap<string, AttackerActionState>;
     readonly targets: ReadonlyMap<EncounterTargetId, AttackerLocalTargetState>;
@@ -240,7 +247,6 @@ interface ValidatedWeapon {
 
 export function createPristineAttackerTargetingState(): AttackerTargetingState {
     return Object.freeze({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components: new ImmutableIndex<ComponentId, AttackerComponentState>([]),
         actions: new ImmutableIndex<string, AttackerActionState>([]),
         targets: new ImmutableIndex<EncounterTargetId, AttackerLocalTargetState>([]),
@@ -252,8 +258,7 @@ export function freezeAttackerTargetingState(
     state: AttackerTargetingState,
 ): AttackerTargetingState {
     if (!isPlainRecord(state)
-        || !hasExactKeys(state, ['schemaVersion', 'components', 'actions', 'targets'])
-        || state.schemaVersion !== ATTACKER_TARGETING_STATE_SCHEMA_VERSION
+        || !hasExactKeys(state, ['components', 'actions', 'targets'])
         || !isReadonlyMap(state.components)
         || !isReadonlyMap(state.actions)
         || !isReadonlyMap(state.targets)
@@ -285,14 +290,14 @@ export function freezeAttackerTargetingState(
         const expectedKey = attackerActionTargetKey(target);
         if (key !== expectedKey || actions.has(key)) throw new Error('Invalid targeting action identity');
         const selection = canonicalSelection(value.selection);
-        if (selection.reason || !selection.selection || selection.selection.kind === 'manual-range') {
+        if (selection.reason || !selection.selection || selection.selection.kind === 'manual-range'
+            || aimsAtLocation(selection.selection)) {
             throw new Error('Invalid targeting action selection');
         }
         actions.set(key, Object.freeze({ target, selection: selection.selection }));
     }
 
     return Object.freeze({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components: new ImmutableIndex(sortedEntries(components)),
         actions: new ImmutableIndex(sortedEntries(actions)),
         targets: new ImmutableIndex(sortedEntries(targets)),
@@ -514,6 +519,8 @@ export function planAttackerTargetingCommand(
             if (selection.selection.kind === 'manual-range') {
                 return rejectedPlan(state, 'INVALID_RANGE');
             }
+            // Physical attacks cannot be aimed shots.
+            if (aimsAtLocation(selection.selection)) return rejectedPlan(state, 'INVALID_COMMAND');
             if (selection.selection.kind === 'target'
                 && !validated.context.targetIds.has(selection.selection.targetId)) {
                 return rejectedPlan(state, 'INVALID_TARGET');
@@ -548,7 +555,6 @@ export function planAttackerTargetingCommand(
     }
 
     const nextState = freezeAttackerTargetingState({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components,
         actions,
         targets,
@@ -625,7 +631,6 @@ export function reconcileAttackerTargetingState(
         actions.set(key, action);
     }
     const next = freezeAttackerTargetingState({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components,
         actions,
         targets,
@@ -642,7 +647,6 @@ function canonicalTargetingState(
 ): object {
     const frozen = freezeAttackerTargetingState(state);
     return Object.freeze({
-        schemaVersion: ATTACKER_TARGETING_STATE_SCHEMA_VERSION,
         components: Object.freeze([...frozen.components].map(([componentId, component]) => Object.freeze({
             componentId,
             ...(component.selection && { selection: cloneSelection(component.selection) }),
@@ -805,9 +809,18 @@ function canonicalSelection(selection: AttackerSelection): {
                 ? { selection: Object.freeze({ kind: 'selected' }) }
                 : { reason: 'INVALID_COMMAND' };
         case 'target':
-            return hasExactKeys(selection, ['kind', 'targetId']) && validId(selection.targetId)
-                ? { selection: Object.freeze({ kind: 'target', targetId: selection.targetId }) }
-                : { reason: 'INVALID_TARGET' };
+            if (!hasExactKeys(selection, ['kind', 'targetId', 'aim']) || !validId(selection.targetId)) {
+                return { reason: 'INVALID_TARGET' };
+            }
+            if (selection.aim !== undefined
+                && (!validId(selection.aim) || selection.aim.length > MAX_ATTACKER_AIM_LENGTH)) {
+                return { reason: 'INVALID_COMMAND' };
+            }
+            return { selection: Object.freeze({
+                kind: 'target',
+                targetId: selection.targetId,
+                ...(selection.aim === undefined ? {} : { aim: selection.aim }),
+            }) };
         case 'manual-range':
             return hasExactKeys(selection, ['kind', 'range']) && validRange(selection.range)
                 ? { selection: Object.freeze({ kind: 'manual-range', range: selection.range }) }
@@ -984,6 +997,10 @@ function canonicalActionTarget(target: unknown): AttackerActionTarget {
         return Object.freeze({ kind: 'intrinsic', actionId: target['actionId'] });
     }
     throw new Error('Invalid targeting action target');
+}
+
+function aimsAtLocation(selection: AttackerSelection): boolean {
+    return selection.kind === 'target' && selection.aim !== undefined;
 }
 
 function cloneSelection(selection: AttackerSelection): AttackerSelection {

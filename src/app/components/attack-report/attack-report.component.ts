@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { NgTemplateOutlet } from '@angular/common';
+import { physicalAttackTroopersHit, type PhysicalAttackKind } from '../../models/rules/physical-attack-rules';
+import { isInfantryEntity } from '../../models/entity/utils/entity-type-guards';
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import type { CBTForceMember } from '../../models/force-member.model';
@@ -9,11 +11,15 @@ import { INFERNO_LABEL } from '../../models/rules/inferno-rules';
 import type { HitTable } from '../../models/rules/physical-attack-rules';
 import type { HitLocationDice, TwoDice } from '../../models/rules/weapon-attack-resolution';
 import { readAttackHitLocation } from '../../models/runtime/attack-hit-location';
+import { aimedShotStrikes, type AimedShotRoll } from '../../models/rules/aimed-shot-rules';
+import { getMekLocationLabel } from '../../models/entity/types/mek';
 import type { MekHitArc } from '../../utils/record-sheet-reference-table';
 import { DiceRollerComponent } from '../dice-roller/dice-roller.component';
 
 export interface AttackReportGroup {
+    /** Damage, or the conventional troopers it eliminates when `troopers`. */
     readonly damage: number;
+    readonly troopers?: true;
     readonly location: HitLocationDice;
     /** Null when the struck unit's table is not available here: the roll is read on its sheet. */
     readonly label: string | null;
@@ -23,6 +29,8 @@ export interface AttackReportGroup {
 export interface AttackReportWeapon {
     readonly name: string;
     readonly targetNumber: number;
+    /** The attack hits without a to-hit roll (`physicalAttackAlwaysHits`). */
+    readonly automaticHit?: true;
     readonly toHit: TwoDice;
     readonly hit: boolean;
     readonly jammed?: boolean;
@@ -36,11 +44,22 @@ export interface AttackReportWeapon {
      * its first roll strikes partial cover, which drops the heat.
      */
     readonly heat?: Readonly<{ dice: readonly number[]; value: number; cover?: true }>;
+    /** An aimed shot's roll, the location it names, and whether the roll strikes it. */
+    readonly aim?: Readonly<{ dice: readonly number[]; label: string; strikes: boolean }>;
     readonly groups: readonly AttackReportGroup[];
 }
 
-/** Which roll of a weapon an edit sets: to-hit, cluster, heat dice, or a hit-location group by index. */
-export type AttackReportRoll = 'to-hit' | 'cluster' | 'heat' | number;
+/** Which roll of a weapon an edit sets: to-hit, cluster, heat dice, aim, or a hit-location group by index. */
+export type AttackReportRoll = 'to-hit' | 'cluster' | 'heat' | 'aim' | number;
+
+/** An aimed shot as the report shows it. */
+export function attackReportAim(aim: AimedShotRoll): NonNullable<AttackReportWeapon['aim']> {
+    return Object.freeze({
+        dice: aim.roll,
+        label: getMekLocationLabel(aim.location) ?? aim.location,
+        strikes: aimedShotStrikes(aim.roll),
+    });
+}
 
 export interface AttackReportRollEdit {
     readonly weapon: number;
@@ -52,7 +71,10 @@ export const ATTACK_ARC_LABELS: Readonly<Record<MekHitArc, string>> = Object.fre
     front: 'Front', left: 'Left side', right: 'Right side', rear: 'Rear',
 });
 
-/** One damage group as reported, read on the struck unit's own table when that unit is open here. */
+/**
+ * One damage group as reported, read on the struck unit's own table when that unit is open here. A physical attack
+ * on conventional infantry reports the troopers it eliminates (`physicalAttackTroopersHit`).
+ */
 export function attackReportGroup(
     defender: CBTForceMember | null,
     arc: MekHitArc,
@@ -61,13 +83,22 @@ export function attackReportGroup(
     aux: number,
     partialCover: boolean,
     table: HitTable = 'standard',
+    physical?: PhysicalAttackKind,
+    aim?: AimedShotRoll,
+    critical = false,
 ): AttackReportGroup {
-    const read = defender ? readAttackHitLocation(defender, arc, location, aux, partialCover, table) : null;
+    const read = defender ? readAttackHitLocation(defender, arc, location, aux, partialCover, table, aim) : null;
+    const infantry = defender !== null && physical !== undefined && isInfantryEntity(defender.entity)
+        ? defender.entity : null;
     return Object.freeze({
-        damage,
+        ...(infantry && physical
+            ? { damage: physicalAttackTroopersHit(physical, damage, infantry.isMechanized()), troopers: true as const }
+            : { damage }),
         location,
-        label: read?.label ?? null,
-        throughArmorCritical: read?.kind === 'mek' && read.throughArmorCritical,
+        // Without the struck unit here, an aimed shot that strikes still names its location.
+        label: read?.label ?? (!defender && aim && aimedShotStrikes(aim.roll) ? attackReportAim(aim).label : null),
+        // A leg attack and battle armor's swarm damage roll for a critical hit wherever they strike a 'Mech.
+        throughArmorCritical: read?.kind === 'mek' && (read.throughArmorCritical || critical),
     });
 }
 

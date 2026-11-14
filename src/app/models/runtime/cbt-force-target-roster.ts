@@ -11,6 +11,7 @@ type TnTargetUnitType,
 import { isUnitBuildingLevel,isUnitWaterDepth } from '../unit-cover.model';
 import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
 import { asEncounterTargetId } from './encounter-runtime';
+import { isMagnetClawEquipment } from '../battle-armor-equipment.model';
 
 import type { InventoryControlTargetRosterRow } from '../cbt-force.types';
 
@@ -76,6 +77,7 @@ export function mekTargetRosterRow(
             narcUnderwater,
             tagged: query.hasCondition('tagged'),
             ecmShielded: query.hasCondition('ecm-shielded'),
+            ...(query.hasCondition('swarmed') ? { swarmed: true } : {}),
             ...(stealth === undefined ? {} : { stealth }),
         }),
         projection: 'v2' as const,
@@ -135,6 +137,9 @@ export function entityTargetRosterRow(
             narcUnderwater: false,
             tagged: runtime.hasCondition('tagged'),
             ecmShielded: runtime.hasCondition('ecm-shielded'),
+            ...(runtime.hasCondition('swarmed') ? { swarmed: true } : {}),
+            ...(unit.snapshot().swarming === undefined ? {} : { swarming: true }),
+            ...(entity.equipment().some(mount => isMagnetClawEquipment(mount.equipment)) ? { magneticClaws: true } : {}),
             ...(stealth === undefined ? {} : { stealth }),
         }),
         projection: 'v2',

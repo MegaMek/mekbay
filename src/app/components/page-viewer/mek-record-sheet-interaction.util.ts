@@ -1,8 +1,6 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import type { HeatAutomationPolicy } from '../../models/runtime/cbt-unit-runtime';
-
 import type { CBTUnitCommand } from '../../models/runtime/unit-command';
 import type { MekUnitQueryPort } from '../../models/runtime/unit-instance';
 import type { PickerChoice } from '../picker/picker.interface';
@@ -21,7 +19,6 @@ export interface RecordSheetDamagePickerRange {
 export interface MekRecordSheetCommandSource {
     readonly query: Pick<MekUnitQueryPort, 'crewState' | 'hasCondition'>;
     readonly heatSinkCount: number;
-    readonly heatPolicy: HeatAutomationPolicy;
 }
 
 export function recordSheetDamagePickerRange(
@@ -147,7 +144,7 @@ export function recordSheetCommand(
         case 'heat-sinks-off':
             return { type: 'set-heatsinks-off', heatsinksOff: Math.max(0, Math.min(source.heatSinkCount, Math.trunc(delta ?? 0))) };
         case 'apply-heat':
-            return { type: 'apply-heat', policy: source.heatPolicy };
+            return { type: 'apply-heat' };
         case 'condition':
             return { type: 'set-condition', condition: interaction.condition, active: !source.query.hasCondition(interaction.condition) };
         case 'shutdown':

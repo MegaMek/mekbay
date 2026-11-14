@@ -27,7 +27,7 @@ import {
 
 export interface MekCombatModifierRuntimeFacts {
     readonly currentHeat: number;
-    readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected'>;
+    readonly conditions: ReadonlySet<'shutdown' | 'prone' | 'disconnected' | 'swarmed'>;
     readonly dedicatedPilotPresent: boolean;
     readonly dedicatedPilotFunctional: boolean;
     readonly dedicatedGunneryOfficerPresent: boolean;
@@ -196,7 +196,9 @@ function intrinsicModifiers(
     if (nonSystemModifier !== 0) modifiers.push(modifier(action.name, nonSystemModifier));
 
     switch (action.kind) {
-        case 'punch': {
+        // A brush off takes the modifiers a punch from that arm would (TW p. 221).
+        case 'punch':
+        case 'brush-off': {
             const arm = arms.get(action.locations[0] ?? '');
             if (arm) {
                 addArmActuators(modifiers, arm, { hand: 1, upper: 2, lower: 2 }, true);
@@ -252,7 +254,8 @@ function intrinsicPristineSystemModifier(
     profile: MekMechanicsProfile,
 ): number {
     switch (action.kind) {
-        case 'punch': {
+        case 'punch':
+        case 'brush-off': {
             const arm = arms.get(action.locations[0] ?? '');
             return arm === undefined ? 0
                 : (arm.missingHand ? 1 : 0)

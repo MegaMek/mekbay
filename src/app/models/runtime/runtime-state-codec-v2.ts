@@ -22,7 +22,6 @@ import {
     asOneBasedCriticalSlotOrdinal,
     asSavedTargetRef,
     createSavedTargetRef,
-    CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     savedTargetReferenceClosureV2,
     type SavedBlueprintReferenceTableV2,
     type SavedSlotCoordinateV2,
@@ -80,7 +79,8 @@ import {
     serializeMekTurnStateV2,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
-import { canonicalizeMekHeatStateV2, type MekHeatStateV2 } from './mek-heat-state-v2';
+import { withFiredWeapons } from './cbt-unit-runtime';
+import { canonicalizeMekHeatStateV2, rekeyMekHeatSourceId, rekeyMekHeatSourceMap, type MekHeatStateV2 } from './mek-heat-state-v2';
 import {
     deserializeMekMovementPsrStateV2,
     remapMekMovementPsrStateIdsV2,
@@ -100,7 +100,6 @@ import {
     type MekRuleCheckStateV2,
 } from './mek-destruction-state-v2';
 import { assertCanonicalCrewAssignment, type CrewTopology } from './crew-assignment';
-import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
 import { isMekLocationPhysicallyDestroyed } from './mek-location-state-kernel';
 import { mekCriticalSlotDirectHitThreshold, mekCriticalSlotMaximumHits } from './mek-critical-slot-rules';
 import { GAUSS_POWERED_UP, isMekGaussPowerState } from './mek-gauss-power';
@@ -263,9 +262,6 @@ export function serializeCBTUnitStateV2(
         codecFail('INVALID_RUNTIME_STATE', '$.state.destroyed', 'must be boolean');
     }
     const turn = serializeRuntimeTurn(input.state.turn, '$.state.turn');
-    if (input.deployment.schemaVersion !== MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION) {
-        codecFail('DEPLOYMENT_MISMATCH', '$.deployment', 'unsupported deployment payload version');
-    }
     assertDeploymentValues(unit.index.crewPositions, input.deployment, '$.deployment');
 
     const current = buildCurrentTargetIndex(unit, input.state.ammo);
@@ -470,7 +466,6 @@ export function serializeCBTUnitStateV2(
     crewState.sort(compareTargetEntry);
 
     const exhaustiveValue: SerializedCBTUnitV2 = {
-        schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId: input.instanceId,
         entity: input.baselineRef.entity,
         ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
@@ -484,13 +479,14 @@ export function serializeCBTUnitStateV2(
         ...(slotState.length === 0 ? {} : { slotState }),
         ...(componentState.length === 0 ? {} : { componentState }),
         ...(ammoState.length === 0 ? {} : { ammoState }),
-        crew: { schemaVersion: 1, positions: crewState },
+        crew: { positions: crewState },
         // Heat is always explicit: deployment may initialize non-zero heat, while runtime state does
         // not retain whether a later zero was an intentional override or an omitted baseline value.
         heat: {
             heat: heat.current,
             ...(heat.previous === 0 ? {} : { previous: heat.previous }),
             ...(heat.pendingOverride === undefined ? {} : { pendingOverride: heat.pendingOverride }),
+            ...(heat.pendingOffset === undefined ? {} : { pendingOffset: heat.pendingOffset }),
             ...(heat.heatsinksOff === 0 ? {} : { heatsinksOff: heat.heatsinksOff }),
         },
         family: { kind: 'mek' },
@@ -542,7 +538,6 @@ function compactActiveBlueprintReferences(
     const closure = savedTargetReferenceClosureV2(targets, roots);
     if (closure === undefined) throw new Error('Active blueprint reference closure is incomplete');
     return Object.freeze({
-        schemaVersion: 1,
         targets: Object.freeze(Object.fromEntries(closure.map(ref => [ref, targets[ref]!]))),
     });
 }
@@ -566,7 +561,11 @@ function targetIdentityStrings(target: SavedStateTargetV2): readonly string[] {
 function collectNestedStrings(value: unknown, output: Set<string>): void {
     if (typeof value === 'string') {
         output.add(value);
-        if (value.startsWith('ppc-capacitor:')) output.add(value.slice('ppc-capacitor:'.length));
+        // A heat source named for a component keeps that component's witness.
+        rekeyMekHeatSourceId(value, componentId => {
+            output.add(componentId);
+            return componentId;
+        });
         if (value.includes('|')) value.split('|').forEach(part => output.add(part));
         const first = value.charAt(0);
         if (first === '[' || first === '{') {
@@ -627,7 +626,7 @@ function serializeMekRuleChecks(
             status: check.status,
         });
     });
-    return Object.freeze({ schemaVersion: 1, entries: Object.freeze(entries) });
+    return Object.freeze({ entries: Object.freeze(entries) });
 }
 
 function restoreSavedMekRuleChecks(
@@ -638,8 +637,8 @@ function restoreSavedMekRuleChecks(
         MekRuleCheckStateV2
     >,
 ): void {
-    assertExactObjectKeys(saved.ruleChecks, ['schemaVersion', 'entries'], '$.ruleChecks');
-    if (saved.ruleChecks.schemaVersion !== 1 || !Array.isArray(saved.ruleChecks.entries)) {
+    assertExactObjectKeys(saved.ruleChecks, ['entries'], '$.ruleChecks');
+    if (!Array.isArray(saved.ruleChecks.entries)) {
         codecFail('INVALID_SERIALIZED_STATE', '$.ruleChecks', 'invalid Mek rule-check container');
     }
     if (saved.ruleChecks.entries.length > 1) {
@@ -735,14 +734,11 @@ export async function restoreSerializedCBTUnitV2(
     assertSerializedIdentity(saved, initialized.baselineRef, entity);
     assertBaselineMatchesEntity(initialized.baselineRef, entity, '$.initialized.baselineRef');
     const unit = codecUnit(entity, index, initialized.baselineRef.ruleset);
-    if (saved.schemaVersion !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION || saved.family.kind !== 'mek') {
-        codecFail('INVALID_SERIALIZED_STATE', '$', 'only the current Mek serialized unit schema is supported');
+    if (saved.family.kind !== 'mek') {
+        codecFail('INVALID_SERIALIZED_STATE', '$', 'only a Mek serialized unit is supported');
     }
     if (saved.destroyed !== undefined && saved.destroyed !== true) {
         codecFail('INVALID_SERIALIZED_STATE', '$.destroyed', 'sparse destroyed state must be true when present');
-    }
-    if (saved.deployment.schemaVersion !== MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION) {
-        codecFail('DEPLOYMENT_MISMATCH', '$.deployment', 'unsupported saved deployment version');
     }
     assertDeploymentValues(unit.index.crewPositions, saved.deployment, '$.deployment');
     const savedTurn = deserializeSavedTurn(saved.turn, '$.turn');
@@ -1062,7 +1058,7 @@ export async function restoreSerializedCBTUnitV2(
         pendingModularArmorDamage,
         pendingLocationConditions,
     );
-    const turn = translateSavedHeatAcknowledgements(savedTurn, accumulator);
+    const turn = translateSavedSettledHeat(savedTurn, accumulator);
 
     const pendingCombat: PendingCombatOverlay = Object.freeze({
         locationInternalDamage: new ImmutableIndex(pendingLocation),
@@ -1096,16 +1092,19 @@ export async function restoreSerializedCBTUnitV2(
             && !skippedRuleCondition(condition, accumulator)));
     let heat = initialized.state.heat;
     if (saved.heat !== undefined) {
-        const current = requireNonnegativeFinite(saved.heat.heat, '$.heat.heat');
+        const current = requireNonnegativeInteger(saved.heat.heat, '$.heat.heat');
         const previous = saved.heat.previous === undefined
             ? 0
-            : requireNonnegativeFinite(saved.heat.previous, '$.heat.previous');
+            : requireNonnegativeInteger(saved.heat.previous, '$.heat.previous');
         if (saved.heat.previous !== undefined && previous === 0) {
             codecFail('INVALID_SERIALIZED_STATE', '$.heat.previous', 'sparse previous heat must be positive');
         }
         const pendingOverride = saved.heat.pendingOverride === undefined
             ? undefined
-            : requireNonnegativeFinite(saved.heat.pendingOverride, '$.heat.pendingOverride');
+            : requireNonnegativeInteger(saved.heat.pendingOverride, '$.heat.pendingOverride');
+        const pendingOffset = saved.heat.pendingOffset === undefined
+            ? undefined
+            : requireSignedIntegerOrZero(saved.heat.pendingOffset, '$.heat.pendingOffset');
         const heatsinksOff = saved.heat.heatsinksOff === undefined
             ? 0
             : requireNonnegativeInteger(saved.heat.heatsinksOff, '$.heat.heatsinksOff');
@@ -1113,11 +1112,11 @@ export async function restoreSerializedCBTUnitV2(
             codecFail('INVALID_SERIALIZED_STATE', '$.heat.heatsinksOff', 'sparse heatsinks-off count must be positive');
         }
         try {
-            // Older saves could carry fractional heat; runtime heat is a whole number.
             heat = canonicalizeMekHeatStateV2({
-                current: Math.round(current),
-                previous: Math.round(previous),
-                ...(pendingOverride === undefined ? {} : { pendingOverride: Math.round(pendingOverride) }),
+                current,
+                previous,
+                ...(pendingOverride === undefined ? {} : { pendingOverride }),
+                ...(pendingOffset === undefined ? {} : { pendingOffset }),
                 heatsinksOff,
             });
         } catch (error) {
@@ -1299,79 +1298,26 @@ function translateSavedComponentRuntimeIds(
 }
 
 /**
- * Heat acknowledgements are turn-ledger facts, but several signatures embed blueprint IDs.
- * Translate only through unique current targets resolved from the saved exhaustive witnesses.
- * Unmapped or malformed evidence stays byte-for-byte intact and therefore fails closed by not
- * matching a current source.
+ * Settled heat is keyed by heat source, and a source named for a component embeds its blueprint ID
+ * (`rekeyMekHeatSourceId`). Translate only through unique current targets resolved from the saved exhaustive
+ * witnesses; an unmapped source stays as saved and so settles no current source.
  */
-function translateSavedHeatAcknowledgements(
+function translateSavedSettledHeat(
     turn: MekTurnStateV2,
     accumulator: RestoreAccumulator,
 ): MekTurnStateV2 {
-    if (turn.acknowledgedHeatSources.size === 0) return turn;
-    const original = turn.acknowledgedHeatSources;
-    const translated = new Map<string, string>();
-    let changed = false;
-    for (const [sourceId, signature] of original) {
-        const translatedSourceId = translateSavedPpcHeatSourceId(sourceId, accumulator);
-        const translatedSignature = translateSavedHeatSourceSignature(sourceId, signature, accumulator);
-        const targetId = translatedSourceId !== sourceId
-            && (original.has(translatedSourceId) || translated.has(translatedSourceId))
-            ? sourceId
-            : translatedSourceId;
-        translated.set(targetId, translatedSignature);
-        changed ||= targetId !== sourceId || translatedSignature !== signature;
-    }
-    return changed
-        ? canonicalizeMekTurnStateV2({ ...turn, acknowledgedHeatSources: translated })
-        : turn;
-}
-
-function translateSavedPpcHeatSourceId(sourceId: string, accumulator: RestoreAccumulator): string {
-    const prefix = 'ppc-capacitor:';
-    if (!sourceId.startsWith(prefix)) return sourceId;
-    const savedWeaponId = sourceId.slice(prefix.length);
-    const currentWeaponId = translateSavedComponentId(savedWeaponId, accumulator, 'PPC heat source');
-    return currentWeaponId === savedWeaponId ? sourceId : `${prefix}${currentWeaponId}`;
-}
-
-function translateSavedHeatSourceSignature(
-    sourceId: string,
-    signature: string,
-    accumulator: RestoreAccumulator,
-): string {
-    const parsed = parseJsonArray(signature, 3);
-    if (!parsed) return signature;
-    const translated = [...parsed];
-    if (sourceId.startsWith('ppc-capacitor:') && typeof translated[1] === 'string') {
-        translated[1] = translateSavedComponentId(translated[1], accumulator, 'PPC heat replacement');
-    }
-    if (sourceId === 'damaged-engine' && typeof translated[2] === 'string') {
-        translated[2] = translated[2].split('|')
-            .map(savedSlotId => translateSavedCriticalSlotId(savedSlotId, accumulator, 'engine heat source'))
-            .join('|');
-    }
-    if (sourceId === 'movement' && typeof translated[2] === 'string') {
-        const witness = parseJsonArray(translated[2], 5);
-        if (witness) {
-            const currentWitness = [...witness];
-            for (const index of [2, 3] as const) {
-                if (Array.isArray(currentWitness[index])) {
-                    currentWitness[index] = currentWitness[index].map(value => typeof value === 'string'
-                        ? translateSavedComponentId(value, accumulator, 'movement heat source')
-                        : value);
-                }
-            }
-            if (Array.isArray(currentWitness[4])) {
-                currentWitness[4] = currentWitness[4].map(value => typeof value === 'string'
-                    ? translateSavedCriticalSlotId(value, accumulator, 'movement heat source')
-                    : value);
-            }
-            translated[2] = JSON.stringify(currentWitness);
-        }
-    }
-    const result = JSON.stringify(translated);
-    return result === signature ? signature : result;
+    const settledHeat = rekeyMekHeatSourceMap(turn.settledHeat,
+        componentId => translateSavedComponentId(componentId, accumulator, 'heat source'));
+    // The fired weapons follow their components the same way; one that no longer resolves stays as saved.
+    const firedWeapons = turn.firedWeapons && withFiredWeapons(undefined, turn.firedWeapons.map(componentId =>
+        translateSavedComponentId(componentId, accumulator, 'fired weapon') as ComponentId));
+    return settledHeat === null && firedWeapons?.join() === turn.firedWeapons?.join()
+        ? turn
+        : canonicalizeMekTurnStateV2({
+            ...turn,
+            ...(settledHeat === null ? {} : { settledHeat }),
+            ...(firedWeapons === undefined ? {} : { firedWeapons }),
+        });
 }
 
 function translateSavedComponentId(
@@ -1393,24 +1339,6 @@ function translateSavedComponentId(
     return current.componentId;
 }
 
-function translateSavedCriticalSlotId(
-    savedId: string,
-    accumulator: RestoreAccumulator,
-    label: string,
-): CriticalSlotId | string {
-    const source = Object.entries(accumulator.sourceTargets).find(([, target]) =>
-        target.kind === 'critical-slot' && target.savedSlotId === savedId);
-    if (!source) return accumulator.current.slotById.has(savedId) ? savedId as CriticalSlotId : savedId;
-    const [sourceRef, sourceTarget] = source;
-    const current = resolveSlotTarget(
-        sourceTarget as Extract<SavedStateTargetV2, { kind: 'critical-slot' }>,
-        accumulator,
-    );
-    if (!current) return savedId;
-    if (current.slotId !== savedId) recordEmbeddedIdTranslation(accumulator, sourceRef, current.ref, label);
-    return current.slotId;
-}
-
 function recordEmbeddedIdTranslation(
     accumulator: RestoreAccumulator,
     sourceRef: string,
@@ -1420,15 +1348,6 @@ function recordEmbeddedIdTranslation(
     const source = asSavedTargetRef(sourceRef);
     accumulator.translations.set(source, currentRef);
     warnRekeyed(accumulator, source, currentRef, label);
-}
-
-function parseJsonArray(value: string, length: number): unknown[] | null {
-    try {
-        const parsed: unknown = JSON.parse(value);
-        return Array.isArray(parsed) && parsed.length === length ? parsed : null;
-    } catch {
-        return null;
-    }
 }
 
 function assertDeploymentValues(
@@ -1663,7 +1582,7 @@ function buildCurrentTargetIndex(
     const sortedTargets = Object.fromEntries(
         [...targetRows].sort(([left], [right]) => compareText(left, right)),
     ) as Record<SavedTargetRef, SavedStateTargetV2>;
-    const table = deepFreeze({ schemaVersion: 1 as const, targets: sortedTargets });
+    const table = deepFreeze({ targets: sortedTargets });
     return Object.freeze({
         table,
         byRef,
@@ -3046,9 +2965,6 @@ function assertExactSerializedUnitKeys(
     if (saved === null || typeof saved !== 'object' || Array.isArray(saved)) {
         codecFail('INVALID_SERIALIZED_STATE', '$', 'serialized unit must be an object');
     }
-    if (saved.schemaVersion !== CBT_UNIT_PERSISTENCE_SCHEMA_VERSION) {
-        codecFail('INVALID_SERIALIZED_STATE', '$.schemaVersion', `must be unit schema ${CBT_UNIT_PERSISTENCE_SCHEMA_VERSION}`);
-    }
     if (saved.sourceHashCanary !== undefined) {
         try {
             asSourceHashCanary(saved.sourceHashCanary);
@@ -3061,7 +2977,7 @@ function assertExactSerializedUnitKeys(
         catch { codecFail('INVALID_SERIALIZED_STATE', '$.customSource', 'must contain a bounded native custom source'); }
     }
     const allowed = new Set([
-        'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
+        'instanceId', 'entity', 'sourceHashCanary', 'customSource', 'baselineRefAtSave', 'blueprintReferences', 'deployment',
         'stateRevision', 'destroyed', 'locationState', 'locationConditions', 'slotState', 'componentState',
         'ammoState', 'crew', 'heat', 'family',
         'ruleChecks', 'movementPsr', 'conversionMode',
@@ -3071,10 +2987,10 @@ function assertExactSerializedUnitKeys(
         codecFail('INVALID_SERIALIZED_STATE', `$.${key}`, 'unknown serialized unit field');
     }
     if (!Object.prototype.hasOwnProperty.call(saved, 'ruleChecks')) {
-        codecFail('INVALID_SERIALIZED_STATE', '$.ruleChecks', 'current unit schema requires explicit rule checks');
+        codecFail('INVALID_SERIALIZED_STATE', '$.ruleChecks', 'rule checks are required');
     }
     if (!Object.prototype.hasOwnProperty.call(saved, 'movementPsr')) {
-        codecFail('INVALID_SERIALIZED_STATE', '$.movementPsr', 'current unit schema requires movement/PSR state');
+        codecFail('INVALID_SERIALIZED_STATE', '$.movementPsr', 'movement/PSR state is required');
     }
 }
 
@@ -3230,13 +3146,6 @@ function requireSignedIntegerOrZero(value: number, path: string): number {
 function requireSignedNonzeroInteger(value: number, path: string): number {
     if (!Number.isSafeInteger(value) || value === 0) {
         codecFail('INVALID_SERIALIZED_STATE', path, 'must be a non-zero signed safe integer');
-    }
-    return value;
-}
-
-function requireNonnegativeFinite(value: number, path: string): number {
-    if (!Number.isFinite(value) || Object.is(value, -0) || value < 0) {
-        codecFail('INVALID_SERIALIZED_STATE', path, 'must be a canonical non-negative finite number');
     }
     return value;
 }

@@ -117,6 +117,8 @@ const COMMAND_PROFILE_COVERAGE = Object.freeze({
     'configure-bombs': 'non-mek-only',
     'set-bombs-spent': 'non-mek-only',
     'set-velocity-record': 'non-mek-only',
+    'set-swarming': 'non-mek-only',
+    'set-elevation': 'non-mek-only',
     // These reach the Mek runtime but have no benchmark scenario yet; the report lists them.
     'complete-turn-step': 'unprofiled',
     'join-turn': 'unprofiled',
@@ -124,6 +126,8 @@ const COMMAND_PROFILE_COVERAGE = Object.freeze({
     'record-mek-physical-attack-checks': 'unprofiled',
     'set-consciousness-rolls-due': 'unprofiled',
     'set-mek-conversion-mode': 'unprofiled',
+    'add-outside-heat': 'unprofiled',
+    'add-inferno-missiles': 'non-mek-only',
 } satisfies Readonly<Record<CBTUnitCommand['type'], 'profiled' | 'non-mek-only' | 'unprofiled'>>);
 
 type ProfiledCommandType = {
@@ -754,7 +758,7 @@ function createScenarios(fixtures: readonly BenchmarkFixture[]): readonly Mutati
             steps: Object.freeze([
                 commandStep('stage heat', () => ({ type: 'set-pending-heat', heat: 5 })),
                 coveredCommandStep('apply staged heat', 'apply-heat', () => ({
-                    type: 'apply-heat', policy: 'manual',
+                    type: 'apply-heat',
                 })),
                 commandStep('reset applied heat', () => ({ type: 'set-heat', heat: 0 })),
             ]),
@@ -1053,7 +1057,7 @@ function createScenarios(fixtures: readonly BenchmarkFixture[]): readonly Mutati
             context => {
                 dispatch(context.instance, { type: 'set-mek-shutdown-state', shutdown: true });
                 dispatch(context.instance, {
-                    type: 'declare-mek-action', action: { schemaVersion: 1, kind: 'startup' },
+                    type: 'declare-mek-action', action: { kind: 'startup' },
                 });
             }),
         isolatedScenario('standing preparation', 'rules and pilot checks', standard,
@@ -1226,7 +1230,7 @@ function createScenarios(fixtures: readonly BenchmarkFixture[]): readonly Mutati
         isolatedScenario('selected-weapon fire', 'weapon fire', standard,
             mutationStep('fire selected weapon', ['fire-selected-weapons'], context => {
                 const result = context.instance.dispatchSelectedWeaponFire({
-                    type: 'fire-selected-weapons', heatPolicy: 'automatic',
+                    type: 'fire-selected-weapons',
                 }, context.targetRegistry, false, false);
                 if (!result.accepted) throw new Error('Selected-weapon fire benchmark was rejected');
             }, true),
@@ -1538,6 +1542,8 @@ function projectSheet(
         context.instance.query(),
         context.targetRegistry,
         battleValue,
+        false,
+        {},
     );
     checksum += sheet.locations.length + sheet.criticalSlots.length + sheet.stateRevision;
 }

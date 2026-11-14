@@ -229,9 +229,7 @@ function baseline(ruleset: CBTRuleset): InstanceBaselineRef {
         entity: UUID,
         ruleset,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

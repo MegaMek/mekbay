@@ -158,7 +158,6 @@ describe('createForcePreviewEntryFromForce', () => {
                 units: () => [],
             }],
             getUnitCrewAssignment: () => ({
-                schemaVersion: 1,
                 positions: [{ positionId: 'crew:pilot', name: 'Ace', gunnery: 3, piloting: 4 }],
             }),
             getUnitDestroyed: () => true,

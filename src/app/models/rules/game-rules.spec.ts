@@ -248,12 +248,12 @@ describe('CBT game rules', () => {
         expect(separateHeatFireModifier({
             profile: [2], value: 2, changed: true, weakened: true,
             modifierBreakdown: [
-                { label: 'Targeting Computer', modifier: -1 },
+                { label: 'Targeting Computer', modifier: -1, kind: 'targeting-computer' },
                 { label: 'Localized heat label', modifier: 3, weakened: true, kind: 'heat' },
             ],
         })).toEqual({
             hitModifier: -1,
-            hitModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1 }],
+            hitModifierBreakdown: [{ label: 'Targeting Computer', modifier: -1, kind: 'targeting-computer' }],
             heatFireModifier: 3,
         });
     });

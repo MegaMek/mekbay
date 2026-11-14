@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 
-export const CBT_FORCE_ROSTER_SCHEMA_VERSION = 1 as const;
 export const CBT_FORCE_UNASSIGNED_GROUP_ID = 'cbt:unassigned' as const;
 export const MAX_CBT_FORCE_ROSTER_METADATA_LENGTH = 512;
 
@@ -25,14 +24,14 @@ export interface CBTForceRosterUnitBinding {
     readonly commander?: true;
 }
 
-export interface SerializedCBTForceRosterMemberV1 {
+export interface SerializedCBTForceRosterMember {
     readonly instanceId: string;
     readonly order: number;
     /** Sparse mutable organizational fact; false is represented by absence. */
     readonly commander?: true;
 }
 
-export interface SerializedCBTForceRosterGroupV1 {
+export interface SerializedCBTForceRosterGroup {
     readonly groupId: string;
     readonly order: number;
     readonly name?: string;
@@ -41,13 +40,12 @@ export interface SerializedCBTForceRosterGroupV1 {
     readonly formationTargetGroupId?: string;
     /** Sparse mutable organizational fact; false is represented by absence. */
     readonly formationLock?: true;
-    readonly members: readonly SerializedCBTForceRosterMemberV1[];
+    readonly members: readonly SerializedCBTForceRosterMember[];
 }
 
 /** Integrity-bound structural membership. Array order and explicit ordinals must agree. */
-export interface SerializedCBTForceRosterV1 {
-    readonly schemaVersion: 1;
-    readonly groups: readonly SerializedCBTForceRosterGroupV1[];
+export interface SerializedCBTForceRoster {
+    readonly groups: readonly SerializedCBTForceRosterGroup[];
 }
 
 export interface CBTForceRosterMemberRow {
@@ -71,7 +69,6 @@ export interface CBTForceRosterGroupRow {
 
 /** Detached query result: no ForceUnit, Ready unit, runtime, profile, or bridge escapes. */
 export interface CBTForceRosterSnapshot {
-    readonly schemaVersion: 1;
     readonly forceId: string;
     readonly forceRevision: number;
     readonly groups: readonly CBTForceRosterGroupRow[];
@@ -81,24 +78,24 @@ export interface CBTForceRosterSnapshot {
 export interface CBTForceRosterEnvelopeView {
     readonly forceId: string;
     readonly forceRevision: number;
-    readonly roster: SerializedCBTForceRosterV1;
+    readonly roster: SerializedCBTForceRoster;
 }
 
 /** Adds an internally admitted V2 entry without selecting or exposing an owner in UI. */
 export function appendUnassignedCBTForceRosterMember(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     member: CBTForceRosterUnitBinding,
-): SerializedCBTForceRosterV1 {
+): SerializedCBTForceRoster {
     return appendCBTForceRosterMember(roster, member, CBT_FORCE_UNASSIGNED_GROUP_ID);
 }
 
 /** Adds one V2 member to an exact canonical roster group without exposing a ForceUnit shell. */
 export function appendCBTForceRosterMember(
-    roster: SerializedCBTForceRosterV1,
+    roster: SerializedCBTForceRoster,
     member: CBTForceRosterUnitBinding,
     groupId: string,
     atIndex?: number,
-): SerializedCBTForceRosterV1 {
+): SerializedCBTForceRoster {
     if (roster.groups.some(group => group.members.some(row => row.instanceId === member.instanceId))) {
         throw new Error(`Force roster already contains ${member.instanceId}`);
     }
@@ -112,7 +109,6 @@ export function appendCBTForceRosterMember(
             throw new Error(`Force roster group ${normalizedGroupId} does not exist`);
         }
         return Object.freeze({
-            schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
             groups: Object.freeze([
                 ...roster.groups,
                 Object.freeze({
@@ -139,7 +135,6 @@ export function appendCBTForceRosterMember(
             ].map((entry, order) => freezeMember(entry, order))),
         }));
     return Object.freeze({
-        schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
         groups: Object.freeze(groups),
     });
 }
@@ -167,7 +162,6 @@ export function queryCBTForceRoster(view: CBTForceRosterEnvelopeView): CBTForceR
         });
     });
     return Object.freeze({
-        schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
         forceId: view.forceId,
         forceRevision: view.forceRevision,
         groups: Object.freeze(groups),
@@ -178,7 +172,7 @@ export function queryCBTForceRoster(view: CBTForceRosterEnvelopeView): CBTForceR
 function freezeMember(
     binding: CBTForceRosterUnitBinding,
     order: number,
-): SerializedCBTForceRosterMemberV1 {
+): SerializedCBTForceRosterMember {
     return Object.freeze({
         instanceId: binding.instanceId,
         order,

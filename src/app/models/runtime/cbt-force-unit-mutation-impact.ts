@@ -83,6 +83,8 @@ export function commandMayChangeBaseBattleValue(command: CBTUnitCommand): boolea
         case 'set-airborne':
         case 'set-mek-conversion-mode':
         case 'set-velocity-record':
+        case 'set-swarming':
+        case 'set-elevation':
         case 'set-movement':
         case 'set-cover':
         case 'set-spotting':

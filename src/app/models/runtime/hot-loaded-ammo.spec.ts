@@ -32,7 +32,7 @@ function fixture(enabled = true, ruleset: 'core-2026' | 'total-warfare' = 'total
 }
 
 function weapon(unit: CBTMekUnit, id: ComponentId) {
-    return projectMekEquipmentPanel(unit.getUnit(), unit.getIndex(), unit.ruleset(), unit.query(), emptyCBTEncounterSnapshot())
+    return projectMekEquipmentPanel(unit.getUnit(), unit.getIndex(), unit.ruleset(), unit.query(), emptyCBTEncounterSnapshot(), {})
         .components.find(row => row.componentId === id)!.weapon!;
 }
 
@@ -155,14 +155,14 @@ describe('hot-loaded ammo', () => {
         expect(unit.dispatch({ type: 'configure-ammo-source', componentId: ammoId,
             munitionKey: ammo.id, remaining: 12, hotLoaded: true }).changed).toBeTrue();
         const restored = cloneNonMekForOwner(unit, scenario(true));
-        const panel = projectNonMekEquipmentPanel(entity, restored.getIndex(), restored.ruleset(), restored.snapshot(), restored.query(), emptyCBTEncounterSnapshot());
+        const panel = projectNonMekEquipmentPanel(entity, restored.getIndex(), restored.ruleset(), restored.snapshot(), restored.query(), emptyCBTEncounterSnapshot(), {});
         expect(restored.query().ammoHotLoaded(ammoId)).toBeTrue();
         expect(panel.components.find(row => row.componentId === weaponId)?.weapon?.minimumRange).toBe(0);
         expect(panel.components.find(row => row.componentId === weaponId)?.weapon?.effectiveWeaponTypes).toContain('X');
         expect(panel.components.find(row => row.componentId === ammoId)?.ammo?.hotLoaded).toBeTrue();
         restored.dispatch({ type: 'set-component-status', componentId: ammoId,
             status: 'disabled', target: 'committed' });
-        const disabledBinPanel = projectNonMekEquipmentPanel(entity, restored.getIndex(), restored.ruleset(), restored.snapshot(), restored.query(), emptyCBTEncounterSnapshot());
+        const disabledBinPanel = projectNonMekEquipmentPanel(entity, restored.getIndex(), restored.ruleset(), restored.snapshot(), restored.query(), emptyCBTEncounterSnapshot(), {});
         expect(disabledBinPanel.components.find(row => row.componentId === weaponId)?.weapon?.effectiveWeaponTypes).toContain('X');
         const disabled = cloneNonMekForOwner(restored, scenario(false));
         expect(disabled.query().ammoHotLoaded(ammoId)).toBeFalse();

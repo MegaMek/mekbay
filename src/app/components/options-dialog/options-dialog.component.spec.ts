@@ -52,6 +52,8 @@ describe('OptionsDialogComponent', () => {
             hasOAuth: signal(false),
         },
         toastService: object = {},
+        forceBuilder: object = {},
+        dialogsService: object = {},
     ): OptionsDialogComponent {
         TestBed.configureTestingModule({
             providers: [
@@ -63,9 +65,9 @@ describe('OptionsDialogComponent', () => {
                 { provide: ProvidedFluffImageService, useValue: { initialize: async () => undefined, count: signal(0), bytes: signal(0), purge: jasmine.createSpy('purge').and.resolveTo() } },
                 { provide: CustomUnitsService, useValue: { initialize: async () => undefined, records: signal([]) } },
                 { provide: DialogRef, useValue: { close: () => undefined } },
-                { provide: DialogsService, useValue: {} },
+                { provide: DialogsService, useValue: dialogsService },
                 { provide: DisplayNameService, useValue: { save: jasmine.createSpy('save'), generate: jasmine.createSpy('generate') } },
-                { provide: ForceBuilderService, useValue: {} },
+                { provide: ForceBuilderService, useValue: forceBuilder },
                 { provide: GameService, useValue: {} },
                 { provide: LobbyService, useValue: { hasLobby: signal(false) } },
                 { provide: LoggerService, useValue: {} },
@@ -267,43 +269,59 @@ describe('OptionsDialogComponent', () => {
         expect(setCbtAutomationMode).toHaveBeenCalledOnceWith('criticalHitChanceCheck', 'ask');
     });
 
-    it('updates one CBT optional rule without changing the other', () => {
-        const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({
-            options: () => ({
-                CBTOptionalRules: {
-                    floatingCriticals: false,
-                    forcedWithdrawal: true,
-                    extremeRange: false,
-                    sprinting: false,
-                    allowMixedTechBaseAmmo: false,
-                },
-            }),
-            setOption,
+    for (const [confirmed, switched] of [[true, true], [true, false], [false, true]] as const) {
+        it(`turns a bound rule off through the force builder only once confirmed (confirmed: ${confirmed}, switched: ${
+            switched}), restoring the checkbox otherwise`, async () => {
+            const setOptionalRule = jasmine.createSpy('setOptionalRule').and.resolveTo(switched);
+            const requestConfirmation = jasmine.createSpy('requestConfirmation').and.resolveTo(confirmed);
+            const component = configureComponent(
+                { options: () => ({ CBTOptionalRules: { forcedWithdrawal: true } }) },
+                undefined, undefined, { setOptionalRule }, { requestConfirmation },
+            );
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = false;
+
+            await component.onCBTOptionalRuleChange('forcedWithdrawal', { target: checkbox } as unknown as Event);
+
+            expect(requestConfirmation).toHaveBeenCalledTimes(1);
+            if (confirmed) expect(setOptionalRule).toHaveBeenCalledOnceWith('forcedWithdrawal', false);
+            else expect(setOptionalRule).not.toHaveBeenCalled();
+            expect(checkbox.checked).toBe(!(confirmed && switched));
         });
+    }
+
+    it('switches a bound rule to the value chosen even when the checkbox re-renders while confirming', async () => {
+        const setOptionalRule = jasmine.createSpy('setOptionalRule').and.resolveTo(true);
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = false;
-
-        component.onCBTOptionalRuleChange('forcedWithdrawal', { target: checkbox } as unknown as Event);
-
-        expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', {
-            floatingCriticals: false,
-            forcedWithdrawal: false,
-            extremeRange: false,
-            sprinting: false,
-            allowMixedTechBaseAmmo: false,
+        // An earlier switch finishing while the dialog is open re-renders the checkbox from the options.
+        const requestConfirmation = jasmine.createSpy('requestConfirmation').and.callFake(async () => {
+            checkbox.checked = true;
+            return true;
         });
+        const component = configureComponent({ options: () => ({ CBTOptionalRules: { forcedWithdrawal: true } }) },
+            undefined, undefined, { setOptionalRule }, { requestConfirmation });
+
+        await component.onCBTOptionalRuleChange('forcedWithdrawal', { target: checkbox } as unknown as Event);
+
+        expect(setOptionalRule).toHaveBeenCalledOnceWith('forcedWithdrawal', false);
     });
 
-    it('reads the Quirks checkbox as a boolean and preserves other optional rules', () => {
-        const setOption = jasmine.createSpy('setOption');
-        const component = configureComponent({ options: () => ({ CBTOptionalRules: { quirks: true, forcedWithdrawal: true } }), setOption });
+    it('saves a rule read where it is used without a confirmation', async () => {
+        const setOptionalRule = jasmine.createSpy('setOptionalRule').and.resolveTo(true);
+        const requestConfirmation = jasmine.createSpy('requestConfirmation');
+        const component = configureComponent({ options: () => ({ CBTOptionalRules: { quirks: true } }) },
+            undefined, undefined, { setOptionalRule }, { requestConfirmation });
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = false;
-        component.onCBTOptionalRuleChange('quirks', { target: checkbox } as unknown as Event);
-        expect(setOption).toHaveBeenCalledOnceWith('CBTOptionalRules', { quirks: false, forcedWithdrawal: true });
+
+        await component.onCBTOptionalRuleChange('quirks', { target: checkbox } as unknown as Event);
+
+        expect(requestConfirmation).not.toHaveBeenCalled();
+        expect(setOptionalRule).toHaveBeenCalledOnceWith('quirks', false);
     });
 
     it('counts canonical equipment registry entries rather than lookup aliases', () => {

@@ -89,6 +89,7 @@ function createRuntime() {
         available: true,
         selectable: true,
         firingHeat: 0,
+        meetsWaterCover: true,
         effect: {
             kind: 'damage', damage: 5, maximumDamage: 5, baseDamage: 5,
             weakened: false, boosted: false,

@@ -21,7 +21,6 @@ import type { SerializedCBTUnitV2,SerializedDeploymentConfigurationV2 } from './
 import { restoreSerializedCBTUnitV2,type V2StateRestoreWarning } from './runtime-state-codec-v2';
 import { createMekRuntimeBinding, dropMekPilotChecksUnraisedByRules } from './unit-instance';
 import type { ScenarioRules } from './unit-state-initializer';
-import { MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION } from './unit-state-initializer';
 
 export interface CreateCBTMekUnitRequest {
     readonly uuid: UnitUuid;
@@ -62,76 +61,6 @@ export async function redeployMekCrew(
     });
 }
 
-/**
- * Rebuilds only the immutable deployment baseline of an unstarted V2 unit.
- * The caller atomically installs the replacement owner after preparation succeeds.
- */
-export async function redeployMekPreCombat(
-    current: CBTMekUnit,
-    options: InitializeUnitStateOptions,
-    crewState?: ReadonlyMap<CrewPositionId, CrewMemberRuntimeState>,
-): Promise<CBTMekUnit> {
-    options = captureInitializeOptions(options);
-    const health = crewState === undefined ? undefined : new ImmutableIndex(
-        [...crewState].map(([id, value]) => [id, Object.freeze({ ...value })] as const),
-    );
-    const runtime = current;
-    if (runtime.revision() !== 0) {
-        throw new Error('A started V2 runtime cannot be redeployed');
-    }
-
-    const entity = current.getUnit();
-    const uuid = current.uuid;
-    const instanceId = current.instanceId;
-    const saved = current.serialize();
-    const state = runtime.snapshot();
-    const nativeSource = current.getNativeSource();
-    const runtimeIndex = buildMekRuntimeIndex(entity);
-    const initialized = initializeUnitState(entity, runtimeIndex, uuid, options);
-    if (runtime.revision() !== 0 || runtime.snapshot() !== state) {
-        throw new Error('The V2 runtime changed while redeployment was being prepared');
-    }
-    if (!jsonValuesEqual(saved.baselineRefAtSave.entity, uuid)
-        || !jsonValuesEqual(initialized.baselineRef.entity, uuid)) {
-        throw new Error('Redeployment cannot change the entity identity');
-    }
-    if (initialized.baselineRef.initialStateProfile.initializerRevision
-        !== saved.baselineRefAtSave.initialStateProfile.initializerRevision
-        || initialized.baselineRef.initialStateProfile.profileId
-        !== saved.baselineRefAtSave.initialStateProfile.profileId) {
-        throw new Error('Redeployment cannot change the initializer identity');
-    }
-
-    const heatContext = await bindMekHeatRuntimeContext(
-        entity,
-        runtimeIndex,
-        initialized.baselineRef.ruleset,
-        options.scenario,
-    );
-    // Heat binding is asynchronous. Recheck the exact owner before constructing its replacement.
-    if (runtime.revision() !== 0
-        || runtime.snapshot() !== state
-        || current.instanceId !== instanceId
-        || current.getUnit() !== entity
-        || !runtime.matchesEntity(entity)) {
-        throw new Error('The V2 runtime changed while heat authority was being bound');
-    }
-    const prepared = createMekRuntimeBinding(
-        entity, runtimeIndex, initialized.baselineRef.ruleset,
-        health === undefined ? state : { ...state, crew: health },
-        initialized.deployment.crewAssignment, heatContext,
-        bindMekMechanicsContext(entity, runtimeIndex, initialized.baselineRef.ruleset, options.scenario),
-    );
-    const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
-        schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
-        values: initialized.deployment,
-    });
-    return new CBTUnit<'mek'>({
-        uuid, instanceId, baselineRef: initialized.baselineRef,
-        runtime: { kind: 'mek', ...prepared, deployment }, nativeSource,
-    });
-}
-
 /** Resets gameplay state while retaining the exact entity, identity, crew, and rules baseline. */
 export async function repairMekUnit(
     current: CBTMekUnit,
@@ -148,7 +77,6 @@ export async function repairMekUnit(
     const uuid = current.uuid;
     const nativeSource = current.getNativeSource();
     const options = captureInitializeOptions({
-        initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
         profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
         deployment: saved.deployment.values,
         scenario,
@@ -187,7 +115,6 @@ export async function repairMekUnit(
         bindMekMechanicsContext(entity, runtimeIndex, initialized.baselineRef.ruleset, scenario),
     );
     const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
-        schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
         values: initialized.deployment,
     });
     return new CBTUnit<'mek'>({
@@ -208,7 +135,6 @@ export function cloneMekForOwner(
         current.getUnit(),
         current.uuid,
         {
-            initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
             profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
             deployment: saved.deployment.values,
             scenario,
@@ -238,7 +164,6 @@ export function restoreMekSnapshot(
         current.getUnit(),
         current.uuid,
         {
-            initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
             profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
             deployment: saved.deployment.values,
             scenario,
@@ -269,7 +194,6 @@ export async function createMekUnit(
             deployment: {
                 ...options.deployment,
                 crewAssignment: {
-                    schemaVersion: 1,
                     positions: createDefaultCrewAssignment(runtimeIndex.crewPositions).positions.map(position => ({
                         ...position,
                         gunnery: request.crewSkills!.gunnery,
@@ -291,7 +215,6 @@ export async function createMekUnit(
         bindMekMechanicsContext(entity, runtimeIndex, initialized.baselineRef.ruleset, options.scenario),
     );
     const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
-        schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
         values: initialized.deployment,
     });
     return new CBTUnit<'mek'>({
@@ -343,7 +266,6 @@ export async function restoreMekUnit(
     );
     const state = dropMekPilotChecksUnraisedByRules(prepared.binding, prepared.state);
     const deployment: SerializedDeploymentConfigurationV2 = Object.freeze({
-        schemaVersion: MEK_DEPLOYMENT_CONFIGURATION_SCHEMA_VERSION,
         values: initialized.deployment,
     });
     const unit = new CBTUnit<'mek'>({

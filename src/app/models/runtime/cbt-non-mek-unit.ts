@@ -12,7 +12,7 @@ import type { CrewAssignment } from './crew-assignment';
 import { canonicalizeCrewAssignment,createDefaultCrewAssignment } from './crew-assignment';
 import { buildNonMekRuntimeIndex } from './non-mek-runtime-index';
 import { createNonMekRuntimeBinding,createPristineNonMekUnitState } from './non-mek-unit-instance';
-import { NON_MEK_DEPLOYMENT_SCHEMA_VERSION,restoreNonMekRuntime,type NonMekDeploymentConfiguration,type SerializedNonMekDeployment,type SerializedNonMekUnit } from './non-mek-unit-persistence';
+import { restoreNonMekRuntime,type NonMekDeploymentConfiguration,type SerializedNonMekDeployment,type SerializedNonMekUnit } from './non-mek-unit-persistence';
 import { scenarioBoundRules,scenarioRuleset,type ScenarioRules } from './unit-state-initializer';
 
 export interface NonMekUnitDeploymentInput {
@@ -39,7 +39,6 @@ export function createNonMekUnit(
         ? createDefaultCrewAssignment(index.crewPositions)
         : canonicalizeCrewAssignment(index.crewPositions, request.deployment.crewAssignment);
     const crewAssignment = request.crewSkills ? {
-        schemaVersion: 1 as const,
         positions: assigned.positions.map(position => ({ ...position,
             ...(entity.unitType() === 'Aero'
                 ? { aeroGunnery: request.crewSkills!.gunnery, aeroPiloting: request.crewSkills!.piloting }
@@ -48,13 +47,11 @@ export function createNonMekUnit(
     const ruleset = scenarioRuleset(request.scenario);
     const baselineRef = Object.freeze({
         entity: request.uuid, ruleset,
-        initialStateProfile: Object.freeze({ schemaVersion: 1 as const, initializerRevision: 1,
-            profileId: boundedText(request.initialStateProfileId, 'initial-state profile') }),
+        initialStateProfile: Object.freeze({ profileId: boundedText(request.initialStateProfileId, 'initial-state profile') }),
     });
     const prepared = createNonMekRuntimeBinding(entity, ruleset, createPristineNonMekUnitState(entity),
         scenarioBoundRules(request.scenario), crewAssignment);
-    const deployment = freezeDeployment({ schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
-        values: { id: boundedText(request.deployment.id, 'deployment ID'), crewAssignment } });
+    const deployment = freezeDeployment({ values: { id: boundedText(request.deployment.id, 'deployment ID'), crewAssignment } });
     return new CBTUnit<'non-mek'>({ uuid: request.uuid, instanceId: request.instanceId, baselineRef,
         runtime: { kind: 'non-mek', binding: prepared.binding, state: prepared.state, deployment }, nativeSource });
 }
@@ -128,7 +125,7 @@ function freezeDeployment(value: SerializedNonMekDeployment): SerializedNonMekDe
         id: boundedText(value.values.id, 'deployment ID'),
         crewAssignment: assignment,
     });
-    return Object.freeze({ schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION, values });
+    return Object.freeze({ values });
 }
 
 function boundedText(value: string, label: string): string {

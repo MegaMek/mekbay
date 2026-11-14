@@ -30,11 +30,12 @@ describe('PageViewerMekRuntimeService sheet interactivity', () => {
             const context = { owner: fixture.instance, state: fixture.instance.snapshot() };
             const snapshot = {
                 ...projectMekRecordSheet(fixture.entity, fixture.index, fixture.instance.ruleset(), context.state,
-                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null),
+                    fixture.instance.query(), emptyCBTEncounterSnapshot(), null, false, {}),
                 editContext: context,
             };
             const interactions = jasmine.createSpyObj<PageViewerMekInteractionService>('interactions', ['handle']);
-            const overlays = jasmine.createSpyObj<PageViewerOverlayService>('overlays', ['clearUnitControls', 'clearSheetControls']);
+            const overlays = jasmine.createSpyObj<PageViewerOverlayService>('overlays',
+                ['clearUnitControls', 'clearSheetControls', 'livePlay']);
             TestBed.configureTestingModule({ providers: [
                 PageViewerMekRuntimeService,
                 { provide: PageViewerMekInteractionService, useValue: interactions },
@@ -98,7 +99,6 @@ describe('page-viewer published Mek runtime commands', () => {
             hasCondition: condition => snapshot.conditions.includes(condition),
         },
         heatSinkCount: 10,
-        heatPolicy: 'manual',
     };
 
     it('maps entity-owned armor IDs to pending or committed commands without SVG data', () => {

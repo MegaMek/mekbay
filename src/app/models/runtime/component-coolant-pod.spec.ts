@@ -114,13 +114,13 @@ function activate(
 }
 
 function heatCapacity(fixture: DirectMekRuntimeFixture): number {
-    const heat = fixture.instance.query().heatProjection('manual');
+    const heat = fixture.instance.query().heatProjection();
     if (heat.kind !== 'supported') throw new Error('Coolant fixture heat must be supported');
     return heat.projection.capacity;
 }
 
 function heatProjected(fixture: DirectMekRuntimeFixture): number {
-    const heat = fixture.instance.query().heatProjection('automatic');
+    const heat = fixture.instance.query().heatProjection();
     if (heat.kind !== 'supported') throw new Error('Coolant fixture heat must be supported');
     return heat.projection.projected;
 }

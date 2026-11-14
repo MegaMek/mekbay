@@ -56,7 +56,7 @@ type UnitCover,
 } from '../../../models/unit-cover.model';
 import { DialogsService } from '../../../services/dialogs.service';
 import { GameTurnService } from '../../../services/game-turn.service';
-import { heatAutomationPolicy, OptionsService } from '../../../services/options.service';
+import { OptionsService } from '../../../services/options.service';
 import { OverlayManagerService } from '../../../services/overlay-manager.service';
 import { ToastService } from '../../../services/toast.service';
 import { orderedModifierTooltipLines } from '../../../utils/hit-target-tooltip.util';
@@ -199,7 +199,7 @@ export abstract class TurnTrackerControls {
 
     private hasTurnActivity(member: CBTForceMember): boolean {
         if (isCBTMekForceMember(member)) {
-            const snapshot = member.force.getMekTurnPanelSnapshot(member.id, this.heatPolicy());
+            const snapshot = member.force.getMekTurnPanelSnapshot(member.id);
             return snapshot !== null && (
                 isMekTurnPanelDirty(snapshot)
                 || member.force.hasPendingEndTurnForUnit(member.id)
@@ -561,13 +561,6 @@ export abstract class TurnTrackerControls {
         return modifier === 0 ? null : this.formatModifier(modifier);
     }
 
-    moveModeAllowance(mode: MotiveModes): number {
-        const runtime = this.runtime();
-        return runtime
-            ? runtime.movementMaximum(mode as MekMovementModeV2)
-            : this.entityMovementMaximum(mode);
-    }
-
     setConversionMode(mode: MekConversionMode): void {
         if (mode !== this.conversionMode()) void this.runtime()?.setConversionMode(mode);
     }
@@ -856,10 +849,6 @@ export abstract class TurnTrackerControls {
             );
             return false;
         }
-    }
-
-    private heatPolicy(): 'automatic' | 'manual' {
-        return heatAutomationPolicy(this.options);
     }
 
     private confirmForceBoundary(message: string, title: string): Promise<boolean> {

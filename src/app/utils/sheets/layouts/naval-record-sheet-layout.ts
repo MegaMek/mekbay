@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { formatProtectionCounter } from '../record-sheet-protection-counter';
+import { navalPaperdollAsset } from './vehicle-paperdoll-asset';
 
 import type { BaseEntity } from '../../../models/entity/base-entity';
 import { isVehicleEntity } from '../../../models/entity/utils/entity-type-guards';
@@ -135,7 +136,7 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
             diagramBox,
             {
                 pipLayout: request.pipLayout,
-                assetUrl: this.paperdollAsset(entity),
+                assetUrl: navalPaperdollAsset(entity),
                 ...(submarine ? {
                     authoredRootTransform: 'matrix(0.95 0 0 0.95 9 35)',
                     catalystY: 610.907,
@@ -146,14 +147,6 @@ export class NavalRecordSheetLayout extends CompactRecordSheetLayout {
         if (submarine) {
             drawSubmarineDepthTrack(svg, at({ x: 390.9, y: 643.32, width: 180.5, height: 80.68 }));
         }
-    }
-
-    private paperdollAsset(entity: BaseEntity): string {
-        const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
-        const turret = dualTurret || isVehicleEntity(entity) && entity.hasTurret();
-        const turretKind = dualTurret ? 'dualturret' : turret ? 'turret' : 'noturret';
-        const superheavy = usesSixSideVehicleHull(entity);
-        return `/images/paperdolls/naval-${superheavy ? 'superheavy-' : ''}${turretKind}.svg`;
     }
 
     private isSubmarine(entity: BaseEntity): boolean {

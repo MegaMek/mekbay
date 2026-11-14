@@ -39,17 +39,19 @@ describe('custom unit account sync', () => {
     let connected: boolean, service: CustomUnitSyncService, library: CustomUnitsService;
     let remote: SavedCustomUnit[], currentAccount: ReturnType<typeof signal<string>>;
     let notify: (message: Record<string, unknown>) => void;
+    /** Designs per manifest page the fake server sends. */
+    let pageSize: number;
     const notificationComplete = () => (service as unknown as { notifications?: Promise<void> }).notifications;
     const key = (r: Pick<SavedCustomUnit, 'uuid' | 'accountUuid'>) => `${r.accountUuid ?? ''}:${r.uuid}`;
 
     async function setup(initial: SavedCustomUnit[] = []): Promise<void> {
-        connected = false; rows = new Map(initial.map(r => [key(r), r])); remote = [];
+        connected = false; rows = new Map(initial.map(r => [key(r), r])); remote = []; pageSize = 200;
         currentAccount = signal(account);
         request = jasmine.createSpy('request').and.callFake(async (message: { action: string; cursor?: string; unitUuid?: UnitUuid; unitUuids?: UnitUuid[] }) => {
             if (message.action === 'listCustomUnits') {
                 const offset = message.cursor ? remote.findIndex(r => r.uuid === message.cursor) + 1 : 0;
-                const page = remote.slice(offset, offset + 200);
-                return { action: 'customUnitsList', units: page.map(manifest), nextCursor: offset + 200 < remote.length ? page.at(-1)!.uuid : null };
+                const page = remote.slice(offset, offset + pageSize);
+                return { action: 'customUnitsList', units: page.map(manifest), nextCursor: offset + pageSize < remote.length ? page.at(-1)!.uuid : null };
             }
             if (message.action === 'getCustomUnits') return { action: 'customUnitBatch', designs: remote.filter(r => message.unitUuids!.includes(r.uuid)).map(cloud), missing: [], remaining: [] };
             if (message.action === 'getCustomUnit') return { action: 'customUnit', unit: remote.find(r => r.uuid === message.unitUuid) ? cloud(remote.find(r => r.uuid === message.unitUuid)!) : null };
@@ -96,20 +98,21 @@ describe('custom unit account sync', () => {
         expect(request.calls.allArgs().map(a => a[0].action)).toEqual(['listCustomUnits']);
     });
 
-    it('receives 1,000 designs in five manifest pages and fifty bounded downloads', async () => {
+    it('follows every manifest page and downloads in batches of twenty, committing once', async () => {
         await setup();
-        remote = await Promise.all(Array.from({ length: 1000 }, (_, n) => record(n + 1)));
+        pageSize = 10;
+        remote = await Promise.all(Array.from({ length: 21 }, (_, n) => record(n + 1)));
         const before = library.revision();
         await service.sync();
         expect(service.error()).toBe('');
-        expect(library.records().length).toBe(1000);
-        expect(rows.size).toBe(1000);
+        expect(library.records().length).toBe(21);
+        expect(rows.size).toBe(21);
         expect(library.revision() - before).toBe(1);
         const messages = request.calls.allArgs().map(a => a[0]);
-        expect(messages.filter(m => m.action === 'listCustomUnits').length).toBe(5);
-        expect(messages.filter(m => m.action === 'getCustomUnits').length).toBe(50);
+        expect(messages.filter(m => m.action === 'listCustomUnits').length).toBe(3);
+        expect(messages.filter(m => m.action === 'getCustomUnits').map(m => m.unitUuids.length)).toEqual([20, 1]);
         expect(messages.every(m => m.accountUuid === account)).toBeTrue();
-    }, 20000);
+    });
 
     it('persists a subscription, removes it on unsubscribe, and keeps a shared preview temporary', async () => {
         await setup();

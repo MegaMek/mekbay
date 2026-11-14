@@ -5,7 +5,7 @@ import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { GameSystem } from '../models/common.model';
 import type { SerializedForce } from '../models/force-serialization';
-import { DbService } from './db.service';
+import { DbService, type TagOp } from './db.service';
 import { DialogsService } from './dialogs.service';
 import { AppUpdateService } from './app-update.service';
 import { LoggerService } from './logger.service';
@@ -177,7 +177,6 @@ describe('DbService current force persistence', () => {
         expect(stored['units']).toEqual([]);
         expect(stored['groups']).toEqual([]);
         expect(stored['personnel']).toBeUndefined();
-        expect((stored['cbt'] as Record<string, unknown>)['schemaVersion']).toBeUndefined();
         expect((stored['cbt'] as Record<string, unknown>)['forceId']).toBeUndefined();
         await expectAsync(service.saveForce(base)).toBeRejectedWithError(/current CBT snapshot/u);
         expect((await service.getForce(instanceId))?.cbt).toEqual(first.cbt);
@@ -187,14 +186,14 @@ describe('DbService current force persistence', () => {
         expect((await service.getForce(instanceId))?.cbt).toEqual(second.cbt);
     });
 
-    it('replaces an unsupported development row without adding a migration for it', async () => {
+    it('replaces an unreadable row on save without reading it', async () => {
         await putRawForce(instanceId, {
             version: 2,
             timestamp: '2026-08-10T00:00:00.000Z',
             instanceId,
             type: GameSystem.CBT,
-            name: 'Obsolete development row',
-            cbt: { schemaVersion: 8, forceRevision: 99 },
+            name: 'Unreadable row',
+            cbt: { forceRevision: 99 },
         });
         const current: SerializedForce = {
             version: 2,
@@ -213,14 +212,13 @@ describe('DbService current force persistence', () => {
         expect(stored['cbt']).toEqual({ r: 1 });
         expect(stored['units']).toEqual([]);
         expect(stored['groups']).toEqual([]);
-        expect((stored['cbt'] as Record<string, unknown>)['schemaVersion']).toBeUndefined();
     });
 
     it('lists valid headers without decoding or retaining unreadable combat state', async () => {
         await putRawForce(instanceId, {
             version: 2, instanceId, timestamp: Date.parse('2026-08-10T00:00:00Z'), type: GameSystem.CBT, name: 'Preview only',
             units: [{ id: 'unit:preview', uuid: 'AZ9nZw3Le7iZL67wggL14g', crew: [{ id: 'person:pilot', name: 'Morgan', g: 3 }],
-                state: { invalid: ['combat data the preview must never inspect'] } }],
+                state: { l: 'combat data the preview must never inspect' } }],
             groups: [{ id: 'group:preview', unitIndices: [0] }], cbt: { r: 0 },
             personnel: [{ id: 'person:reserve', name: 'Unassigned Morgan', health: { unreadable: true } }],
         });
@@ -312,7 +310,55 @@ describe('DbService current force persistence', () => {
             createTransaction.and.callThrough();
         }
     });
+
+    it('settles only the acknowledged prefix of pending tag ops and keeps them across a sync reset', async () => {
+        const previousState = await service.getTagSyncState();
+        const op = (k: string): TagOp => ({ k, t: 'Scout', c: 0, a: 1, ts: 1 });
+        try {
+            await service.saveTagSyncState({ pendingOps: [op('sent-1'), op('sent-2'), op('queued')], lastSyncTs: 1 });
+
+            expect(await service.clearPendingTagOps(9, 2)).toEqual([op('queued')]);
+            await service.resetTagSyncTimestamp();
+
+            expect(await service.getTagSyncState()).toEqual({ pendingOps: [op('queued')], lastSyncTs: 0 });
+        } finally {
+            await service.saveTagSyncState(previousState);
+        }
+    });
+
+    it('reads subscribed public tags saved before V4 with their unit names as unit keys', async () => {
+        const previous = await service.getSubscribedPublicTags();
+        try {
+            await putRawRecord('publicTagsStore', 'subscribed', {
+                'owner:Lance': { publicId: 'owner', tagName: 'Lance', unitNames: ['Atlas AS7-D'], chassisKeys: [], subscribed: true },
+            });
+
+            expect([...await service.getSubscribedPublicTags()]).toEqual([['owner:Lance', {
+                publicId: 'owner', tagName: 'Lance', unitKeys: ['Atlas AS7-D'], chassisKeys: [], subscribed: true,
+            }]]);
+        } finally {
+            await service.saveSubscribedPublicTags(previous);
+        }
+    });
 });
+
+async function putRawRecord(storeName: string, key: string, value: unknown): Promise<void> {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('mekbay');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const transaction = database.transaction(storeName, 'readwrite');
+            transaction.objectStore(storeName).put(value, key);
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    } finally {
+        database.close();
+    }
+}
 
 async function rawStoredForce(instanceId: string): Promise<Record<string, unknown>> {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -452,10 +498,9 @@ describe('DbService legacy catalog cleanup', () => {
         const stores = new Map<string, unknown>([
             ['store', generalStore],
             ['forceStore', forceStore],
-            ['forceV2Store', { ...baseStore, put: () => undefined }],
         ]);
         const storeNames = [
-            'store', 'sheetsStore', 'forceStore', 'forceV2Store', 'tagsStore',
+            'store', 'sheetsStore', 'forceStore', 'tagsStore',
             'savedSearchesStore', 'canvasStore', 'publicTagsStore',
             'operationsStore', 'organizationsStore',
         ];

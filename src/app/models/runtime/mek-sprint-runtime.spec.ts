@@ -4,7 +4,6 @@
 import { canPerformMekAction } from './mek-action-availability';
 import type { ComponentId } from '../entity/entity-identifiers';
 import { evaluateMekMechanicsScenarioSupport } from './mek-mechanics-profile';
-import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
 import { projectMekTurnPanel } from './mek-turn-panel';
 import {
     createDirectMekRuntimeFixture,
@@ -76,7 +75,7 @@ describe('direct optional Sprint rules', () => {
             turn: { ...fixture.instance.query().turnState(), spotting: true },
         })).toEqual(jasmine.objectContaining({ accepted: true, changed: false }));
 
-        const heat = fixture.instance.query().heatProjection('manual');
+        const heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.find(source => source.id === 'movement')?.value).toBe(3);
@@ -86,7 +85,6 @@ describe('direct optional Sprint rules', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            'manual',
         );
         expect(panel.attackMovementModifiers.sprint).toBe(0);
         expect(panel.defenseModifierBreakdown).toContain({ label: 'Sprinting', modifier: -1 });
@@ -129,7 +127,7 @@ describe('direct optional Sprint rules', () => {
     it('uses one-and-a-half times running heat, including XXL movement heat', () => {
         const fixture = createDirectSprintingEngineHeatRuntimeFixture('XXL');
         expect(declareSprint(fixture, 10, [])).toBeTrue();
-        const heat = fixture.instance.query().heatProjection('manual');
+        const heat = fixture.instance.query().heatProjection();
         expect(heat.kind).toBe('supported');
         if (heat.kind !== 'supported') return;
         expect(heat.projection.committedSources.find(source => source.id === 'movement')?.value).toBe(9);
@@ -222,7 +220,6 @@ function declareSprint(
 
 
         declaration: {
-            schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
             mode: 'sprint',
             distance,
             boosterComponentIds,

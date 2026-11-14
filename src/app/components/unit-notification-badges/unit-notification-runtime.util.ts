@@ -15,6 +15,7 @@ import { getMekLocationLabel } from '../../models/entity/types';
 import { isAeroEntity } from '../../models/entity/utils/entity-type-guards';
 import { projectAeroRuntimeRules } from '../../models/rules/aero-runtime-rules';
 import { projectAeroHeatAutomationChecks } from '../../models/runtime/aero-heat-automation-rules';
+import { endTurnHeat, endTurnHeatStep } from '../../models/runtime/end-turn-heat-selection';
 import { MEK_TORSO_CRIPPLING_RULE_CHECK_KEY } from '../../models/runtime/mek-destruction-state-v2';
 import {
     crewPositionLabel,
@@ -200,13 +201,9 @@ function projectMekEndTurnChecks(
 ): readonly TooltipLine[] {
     if (snapshot.state.turn.endTurnCheckpoint !== 'phase-ended'
         || options.heatEffectsCheck === 'no') return Object.freeze([]);
-    const projection = snapshot.query.heatProjection('automatic');
-    const automaticHeat = projection.kind === 'supported'
-        ? projection.projection.projected
-        : snapshot.state.heat.current;
-    const heat = options.heatAndDissipationResolution === 'no'
-        ? snapshot.state.heat.pendingOverride ?? snapshot.state.heat.current
-        : automaticHeat;
+    const projection = snapshot.query.heatProjection();
+    const heat = endTurnHeat(endTurnHeatStep(options.heatAndDissipationResolution ?? 'yes', true), snapshot.state.heat,
+        projection.kind === 'supported' ? projection.projection.projected : snapshot.state.heat.current);
     const rows: TooltipLine[] = mekHeatAutomationChecks({
         heat,
         shutdown: snapshot.query.hasCondition('shutdown'),
@@ -299,9 +296,8 @@ function projectAeroEndTurnChecks(
         snapshot.ruleset,
     );
     if (!heatProjection) return Object.freeze([]);
-    const heat = options.heatAndDissipationResolution === 'no'
-        ? snapshot.state.heat.pendingOverride ?? snapshot.state.heat.current
-        : heatProjection.projected;
+    const heat = endTurnHeat(endTurnHeatStep(options.heatAndDissipationResolution ?? 'yes', true), snapshot.state.heat,
+        heatProjection.calculated);
     const state = heat === snapshot.state.heat.current
         ? snapshot.state
         : Object.freeze({

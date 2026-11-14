@@ -407,7 +407,7 @@
                         <div class="fire-heat" aria-live="polite"><span>Projected heat</span><strong [class.hot]="heat.final > 0">{{ heat.final }}</strong><small>+{{ heat.selection }} selected</small></div>
                     }
                     @if (equipmentRuntime()?.canFireSelectedWeapons()) {
-                        <button type="button" class="bt-button danger fire-button" [disabled]="readOnly() || panel.fireInFlight()" (click)="panel.consumeSelectedHeatAndAmmo()">FIRED</button>
+                        <button type="button" class="bt-button danger fire-button" [disabled]="readOnly() || panel.fireInFlight()" (click)="panel.consumeSelectedHeatAndAmmo()">{{ equipmentRuntime()?.fireLabel() }}</button>
                     }
                     <button type="button" class="bt-button clear-selection" (click)="panel.resetSelections()" aria-label="Clear weapon selections">Clear</button>
                 } @else {

@@ -312,13 +312,13 @@ export class TaggingService {
         }
 
         const tagData = await this.tagsService.getTagData();
-        const selectedUnitNames = new Set(units.map(unit => unit.name));
+        const selectedUnitKeys = new Set(units.map(unit => TagsService.getUnitTagKey(unit)));
         const selectedChassisKeys = new Set(units.map(unit => TagsService.getChassisTagKey(unit)));
 
         for (const [tagId, entry] of Object.entries(tagData.tags)) {
             if (tagType === 'name') {
-                for (const [unitName, unitTagData] of Object.entries(entry.units)) {
-                    if (selectedUnitNames.has(unitName)) {
+                for (const [unitKey, unitTagData] of Object.entries(entry.units)) {
+                    if (selectedUnitKeys.has(unitKey)) {
                         result[tagId] = this.getUnitTagQuantity(unitTagData);
                         break;
                     }

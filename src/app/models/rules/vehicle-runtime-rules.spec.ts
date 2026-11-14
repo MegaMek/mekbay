@@ -400,9 +400,7 @@ function baseline(ruleset: CBTRuleset = CORE_2026_RULESET): InstanceBaselineRef 
         entity: UUID,
         ruleset,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

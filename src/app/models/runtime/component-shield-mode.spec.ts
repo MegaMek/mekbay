@@ -161,7 +161,7 @@ function equipmentPanel(fixture: DirectMekRuntimeFixture) {
         fixture.index,
         fixture.instance.ruleset(),
         fixture.instance.query(),
-        emptyCBTEncounterSnapshot(),
+        emptyCBTEncounterSnapshot(), {},
     );
 }
 

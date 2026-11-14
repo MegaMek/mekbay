@@ -65,18 +65,18 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
     it('adds active Radical Heat Sink cooling in the heat kernel', () => {
         const fixture = createDirectEscalatingFailureRuntimeFixture();
         const radical = setup(fixture, 'Test Radical Heat Sink', new EscalatingFailureHandler());
-        const before = fixture.instance.query().heatProjection('automatic');
+        const before = fixture.instance.query().heatProjection();
         expect(before.kind).toBe('supported');
 
         expect(selectComponentEscalatingFailureSequence(radical.runtime, radical.definition, 0).accepted).toBeTrue();
-        const active = fixture.instance.query().heatProjection('automatic');
+        const active = fixture.instance.query().heatProjection();
         expect(active.kind).toBe('supported');
         if (before.kind === 'supported' && active.kind === 'supported') {
             expect(active.projection.capacity - before.projection.capacity).toBe(10);
         }
 
         expect(setComponentEscalatingFailureStatus(radical.runtime, radical.definition, 'disabled').accepted).toBeTrue();
-        const failed = fixture.instance.query().heatProjection('automatic');
+        const failed = fixture.instance.query().heatProjection();
         expect(failed.kind).toBe('supported');
         if (before.kind === 'supported' && failed.kind === 'supported') {
             expect(failed.projection.capacity).toBe(before.projection.capacity);
@@ -92,7 +92,6 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
             
             
             declaration: {
-                schemaVersion: 1,
                 mode: 'walk',
                 distance: 1,
                 boosterComponentIds: [],
@@ -106,7 +105,7 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
             turn: { ...turn, weaponsHeat: 1 },
         }).accepted).toBeTrue();
 
-        const projection = fixture.instance.query().heatProjection('automatic');
+        const projection = fixture.instance.query().heatProjection();
         expect(projection.kind).toBe('supported');
         if (projection.kind === 'supported') {
             expect(projection.projection.committedSources.filter(source =>
@@ -119,7 +118,7 @@ describe('additional escalating-failure handlers with direct V2 runtime', () => 
         const viral = setup(fixture, 'Test RISC Viral Jammer', new EscalatingFailureHandler());
         expect(selectComponentEscalatingFailureSequence(viral.runtime, viral.definition, 0).accepted).toBeTrue();
 
-        const projection = fixture.instance.query().heatProjection('automatic');
+        const projection = fixture.instance.query().heatProjection();
         expect(projection.kind).toBe('supported');
         if (projection.kind === 'supported') {
             expect(projection.projection.committedSources).toContain(jasmine.objectContaining({

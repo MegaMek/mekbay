@@ -26,6 +26,8 @@ export interface TargetingTarget {
     readonly c3Distance?: number;
     readonly useC3?: boolean;
     readonly tnModifier: number;
+    /** The part of `tnModifier` that is partial cover, and whether it is Depth 1 water's; absent when there is none. */
+    readonly partialCover?: Readonly<{ modifier: number; water: boolean }>;
     /** Present only when this attacker owns an explicit manual TN override. */
     readonly manualTnModifier?: number;
     readonly tnCalculator?: TnTargetNumberCalculatorState;
@@ -58,6 +60,9 @@ const ENCOUNTER_TARGET_CALCULATOR_KEYS = [
     'narcUnderwater',
     'tagged',
     'ecmShielded',
+    'swarmed',
+    'swarming',
+    'magneticClaws',
     'stealth',
     'stealthSystem',
 ] as const satisfies readonly (keyof TnTargetNumberCalculatorState)[];

@@ -21,7 +21,7 @@ import { createMekUnit,restoreMekUnit } from './cbt-mek-unit';
 import { createNonMekUnit,restoreNonMekUnit } from './cbt-non-mek-unit';
 
 import { isSerializedNonMekUnit,type SerializedNonMekUnit } from './non-mek-unit-persistence';
-import { asForceId,CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,emptyRuntimeHistory,type SerializedCBTUnitV2 } from './persistence-v2';
+import { asForceId,emptyRuntimeHistory,type SerializedCBTUnitV2 } from './persistence-v2';
 import { formatRuntimeHistoryMessage,RUNTIME_HISTORY_MESSAGE } from './runtime-history';
 
 const standard = new AmmoEquipment({
@@ -122,14 +122,14 @@ async function createForce(family: 'mek' | 'vehicle') {
     })));
     const instanceId = `unit:ammo-reset:${family}`;
     const options = {
-        initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' },
+        profileId: 'pristine', deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
     };
     const ready = entity instanceof TestBipedMekEntity
         ? await createMekUnit({ uuid, instanceId }, entity, uuid, options)
         : createNonMekUnit(entity, {
             uuid, instanceId, deployment: options.deployment, scenario: options.scenario,
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
         });
     const unit = ready.serialize();
     const forceId = asForceId('force:ammo-reset');
@@ -137,9 +137,9 @@ async function createForce(family: 'mek' | 'vehicle') {
         version: 2, timestamp: '2026-09-06T00:00:00.000Z', instanceId: forceId,
         type: GameSystem.CBT, name: 'Ammo reset test',
         cbt: {
-            schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION, forceId, forceRevision: 0, history: emptyRuntimeHistory(),
+            forceId, forceRevision: 0, history: emptyRuntimeHistory(),
             units: [{ instanceId, stateRevision: unit.stateRevision, unit }],
-            roster: { schemaVersion: 1, groups: [{
+            roster: { groups: [{
                 groupId: 'group:ammo-reset', order: 0, name: 'Test', members: [{ instanceId, order: 0 }],
             }] }, encounter: { networks: [] },
         },

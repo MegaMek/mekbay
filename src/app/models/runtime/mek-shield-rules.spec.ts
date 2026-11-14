@@ -224,7 +224,7 @@ describe('direct V2 Mek shield rules', () => {
             fixture.instance.snapshot(),
             fixture.instance.query(),
             emptyCBTEncounterSnapshot(),
-            null,
+            null, false, {},
         );
         expect(sheet.shields.find(track => track.track === 'capacity')).toEqual(jasmine.objectContaining({
             maximum: 18,
@@ -311,7 +311,7 @@ function panel(fixture: DirectMekRuntimeFixture) {
         fixture.index,
         fixture.instance.ruleset(),
         fixture.instance.query(),
-        emptyCBTEncounterSnapshot(),
+        emptyCBTEncounterSnapshot(), {},
     );
 }
 

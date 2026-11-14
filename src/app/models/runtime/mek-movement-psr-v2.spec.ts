@@ -9,9 +9,124 @@ import {
     serializeMekMovementPsrStateV2,
 } from './mek-movement-psr-v2';
 import { formatRuntimeHistoryMessage, RUNTIME_HISTORY_MESSAGE } from './runtime-history';
-import { createDirectMekRuntimeFixture } from './testing/direct-mek-runtime-fixture';
+import { createDirectMekRuntimeFixture, createDirectShieldRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 import { createNonMekRuntimeForTest } from './testing/unit-runtime-owner-fixture';
 import type { CBTUnitCommand } from './unit-command';
+
+describe('Mek jump into water', () => {
+    const jump = Object.freeze({
+        type: 'declare-mek-movement',
+        declaration: { mode: 'jump', distance: 1, boosterComponentIds: [] },
+    } as const satisfies CBTUnitCommand);
+    const water = (instance: ReturnType<typeof createDirectShieldRuntimeFixture>['instance'], depth: 0 | 1 | 2 | 3) =>
+        instance.dispatch({
+            type: 'replace-turn-state',
+            turn: { ...instance.query().turnState(), cover: depth === 0 ? null : `underwater-depth-${depth}` },
+        });
+    const checks = (instance: ReturnType<typeof createDirectShieldRuntimeFixture>['instance']) =>
+        instance.query().mekPilotChecks().map(check => [check.reason, check.targetNumber, check.status]);
+    const piloting = (instance: ReturnType<typeof createDirectShieldRuntimeFixture>['instance']) => {
+        const movement = instance.query().mekMovementPsr();
+        if (movement.kind !== 'supported') throw new Error('The fixture Mek has no PSR projection');
+        return movement.pilotingTargetNumber;
+    };
+
+    it('rolls once the jump lands in Depth 1+ water, with no modifier for the depth', () => {
+        const { instance } = createDirectShieldRuntimeFixture('total-warfare', 'small', 'unit:jump-water-tw');
+        expect(instance.dispatch(jump).accepted).toBeTrue();
+        const base = piloting(instance);
+        expect(checks(instance)).toEqual([]);
+
+        expect(water(instance, 1).changed).toBeTrue();
+        expect(checks(instance)).toEqual([['Jumped into water', base, 'pending']]);
+        // Deeper water keeps the one roll; leaving the water before it is rolled drops it.
+        expect(water(instance, 3).changed).toBeTrue();
+        expect(checks(instance)).toEqual([['Jumped into water', base, 'pending']]);
+        expect(water(instance, 0).changed).toBeTrue();
+        expect(checks(instance)).toEqual([]);
+
+        // Once rolled, correcting the depth or the jump's distance raises no second roll.
+        expect(water(instance, 1).changed).toBeTrue();
+        const check = instance.query().mekPilotChecks()[0]!;
+        expect(instance.dispatch({
+            type: 'resolve-mek-pilot-check', checkId: check.checkId, evidence: { dice: [6, 6], claimedOutcome: 'success' },
+        }).changed).toBeTrue();
+        expect(water(instance, 2).changed).toBeTrue();
+        expect(instance.dispatch({
+            type: 'declare-mek-movement', declaration: { mode: 'jump', distance: 2, boosterComponentIds: [] },
+        }).accepted).toBeTrue();
+        expect(water(instance, 0).changed).toBeTrue();
+        expect(water(instance, 1).changed).toBeTrue();
+        expect(checks(instance)).toEqual([['Jumped into water', base, 'success']]);
+        // The roll survives a save and load as it stands.
+        const saved = serializeMekMovementPsrStateV2(instance.snapshot().movementPsr);
+        expect(serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(saved))).toEqual(saved);
+    });
+
+    it('rolls at once in the Movement step of the full phase system, however the water is set', () => {
+        const { instance } = createDirectShieldRuntimeFixture('total-warfare', 'small', 'unit:jump-water-immediate');
+        expect(instance.dispatch({ ...jump, realPhases: true }).accepted).toBeTrue();
+        expect(instance.dispatch({
+            type: 'replace-turn-state', realPhases: true,
+            turn: { ...instance.query().turnState(), cover: 'underwater-depth-1' },
+        }).changed).toBeTrue();
+        expect(instance.query().mekPilotChecks()).toEqual([jasmine.objectContaining({ immediate: true, status: 'pending' })]);
+    });
+
+    it('rolls under Core too, the water set before the jump', () => {
+        const { instance } = createDirectShieldRuntimeFixture('core-2026', 'small', 'unit:jump-water-core');
+        expect(water(instance, 2).changed).toBeTrue();
+        expect(instance.dispatch(jump).accepted).toBeTrue();
+        expect(checks(instance)).toEqual([['Jumped into water', piloting(instance), 'pending']]);
+    });
+});
+
+describe('Mek jump shake-off', () => {
+    const declare = (mode: 'jump' | 'walk') => Object.freeze({
+        type: 'declare-mek-movement',
+        declaration: { mode, distance: 1, boosterComponentIds: [] },
+    } as const satisfies CBTUnitCommand);
+    const swarmed = (active: boolean) => Object.freeze({ type: 'set-condition', condition: 'swarmed', active } as const);
+
+    it("rolls at +4 when a swarmed 'Mech jumps; failing it leaves the 'Mech standing (TW p. 222)", () => {
+        const { instance } = createDirectShieldRuntimeFixture('total-warfare', 'small', 'unit:shake-off-jump');
+        const checks = () => instance.query().mekPilotChecks().map(check => [check.reason, check.targetNumber, check.status]);
+        expect(instance.dispatch(swarmed(true)).changed).toBeTrue();
+        expect(instance.dispatch(declare('jump')).accepted).toBeTrue();
+        const movement = instance.query().mekMovementPsr();
+        if (movement.kind !== 'supported') throw new Error('The fixture Mek has no PSR projection');
+        const target = movement.pilotingTargetNumber + 4;
+        expect(checks()).toEqual([['Shaking off swarming infantry', target, 'pending']]);
+        // Walking instead, or the infantry letting go, takes the unrolled roll back.
+        expect(instance.dispatch(declare('walk')).accepted).toBeTrue();
+        expect(checks()).toEqual([]);
+        expect(instance.dispatch(declare('jump')).accepted).toBeTrue();
+        expect(instance.dispatch(swarmed(false)).changed).toBeTrue();
+        expect(checks()).toEqual([]);
+
+        expect(instance.dispatch(swarmed(true)).changed).toBeTrue();
+        expect(instance.dispatch(declare('walk')).accepted).toBeTrue();
+        expect(instance.dispatch(declare('jump')).accepted).toBeTrue();
+        const check = instance.query().mekPilotChecks()[0]!;
+        expect(instance.dispatch({
+            type: 'resolve-mek-pilot-check', checkId: check.checkId, evidence: { dice: [1, 1], claimedOutcome: 'failed' },
+        }).changed).toBeTrue();
+        expect(instance.query().hasCondition('prone')).toBeFalse();
+        expect(checks()).toEqual([['Shaking off swarming infantry', target, 'failed']]);
+    });
+
+    it('rolls 1 harder against magnetic claws, and keeps that through a save and load (TW p. 222)', () => {
+        const { instance } = createDirectShieldRuntimeFixture('total-warfare', 'small', 'unit:shake-off-claws');
+        expect(instance.dispatch(swarmed(true)).changed).toBeTrue();
+        expect(instance.dispatch({ ...declare('jump'), swarmerMagneticClaws: true }).accepted).toBeTrue();
+        const movement = instance.query().mekMovementPsr();
+        if (movement.kind !== 'supported') throw new Error('The fixture Mek has no PSR projection');
+        expect(instance.query().mekPilotChecks().map(check => check.targetNumber))
+            .toEqual([movement.pilotingTargetNumber + 5]);
+        const saved = serializeMekMovementPsrStateV2(instance.snapshot().movementPsr);
+        expect(serializeMekMovementPsrStateV2(deserializeMekMovementPsrStateV2(saved))).toEqual(saved);
+    });
+});
 
 describe('Mek physical attack pilot checks', () => {
     const charged = Object.freeze({
@@ -41,6 +156,18 @@ describe('Mek physical attack pilot checks', () => {
                 ['Charged', movement.pilotingTargetNumber + 2, 'pending', 'physical'],
                 ['Kicked', movement.pilotingTargetNumber + 2, 'pending', 'physical'],
             ]);
+    });
+
+    it('keeps the roll a prone Mek makes for thrashing, which drops every roll to avoid a fall', () => {
+        const { instance } = createDirectMekRuntimeFixture('total-warfare');
+        expect(instance.dispatch({ type: 'set-condition', condition: 'prone', active: true }).accepted).toBeTrue();
+
+        expect(instance.dispatch({
+            type: 'record-mek-physical-attack-checks', attackId: 'attack:thrash', checks: ['made-thrash'],
+        }).changed).toBeTrue();
+        expect(instance.dispatch(charged).accepted).toBeTrue();
+        expect(instance.query().mekPilotChecks().map(check => [check.reason, check.status]))
+            .toEqual([['Thrashed', 'pending']]);
     });
 
     it('holds the phase boundary until the check is resolved', () => {
@@ -121,7 +248,7 @@ describe('Mek physical attack pilot checks', () => {
         const runtime = createNonMekRuntimeForTest('unit:tank', {
             entity: uuid,
             ruleset: TOTAL_WARFARE_RULESET,
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine-non-mek-v1' },
+            initialStateProfile: { profileId: 'pristine-non-mek' },
         }, tank, TOTAL_WARFARE_RULESET);
         const revision = runtime.query().stateRevision;
 
@@ -236,7 +363,7 @@ describe('Immediate Movement Phase pilot checks', () => {
 
     const run = (distance: number, realPhases: boolean): CBTUnitCommand => ({
         type: 'declare-mek-movement',
-        declaration: { schemaVersion: 1, mode: 'run', distance, boosterComponentIds: [] },
+        declaration: { mode: 'run', distance, boosterComponentIds: [] },
         ...(realPhases ? { realPhases: true as const } : {}),
     });
 
@@ -301,7 +428,7 @@ describe('Immediate Movement Phase pilot checks', () => {
         for (const command of [
             run(3, true),
             { type: 'clear-mek-movement' },
-            { type: 'declare-mek-action', action: { schemaVersion: 1, kind: 'shutdown' } },
+            { type: 'declare-mek-action', action: { kind: 'shutdown' } },
             { type: 'end-phase' },
         ] satisfies CBTUnitCommand[]) {
             expect(instance.dispatch(command).changed).withContext(command.type).toBeFalse();
@@ -315,7 +442,7 @@ describe('Immediate Movement Phase pilot checks', () => {
         expect(instance.query().mekPilotChecks().length).toBe(checks);
         expect(instance.dispatch({
             type: 'declare-mek-movement',
-            declaration: { schemaVersion: 1, mode: 'walk', distance: 1, boosterComponentIds: [] },
+            declaration: { mode: 'walk', distance: 1, boosterComponentIds: [] },
             realPhases: true,
         }).changed).toBeFalse();
         expect(instance.dispatch({ type: 'end-phase' }).accepted).toBeTrue();

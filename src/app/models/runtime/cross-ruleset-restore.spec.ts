@@ -304,13 +304,13 @@ function scenario(ruleset: CBTRuleset) {
 }
 
 function mekOptions(ruleset: CBTRuleset) {
-    return { initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' }, scenario: scenario(ruleset) };
+    return { profileId: 'pristine', deployment: { id: 'default' }, scenario: scenario(ruleset) };
 }
 
 function createTank(entity: TestTankEntity, ruleset: CBTRuleset, uuid = TANK_UUID): CBTNonMekUnit {
     return createNonMekUnit(entity, {
         instanceId: 'unit:cross-ruleset-tank', uuid, deployment: { id: 'default' },
-        scenario: scenario(ruleset), initialStateProfileId: 'pristine-non-mek-v1',
+        scenario: scenario(ruleset), initialStateProfileId: 'pristine-non-mek',
     });
 }
 
@@ -331,7 +331,7 @@ function pendingChecks(unit: CBTMekUnit) {
 
 function armAttacks(fixture: DirectMekRuntimeFixture, unit: CBTMekUnit) {
     const panel = projectMekEquipmentPanel(fixture.entity, fixture.index, unit.ruleset(), unit.query(),
-        emptyCBTEncounterSnapshot());
+        emptyCBTEncounterSnapshot(), {});
     return {
         laser: panel.components.find(component => component.label === 'Medium Laser')!,
         punch: panel.physicalAttacks.find(attack =>
@@ -347,7 +347,6 @@ async function restoreMek(fixture: DirectMekRuntimeFixture, unit: CBTMekUnit, ru
     const saved = wire(unit.serialize());
     const warnings: V2StateRestoreWarning[] = [];
     const restored = await restoreMekUnit(saved, fixture.entity, fixture.identity, {
-        initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
         profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
         deployment: saved.deployment.values,
         scenario: scenario(ruleset),

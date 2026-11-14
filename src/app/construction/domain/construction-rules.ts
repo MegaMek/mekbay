@@ -17,6 +17,7 @@ import {
 } from '../../models/equipment.model';
 import type { EquipmentFlag } from '../../models/equipment-flags.type';
 import { mekMyomerTypeOf } from '../../models/myomer-equipment.model';
+import { caseEquipmentKind } from '../../models/case-equipment.model';
 import { getStructureByTypeId, MountedArmor, MountedStructure } from '../../models/entity/components';
 import {
   AeroEntity,
@@ -898,6 +899,34 @@ export function planConstructionCaseInstallation(
     return [{ mount, placements: constructionSpreadMovePlacements(entity, mount, location, destination.id, 1, slotIndex) }];
   }
   return null;
+}
+
+/** The CASE mounted in a location. */
+export function constructionLocationCase(entity: BaseEntity, location: string): EntityMountedEquipment[] {
+  return entity.getEquipmentAtLocation(location).filter((mount) => caseEquipmentKind(mount.equipment));
+}
+
+/**
+ * Sets a location's CASE: `equipment` replaces any CASE there (none leaves no CASE component), a movable spread slot
+ * moving first when the location is full, and `optOut` sets its automatic-Clan-CASE opt-out. Changes nothing and
+ * returns false when the CASE cannot fit.
+ */
+export function setConstructionCase(
+  entity: MekEntity,
+  location: string,
+  equipment: Equipment | undefined,
+  optOut: boolean,
+): boolean {
+  const installed = constructionLocationCase(entity, location);
+  const relocations = equipment === undefined
+    ? []
+    : planConstructionCaseInstallation(entity, equipment, location, installed[0]);
+  if (relocations === null) return false;
+  for (const { mount, placements } of relocations) applyConstructionSpreadPlacements(entity, mount, placements);
+  for (const mount of installed) removeConstructionEquipment(entity, mount);
+  entity.setLocationMetadata(location, { ...entity.locationMetadata().get(location), clanCaseOptOut: optOut || undefined });
+  if (equipment) installConstructionEquipment(entity, equipment, location);
+  return true;
 }
 
 function removeConstructionOmniArmActuators(entity: BaseEntity, equipment: Equipment, locations: readonly string[]): void {

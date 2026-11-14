@@ -176,7 +176,7 @@ describe('CBT V1 force converter', () => {
 
     it('folds legacy Mek stunned/killed states into its wound-tracked V2 facts', async () => {
         const fixture = createDirectMekRuntimeFixture();
-        const fresh = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { schemaVersion: 2, values: fixture.initialized.deployment } }, nativeSource: undefined });
+        const fresh = new CBTUnit<'mek'>({ uuid: fixture.identity, instanceId: fixture.instance.instanceId, baselineRef: fixture.instance.baselineRef, runtime: { kind: 'mek', binding: fixture.instance.mechanics(), state: fixture.instance.snapshot(), deployment: { values: fixture.initialized.deployment } }, nativeSource: undefined });
         const source: LegacyUnitSourceV1 = {
             payload: {
                 unit: 'Legacy Mek',
@@ -225,7 +225,6 @@ describe('CBT V1 force converter', () => {
         expect(converted.version).toBe(2);
         expect(envelope.units.map(entry => entry.instanceId)).toEqual(['unit:a']);
         expect(envelope.roster).toEqual({
-            schemaVersion: 1,
             groups: [{
                 groupId: 'group:converted',
                 order: 0,
@@ -423,7 +422,7 @@ describe('CBT V1 force converter', () => {
             uuid: identity,
             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
             scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
         });
         const location = [...fresh.getIndex().locations.values()]
             .find(candidate => candidate.code === locationCode)!;
@@ -486,7 +485,7 @@ describe('CBT V1 force converter', () => {
             airborne: null,
             movement: { mode: 'walk', distance: 4, boosterComponentIds: [] },
             weaponsHeat: 0,
-            heatSettled: false,
+            settledHeat: jasmine.objectContaining({ size: 0 }),
             cover: null,
             spotting: false,
             phaseStateChanged: false,
@@ -522,7 +521,7 @@ describe('CBT V1 force converter', () => {
             uuid: identity,
             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
             scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
         });
         const source: LegacyUnitSourceV1 = {
             payload: {
@@ -555,6 +554,63 @@ describe('CBT V1 force converter', () => {
         }));
     });
 
+    it('keeps V1 aerospace heat as whole points, its turn heat, settled sources and booked dissipation included', () => {
+        const entity = new TestAeroSpaceFighterEntity();
+        entity.uuid.set(UUID);
+        entity.heatSinkCount.set(10);
+        const fresh = createNonMekUnit(entity, {
+            instanceId: 'unit:aero-v1-turn',
+            uuid: UUID,
+            deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+            scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
+            initialStateProfileId: 'pristine-non-mek',
+        });
+        const source: LegacyUnitSourceV1 = {
+            payload: {
+                unit: 'Legacy Aero',
+                state: {
+                    heat: { current: 7.5, previous: 2 },
+                    turnState: {
+                        weaponsHeat: 7.5,
+                        // V1 signatures lead with the heat they settled; one that is not JSON settles nothing.
+                        acknowledgedHeatSources: { 'outside-heat': '[2.6,null,null]', weapons: '[1500,null,null]', bad: 'x' },
+                        heatDissipationConsumed: 1500,
+                    },
+                },
+            },
+            identity: { kind: 'resolved', uuid: UUID },
+        };
+
+        const saved = convertPersistedNonMekUnitV1(source, fresh);
+        expect(saved.turn).toEqual(jasmine.objectContaining({
+            weaponsHeat: 8,
+            settledHeat: [{ sourceId: 'outside-heat', heat: 3 }, { sourceId: 'weapons', heat: 1500 }],
+            heatDissipationConsumed: 1500,
+        }));
+        expect(saved.heat).toEqual(jasmine.objectContaining({ current: 8, previous: 2 }));
+        expect(restoreNonMekUnit(saved, entity, UUID, SCENARIO).snapshot().turn.weaponsHeat).toBe(8);
+    });
+
+    it('skips only the unreadable V1 aerospace heat facts, as for a Mek', () => {
+        const entity = new TestAeroSpaceFighterEntity();
+        entity.uuid.set(UUID);
+        entity.heatSinkCount.set(10);
+        const fresh = createNonMekUnit(entity, {
+            instanceId: 'unit:aero-v1-heat-fields',
+            uuid: UUID,
+            deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
+            scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
+            initialStateProfileId: 'pristine-non-mek',
+        });
+        const issues: string[] = [];
+        const saved = convertPersistedNonMekUnitV1({
+            payload: { unit: 'Legacy Aero', state: { heat: { current: 6, previous: 'hot', next: 9 } } },
+            identity: { kind: 'resolved', uuid: UUID },
+        }, fresh, issue => issues.push(issue));
+        expect(saved.heat).toEqual(jasmine.objectContaining({ current: 6, previous: 0, pendingOverride: 9 }));
+        expect(issues.join(' ')).toContain('Invalid V1 heat facts were skipped.');
+    });
+
     it('restores committed and pending non-Mek V1 system damage without treating it as equipment', () => {
         const entity = new TestVtolEntity();
         entity.uuid.set(UUID);
@@ -564,7 +620,7 @@ describe('CBT V1 force converter', () => {
             uuid: identity,
             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID },
             scenario: { id: 'megamek', ruleset: CORE_2026_RULESET },
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
         });
         const source: LegacyUnitSourceV1 = {
             payload: {
@@ -653,7 +709,7 @@ describe('V1 grouped stabilizers', () => {
         const fresh = createNonMekUnit(entity, {
             instanceId: 'unit:large-support-v1', uuid: UUID,
             deployment: { id: DEFAULT_FORCE_DEPLOYMENT_ID }, scenario: SCENARIO,
-            initialStateProfileId: 'pristine-non-mek-v1',
+            initialStateProfileId: 'pristine-non-mek',
         });
         const issues: string[] = [];
         const saved = convertPersistedNonMekUnitV1({
@@ -833,7 +889,7 @@ async function materializeNonMek(
         uuid: request.source.identity.uuid,
         deployment: request.deployment,
         scenario: request.scenario,
-        initialStateProfileId: 'pristine-non-mek-v1',
+        initialStateProfileId: 'pristine-non-mek',
     });
 }
 
@@ -845,12 +901,12 @@ async function materializeMek(
     fixture.entity.uuid.set(UUID);
     const initialized = initializeUnitState(fixture.entity, fixture.index, UUID, {
         deployment: request.deployment, scenario: request.scenario,
-        initializerRevision: 1, profileId: 'pristine-v1-converter-test',
+        profileId: 'pristine-v1-converter-test',
     });
     const instance = createMekRuntimeForTest(request.instanceId, initialized.baselineRef, fixture.entity,
         fixture.index, initialized.baselineRef.ruleset, initialized.state, initialized.deployment.crewAssignment);
     return new CBTUnit<'mek'>({ uuid: UUID, instanceId: instance.instanceId, baselineRef: instance.baselineRef, runtime: { kind: 'mek', binding: instance.mechanics(), state: instance.snapshot(), deployment: {
-        schemaVersion: 2, values: initialized.deployment,
+        values: initialized.deployment,
     } }, nativeSource: undefined });
 }
 
@@ -881,7 +937,7 @@ async function materializeC3NonMek(
         uuid: request.source.identity.uuid,
         deployment: request.deployment,
         scenario: request.scenario,
-        initialStateProfileId: 'pristine-non-mek-v1',
+        initialStateProfileId: 'pristine-non-mek',
     });
 }
 

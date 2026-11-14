@@ -30,7 +30,9 @@ describe('non-Mek paperdoll hit locations', () => {
 
     it('uses the ordinary vehicle front and flank hit distributions and turret availability', () => {
         const entity = new TestTankEntity();
-        expect(rolls(entity, 'front')).toEqual(['FR', 'FR', 'FR', 'LS', 'FR', 'FR', 'FR', 'LS', 'FR', 'FR', 'FR']);
+        // TW p. 193: from the front a 5 strikes the right side and a 9 the left; from behind they swap.
+        expect(rolls(entity, 'front')).toEqual(['FR', 'FR', 'FR', 'RS', 'FR', 'FR', 'FR', 'LS', 'FR', 'FR', 'FR']);
+        expect(rolls(entity, 'rear')).toEqual(['RR', 'RR', 'RR', 'LS', 'RR', 'RR', 'RR', 'RS', 'RR', 'RR', 'RR']);
         entity.hasTurret.set(true);
         expect(rolls(entity, 'left')).toEqual(['LS', 'LS', 'LS', 'FR', 'LS', 'LS', 'LS', 'RR', 'TU', 'TU', 'TU']);
         entity.hasDualTurret.set(true);

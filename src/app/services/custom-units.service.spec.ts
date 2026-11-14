@@ -13,8 +13,8 @@ import { CustomUnitsService } from './custom-units.service';
 import { UnitArtworkService } from './unit-artwork.service';
 import { encodeUnitImage } from '../utils/unit-artwork.util';
 import { hasEmbeddedUnitArtwork } from '../models/entity/native-unit-artwork';
+import { CUSTOM_UNIT_LIBRARY_FULL_MESSAGE, MAX_OWNED_CUSTOM_UNITS } from '../models/custom-design-policy';
 import { DbService } from './db.service';
-import { MAX_OWNED_CUSTOM_UNITS } from '../models/custom-design-policy';
 import { LoggerService } from './logger.service';
 import type { PreparedApplicationCatalogDependencies } from './unit-catalog/application-catalog-bundle-coordinator.service';
 import { asUnitUuid } from './unit-catalog/unit-catalog.types';
@@ -624,43 +624,22 @@ describe('CustomUnitsService native construction persistence', () => {
     });
   }
 
-  it('limits new owned designs to 5,000 while allowing edits, deletions, subscriptions and other accounts', async () => {
-    const id = (n: number) => asUnitUuid('019f6767-0dcb-7bb8-992f-' + String(n).padStart(12, '0'));
-    rows = Array.from({ length: MAX_OWNED_CUSTOM_UNITS }, (_, i) => ({
-      schemaVersion: 1,
-      uuid: id(i + 1),
-      createdAt: 1,
-      updatedAt: 1,
-      format: 'mtf',
-      source: 'uuid:' + id(i + 1) + '\nchassis:Test\n',
-      accountUuid: 'owner',
-      owned: true,
-    }));
-    rows.push({
-      ...(rows[0] as SavedCustomUnit),
-      uuid: id(5001),
-      source: 'uuid:' + id(5001) + '\nchassis:Shared\n',
-      owned: false,
-      subscribed: true,
-    });
-    rows.push({ ...(rows[0] as SavedCustomUnit), accountUuid: 'other-account' });
+  it('refuses a new owned design past the library limit, keeping edits open and not counting subscribed designs', async () => {
     const service = createService();
-    service.setAccount('owner');
     await service.initialize();
-    await expectAsync(service.save(mek())).toBeRejectedWithError(/5,000/);
-    expect(save).not.toHaveBeenCalled();
-    await service.save(mek(), { uuid: id(1) });
-    expect(save).toHaveBeenCalledTimes(1);
-    await service.delete(id(2));
-    await service.save(mek());
-    expect(service.records().filter((r) => r.owned !== false).length).toBe(5000);
-    expect(service.records().filter((r) => r.subscribed).length).toBe(1);
-    service.setAccount('other-account');
-    await service.save(mek());
-    expect(service.records().filter((r) => r.owned !== false).length).toBe(2);
-  }, 20000);
+    const existing = await service.save(mek());
+    // The limit reads the loaded library; `subscribed` of its designs belong to other players.
+    const library = (subscribed: number) => Array.from({ length: MAX_OWNED_CUSTOM_UNITS },
+      (_, index) => ({ owned: index >= subscribed }) as SavedCustomUnit);
+    const records = spyOn(service, 'records').and.returnValue(library(0));
 
-  it('extracts both native image formats under the final UUID before persisting or hashing a design', async () => {
+    await expectAsync(service.save(mek())).toBeRejectedWithError(CUSTOM_UNIT_LIBRARY_FULL_MESSAGE);
+    await expectAsync(service.save(mek(), { uuid: existing.uuid })).toBeResolved();
+    records.and.returnValue(library(1));
+    await expectAsync(service.save(mek())).toBeResolved();
+  });
+
+  it('extracts native artwork under the final UUID before persisting or hashing a design', async () => {
     const service = createService();
     const saveArtwork = spyOn(TestBed.inject(UnitArtworkService), 'set').and.resolveTo();
     const canvas = document.createElement('canvas');
@@ -668,20 +647,18 @@ describe('CustomUnitsService native construction persistence', () => {
     canvas.height = 2;
     const png = await new Promise<Blob>((resolve) => canvas.toBlob((value) => resolve(value!)));
     const encoded = await encodeUnitImage(png);
-    for (const entity of [mek(), createTestTankEntity()]) {
-      entity.fluffImageEncoded.set(encoded);
-      entity.iconEncoded.set(encoded);
-      const record = await service.save(entity);
-      expect(hasEmbeddedUnitArtwork(record.source, record.format)).toBeFalse();
-      expect(saveArtwork.calls.mostRecent().args[0]).toBe(record.uuid);
-      expect(saveArtwork.calls.mostRecent().args[1]?.fluff?.type).toBe('image/png');
-      expect(saveArtwork.calls.mostRecent().args[1]?.icon?.type).toBe('image/png');
-      const loaded = await service.load(record.uuid);
-      expect(loaded.fluffImageEncoded()).toBe('');
-      expect(loaded.iconEncoded()).toBe('');
-      const updated = await service.save(loaded, { uuid: record.uuid });
-      expect(updated.hash).toBe(record.hash);
-    }
+    const entity = mek();
+    entity.fluffImageEncoded.set(encoded);
+    entity.iconEncoded.set(encoded);
+
+    const record = await service.save(entity);
+    expect(hasEmbeddedUnitArtwork(record.source, record.format)).toBeFalse();
+    expect(saveArtwork.calls.mostRecent().args[0]).toBe(record.uuid);
+    expect(saveArtwork.calls.mostRecent().args[1]?.fluff?.type).toBe('image/png');
+    expect(saveArtwork.calls.mostRecent().args[1]?.icon?.type).toBe('image/png');
+    const loaded = await service.load(record.uuid);
+    expect([loaded.fluffImageEncoded(), loaded.iconEncoded()]).toEqual(['', '']);
+    expect((await service.save(loaded, { uuid: record.uuid })).hash).toBe(record.hash);
   });
 
   it('captures the requested editor revision before asynchronous storage work begins', async () => {

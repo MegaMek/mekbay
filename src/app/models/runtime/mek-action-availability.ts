@@ -48,6 +48,7 @@ export type MekActionRuntimePort = Pick<
     | 'mekMovementMode'
     | 'mekShields'
     | 'attackerTargetingState'
+    | 'turnState'
 > & {
     mekDestruction(): MekActionDestructionCapability;
 };
@@ -92,8 +93,10 @@ export function canPerformMekAction(
             && !coreAmsExempt(resolved, action, ruleset)
             && shieldBlocksTargetAttack(entity, index, ruleset, runtime, resolved)) return false;
 
+        // A weapon fires once a turn; End Turn, or undoing the fire, frees it.
         if (action === 'fire' && target.kind === 'component'
-            && (runtime.componentJammed(target.componentId)
+            && (runtime.turnState().firedWeapons?.includes(target.componentId) === true
+                || runtime.componentJammed(target.componentId)
                 || isGaussPoweredDown(runtime.componentGaussPower(target.componentId))
                 || runtime.componentBombastLaser(target.componentId)?.chargeState === 'charging'
                 || ppcCapacitorChargingForWeapon(index, runtime, target.componentId)
@@ -182,15 +185,26 @@ function isPhysicalTarget(target: ResolvedTarget): boolean {
 }
 
 function physicalMovementUnavailable(runtime: MekActionRuntimePort, target: ResolvedTarget): boolean {
-    if (runtime.hasCondition('prone')) return true;
+    const kind = target.kind === 'intrinsic' ? target.definition.kind : null;
+    // Prone, a 'Mech can only thrash at infantry or punch a vehicle in its hex (TW p. 151); thrashing needs prone.
+    if (runtime.hasCondition('prone')) return kind !== 'thrash' && kind !== 'punch';
+    if (kind === 'thrash') return true;
     const movement = runtime.mekMovementMode();
     if (movement.kind === 'unsupported') return true;
     const moveMode = movement.mode;
     if (moveMode === null) return false;
-    const kind = target.kind === 'intrinsic' ? target.definition.kind : null;
     if (kind === 'death-from-above') return moveMode !== 'jump';
     if (moveMode === 'jump' && kind === 'charge') return true;
     return moveMode === 'stationary' && (kind === 'charge' || kind === 'airmek-ram');
+}
+
+/** The kinds of the other physical actions selected this turn: an intrinsic attack's kind, or 'weapon'. */
+function otherSelectedActionKinds(index: MekRuntimeIndex, runtime: MekActionRuntimePort, actionId: string): string[] {
+    return [...runtime.attackerTargetingState().actions.values()].flatMap(({ target }) => {
+        if (target.kind === 'component') return ['weapon'];
+        if (target.actionId === actionId) return [];
+        return index.intrinsicActions.filter(candidate => candidate.id === target.actionId).map(candidate => candidate.kind);
+    });
 }
 
 function physicalTargetAvailable(
@@ -200,13 +214,33 @@ function physicalTargetAvailable(
     ruleset: CBTRuleset,
 ): boolean {
     const physical = physicalCapabilities(index, runtime, ruleset);
+    // Brushing swarming infantry off is the 'Mech's only physical attack that turn, made with up to both arms
+    // (TW p. 221).
+    const brushingOff = target.kind === 'intrinsic' && target.definition.kind === 'brush-off';
+    const others = otherSelectedActionKinds(index, runtime, target.kind === 'intrinsic' ? target.definition.id : '');
+    if (brushingOff ? others.some(kind => kind !== 'brush-off') : others.includes('brush-off')) return false;
     if (target.kind === 'intrinsic') {
         switch (target.definition.kind) {
             case 'punch': {
                 const location = target.definition.locations[0];
+                // Prone, the 'Mech props itself up on one arm and punches once with the other, and not as well as
+                // thrashing (TW p. 151).
+                if (runtime.hasCondition('prone') && (!physical.canPunchProne
+                    || otherSelectedActionKinds(index, runtime, target.definition.id)
+                        .some(kind => kind === 'punch' || kind === 'thrash'))) return false;
                 return location === undefined || !(location in physical.canPunch)
                     || physical.canPunch[location as ArmCode];
             }
+            // Only a swarmed 'Mech brushes infantry off, with an arm that could punch and fired no weapon
+            // (TW p. 221).
+            case 'brush-off': {
+                const location = target.definition.locations[0] as ArmCode | undefined;
+                return runtime.hasCondition('swarmed') && location !== undefined
+                    && physical.canPunch[location] && !physical.armFired[location];
+            }
+            // Thrashing is the 'Mech's only attack that turn: no weapon fired and no other attack (TW p. 151).
+            case 'thrash': return physical.noWeaponFired
+                && otherSelectedActionKinds(index, runtime, target.definition.id).length === 0;
             case 'club': return physical.canClub;
             case 'push': return physical.canPush;
             case 'kick': return physical.canKick;
@@ -228,6 +262,11 @@ interface PhysicalCapabilities {
     readonly canPhysicalWeapon: Readonly<Record<ArmCode, boolean>>;
     readonly canPush: boolean;
     readonly canClub: boolean;
+    /** A prone 'Mech props itself on one arm to punch, so both arms must be intact and unfired (TW p. 151). */
+    readonly canPunchProne: boolean;
+    /** The arm's weapons fire this turn. */
+    readonly armFired: Readonly<Record<ArmCode, boolean>>;
+    readonly noWeaponFired: boolean;
 }
 
 function physicalCapabilities(
@@ -298,6 +337,15 @@ function physicalCapabilities(
         canPunch: Object.freeze({ LA: arms.LA.canPunch, RA: arms.RA.canPunch }),
         canPhysicalWeapon: Object.freeze({ LA: arms.LA.canPhysicalWeapon, RA: arms.RA.canPhysicalWeapon }),
         canPush: !arms.LA.locationLost && !arms.RA.locationLost,
+        canPunchProne: (['LA', 'RA'] as const).every(code => {
+            const locationId = locationIdForCode(index, code);
+            return !arms[code].locationLost && locationId !== null && !fired.has(locationId);
+        }),
+        noWeaponFired: fired.size === 0,
+        armFired: Object.freeze(Object.fromEntries((['LA', 'RA'] as const).map(code => {
+            const locationId = locationIdForCode(index, code);
+            return [code, locationId !== null && fired.has(locationId)];
+        })) as Record<ArmCode, boolean>),
         canClub: arms.LA.canPhysicalWeapon && arms.RA.canPhysicalWeapon,
     });
 }

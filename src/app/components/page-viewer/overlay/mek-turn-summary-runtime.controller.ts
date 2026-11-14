@@ -10,8 +10,6 @@ import type { CBTEquipmentChoice } from '../../../models/cbt-force.types';
 import type { CBTMekForceMember } from '../../../models/force-member.model';
 import { selectedWeaponHeat } from '../../../models/runtime/equipment-panel';
 import {
-MEK_ACTION_DECLARATION_SCHEMA_VERSION,
-MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
 type MekLegalActionProjectionV2,
 type MekMovementModeV2,
 type MekPilotCheckDiceEvidenceV2,
@@ -140,7 +138,6 @@ export class MekTurnSummaryRuntimeController {
         await this.dispatch({
             type: 'declare-mek-movement',
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode,
                 distance: action.minimumMp ?? 0,
                 boosterComponentIds: mode === 'run' || mode === 'sprint'
@@ -238,7 +235,7 @@ export class MekTurnSummaryRuntimeController {
         if (!action.legal) return;
         await this.dispatch({
             type: 'declare-mek-action',
-            action: { schemaVersion: MEK_ACTION_DECLARATION_SCHEMA_VERSION, kind: action.kind },
+            action: { kind: action.kind },
         });
     }
 
@@ -291,13 +288,6 @@ export class MekTurnSummaryRuntimeController {
             : Promise.resolve(false);
     }
 
-    public async setHeat(value: number): Promise<void> {
-        const heat = Math.max(0, Math.min(999, Number(value) || 0));
-        await this.dispatch(this.options.options().trackPhaseAndTurn
-            ? { type: 'set-pending-heat', heat }
-            : { type: 'set-heat', heat });
-    }
-
     public async setHeatsinksOff(value: number): Promise<void> {
         const projection = this.snapshot().heatProjection;
         const maximum = projection.kind === 'supported' ? projection.projection.capacity : 0;
@@ -308,7 +298,7 @@ export class MekTurnSummaryRuntimeController {
     }
 
     public async applyHeat(): Promise<void> {
-        await this.dispatch({ type: 'apply-heat', policy: this.heatPolicy() });
+        await this.dispatch({ type: 'apply-heat' });
     }
 
     public boundary(type: 'commit-pending' | 'cancel-pending' | 'end-phase' | 'end-turn'): Promise<boolean> {
@@ -331,12 +321,12 @@ export class MekTurnSummaryRuntimeController {
     }
 
     private refresh(): void {
-        const snapshot = this.member.force.getMekTurnPanelSnapshot(this.member.id, this.heatPolicy());
+        const snapshot = this.member.force.getMekTurnPanelSnapshot(this.member.id);
         if (snapshot) this.snapshot.set(snapshot);
     }
 
     private requiredSnapshot(): MekTurnPanelSnapshot {
-        const snapshot = this.member.force.getMekTurnPanelSnapshot(this.member.id, this.heatPolicy());
+        const snapshot = this.member.force.getMekTurnPanelSnapshot(this.member.id);
         if (!snapshot) throw new Error('The selected Mek is no longer admitted');
         return snapshot;
     }

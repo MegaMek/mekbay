@@ -7,7 +7,6 @@ import { CrewMember,DEFAULT_GUNNERY_SKILL,DEFAULT_PILOTING_SKILL } from '../crew
 import type { CrewPositionId } from '../entity/entity-identifiers';
 import { ImmutableIndex } from '../entity/immutable-collections';
 
-export const CREW_ASSIGNMENT_SCHEMA_VERSION = 1 as const;
 export const MAX_CREW_NAME_LENGTH = 160;
 export const MIN_CREW_SKILL = 0;
 export const MAX_CREW_SKILL = 8;
@@ -23,7 +22,6 @@ export interface CrewAssignmentPosition {
 
 /** Immutable deployment facts; combat wounds and consciousness remain sparse runtime state. */
 export interface CrewAssignment {
-    readonly schemaVersion: typeof CREW_ASSIGNMENT_SCHEMA_VERSION;
     readonly positions: readonly CrewAssignmentPosition[];
 }
 
@@ -75,10 +73,7 @@ export function canonicalizeCrewAssignment(
     crewPositions: CrewTopology,
     value: unknown,
 ): CrewAssignment {
-    const record = requireExactRecord(value, ['schemaVersion', 'positions'], 'crewAssignment');
-    if (record['schemaVersion'] !== CREW_ASSIGNMENT_SCHEMA_VERSION) {
-        throw new Error(`crewAssignment.schemaVersion must be ${CREW_ASSIGNMENT_SCHEMA_VERSION}`);
-    }
+    const record = requireExactRecord(value, ['positions'], 'crewAssignment');
     if (!Array.isArray(record['positions'])) throw new Error('crewAssignment.positions must be an array');
 
     const expected = canonicalCrewPositions(crewPositions);
@@ -136,7 +131,6 @@ function canonicalCrewPositions(crewPositions: CrewTopology): readonly CrewPosit
 
 function freezeAssignment(positions: readonly CrewAssignmentPosition[]): CrewAssignment {
     return Object.freeze({
-        schemaVersion: CREW_ASSIGNMENT_SCHEMA_VERSION,
         positions: Object.freeze(positions.map(position => Object.freeze({ ...position }))),
     });
 }

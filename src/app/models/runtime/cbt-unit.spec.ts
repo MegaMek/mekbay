@@ -90,7 +90,7 @@ describe('the shared CBTUnit state owner', () => {
         baselineRef.initialStateProfile.profileId = 'changed-by-caller';
         crewAssignment.positions[0]!.name = 'Changed by caller';
         deployment.values.id = 'changed-by-caller';
-        binding.source = { ...binding.source, crewAssignment: { schemaVersion: 1, positions: [] } };
+        binding.source = { ...binding.source, crewAssignment: { positions: [] } };
 
         expect(unit.serialize()).toEqual(saved);
         expect(unit.query()).toBe(query);

@@ -16,6 +16,7 @@ import { AmmoValidityUtil } from '../../utils/ammo-validity.util';
 import { SetAmmoDialogComponent, type SetAmmoDialogData } from '../set-ammo-dialog/set-ammo.dialog.component';
 import { AmmoLoadoutPanelComponent } from './ammo-loadout-panel.component';
 import type { EquipmentDialogRuntimeController } from './equipment-dialog-runtime.controller';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../../models/runtime/bound-optional-rules';
 
 function ammoRow(
     id: string,
@@ -63,6 +64,7 @@ function createComponent(
     readOnly = false,
     bombs: EquipmentPanelBombs | null = null,
     era: Era | null = null,
+    hotLoadedAmmo = false,
 ) {
     const currentRows = () => typeof rows === 'function' ? rows() : rows;
     const changeAmmo = jasmine.createSpy('changeAmmo').and.callFake(
@@ -82,7 +84,8 @@ function createComponent(
         ammo: currentRows,
         bombs: () => bombs,
         snapshot: () => ({ unitType: 'Mek', ruleset: CORE_2026_RULESET }),
-        member: { force: { readOnly: () => readOnly, era: () => era } },
+        member: { force: { readOnly: () => readOnly, era: () => era,
+            getUnitSnapshot: () => ({ query: { boundRules: () => ({ ...BOUND_OPTIONAL_RULE_DEFAULTS, hotLoadedAmmo }) } }) } },
         changeAmmo,
         configureAmmo,
         setBombsSpent,
@@ -134,6 +137,27 @@ describe('AmmoLoadoutPanelComponent', () => {
                 );
             });
         }
+    }
+
+    for (const bound of [true, false]) {
+        it(`allows hot-loading in the group dialog only when the unit is bound to Hot-Loaded Ammo (${bound})`, async () => {
+            const ammo = new AmmoEquipment({
+                id: 'Test Group Ammo', name: 'Test Group Ammo', type: 'ammo', ammo: { type: 'LRM', rackSize: 10, shots: 12 },
+            });
+            const rows = ['LT', 'RT'].map(location => ammoRow(`ammo:${location}`, location, 12, 'available', {
+                displayName: ammo.name, munitionKey: ammo.internalName,
+            }));
+            const { component } = createComponent(rows, false, null, null, bound);
+            spyOn(TestBed.inject(EquipmentCatalogService), 'getEquipmentRegistry').and.returnValue(
+                createTestEquipmentRegistry({ [ammo.id]: ammo }),
+            );
+            const dialogs = TestBed.inject(DialogsService) as jasmine.SpyObj<DialogsService>;
+            dialogs.createDialog.and.returnValue({ closed: of(null) } as never);
+
+            await component.setAmmo(component.groups()[0]);
+
+            expect((dialogs.createDialog.calls.mostRecent().args[1]?.data as SetAmmoDialogData).hotLoadAllowed).toBe(bound);
+        });
     }
 
     for (const scope of ['group', 'bin'] as const) {

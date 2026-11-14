@@ -297,11 +297,6 @@ export type MekMechanicsProfileResult =
     | { readonly kind: 'supported'; readonly profile: MekMechanicsProfile }
     | { readonly kind: 'unsupported'; readonly blockers: readonly MekMechanicsProfileBlocker[] };
 
-export interface MekMechanicsScenarioInput {
-    readonly id: string;
-    readonly options?: Partial<BoundOptionalRules>;
-}
-
 export type MekMechanicsScenarioBlockerCode =
     | 'SCENARIO_INPUT_INVALID'
     | 'SCENARIO_ID_INVALID'

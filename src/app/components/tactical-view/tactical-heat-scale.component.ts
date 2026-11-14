@@ -2,10 +2,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, input, output, signal, viewChild } from '@angular/core';
+import { isHeatValue } from '../../models/runtime/cbt-unit-runtime';
 import { recordSheetHeatEffects, type RecordSheetHeatEffect } from '../../models/runtime/heat-effect-presentation';
 import type { MekRecordSheetSnapshot } from '../../models/runtime/mek-record-sheet';
 import type { NonMekRecordSheetSnapshot } from '../../models/runtime/non-mek-record-sheet';
-import { nonMekRecordSheetHeatScale, recordSheetHeatScale, type RecordSheetHeatScale } from '../../models/runtime/record-sheet-heat-scale';
+import {
+    displayedHeat,
+    nonMekRecordSheetHeatScale,
+    recordSheetHeatScale,
+    type RecordSheetHeatScale,
+} from '../../models/runtime/record-sheet-heat-scale';
 import type { TurnSummaryHeatRow } from '../page-viewer/overlay/page-turn-summary.util';
 
 @Component({
@@ -36,16 +42,20 @@ export class TacticalHeatScaleComponent {
         const entity = this.entity();
         return entity
             ? nonMekRecordSheetHeatScale(entity)
-            : { current: 0, automaticProjection: false };
+            : { current: 0 };
     });
-    readonly displayedHeat = computed(() => this.preview() ?? this.state().pending ?? this.state().current);
+    readonly displayedHeat = computed(() => this.preview() ?? displayedHeat(this.state()));
     readonly projection = computed(() => {
         const projection = this.mek()?.heatProjection;
         return projection?.kind === 'supported' ? projection.projection : null;
     });
-    readonly cooling = computed(() => this.projection()?.remainingDissipation
-        ?? this.entity()?.heat.dissipation
-        ?? Math.max(0, (this.mek()?.heatSinks.count ?? 0) - (this.mek()?.heat.heatsinksOff ?? 0)));
+    /** The cooling left this turn, after what APPLY HEAT booked, for every heat-tracking family. */
+    readonly cooling = computed(() => {
+        const entityHeat = this.entity()?.heat;
+        if (entityHeat) return entityHeat.projection ? Math.max(0, entityHeat.projection.dissipationBalance) : entityHeat.dissipation;
+        return this.projection()?.remainingDissipation
+            ?? Math.max(0, (this.mek()?.heatSinks.count ?? 0) - (this.mek()?.heat.heatsinksOff ?? 0));
+    });
     readonly family = computed(() => this.mek() ? this.mek()!.identity.form === 'lam' ? 'lam' : 'mek' : 'aero');
     readonly effects = computed(() => recordSheetHeatEffects(this.family(), this.displayedHeat())
         .filter(effect => effect.active && !effect.superseded));
@@ -62,7 +72,8 @@ export class TacticalHeatScaleComponent {
         const state = this.state();
         return [
             { id: 'current', label: 'NOW', value: state.current, tone: 'current' },
-            { id: 'pending', label: 'NEXT', value: state.pending, tone: (state.pending ?? 0) >= state.current ? 'hot' : 'cold' },
+            { id: 'pending', label: 'NEXT', value: state.pending, tone: (state.pending ?? 0) >= state.current ? 'hot' : 'cold',
+                detail: state.adjustment === undefined ? undefined : `${state.adjustment > 0 ? '+' : ''}${state.adjustment}` },
             { id: 'previous', label: 'PREV', value: state.previous, tone: 'previous' },
             { id: 'projection', label: 'PROJECTED', value: state.projection, tone: (state.projection ?? 0) > state.current ? 'hot' : 'cold' },
             { id: 'selected', label: 'SELECTED', value: this.selectedHeat() ?? undefined, tone: 'selected' },
@@ -97,7 +108,7 @@ export class TacticalHeatScaleComponent {
     }
 
     setHeat(value: number): void {
-        if (!this.readOnly() && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000) {
+        if (!this.readOnly() && isHeatValue(value)) {
             this.heatChange.emit(value);
         }
     }

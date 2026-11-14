@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { AttackerActionTarget } from './attacker-targeting-state';
+import { deserializeMekTurnStateV2, serializeMekTurnStateV2 } from './mek-turn-state-v2';
 import {
     projectMekEquipmentPanel,
     selectedWeaponHeat,
@@ -35,14 +36,15 @@ describe('direct spot-welder runtime', () => {
 
         expect(fire(fixture, 'spot-welder:first')).toBeTrue();
         expect(fixture.instance.query().turnState().weaponsHeat).toBe(2);
-        expect(fire(fixture, 'spot-welder:second')).toBeTrue();
-        expect(fixture.instance.query().turnState().weaponsHeat).toBe(4);
-        const projected = fixture.instance.query().heatProjection('automatic');
+        // It fires once a turn: firing again while it stays selected changes nothing.
+        expect(fire(fixture, 'spot-welder:second')).toBeFalse();
+        expect(fixture.instance.query().turnState().weaponsHeat).toBe(2);
+        const projected = fixture.instance.query().heatProjection();
         if (projected.kind !== 'supported') throw new Error('Spot-welder heat must be supported');
         expect(projected.projection.committedSources).toContain(jasmine.objectContaining({
-            id: 'weapons', value: 4,
+            id: 'weapons', value: 2,
         }));
-        expect(projected.projection.projected).toBe(14);
+        expect(projected.projection.projected).toBe(12);
 
         expect(fixture.instance.dispatch({
             type: 'end-turn',
@@ -50,8 +52,41 @@ describe('direct spot-welder runtime', () => {
             
             policy: 'automatic',
         }).accepted).toBeTrue();
-        expect(fixture.instance.query().heatState().current).toBe(14);
+        expect(fixture.instance.query().heatState().current).toBe(12);
         expect(fixture.instance.query().turnState().weaponsHeat).toBe(0);
+    });
+
+    it('fires each weapon once a turn, so the player fires in steps', () => {
+        const fixture = createDirectSpotWelderRuntimeFixture();
+        const welder = fixture.equipmentComponent('Test Spot Welder');
+        const laser = fixture.equipmentComponent('ISMediumLaser');
+        const selectLaser = () => fixture.instance.dispatchAttackerTargeting({
+            type: 'edit-attacker-targeting',
+            edit: { kind: 'set-component-selection', componentId: laser.id, selection: { kind: 'selected' } },
+        }, emptyCBTEncounterSnapshot(), false).accepted;
+        const canFireLaser = () => panel(fixture).components.find(row => row.componentId === laser.id)?.weapon?.selectable;
+
+        expect(selectLaser()).toBeTrue();
+        expect(fire(fixture, 'steps:laser')).toBeTrue();
+        expect(fixture.instance.query().turnState().weaponsHeat).toBe(3);
+        expect(fixture.instance.query().turnState().firedWeapons).toEqual([laser.id]);
+        // The laser stays selected but is spent: it no longer counts as selected heat and does not fire again.
+        expect(canFireLaser()).toBeFalse();
+        expect(selectedWeaponHeat(panel(fixture))).toEqual({ hasSelection: false, value: 0 });
+        expect(fire(fixture, 'steps:laser-again')).toBeFalse();
+
+        // A second step adds only what was not fired yet.
+        expect(select(fixture, { kind: 'component', componentId: welder.id }, 'steps:welder')).toBeTrue();
+        expect(fire(fixture, 'steps:welder-fire')).toBeTrue();
+        expect(fixture.instance.query().turnState().weaponsHeat).toBe(5);
+
+        // The fired weapons survive a save, and End Turn frees them.
+        const saved = serializeMekTurnStateV2(fixture.instance.snapshot().turn);
+        expect(deserializeMekTurnStateV2(JSON.parse(JSON.stringify(saved))).firedWeapons)
+            .toEqual([laser.id, welder.id].sort());
+        expect(fixture.instance.dispatch({ type: 'end-turn', policy: 'automatic' }).accepted).toBeTrue();
+        expect(fixture.instance.query().turnState().firedWeapons).toBeUndefined();
+        expect(canFireLaser()).toBeTrue();
     });
 
     it('adds spot-welder and ranged-weapon heat in one atomic fire command', () => {
@@ -104,7 +139,7 @@ function panel(fixture: DirectMekRuntimeFixture) {
         fixture.index,
         fixture.instance.ruleset(),
         fixture.instance.query(),
-        emptyCBTEncounterSnapshot(),
+        emptyCBTEncounterSnapshot(), {},
     );
 }
 

@@ -9,7 +9,9 @@ import { type CdkDragDrop, DragDropModule } from '@angular/cdk/drag-drop';
 import { CBT_RULESET_LABELS, type CBTRuleset } from '../../models/cbt-ruleset.model';
 import type { LobbyGameSettings, LobbyParticipant } from '../../models/lobby.model';
 import { getFactionImg } from '../../models/factions.model';
-import { INITIATIVE_ORDER_CHOICES } from '../../models/options.model';
+import { CBT_OPTIONAL_RULE_CHOICES, INITIATIVE_ORDER_CHOICES, type CBTOptionalRules } from '../../models/options.model';
+import { isBoundOptionalRule } from '../../models/runtime/bound-optional-rules';
+import { OptionsService } from '../../services/options.service';
 import type { InitiativeOrderMode } from '../../models/rules/initiative-rules';
 import { DialogsService } from '../../services/dialogs.service';
 import { ForceWorkspaceStateService } from '../../services/force-workspace-state.service';
@@ -52,6 +54,7 @@ export class LobbyDialogComponent {
     private readonly dialogsService = inject(DialogsService);
     private readonly toastService = inject(ToastService);
     private readonly dialogRef = inject(DialogRef<void>);
+    private readonly optionsService = inject(OptionsService);
     readonly rulesetLabels = CBT_RULESET_LABELS;
     readonly initiativeOrderChoices = INITIATIVE_ORDER_CHOICES;
     readonly initiativeOrderLabel = computed(() => INITIATIVE_ORDER_CHOICES
@@ -100,6 +103,13 @@ export class LobbyDialogComponent {
     readonly friendlyTotals = computed(() => this.calculateTotals(this.friendlyParticipants()));
     readonly enemyTotals = computed(() => this.calculateTotals(this.enemyParticipants()));
 
+    readonly optionalRuleChoices = CBT_OPTIONAL_RULE_CHOICES;
+    /** The optional rules the lobby plays: the host's, which every player adopts on joining. */
+    readonly optionalRules = computed<CBTOptionalRules>(() => ({
+        ...this.optionsService.options().CBTOptionalRules,
+        ...this.lobbyService.settings()?.optionalRules,
+    }));
+
     constructor() {
         effect(() => {
             if (!this.lobbyService.state()) this.dialogRef.close();
@@ -124,6 +134,19 @@ export class LobbyDialogComponent {
             'warning',
         );
         if (confirmed) this.updateSettings({ ruleset });
+    }
+
+    /** A rule bound into units restarts undo for everyone, so the host confirms it first. */
+    async onOptionalRuleChange(key: keyof CBTOptionalRules, event: Event): Promise<void> {
+        const input = event.target as HTMLInputElement;
+        const value = input.checked;
+        const confirmed = !isBoundOptionalRule(key) || await this.dialogsService.requestConfirmation(
+            `Every player in the lobby, you included, ${value ? 'plays this rule' : 'stops playing this rule'} now. Undo starts over.`,
+            'Change Lobby Optional Rule?',
+            'warning',
+        );
+        if (confirmed) this.updateSettings({ optionalRules: { ...this.optionalRules(), [key]: value } });
+        else input.checked = this.optionalRules()[key];
     }
 
     onInitiativeOrderChange(event: Event): void {

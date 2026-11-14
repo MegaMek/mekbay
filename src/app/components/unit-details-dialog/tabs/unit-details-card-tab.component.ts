@@ -10,7 +10,7 @@ import { getCardCountForUnitType } from '../../alpha-strike-card/card-layout.con
 import { OptionsService } from '../../../services/options.service';
 import { UnitNameService } from '../../../services/unit-name.service';
 import { SvgExportUtil } from '../../../utils/svg-export.util';
-import { snapshotAlphaStrikeCard } from '../../../utils/alpha-strike-card-export.util';
+import { alphaStrikeCardFileName, snapshotAlphaStrikeCard } from '../../../utils/alpha-strike-card-export.util';
 
 @Component({
     selector: 'unit-details-card-tab',
@@ -89,7 +89,6 @@ export class UnitDetailsCardTabComponent {
     }
 
     private exportFileName(): string {
-        const name = this.unitNames.name(this.unit()).replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '');
-        return `${name || 'unit'}-alpha-strike`;
+        return alphaStrikeCardFileName(this.unitNames.name(this.unit()));
     }
 }

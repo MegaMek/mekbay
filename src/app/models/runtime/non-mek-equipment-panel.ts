@@ -18,7 +18,21 @@ import type { BaseEntity } from '../entity/base-entity';
 import { asComponentId,asLocationId,type ComponentId } from '../entity/entity-identifiers';
 import type { EntityMountedEquipment,EntityWeaponHitModifier } from '../entity/types';
 import { effectiveEntityPilotingSkill } from '../entity/utils/battle-value/skill-facts';
-import { isInfantryEntity, isVehicleEntity } from '../entity/utils/entity-type-guards';
+import {
+    isBattleArmorEntity,
+    isInfantryEntity,
+    isInfantryFamilyEntity,
+    isVehicleEntity,
+} from '../entity/utils/entity-type-guards';
+import {
+    antiMekTrooperModifier,
+    battleArmorSwarmDamage,
+    battleArmorVibroClaws,
+    LEG_ATTACK_DAMAGE,
+    PLATOON_SWARM_DAMAGE_GROUP,
+    SWARM_MAGNETIC_CLAW_MODIFIER,
+} from '../rules/anti-mek-attack-rules';
+import { isMagnetClawEquipment } from '../battle-armor-equipment.model';
 import {
     disposableWeaponAttack,
     platoonAttack,
@@ -26,9 +40,13 @@ import {
     type PlatoonAttackFacts,
 } from '../rules/conventional-infantry-combat-rules';
 import { INFERNO_LABEL, platoonInfernoMissiles } from '../rules/inferno-rules';
+import { physicalAttackMeetsBuildingCover, physicalAttackMeetsWaterCover } from '../rules/physical-attack-rules';
 import { isWeaponEnhancementEquipment } from '../entity/utils/equipment-link-rules';
 import { isTargetingComputerEquipment } from '../entity/utils/targeting-computer';
 import { AmmoEquipment,WeaponEquipment,ammoMatchesWeapon } from '../equipment.model';
+import { applyFlamerWeaponTypes, flamerDisplayLabel } from '../flamer-mode.model';
+import type { OptionalRules } from '../options.model';
+import type { WeaponType } from '../weapon-types.model';
 import { isLaserInsulatorEquipment,laserInsulatorAdjustedHeat } from '../laser-insulator.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import {
@@ -71,6 +89,7 @@ import {
 effectiveNonMekComponentMode,
 nonMekAmmoSourceLoads,
 nonMekComponentModes,
+nonMekHeatOrDamageWeapon,
 nonMekMobileHpgFacts,
 nonMekWeaponTargetSubject,
 type NonMekAmmoSourceLoads,
@@ -96,6 +115,7 @@ export function projectNonMekEquipmentPanel(
     state: NonMekUnitRuntimeState,
     query: NonMekUnitQueryPort,
     registry: TargetRegistrySnapshot,
+    optionalRules: OptionalRules,
 ): EquipmentPanelSnapshot {
     if (entity.entityType === 'Mek') throw new Error('Meks require the Mek equipment projection');
     if (state.stateRevision !== query.stateRevision) {
@@ -107,30 +127,35 @@ export function projectNonMekEquipmentPanel(
     const ammoSourceLoads = nonMekAmmoSourceLoads(entity, index, ruleset, state);
     const ammoSourceCandidates = projectAmmoSourceCandidates(index, ammoSourceLoads, query);
     const targetingComputer = installedTargetingComputer(index, query);
-    const hpgBlocksWeaponFire = mobileHpgBlocksWeaponAttacks(nonMekMobileHpgFacts(index, state, projection));
+    const swarming = effectiveSwarming(state, targets);
+    // A swarming unit attacks only the unit it clings to, with its swarm damage (TW p. 220).
+    const hpgBlocksWeaponFire = swarming !== null
+        || mobileHpgBlocksWeaponAttacks(nonMekMobileHpgFacts(index, state, projection));
     // A platoon fires its weapons as one attack: the primary weapon's row carries it, and the disposable weapon
     // has its own row. The secondary weapon has no attack of its own.
     const platoon = platoonAttackRows(entity, index, query);
     const projectedComponents = Object.freeze([...index.components.values()]
         .filter(component => component.mount.platoonWeapon !== 'secondary')
         .map(component => {
+            const attack = component.mount.platoonWeapon === undefined
+                ? undefined
+                : platoon.get(component.mount.platoonWeapon);
             const row = projectComponent(
                 entity,
                 index,
                 ruleset,
+                optionalRules,
                 state,
                 query,
                 component.id,
+                attack?.label ?? component.mount.displayName(),
                 targets,
                 targetingComputer,
                 hpgBlocksWeaponFire,
                 ammoSourceLoads,
                 ammoSourceCandidates,
             );
-            const attack = component.mount.platoonWeapon === undefined
-                ? undefined
-                : platoon.get(component.mount.platoonWeapon);
-            return attack ? withPlatoonAttack(row, attack.facts, attack.label) : row;
+            return attack ? withPlatoonAttack(row, attack.facts) : row;
         }));
     const components = projectWeaponAttackComponents(
         entity,
@@ -163,7 +188,7 @@ export function projectNonMekEquipmentPanel(
             ? Object.freeze([projectVehicleCharge(entity, state, vehicleRules, ruleset)])
             : protoMekRules !== null
                 ? Object.freeze([projectProtoMekFrenzy(entity, state, protoMekRules, ruleset)])
-                : Object.freeze([]),
+                : projectAntiMekAttacks(entity, index, state, query, swarming),
         ...(state.equipmentRowOrder === undefined
             ? {}
             : { equipmentRowOrder: state.equipmentRowOrder }),
@@ -173,6 +198,110 @@ export function projectNonMekEquipmentPanel(
             ? { bombs: Object.freeze({ capacity: bombCapacity, loads: state.bombs ?? [] }) }
             : {}),
     });
+}
+
+/**
+ * The target a unit still swarms: the one it took hold of, unless that unit is open here and no longer shows as
+ * swarmed (its owner shook the infantry off, or has not yet accepted the swarm).
+ */
+export function effectiveSwarming(
+    state: Pick<NonMekUnitRuntimeState, 'swarming'>,
+    targets: readonly EquipmentPanelTarget[],
+): string | null {
+    if (state.swarming === undefined) return null;
+    const target = targets.find(candidate => candidate.targetId === state.swarming);
+    return target?.readOnly === true && target.calculator?.swarmed !== true ? null : state.swarming;
+}
+
+/** Troopers still fighting: a platoon's strength, or the battle armor suits not destroyed. */
+function activeTroopers(entity: BaseEntity, index: NonMekRuntimeIndex, query: NonMekUnitQueryPort): number {
+    const locations = [...index.locations.values()];
+    if (isBattleArmorEntity(entity)) {
+        return locations.filter(location => location.code.startsWith('Trooper ')
+            && query.remainingInternal(location.id, 'committed') > 0).length;
+    }
+    const platoon = locations.find(location => location.code === 'Infantry');
+    return platoon === undefined ? 0 : query.remainingInternal(platoon.id, 'committed');
+}
+
+/**
+ * Infantry anti-'Mech attacks (TW pp. 220-223), declared like physical attacks and resolved in the Weapon Attack
+ * Phase: a leg attack and a swarm, or for a unit already swarming its swarm damage and the end of the swarm.
+ */
+function projectAntiMekAttacks(
+    entity: BaseEntity,
+    index: NonMekRuntimeIndex,
+    state: NonMekUnitRuntimeState,
+    query: NonMekUnitQueryPort,
+    swarming: string | null,
+): readonly MekPhysicalAttackRow[] {
+    if (!isInfantryFamilyEntity(entity)) return Object.freeze([]);
+    const battleArmor = isBattleArmorEntity(entity);
+    const troopers = activeTroopers(entity, index, query);
+    const active = !query.destroyed() && troopers > 0;
+    const claws = battleArmor ? battleArmorVibroClaws(entity) : 0;
+    const row = (
+        kind: 'leg-attack' | 'swarm' | 'end-swarm',
+        facts: Pick<MekPhysicalAttackRow, 'kind' | 'reach'> & Partial<Pick<MekPhysicalAttackRow,
+            'hitTable' | 'onlyTarget' | 'damageGroupSize' | 'critical'>> & Readonly<{
+                label?: string;
+                modifiers?: readonly Readonly<{ label: string; modifier: number }>[] | null;
+                damage?: number;
+            }>,
+    ): MekPhysicalAttackRow | null => {
+        const action = entity.intrinsicWeapons().find(candidate => candidate.kind === kind);
+        if (!action) return null;
+        const target = Object.freeze({ kind: 'intrinsic' as const, actionId: action.id });
+        const modifiers = facts.modifiers ?? [];
+        const available = active && facts.modifiers !== null;
+        const selection = attackerActionSelection(state.attackerTargeting, target);
+        const { label, modifiers: _modifiers, damage, ...rowFacts } = facts;
+        return Object.freeze({
+            target,
+            label: label ?? action.name,
+            locationIds: Object.freeze([]),
+            locationCodes: Object.freeze([]),
+            hitModifiers: Object.freeze([modifiers.reduce((total, item) => total + item.modifier, 0)]),
+            hitModifierBreakdown: Object.freeze(modifiers.filter(item => item.modifier !== 0)),
+            available,
+            selectable: available,
+            firingHeat: 0,
+            meetsWaterCover: true,
+            effect: damage === undefined ? Object.freeze({ kind: 'none' as const }) : Object.freeze({
+                kind: 'damage' as const, damage, maximumDamage: damage, baseDamage: damage, weakened: false, boosted: false,
+            }),
+            ...rowFacts,
+            ...(selection === undefined ? {} : { selection }),
+        });
+    };
+    const trooperModifiers = (attack: 'leg-attack' | 'swarm') => {
+        const modifier = antiMekTrooperModifier(attack, battleArmor, troopers);
+        return modifier === null ? null : [
+            Object.freeze({ label: 'Troopers', modifier }),
+            ...(attack === 'swarm' && entity.equipment().some(mount => isMagnetClawEquipment(mount.equipment))
+                ? [Object.freeze({ label: 'Magnetic Claws', modifier: SWARM_MAGNETIC_CLAW_MODIFIER })] : []),
+        ];
+    };
+    const rows = swarming === null ? [
+        row('leg-attack', {
+            kind: 'leg-attack', reach: 'legs-in-hex', hitTable: 'kick', critical: true,
+            modifiers: trooperModifiers('leg-attack'), damage: LEG_ATTACK_DAMAGE + claws,
+        }),
+        row('swarm', { kind: 'swarm', reach: 'swarmable-in-hex', modifiers: trooperModifiers('swarm') }),
+    ] : [
+        // Swarm damage always hits: battle armor's on one location, a platoon's in 2-point groupings (TW p. 223).
+        row('swarm', {
+            kind: 'swarm-damage', reach: 'swarmed-in-hex', onlyTarget: swarming, hitTable: 'swarm', label: 'Swarm Damage',
+            ...(isBattleArmorEntity(entity)
+                ? { damage: battleArmorSwarmDamage(entity, troopers), critical: true as const }
+                : {
+                    damage: isInfantryEntity(entity) ? platoonAttack(entity, troopers).damageByTroopers[troopers] ?? 0 : 0,
+                    damageGroupSize: PLATOON_SWARM_DAMAGE_GROUP,
+                }),
+        }),
+        row('end-swarm', { kind: 'end-swarm', reach: 'swarmed-in-hex', onlyTarget: swarming }),
+    ];
+    return Object.freeze(rows.filter((candidate): candidate is MekPhysicalAttackRow => candidate !== null));
 }
 
 /** The platoon's attack and disposable weapon attack with the troopers it has now, by platoon weapon role. */
@@ -199,7 +328,6 @@ function platoonAttackRows(
 function withPlatoonAttack(
     row: EquipmentPanelComponent,
     attack: PlatoonAttackFacts,
-    label: string,
 ): EquipmentPanelComponent {
     const weapon = row.weapon;
     if (!weapon) return row;
@@ -211,7 +339,6 @@ function withPlatoonAttack(
     const band = farthest / 3;
     return Object.freeze({
         ...row,
-        label,
         weapon: Object.freeze({
             ...weapon,
             selectable: weapon.selectable && attack.troopers > 0,
@@ -230,9 +357,11 @@ function projectComponent(
     entity: BaseEntity,
     index: NonMekRuntimeIndex,
     ruleset: CBTRuleset,
+    optionalRules: OptionalRules,
     state: NonMekUnitRuntimeState,
     query: NonMekUnitQueryPort,
     componentId: ComponentId,
+    baseLabel: string,
     targets: readonly EquipmentPanelTarget[],
     targetingComputer: ComponentToHitTargetingComputerFacts | null,
     hpgBlocksWeaponFire: boolean,
@@ -249,6 +378,7 @@ function projectComponent(
     const previewStatus = query.componentStatus(componentId, 'preview');
     const modeDefinition = nonMekComponentModes(entity, equipment, ruleset);
     const mode = effectiveNonMekComponentMode(entity, index, state, ruleset, componentId);
+    const heatOrDamageWeapon = nonMekHeatOrDamageWeapon(entity, equipment);
     const locations = mount.getOccupiedLocations().map(code => {
         const location = [...index.locations.values()].find(candidate => candidate.code === code);
         return Object.freeze({
@@ -347,9 +477,14 @@ function projectComponent(
     const effectiveDamage = equipment instanceof WeaponEquipment
         ? bombast?.damage ?? equipment.damage
         : 0;
+    const weaponTypes = equipment instanceof WeaponEquipment
+        ? new Set(equipmentPanelWeaponTypes(equipment, selectedAmmo))
+        : new Set<WeaponType>();
     const effectiveWeaponTypes = equipment instanceof WeaponEquipment
         ? Object.freeze([...new Set([
-            ...equipmentPanelWeaponTypes(equipment, selectedAmmo),
+            ...(heatOrDamageWeapon
+                ? applyFlamerWeaponTypes(heatOrDamageWeapon, mode, weaponTypes, ruleset, optionalRules)
+                : weaponTypes),
             ...(ammoSourceCandidates.some(candidate => candidate.source.hotLoaded
                 && candidate.source.status !== 'destroyed'
                 && candidate.source.capacity - (state.ammo.get(candidate.source.componentId)?.shotsSpent ?? 0) > 0
@@ -394,8 +529,11 @@ function projectComponent(
             ...(prototypeMaximumHeat > 0 && entity.unitType() !== 'Aero'
                 ? { heatSuffix: '*' as const }
                 : {}),
+            ...(state.turn.firedWeapons?.includes(componentId) ? { firedThisTurn: true as const } : {}),
             selectable: !query.destroyed()
                 && status === 'available'
+                // A weapon fires once a turn.
+                && state.turn.firedWeapons?.includes(componentId) !== true
                 && componentState?.jammed !== true
                 && vehicleRules?.fireBlockedComponentIds.has(componentId) !== true
                 && infantryRules?.fireBlockedComponentIds.has(componentId) !== true
@@ -429,7 +567,9 @@ function projectComponent(
         : undefined;
     return Object.freeze({
         componentId,
-        label: mount.displayName(),
+        label: heatOrDamageWeapon
+            ? flamerDisplayLabel(baseLabel, heatOrDamageWeapon, mode, ruleset, optionalRules)
+            : baseLabel,
         ...(equipment === undefined ? {} : { equipment }),
         locations: Object.freeze(locations),
         status,
@@ -680,6 +820,8 @@ function projectProtoMekFrenzy(
         available,
         selectable: available,
         firingHeat: 0,
+        // Non-'Mek physical attacks read the standard table, which water cover always meets.
+        meetsWaterCover: true,
         effect: Object.freeze({
             kind: 'damage' as const,
             damage: action.damage.value,
@@ -691,6 +833,8 @@ function projectProtoMekFrenzy(
         ...(selection === undefined ? {} : { selection }),
     });
 }
+
+const NOT_IN_WATER = Object.freeze({ partiallyUnderwater: false, submerged: false });
 
 function projectVehicleCharge(
     entity: BaseEntity,
@@ -735,6 +879,10 @@ function projectVehicleCharge(
         available,
         selectable: available,
         firingHeat: 0,
+        // A charge reads the standard table; Core charges ignore partial cover (p. 66).
+        meetsWaterCover: physicalAttackMeetsWaterCover(ruleset, 'charge', 'standard', NOT_IN_WATER),
+        meetsBuildingCover: physicalAttackMeetsBuildingCover(ruleset, 'charge', 'standard'),
+        kind: 'charge',
         effect: Object.freeze({
             kind: 'damage' as const,
             ...rules.chargeDamage,

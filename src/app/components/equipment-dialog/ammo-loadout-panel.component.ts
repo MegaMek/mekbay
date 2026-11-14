@@ -749,6 +749,8 @@ export class AmmoLoadoutPanelComponent {
                     quantity: rows.reduce((sum, row) => sum + (row.ammo?.remaining ?? 0), 0),
                     maxQuantity,
                     hotLoaded: first.ammo.hotLoaded,
+                    hotLoadAllowed: runtime.member.force.getUnitSnapshot(runtime.member.id)?.query.boundRules()
+                        .hotLoadedAmmo === true,
                     unitType: runtime.snapshot().unitType,
                     gameRules: gameRulesFor(runtime.snapshot().ruleset),
                     equipmentRegistry: registry,

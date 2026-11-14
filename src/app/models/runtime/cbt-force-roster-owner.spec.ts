@@ -5,7 +5,7 @@ import {
     prepareCBTForceRosterMutationPlan,
     type CBTForceRosterCommand,
 } from './cbt-force-roster-owner';
-import type { SerializedCBTForceRosterV1 } from './cbt-force-roster';
+import type { SerializedCBTForceRoster } from './cbt-force-roster';
 
 const A = 'unit:a';
 const B = 'unit:b';
@@ -76,8 +76,7 @@ describe('CBT force canonical roster owner boundary', () => {
         expect(Object.keys(cleared.nextRoster.groups[1].members[1])).not.toContain('commander');
         expectSealRosterInvariants(cleared.nextRoster);
 
-        const hostileDuplicateCommander: SerializedCBTForceRosterV1 = Object.freeze({
-            schemaVersion: 1,
+        const hostileDuplicateCommander: SerializedCBTForceRoster = Object.freeze({
             groups: Object.freeze(commanded.nextRoster.groups.map(group => group.groupId !== 'group:alpha'
                 ? group
                 : Object.freeze({
@@ -211,9 +210,8 @@ describe('CBT force canonical roster owner boundary', () => {
     });
 });
 
-function sourceRoster(): SerializedCBTForceRosterV1 {
+function sourceRoster(): SerializedCBTForceRoster {
     return Object.freeze({
-        schemaVersion: 1,
         groups: Object.freeze([
             Object.freeze({
                 groupId: 'group:alpha', order: 0, name: 'Alpha', formationLock: true as const,
@@ -248,7 +246,7 @@ function command<K extends CBTForceRosterCommand['kind']>(
     } as Extract<CBTForceRosterCommand, { readonly kind: K }>;
 }
 
-function ready(commandValue: CBTForceRosterCommand, roster: SerializedCBTForceRosterV1) {
+function ready(commandValue: CBTForceRosterCommand, roster: SerializedCBTForceRoster) {
     const result = prepareCBTForceRosterMutationPlan({ roster, command: commandValue });
     expect(result.kind).toBe('ready');
     if (result.kind !== 'ready') throw new Error(`Expected ready plan, received ${result.reason}`);
@@ -256,14 +254,14 @@ function ready(commandValue: CBTForceRosterCommand, roster: SerializedCBTForceRo
     return result.plan;
 }
 
-function reject(commandValue: CBTForceRosterCommand, roster: SerializedCBTForceRosterV1) {
+function reject(commandValue: CBTForceRosterCommand, roster: SerializedCBTForceRoster) {
     const result = prepareCBTForceRosterMutationPlan({ roster, command: commandValue });
     expect(result.kind).toBe('rejected');
     if (result.kind !== 'rejected') throw new Error('Expected rejected plan');
     return result.reason;
 }
 
-function expectSealRosterInvariants(roster: SerializedCBTForceRosterV1): void {
+function expectSealRosterInvariants(roster: SerializedCBTForceRoster): void {
     for (const group of roster.groups) {
         expect(group.members.filter(member => member.commander === true).length)
             .withContext(`group ${group.groupId} may have at most one commander`)

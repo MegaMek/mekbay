@@ -1,4 +1,5 @@
 import type { MekEntity } from '../../models/entity/entities/mek/mek-entity';
+import type { MekConfig } from '../../models/entity/types/mek';
 import { CanonPipRenderer } from './canon-pip-renderer';
 import { PaperdollGenerator, type PaperdollOptions, type PaperdollPipCounts } from './paperdoll-generator';
 
@@ -18,6 +19,12 @@ export function usesBipedMekPaperdoll(chassis: MekEntity['chassisConfig']): bool
 
 /** Mek-specific defaults and the authored biped map; each view has its own output. */
 export class MekPaperdollGenerator {
+    /** The front or rear armor diagram of a chassis; a LAM is drawn as a biped. */
+    public static armorAsset(config: MekConfig, rear = false): string {
+        const chassis = config === 'Quad' ? 'quad' : config === 'QuadVee' ? 'quadvee' : config === 'Tripod' ? 'tripod' : 'biped';
+        return `/images/paperdolls/${chassis}-armor${rear ? '-back' : ''}.svg`;
+    }
+
     public static async createArmorPaperdoll(
         width: number,
         height: number,

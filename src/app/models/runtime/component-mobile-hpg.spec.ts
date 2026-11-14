@@ -13,7 +13,6 @@ import {
     settleMobileHpgMode,
 } from './component-mobile-hpg';
 import { canPerformMekAction } from './mek-action-availability';
-import { MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION } from './mek-movement-psr-v2';
 import { createDirectMobileHpgRuntimeFixture } from './testing/direct-mek-runtime-fixture';
 
 describe('direct Mobile HPG lifecycle', () => {
@@ -45,7 +44,6 @@ describe('direct Mobile HPG lifecycle', () => {
             
             
             declaration: {
-                schemaVersion: MEK_MOVEMENT_DECLARATION_SCHEMA_VERSION,
                 mode: 'walk',
                 distance: 1,
                 boosterComponentIds: [],
@@ -120,7 +118,7 @@ function endTurn(fixture: Fixture): boolean {
 }
 
 function hpgHeat(fixture: Fixture, componentId: ComponentId): number | undefined {
-    const result = fixture.instance.query().heatProjection('manual');
+    const result = fixture.instance.query().heatProjection();
     expect(result.kind).toBe('supported');
     if (result.kind !== 'supported') return undefined;
     return result.projection.committedSources.find(source =>

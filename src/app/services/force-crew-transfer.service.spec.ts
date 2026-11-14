@@ -260,7 +260,7 @@ function createAlphaStrikeUnit(): ASForceUnit {
 async function createClassicUnit(profiles?: readonly Omit<ForcePerson, 'id'>[]): Promise<CBTForceMember> {
     const fixture = createDirectCommandConsoleRuntimeFixture();
     const instanceId = 'unit:conversion';
-    const initialize = { initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' },
+    const initialize = { profileId: 'pristine', deployment: { id: 'default' },
         scenario: { id: 'megamek', ruleset: CORE_2026_RULESET } };
     const ready = await createMekUnit({ uuid: fixture.identity, instanceId }, fixture.entity, fixture.identity, initialize);
     const unit = ready.serialize();
@@ -268,7 +268,7 @@ async function createClassicUnit(profiles?: readonly Omit<ForcePerson, 'id'>[]):
     const record: SerializedCBTForce = { version: 2, instanceId: cbt.forceId, timestamp: '2026-01-01T00:00:00.000Z',
         name: 'Conversion', type: GameSystem.CBT, cbt: { ...cbt,
             units: [{ instanceId, stateRevision: unit.stateRevision, unit }],
-            roster: { schemaVersion: 1, groups: [{ groupId: 'group:conversion', order: 0, members: [{ instanceId, order: 0 }] }] },
+            roster: { groups: [{ groupId: 'group:conversion', order: 0, members: [{ instanceId, order: 0 }] }] },
         } };
     const data = { getFactionById: () => null, getEraById: () => null,
         getUnitByUuid: () => createEmptyUnit({ uuid: fixture.identity }) } as unknown as DataService;

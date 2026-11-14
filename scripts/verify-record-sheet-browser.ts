@@ -1,7 +1,7 @@
 import '@angular/compiler';
 import { parseEntity } from '../src/app/models/entity/parse-entity';
 import { buildEquipmentRegistry } from '../src/app/services/catalogs/equipment-catalog-builder';
-import { calculateBattleValueDetails } from '../src/app/models/entity/utils/battle-value';
+import { calculateBattleValueDetails } from '../src/app/models/entity/utils/battle-value/factory';
 import { RecordSheetSvgGenerator } from '../src/app/utils/sheets/record-sheet-svg-generator';
 import { recordSheetLayoutProfile, resolveRecordSheetLayout } from '../src/app/utils/sheets/layouts/record-sheet-layout-resolver';
 import { buildMekRuntimeIndex } from '../src/app/models/runtime/mek-runtime-index';
@@ -11,7 +11,8 @@ import { createMekHeatContextV2 } from '../src/app/models/runtime/mek-heat-state
 import { initializeUnitState } from '../src/app/models/runtime/unit-state-initializer';
 import { projectMekRecordSheet } from '../src/app/models/runtime/mek-record-sheet';
 import { projectNonMekRecordSheet } from '../src/app/models/runtime/non-mek-record-sheet';
-import { createNonMekRuntimeBinding, queryNonMekRuntime } from '../src/app/models/runtime/non-mek-unit-instance';
+import { createNonMekRuntimeBinding, createPristineNonMekUnitState, queryNonMekRuntime } from '../src/app/models/runtime/non-mek-unit-instance';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../src/app/models/runtime/bound-optional-rules';
 import { MM_DATA_MEK_SHEET_BINDING_MANIFEST } from '../src/app/models/mek-sheet-binding';
 import { bindMekRecordSheet } from '../src/app/components/page-viewer/mek-record-sheet-binder';
 import { bindNonMekRecordSheet } from '../src/app/components/page-viewer/non-mek-record-sheet-binder';
@@ -110,17 +111,17 @@ w.sheetAuditGenerate = async (nativeText:string, file:string, ruleset:any) => {
     try {
         if(entity.entityType==='Mek') {
             const mek=entity as any; const index=buildMekRuntimeIndex(mek);
-            const scenario={id:'megamek',options:{forcedWithdrawal:true,sprinting:false,hotLoadedAmmo:false}};
-            const init=initializeUnitState(mek,index,entity.uuid(),{initializerRevision:1,profileId:'pristine',deployment:{id:'default'},scenario:{...scenario,ruleset}});
+            const scenario={id:'megamek',options:BOUND_OPTIONAL_RULE_DEFAULTS};
+            const init=initializeUnitState(mek,index,entity.uuid(),{profileId:'pristine',deployment:{id:'default'},scenario:{...scenario,ruleset}});
             const heat=createMekHeatContextV2(mek,index,ruleset,scenario);
             const mechanics=createMekMechanicsContextV2(mek,index,ruleset,scenario);
             if(mechanics.kind!=='supported') throw new Error(JSON.stringify(mekMechanicsContextCapabilityV2(mechanics)));
             const prepared=createMekRuntimeBinding(mek,index,ruleset,init.state,init.deployment.crewAssignment,heat,mechanics);
             snapshot={...projectMekRecordSheet(mek,index,ruleset,prepared.state,queryMekRuntime(prepared.binding,prepared.state),
-                {revision:0,targets:[]},{pristine:bv,current:bv,adjusted:bv}),'editContext':{owner:{},state:prepared.state}};
+                {revision:0,targets:[]},{pristine:bv,current:bv,adjusted:bv},false,{}),'editContext':{owner:{},state:prepared.state}};
             for(const svg of pages){const binding=bindMekRecordSheet(svg,MM_DATA_MEK_SHEET_BINDING_MANIFEST,snapshot);binding.render(snapshot);binding.destroy();}
         } else {
-            const prepared=createNonMekRuntimeBinding(entity,ruleset);
+            const prepared=createNonMekRuntimeBinding(entity,ruleset,createPristineNonMekUnitState(entity),BOUND_OPTIONAL_RULE_DEFAULTS);
             snapshot={...projectNonMekRecordSheet(entity,prepared.binding.index,prepared.state,ruleset,
                 queryNonMekRuntime(prepared.binding,prepared.state),bv,bv),editContext:{owner:{},state:prepared.state}};
             for(const svg of pages){const binding=bindNonMekRecordSheet(svg,snapshot);binding.render(snapshot);binding.destroy();}

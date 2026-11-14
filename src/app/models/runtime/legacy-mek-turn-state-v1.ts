@@ -9,6 +9,13 @@ import {
     isUnitCover,
     type UnitCover,
 } from '../unit-cover.model';
+import {
+    canonicalTurnHeatLedger,
+    isTurnHeatSourceId,
+    MAX_HEAT_VALUE,
+    PRISTINE_TURN_HEAT_LEDGER,
+    type TurnHeatLedger,
+} from './turn-heat-ledger';
 
 const MAX_MEK_TURN_COLLECTION_ENTRIES = 256;
 const MAX_MEK_TURN_LOCATION_ENTRIES = 64;
@@ -167,6 +174,45 @@ export function canonicalizeLegacyMekTurnStateV1(value: LegacyMekTurnStateV1): L
             '$.equipmentStateChanged',
         ),
     });
+}
+
+/** V1 heat, fractional or not, in the whole points V2 keeps; null for a value that is no heat. */
+export function legacyHeatPointsV1(value: unknown): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+    const points = Math.round(value) || 0;
+    return points <= MAX_HEAT_VALUE ? points : null;
+}
+
+/**
+ * The V2 heat ledger of a V1 turn, for every unit family: V1 acknowledged each settled heat source by a signature that
+ * leads with the heat it settled, and booked the dissipation that heat used. A turn with nothing settled stays unsettled.
+ */
+export function legacyTurnHeatLedgerV1(
+    turn: Pick<LegacyMekTurnStateV1, 'acknowledgedHeatSources' | 'heatDissipationConsumed'>,
+    issues: string[],
+): TurnHeatLedger {
+    const settledHeat = new Map<string, number>();
+    let skipped = false;
+    for (const [sourceId, signature] of turn.acknowledgedHeatSources) {
+        let heat: unknown;
+        try {
+            heat = (JSON.parse(signature) as unknown[])[0];
+        } catch {
+            skipped = true;
+            continue;
+        }
+        const points = legacyHeatPointsV1(heat);
+        // V1 allowed longer ids than a ledger holds; such a source settles nothing.
+        if (points === null || (points > 0 && !isTurnHeatSourceId(sourceId))) {
+            skipped = true;
+            continue;
+        }
+        if (points > 0) settledHeat.set(sourceId, points);
+    }
+    if (skipped) issues.push('Unreadable V1 heat acknowledgements were skipped.');
+    const consumed = legacyHeatPointsV1(turn.heatDissipationConsumed) ?? 0;
+    if (settledHeat.size === 0 && consumed === 0) return PRISTINE_TURN_HEAT_LEDGER;
+    return canonicalTurnHeatLedger(settledHeat, consumed, '$', fail);
 }
 
 /** Reads production V1 turn facts, skipping malformed fields with concise warnings. */

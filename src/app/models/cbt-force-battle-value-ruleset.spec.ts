@@ -67,7 +67,7 @@ describe('unit BV under each ruleset', () => {
 
     async function undamagedUnit(ruleset: CBTRuleset) {
         return createMekUnit({ uuid, instanceId: `unit:bv-${ruleset}` }, caselessMek(), uuid, {
-            initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' },
+            profileId: 'pristine', deployment: { id: 'default' },
             scenario: { id: 'megamek', ruleset },
         });
     }

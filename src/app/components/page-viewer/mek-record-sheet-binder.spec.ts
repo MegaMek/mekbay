@@ -20,6 +20,7 @@ import { bindMekRecordSheet } from './mek-record-sheet-binder';
 import { RECORD_SHEET_FRESH_DAMAGE_DURATION_MS } from '../../utils/sheets/record-sheet-damage-highlights';
 import { RECORD_SHEET_CAP_HEIGHT } from '../../utils/sheets/record-sheet-typography';
 import type { RecordSheetInteraction } from './record-sheet-interaction';
+import { PRISTINE_TURN_HEAT_LEDGER } from '../../models/runtime/turn-heat-ledger';
 
 const editContext = createUnitEditContextFixture();
 
@@ -237,6 +238,22 @@ describe('Mek record-sheet binder', () => {
             kind: 'random-hit', element: control, context: editContext(7),
         })]);
         expect(control.getAttribute('tabindex')).toBe('0');
+    });
+
+    it('names the infantry swarming the unit under SWARMED, a link that shows it', () => {
+        const svg = sheet();
+        svg.insertAdjacentHTML('beforeend', `<g class="unitConditionBanner" condition="swarmed" display="none">
+            <rect class="unitConditionBannerRect" y="10" height="15"></rect><text class="unitConditionBannerText"></text></g>`);
+        const swarmed = { ...snapshot(), conditions: [...snapshot().conditions, 'swarmed'] } as MekRecordSheetSnapshot;
+        const interactions: RecordSheetInteraction[] = [];
+        bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, swarmed, interaction => interactions.push(interaction),
+            undefined, { ...inventoryFrom(swarmed), swarmedBy: 'Elemental Point 1' });
+        const line = svg.querySelector<SVGElement>('.unitConditionBanner[condition="swarmed"] > .unitConditionDetail')!;
+
+        expect(line.getAttribute('display')).toBe('');
+        expect(line.textContent).toBe('by Elemental Point 1 \u203a');
+        line.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+        expect(interactions).toEqual([jasmine.objectContaining({ kind: 'show-swarmer', context: editContext(7) })]);
     });
 
     it('renders pristine pips from the entity projection and damage only from runtime overlay values', () => {
@@ -1351,7 +1368,7 @@ describe('Mek record-sheet binder', () => {
         binding.destroy();
     });
 
-    it('ports production heat projection controls without treating automatic heat as manually applicable', () => {
+    it('draws the heat bar to where End Turn puts the heat, without treating calculated heat as manually applicable', () => {
         const svg = sheet();
         svg.querySelector('#heatScale')!.innerHTML = `
             ${Array.from({ length: 11 }, (_, heat) =>
@@ -1366,7 +1383,7 @@ describe('Mek record-sheet binder', () => {
         const automatic = {
             ...base,
             heat: { current: 2, previous: 1, heatsinksOff: 0 },
-            heatPolicy: 'automatic',
+            endTurnCalculatesHeat: true,
             heatProjection: {
                 kind: 'supported',
                 projection: {
@@ -1375,7 +1392,7 @@ describe('Mek record-sheet binder', () => {
                     committedSources: [{ id: 'weapons', label: 'Weapons', value: 15 }],
                     capacity: 0,
                     underwaterBonus: 0,
-                    previouslyConsumedDissipation: 0,
+                    ledger: PRISTINE_TURN_HEAT_LEDGER, dissipationBalance: 0,
                     remainingDissipation: 0,
                     generated: 15,
                     dissipated: 0,
@@ -1404,7 +1421,9 @@ describe('Mek record-sheet binder', () => {
         });
         expect(svg.querySelector('#next-arrow')).not.toBeNull();
         expect(svg.querySelector('#projection-arrow')).toBeNull();
-        expect(svg.querySelector('#heat-projection-path')).toBeNull();
+        // The bar now ends at NEXT, where End Turn puts the heat; the calculation keeps a marker of its own.
+        expect(svg.querySelector('#heat-projection-path')).not.toBeNull();
+        expect(svg.querySelector('#heat-projection-target-marker')).not.toBeNull();
         expect(svg.querySelector('#heat-projection-overflow-text')).toBeNull();
         expect(svg.querySelector('.overflowFrame')?.getAttribute('stroke')).toBe('#000');
         expect(svg.querySelector('#heatDataPanel')?.classList.contains('heatApplicationAvailable')).toBeTrue();
@@ -1412,7 +1431,7 @@ describe('Mek record-sheet binder', () => {
 
         binding.render({
             ...automatic,
-            heatPolicy: 'manual',
+            endTurnCalculatesHeat: false,
         });
         expect(svg.querySelector('#heat-projection-target-marker')).not.toBeNull();
         expect(svg.querySelector('#heat-projection-target-marker')?.getAttribute('points'))
@@ -1439,7 +1458,7 @@ describe('Mek record-sheet binder', () => {
                     committedSources: [],
                     capacity: 0,
                     underwaterBonus: 0,
-                    previouslyConsumedDissipation: 0,
+                    ledger: PRISTINE_TURN_HEAT_LEDGER, dissipationBalance: 0,
                     remainingDissipation: 0,
                     generated: 17,
                     dissipated: 0,
@@ -2109,7 +2128,7 @@ function snapshot(): MekRecordSheetSnapshot {
                 declaration: { legal: true, maximumMp: 5, reasons: [], warnings: [] },
             },
             psr: {
-                movement: { schemaVersion: 1, mode: 'run', distance: 3, boosterComponentIds: [] },
+                movement: { mode: 'run', distance: 3, boosterComponentIds: [] },
                 action: null,
                 damageThisPhase: 0,
                 checks: [],
@@ -2117,7 +2136,7 @@ function snapshot(): MekRecordSheetSnapshot {
         },
         heatSinks: { count: 4, unavailableUnits: 1 },
         heat: { current: 1, previous: 0, heatsinksOff: 1 },
-        heatPolicy: 'manual',
+        endTurnCalculatesHeat: false,
         heatProjection: {
             kind: 'supported',
             projection: {
@@ -2125,7 +2144,7 @@ function snapshot(): MekRecordSheetSnapshot {
                 sources: [],
                 committedSources: [],
                 capacity: 2,
-                previouslyConsumedDissipation: 0,
+                ledger: PRISTINE_TURN_HEAT_LEDGER, dissipationBalance: 2,
                 remainingDissipation: 2,
                 generated: 0,
                 dissipated: 1,

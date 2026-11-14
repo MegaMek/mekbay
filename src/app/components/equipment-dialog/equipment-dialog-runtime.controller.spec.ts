@@ -811,7 +811,7 @@ describe('EquipmentDialogRuntimeController', () => {
         spyOn(Math, 'random').and.returnValue(5 / 6);
         const controller = new EquipmentDialogRuntimeController(
             member,
-            { cbtAutomationMode: () => 'no' } as unknown as OptionsService,
+            { cbtAutomationMode: () => 'no', options: () => ({ realPhases: false }) } as unknown as OptionsService,
             toast,
         );
 

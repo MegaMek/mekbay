@@ -457,7 +457,7 @@ export class WeaponTargetsOverlayController {
 
     private unassignedMovement(options: WeaponTargetsOverlayOpenOptions): boolean {
         return isCBTMekForceMember(options.member)
-            && options.member.force.getMekTurnPanelSnapshot(options.member.id, 'manual')
+            && options.member.force.getMekTurnPanelSnapshot(options.member.id)
                 ?.movementState.movement === null;
     }
 

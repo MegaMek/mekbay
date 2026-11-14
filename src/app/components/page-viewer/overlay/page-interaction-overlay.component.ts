@@ -97,7 +97,6 @@ export class PageInteractionOverlayComponent {
         const member = this.member();
         return isCBTMekForceMember(member) ? member.force.getMekTurnPanelSnapshot(
             member.id,
-            heatAutomationPolicy(this.optionsService),
         ) : null;
     });
     readonly notificationSnapshot = computed(() => {

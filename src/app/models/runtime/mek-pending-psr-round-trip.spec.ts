@@ -44,7 +44,7 @@ describe('pending PSRs across a save and load under the same ruleset', () => {
             const fixture = createDirectMekRuntimeFixture(ruleset);
             commit(fixture.instance, { type: 'hit-critical', slotId: systemSlot(fixture, 'Gyro').id, hits: 1, target: 'committed' });
             commit(fixture.instance, { type: 'declare-mek-movement', realPhases: true,
-                declaration: { schemaVersion: 1, mode: 'run', distance: 2, boosterComponentIds: [] } });
+                declaration: { mode: 'run', distance: 2, boosterComponentIds: [] } });
             // A later event of the phase that the immediate check does not count.
             commit(fixture.instance, { type: 'record-mek-physical-attack-checks', attackId: 'attack:charge', checks: ['charged'] });
             const before = fixture.instance.query().mekPilotChecks();
@@ -78,7 +78,7 @@ function pendingCheckCommands(fixture: DirectMekRuntimeFixture): readonly CBTUni
         { type: 'hit-critical', slotId: systemSlot(fixture, 'Gyro').id, hits: 1, target: 'committed' },
         { type: 'hit-critical', slotId: systemSlot(fixture, 'Hip', 'LL').id, hits: 1, target: 'committed' },
         ...faces.map(face => ({ type: 'damage-armor' as const, faceId: face.id, amount: 7, target: 'committed' as const })),
-        { type: 'declare-mek-movement', declaration: { schemaVersion: 1, mode: 'run', distance: 2, boosterComponentIds: [] } },
+        { type: 'declare-mek-movement', declaration: { mode: 'run', distance: 2, boosterComponentIds: [] } },
         { type: 'record-mek-physical-attack-checks', attackId: 'attack:kick', checks: ['kicked'] },
         { type: 'record-mek-physical-attack-checks', attackId: 'attack:charge', checks: ['charged'] },
     ];
@@ -106,7 +106,6 @@ function systemSlot(fixture: DirectMekRuntimeFixture, systemType: string, locati
 function restoreUnder(fixture: DirectMekRuntimeFixture, unit: CBTMekUnit, ruleset: CBTRuleset): Promise<CBTMekUnit> {
     const saved = JSON.parse(JSON.stringify(unit.serialize())) as ReturnType<CBTMekUnit['serialize']>;
     return restoreMekUnit(saved, fixture.entity, fixture.identity, {
-        initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
         profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
         deployment: saved.deployment.values,
         scenario: { id: 'megamek', ruleset },

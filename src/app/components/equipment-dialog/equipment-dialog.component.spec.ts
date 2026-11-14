@@ -48,8 +48,7 @@ function createTurnSnapshot(
             airborne: null,
             cover: null,
             weaponsHeat: 0,
-            acknowledgedHeatSources: new Set(),
-            heatDissipationConsumed: 0,
+            settledHeat: new Map(),
             spotting: false,
             phaseStateChanged: false,
         },
@@ -358,7 +357,6 @@ describe('EquipmentDialogComponent', () => {
             defenseModifierTotal: { modifier: 1 },
             movementState: {
                 movement: {
-                    schemaVersion: 1,
                     mode: 'walk',
                     distance: 1,
                     boosterComponentIds: [],

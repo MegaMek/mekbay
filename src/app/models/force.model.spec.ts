@@ -25,7 +25,6 @@ import { NO_FORMATION } from '../utils/formation/formation-type.model';
 import { C3NetworkType } from './c3-network.model';
 import type { PreparedCBTForcePersistenceV2 } from './runtime/force-persistence-boundary';
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     validateSerializedCBTForceV2,
     type SerializedCBTEncounterStateV2,
     type SerializedCBTForceV2,
@@ -1068,19 +1067,14 @@ describe('Force CBT V2 persistence boundary', () => {
         expect(changed.cbt!.encounter).toEqual({ networks: [] });
     });
 
-    it('refuses unsupported V2 envelopes instead of installing a compatibility wrapper', async () => {
+    it('loads no CBT state from an unreadable V2 envelope', async () => {
         const source = new TestForce(GameSystem.CBT);
         const persisted = await source.serializeForPersistence();
-        const forwardVersion = CBT_FORCE_PERSISTENCE_SCHEMA_VERSION + 1;
-        const forwardValue = {
-            schemaVersion: forwardVersion,
-            future: true,
-        } as unknown as SerializedCBTForceV2;
-        const forwardData = { ...persisted, cbt: forwardValue };
-        const forward = new TestForce(GameSystem.CBT);
-        forward.loadSerialized(forwardData);
-        expect(await forward.loadCBTForceV2Persistence(forwardData)).toBeFalse();
-        expect(forward.hasCBTForceV2()).toBeFalse();
+        const unreadable = { ...persisted, cbt: { unknown: true } as unknown as SerializedCBTForceV2 };
+        const force = new TestForce(GameSystem.CBT);
+        force.loadSerialized(unreadable);
+        expect(await force.loadCBTForceV2Persistence(unreadable)).toBeFalse();
+        expect(force.hasCBTForceV2()).toBeFalse();
     });
 
     it('serializes overlapping requests in revision order without publishing stale state', async () => {

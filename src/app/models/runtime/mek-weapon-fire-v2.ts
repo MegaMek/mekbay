@@ -22,16 +22,16 @@ import {
 } from './component-bombast-laser';
 import {
     ppcCapacitorFireTransition,
+    ppcCapacitorFiringHeat,
     PPC_CAPACITOR_CHARGED_STATE,
     PPC_CAPACITOR_CHARGING_STATE,
-    PPC_CAPACITOR_HEAT_BONUS,
 } from './component-ppc-capacitor';
 import {
     canonicalizeMekTurnStateV2,
     MAX_MEK_TURN_NUMBER,
     type MekTurnStateV2,
 } from './mek-turn-state-v2';
-import { mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
+import { withFiredWeapons } from './cbt-unit-runtime';
 import type {
     BombastLaserRuntimeState,
     MekUnitRuntimeState,
@@ -40,6 +40,7 @@ import type {
 } from './runtime-state';
 import type { MekRuntimeIndex } from './mek-runtime-index';
 import { equipmentForComponent } from './mek-runtime-index';
+import { componentHeatSourceId } from './turn-heat-ledger';
 import {
     mekAmmoLoadout,
     mekIntrinsicMagazine,
@@ -210,13 +211,8 @@ export function planMekWeaponFireV2(
                     return rejected('UNAVAILABLE_WEAPON');
                 }
                 if (lifecycle?.chargeState === PPC_CAPACITOR_CHARGED_STATE) {
-                    // A charged capacitor is also a passive +5 heat source. An exact durable
-                    // acknowledgement proves that +5 was already consolidated; firing replaces
-                    // that settled source and adds only the weapon's base heat, even if policy
-                    // changed after settlement.
-                    if (!isAcknowledgedChargedPpcSource(runtime, weaponId)) {
-                        heat += PPC_CAPACITOR_HEAT_BONUS;
-                    }
+                    // A charged capacitor is also a passive +5 heat source; firing replaces it.
+                    heat += ppcCapacitorFiringHeat(runtime.turnState(), weaponId);
                 }
             }
             ppcTransitions.push(ppc);
@@ -294,19 +290,6 @@ export function planMekWeaponFireV2(
     });
 }
 
-function isAcknowledgedChargedPpcSource(
-    runtime: MekWeaponFireRuntimeViewV2,
-    weaponId: ComponentId,
-): boolean {
-    const sourceId = `ppc-capacitor:${weaponId}`;
-    return runtime.turnState().acknowledgedHeatSources.get(sourceId) === mekHeatSourceSignatureV2({
-        id: sourceId,
-        label: 'PPC Capacitor',
-        value: PPC_CAPACITOR_HEAT_BONUS,
-        replacedByFiringEntryId: weaponId,
-    });
-}
-
 /** Applies a previously validated plan to one detached snapshot; no revision is assigned here. */
 export function applyMekWeaponFirePlanV2(
     state: MekUnitRuntimeState,
@@ -333,15 +316,15 @@ export function applyMekWeaponFirePlanV2(
         }));
     }
 
-    const acknowledgedHeatSources = new Map(state.turn.acknowledgedHeatSources);
-    if (plan.heat > 0) acknowledgedHeatSources.delete('weapons');
-    for (const transition of plan.ppcTransitions) {
-        acknowledgedHeatSources.delete(`ppc-capacitor:${transition.weaponId}`);
-    }
+    // A discharged capacitor's settled heat goes with it, so charging it again counts.
+    const settledHeat = new Map(state.turn.settledHeat);
+    for (const transition of plan.ppcTransitions) settledHeat.delete(componentHeatSourceId('ppc-capacitor', transition.weaponId));
+    const firedWeapons = withFiredWeapons(state.turn.firedWeapons, plan.selections.map(selection => selection.weaponId));
     const turn = canonicalizeMekTurnStateV2({
         ...state.turn,
         weaponsHeat: state.turn.weaponsHeat + plan.heat,
-        acknowledgedHeatSources,
+        ...(firedWeapons === undefined ? {} : { firedWeapons }),
+        settledHeat,
     });
     return {
         ...spent,

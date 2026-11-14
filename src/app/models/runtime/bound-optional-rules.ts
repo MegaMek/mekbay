@@ -19,6 +19,11 @@ export type BoundOptionalRules = Readonly<Record<keyof typeof BOUND_OPTIONAL_RUL
 
 const BOUND_KEYS = Object.freeze(Object.keys(BOUND_OPTIONAL_RULE_DEFAULTS) as (keyof BoundOptionalRules)[]);
 
+/** Whether an optional rule is bound into units, so changing it rebinds the loaded forces. */
+export function isBoundOptionalRule(key: keyof CBTOptionalRules): key is keyof BoundOptionalRules {
+    return (BOUND_KEYS as readonly string[]).includes(key);
+}
+
 /** The bound rules as the application options set them; an option they lack plays its default. */
 export function boundOptionalRulesFromOptions(rules: Partial<CBTOptionalRules>): BoundOptionalRules {
     return Object.freeze(Object.fromEntries(BOUND_KEYS.map(key =>

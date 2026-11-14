@@ -5,8 +5,6 @@ import { asUnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { asComponentId } from '../entity/entity-identifiers';
 import {
     ForceEnvelopeValidationError,
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
-    CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     asSavedTargetRef,
     createSavedTargetRef,
@@ -18,7 +16,7 @@ import {
     type SerializedCBTForceV2,
 } from './persistence-v2';
 import { MAX_MEK_TURN_COLLECTION_ENTRIES } from './mek-turn-state-v2';
-import { MAX_HEAT_VALUE } from './cbt-unit-runtime';
+import { MAX_HEAT_VALUE } from './turn-heat-ledger';
 import { MAX_MEK_HEATSINKS_OFF_V2 } from './mek-heat-state-v2';
 import { prepareCBTForceRosterMutationPlan } from './cbt-force-roster-owner';
 import { isSerializedNonMekUnit } from './non-mek-unit-persistence';
@@ -282,20 +280,25 @@ describe('V2 force persistence', () => {
         await expectCode(validateSerializedCBTForceV2(asForce(missingAssignment)), 'INVALID_SHAPE');
     });
 
+    it('requires the crew positions of a Mek unit', async () => {
+        const noPositions = clone(mixedForce());
+        noPositions.units[0].unit.crew = {};
+        await expectCode(validateSerializedCBTForceV2(asForce(noPositions)), 'INVALID_SHAPE');
+    });
+
     it('validates bounded canonical nonmovement turn payloads and rejects duplicate movement authority', async () => {
         const valid = clone(mixedForce());
         valid.units[0].unit.turn = {
-            schemaVersion: 1,
-            acknowledgedHeatSources: [
-                { sourceId: 'movement', signature: '[2,null,null]' },
-                { sourceId: 'weapons', signature: '[6,null,null]' },
+            settledHeat: [
+                { sourceId: 'movement', heat: 2 },
+                { sourceId: 'weapons', heat: 6 },
             ],
             spotting: true,
         };
         await expectAsync(validateSerializedCBTForceV2(asForce(valid))).toBeResolved();
 
         const unsorted = clone(valid);
-        unsorted.units[0].unit.turn.acknowledgedHeatSources.reverse();
+        unsorted.units[0].unit.turn.settledHeat.reverse();
         await expectCode(validateSerializedCBTForceV2(asForce(unsorted)), 'INVALID_SHAPE');
 
         const duplicateMovement = clone(valid);
@@ -304,9 +307,9 @@ describe('V2 force persistence', () => {
         await expectCode(validateSerializedCBTForceV2(asForce(duplicateMovement)), 'INVALID_SHAPE');
 
         const oversized = clone(valid);
-        oversized.units[0].unit.turn.acknowledgedHeatSources = Array.from(
+        oversized.units[0].unit.turn.settledHeat = Array.from(
             { length: MAX_MEK_TURN_COLLECTION_ENTRIES + 1 },
-            (_, index) => ({ sourceId: `source:${index.toString().padStart(3, '0')}`, signature: '[]' }),
+            (_, index) => ({ sourceId: `source:${index.toString().padStart(3, '0')}`, heat: 1 }),
         );
         await expectCode(validateSerializedCBTForceV2(asForce(oversized)), 'INVALID_SHAPE');
 
@@ -329,6 +332,11 @@ describe('V2 force persistence', () => {
             (candidate: typeof valid) => { candidate.units[0].unit.heat.heat = MAX_HEAT_VALUE + 1; },
             (candidate: typeof valid) => { candidate.units[0].unit.heat.previous = 0; },
             (candidate: typeof valid) => { candidate.units[0].unit.heat.pendingOverride = -1; },
+            (candidate: typeof valid) => { candidate.units[0].unit.heat.pendingOffset = 0.5; },
+            (candidate: typeof valid) => {
+                delete candidate.units[0].unit.heat.pendingOverride;
+                candidate.units[0].unit.heat.pendingOffset = 2;
+            },
             (candidate: typeof valid) => {
                 candidate.units[0].unit.heat.heatsinksOff = MAX_MEK_HEATSINKS_OFF_V2 + 1;
             },
@@ -555,13 +563,11 @@ function mixedForce(): SerializedCBTForceV2 {
     const vehicle = v2Entry('unit:vehicle', UUID_B);
     const other = v2Entry('unit:other', UUID_C);
     return {
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId: asForceId('force:test'),
         forceRevision: 4,
         history: emptyRuntimeHistory(),
         units: [mek, vehicle, other],
         roster: {
-            schemaVersion: 1,
             groups: [{
                 groupId: 'group:test',
                 order: 0,
@@ -593,29 +599,26 @@ function v2Unit(instanceId: string, uuid: typeof UUID_A): SerializedCBTUnitV2 {
     const target = asSavedTargetRef('location:ct:internal');
     const entity = uuid;
     return {
-        schemaVersion: CBT_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId,
         entity,
         baselineRefAtSave: {
             entity,
-            initialStateProfile: { schemaVersion: 1, initializerRevision: 1, profileId: 'pristine' },
+            initialStateProfile: { profileId: 'pristine' },
         },
         blueprintReferences: {
-            schemaVersion: 1,
             targets: { [target]: { kind: 'location-section', location: 'CT', section: 'internal' } },
         },
         deployment: {
-            schemaVersion: 2,
-            values: { id: 'default', crewAssignment: { schemaVersion: 1, positions: [] } },
+            values: { id: 'default', crewAssignment: { positions: [] } },
         },
         stateRevision: 3,
-        ruleChecks: { schemaVersion: 1, entries: [] },
-        movementPsr: { schemaVersion: 3 },
+        ruleChecks: { entries: [] },
+        movementPsr: {},
         locationState: [{ target, damage: 2 }],
-        crew: { schemaVersion: 1, positions: [] },
+        crew: { positions: [] },
         family: { kind: 'mek' },
         conditions: { values: ['prone'] },
-        turn: { schemaVersion: 1 },
+        turn: {},
         pendingCombat: { locationDamage: [{ target, damage: -1 }] },
     };
 }

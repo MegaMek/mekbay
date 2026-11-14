@@ -5,7 +5,6 @@ import type { SerializedForce } from '../force-serialization';
 import { jsonValuesEqual } from '../../utils/json-value.util';
 import { appendCBTForceRosterMember, appendUnassignedCBTForceRosterMember } from './cbt-force-roster';
 import {
-    CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
     asForceId,
     emptyRuntimeHistory,
     validateSerializedCBTForceV2,
@@ -218,12 +217,11 @@ async function createEmptyCBTForceV2(
     forceId: ReturnType<typeof asForceId>,
 ): Promise<SerializedCBTForceV2> {
     return validateSerializedCBTForceV2({
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: 0,
         history: emptyRuntimeHistory(),
         units: [],
-        roster: { schemaVersion: 1, groups: [] },
+        roster: { groups: [] },
         encounter: { networks: [] },
     });
 }

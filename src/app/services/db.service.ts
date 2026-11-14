@@ -78,7 +78,7 @@ class IndexedDbUpgradeBlockedError extends Error {
     }
 }
 
-/** Tag data keyed by tag label -> unit names array. */
+/** Tag data keyed by tag label -> unit keys array. */
 export interface StoredTags {
     [tagName: string]: string[];
 }
@@ -93,7 +93,7 @@ export interface StoredChassisTags {
  * Uses short property names for wire efficiency.
  */
 export interface TagOp {
-    /** Key: unit name (for name tags) or variant group key (for chassis tags). Empty for rename. */
+    /** Key: unit UUID (for unit tags) or variant group key (for chassis tags). Empty for rename. */
     k: string;
     /** Tag name (original tag name for rename) */
     t: string;
@@ -120,26 +120,29 @@ export interface UnitTagData {
 
 /**
  * A single tag entry containing its display label and associated units/chassis.
- * Keys in units/chassis objects are the unit/chassis names.
  */
 export interface TagEntry {
     /** Display name with original case (e.g., "My Favorites") */
     label: string;
-    /** Map of unit names to their tag data */
+    /** Map of unit UUIDs to their tag data (unit names before format 5) */
     units: Record<string, UnitTagData>;
     /** Map of chassis keys to their tag data */
     chassis: Record<string, UnitTagData>;
 }
 
 /**
- * V4 Tag data format - uses lowercase tag IDs as keys.
+ * Tag data format - uses lowercase tag IDs as keys.
  * This is the current storage format.
  */
 export interface TagData {
     /** Map of lowercase tagId -> TagEntry */
     tags: Record<string, TagEntry>;
-    /** Format version: 4 uses variant group keys for chassis tags. */
-    formatVersion: 3 | 4;
+    /**
+     * Format version: 4 uses variant group keys for chassis tags; 5 (tag
+     * system V4) keys unit tags by unit UUID. Older documents are migrated
+     * by TagsService.migrateTagKeys.
+     */
+    formatVersion: 3 | 4 | 5;
     /** Timestamp of last modification for sync purposes */
     timestamp: number;
 }
@@ -152,8 +155,8 @@ export interface PublicTagData {
     publicId: string;
     /** Tag name */
     tagName: string;
-    /** Unit names with this tag */
-    unitNames: string[];
+    /** Unit keys with this tag: UUIDs, or unit names while the owner's tags are not migrated to V4 */
+    unitKeys: string[];
     /** Chassis keys with this tag */
     chassisKeys: string[];
     /** Whether this is a permanent subscription */
@@ -161,6 +164,12 @@ export interface PublicTagData {
     /** Timestamp of last sync for incremental updates */
     timestamp?: number;
 }
+
+/** Persisted subscribed public tag; entries saved before V4 tags name their unit keys `unitNames`. */
+type StoredPublicTagData = Omit<PublicTagData, 'unitKeys'> & {
+    readonly unitKeys?: string[];
+    readonly unitNames?: string[];
+};
 
 /**
  * Local tag sync state stored in IndexedDB.
@@ -364,12 +373,6 @@ export class DbService {
                         }
                         entry.continue();
                     };
-                }
-
-                if (db.objectStoreNames.contains('forceV2Store')) {
-                    // Schema 18 stores one complete force object. The V1 copy in
-                    // forceStore remains sufficient for one-way load conversion.
-                    db.deleteObjectStore('forceV2Store');
                 }
 
                 // Schema 14 removes the pre-generated units-fluff.json cache. Prose is
@@ -853,7 +856,7 @@ export class DbService {
     }
 
     /**
-     * Append operations to pending queue and update V3 tag data atomically.
+     * Append operations to pending queue and update tag data atomically.
      */
     public async appendTagOps(ops: TagOp[], tagData: TagData): Promise<void> {
         const db = await this.dbPromise;
@@ -882,17 +885,57 @@ export class DbService {
     }
 
     /**
-     * Clear pending operations after successful sync.
+     * Records a sync with the server at `syncTs` that settled the first
+     * `settledCount` pending operations. Pending operations are only appended,
+     * so ops queued while the request was in flight stay; they are returned.
      */
-    public async clearPendingTagOps(syncTs: number): Promise<void> {
+    public async clearPendingTagOps(syncTs: number, settledCount: number): Promise<TagOp[]> {
+        const db = await this.dbPromise;
+        if (!db) return []; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readwrite');
+            const store = transaction.objectStore(TAGS_STORE);
+            let remaining: TagOp[] = [];
+
+            const pendingRequest = store.get('pendingOps');
+            pendingRequest.onsuccess = () => {
+                remaining = ((pendingRequest.result as TagOp[] | undefined) ?? []).slice(settledCount);
+                store.put(remaining, 'pendingOps');
+                store.put(syncTs, 'lastSyncTs');
+            };
+
+            transaction.oncomplete = () => resolve(remaining);
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /** Forgets the last sync so the next one fetches the full state; pending operations stay. */
+    public async resetTagSyncTimestamp(): Promise<void> {
+        const db = await this.dbPromise;
+        if (!db) return; // Degraded mode
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(TAGS_STORE, 'readwrite');
+            transaction.objectStore(TAGS_STORE).put(0, 'lastSyncTs');
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
+    }
+
+    /** Saves migrated tag data and rewrites the pending operations queued with it in one transaction. */
+    public async saveMigratedTagData(tagData: TagData, migrateOps: (ops: TagOp[]) => TagOp[]): Promise<void> {
         const db = await this.dbPromise;
         if (!db) return; // Degraded mode
         return new Promise((resolve, reject) => {
             const transaction = db.transaction(TAGS_STORE, 'readwrite');
             const store = transaction.objectStore(TAGS_STORE);
 
-            store.put([], 'pendingOps');
-            store.put(syncTs, 'lastSyncTs');
+            const pendingRequest = store.get('pendingOps');
+            pendingRequest.onsuccess = () => {
+                store.put(tagData.tags, 'tags');
+                store.put(tagData.timestamp, 'timestamp');
+                store.put(tagData.formatVersion, 'formatVersion');
+                store.put(migrateOps((pendingRequest.result as TagOp[] | undefined) ?? []), 'pendingOps');
+            };
 
             transaction.oncomplete = () => resolve();
             transaction.onerror = () => reject(transaction.error);
@@ -1041,12 +1084,9 @@ export class DbService {
             const request = store.get('subscribed');
 
             request.onsuccess = () => {
-                const data = request.result as Record<string, PublicTagData> | undefined;
-                if (data) {
-                    resolve(new Map(Object.entries(data)));
-                } else {
-                    resolve(new Map());
-                }
+                const data = request.result as Record<string, StoredPublicTagData> | undefined;
+                resolve(new Map(Object.entries(data ?? {}).map(([key, { unitNames, ...stored }]) =>
+                    [key, { ...stored, unitKeys: stored.unitKeys ?? unitNames ?? [] }])));
             };
             request.onerror = () => reject(request.error);
         });
@@ -1093,9 +1133,13 @@ export class DbService {
         });
     }
 
-    public async getForce(instanceId: string): Promise<SerializedForce | null> {
+    /** The stored force; `onUnreadableUnitState` loads unreadable units pristine (`decodeForceFromStorage`). */
+    public async getForce(
+        instanceId: string,
+        onUnreadableUnitState?: (unitId: string) => void,
+    ): Promise<SerializedForce | null> {
         const stored = await this.readForceRecord(instanceId);
-        return stored === undefined ? null : decodeForceFromStorage(stored);
+        return stored === undefined ? null : decodeForceFromStorage(stored, onUnreadableUnitState);
     }
 
     public async getForcePreview(instanceId: string): Promise<RemoteLoadForceEntry | null> {

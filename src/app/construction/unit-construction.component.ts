@@ -127,6 +127,8 @@ import {
 import {
   ensureConstructionMaterialEquipment,
   isRequiredConstructionEquipment,
+  constructionLocationCase,
+  setConstructionCase,
   uninstallConstructionEquipment,
 } from './domain/construction-rules';
 import {
@@ -1219,7 +1221,7 @@ export class UnitConstructionComponent {
         const mounts = entity
           .equipment()
           .filter((mount) => mount.location === location.id || mount.getOccupiedLocations().includes(location.id));
-        const protection = mounts.filter((mount) => caseEquipmentKind(mount.equipment));
+        const protection = constructionLocationCase(entity, location.id);
         const installed = protection.map((mount) => caseEquipmentKind(mount.equipment));
         const kind = installed.includes('case-ii')
           ? 'CASE II'
@@ -1244,17 +1246,12 @@ export class UnitConstructionComponent {
               ).map(([value, label]) => {
                 const needsEquipment = value !== 'none' && !(value === 'case' && supportsAutomatic);
                 const eligible = needsEquipment
-                  ? candidates
-                      .filter((equipment) => caseEquipmentKind(equipment) === value)
-                      .map((equipment) => ({
-                        equipment,
-                        relocations: planConstructionCaseInstallation(entity, equipment, location.id, protection[0]),
-                      }))
-                      .filter((candidate) => candidate.relocations !== null)
+                  ? candidates.filter((equipment) => caseEquipmentKind(equipment) === value
+                      && planConstructionCaseInstallation(entity, equipment, location.id, protection[0]) !== null)
                   : [];
-                const candidate =
-                  eligible.find(({ equipment }) => equipment.techBase === entity.techBase()) ?? eligible[0];
-                return { value, label, ...candidate, disabled: needsEquipment && !candidate };
+                const equipment =
+                  eligible.find((candidate) => candidate.techBase === entity.techBase()) ?? eligible[0];
+                return { value, label, equipment, disabled: needsEquipment && !equipment };
               })
             : [];
         return [
@@ -2172,19 +2169,7 @@ export class UnitConstructionComponent {
     const state = this.locationCase().get(location);
     const option = state?.options.find((option) => option.value === value);
     if (!(entity instanceof MekEntity) || !state || !option || option.disabled || state.selection === value) return;
-    this.change(() => {
-      for (const { mount, placements } of option.relocations ?? []) {
-        applyConstructionSpreadPlacements(entity, mount, placements);
-      }
-      for (const mount of entity.getEquipmentAtLocation(location)) {
-        if (caseEquipmentKind(mount.equipment)) removeConstructionEquipment(entity, mount);
-      }
-      entity.setLocationMetadata(location, {
-        ...entity.locationMetadata().get(location),
-        clanCaseOptOut: (state.supportsAutomatic && value === 'none') || undefined,
-      });
-      if (option.equipment) installConstructionEquipment(entity, option.equipment, location);
-    });
+    this.change(() => setConstructionCase(entity, location, option.equipment, state.supportsAutomatic && value === 'none'));
   }
   setStructure(id: string, location?: string, tonnage?: number): void {
     if (id === 'hybrid' && !location) {

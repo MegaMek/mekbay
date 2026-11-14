@@ -16,6 +16,7 @@ import { isWeaponEnhancementEquipment } from '../../models/weapon-enhancement.mo
 import { ppcCapacitorWeaponDamage, ppcCapacitorWeaponTypes } from '../../models/runtime/component-ppc-capacitor';
 import { isCoolantPodEquipment } from '../../models/runtime/component-coolant-pod';
 import { buildNonMekRuntimeIndex } from '../../models/runtime/non-mek-runtime-index';
+import { nonMekFliesAtElevation } from '../../models/runtime/non-mek-airborne-state';
 import { systemDamagePresentation } from '../../models/runtime/system-damage-presentation';
 import { recordSheetHeatEffects } from '../../models/runtime/heat-effect-presentation';
 import { heatSinkTypeDissipation, type HeatSinkType } from '../../models/entity/types/heat-sink';
@@ -1794,9 +1795,14 @@ export function fitRecordSheetTextLine(
   text.setAttribute('lengthAdjust', 'spacingAndGlyphs');
 }
 
-/** Whether record-sheet text fits a width, by average glyph width rather than DOM measurement. */
+/** Record-sheet text's width by average glyph width rather than DOM measurement. */
+export function estimatedTextWidth(value: string, size: number): number {
+  return value.length * size * 0.54;
+}
+
+/** Whether record-sheet text fits a width (`estimatedTextWidth`). */
 export function textFitsWidth(value: string, size: number, width: number): boolean {
-  return value.length * size * 0.54 <= width;
+  return estimatedTextWidth(value, size) <= width;
 }
 
 export function addWrappedText(
@@ -1978,6 +1984,63 @@ function mergeSheetDefinitions(target: SVGSVGElement, source: Element): void {
 export function formatTechBase(value: EntityTechBase, mixedTech = false): string {
   if (mixedTech) return 'Mixed';
   return value === 'IS' ? 'Inner Sphere' : value;
+}
+
+/**
+ * A small labelled counter box, a screen control the binder fills: Rotor Hits, a flying unit's Elevation. Centred on
+ * `centerX`, its top at `top`, the label above the value.
+ */
+export function drawCounterBox(
+  parent: SVGElement,
+  label: string,
+  centerX: number,
+  top: number,
+  size: Readonly<{ width?: number; height?: number }> = {},
+): Readonly<{ group: SVGGElement; value: SVGTextElement }> {
+  const width = size.width ?? 36;
+  const height = size.height ?? 24;
+  // A box under 20 high scales its text with it.
+  const textScale = Math.min(1, height / 20);
+  const group = svgElement('g');
+  const frame = svgElement('rect');
+  setAttributes(frame, {
+    x: formatNumber(centerX - width / 2), y: formatNumber(top), width, height,
+    fill: '#fff', stroke: '#000', 'stroke-width': 0.8,
+  });
+  group.appendChild(frame);
+  const labelSize = 7 * textScale;
+  const lines = ([[label, top + height * 0.35, labelSize], ['0', top + height * 0.8, 10 * textScale]] as const)
+    .map(([text, y, fontSize]) => {
+    const line = svgElement('text');
+    setAttributes(line, {
+      x: formatNumber(centerX), y: formatNumber(y), 'text-anchor': 'middle',
+      'font-family': 'Roboto', 'font-size': fontSize, 'font-weight': 700,
+    });
+    line.textContent = text;
+    group.appendChild(line);
+    return line;
+  });
+  // A narrow box condenses its label to fit.
+  fitRecordSheetTextLine(lines[0]!, label, labelSize, width - 2);
+  parent.appendChild(group);
+  return Object.freeze({ group, value: lines[1]! });
+}
+
+/**
+ * The Elevation tracker of a unit that flies at one (VTOLs record their Elevation on the record sheet, TW p. 55);
+ * nothing for any other unit. Aerospace units keep their Altitude in the velocity record.
+ */
+export function drawElevationTracker(
+  parent: SVGElement,
+  entity: BaseEntity,
+  centerX: number,
+  top: number,
+  size: Readonly<{ width?: number; height?: number }> = { width: 40 },
+): void {
+  if (!nonMekFliesAtElevation(entity)) return;
+  const { group, value } = drawCounterBox(parent, 'Elevation', centerX, top, size);
+  group.setAttribute('class', 'screen-only elevationTracker');
+  value.setAttribute('class', 'elevationTrackerValue');
 }
 
 export function formatNumber(value: number): string {

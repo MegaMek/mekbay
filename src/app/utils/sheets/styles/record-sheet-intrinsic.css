@@ -127,7 +127,8 @@ svg:where(.mekbay-sheet):not(:root),
 }
 
 :where(.mekbay-sheet) .inventoryEntry.damaged text,
-:where(.mekbay-sheet) .critSlot.damaged text {
+:where(.mekbay-sheet) .critSlot.damaged text,
+:where(.mekbay-sheet) .disposableWeapon.used text {
   text-decoration: line-through;
 }
 

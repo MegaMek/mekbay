@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { MAX_HEAT_VALUE,type HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
+import { type HeatAutomationPolicy } from './runtime/cbt-unit-runtime';
 import type { CBTUnitAttackerTargetingCommand,CBTUnitSelectedWeaponFireCommand } from './runtime/unit-command';
 
 import { CBTUnitService } from '../services/cbt-unit.service';
@@ -16,7 +16,6 @@ type EncounterNetwork,
 type TargetRegistrySnapshot,
 } from './runtime/encounter-runtime';
 import {
-CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
 emptyRuntimeHistory,
 validateSerializedCBTForceV2,
 type SerializedCBTForceV2,
@@ -81,6 +80,13 @@ export interface CBTUnitStoreSnapshot {
     readonly binding: CBTUnitStoreState | null;
     readonly units: ReadonlyMap<string, CBTUnit>;
     readonly runtimeRevisions: ReadonlyMap<string, number>;
+}
+
+/** The load notice for `count` units whose saved state could not be read. */
+export function unreadableUnitStateWarning(count: number): string {
+    return count === 1
+        ? '1 unit had unreadable saved state and was reset to pristine.'
+        : `${count} units had unreadable saved state and were reset to pristine.`;
 }
 
 /** Owns the Entity + sparse runtime aggregate for each loaded CBT unit. */
@@ -188,11 +194,7 @@ export class CBTUnitStore {
         }));
         const resetUnitStateCount = [...invalidStateUnitIds]
             .filter(instanceId => !removedUnitIds.has(instanceId)).length;
-        if (resetUnitStateCount > 0) {
-            warnings.add(resetUnitStateCount === 1
-                ? '1 unit had unreadable saved state and was reset to pristine.'
-                : `${resetUnitStateCount} units had unreadable saved state and were reset to pristine.`);
-        }
+        if (resetUnitStateCount > 0) warnings.add(unreadableUnitStateWarning(resetUnitStateCount));
         const unreadableCustomCount = entries.filter(entry => removedUnitIds.has(entry.instanceId)
             && entry.unit.customSource !== undefined).length;
         if (unreadableCustomCount > 0) {
@@ -215,7 +217,6 @@ export class CBTUnitStore {
         });
         let hydratedEnvelope = await validateSerializedCBTForceV2({
             ...envelope,
-            schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
             units: hydratedUnits,
             roster,
             encounter: removedUnitIds.size === 0
@@ -908,9 +909,7 @@ export class CBTUnitStore {
             })),
         ]);
 
-        const selectedPolicy = retained.some(([, unit]) => isCBTMekUnit(unit))
-            ? policy()
-            : 'automatic';
+        const selectedPolicy = policy();
         for (const [instanceId, unit] of retained) {
             if (!isCBTMekUnit(unit)) continue;
             const entity = unit.getUnit();
@@ -929,29 +928,12 @@ export class CBTUnitStore {
                     'UNSUPPORTED_HEAT_CONTEXT',
                 ));
             }
-            const projection = query.heatProjection(selectedPolicy);
+            const projection = query.heatProjection();
             if (projection.kind === 'unsupported') {
                 return frozenEndTurnAllResult(false, false, preflightFailureRows(
                     retained.map(([id]) => id),
                     instanceId,
                     'UNSUPPORTED_HEAT_CONTEXT',
-                ));
-            }
-            if (selectedPolicy === 'automatic'
-                && projection.projection.projected > MAX_HEAT_VALUE) {
-                return frozenEndTurnAllResult(false, false, preflightFailureRows(
-                    retained.map(([id]) => id),
-                    instanceId,
-                    'EXCEEDS_CAPACITY',
-                ));
-            }
-            if (selectedPolicy === 'manual'
-                && query.heatState().pendingOverride === undefined
-                && projection.projection.hasPendingSettlement) {
-                return frozenEndTurnAllResult(false, false, preflightFailureRows(
-                    retained.map(([id]) => id),
-                    instanceId,
-                    'INVALID_TARGET',
                 ));
             }
         }
@@ -970,7 +952,7 @@ export class CBTUnitStore {
                 const reduction = isCBTMekUnit(unit)
                     ? unit.endTurn(selectedPolicy)
                     : isCBTNonMekUnit(unit)
-                        ? unit.endTurn()
+                        ? unit.endTurn(selectedPolicy)
                         : null;
                 if (reduction === null) throw new Error('Unsupported CBT unit family');
                 accepted = reduction.accepted;

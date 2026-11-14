@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import type { BaseEntity } from '../entity/base-entity';
+import { isAeroEntity } from '../entity/utils/entity-type-guards';
 
 export type NonMekAirGroundCapability = 'only-airborne' | 'switchable' | 'only-grounded';
 
@@ -31,6 +32,14 @@ export function nonMekAirGroundCapability(entity: BaseEntity): NonMekAirGroundCa
         || entity.motiveType() === 'VTOL'
         || entity.motiveType() === 'WiGE';
     return switchable ? 'switchable' : 'only-grounded';
+}
+
+/**
+ * Whether the unit flies at an Elevation over the ground map: VTOLs, WiGEs, VTOL infantry and battle armor, gliders
+ * (TW p. 55). Aerospace units fly at Altitude, which their velocity record keeps turn by turn.
+ */
+export function nonMekFliesAtElevation(entity: BaseEntity): boolean {
+    return nonMekAirGroundCapability(entity) === 'switchable' && !isAeroEntity(entity);
 }
 
 /** Whether grounded versus airborne is a meaningful per-turn user choice. */

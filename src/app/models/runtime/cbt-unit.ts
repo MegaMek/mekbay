@@ -12,7 +12,7 @@ import type { MekEntity } from '../entity/entities/mek/mek-entity';
 import { cloneNativeUnitSourceHandle,pinnedCustomSourceForHandle,type NativeUnitSourceHandle } from '../native-unit-source-handle';
 import type { PrototypeLaserHeatResult } from '../prototype-laser-heat.model';
 import type { AttackerTargetingState } from './attacker-targeting-state';
-import type { CBTUnitCommandResult,CBTUnitQueryPort,CBTUnitRuntimeReadModel,CBTUnitRuntimeState } from './cbt-unit-runtime';
+import { followCalculatedHeat,type CBTUnitCommandResult,type CBTUnitQueryPort,type CBTUnitRuntimeReadModel,type CBTUnitRuntimeState } from './cbt-unit-runtime';
 import { assignedCrewRuntimeState,canonicalizeCrewAssignment,type CrewAssignment } from './crew-assignment';
 import type { TargetRegistrySnapshot } from './encounter-runtime';
 import { setEquipmentRowOrder,type EquipmentRowOrderGroup } from './equipment-row-order';
@@ -27,13 +27,14 @@ import type { CBTUnitCommand } from './unit-command';
 import {
 freezeNonMekUnitState,
 planNonMekAttackerTargetingReconciliation,
+projectNonMekEndTurnHeat,
 queryNonMekRuntime,
 reduceNonMekAttackerTargeting,
 reduceNonMekRuntime,
 reduceNonMekSelectedWeaponFire,
 type NonMekRuntimeBinding,type NonMekUnitQueryPort,type NonMekUnitRuntimeState,
 } from './non-mek-unit-instance';
-import { planMekAttackerTargetingReconciliation,queryMekRuntime,reduceMekAttackerTargeting,reduceMekRuntime,reduceMekSelectedWeaponFire,type MekRuntimeBinding,type MekUnitQueryPort } from './unit-instance';
+import { mekNextHeatBasis,planMekAttackerTargetingReconciliation,queryMekRuntime,reduceMekAttackerTargeting,reduceMekRuntime,reduceMekSelectedWeaponFire,type MekRuntimeBinding,type MekUnitQueryPort } from './unit-instance';
 
 export type CBTUnitFamily = 'mek' | 'non-mek';
 export type CBTUnitStateFor<F extends CBTUnitFamily> = F extends 'mek' ? MekUnitRuntimeState : NonMekUnitRuntimeState;
@@ -217,14 +218,28 @@ export class CBTUnit<F extends CBTUnitFamily = CBTUnitFamily> {
         const runtime = this.#runtime;
         const crew = assignedCrewRuntimeState(state.crew, this.getCrewAssignment());
         const next = crew === state.crew ? state : { ...state, crew };
+        // Every state a unit holds passes here (commands, restore, refit, rules switches), so NEXT is stored where it
+        // stands: the value saved, sent and shown is the same everywhere.
         if (runtime.kind === 'mek') {
             if (!('slots' in next)) throw new Error('Slot mechanics returned an incompatible snapshot');
-            this.#runtime = { ...runtime, state: freezeRuntimeState(next as MekUnitRuntimeState) };
+            const state = freezeRuntimeState(next as MekUnitRuntimeState);
+            const calculated = state.heat.pendingOffset === undefined ? undefined : mekNextHeatBasis(runtime.binding, state);
+            this.#runtime = { ...runtime, state: calculated === undefined
+                ? state : followNextHeat(state, calculated, freezeRuntimeState) };
         } else {
             if (!('damageTracks' in next)) throw new Error('System mechanics returned an incompatible snapshot');
-            this.#runtime = { ...runtime, state: freezeNonMekUnitState(next as NonMekUnitRuntimeState) };
+            const state = freezeNonMekUnitState(next as NonMekUnitRuntimeState);
+            const calculated = state.heat.pendingOffset === undefined ? undefined
+                : projectNonMekEndTurnHeat(runtime.binding.entity, runtime.binding.index, state, runtime.binding.ruleset)?.calculated;
+            this.#runtime = { ...runtime, state: calculated === undefined
+                ? state : followNextHeat(state, calculated, freezeNonMekUnitState) };
         }
     }
+}
+
+function followNextHeat<S extends CBTUnitRuntimeState>(state: S, calculated: number, freeze: (state: S) => S): S {
+    const heat = followCalculatedHeat(state.heat, calculated);
+    return heat === state.heat ? state : freeze({ ...state, heat });
 }
 
 function captureDeployment<T extends { readonly values: { readonly crewAssignment: CrewAssignment } }>(

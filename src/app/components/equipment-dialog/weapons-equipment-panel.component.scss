@@ -270,6 +270,15 @@
     color: var(--text-color-secondary);
 }
 
+.modifier.fired {
+    padding: 0 4px;
+    border: 1px solid var(--bt-yellow-strong);
+    border-radius: 3px;
+    color: var(--bt-yellow-strong);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
 .drag-cell,
 .select-cell,
 .select-header {
@@ -352,6 +361,30 @@
     width: 28px;
 }
 
+
+// Opens the target's paperdoll; shows the location the weapon aims at.
+.aim-toggle {
+    width: 28px;
+    padding: 0;
+    border: 1px solid var(--text-color-secondary);
+    border-radius: 2px;
+    background: transparent;
+    color: var(--text-color-secondary);
+    font-size: 0.62em;
+    font-weight: 800;
+    line-height: 1.5;
+    cursor: pointer;
+
+    &.aimed {
+        border-color: var(--bt-yellow-strong);
+        background: var(--bt-yellow-strong);
+        color: #000;
+    }
+
+    &:disabled {
+        cursor: default;
+    }
+}
 
 .tn-cell.out-of-range .tn-value {
     color: var(--damage-color);

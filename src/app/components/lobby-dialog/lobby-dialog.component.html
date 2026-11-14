@@ -61,6 +61,19 @@
                 @if (lobby.settings.ruleset === 'core-2026') {
                     <p class="lobby-settings-note">Core fixes the order: extra units act first.</p>
                 }
+                <fieldset class="lobby-optional-rules">
+                    <legend class="lobby-setting-label">Optional rules</legend>
+                    @for (rule of optionalRuleChoices; track rule.key) {
+                        @if (!rule.ruleset || rule.ruleset === lobby.settings.ruleset) {
+                            <label class="lobby-optional-rule">
+                                <input class="bt-checkbox" type="checkbox" [checked]="optionalRules()[rule.key]"
+                                    [disabled]="!lobby.isHost || lobbyService.switchingRuleset()"
+                                    (change)="onOptionalRuleChange(rule.key, $event)" />
+                                <span>{{ rule.label }}</span>
+                            </label>
+                        }
+                    }
+                </fieldset>
             </section>
 
             <div class="op-sides lobby-sides" cdkDropListGroup>

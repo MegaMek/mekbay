@@ -182,7 +182,7 @@ function projectedRow(setup: DirectBombastSetup) {
         setup.fixture.index,
         setup.fixture.instance.ruleset(),
         setup.runtime.query(),
-        emptyCBTEncounterSnapshot(),
+        emptyCBTEncounterSnapshot(), {},
     ).components.find(candidate => candidate.componentId === setup.component.id);
     if (row?.weapon === undefined) throw new Error('Missing projected Bombast weapon');
     return row;

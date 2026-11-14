@@ -1,7 +1,7 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { inject,Injectable } from '@angular/core';
+import { inject,Injectable,Injector } from '@angular/core';
 import type { CBTUnitCommand } from '../models/runtime/unit-command';
 
 import type { AutomationCheck,AutomationCheckResolution } from '../models/automation-check.model';
@@ -40,6 +40,17 @@ import type { CBTRuntimeLocation } from '../models/runtime/cbt-unit-runtime';
 import type { NonMekRuntimeIndex } from '../models/runtime/non-mek-runtime-index';
 import { projectNonMekEndTurnHeat,type NonMekControlRecoveryCause,type NonMekControlRecoveryWorkflow,type NonMekUnitRuntimeState } from '../models/runtime/non-mek-unit-instance';
 import type { UnitConditionKey } from '../models/unit-condition.model';
+import { isUnitWaterDepth, unitWaterDepthNumber } from '../models/unit-cover.model';
+import { nonMekFliesAtElevation } from '../models/runtime/non-mek-airborne-state';
+import { elevationAt } from '../models/elevation-record.model';
+import { erraticManoeuvresModifier } from '../models/rules/anti-mek-attack-rules';
+import {
+    projectNonMekControlRoll,
+    projectNonMekMovementCapabilities,
+    type NonMekMovementDeclaration,
+} from '../models/runtime/non-mek-unit-instance';
+import { DialogsService } from './dialogs.service';
+import { loadSwarmService } from './swarm-service-loader';
 import { automationCheckEvidenceDice,CBTAutomationCheckService } from './cbt-automation-check.service';
 import { CBTAutomationToastService } from './cbt-automation-toast.service';
 import { CBTAutomationService } from './cbt-automation.service';
@@ -98,6 +109,8 @@ export interface PreparedDirectNonMekAutomationCommand {
     readonly cancelled?: true;
     readonly heatEffects?: PreparedEndTurnHeatEffects<StagedAeroHeatEffects>;
     readonly phaseBoundary?: PreparedNonMekPhaseBoundary;
+    /** The vehicle's erratic manoeuvres shook the swarming infantry off. */
+    readonly shookOffSwarm?: true;
 }
 
 export interface DirectNonMekEndTurnAutomationRequest {
@@ -159,6 +172,8 @@ export class DirectNonMekAutomationService {
     private readonly options = inject(OptionsService);
     private readonly endTurnHeat = inject(EndTurnHeatAutomationService);
     private readonly criticals = inject(NonMekCriticalAutomationService);
+    private readonly dialogs = inject(DialogsService);
+    private readonly injector = inject(Injector);
     private readonly endTurnHeatAdapter: EndTurnHeatAdapter<AeroSnapshot, StagedAeroHeatEffects> = {
         snapshot: (force, instanceId) => this.snapshot(force, instanceId),
         projectHeat: snapshot => {
@@ -170,10 +185,10 @@ export class DirectNonMekAutomationService {
             );
             return projection && {
                 current: projection.current,
-                projected: projection.projected,
+                projected: projection.calculated,
                 sources: projection.sources,
-                dissipationBalance: projection.dissipated,
-                consumedDissipation: Math.min(projection.dissipated, projection.current + projection.generated),
+                dissipationBalance: projection.dissipationBalance,
+                consumedDissipation: projection.dissipated,
             };
         },
         stage: (snapshot, heat) => this.stageAeroHeatEffects(snapshot, heat),
@@ -365,6 +380,18 @@ export class DirectNonMekAutomationService {
                 command: snapshot ? this.crewHitAutomation.withRecoveryReadyTurn(snapshot, command) : command,
             });
         }
+        if (command.type === 'set-movement' && command.movement?.mode === 'run') {
+            const snapshot = this.nonMekSnapshot(force, instanceId);
+            // A new flank distance keeps the turn's erratic manoeuvres, within the Cruising MP.
+            if (snapshot?.state.turn.movement?.erratic && !command.movement.erratic) {
+                return Object.freeze({ command: this.erraticMovement(snapshot, command.movement) });
+            }
+            if (snapshot && isVehicleEntity(snapshot.entity) && snapshot.query.hasCondition('swarmed')
+                && snapshot.state.turn.movement?.mode !== 'run'
+                && this.options.cbtAutomationMode('pilotSkillCheck') !== 'no') {
+                return this.prepareErraticManoeuvres(force, snapshot, command.movement);
+            }
+        }
         if (command.type === 'end-phase') {
             const batch = await this.prepareEndPhaseCommands(force, [{ instanceId, command }]);
             return batch?.[0]?.prepared ?? Object.freeze({ command, cancelled: true });
@@ -419,12 +446,106 @@ export class DirectNonMekAutomationService {
         dispatch: CBTForceUnitCommandDispatch,
     ): Promise<boolean> {
         if (!result.accepted || !result.changed) return true;
+        if (prepared.shookOffSwarm && !await this.releaseSwarm(force, instanceId, dispatch)) return false;
         const aeroAfter = this.snapshot(force, instanceId);
         if (aeroAfter?.state.turn.controlRecovery !== undefined
             && !this.hasPotentialController(aeroAfter)
             && !this.hasDroneController(aeroAfter)
             && !await this.setControlRecovery(force, instanceId, null, dispatch)) return false;
         return true;
+    }
+
+    /**
+     * A swarmed vehicle declaring flank speed may make erratic manoeuvres, spending only its Cruising MP: at the end of
+     * its movement a Driving Skill Roll at +4 (+2 on VTOL MP), magnetic claws +1 (TW p. 222).
+     */
+    private async prepareErraticManoeuvres(
+        force: CBTForce,
+        snapshot: NonMekSnapshot,
+        movement: NonMekMovementDeclaration,
+    ): Promise<PreparedDirectNonMekAutomationCommand> {
+        const command = Object.freeze({ type: 'set-movement' as const, movement });
+        const flank = Object.freeze({ command });
+        const member = force.getCBTMembers().find(candidate => candidate.id === snapshot.instanceId);
+        const driver = activeCrewController(snapshot, 'piloting');
+        if (!member || !driver) return flank;
+        const choice = await this.dialogs.choose<'erratic' | 'flank' | 'cancel'>(
+            'Erratic Manoeuvres',
+            `${this.subject(snapshot)} is swarmed. Make erratic manoeuvres to shake the infantry off? `
+                + 'It spends only its Cruising MP.',
+            [
+                { label: 'ERRATIC MANOEUVRES', value: 'erratic' },
+                { label: 'FLANK', value: 'flank' },
+                { label: 'CANCEL', value: 'cancel' },
+            ],
+            'cancel',
+        );
+        if (choice === 'cancel') return Object.freeze({ command, cancelled: true });
+        if (choice === 'flank') return flank;
+        const erratic = Object.freeze({ command: this.erraticMovement(snapshot, movement) });
+        const swarm = await loadSwarmService(this.injector);
+        const permanent = projectNonMekControlRoll(
+            snapshot.entity, snapshot.index, snapshot.state, snapshot.ruleset, snapshot.crewAssignment,
+        ).modifiers.reduce((total, entry) => total + entry.modifier, 0);
+        const targetNumber = driver.piloting + permanent
+            + erraticManoeuvresModifier(snapshot.entity.entityType === 'VTOL') + swarm.removalModifier(member);
+        const resolutions = await this.automationChecks.resolve('pilotSkillCheck', [Object.freeze({
+            id: `erratic-manoeuvres:${snapshot.instanceId}:${snapshot.query.stateRevision}`,
+            subject: this.subject(snapshot),
+            label: 'Driving Skill Check',
+            description: 'Erratic manoeuvres to shake off swarming infantry.',
+            failureOutcome: 'Infantry holds on',
+            targetNumber,
+        })], { title: 'Driving Skill Rolls' });
+        if (resolutions === null) return Object.freeze({ command, cancelled: true });
+        const resolution = resolutions[0];
+        if (!resolution) return erratic;
+        if (this.options.cbtAutomationMode('pilotSkillCheck') === 'yes') {
+            const total = resolution.dice ? twoD6Total(resolution.dice) : null;
+            this.toast(
+                snapshot,
+                `Driving Skill Check: ${resolution.outcome === 'success' ? 'PASSED' : 'FAILED'}`
+                    + `${total === null ? ' (automatic)' : ` (${total} vs ${targetNumber}+)`}`
+                    + ' — Erratic manoeuvres',
+                resolution.outcome === 'success' ? 'success' : 'error',
+            );
+        }
+        return resolution.outcome === 'success' ? Object.freeze({ ...erratic, shookOffSwarm: true }) : erratic;
+    }
+
+    /** The flank movement as erratic manoeuvres, cut to the vehicle's Cruising MP (TW p. 222). */
+    private erraticMovement(snapshot: NonMekSnapshot, movement: NonMekMovementDeclaration): CBTUnitCommand {
+        const cruise = projectNonMekMovementCapabilities(
+            snapshot.entity, snapshot.index, snapshot.state, snapshot.ruleset, snapshot.crewAssignment,
+        ).maximum.walk;
+        return Object.freeze({
+            type: 'set-movement',
+            movement: Object.freeze({ ...movement, distance: Math.min(movement.distance, cruise), erratic: true as const }),
+        });
+    }
+
+    /**
+     * Erratic manoeuvres shake the swarming infantry off as a jumping 'Mech would, 1 point to each trooper (1 for each
+     * Elevation off a VTOL or WiGE): it is sent what it takes (`SwarmService.shakeOff`) and the vehicle is no longer
+     * swarmed (TW p. 222).
+     */
+    private async releaseSwarm(
+        force: CBTForce,
+        instanceId: string,
+        dispatch: CBTForceUnitCommandDispatch,
+    ): Promise<boolean> {
+        const snapshot = this.nonMekSnapshot(force, instanceId);
+        const member = force.getCBTMembers().find(candidate => candidate.id === instanceId);
+        if (!snapshot?.query.hasCondition('swarmed') || !member) return true;
+        const cover = snapshot.state.turn.cover;
+        const waterDepth = isUnitWaterDepth(cover) ? unitWaterDepthNumber(cover) : 0;
+        // A VTOL or WiGE throws the infantry from its Elevation (TW p. 222).
+        const elevation = nonMekFliesAtElevation(snapshot.entity)
+            ? { elevation: elevationAt(snapshot.state.elevationRecord, snapshot.state.turn.turnCounter + 1) } : {};
+        if (!(await loadSwarmService(this.injector)).shakeOff(member, { kind: 'erratic', waterDepth, ...elevation })) {
+            return true;
+        }
+        return (await dispatch({ type: 'set-condition', condition: 'swarmed', active: false }, false)).accepted;
     }
 
     /** Groups eligible non-Mek recovery rolls at the force phase boundary. */

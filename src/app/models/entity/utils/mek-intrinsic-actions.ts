@@ -16,6 +16,7 @@ import { hasRamPlateFlags, hasSpikesFlags } from '../../physical-augmentation.mo
 import {
   isHandClawFlags,
   isImprovisedClawFlags,
+  isPhysicalWeaponFlags,
   isTalonFlags,
 } from './physical-weapon-kernel';
 
@@ -75,6 +76,14 @@ export function buildMekIntrinsicActions(
         `punch:${location}`, 'punch', 'Punch', [location],
         fixedDamage(reduce(baseDamage), tsm, undefined, reduce(baseDamage * 2)), hitModifier,
       ));
+      // A swarmed 'Mech may pull the infantry off with an arm that mounts no physical weapon, with the punch's
+      // modifiers and damage (TW p. 221).
+      if (!facts.equipment.some(item => item.location === location && isPhysicalWeaponFlags(item.flags))) {
+        attacks.push(action(
+          `brush-off:${location}`, 'brush-off', 'Brush Off', [location],
+          fixedDamage(reduce(baseDamage), tsm, undefined, reduce(baseDamage * 2)), hitModifier,
+        ));
+      }
     }
 
   }
@@ -134,6 +143,9 @@ export function buildMekIntrinsicActions(
       'push', 'push', 'Push', [], Object.freeze({ kind: 'none' }), armAes ? -1 : 0,
     ));
   }
+
+  // A prone 'Mech thrashes at infantry in its hex: tonnage / 3, rounding .5 up, and it always hits (TW p. 151).
+  attacks.push(action('thrash', 'thrash', 'Thrash', [], fixedDamage(Math.round(facts.tonnage / 3), false), 0));
 
   return Object.freeze(attacks);
 }

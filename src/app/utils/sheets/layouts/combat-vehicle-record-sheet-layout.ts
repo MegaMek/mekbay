@@ -12,6 +12,8 @@ import {
     addFrame,
     appendTspan,
     drawClusterHitsReference,
+    drawCounterBox,
+    drawElevationTracker,
     drawGeneratedFooter,
     formatNumber,
     scaleCompactBox,
@@ -20,6 +22,7 @@ import {
 } from '../record-sheet-svg-rendering';
 import { CompactRecordSheetLayout, type RecordSheetLayoutRequest } from './record-sheet-layout';
 import {
+    appendVehicleDamageTrackBindings,
     compactVehicleSheetTitle,
     drawCompactVehicleChrome,
     drawCompactVehicleCrewPanel,
@@ -32,8 +35,12 @@ import {
 import { drawVehicleReferenceTables } from './vehicle-record-sheet-reference-tables';
 import { drawVtolReferenceTables } from './vtol-record-sheet-reference-tables';
 import { isNavalRecordSheetEntity } from './naval-record-sheet-layout';
+import {
+    combatVehiclePaperdollAsset,
+    combatVehiclePaperdollFamily,
+    type CombatVehiclePaperdollFamily,
+} from './vehicle-paperdoll-asset';
 
-type CombatVehiclePaperdollFamily = 'vehicle' | 'vtol' | 'wige';
 
 /** Tank, VTOL, and WiGE composition; motive type selects the paperdoll. */
 export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
@@ -76,7 +83,7 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
     protected async drawCompact(svg: SVGSVGElement, entity: BaseEntity, request: RecordSheetLayoutRequest): Promise<void> {
         if (!this.matches(entity)) throw new Error('Combat-vehicle layout received an unsupported entity');
         const at = (box: Box): Box => scaleCompactBox(svg, box, 375);
-        const family = this.paperdollFamily(entity);
+        const family = combatVehiclePaperdollFamily(entity);
         const airborne = family === 'vtol';
         svg.setAttribute('data-mekbay-vehicle-family', family);
         drawCompactVehicleChrome(svg, compactVehicleSheetTitle(entity));
@@ -118,29 +125,20 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
             diagramBox,
             {
                 pipLayout: request.pipLayout,
-                assetUrl: this.paperdollAsset(entity, family),
+                assetUrl: combatVehiclePaperdollAsset(entity),
                 motiveArtId: this.motiveArtId(entity, family),
                 // WiGE hulls leave room beside the nose for a control close to the armor.
             },
         );
         this.drawDiagramLabels(diagram, entity, diagramBox, family);
-    }
-
-    private paperdollFamily(entity: BaseEntity): CombatVehiclePaperdollFamily {
-        const motive = `${entity.entityType} ${entity.getMotiveTypeAsString() ?? ''}`.toLowerCase();
-        if (motive.includes('vtol')) return 'vtol';
-        if (motive.includes('wige') && !usesSixSideVehicleHull(entity)) return 'wige';
-        return 'vehicle';
-    }
-
-    private paperdollAsset(entity: BaseEntity, family: CombatVehiclePaperdollFamily): string {
-        const dualTurret = isVehicleEntity(entity) && entity.hasDualTurret();
-        const turret = dualTurret || isVehicleEntity(entity) && entity.hasTurret();
-        const turretKind = dualTurret && family !== 'vtol' ? 'dualturret' : turret ? 'turret' : 'noturret';
-        const superheavy = usesSixSideVehicleHull(entity)
-            && family !== 'vtol'
-            && family !== 'wige';
-        return `/images/paperdolls/${family}-${superheavy ? 'superheavy-' : ''}${turretKind}.svg`;
+        // A flying vehicle's Elevation tracker sits in the diagram's free lower-left corner.
+        const tracker = svgElement('g');
+        tracker.setAttribute('transform',
+            `scale(${formatNumber(diagramBox.width / 189)} ${formatNumber(diagramBox.height / 350)})`);
+        drawElevationTracker(tracker, entity, 22, 312);
+        diagram.appendChild(tracker);
+        // Damage tracks still without a control on the sheet get hidden ones, once every control is drawn.
+        appendVehicleDamageTrackBindings(svg, entity);
     }
 
     private motiveArtId(
@@ -363,6 +361,8 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
                 authored.appendChild(text);
             }
             labels.appendChild(authored);
+            // The authored rotor label sits at (559.589, 155.86) before the group's transform.
+            this.appendRotorHitsCounter(labels, (559.589 - 398.478) * 1.006 + 3.363, (155.86 - 13.05) * 1.006 + 11.25);
             group.appendChild(labels);
             return;
         }
@@ -409,7 +409,21 @@ export class CombatVehicleRecordSheetLayout extends CompactRecordSheetLayout {
         appendTspan(rotor, 'Armor', 0, 8.116);
         appendTspan(rotor, formatProtectionCounter(armor('RO', 'Rotor')), 0, 16.232).id = 'textArmor_RO';
         labels.appendChild(rotor);
+        this.appendRotorHitsCounter(labels, 163.55318, 114.93549);
         group.appendChild(labels);
+    }
+
+    /**
+     * The Rotor Hits counter above a VTOL's rotor armor label, centred on it: a screen control the binder fills from
+     * the rotor damage track and opens the hits picker from (TW p. 197).
+     */
+    private appendRotorHitsCounter(labels: SVGGElement, centerX: number, labelBaseline: number): void {
+        const { group, value } = drawCounterBox(labels, 'Rotor Hits', centerX, labelBaseline - 37, { width: 36 });
+        // The rotor damage track's own control: the sheet needs no hidden stand-in for it.
+        group.id = 'rotor';
+        group.setAttribute('class', 'screen-only critLoc counterGroup rotorHitsControl');
+        group.setAttribute('critId', 'rotor');
+        value.id = 'rotor_hits_counter';
     }
 
     private drawWigeDiagramLabels(group: SVGGElement, entity: BaseEntity, box: Box): void {

@@ -13,7 +13,11 @@ import { mountedAmmoDialogData, SetAmmoDialogComponent, type SetAmmoDialogData }
 import { CORE_2026_GAME_RULES } from '../../models/rules/game-rules';
 import { getAmmoInfoItems } from './set-ammo-dropdown.component';
 import { EquipmentTechBase } from '../../models/entity/types/tech';
-import { createDirectMekRuntimeFixture, emptyCBTEncounterSnapshot } from '../../models/runtime/testing/direct-mek-runtime-fixture';
+import {
+    createDirectHotLoadedAmmoRuntimeFixture,
+    createDirectMekRuntimeFixture,
+    emptyCBTEncounterSnapshot,
+} from '../../models/runtime/testing/direct-mek-runtime-fixture';
 import { projectMekEquipmentPanel } from '../../models/runtime/equipment-panel';
 
 function createEra(from: number | undefined, to: number | undefined): Era {
@@ -61,23 +65,38 @@ describe('mountedAmmoDialogData', () => {
             expect(data.era).toBe(era);
         });
     }
+
+    for (const bound of [true, false]) {
+        it(`allows hot-loading only when the unit is bound to Hot-Loaded Ammo (${bound})`, () => {
+            const { entity, index, instance, equipmentComponent } = createDirectHotLoadedAmmoRuntimeFixture(bound);
+            const state = instance.snapshot();
+            const data = mountedAmmoDialogData({
+                instanceId: instance.instanceId, uuid: instance.uuid,
+                entity, index, ruleset: instance.ruleset(), crewAssignment: instance.getCrewAssignment(),
+                editContext: { owner: instance, state }, state, query: instance.query(),
+            }, equipmentComponent('Test Artemis Ammo').id, null)!;
+
+            expect(data.hotLoadAllowed).toBe(bound);
+        });
+    }
 });
 
 describe('SetAmmoDialogComponent', () => {
     let overlayContainerElement: HTMLElement;
 
     function configureDialog(
-        data: Omit<SetAmmoDialogData, 'gameRules'> & Partial<Pick<SetAmmoDialogData, 'gameRules'>>,
+        data: Omit<SetAmmoDialogData, 'gameRules' | 'hotLoadAllowed'> & Partial<Pick<SetAmmoDialogData, 'gameRules'>>,
         allowMixedTechBaseAmmo = false,
         hotLoadedAmmo = false,
     ) {
         TestBed.configureTestingModule({
             imports: [SetAmmoDialogComponent],
             providers: [
-                { provide: DIALOG_DATA, useValue: { gameRules: CORE_2026_GAME_RULES, ...data } },
+                // Hot-loading follows the unit's bound rule, which the dialog data carries.
+                { provide: DIALOG_DATA, useValue: { gameRules: CORE_2026_GAME_RULES, hotLoadAllowed: hotLoadedAmmo, ...data } },
                 { provide: DialogRef, useValue: { close: jasmine.createSpy('close') } },
                 { provide: DialogsService, useValue: { requestConfirmation: jasmine.createSpy('requestConfirmation').and.resolveTo(false) } },
-                { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo, hotLoadedAmmo } }) } },
+                { provide: OptionsService, useValue: { options: () => ({ CBTOptionalRules: { allowMixedTechBaseAmmo } }) } },
             ],
         });
 
@@ -309,7 +328,7 @@ describe('SetAmmoDialogComponent', () => {
         expect(fixture.componentInstance.selectedAmmoSelectionIssues()).toEqual([]);
         expect(fixture.nativeElement.querySelector('.ammo-selection-issue')).toBeNull();
 
-        const panel = projectMekEquipmentPanel(entity, index, instance.ruleset(), instance.query(), emptyCBTEncounterSnapshot());
+        const panel = projectMekEquipmentPanel(entity, index, instance.ruleset(), instance.query(), emptyCBTEncounterSnapshot(), {});
         expect(panel.components.find(row => row.componentId === ammoId)?.ammo?.compatibilityFacts)
             .toEqual(data.compatibilityFacts);
     });

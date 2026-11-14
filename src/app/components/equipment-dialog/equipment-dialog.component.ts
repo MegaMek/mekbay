@@ -34,7 +34,7 @@ import {
     type MekTurnPanelSnapshot,
 } from '../../models/runtime/mek-turn-panel';
 import { KeyboardShortcutService } from '../../services/keyboard-shortcut.service';
-import { heatAutomationPolicy, OptionsService } from '../../services/options.service';
+import { OptionsService } from '../../services/options.service';
 import { OverlayManagerService } from '../../services/overlay-manager.service';
 import { ToastService } from '../../services/toast.service';
 import { DialogsService } from '../../services/dialogs.service';
@@ -410,7 +410,6 @@ export class EquipmentDialogComponent {
         if (!isCBTMekForceMember(member)) return null;
         return member.force.getMekTurnPanelSnapshot(
             member.id,
-            heatAutomationPolicy(this.options),
         );
     }
 }

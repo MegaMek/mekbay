@@ -40,16 +40,18 @@ export function flamerRequiresPower(equipment: Equipment | null | undefined): bo
 }
 
 /**
- * Whether a flamer's attacker declares heat or damage before rolling. Core always deals both (p. 183), as does Total
- * Warfare with the BattleMech Manual's optional Enhanced Flamers (p. 99).
+ * Whether a heat-or-damage weapon's attacker declares heat or damage before rolling. Other flame-based weapons always
+ * do; a flamer only where its hits do not deal both: Core flamers always deal both (p. 183), as do Total Warfare
+ * flamers with the BattleMech Manual's optional Enhanced Flamers (p. 99).
  */
-export function declaresFlamerHeat(ruleset: CBTRuleset, optionalRules: OptionalRules): boolean {
-    return gameRulesFor(ruleset).supportsFlamerModes && optionalRules.enhancedFlamers !== true;
+export function declaresHeatOrDamage(flamer: boolean, ruleset: CBTRuleset, optionalRules: OptionalRules): boolean {
+    return !flamer || (gameRulesFor(ruleset).supportsFlamerModes && optionalRules.enhancedFlamers !== true);
 }
 
 /**
- * The heat-or-damage declaration as component modes: a flamer has them only where its rules ask for the declaration,
- * while Core flamers always deal both (Core p. 183); other flame-based weapons always declare.
+ * The heat-or-damage declaration as component modes, by ruleset: Core flamers deal both and have none (Core p. 183);
+ * other flame-based weapons always have them. Enhanced Flamers applies where a declaration is read
+ * (`declaresHeatOrDamage`).
  */
 export function heatOrDamageComponentModes(
     equipment: Equipment | null | undefined,
@@ -71,7 +73,7 @@ function declaredMode(
     ruleset: CBTRuleset,
     optionalRules: OptionalRules,
 ): string | undefined {
-    return !isFlamerEquipment(equipment) || declaresFlamerHeat(ruleset, optionalRules) ? mode : undefined;
+    return declaresHeatOrDamage(isFlamerEquipment(equipment), ruleset, optionalRules) ? mode : undefined;
 }
 
 export function flamerDisplayLabel(

@@ -33,7 +33,7 @@ import {
   isPrototypeDoubleHeatSinkEquipment,
   isSingleHeatSinkEquipment,
 } from '../../../heat-equipment.model';
-import { INDUSTRIAL_MEK_ARMOR_FLAGS, isIndustrialStructureEquipment } from '../../../construction-equipment.model';
+import { isIndustrialMekArmor, isIndustrialStructureEquipment } from '../../../construction-equipment.model';
 import { isChainDrapeEquipment } from '../../../chassis-equipment.model';
 
 import {
@@ -284,7 +284,7 @@ export abstract class MekEntity extends BaseEntity {
 
   /** An IndustrialMek mounts BattleMek armor only under experimental rules (MegaMekLab TestMek.legalArmorsFor). */
   override armorRulesLevel(armor: ArmorEquipment): ComponentTechLevel {
-    return this.isIndustrial() && !armor.hasAnyFlag(INDUSTRIAL_MEK_ARMOR_FLAGS)
+    return this.isIndustrial() && !isIndustrialMekArmor(armor)
       ? 'Experimental'
       : super.armorRulesLevel(armor);
   }

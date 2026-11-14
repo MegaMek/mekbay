@@ -27,7 +27,7 @@ describe('bound Mek record-sheet information', () => {
             const state = instance.snapshot();
             const original = {
                 ...projectMekRecordSheet(entity, index, ruleset, state, instance.query(),
-                    { revision: 0, targets: [] }, null),
+                    { revision: 0, targets: [] }, null, false, {}),
                 editContext: { owner: instance, state },
             };
             const binding = bindMekRecordSheet(svg, MM_DATA_MEK_SHEET_BINDING_MANIFEST, original);

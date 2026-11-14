@@ -211,7 +211,7 @@ export function forcePersonnelCrewAssignment(snapshot: ForcePersonnelSnapshot, u
     // Mek and non-Mek indexes identify their stations as crew:<occurrence>.
     const assignments = snapshot.assignments.filter(assignment => assignment.unitId === unitId)
         .sort((left, right) => compareCrewPositionIds(left.positionId, right.positionId));
-    return Object.freeze({ schemaVersion: 1, positions: Object.freeze(assignments.map(assignment => {
+    return Object.freeze({ positions: Object.freeze(assignments.map(assignment => {
         const person = people.get(assignment.personId)!;
         return Object.freeze({ positionId: asCrewPositionId(assignment.positionId), name: person.name ?? '',
             gunnery: person.gunnery ?? 4, piloting: person.piloting ?? 5,

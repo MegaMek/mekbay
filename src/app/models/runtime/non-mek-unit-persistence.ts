@@ -1,13 +1,15 @@
 // Copyright (C) 2026 The MegaMek Team
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { BOUND_OPTIONAL_RULE_DEFAULTS, type BoundOptionalRules } from './bound-optional-rules';
+import type { BoundOptionalRules } from './bound-optional-rules';
 import { asUnitUuid,type UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
 import { BOMB_SECTIONS,bombLoadoutIssue,type BombLoad,type BombSection } from '../aerospace-bomb.model';
 import { velocityRecordEntryIssue,type VelocityRecordEntry } from '../aerospace-velocity-record.model';
 import type { CBTRuleset } from '../cbt-ruleset.model';
 import type { BaseEntity } from '../entity/base-entity';
+import { nonMekFliesAtElevation } from './non-mek-airborne-state';
+import { elevationRecordEntryIssue, type ElevationRecordEntry } from '../elevation-record.model';
 import { isNativeEntityType } from '../entity/codec-capabilities';
 import {
 asArmorFaceId,
@@ -27,7 +29,8 @@ import { asSourceHashCanary,type SourceHashCanary } from '../source-hash-canary'
 import { decodePinnedCustomUnitSource, type PinnedCustomUnitSource } from '../pinned-custom-unit-source';
 import { requireUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import { deserializeUnitCover,type SerializedUnitCover } from '../unit-cover.model';
-import { serializeSharedTurnFacts } from './cbt-unit-runtime';
+import { readFiredWeapons, serializeSharedTurnFacts } from './cbt-unit-runtime';
+import { readTurnHeatLedger } from './turn-heat-ledger';
 import {
 createPristineAttackerTargetingState,
 } from './attacker-targeting-state';
@@ -57,14 +60,12 @@ type InstanceBaselineRef,
 type SerializedInstanceBaselineRef,
 } from './runtime-state';
 
-export const NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION = 7 as const;
-export const NON_MEK_DEPLOYMENT_SCHEMA_VERSION = 1 as const;
 const SERIALIZED_NON_MEK_UNIT_KEYS = new Set([
-    'schemaVersion', 'instanceId', 'entity', 'sourceHashCanary', 'customSource',
+    'instanceId', 'entity', 'sourceHashCanary', 'customSource',
     'baselineRefAtSave', 'deployment', 'family', 'stateRevision',
     'destroyed', 'locationState', 'componentState', 'damageTrackState',
     'ammoState', 'bombState', 'crewState', 'conditions', 'heat', 'turn',
-    'equipmentRowOrder', 'pendingCombat', 'velocityRecord',
+    'equipmentRowOrder', 'pendingCombat', 'velocityRecord', 'swarming', 'elevationRecord',
 ]);
 
 export interface NonMekDeploymentConfiguration {
@@ -73,12 +74,10 @@ export interface NonMekDeploymentConfiguration {
 }
 
 export interface SerializedNonMekDeployment {
-    readonly schemaVersion: typeof NON_MEK_DEPLOYMENT_SCHEMA_VERSION;
     readonly values: NonMekDeploymentConfiguration;
 }
 
 export interface SerializedNonMekUnit {
-    readonly schemaVersion: typeof NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION;
     readonly instanceId: string;
     readonly entity: UnitUuid;
     readonly sourceHashCanary?: SourceHashCanary;
@@ -115,6 +114,10 @@ export interface SerializedNonMekUnit {
         readonly hotLoaded?: true;
     }>[];
     readonly velocityRecord?: readonly VelocityRecordEntry[];
+    /** The encounter target id of the unit an infantry unit is swarming. */
+    readonly swarming?: string;
+    /** The Elevations recorded turn by turn for a flying unit, in turn order. */
+    readonly elevationRecord?: readonly Readonly<{ readonly turn: number; readonly value: number }>[];
     readonly bombState?: readonly Readonly<{
         readonly section: BombSection;
         readonly bombId: string;
@@ -134,6 +137,7 @@ export interface SerializedNonMekUnit {
         readonly current: number;
         readonly previous: number;
         readonly pendingOverride?: number;
+        readonly pendingOffset?: number;
         readonly heatsinksOff: number;
     }>;
     readonly turn?: Readonly<{
@@ -141,9 +145,11 @@ export interface SerializedNonMekUnit {
         readonly airborne?: boolean;
         readonly movement?: NonMekMovementDeclaration;
         readonly weaponsHeat?: number;
+        readonly firedWeapons?: readonly ComponentId[];
         readonly outsideHeat?: number;
         readonly infernoMissiles?: number;
-        readonly heatSettled?: true;
+        readonly settledHeat?: readonly Readonly<{ readonly sourceId: string; readonly heat: number }>[];
+        readonly heatDissipationConsumed?: number;
         readonly cover?: SerializedUnitCover;
         readonly spotting?: true;
         readonly phaseStateChanged?: true;
@@ -197,9 +203,6 @@ export function inspectSerializedNonMekUnit(value: unknown): SerializedNonMekUni
     const record = requireRecord(value, 'non-Mek unit');
     const unknownKey = Object.keys(record).find(key => !SERIALIZED_NON_MEK_UNIT_KEYS.has(key));
     if (unknownKey !== undefined) throw new Error(`Unknown non-Mek unit field ${unknownKey}`);
-    if (record['schemaVersion'] !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
-        throw new Error(`Unsupported non-Mek unit schema ${String(record['schemaVersion'])}`);
-    }
     const instanceId = requireString(record['instanceId'], 'instanceId');
     const stateRevision = requireInteger(record['stateRevision'], 'stateRevision');
     const entity = parseCurrentUnitUuid(record['entity'], 'entity');
@@ -294,7 +297,6 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
     const equipmentRowOrder = freezeEquipmentRowOrder(state.equipmentRowOrder);
 
     return Object.freeze({
-        schemaVersion: NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION,
         instanceId: input.instanceId,
         entity: input.uuid,
         ...(input.sourceHashCanary === undefined ? {} : { sourceHashCanary: input.sourceHashCanary }),
@@ -315,6 +317,10 @@ export function serializeNonMekUnit(input: SerializeNonMekUnitInput): Serialized
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(pendingCombat === undefined ? {} : { pendingCombat }),
         ...(state.velocityRecord === undefined ? {} : { velocityRecord: state.velocityRecord }),
+        ...(state.swarming === undefined ? {} : { swarming: state.swarming }),
+        ...(state.elevationRecord === undefined ? {} : {
+            elevationRecord: Object.freeze(state.elevationRecord.map(entry => Object.freeze({ ...entry }))),
+        }),
     });
 }
 
@@ -322,11 +328,8 @@ export function restoreNonMekRuntime(
     saved: SerializedNonMekUnit,
     entity: BaseEntity,
     ruleset: CBTRuleset,
-    rules: BoundOptionalRules = BOUND_OPTIONAL_RULE_DEFAULTS,
+    rules: BoundOptionalRules,
 ): Readonly<{ binding: NonMekRuntimeBinding; state: NonMekUnitRuntimeState; baselineRef: InstanceBaselineRef }> {
-    if (saved.schemaVersion !== NON_MEK_UNIT_PERSISTENCE_SCHEMA_VERSION) {
-        throw new Error(`Unsupported non-Mek unit schema ${String(saved.schemaVersion)}`);
-    }
     if (entity.entityType === 'Mek' || saved.family.kind !== 'non-mek'
         || saved.family.entityType !== entity.entityType) {
         throw new Error('Persisted runtime family does not match the entity');
@@ -443,6 +446,7 @@ export function restoreNonMekRuntime(
             ...(saved.heat?.pendingOverride === undefined
                 ? {}
                 : { pendingOverride: saved.heat.pendingOverride }),
+            ...(saved.heat?.pendingOffset === undefined ? {} : { pendingOffset: saved.heat.pendingOffset }),
             heatsinksOff: saved.heat?.heatsinksOff ?? 0,
         }),
         turn: restoreNonMekTurn(saved),
@@ -450,6 +454,8 @@ export function restoreNonMekRuntime(
         ...(equipmentRowOrder === undefined ? {} : { equipmentRowOrder }),
         ...(bombs === undefined ? {} : { bombs }),
         ...(velocityRecord.length === 0 ? {} : { velocityRecord }),
+        ...(saved.swarming === undefined ? {} : { swarming: requireString(saved.swarming, 'swarming') }),
+        ...(saved.elevationRecord === undefined ? {} : { elevationRecord: restoreElevationRecord(entity, saved.elevationRecord) }),
         pendingCombat: restorePendingCombat(saved),
     });
     return Object.freeze({
@@ -494,7 +500,8 @@ function restoreVelocityRecord(rows: SerializedNonMekUnit['velocityRecord']): re
 function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUnit['turn'] {
     const turn = state.turn;
     if (turn.turnCounter === 0 && turn.airborne === null && turn.movement === null
-        && turn.weaponsHeat === 0 && !turn.outsideHeat && !turn.infernoMissiles && !turn.heatSettled
+        && turn.weaponsHeat === 0 && turn.firedWeapons === undefined && !turn.outsideHeat && !turn.infernoMissiles
+        && turn.settledHeat.size === 0 && turn.heatDissipationConsumed === undefined
         && turn.cover === null && !turn.spotting
         && !turn.phaseStateChanged
         && turn.endTurnCheckpoint === undefined
@@ -504,7 +511,6 @@ function serializeNonMekTurn(state: NonMekUnitRuntimeState): SerializedNonMekUni
     return Object.freeze({
         ...serializeSharedTurnFacts(turn),
         ...(turn.infernoMissiles ? { infernoMissiles: turn.infernoMissiles } : {}),
-        ...(turn.heatSettled ? { heatSettled: true as const } : {}),
         ...(turn.controlRecovery === undefined
             ? {}
             : { controlRecovery: Object.freeze({ ...turn.controlRecovery }) }),
@@ -532,9 +538,12 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
         turnCounter: saved.turn?.turnCounter ?? 0,
         airborne: saved.turn?.airborne ?? null,
         weaponsHeat: saved.turn?.weaponsHeat ?? 0,
+        ...(saved.turn?.firedWeapons === undefined
+            ? {}
+            : { firedWeapons: readFiredWeapons(saved.turn.firedWeapons, 'entity turn fired weapons', failTurn) }),
         ...(saved.turn?.outsideHeat ? { outsideHeat: saved.turn.outsideHeat } : {}),
         ...(saved.turn?.infernoMissiles ? { infernoMissiles: saved.turn.infernoMissiles } : {}),
-        heatSettled: saved.turn?.heatSettled === true,
+        ...readTurnHeatLedger(saved.turn?.settledHeat, saved.turn?.heatDissipationConsumed, 'entity turn', failTurn),
         cover: saved.turn?.cover === undefined
             ? null
             : deserializeUnitCover(saved.turn.cover) ?? null,
@@ -557,13 +566,18 @@ function restoreNonMekTurn(saved: SerializedNonMekUnit): NonMekUnitRuntimeState[
     });
 }
 
+function failTurn(message: string, path: string): never {
+    throw new Error(`Non-Mek ${path}: ${message}`);
+}
+
 function validateSerializedNonMekTurn(value: unknown): void {
     if (value === undefined) return;
     const turn = requireRecord(value, 'entity turn');
     const keys = Object.keys(turn);
     if (keys.some(key => key !== 'turnCounter' && key !== 'airborne'
-        && key !== 'movement' && key !== 'weaponsHeat' && key !== 'outsideHeat' && key !== 'infernoMissiles'
-        && key !== 'heatSettled'
+        && key !== 'movement' && key !== 'weaponsHeat' && key !== 'firedWeapons' && key !== 'outsideHeat'
+        && key !== 'infernoMissiles'
+        && key !== 'settledHeat' && key !== 'heatDissipationConsumed'
         && key !== 'cover' && key !== 'spotting' && key !== 'endTurnCheckpoint'
         && key !== 'controlRecovery' && key !== 'phaseStateChanged' && key !== 'turnStep'
         && key !== 'joinedStep')) {
@@ -582,9 +596,8 @@ function validateSerializedNonMekTurn(value: unknown): void {
     if (turn['spotting'] !== undefined && turn['spotting'] !== true) {
         throw new Error('Non-Mek spotting state must be true when present');
     }
-    if (turn['heatSettled'] !== undefined && turn['heatSettled'] !== true) {
-        throw new Error('Non-Mek settled heat marker must be true when present');
-    }
+    readTurnHeatLedger(turn['settledHeat'], turn['heatDissipationConsumed'], 'entity turn', failTurn);
+    if (turn['firedWeapons'] !== undefined) readFiredWeapons(turn['firedWeapons'], 'entity turn fired weapons', failTurn);
     if (turn['phaseStateChanged'] !== undefined && turn['phaseStateChanged'] !== true) {
         throw new Error('Non-Mek phase state marker must be true when present');
     }
@@ -614,8 +627,11 @@ function validateSerializedNonMekTurn(value: unknown): void {
     if (turn['movement'] === undefined) return;
     const movement = requireRecord(turn['movement'], 'entity movement');
     if (Object.keys(movement).some(key =>
-        key !== 'mode' && key !== 'distance' && key !== 'boosterComponentIds')) {
+        key !== 'mode' && key !== 'distance' && key !== 'boosterComponentIds' && key !== 'erratic')) {
         throw new Error('Non-Mek movement contains unknown fields');
+    }
+    if (movement['erratic'] !== undefined && movement['erratic'] !== true) {
+        throw new Error('Non-Mek erratic manoeuvres are invalid');
     }
     const mode = movement['mode'];
     if (mode !== 'stationary' && mode !== 'walk' && mode !== 'run'
@@ -693,12 +709,10 @@ function parseCurrentUnitUuid(value: unknown, label: string): UnitUuid {
 }
 
 function freezeDeployment(value: SerializedNonMekDeployment): SerializedNonMekDeployment {
-    if (value.schemaVersion !== NON_MEK_DEPLOYMENT_SCHEMA_VERSION
-        || !value.values.id.trim() || value.values.id.includes('\0')) {
+    if (!value.values.id.trim() || value.values.id.includes('\0')) {
         throw new Error('Invalid entity deployment');
     }
     return Object.freeze({
-        schemaVersion: NON_MEK_DEPLOYMENT_SCHEMA_VERSION,
         values: Object.freeze({
             id: value.values.id,
             crewAssignment: Object.freeze({
@@ -715,6 +729,23 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
         throw new Error(`${label} must be an object`);
     }
     return value as Record<string, unknown>;
+}
+
+/** A saved Elevation record, only for a unit that flies at an Elevation: one entry per turn, in turn order. */
+function restoreElevationRecord(
+    entity: BaseEntity,
+    rows: NonNullable<SerializedNonMekUnit['elevationRecord']>,
+): readonly ElevationRecordEntry[] {
+    if (!nonMekFliesAtElevation(entity) || !Array.isArray(rows) || rows.length === 0) {
+        throw new Error('Elevation record does not fit the unit');
+    }
+    return Object.freeze(rows.map((row, index) => {
+        const entry = Object.freeze({ turn: row.turn, value: row.value });
+        const issue = elevationRecordEntryIssue(entry);
+        if (issue !== null) throw new Error(`Invalid persisted elevation record: ${issue}`);
+        if (index > 0 && rows[index - 1]!.turn >= entry.turn) throw new Error('Elevation record is out of turn order');
+        return entry;
+    }));
 }
 
 function requireString(value: unknown, label: string): string {

@@ -88,7 +88,7 @@ describe('CBTForce live rules switch', () => {
         const { force } = await loadCBTForceFixture([mek.instance], 'total-warfare');
         await dispatch(force, id, { type: 'hit-critical', slotId: systemSlot(mek, 'Gyro').id, hits: 1, target: 'committed' });
         await dispatch(force, id, { type: 'declare-mek-movement',
-            declaration: { schemaVersion: 1, mode: 'run', distance: 1, boosterComponentIds: [] } });
+            declaration: { mode: 'run', distance: 1, boosterComponentIds: [] } });
         const tw = movement(force, id);
         expect(tw.permanentPsrModifier).toBe(3);
         const reasons = pendingChecks(force, id).map(check => check.reason);
@@ -204,7 +204,7 @@ describe('CBTForce live rules switch', () => {
         const snapshot = mekSnapshot(force, id);
         expect(snapshot.query.componentMode(bombast) ?? BOMBAST_LASER_DAMAGE_12_MODE).toBe(BOMBAST_LASER_DAMAGE_12_MODE);
         const row = projectMekEquipmentPanel(snapshot.entity, snapshot.index, snapshot.ruleset, snapshot.query,
-            emptyCBTEncounterSnapshot()).components.find(component => component.componentId === bombast)!;
+            emptyCBTEncounterSnapshot(), {}).components.find(component => component.componentId === bombast)!;
         expect(row.weapon).toEqual(jasmine.objectContaining({ damage: 12, heat: 12, toHitModifier: 3 }));
     });
 
@@ -293,7 +293,7 @@ describe('CBTForce live rules switch', () => {
         const uuid = asUnitUuid('019f6767-0dcb-7bb8-992f-aef08202f5ed');
         fighter.uuid.set(uuid);
         const unit = createNonMekUnit(fighter, { instanceId: 'unit:switch-fighter', uuid, deployment: { id: 'default' },
-            scenario: fixtureScenario('total-warfare'), initialStateProfileId: 'pristine-non-mek-v1' });
+            scenario: fixtureScenario('total-warfare'), initialStateProfileId: 'pristine-non-mek' });
         const { force } = await loadCBTForceFixture([unit], 'total-warfare');
         await dispatch(force, unit.instanceId, { type: 'set-heat', heat: 7 });
         const heat = entitySnapshot(force, unit.instanceId).state.heat;
@@ -362,7 +362,7 @@ function intactFace(force: CBTForce, id: string) {
 function mrmToHit(force: CBTForce, id: string, componentId: ComponentId) {
     const snapshot = entitySnapshot(force, id);
     return projectNonMekEquipmentPanel(snapshot.entity, snapshot.index, snapshot.ruleset, snapshot.state,
-        snapshot.query as NonMekUnitQueryPort, { revision: 0, targets: [] }).components.find(row => row.componentId === componentId)?.weapon?.toHitModifier;
+        snapshot.query as NonMekUnitQueryPort, { revision: 0, targets: [] }, {}).components.find(row => row.componentId === componentId)?.weapon?.toHitModifier;
 }
 
 function tankUnit(ruleset: CBTRuleset, weapon?: WeaponEquipment): CBTUnit {
@@ -373,7 +373,7 @@ function tankUnit(ruleset: CBTRuleset, weapon?: WeaponEquipment): CBTUnit {
     entity.setArmorValue('Front', 'front', 20);
     if (weapon) addTestEquipment(entity, weapon, { location: 'Front' });
     return createNonMekUnit(entity, { instanceId: 'unit:switch-tank', uuid, deployment: { id: 'default' },
-        scenario: fixtureScenario(ruleset), initialStateProfileId: 'pristine-non-mek-v1' });
+        scenario: fixtureScenario(ruleset), initialStateProfileId: 'pristine-non-mek' });
 }
 
 async function caselessMek(ruleset: CBTRuleset): Promise<CBTMekUnit> {
@@ -403,6 +403,6 @@ async function caselessMek(ruleset: CBTRuleset): Promise<CBTMekUnit> {
         rearMounted: false, turretMounted: false, omniPodMounted: false, armored: false,
     })));
     return createMekUnit({ uuid, instanceId: 'unit:switch-caseless' }, entity, uuid, {
-        initializerRevision: 1, profileId: 'pristine', deployment: { id: 'default' }, scenario: fixtureScenario(ruleset),
+        profileId: 'pristine', deployment: { id: 'default' }, scenario: fixtureScenario(ruleset),
     });
 }

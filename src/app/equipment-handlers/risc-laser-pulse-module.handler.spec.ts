@@ -53,7 +53,7 @@ describe('RiscLaserPulseModuleHandler', () => {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(row => row.componentId === laser.id)!;
 
         expect(fixture.instance.dispatch({

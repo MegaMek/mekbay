@@ -60,10 +60,10 @@ describe('Aero runtime rules', () => {
             
             heatsinksOff: 2,
         }).accepted).toBeTrue();
-        expect(runtime.dispatch({
-            type: 'end-phase',
-            
-        }).accepted).toBeTrue();
+        // The arrow waits for APPLY HEAT or End Turn, like a 'Mech's; End Phase leaves it.
+        expect(runtime.dispatch({ type: 'end-phase' }).accepted).toBeTrue();
+        expect(runtime.snapshot().heat.pendingOverride).toBe(24);
+        expect(runtime.dispatch({ type: 'apply-heat' }).accepted).toBeTrue();
 
         const projection = project(runtime);
         expect(runtime.snapshot().heat).toEqual({
@@ -205,9 +205,7 @@ function baseline(): InstanceBaselineRef {
         entity: UUID,
         ruleset: CORE_2026_RULESET,
         initialStateProfile: Object.freeze({
-            schemaVersion: 1 as const,
-            initializerRevision: 1,
-            profileId: 'pristine-non-mek-v1',
+            profileId: 'pristine-non-mek',
         }),
     });
 }

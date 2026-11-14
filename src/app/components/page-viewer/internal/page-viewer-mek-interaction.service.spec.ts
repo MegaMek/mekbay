@@ -33,6 +33,7 @@ import { PageViewerZoomPanService } from '../page-viewer-zoom-pan.service';
 import { UnitStateDropdownComponent } from '../unit-state-dropdown.component';
 import { PageViewerMekInteractionService } from './page-viewer-mek-interaction.service';
 import { PageViewerOverlayService } from './page-viewer-overlay.service';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../../../models/runtime/bound-optional-rules';
 
 const editContext = createUnitEditContextFixture();
 
@@ -58,7 +59,7 @@ describe('PageViewerMekInteractionService', () => {
         service.handle(member, { kind: 'movement', mode: 'run', context: currentSnapshot.editContext }, new Event('click'));
         await Promise.resolve();
         expect(force.dispatchUnitCommand.calls.mostRecent().args[1]).toEqual({
-            type: 'declare-mek-movement', declaration: { schemaVersion: 1, mode: 'run', distance: 1,
+            type: 'declare-mek-movement', declaration: { mode: 'run', distance: 1,
                 boosterComponentIds: ['booster'] },
         });
         const previousContext = editContext(revision - 1);
@@ -89,6 +90,7 @@ describe('PageViewerMekInteractionService', () => {
             index: { locations: new Map([['loc-ct', { code: 'CT' }]]) },
             query: {
                 stateRevision: revision, editContext: editContext(revision),
+                boundRules: () => BOUND_OPTIONAL_RULE_DEFAULTS,
                 crewState: (positionId: string) => currentSnapshot.crew
                     .find(row => row.positionId === positionId)?.state
                     ?? { wounds: 0, unconscious: false, ejected: false },
@@ -138,14 +140,13 @@ describe('PageViewerMekInteractionService', () => {
             getEquipmentInteractions: jasmine.createSpy().and.returnValue([]),
             dispatchEquipmentChoice: jasmine.createSpy().and.resolveTo({ accepted: true, changed: true, context: editContext(1) }),
             getUnitCrewProfile: jasmine.createSpy().and.returnValue({
-                schemaVersion: 1,
                 positions: [{ positionId: 'crew-0', name: 'Morgan', gunnery: 3, piloting: 4 }],
             }),
-            replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ schemaVersion: 1, positions: [] }),
+            replaceUnitCrewProfile: jasmine.createSpy().and.resolveTo({ positions: [] }),
             getAssignedPerson: jasmine.createSpy().and.returnValue(null),
             getAttackerTargeting: jasmine.createSpy().and.returnValue({
                 instanceId: 'unit-1', stateRevision: 1, editContext: editContext(1), registryRevision: 2,
-                state: { schemaVersion: 1, components: new Map(), actions: new Map(), targets: new Map() },
+                state: { components: new Map(), actions: new Map(), targets: new Map() },
             }),
             dispatchAttackerTargeting: jasmine.createSpy().and.resolveTo({
                 accepted: true, idempotent: false, currentRevision: 2,

@@ -31,9 +31,10 @@ describe('aerospace velocity record model', () => {
             .toBeFalse();
     });
 
-    it('accepts only whole values in the sheet turns', () => {
+    it('accepts only whole values, in any turn from 1', () => {
         expect(velocityRecordEntryIssue({ turn: 20, field: 'altitude', value: 10 })).toBeNull();
-        expect(velocityRecordEntryIssue({ turn: 21, field: 'altitude', value: 1 })).toContain('turns');
+        expect(velocityRecordEntryIssue({ turn: 37, field: 'altitude', value: 1 })).toBeNull();
+        expect(velocityRecordEntryIssue({ turn: 0, field: 'altitude', value: 1 })).toContain('turns');
         expect(velocityRecordEntryIssue({ turn: 1, field: 'velocity', value: -1 })).toContain('values');
         expect(velocityRecordEntryIssue({ turn: 1, field: 'velocity', value: 1.5 })).toContain('values');
     });

@@ -35,6 +35,8 @@ export interface SetAmmoDialogData {
     equipmentRegistry?: EquipmentRegistry;
     weaponTechBases?: readonly EquipmentTechBase[];
     hotLoaded?: boolean;
+    /** The unit's own Hot-Loaded Ammo rule, as it is bound; the options may differ from a force that is not ours. */
+    hotLoadAllowed: boolean;
 }
 
 export interface SetAmmoDialogResult {
@@ -71,6 +73,7 @@ export function mountedAmmoDialogData(
         era,
         compatibilityFacts: entityAmmoSelectionCompatibilityFacts(source.entity, ammoOptions),
         quantity: source.query.remainingAmmo(componentId), maxQuantity: selected.capacity,
+        hotLoadAllowed: source.query.boundRules().hotLoadedAmmo,
         hotLoaded: source.state.ammo.get(componentId)?.hotLoaded === true,
         unitType: source.entity.unitType(), gameRules: gameRulesFor(source.ruleset),
         equipmentRegistry: source.entity.getEquipmentRegistry(),
@@ -321,8 +324,7 @@ export class SetAmmoDialogComponent {
     
     selectedAmmoName = signal(this.data.currentAmmo.internalName);
     hotLoaded = signal(this.data.hotLoaded ?? false);
-    canHotLoad = computed(() => this.optionsService?.options().CBTOptionalRules?.hotLoadedAmmo === true
-        && this.selectedAmmo().hasFlag('F_HOT_LOAD'));
+    canHotLoad = computed(() => this.data.hotLoadAllowed && this.selectedAmmo().hasFlag('F_HOT_LOAD'));
     allowMixedTechBaseAmmo = computed(() => this.optionsService?.options().CBTOptionalRules?.allowMixedTechBaseAmmo ?? false);
     ammoOptions = computed(() => {
         const options = this.data.ammoOptions;

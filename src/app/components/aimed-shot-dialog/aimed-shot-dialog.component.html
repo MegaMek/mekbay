@@ -1,0 +1,25 @@
+<div class="panel glass preventZoomReset framed-borders has-shadow" [class.with-rear]="rear" (click)="$event.stopPropagation()">
+    <div class="header">Aimed shot</div>
+    <div class="body aim-body">
+        <div class="aim-context">
+            <strong>{{ data.weapon }} → {{ data.target }}</strong>
+            <span>{{ data.direction }}</span>
+        </div>
+        <div class="aim-dolls">
+            <svg #doll class="aim-doll" [attr.viewBox]="viewBox" role="group" aria-label="Target locations"></svg>
+            @if (rear) {
+                <div class="aim-rear">
+                    <span class="aim-caption">Rear armor</span>
+                    <svg #rearDoll class="aim-doll" [attr.viewBox]="rearViewBox" role="group" aria-label="Rear armor locations"></svg>
+                </div>
+            }
+        </div>
+    </div>
+    <div class="actions">
+        <button type="button" class="bt-button" [class.primary]="data.choices.current !== null" (click)="choose(null)">
+            NO AIMED SHOT
+            @if (data.choices.normalTargetNumber; as normal) { <span class="aim-normal">{{ rollText(normal) }}</span> }
+        </button>
+        <button type="button" class="bt-button" (click)="dismiss()">DISMISS</button>
+    </div>
+</div>

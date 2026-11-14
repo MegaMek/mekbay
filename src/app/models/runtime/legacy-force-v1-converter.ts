@@ -29,23 +29,21 @@ type UnitIdentityResolver,
 import type { ASCustomPilotAbility } from '../pilot-abilities.model';
 import { isUnitConditionKey,type UnitConditionKey } from '../unit-condition.model';
 import {
-CBT_FORCE_ROSTER_SCHEMA_VERSION,
 CBT_FORCE_UNASSIGNED_GROUP_ID,
 MAX_CBT_FORCE_ROSTER_METADATA_LENGTH,
-type SerializedCBTForceRosterGroupV1,
+type SerializedCBTForceRosterGroup,
 } from './cbt-force-roster';
 import { type CBTMekUnit,type CBTNonMekUnit } from './cbt-unit';
-import { MAX_HEAT_VALUE,type CBTRuntimeEquipment } from './cbt-unit-runtime';
+import { type CBTRuntimeEquipment } from './cbt-unit-runtime';
 import {
 asForceId,
-CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
 emptyRuntimeHistory,
 validateSerializedCBTForceV2,
 type SerializedCBTForceV2,
 type SerializedCBTUnitV2,
 type SerializedForceUnitEntryV2,
 } from './persistence-v2';
-import { freezeRuntimeState,type MekUnitRuntimeState } from './runtime-state';
+import { freezeRuntimeState } from './runtime-state';
 
 import { isRecord,jsonValuesEqual } from '../../utils/json-value.util';
 import { Sanitizer } from '../../utils/sanitizer.util';
@@ -66,15 +64,13 @@ import { isCBTMekUnit,isCBTNonMekUnit,type CBTUnit } from './cbt-unit';
 import type { CrewAssignment,CrewTopology } from './crew-assignment';
 import { createDefaultCrewAssignment } from './crew-assignment';
 import { encodeCBTEncounterStateV2 } from './encounter-runtime';
-import { createMekHeatContextV2,mekHeatSourceSignatureV2 } from './mek-heat-state-v2';
-import { createMekMechanicsContextV2 } from './mek-mechanics-context-v2';
-import { canonicalizeMekTurnStateV2 } from './mek-turn-state-v2';
 import { canonicalNonMekAirborneState } from './non-mek-airborne-state';
+import { legacyHeatPointsV1, legacyTurnHeatLedgerV1, parseLegacyMekTurnStateV1 } from './legacy-mek-turn-state-v1';
+import { serializeTurnHeatLedger } from './turn-heat-ledger';
 import type { NonMekRuntimeIndex } from './non-mek-runtime-index';
 import type { SerializedNonMekUnit } from './non-mek-unit-persistence';
 import { serializeCBTUnitStateV2 } from './runtime-state-codec-v2';
 import { restoreLegacyUnitState } from './state-restorer';
-import { createMekRuntimeBinding,queryMekRuntime } from './unit-instance';
 import {
 DEFAULT_FORCE_DEPLOYMENT_ID,
 type ScenarioRules,
@@ -301,11 +297,7 @@ export async function convertPersistedMekUnitV1(
     });
     const issues = [...restored.warnings];
     const crewRows = readLegacyCrewRows(source, fresh.getIndex().crewPositions, issues);
-    const restoredState = convertLegacyMovementHeatAcknowledgement(
-        restored.state,
-        fresh,
-        scenario,
-    );
+    const restoredState = restored.state;
     const state = freezeRuntimeState({
         ...restoredState,
         crew: restoreLegacyCrewRuntime(
@@ -483,7 +475,6 @@ function restoreLegacyCrewAssignment(
 ): CrewAssignment {
     const defaults = createDefaultCrewAssignment(topology);
     return Object.freeze({
-        schemaVersion: 1 as const,
         positions: Object.freeze(defaults.positions.map((position, occurrence) => {
             const row = legacyCrewRow(rows, occurrence);
             return Object.freeze({
@@ -1127,23 +1118,23 @@ function restoreLegacyEntityHeat(
         issues.push('Malformed V1 heat state was skipped.');
         return undefined;
     }
-    const current = nonnegativeInteger(value['current']);
-    const previous = nonnegativeInteger(value['previous']);
-    const pending = value['next'] === undefined ? undefined : nonnegativeInteger(value['next']);
-    const off = value['heatsinksOff'] === undefined
-        ? 0
-        : nonnegativeInteger(value['heatsinksOff']);
-    if (current === null || previous === null || pending === null || off === null) {
-        issues.push('Malformed V1 heat state was skipped.');
-        return undefined;
-    }
+    // As for a 'Mek, an unreadable heat fact is skipped and the others kept.
+    let unreadable = false;
+    const fact = <T>(key: string, read: (raw: JsonValue) => T | null, absent: T): T => {
+        const raw = value[key];
+        if (raw === undefined) return absent;
+        const parsed = read(raw);
+        unreadable ||= parsed === null;
+        return parsed ?? absent;
+    };
+    const current = fact('current', legacyHeatPointsV1, 0);
+    const previous = fact('previous', legacyHeatPointsV1, 0);
+    const pending = fact<number | undefined>('next', legacyHeatPointsV1, undefined);
+    const off = fact('heatsinksOff', nonnegativeInteger, 0);
+    if (unreadable) issues.push('Invalid V1 heat facts were skipped.');
     const nonPristine = current !== 0 || previous !== 0 || pending !== undefined || off !== 0;
     if (!tracksHeat) {
         if (nonPristine) issues.push('V1 heat state belongs to an Entity that does not track heat.');
-        return undefined;
-    }
-    if (current > MAX_HEAT_VALUE || previous > MAX_HEAT_VALUE || (pending ?? 0) > MAX_HEAT_VALUE) {
-        issues.push('V1 heat state exceeds the current runtime limit.');
         return undefined;
     }
     const maximumOff = Math.max(0, Math.trunc(installedHeatSinks));
@@ -1174,7 +1165,9 @@ function restoreLegacyEntityTurn(
         issues.push('Malformed V1 turn state was skipped.');
         return undefined;
     }
-    const supported = new Set(['turnCounter', 'airborne', 'moveMode', 'moveDistance']);
+    // V1 kept one turn shape for every unit; a unit that tracks heat keeps its turn heat as a 'Mek's does.
+    const heatKeys = entity.tracksHeat() ? ['weaponsHeat', 'acknowledgedHeatSources', 'heatDissipationConsumed'] : [];
+    const supported = new Set(['turnCounter', 'airborne', 'moveMode', 'moveDistance', ...heatKeys]);
     for (const [key, field] of Object.entries(value)) {
         if (supported.has(key) || field === undefined || field === null || field === false || field === 0) continue;
         if (Array.isArray(field) && field.length === 0) continue;
@@ -1217,13 +1210,21 @@ function restoreLegacyEntityTurn(
     const movement = mode !== undefined && distance !== undefined && distance !== null
         ? Object.freeze({ mode, distance, boosterComponentIds: Object.freeze([]) })
         : undefined;
-    if ((turnCounter ?? 0) === 0 && airborne === null && movement === undefined) {
+    const heat = parseLegacyMekTurnStateV1(Object.fromEntries(heatKeys.filter(key => key in value)
+        .map(key => [key, value[key]])));
+    issues.push(...heat.warnings);
+    const weaponsHeat = legacyHeatPointsV1(heat.state.weaponsHeat) ?? 0;
+    const ledger = serializeTurnHeatLedger(legacyTurnHeatLedgerV1(heat.state, issues));
+    if ((turnCounter ?? 0) === 0 && airborne === null && movement === undefined && weaponsHeat === 0
+        && Object.keys(ledger).length === 0) {
         return undefined;
     }
     return Object.freeze({
         ...(turnCounter === null || turnCounter === 0 ? {} : { turnCounter }),
         ...(airborne === null ? {} : { airborne }),
         ...(movement === undefined ? {} : { movement }),
+        ...(weaponsHeat === 0 ? {} : { weaponsHeat }),
+        ...ledger,
     });
 }
 
@@ -1304,60 +1305,6 @@ function compareNumbers(left: number, right: number): number {
     return left - right;
 }
 
-/** Converts the one heat witness whose V1 and current signatures differ. */
-function convertLegacyMovementHeatAcknowledgement(
-    state: MekUnitRuntimeState,
-    fresh: CBTMekUnit,
-    scenario: ScenarioRules,
-): MekUnitRuntimeState {
-    const savedSignature = state.turn.acknowledgedHeatSources.get('movement');
-    if (savedSignature === undefined) return state;
-
-    // Project from the restored state without acknowledgements so unrelated stale V1 witnesses
-    // cannot suppress or disable the source needed for this one-way conversion.
-    const projectionState = freezeRuntimeState({
-        ...state,
-        turn: canonicalizeMekTurnStateV2({
-            ...state.turn,
-            acknowledgedHeatSources: new Map(),
-        }),
-    });
-    const entity = fresh.getUnit();
-    const runtime = fresh;
-    const ruleset = runtime.ruleset();
-    const index = fresh.getIndex();
-    const projectionRuntime = createMekRuntimeBinding(
-        entity,
-        index,
-        ruleset,
-        projectionState,
-        fresh.getCrewAssignment(),
-        createMekHeatContextV2(entity, index, ruleset, scenario),
-        createMekMechanicsContextV2(entity, index, ruleset, scenario),
-    );
-    const projected = queryMekRuntime(projectionRuntime.binding, projectionRuntime.state).heatProjection('manual');
-    const movement = projected.kind === 'supported'
-        ? projected.projection.committedSources.find(source => source.id === 'movement')
-        : undefined;
-    const acknowledgedHeatSources = new Map(state.turn.acknowledgedHeatSources);
-    acknowledgedHeatSources.delete('movement');
-    if (movement !== undefined) {
-        const currentSignature = mekHeatSourceSignatureV2(movement);
-        const legacySignature = JSON.stringify([
-            movement.value,
-            movement.replacedByFiringEntryId ?? null,
-            null,
-        ]);
-        if (savedSignature === legacySignature || savedSignature === currentSignature) {
-            acknowledgedHeatSources.set('movement', currentSignature);
-        }
-    }
-    return freezeRuntimeState({
-        ...state,
-        turn: canonicalizeMekTurnStateV2({ ...state.turn, acknowledgedHeatSources }),
-    });
-}
-
 async function convertCBTForce(
     force: SerializedForce,
     options: PersistedForceV1ConversionOptions,
@@ -1379,7 +1326,7 @@ async function convertCBTForce(
     const ambiguousUnitIds = new Set<string>();
     const resolvedUnits: ResolvedLegacyCBTUnitV1[] = [];
     const parsed = readV1Groups(rawGroups, GameSystem.CBT, options.onWarning);
-    const rosterGroups: SerializedCBTForceRosterGroupV1[] = [];
+    const rosterGroups: SerializedCBTForceRosterGroup[] = [];
 
     for (const [groupOrder, { group, id: groupId }] of parsed.groups.entries()) {
 
@@ -1466,7 +1413,7 @@ async function materializeResolvedUnits(
     forceId: ReturnType<typeof asForceId>,
     stateRevision: number,
     resolvedUnits: readonly ResolvedLegacyCBTUnitV1[],
-    rosterGroups: readonly SerializedCBTForceRosterGroupV1[],
+    rosterGroups: readonly SerializedCBTForceRosterGroup[],
     materializeUnit: NonNullable<PersistedForceV1ConversionOptions['materializeUnit']>,
     scenario: ScenarioRules,
     rawLegacyNetworks: JsonValue | undefined,
@@ -1569,13 +1516,11 @@ async function materializeResolvedUnits(
     );
 
     return validateSerializedCBTForceV2({
-        schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
         forceId,
         forceRevision: stateRevision,
         history: emptyRuntimeHistory(),
         units: Object.freeze(units),
         roster: Object.freeze({
-            schemaVersion: CBT_FORCE_ROSTER_SCHEMA_VERSION,
             groups: Object.freeze(rosterGroups.map(group => Object.freeze({
                 ...group,
                 members: Object.freeze(group.members
@@ -1820,7 +1765,7 @@ function readV1GroupMetadata(
     groupId: string,
     onWarning?: PersistedForceV1ConversionOptions['onWarning'],
     ambiguousGroupIds?: ReadonlySet<string>,
-): Pick<SerializedCBTForceRosterGroupV1, 'name' | 'color' | 'formationId' | 'formationTargetGroupId' | 'formationLock'> {
+): Pick<SerializedCBTForceRosterGroup, 'name' | 'color' | 'formationId' | 'formationTargetGroupId' | 'formationLock'> {
     const result: { name?: string; color?: string; formationId?: string; formationTargetGroupId?: string; formationLock?: true } = {};
     for (const key of ['name', 'color', 'formationId', 'formationTargetGroupId'] as const) {
         const value = group[key];

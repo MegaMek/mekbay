@@ -91,7 +91,6 @@ function topology(count: number): CrewTopology {
 }
 
 function assignmentFor(order: readonly number[]): {
-    schemaVersion: 1;
     positions: Array<{
         positionId: ReturnType<typeof asCrewPositionId>;
         name: string;
@@ -100,7 +99,6 @@ function assignmentFor(order: readonly number[]): {
     }>;
 } {
     return {
-        schemaVersion: 1,
         positions: order.map(occurrence => ({
             positionId: asCrewPositionId(`crew:${occurrence}`),
             name: `Crew ${occurrence}`,

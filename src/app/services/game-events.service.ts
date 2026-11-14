@@ -4,7 +4,13 @@
 import { Injectable, Injector, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 
-import { PHYSICAL_ATTACK_KINDS, type PhysicalAttackKind } from '../models/rules/physical-attack-rules';
+import {
+    hitTableDice,
+    PHYSICAL_ATTACK_KINDS,
+    type HitTable,
+    type PhysicalAttackKind,
+} from '../models/rules/physical-attack-rules';
+import { AIMED_SHOT_LEG_REROLLS, type AimedShotRoll } from '../models/rules/aimed-shot-rules';
 import type { HitLocationDice, TwoDice } from '../models/rules/weapon-attack-resolution';
 import { WEAPON_TYPES, type WeaponType } from '../models/weapon-types.model';
 import type { MekHitArc } from '../utils/record-sheet-reference-table';
@@ -43,16 +49,32 @@ export interface AttackWeaponReport {
     readonly targetNumber: number;
     readonly toHit: TwoDice;
     readonly cluster?: Readonly<{ dice: TwoDice; modifier: number; projectiles: number; hits: number }>;
-    /** The 1D6 table a physical attack's groups are read on; otherwise the standard 2D6 table. */
-    readonly table?: 'punch' | 'kick';
+    /** The table an attack's groups are read on (`hitTableDice`); otherwise the standard 2D6 table. */
+    readonly table?: Exclude<HitTable, 'standard'>;
+    /** A hit also rolls on the Determining Critical Hits Table: a leg attack, battle armor's swarm damage. */
+    readonly critical?: true;
+    /**
+     * The swarming infantry struck comes off the unit it swarms: a brush off that hits, or the infantry shaken off by
+     * a jump, a fall or erratic manoeuvres.
+     */
+    readonly swarmRelease?: true;
+    /**
+     * A hit on the unit this infantry swarms that struck the infantry instead (TW p. 222): battle armor takes it on
+     * `trooper` (from 1), a platoon as from infantry.
+     */
+    readonly swarmStrike?: Readonly<{ trooper?: number }>;
     /** A physical attack, whose outcome forces Piloting Skill Rolls on the struck Mek. */
     readonly physical?: PhysicalAttackKind;
     /** The column this attack strikes instead of the attack's direction (a DFA on a prone Mek or a vehicle). */
     readonly arc?: MekHitArc;
     /** Inferno missiles: each group is one missile whose effect the struck unit decides. */
     readonly inferno?: true;
+    /** Inferno missiles that roll no hit location (Core p. 192), as the attacker resolved them. */
+    readonly noHitLocation?: true;
     /** Outside heat the weapon's hit applies to the struck unit. */
     readonly heat?: number;
+    /** The hit was an aimed shot: its one group strikes the named location when the aim roll says so. */
+    readonly aim?: AimedShotRoll;
     readonly groups: readonly AttackHitGroup[];
 }
 
@@ -160,21 +182,43 @@ export function parseGameEvent(value: unknown): GameEvent | null {
 
 function parseWeaponReport(value: unknown): AttackWeaponReport | null {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-    const { name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, heat, groups } = value as Record<string, unknown>;
+    const {
+        name, types, partialCover, targetNumber, toHit, cluster, table, physical, arc, inferno, noHitLocation, heat, aim,
+        critical, swarmRelease, swarmStrike, groups,
+    } = value as Record<string, unknown>;
     if (!isId(name) || !isInteger(targetNumber, -100, 100) || !isTwoDice(toHit)
         || !Array.isArray(types) || types.length > WEAPON_TYPES.length
         || !types.every(type => WEAPON_TYPES.includes(type as WeaponType))
         || (partialCover !== undefined && partialCover !== true)
         || (inferno !== undefined && inferno !== true)
+        || (noHitLocation !== undefined && (noHitLocation !== true || inferno !== true))
         || (heat !== undefined && !isInteger(heat, 1, MAX_DAMAGE))
-        || (table !== undefined && table !== 'punch' && table !== 'kick')
+        || (table !== undefined && table !== 'punch' && table !== 'kick' && table !== 'swarm')
+        || (critical !== undefined && critical !== true)
+        || (swarmRelease !== undefined && swarmRelease !== true)
+        || (swarmStrike !== undefined && !isSwarmStrike(swarmStrike))
         || (physical !== undefined && !PHYSICAL_ATTACK_KINDS.includes(physical as PhysicalAttackKind))
         || (arc !== undefined && !HIT_ARCS.includes(arc as MekHitArc))
         || !Array.isArray(groups) || groups.length > MAX_ATTACK_ROWS) {
         return null;
     }
-    // The punch and kick tables roll 1D6; the standard table 2D6.
-    const diceCount = table === undefined ? 2 : 1;
+    // An aimed shot is one weapon hit read on the standard table.
+    let parsedAim: AimedShotRoll | undefined;
+    if (aim !== undefined) {
+        const { location, roll, rerolls } = (aim ?? {}) as Record<string, unknown>;
+        if (table !== undefined || physical !== undefined || inferno !== undefined || cluster !== undefined
+            || groups.length > 1 || !isId(location) || location.length > 16
+            || !(isDice(roll, 1) || isDice(roll, 2))
+            || (rerolls !== undefined && (!Array.isArray(rerolls) || rerolls.length > AIMED_SHOT_LEG_REROLLS
+                || !rerolls.every(isTwoDice)))) return null;
+        parsedAim = Object.freeze({
+            location,
+            roll: Object.freeze([...roll as number[]]),
+            ...(rerolls === undefined ? {} : { rerolls: Object.freeze(rerolls as TwoDice[]) }),
+        });
+    }
+    // The punch and kick tables roll 1D6; the standard and swarm tables 2D6.
+    const diceCount = hitTableDice((table ?? 'standard') as HitTable);
     let parsedCluster: AttackWeaponReport['cluster'];
     if (cluster !== undefined) {
         const { dice, modifier, projectiles, hits } = (cluster ?? {}) as Record<string, unknown>;
@@ -194,11 +238,19 @@ function parseWeaponReport(value: unknown): AttackWeaponReport | null {
         name, types: Object.freeze([...types] as WeaponType[]), ...(partialCover ? { partialCover: true as const } : {}),
         targetNumber, toHit,
         ...(parsedCluster === undefined ? {} : { cluster: parsedCluster }),
-        ...(table === undefined ? {} : { table: table as 'punch' | 'kick' }),
+        ...(table === undefined ? {} : { table: table as Exclude<HitTable, 'standard'> }),
+        ...(critical ? { critical: true as const } : {}),
+        ...(swarmRelease ? { swarmRelease: true as const } : {}),
+        ...(swarmStrike === undefined ? {} : {
+            swarmStrike: Object.freeze((swarmStrike as { trooper?: number }).trooper === undefined
+                ? {} : { trooper: (swarmStrike as { trooper: number }).trooper }),
+        }),
         ...(physical === undefined ? {} : { physical: physical as PhysicalAttackKind }),
         ...(arc === undefined ? {} : { arc: arc as MekHitArc }),
         ...(inferno ? { inferno: true as const } : {}),
+        ...(noHitLocation ? { noHitLocation: true as const } : {}),
         ...(heat === undefined ? {} : { heat: heat as number }),
+        ...(parsedAim === undefined ? {} : { aim: parsedAim }),
         groups: Object.freeze(parsedGroups as AttackHitGroup[]),
     });
 }
@@ -217,4 +269,11 @@ function isTwoDice(value: unknown): value is TwoDice {
 
 function isDice(value: unknown, count: number): boolean {
     return Array.isArray(value) && value.length === count && value.every(die => isInteger(die, 1, 6));
+}
+
+function isSwarmStrike(value: unknown): boolean {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const keys = Object.keys(value);
+    const trooper = (value as Record<string, unknown>)['trooper'];
+    return keys.every(key => key === 'trooper') && (trooper === undefined || isInteger(trooper, 1, 6));
 }

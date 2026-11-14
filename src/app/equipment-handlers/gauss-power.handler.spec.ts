@@ -142,7 +142,7 @@ function directGaussSetup() {
             fixture.index,
             fixture.instance.ruleset(),
             fixture.instance.query(),
-            emptyCBTEncounterSnapshot(),
+            emptyCBTEncounterSnapshot(), {},
         ).components.find(row => row.componentId === component.id)?.weapon?.selectable,
     };
 }

@@ -4,5 +4,6 @@
     "types": ["node"], "module": "preserve", "moduleResolution": "bundler",
     "noEmit": true, "noPropertyAccessFromIndexSignature": false
   },
+  "files": ["../src/types/qrcode.d.ts"],
   "include": ["prepare-unit-verification-corpus.ts", "export-unit-verification.ts", "compare-unit-verification.ts", "unit-verification.test.ts"]
 }

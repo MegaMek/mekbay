@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Author: Drake
 
+import { getMekLocationAbbreviation } from '../../models/entity/types/mek';
 import { NgTemplateOutlet } from '@angular/common';
+import { physicalAttackAlwaysHits, physicalAttackTakesMovement } from '../../models/rules/physical-attack-rules';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, Injector, input, signal } from '@angular/core';
 import { DragDropModule, type CdkDragDrop, type CdkDragStart, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Overlay } from '@angular/cdk/overlay';
@@ -33,7 +35,9 @@ import type {
     MekPhysicalAttackRow,
 } from '../../models/runtime/equipment-panel';
 import {
+    physicalAttackTargetModifiers,
     physicalAttackTargetNumber,
+    physicalRowTargetIssue,
     projectWeaponTargetPresentation,
     projectTargetingTarget,
 } from '../../models/runtime/equipment-panel';
@@ -103,7 +107,7 @@ interface EquipmentPanelDisplay {
 
 interface EquipmentPanelModifier {
     readonly name: string;
-    readonly status?: 'destroyed' | 'disabled' | 'warning';
+    readonly status?: 'destroyed' | 'disabled' | 'warning' | 'fired';
 }
 
 interface SelectedHeatProjection {
@@ -125,14 +129,14 @@ interface TargetNumberBreakdown {
 }
 
 interface SectionSkillDisplay {
-    label: 'Gunnery' | 'Piloting';
+    label: 'Gunnery' | 'Piloting' | "Anti-'Mech";
     value: string;
 }
 
 interface TargetRowState {
     target: TargetingTarget | null;
     invalidTarget: boolean;
-    invalidTargetReason?: 'type' | 'out-of-range';
+    invalidTargetReason?: 'invalid' | 'out-of-range';
     rangeSelection: InventoryTargetRangeSelection | null;
     hitText: string;
     hitModifierTooltip: TooltipLine[] | null;
@@ -141,6 +145,10 @@ interface TargetRowState {
     targetNumberText: string;
     targetNumberTooltip: TooltipLine[] | null;
     breakdown: TargetNumberBreakdown | null;
+    /** The weapon may make an aimed shot at its target. */
+    aimable?: true;
+    /** The location the weapon aims at. */
+    aim?: string;
 }
 
 interface AmmoRowState {
@@ -257,8 +265,11 @@ export class WeaponsEquipmentPanelComponent {
         label: 'Gunnery',
         value: this.runtime().snapshot().crew.gunnery.toString(),
     }));
+    /** Infantry attack a 'Mech's legs or swarm it on their Anti-'Mech Skill, which stands where Piloting does. */
+    private readonly physicalSkillLabel = computed(() =>
+        this.runtime().snapshot().unitType === 'Infantry' ? "Anti-'Mech" as const : 'Piloting' as const);
     readonly pilotingSkillDisplay = computed<SectionSkillDisplay>(() => ({
-        label: 'Piloting',
+        label: this.physicalSkillLabel(),
         value: this.runtime().snapshot().crew.piloting.toString(),
     }));
     readonly groups = computed<EquipmentPanelGroup[]>(() => this.buildGroups(this.runtime()));
@@ -307,7 +318,12 @@ export class WeaponsEquipmentPanelComponent {
         const equipment = runtime.equipment().map((row, index) => this.componentRow(row, 'equipment', index));
         return [
             { id: 'ranged' as const, title: 'Ranged Weapons', sortable: true, rows: ranged },
-            { id: 'physical' as const, title: 'Physical Weapons', sortable: true, rows: physical },
+            {
+                id: 'physical' as const,
+                title: this.physicalSkillLabel() === 'Piloting' ? 'Physical Weapons' : "Anti-'Mech Attacks",
+                sortable: true,
+                rows: physical,
+            },
             { id: 'equipment' as const, title: 'Equipment', sortable: false, rows: equipment },
         ].filter(group => group.rows.length > 0);
     }
@@ -363,6 +379,7 @@ export class WeaponsEquipmentPanelComponent {
             modifiers: [
                 ...(row.modifiers ?? []),
                 ...(row.jammed ? [{ name: 'Jammed', status: 'disabled' as const }] : []),
+                ...(weapon?.firedThisTurn ? [{ name: 'Fired', status: 'fired' as const }] : []),
             ],
             selectedMode: row.mode ?? null,
             ammo: {
@@ -448,6 +465,12 @@ export class WeaponsEquipmentPanelComponent {
             ammo: { tracksAmmo: false, remaining: 0, total: 0, options: [] },
             extremeRange: null,
         };
+    }
+
+    aimRow(event: MouseEvent, row: EquipmentPanelRow, target: TargetingTarget): void {
+        event.stopPropagation();
+        if (this.readOnly() || !row.component) return;
+        void this.runtime().aimWeapon(row.component, target);
     }
 
     onRowTargetSelectorClick(event: MouseEvent, row: EquipmentPanelRow): void {
@@ -891,8 +914,12 @@ export class WeaponsEquipmentPanelComponent {
             target,
             invalidTarget,
             ...(targetDisabledReason !== null
-                ? { invalidTargetReason: 'type' as const }
+                ? { invalidTargetReason: 'invalid' as const }
                 : presentation.outOfRange ? { invalidTargetReason: 'out-of-range' as const } : {}),
+            // A weapon that already fired keeps its aim on show but declares no new one.
+            ...(presentation.aimedShotKind !== null && !invalidTarget && component.weapon!.selectable
+                && this.runtime().declaresAimedShots() ? { aimable: true as const } : {}),
+            ...(presentation.aim === null ? {} : { aim: getMekLocationAbbreviation(presentation.aim.location) }),
             rangeSelection: presentation.rangeSelection,
             hitText: presentation.hitText,
             hitModifierTooltip,
@@ -912,9 +939,12 @@ export class WeaponsEquipmentPanelComponent {
         const modifier = row.physical?.hitModifiers[0];
         const numericModifier = typeof modifier === 'number' ? modifier : 0;
         const piloting = this.runtime().snapshot().crew.piloting;
-        const targetModifier = target?.tnModifier ?? 0;
-        const attackModifierBreakdown: readonly UnitModifierBreakdownEntry[] =
-            this.runtime().attackContext()?.attackModifierBreakdown ?? [];
+        const automatic = physicalAttackAlwaysHits(row.physical!.kind);
+        const targetModifiers = target === null ? [] : physicalAttackTargetModifiers(row.physical!, target)
+            .filter(item => item.modifier !== 0);
+        const issue = target === null ? null : physicalRowTargetIssue(row.physical!, target);
+        const attackModifierBreakdown: readonly UnitModifierBreakdownEntry[] = !physicalAttackTakesMovement(row.physical!.kind)
+            ? [] : this.runtime().attackContext()?.attackModifierBreakdown ?? [];
         const attackModifier = attackModifierBreakdown.reduce((total, item) => total + item.modifier, 0);
         const physicalBreakdown = row.physical!.hitModifierBreakdown;
         const hitModifierTooltip = this.modifierTooltip([
@@ -922,21 +952,22 @@ export class WeaponsEquipmentPanelComponent {
             ...physicalBreakdown,
         ]);
         const tooltip: TooltipLine[] | null = target === null ? null : [
-            { label: 'Piloting', value: String(piloting), priority: SKILL_BREAKDOWN_PRIORITY },
+            { label: this.physicalSkillLabel(), value: String(piloting), priority: SKILL_BREAKDOWN_PRIORITY },
             ...orderedModifierTooltipLines(
                 [...attackModifierBreakdown, ...physicalBreakdown],
                 item => formatInventoryTargetSignedModifier(item.modifier),
             ),
-            ...(targetModifier === 0 ? [] : [{
-                label: 'Target',
-                value: formatInventoryTargetSignedModifier(targetModifier),
-            }]),
+            ...targetModifiers.map(item => ({
+                label: item.label,
+                value: formatInventoryTargetSignedModifier(item.modifier),
+            })),
         ];
         return {
             target,
-            invalidTarget: false,
+            invalidTarget: issue !== null,
+            ...(issue === null ? {} : { invalidTargetReason: issue }),
             rangeSelection: null,
-            hitText: typeof modifier === 'number'
+            hitText: automatic ? 'Auto' : typeof modifier === 'number'
                 ? formatInventoryTargetSignedModifier(numericModifier + attackModifier)
                 : modifier === 'versus' && attackModifier !== 0
                     ? `Vs${formatInventoryTargetSignedModifier(attackModifier)}`
@@ -946,7 +977,7 @@ export class WeaponsEquipmentPanelComponent {
             damageText: row.display.damage,
             targetNumberText: target === null
                 ? ''
-                : typeof modifier === 'number'
+                : automatic ? 'Auto' : typeof modifier === 'number'
                     ? String(physicalAttackTargetNumber(row.physical!, piloting, this.runtime().attackContext(), target))
                     : formatPhysicalHitModifier(modifier),
             targetNumberTooltip: tooltip,

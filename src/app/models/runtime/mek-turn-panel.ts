@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { mekConversionModes, type MekConversionMode } from '../mek-conversion-mode';
-import type { HeatAutomationPolicy } from './cbt-unit-runtime';
 
 import type { UnitUuid } from '../../services/unit-catalog/unit-catalog.types';
 import { compareText } from '../../utils/string.util';
@@ -79,7 +78,6 @@ export function projectMekTurnPanel(
     index: MekRuntimeIndex,
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
-    heatPolicy: HeatAutomationPolicy,
 ): MekTurnPanelSnapshot {
     const turn = query.turnState();
     const activeBoosterComponentIds = [...index.components]
@@ -160,7 +158,7 @@ export function projectMekTurnPanel(
         turn,
         cover: Object.freeze({ ...water, building }),
         heat: query.heatState(),
-        heatProjection: query.heatProjection(heatPolicy),
+        heatProjection: query.heatProjection(),
         conditions: Object.freeze(conditions),
         conversion: Object.freeze({ mode: conversionMode, modes: Object.freeze(mekConversionModes(entity)) }),
     });
@@ -195,8 +193,8 @@ export function isMekTurnPanelDirty(snapshot: MekTurnPanelSnapshot): boolean {
         || snapshot.turn.cover !== null
         || snapshot.turn.weaponsHeat > 0
         || (snapshot.turn.outsideHeat ?? 0) > 0
-        || snapshot.turn.acknowledgedHeatSources.size > 0
-        || snapshot.turn.heatDissipationConsumed > 0
+        || snapshot.turn.settledHeat.size > 0
+        || snapshot.turn.heatDissipationConsumed !== undefined
         || snapshot.turn.spotting
         || snapshot.turn.phaseStateChanged
         || snapshot.heat.pendingOverride !== undefined

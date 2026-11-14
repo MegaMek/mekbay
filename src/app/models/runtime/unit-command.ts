@@ -33,13 +33,15 @@ export interface CBTUnitAttackerTargetingCommand {
 /** Fires the current targeting selection; no second weapon-selection payload exists. */
 export interface CBTUnitSelectedWeaponFireCommand {
     readonly type: 'fire-selected-weapons';
+    /** Under the full phase system: the selected attacks of the phase being resolved; absent, every selected attack. */
+    readonly attacks?: 'weapons' | 'physical';
     readonly prototypeHeatRolls?: readonly PrototypeLaserHeatRoll[];
 }
 
 /** Detach queued edits without losing the runtime's custom immutable map implementation. */
 export function captureUnitCommand(command: CBTUnitCommand): CBTUnitCommand {
     return structuredClone(command.type === 'replace-turn-state'
-        ? { ...command, turn: { ...command.turn, acknowledgedHeatSources: new Map(command.turn.acknowledgedHeatSources) } }
+        ? { ...command, turn: { ...command.turn, settledHeat: new Map(command.turn.settledHeat) } }
         : command);
 }
 
@@ -198,6 +200,20 @@ export type CBTUnitCommand =
         readonly loads: readonly BombLoadChoice[];
     }
     | {
+        /** An infantry unit takes hold of the target it swarmed (its encounter target id), or lets go (null). */
+        readonly type: 'set-swarming';
+        readonly target: string | null;
+    }
+    | {
+        /**
+         * The Elevation recorded for `turn` (this turn when absent) on a flying unit's Elevation Track: 0 on the
+         * ground; null clears that turn's entry.
+         */
+        readonly type: 'set-elevation';
+        readonly elevation: number | null;
+        readonly turn?: number;
+    }
+    | {
         /** Writes one aerospace velocity record cell; null clears it. */
         readonly type: 'set-velocity-record';
         readonly turn: number;
@@ -231,14 +247,16 @@ export type CBTUnitCommand =
     | {
         readonly type: 'set-pending-heat';
         readonly heat: number | null;
+        /** Heat resolution calculates the turn's heat, so NEXT follows the calculation (`withNextHeat`). */
+        readonly follow?: boolean;
     }
     | {
         readonly type: 'set-heatsinks-off';
         readonly heatsinksOff: number;
     }
     | {
+        /** APPLY HEAT: the player's arrow (NEXT) becomes the unit's heat and settles the turn so far. */
         readonly type: 'apply-heat';
-        readonly policy: HeatAutomationPolicy;
     }
     | {
         /** Heat from outside sources such as inferno missiles (TW p. 159), capped per turn. */
@@ -292,6 +310,11 @@ export type CBTUnitCommand =
         readonly declaration: MekMovementDeclarationV2;
         /** The full phase system is on: the checks raised in the unit's Movement step are rolled at once. */
         readonly realPhases?: true;
+        /**
+         * The battle armor swarming the 'Mech has magnetic claws, making a jump's roll to shake it off 1 harder
+         * (TW p. 222): the automation, which sees the infantry, says so.
+         */
+        readonly swarmerMagneticClaws?: true;
     }
     | { readonly type: 'clear-mek-movement' }
     | {
@@ -335,6 +358,8 @@ export type CBTUnitCommand =
     | {
         readonly type: 'replace-turn-state';
         readonly turn: MekTurnStateV2;
+        /** Stamped by the force: under the full phase system, a roll the turn's new facts raise is rolled at once. */
+        readonly realPhases?: true;
     }
     | {
         readonly type: 'set-pending-fall-consequences';

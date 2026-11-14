@@ -3,7 +3,22 @@
 
 import { compareText } from '../../utils/string.util';
 import type { AmmoSelectionCompatibilityFacts } from '../../utils/ammo-validity.util';
-import { comparativePilotingModifier } from '../rules/physical-attack-rules';
+import {
+    comparativePilotingModifier,
+    infantryTarget,
+    PHYSICAL_ATTACK_KINDS,
+    physicalAttackAlwaysHits,
+    physicalAttackMeetsBuildingCover,
+    physicalAttackMeetsWaterCover,
+    physicalAttackTakesMovement,
+    physicalHitTable,
+    physicalTargetIssue,
+    physicalTargetModifier,
+    type HitTable,
+    type PhysicalAttackKind,
+    type PhysicalAttackReach,
+} from '../rules/physical-attack-rules';
+import { isHandClawFlags } from '../entity/utils/physical-weapon-kernel';
 import type { OptionalRules } from '../options.model';
 import { recordSheetInventoryMountName } from '../../utils/sheets/record-sheet-inventory-equipment';
 import type { EquipmentStatus } from '../equipment-status.model';
@@ -63,6 +78,17 @@ import { mekRiscLaserPulseActive, mekRiscLaserPulseLink } from './component-risc
 import { RISC_LASER_PULSE_HEAT_BONUS } from '../risc-laser-mode.model';
 import { prototypeLaserMaximumExtraHeat } from '../prototype-laser-heat.model';
 import { rapidFireAutocannonShotCount } from './component-rapid-fire-autocannon';
+import { MAGNETIC_CLAW_SHAKE_OFF_MODIFIER } from '../rules/anti-mek-attack-rules';
+import {
+    AIMED_SHOT_MODIFIER,
+    aimedShot,
+    aimedShotIgnoresComputer,
+    aimedShotKind,
+    type AimedShot,
+    type AimedShotKind,
+    type AimedShotTarget,
+    type AimedShotWeapon,
+} from '../rules/aimed-shot-rules';
 import { mekLaserInsulatorAdjustedHeat, mekLaserInsulatorWeakened } from './component-laser-insulator';
 import { applyFlamerWeaponTypes, flamerDisplayLabel } from '../flamer-mode.model';
 import { bombastLaserEquipmentProfile } from '../bombast-laser-mode.model';
@@ -100,8 +126,8 @@ import { applyComponentApolloWeaponTypes } from './component-apollo';
 import { apolloToHitAdjustment } from '../apollo-mode.model';
 import { artemisVToHitAdjustment } from '../artemis-equipment.model';
 import {
-    PPC_CAPACITOR_HEAT_BONUS,
     ppcCapacitorChargedForWeapon,
+    ppcCapacitorFiringHeat,
     ppcCapacitorWeaponDamage,
     ppcCapacitorWeaponTypes,
 } from './component-ppc-capacitor';
@@ -157,6 +183,8 @@ export interface EquipmentPanelWeapon {
     /** Variable ground heat is resolved from die evidence when fired. */
     readonly heatSuffix?: '*';
     readonly selectable: boolean;
+    /** The weapon fired this turn: it cannot fire again until End Turn, or until the fire is undone. */
+    readonly firedThisTurn?: true;
     readonly damage: WeaponEquipment['damage'];
     readonly damageText: string;
     readonly damageTextByRange: Readonly<Record<TnRangeBracket, string>>;
@@ -285,6 +313,10 @@ export interface WeaponTargetPresentation {
         readonly total: number;
         readonly lines: readonly TooltipLine[];
     }> | null;
+    /** How the weapon may make an aimed shot at this target; null when it may not. */
+    readonly aimedShotKind: AimedShotKind | null;
+    /** The aimed shot these numbers are for; null for a normal attack. */
+    readonly aim: AimedShot | null;
 }
 
 /**
@@ -328,17 +360,33 @@ export function projectTargetingTarget(
             ? { tnCalculator: Object.freeze({ ...target.calculator, ...target.local?.calculator }) }
             : {}),
         ...(target.local?.manualTnOverride === undefined
-            ? {}
+            ? partialCover(target, distance, ruleset)
             : { manualTnModifier: target.local.manualTnOverride.modifier }),
     });
 }
 
-/** One authoritative Entity + runtime calculation for sheet and equipment target presentation. */
+function partialCover(target: EquipmentPanelTarget, distance: number, ruleset: CBTRuleset) {
+    const cover = calculateTargetTnModifierBreakdown({
+        unitType: target.unitType,
+        range: distance,
+        ...target.calculator,
+        ...target.local?.calculator,
+    }, gameRulesFor(ruleset)).find(entry => entry.id === 'partial-cover' && entry.modifier !== 0);
+    return cover === undefined ? {} : {
+        partialCover: Object.freeze({ modifier: cover.modifier, water: cover.partialCoverSource === 'water' }),
+    };
+}
+
+/**
+ * One authoritative Entity + runtime calculation for sheet and equipment target presentation. `aimAt` reads the
+ * numbers for an aimed shot at that location (null: a normal attack) in place of the weapon's declared aim.
+ */
 export function projectWeaponTargetPresentation(
     row: EquipmentPanelComponent,
     target: TargetingTarget | null,
     attack: WeaponAttackContext,
     ruleset: CBTRuleset,
+    aimAt?: string | null,
 ): WeaponTargetPresentation {
     const weapon = row.weapon;
     const selection = weapon?.selection;
@@ -391,11 +439,21 @@ export function projectWeaponTargetPresentation(
         target: target === null ? null : stripC3Distance(target),
     });
     const weaponRuleRange = weaponRangeSelection?.range ?? manualRange;
-    const hitResolution = equipmentPanelHitAtRange(
+    const computedHit = equipmentPanelHitAtRange(
         weapon.hit,
         weaponRuleRange,
         target !== null && activeTargetCalculator(target)?.indirectFire === true,
     );
+    const aiming = target === null ? null : aimedShotFacts(row, target, selectedAmmo, computedHit);
+    const aimLocation = aimAt !== undefined
+        ? aimAt
+        : selection?.kind === 'target' && selection.targetId === target?.id ? selection.aim ?? null : null;
+    const aim = aiming === null || aimLocation === null
+        ? null
+        : aimedShot(ruleset, aiming.weapon, aiming.target, aimLocation);
+    const hitResolution = aim !== null && aimedShotIgnoresComputer(aim, aiming!.weapon)
+        ? withoutTargetingComputer(computedHit)
+        : computedHit;
     const attackModifierBreakdown = attack.attackModifierBreakdown;
     const attackerMovementModifier = attackModifierBreakdown.reduce(
         (total, modifier) => total + modifier.modifier,
@@ -403,7 +461,7 @@ export function projectWeaponTargetPresentation(
     );
     const targetProjection = target === null
         ? null
-        : effectiveWeaponTargetModifier(row, target, ruleset, rangeSelection?.range);
+        : effectiveWeaponTargetModifier(row, target, ruleset, rangeSelection?.range, aim);
     const targetModifier = targetProjection?.modifier ?? 0;
     const targetNumber = inventoryTargetNumberState({
         ...rangeInput,
@@ -449,6 +507,51 @@ export function projectWeaponTargetPresentation(
                 total: targetNumber.breakdown.total,
                 lines: Object.freeze([...targetNumber.breakdown.lines]),
             }),
+        aimedShotKind: aiming === null ? null : aimedShotKind(ruleset, aiming.weapon, aiming.target),
+        aim,
+    });
+}
+
+/**
+ * What the aimed-shot rules read of a weapon and its target. Under a manual target number nothing says whether the
+ * target is immobile or in cover, so there is no aimed shot; a target with no facts set is mobile and in the open.
+ */
+function aimedShotFacts(
+    row: EquipmentPanelComponent,
+    target: TargetingTarget,
+    selectedAmmo: AmmoEquipment | null,
+    hit: ToHitResolution,
+): Readonly<{ weapon: AimedShotWeapon; target: AimedShotTarget }> | null {
+    const equipment = row.equipment;
+    if (target.manualTnModifier !== undefined || !(equipment instanceof WeaponEquipment)) return null;
+    const calculator = activeTargetCalculator(target) ?? {};
+    return Object.freeze({
+        weapon: Object.freeze({
+            types: resolveEffectiveWeaponTypes(row, selectedAmmo),
+            // A platoon and a machine gun array roll the Cluster Hits Table; rapid fire is one shot or a burst.
+            singleHit: row.weapon?.platoon === undefined
+                && !equipment.hasFlag('F_MGA')
+                && rapidFireAutocannonShotCount(equipment, row.mode) === 1,
+            computerAided: hit.modifierBreakdown.some(entry => entry.kind === 'targeting-computer'),
+        }),
+        target: Object.freeze({
+            unitType: target.unitType,
+            immobile: calculator.immobile === true,
+            indirectFire: calculator.indirectFire === true,
+            partialCover: target.partialCover !== undefined,
+        }),
+    });
+}
+
+/** The weapon's to-hit without its targeting computer's -1, for the aimed shots that go without it. */
+function withoutTargetingComputer(hit: ToHitResolution): ToHitResolution {
+    const computer = hit.modifierBreakdown.find(entry => entry.kind === 'targeting-computer');
+    if (!computer || typeof hit.value !== 'number') return hit;
+    return Object.freeze({
+        ...hit,
+        profile: Object.freeze(hit.profile.map(value => value - computer.modifier)),
+        value: hit.value - computer.modifier,
+        modifierBreakdown: Object.freeze(hit.modifierBreakdown.filter(entry => entry !== computer)),
     });
 }
 
@@ -602,11 +705,13 @@ function emptyWeaponTargetPresentation(): WeaponTargetPresentation {
         damageRange: null,
         damageText: '—',
         targetNumberBreakdown: null,
+        aimedShotKind: null,
+        aim: null,
     });
 }
 
 export type EffectiveTargetModifier = Omit<TnTargetModifierBreakdownEntry, 'id'> & {
-    readonly id: TnTargetModifierBreakdownEntry['id'] | 'precision';
+    readonly id: TnTargetModifierBreakdownEntry['id'] | 'precision' | 'aimed-shot';
     readonly ignored?: true;
 };
 interface EffectiveWeaponTargetProjection {
@@ -621,9 +726,11 @@ function effectiveWeaponTargetModifier(
     target: TargetingTarget,
     ruleset: CBTRuleset,
     rangeBracket?: TnRangeBracket,
+    aim: AimedShot | null = null,
 ): EffectiveWeaponTargetProjection {
     const weapon = row.weapon;
-    const calculator = activeTargetCalculator(target);
+    // An aimed shot at a target with no facts set still has its own modifier to add.
+    const calculator = activeTargetCalculator(target) ?? (aim === null ? undefined : {});
     const selectedAmmo = selectedAmmoEquipment(weapon?.ammoSources ?? [], weapon?.ammoSelection);
     if (!calculator) return Object.freeze({ modifier: target.tnModifier, breakdown: null });
     const rules = gameRulesFor(ruleset);
@@ -653,6 +760,23 @@ function effectiveWeaponTargetModifier(
         && FLAK_TARGET_UNIT_TYPES.has(target.unitType)
         && effectiveWeaponTypes.includes('F')) {
         effective.push({ id: 'flak', label: 'Flak', modifier: -2 });
+    }
+    if (aim !== null) {
+        // An aimed shot takes no partial-cover modifier; one at the head trades the immobile -4 for +3, as does
+        // one a targeting computer aims at a mobile target, which has no -4 to trade.
+        effective = effective.map(modifier => ({
+            ...modifier,
+            ...(modifier.id === 'partial-cover' || (aim.head && modifier.id === 'immobile')
+                ? { ignored: true as const }
+                : {}),
+        }));
+        if (aim.head || aim.kind === 'targeting-computer') {
+            effective.push({
+                id: 'aimed-shot',
+                label: aim.head ? 'Aimed shot (head)' : 'Aimed shot',
+                modifier: AIMED_SHOT_MODIFIER,
+            });
+        }
     }
     if (!selectedAmmo) {
         return targetModifierProjection(target, raw, effective);
@@ -823,27 +947,98 @@ export interface MekPhysicalAttackRow {
     readonly selectable: boolean;
     readonly effect: MekPhysicalAttackEffectV2;
     readonly firingHeat: number;
+    /** Whether Depth 1 water around a standing target covers it from this attack (`physicalAttackMeetsWaterCover`). */
+    readonly meetsWaterCover: boolean;
+    /** Whether a building's partial cover counts against this attack (`physicalAttackMeetsBuildingCover`). */
+    readonly meetsBuildingCover?: boolean;
+    /** The resolvable attack; null for an attack the resolution does not roll. */
+    readonly kind?: PhysicalAttackKind | null;
+    /** The table the attack strikes a standing 'Mech on (`physicalHitTable`); the standard table when absent. */
+    readonly hitTable?: HitTable;
+    /** Targets this attack reaches only in the attacker's hex (`physicalTargetIssue`). */
+    readonly reach?: PhysicalAttackReach;
+    /** The one target the attack may be made at: the unit a swarming unit clings to. */
+    readonly onlyTarget?: string;
+    /** Damage points that share a hit-location roll, where the attack's kind does not say (`physicalDamageGroupSize`). */
+    readonly damageGroupSize?: number;
+    /** A hit also rolls on the Determining Critical Hits Table: a leg attack, and battle armor's swarm damage. */
+    readonly critical?: true;
     readonly selection?: AttackerSelection;
+}
+
+/** Whether the row may be declared at the target: its reach, and the one target a swarming unit attacks. */
+export function physicalRowTargetIssue(
+    row: Pick<MekPhysicalAttackRow, 'kind' | 'reach' | 'onlyTarget'>,
+    target: Parameters<typeof physicalTargetIssue>[2] & Readonly<{ id: string }>,
+): ReturnType<typeof physicalTargetIssue> {
+    return row.onlyTarget !== undefined && row.onlyTarget !== target.id
+        ? 'invalid'
+        : physicalTargetIssue(row.kind, row.reach, target);
 }
 
 /**
  * A physical attack's target number against one target: Piloting plus the attack's, the attacker's and the
  * target's modifiers. Charges and DFAs also take the comparative Piloting modifier, so they need the target's
- * skill; without it there is no number.
+ * skill; without it there is no number. Infantry have no Piloting Skill, so a DFA against them compares none
+ * (TW p. 144).
  */
 export function physicalAttackTargetNumber(
-    row: Pick<MekPhysicalAttackRow, 'hitModifiers'>,
+    row: PhysicalAttackTargetRow,
     piloting: number,
     attack: Pick<WeaponAttackContext, 'attackModifierBreakdown'> | null,
-    target: Pick<TargetingTarget, 'tnModifier'>,
+    target: PhysicalAttackTarget,
     comparative?: Readonly<{ piloting: number; immobile: boolean }>,
 ): number | null {
+    if (physicalAttackAlwaysHits(row.kind)) return 0;
     const [base, extra] = row.hitModifiers;
-    const attackModifier = (attack?.attackModifierBreakdown ?? []).reduce((total, item) => total + item.modifier, 0);
-    if (typeof base === 'number') return piloting + base + attackModifier + target.tnModifier;
-    if (base !== 'versus' || !comparative) return null;
-    return piloting + comparativePilotingModifier(piloting, comparative.piloting, comparative.immobile)
-        + (typeof extra === 'number' ? extra : 0) + attackModifier + target.tnModifier;
+    const attackModifier = !physicalAttackTakesMovement(row.kind) ? 0
+        : (attack?.attackModifierBreakdown ?? []).reduce((total, item) => total + item.modifier, 0);
+    const targetModifier = physicalAttackTargetModifiers(row, target).reduce((total, item) => total + item.modifier, 0);
+    if (typeof base === 'number') return piloting + base + attackModifier + targetModifier;
+    if (base !== 'versus') return null;
+    const versus = row.kind === 'death-from-above' && infantryTarget(target.unitType) ? 0
+        : comparative && comparativePilotingModifier(piloting, comparative.piloting, comparative.immobile);
+    if (versus === undefined) return null;
+    return piloting + versus + (typeof extra === 'number' ? extra : 0) + attackModifier + targetModifier;
+}
+
+type PhysicalAttackTargetRow = Pick<MekPhysicalAttackRow, 'hitModifiers'>
+    & Partial<Pick<MekPhysicalAttackRow, 'meetsWaterCover' | 'meetsBuildingCover' | 'kind'>>;
+type PhysicalAttackTarget = Pick<TargetingTarget, 'tnModifier' | 'partialCover' | 'unitType' | 'tnCalculator'>;
+
+/**
+ * The target's part of a physical attack's target number: its modifier, less Depth 1 water cover the attack does
+ * not meet, and +3 for kicking or DFAing infantry (`physicalTargetModifier`).
+ */
+export function physicalAttackTargetModifiers(
+    row: PhysicalAttackTargetRow,
+    target: PhysicalAttackTarget,
+): readonly Readonly<{ label: string; modifier: number }>[] {
+    // A brush off is the swarmed 'Mech's own Piloting Skill Roll: only magnetic claws make it harder (TW p. 222).
+    if (row.kind === 'brush-off') {
+        return Object.freeze(target.tnCalculator?.magneticClaws === true
+            ? [Object.freeze({ label: 'Magnetic Claws', modifier: MAGNETIC_CLAW_SHAKE_OFF_MODIFIER })]
+            : []);
+    }
+    const uncovered = target.partialCover !== undefined && !physicalAttackMeetsPartialCover(row, target)
+        ? target.partialCover.modifier : 0;
+    const unitType = physicalTargetModifier(row.kind ?? null, target.unitType);
+    return Object.freeze([
+        Object.freeze({ label: 'Target', modifier: target.tnModifier - uncovered }),
+        ...(unitType === null ? [] : [unitType]),
+    ]);
+}
+
+/**
+ * Whether the target's partial cover counts against a physical attack: its +1 is in the target number, and a hit on
+ * the standard table that resolves to a leg strikes the cover (TW p. 102; Core pp. 66, 77).
+ */
+export function physicalAttackMeetsPartialCover(
+    row: Partial<Pick<MekPhysicalAttackRow, 'meetsWaterCover' | 'meetsBuildingCover'>>,
+    target: Pick<TargetingTarget, 'partialCover'>,
+): boolean {
+    if (target.partialCover === undefined) return false;
+    return (target.partialCover.water ? row.meetsWaterCover : row.meetsBuildingCover) !== false;
 }
 
 export type MekPhysicalAttackPresentation =
@@ -866,9 +1061,32 @@ export function projectMekPhysicalAttackPresentation(
 ): MekPhysicalAttackPresentation {
     const projection = query.mekPhysicalAttacks();
     if (projection.kind === 'unsupported') return projection;
+    const water = mekUnitWaterState(entity, query);
+    const prone = query.hasCondition('prone');
+    const swarmed = query.hasCondition('swarmed');
+    const kindOf = (target: AttackerActionTarget): PhysicalAttackKind | null => target.kind === 'component'
+        ? 'weapon'
+        : PHYSICAL_ATTACK_KINDS.find(candidate =>
+            candidate === entity.intrinsicWeapons().find(weapon => weapon.id === target.actionId)?.kind) ?? null;
+    const hitTable = (target: AttackerActionTarget) => {
+        const kind = kindOf(target);
+        if (kind === null) return 'standard';
+        const equipment = target.kind === 'component'
+            ? index.components.get(target.componentId)?.mount?.equipment
+            : undefined;
+        return physicalHitTable(kind, equipment !== undefined && isHandClawFlags(equipment.flags));
+    };
     return Object.freeze({
         kind: 'supported',
-        attacks: Object.freeze(projection.attacks.map(attack => {
+        // Thrashing is listed only while the 'Mech is prone, the only time it can thrash; brushing infantry off only
+        // while it is swarmed.
+        attacks: Object.freeze(projection.attacks.filter(attack => (prone || kindOf(attack.target) !== 'thrash')
+            && (swarmed || kindOf(attack.target) !== 'brush-off')).map(attack => {
+            const kind = kindOf(attack.target);
+            const reach: PhysicalAttackReach | undefined = kind === 'thrash'
+                ? swarmed ? 'unswarming-infantry-in-hex' : 'infantry-in-hex'
+                : kind === 'punch' && prone ? 'vehicle-in-hex'
+                    : kind === 'brush-off' ? 'swarming-infantry' : undefined;
             const selection = attack.selectable
                 ? attackerActionSelection(targeting, attack.target)
                 : undefined;
@@ -883,6 +1101,11 @@ export function projectMekPhysicalAttackPresentation(
                 ...attack,
                 hitModifiers: hit.modifiers,
                 hitModifierBreakdown: hit.breakdown,
+                meetsWaterCover: physicalAttackMeetsWaterCover(ruleset, kind, hitTable(attack.target), water),
+                meetsBuildingCover: physicalAttackMeetsBuildingCover(ruleset, kind, hitTable(attack.target)),
+                kind,
+                hitTable: hitTable(attack.target),
+                ...(reach === undefined ? {} : { reach }),
                 available: attack.selectable
                     ? canPerformMekAction(
                         entity,
@@ -1008,13 +1231,17 @@ export interface EquipmentPanelBombs {
     readonly loads: readonly BombLoad[];
 }
 
+/** The weapon rows selected to fire. */
+export function selectedWeaponRows(components: readonly EquipmentPanelComponent[]): readonly EquipmentPanelComponent[] {
+    return components.filter(row => row.status === 'available'
+        && row.weapon?.selectable === true
+        && row.weapon.selection !== undefined);
+}
+
 export function selectedWeaponHeat(
     snapshot: Pick<EquipmentPanelSnapshot, 'components' | 'physicalAttacks'>,
 ): Readonly<{ hasSelection: boolean; value: number }> {
-    const selected = snapshot.components.filter(row =>
-        row.status === 'available'
-        && row.weapon?.selectable === true
-        && row.weapon.selection !== undefined);
+    const selected = selectedWeaponRows(snapshot.components);
     const selectedPhysical = snapshot.physicalAttacks.filter(row =>
         row.available
         && row.selectable
@@ -1080,7 +1307,7 @@ export function projectMekEquipmentPanel(
     ruleset: CBTRuleset,
     query: MekUnitQueryPort,
     registry: TargetRegistrySnapshot,
-    optionalRules: OptionalRules = {},
+    optionalRules: OptionalRules,
     modifiers: MekAttackModifierSets = mekAttackModifierSets(entity, index, ruleset, query),
 ): EquipmentPanelSnapshot {
     const targeting = query.attackerTargetingState();
@@ -1270,7 +1497,7 @@ function projectMekEquipmentComponents(
                 : 0;
             const ppcCapacitorCharged = equipment instanceof WeaponEquipment
                 && ppcCapacitorChargedForWeapon(entity, index, query, componentId);
-            const ppcCapacitorHeat = ppcCapacitorCharged ? PPC_CAPACITOR_HEAT_BONUS : 0;
+            const ppcCapacitorHeat = ppcCapacitorCharged ? ppcCapacitorFiringHeat(query.turnState(), componentId) : 0;
             const shieldToHit = equipment instanceof WeaponEquipment
                 ? shieldWeaponToHitAdjustment(entity, index, ruleset, query, componentId)
                 : null;
@@ -1376,6 +1603,7 @@ function projectMekEquipmentComponents(
                         'fire',
                         ruleset,
                     ),
+                    ...(query.turnState().firedWeapons?.includes(componentId) ? { firedThisTurn: true as const } : {}),
                     damage: effectiveDamage,
                     damageText: damage!.default,
                     damageTextByRange: damage!.byRange,

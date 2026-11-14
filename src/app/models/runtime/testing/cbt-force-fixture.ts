@@ -21,16 +21,16 @@ import { restoreNonMekUnit } from '../cbt-non-mek-unit';
 import { isCBTMekUnit,type CBTUnit } from '../cbt-unit';
 import { isSerializedNonMekUnit,type SerializedNonMekUnit } from '../non-mek-unit-persistence';
 import {
-CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
 asForceId,
 emptyRuntimeHistory,
 type SerializedCBTUnitV2,
 } from '../persistence-v2';
 import type { ScenarioRules } from '../unit-state-initializer';
+import { BOUND_OPTIONAL_RULE_DEFAULTS } from '../bound-optional-rules';
 
 /** The scenario the fixture options bind for `ruleset`, with the default optional rules. */
 export function fixtureScenario(ruleset: CBTRuleset): ScenarioRules {
-    return { id: 'megamek', ruleset, options: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false } };
+    return { id: 'megamek', ruleset, options: BOUND_OPTIONAL_RULE_DEFAULTS };
 }
 
 export interface CBTForceFixture {
@@ -53,7 +53,7 @@ export async function loadCBTForceFixture(
 ): Promise<CBTForceFixture> {
     const options = signal({
         CBTRules: ruleset,
-        CBTOptionalRules: { forcedWithdrawal: true, sprinting: false, hotLoadedAmmo: false } as Readonly<Record<string, boolean>>,
+        CBTOptionalRules: BOUND_OPTIONAL_RULE_DEFAULTS as Readonly<Record<string, boolean>>,
     });
     const optionsService = { options, cbtAutomationMode: () => 'no' } as unknown as OptionsService;
     const byInstance = new Map(units.map(unit => [unit.instanceId, unit] as const));
@@ -77,7 +77,6 @@ export async function loadCBTForceFixture(
                 ? restoreNonMekUnit(saved, original.getUnit(), original.uuid, scenario)
                 : isCBTMekUnit(original)
                     ? await restoreMekUnit(saved, original.getUnit() as MekEntity, original.uuid, {
-                        initializerRevision: saved.baselineRefAtSave.initialStateProfile.initializerRevision,
                         profileId: saved.baselineRefAtSave.initialStateProfile.profileId,
                         deployment: saved.deployment.values,
                         scenario,
@@ -107,7 +106,6 @@ export async function loadCBTForceFixture(
         name: settings.name ?? 'Rules switch force',
         ...(settings.owned === false ? { owned: false } : {}),
         cbt: {
-            schemaVersion: CBT_FORCE_PERSISTENCE_SCHEMA_VERSION,
             forceId,
             forceRevision: 0,
             history: emptyRuntimeHistory(),
@@ -116,7 +114,6 @@ export async function loadCBTForceFixture(
                 return { instanceId: unit.instanceId, stateRevision: saved.stateRevision, unit: saved };
             }),
             roster: {
-                schemaVersion: 1,
                 groups: [{
                     groupId: 'group:rules-switch', order: 0, name: 'Lance',
                     members: units.map((unit, order) => ({ instanceId: unit.instanceId, order })),
